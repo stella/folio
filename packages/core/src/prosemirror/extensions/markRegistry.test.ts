@@ -12,12 +12,14 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { MARK_EXTENSIONS, MARK_NESTING_ORDER } from "./markRegistry";
 import { schema } from "../schema";
+import { MARK_EXTENSIONS, MARK_NESTING_ORDER } from "./markRegistry";
 
 describe("the mark registry", () => {
   test("names exactly the marks the schema declares", () => {
-    expect(Object.keys(MARK_EXTENSIONS).toSorted()).toEqual(Object.keys(schema.marks).toSorted());
+    expect(Object.keys(MARK_EXTENSIONS).toSorted()).toEqual(
+      Object.keys(schema.marks).toSorted(),
+    );
   });
 
   test("each entry builds the mark it is filed under", () => {

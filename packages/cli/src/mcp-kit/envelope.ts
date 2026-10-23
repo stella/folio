@@ -7,7 +7,12 @@
 
 import { distance as editDistance } from "@stll/fuzzy-search";
 
-import type { ToolCallResult, ToolError, ToolInputIssue, ToolOutcome } from "./types";
+import type {
+  ToolCallResult,
+  ToolError,
+  ToolInputIssue,
+  ToolOutcome,
+} from "./types";
 
 /** Error codes the surface itself answers with; a tool adds its own. */
 export const KIT_ERROR_CODES = {
@@ -29,11 +34,14 @@ export const toolError = (error: {
   message: error.message,
   ...(error.hint !== undefined && { hint: error.hint }),
   retryable: error.retryable ?? false,
-  ...(error.issues !== undefined && error.issues.length > 0 && { issues: error.issues }),
+  ...(error.issues !== undefined &&
+    error.issues.length > 0 && { issues: error.issues }),
   ...(error.details !== undefined && { details: error.details }),
 });
 
-export const failure = (error: Parameters<typeof toolError>[0]): ToolOutcome => ({
+export const failure = (
+  error: Parameters<typeof toolError>[0],
+): ToolOutcome => ({
   ok: false,
   error: toolError(error),
 });
@@ -45,7 +53,13 @@ export const validationError = (
   issues: readonly ToolInputIssue[],
   hint?: string,
 ): ToolOutcome =>
-  failure({ code: KIT_ERROR_CODES.validation, message, issues, hint, retryable: true });
+  failure({
+    code: KIT_ERROR_CODES.validation,
+    message,
+    issues,
+    hint,
+    retryable: true,
+  });
 
 /** Encode an outcome as a `tools/call` result, with the input notes after a success. */
 export const toCallResult = (
@@ -54,7 +68,9 @@ export const toCallResult = (
 ): ToolCallResult => {
   if (!outcome.ok) {
     return {
-      content: [{ type: "text", text: JSON.stringify({ error: outcome.error }) }],
+      content: [
+        { type: "text", text: JSON.stringify({ error: outcome.error }) },
+      ],
       isError: true,
     };
   }
@@ -69,16 +85,27 @@ export const toCallResult = (
 };
 
 /** Up to three known names close to `name`, closest first. */
-export const closestNames = (name: string, known: readonly string[]): string[] => {
+export const closestNames = (
+  name: string,
+  known: readonly string[],
+): string[] => {
   const lowered = name.toWellFormed().toLowerCase();
   return known
     .map((candidate) => {
       const lower = candidate.toWellFormed().toLowerCase();
       const contains = lower.includes(lowered) || lowered.includes(lower);
-      return { candidate, distance: contains ? 0 : editDistance(lowered, lower, "levenshtein") };
+      return {
+        candidate,
+        distance: contains ? 0 : editDistance(lowered, lower, "levenshtein"),
+      };
     })
-    .filter(({ distance }) => distance <= Math.max(2, Math.floor(name.length / 3)))
-    .toSorted((a, b) => a.distance - b.distance || a.candidate.localeCompare(b.candidate))
+    .filter(
+      ({ distance }) => distance <= Math.max(2, Math.floor(name.length / 3)),
+    )
+    .toSorted(
+      (a, b) =>
+        a.distance - b.distance || a.candidate.localeCompare(b.candidate),
+    )
     .slice(0, 3)
     .map(({ candidate }) => candidate);
 };

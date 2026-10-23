@@ -29,8 +29,14 @@ describe("renderReportDiff", () => {
   });
 
   test("truncates a large diff and says how much it dropped", () => {
-    const committed = Array.from({ length: 40 }, (_, index) => `old ${index}`).join("\n");
-    const generated = Array.from({ length: 40 }, (_, index) => `new ${index}`).join("\n");
+    const committed = Array.from(
+      { length: 40 },
+      (_, index) => `old ${index}`,
+    ).join("\n");
+    const generated = Array.from(
+      { length: 40 },
+      (_, index) => `new ${index}`,
+    ).join("\n");
     const rendered = diff(committed, generated, 10);
 
     expect(rendered.split("\n")).toHaveLength(11);
@@ -44,20 +50,29 @@ describe("renderReportDiff", () => {
 
 describe("isStaleDeclaration", () => {
   test("calls a declaration older than its sources stale", () => {
-    expect(isStaleDeclaration({ declarationModifiedMs: 10, newestSourceModifiedMs: 20 })).toBe(
-      true,
-    );
+    expect(
+      isStaleDeclaration({
+        declarationModifiedMs: 10,
+        newestSourceModifiedMs: 20,
+      }),
+    ).toBe(true);
   });
 
   test("accepts a declaration built after its sources", () => {
-    expect(isStaleDeclaration({ declarationModifiedMs: 20, newestSourceModifiedMs: 10 })).toBe(
-      false,
-    );
+    expect(
+      isStaleDeclaration({
+        declarationModifiedMs: 20,
+        newestSourceModifiedMs: 10,
+      }),
+    ).toBe(false);
   });
 
   test("accepts a build that finished in the same millisecond as the last write", () => {
-    expect(isStaleDeclaration({ declarationModifiedMs: 10, newestSourceModifiedMs: 10 })).toBe(
-      false,
-    );
+    expect(
+      isStaleDeclaration({
+        declarationModifiedMs: 10,
+        newestSourceModifiedMs: 10,
+      }),
+    ).toBe(false);
   });
 });

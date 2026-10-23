@@ -32,7 +32,9 @@ const PARAGRAPH_RULE_ENDPOINT_OUTSET = pointsToPixels(1.5);
  * fractional border width to one device pixel, so its color carries the
  * fractional coverage while layout keeps the authored width.
  */
-export const resolveCssBorderStroke = (border: BorderStroke): CssBorderStroke => {
+export const resolveCssBorderStroke = (
+  border: BorderStroke,
+): CssBorderStroke => {
   const authoredWidth = border.width ?? CSS_HAIRLINE_WIDTH;
   if (authoredWidth <= 0 || authoredWidth >= CSS_HAIRLINE_WIDTH) {
     return {
@@ -68,7 +70,11 @@ export const resolveParagraphBorderHorizontalOutsets = (
 ): ParagraphBorderHorizontalOutsets => {
   const ruleOutset = hasHorizontalRule ? PARAGRAPH_RULE_ENDPOINT_OUTSET : 0;
   return {
-    left: borders.left ? (borders.left.space ?? 0) + (borders.left.width ?? 0) : ruleOutset,
-    right: borders.right ? (borders.right.space ?? 0) + (borders.right.width ?? 0) : ruleOutset,
+    left: borders.left
+      ? (borders.left.space ?? 0) + (borders.left.width ?? 0)
+      : ruleOutset,
+    right: borders.right
+      ? (borders.right.space ?? 0) + (borders.right.width ?? 0)
+      : ruleOutset,
   };
 };

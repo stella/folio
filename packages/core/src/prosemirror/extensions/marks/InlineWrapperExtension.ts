@@ -24,7 +24,8 @@ import type { InlineWrapperLayer } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 
 export const INLINE_WRAPPER_MARK_NAME = "inlineWrapper";
-const INLINE_WRAPPER_HYPERLINK_ORIGIN_ATTRIBUTE = "data-inline-wrapper-hyperlink-origin";
+const INLINE_WRAPPER_HYPERLINK_ORIGIN_ATTRIBUTE =
+  "data-inline-wrapper-hyperlink-origin";
 
 /** What a tagged layer's element name is spelled as on the rendered span. */
 const TAGGED_ELEMENT_ATTRIBUTES = {
@@ -78,11 +79,15 @@ export const InlineWrapperExtension = createMarkExtension({
       {
         tag: `[${INLINE_WRAPPER_STACK_ATTRIBUTE}]`,
         getAttrs(dom) {
-          const stack = parseInlineWrapperStack(dom.getAttribute(INLINE_WRAPPER_STACK_ATTRIBUTE));
+          const stack = parseInlineWrapperStack(
+            dom.getAttribute(INLINE_WRAPPER_STACK_ATTRIBUTE),
+          );
           if (stack === null) {
             return false;
           }
-          const origin = dom.getAttribute(INLINE_WRAPPER_HYPERLINK_ORIGIN_ATTRIBUTE);
+          const origin = dom.getAttribute(
+            INLINE_WRAPPER_HYPERLINK_ORIGIN_ATTRIBUTE,
+          );
           if (origin === null) {
             return { stack };
           }

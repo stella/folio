@@ -24,7 +24,8 @@ import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createDocx, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 // Numbering ids used by the fixture. `EDITED_ABSTRACT_ID` is the definition the
 // tests mutate; `UNTOUCHED_ABSTRACT_ID` must survive byte-exact.
@@ -135,7 +136,11 @@ async function readPart(buffer: ArrayBuffer, path: string): Promise<string> {
   return file.async("text");
 }
 
-function editFirstLevelText(doc: Document, abstractNumId: number, newText: string): void {
+function editFirstLevelText(
+  doc: Document,
+  abstractNumId: number,
+  newText: string,
+): void {
   const abstractNum = doc.package.numbering?.abstractNums.find(
     (a) => a.abstractNumId === abstractNumId,
   );
@@ -177,14 +182,20 @@ describe("numbering-definition write path (selective save)", () => {
     expect(levelText(reparsed, EDITED_ABSTRACT_ID)).toBe(EDITED_LVL_TEXT);
 
     // Other parts are untouched.
-    expect(await readPart(result, "word/document.xml")).toBe(originalDocumentXml);
+    expect(await readPart(result, "word/document.xml")).toBe(
+      originalDocumentXml,
+    );
     expect(await readPart(result, "word/styles.xml")).toBe(originalStylesXml);
 
     // Within numbering.xml: the edit landed, the old marker is gone, and the
     // untouched definition + the model-omitted picture bullet stay byte-exact.
     const savedNumberingXml = await readPart(result, "word/numbering.xml");
-    expect(savedNumberingXml).toContain(`<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`);
-    expect(savedNumberingXml).not.toContain(`<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>`);
+    expect(savedNumberingXml).toContain(
+      `<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`,
+    );
+    expect(savedNumberingXml).not.toContain(
+      `<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>`,
+    );
     expect(savedNumberingXml).toContain(UNTOUCHED_ABSTRACT);
     expect(savedNumberingXml).toContain(NUM_PIC_BULLET);
   });
@@ -220,8 +231,12 @@ describe("numbering-definition write path (selective save)", () => {
     }
 
     // numbering.xml is never touched by a body-only edit.
-    expect(await readPart(result, "word/numbering.xml")).toBe(originalNumberingXml);
-    expect(await readPart(result, "word/document.xml")).toContain("First item edited");
+    expect(await readPart(result, "word/numbering.xml")).toBe(
+      originalNumberingXml,
+    );
+    expect(await readPart(result, "word/document.xml")).toContain(
+      "First item edited",
+    );
   });
 });
 
@@ -260,13 +275,19 @@ describe("numbering-definition write path (full repack)", () => {
     });
     doc.package.numbering.nums.push({ numId: 2, abstractNumId: 1 });
 
-    const reparsed = await parseDocx(await createDocx(doc), { preloadFonts: false });
+    const reparsed = await parseDocx(await createDocx(doc), {
+      preloadFonts: false,
+    });
 
     expect(levelText(reparsed, 0)).toBe(EDITED_LVL_TEXT);
     expect(
-      reparsed.package.numbering?.abstractNums.map(({ abstractNumId }) => abstractNumId),
+      reparsed.package.numbering?.abstractNums.map(
+        ({ abstractNumId }) => abstractNumId,
+      ),
     ).toEqual([0, 1]);
-    expect(reparsed.package.numbering?.nums.map(({ numId }) => numId)).toEqual([1, 2]);
+    expect(reparsed.package.numbering?.nums.map(({ numId }) => numId)).toEqual([
+      1, 2,
+    ]);
   });
 
   test("detects an in-place numbering edit after a prior save", async () => {
@@ -277,9 +298,12 @@ describe("numbering-definition write path (full repack)", () => {
     editFirstLevelText(doc, EDITED_ABSTRACT_ID, EDITED_LVL_TEXT);
     const edited = await createDocx(doc);
 
-    expect(levelText(await parseDocx(edited, { preloadFonts: false }), EDITED_ABSTRACT_ID)).toBe(
-      EDITED_LVL_TEXT,
-    );
+    expect(
+      levelText(
+        await parseDocx(edited, { preloadFonts: false }),
+        EDITED_ABSTRACT_ID,
+      ),
+    ).toBe(EDITED_LVL_TEXT);
   });
 
   test("edited numbering definition persists through repackDocx; untouched parts intact", async () => {
@@ -294,8 +318,12 @@ describe("numbering-definition write path (full repack)", () => {
     expect(levelText(reparsed, EDITED_ABSTRACT_ID)).toBe(EDITED_LVL_TEXT);
 
     const savedNumberingXml = await readPart(result, "word/numbering.xml");
-    expect(savedNumberingXml).toContain(`<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`);
-    expect(savedNumberingXml).not.toContain(`<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>`);
+    expect(savedNumberingXml).toContain(
+      `<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`,
+    );
+    expect(savedNumberingXml).not.toContain(
+      `<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>`,
+    );
     expect(savedNumberingXml).toContain(UNTOUCHED_ABSTRACT);
     expect(savedNumberingXml).toContain(NUM_PIC_BULLET);
   });
@@ -384,7 +412,9 @@ describe("numbering-definition write path (newline-formatted opening tags)", () 
     if (!selective) {
       throw new Error("selective save returned null");
     }
-    expect(levelText(await parseDocx(selective, { preloadFonts: false }), 0)).toBe(EDITED_LVL_TEXT);
+    expect(
+      levelText(await parseDocx(selective, { preloadFonts: false }), 0),
+    ).toBe(EDITED_LVL_TEXT);
     expect(await readPart(selective, "word/numbering.xml")).toContain(
       `<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`,
     );
@@ -392,7 +422,9 @@ describe("numbering-definition write path (newline-formatted opening tags)", () 
     const fullDoc = await parseDocx(buffer, { preloadFonts: false });
     editFirstLevelText(fullDoc, 0, EDITED_LVL_TEXT);
     const full = await repackDocx({ ...fullDoc, originalBuffer: buffer });
-    expect(levelText(await parseDocx(full, { preloadFonts: false }), 0)).toBe(EDITED_LVL_TEXT);
+    expect(levelText(await parseDocx(full, { preloadFonts: false }), 0)).toBe(
+      EDITED_LVL_TEXT,
+    );
   });
 });
 
@@ -415,14 +447,18 @@ describe("numbering-definition write path (custom / AlternateContent numFmt)", (
     '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
     "</w:numbering>";
 
-  const expectCustomFormatSurvives = async (saved: ArrayBuffer): Promise<void> => {
+  const expectCustomFormatSurvives = async (
+    saved: ArrayBuffer,
+  ): Promise<void> => {
     const savedNumberingXml = await readPart(saved, "word/numbering.xml");
     // The original custom numFmt element is preserved verbatim...
     expect(savedNumberingXml).toContain(CUSTOM_ALT_CONTENT);
     // ...and no token outside ST_NumberFormat leaked into the saved file.
     expect(savedNumberingXml).not.toContain("decimalZero4");
     // The edit landed and the format still round-trips to the model.
-    expect(savedNumberingXml).toContain(`<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`);
+    expect(savedNumberingXml).toContain(
+      `<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`,
+    );
     const reparsed = await parseDocx(saved, { preloadFonts: false });
     expect(levelText(reparsed, 0)).toBe(EDITED_LVL_TEXT);
     const level = reparsed.package.numbering?.abstractNums
@@ -481,10 +517,14 @@ describe("numbering-definition write path (custom / AlternateContent numFmt)", (
     level.numFmtFormat = format;
   };
 
-  const expectWidthChangedToFive = async (saved: ArrayBuffer): Promise<void> => {
+  const expectWidthChangedToFive = async (
+    saved: ArrayBuffer,
+  ): Promise<void> => {
     const savedNumberingXml = await readPart(saved, "word/numbering.xml");
     // The NEW width (5) is emitted as a valid OOXML custom format...
-    expect(savedNumberingXml).toContain('<w:numFmt w:val="custom" w:format="00001"/>');
+    expect(savedNumberingXml).toContain(
+      '<w:numFmt w:val="custom" w:format="00001"/>',
+    );
     // ...and the original width-4 format is gone.
     expect(savedNumberingXml).not.toContain("0001, 0002, 0003");
     // It round-trips to the edited format.
@@ -547,14 +587,20 @@ describe("numbering-definition write path (ancestor-scoped xmlns on restored num
     '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
     "</w:numbering>";
 
-  const expectSelfContainedFormat = async (saved: ArrayBuffer): Promise<void> => {
+  const expectSelfContainedFormat = async (
+    saved: ArrayBuffer,
+  ): Promise<void> => {
     const savedNumberingXml = await readPart(saved, "word/numbering.xml");
     // The restored numFmt element now declares the prefixes its ancestor used,
     // so no dangling mc:/w14 prefix survives in the saved part.
-    expect(savedNumberingXml).toContain(`<mc:AlternateContent xmlns:mc="${MC_URI}"`);
+    expect(savedNumberingXml).toContain(
+      `<mc:AlternateContent xmlns:mc="${MC_URI}"`,
+    );
     expect(savedNumberingXml).toContain(`xmlns:w14="${W14_URI}"`);
     expect(savedNumberingXml).not.toContain("decimalZero4");
-    expect(savedNumberingXml).toContain(`<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`);
+    expect(savedNumberingXml).toContain(
+      `<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`,
+    );
     const reparsed = await parseDocx(saved, { preloadFonts: false });
     expect(levelText(reparsed, 0)).toBe(EDITED_LVL_TEXT);
     const level = reparsed.package.numbering?.abstractNums
@@ -599,7 +645,8 @@ describe("numbering-definition write path (non-w: prefix graceful degradation)",
   // numbering.xml binds WordprocessingML to a non-conventional prefix (`wp:`).
   // The namespace-aware fallback applies the changed definition while retaining
   // untouched definitions and the original root binding.
-  const WML_URI = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const WML_URI =
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
   const altPrefixNumberingXml =
     `${XML_DECLARATION}\n` +
     `<wp:numbering xmlns:wp="${WML_URI}">` +
@@ -614,13 +661,20 @@ describe("numbering-definition write path (non-w: prefix graceful degradation)",
     expect(savedNumberingXml).toContain(
       `<w:abstractNum xmlns:w="${WML_URI}" w:abstractNumId="0"><w:multiLevelType w:val="multilevel"/>`,
     );
-    expect(savedNumberingXml).toContain(`<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>`);
+    expect(savedNumberingXml).toContain(
+      `<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>`,
+    );
     expect(savedNumberingXml).toContain(
       '<wp:num wp:numId="1"><wp:abstractNumId wp:val="0"/></wp:num>',
     );
     const reparsed = await parseDocx(saved, { preloadFonts: false });
-    expect(reparsed.package.numbering?.abstractNums.at(0)?.multiLevelType).toBe("multilevel");
-    expect(reparsed.package.numbering?.nums.find((num) => num.numId === 1)?.abstractNumId).toBe(0);
+    expect(reparsed.package.numbering?.abstractNums.at(0)?.multiLevelType).toBe(
+      "multilevel",
+    );
+    expect(
+      reparsed.package.numbering?.nums.find((num) => num.numId === 1)
+        ?.abstractNumId,
+    ).toBe(0);
   };
 
   // The parser resolves element/attribute names by namespace, so a modeled edit
@@ -628,7 +682,9 @@ describe("numbering-definition write path (non-w: prefix graceful degradation)",
   const forceModelChange = (doc: Document): void => {
     const abstractNum = doc.package.numbering?.abstractNums[0];
     if (!abstractNum) {
-      throw new Error("expected the parser to populate at least one abstractNum");
+      throw new Error(
+        "expected the parser to populate at least one abstractNum",
+      );
     }
     abstractNum.multiLevelType = "multilevel";
   };

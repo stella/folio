@@ -1,21 +1,23 @@
 #!/usr/bin/env bun
 
-import { $ } from "bun";
 import { TaggedError } from "better-result";
-import { existsSync, readFileSync } from "node:fs";
+import { $ } from "bun";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { failureClass } from "./fuzz-failure-class";
 import {
-  type CloseReason,
   cliRepro,
+  type CloseReason,
   githubIssueStore,
   type IssueContent,
   mergeSeeds,
   parseSignatureState,
   renderSignatureIssue,
   type Signature,
-  type SignatureState,
   signatureOf,
+  type SignatureState,
 } from "./fuzz-failure-issues";
 import type { Issue } from "./fuzz-issue-classes";
 
@@ -23,7 +25,8 @@ const ROOT = path.resolve(import.meta.dir, "..");
 const REPORTER = "./.github/workflows/fuzz-failure-report.yml";
 const CONSOLIDATED_LANE = "consolidated";
 const UNAVAILABLE = "unavailable";
-const RUN_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/(\d+)/gu;
+const RUN_URL =
+  /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/(\d+)/gu;
 
 export type ConsolidationStore = {
   list: () => Promise<Issue[]>;
@@ -46,32 +49,43 @@ const integers = (text: string): number[] =>
 
 const CLASS_ROW =
   /^\| [0-9a-f]{16} \| (?:\\.|[^|\\])* \| (?:\\.|[^|\\])* \| (?:\\.|[^|\\])* \| (-?\d+) \| (?:\\.|[^|\\])* \| ((?:\\.|[^|\\])*) \|/gmu;
-const unescapeCell = (cell: string): string => cell.trim().replaceAll(/\\([|`\\])/gu, "$1");
+const unescapeCell = (cell: string): string =>
+  cell.trim().replaceAll(/\\([|`\\])/gu, "$1");
 
-export const identityOf = ({ title, body }: Pick<Issue, "title" | "body">): Identity | null => {
+export const identityOf = ({
+  title,
+  body,
+}: Pick<Issue, "title" | "body">): Identity | null => {
   const text = body ?? "";
-  const test = /^Test: (.*)$/mu.exec(text)?.at(1) ?? /^\*\*Test:\*\* (.*)$/mu.exec(text)?.at(1);
+  const test =
+    /^Test: (.*)$/mu.exec(text)?.at(1) ??
+    /^\*\*Test:\*\* (.*)$/mu.exec(text)?.at(1);
   const assertion =
     /^Assertion:\n(`{3,})\n([\s\S]*?)\n\1$/mu.exec(text)?.at(2) ??
     /^\*\*Symptom:\*\* `(.*)`$/mu.exec(text)?.at(1);
   if (test !== undefined && assertion !== undefined) return { test, assertion };
   const [, titled, symptom] =
-    /^Fuzz failure \[[0-9a-f]{16}\]: (consumer flow .+? \/ [^:]+): (.*)$/u.exec(title) ?? [];
+    /^Fuzz failure \[[0-9a-f]{16}\]: (consumer flow .+? \/ [^:]+): (.*)$/u.exec(
+      title,
+    ) ?? [];
   return titled === undefined || symptom === undefined
     ? null
     : { test: titled, assertion: symptom };
 };
 
 export const evidenceOf = (text: string): Evidence => {
-  const lists = [...text.matchAll(/^Seeds: (.*)$/gmu)].flatMap(([, seeds = ""]) => integers(seeds));
+  const lists = [...text.matchAll(/^Seeds: (.*)$/gmu)].flatMap(
+    ([, seeds = ""]) => integers(seeds),
+  );
   if (lists.length > 0) {
-    const omitted = [...text.matchAll(/^(\d+) more seeds; see run artifacts\.$/gmu)].reduce(
-      (sum, [, count = "0"]) => sum + Number(count),
-      0,
-    );
+    const omitted = [
+      ...text.matchAll(/^(\d+) more seeds; see run artifacts\.$/gmu),
+    ].reduce((sum, [, count = "0"]) => sum + Number(count), 0);
     return { seeds: lists, occurrences: lists.length + omitted };
   }
-  const single = [...text.matchAll(/^\*\*Seed:\*\* `(-?\d+)`$/gmu)].map(([, seed]) => Number(seed));
+  const single = [...text.matchAll(/^\*\*Seed:\*\* `(-?\d+)`$/gmu)].map(
+    ([, seed]) => Number(seed),
+  );
   if (single.length > 0) return { seeds: single, occurrences: single.length };
   const rows = [...text.matchAll(CLASS_ROW)].map(([, seed]) => Number(seed));
   return { seeds: rows, occurrences: rows.length };
@@ -79,7 +93,8 @@ export const evidenceOf = (text: string): Evidence => {
 
 export const reproOf = (text: string): Repro | null => {
   const [, seed, , command] =
-    /^Seed: (-?\d+)\nRepro command:\n(`{3,})\n([\s\S]*?)\n\2$/mu.exec(text) ?? [];
+    /^Seed: (-?\d+)\nRepro command:\n(`{3,})\n([\s\S]*?)\n\2$/mu.exec(text) ??
+    [];
   if (seed !== undefined && command !== undefined)
     return { seed: Number(seed), command: cliRepro(command) };
   const replay = /^### Replay\n(`{3,})sh\n([\s\S]*?)\n\1$/mu.exec(text)?.at(2);
@@ -94,12 +109,24 @@ export const reproOf = (text: string): Repro | null => {
     : { seed: Number(rowSeed), command: cliRepro(unescapeCell(rowRepro)) };
 };
 
-const runsOf = (text: string): string[] => [...text.matchAll(RUN_URL)].map(([url]) => url);
-const runNumber = (url: string): number => Number(/(\d+)$/u.exec(url)?.at(1) ?? 0);
+const runsOf = (text: string): string[] =>
+  [...text.matchAll(RUN_URL)].map(([url]) => url);
+const runNumber = (url: string): number =>
+  Number(/(\d+)$/u.exec(url)?.at(1) ?? 0);
 
-type Member = { issue: Issue; texts: string[]; identity: Identity; state: SignatureState | null };
+type Member = {
+  issue: Issue;
+  texts: string[];
+  identity: Identity;
+  state: SignatureState | null;
+};
 
-type Group = { signature: Signature; keep: Issue; duplicates: Issue[]; state: SignatureState };
+type Group = {
+  signature: Signature;
+  keep: Issue;
+  duplicates: Issue[];
+  state: SignatureState;
+};
 
 export type ConsolidationPlan = {
   open: number;
@@ -108,13 +135,38 @@ export type ConsolidationPlan = {
   unparsed: Issue[];
 };
 
-class ConsolidationError extends TaggedError("ConsolidationError")<{ message: string }> {}
+class ConsolidationError extends TaggedError("ConsolidationError")<{
+  message: string;
+}> {}
 
-type MergeOptions = { members: readonly Member[]; lanesOfRun: (run: string) => Promise<string[]> };
-const mergeGroup = async ({ members, lanesOfRun }: MergeOptions): Promise<Group> => {
+/** A GitHub budget or abuse-limit refusal pauses migration without making it a failed run. */
+export class GitHubPause extends TaggedError("GitHubPause")<{
+  message: string;
+}> {}
+
+export const pauseOnGitHubRefusal = (error: unknown): never => {
+  const message = error instanceof Error ? error.message : String(error);
+  const isRateLimited =
+    /\b429\b/u.test(message) ||
+    (/\b403\b/u.test(message) && /rate.?limit|abuse|secondary/iu.test(message));
+  if (isRateLimited) {
+    throw new GitHubPause({ message });
+  }
+  throw error;
+};
+
+type MergeOptions = {
+  members: readonly Member[];
+  lanesOfRun: (run: string) => Promise<string[]>;
+};
+const mergeGroup = async ({
+  members,
+  lanesOfRun,
+}: MergeOptions): Promise<Group> => {
   const ordered = members.toSorted((a, b) => a.issue.number - b.issue.number);
   const [first, ...rest] = ordered;
-  if (first === undefined) throw new ConsolidationError({ message: "Empty signature group" });
+  if (first === undefined)
+    throw new ConsolidationError({ message: "Empty signature group" });
   if (rest.length === 0 && first.state !== null) {
     return {
       signature: first.state.signature,
@@ -143,13 +195,17 @@ const mergeGroup = async ({ members, lanesOfRun }: MergeOptions): Promise<Group>
   }
   const runs = [
     ...new Set(
-      ordered.flatMap(({ state, texts }) => (state === null ? texts.flatMap(runsOf) : [])),
+      ordered.flatMap(({ state, texts }) =>
+        state === null ? texts.flatMap(runsOf) : [],
+      ),
     ),
   ].toSorted((a, b) => runNumber(a) - runNumber(b));
-  for (const run of runs) for (const lane of await lanesOfRun(run)) lanes.set(lane, run);
+  for (const run of runs)
+    for (const lane of await lanesOfRun(run)) lanes.set(lane, run);
   const latest = newest.at(0) ?? first;
   const latestRun = runs.at(-1);
-  const latestLane = latestRun === undefined ? undefined : (await lanesOfRun(latestRun)).at(0);
+  const latestLane =
+    latestRun === undefined ? undefined : (await lanesOfRun(latestRun)).at(0);
   const lastSeen = latest.state?.lastSeen ?? {
     lane: latestLane ?? CONSOLIDATED_LANE,
     run: latestRun ?? UNAVAILABLE,
@@ -171,14 +227,20 @@ const mergeGroup = async ({ members, lanesOfRun }: MergeOptions): Promise<Group>
       occurrences,
       seeds,
       lastSeen,
-      lanes: [...lanes].map(([lane, lastRun]) => ({ lane, lastRun, cleanRuns: 0 })),
+      lanes: [...lanes].map(([lane, lastRun]) => ({
+        lane,
+        lastRun,
+        cleanRuns: 0,
+      })),
       assertion: latest.state?.assertion ?? latest.identity.assertion,
       repro,
     },
   };
 };
 
-export const planConsolidation = async (store: ConsolidationStore): Promise<ConsolidationPlan> => {
+export const planConsolidation = async (
+  store: ConsolidationStore,
+): Promise<ConsolidationPlan> => {
   const open = (await store.list()).filter(({ state }) => state === "open");
   const members = new Map<string, Member[]>();
   const unparsed: Issue[] = [];
@@ -192,8 +254,11 @@ export const planConsolidation = async (store: ConsolidationStore): Promise<Cons
       unparsed.push(issue);
       continue;
     }
-    const texts = state === null ? [issue.body ?? "", ...(await store.comments(issue.number))] : [];
-    const id = state?.signature.id ?? signatureOf(identity).id;
+    const texts =
+      state === null
+        ? [issue.body ?? "", ...(await store.comments(issue.number))]
+        : [];
+    const id = failureClass(identity.test, identity.assertion).key;
     const member = { issue, texts, identity, state };
     const group = members.get(id);
     if (group === undefined) members.set(id, [member]);
@@ -201,18 +266,23 @@ export const planConsolidation = async (store: ConsolidationStore): Promise<Cons
   }
   const groups: Group[] = [];
   for (const group of members.values()) {
-    groups.push(await mergeGroup({ members: group, lanesOfRun: store.lanesOfRun }));
+    groups.push(
+      await mergeGroup({ members: group, lanesOfRun: store.lanesOfRun }),
+    );
   }
   const ids = new Set(
     open.map(
-      ({ number, title }) => /^Fuzz failure \[([0-9a-f]{16})\]/u.exec(title)?.at(1) ?? `#${number}`,
+      ({ number, title }) =>
+        /^Fuzz failure \[([0-9a-f]{16})\]/u.exec(title)?.at(1) ?? `#${number}`,
     ),
   );
   return {
     open: open.length,
     before: ids.size,
     groups: groups.toSorted(
-      (a, b) => b.duplicates.length - a.duplicates.length || a.keep.number - b.keep.number,
+      (a, b) =>
+        b.duplicates.length - a.duplicates.length ||
+        a.keep.number - b.keep.number,
     ),
     unparsed,
   };
@@ -221,12 +291,39 @@ export const planConsolidation = async (store: ConsolidationStore): Promise<Cons
 export const applyConsolidation = async (
   plan: ConsolidationPlan,
   store: Pick<ConsolidationStore, "edit" | "close">,
+  checkpointFile?: string,
 ): Promise<void> => {
+  const completed = new Set<string>(
+    checkpointFile !== undefined && existsSync(checkpointFile)
+      ? (JSON.parse(readFileSync(checkpointFile, "utf8")) as string[])
+      : [],
+  );
+  const run = async (
+    id: string,
+    operation: () => Promise<void>,
+  ): Promise<void> => {
+    if (completed.has(id)) return;
+    await operation();
+    completed.add(id);
+    if (checkpointFile !== undefined) {
+      const temporary = `${checkpointFile}.tmp`;
+      writeFileSync(temporary, JSON.stringify([...completed]));
+      renameSync(temporary, checkpointFile);
+    }
+  };
   for (const { keep, duplicates, state } of plan.groups) {
     const content = renderSignatureIssue(state);
+    const contentHash = createHash("sha256")
+      .update(JSON.stringify(content))
+      .digest("hex");
     if (content.title !== keep.title || content.body !== keep.body)
-      await store.edit(keep.number, content);
-    for (const duplicate of duplicates) await store.close(duplicate.number, "duplicate");
+      await run(`edit:${keep.number}:${contentHash}`, () =>
+        store.edit(keep.number, content),
+      );
+    for (const duplicate of duplicates)
+      await run(`close:${duplicate.number}`, () =>
+        store.close(duplicate.number, "duplicate"),
+      );
   }
 };
 
@@ -253,11 +350,14 @@ export const lanesOfWorkflow = (source: string): string[] => {
   return Object.values(workflow["jobs"]).flatMap((job) => {
     if (!isRecord(job)) return [];
     const inputs = isRecord(job["with"]) ? job["with"] : {};
-    if (job["uses"] === REPORTER) return typeof inputs["lane"] === "string" ? [inputs["lane"]] : [];
+    if (job["uses"] === REPORTER)
+      return typeof inputs["lane"] === "string" ? [inputs["lane"]] : [];
     const steps = Array.isArray(job["steps"]) ? job["steps"] : [];
     return steps.flatMap((step) =>
       isRecord(step) && typeof step["run"] === "string"
-        ? [...step["run"].matchAll(/--lane (\S+)/gu)].map(([, lane = ""]) => lane)
+        ? [...step["run"].matchAll(/--lane (\S+)/gu)].map(
+            ([, lane = ""]) => lane,
+          )
         : [],
     );
   });
@@ -269,8 +369,20 @@ const githubConsolidationStore = (): ConsolidationStore => {
   return {
     list: issues.list,
     comments: issues.comments,
-    edit: issues.edit,
-    close: issues.close,
+    edit: async (number, content) => {
+      try {
+        await issues.edit(number, content);
+      } catch (error) {
+        pauseOnGitHubRefusal(error);
+      }
+    },
+    close: async (number, reason) => {
+      try {
+        await issues.close(number, reason);
+      } catch (error) {
+        pauseOnGitHubRefusal(error);
+      }
+    },
     lanesOfRun: async (runUrl) => {
       const cached = cache.get(runUrl);
       if (cached !== undefined) return cached;
@@ -294,18 +406,36 @@ const githubConsolidationStore = (): ConsolidationStore => {
 
 const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
-  const unknown = args.filter((arg) => arg !== "--apply");
+  const checkpointIndex = args.indexOf("--checkpoint");
+  const checkpoint =
+    checkpointIndex < 0 ? undefined : args.at(checkpointIndex + 1);
+  const consumed = new Set(
+    checkpointIndex < 0 ? [] : ["--checkpoint", checkpoint ?? ""],
+  );
+  const unknown = args.filter((arg) => arg !== "--apply" && !consumed.has(arg));
   if (unknown.length > 0) {
-    throw new ConsolidationError({ message: `Unknown arguments: ${unknown.join(" ")}` });
+    throw new ConsolidationError({
+      message: `Unknown arguments: ${unknown.join(" ")}`,
+    });
   }
   const store = githubConsolidationStore();
   const plan = await planConsolidation(store);
   console.log(summarize(plan));
   if (!args.includes("--apply")) {
-    console.log("\nDry run: nothing changed. Pass --apply to edit and close issues.");
+    console.log(
+      "\nDry run: nothing changed. Pass --apply to edit and close issues.",
+    );
     return;
   }
-  await applyConsolidation(plan, store);
+  try {
+    await applyConsolidation(plan, store, checkpoint);
+  } catch (error) {
+    if (error instanceof GitHubPause) {
+      console.log(`Paused: ${error.message}`);
+      return;
+    }
+    throw error;
+  }
 };
 
 if (import.meta.main) {

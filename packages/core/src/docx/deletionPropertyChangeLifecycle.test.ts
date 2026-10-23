@@ -4,7 +4,8 @@ import JSZip from "jszip";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createEmptyDocx } from "./rezip";
 
-const WORDPROCESSINGML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WORDPROCESSINGML_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const sourceWithDeletedRunPropertyChange = async (
   wrapper: "del" | "moveFrom",
@@ -13,7 +14,9 @@ const sourceWithDeletedRunPropertyChange = async (
   const documentPart = zip.file("word/document.xml");
   const documentXml = await documentPart?.async("text");
   if (!documentXml) {
-    throw new Error("Expected the generated package to contain word/document.xml");
+    throw new Error(
+      "Expected the generated package to contain word/document.xml",
+    );
   }
   const body = `<w:body>
     <x:p xmlns:x="${WORDPROCESSINGML_NAMESPACE}">
@@ -31,7 +34,10 @@ const sourceWithDeletedRunPropertyChange = async (
     </x:p>
     <w:sectPr/>
   </w:body>`;
-  zip.file("word/document.xml", documentXml.replace(/<w:body>[\s\S]*<\/w:body>/u, body));
+  zip.file(
+    "word/document.xml",
+    documentXml.replace(/<w:body>[\s\S]*<\/w:body>/u, body),
+  );
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
@@ -51,8 +57,16 @@ describe("deleted-run property-change lifecycle", () => {
       const firstOpen = await FolioDocxReviewer.fromBuffer(source);
       expect(firstOpen.getChanges()).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ id: 91, author: "Reviewer", type: "deletion" }),
-          expect.objectContaining({ id: 92, author: "Formatter", type: "formatting" }),
+          expect.objectContaining({
+            id: 91,
+            author: "Reviewer",
+            type: "deletion",
+          }),
+          expect.objectContaining({
+            id: 92,
+            author: "Formatter",
+            type: "formatting",
+          }),
         ]),
       );
 
@@ -60,8 +74,16 @@ describe("deleted-run property-change lifecycle", () => {
       const reopened = await FolioDocxReviewer.fromBuffer(pending);
       expect(reopened.getChanges()).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ id: 91, author: "Reviewer", type: "deletion" }),
-          expect.objectContaining({ id: 92, author: "Formatter", type: "formatting" }),
+          expect.objectContaining({
+            id: 91,
+            author: "Reviewer",
+            type: "deletion",
+          }),
+          expect.objectContaining({
+            id: 92,
+            author: "Formatter",
+            type: "formatting",
+          }),
         ]),
       );
       expect(await documentXml(pending)).toMatch(
@@ -71,7 +93,9 @@ describe("deleted-run property-change lifecycle", () => {
       const accepting = await FolioDocxReviewer.fromBuffer(pending);
       accepting.acceptAll();
       const accepted = await accepting.toBuffer();
-      expect((await FolioDocxReviewer.fromBuffer(accepted)).getChanges()).toHaveLength(0);
+      expect(
+        (await FolioDocxReviewer.fromBuffer(accepted)).getChanges(),
+      ).toHaveLength(0);
       expect(await documentXml(accepted)).not.toContain("removed");
 
       const rejecting = await FolioDocxReviewer.fromBuffer(pending);

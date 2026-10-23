@@ -19,6 +19,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+
 import { isCommentAnchorCarrierType } from "@stll/docx-core/ops";
 
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
@@ -28,6 +29,25 @@ import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnc
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import type { BlockContent, Comment } from "../types/document";
 
+/** Comment ids anchored by one editor node, regardless of anchor representation. */
+export const commentAnchorIdsForNode = (node: PMNode): readonly number[] => {
+  const ids: number[] = [];
+  if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
+    const attrs = readCommentReferenceAttrs(node);
+    if (attrs.ok) ids.push(attrs.value.commentId);
+  } else if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+    const attrs = readRangeAnchorAttrs(node);
+    if (attrs.ok && attrs.value.start.type === "commentRangeStart")
+      ids.push(attrs.value.start.id);
+  }
+  for (const mark of node.marks) {
+    const commentId = mark.attrs["commentId"];
+    if (mark.type.name === "comment" && typeof commentId === "number")
+      ids.push(commentId);
+  }
+  return ids;
+};
+
 /** Whether an inline node only locates a comment rather than being covered content. */
 export const isCommentAnchorCarrier = (node: PMNode): boolean => {
   let type = node.type.name;
@@ -36,29 +56,61 @@ export const isCommentAnchorCarrier = (node: PMNode): boolean => {
   return isCommentAnchorCarrierType(type);
 };
 
-/** Ids of the comments an editor document anchors: by mark, reference or point anchor. */
-export const anchoredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
+/**
+ * Ids of the comments an editor document anchors: by mark, reference or point anchor.
+ * `beforePendingDeletions` supplies markers displaced by a deletion mark at the
+ * same position; those markers remain anchored until that deletion is accepted.
+ */
+export const anchoredCommentIdsInProseDoc = (
+  doc: PMNode,
+  beforePendingDeletions?: PMNode,
+): Set<number> => {
   const ids = new Set<number>();
-  doc.descendants((node) => {
-    if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
-      const attrs = readCommentReferenceAttrs(node);
-      if (attrs.ok) {
-        ids.add(attrs.value.commentId);
-      }
-    } else if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
-      const attrs = readRangeAnchorAttrs(node);
-      if (attrs.ok && attrs.value.start.type === "commentRangeStart") {
-        ids.add(attrs.value.start.id);
-      }
+  const addNode = (node: PMNode, target = ids) => {
+    for (const id of commentAnchorIdsForNode(node)) target.add(id);
+  };
+  const pendingDeletionRanges: { from: number; to: number }[] = [];
+  let liveText = false;
+  let pendingDeletedText = false;
+  doc.descendants((node, position) => {
+    addNode(node);
+    const pendingDeletion = node.marks.some(
+      ({ type }) => type.name === "deletion",
+    );
+    if (node.isText) {
+      pendingDeletedText ||= pendingDeletion;
+      liveText ||= !pendingDeletion;
     }
-    for (const mark of node.marks) {
-      const commentId = mark.attrs["commentId"];
-      if (mark.type.name === "comment" && typeof commentId === "number") {
-        ids.add(commentId);
-      }
+    if (pendingDeletion) {
+      pendingDeletionRanges.push({
+        from: position,
+        to: position + node.nodeSize,
+      });
     }
     return true;
   });
+  if (beforePendingDeletions && pendingDeletionRanges.length > 0) {
+    beforePendingDeletions.descendants((node, position) => {
+      const end = position + node.nodeSize;
+      if (
+        pendingDeletionRanges.some(
+          ({ from, to }) => position < to && end > from,
+        )
+      ) {
+        addNode(node);
+      }
+      return true;
+    });
+    // Structural tracked deletions can re-segment a story's inline nodes, so
+    // position overlap alone cannot recover every displaced marker. When the
+    // complete story is pending deletion, every prior anchor remains pending.
+    if (pendingDeletedText && !liveText) {
+      beforePendingDeletions.descendants((node) => {
+        addNode(node);
+        return true;
+      });
+    }
+  }
   return ids;
 };
 
@@ -69,7 +121,8 @@ export const coveredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
     if (!node.isInline || isCommentAnchorCarrier(node)) return true;
     for (const mark of node.marks) {
       const commentId = mark.attrs["commentId"];
-      if (mark.type.name === "comment" && typeof commentId === "number") ids.add(commentId);
+      if (mark.type.name === "comment" && typeof commentId === "number")
+        ids.add(commentId);
     }
     return true;
   });
@@ -77,7 +130,9 @@ export const coveredCommentIdsInProseDoc = (doc: PMNode): Set<number> => {
 };
 
 /** Ids of the comments a model story's blocks hold any marker of. */
-export const anchoredCommentIdsInBlocks = (blocks: readonly BlockContent[]): Set<number> => {
+export const anchoredCommentIdsInBlocks = (
+  blocks: readonly BlockContent[],
+): Set<number> => {
   const ids = new Set<number>();
   visitCommentMarkers(blocks, ({ item }) => ids.add(item.id));
   return ids;

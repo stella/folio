@@ -3,10 +3,13 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { Plugin } from "prosemirror-state";
 
 import { documentShape } from "../../__tests__/documentShapes";
-import { createHarnessState, parseShapeDocument } from "../../__tests__/editorHarness";
+import {
+  createHarnessState,
+  parseShapeDocument,
+} from "../../__tests__/editorHarness";
 import { ExtensionManager } from "../extensions/ExtensionManager";
-import { createStarterKit } from "../extensions/StarterKit";
 import { toggleNumberedList } from "../extensions/features/ListExtension";
+import { createStarterKit } from "../extensions/StarterKit";
 import { singletonManager } from "../schema";
 import { createDocumentNumberingPlugin } from "./documentNumbering";
 import {
@@ -16,8 +19,12 @@ import {
 } from "./transactionInvariants";
 
 const withInvariantPlugin = async (shapeId: string): Promise<EditorState> => {
-  const document = await parseShapeDocument(await documentShape(shapeId).build());
-  return createHarnessState(document, "editing", [createTransactionInvariantPlugin()]);
+  const document = await parseShapeDocument(
+    await documentShape(shapeId).build(),
+  );
+  return createHarnessState(document, "editing", [
+    createTransactionInvariantPlugin(),
+  ]);
 };
 
 const caretIn = (state: EditorState, text: string): EditorState => {
@@ -28,7 +35,9 @@ const caretIn = (state: EditorState, text: string): EditorState => {
     }
     return target === -1;
   });
-  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, target)));
+  return state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, target)),
+  );
 };
 
 type ExpectInvariantBehaviorOptions = {
@@ -82,7 +91,10 @@ describe("transaction invariants", () => {
   test("a transaction that references an undefined numbering instance throws with its steps", async () => {
     // Instance 42 is defined nowhere, so the save path would refuse the
     // document (the #1091 class).
-    const state = caretIn(await withInvariantPlugin("plain-markdown"), "First item");
+    const state = caretIn(
+      await withInvariantPlugin("plain-markdown"),
+      "First item",
+    );
     const paragraphPos = state.selection.$from.before();
     const paragraph = state.doc.nodeAt(paragraphPos);
     if (!paragraph) {
@@ -109,7 +121,9 @@ describe("transaction invariants", () => {
   });
 
   test("a broken reference the document arrived with is tolerated where it is, not where it moves", async () => {
-    const document = await parseShapeDocument(await documentShape("plain-markdown").build());
+    const document = await parseShapeDocument(
+      await documentShape("plain-markdown").build(),
+    );
     const loaded = createHarnessState(document, "editing");
     const paragraphs: { pos: number; attrs: Record<string, unknown> }[] = [];
     loaded.doc.forEach((node, pos) => {
@@ -122,27 +136,38 @@ describe("transaction invariants", () => {
     const undefinedReference = { kind: "reference", numId: 42, ilvl: 0 };
     // Arrived broken: the first paragraph names an instance nothing defines.
     const broken = loaded.apply(
-      loaded.tr.setNodeMarkup(first.pos, undefined, { ...first.attrs, numPr: undefinedReference }),
+      loaded.tr.setNodeMarkup(first.pos, undefined, {
+        ...first.attrs,
+        numPr: undefinedReference,
+      }),
     );
     const checked = broken.reconfigure({
       plugins: [...broken.plugins, createTransactionInvariantPlugin()],
     });
 
     // An unrelated edit passes.
-    expect(() => checked.apply(checked.tr.insertText("x", second.pos + 1))).not.toThrow();
+    expect(() =>
+      checked.apply(checked.tr.insertText("x", second.pos + 1)),
+    ).not.toThrow();
 
     // Moving the broken reference onto another paragraph is a new issue.
     expect(() =>
       checked.apply(
         checked.tr
           .setNodeMarkup(first.pos, undefined, { ...first.attrs, numPr: null })
-          .setNodeMarkup(second.pos, undefined, { ...second.attrs, numPr: undefinedReference }),
+          .setNodeMarkup(second.pos, undefined, {
+            ...second.attrs,
+            numPr: undefinedReference,
+          }),
       ),
     ).toThrow(TransactionInvariantError);
   });
 
   test("a sound transaction passes", async () => {
-    const state = caretIn(await withInvariantPlugin("single-decimal-list"), "Plain text.");
+    const state = caretIn(
+      await withInvariantPlugin("single-decimal-list"),
+      "Plain text.",
+    );
 
     let next: EditorState | null = null;
     toggleNumberedList(state, (tr) => {
@@ -168,7 +193,11 @@ describe("transaction invariants", () => {
     const on = new ExtensionManager(createStarterKit());
     on.buildSchema();
     on.initializeRuntime();
-    expectInvariantBehavior({ schema: on.getSchema(), plugins: on.getPlugins(), mode: "enabled" });
+    expectInvariantBehavior({
+      schema: on.getSchema(),
+      plugins: on.getPlugins(),
+      mode: "enabled",
+    });
   });
 
   test("the test preload enables it for editor runtimes", () => {

@@ -16,23 +16,36 @@
  * the type itself and each has to come back equal.
  */
 
+import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
 
-import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { RESERVED_NOTE_REFERENCE_IDS } from "../packages/docx-core/src/model/content";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import type { SurvivalBaseline } from "./container-survival-census";
 import { allSubjects, valueKey } from "./container-survival-census";
 import type { Subject } from "./lib/container-survival/fixture";
-import { runSurvivalLaws, subjectKey, SURVIVAL_LAWS } from "./lib/container-survival/laws";
-import { loadContainerSpace, WML_NAMESPACE } from "./lib/container-survival/schemaSpace";
-import { unrepresentableReservedValue, valuesForType } from "./lib/container-survival/values";
+import {
+  runSurvivalLaws,
+  subjectKey,
+  SURVIVAL_LAWS,
+} from "./lib/container-survival/laws";
+import {
+  loadContainerSpace,
+  WML_NAMESPACE,
+} from "./lib/container-survival/schemaSpace";
+import {
+  unrepresentableReservedValue,
+  valuesForType,
+} from "./lib/container-survival/values";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 const baseline = (await Bun.file(
-  new URL("../specifications/container-contract/survival-baseline.json", import.meta.url),
+  new URL(
+    "../specifications/container-contract/survival-baseline.json",
+    import.meta.url,
+  ),
 ).json()) as SurvivalBaseline;
 
 const space = await loadContainerSpace();
@@ -67,7 +80,9 @@ describe("relational and reserved value subjects", () => {
 
   test.each(
     (["footnoteReference", "endnoteReference"] as const).flatMap((element) =>
-      RESERVED_NOTE_REFERENCE_IDS.map((value) => [element, String(value)] as const),
+      RESERVED_NOTE_REFERENCE_IDS.map(
+        (value) => [element, String(value)] as const,
+      ),
     ),
   )("classifies w:%s@w:id=%s as unrepresentable", async (element, value) => {
     const subject = allSubjects(space).find(
@@ -204,7 +219,9 @@ describe("the survival law agrees with the committed baseline", () => {
       }
       const recorded = baseline.losses[outcome.key];
       const measured =
-        outcome.laws[SURVIVAL_LAWS.parse] === false ? "threw" : (outcome.mechanism ?? undefined);
+        outcome.laws[SURVIVAL_LAWS.parse] === false
+          ? "threw"
+          : (outcome.mechanism ?? undefined);
       if (recorded === measured) {
         continue;
       }
@@ -233,7 +250,9 @@ describe("the census measures a container where a document puts it", () => {
         (container) =>
           container.id.element.name !== "background" &&
           container.path.some(
-            ({ element }) => element.namespace === WML_NAMESPACE && element.name === "background",
+            ({ element }) =>
+              element.namespace === WML_NAMESPACE &&
+              element.name === "background",
           ),
       )
       .map((container) => container.id.element.name);
@@ -242,7 +261,8 @@ describe("the census measures a container where a document puts it", () => {
 
   test("a drawing is measured inside a run", () => {
     const drawing = [...space.containers.values()].find(
-      ({ id }) => id.element.namespace === WML_NAMESPACE && id.element.name === "drawing",
+      ({ id }) =>
+        id.element.namespace === WML_NAMESPACE && id.element.name === "drawing",
     );
     expect(drawing?.path.map(({ element }) => element.name)).toEqual([
       "document",
@@ -290,18 +310,27 @@ describe("a slot that survives its representative value survives the rest of its
           const { values } = valuesForType(space.index, subject.slot.typeQName);
           await assertProperty(
             fc.asyncProperty(fc.constantFrom(...values), async (value) => {
-              const candidate: Subject = { kind: "attribute", slot: subject.slot, value };
+              const candidate: Subject = {
+                kind: "attribute",
+                slot: subject.slot,
+                value,
+              };
               const outcome = await runSurvivalLaws(space, candidate);
               if (outcome.unrepresentable !== null) {
                 return;
               }
               const recorded =
-                value === subject.value ? undefined : baseline.valueLosses[valueKey(candidate)];
+                value === subject.value
+                  ? undefined
+                  : baseline.valueLosses[valueKey(candidate)];
               const measured =
                 outcome.laws[SURVIVAL_LAWS.parse] === false
                   ? "threw"
                   : (outcome.mechanism ?? undefined);
-              const slot = valueKey(candidate).replaceAll(`{${WML_NAMESPACE}}`, "w:");
+              const slot = valueKey(candidate).replaceAll(
+                `{${WML_NAMESPACE}}`,
+                "w:",
+              );
               expect({ slot, measured }).toEqual({ slot, measured: recorded });
             }),
             { numRuns: Math.min(values.length, 8), id: "w:${container}" },

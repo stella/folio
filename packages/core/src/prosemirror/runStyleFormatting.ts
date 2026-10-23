@@ -2,7 +2,10 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import type { StyleEngine } from "../style-engine";
 import type { TextFormatting } from "../types/document";
-import { mergeTextFormatting, STYLE_TOGGLE_KEYS } from "../utils/textFormattingMerge";
+import {
+  mergeTextFormatting,
+  STYLE_TOGGLE_KEYS,
+} from "../utils/textFormattingMerge";
 import { expectCharacterStyleMarkAttrs, expectParagraphAttrs } from "./attrs";
 import {
   cascadeStyleFromResolvedBase,
@@ -25,7 +28,9 @@ const PARAGRAPH_MARK_BOOLEAN_KEYS = [
   "rtl",
 ] as const satisfies readonly (keyof TextFormatting)[];
 
-export const hasDirectRunFormatting = (formatting: TextFormatting | undefined): boolean => {
+export const hasDirectRunFormatting = (
+  formatting: TextFormatting | undefined,
+): boolean => {
   if (!formatting) {
     return false;
   }
@@ -37,7 +42,8 @@ export const hasDirectRunFormatting = (formatting: TextFormatting | undefined): 
 /** A stated run property or character style establishes paragraph-mark suppression. */
 export const isParagraphMarkSuppressionEligible = (
   formatting: TextFormatting | undefined,
-): boolean => hasDirectRunFormatting(formatting) || formatting?.styleId !== undefined;
+): boolean =>
+  hasDirectRunFormatting(formatting) || formatting?.styleId !== undefined;
 
 export const stripParagraphMarkOnlyFormatting = (
   formatting: TextFormatting,
@@ -54,7 +60,9 @@ export const stripParagraphMarkOnlyFormatting = (
     preserved: _preserved,
     ...formattingForBody
   } = formatting;
-  return Object.keys(formattingForBody).length > 0 ? formattingForBody : undefined;
+  return Object.keys(formattingForBody).length > 0
+    ? formattingForBody
+    : undefined;
 };
 
 export const stripParagraphMarkFormattingForBodyRuns = (
@@ -64,8 +72,11 @@ export const stripParagraphMarkFormattingForBodyRuns = (
   if (!paragraphMarkFormatting) {
     return undefined;
   }
-  const { fontFamily: _fontFamily, ...bodyRunFormatting } = paragraphMarkFormatting;
-  return Object.keys(bodyRunFormatting).length > 0 ? bodyRunFormatting : undefined;
+  const { fontFamily: _fontFamily, ...bodyRunFormatting } =
+    paragraphMarkFormatting;
+  return Object.keys(bodyRunFormatting).length > 0
+    ? bodyRunFormatting
+    : undefined;
 };
 
 type SuppressParagraphMarkFormattingOptions = {
@@ -111,7 +122,10 @@ export const suppressParagraphMarkFormatting = ({
   ) {
     result.underline = { style: "none" };
   }
-  if (paragraphMarkFormatting.spacing !== undefined && directFormatting?.spacing === undefined) {
+  if (
+    paragraphMarkFormatting.spacing !== undefined &&
+    directFormatting?.spacing === undefined
+  ) {
     result.spacing = 0;
   }
   return Object.keys(result).length > 0 ? result : undefined;
@@ -169,7 +183,9 @@ export type RunStyleResolver = Pick<
   | "resolveParagraphStyle"
 >;
 
-const withoutFontFamily = (formatting: TextFormatting | undefined): TextFormatting | undefined => {
+const withoutFontFamily = (
+  formatting: TextFormatting | undefined,
+): TextFormatting | undefined => {
   if (!formatting?.fontFamily) {
     return formatting;
   }
@@ -235,7 +251,8 @@ export const resolveParagraphBodyRunFormatting = ({
       ? resolved.runFormatting
       : withoutFontFamily(resolved.runFormatting);
   const paragraphStyle = styleId
-    ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
+    ? (styleResolver.getStyle(styleId) ??
+      styleResolver.getDefaultParagraphStyle())
     : styleResolver.getDefaultParagraphStyle();
   const paragraphStyleRunFormatting =
     paragraphStyle?.type === "paragraph" ? paragraphStyle.rPr : undefined;
@@ -256,8 +273,12 @@ export const resolveParagraphBodyRunFormatting = ({
   if (fontFamily) {
     baseRunFormatting = mergeTextFormatting(baseRunFormatting, { fontFamily });
   }
-  const defaultCharacterFormatting = styleResolver.getDefaultCharacterStyle()?.rPr;
-  const defaultFormatting = mergeTextFormatting(defaultCharacterFormatting, baseRunFormatting);
+  const defaultCharacterFormatting =
+    styleResolver.getDefaultCharacterStyle()?.rPr;
+  const defaultFormatting = mergeTextFormatting(
+    defaultCharacterFormatting,
+    baseRunFormatting,
+  );
   const defaultToggleCascade = cascadeStyleTextFormatting(
     [
       { cascade: orderedToggleFormatting, type: "carried" },
@@ -273,9 +294,10 @@ export const resolveParagraphBodyRunFormatting = ({
   };
 };
 
-type ResolveParagraphInheritedRunFormattingOptions = ResolveParagraphBodyRunFormattingOptions & {
-  paragraphMarkFormatting: TextFormatting | undefined;
-};
+type ResolveParagraphInheritedRunFormattingOptions =
+  ResolveParagraphBodyRunFormattingOptions & {
+    paragraphMarkFormatting: TextFormatting | undefined;
+  };
 
 /** One source cascade for imported body runs and the saver inheritance baseline. */
 export const resolveParagraphInheritedRunFormatting = (
@@ -344,7 +366,8 @@ export const paragraphFormattingForRun = ({
 }: ParagraphFormattingForRunOptions): TextFormatting | undefined => {
   if (
     !marks.some(
-      ({ type }) => type.name === "runFormattingOverride" || type.name === "characterStyle",
+      ({ type }) =>
+        type.name === "runFormattingOverride" || type.name === "characterStyle",
     )
   ) {
     return context.paragraphFormatting;
@@ -408,7 +431,9 @@ export const resolveEffectiveRunStyleFormatting = ({
   paragraphFormatting,
   styleResolver,
 }: ResolveEffectiveRunStyleFormattingOptions): TextFormatting | undefined => {
-  const characterStyle = marks.find(({ type }) => type.name === "characterStyle");
+  const characterStyle = marks.find(
+    ({ type }) => type.name === "characterStyle",
+  );
   const hasDirectFormattingCarrier = marks.some(
     ({ type }) => type.name === "runFormattingOverride",
   );

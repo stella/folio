@@ -1,6 +1,10 @@
 import type { RemoteSelection } from "../types/remote-selection";
 import { createRenderedDomContext } from "./RenderedDomContext";
-import type { RenderedDomContext, RenderedDomPoint, RenderedDomRect } from "./RenderedDomContext";
+import type {
+  RenderedDomContext,
+  RenderedDomPoint,
+  RenderedDomRect,
+} from "./RenderedDomContext";
 
 const CARET_CLASS = "folio-remote-selection-caret";
 const LABEL_CLASS = "folio-remote-selection-label";
@@ -57,7 +61,9 @@ const createOverlayElement = (
 /** Paint collaborative cursors and selections over the rendered page DOM. */
 export class RemoteSelectionOverlay {
   clear(pagesContainer: HTMLElement): void {
-    for (const element of pagesContainer.querySelectorAll(OWNED_OVERLAY_SELECTOR)) {
+    for (const element of pagesContainer.querySelectorAll(
+      OWNED_OVERLAY_SELECTOR,
+    )) {
       element.remove();
     }
   }
@@ -71,12 +77,20 @@ export class RemoteSelectionOverlay {
   }: SyncRemoteSelectionOverlayOptions): void {
     this.clear(pagesContainer);
 
-    for (const { caret, rects, selection } of resolveRemoteSelectionOverlayGeometry(
+    for (const {
+      caret,
+      rects,
+      selection,
+    } of resolveRemoteSelectionOverlayGeometry(
       renderedDomContext,
       selections,
     )) {
       for (const rect of rects) {
-        const element = createOverlayElement(pagesContainer, RANGE_CLASS, zIndex);
+        const element = createOverlayElement(
+          pagesContainer,
+          RANGE_CLASS,
+          zIndex,
+        );
         element.dataset["clientId"] = String(selection.clientId);
         element.style.background = `color-mix(in srgb, ${selection.color} 24%, transparent)`;
         setBox(element, rect);
@@ -87,7 +101,11 @@ export class RemoteSelectionOverlay {
         continue;
       }
 
-      const caretElement = createOverlayElement(pagesContainer, CARET_CLASS, zIndex + 1);
+      const caretElement = createOverlayElement(
+        pagesContainer,
+        CARET_CLASS,
+        zIndex + 1,
+      );
       caretElement.dataset["clientId"] = String(selection.clientId);
       // `backgroundColor` (unlike the `background` shorthand) only accepts a
       // <color> value, so a collaborator color that somehow carries a CSS
@@ -96,7 +114,11 @@ export class RemoteSelectionOverlay {
       setBox(caretElement, { ...caret, width: 2 });
       pagesContainer.appendChild(caretElement);
 
-      const label = createOverlayElement(pagesContainer, LABEL_CLASS, zIndex + 2);
+      const label = createOverlayElement(
+        pagesContainer,
+        LABEL_CLASS,
+        zIndex + 2,
+      );
       label.dataset["clientId"] = String(selection.clientId);
       label.textContent = selection.name;
       label.style.backgroundColor = selection.color;

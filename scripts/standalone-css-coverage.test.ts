@@ -34,7 +34,9 @@ describe("findUncoveredUtilities", () => {
 
   test("resolves utilities from cn()/clsx() arguments", () => {
     const result = findUncoveredUtilities({
-      jsFiles: js('className: cn("flex antialiased", active && "bg-popover", "h-[var(--x)]")'),
+      jsFiles: js(
+        'className: cn("flex antialiased", active && "bg-popover", "h-[var(--x)]")',
+      ),
       standaloneCss: STANDALONE_CSS,
     });
     expect(result.uncovered).toEqual([]);
@@ -60,7 +62,9 @@ describe("findUncoveredUtilities", () => {
     // The dist bundle keeps conditionals inside className templates; the
     // branches' classes must count, or a compile miss would ship silently.
     const result = findUncoveredUtilities({
-      jsFiles: js('className: `flex antialiased ${on ? "bg-popover" : "text-muted-foreground"}`'),
+      jsFiles: js(
+        'className: `flex antialiased ${on ? "bg-popover" : "text-muted-foreground"}`',
+      ),
       standaloneCss: STANDALONE_CSS,
     });
     expect(result.candidates).toBe(4);
@@ -71,7 +75,9 @@ describe("findUncoveredUtilities", () => {
     // `position === "footer"` is a discriminator, not a class; only the branch
     // literal counts.
     const result = findUncoveredUtilities({
-      jsFiles: js('className: `flex${position === "footer" ? " bg-popover" : ""}`'),
+      jsFiles: js(
+        'className: `flex${position === "footer" ? " bg-popover" : ""}`',
+      ),
       standaloneCss: STANDALONE_CSS,
     });
     expect(result.candidates).toBe(2);

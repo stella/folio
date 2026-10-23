@@ -1,30 +1,37 @@
-import { scanTestTimeout } from "../../test/scan-timeout";
-
-import { setDefaultTimeout, expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { transform } from "lightningcss";
-import { resolve } from "node:path";
 import { readdir } from "node:fs/promises";
-import { FONT_MAPPING } from "../../packages/core/src/utils/fontLoader";
+import { resolve } from "node:path";
 
+import { FONT_MAPPING } from "../../packages/core/src/utils/fontLoader";
+import { scanTestTimeout } from "../../test/scan-timeout";
 import { scopeEditorCss } from "./scoped-editor-css";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
-const authoredFamilies = new Set(Object.keys(FONT_MAPPING).map((family) => family.toLowerCase()));
+const authoredFamilies = new Set(
+  Object.keys(FONT_MAPPING).map((family) => family.toLowerCase()),
+);
 
 const assertNoAuthoredFontAliases = (source: string) => {
   for (const face of source.matchAll(/@font-face\s*\{(?<body>[^}]+)\}/gu)) {
-    const family = face.groups?.body?.match(/font-family:\s*["']?(?<family>[^;"']+)/u)?.groups
-      ?.family;
+    const family = face.groups?.body?.match(
+      /font-family:\s*["']?(?<family>[^;"']+)/u,
+    )?.groups?.family;
     expect(family).toBeDefined();
-    expect(authoredFamilies.has(family?.trim().toLowerCase() ?? "")).toBe(false);
+    expect(authoredFamilies.has(family?.trim().toLowerCase() ?? "")).toBe(
+      false,
+    );
   }
 };
 
 test("every adapter stylesheet can be scoped without serializing declaration ASTs", async () => {
   let sheets = 0;
   for (const adapter of ["react", "vue"]) {
-    const directory = resolve(import.meta.dir, `../../packages/${adapter}/src/styles`);
+    const directory = resolve(
+      import.meta.dir,
+      `../../packages/${adapter}/src/styles`,
+    );
     for (const filename of await readdir(directory)) {
       if (!filename.endsWith(".css")) continue;
       const source = await Bun.file(resolve(directory, filename)).text();
@@ -66,7 +73,8 @@ test("all upstream ProseMirror selectors are scoped without changing declaration
       visitor: {
         Rule: {
           style(rule) {
-            for (const selector of rule.value.selectors) selectors.push(JSON.stringify(selector));
+            for (const selector of rule.value.selectors)
+              selectors.push(JSON.stringify(selector));
             declarations.push(JSON.stringify(rule.value.declarations));
           },
         },
@@ -83,7 +91,8 @@ test("all upstream ProseMirror selectors are scoped without changing declaration
   const result = collect(scoped);
   expect(original.selectors.length).toBeGreaterThan(0);
   expect(result.selectors).toHaveLength(original.selectors.length);
-  for (const selector of result.selectors) expect(selector).toContain('"name":"folio-root"');
+  for (const selector of result.selectors)
+    expect(selector).toContain('"name":"folio-root"');
   expect(result.declarations).toEqual(original.declarations);
   expect(scopeEditorCss(scoped)).toBe(scoped);
 });
@@ -99,9 +108,15 @@ test("scopes every generic branch and preserves already scoped and portaled rule
     .folio-default-dialog-popup { position: fixed; }
   `;
   const scoped = scopeEditorCss(css);
-  expect(scoped).toContain(':where(.folio-root) [contenteditable="true"]:focus');
-  expect(scoped).toContain(":where(.folio-root) :is(.ProseMirror-focused, .ProseMirror-gapcursor)");
-  expect(scoped).toContain(":where(.folio-root) :is(.folio-root, .ProseMirror)");
+  expect(scoped).toContain(
+    ':where(.folio-root) [contenteditable="true"]:focus',
+  );
+  expect(scoped).toContain(
+    ":where(.folio-root) :is(.ProseMirror-focused, .ProseMirror-gapcursor)",
+  );
+  expect(scoped).toContain(
+    ":where(.folio-root) :is(.folio-root, .ProseMirror)",
+  );
   expect(scoped).toContain(".folio-default-dialog-popup {");
   expect(scopeEditorCss(scoped)).toBe(scoped);
 });

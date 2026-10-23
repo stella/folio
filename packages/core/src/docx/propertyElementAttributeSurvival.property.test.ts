@@ -20,20 +20,24 @@
  * the writers rebuild.
  */
 
-import { readFileSync } from "node:fs";
-
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { readFileSync } from "node:fs";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
 import { parseDocx } from "./parser";
-import { modelledAttributeNames, PROPERTY_ELEMENT_ATTRIBUTES } from "./propertyElementAttributes";
+import {
+  modelledAttributeNames,
+  PROPERTY_ELEMENT_ATTRIBUTES,
+} from "./propertyElementAttributes";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { unzipDocx } from "./unzip";
 
@@ -72,7 +76,8 @@ const WML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
  */
 const valueForType = (type: string | undefined): string => {
   const symbol = GRAPH.symbols.find(
-    (candidate) => candidate.kind === "simpleType" && candidate.id === `simpleType:${type}`,
+    (candidate) =>
+      candidate.kind === "simpleType" && candidate.id === `simpleType:${type}`,
   );
   const enumerated = symbol?.enumValues?.at(0);
   if (enumerated !== undefined) {
@@ -95,7 +100,8 @@ const declaredAttributesOf = (typeName: string): DeclaredAttribute[] =>
   GRAPH.attributes
     .filter(
       (attribute) =>
-        attribute.owner === `complexType:{${WML}}${typeName}` && attribute.namespace === WML,
+        attribute.owner === `complexType:{${WML}}${typeName}` &&
+        attribute.namespace === WML,
     )
     .flatMap((attribute) =>
       attribute.name === undefined
@@ -119,7 +125,10 @@ const HOSTS = {
   CT_TabStop: (attributes: string) => `<w:tabs><w:tab ${attributes}/></w:tabs>`,
   CT_Border: (attributes: string) => `<w:pBdr><w:top ${attributes}/></w:pBdr>`,
   CT_Shd: (attributes: string) => `<w:shd ${attributes}/>`,
-} as const satisfies Record<PropertyElementType, (attributes: string) => string>;
+} as const satisfies Record<
+  PropertyElementType,
+  (attributes: string) => string
+>;
 
 const PROPERTY_ELEMENT_TYPES = Object.keys(HOSTS) as PropertyElementType[];
 
@@ -128,7 +137,9 @@ const PROPERTY_ELEMENT_TYPES = Object.keys(HOSTS) as PropertyElementType[];
  * tab stop, `w:val` on a shading. Every subset states them, because an element
  * that omits one is invalid markup rather than a case folio has to survive.
  */
-const requiredAttributesOf = (typeName: PropertyElementType): readonly string[] =>
+const requiredAttributesOf = (
+  typeName: PropertyElementType,
+): readonly string[] =>
   GRAPH.attributes
     .filter(
       (attribute) =>
@@ -136,7 +147,9 @@ const requiredAttributesOf = (typeName: PropertyElementType): readonly string[] 
         attribute.namespace === WML &&
         attribute.use === "required",
     )
-    .flatMap((attribute) => (attribute.name === undefined ? [] : [attribute.name]));
+    .flatMap((attribute) =>
+      attribute.name === undefined ? [] : [attribute.name],
+    );
 
 /**
  * Every attribute the type declares, plus the ones its extensions add.
@@ -146,10 +159,14 @@ const requiredAttributesOf = (typeName: PropertyElementType): readonly string[] 
  * `r:topLeft` off every `CT_Border`, and `CT_PageBorder` is where the schema
  * declares it.
  */
-const attributeName = (attribute: SchemaGraph["attributes"][number]): string | undefined =>
+const attributeName = (
+  attribute: SchemaGraph["attributes"][number],
+): string | undefined =>
   attribute.name ?? attribute.ref?.slice(attribute.ref.indexOf("}") + 1);
 
-const declaredByTypeAndItsExtensions = (typeName: string): SchemaGraph["attributes"] => {
+const declaredByTypeAndItsExtensions = (
+  typeName: string,
+): SchemaGraph["attributes"] => {
   const owners = new Set([`complexType:{${WML}}${typeName}`]);
   for (let added = true; added;) {
     added = false;
@@ -171,7 +188,9 @@ const declaredByTypeAndItsExtensions = (typeName: string): SchemaGraph["attribut
 };
 
 const split = (typeName: PropertyElementType) => {
-  const modelled = new Set(modelledAttributeNames(PROPERTY_ELEMENT_ATTRIBUTES[typeName]));
+  const modelled = new Set(
+    modelledAttributeNames(PROPERTY_ELEMENT_ATTRIBUTES[typeName]),
+  );
   const declared = declaredAttributesOf(typeName);
   return {
     declared,
@@ -183,7 +202,9 @@ const split = (typeName: PropertyElementType) => {
 const spell = (attributes: readonly DeclaredAttribute[]): string =>
   attributes.map(({ name, value }) => `w:${name}="${value}"`).join(" ");
 
-const packageWithParagraphProperties = async (propertiesXml: string): Promise<ArrayBuffer> => {
+const packageWithParagraphProperties = async (
+  propertiesXml: string,
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   const documentXml = await zip.file("word/document.xml")?.async("text");
   if (!documentXml) {
@@ -220,15 +241,21 @@ const documentXmlOf = async (buffer: ArrayBuffer): Promise<string> => {
 
 const savedAfterEdit = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
   const parsed = await parseDocx(buffer, { preloadFonts: false });
-  return await repackDocx(withEditedFormatting(parsed), { updateModifiedDate: false });
+  return await repackDocx(withEditedFormatting(parsed), {
+    updateModifiedDate: false,
+  });
 };
 
-const savedThroughEditor = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
+const savedThroughEditor = async (
+  buffer: ArrayBuffer,
+): Promise<ArrayBuffer> => {
   const parsed = await parseDocx(buffer, { preloadFonts: false });
   const projected = fromProseDoc(toProseDoc(parsed), parsed, {
     stylesheetSource: { type: "package" },
   });
-  return await repackDocx(withEditedFormatting(projected), { updateModifiedDate: false });
+  return await repackDocx(withEditedFormatting(projected), {
+    updateModifiedDate: false,
+  });
 };
 
 describe("a property element keeps what the model has no field for", () => {
@@ -254,8 +281,13 @@ describe("a property element keeps what the model has no field for", () => {
           return name === undefined ? [] : [name];
         }),
       );
-      expect(declared.size, `${typeName} is not in the schema graph`).toBeGreaterThan(0);
-      for (const name of modelledAttributeNames(PROPERTY_ELEMENT_ATTRIBUTES[typeName])) {
+      expect(
+        declared.size,
+        `${typeName} is not in the schema graph`,
+      ).toBeGreaterThan(0);
+      for (const name of modelledAttributeNames(
+        PROPERTY_ELEMENT_ATTRIBUTES[typeName],
+      )) {
         expect(declared, `${typeName} declares no w:${name}`).toContain(name);
       }
     }
@@ -280,10 +312,14 @@ describe("a property element keeps what the model has no field for", () => {
             async (statedModelled, statedRemainder) => {
               const stated = [
                 ...modelled.filter(({ name }) => required.includes(name)),
-                ...statedModelled.filter(({ name }) => !required.includes(name)),
+                ...statedModelled.filter(
+                  ({ name }) => !required.includes(name),
+                ),
                 ...statedRemainder,
               ];
-              const fixture = await packageWithParagraphProperties(HOSTS[typeName](spell(stated)));
+              const fixture = await packageWithParagraphProperties(
+                HOSTS[typeName](spell(stated)),
+              );
 
               const once = await savedAfterEdit(fixture);
               const twice = await savedAfterEdit(once);
@@ -296,9 +332,10 @@ describe("a property element keeps what the model has no field for", () => {
 
               for (const [leg, saved] of legs) {
                 for (const { name, value } of statedRemainder) {
-                  expect(saved, `w:${name} on ${typeName} was lost by ${leg}`).toContain(
-                    `w:${name}="${value}"`,
-                  );
+                  expect(
+                    saved,
+                    `w:${name} on ${typeName} was lost by ${leg}`,
+                  ).toContain(`w:${name}="${value}"`);
                 }
               }
             },
@@ -316,7 +353,9 @@ describe("a property element keeps what the model has no field for", () => {
     // the character unit had nowhere to go.
     const saved = await documentXmlOf(
       await savedAfterEdit(
-        await packageWithParagraphProperties('<w:ind w:left="720" w:leftChars="100"/>'),
+        await packageWithParagraphProperties(
+          '<w:ind w:left="720" w:leftChars="100"/>',
+        ),
       ),
     );
     expect(saved).toContain('w:left="720"');

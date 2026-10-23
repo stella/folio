@@ -26,13 +26,15 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   buildTableDocx,
   readReviewerTables,
-  tableReadingProblems,
   type TableReading,
+  tableReadingProblems,
   type TableSpec,
   type TableSpecCell,
 } from "../__tests__/tableOperationDocument";
@@ -68,7 +70,11 @@ const partition = (
       if (taken.has(`${row}:${column}`)) {
         continue;
       }
-      const size = sizes[draw % sizes.length] ?? { rowSpan: 1, columnSpan: 1, blank: false };
+      const size = sizes[draw % sizes.length] ?? {
+        rowSpan: 1,
+        columnSpan: 1,
+        blank: false,
+      };
       draw += 1;
       let columnSpan = 1;
       while (
@@ -197,7 +203,11 @@ const planArbitrary: fc.Arbitrary<OperationPlan> = fc.record({
 const batchArbitrary = fc.array(planArbitrary, { minLength: 1, maxLength: 2 });
 
 /** A cell of the spec, and the snapshot table it is read from (0 outer, 1 nested). */
-type AnchorCell = { cell: TableSpecCell; tableIndex: number; siblings: readonly TableSpecCell[] };
+type AnchorCell = {
+  cell: TableSpecCell;
+  tableIndex: number;
+  siblings: readonly TableSpecCell[];
+};
 
 const anchorCells = (spec: TableSpec): AnchorCell[] =>
   spec.cells.flatMap((cell) => [
@@ -240,13 +250,21 @@ const buildOperation = (
         table.paragraphIndex === 0,
     );
     if (!block) {
-      throw new Error(`no block starts cell ${cell.row}:${cell.column} of table ${tableIndex}`);
+      throw new Error(
+        `no block starts cell ${cell.row}:${cell.column} of table ${tableIndex}`,
+      );
     }
     return block.id;
   };
   const blockId = blockIdAt(anchor.tableIndex, anchor.cell);
-  const values = Array.from({ length: plan.valueCount ?? 0 }, (_, index) => `${id}v${index}v`);
-  const planned = (operation: FolioDocumentOperation, supplied: string[] = []) => ({
+  const values = Array.from(
+    { length: plan.valueCount ?? 0 },
+    (_, index) => `${id}v${index}v`,
+  );
+  const planned = (
+    operation: FolioDocumentOperation,
+    supplied: string[] = [],
+  ) => ({
     operation,
     values: supplied,
     anchor,
@@ -288,7 +306,8 @@ const buildOperation = (
   }
 };
 
-const open = (bytes: ArrayBuffer) => FolioDocxReviewer.fromBuffer(bytes, { author: "Tester" });
+const open = (bytes: ArrayBuffer) =>
+  FolioDocxReviewer.fromBuffer(bytes, { author: "Tester" });
 
 type Run = {
   planned: PlannedOperation[];
@@ -305,7 +324,9 @@ const run = async (
 ): Promise<Run> => {
   const reviewer = await open(base);
   const blocks = reviewer.getContent();
-  const planned = plans.map((plan, index) => buildOperation(spec, plan, blocks, `op${index}`));
+  const planned = plans.map((plan, index) =>
+    buildOperation(spec, plan, blocks, `op${index}`),
+  );
   const result = reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -317,9 +338,13 @@ const run = async (
   return { planned, reviewer, result };
 };
 
-const appliedIds = ({ result }: Run): Set<string> => new Set(result.applied.map(({ id }) => id));
+const appliedIds = ({ result }: Run): Set<string> =>
+  new Set(result.applied.map(({ id }) => id));
 
-const readTablesAt = async (stage: string, reviewer: FolioDocxReviewer): Promise<TableReading> => {
+const readTablesAt = async (
+  stage: string,
+  reviewer: FolioDocxReviewer,
+): Promise<TableReading> => {
   try {
     return await readReviewerTables(reviewer);
   } catch (cause) {
@@ -341,7 +366,10 @@ const resolve = async (
 };
 
 /** What a caller sees of a document: its blocks' text and every table's cells. */
-const visible = (reading: TableReading) => ({ texts: reading.texts, tables: reading.snapshot });
+const visible = (reading: TableReading) => ({
+  texts: reading.texts,
+  tables: reading.snapshot,
+});
 
 /**
  * Whether tracked mode may refuse what direct mode applies. Each case is a
@@ -356,16 +384,25 @@ const visible = (reading: TableReading) => ({ texts: reading.texts, tables: read
  * - A column inserted through a horizontal merge widens it, and a column
  *   deleted through one narrows it: a `w:gridSpan` change has no tracked form.
  */
-const trackedRefusalIsExpected = (planned: PlannedOperation, plan: OperationPlan): boolean => {
+const trackedRefusalIsExpected = (
+  planned: PlannedOperation,
+  plan: OperationPlan,
+): boolean => {
   const { anchor, other } = planned;
   const cell = anchor.cell;
   const siblings = anchor.siblings;
   switch (plan.kind) {
     case "mergeTableCells": {
       const top = Math.min(cell.row, other.row);
-      const bottom = Math.max(cell.row + cell.rowSpan, other.row + other.rowSpan);
+      const bottom = Math.max(
+        cell.row + cell.rowSpan,
+        other.row + other.rowSpan,
+      );
       const left = Math.min(cell.column, other.column);
-      const right = Math.max(cell.column + cell.columnSpan, other.column + other.columnSpan);
+      const right = Math.max(
+        cell.column + cell.columnSpan,
+        other.column + other.columnSpan,
+      );
       const inside = siblings.filter(
         (candidate) =>
           candidate.row < bottom &&
@@ -378,7 +415,9 @@ const trackedRefusalIsExpected = (planned: PlannedOperation, plan: OperationPlan
         (_, index) => top + 1 + index,
       ).some(
         (row) =>
-          !siblings.some((candidate) => candidate.row === row && !inside.includes(candidate)),
+          !siblings.some(
+            (candidate) => candidate.row === row && !inside.includes(candidate),
+          ),
       );
       return (
         right - left !== 1 ||
@@ -395,10 +434,14 @@ const trackedRefusalIsExpected = (planned: PlannedOperation, plan: OperationPlan
     case "splitTableCell":
       return cell.columnSpan > 1;
     case "insertTableColumn": {
-      const boundary = plan.position === "before" ? cell.column : cell.column + cell.columnSpan;
+      const boundary =
+        plan.position === "before"
+          ? cell.column
+          : cell.column + cell.columnSpan;
       return siblings.some(
         (candidate) =>
-          candidate.column < boundary && candidate.column + candidate.columnSpan > boundary,
+          candidate.column < boundary &&
+          candidate.column + candidate.columnSpan > boundary,
       );
     }
     case "deleteTableColumn":
@@ -413,7 +456,10 @@ const trackedRefusalIsExpected = (planned: PlannedOperation, plan: OperationPlan
   }
 };
 
-const checkCase = async (spec: TableSpec, plans: readonly OperationPlan[]): Promise<void> => {
+const checkCase = async (
+  spec: TableSpec,
+  plans: readonly OperationPlan[],
+): Promise<void> => {
   const base = await buildTableDocx(spec);
   const original = await readTablesAt("original", await open(base));
   expect(tableReadingProblems(original)).toEqual([]);
@@ -453,7 +499,8 @@ const checkCase = async (spec: TableSpec, plans: readonly OperationPlan[]): Prom
   expect(visible(rejected)).toEqual(visible(original));
 
   const disagreeing = tracked.planned.flatMap((planned, index) =>
-    directApplied.has(planned.operation.id) === trackedApplied.has(planned.operation.id)
+    directApplied.has(planned.operation.id) ===
+    trackedApplied.has(planned.operation.id)
       ? []
       : [{ planned, plan: plans[index]! }],
   );
@@ -503,7 +550,9 @@ const checkCase = async (spec: TableSpec, plans: readonly OperationPlan[]): Prom
     },
     { undefinedReferences: "refuse" },
   );
-  expect(new Set(sharedResult.applied.map(({ id }) => id))).toEqual(trackedApplied);
+  expect(new Set(sharedResult.applied.map(({ id }) => id))).toEqual(
+    trackedApplied,
+  );
   const sharedReading = await readTablesAt("direct shared", shared);
   expect(tableReadingProblems(sharedReading)).toEqual([]);
   expect(visible(accepted)).toEqual(visible(sharedReading));
@@ -515,10 +564,13 @@ describe("table operations on merged tables", () => {
     async () => {
       // The seeds this property once failed on replay first, from
       // test/property-seeds/.
-      await assertProperty(fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase), {
-        numRuns: 150,
-        id: "keep every value, agree across modes and readers, and reject cleanly",
-      });
+      await assertProperty(
+        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
+        {
+          numRuns: 150,
+          id: "keep every value, agree across modes and readers, and reject cleanly",
+        },
+      );
     },
     propertyTestTimeout(120_000),
   );

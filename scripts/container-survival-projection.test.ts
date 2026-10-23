@@ -87,7 +87,9 @@ const helperArguments = (): string => {
   const source = read(path.join(LAW_DIR, HELPER_FILE));
   const call = source.lastIndexOf("fromProseDoc(");
   if (call === -1) {
-    throw new Error(`${HELPER_FILE} no longer calls the conversion it exists to own`);
+    throw new Error(
+      `${HELPER_FILE} no longer calls the conversion it exists to own`,
+    );
   }
   return balancedAt(source, call + "fromProseDoc".length);
 };
@@ -96,13 +98,17 @@ describe("the survival law projects through one call", () => {
   test("no law module but the helper reaches the conversion", () => {
     const reaching = readdirSync(LAW_DIR)
       .filter((entry) => entry.endsWith(".ts") && entry !== HELPER_FILE)
-      .filter((entry) => REACHES_CONVERSION.test(read(path.join(LAW_DIR, entry))));
+      .filter((entry) =>
+        REACHES_CONVERSION.test(read(path.join(LAW_DIR, entry))),
+      );
 
     expect(reaching).toEqual([]);
   });
 
   test("the law's editor leg projects through the helper", () => {
-    expect(read(path.join(LAW_DIR, "laws.ts"))).toContain("projectWithoutReuse(toProseDoc(");
+    expect(read(path.join(LAW_DIR, "laws.ts"))).toContain(
+      "projectWithoutReuse(toProseDoc(",
+    );
   });
 });
 
@@ -110,7 +116,9 @@ describe("the helper declines reuse as soon as there is reuse to decline", () =>
   test("it passes the option exactly when the conversion accepts one", () => {
     const offered = /\breuse\b/u.test(conversionParameters());
 
-    expect({ passesReuseNone: /\breuse:\s*"none"/u.test(helperArguments()) }).toEqual({
+    expect({
+      passesReuseNone: /\breuse:\s*"none"/u.test(helperArguments()),
+    }).toEqual({
       passesReuseNone: offered,
     });
   });

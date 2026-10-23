@@ -25,9 +25,15 @@ import path from "node:path";
 import { buildDisplayList } from "../display-list/build/buildDisplayList";
 import type { DisplayFontFace, DisplayPrimitive } from "../display-list/types";
 import { layoutDocxHeadless } from "../headless-layout";
-import { getMeasureProvider, setMeasureProvider } from "../layout-engine/measure/measureProvider";
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+} from "../layout-engine/measure/measureProvider";
 import { FONT_MAPPING } from "../utils/fontLoader";
-import type { HeadlessFontRequest, HeadlessFontSource } from "./headlessMeasure";
+import type {
+  HeadlessFontRequest,
+  HeadlessFontSource,
+} from "./headlessMeasure";
 import { installHeadlessMeasureProvider } from "./headlessMeasure";
 import type { SfntFont } from "./sfnt/parse";
 import { parseSfnt } from "./sfnt/parse";
@@ -91,18 +97,30 @@ const directoryIndex = (): ReadonlyMap<string, string> => {
 
 const DIRECTORY_INDEX = directoryIndex();
 
-const faceFiles = ({ family, bold, italic }: HeadlessFontRequest): readonly string[] => {
+const faceFiles = ({
+  family,
+  bold,
+  italic,
+}: HeadlessFontRequest): readonly string[] => {
   const directory = DIRECTORY_INDEX.get(family.trim().toLowerCase());
   if (directory === undefined) return [];
   const weight = bold ? BOLD_WEIGHT : REGULAR_WEIGHT;
   const style = italic ? "italic" : "normal";
   return SUBSETS.map((subset) =>
-    path.join(FONTSOURCE_DIR, directory, "files", `${directory}-${subset}-${weight}-${style}.woff`),
+    path.join(
+      FONTSOURCE_DIR,
+      directory,
+      "files",
+      `${directory}-${subset}-${weight}-${style}.woff`,
+    ),
   ).filter((filePath) => existsSync(filePath));
 };
 
 const bundledSource: HeadlessFontSource = {
-  load: (request) => faceFiles(request).map((filePath) => new Uint8Array(readFileSync(filePath))),
+  load: (request) =>
+    faceFiles(request).map(
+      (filePath) => new Uint8Array(readFileSync(filePath)),
+    ),
 };
 
 const parseFace = (bytes: Uint8Array): SfntFont | null => {
@@ -112,7 +130,11 @@ const parseFace = (bytes: Uint8Array): SfntFont | null => {
   return parsed.isErr() ? null : parsed.value;
 };
 
-const requestFor = ({ family, weight, italic }: DisplayFontFace): HeadlessFontRequest => ({
+const requestFor = ({
+  family,
+  weight,
+  italic,
+}: DisplayFontFace): HeadlessFontRequest => ({
   family,
   bold: weight >= BOLD_WEIGHT,
   italic,
@@ -163,13 +185,17 @@ const unpaintableCodePoints = (
       // SAFETY: iterating a string yields whole code points.
       const codePoint = char.codePointAt(0)!;
       if (fonts.some((parsed) => parsed.glyphIdFor(codePoint) !== 0)) continue;
-      reported.add(`${face.family} U+${codePoint.toString(16).toUpperCase()} (${char})`);
+      reported.add(
+        `${face.family} U+${codePoint.toString(16).toUpperCase()} (${char})`,
+      );
     }
   }
   return [...reported];
 };
 
-const describeWhenBundled = existsSync(FONTSOURCE_DIR) ? describe : describe.skip;
+const describeWhenBundled = existsSync(FONTSOURCE_DIR)
+  ? describe
+  : describe.skip;
 
 describeWhenBundled("bundled subsets cover the diacritics fixture", () => {
   const installed = getMeasureProvider();
@@ -179,7 +205,9 @@ describeWhenBundled("bundled subsets cover the diacritics fixture", () => {
 
   test("every painted code point resolves to a glyph in some served subset", async () => {
     const headless = installHeadlessMeasureProvider(bundledSource);
-    const laidOut = await layoutDocxHeadless(await Bun.file(FIXTURE_PATH).arrayBuffer());
+    const laidOut = await layoutDocxHeadless(
+      await Bun.file(FIXTURE_PATH).arrayBuffer(),
+    );
     expect(laidOut.isErr()).toBe(false);
     if (laidOut.isErr()) return;
 

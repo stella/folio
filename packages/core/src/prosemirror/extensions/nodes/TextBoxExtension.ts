@@ -16,7 +16,9 @@ import { createNodeExtension } from "../create";
 
 export type TextBoxAttrs = SchemaTextBoxAttrs;
 
-function parseTextBoxPosition(raw: string | undefined): TextBoxAttrs["position"] {
+function parseTextBoxPosition(
+  raw: string | undefined,
+): TextBoxAttrs["position"] {
   if (!raw) {
     return undefined;
   }
@@ -31,7 +33,9 @@ function parseTextBoxPosition(raw: string | undefined): TextBoxAttrs["position"]
   }
 }
 
-function parseTextBoxWrapType(raw: string | undefined): TextBoxAttrs["wrapType"] {
+function parseTextBoxWrapType(
+  raw: string | undefined,
+): TextBoxAttrs["wrapType"] {
   for (const value of IMAGE_WRAP_TYPE_VALUES) {
     if (value === raw) {
       return value;
@@ -47,14 +51,18 @@ function parseTextBoxAutoFit(raw: string | undefined): TextBoxAttrs["autoFit"] {
   return undefined;
 }
 
-function parseTextBoxTextWrap(raw: string | undefined): TextBoxAttrs["textWrap"] {
+function parseTextBoxTextWrap(
+  raw: string | undefined,
+): TextBoxAttrs["textWrap"] {
   if (raw === "none" || raw === "square") {
     return raw;
   }
   return undefined;
 }
 
-function parseTextBoxVerticalAlign(raw: string | undefined): TextBoxAttrs["verticalAlign"] {
+function parseTextBoxVerticalAlign(
+  raw: string | undefined,
+): TextBoxAttrs["verticalAlign"] {
   return normalizeShapeTextAnchor(raw);
 }
 
@@ -180,37 +188,53 @@ export const TextBoxExtension = createNodeExtension({
             ...(d["width"] ? { width: Number(d["width"]) } : {}),
             ...(d["height"] ? { height: Number(d["height"]) } : {}),
             ...(autoFit ? { autoFit } : {}),
-            ...(d["wordArt"] ? { wordArt: parseTextBoxWordArt(d["wordArt"]) } : {}),
+            ...(d["wordArt"]
+              ? { wordArt: parseTextBoxWordArt(d["wordArt"]) }
+              : {}),
             ...(textWrap ? { textWrap } : {}),
             ...(d["textboxId"] ? { textBoxId: d["textboxId"] } : {}),
             ...(d["fillColor"] ? { fillColor: d["fillColor"] } : {}),
-            ...(d["outlineWidth"] ? { outlineWidth: Number(d["outlineWidth"]) } : {}),
+            ...(d["outlineWidth"]
+              ? { outlineWidth: Number(d["outlineWidth"]) }
+              : {}),
             ...(d["outlineColor"] ? { outlineColor: d["outlineColor"] } : {}),
             ...(d["outlineStyle"]
               ? {
-                  outlineStyle: d["outlineStyle"] as NonNullable<TextBoxAttrs["outlineStyle"]>,
+                  outlineStyle: d["outlineStyle"] as NonNullable<
+                    TextBoxAttrs["outlineStyle"]
+                  >,
                 }
               : {}),
             ...(d["transform"] ? { transform: d["transform"] } : {}),
             ...(d["marginTop"] ? { marginTop: Number(d["marginTop"]) } : {}),
-            ...(d["marginBottom"] ? { marginBottom: Number(d["marginBottom"]) } : {}),
+            ...(d["marginBottom"]
+              ? { marginBottom: Number(d["marginBottom"]) }
+              : {}),
             ...(d["marginLeft"] ? { marginLeft: Number(d["marginLeft"]) } : {}),
-            ...(d["marginRight"] ? { marginRight: Number(d["marginRight"]) } : {}),
+            ...(d["marginRight"]
+              ? { marginRight: Number(d["marginRight"]) }
+              : {}),
             ...(verticalAlign ? { verticalAlign } : {}),
             ...(d["displayMode"]
               ? {
-                  displayMode: d["displayMode"] as NonNullable<TextBoxAttrs["displayMode"]>,
+                  displayMode: d["displayMode"] as NonNullable<
+                    TextBoxAttrs["displayMode"]
+                  >,
                 }
               : {}),
             ...(d["cssFloat"]
               ? {
-                  cssFloat: d["cssFloat"] as NonNullable<TextBoxAttrs["cssFloat"]>,
+                  cssFloat: d["cssFloat"] as NonNullable<
+                    TextBoxAttrs["cssFloat"]
+                  >,
                 }
               : {}),
             ...(wrapType ? { wrapType } : {}),
             ...(d["wrapText"]
               ? {
-                  wrapText: d["wrapText"] as NonNullable<TextBoxAttrs["wrapText"]>,
+                  wrapText: d["wrapText"] as NonNullable<
+                    TextBoxAttrs["wrapText"]
+                  >,
                 }
               : {}),
             ...(d["distTop"] ? { distTop: Number(d["distTop"]) } : {}),
@@ -342,7 +366,10 @@ export const TextBoxExtension = createNodeExtension({
       // Vertical alignment
       // Distributed and justified anchors require line-level placement. Keep
       // their natural flow here so editing does not invent block-level gaps.
-      if (attrs.verticalAlign === "middle" || attrs.verticalAlign === "center") {
+      if (
+        attrs.verticalAlign === "middle" ||
+        attrs.verticalAlign === "center"
+      ) {
         styles.push("display: flex");
         styles.push("flex-direction: column");
         styles.push("justify-content: center");
@@ -353,7 +380,11 @@ export const TextBoxExtension = createNodeExtension({
       }
 
       // Float/positioning
-      if (attrs.displayMode === "float" && attrs.cssFloat && attrs.cssFloat !== "none") {
+      if (
+        attrs.displayMode === "float" &&
+        attrs.cssFloat &&
+        attrs.cssFloat !== "none"
+      ) {
         styles.push(`float: ${attrs.cssFloat}`);
         styles.push("margin: 4px 8px");
       } else if (attrs.displayMode === "block") {

@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import ts from "typescript";
 
 import { MODEL_TYPE_DISCRIMINATORS } from "./lib/corpus-signature";
@@ -24,7 +23,14 @@ import { MODEL_TYPE_DISCRIMINATORS } from "./lib/corpus-signature";
  * aliases and unions the model writes, and each object member's literal `type`
  * is collected.
  */
-const MODEL_DIR = path.join(import.meta.dir, "..", "packages", "docx-core", "src", "model");
+const MODEL_DIR = path.join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "docx-core",
+  "src",
+  "model",
+);
 
 const modelSourceFiles = async (): Promise<ts.SourceFile[]> => {
   const names = (await readdir(MODEL_DIR))
@@ -51,7 +57,9 @@ const eachNode = (node: ts.Node, visit: (child: ts.Node) => void): void => {
 };
 
 /** Every `type X = …` in the model, so a reference can be followed. */
-const aliasesIn = (sources: readonly ts.SourceFile[]): Map<string, ts.TypeNode> => {
+const aliasesIn = (
+  sources: readonly ts.SourceFile[],
+): Map<string, ts.TypeNode> => {
   const aliases = new Map<string, ts.TypeNode>();
   for (const source of sources) {
     eachNode(source, (node) => {
@@ -78,7 +86,9 @@ const ELEMENT_ARGUMENT: ReadonlyMap<string, number> = new Map([
 ]);
 
 /** Every type node the walk can reach as an element of an array. */
-const elementPositionsIn = (sources: readonly ts.SourceFile[]): ts.TypeNode[] => {
+const elementPositionsIn = (
+  sources: readonly ts.SourceFile[],
+): ts.TypeNode[] => {
   const positions: ts.TypeNode[] = [];
   const collect = (node: ts.Node): void => {
     if (!ts.isPropertySignature(node) || node.type === undefined) {
@@ -89,7 +99,10 @@ const elementPositionsIn = (sources: readonly ts.SourceFile[]): ts.TypeNode[] =>
       positions.push(declared.elementType);
       return;
     }
-    if (!ts.isTypeReferenceNode(declared) || !ts.isIdentifier(declared.typeName)) {
+    if (
+      !ts.isTypeReferenceNode(declared) ||
+      !ts.isIdentifier(declared.typeName)
+    ) {
       return;
     }
     const argument = ELEMENT_ARGUMENT.get(declared.typeName.text);
@@ -124,7 +137,10 @@ const literalsOf = (declared: ts.TypeNode, into: Set<string>): void => {
   }
 };
 
-const discriminatorsOfObject = (declared: ts.TypeLiteralNode, into: Set<string>): void => {
+const discriminatorsOfObject = (
+  declared: ts.TypeLiteralNode,
+  into: Set<string>,
+): void => {
   for (const member of declared.members) {
     if (
       ts.isPropertySignature(member) &&
@@ -142,7 +158,12 @@ const discriminatorsOfObject = (declared: ts.TypeLiteralNode, into: Set<string>)
  * expanded through their first argument: a narrowing can only remove members,
  * and every member it could remove is reachable from the union it narrows.
  */
-const NARROWING_HELPERS = new Set(["Exclude", "Extract", "NonNullable", "Readonly"]);
+const NARROWING_HELPERS = new Set([
+  "Exclude",
+  "Extract",
+  "NonNullable",
+  "Readonly",
+]);
 
 const expandInto = (
   declared: ts.TypeNode,
@@ -168,7 +189,10 @@ const expandInto = (
     discriminatorsOfObject(declared, into);
     return;
   }
-  if (!ts.isTypeReferenceNode(declared) || !ts.isIdentifier(declared.typeName)) {
+  if (
+    !ts.isTypeReferenceNode(declared) ||
+    !ts.isIdentifier(declared.typeName)
+  ) {
     return;
   }
   const { text } = declared.typeName;
@@ -198,7 +222,9 @@ const sorted = (values: Iterable<string>): string[] => [...values].sort();
 
 describe("the discriminators a path segment may name", () => {
   test("are exactly the ones the model declares for an element position", async () => {
-    expect(sorted(MODEL_TYPE_DISCRIMINATORS)).toEqual(sorted(await declaredModelDiscriminators()));
+    expect(sorted(MODEL_TYPE_DISCRIMINATORS)).toEqual(
+      sorted(await declaredModelDiscriminators()),
+    );
   });
 
   // The derivation is only worth trusting if it finds the model. An empty set

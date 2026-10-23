@@ -86,7 +86,9 @@ const DEFAULT_FONTS: FontOption[] = [
 /** Normalize a fontFamily CSS value to a display name */
 function toDisplayName(fontFamily: string, fonts: FontOption[]): string {
   const match = fonts.find(
-    (f) => f.fontFamily === fontFamily || f.name.toLowerCase() === fontFamily.toLowerCase(),
+    (f) =>
+      f.fontFamily === fontFamily ||
+      f.name.toLowerCase() === fontFamily.toLowerCase(),
   );
   if (match) {
     return match.name;

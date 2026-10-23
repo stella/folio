@@ -709,10 +709,15 @@ describe("selection rect geometry", () => {
     const { layout, block, measure } = clippedTableFixture();
     const page = layout.pages[0]!;
 
-    const hit = hitTestTableCell({ pageIndex: 0, page, pageY: 10 }, [block], [measure], {
-      x: 5,
-      y: 10,
-    });
+    const hit = hitTestTableCell(
+      { pageIndex: 0, page, pageY: 10 },
+      [block],
+      [measure],
+      {
+        x: 5,
+        y: 10,
+      },
+    );
 
     expect(hit?.cellLocalY).toBe(50);
   });

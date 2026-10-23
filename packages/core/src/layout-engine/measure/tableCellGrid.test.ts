@@ -17,7 +17,11 @@ const cell = (id: number, options: Partial<TableCell> = {}): TableCell => ({
   ...options,
 });
 
-const row = (id: number, cells: TableCell[], gridBefore?: number): TableRow => ({
+const row = (
+  id: number,
+  cells: TableCell[],
+  gridBefore?: number,
+): TableRow => ({
   id,
   cells,
   ...(gridBefore === undefined ? {} : { gridBefore }),
@@ -51,7 +55,9 @@ describe("table cell grid", () => {
   });
 
   test("assigns a shared horizontal edge to the cell above", () => {
-    const above = cell(1, { borders: { bottom: { width: 2, style: "solid" } } });
+    const above = cell(1, {
+      borders: { bottom: { width: 2, style: "solid" } },
+    });
     const below = cell(2, {
       borders: {
         top: { width: 3, style: "solid" },
@@ -77,7 +83,9 @@ describe("table cell grid", () => {
   });
 
   test("lets a styled zero-width hairline own a shared edge without adding height", () => {
-    const above = cell(1, { borders: { bottom: { width: 0, style: "solid" } } });
+    const above = cell(1, {
+      borders: { bottom: { width: 0, style: "solid" } },
+    });
     const below = cell(2, {
       borders: {
         top: { width: 3, style: "solid" },
@@ -125,7 +133,10 @@ describe("w:tblCellSpacing cell boxes", () => {
 
   test("keeps a row that stops short of the grid one unit from the next slot", () => {
     const leading = cell(1);
-    const grid = buildTableCellGrid([{ id: 10, cells: [leading], gridAfter: 1 }], 2);
+    const grid = buildTableCellGrid(
+      [{ id: 10, cells: [leading], gridAfter: 1 }],
+      2,
+    );
     const placements = buildTableCellPlacements({
       grid,
       columnWidths: [100, 100],
@@ -141,19 +152,38 @@ describe("w:tblCellSpacing cell boxes", () => {
     const grid = buildTableCellGrid([row(10, [only])], 1);
 
     expect(
-      buildTableCellPlacements({ grid, columnWidths: [90], bidi: false, cellSpacing: 0 }).get(only),
+      buildTableCellPlacements({
+        grid,
+        columnWidths: [90],
+        bidi: false,
+        cellSpacing: 0,
+      }).get(only),
     ).toMatchObject({ left: 0, width: 90 });
-    expect(getTableCellSpacingInsetsY(undefined, 0, 1, 1)).toEqual({ top: 0, bottom: 0 });
+    expect(getTableCellSpacingInsetsY(undefined, 0, 1, 1)).toEqual({
+      top: 0,
+      bottom: 0,
+    });
   });
 
   test("adds the table-edge unit above the first row and below the last", () => {
-    expect(getTableCellSpacingInsetsY(2, 0, 1, 3)).toEqual({ top: 4, bottom: 2 });
-    expect(getTableCellSpacingInsetsY(2, 1, 1, 3)).toEqual({ top: 2, bottom: 2 });
-    expect(getTableCellSpacingInsetsY(2, 1, 2, 3)).toEqual({ top: 2, bottom: 4 });
+    expect(getTableCellSpacingInsetsY(2, 0, 1, 3)).toEqual({
+      top: 4,
+      bottom: 2,
+    });
+    expect(getTableCellSpacingInsetsY(2, 1, 1, 3)).toEqual({
+      top: 2,
+      bottom: 2,
+    });
+    expect(getTableCellSpacingInsetsY(2, 1, 2, 3)).toEqual({
+      top: 2,
+      bottom: 4,
+    });
   });
 
   test("counts both horizontal borders of a spaced cell", () => {
-    const above = cell(1, { borders: { bottom: { width: 2, style: "solid" } } });
+    const above = cell(1, {
+      borders: { bottom: { width: 2, style: "solid" } },
+    });
     const below = cell(2, {
       borders: {
         top: { width: 3, style: "solid" },

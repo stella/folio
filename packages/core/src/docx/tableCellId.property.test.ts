@@ -1,27 +1,39 @@
 /** A table cell's authored identifier survives every editor projection. */
 
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Table } from "../types/document";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
-import { serializeTable, serializeTableCell } from "./serializer/tableSerializer";
+import {
+  serializeTable,
+  serializeTableCell,
+} from "./serializer/tableSerializer";
 import { parseTable } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const STRICT_WORD_NAMESPACE = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+const WORD_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const STRICT_WORD_NAMESPACE =
+  "http://purl.oclc.org/ooxml/wordprocessingml/main";
 
 const cellId = fc
-  .array(fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"), {
-    minLength: 1,
-    maxLength: 32,
-  })
+  .array(
+    fc.constantFrom(
+      ..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-",
+    ),
+    {
+      minLength: 1,
+      maxLength: 32,
+    },
+  )
   .map((characters) => characters.join(""));
 const namespacePrefix = fc.constantFrom("w", "word");
 const namespaceProfile = fc.constantFrom(WORD_NAMESPACE, STRICT_WORD_NAMESPACE);
@@ -52,22 +64,29 @@ describe("table-cell identifiers", () => {
     "every authored identifier survives the editor projection and save",
     () => {
       fc.assert(
-        fc.property(cellId, namespacePrefix, namespaceProfile, (id, prefix, namespace) => {
-          const source = documentHolding(tableHolding(id, prefix, namespace));
-          const prose = toProseDoc(source);
-          const cloned = prose.type.schema.nodeFromJSON(prose.toJSON());
-          const projectedDocument = fromProseDoc(cloned, source, {
-            reuse: "none",
-            stylesheetSource: { type: "package" },
-          });
-          const projected = projectedDocument.package.document.content.at(0);
-          if (projected?.type !== "table") {
-            panic("The editor projection lost the table.");
-          }
+        fc.property(
+          cellId,
+          namespacePrefix,
+          namespaceProfile,
+          (id, prefix, namespace) => {
+            const source = documentHolding(tableHolding(id, prefix, namespace));
+            const prose = toProseDoc(source);
+            const cloned = prose.type.schema.nodeFromJSON(prose.toJSON());
+            const projectedDocument = fromProseDoc(cloned, source, {
+              reuse: "none",
+              stylesheetSource: { type: "package" },
+            });
+            const projected = projectedDocument.package.document.content.at(0);
+            if (projected?.type !== "table") {
+              panic("The editor projection lost the table.");
+            }
 
-          expect(projected.rows.at(0)?.cells.at(0)?.id).toBe(id);
-          expect(serializeTable(projected, serializeParagraph)).toContain(`<w:tc w:id="${id}">`);
-        }),
+            expect(projected.rows.at(0)?.cells.at(0)?.id).toBe(id);
+            expect(serializeTable(projected, serializeParagraph)).toContain(
+              `<w:tc w:id="${id}">`,
+            );
+          },
+        ),
         propertyConfig({ numRuns: 100 }),
       );
     },

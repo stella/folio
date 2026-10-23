@@ -8,8 +8,8 @@
 import {
   type Action,
   type FlowFile,
-  type FlowStep,
   flowId,
+  type FlowStep,
   LEGACY_ACTIONS,
   rebindStepOperations,
   TARGETED_ACTIONS,
@@ -33,7 +33,8 @@ export const OPERATIONS_CHANGING_MUTATIONS = [
   "splice",
 ] as const satisfies readonly Mutation[];
 
-const newSeed = (random: Random): number => Math.floor(random.next() * 2 ** 32) >>> 0;
+const newSeed = (random: Random): number =>
+  Math.floor(random.next() * 2 ** 32) >>> 0;
 
 const actionsOf = (flow: FlowFile): readonly Action[] =>
   flow.generation === "legacy" ? LEGACY_ACTIONS : TARGETED_ACTIONS;
@@ -51,7 +52,10 @@ const mutateOnce = (
   switch (mutation) {
     case "insert": {
       const position = random.int(steps.length + 1);
-      const inserted: FlowStep = { action: random.pick(actionsOf(flow)), seed: newSeed(random) };
+      const inserted: FlowStep = {
+        action: random.pick(actionsOf(flow)),
+        seed: newSeed(random),
+      };
       return [...steps.slice(0, position), inserted, ...steps.slice(position)];
     }
     case "delete":
@@ -67,7 +71,10 @@ const mutateOnce = (
     }
     case "reseed": {
       const reseeded = [...steps];
-      reseeded[at] = rebindStepOperations({ ...step, seed: newSeed(random) }, undefined);
+      reseeded[at] = rebindStepOperations(
+        { ...step, seed: newSeed(random) },
+        undefined,
+      );
       return reseeded;
     }
     case "unpin": {
@@ -77,7 +84,10 @@ const mutateOnce = (
       if (pinned.length === 0) return null;
       const index = random.pick(pinned);
       const unpinned = [...steps];
-      unpinned[index] = rebindStepOperations(steps[index] as FlowStep, undefined);
+      unpinned[index] = rebindStepOperations(
+        steps[index] as FlowStep,
+        undefined,
+      );
       return unpinned;
     }
     case "dropOperation": {
@@ -120,12 +130,19 @@ const mutateOnce = (
 export const mutateFlow = (
   flow: FlowFile,
   random: Random,
-  { donors = [], maxSteps = 24 }: { donors?: readonly FlowFile[]; maxSteps?: number } = {},
+  {
+    donors = [],
+    maxSteps = 24,
+  }: { donors?: readonly FlowFile[]; maxSteps?: number } = {},
 ): { flow: FlowFile; mutations: Mutation[] } => {
   let steps = [...flow.steps];
   const applied: Mutation[] = [];
   const count = 1 + random.int(3);
-  for (let attempt = 0; applied.length < count && attempt < count * 4; attempt += 1) {
+  for (
+    let attempt = 0;
+    applied.length < count && attempt < count * 4;
+    attempt += 1
+  ) {
     const mutation = random.pick(MUTATIONS);
     const next = mutateOnce(flow, steps, mutation, random, donors);
     if (next === null || next.length === 0) continue;
@@ -133,9 +150,10 @@ export const mutateFlow = (
     applied.push(mutation);
   }
   if (applied.length === 0) {
-    steps = [...steps, { action: random.pick(actionsOf(flow)), seed: newSeed(random) }].slice(
-      -maxSteps,
-    );
+    steps = [
+      ...steps,
+      { action: random.pick(actionsOf(flow)), seed: newSeed(random) },
+    ].slice(-maxSteps);
     applied.push("insert");
   }
   return {

@@ -3,7 +3,9 @@ type DocumentGrid = {
   linePitch?: number;
 };
 
-export function resolveDocumentGridLinePitch(grid: DocumentGrid | undefined): number | undefined {
+export function resolveDocumentGridLinePitch(
+  grid: DocumentGrid | undefined,
+): number | undefined {
   if (grid?.type === undefined || grid.type === "default") {
     return undefined;
   }

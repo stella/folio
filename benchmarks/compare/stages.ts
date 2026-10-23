@@ -18,7 +18,12 @@ import type {
   CompareUnsupportedPart,
 } from "@stll/folio-core/compare/types";
 
-export const COMPARE_STAGES = Object.freeze(["parse", "align", "apply", "serialize"] as const);
+export const COMPARE_STAGES = Object.freeze([
+  "parse",
+  "align",
+  "apply",
+  "serialize",
+] as const);
 
 export type CompareStage = (typeof COMPARE_STAGES)[number];
 
@@ -89,7 +94,11 @@ export const runStagedCompare = async (
   const serialized = await serializeComparison(parsed.value, applied.value);
   const serialize = performance.now() - serializeStart;
   if (serialized.isErr()) {
-    return { status: "failed", stage: "serialize", error: describe(serialized.error) };
+    return {
+      status: "failed",
+      stage: "serialize",
+      error: describe(serialized.error),
+    };
   }
 
   return {

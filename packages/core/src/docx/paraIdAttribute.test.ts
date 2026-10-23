@@ -22,7 +22,10 @@ const FOREIGN_NS = "https://vendor.example/ns";
 
 const PARA_ID = "1A2B3C4D";
 
-const paraIdOf = (declaration: string, attribute: string): string | undefined => {
+const paraIdOf = (
+  declaration: string,
+  attribute: string,
+): string | undefined => {
   const root = parseXmlDocument(
     `<w:p xmlns:w="${W_NS}" ${declaration} ${attribute}><w:r><w:t>body</w:t></w:r></w:p>`,
   ) as XmlElement | null;
@@ -39,12 +42,16 @@ describe("a paragraph's paraId", () => {
     ["Word 2018 (w16cex)", W16CEX_NS],
   ] as const) {
     test(`is read under any prefix bound to ${generation}`, () => {
-      expect(paraIdOf(`xmlns:ns0="${uri}"`, `ns0:paraId="${PARA_ID}"`)).toBe(PARA_ID);
+      expect(paraIdOf(`xmlns:ns0="${uri}"`, `ns0:paraId="${PARA_ID}"`)).toBe(
+        PARA_ID,
+      );
     });
   }
 
   test("is not read from a foreign namespace", () => {
-    expect(paraIdOf(`xmlns:vendor="${FOREIGN_NS}"`, `vendor:paraId="${PARA_ID}"`)).toBeUndefined();
+    expect(
+      paraIdOf(`xmlns:vendor="${FOREIGN_NS}"`, `vendor:paraId="${PARA_ID}"`),
+    ).toBeUndefined();
   });
 
   test("is still read from an undeclared conventional prefix", () => {
@@ -61,7 +68,8 @@ describe("the commentsExtensible join key", () => {
 </w:comments>`;
 
   const dateFor = (extensibleXml: string): string | undefined =>
-    parseComments(commentsXml, null, null, {}, new Map(), extensibleXml).at(0)?.date;
+    parseComments(commentsXml, null, null, {}, new Map(), extensibleXml).at(0)
+      ?.date;
 
   test("is read under any prefix bound to the 2018 namespace", () => {
     expect(
@@ -88,7 +96,10 @@ describe("the commentsExtended thread link", () => {
     const info = parseCommentsExtended(`<ns0:commentsEx xmlns:ns0="${W15_NS}">
   <ns0:commentEx ns0:paraId="${PARA_ID}" ns0:paraIdParent="${PARENT_PARA_ID}" ns0:done="1"/>
 </ns0:commentsEx>`);
-    expect(info.get(PARA_ID)).toEqual({ parentParaId: PARENT_PARA_ID, done: true });
+    expect(info.get(PARA_ID)).toEqual({
+      parentParaId: PARENT_PARA_ID,
+      done: true,
+    });
   });
 
   test("is not read from a foreign namespace", () => {

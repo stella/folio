@@ -52,12 +52,17 @@ const nearestHeadingStyleId = (
   return undefined;
 };
 
-const retargetedStyleId = (node: PMNode, view: EditorView): string | undefined => {
+const retargetedStyleId = (
+  node: PMNode,
+  view: EditorView,
+): string | undefined => {
   const styleId: unknown = node.attrs["styleId"];
   if (typeof styleId !== "string") {
     return undefined;
   }
-  const headingLevel = headingLevelOf(readOutlineLevelAttr(node.attrs["outlineLevel"]));
+  const headingLevel = headingLevelOf(
+    readOutlineLevelAttr(node.attrs["outlineLevel"]),
+  );
   if (headingLevel === undefined) {
     return undefined;
   }
@@ -65,7 +70,10 @@ const retargetedStyleId = (node: PMNode, view: EditorView): string | undefined =
   if (resolver === null || resolver.getStyle(styleId) !== undefined) {
     return undefined;
   }
-  const target = nearestHeadingStyleId(headingLevel, getDocumentBuiltInStyles(view.state));
+  const target = nearestHeadingStyleId(
+    headingLevel,
+    getDocumentBuiltInStyles(view.state),
+  );
   return target === styleId ? undefined : target;
 };
 
@@ -75,7 +83,10 @@ const retargetFragment = (fragment: Fragment, view: EditorView): Fragment => {
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Fragment.forEach
   fragment.forEach((node) => {
     const content = retargetFragment(node.content, view);
-    const styleId = node.type.name === "paragraph" ? retargetedStyleId(node, view) : undefined;
+    const styleId =
+      node.type.name === "paragraph"
+        ? retargetedStyleId(node, view)
+        : undefined;
     if (styleId === undefined && content === node.content) {
       children.push(node);
       return;
@@ -91,7 +102,12 @@ const retargetFragment = (fragment: Fragment, view: EditorView): Fragment => {
 };
 
 /** A `transformPasted` hook; returns the slice unchanged when nothing matches. */
-export const retargetPastedHeadingStyles = (slice: Slice, view: EditorView): Slice => {
+export const retargetPastedHeadingStyles = (
+  slice: Slice,
+  view: EditorView,
+): Slice => {
   const content = retargetFragment(slice.content, view);
-  return content === slice.content ? slice : new Slice(content, slice.openStart, slice.openEnd);
+  return content === slice.content
+    ? slice
+    : new Slice(content, slice.openStart, slice.openEnd);
 };

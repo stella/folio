@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
+import {
+  EditorState,
+  NodeSelection,
+  type Transaction,
+} from "prosemirror-state";
+import { Step } from "prosemirror-transform";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
-import type { Node as PMNode } from "prosemirror-model";
-import { EditorState, NodeSelection, type Transaction } from "prosemirror-state";
-import { Step } from "prosemirror-transform";
 
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
+import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
 import type {
   BlockContent,
   Document,
@@ -20,27 +25,28 @@ import type {
 } from "../../types/document";
 import { pixelsToEmu } from "../../utils/units";
 import { expectHardBreakAttrs, expectParagraphAttrs } from "../attrs";
-import { directParagraphSpacing } from "../paragraphSpacing";
-import { schema } from "../schema";
 import {
-  acceptChange,
   acceptAllChanges,
+  acceptChange,
   rejectAIEditRevision,
-  rejectChange,
   rejectAllChanges,
+  rejectChange,
   resolveAllChangesInHeadlessState,
 } from "../commands/comments";
 import { toggleBold } from "../commands/formatting";
-import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
+import { directParagraphSpacing } from "../paragraphSpacing";
+import { schema } from "../schema";
+import { stableProjectionIdentity } from "./__tests__/stableProjectionIdentity";
 import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
-import { stableProjectionIdentity } from "./__tests__/stableProjectionIdentity";
 
 describe("fromProseDoc", () => {
   test.each([
     {
       name: "paragraph style",
-      node: schema.node("paragraph", { styleId: "BodyStyle" }, [schema.text("Text")]),
+      node: schema.node("paragraph", { styleId: "BodyStyle" }, [
+        schema.text("Text"),
+      ]),
     },
     {
       name: "paragraph-mark character style",
@@ -56,14 +62,18 @@ describe("fromProseDoc", () => {
       name: "table style",
       node: schema.node("table", { styleId: "TableStyle" }, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Text")])]),
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.text("Text")]),
+          ]),
         ]),
       ]),
     },
   ])("refuses a missing stylesheet for $name without mutation", ({ node }) => {
     const pmDoc = schema.node("doc", null, [node]);
     const before = pmDoc.toJSON();
-    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
+    expect(() =>
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    ).toThrow(
       "Saving style-dependent content requires its authoritative stylesheet.",
     );
     expect(pmDoc.toJSON()).toEqual(before);
@@ -142,7 +152,10 @@ describe("fromProseDoc", () => {
                           content: [
                             {
                               type: "run",
-                              formatting: { bold: true, color: { rgb: "FFFFFF" } },
+                              formatting: {
+                                bold: true,
+                                color: { rgb: "FFFFFF" },
+                              },
                               content: [{ type: "text", text: "Header" }],
                             },
                           ],
@@ -173,9 +186,15 @@ describe("fromProseDoc", () => {
     const deleted = EditorState.create({ doc: prose }).tr.addMark(
       textFrom,
       textFrom + "Header".length,
-      schema.mark("deletion", { revisionId: 1, author: "Folio", date: "2026-09-13" }),
+      schema.mark("deletion", {
+        revisionId: 1,
+        author: "Folio",
+        date: "2026-09-13",
+      }),
     ).doc;
-    const restored = fromProseDoc(deleted, document, { stylesheetSource: { type: "package" } });
+    const restored = fromProseDoc(deleted, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = restored.package.document.content.at(0);
     if (table?.type !== "table") {
       throw new Error("Expected table");
@@ -201,7 +220,13 @@ describe("fromProseDoc", () => {
       type: "paragraph",
       formatting: { spaceAfter: 160 },
       content: [
-        { type: "bookmarkStart", id: 17, name: "clause", colFirst: 2, colLast: 4 },
+        {
+          type: "bookmarkStart",
+          id: 17,
+          name: "clause",
+          colFirst: 2,
+          colLast: 4,
+        },
         { type: "run", content: [{ type: "text", text: "Clause" }] },
         { type: "bookmarkEnd", id: 17 },
       ],
@@ -212,7 +237,9 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const cloned = pmDoc.type.schema.nodeFromJSON(pmDoc.toJSON());
-    const roundTripped = fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(cloned, undefined, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(roundTripped.package.document.content).toEqual([paragraph]);
   });
@@ -221,7 +248,13 @@ describe("fromProseDoc", () => {
     {
       name: "starts outside and ends inside a hyperlink",
       content: [
-        { type: "bookmarkStart", id: 18, name: "crossing-link", colFirst: 1, colLast: 3 },
+        {
+          type: "bookmarkStart",
+          id: 18,
+          name: "crossing-link",
+          colFirst: 1,
+          colLast: 3,
+        },
         {
           type: "hyperlink",
           href: "https://example.com/terms",
@@ -261,8 +294,12 @@ describe("fromProseDoc", () => {
     };
 
     const pmDoc = toProseDoc(document);
-    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
-    const roundTripped = fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } });
+    const cloned = pmDoc.type.schema.nodeFromJSON(
+      JSON.parse(JSON.stringify(pmDoc.toJSON())),
+    );
+    const roundTripped = fromProseDoc(cloned, undefined, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(roundTripped.package.document.content).toEqual([paragraph]);
   });
@@ -282,7 +319,10 @@ describe("fromProseDoc", () => {
               href: "https://example.com/field",
               rId: "rId20",
               children: [
-                { type: "run", content: [{ type: "text", text: "Field value" }] },
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Field value" }],
+                },
                 { type: "bookmarkEnd", id: 20 },
               ],
             },
@@ -304,7 +344,10 @@ describe("fromProseDoc", () => {
               tooltip: "Field target",
               children: [
                 { type: "bookmarkStart", id: 21, name: "field-link" },
-                { type: "run", content: [{ type: "text", text: "Field value" }] },
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Field value" }],
+                },
                 { type: "bookmarkEnd", id: 21 },
               ],
             },
@@ -330,8 +373,12 @@ describe("fromProseDoc", () => {
     expect(field?.type.name).toBe("structuredField");
     expect(field?.childCount).toBeGreaterThan(0);
     expect(field?.attrs["_docxSimpleFieldContent"]).toBeUndefined();
-    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
-    const roundTripped = fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } });
+    const cloned = pmDoc.type.schema.nodeFromJSON(
+      JSON.parse(JSON.stringify(pmDoc.toJSON())),
+    );
+    const roundTripped = fromProseDoc(cloned, undefined, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(roundTripped.package.document.content).toEqual([paragraph]);
   });
@@ -346,7 +393,9 @@ describe("fromProseDoc", () => {
           instruction: " PAGE ",
           fieldType: "PAGE",
           fieldCode: [],
-          fieldResult: [{ type: "run", content: [{ type: "text", text: "7" }] }],
+          fieldResult: [
+            { type: "run", content: [{ type: "text", text: "7" }] },
+          ],
         },
       ],
     } as const satisfies Paragraph;
@@ -358,11 +407,13 @@ describe("fromProseDoc", () => {
     const field = pmDoc.firstChild?.firstChild;
     expect(field?.type.name).toBe("field");
     expect(field?.childCount).toBe(0);
-    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+    const cloned = pmDoc.type.schema.nodeFromJSON(
+      JSON.parse(JSON.stringify(pmDoc.toJSON())),
+    );
 
     expect(
-      fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } }).package.document
-        .content,
+      fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } })
+        .package.document.content,
     ).toEqual([paragraph]);
   });
 
@@ -373,39 +424,70 @@ describe("fromProseDoc", () => {
       label: "an empty result run",
     },
     {
-      content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "" }] }],
+      content: [
+        { type: "run", formatting: {}, content: [{ type: "text", text: "" }] },
+      ],
       label: "an explicit empty result property set",
     },
     {
-      content: [{ type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] }],
+      content: [
+        {
+          type: "run",
+          formatting: { bold: true },
+          content: [{ type: "text", text: "" }],
+        },
+      ],
       label: "a formatted empty result run",
     },
     {
       content: [
-        { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
-        { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+        {
+          type: "run",
+          formatting: { bold: true },
+          content: [{ type: "text", text: "" }],
+        },
+        {
+          type: "run",
+          formatting: { italic: true },
+          content: [{ type: "text", text: "" }],
+        },
       ],
       label: "differently formatted empty result runs",
     },
     {
       content: [
         { type: "run", content: [{ type: "text", text: "" }] },
-        { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+        {
+          type: "run",
+          formatting: { italic: true },
+          content: [{ type: "text", text: "" }],
+        },
       ],
       label: "an unformatted run before a formatted one",
     },
   ] as const)("preserves a simple field with $label", ({ content }) => {
     const paragraph = {
       type: "paragraph",
-      content: [{ type: "simpleField", instruction: " PAGE ", fieldType: "PAGE", content }],
+      content: [
+        {
+          type: "simpleField",
+          instruction: " PAGE ",
+          fieldType: "PAGE",
+          content,
+        },
+      ],
     } as const satisfies Paragraph;
-    const document: Document = { package: { document: { content: [paragraph] } } };
+    const document: Document = {
+      package: { document: { content: [paragraph] } },
+    };
     const pmDoc = toProseDoc(document);
-    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+    const cloned = pmDoc.type.schema.nodeFromJSON(
+      JSON.parse(JSON.stringify(pmDoc.toJSON())),
+    );
 
     expect(
-      fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } }).package.document
-        .content,
+      fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } })
+        .package.document.content,
     ).toEqual([paragraph]);
   });
 
@@ -413,15 +495,27 @@ describe("fromProseDoc", () => {
     { fieldResult: [], label: "no result run" },
     {
       fieldResult: [
-        { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
-        { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+        {
+          type: "run",
+          formatting: { bold: true },
+          content: [{ type: "text", text: "" }],
+        },
+        {
+          type: "run",
+          formatting: { italic: true },
+          content: [{ type: "text", text: "" }],
+        },
       ],
       label: "differently formatted empty result runs",
     },
     {
       fieldResult: [
         { type: "run", content: [{ type: "text", text: "" }] },
-        { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+        {
+          type: "run",
+          formatting: { italic: true },
+          content: [{ type: "text", text: "" }],
+        },
       ],
       label: "an unformatted run before a formatted one",
     },
@@ -438,13 +532,17 @@ describe("fromProseDoc", () => {
         },
       ],
     } as const satisfies Paragraph;
-    const document: Document = { package: { document: { content: [paragraph] } } };
+    const document: Document = {
+      package: { document: { content: [paragraph] } },
+    };
     const pmDoc = toProseDoc(document);
-    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+    const cloned = pmDoc.type.schema.nodeFromJSON(
+      JSON.parse(JSON.stringify(pmDoc.toJSON())),
+    );
 
     expect(
-      fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } }).package.document
-        .content,
+      fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } })
+        .package.document.content,
     ).toEqual([paragraph]);
   });
 
@@ -478,25 +576,48 @@ describe("fromProseDoc", () => {
     if (!field) throw new Error("Expected field");
     const edited = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.node("field", { ...field.attrs, displayText: "42" }, null, field.marks),
+        schema.node(
+          "field",
+          { ...field.attrs, displayText: "42" },
+          null,
+          field.marks,
+        ),
       ]),
     ]);
     const paragraph = fromProseDoc(edited, undefined, {
       stylesheetSource: { type: "package" },
     }).package.document.content.at(0);
-    const result = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
-    if (result?.type !== "simpleField") throw new Error("Expected simple field");
+    const result =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    if (result?.type !== "simpleField")
+      throw new Error("Expected simple field");
 
     expect(result.content).toEqual([
-      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "42" }] },
+      {
+        type: "run",
+        formatting: { bold: true },
+        content: [{ type: "text", text: "42" }],
+      },
     ]);
   });
 
   test.each([
     { fieldKind: "simple", mode: "accept", expectedFormatting: { bold: true } },
-    { fieldKind: "simple", mode: "reject", expectedFormatting: { italic: true } },
-    { fieldKind: "complex", mode: "accept", expectedFormatting: { bold: true } },
-    { fieldKind: "complex", mode: "reject", expectedFormatting: { italic: true } },
+    {
+      fieldKind: "simple",
+      mode: "reject",
+      expectedFormatting: { italic: true },
+    },
+    {
+      fieldKind: "complex",
+      mode: "accept",
+      expectedFormatting: { bold: true },
+    },
+    {
+      fieldKind: "complex",
+      mode: "reject",
+      expectedFormatting: { italic: true },
+    },
   ] as const)(
     "$mode of an empty $fieldKind field's run property change updates its retained result",
     ({ fieldKind, mode, expectedFormatting }) => {
@@ -535,13 +656,17 @@ describe("fromProseDoc", () => {
             }
       ) satisfies ParagraphContent;
       const source: Document = {
-        package: { document: { content: [{ type: "paragraph", content: [field] }] } },
+        package: {
+          document: { content: [{ type: "paragraph", content: [field] }] },
+        },
       };
       const doc = toProseDoc(source);
       const state = EditorState.create({ doc });
       let transaction: Transaction | undefined;
       const command =
-        mode === "accept" ? acceptChange(0, doc.content.size) : rejectChange(0, doc.content.size);
+        mode === "accept"
+          ? acceptChange(0, doc.content.size)
+          : rejectChange(0, doc.content.size);
       expect(
         command(state, (dispatched) => {
           transaction = dispatched;
@@ -551,11 +676,18 @@ describe("fromProseDoc", () => {
       const paragraph = fromProseDoc(transaction.doc, undefined, {
         stylesheetSource: { type: "package" },
       }).package.document.content.at(0);
-      const resolved = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
-      if (resolved?.type !== "simpleField" && resolved?.type !== "complexField") {
+      const resolved =
+        paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+      if (
+        resolved?.type !== "simpleField" &&
+        resolved?.type !== "complexField"
+      ) {
         throw new Error("Expected a field");
       }
-      const result = resolved.type === "simpleField" ? resolved.content : resolved.fieldResult;
+      const result =
+        resolved.type === "simpleField"
+          ? resolved.content
+          : resolved.fieldResult;
 
       expect(result.at(0)).toEqual({
         type: "run",
@@ -585,7 +717,11 @@ describe("fromProseDoc", () => {
                       propertyChanges: [
                         {
                           type: "runPropertyChange",
-                          info: { id: 41, author: "Reviewer", date: "2026-09-26" },
+                          info: {
+                            id: 41,
+                            author: "Reviewer",
+                            date: "2026-09-26",
+                          },
                           previousFormatting: { italic: true },
                           currentFormatting: { bold: true },
                         },
@@ -598,7 +734,11 @@ describe("fromProseDoc", () => {
                       propertyChanges: [
                         {
                           type: "runPropertyChange",
-                          info: { id: 42, author: "Reviewer", date: "2026-09-26" },
+                          info: {
+                            id: 42,
+                            author: "Reviewer",
+                            date: "2026-09-26",
+                          },
                           previousFormatting: { smallCaps: true },
                           currentFormatting: { underline: { style: "single" } },
                         },
@@ -631,8 +771,11 @@ describe("fromProseDoc", () => {
       stylesheetSource: { type: "package" },
     }).package.document.content.at(0);
     const intermediateField =
-      intermediateParagraph?.type === "paragraph" ? intermediateParagraph.content.at(0) : undefined;
-    if (intermediateField?.type !== "simpleField") throw new Error("Expected simple field");
+      intermediateParagraph?.type === "paragraph"
+        ? intermediateParagraph.content.at(0)
+        : undefined;
+    if (intermediateField?.type !== "simpleField")
+      throw new Error("Expected simple field");
     expect(intermediateField.content.at(0)).toEqual({
       type: "run",
       formatting: { italic: true },
@@ -647,11 +790,22 @@ describe("fromProseDoc", () => {
       stylesheetSource: { type: "package" },
     }).package.document.content.at(0);
     const resolvedField =
-      resolvedParagraph?.type === "paragraph" ? resolvedParagraph.content.at(0) : undefined;
-    if (resolvedField?.type !== "simpleField") throw new Error("Expected simple field");
+      resolvedParagraph?.type === "paragraph"
+        ? resolvedParagraph.content.at(0)
+        : undefined;
+    if (resolvedField?.type !== "simpleField")
+      throw new Error("Expected simple field");
     expect(resolvedField.content).toEqual([
-      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
-      { type: "run", formatting: { smallCaps: true }, content: [{ type: "text", text: "" }] },
+      {
+        type: "run",
+        formatting: { italic: true },
+        content: [{ type: "text", text: "" }],
+      },
+      {
+        type: "run",
+        formatting: { smallCaps: true },
+        content: [{ type: "text", text: "" }],
+      },
     ]);
     expect(rejectAIEditRevision(42)(state)).toBe(false);
   });
@@ -674,7 +828,11 @@ describe("fromProseDoc", () => {
                   instruction: " PAGE ",
                   fieldType: "PAGE",
                   content: [
-                    { type: "run", formatting: {}, content: [{ type: "text", text: "" }] },
+                    {
+                      type: "run",
+                      formatting: {},
+                      content: [{ type: "text", text: "" }],
+                    },
                     untouched,
                   ],
                 },
@@ -685,7 +843,10 @@ describe("fromProseDoc", () => {
       },
     };
     const doc = toProseDoc(source);
-    const state = EditorState.create({ doc, selection: NodeSelection.create(doc, 1) });
+    const state = EditorState.create({
+      doc,
+      selection: NodeSelection.create(doc, 1),
+    });
     let transaction: Transaction | undefined;
     expect(
       toggleBold(state, (dispatched) => {
@@ -696,7 +857,8 @@ describe("fromProseDoc", () => {
     const paragraph = fromProseDoc(transaction.doc, undefined, {
       stylesheetSource: { type: "package" },
     }).package.document.content.at(0);
-    const field = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const field =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     if (field?.type !== "simpleField") throw new Error("Expected simple field");
 
     expect(field.content.at(0)).toMatchObject({ formatting: { bold: true } });
@@ -756,14 +918,19 @@ describe("fromProseDoc", () => {
         stylesheetSource: { type: "package" },
       }).package.document.content.at(0);
       const untouchedField =
-        untouchedParagraph?.type === "paragraph" ? untouchedParagraph.content.at(0) : undefined;
-      if (untouchedField?.type !== "simpleField") throw new Error("Expected simple field");
+        untouchedParagraph?.type === "paragraph"
+          ? untouchedParagraph.content.at(0)
+          : undefined;
+      if (untouchedField?.type !== "simpleField")
+        throw new Error("Expected simple field");
       expect(untouchedField.content).toEqual([first, second]);
 
       const state = EditorState.create({ doc });
       let transaction: Transaction | undefined;
       const command =
-        mode === "accept" ? acceptChange(0, doc.content.size) : rejectChange(0, doc.content.size);
+        mode === "accept"
+          ? acceptChange(0, doc.content.size)
+          : rejectChange(0, doc.content.size);
       expect(
         command(state, (dispatched) => {
           transaction = dispatched;
@@ -773,8 +940,10 @@ describe("fromProseDoc", () => {
       const paragraph = fromProseDoc(transaction.doc, undefined, {
         stylesheetSource: { type: "package" },
       }).package.document.content.at(0);
-      const field = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
-      if (field?.type !== "simpleField") throw new Error("Expected simple field");
+      const field =
+        paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+      if (field?.type !== "simpleField")
+        throw new Error("Expected simple field");
 
       expect(field.content).toEqual([
         {
@@ -784,25 +953,35 @@ describe("fromProseDoc", () => {
         },
         {
           type: "run",
-          formatting: mode === "accept" ? { underline: { style: "single" } } : { smallCaps: true },
+          formatting:
+            mode === "accept"
+              ? { underline: { style: "single" } }
+              : { smallCaps: true },
           content: [{ type: "text", text: "" }],
         },
       ]);
 
       const headless = resolveAllChangesInHeadlessState(
-        EditorState.create({ doc, plugins: pluginsForHeadlessRevisionResolution([]) }),
+        EditorState.create({
+          doc,
+          plugins: pluginsForHeadlessRevisionResolution([]),
+        }),
         mode,
       );
       const headlessParagraph = fromProseDoc(headless.doc, undefined, {
         stylesheetSource: { type: "package" },
       }).package.document.content.at(0);
       const headlessField =
-        headlessParagraph?.type === "paragraph" ? headlessParagraph.content.at(0) : undefined;
-      if (headlessField?.type !== "simpleField") throw new Error("Expected simple field");
+        headlessParagraph?.type === "paragraph"
+          ? headlessParagraph.content.at(0)
+          : undefined;
+      if (headlessField?.type !== "simpleField")
+        throw new Error("Expected simple field");
       expect(headlessField.content).toEqual(field.content);
 
       let bulk = state.tr;
-      const resolveAll = mode === "accept" ? acceptAllChanges() : rejectAllChanges();
+      const resolveAll =
+        mode === "accept" ? acceptAllChanges() : rejectAllChanges();
       expect(
         resolveAll(state, (dispatched) => {
           bulk = dispatched;
@@ -814,7 +993,9 @@ describe("fromProseDoc", () => {
       if (!step) throw new Error("Expected a bulk resolution step");
       const replay = Step.fromJSON(schema, step.toJSON()).apply(doc);
       expect(replay.doc?.eq(bulk.doc)).toBe(true);
-      const undo = Step.fromJSON(schema, step.invert(doc).toJSON()).apply(bulk.doc);
+      const undo = Step.fromJSON(schema, step.invert(doc).toJSON()).apply(
+        bulk.doc,
+      );
       expect(undo.doc?.eq(doc)).toBe(true);
     },
   );
@@ -844,7 +1025,11 @@ describe("fromProseDoc", () => {
                       propertyChanges: [
                         {
                           type: "runPropertyChange",
-                          info: { id: 42, author: "Reviewer", date: "2026-09-26" },
+                          info: {
+                            id: 42,
+                            author: "Reviewer",
+                            date: "2026-09-26",
+                          },
                           previousFormatting: { italic: true },
                           currentFormatting: { underline: { style: "single" } },
                         },
@@ -871,12 +1056,22 @@ describe("fromProseDoc", () => {
     const paragraph = fromProseDoc(transaction.doc, undefined, {
       stylesheetSource: { type: "package" },
     }).package.document.content.at(0);
-    const field = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
-    if (field?.type !== "complexField") throw new Error("Expected complex field");
+    const field =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    if (field?.type !== "complexField")
+      throw new Error("Expected complex field");
 
     expect(field.fieldResult).toEqual([
-      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
-      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+      {
+        type: "run",
+        formatting: { bold: true },
+        content: [{ type: "text", text: "" }],
+      },
+      {
+        type: "run",
+        formatting: { italic: true },
+        content: [{ type: "text", text: "" }],
+      },
     ]);
   });
 
@@ -893,14 +1088,16 @@ describe("fromProseDoc", () => {
         },
       ],
     } as const satisfies Paragraph;
-    const document: Document = { package: { document: { content: [paragraph] } } };
+    const document: Document = {
+      package: { document: { content: [paragraph] } },
+    };
 
     const pmDoc = toProseDoc(document);
     expect(pmDoc.firstChild?.firstChild?.attrs["displayText"]).toBe("");
 
     expect(
-      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }).package.document
-        .content,
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })
+        .package.document.content,
     ).toEqual([paragraph]);
   });
 
@@ -917,8 +1114,15 @@ describe("fromProseDoc", () => {
                   instruction: " REF target ",
                   fieldType: "REF",
                   content: [
-                    { type: "run", content: [{ type: "text", text: "Target" }] },
-                    { type: "hyperlink", href: "https://example.test", children: [] },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "Target" }],
+                    },
+                    {
+                      type: "hyperlink",
+                      href: "https://example.test",
+                      children: [],
+                    },
                   ],
                 },
               ],
@@ -957,9 +1161,9 @@ describe("fromProseDoc", () => {
 
     expect(paragraph?.childCount).toBe(1);
     expect(paragraph?.firstChild?.type.name).toBe("text");
-    expect(paragraph ? expectParagraphAttrs(paragraph).bookmarks : undefined).toEqual([
-      { id: 29, name: "reversed" },
-    ]);
+    expect(
+      paragraph ? expectParagraphAttrs(paragraph).bookmarks : undefined,
+    ).toEqual([{ id: 29, name: "reversed" }]);
   });
 
   test("round-trips a text-box anchor inside a structured field hyperlink", () => {
@@ -982,17 +1186,26 @@ describe("fromProseDoc", () => {
       },
       [
         schema.text("Box", [hyperlink]),
-        schema.node("textBoxAnchor", { anchorId: "field-box" }, null, [hyperlink, wrapper]),
+        schema.node("textBoxAnchor", { anchorId: "field-box" }, null, [
+          hyperlink,
+          wrapper,
+        ]),
       ],
     );
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [structuredField]),
-      schema.node("textBox", { _docxPlacement: "inlineWithPrevious", _docxAnchorId: "field-box" }, [
-        schema.node("paragraph", null, [schema.text("Inside")]),
-      ]),
+      schema.node(
+        "textBox",
+        { _docxPlacement: "inlineWithPrevious", _docxAnchorId: "field-box" },
+        [schema.node("paragraph", null, [schema.text("Inside")])],
+      ),
     ]);
-    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
-    const roundTripped = fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } });
+    const cloned = pmDoc.type.schema.nodeFromJSON(
+      JSON.parse(JSON.stringify(pmDoc.toJSON())),
+    );
+    const roundTripped = fromProseDoc(cloned, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = roundTripped.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected paragraph");
@@ -1001,7 +1214,9 @@ describe("fromProseDoc", () => {
     if (field?.type !== "simpleField") {
       throw new Error("Expected simple field");
     }
-    expect(field.content.every((content) => content.type === "hyperlink")).toBe(true);
+    expect(field.content.every((content) => content.type === "hyperlink")).toBe(
+      true,
+    );
     expect(inlineContentOrder(field.content)).toEqual(["Box", "textBox"]);
     const anchorLink = field.content.at(1);
     if (anchorLink?.type !== "hyperlink") {
@@ -1009,7 +1224,9 @@ describe("fromProseDoc", () => {
     }
     const nestedWrapper = anchorLink.children.at(0);
     if (nestedWrapper?.type !== "inlineWrapper") {
-      throw new Error("Expected the text-box anchor wrapper inside its hyperlink");
+      throw new Error(
+        "Expected the text-box anchor wrapper inside its hyperlink",
+      );
     }
     expect(inlineContentOrder(nestedWrapper.content)).toEqual(["textBox"]);
   });
@@ -1025,7 +1242,8 @@ describe("fromProseDoc", () => {
       name: "plain structured simple-field child",
       nodeType: "structuredField",
       fieldKind: "simple",
-      message: "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
+      message:
+        "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
     },
     {
       name: "structured complex-field child",
@@ -1048,11 +1266,17 @@ describe("fromProseDoc", () => {
       if (!field) {
         throw new Error(`Missing ${nodeType} schema node`);
       }
-      const pmDoc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
-      const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+      const pmDoc = schema.node("doc", null, [
+        schema.node("paragraph", null, [field]),
+      ]);
+      const cloned = pmDoc.type.schema.nodeFromJSON(
+        JSON.parse(JSON.stringify(pmDoc.toJSON())),
+      );
 
       expect(() =>
-        fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(cloned, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ).toThrow(message);
     },
   );
@@ -1060,13 +1284,17 @@ describe("fromProseDoc", () => {
   test("fails closed before serializing an unpaired bookmark boundary", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.node("bookmarkBoundary", { type: "start", id: 99, name: "unpaired" }),
+        schema.node("bookmarkBoundary", {
+          type: "start",
+          id: 99,
+          name: "unpaired",
+        }),
       ]),
     ]);
 
-    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
-      'Bookmark "unpaired" (id 99) has no matching end boundary',
-    );
+    expect(() =>
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    ).toThrow('Bookmark "unpaired" (id 99) has no matching end boundary');
   });
 
   test("round-trips table row structural revision markers through the editor model", () => {
@@ -1134,7 +1362,9 @@ describe("fromProseDoc", () => {
       date: null,
     });
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = roundTripped.package.document.content.at(0);
     if (table?.type !== "table") {
       throw new Error("Expected table");
@@ -1227,12 +1457,16 @@ describe("fromProseDoc", () => {
       },
     });
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = roundTripped.package.document.content.at(0);
     if (table?.type !== "table") {
       throw new Error("Expected table");
     }
-    expect(table.rows.at(0)?.cells.map(({ structuralChange }) => structuralChange)).toEqual([
+    expect(
+      table.rows.at(0)?.cells.map(({ structuralChange }) => structuralChange),
+    ).toEqual([
       {
         type: "tableCellInsertion",
         info: {
@@ -1283,13 +1517,17 @@ describe("fromProseDoc", () => {
     };
 
     const pmDoc = toProseDoc(document);
-    expect(pmDoc.firstChild?.firstChild?.firstChild?.attrs["cellMarker"]).toEqual({
+    expect(
+      pmDoc.firstChild?.firstChild?.firstChild?.attrs["cellMarker"],
+    ).toEqual({
       kind: "merge",
       info: { revisionId: 83, author: "Reviewer", date: null },
       verticalMergeOriginal: "continue",
     });
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = roundTripped.package.document.content.at(0);
     if (table?.type !== "table") {
       throw new Error("Expected table");
@@ -1354,7 +1592,9 @@ describe("fromProseDoc", () => {
     expect(mergedCell?.attrs["rowspan"]).toBe(2);
     expect(mergedCell?.attrs["_docxVMergeContinuationCells"]).toHaveLength(1);
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = roundTripped.package.document.content.at(0);
     if (table?.type !== "table") {
       throw new Error("Expected table");
@@ -1400,7 +1640,9 @@ describe("fromProseDoc", () => {
     const imageNode = pmDoc.firstChild?.firstChild;
     expect(imageNode?.attrs["anchor"]).toEqual({ layoutInCell: true });
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = roundTripped.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected paragraph");
@@ -1421,9 +1663,9 @@ describe("fromProseDoc", () => {
       schema.node("paragraph", { paraId: 12 }, [schema.text("invalid")]),
     ]);
 
-    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
-      "paragraph.attrs.paraId",
-    );
+    expect(() =>
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    ).toThrow("paragraph.attrs.paraId");
   });
 
   test("rejects malformed table row revision attrs at the conversion boundary", () => {
@@ -1462,10 +1704,14 @@ describe("fromProseDoc", () => {
     ]);
 
     expect(() =>
-      fromProseDoc(invalidRevisionDoc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(invalidRevisionDoc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow("tableRow.attrs.trIns.revisionId");
     expect(() =>
-      fromProseDoc(conflictingRevisionDoc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(conflictingRevisionDoc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow("Expected at most one structural revision marker.");
   });
 
@@ -1490,9 +1736,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
-      "tableCell.attrs.cellMarker.info.revisionId",
-    );
+    expect(() =>
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    ).toThrow("tableCell.attrs.cellMarker.info.revisionId");
   });
 
   test("rejects malformed hyperlink attrs at the conversion boundary", () => {
@@ -1501,9 +1747,9 @@ describe("fromProseDoc", () => {
       schema.node("paragraph", null, [schema.text("linked", [hyperlinkMark])]),
     ]);
 
-    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
-      "hyperlink.attrs.href",
-    );
+    expect(() =>
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    ).toThrow("hyperlink.attrs.href");
   });
 
   test("rejects malformed comment attrs at the conversion boundary", () => {
@@ -1512,9 +1758,9 @@ describe("fromProseDoc", () => {
       schema.node("paragraph", null, [schema.text("commented", [commentMark])]),
     ]);
 
-    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
-      "comment.attrs.commentId",
-    );
+    expect(() =>
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    ).toThrow("comment.attrs.commentId");
   });
 
   test("rejects malformed tracked-change attrs at the conversion boundary", () => {
@@ -1523,12 +1769,14 @@ describe("fromProseDoc", () => {
       author: "Reviewer",
     });
     const pmDoc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("inserted", [insertionMark])]),
+      schema.node("paragraph", null, [
+        schema.text("inserted", [insertionMark]),
+      ]),
     ]);
 
-    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
-      "insertion.attrs.revisionId",
-    );
+    expect(() =>
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    ).toThrow("insertion.attrs.revisionId");
   });
 
   test("rejects malformed field and math attrs at the conversion boundary", () => {
@@ -1553,10 +1801,14 @@ describe("fromProseDoc", () => {
     ]);
 
     expect(() =>
-      fromProseDoc(fieldDoc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(fieldDoc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow("field.attrs.fieldType");
     expect(() =>
-      fromProseDoc(mathDoc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(mathDoc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow("math.attrs.ommlXml");
   });
 
@@ -1573,7 +1825,8 @@ describe("fromProseDoc", () => {
     ]);
     const fieldResultText = (blocks: BlockContent[]): string[] => {
       const paragraph = blocks.at(0);
-      const field = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+      const field =
+        paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
       if (field?.type !== "simpleField") {
         throw new Error("expected a simple field");
       }
@@ -1605,16 +1858,18 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
-      "sdt.attrs.listItems[0].displayText",
-    );
+    expect(() =>
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    ).toThrow("sdt.attrs.listItems[0].displayText");
   });
 
   test("surfaces the same strict list-items failure for block and inline SDTs", () => {
     const listItems = "not-json";
     const inlineDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.node("sdt", { sdtType: "dropdown", listItems }, [schema.text("Choice")]),
+        schema.node("sdt", { sdtType: "dropdown", listItems }, [
+          schema.text("Choice"),
+        ]),
       ]),
     ]);
     const blockDoc = schema.node("doc", null, [
@@ -1624,10 +1879,14 @@ describe("fromProseDoc", () => {
     ]);
 
     expect(() =>
-      fromProseDoc(inlineDoc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(inlineDoc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow("Expected valid JSON");
     expect(() =>
-      fromProseDoc(blockDoc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(blockDoc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow("Expected valid JSON");
   });
 
@@ -1653,7 +1912,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = document.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
@@ -1664,7 +1925,10 @@ describe("fromProseDoc", () => {
     if (sdt?.type !== "inlineSdt") {
       return;
     }
-    expect(sdt.content.map((content) => content.type)).toEqual(["insertion", "deletion"]);
+    expect(sdt.content.map((content) => content.type)).toEqual([
+      "insertion",
+      "deletion",
+    ]);
     expect(sdt.content.at(0)).toMatchObject({
       type: "insertion",
       info: { id: 11, author: "Reviewer", date: "2026-07-14T08:00:00Z" },
@@ -1686,7 +1950,9 @@ describe("fromProseDoc", () => {
               content: [
                 {
                   type: "run",
-                  content: [{ type: "text", text: "Keep this paragraph unhyphenated" }],
+                  content: [
+                    { type: "text", text: "Keep this paragraph unhyphenated" },
+                  ],
                 },
               ],
             },
@@ -1697,7 +1963,9 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const attrs = expectParagraphAttrs(pmDoc.child(0));
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(attrs.suppressAutoHyphens).toBe(true);
@@ -1716,7 +1984,12 @@ describe("fromProseDoc", () => {
             {
               type: "paragraph",
               formatting: { snapToGrid: false },
-              content: [{ type: "run", content: [{ type: "text", text: "Independent line" }] }],
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Independent line" }],
+                },
+              ],
             },
           ],
         },
@@ -1725,7 +1998,9 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const attrs = expectParagraphAttrs(pmDoc.child(0));
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(attrs.snapToGrid).toBe(false);
@@ -1771,7 +2046,9 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document, { styles: document.package.styles });
     const attrs = expectParagraphAttrs(pmDoc.child(0));
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(attrs.spaceBefore).toBe(200);
@@ -1782,13 +2059,23 @@ describe("fromProseDoc", () => {
     }
     expect(block.formatting?.beforeAutospacing).toBe(true);
     expect(block.formatting?.spaceBefore).toBeUndefined();
-    expect((block.formatting as Record<string, unknown>)["_autospacingBase"]).toBeUndefined();
+    expect(
+      (block.formatting as Record<string, unknown>)["_autospacingBase"],
+    ).toBeUndefined();
   });
 
   test.each([
-    { label: "neither value nor rule", direct: undefined, provenance: undefined },
+    {
+      label: "neither value nor rule",
+      direct: undefined,
+      provenance: undefined,
+    },
     { label: "value only", direct: { lineSpacing: 240 }, provenance: "value" },
-    { label: "rule only", direct: { lineSpacingRule: "auto" }, provenance: "rule" },
+    {
+      label: "rule only",
+      direct: { lineSpacingRule: "auto" },
+      provenance: "rule",
+    },
     {
       label: "both value and rule",
       direct: { lineSpacing: 240, lineSpacingRule: "auto" },
@@ -1817,7 +2104,9 @@ describe("fromProseDoc", () => {
                 content: [
                   {
                     type: "run",
-                    content: [{ type: "text", text: "Independent line spacing" }],
+                    content: [
+                      { type: "text", text: "Independent line spacing" },
+                    ],
                   },
                 ],
               },
@@ -1828,7 +2117,9 @@ describe("fromProseDoc", () => {
 
       const pmDoc = toProseDoc(document, { styles: document.package.styles });
       const attrs = expectParagraphAttrs(pmDoc.child(0));
-      const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+      const roundTripped = fromProseDoc(pmDoc, document, {
+        stylesheetSource: { type: "package" },
+      });
       const block = roundTripped.package.document.content.at(0);
 
       expect(attrs.lineSpacing).toBe(direct?.lineSpacing ?? 276);
@@ -1860,7 +2151,9 @@ describe("fromProseDoc", () => {
       ),
     ]);
 
-    expect(directParagraphSpacing(expectParagraphAttrs(pmDoc.child(0)))).toEqual({
+    expect(
+      directParagraphSpacing(expectParagraphAttrs(pmDoc.child(0))),
+    ).toEqual({
       lineSpacing: 240,
     });
     const paragraph = fromProseDoc(pmDoc, undefined, {
@@ -1868,7 +2161,10 @@ describe("fromProseDoc", () => {
     }).package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type === "paragraph") {
-      expect(paragraph.formatting).toEqual({ styleId: "Normal", lineSpacing: 240 });
+      expect(paragraph.formatting).toEqual({
+        styleId: "Normal",
+        lineSpacing: 240,
+      });
     }
   });
 
@@ -1935,7 +2231,9 @@ describe("fromProseDoc", () => {
       paragraph.content,
     );
     const editedPmDoc = schema.node("doc", null, [editedParagraph]);
-    expect(directParagraphSpacing(expectParagraphAttrs(editedParagraph))).toEqual({
+    expect(
+      directParagraphSpacing(expectParagraphAttrs(editedParagraph)),
+    ).toEqual({
       spaceBefore: 240,
       beforeAutospacing: false,
     });
@@ -1983,7 +2281,9 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document, { styles: document.package.styles });
     const attrs = expectParagraphAttrs(pmDoc.child(0));
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(attrs.spaceBefore).toBe(200);
@@ -2081,7 +2381,9 @@ describe("fromProseDoc", () => {
       paragraph.content,
     );
     const editedPmDoc = schema.node("doc", null, [editedParagraph]);
-    expect(directParagraphSpacing(expectParagraphAttrs(editedParagraph))).toEqual({
+    expect(
+      directParagraphSpacing(expectParagraphAttrs(editedParagraph)),
+    ).toEqual({
       spaceBefore: 240,
       beforeAutospacing: false,
     });
@@ -2120,7 +2422,9 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const attrs = expectParagraphAttrs(pmDoc.child(0));
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(typeof Reflect.get(attrs, "spaceBefore")).not.toBe("number");
@@ -2146,7 +2450,12 @@ describe("fromProseDoc", () => {
               {
                 type: "paragraph",
                 formatting,
-                content: [{ type: "run", content: [{ type: "text", text: "Clear spacing" }] }],
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "Clear spacing" }],
+                  },
+                ],
               },
             ],
           },
@@ -2161,7 +2470,9 @@ describe("fromProseDoc", () => {
       );
       const clearedPmDoc = schema.node("doc", null, [cleared]);
 
-      expect(directParagraphSpacing(expectParagraphAttrs(cleared))).toBeUndefined();
+      expect(
+        directParagraphSpacing(expectParagraphAttrs(cleared)),
+      ).toBeUndefined();
       const clearedDocument = fromProseDoc(clearedPmDoc, document, {
         stylesheetSource: { type: "package" },
       });
@@ -2172,7 +2483,9 @@ describe("fromProseDoc", () => {
       }
       expect(block.formatting?.[attr]).toBeUndefined();
       expect(
-        directParagraphSpacing(expectParagraphAttrs(toProseDoc(clearedDocument).child(0))),
+        directParagraphSpacing(
+          expectParagraphAttrs(toProseDoc(clearedDocument).child(0)),
+        ),
       ).toBeUndefined();
     },
   );
@@ -2249,10 +2562,14 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const textNode = pmDoc.child(0).child(0);
-    const footnoteMark = textNode.marks.find((mark) => mark.type.name === "footnoteRef");
+    const footnoteMark = textNode.marks.find(
+      (mark) => mark.type.name === "footnoteRef",
+    );
     expect(footnoteMark?.attrs["vertAlign"]).toBe("baseline");
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(block?.type).toBe("paragraph");
@@ -2276,10 +2593,14 @@ describe("fromProseDoc", () => {
     });
     const subscript = schema.mark("subscript");
     const pmDoc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("1", [footnoteRef, subscript])]),
+      schema.node("paragraph", null, [
+        schema.text("1", [footnoteRef, subscript]),
+      ]),
     ]);
 
-    const roundTripped = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(block?.type).toBe("paragraph");
@@ -2308,10 +2629,14 @@ describe("fromProseDoc", () => {
       date: null,
     });
     const pmDoc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("7", [footnoteRef, deletion])]),
+      schema.node("paragraph", null, [
+        schema.text("7", [footnoteRef, deletion]),
+      ]),
     ]);
 
-    const roundTripped = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(block?.type).toBe("paragraph");
@@ -2323,12 +2648,22 @@ describe("fromProseDoc", () => {
     if (trackedChange?.type !== "deletion") {
       return;
     }
-    expect(trackedChange.content.at(0)?.content).toEqual([{ type: "footnoteRef", id: 7 }]);
+    expect(trackedChange.content.at(0)?.content).toEqual([
+      { type: "footnoteRef", id: 7 },
+    ]);
   });
 
   test.each([
-    { noteType: "footnote", contentType: "footnoteRef", styleId: "FootnoteReference" },
-    { noteType: "endnote", contentType: "endnoteRef", styleId: "EndnoteReference" },
+    {
+      noteType: "footnote",
+      contentType: "footnoteRef",
+      styleId: "FootnoteReference",
+    },
+    {
+      noteType: "endnote",
+      contentType: "endnoteRef",
+      styleId: "EndnoteReference",
+    },
   ] as const)(
     "preserves the $noteType reference style through DOCX save and reopen",
     async ({ contentType, styleId }) => {
@@ -2389,17 +2724,25 @@ describe("fromProseDoc", () => {
         preloadFonts: false,
       });
       const paragraph = reopened.package.document.content.at(0);
-      const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+      const run =
+        paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
 
       expect(run?.type).toBe("run");
-      expect(run?.type === "run" ? run.formatting : undefined).toEqual({ styleId });
-      expect(run?.type === "run" ? run.content : undefined).toEqual([{ type: contentType, id: 1 }]);
+      expect(run?.type === "run" ? run.formatting : undefined).toEqual({
+        styleId,
+      });
+      expect(run?.type === "run" ? run.content : undefined).toEqual([
+        { type: contentType, id: 1 },
+      ]);
     },
   );
 
   test.each(
     ["tab", "break", "symbol"].flatMap((atom) =>
-      ["plain", "hyperlink", "tracked"].map((container) => ({ atom, container })),
+      ["plain", "hyperlink", "tracked"].map((container) => ({
+        atom,
+        container,
+      })),
     ),
   )(
     "does not materialize inherited formatting on a $container $atom atom",
@@ -2471,13 +2814,18 @@ describe("fromProseDoc", () => {
       }
 
       expect(savedRun?.type).toBe("run");
-      expect(savedRun?.type === "run" ? savedRun.formatting : undefined).toBeUndefined();
+      expect(
+        savedRun?.type === "run" ? savedRun.formatting : undefined,
+      ).toBeUndefined();
     },
   );
 
   test.each([
     { name: "tab", content: { type: "tab" } },
-    { name: "hard break", content: { type: "break", breakType: "textWrapping" } },
+    {
+      name: "hard break",
+      content: { type: "break", breakType: "textWrapping" },
+    },
   ] as const)(
     "preserves direct formatting on a $name through editor and package cycles",
     async ({ content }) => {
@@ -2502,11 +2850,17 @@ describe("fromProseDoc", () => {
       const imported = toProseDoc(document);
       const atom = imported.firstChild?.firstChild;
 
-      expect(atom?.marks.some(({ type }) => type.name === "underline")).toBe(true);
+      expect(atom?.marks.some(({ type }) => type.name === "underline")).toBe(
+        true,
+      );
 
       const cloned = schema.nodeFromJSON(imported.toJSON());
       const first = await parseDocx(
-        await createDocx(fromProseDoc(cloned, document, { stylesheetSource: { type: "package" } })),
+        await createDocx(
+          fromProseDoc(cloned, document, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
         {
           detectVariables: false,
           preloadFonts: false,
@@ -2514,7 +2868,9 @@ describe("fromProseDoc", () => {
       );
       const second = await parseDocx(
         await createDocx(
-          fromProseDoc(toProseDoc(first), first, { stylesheetSource: { type: "package" } }),
+          fromProseDoc(toProseDoc(first), first, {
+            stylesheetSource: { type: "package" },
+          }),
         ),
         {
           detectVariables: false,
@@ -2524,8 +2880,11 @@ describe("fromProseDoc", () => {
 
       for (const reopened of [first, second]) {
         const paragraph = reopened.package.document.content.at(0);
-        const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
-        expect(run?.type === "run" ? run.formatting?.underline : undefined).toEqual({
+        const run =
+          paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+        expect(
+          run?.type === "run" ? run.formatting?.underline : undefined,
+        ).toEqual({
           style: "single",
         });
       }
@@ -2534,46 +2893,57 @@ describe("fromProseDoc", () => {
 
   test.each([
     { name: "tab", content: { type: "tab" } },
-    { name: "hard break", content: { type: "break", breakType: "textWrapping" } },
-  ] as const)("a raw mark removal updates formatting on a $name", async ({ content }) => {
-    const document: Document = {
-      package: {
-        document: {
-          content: [
-            {
-              type: "paragraph",
-              content: [
-                {
-                  type: "run",
-                  formatting: { underline: { style: "single" } },
-                  content: [content],
-                },
-              ],
-            },
-          ],
+    {
+      name: "hard break",
+      content: { type: "break", breakType: "textWrapping" },
+    },
+  ] as const)(
+    "a raw mark removal updates formatting on a $name",
+    async ({ content }) => {
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    formatting: { underline: { style: "single" } },
+                    content: [content],
+                  },
+                ],
+              },
+            ],
+          },
         },
-      },
-    };
-    const state = EditorState.create({ doc: toProseDoc(document) });
-    const underline = schema.marks["underline"];
-    if (!underline) {
-      throw new Error("Expected underline mark type");
-    }
-    const withoutUnderline = state.apply(state.tr.removeMark(1, 2, underline)).doc;
-    const reopened = await parseDocx(
-      await createDocx(
-        fromProseDoc(withoutUnderline, document, { stylesheetSource: { type: "package" } }),
-      ),
-      {
-        detectVariables: false,
-        preloadFonts: false,
-      },
-    );
-    const paragraph = reopened.package.document.content.at(0);
-    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+      };
+      const state = EditorState.create({ doc: toProseDoc(document) });
+      const underline = schema.marks["underline"];
+      if (!underline) {
+        throw new Error("Expected underline mark type");
+      }
+      const withoutUnderline = state.apply(
+        state.tr.removeMark(1, 2, underline),
+      ).doc;
+      const reopened = await parseDocx(
+        await createDocx(
+          fromProseDoc(withoutUnderline, document, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
+        {
+          detectVariables: false,
+          preloadFonts: false,
+        },
+      );
+      const paragraph = reopened.package.document.content.at(0);
+      const run =
+        paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
 
-    expect(run?.type === "run" ? run.formatting : undefined).toBeUndefined();
-  });
+      expect(run?.type === "run" ? run.formatting : undefined).toBeUndefined();
+    },
+  );
 
   test("preserves hyperlink ownership and direct formatting on a hard break", async () => {
     const document: Document = {
@@ -2617,15 +2987,19 @@ describe("fromProseDoc", () => {
       { detectVariables: false, preloadFonts: false },
     );
     const paragraph = reopened.package.document.content.at(0);
-    const hyperlink = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
-    const run = hyperlink?.type === "hyperlink" ? hyperlink.children.at(0) : undefined;
+    const hyperlink =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const run =
+      hyperlink?.type === "hyperlink" ? hyperlink.children.at(0) : undefined;
 
     expect(hyperlink?.type === "hyperlink" ? hyperlink.href : undefined).toBe(
       "https://example.com/terms",
     );
-    expect(run?.type === "run" ? run.formatting?.underline : undefined).toEqual({
-      style: "single",
-    });
+    expect(run?.type === "run" ? run.formatting?.underline : undefined).toEqual(
+      {
+        style: "single",
+      },
+    );
   });
 
   test("round-trips tracked-change image atoms", () => {
@@ -2670,9 +3044,13 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const image = firstDescendant(pmDoc, "image");
-    expect(image?.marks.some((mark) => mark.type.name === "deletion")).toBe(true);
+    expect(image?.marks.some((mark) => mark.type.name === "deletion")).toBe(
+      true,
+    );
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = roundTripped.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
@@ -2744,12 +3122,16 @@ describe("fromProseDoc", () => {
           node.marks.some(
             (mark) =>
               mark.type.name ===
-              (type === "deletion" || type === "moveFrom" ? "deletion" : "insertion"),
+              (type === "deletion" || type === "moveFrom"
+                ? "deletion"
+                : "insertion"),
           ),
         ),
       ).toBe(true);
 
-      const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+      const roundTripped = fromProseDoc(pmDoc, document, {
+        stylesheetSource: { type: "package" },
+      });
       const paragraph = roundTripped.package.document.content.at(0);
       if (paragraph?.type !== "paragraph") {
         throw new Error("Expected round-tripped paragraph");
@@ -2855,7 +3237,9 @@ describe("fromProseDoc", () => {
     const pmDoc = toProseDoc(document);
     expect(countDescendants(pmDoc, "image")).toBe(1);
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = roundTripped.package.document.content.at(0);
     expect(table?.type).toBe("table");
     if (table?.type !== "table") {
@@ -2893,19 +3277,27 @@ describe("fromProseDoc", () => {
       ]),
     ]);
     const textBoxContentStateDoc = schema.node("doc", null, [
-      schema.node("textBox", { _docxTextBodyContentState: { type: "unknown" } }, [
-        schema.node("paragraph", null, [schema.text("Inside")]),
-      ]),
+      schema.node(
+        "textBox",
+        { _docxTextBodyContentState: { type: "unknown" } },
+        [schema.node("paragraph", null, [schema.text("Inside")])],
+      ),
     ]);
 
     expect(() =>
-      fromProseDoc(shapeDoc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(shapeDoc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow("shape.attrs.width");
     expect(() =>
-      fromProseDoc(textBoxDoc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(textBoxDoc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow("textBox.attrs.width");
     expect(() =>
-      fromProseDoc(textBoxContentStateDoc, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(textBoxContentStateDoc, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     ).toThrow("textBox.attrs._docxTextBodyContentState.type");
   });
 
@@ -2920,7 +3312,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const table = document.package.document.content[0];
 
     expect(table?.type).toBe("table");
@@ -2937,7 +3331,9 @@ describe("fromProseDoc", () => {
       schema.node("paragraph", null, [schema.text("After")]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const firstBlock = document.package.document.content.at(0);
     const secondBlock = document.package.document.content.at(1);
 
@@ -2959,10 +3355,14 @@ describe("fromProseDoc", () => {
     ]);
 
     const normalized = toProseDoc(
-      fromProseDoc(legacy, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(legacy, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     );
     const normalizedAgain = toProseDoc(
-      fromProseDoc(normalized, undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(normalized, undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     );
 
     expect(normalized.toJSON()).toEqual(normalizedAgain.toJSON());
@@ -3007,7 +3407,9 @@ describe("fromProseDoc", () => {
     };
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const secondBlock = roundTripped.package.document.content.at(1);
 
     expect(roundTripped.package.document.content).toHaveLength(2);
@@ -3024,12 +3426,16 @@ describe("fromProseDoc", () => {
       schema.node("pageBreak"),
       schema.node("table", null, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Cell")])]),
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.text("Cell")]),
+          ]),
         ]),
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const firstBlock = document.package.document.content.at(0);
     const secondBlock = document.package.document.content.at(1);
 
@@ -3089,7 +3495,9 @@ describe("fromProseDoc", () => {
     };
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const firstBlock = roundTripped.package.document.content.at(0);
     const secondBlock = roundTripped.package.document.content.at(1);
 
@@ -3110,15 +3518,21 @@ describe("fromProseDoc", () => {
           schema.node("tableCell", { rowspan: 2 }, [
             schema.node("paragraph", null, [schema.text("Merged")]),
           ]),
-          schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Top")])]),
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.text("Top")]),
+          ]),
         ]),
         schema.node("tableRow", null, [
-          schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Bottom")])]),
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.text("Bottom")]),
+          ]),
         ]),
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const table = document.package.document.content.at(0);
 
     expect(table?.type).toBe("table");
@@ -3130,7 +3544,9 @@ describe("fromProseDoc", () => {
     expect(table.rows.at(1)?.cells).toHaveLength(2);
     expect(table.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBe("continue");
     expect(table.rows.at(1)?.cells.at(0)?.content).toHaveLength(1);
-    expect(paragraphText(table.rows.at(1)?.cells.at(1)?.content.at(0))).toBe("Bottom");
+    expect(paragraphText(table.rows.at(1)?.cells.at(1)?.content.at(0))).toBe(
+      "Bottom",
+    );
   });
 
   test("preserves skipped vertical-merge continuation cell content", () => {
@@ -3184,7 +3600,9 @@ describe("fromProseDoc", () => {
     };
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = roundTripped.package.document.content.at(0);
 
     expect(table?.type).toBe("table");
@@ -3194,7 +3612,9 @@ describe("fromProseDoc", () => {
     const continuationCell = table.rows.at(1)?.cells.at(0);
     expect(continuationCell?.formatting?.vMerge).toBe("continue");
     expect(continuationCell?.content).toHaveLength(2);
-    expect(paragraphText(table.rows.at(1)?.cells.at(1)?.content.at(0))).toBe("Bottom right");
+    expect(paragraphText(table.rows.at(1)?.cells.at(1)?.content.at(0))).toBe(
+      "Bottom right",
+    );
   });
 
   test("preserves unmatched vertical-merge continuation cells", () => {
@@ -3238,7 +3658,9 @@ describe("fromProseDoc", () => {
     };
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = roundTripped.package.document.content.at(0);
 
     expect(table?.type).toBe("table");
@@ -3246,7 +3668,9 @@ describe("fromProseDoc", () => {
       return;
     }
     expect(table.rows.at(1)?.cells).toHaveLength(2);
-    expect(paragraphText(table.rows.at(1)?.cells.at(1)?.content.at(0))).toBe("Metadata");
+    expect(paragraphText(table.rows.at(1)?.cells.at(1)?.content.at(0))).toBe(
+      "Metadata",
+    );
     expect(table.rows.at(1)?.cells.at(1)?.formatting?.vMerge).toBe("continue");
   });
 
@@ -3296,7 +3720,9 @@ describe("fromProseDoc", () => {
     };
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = roundTripped.package.document.content.at(0);
 
     expect(table?.type).toBe("table");
@@ -3332,16 +3758,24 @@ describe("fromProseDoc", () => {
     };
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = roundTripped.package.document.content.at(0);
 
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
       return;
     }
-    expect(paragraph.content.map((content) => content.type)).toEqual(["run", "hyperlink", "run"]);
+    expect(paragraph.content.map((content) => content.type)).toEqual([
+      "run",
+      "hyperlink",
+      "run",
+    ]);
     expect(paragraphText(paragraph)).toBe("BeforeAfter");
-    const hyperlink = paragraph.content.find((content) => content.type === "hyperlink");
+    const hyperlink = paragraph.content.find(
+      (content) => content.type === "hyperlink",
+    );
     expect(hyperlink?.type).toBe("hyperlink");
     if (hyperlink?.type !== "hyperlink") {
       return;
@@ -3366,7 +3800,9 @@ describe("fromProseDoc", () => {
       ),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const block = document.package.document.content.at(0);
 
     expect(block?.type).toBe("paragraph");
@@ -3375,7 +3811,8 @@ describe("fromProseDoc", () => {
     }
 
     const firstRun = block.content.at(0);
-    const firstRunContent = firstRun?.type === "run" ? firstRun.content.at(0) : undefined;
+    const firstRunContent =
+      firstRun?.type === "run" ? firstRun.content.at(0) : undefined;
 
     expect(firstRunContent?.type).toBe("shape");
     if (firstRunContent?.type !== "shape") {
@@ -3390,16 +3827,20 @@ describe("fromProseDoc", () => {
 
   test("converts tables inside text boxes back to shape content", () => {
     const textBoxDoc = schema.node("doc", null, [
-      schema.node("textBox", { width: 160, height: 90, textBoxId: "table-box" }, [
-        schema.node("paragraph", null, [schema.text("Before")]),
-        schema.node("table", null, [
-          schema.node("tableRow", null, [
-            schema.node("tableCell", null, [
-              schema.node("paragraph", null, [schema.text("Cell text")]),
+      schema.node(
+        "textBox",
+        { width: 160, height: 90, textBoxId: "table-box" },
+        [
+          schema.node("paragraph", null, [schema.text("Before")]),
+          schema.node("table", null, [
+            schema.node("tableRow", null, [
+              schema.node("tableCell", null, [
+                schema.node("paragraph", null, [schema.text("Cell text")]),
+              ]),
             ]),
           ]),
-        ]),
-      ]),
+        ],
+      ),
     ]);
 
     const blocks = proseDocToBlocks(textBoxDoc);
@@ -3411,7 +3852,10 @@ describe("fromProseDoc", () => {
     if (shape?.type !== "shape") {
       return;
     }
-    expect(shape.shape.textBody?.content.map(({ type }) => type)).toEqual(["paragraph", "table"]);
+    expect(shape.shape.textBody?.content.map(({ type }) => type)).toEqual([
+      "paragraph",
+      "table",
+    ]);
   });
 
   test("preserves textBox wrap and position attrs on save", () => {
@@ -3433,7 +3877,9 @@ describe("fromProseDoc", () => {
       ),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const block = document.package.document.content.at(0);
 
     expect(block?.type).toBe("paragraph");
@@ -3465,7 +3911,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const block = document.package.document.content.at(0);
 
     expect(block?.type).toBe("paragraph");
@@ -3479,9 +3927,11 @@ describe("fromProseDoc", () => {
     const exportTextBox = (outlineStyle: string) => {
       const document = fromProseDoc(
         schema.node("doc", null, [
-          schema.node("textBox", { width: 120, height: 60, outlineWidth: 2, outlineStyle }, [
-            schema.node("paragraph", null, [schema.text("x")]),
-          ]),
+          schema.node(
+            "textBox",
+            { width: 120, height: 60, outlineWidth: 2, outlineStyle },
+            [schema.node("paragraph", null, [schema.text("x")])],
+          ),
         ]),
         undefined,
         { stylesheetSource: { type: "package" } },
@@ -3508,7 +3958,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const block = document.package.document.content.at(0);
 
     expect(block?.type).toBe("paragraph");
@@ -3526,7 +3978,9 @@ describe("fromProseDoc", () => {
     const document = documentWithTextBoxParagraph({ includeText: true });
     const pmDoc = toProseDoc(document);
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(pmDoc.childCount).toBe(2);
@@ -3558,11 +4012,18 @@ describe("fromProseDoc", () => {
       throw new Error("Expected round-tripped paragraph");
     }
 
-    expect(paragraphInlineOrder(paragraph)).toEqual(["Before", "textBox", "After"]);
+    expect(paragraphInlineOrder(paragraph)).toEqual([
+      "Before",
+      "textBox",
+      "After",
+    ]);
   });
 
   test("preserves the source order of multiple inline text boxes", () => {
-    const document = documentWithTextBoxParagraph({ includeText: true, textBoxCount: 2 });
+    const document = documentWithTextBoxParagraph({
+      includeText: true,
+      textBoxCount: 2,
+    });
     const sourceParagraph = document.package.document.content.at(0);
     if (sourceParagraph?.type !== "paragraph") {
       throw new Error("Expected source paragraph");
@@ -3609,12 +4070,16 @@ describe("fromProseDoc", () => {
     if (firstAnchorPosition === undefined) {
       throw new Error("Expected text-box anchor");
     }
-    state = state.apply(state.tr.insertText(" edited-before", firstAnchorPosition));
+    state = state.apply(
+      state.tr.insertText(" edited-before", firstAnchorPosition),
+    );
     const editedAnchorPosition = findNodePosition(state.doc, "textBoxAnchor");
     if (editedAnchorPosition === undefined) {
       throw new Error("Expected mapped text-box anchor");
     }
-    state = state.apply(state.tr.insertText("edited-after ", editedAnchorPosition + 1));
+    state = state.apply(
+      state.tr.insertText("edited-after ", editedAnchorPosition + 1),
+    );
 
     const roundTripped = fromProseDoc(state.doc, document, {
       stylesheetSource: { type: "package" },
@@ -3654,7 +4119,9 @@ describe("fromProseDoc", () => {
 
     expect(paragraphText(paragraph)).toBe("BeforeAfter");
     expect(
-      paragraph.content.some((content) => content.type === "run" && content.content.length === 0),
+      paragraph.content.some(
+        (content) => content.type === "run" && content.content.length === 0,
+      ),
     ).toBe(false);
   });
 
@@ -3692,14 +4159,20 @@ describe("fromProseDoc", () => {
       throw new Error("Expected table-cell paragraph");
     }
 
-    expect(paragraphInlineOrder(paragraph)).toEqual(["Before", "textBox", "After"]);
+    expect(paragraphInlineOrder(paragraph)).toEqual([
+      "Before",
+      "textBox",
+      "After",
+    ]);
   });
 
   test("keeps imported text-box-only paragraphs as standalone wrappers", () => {
     const document = documentWithTextBoxParagraph({ includeText: false });
     const pmDoc = toProseDoc(document);
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(pmDoc.childCount).toBe(1);
@@ -3729,7 +4202,9 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const host = pmDoc.firstChild?.attrs["_docxHostParagraph"];
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(pmDoc.firstChild?.type.name).toBe("textBox");
@@ -3753,8 +4228,11 @@ describe("fromProseDoc", () => {
     const document = documentWithTextBoxParagraph({ includeText: false });
     const sourceParagraph = document.package.document.content.at(0);
     const sourceRun =
-      sourceParagraph?.type === "paragraph" ? sourceParagraph.content.at(0) : undefined;
-    const sourceShape = sourceRun?.type === "run" ? sourceRun.content.at(0) : undefined;
+      sourceParagraph?.type === "paragraph"
+        ? sourceParagraph.content.at(0)
+        : undefined;
+    const sourceShape =
+      sourceRun?.type === "run" ? sourceRun.content.at(0) : undefined;
     if (sourceShape?.type !== "shape") {
       throw new Error("Expected source text-box shape");
     }
@@ -3765,11 +4243,15 @@ describe("fromProseDoc", () => {
     sourceShape.shape.transform = { rotation: 270, flipH: true, flipV: true };
 
     const pmDoc = toProseDoc(document);
-    const restored = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const restored = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const restoredParagraph = restored.package.document.content.at(0);
 
     expect(pmDoc.childCount).toBe(1);
-    expect(pmDoc.lastChild?.attrs["transform"]).toBe("rotate(270deg) scaleX(-1) scaleY(-1)");
+    expect(pmDoc.lastChild?.attrs["transform"]).toBe(
+      "rotate(270deg) scaleX(-1) scaleY(-1)",
+    );
     if (restoredParagraph?.type !== "paragraph") {
       throw new Error("Expected restored text-box paragraph");
     }
@@ -3784,8 +4266,11 @@ describe("fromProseDoc", () => {
     const document = documentWithTextBoxParagraph({ includeText: false });
     const sourceParagraph = document.package.document.content.at(0);
     const sourceRun =
-      sourceParagraph?.type === "paragraph" ? sourceParagraph.content.at(0) : undefined;
-    const sourceShape = sourceRun?.type === "run" ? sourceRun.content.at(0) : undefined;
+      sourceParagraph?.type === "paragraph"
+        ? sourceParagraph.content.at(0)
+        : undefined;
+    const sourceShape =
+      sourceRun?.type === "run" ? sourceRun.content.at(0) : undefined;
     if (sourceShape?.type !== "shape" || !sourceShape.shape.textBody) {
       throw new Error("Expected source text-box shape");
     }
@@ -3800,19 +4285,28 @@ describe("fromProseDoc", () => {
     if (importedTextBox?.type.name !== "textBox") {
       throw new Error("Expected imported text box");
     }
-    expect(importedTextBox.attrs.wordArt).toEqual(sourceShape.shape.textBody.wordArt);
+    expect(importedTextBox.attrs.wordArt).toEqual(
+      sourceShape.shape.textBody.wordArt,
+    );
 
     const editedTextBox = importedTextBox.type.create(
-      { ...importedTextBox.attrs, wordArt: { fromWordArt: true, preset: "textArchUp" } },
+      {
+        ...importedTextBox.attrs,
+        wordArt: { fromWordArt: true, preset: "textArchUp" },
+      },
       importedTextBox.content,
     );
     const edited = schema.node("doc", imported.attrs, [editedTextBox]);
-    const restored = fromProseDoc(edited, document, { stylesheetSource: { type: "package" } });
+    const restored = fromProseDoc(edited, document, {
+      stylesheetSource: { type: "package" },
+    });
     const restoredParagraph = restored.package.document.content.at(0);
     if (restoredParagraph?.type !== "paragraph") {
       throw new Error("Expected restored paragraph");
     }
-    expect(firstShapeContent(restoredParagraph)?.shape.textBody?.wordArt).toEqual({
+    expect(
+      firstShapeContent(restoredParagraph)?.shape.textBody?.wordArt,
+    ).toEqual({
       fromWordArt: true,
       preset: "textArchUp",
     });
@@ -3842,7 +4336,9 @@ describe("fromProseDoc", () => {
       expect(textBoxNode?.type.name).toBe("textBox");
       expect(textBoxNode?.attrs["_docxTrackedChange"]).toEqual({ type, info });
 
-      const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+      const roundTripped = fromProseDoc(pmDoc, document, {
+        stylesheetSource: { type: "package" },
+      });
       const block = roundTripped.package.document.content.at(0);
       if (block?.type !== "paragraph") {
         throw new Error("Expected round-tripped paragraph");
@@ -3912,7 +4408,8 @@ describe("fromProseDoc", () => {
           content.type === "insertion" &&
           content.content.every(
             (trackedContent) =>
-              trackedContent.type === "hyperlink" && trackedContent.href === "https://example.com",
+              trackedContent.type === "hyperlink" &&
+              trackedContent.href === "https://example.com",
           ),
       ),
     ).toBe(true);
@@ -3962,7 +4459,9 @@ describe("fromProseDoc", () => {
       { sdtType: "plainText", alias: "Inner", tag: "inner" },
     ]);
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
     if (block?.type !== "paragraph") {
       throw new Error("Expected round-tripped paragraph");
@@ -3983,10 +4482,19 @@ describe("fromProseDoc", () => {
 
     expect(block.content).toHaveLength(1);
     expect(outer.properties.alias).toBe("Outer");
-    expect(inner.properties).toMatchObject({ sdtType: "plainText", alias: "Inner", tag: "inner" });
+    expect(inner.properties).toMatchObject({
+      sdtType: "plainText",
+      alias: "Inner",
+      tag: "inner",
+    });
     expect(shapes).toHaveLength(1);
     expect(shapes.at(0)?.shape.shapeType).toBe("textBox");
-    expect(paragraphInlineOrder(block)).toEqual(["Before ", "inside ", "textBox", " after"]);
+    expect(paragraphInlineOrder(block)).toEqual([
+      "Before ",
+      "inside ",
+      "textBox",
+      " after",
+    ]);
   });
 
   test("preserves a tracked text box between tracked text runs", () => {
@@ -4020,10 +4528,16 @@ describe("fromProseDoc", () => {
       throw new Error("Expected round-tripped paragraph");
     }
 
-    expect(paragraphInlineOrder(result)).toEqual(["Before", "textBox", "After"]);
+    expect(paragraphInlineOrder(result)).toEqual([
+      "Before",
+      "textBox",
+      "After",
+    ]);
     expect(
       result.content.map((content) =>
-        content.type === "insertion" ? `${content.type}:${content.info.id}` : content.type,
+        content.type === "insertion"
+          ? `${content.type}:${content.info.id}`
+          : content.type,
       ),
     ).toEqual(["insertion:43"]);
   });
@@ -4061,7 +4575,9 @@ describe("fromProseDoc", () => {
         { sdtType: "richText", alias: "Tracked shape" },
       ]);
 
-      const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+      const roundTripped = fromProseDoc(pmDoc, document, {
+        stylesheetSource: { type: "package" },
+      });
       const block = roundTripped.package.document.content.at(0);
       if (block?.type !== "paragraph") {
         throw new Error("Expected round-tripped paragraph");
@@ -4101,12 +4617,16 @@ describe("fromProseDoc", () => {
       {
         type: "inlineSdt",
         properties: { sdtType: "richText", alias: "Cards" },
-        content: paragraph.content.filter((content): content is Run => content.type === "run"),
+        content: paragraph.content.filter(
+          (content): content is Run => content.type === "run",
+        ),
       },
     ];
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
     if (block?.type !== "paragraph") {
       throw new Error("Expected round-tripped paragraph");
@@ -4133,7 +4653,9 @@ describe("fromProseDoc", () => {
     });
     const pmDoc = toProseDoc(document);
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(pmDoc.childCount).toBe(1);
@@ -4163,13 +4685,17 @@ describe("fromProseDoc", () => {
     textBody.content = [{ type: "paragraph", content: [] }];
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const restoredBlock = roundTripped.package.document.content.at(0);
     if (restoredBlock?.type !== "paragraph") {
       throw new Error("Expected restored paragraph");
     }
 
-    expect(pmDoc.firstChild?.attrs["_docxTextBodyContentState"]).toEqual({ type: "authored" });
+    expect(pmDoc.firstChild?.attrs["_docxTextBodyContentState"]).toEqual({
+      type: "authored",
+    });
     expect(firstShapeTextBody(restoredBlock)?.content).toEqual([
       { type: "paragraph", content: [] },
     ]);
@@ -4191,7 +4717,9 @@ describe("fromProseDoc", () => {
     ]);
     const edited = schema.node("doc", imported.attrs, [editedTextBox]);
 
-    const roundTripped = fromProseDoc(edited, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(edited, document, {
+      stylesheetSource: { type: "package" },
+    });
     const restoredBlock = roundTripped.package.document.content.at(0);
     if (restoredBlock?.type !== "paragraph") {
       throw new Error("Expected restored paragraph");
@@ -4202,7 +4730,12 @@ describe("fromProseDoc", () => {
     expect(restoredBody?.content).toMatchObject([
       {
         type: "paragraph",
-        content: [{ type: "run", content: [{ type: "text", text: "Authored after import" }] }],
+        content: [
+          {
+            type: "run",
+            content: [{ type: "text", text: "Authored after import" }],
+          },
+        ],
       },
     ]);
     expect(reprojected.firstChild?.attrs["_docxTextBodyContentState"]).toEqual({
@@ -4210,7 +4743,9 @@ describe("fromProseDoc", () => {
     });
     expectTextBoxProjectionFixedPoint(
       toProseDoc(
-        fromProseDoc(reprojected, roundTripped, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(reprojected, roundTripped, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
       reprojected,
     );
@@ -4224,7 +4759,10 @@ describe("fromProseDoc", () => {
     const imported = toProseDoc(document);
     const importedTextBox = imported.firstChild;
     const placeholder = importedTextBox?.firstChild;
-    if (importedTextBox?.type.name !== "textBox" || placeholder?.type.name !== "paragraph") {
+    if (
+      importedTextBox?.type.name !== "textBox" ||
+      placeholder?.type.name !== "paragraph"
+    ) {
       throw new Error("Expected imported text-box placeholder");
     }
     const formattedPlaceholder = placeholder.type.create(
@@ -4232,10 +4770,14 @@ describe("fromProseDoc", () => {
       placeholder.content,
     );
     const edited = schema.node("doc", imported.attrs, [
-      importedTextBox.type.create(importedTextBox.attrs, [formattedPlaceholder]),
+      importedTextBox.type.create(importedTextBox.attrs, [
+        formattedPlaceholder,
+      ]),
     ]);
 
-    const roundTripped = fromProseDoc(edited, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(edited, document, {
+      stylesheetSource: { type: "package" },
+    });
     const restoredBlock = roundTripped.package.document.content.at(0);
     if (restoredBlock?.type !== "paragraph") {
       throw new Error("Expected restored paragraph");
@@ -4254,7 +4796,10 @@ describe("fromProseDoc", () => {
     const imported = toProseDoc(document);
     const importedTextBox = imported.firstChild;
     const placeholder = importedTextBox?.firstChild;
-    if (importedTextBox?.type.name !== "textBox" || placeholder?.type.name !== "paragraph") {
+    if (
+      importedTextBox?.type.name !== "textBox" ||
+      placeholder?.type.name !== "paragraph"
+    ) {
       throw new Error("Expected imported text-box placeholder");
     }
     const identifiedPlaceholder = placeholder.type.create(
@@ -4262,7 +4807,9 @@ describe("fromProseDoc", () => {
       placeholder.content,
     );
     const identified = schema.node("doc", imported.attrs, [
-      importedTextBox.type.create(importedTextBox.attrs, [identifiedPlaceholder]),
+      importedTextBox.type.create(importedTextBox.attrs, [
+        identifiedPlaceholder,
+      ]),
     ]);
 
     const roundTripped = fromProseDoc(identified, document, {
@@ -4339,7 +4886,9 @@ describe("fromProseDoc", () => {
                               rows: [
                                 {
                                   type: "tableRow",
-                                  cells: [{ type: "tableCell", content: [innerHost] }],
+                                  cells: [
+                                    { type: "tableCell", content: [innerHost] },
+                                  ],
                                 },
                               ],
                             },
@@ -4387,7 +4936,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const block = document.package.document.content.at(0);
 
     expect(document.package.document.content).toHaveLength(1);
@@ -4406,7 +4957,9 @@ describe("fromProseDoc", () => {
     });
     const pmDoc = toProseDoc(document);
 
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(pmDoc.childCount).toBe(2);
@@ -4436,7 +4989,9 @@ describe("fromProseDoc", () => {
     sourceBlock.content.push({ type: "bookmarkEnd", id: 7 });
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(pmDoc.childCount).toBe(2);
@@ -4455,8 +5010,12 @@ describe("fromProseDoc", () => {
     if (block?.type !== "paragraph") {
       return;
     }
-    expect(block.content.some((content) => content.type === "bookmarkStart")).toBe(true);
-    expect(block.content.some((content) => content.type === "hyperlink")).toBe(true);
+    expect(
+      block.content.some((content) => content.type === "bookmarkStart"),
+    ).toBe(true);
+    expect(block.content.some((content) => content.type === "hyperlink")).toBe(
+      true,
+    );
     expect(firstShapeType(block)).toBe("textBox");
   });
 
@@ -4485,11 +5044,15 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const hardBreak = pmDoc.firstChild?.child(1);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(hardBreak?.type.name).toBe("hardBreak");
-    expect(hardBreak ? expectHardBreakAttrs(hardBreak).breakType : undefined).toBe("column");
+    expect(
+      hardBreak ? expectHardBreakAttrs(hardBreak).breakType : undefined,
+    ).toBe("column");
     expect(block?.type).toBe("paragraph");
     if (block?.type !== "paragraph") {
       return;
@@ -4510,7 +5073,8 @@ describe("fromProseDoc", () => {
 
     const pmDoc = toProseDoc(document, {
       warn: ({ code, detail }) => {
-        if (code === PARSE_WARNING_CODES.pageBreakProjectionApproximated) details.push(detail);
+        if (code === PARSE_WARNING_CODES.pageBreakProjectionApproximated)
+          details.push(detail);
       },
     });
 
@@ -4519,23 +5083,30 @@ describe("fromProseDoc", () => {
     );
     let pageBreaks = 0;
     pmDoc.descendants((node) => {
-      if (node.type.name === "pageBreakRun" || node.type.name === "pageBreak") pageBreaks += 1;
+      if (node.type.name === "pageBreakRun" || node.type.name === "pageBreak")
+        pageBreaks += 1;
     });
     expect(pageBreaks).toBeGreaterThan(0);
   });
 
   test("keeps page breaks before grouped standalone text boxes", () => {
     const pmDoc = schema.node("doc", null, [
-      schema.node("textBox", { _docxPlacement: "standalone", _docxGroupId: "a" }, [
-        schema.node("paragraph", null, [schema.text("A")]),
-      ]),
+      schema.node(
+        "textBox",
+        { _docxPlacement: "standalone", _docxGroupId: "a" },
+        [schema.node("paragraph", null, [schema.text("A")])],
+      ),
       schema.node("pageBreak"),
-      schema.node("textBox", { _docxPlacement: "standalone", _docxGroupId: "a" }, [
-        schema.node("paragraph", null, [schema.text("B")]),
-      ]),
+      schema.node(
+        "textBox",
+        { _docxPlacement: "standalone", _docxGroupId: "a" },
+        [schema.node("paragraph", null, [schema.text("B")])],
+      ),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const firstBlock = document.package.document.content.at(0);
     const secondBlock = document.package.document.content.at(1);
 
@@ -4552,15 +5123,21 @@ describe("fromProseDoc", () => {
 
   test("does not merge adjacent standalone text boxes from different source paragraphs", () => {
     const pmDoc = schema.node("doc", null, [
-      schema.node("textBox", { _docxPlacement: "standalone", _docxGroupId: "a" }, [
-        schema.node("paragraph", null, [schema.text("A")]),
-      ]),
-      schema.node("textBox", { _docxPlacement: "standalone", _docxGroupId: "b" }, [
-        schema.node("paragraph", null, [schema.text("B")]),
-      ]),
+      schema.node(
+        "textBox",
+        { _docxPlacement: "standalone", _docxGroupId: "a" },
+        [schema.node("paragraph", null, [schema.text("A")])],
+      ),
+      schema.node(
+        "textBox",
+        { _docxPlacement: "standalone", _docxGroupId: "b" },
+        [schema.node("paragraph", null, [schema.text("B")])],
+      ),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(document.package.document.content).toHaveLength(2);
     for (const block of document.package.document.content) {
@@ -4581,7 +5158,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = document.package.document.content[0];
 
     expect(paragraph?.type).toBe("paragraph");
@@ -4602,7 +5181,9 @@ describe("fromProseDoc", () => {
 
     const roundTripped = toProseDoc(document);
     const markedText = roundTripped.firstChild?.child(1);
-    const comment = markedText?.marks.find((mark) => mark.type.name === "comment");
+    const comment = markedText?.marks.find(
+      (mark) => mark.type.name === "comment",
+    );
 
     expect(markedText?.text).toBe("commented");
     expect(comment?.attrs.commentId).toBe(123);
@@ -4623,7 +5204,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = document.package.document.content[0];
 
     expect(paragraph?.type).toBe("paragraph");
@@ -4642,8 +5225,12 @@ describe("fromProseDoc", () => {
       "commentReference",
     ]);
 
-    const starts = paragraph.content.filter((content) => content.type === "commentRangeStart");
-    const ends = paragraph.content.filter((content) => content.type === "commentRangeEnd");
+    const starts = paragraph.content.filter(
+      (content) => content.type === "commentRangeStart",
+    );
+    const ends = paragraph.content.filter(
+      (content) => content.type === "commentRangeEnd",
+    );
     expect(starts).toHaveLength(1);
     expect(ends).toHaveLength(1);
     expect(starts[0]?.id).toBe(17);
@@ -4663,14 +5250,19 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const roundTripped = toProseDoc(document);
 
     const markedTexts: string[] = [];
     roundTripped.descendants((node) => {
       if (
         node.isText &&
-        node.marks.some((mark) => mark.type.name === "comment" && mark.attrs.commentId === 456)
+        node.marks.some(
+          (mark) =>
+            mark.type.name === "comment" && mark.attrs.commentId === 456,
+        )
       ) {
         markedTexts.push(node.text ?? "");
       }
@@ -4685,23 +5277,32 @@ describe("fromProseDoc", () => {
       schema.node("table", null, [
         schema.node("tableRow", null, [
           schema.node("tableCell", null, [
-            schema.node("paragraph", null, [schema.text("cell one", [commentMark])]),
+            schema.node("paragraph", null, [
+              schema.text("cell one", [commentMark]),
+            ]),
           ]),
           schema.node("tableCell", null, [
-            schema.node("paragraph", null, [schema.text("cell two", [commentMark])]),
+            schema.node("paragraph", null, [
+              schema.text("cell two", [commentMark]),
+            ]),
           ]),
         ]),
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const roundTripped = toProseDoc(document);
 
     const markedTexts: string[] = [];
     roundTripped.descendants((node) => {
       if (
         node.isText &&
-        node.marks.some((mark) => mark.type.name === "comment" && mark.attrs.commentId === 789)
+        node.marks.some(
+          (mark) =>
+            mark.type.name === "comment" && mark.attrs.commentId === 789,
+        )
       ) {
         markedTexts.push(node.text ?? "");
       }
@@ -4723,11 +5324,17 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const roundTripped = toProseDoc(document);
     const markedText = roundTripped.firstChild?.child(1);
-    const comment = markedText?.marks.find((mark) => mark.type.name === "comment");
-    const hyperlink = markedText?.marks.find((mark) => mark.type.name === "hyperlink");
+    const comment = markedText?.marks.find(
+      (mark) => mark.type.name === "comment",
+    );
+    const hyperlink = markedText?.marks.find(
+      (mark) => mark.type.name === "hyperlink",
+    );
 
     expect(markedText?.text).toBe("linked");
     expect(comment?.attrs.commentId).toBe(321);
@@ -4750,7 +5357,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    const document = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
+    const document = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const block = document.package.document.content.at(0);
 
     expect(block?.type).toBe("paragraph");
@@ -4758,10 +5367,16 @@ describe("fromProseDoc", () => {
       return;
     }
 
-    const hyperlinks = block.content.filter((content) => content.type === "hyperlink");
+    const hyperlinks = block.content.filter(
+      (content) => content.type === "hyperlink",
+    );
     expect(hyperlinks).toHaveLength(2);
-    expect(hyperlinks.at(0)?.type === "hyperlink" && hyperlinks.at(0).rId).toBe("rId1");
-    expect(hyperlinks.at(1)?.type === "hyperlink" && hyperlinks.at(1).rId).toBe("rId2");
+    expect(hyperlinks.at(0)?.type === "hyperlink" && hyperlinks.at(0).rId).toBe(
+      "rId1",
+    );
+    expect(hyperlinks.at(1)?.type === "hyperlink" && hyperlinks.at(1).rId).toBe(
+      "rId2",
+    );
   });
 
   test("keeps adjacent imported same-target hyperlinks separate", () => {
@@ -4775,12 +5390,16 @@ describe("fromProseDoc", () => {
                 {
                   type: "hyperlink",
                   anchor: "br6",
-                  children: [{ type: "run", content: [{ type: "text", text: "IV.1" }] }],
+                  children: [
+                    { type: "run", content: [{ type: "text", text: "IV.1" }] },
+                  ],
                 },
                 {
                   type: "hyperlink",
                   anchor: "br6",
-                  children: [{ type: "run", content: [{ type: "text", text: " " }] }],
+                  children: [
+                    { type: "run", content: [{ type: "text", text: " " }] },
+                  ],
                 },
               ],
             },
@@ -4790,7 +5409,9 @@ describe("fromProseDoc", () => {
     };
 
     const pmDoc = toProseDoc(document);
-    const roundTripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
+    const roundTripped = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const block = roundTripped.package.document.content.at(0);
 
     expect(block?.type).toBe("paragraph");
@@ -4798,9 +5419,14 @@ describe("fromProseDoc", () => {
       return;
     }
 
-    const hyperlinks = block.content.filter((content) => content.type === "hyperlink");
+    const hyperlinks = block.content.filter(
+      (content) => content.type === "hyperlink",
+    );
     expect(hyperlinks).toHaveLength(2);
-    expect(hyperlinks.map((hyperlink) => hyperlink.anchor)).toEqual(["br6", "br6"]);
+    expect(hyperlinks.map((hyperlink) => hyperlink.anchor)).toEqual([
+      "br6",
+      "br6",
+    ]);
   });
 
   test("preserves ProseMirror addMark comments spanning block boundaries", () => {
@@ -4821,7 +5447,11 @@ describe("fromProseDoc", () => {
       schema.node("paragraph", null, [schema.text("after")]),
     ]);
     const state = EditorState.create({ doc: initialDoc, schema });
-    const docWithMark = state.tr.addMark(1, state.doc.content.size - 1, commentMark).doc;
+    const docWithMark = state.tr.addMark(
+      1,
+      state.doc.content.size - 1,
+      commentMark,
+    ).doc;
 
     const document = fromProseDoc(docWithMark, undefined, {
       stylesheetSource: { type: "package" },
@@ -4833,7 +5463,8 @@ describe("fromProseDoc", () => {
       if (
         node.isText &&
         node.marks.some(
-          (mark) => mark.type.name === "comment" && mark.attrs.commentId === commentId,
+          (mark) =>
+            mark.type.name === "comment" && mark.attrs.commentId === commentId,
         )
       ) {
         markedTexts.push(node.text ?? "");
@@ -4846,14 +5477,20 @@ describe("fromProseDoc", () => {
 
 function paragraphStartsWithPageBreak(paragraph: Paragraph): boolean {
   const firstContent = paragraph.content.at(0);
-  const firstRunContent = firstContent?.type === "run" ? firstContent.content.at(0) : undefined;
-  return firstRunContent?.type === "break" && firstRunContent.breakType === "page";
+  const firstRunContent =
+    firstContent?.type === "run" ? firstContent.content.at(0) : undefined;
+  return (
+    firstRunContent?.type === "break" && firstRunContent.breakType === "page"
+  );
 }
 
 function paragraphEndsWithPageBreak(paragraph: Paragraph): boolean {
   const lastContent = paragraph.content.at(-1);
-  const lastRunContent = lastContent?.type === "run" ? lastContent.content.at(-1) : undefined;
-  return lastRunContent?.type === "break" && lastRunContent.breakType === "page";
+  const lastRunContent =
+    lastContent?.type === "run" ? lastContent.content.at(-1) : undefined;
+  return (
+    lastRunContent?.type === "break" && lastRunContent.breakType === "page"
+  );
 }
 
 function paragraphHasPageBreakBeforeFirstShape(paragraph: Paragraph): boolean {
@@ -4919,7 +5556,10 @@ function inlineContentOrder(content: readonly ParagraphContent[]): string[] {
       if (runContent.type === "text") {
         return [runContent.text];
       }
-      if (runContent.type === "shape" && runContent.shape.shapeType === "textBox") {
+      if (
+        runContent.type === "shape" &&
+        runContent.shape.shapeType === "textBox"
+      ) {
         return ["textBox"];
       }
       return [];
@@ -4939,8 +5579,13 @@ function findNodePosition(doc: PMNode, nodeType: string): number | undefined {
   return position;
 }
 
-function expectTextBoxProjectionFixedPoint(actual: PMNode, expected: PMNode): void {
-  expect(stableProjectionIdentity(actual)).toBe(stableProjectionIdentity(expected));
+function expectTextBoxProjectionFixedPoint(
+  actual: PMNode,
+  expected: PMNode,
+): void {
+  expect(stableProjectionIdentity(actual)).toBe(
+    stableProjectionIdentity(expected),
+  );
 }
 
 function documentWithTextBoxParagraph({

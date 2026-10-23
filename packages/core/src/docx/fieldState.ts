@@ -60,7 +60,10 @@ export const fieldStateOf = ({ fldLock, dirty }: FieldState): FieldState => {
  * `1`/`0` is what Word writes and what the table, section and border
  * serializers write.
  */
-export const fieldStateAttributes = ({ fldLock, dirty }: FieldState): string[] => {
+export const fieldStateAttributes = ({
+  fldLock,
+  dirty,
+}: FieldState): string[] => {
   const attrs: string[] = [];
   if (fldLock !== undefined) {
     attrs.push(`w:fldLock="${fldLock ? "1" : "0"}"`);

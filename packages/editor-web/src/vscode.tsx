@@ -45,11 +45,17 @@ document.body.append(root);
 let editor: FolioEditorHandle | null = null;
 
 const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : "folio could not serialize the document.";
+  error instanceof Error
+    ? error.message
+    : "folio could not serialize the document.";
 
 const serialize = async (requestId: number) => {
   if (editor === null) {
-    post({ type: "serializeFailed", requestId, message: "The editor has not loaded a document." });
+    post({
+      type: "serializeFailed",
+      requestId,
+      message: "The editor has not loaded a document.",
+    });
     return;
   }
   try {
@@ -60,7 +66,12 @@ const serialize = async (requestId: number) => {
   }
 };
 
-const mount = ({ document, author, mode, locale }: Extract<HostMessage, { type: "load" }>) => {
+const mount = ({
+  document,
+  author,
+  mode,
+  locale,
+}: Extract<HostMessage, { type: "load" }>) => {
   const host: FolioEditorHost = {
     init: { document, author, mode, locale },
     onLoaded: (fileVersion) => post({ type: "loaded", fileVersion }),

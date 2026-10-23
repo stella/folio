@@ -1,6 +1,5 @@
 import { panic } from "better-result";
 
-import type { Document, FontInfo, Style } from "../types/document";
 import {
   mintDefaultParagraphStyle,
   resolveDefaultParagraphStyle,
@@ -9,6 +8,7 @@ import { getCachedNumberingMap } from "../docx/numberingParser";
 import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import { normalizeStyleNumberingReferences } from "../docx/numberingReferenceNormalization";
 import { parseDocx } from "../docx/parser";
+import type { Document, FontInfo, Style } from "../types/document";
 import type { DocxInput } from "../utils/docxInput";
 import { DOCUMENT_STYLE_SET_VERSION, type DocumentStyleSet } from "./types";
 
@@ -34,7 +34,9 @@ export type DocumentStyleCatalog = {
   styles: DocumentStyleCatalogEntry[];
 };
 
-export const inspectDocumentStyles = (document: Document): DocumentStyleCatalog => {
+export const inspectDocumentStyles = (
+  document: Document,
+): DocumentStyleCatalog => {
   const styles = document.package.styles?.styles ?? [];
   const defaultParagraphStyleId = resolveDefaultParagraphStyle(styles)?.styleId;
   return {
@@ -72,7 +74,9 @@ export const extractDocumentStyleSet = (
 
   const definitions = document.package.styles;
   const sourceStyles = definitions?.styles ?? [];
-  const stylesById = new Map(sourceStyles.map((style) => [style.styleId, style]));
+  const stylesById = new Map(
+    sourceStyles.map((style) => [style.styleId, style]),
+  );
   const selectedStyleIds =
     options.styleIds === undefined
       ? new Set(stylesById.keys())
@@ -105,14 +109,20 @@ export const extractDocumentStyleSet = (
     name: options.name,
     initialParagraphStyleId,
     styles: {
-      ...(definitions?.docDefaults ? { docDefaults: definitions.docDefaults } : {}),
-      ...(definitions?.latentStyles ? { latentStyles: definitions.latentStyles } : {}),
+      ...(definitions?.docDefaults
+        ? { docDefaults: definitions.docDefaults }
+        : {}),
+      ...(definitions?.latentStyles
+        ? { latentStyles: definitions.latentStyles }
+        : {}),
       styles,
     },
     ...(numbering ? { numbering } : {}),
     ...(document.package.theme ? { theme: document.package.theme } : {}),
     ...(fontTable ? { fontTable } : {}),
-    ...(document.package.settings ? { settings: document.package.settings } : {}),
+    ...(document.package.settings
+      ? { settings: document.package.settings }
+      : {}),
   });
 };
 
@@ -152,9 +162,13 @@ const ensureInitialParagraphStyle = ({
   hasDocDefaults,
 }: EnsureInitialParagraphStyleOptions): string => {
   if (requested !== undefined) {
-    const named = styles.find((style) => style.styleId === requested && style.type === "paragraph");
+    const named = styles.find(
+      (style) => style.styleId === requested && style.type === "paragraph",
+    );
     if (!named) {
-      return panic(`Initial paragraph style "${requested}" is not present in the extracted set`);
+      return panic(
+        `Initial paragraph style "${requested}" is not present in the extracted set`,
+      );
     }
     return requested;
   }
@@ -218,8 +232,12 @@ const extractReferencedNumbering = (
     return undefined;
   }
 
-  const nums = source.nums.filter((numbering) => referencedNumIds.has(numbering.numId));
-  const referencedAbstractNumIds = new Set(nums.map((numbering) => numbering.abstractNumId));
+  const nums = source.nums.filter((numbering) =>
+    referencedNumIds.has(numbering.numId),
+  );
+  const referencedAbstractNumIds = new Set(
+    nums.map((numbering) => numbering.abstractNumId),
+  );
   const abstractNums = source.abstractNums.filter((numbering) =>
     referencedAbstractNumIds.has(numbering.abstractNumId),
   );
@@ -253,7 +271,9 @@ const toCatalogEntry = (style: Style): DocumentStyleCatalogEntry => {
     role: styleRole(style),
     dependencies: [
       ...new Set(
-        [style.basedOn, style.next, style.link].filter((dependency) => dependency !== undefined),
+        [style.basedOn, style.next, style.link].filter(
+          (dependency) => dependency !== undefined,
+        ),
       ),
     ],
   };

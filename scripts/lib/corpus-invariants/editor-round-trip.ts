@@ -14,20 +14,24 @@
  * represent a property, and `fromProseDoc` may fail to write back one it did.
  */
 
+import { Result } from "better-result";
+
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { repackDocx } from "@stll/folio-core/docx/rezip";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
-import { Result } from "better-result";
 
 import { failureFromError } from "../corpus-signature";
 import {
-  type CorpusInvariantInput,
   type CorpusEvaluatedOutcome,
+  type CorpusInvariantInput,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
-import { describePackageDifferences, differenceFailures } from "./model-equality";
+import {
+  describePackageDifferences,
+  differenceFailures,
+} from "./model-equality";
 
 const DIFFERENCE_PREFIX = "editor round trip changed";
 
@@ -42,7 +46,12 @@ export const runEditorRoundTripInvariant = async ({
   if (proseDoc.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorRoundTrip, proseDoc.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
+          proseDoc.error,
+        ),
+      ],
       timings,
     };
   }
@@ -50,14 +59,21 @@ export const runEditorRoundTripInvariant = async ({
   const back = await timeStage(timings, "from-prose", () =>
     Promise.resolve(
       Result.try(() =>
-        fromProseDoc(proseDoc.value, parsed, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(proseDoc.value, parsed, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     ),
   );
   if (back.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorRoundTrip, back.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
+          back.error,
+        ),
+      ],
       timings,
     };
   }
@@ -71,7 +87,12 @@ export const runEditorRoundTripInvariant = async ({
   if (saved.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorRoundTrip, saved.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
+          saved.error,
+        ),
+      ],
       timings,
     };
   }
@@ -85,7 +106,12 @@ export const runEditorRoundTripInvariant = async ({
   if (reparsed.isErr()) {
     return {
       status: "evaluated",
-      failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorRoundTrip, reparsed.error)],
+      failures: [
+        failureFromError(
+          EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
+          reparsed.error,
+        ),
+      ],
       timings,
     };
   }

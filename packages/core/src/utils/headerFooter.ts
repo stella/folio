@@ -9,6 +9,7 @@
  * blocks in here.
  */
 
+import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import type {
   BlockContent,
   Document,
@@ -17,7 +18,6 @@ import type {
   HeaderFooter,
   SectionProperties,
 } from "../types/document";
-import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 
 export type HeaderFooterPosition = "header" | "footer";
 
@@ -117,7 +117,8 @@ export const resolveHeaderFooterContent = (
       // resolution consistent with the first-page resolution below and with
       // Word's behavior.
       const hasFirstRef =
-        sp.titlePg === true && sp.headerReferences.some((r) => r.type === "first");
+        sp.titlePg === true &&
+        sp.headerReferences.some((r) => r.type === "first");
       if (hasFirstRef && !primaryHeaderFromTitleSection) {
         primaryHeaderFromTitleSection = candidate;
         primaryHeaderRId = defaultRef.rId;
@@ -164,7 +165,8 @@ export const resolveHeaderFooterContent = (
       // Same titlePg gate as headers above — ignore `first` refs in sections
       // that don't enable title-page mode.
       const hasFirstRef =
-        sp.titlePg === true && sp.footerReferences.some((r) => r.type === "first");
+        sp.titlePg === true &&
+        sp.footerReferences.some((r) => r.type === "first");
       if (hasFirstRef && !primaryFooterFromTitleSection) {
         primaryFooterFromTitleSection = candidate;
         primaryFooterRId = defaultRef.rId;
@@ -256,8 +258,11 @@ export const resolveEffectiveSectionProperties = (
   documentBody: DocumentBody | undefined,
   hasTitlePg: boolean,
 ): SectionProperties | undefined => {
-  const firstContentSection = documentBody?.sections?.find((section) => section.content.length > 0);
-  const base = firstContentSection?.properties ?? documentBody?.finalSectionProperties;
+  const firstContentSection = documentBody?.sections?.find(
+    (section) => section.content.length > 0,
+  );
+  const base =
+    firstContentSection?.properties ?? documentBody?.finalSectionProperties;
   if (!hasTitlePg || base?.titlePg) {
     return base;
   }
@@ -275,7 +280,9 @@ export const pickActiveHeaderFooterRId = (
       ? resolution.activeFirstHeaderRId
       : resolution.activeFirstFooterRId;
   }
-  return position === "header" ? resolution.activeHeaderRId : resolution.activeFooterRId;
+  return position === "header"
+    ? resolution.activeHeaderRId
+    : resolution.activeFooterRId;
 };
 
 /**
@@ -317,7 +324,8 @@ export const createEmptyHeaderFooter = (
   const newMap = new Map(pkg[mapKey]);
   newMap.set(rId, emptyHf);
 
-  const refKey = position === "header" ? "headerReferences" : "footerReferences";
+  const refKey =
+    position === "header" ? "headerReferences" : "footerReferences";
   const existingRefs = sectionProps[refKey] ?? [];
   const newRef = { type: hdrFtrType, rId };
 
@@ -411,7 +419,8 @@ export const removeHeaderFooter = ({
   activeRId,
 }: RemoveHeaderFooterArgs): Document => {
   const pkg = document.package;
-  const refKey = position === "header" ? "headerReferences" : "footerReferences";
+  const refKey =
+    position === "header" ? "headerReferences" : "footerReferences";
   const mapKey = position === "header" ? "headers" : "footers";
 
   const newMap = new Map(pkg[mapKey]);
@@ -445,7 +454,9 @@ export const removeHeaderFooter = ({
       document: {
         ...oldDoc,
         ...(newSections !== undefined ? { sections: newSections } : {}),
-        ...(newFinalProps !== undefined ? { finalSectionProperties: newFinalProps } : {}),
+        ...(newFinalProps !== undefined
+          ? { finalSectionProperties: newFinalProps }
+          : {}),
       },
     },
   };

@@ -23,20 +23,39 @@ const readManifest = (file: string) => {
 };
 
 const workspacePattern = (value: unknown) => {
-  if (typeof value !== "string" || value === "" || value.includes("\0") || value.includes("\\"))
-    throw new TypeError("Workspace patterns must be nonempty repository-relative strings.");
+  if (
+    typeof value !== "string" ||
+    value === "" ||
+    value.includes("\0") ||
+    value.includes("\\")
+  )
+    throw new TypeError(
+      "Workspace patterns must be nonempty repository-relative strings.",
+    );
   const source = value.startsWith("!") ? value.slice(1) : value;
-  if (source === "" || path.posix.isAbsolute(source) || source.split("/").includes(".."))
+  if (
+    source === "" ||
+    path.posix.isAbsolute(source) ||
+    source.split("/").includes("..")
+  )
     throw new TypeError(`Invalid workspace pattern: ${value}`);
   const pattern = path.posix.normalize(source);
-  if (pattern === ".") throw new TypeError("The repository root cannot be its own workspace.");
-  return { pattern: pattern.replace(/\/$/u, ""), excluded: value.startsWith("!") };
+  if (pattern === ".")
+    throw new TypeError("The repository root cannot be its own workspace.");
+  return {
+    pattern: pattern.replace(/\/$/u, ""),
+    excluded: value.startsWith("!"),
+  };
 };
 
 /** Non-private workspace directories, including newly added publication packages. */
 export const publishedPackagePaths = (repoRoot = REPO_ROOT): string[] => {
   const root = readManifest(path.join(repoRoot, "package.json"));
-  if (!("workspaces" in root) || !Array.isArray(root.workspaces) || root.workspaces.length === 0)
+  if (
+    !("workspaces" in root) ||
+    !Array.isArray(root.workspaces) ||
+    root.workspaces.length === 0
+  )
     throw new TypeError("The root manifest must declare workspace patterns.");
   const patterns = root.workspaces.map(workspacePattern);
   const includes = patterns.filter(({ excluded }) => !excluded);
@@ -54,7 +73,8 @@ export const publishedPackagePaths = (repoRoot = REPO_ROOT): string[] => {
         followSymlinks: false,
       }),
     ];
-    if (matches.length === 0) throw new TypeError(`Workspace pattern has no manifests: ${pattern}`);
+    if (matches.length === 0)
+      throw new TypeError(`Workspace pattern has no manifests: ${pattern}`);
     for (const manifest of matches) {
       if (!excludes.some((glob) => glob.match(path.posix.dirname(manifest))))
         manifests.add(manifest);
@@ -64,13 +84,21 @@ export const publishedPackagePaths = (repoRoot = REPO_ROOT): string[] => {
   const published: string[] = [];
   for (const manifestPath of [...manifests].toSorted()) {
     const manifest = readManifest(path.join(repoRoot, manifestPath));
-    if (!("name" in manifest) || typeof manifest.name !== "string" || manifest.name.trim() === "")
-      throw new TypeError(`Workspace manifest has no package name: ${manifestPath}`);
+    if (
+      !("name" in manifest) ||
+      typeof manifest.name !== "string" ||
+      manifest.name.trim() === ""
+    )
+      throw new TypeError(
+        `Workspace manifest has no package name: ${manifestPath}`,
+      );
     if (names.has(manifest.name))
       throw new TypeError(`Duplicate workspace package name: ${manifest.name}`);
     names.add(manifest.name);
     if ("private" in manifest && typeof manifest.private !== "boolean")
-      throw new TypeError(`Workspace private field must be boolean: ${manifestPath}`);
+      throw new TypeError(
+        `Workspace private field must be boolean: ${manifestPath}`,
+      );
     if (!("private" in manifest) || !manifest.private)
       published.push(path.posix.dirname(manifestPath));
   }
@@ -88,7 +116,9 @@ const validateChangedPath = (file: string) => {
     file === ".." ||
     file.startsWith("../")
   )
-    throw new TypeError(`Invalid repository-relative changed path: ${JSON.stringify(file)}`);
+    throw new TypeError(
+      `Invalid repository-relative changed path: ${JSON.stringify(file)}`,
+    );
 };
 
 type ApiRequiredForPathsOptions = {
@@ -109,9 +139,14 @@ export const apiRequiredForPaths = ({
   for (const directory of packages) validateChangedPath(directory);
   return changedPaths.some((file) => {
     // Manifests can change workspace membership or publication status, including removal.
-    if (file === "package.json" || file.endsWith("/package.json") || API_CONTROL_PATHS.has(file))
+    if (
+      file === "package.json" ||
+      file.endsWith("/package.json") ||
+      API_CONTROL_PATHS.has(file)
+    )
       return true;
-    if (file.startsWith("api-reports/") && file.endsWith(".api.md")) return true;
+    if (file.startsWith("api-reports/") && file.endsWith(".api.md"))
+      return true;
     return packages.some(
       (directory) =>
         file === `${directory}/src` ||
@@ -132,9 +167,17 @@ export const packagedConsumerRequiredForPaths = ({
   for (const file of changedPaths) validateChangedPath(file);
   for (const directory of packages) validateChangedPath(directory);
   return changedPaths.some((file) => {
-    if (file === "test/consumer-scenarios" || file.startsWith("test/consumer-scenarios/"))
+    if (
+      file === "test/consumer-scenarios" ||
+      file.startsWith("test/consumer-scenarios/")
+    )
       return true;
-    if (file === "bun.lock" || file === "bunfig.toml" || file === "package.json") return true;
+    if (
+      file === "bun.lock" ||
+      file === "bunfig.toml" ||
+      file === "package.json"
+    )
+      return true;
     // Membership changes, deletions and a private package becoming public all need a proof.
     if (file.endsWith("/package.json")) return true;
     // Build configs, tsconfigs, build scripts and ambient types shape the emitted
@@ -148,15 +191,23 @@ export const packagedConsumerRequiredForPaths = ({
 };
 
 /** The shared changed-path decision used by CI and local affected-package checks. */
-export const affectedPackagePlan = (options: ApiRequiredForPathsOptions): AffectedPackagePlan => ({
+export const affectedPackagePlan = (
+  options: ApiRequiredForPathsOptions,
+): AffectedPackagePlan => ({
   apiRequired: apiRequiredForPaths(options),
   packagedConsumerRequired: packagedConsumerRequiredForPaths(options),
 });
 
 type DiffOptions = { repoRoot: string; base: string; head: string };
-export const changedApiPaths = ({ repoRoot, base, head }: DiffOptions): string[] => {
+export const changedApiPaths = ({
+  repoRoot,
+  base,
+  head,
+}: DiffOptions): string[] => {
   if (![base, head].every((sha) => /^(?:[\da-f]{40}|[\da-f]{64})$/iu.test(sha)))
-    throw new TypeError("API planning requires complete base and head commit SHAs.");
+    throw new TypeError(
+      "API planning requires complete base and head commit SHAs.",
+    );
   const diff = Bun.spawnSync(
     [
       "git",
@@ -172,22 +223,31 @@ export const changedApiPaths = ({ repoRoot, base, head }: DiffOptions): string[]
     { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
   );
   if (diff.exitCode !== 0)
-    throw new TypeError(`Cannot read PR API diff: ${diff.stderr.toString().trim()}`);
+    throw new TypeError(
+      `Cannot read PR API diff: ${diff.stderr.toString().trim()}`,
+    );
   const names = new TextDecoder("utf-8", { fatal: true }).decode(diff.stdout);
   if (names === "") return [];
-  if (!names.endsWith("\0")) throw new TypeError("Git API diff is not NUL-terminated.");
+  if (!names.endsWith("\0"))
+    throw new TypeError("Git API diff is not NUL-terminated.");
   const files = names.slice(0, -1).split("\0");
   for (const file of files) validateChangedPath(file);
   return files;
 };
 
 type WorkingTreeDiffOptions = { repoRoot: string; base: string };
-export const changedWorkingTreePaths = ({ repoRoot, base }: WorkingTreeDiffOptions): string[] => {
-  const revision = Bun.spawnSync(["git", "rev-parse", "--verify", `${base}^{commit}`], {
-    cwd: repoRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+export const changedWorkingTreePaths = ({
+  repoRoot,
+  base,
+}: WorkingTreeDiffOptions): string[] => {
+  const revision = Bun.spawnSync(
+    ["git", "rev-parse", "--verify", `${base}^{commit}`],
+    {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
   if (revision.exitCode !== 0)
     throw new TypeError(
       `Cannot resolve affected-package base: ${revision.stderr.toString().trim()}`,
@@ -208,13 +268,17 @@ export const changedWorkingTreePaths = ({ repoRoot, base }: WorkingTreeDiffOptio
     { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
   );
   if (tracked.exitCode !== 0)
-    throw new TypeError(`Cannot read affected-package diff: ${tracked.stderr.toString().trim()}`);
+    throw new TypeError(
+      `Cannot read affected-package diff: ${tracked.stderr.toString().trim()}`,
+    );
   const untracked = Bun.spawnSync(
     ["git", "ls-files", "--others", "--exclude-standard", "-z", "--"],
     { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
   );
   if (untracked.exitCode !== 0)
-    throw new TypeError(`Cannot read untracked files: ${untracked.stderr.toString().trim()}`);
+    throw new TypeError(
+      `Cannot read untracked files: ${untracked.stderr.toString().trim()}`,
+    );
   const bytes = Buffer.concat([tracked.stdout, untracked.stdout]);
   if (bytes.length === 0) return [];
   const names = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -234,11 +298,13 @@ const parseArguments = (args: readonly string[]) => {
     if (!value) throw new TypeError(`Missing value for ${flag ?? "argument"}.`);
     switch (flag) {
       case "--base":
-        if (base !== undefined) throw new TypeError("Duplicate --base argument.");
+        if (base !== undefined)
+          throw new TypeError("Duplicate --base argument.");
         base = value;
         break;
       case "--head":
-        if (head !== undefined) throw new TypeError("Duplicate --head argument.");
+        if (head !== undefined)
+          throw new TypeError("Duplicate --head argument.");
         head = value;
         break;
       default:
@@ -246,7 +312,9 @@ const parseArguments = (args: readonly string[]) => {
     }
   }
   if (!base || !head)
-    throw new TypeError("Usage: bun scripts/ci-api-plan.ts --base <sha> --head <sha>");
+    throw new TypeError(
+      "Usage: bun scripts/ci-api-plan.ts --base <sha> --head <sha>",
+    );
   return { base, head };
 };
 
@@ -266,7 +334,9 @@ if (import.meta.main) {
       stderr: "pipe",
     });
     if (root.exitCode !== 0)
-      throw new TypeError(`Cannot locate API planner repository: ${root.stderr.toString().trim()}`);
+      throw new TypeError(
+        `Cannot locate API planner repository: ${root.stderr.toString().trim()}`,
+      );
     const repoRoot = root.stdout.toString().trim();
     const plan = affectedPackagePlan({
       changedPaths: changedApiPaths({ repoRoot, base, head }),
@@ -275,7 +345,9 @@ if (import.meta.main) {
     emit(plan.apiRequired, plan.packagedConsumerRequired);
   } catch (error) {
     process.exitCode = 1;
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
     emit(true, true);
   }
 }

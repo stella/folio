@@ -2,16 +2,22 @@
 import { Result } from "better-result";
 
 import type { Document, Paragraph } from "../model/document";
-import { blockListAt, sameBlockList, storyBody, storyParagraphs } from "./blocks";
+import {
+  blockListAt,
+  sameBlockList,
+  storyBody,
+  storyParagraphs,
+} from "./blocks";
+import { isCommentExhausted } from "./comments";
 import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
-import { paragraphLength } from "./offsets";
+import { paragraphHoldsContent, paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
-  paragraphPropertiesOf,
   foldedParagraphPropertyChange,
+  paragraphPropertiesOf,
   reviewFieldsOf,
   sameParagraphProperties,
   stampInfo,
@@ -20,12 +26,88 @@ import {
   WRAP_KINDS,
   wrapTracked,
 } from "./review";
-import { DOCUMENT_OP_TYPES, type DeleteBlocksOp } from "./types";
+import { type DeleteBlocksOp, DOCUMENT_OP_TYPES } from "./types";
 
 type BlockDeletionOptions = {
   document: Document;
   op: DeleteBlocksOp;
   applyOps: ApplyOps;
+};
+
+/** The single structural outcome of resolving a paragraph mark. */
+export const paragraphMarkOutcome = ({
+  follows,
+  holdsContent,
+  markWasAdded,
+  containerStillEndsWithParagraph,
+  followingTableCanReceiveRunIn,
+  tableRemovalIsTrackable = true,
+  removedSectionProperties = false,
+  precedingSectionOwner = "unavailable",
+  followingHasSectionProperties = false,
+}: {
+  follows: "paragraph" | "table" | "nothing";
+  holdsContent: boolean;
+  markWasAdded: boolean;
+  /**
+   * Read only when nothing follows: whether the block BEFORE this paragraph,
+   * which becomes the container's last block once this one is removed, is a
+   * paragraph. Never the container's current last child, which is this one.
+   */
+  containerStillEndsWithParagraph: boolean;
+  followingTableCanReceiveRunIn: boolean;
+  tableRemovalIsTrackable?: boolean;
+  removedSectionProperties?: boolean;
+  precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
+  followingHasSectionProperties?: boolean;
+}):
+  | ({ kind: "join" } & SectionTransfer)
+  | ({ kind: "remove" } & SectionTransfer)
+  | ({ kind: "run-in" } & SectionTransfer)
+  | ({ kind: "keep" } & SectionTransfer)
+  | ({ kind: "refuse"; reason: "untrackable" } & SectionTransfer) => {
+  let sectionDestination: SectionTransfer["sectionDestination"] = "none";
+  if (removedSectionProperties && precedingSectionOwner === "available") {
+    sectionDestination = "preceding";
+  } else if (
+    removedSectionProperties &&
+    precedingSectionOwner !== "same" &&
+    !followingHasSectionProperties
+  ) {
+    sectionDestination = "following";
+  }
+  // Only a join has a following paragraph mark. A removal whose section could
+  // only move forward keeps the paragraph instead, so its section survives.
+  const removalWouldDropSection = sectionDestination === "following";
+  switch (follows) {
+    case "paragraph":
+      return { kind: "join", sectionDestination };
+    case "table":
+      if (!tableRemovalIsTrackable)
+        return {
+          kind: "refuse",
+          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          sectionDestination,
+        };
+      if (!holdsContent) {
+        return removalWouldDropSection
+          ? { kind: "keep", sectionDestination: "none" }
+          : { kind: "remove", sectionDestination };
+      }
+      return followingTableCanReceiveRunIn
+        ? { kind: "run-in", sectionDestination }
+        : { kind: "keep", sectionDestination };
+    case "nothing":
+      if (removalWouldDropSection)
+        return { kind: "keep", sectionDestination: "none" };
+      return !holdsContent && markWasAdded && containerStillEndsWithParagraph
+        ? { kind: "remove", sectionDestination }
+        : { kind: "keep", sectionDestination };
+  }
+};
+
+type SectionTransfer = {
+  sectionDestination: "none" | "preceding" | "following";
 };
 
 export const deleteBlocks = ({
@@ -36,7 +118,10 @@ export const deleteBlocks = ({
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
   if (op.blockIds.length === 0) {
-    return refuse(DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST, "No paragraphs to delete.");
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
+      "No paragraphs to delete.",
+    );
   }
   const body = storyBody(document, op.story);
   const paragraphs = storyParagraphs(body);
@@ -56,12 +141,16 @@ export const deleteBlocks = ({
   const first = found.at(0);
   const last = found.at(-1);
   if (first === undefined || last === undefined) {
-    return refuse(DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST, "No paragraphs to delete.");
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
+      "No paragraphs to delete.",
+    );
   }
   if (
     !found.every(
       (location, index) =>
-        sameBlockList(location.list, first.list) && location.index === first.index + index,
+        sameBlockList(location.list, first.list) &&
+        location.index === first.index + index,
     )
   ) {
     return refuse(
@@ -82,7 +171,9 @@ export const deleteBlocks = ({
   const previous = preceding?.type === "paragraph" ? preceding : undefined;
   const selected = found.map(({ paragraph }) => paragraph);
   const affected = previous === undefined ? selected : [previous, ...selected];
-  if (affected.some(({ sectionProperties }) => sectionProperties !== undefined)) {
+  if (
+    affected.some(({ sectionProperties }) => sectionProperties !== undefined)
+  ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "Deleting section boundaries requires section operations.",
@@ -91,7 +182,8 @@ export const deleteBlocks = ({
   const replacement = (blocks: readonly Paragraph[]) => ({
     type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
     story: op.story,
-    expected: following?.type === "paragraph" ? [...selected, following] : affected,
+    expected:
+      following?.type === "paragraph" ? [...selected, following] : affected,
     blocks,
   });
   const finalReview = reviewFieldsOf(last.paragraph);
@@ -107,15 +199,66 @@ export const deleteBlocks = ({
     { ...last.paragraph, content: previous?.content ?? [] },
     finalReview,
   );
-  const directBlocks = following?.type === "paragraph" ? [following] : [survivor];
+  let follows: "paragraph" | "table" | "nothing" = "nothing";
+  if (following?.type === "paragraph") follows = "paragraph";
+  if (following?.type === "table") follows = "table";
+  const outcome = paragraphMarkOutcome({
+    follows,
+    holdsContent: paragraphHoldsContent(survivor),
+    markWasAdded: false,
+    containerStillEndsWithParagraph: previous !== undefined,
+    followingTableCanReceiveRunIn: false,
+  });
+  let directBlocks: Paragraph[] = [];
+  if (outcome.kind === "join" && following?.type === "paragraph")
+    directBlocks = [following];
+  if (outcome.kind === "keep") directBlocks = [survivor];
   const direct = applyOps(document, [replacement(directBlocks)]);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
   if (op.revision === undefined) {
+    let edit = direct.value;
+    let retiredTouched: readonly string[] = [];
+    const exhaustedCommentIds = (
+      document.package.document.comments ?? []
+    ).flatMap(({ id, parentId }) =>
+      parentId === undefined &&
+      !isCommentExhausted({ type: "document", document, id }) &&
+      isCommentExhausted({
+        type: "document",
+        document: direct.value.document,
+        id,
+      })
+        ? [id]
+        : [],
+    );
+    if (exhaustedCommentIds.length > 0) {
+      const retired = applyOps(
+        direct.value.document,
+        exhaustedCommentIds.map((id) => ({
+          type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+          id,
+          scope: "thread" as const,
+        })),
+      );
+      if (retired.isErr())
+        return refuse(retired.error.reason, retired.error.message);
+      retiredTouched = retired.value.touched.modified;
+      edit = {
+        document: retired.value.document,
+        inverse: [...retired.value.inverse, ...direct.value.inverse],
+        touched: retired.value.touched,
+      };
+    }
     // Anchoring the inverse must not report an unchanged boundary as modified.
     return Result.ok({
-      ...direct.value,
+      ...edit,
       touched: {
-        modified: terminal ? [last.paragraph.paraId ?? ""] : [],
+        modified: [
+          ...new Set([
+            ...retiredTouched,
+            ...(terminal ? [last.paragraph.paraId ?? ""] : []),
+          ]),
+        ],
         inserted: [],
         removed: affected
           .filter((paragraph) => !terminal || paragraph !== last.paragraph)
@@ -143,20 +286,31 @@ export const deleteBlocks = ({
       const wrapped = wrapTracked({
         items: paragraph.content,
         from: { offset: 0, zeroWidthBefore: 0 },
-        to: { offset: paragraphLength(paragraph), zeroWidthBefore: Number.MAX_SAFE_INTEGER },
+        to: {
+          offset: paragraphLength(paragraph),
+          zeroWidthBefore: Number.MAX_SAFE_INTEGER,
+        },
         kind: WRAP_KINDS.DELETION,
         stamp: op.revision,
       });
       if (wrapped.kind === "refused")
-        return refuse(wrapped.reason, "The selected paragraph content cannot be tracked.");
-      if (wrapped.kind === "wrapped") next = { ...paragraph, content: wrapped.content };
+        return refuse(
+          wrapped.reason,
+          "The selected paragraph content cannot be tracked.",
+        );
+      if (wrapped.kind === "wrapped")
+        next = { ...paragraph, content: wrapped.content };
     }
     if (!terminal || paragraph !== last.paragraph) {
-      next = { ...next, pPrMark: { kind: "del", info: stampInfo(op.revision) } };
+      next = {
+        ...next,
+        pPrMark: { kind: "del", info: stampInfo(op.revision) },
+      };
     } else if (!sameParagraphProperties(next.formatting, survivor.formatting)) {
       const review = reviewFieldsOf(next);
       delete review.formatting;
-      if (survivor.formatting !== undefined) review.formatting = survivor.formatting;
+      if (survivor.formatting !== undefined)
+        review.formatting = survivor.formatting;
       review.propertyChanges = [
         foldedParagraphPropertyChange({
           paragraph,
@@ -174,7 +328,11 @@ export const deleteBlocks = ({
     after: tracked,
     newIds: op.newIds ?? {},
     usedElsewhere: () =>
-      new Set(packageIdentityKeys(document.package).filter((key) => !beforeKeys.has(key))),
+      new Set(
+        packageIdentityKeys(document.package).filter(
+          (key) => !beforeKeys.has(key),
+        ),
+      ),
   });
   switch (fresh.kind) {
     case "needsIds":
@@ -189,9 +347,12 @@ export const deleteBlocks = ({
       );
     case "fresh": {
       const blocks =
-        following?.type === "paragraph" ? [...fresh.paragraphs, following] : fresh.paragraphs;
+        following?.type === "paragraph"
+          ? [...fresh.paragraphs, following]
+          : fresh.paragraphs;
       const result = applyOps(document, [replacement(blocks)]);
-      if (result.isErr()) return refuse(result.error.reason, result.error.message);
+      if (result.isErr())
+        return refuse(result.error.reason, result.error.message);
       return Result.ok({
         ...result.value,
         touched: {

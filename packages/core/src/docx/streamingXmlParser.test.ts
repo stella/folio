@@ -4,12 +4,14 @@ import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
 import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
+  getXmlSourceRange,
   parseStreamingXml,
   parseStreamingXmlWithSourceRanges,
-  getXmlSourceRange,
   rewriteStreamingXmlDecimalAttributes,
   scanStreamingXmlNumericIdAttributes,
 } from "./streamingXmlParser";
@@ -62,7 +64,11 @@ const scopeKey = (() => {
 const describeTree = (root: XmlElement): string =>
   JSON.stringify(root, (key, value: XmlElement) =>
     key !== "" && value?.type === "element"
-      ? { ...value, namespace: getNamespaceUri(value), scope: scopeKey(value.namespaceScope) }
+      ? {
+          ...value,
+          namespace: getNamespaceUri(value),
+          scope: scopeKey(value.namespaceScope),
+        }
       : value,
   );
 
@@ -119,7 +125,8 @@ describe("parseStreamingXml", () => {
         fc.constantFrom(" ", "\n", "\r\n"),
         fc.constantFrom('"', "'"),
         (prefix, uri, whitespace, quote) => {
-          const name = (local: string) => (prefix ? `${prefix}:${local}` : local);
+          const name = (local: string) =>
+            prefix ? `${prefix}:${local}` : local;
           const namespace = prefix ? `xmlns:${prefix}` : "xmlns";
           const text = `<${name("t")}>é😀<!--nested comment--><![CDATA[<raw>&]]></${name("t")}>`;
           const run = `<${name("r")}>${text}</${name("r")}>`;
@@ -135,14 +142,27 @@ describe("parseStreamingXml", () => {
           const tracked = parseStreamingXmlWithSourceRanges(xml);
           expect(ordinary.status).toBe("parsed");
           expect(tracked.status).toBe("parsed");
-          if (ordinary.status !== "parsed" || tracked.status !== "parsed") return;
-          expect(describeTree(tracked.value)).toBe(describeTree(ordinary.value));
+          if (ordinary.status !== "parsed" || tracked.status !== "parsed")
+            return;
+          expect(describeTree(tracked.value)).toBe(
+            describeTree(ordinary.value),
+          );
           const visitOrdinary = (element: XmlElement): void => {
             expect(getXmlSourceRange(element)).toBeUndefined();
             for (const child of element.elements ?? []) visitOrdinary(child);
           };
           visitOrdinary(ordinary.value);
-          const expected = [root, table, row, cell, paragraph, run, text, empty, rebound];
+          const expected = [
+            root,
+            table,
+            row,
+            cell,
+            paragraph,
+            run,
+            text,
+            empty,
+            rebound,
+          ];
           const actual: string[] = [];
           const visitTracked = (element: XmlElement): void => {
             if (element.type === "element") {
@@ -168,29 +188,42 @@ describe("parseStreamingXml", () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 2_147_483_647 }),
-        fc.array(fc.constantFrom("text", "&amp;", "&#65;", "日本語"), { maxLength: 100 }),
+        fc.array(fc.constantFrom("text", "&amp;", "&#65;", "日本語"), {
+          maxLength: 100,
+        }),
         (id, text) => {
-          const namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+          const namespace =
+            "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
           const xml = `<x:document xmlns:x="${namespace}"><x:p data-content="discard"><x:commentRangeStart x:id="${id}"/>${text.join("")}<x:p xmlns:x="urn:foreign"><x:commentReference x:id='${id}'/></x:p><x:commentRangeEnd x:id="${id}"/></x:p></x:document>`;
-          const events: { name: string | undefined; namespace: string | undefined; id: string }[] =
-            [];
-          const result = scanStreamingXmlNumericIdAttributes(xml, (element, spans) => {
-            expect(element.elements).toBeUndefined();
-            expect(element.attributes?.["data-content"]).toBeUndefined();
-            const span = spans.get("x:id");
-            if (span) {
-              events.push({
-                name: element.name,
-                namespace: getNamespaceUri(element),
-                id: xml.slice(span.start, span.end),
-              });
-            }
-            return null;
-          });
+          const events: {
+            name: string | undefined;
+            namespace: string | undefined;
+            id: string;
+          }[] = [];
+          const result = scanStreamingXmlNumericIdAttributes(
+            xml,
+            (element, spans) => {
+              expect(element.elements).toBeUndefined();
+              expect(element.attributes?.["data-content"]).toBeUndefined();
+              const span = spans.get("x:id");
+              if (span) {
+                events.push({
+                  name: element.name,
+                  namespace: getNamespaceUri(element),
+                  id: xml.slice(span.start, span.end),
+                });
+              }
+              return null;
+            },
+          );
           expect(result).toEqual({ status: "scanned" });
           expect(events).toEqual([
             { name: "x:commentRangeStart", namespace, id: String(id) },
-            { name: "x:commentReference", namespace: "urn:foreign", id: String(id) },
+            {
+              name: "x:commentReference",
+              namespace: "urn:foreign",
+              id: String(id),
+            },
             { name: "x:commentRangeEnd", namespace, id: String(id) },
           ]);
         },
@@ -207,7 +240,9 @@ describe("parseStreamingXml", () => {
     '<root __proto__="unsafe"/>',
     `<root>${"<x>".repeat(101)}value${"</x>".repeat(101)}</root>`,
   ])("identity scans reject unsupported XML: %s", (xml) => {
-    expect(scanStreamingXmlNumericIdAttributes(xml, () => null)).toEqual({ status: "unsupported" });
+    expect(scanStreamingXmlNumericIdAttributes(xml, () => null)).toEqual({
+      status: "unsupported",
+    });
   });
 
   test.each(XML_CASES)("matches the compatibility parser", (xml) => {
@@ -220,10 +255,18 @@ describe("parseStreamingXml", () => {
   test("falls back for declarations and malformed nesting outside its contract", () => {
     const deeplyNested = `<document>${"<x>".repeat(101)}value${"</x>".repeat(101)}</document>`;
 
-    expect(parseStreamingXml("<!DOCTYPE document><document/>").status).toBe("unsupported");
-    expect(parseStreamingXml("<document><body></document>").status).toBe("unsupported");
-    expect(parseStreamingXml("<document>&custom;</document>").status).toBe("unsupported");
-    expect(parseStreamingXml('<document __proto__="unsafe"/>').status).toBe("unsupported");
+    expect(parseStreamingXml("<!DOCTYPE document><document/>").status).toBe(
+      "unsupported",
+    );
+    expect(parseStreamingXml("<document><body></document>").status).toBe(
+      "unsupported",
+    );
+    expect(parseStreamingXml("<document>&custom;</document>").status).toBe(
+      "unsupported",
+    );
+    expect(parseStreamingXml('<document __proto__="unsafe"/>').status).toBe(
+      "unsupported",
+    );
     expect(parseStreamingXml(deeplyNested).status).toBe("unsupported");
   });
 
@@ -292,9 +335,22 @@ describe("parseStreamingXml", () => {
 
   test("matches the compatibility parser for generated trees", () => {
     const text = fc
-      .array(fc.constantFrom("a", " ", "\n", "\r\n", "\t", "ž", "&amp;", "&lt;", "&#x1F642;"), {
-        maxLength: 6,
-      })
+      .array(
+        fc.constantFrom(
+          "a",
+          " ",
+          "\n",
+          "\r\n",
+          "\t",
+          "ž",
+          "&amp;",
+          "&lt;",
+          "&#x1F642;",
+        ),
+        {
+          maxLength: 6,
+        },
+      )
       .map((tokens) => tokens.join(""));
     const name = fc.constantFrom("w:p", "w:r", "m:r", "x:p", "p", "w:t");
     const attribute = fc.oneof(
@@ -313,15 +369,24 @@ describe("parseStreamingXml", () => {
       node: fc.oneof(
         { depthSize: "small", withCrossShrink: true },
         text,
-        fc.constantFrom("<!-- note -->", "<![CDATA[raw <x> & ]]>", "<?pi data?>"),
+        fc.constantFrom(
+          "<!-- note -->",
+          "<![CDATA[raw <x> & ]]>",
+          "<?pi data?>",
+        ),
         fc
           .tuple(
             name,
-            fc.uniqueArray(attribute, { selector: ([key]) => key, maxLength: 3 }),
+            fc.uniqueArray(attribute, {
+              selector: ([key]) => key,
+              maxLength: 3,
+            }),
             fc.array(tie("node"), { maxLength: 4 }),
           )
           .map(([tag, attributes, children]) => {
-            const attrs = attributes.map(([key, value]) => ` ${key}="${value}"`).join("");
+            const attrs = attributes
+              .map(([key, value]) => ` ${key}="${value}"`)
+              .join("");
             return children.length === 0
               ? `<${tag}${attrs}/>`
               : `<${tag}${attrs}>${children.join("")}</${tag}>`;
@@ -329,7 +394,10 @@ describe("parseStreamingXml", () => {
       ),
     }));
     const document = fc
-      .tuple(fc.array(node, { maxLength: 5 }), fc.constantFrom(undefined, OOXML_NAMESPACE_SCOPE))
+      .tuple(
+        fc.array(node, { maxLength: 5 }),
+        fc.constantFrom(undefined, OOXML_NAMESPACE_SCOPE),
+      )
       .map(([children, scope]) => ({
         xml: `<?xml version="1.0"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${children.join("")}</w:document>`,
         scope,
@@ -354,7 +422,10 @@ describe("parseStreamingXml", () => {
       const zip = await JSZip.loadAsync(readFileSync(resolve(REPO_ROOT, path)));
       expect(zip.file("word/document.xml"), path).not.toBeNull();
       for (const file of zip.file(/\.(?:xml|rels)$/iu)) {
-        expectStreamingMatchesFallback(await file.async("string"), `${path}:${file.name}`);
+        expectStreamingMatchesFallback(
+          await file.async("string"),
+          `${path}:${file.name}`,
+        );
       }
     }
   });
@@ -364,7 +435,10 @@ test.each(["' injected='yes", '"/>', "&quot;", "1.5", "-1"])(
   "refuses a non-decimal attribute replacement: %s",
   (replacement) => {
     expect(
-      rewriteStreamingXmlDecimalAttributes('<r id="1"/>', () => new Map([["id", replacement]])),
+      rewriteStreamingXmlDecimalAttributes(
+        '<r id="1"/>',
+        () => new Map([["id", replacement]]),
+      ),
     ).toEqual({ status: "unsupported" });
   },
 );

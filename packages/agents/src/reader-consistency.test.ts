@@ -27,8 +27,8 @@ import {
   docxToMarkdown,
   ensureParaIds,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-  FolioDocxReviewer,
   type FolioDocumentOperation,
+  FolioDocxReviewer,
   isFolioAIContentBlock,
 } from "@stll/folio-core/server";
 
@@ -37,13 +37,17 @@ import { executeFolioToolCall } from "./execute";
 import type { FolioAgentBlock } from "./types";
 
 type Document = ReturnType<typeof fromMarkdown>;
-type Paragraph = Extract<Document["package"]["document"]["content"][number], { type: "paragraph" }>;
+type Paragraph = Extract<
+  Document["package"]["document"]["content"][number],
+  { type: "paragraph" }
+>;
 type NumberingLevel = NonNullable<
   NonNullable<Document["package"]["numbering"]>["abstractNums"]
 >[number]["levels"][number];
 
 /** A decimal level unless the options say otherwise. */
-type LevelOptions = Pick<NumberingLevel, "ilvl" | "lvlText"> & Partial<NumberingLevel>;
+type LevelOptions = Pick<NumberingLevel, "ilvl" | "lvlText"> &
+  Partial<NumberingLevel>;
 
 const level = (options: LevelOptions): NumberingLevel => ({
   start: 1,
@@ -105,7 +109,10 @@ const buildNumberedDocument = async (): Promise<Uint8Array> => {
       {
         abstractNumId: CLAUSES,
         multiLevelType: "multilevel",
-        levels: [level({ ilvl: 0, lvlText: "%1." }), level({ ilvl: 1, lvlText: "%1.%2." })],
+        levels: [
+          level({ ilvl: 0, lvlText: "%1." }),
+          level({ ilvl: 1, lvlText: "%1.%2." }),
+        ],
       },
       {
         abstractNumId: ARTICLES,
@@ -133,7 +140,9 @@ const buildNumberedDocument = async (): Promise<Uint8Array> => {
   };
 
   const style = (styleId: string) => {
-    const found = pkg.styles?.styles.find((candidate) => candidate.styleId === styleId);
+    const found = pkg.styles?.styles.find(
+      (candidate) => candidate.styleId === styleId,
+    );
     if (!found) {
       throw new Error(`fixture style ${styleId} is missing`);
     }
@@ -157,7 +166,9 @@ const buildNumberedDocument = async (): Promise<Uint8Array> => {
         block.content.some(
           (item) =>
             item.type === "run" &&
-            item.content.some((content) => content.type === "text" && content.text === text),
+            item.content.some(
+              (content) => content.type === "text" && content.text === text,
+            ),
         ),
     );
     if (!found) {
@@ -165,11 +176,16 @@ const buildNumberedDocument = async (): Promise<Uint8Array> => {
     }
     return found;
   };
-  const format = (text: string, formatting: NonNullable<Paragraph["formatting"]>): void => {
+  const format = (
+    text: string,
+    formatting: NonNullable<Paragraph["formatting"]>,
+  ): void => {
     const target = paragraph(text);
     target.formatting = { ...target.formatting, ...formatting };
   };
-  format("Clause body item", { numPr: paragraphNumberingFromSlots({ numId: CLAUSES, ilvl: 1 }) });
+  format("Clause body item", {
+    numPr: paragraphNumberingFromSlots({ numId: CLAUSES, ilvl: 1 }),
+  });
   format("Direct article", {
     styleId: "Heading4",
     numPr: paragraphNumberingFromSlots({ numId: ARTICLES, ilvl: 0 }),
@@ -192,8 +208,12 @@ const buildNumberedDocument = async (): Promise<Uint8Array> => {
     styleId: "Heading2",
     numPr: paragraphNumberingFromSlots({ numId: 0 }),
   });
-  format("Cancelled item", { numPr: paragraphNumberingFromSlots({ numId: 0 }) });
-  format("Undefined level", { numPr: paragraphNumberingFromSlots({ numId: CLAUSES, ilvl: 5 }) });
+  format("Cancelled item", {
+    numPr: paragraphNumberingFromSlots({ numId: 0 }),
+  });
+  format("Undefined level", {
+    numPr: paragraphNumberingFromSlots({ numId: CLAUSES, ilvl: 5 }),
+  });
 
   return (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx;
 };
@@ -211,7 +231,10 @@ type BlockView = {
 };
 
 const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 
 /** A bullet reads as `-` in Markdown and as its glyph elsewhere; both are "a bullet". */
 const BULLET = "(bullet)";
@@ -266,7 +289,10 @@ const bodyView = (text: string, number: string | undefined): BlockView =>
  * `docxToMarkdown`, one non-blank line per block (the fixture has no
  * multi-line paragraphs), matched to the blocks in document order.
  */
-const markdownViews = (markdown: string, texts: readonly string[]): BlockView[] =>
+const markdownViews = (
+  markdown: string,
+  texts: readonly string[],
+): BlockView[] =>
   linesFor({
     output: markdown,
     texts,
@@ -285,19 +311,30 @@ const markdownViews = (markdown: string, texts: readonly string[]): BlockView[] 
   });
 
 /** `getContentAsText()`: `[id] (h2) 1. Scope`, `[id] a) item`, `[id] text`. */
-const contentTextViews = (lines: string, texts: readonly string[]): BlockView[] =>
+const contentTextViews = (
+  lines: string,
+  texts: readonly string[],
+): BlockView[] =>
   linesFor({
     output: lines,
     texts,
     view: (prefix, text) => {
-      const line = /^\[[^\]]+\](?:\s+\(h(?<level>\d)\))?(?:\s+(?<marker>.*))?$/u.exec(prefix);
+      const line =
+        /^\[[^\]]+\](?:\s+\(h(?<level>\d)\))?(?:\s+(?<marker>.*))?$/u.exec(
+          prefix,
+        );
       if (!line?.groups) {
         throw new Error(`unexpected getContentAsText line prefix "${prefix}"`);
       }
       const number = normalizeNumber(line.groups["marker"]);
       const headingLevel = line.groups["level"];
       if (headingLevel !== undefined) {
-        return blockView({ text, kind: "heading", headingLevel: Number(headingLevel), number });
+        return blockView({
+          text,
+          kind: "heading",
+          headingLevel: Number(headingLevel),
+          number,
+        });
       }
       return bodyView(text, number);
     },
@@ -328,7 +365,12 @@ type BlockViewOptions = {
 };
 
 /** A view without the fields the reader left undefined. */
-const blockView = ({ text, kind, headingLevel, number }: BlockViewOptions): BlockView => {
+const blockView = ({
+  text,
+  kind,
+  headingLevel,
+  number,
+}: BlockViewOptions): BlockView => {
   const view: BlockView = { text, kind };
   if (headingLevel !== undefined) {
     view.headingLevel = headingLevel;
@@ -411,7 +453,10 @@ const readReviewer = (reviewer: FolioDocxReviewer, markdown: string) => {
 };
 
 type Block = ReturnType<FolioDocxReviewer["getContent"]>[number];
-type ParagraphBlock = Extract<Block, { kind: "paragraph" | "heading" | "listItem" }>;
+type ParagraphBlock = Extract<
+  Block,
+  { kind: "paragraph" | "heading" | "listItem" }
+>;
 type Mode = "direct" | "tracked-changes";
 
 const isParagraphBlock = (block: Block): block is ParagraphBlock => {
@@ -466,7 +511,8 @@ const seeded = (seed: number) => {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
   };
-  const pick = <T>(items: readonly T[]): T | undefined => items[Math.floor(next() * items.length)];
+  const pick = <T>(items: readonly T[]): T | undefined =>
+    items[Math.floor(next() * items.length)];
   return { next, pick };
 };
 
@@ -480,14 +526,23 @@ type ListEdit = (
 ) => FolioDocumentOperation[] | null;
 
 const listed = (blocks: readonly Block[]): ParagraphBlock[] =>
-  blocks.filter(isParagraphBlock).filter((block) => block.listReference !== undefined);
+  blocks
+    .filter(isParagraphBlock)
+    .filter((block) => block.listReference !== undefined);
 
 /** The edits that change which items a list has, their levels, or where it restarts. */
 const LIST_EDITS: Record<string, ListEdit> = {
   insertAfterItem: (blocks, random, step) => {
     const anchor = random.pick(listed(blocks)) ?? random.pick(blocks);
     return anchor
-      ? [{ id: "e", type: "insertAfterBlock", blockId: anchor.id, text: `Inserted ${step}` }]
+      ? [
+          {
+            id: "e",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: `Inserted ${step}`,
+          },
+        ]
       : null;
   },
   // A style of its own: the item keeps the anchor's numbering reference.
@@ -514,7 +569,9 @@ const LIST_EDITS: Record<string, ListEdit> = {
             id: "e",
             type: "setBlockParagraphProperties",
             blockId: target.id,
-            properties: { styleId: random.pick(["Heading2", "Heading3", null]) ?? null },
+            properties: {
+              styleId: random.pick(["Heading2", "Heading3", null]) ?? null,
+            },
           },
         ]
       : null;
@@ -529,7 +586,11 @@ const LIST_EDITS: Record<string, ListEdit> = {
             type: "insertBeforeBlock",
             blockId: anchor.id,
             text: `Joined ${step}`,
-            numbering: { kind: "reference", numId: member.numId, ilvl: member.level },
+            numbering: {
+              kind: "reference",
+              numId: member.numId,
+              ilvl: member.level,
+            },
           },
         ]
       : null;
@@ -551,7 +612,11 @@ const LIST_EDITS: Record<string, ListEdit> = {
             type: "insertAfterBlock",
             blockId: to.id,
             text: item.text,
-            numbering: { kind: "reference", numId: reference.numId, ilvl: reference.level },
+            numbering: {
+              kind: "reference",
+              numId: reference.numId,
+              ilvl: reference.level,
+            },
           },
           { id: "remove", type: "deleteBlock", blockId: item.id },
         ]
@@ -562,14 +627,21 @@ const LIST_EDITS: Record<string, ListEdit> = {
     const item = random.pick(listed(blocks));
     const reference = item?.listReference;
     if (!item || !reference) return null;
-    const nextLevel = Math.max(0, Math.min(8, reference.level + (random.next() < 0.5 ? -1 : 1)));
+    const nextLevel = Math.max(
+      0,
+      Math.min(8, reference.level + (random.next() < 0.5 ? -1 : 1)),
+    );
     return [
       {
         id: "e",
         type: "setBlockParagraphProperties",
         blockId: item.id,
         properties: {
-          numbering: { kind: "reference", numId: reference.numId, ilvl: nextLevel },
+          numbering: {
+            kind: "reference",
+            numId: reference.numId,
+            ilvl: nextLevel,
+          },
         },
       },
     ];
@@ -619,14 +691,18 @@ const expectReadersAgree = (views: Views, withMarkdown: boolean): void => {
  * The live reviewer's readers agree with each other, its rows restate its
  * labels, and the package it saves reads the same through every reader.
  */
-const expectLiveAndSavedAgree = async (reviewer: FolioDocxReviewer): Promise<void> => {
+const expectLiveAndSavedAgree = async (
+  reviewer: FolioDocxReviewer,
+): Promise<void> => {
   const withMarkdown = reviewer.getChanges().length === 0;
   const live = readLive(reviewer);
   expectReadersAgree(live.views, withMarkdown);
   expect(live.rows.map(rowFields)).toEqual(live.content.map(contentRowFields));
 
   const saved = await readAll(new Uint8Array(await reviewer.toBuffer()));
-  expect({ saved: saved.views.getContent }).toEqual({ saved: live.views.getContent });
+  expect({ saved: saved.views.getContent }).toEqual({
+    saved: live.views.getContent,
+  });
   expectReadersAgree(saved.views, withMarkdown);
 };
 
@@ -635,7 +711,11 @@ const expectLiveAndSavedAgree = async (reviewer: FolioDocxReviewer): Promise<voi
  * live reviewer with each other, with the package the step saves, and that
  * package's readers with each other.
  */
-const runListEdits = async (seed: number, mode: Mode, steps: number): Promise<void> => {
+const runListEdits = async (
+  seed: number,
+  mode: Mode,
+  steps: number,
+): Promise<void> => {
   const random = seeded(seed);
   const reviewer = await FolioDocxReviewer.fromBuffer(
     toArrayBuffer(await buildNumberedDocument()),
@@ -647,16 +727,21 @@ const runListEdits = async (seed: number, mode: Mode, steps: number): Promise<vo
       await body();
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`seed ${seed} (${mode}) after ${log.join(" → ")}\n${detail}`, {
-        cause: error,
-      });
+      throw new Error(
+        `seed ${seed} (${mode}) after ${log.join(" → ")}\n${detail}`,
+        {
+          cause: error,
+        },
+      );
     }
   };
   // What rejecting every pending change must give back: the document as it
   // stood before the changes still pending.
   let settled = readLive(reviewer).views.getContent;
   // Tracked runs resolve their changes now and then, and at the end.
-  const resolve = async (resolution: "acceptAll" | "rejectAll"): Promise<void> => {
+  const resolve = async (
+    resolution: "acceptAll" | "rejectAll",
+  ): Promise<void> => {
     reviewer[resolution]();
     log.push(resolution);
     await check(async () => {
@@ -718,8 +803,18 @@ describe("readers agree on numbered headings and lists", () => {
       { text: "Terms", kind: "heading", headingLevel: 3, number: "1.2." },
       { text: "Clause body item", kind: "listItem", number: "1.3." },
       { text: "The Supplier delivers the goods.", kind: "paragraph" },
-      { text: "Direct article", kind: "heading", headingLevel: 4, number: "(1)" },
-      { text: "Outline article", kind: "heading", headingLevel: 4, number: "a)" },
+      {
+        text: "Direct article",
+        kind: "heading",
+        headingLevel: 4,
+        number: "(1)",
+      },
+      {
+        text: "Outline article",
+        kind: "heading",
+        headingLevel: 4,
+        number: "a)",
+      },
       { text: "Hidden-number heading", kind: "heading", headingLevel: 4 },
       { text: "Hidden-number paragraph", kind: "paragraph" },
       // A hidden marker still counts: the child shows the parent's number.
@@ -745,7 +840,9 @@ describe("readers agree on numbered headings and lists", () => {
 
     expect(rows.map(rowFields)).toEqual(content.map(contentRowFields));
     // Rows stay compact: a field the block lacks is absent, not `undefined`.
-    const body = rows.find(({ text }) => text === "The Supplier delivers the goods.");
+    const body = rows.find(
+      ({ text }) => text === "The Supplier delivers the goods.",
+    );
     expect(body && Object.keys(body).sort()).toEqual([
       "blockId",
       "blockTextHash",
@@ -802,17 +899,36 @@ const buildNotedDocument = async (): Promise<Uint8Array> => {
     },
   ];
   pkg.footnotes = [
-    { type: "footnote", id: 30, noteType: "normal", content: [noteParagraph("First note.")] },
-    { type: "footnote", id: 10, noteType: "normal", content: [noteParagraph("Second note.")] },
+    {
+      type: "footnote",
+      id: 30,
+      noteType: "normal",
+      content: [noteParagraph("First note.")],
+    },
+    {
+      type: "footnote",
+      id: 10,
+      noteType: "normal",
+      content: [noteParagraph("Second note.")],
+    },
   ];
   pkg.endnotes = [
-    { type: "endnote", id: 7, noteType: "normal", content: [noteParagraph("An endnote.")] },
+    {
+      type: "endnote",
+      id: 7,
+      noteType: "normal",
+      content: [noteParagraph("An endnote.")],
+    },
   ];
-  const bytes = (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx;
+  const bytes = (
+    await ensureParaIds(new Uint8Array(await createDocx(document)))
+  ).docx;
 
   // A comment over a reference, written by the reviewer and saved, so the
   // package carries the comment's range and reference runs beside the notes.
-  const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), { author: "R" });
+  const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), {
+    author: "R",
+  });
   const block = reviewer.getContent()[0];
   if (!block) {
     throw new Error("fixture block is missing");
@@ -830,7 +946,9 @@ const buildNotedDocument = async (): Promise<Uint8Array> => {
     { undefinedReferences: "refuse", mode: "direct" },
   );
   if (commented.skipped.length > 0) {
-    throw new Error(`fixture comment was refused: ${JSON.stringify(commented.skipped)}`);
+    throw new Error(
+      `fixture comment was refused: ${JSON.stringify(commented.skipped)}`,
+    );
   }
   return new Uint8Array(await reviewer.toBuffer());
 };
@@ -870,11 +988,15 @@ describe("readers agree on note references", () => {
       comment: "Term B[^2]",
     });
     // One definition per note, under the marker the body shows.
-    expect(markdown).toContain("[^1]: First note.\n[^2]: Second note.\n[^e1]: An endnote.");
+    expect(markdown).toContain(
+      "[^1]: First note.\n[^2]: Second note.\n[^e1]: An endnote.",
+    );
   });
 
   test("find_text never matches inside a marker, and matches a whole one", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(await buildNotedDocument()));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      toArrayBuffer(await buildNotedDocument()),
+    );
     const bridge = createReviewerBridge(reviewer);
     const find = (query: string) => {
       const result = executeFolioToolCall("find_text", { query }, bridge);
@@ -882,11 +1004,16 @@ describe("readers agree on note references", () => {
         throw new Error(result.error);
       }
       return result.result.matches.map((match) =>
-        "range" in match ? [match.range.startOffset, match.range.endOffset] : [],
+        "range" in match
+          ? [match.range.startOffset, match.range.endOffset]
+          : [],
       );
     };
     for (const packageId of ["30", "10", "7"]) {
-      expect({ packageId, matches: find(packageId) }).toEqual({ packageId, matches: [] });
+      expect({ packageId, matches: find(packageId) }).toEqual({
+        packageId,
+        matches: [],
+      });
     }
     expect(find("1")).toEqual([]);
     expect(find("[^1]")).toEqual([[6, 10]]);

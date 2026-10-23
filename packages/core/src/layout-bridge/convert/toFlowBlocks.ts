@@ -6,56 +6,70 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
 import { buildPageBreakRunDescendantIndex } from "../../internal/pageBreakRunDescendantIndex";
 import type {
+  ColumnBreakBlock,
   FlowBlock,
+  PageBreakBlock,
+  ParagraphAttrs,
   ParagraphBlock,
+  SdtGroup,
+  SectionBreakBlock,
   TableBlock,
   TextBoxBlock,
-  PageBreakBlock,
-  ColumnBreakBlock,
-  SectionBreakBlock,
-  ParagraphAttrs,
-  SdtGroup,
 } from "../../layout-engine/types";
-import { createStyleEngine } from "../../style-engine";
-import { getColumns } from "../sectionColumns";
+import { getPageNumbering } from "../../paged-layout/sectionGeometry";
 import {
   expectBlockSdtAttrs,
   expectHardBreakAttrs,
   expectParagraphAttrs,
   expectTextBoxAttrs,
 } from "../../prosemirror/attrs";
-import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
-import { getPageNumbering } from "../../paged-layout/sectionGeometry";
-import { assertValidProseMirrorDocument } from "../../prosemirror/validation";
-import { cloneListCounterState, type ListCounterState } from "../../prosemirror/listMarker";
-import { resolveNumberedRefFields } from "../../prosemirror/numberedRefFields";
-import { groupParagraphFrames } from "./paragraphFrames";
-import { twipsToPixels, nextBlockId, resetBlockIdCounter } from "./flowConversionShared";
-import type { ToFlowBlocksOptions, FlowConversionOptions } from "./flowConversionShared";
-import { convertImage } from "./imageConversion";
-import { collectNoteRefs } from "./noteReferences";
-import type { PageBreakRunProjection } from "./paragraphRuns";
-import { drawsParagraphBorder, convertParagraph } from "./paragraphConversion";
-import { splitParagraphAtPageBreaks } from "./pageBreakSplitting";
 import {
+  cloneListCounterState,
+  type ListCounterState,
+} from "../../prosemirror/listMarker";
+import { resolveNumberedRefFields } from "../../prosemirror/numberedRefFields";
+import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
+import { assertValidProseMirrorDocument } from "../../prosemirror/validation";
+import { createStyleEngine } from "../../style-engine";
+import { getColumns } from "../sectionColumns";
+import {
+  mergeRunInParagraphs,
+  reserveLeadingEmptyOutlineHeight,
   suppressFinalEmptyParagraphAfterTable,
   suppressFinalParagraphInRepeatedEmptySuffix,
-  reserveLeadingEmptyOutlineHeight,
-  mergeRunInParagraphs,
 } from "./flowBlockPostprocessing";
 import {
-  getLastMapKey,
+  nextBlockId,
+  resetBlockIdCounter,
+  twipsToPixels,
+} from "./flowConversionShared";
+import type {
+  FlowConversionOptions,
+  ToFlowBlocksOptions,
+} from "./flowConversionShared";
+import { convertImage } from "./imageConversion";
+import { collectNoteRefs } from "./noteReferences";
+import { splitParagraphAtPageBreaks } from "./pageBreakSplitting";
+import { convertParagraph, drawsParagraphBorder } from "./paragraphConversion";
+import { groupParagraphFrames } from "./paragraphFrames";
+import type { PageBreakRunProjection } from "./paragraphRuns";
+import {
+  applySectionDocumentGrid,
   applySectionStartsToBoundaries,
   coalesceTrailingPageBreakBeforeContinuousSection,
+  getLastMapKey,
   readFinalSectionStart,
-  applySectionDocumentGrid,
 } from "./sectionBoundaries";
 import { convertTable, convertTextBoxNode } from "./tableConversion";
 
-export { formatCounter, resolveListTemplate } from "../../prosemirror/listMarker";
+export {
+  formatCounter,
+  resolveListTemplate,
+} from "../../prosemirror/listMarker";
 export { resetBlockIdCounter } from "./flowConversionShared";
 export type { ToFlowBlocksOptions } from "./flowConversionShared";
 export { collectNoteRefs } from "./noteReferences";
@@ -76,18 +90,26 @@ export const WORD_UNSPECIFIED_FONT_SIZE = 10;
  * Walks the document tree, converting each node to the appropriate block type.
  * Tracks pmStart/pmEnd positions for each block for click-to-position mapping.
  */
-export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): FlowBlock[] {
-  assertValidProseMirrorDocument(doc, "Cannot layout invalid ProseMirror document");
+export function toFlowBlocks(
+  doc: PMNode,
+  options: ToFlowBlocksOptions = {},
+): FlowBlock[] {
+  assertValidProseMirrorDocument(
+    doc,
+    "Cannot layout invalid ProseMirror document",
+  );
 
   resetBlockIdCounter();
 
   const listCounters = options.listCounters ?? new Map<number, number[]>();
-  const originalListCounters = options.originalListCounters ?? new Map<number, number[]>();
+  const originalListCounters =
+    options.originalListCounters ?? new Map<number, number[]>();
   const lastAdvancedNumId = getLastMapKey(listCounters);
   const lastAdvancedOriginalNumId = getLastMapKey(originalListCounters);
   const listCounterState: ListCounterState = {
     counters: listCounters,
-    abstractCounters: options.listAbstractCounters ?? new Map<number, number[]>(),
+    abstractCounters:
+      options.listAbstractCounters ?? new Map<number, number[]>(),
     seenLevels: options.listSeenNumIds ?? new Set<string>(),
     restartedNumIds: new Set(),
     previousList: { abstractNumId: null, fromStyle: false, numId: null },
@@ -95,7 +117,8 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   };
   const originalListCounterState: ListCounterState = {
     counters: originalListCounters,
-    abstractCounters: options.originalListAbstractCounters ?? new Map<number, number[]>(),
+    abstractCounters:
+      options.originalListAbstractCounters ?? new Map<number, number[]>(),
     seenLevels: options.originalListSeenNumIds ?? new Set<string>(),
     restartedNumIds: new Set(),
     previousList: { abstractNumId: null, fromStyle: false, numId: null },
@@ -120,7 +143,8 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     },
     firstPageBreakRunPosition,
     textBoxAnchorBlockIds: new Map(),
-    numberingTabIgnoresIndent: doc.attrs["_doNotUseIndentAsNumberingTabStop"] === true,
+    numberingTabIgnoresIndent:
+      doc.attrs["_doNotUseIndentAsNumberingTabStop"] === true,
     styleResolver: createStyleEngine(options.styles),
     numberedRefResults: resolveNumberedRefFields(doc, {
       listCounterState: cloneListCounterState(listCounterState),
@@ -174,7 +198,8 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     const projected = splitParagraphAtPageBreaks({
       pageBreaks,
       paragraph,
-      splitPageBreakAndParagraphMark: options.splitPageBreakAndParagraphMark === true,
+      splitPageBreakAndParagraphMark:
+        options.splitPageBreakAndParagraphMark === true,
     });
     if (pageBreaks.length > 0) {
       placeTextBoxAnchorsBeforePageBreaks(node, pos, projected);
@@ -227,7 +252,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
       if (pageBreak?.kind === "pageBreak") {
         textBoxPageBreakByAnchorId.set(anchorId, pageBreak);
       }
-      const anchorFragment = pageBreak ? projected[breakIndex - 1] : projected.at(-1);
+      const anchorFragment = pageBreak
+        ? projected[breakIndex - 1]
+        : projected.at(-1);
       if (anchorFragment?.kind === "paragraph") {
         opts.textBoxAnchorBlockIds.set(anchorId, anchorFragment.id);
       } else {
@@ -242,7 +269,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   const pushTextBox = (node: PMNode, pos: number): void => {
     const textBox = convertTextBoxNode(node, pos, opts);
     const anchorId = expectTextBoxAttrs(node)._docxAnchorId;
-    const pageBreak = anchorId === undefined ? undefined : textBoxPageBreakByAnchorId.get(anchorId);
+    const pageBreak =
+      anchorId === undefined
+        ? undefined
+        : textBoxPageBreakByAnchorId.get(anchorId);
     if (!pageBreak) {
       trackedPush(textBox);
       return;
@@ -263,7 +293,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     }
     const inFlowOrder = blocks.splice(0);
     for (const block of inFlowOrder) {
-      const heldBack = block.kind === "pageBreak" ? textBoxesBeforePageBreak.get(block) : undefined;
+      const heldBack =
+        block.kind === "pageBreak"
+          ? textBoxesBeforePageBreak.get(block)
+          : undefined;
       for (const textBox of heldBack ?? []) {
         blocks.push(textBox);
       }
@@ -273,13 +306,19 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
 
   const trailingPageBreakSectionPositions = new Set<number>();
   const consumedPageBreakPositions = new Set<number>();
-  const collectTrailingPageBreakSections = (parent: PMNode, contentStart: number): void => {
+  const collectTrailingPageBreakSections = (
+    parent: PMNode,
+    contentStart: number,
+  ): void => {
     let childStart = contentStart;
     for (let index = 0; index < parent.childCount; index += 1) {
       const child = parent.child(index);
-      const next = index + 1 < parent.childCount ? parent.child(index + 1) : undefined;
+      const next =
+        index + 1 < parent.childCount ? parent.child(index + 1) : undefined;
       const paragraphAttrs =
-        child.type.name === "paragraph" ? expectParagraphAttrs(child) : undefined;
+        child.type.name === "paragraph"
+          ? expectParagraphAttrs(child)
+          : undefined;
       if (
         paragraphAttrs &&
         next?.type.name === "pageBreak" &&
@@ -289,7 +328,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
         trailingPageBreakSectionPositions.add(childStart);
         consumedPageBreakPositions.add(childStart + child.nodeSize);
       }
-      if (child.type.name === "blockSdt" || child.type.name === "blockCustomXml") {
+      if (
+        child.type.name === "blockSdt" ||
+        child.type.name === "blockCustomXml"
+      ) {
         collectTrailingPageBreakSections(child, childStart + 1);
       }
       childStart += child.nodeSize;
@@ -419,7 +461,8 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
         const startsWithColumnBreak =
           firstChild?.type.name === "hardBreak" &&
           expectHardBreakAttrs(firstChild).breakType === "column";
-        const isStandaloneColumnBreak = node.childCount === 1 && startsWithColumnBreak;
+        const isStandaloneColumnBreak =
+          node.childCount === 1 && startsWithColumnBreak;
         const isEmptySectionMark = hasSectionBreak && node.content.size === 0;
         const opensSection = blocks.length === sectionStartBlockCount;
         let markerDropped = false;
@@ -444,13 +487,21 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
           pushParagraphProjection(node, pos, true);
         } else if (!isEmptySectionMark) {
           pushParagraphProjection(node, pos);
-        } else if (hasListFormatting || drawsParagraphBorder(pmAttrs.borders) || opensSection) {
+        } else if (
+          hasListFormatting ||
+          drawsParagraphBorder(pmAttrs.borders) ||
+          opensSection
+        ) {
           // An empty w:sectPr paragraph is only a section marker, except when
           // it paints a number or a border rule, or when it is its section's
           // only block and so is that section's content.
           pushParagraphProjection(node, pos);
           const mark = blocks.at(-1);
-          if (!opensSection && mark?.kind === "paragraph" && mark.attrs?.pageBreakBefore) {
+          if (
+            !opensSection &&
+            mark?.kind === "paragraph" &&
+            mark.attrs?.pageBreakBefore
+          ) {
             // After its section's content the marker ends the section where
             // that content ended; w:pageBreakBefore does not move it on.
             delete mark.attrs.pageBreakBefore;
@@ -463,7 +514,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
         if (hasSectionBreak) {
           if (trailingPageBreakSectionPositions.has(pos)) {
             const sourceParagraph = blocks.at(-1);
-            if (sourceParagraph?.kind === "paragraph" && sourceParagraph.pmStart === pos) {
+            if (
+              sourceParagraph?.kind === "paragraph" &&
+              sourceParagraph.pmStart === pos
+            ) {
               const pageBreak: PageBreakBlock = {
                 kind: "pageBreak",
                 id: nextBlockId(),
@@ -472,7 +526,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
               };
               trackedPush(pageBreak);
               const sourceAttrs = sourceParagraph.attrs;
-              const carrierSpacing = sourceAttrs?.spacing ? { ...sourceAttrs.spacing } : undefined;
+              const carrierSpacing = sourceAttrs?.spacing
+                ? { ...sourceAttrs.spacing }
+                : undefined;
               if (carrierSpacing) {
                 delete carrierSpacing.before;
               }
@@ -503,7 +559,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
                   ? { defaultFontFamily: sourceAttrs.defaultFontFamily }
                   : {}),
                 ...(sourceAttrs?.defaultAlternateFontFamily !== undefined
-                  ? { defaultAlternateFontFamily: sourceAttrs.defaultAlternateFontFamily }
+                  ? {
+                      defaultAlternateFontFamily:
+                        sourceAttrs.defaultAlternateFontFamily,
+                    }
                   : {}),
               };
               const carrier: ParagraphBlock = {
@@ -528,9 +587,12 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
 
           if (secProps) {
             sectionBreak.pageNumbering = getPageNumbering(secProps);
-            const documentGridLinePitchTwips = resolveDocumentGridLinePitch(secProps.docGrid);
+            const documentGridLinePitchTwips = resolveDocumentGridLinePitch(
+              secProps.docGrid,
+            );
             if (documentGridLinePitchTwips !== undefined) {
-              sectionBreak.documentGridLinePitchTwips = documentGridLinePitchTwips;
+              sectionBreak.documentGridLinePitchTwips =
+                documentGridLinePitchTwips;
             }
             // Populate page size
             if (secProps.pageWidth || secProps.pageHeight) {
@@ -559,10 +621,14 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
                 right: twipsToPixels(lastSectionMarginsTwips.right),
               };
               if (secProps.headerDistance !== undefined) {
-                sectionBreak.margins.header = twipsToPixels(secProps.headerDistance);
+                sectionBreak.margins.header = twipsToPixels(
+                  secProps.headerDistance,
+                );
               }
               if (secProps.footerDistance !== undefined) {
-                sectionBreak.margins.footer = twipsToPixels(secProps.footerDistance);
+                sectionBreak.margins.footer = twipsToPixels(
+                  secProps.footerDistance,
+                );
               }
             }
             // Populate columns
@@ -630,7 +696,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   const endsInEndnoteArea =
     trailingEndnoteIds !== undefined &&
     trailingEndnoteIds.size > 0 &&
-    collectNoteRefs(blocks, "endnoteRefId").some(({ noteId }) => trailingEndnoteIds.has(noteId));
+    collectNoteRefs(blocks, "endnoteRefId").some(({ noteId }) =>
+      trailingEndnoteIds.has(noteId),
+    );
   if (!endsInEndnoteArea) {
     suppressFinalEmptyParagraphAfterTable(blocks);
     suppressFinalParagraphInRepeatedEmptySuffix(blocks);
@@ -642,7 +710,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     finalLinePitchTwips: opts.finalSectionDocumentGridLinePitchTwips,
     tableCellLinePitch,
   });
-  const boundaryBlocks = applySectionStartsToBoundaries(griddedBlocks, readFinalSectionStart(doc));
+  const boundaryBlocks = applySectionStartsToBoundaries(
+    griddedBlocks,
+    readFinalSectionStart(doc),
+  );
   const reconciledBlocks = coalesceTrailingPageBreakBeforeContinuousSection(
     boundaryBlocks,
     options.splitPageBreakAndParagraphMark === true,

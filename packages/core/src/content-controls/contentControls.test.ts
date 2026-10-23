@@ -2,8 +2,8 @@
  * Headless content-controls API tests.
  */
 
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
 import {
   ContentControlBoundError,
@@ -37,7 +37,10 @@ function makePara(text: string): Paragraph {
   };
 }
 
-function makeControl(props: Partial<BlockSdt["properties"]>, text = ""): BlockSdt {
+function makeControl(
+  props: Partial<BlockSdt["properties"]>,
+  text = "",
+): BlockSdt {
   return {
     type: "blockSdt",
     properties: { sdtType: "richText", ...props } as BlockSdt["properties"],
@@ -65,7 +68,10 @@ describe("findContentControls", () => {
     // control and a headless `setContentControlValue(doc, { pmPos }, …)`
     // would mutate them all. The matcher must refuse unsatisfiable
     // pmPos-only filters.
-    const doc = makeDoc([makeControl({ tag: "a" }, "first"), makeControl({ tag: "b" }, "second")]);
+    const doc = makeDoc([
+      makeControl({ tag: "a" }, "first"),
+      makeControl({ tag: "b" }, "second"),
+    ]);
     expect(findContentControls(doc, { pmPos: 0 })).toHaveLength(0);
     expect(findContentControls(doc, { pmPos: 42 })).toHaveLength(0);
     // Combined with a stable filter, pmPos still refuses on the headless
@@ -89,7 +95,9 @@ describe("findContentControls", () => {
 
   test("findContentControl returns the first match or null", () => {
     const doc = makeDoc([makeControl({ tag: "a" }, "x")]);
-    expect(findContentControl(doc, { tag: "a" })?.control.properties.tag).toBe("a");
+    expect(findContentControl(doc, { tag: "a" })?.control.properties.tag).toBe(
+      "a",
+    );
     expect(findContentControl(doc, { tag: "missing" })).toBeNull();
   });
 
@@ -143,24 +151,34 @@ describe("setContentControlContent", () => {
       },
     };
 
-    const updated = setContentControlContent(doc, { tag: "cell-control" }, "new");
+    const updated = setContentControlContent(
+      doc,
+      { tag: "cell-control" },
+      "new",
+    );
     const control = findContentControl(updated, { tag: "cell-control" });
 
     if (!control) {
-      throw new TypeError("expected the table-cell control to survive the update");
+      throw new TypeError(
+        "expected the table-cell control to survive the update",
+      );
     }
     expect(getContentControlText(control.control)).toBe("new");
   });
 
   test("refuses to write into a contentLocked control without force", () => {
-    const doc = makeDoc([makeControl({ tag: "locked", lock: "contentLocked" }, "x")]);
-    expect(() => setContentControlContent(doc, { tag: "locked" }, "boom")).toThrow(
-      ContentControlLockedError,
-    );
+    const doc = makeDoc([
+      makeControl({ tag: "locked", lock: "contentLocked" }, "x"),
+    ]);
+    expect(() =>
+      setContentControlContent(doc, { tag: "locked" }, "boom"),
+    ).toThrow(ContentControlLockedError);
   });
 
   test("force: true overrides the lock", () => {
-    const doc = makeDoc([makeControl({ tag: "locked", lock: "contentLocked" }, "x")]);
+    const doc = makeDoc([
+      makeControl({ tag: "locked", lock: "contentLocked" }, "x"),
+    ]);
     const updated = setContentControlContent(doc, { tag: "locked" }, "ok", {
       force: true,
     });
@@ -191,9 +209,9 @@ describe("setContentControlContent", () => {
         content: [makePara("placeholder")],
       },
     ]);
-    expect(() => setContentControlContent(doc, { tag: "bound" }, "Acme Corp")).toThrow(
-      ContentControlBoundError,
-    );
+    expect(() =>
+      setContentControlContent(doc, { tag: "bound" }, "Acme Corp"),
+    ).toThrow(ContentControlBoundError);
   });
 
   test("force: true on a bound control drops the w:dataBinding child", () => {
@@ -205,7 +223,10 @@ describe("setContentControlContent", () => {
           tag: "bound",
           preserved: {
             children: [
-              { index: 8, xml: '<w:dataBinding w:xpath="/x" w:storeItemID="{ABC}"/>' },
+              {
+                index: 8,
+                xml: '<w:dataBinding w:xpath="/x" w:storeItemID="{ABC}"/>',
+              },
               { index: 10, xml: '<w:tabIndex w:val="3"/>' },
             ],
           },
@@ -213,7 +234,12 @@ describe("setContentControlContent", () => {
         content: [makePara("placeholder")],
       },
     ]);
-    const updated = setContentControlContent(doc, { tag: "bound" }, "Acme Corp", { force: true });
+    const updated = setContentControlContent(
+      doc,
+      { tag: "bound" },
+      "Acme Corp",
+      { force: true },
+    );
     const ctrl = findContentControl(updated, { tag: "bound" })!.control;
     expect(getContentControlText(ctrl)).toBe("Acme Corp");
     // Binding was dropped so Word's next open won't overwrite the edit;
@@ -227,7 +253,9 @@ describe("setContentControlContent", () => {
 
 describe("setContentControlValue", () => {
   test("toggles a checkbox", () => {
-    const doc = makeDoc([makeControl({ tag: "agree", sdtType: "checkbox", checked: false })]);
+    const doc = makeDoc([
+      makeControl({ tag: "agree", sdtType: "checkbox", checked: false }),
+    ]);
     const updated = setContentControlValue(
       doc,
       { tag: "agree" },
@@ -295,25 +323,35 @@ describe("setContentControlValue", () => {
   });
 
   test("keeps the paragraph property source when toggling a checkbox", () => {
-    const control = makeControl({ tag: "agree", sdtType: "checkbox", checked: false });
+    const control = makeControl({
+      tag: "agree",
+      sdtType: "checkbox",
+      checked: false,
+    });
     const paragraph = control.content[0];
     if (paragraph?.type !== "paragraph") {
       panic("Expected the checkbox fixture to contain a paragraph");
     }
-    assignParagraphPropertySource(paragraph, '<w:pPr><w:jc w:val="center"/></w:pPr>');
+    assignParagraphPropertySource(
+      paragraph,
+      '<w:pPr><w:jc w:val="center"/></w:pPr>',
+    );
 
     const updated = setContentControlValue(
       makeDoc([control]),
       { tag: "agree" },
       { kind: "checkbox", checked: true },
     );
-    const updatedParagraph = findContentControl(updated, { tag: "agree" })?.control.content[0];
+    const updatedParagraph = findContentControl(updated, { tag: "agree" })
+      ?.control.content[0];
 
     expect(updatedParagraph?.type).toBe("paragraph");
     if (updatedParagraph?.type !== "paragraph") {
       panic("Expected the updated checkbox to contain a paragraph");
     }
-    expect(getParagraphPropertySource(updatedParagraph)?.xml).toContain('w:val="center"');
+    expect(getParagraphPropertySource(updatedParagraph)?.xml).toContain(
+      'w:val="center"',
+    );
   });
 
   test("rejects a checkbox toggle on a non-checkbox control", () => {
@@ -413,7 +451,11 @@ describe("setContentControlValue", () => {
         dateFormat: "yyyy-MM-dd",
       }),
     ]);
-    const updated = setContentControlValue(doc, { tag: "x" }, { kind: "date", date: "2026-99-99" });
+    const updated = setContentControlValue(
+      doc,
+      { tag: "x" },
+      { kind: "date", date: "2026-99-99" },
+    );
     const ctrl = findContentControl(updated, { tag: "x" })!.control;
     // Body shows the raw input, not a normalized real date.
     expect(getContentControlText(ctrl)).toBe("2026-99-99");
@@ -489,24 +531,32 @@ describe("removeContentControl", () => {
   test("contentLocked does NOT block container removal (only blocks edits)", () => {
     // OOXML §17.5.2.16: contentLocked locks content, sdtLocked locks the
     // container. Removal must succeed on contentLocked.
-    const doc = makeDoc([makeControl({ tag: "a", lock: "contentLocked" }, "x")]);
+    const doc = makeDoc([
+      makeControl({ tag: "a", lock: "contentLocked" }, "x"),
+    ]);
     const updated = removeContentControl(doc, { tag: "a" });
     expect(findContentControl(updated, { tag: "a" })).toBeNull();
   });
 
   test("sdtLocked refuses container removal even though edits are allowed", () => {
     const doc = makeDoc([makeControl({ tag: "a", lock: "sdtLocked" }, "x")]);
-    expect(() => removeContentControl(doc, { tag: "a" })).toThrow(ContentControlLockedError);
+    expect(() => removeContentControl(doc, { tag: "a" })).toThrow(
+      ContentControlLockedError,
+    );
     // ... but a content edit IS allowed on sdtLocked.
     const updated = setContentControlContent(doc, { tag: "a" }, "edit ok");
-    expect(getContentControlText(findContentControl(updated, { tag: "a" })!.control)).toBe(
-      "edit ok",
-    );
+    expect(
+      getContentControlText(findContentControl(updated, { tag: "a" })!.control),
+    ).toBe("edit ok");
   });
 
   test("sdtContentLocked blocks both edits and removal", () => {
-    const doc = makeDoc([makeControl({ tag: "a", lock: "sdtContentLocked" }, "x")]);
-    expect(() => removeContentControl(doc, { tag: "a" })).toThrow(ContentControlLockedError);
+    const doc = makeDoc([
+      makeControl({ tag: "a", lock: "sdtContentLocked" }, "x"),
+    ]);
+    expect(() => removeContentControl(doc, { tag: "a" })).toThrow(
+      ContentControlLockedError,
+    );
     expect(() => setContentControlContent(doc, { tag: "a" }, "y")).toThrow(
       ContentControlLockedError,
     );
@@ -539,14 +589,16 @@ describe("removeContentControl", () => {
       properties: {
         sdtType: "richText",
         tag: "parties",
-        preserved: { children: [{ index: 10, xml: "<w15:repeatingSection/>" }] },
+        preserved: {
+          children: [{ index: 10, xml: "<w15:repeatingSection/>" }],
+        },
       },
       content: [makePara("x")],
     };
     const doc = makeDoc([repeating]);
-    expect(() => removeContentControl(doc, { tag: "parties" }, { keepContent: true })).toThrow(
-      ContentControlTypeError,
-    );
+    expect(() =>
+      removeContentControl(doc, { tag: "parties" }, { keepContent: true }),
+    ).toThrow(ContentControlTypeError);
   });
 
   test("refuses to unwrap a repeatingSection under an alternate namespace prefix", () => {
@@ -571,8 +623,8 @@ describe("removeContentControl", () => {
       content: [makePara("x")],
     };
     const doc = makeDoc([repeating]);
-    expect(() => removeContentControl(doc, { tag: "rows" }, { keepContent: true })).toThrow(
-      ContentControlTypeError,
-    );
+    expect(() =>
+      removeContentControl(doc, { tag: "rows" }, { keepContent: true }),
+    ).toThrow(ContentControlTypeError);
   });
 });

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import type { TableBlock, TableFragment, TableMeasure } from "../layout-engine/types";
+import type {
+  TableBlock,
+  TableFragment,
+  TableMeasure,
+} from "../layout-engine/types";
 import { renderTableFragment } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
 
@@ -43,8 +47,13 @@ const renderContext: RenderContext = {
   section: "body",
 };
 
-const findByClass = (element: FakeElement, className: string): FakeElement[] => {
-  const matches = element.className.split(" ").includes(className) ? [element] : [];
+const findByClass = (
+  element: FakeElement,
+  className: string,
+): FakeElement[] => {
+  const matches = element.className.split(" ").includes(className)
+    ? [element]
+    : [];
   for (const child of element.children) {
     matches.push(...findByClass(child, className));
   }
@@ -65,8 +74,16 @@ describe("table cell diagonal border painting", () => {
               id: "cell",
               blocks: [{ kind: "paragraph", id: "paragraph", runs: [] }],
               borders: {
-                topLeftToBottomRight: { color: "#123456", style: "dashed", width: 2 },
-                topRightToBottomLeft: { color: "#654321", style: "double", width: 3 },
+                topLeftToBottomRight: {
+                  color: "#123456",
+                  style: "dashed",
+                  width: 2,
+                },
+                topRightToBottomLeft: {
+                  color: "#654321",
+                  style: "double",
+                  width: 3,
+                },
               },
             },
           ],
@@ -102,17 +119,34 @@ describe("table cell diagonal border painting", () => {
       toRow: 1,
     };
 
-    const rendered = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
-    const diagonals = findByClass(rendered, "layout-table-cell-diagonal-border");
+    const rendered = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
+    const diagonals = findByClass(
+      rendered,
+      "layout-table-cell-diagonal-border",
+    );
 
     expect(diagonals).toHaveLength(2);
-    expect(diagonals.at(0)?.dataset["direction"]).toBe("top-left-to-bottom-right");
+    expect(diagonals.at(0)?.dataset["direction"]).toBe(
+      "top-left-to-bottom-right",
+    );
     expect(diagonals.at(0)?.style["width"]).toBe(`${Math.hypot(100, 40)}px`);
-    expect(diagonals.at(0)?.style["backgroundImage"]).toContain("repeating-linear-gradient");
-    expect(diagonals.at(1)?.dataset["direction"]).toBe("top-right-to-bottom-left");
+    expect(diagonals.at(0)?.style["backgroundImage"]).toContain(
+      "repeating-linear-gradient",
+    );
+    expect(diagonals.at(1)?.dataset["direction"]).toBe(
+      "top-right-to-bottom-left",
+    );
     expect(diagonals.at(1)?.style["top"]).toBe("38.5px");
-    expect(diagonals.at(1)?.style["backgroundImage"]).toContain("linear-gradient");
+    expect(diagonals.at(1)?.style["backgroundImage"]).toContain(
+      "linear-gradient",
+    );
   });
 });

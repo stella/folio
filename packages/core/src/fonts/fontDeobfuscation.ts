@@ -56,7 +56,10 @@ export function isValidFontKey(fontKey: string | undefined | null): boolean {
  * new array; the input is not mutated. Throws when `fontKey` is not a valid
  * 128-bit GUID (guard with {@link isValidFontKey} first).
  */
-export function deobfuscateFont(data: Uint8Array, fontKey: string): Uint8Array<ArrayBuffer> {
+export function deobfuscateFont(
+  data: Uint8Array,
+  fontKey: string,
+): Uint8Array<ArrayBuffer> {
   const key = fontKeyToReversedBytes(fontKey);
   if (!key) {
     throw new Error(`Invalid embedded-font key: "${fontKey}"`);

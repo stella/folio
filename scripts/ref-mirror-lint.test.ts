@@ -35,10 +35,16 @@ describe("render-mirrored refs", () => {
   test("rejects imperative writes to a ref reassigned from render scope", () => {
     const result = lintFixture("ref-mirror.invalid.ts");
     expect(result.status).toBe(1);
-    expect(result.ruleIds.filter((ruleId) => ruleId === RULE_ID)).toEqual([RULE_ID, RULE_ID]);
+    expect(result.ruleIds.filter((ruleId) => ruleId === RULE_ID)).toEqual([
+      RULE_ID,
+      RULE_ID,
+    ]);
   });
 
   test("accepts state-driven updates and writes to non-mirror refs", () => {
-    expect(lintFixture("ref-mirror.valid.ts")).toEqual({ status: 0, ruleIds: [] });
+    expect(lintFixture("ref-mirror.valid.ts")).toEqual({
+      status: 0,
+      ruleIds: [],
+    });
   });
 });

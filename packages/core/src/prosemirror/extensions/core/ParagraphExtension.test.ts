@@ -1,17 +1,19 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { toFlowBlocks } from "../../../layout-bridge/convert/toFlowBlocks";
 import type { Document } from "../../../types/document";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
+import { AUTO_PARAGRAPH_SPACING_PX, formatPx } from "../../../utils/units";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { toProseDoc } from "../../conversion/toProseDoc";
-import { AUTO_PARAGRAPH_SPACING_PX, formatPx } from "../../../utils/units";
 import { schema, singletonManager } from "../../schema";
 
-const paragraphDomAttrs = (attrs: Record<string, unknown>): Record<string, string> => {
+const paragraphDomAttrs = (
+  attrs: Record<string, unknown>,
+): Record<string, string> => {
   const paragraph = schema.node("paragraph", attrs);
   const toDOM = paragraph.type.spec.toDOM;
   if (!toDOM) {
@@ -45,7 +47,9 @@ const parseParagraphDomAttrs = (dataset: Record<string, string>) => {
   });
 
   try {
-    return getAttrs(new FakeParagraphElement(dataset) as unknown as HTMLElement);
+    return getAttrs(
+      new FakeParagraphElement(dataset) as unknown as HTMLElement,
+    );
   } finally {
     if (originalElement) {
       Object.defineProperty(globalThis, "HTMLElement", {
@@ -59,11 +63,20 @@ const parseParagraphDomAttrs = (dataset: Record<string, string>) => {
 };
 
 describe("ParagraphExtension", () => {
-  test.each(["idStability", "alignmentFromStyle", "listMarkerTemplate", "reviewCarrier"] as const)(
+  test.each([
+    "idStability",
+    "alignmentFromStyle",
+    "listMarkerTemplate",
+    "reviewCarrier",
+  ] as const)(
     "omits absent optional paragraph attribute %s from serialized state",
     (attribute) => {
-      expect(schema.nodes.paragraph.spec.attrs?.[attribute]?.default).toBeUndefined();
-      expect(JSON.stringify(schema.node("paragraph").toJSON())).not.toContain(`"${attribute}"`);
+      expect(
+        schema.nodes.paragraph.spec.attrs?.[attribute]?.default,
+      ).toBeUndefined();
+      expect(JSON.stringify(schema.node("paragraph").toJSON())).not.toContain(
+        `"${attribute}"`,
+      );
     },
   );
 
@@ -71,11 +84,15 @@ describe("ParagraphExtension", () => {
     expect(paragraphDomAttrs({ _tableOfContentsLevel: 2 })).toMatchObject({
       "data-table-of-contents-level": "2",
     });
-    expect(paragraphDomAttrs({})).not.toHaveProperty("data-table-of-contents-level");
+    expect(paragraphDomAttrs({})).not.toHaveProperty(
+      "data-table-of-contents-level",
+    );
   });
 
   test("keeps direct and inherited alignment provenance distinct in editor DOM", () => {
-    expect(paragraphDomAttrs({ alignment: "right", alignmentFromStyle: "right" })).toMatchObject({
+    expect(
+      paragraphDomAttrs({ alignment: "right", alignmentFromStyle: "right" }),
+    ).toMatchObject({
       "data-alignment": "right",
       "data-alignment-from-style": "right",
     });
@@ -102,10 +119,14 @@ describe("ParagraphExtension", () => {
         alignment,
         _originalFormatting: { alignment },
       });
-      expect(parseParagraphDomAttrs({ directAlignment: alignment })).toMatchObject({
+      expect(
+        parseParagraphDomAttrs({ directAlignment: alignment }),
+      ).toMatchObject({
         _originalFormatting: { alignment },
       });
-      expect(parseParagraphDomAttrs({ alignmentFromStyle: alignment })).toMatchObject({
+      expect(
+        parseParagraphDomAttrs({ alignmentFromStyle: alignment }),
+      ).toMatchObject({
         alignmentFromStyle: alignment,
       });
     },
@@ -122,14 +143,18 @@ describe("ParagraphExtension", () => {
   });
 
   test("recomputes the TOC role when paragraph styles change", () => {
-    const hyperlink = schema.marks["hyperlink"]?.create({ href: "#generic-section" });
+    const hyperlink = schema.marks["hyperlink"]?.create({
+      href: "#generic-section",
+    });
     if (!hyperlink) {
       throw new Error("Expected hyperlink mark");
     }
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { styleId: "LocalizedTocEntry", _tableOfContentsLevel: 1 }, [
-        schema.text("Generic entry", [hyperlink]),
-      ]),
+      schema.node(
+        "paragraph",
+        { styleId: "LocalizedTocEntry", _tableOfContentsLevel: 1 },
+        [schema.text("Generic entry", [hyperlink])],
+      ),
     ]);
     let state = EditorState.create({
       doc,
@@ -142,16 +167,22 @@ describe("ParagraphExtension", () => {
       throw new Error("Missing paragraph style commands");
     }
 
-    applyStyle("LocalizedBody", { styleName: "Body Text" })(state, (tr: Transaction) => {
-      state = state.apply(tr);
-    });
+    applyStyle("LocalizedBody", { styleName: "Body Text" })(
+      state,
+      (tr: Transaction) => {
+        state = state.apply(tr);
+      },
+    );
     expect(state.doc.firstChild?.attrs["_tableOfContentsLevel"]).toBeNull();
     const bodyRun = toFlowBlocks(state.doc).at(0)?.runs.at(0);
     expect(bodyRun?.hyperlink?.noDefaultStyle).toBeUndefined();
 
-    applyStyle("LocalizedTocEntry", { styleName: "toc 1" })(state, (tr: Transaction) => {
-      state = state.apply(tr);
-    });
+    applyStyle("LocalizedTocEntry", { styleName: "toc 1" })(
+      state,
+      (tr: Transaction) => {
+        state = state.apply(tr);
+      },
+    );
     expect(state.doc.firstChild?.attrs["_tableOfContentsLevel"]).toBe(1);
 
     clearStyle()(state, (tr: Transaction) => {
@@ -223,7 +254,9 @@ describe("ParagraphExtension", () => {
 
     const domAttrs = paragraphDomAttrs(para?.attrs ?? {});
     expect(domAttrs["style"]).toContain("margin-top: 16px");
-    expect(domAttrs["style"]).not.toContain(`margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`);
+    expect(domAttrs["style"]).not.toContain(
+      `margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`,
+    );
   });
 
   test("line-spacing edits preserve the imported before and after sides", () => {
@@ -274,7 +307,9 @@ describe("ParagraphExtension", () => {
   });
 
   test("setting zero line spacing writes a direct override", () => {
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text("x")])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("x")]),
+    ]);
     let state = EditorState.create({
       doc,
       schema,
@@ -374,7 +409,9 @@ describe("ParagraphExtension", () => {
 
     const domAttrs = paragraphDomAttrs(para?.attrs ?? {});
     expect(domAttrs["style"]).toContain("margin-top: 24px");
-    expect(domAttrs["style"]).not.toContain(`margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`);
+    expect(domAttrs["style"]).not.toContain(
+      `margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`,
+    );
 
     const block = toFlowBlocks(state.doc).at(0);
     expect(block?.attrs?.spacing?.before).toBe(24);
@@ -387,7 +424,12 @@ describe("ParagraphExtension", () => {
           type: "supplied",
           styles: {
             styles: [
-              { type: "paragraph", styleId: "Spaced", name: "Spaced", pPr: { spaceBefore: 360 } },
+              {
+                type: "paragraph",
+                styleId: "Spaced",
+                name: "Spaced",
+                pPr: { spaceBefore: 360 },
+              },
             ],
           },
         },
@@ -414,7 +456,11 @@ describe("ParagraphExtension", () => {
     } as const;
     const source: Document = {
       package: {
-        styles: { styles: [{ type: "paragraph", styleId: "Target", pPr: targetFormatting }] },
+        styles: {
+          styles: [
+            { type: "paragraph", styleId: "Target", pPr: targetFormatting },
+          ],
+        },
         document: {
           content: [
             {
@@ -428,14 +474,20 @@ describe("ParagraphExtension", () => {
                 beforeAutospacing: false,
                 afterAutospacing: true,
               },
-              content: [{ type: "run", content: [{ type: "text", text: "Restyle" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Restyle" }] },
+              ],
             },
           ],
         },
       },
     };
     const doc = toProseDoc(source);
-    let state = EditorState.create({ doc, schema, selection: TextSelection.create(doc, 1) });
+    let state = EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, 1),
+    });
     const applyStyle = singletonManager.getCommand("applyStyle");
     if (!applyStyle) {
       throw new Error("Missing applyStyle command");
@@ -448,7 +500,9 @@ describe("ParagraphExtension", () => {
     });
 
     expect(state.doc.firstChild?.attrs["lineSpacingExplicit"]).toBeNull();
-    const saved = fromProseDoc(state.doc, source, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(state.doc, source, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = saved.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
@@ -505,6 +559,8 @@ describe("ParagraphExtension", () => {
       _autospacingBase: { before: null },
     });
 
-    expect(domAttrs["style"]).toContain(`margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`);
+    expect(domAttrs["style"]).toContain(
+      `margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`,
+    );
   });
 });

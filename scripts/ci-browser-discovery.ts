@@ -9,7 +9,11 @@ const CONFIG_EXTENSION = /\.(?:ts|js|mts|cts|mjs|cjs)$/u;
 
 type CommandOptions = { command: string[]; cwd: string };
 const runCommand = ({ command, cwd }: CommandOptions) => {
-  const result = Bun.spawnSync(command, { cwd, stdout: "pipe", stderr: "pipe" });
+  const result = Bun.spawnSync(command, {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   return {
     exitCode: result.exitCode,
     stdout: new TextDecoder("utf-8", { fatal: true }).decode(result.stdout),
@@ -23,9 +27,13 @@ export const trackedBrowserConfigs = ({
 }: DiscoveryOptions = {}): string[] => {
   const result = run({ command: ["git", "ls-files", "-z"], cwd: repoRoot });
   if (result.exitCode !== 0)
-    throw new TypeError(`Cannot enumerate tracked Playwright configs:\n${result.stderr}`);
+    throw new TypeError(
+      `Cannot enumerate tracked Playwright configs:\n${result.stderr}`,
+    );
   if (!result.stdout.endsWith("\0"))
-    throw new TypeError("Tracked-file discovery must produce a nonempty NUL-terminated list.");
+    throw new TypeError(
+      "Tracked-file discovery must produce a nonempty NUL-terminated list.",
+    );
   const files = result.stdout.slice(0, -1).split("\0");
   for (const file of files)
     if (
@@ -36,11 +44,14 @@ export const trackedBrowserConfigs = ({
       path.posix.normalize(file) !== file ||
       file.startsWith("../")
     )
-      throw new TypeError(`Invalid tracked repository path: ${JSON.stringify(file)}`);
+      throw new TypeError(
+        `Invalid tracked repository path: ${JSON.stringify(file)}`,
+      );
   const configs = [...new Set(files)]
     .filter((file) => CONFIG_GLOB.match(file) && CONFIG_EXTENSION.test(file))
     .toSorted();
-  if (configs.length === 0) throw new TypeError("No tracked Playwright configs were discovered.");
+  if (configs.length === 0)
+    throw new TypeError("No tracked Playwright configs were discovered.");
   return configs;
 };
 
@@ -69,7 +80,9 @@ type BrowserDiscoveryOptions = DiscoveryOptions & {
   cliPath?: string;
   log?: (message: string) => void;
 };
-type BrowserConfigDiscoveryOptions = BrowserDiscoveryOptions & { config: string };
+type BrowserConfigDiscoveryOptions = BrowserDiscoveryOptions & {
+  config: string;
+};
 
 /** Discover one complete config graph; callers enumerate configs from Git. */
 export const checkBrowserConfigDiscovery = ({
@@ -80,7 +93,10 @@ export const checkBrowserConfigDiscovery = ({
   log = console.log,
 }: BrowserConfigDiscoveryOptions) => {
   const playwrightCli =
-    cliPath ?? createRequire(path.join(repoRoot, "package.json")).resolve("@playwright/test/cli");
+    cliPath ??
+    createRequire(path.join(repoRoot, "package.json")).resolve(
+      "@playwright/test/cli",
+    );
   const started = performance.now();
   log(`Browser discovery: starting ${config}.`);
   const result = run({
@@ -96,20 +112,29 @@ export const checkBrowserConfigDiscovery = ({
     cwd: repoRoot,
   });
   const elapsedMs = Math.round(performance.now() - started);
-  log(`Browser discovery: ${config}: ${elapsedMs} ms (exit ${result.exitCode}).`);
+  log(
+    `Browser discovery: ${config}: ${elapsedMs} ms (exit ${result.exitCode}).`,
+  );
   if (result.exitCode !== 0)
     throw new TypeError(
       `Playwright discovery failed for ${config}:\n${result.stdout}\n${result.stderr}`,
     );
   const report: unknown = JSON.parse(result.stdout);
-  if (!isRecord(report) || !Array.isArray(report["errors"]) || !Array.isArray(report["suites"]))
-    throw new TypeError(`Invalid Playwright JSON discovery report for ${config}.`);
+  if (
+    !isRecord(report) ||
+    !Array.isArray(report["errors"]) ||
+    !Array.isArray(report["suites"])
+  )
+    throw new TypeError(
+      `Invalid Playwright JSON discovery report for ${config}.`,
+    );
   if (report["errors"].length > 0)
     throw new TypeError(
       `Playwright discovery errors for ${config}: ${JSON.stringify(report["errors"])}`,
     );
   const tests = suiteTestCount(report["suites"]);
-  if (tests === 0) throw new TypeError(`Playwright discovered no tests for ${config}.`);
+  if (tests === 0)
+    throw new TypeError(`Playwright discovered no tests for ${config}.`);
   log(`Browser discovery: ${config}: ${tests} tests across all projects.`);
   return { config, tests };
 };
@@ -121,11 +146,16 @@ export const checkBrowserDiscovery = ({
   log = console.log,
 }: BrowserDiscoveryOptions = {}) => {
   const coverage = run({
-    command: [process.execPath, path.join(repoRoot, "scripts/check-browser-input-coverage.ts")],
+    command: [
+      process.execPath,
+      path.join(repoRoot, "scripts/check-browser-input-coverage.ts"),
+    ],
     cwd: repoRoot,
   });
   if (coverage.exitCode !== 0)
-    throw new TypeError(`Browser input coverage failed:\n${coverage.stdout}\n${coverage.stderr}`);
+    throw new TypeError(
+      `Browser input coverage failed:\n${coverage.stdout}\n${coverage.stderr}`,
+    );
   if (coverage.stdout.trim() !== "") log(coverage.stdout.trim());
   const configs = trackedBrowserConfigs({ repoRoot, run });
   const results = configs.map((config) =>
@@ -137,10 +167,13 @@ export const checkBrowserDiscovery = ({
 
 if (import.meta.main) {
   try {
-    if (process.argv.length !== 2) throw new TypeError("Browser discovery takes no arguments.");
+    if (process.argv.length !== 2)
+      throw new TypeError("Browser discovery takes no arguments.");
     checkBrowserDiscovery();
   } catch (error) {
     process.exitCode = 1;
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
   }
 }

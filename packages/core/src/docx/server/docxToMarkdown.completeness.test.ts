@@ -6,11 +6,13 @@ import { docxToMarkdown } from "./docxToMarkdown";
 // ── DOCX building blocks ────────────────────────────────────────────────────
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const R_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 const para = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
 /** Wrap content in a block-level content control (structured document tag). */
-const sdt = (inner: string) => `<w:sdt><w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
+const sdt = (inner: string) =>
+  `<w:sdt><w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
 const cell = (inner: string) => `<w:tc>${inner}</w:tc>`;
 const row = (cells: string) => `<w:tr>${cells}</w:tr>`;
 const table = (rows: string) => `<w:tbl>${rows}</w:tbl>`;
@@ -30,7 +32,10 @@ const makeDocx = async (body: string): Promise<Uint8Array> => {
  * "every placed token appears in the output" is the invariant that catches the
  * whole class. On failure, reports exactly which tokens vanished.
  */
-const expectAllExtracted = async (body: string, tokens: readonly string[]): Promise<void> => {
+const expectAllExtracted = async (
+  body: string,
+  tokens: readonly string[],
+): Promise<void> => {
   const markdown = await docxToMarkdown(await makeDocx(body));
   const missing = tokens.filter((t) => !markdown.includes(t));
   expect(missing).toEqual([]);
@@ -67,7 +72,9 @@ describe("docxToMarkdown content completeness — fixtures", () => {
     },
     {
       name: "content control wrapping a whole row (table level)",
-      body: table(sdt(row(cell(para("TBL_SDT_ROW")))) + row(cell(para("TBL_B")))),
+      body: table(
+        sdt(row(cell(para("TBL_SDT_ROW")))) + row(cell(para("TBL_B"))),
+      ),
       tokens: ["TBL_SDT_ROW", "TBL_B"],
     },
     {
@@ -115,7 +122,8 @@ describe("docxToMarkdown content completeness — fuzz", () => {
         tokens.push(t);
         return t;
       };
-      const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rng() * arr.length)] as T;
+      const pick = <T>(arr: readonly T[]): T =>
+        arr[Math.floor(rng() * arr.length)] as T;
       const times = (max: number) => 1 + Math.floor(rng() * max);
 
       // Paragraph content possibly wrapped in 0..2 content controls — markdown
@@ -147,7 +155,8 @@ describe("docxToMarkdown content completeness — fuzz", () => {
           for (let c = 0; c < cols; c++) {
             // A cell, its content, or the whole cell may be control-wrapped —
             // exercising cell-level, and (rarely) row-level sdt descent.
-            cells += rng() < 0.3 ? sdt(cell(cellContent())) : cell(cellContent());
+            cells +=
+              rng() < 0.3 ? sdt(cell(cellContent())) : cell(cellContent());
           }
           // Occasionally wrap the entire row in a content control (table level).
           rows += rng() < 0.25 ? sdt(row(cells)) : row(cells);

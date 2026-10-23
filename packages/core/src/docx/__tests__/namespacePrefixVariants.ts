@@ -14,9 +14,9 @@ import JSZip from "jszip";
 
 import { canonicalJson } from "../../utils/canonicalJson";
 import {
-  NAMESPACES,
   getLocalName,
   getNamespaceUri,
+  NAMESPACES,
   parseXmlDocument,
   resolveAttributeNamespaceUri,
   type XmlElement,
@@ -31,7 +31,11 @@ import {
  */
 export type PrefixVariant = "alias" | "default" | "w14-alias";
 
-export const PREFIX_VARIANTS: readonly PrefixVariant[] = ["alias", "default", "w14-alias"];
+export const PREFIX_VARIANTS: readonly PrefixVariant[] = [
+  "alias",
+  "default",
+  "w14-alias",
+];
 
 const W_URI: string = NAMESPACES.w;
 const W14_URI: string = NAMESPACES.w14;
@@ -48,7 +52,8 @@ const PREFIX_LIST_ATTRIBUTES = new Set([
 
 const XML_TOKEN =
   /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE[^>]*>|<(?:"[^"]*"|'[^']*'|[^'">])*>/gu;
-const ATTRIBUTE = /(?<space>\s+)(?<name>[^\s=/>]+)(?<eq>\s*=\s*)(?<value>"[^"]*"|'[^']*')/gu;
+const ATTRIBUTE =
+  /(?<space>\s+)(?<name>[^\s=/>]+)(?<eq>\s*=\s*)(?<value>"[^"]*"|'[^']*')/gu;
 
 type Renames = {
   /** Prefix used for WordprocessingML elements (`""` for the default namespace). */
@@ -75,7 +80,11 @@ const renamePrefixToken = (token: string, renames: Renames): string => {
 };
 
 /** `w` → the variant's WordprocessingML prefix, `w14` → its `w14` prefix, others kept. */
-const renamedPrefix = (prefix: string, wordPrefix: string, renames: Renames): string => {
+const renamedPrefix = (
+  prefix: string,
+  wordPrefix: string,
+  renames: Renames,
+): string => {
   if (prefix === "w") return wordPrefix;
   if (prefix === "w14") return renames.w14Prefix;
   return prefix;
@@ -100,39 +109,43 @@ const rewriteTag = (tag: string, renames: Renames): string => {
   if (closing) {
     return `</${renamedName}${tag.slice(nameEnd)}`;
   }
-  const attributes = tag.slice(nameEnd).replace(ATTRIBUTE, (...args: unknown[]) => {
-    const groups = args.at(-1) as Record<string, string>;
-    const {
-      space,
-      name: attributeName,
-      eq,
-      value,
-    } = groups as {
-      space: string;
-      name: string;
-      eq: string;
-      value: string;
-    };
-    if (attributeName === "xmlns:w") {
-      return renames.elementPrefix === ""
-        ? `${space}xmlns${eq}${value} xmlns:${renames.attributePrefix}${eq}${value}`
-        : `${space}xmlns:${renames.elementPrefix}${eq}${value}`;
-    }
-    if (attributeName === "xmlns:w14") {
-      return `${space}xmlns:${renames.w14Prefix}${eq}${value}`;
-    }
-    const renamedAttribute = renamePrefixToken(attributeName, renames);
-    const local = attributeName.slice(attributeName.indexOf(":") + 1);
-    if (PREFIX_LIST_ATTRIBUTES.has(local)) {
-      const quote = value[0] ?? '"';
-      const tokens = value
-        .slice(1, -1)
-        .split(/(\s+)/u)
-        .map((token) => (/^\s*$/u.test(token) ? token : renamePrefixToken(token, renames)));
-      return `${space}${renamedAttribute}${eq}${quote}${tokens.join("")}${quote}`;
-    }
-    return `${space}${renamedAttribute}${eq}${value}`;
-  });
+  const attributes = tag
+    .slice(nameEnd)
+    .replace(ATTRIBUTE, (...args: unknown[]) => {
+      const groups = args.at(-1) as Record<string, string>;
+      const {
+        space,
+        name: attributeName,
+        eq,
+        value,
+      } = groups as {
+        space: string;
+        name: string;
+        eq: string;
+        value: string;
+      };
+      if (attributeName === "xmlns:w") {
+        return renames.elementPrefix === ""
+          ? `${space}xmlns${eq}${value} xmlns:${renames.attributePrefix}${eq}${value}`
+          : `${space}xmlns:${renames.elementPrefix}${eq}${value}`;
+      }
+      if (attributeName === "xmlns:w14") {
+        return `${space}xmlns:${renames.w14Prefix}${eq}${value}`;
+      }
+      const renamedAttribute = renamePrefixToken(attributeName, renames);
+      const local = attributeName.slice(attributeName.indexOf(":") + 1);
+      if (PREFIX_LIST_ATTRIBUTES.has(local)) {
+        const quote = value[0] ?? '"';
+        const tokens = value
+          .slice(1, -1)
+          .split(/(\s+)/u)
+          .map((token) =>
+            /^\s*$/u.test(token) ? token : renamePrefixToken(token, renames),
+          );
+        return `${space}${renamedAttribute}${eq}${quote}${tokens.join("")}${quote}`;
+      }
+      return `${space}${renamedAttribute}${eq}${value}`;
+    });
   return `<${renamedName}${attributes}`;
 };
 
@@ -143,7 +156,10 @@ const rewriteTag = (tag: string, renames: Renames): string => {
  * default namespace, or (for `default`) has an unprefixed element that would
  * fall into WordprocessingML.
  */
-export const rewritePartPrefixes = (xml: string, variant: PrefixVariant): string | null => {
+export const rewritePartPrefixes = (
+  xml: string,
+  variant: PrefixVariant,
+): string | null => {
   const renames = RENAMES[variant];
   const root = parseXmlDocument(xml);
   if (!root?.name?.startsWith("w:") || getNamespaceUri(root) !== W_URI) {
@@ -175,7 +191,11 @@ export const rewritePartPrefixes = (xml: string, variant: PrefixVariant): string
 /** Parts a variant respells: every WordprocessingML XML part under `word/`. */
 const isWordXmlPart = (path: string): boolean => {
   const lower = path.toLowerCase();
-  return lower.startsWith("word/") && lower.endsWith(".xml") && !lower.includes("/_rels/");
+  return (
+    lower.startsWith("word/") &&
+    lower.endsWith(".xml") &&
+    !lower.includes("/_rels/")
+  );
 };
 
 /**
@@ -236,7 +256,8 @@ export const canonicalPartTree = (xml: string): string => {
     }
     const attributes: [string, string][] = [];
     for (const [name, raw] of Object.entries(element.attributes ?? {})) {
-      if (raw === undefined || name === "xmlns" || name.startsWith("xmlns:")) continue;
+      if (raw === undefined || name === "xmlns" || name.startsWith("xmlns:"))
+        continue;
       const local = name.slice(name.indexOf(":") + 1);
       const uri = resolveAttributeNamespaceUri(element, name) ?? "";
       let value = String(raw);
@@ -248,7 +269,8 @@ export const canonicalPartTree = (xml: string): string => {
           .filter((token) => token.length > 0)
           .map((token) => {
             const [prefix = "", rest = ""] = token.split(":");
-            const resolved = resolveAttributeNamespaceUri(element, `${prefix}:_`) ?? prefix;
+            const resolved =
+              resolveAttributeNamespaceUri(element, `${prefix}:_`) ?? prefix;
             return rest === "" ? resolved : `{${resolved}}${rest}`;
           })
           .sort()
@@ -269,7 +291,9 @@ export const canonicalPartTree = (xml: string): string => {
           (child) =>
             child.type !== "comment" &&
             child.type !== "instruction" &&
-            (holdsText || child.type !== "text" || String(child.text ?? "").trim() !== ""),
+            (holdsText ||
+              child.type !== "text" ||
+              String(child.text ?? "").trim() !== ""),
         )
         .map(visit),
     };

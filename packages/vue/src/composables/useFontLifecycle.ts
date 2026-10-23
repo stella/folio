@@ -1,9 +1,12 @@
 /** Owns browser font registration for one Vue editor instance. */
 
-import { watch, type Ref } from "vue";
+import { type Ref, watch } from "vue";
 
 import type { FontDefinition } from "../components/DocxEditor/types";
-import { loadEmbeddedFontFaces, type LoadedEmbeddedFonts } from "../utils/embeddedFonts";
+import {
+  type LoadedEmbeddedFonts,
+  loadEmbeddedFontFaces,
+} from "../utils/embeddedFonts";
 import { removeFontFaces } from "../utils/fontFaces";
 import { loadHostFontFaces } from "../utils/hostFonts";
 
@@ -12,12 +15,16 @@ export type UseFontLifecycleOptions = {
   getDocument: () => { originalBuffer?: ArrayBuffer | null } | null;
   fonts: () => ReadonlyArray<FontDefinition> | undefined;
   remeasure: () => void;
-  setEmbeddedFontFamilies: (families: ReadonlyMap<string, string> | null) => void;
+  setEmbeddedFontFamilies: (
+    families: ReadonlyMap<string, string> | null,
+  ) => void;
 };
 
 export type FontLifecycleDependencies = {
   loadEmbedded: (buffer: ArrayBuffer) => Promise<LoadedEmbeddedFonts>;
-  loadHost: (fonts: ReadonlyArray<FontDefinition> | undefined) => Promise<FontFace[]>;
+  loadHost: (
+    fonts: ReadonlyArray<FontDefinition> | undefined,
+  ) => Promise<FontFace[]>;
   remove: (faces: readonly FontFace[]) => void;
 };
 
@@ -37,7 +44,10 @@ export function useFontLifecycle(
   dependencies: FontLifecycleDependencies = DEFAULT_DEPENDENCIES,
 ): void {
   watch(
-    () => (options.isReady.value ? (options.getDocument()?.originalBuffer ?? null) : null),
+    () =>
+      options.isReady.value
+        ? (options.getDocument()?.originalBuffer ?? null)
+        : null,
     (buffer, _previous, onCleanup) => {
       if (!buffer) {
         return;

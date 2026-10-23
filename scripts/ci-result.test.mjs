@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const workflow = Bun.YAML.parse(
-  readFileSync(fileURLToPath(new URL("../.github/workflows/ci.yml", import.meta.url)), "utf8"),
+  readFileSync(
+    fileURLToPath(new URL("../.github/workflows/ci.yml", import.meta.url)),
+    "utf8",
+  ),
 );
 const resultStep = workflow.jobs["ci-result"].steps[0];
 const scopes = JSON.parse(resultStep.env.JOB_SCOPES);
@@ -16,7 +19,12 @@ const areaOutputs = planOutputs.filter(
   (output) => output.endsWith("_required") && output !== "code_required",
 );
 
-const needsFor = ({ depth, event, codeRequired = "true", toolchainChanged = "false" }) => {
+const needsFor = ({
+  depth,
+  event,
+  codeRequired = "true",
+  toolchainChanged = "false",
+}) => {
   const outputs = {
     ...Object.fromEntries(areaOutputs.map((area) => [area, "true"])),
     trusted: "true",
@@ -61,7 +69,10 @@ const runResult = (event, needs, draft = "false") => {
         },
       },
     );
-    return { ...result, summary: Bun.file(summary).size > 0 ? readFileSync(summary, "utf8") : "" };
+    return {
+      ...result,
+      summary: Bun.file(summary).size > 0 ? readFileSync(summary, "utf8") : "",
+    };
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -90,10 +101,12 @@ describe("CI result", () => {
       }
       if (scope.area) {
         expect(planOutputs).toContain(scope.area);
-        expect(gate).toContain(`needs.ci-plan.outputs.${scope.area} == '${scope.value ?? "true"}'`);
-        expect(gate.includes("needs.ci-plan.outputs.suite_depth == 'full'")).toBe(
-          scope.depth === "full",
+        expect(gate).toContain(
+          `needs.ci-plan.outputs.${scope.area} == '${scope.value ?? "true"}'`,
         );
+        expect(
+          gate.includes("needs.ci-plan.outputs.suite_depth == 'full'"),
+        ).toBe(scope.depth === "full");
       }
     }
   });
@@ -137,12 +150,16 @@ describe("CI result", () => {
         for (const failure of ["failure", "cancelled", "skipped", "missing"]) {
           const needs =
             failure === "missing"
-              ? Object.fromEntries(Object.entries(baseline).filter(([name]) => name !== job))
+              ? Object.fromEntries(
+                  Object.entries(baseline).filter(([name]) => name !== job),
+                )
               : structuredClone(baseline);
           if (failure !== "missing") needs[job].result = failure;
           const run = runResult(event, needs);
           expect(run.exitCode).toBe(1);
-          expect(run.stdout.toString()).toContain(`${job} (selected, ${failure})`);
+          expect(run.stdout.toString()).toContain(
+            `${job} (selected, ${failure})`,
+          );
         }
       });
     }
@@ -150,7 +167,9 @@ describe("CI result", () => {
 
   const reusedNeeds = (warm = "false") => {
     const needs = needsFor({ depth: "fast", event: "push" });
-    for (const key of planOutputs.filter((output) => output.endsWith("_required"))) {
+    for (const key of planOutputs.filter((output) =>
+      output.endsWith("_required"),
+    )) {
       needs["ci-plan"].outputs[key] = "false";
     }
     needs["ci-plan"].outputs.reused_run = "38238759782";
@@ -197,13 +216,17 @@ describe("CI result", () => {
     expect(runResult("push", untrusted).exitCode).toBe(1);
   });
 
-  for (const job of Object.keys(scopes).filter((key) => key !== "warm-main-caches")) {
+  for (const job of Object.keys(scopes).filter(
+    (key) => key !== "warm-main-caches",
+  )) {
     test(`reused pushes require ${job} to be present and skipped`, () => {
       for (const result of ["success", "failure", "cancelled", "missing"]) {
         const baseline = reusedNeeds();
         const needs =
           result === "missing"
-            ? Object.fromEntries(Object.entries(baseline).filter(([name]) => name !== job))
+            ? Object.fromEntries(
+                Object.entries(baseline).filter(([name]) => name !== job),
+              )
             : baseline;
         if (result !== "missing") needs[job].result = result;
         expect(runResult("push", needs).exitCode).toBe(1);
@@ -218,17 +241,29 @@ describe("CI result", () => {
     needs["ci-plan"].result = "cancelled";
     expect(runResult("pull_request", needs).exitCode).toBe(1);
 
-    for (const event of ["pull_request", "push", "workflow_dispatch", "schedule"]) {
+    for (const event of [
+      "pull_request",
+      "push",
+      "workflow_dispatch",
+      "schedule",
+    ]) {
       for (const depth of ["full", "invalid"]) {
         const run = runResult(event, needsFor({ depth, event }));
         expect(run.exitCode).toBe(1);
-        expect(run.stdout.toString()).toContain(`wrong suite depth for ${event}`);
+        expect(run.stdout.toString()).toContain(
+          `wrong suite depth for ${event}`,
+        );
       }
     }
     for (const depth of ["fast", "invalid"]) {
-      const run = runResult("merge_group", needsFor({ depth, event: "merge_group" }));
+      const run = runResult(
+        "merge_group",
+        needsFor({ depth, event: "merge_group" }),
+      );
       expect(run.exitCode).toBe(1);
-      expect(run.stdout.toString()).toContain("wrong suite depth for merge_group");
+      expect(run.stdout.toString()).toContain(
+        "wrong suite depth for merge_group",
+      );
     }
 
     const untrusted = needsFor({ depth: "full", event: "merge_group" });
@@ -246,21 +281,38 @@ describe("CI result", () => {
 
   test("changed or unreadable toolchains cannot retain fast depth", () => {
     // The detector promotes both outcomes through the same validated changed output.
-    const needs = needsFor({ depth: "fast", event: "pull_request", toolchainChanged: "true" });
+    const needs = needsFor({
+      depth: "fast",
+      event: "pull_request",
+      toolchainChanged: "true",
+    });
     expect(runResult("pull_request", needs).exitCode).toBe(1);
-    const full = needsFor({ depth: "full", event: "pull_request", toolchainChanged: "true" });
+    const full = needsFor({
+      depth: "full",
+      event: "pull_request",
+      toolchainChanged: "true",
+    });
     expect(runResult("pull_request", full).exitCode).toBe(0);
   });
 
   test("toolchain promotion requires every planned area, including the API gate", () => {
-    const required = planOutputs.filter((output) => output.endsWith("_required"));
+    const required = planOutputs.filter((output) =>
+      output.endsWith("_required"),
+    );
     expect(required).toContain("api_required");
     expect(required).toContain("code_required");
     for (const area of required)
       for (const value of ["false", undefined]) {
-        const needs = needsFor({ depth: "full", event: "pull_request", toolchainChanged: "true" });
+        const needs = needsFor({
+          depth: "full",
+          event: "pull_request",
+          toolchainChanged: "true",
+        });
         needs["ci-plan"].outputs[area] = value;
-        expect(runResult("pull_request", needs).exitCode, `${area}=${value}`).toBe(1);
+        expect(
+          runResult("pull_request", needs).exitCode,
+          `${area}=${value}`,
+        ).toBe(1);
       }
   });
 

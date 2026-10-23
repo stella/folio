@@ -50,13 +50,20 @@ type ReactImport = { importer: string; specifier: string };
 // from false-firing on benign comments. The line-comment pattern keeps the
 // character before `//` so it does not eat a `:` from a `https://` URL.
 const stripComments = (source: string): string =>
-  source.replaceAll(/\/\*[\s\S]*?\*\//gu, "").replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
+  source
+    .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
+    .replaceAll(/(?<lead>^|[^:])\/\/[^\n]*/gmu, "$<lead>");
 
-const reactImportsForSource = (filePath: string, source: string): ReactImport[] => {
+const reactImportsForSource = (
+  filePath: string,
+  source: string,
+): ReactImport[] => {
   const found: ReactImport[] = [];
   for (const match of stripComments(source).matchAll(IMPORT_REGEX)) {
     const specifier =
-      match.groups?.["fromSpec"] ?? match.groups?.["importSpec"] ?? match.groups?.["dynImportSpec"];
+      match.groups?.["fromSpec"] ??
+      match.groups?.["importSpec"] ??
+      match.groups?.["dynImportSpec"];
     if (specifier !== undefined && isForbidden(specifier)) {
       found.push({ importer: filePath, specifier });
     }
@@ -92,7 +99,10 @@ describe("folio core is React-free", () => {
     const violations = collectCoreFiles().flatMap(reactImportsForFile);
     if (violations.length > 0) {
       const formatted = violations
-        .map((v) => `  ${v.importer.replace(CORE_DIR, "<core>")} -> "${v.specifier}"`)
+        .map(
+          (v) =>
+            `  ${v.importer.replace(CORE_DIR, "<core>")} -> "${v.specifier}"`,
+        )
         .join("\n");
       throw new Error(
         "Folio core must stay framework-neutral, but found framework " +
@@ -119,18 +129,27 @@ describe("folio React-free core — synthetic fixtures", () => {
   });
 
   test("react-dom import is rejected", () => {
-    const violations = reactImportsForSource(importer, 'import { createPortal } from "react-dom";');
+    const violations = reactImportsForSource(
+      importer,
+      'import { createPortal } from "react-dom";',
+    );
     expect(violations).toHaveLength(1);
   });
 
   test("@stll/ui import is rejected", () => {
-    const violations = reactImportsForSource(importer, 'import { Button } from "@stll/ui/button";');
+    const violations = reactImportsForSource(
+      importer,
+      'import { Button } from "@stll/ui/button";',
+    );
     expect(violations).toHaveLength(1);
     expect(violations[0]?.specifier).toBe("@stll/ui/button");
   });
 
   test("dynamic react import is rejected", () => {
-    const violations = reactImportsForSource(importer, 'const react = await import("react");');
+    const violations = reactImportsForSource(
+      importer,
+      'const react = await import("react");',
+    );
     expect(violations).toHaveLength(1);
   });
 

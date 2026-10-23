@@ -1,6 +1,10 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { BlockContent, HeaderFooter } from "../../model/content";
 import type { Document } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
@@ -43,11 +47,17 @@ test("generated narrow story restores preserve differing mounted snapshots and r
                 {
                   type: "paragraph",
                   paraId: "00000002",
-                  content: [{ type: "run", content: [{ type: "text", text: `Captured ${text}` }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: `Captured ${text}` }],
+                    },
+                  ],
                 },
               ];
             }
-            if (equivalence === "source") captured.verbatimFingerprint = "captured-source";
+            if (equivalence === "source")
+              captured.verbatimFingerprint = "captured-source";
             const bodyContent = [
               { type: "paragraph", paraId: "00000001", content: [] },
             ] satisfies BlockContent[];
@@ -79,20 +89,33 @@ test("generated narrow story restores preserve differing mounted snapshots and r
             } satisfies DocumentOp;
             const expected = structuredClone(original);
             expected.package.document.sections = [
-              { properties, content: [...bodyContent], [field]: new Map([[variant, captured]]) },
+              {
+                properties,
+                content: [...bodyContent],
+                [field]: new Map([[variant, captured]]),
+              },
             ];
             const applied = applyDocumentOp(original, op).unwrap();
             expect(applied.document).toStrictEqual(expected);
-            expect(applied.document.package[field]).toBe(original.package[field]);
+            expect(applied.document.package[field]).toBe(
+              original.package[field],
+            );
             const restored = applied.document.package.document.sections
               ?.at(0)
               ?.[field]?.get(variant);
-            const authoritative = applied.document.package[field]?.get("rIdStory");
+            const authoritative =
+              applied.document.package[field]?.get("rIdStory");
             if (equivalence === "equal") expect(restored).toBe(authoritative);
             else expect(restored).not.toBe(authoritative);
-            const undone = applyDocumentOps(applied.document, applied.inverse).unwrap();
+            const undone = applyDocumentOps(
+              applied.document,
+              applied.inverse,
+            ).unwrap();
             expect(undone.document).toStrictEqual(original);
-            const redone = applyDocumentOps(undone.document, undone.inverse).unwrap();
+            const redone = applyDocumentOps(
+              undone.document,
+              undone.inverse,
+            ).unwrap();
             expect(redone.document).toStrictEqual(applied.document);
           }
         }

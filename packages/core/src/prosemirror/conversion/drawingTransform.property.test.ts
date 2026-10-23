@@ -19,8 +19,16 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { Document, Image, ImageTransform, Shape } from "../../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import type {
+  Document,
+  Image,
+  ImageTransform,
+  Shape,
+} from "../../types/document";
 import { computeImageTransform } from "../commands/image";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
@@ -59,7 +67,11 @@ const authoredTransform = fc.record({
   flipV: authoredFlip,
 });
 
-const transformOf = ({ rotation, flipH, flipV }: AuthoredTransform): ImageTransform | undefined => {
+const transformOf = ({
+  rotation,
+  flipH,
+  flipV,
+}: AuthoredTransform): ImageTransform | undefined => {
   if (rotation === undefined && flipH === undefined && flipV === undefined) {
     return undefined;
   }
@@ -79,14 +91,21 @@ const buildShape = (authored: AuthoredTransform): Shape => ({
   shapeType: authored.kind === "textBox" ? "textBox" : "rect",
   size: { width: 914_400, height: 914_400 },
   wrap: { type: "inline" },
-  ...(transformOf(authored) === undefined ? {} : { transform: transformOf(authored) }),
+  ...(transformOf(authored) === undefined
+    ? {}
+    : { transform: transformOf(authored) }),
   ...(authored.kind === "textBox"
     ? {
         textBody: {
           content: [
             {
               type: "paragraph" as const,
-              content: [{ type: "run" as const, content: [{ type: "text" as const, text: "t" }] }],
+              content: [
+                {
+                  type: "run" as const,
+                  content: [{ type: "text" as const, text: "t" }],
+                },
+              ],
             },
           ],
         },
@@ -99,7 +118,9 @@ const buildImage = (authored: AuthoredTransform): Image => ({
   rId: "rIdTransform",
   size: { width: 914_400, height: 914_400 },
   wrap: { type: "inline" },
-  ...(transformOf(authored) === undefined ? {} : { transform: transformOf(authored) }),
+  ...(transformOf(authored) === undefined
+    ? {}
+    : { transform: transformOf(authored) }),
 });
 
 const documentWithDrawing = (authored: AuthoredTransform): Document => ({
@@ -173,9 +194,20 @@ const restoredTransform = (document: Document): ImageTransform | undefined => {
 };
 
 /** Re-create every drawing node in the projection with different attributes. */
-const editDrawingAttrs = (node: PMNode, overrides: Record<string, unknown>): PMNode => {
-  if (node.type.name === "shape" || node.type.name === "textBox" || node.type.name === "image") {
-    return node.type.create({ ...node.attrs, ...overrides }, node.content, node.marks);
+const editDrawingAttrs = (
+  node: PMNode,
+  overrides: Record<string, unknown>,
+): PMNode => {
+  if (
+    node.type.name === "shape" ||
+    node.type.name === "textBox" ||
+    node.type.name === "image"
+  ) {
+    return node.type.create(
+      { ...node.attrs, ...overrides },
+      node.content,
+      node.marks,
+    );
   }
   const children: PMNode[] = [];
   node.content.forEach((child) => {
@@ -185,15 +217,17 @@ const editDrawingAttrs = (node: PMNode, overrides: Record<string, unknown>): PMN
 };
 
 const restore = (source: Document): Document =>
-  fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } });
+  fromProseDoc(toProseDoc(source), source, {
+    stylesheetSource: { type: "package" },
+  });
 
 describe("drawing transform survives the editor projection", () => {
   test("an untouched drawing is written back with its authored rotation and flips", () => {
     fc.assert(
       fc.property(authoredTransform, (authored) => {
-        expect(restoredTransform(restore(documentWithDrawing(authored)))).toEqual(
-          transformOf(authored),
-        );
+        expect(
+          restoredTransform(restore(documentWithDrawing(authored))),
+        ).toEqual(transformOf(authored));
       }),
       propertyConfig({ numRuns: 400 }),
     );
@@ -204,7 +238,9 @@ describe("drawing transform survives the editor projection", () => {
       fc.property(authoredTransform, (authored) => {
         const restored = restore(documentWithDrawing(authored));
 
-        expect(restoredTransform(restore(restored))).toEqual(restoredTransform(restored));
+        expect(restoredTransform(restore(restored))).toEqual(
+          restoredTransform(restored),
+        );
       }),
       propertyConfig({ numRuns: 200 }),
     );
@@ -214,7 +250,11 @@ describe("drawing transform survives the editor projection", () => {
     fc.assert(
       fc.property(
         authoredTransform,
-        fc.constantFrom("rotateCW" as const, "rotateCCW" as const, "flipH" as const),
+        fc.constantFrom(
+          "rotateCW" as const,
+          "rotateCCW" as const,
+          "flipH" as const,
+        ),
         (authored, action) => {
           const source = documentWithDrawing(authored);
           const edited = computeImageTransform(transformOf(authored), action);
@@ -226,7 +266,9 @@ describe("drawing transform survives the editor projection", () => {
 
           expect(
             restoredTransform(
-              fromProseDoc(projected, source, { stylesheetSource: { type: "package" } }),
+              fromProseDoc(projected, source, {
+                stylesheetSource: { type: "package" },
+              }),
             ),
           ).toEqual(edited);
         },
@@ -243,7 +285,10 @@ describe("drawing transform survives the editor projection", () => {
         (rotation, action) => {
           // `%` keeps the sign of its left operand, so a negative authored
           // rotation used to come back negative: a turn nothing can state.
-          const { rotation: rotated } = computeImageTransform({ rotation }, action);
+          const { rotation: rotated } = computeImageTransform(
+            { rotation },
+            action,
+          );
 
           expect(rotated).toBeGreaterThanOrEqual(0);
           expect(rotated).toBeLessThan(360);

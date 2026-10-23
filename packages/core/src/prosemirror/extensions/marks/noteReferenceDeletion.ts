@@ -1,5 +1,6 @@
-import { expectFootnoteRefMarkAttrs } from "../../attrs";
 import type { Node as PMNode } from "prosemirror-model";
+
+import { expectFootnoteRefMarkAttrs } from "../../attrs";
 
 type DeletionRange = { from: number; to: number };
 
@@ -14,7 +15,9 @@ export const expandNoteReferenceDeletionRange = (
   let intersectsReference = false;
 
   doc.nodesBetween(from, to, (node, pos) => {
-    const reference = node.marks.find((mark) => mark.type.name === "footnoteRef");
+    const reference = node.marks.find(
+      (mark) => mark.type.name === "footnoteRef",
+    );
     if (!node.isText || !reference) {
       return;
     }
@@ -52,13 +55,24 @@ export const expandNoteReferenceDeletionRange = (
 };
 
 /** Each whole note reference [`from`, `to`) of `doc` touches, in document order. */
-export const noteReferenceRanges = (doc: PMNode, from: number, to: number): DeletionRange[] => {
+export const noteReferenceRanges = (
+  doc: PMNode,
+  from: number,
+  to: number,
+): DeletionRange[] => {
   const ranges: DeletionRange[] = [];
   doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isText || !node.marks.some((mark) => mark.type.name === "footnoteRef")) {
+    if (
+      !node.isText ||
+      !node.marks.some((mark) => mark.type.name === "footnoteRef")
+    ) {
       return;
     }
-    const whole = expandNoteReferenceDeletionRange(doc, pos, pos + node.nodeSize);
+    const whole = expandNoteReferenceDeletionRange(
+      doc,
+      pos,
+      pos + node.nodeSize,
+    );
     const last = ranges.at(-1);
     if (whole && (!last || whole.from >= last.to)) {
       ranges.push(whole);

@@ -16,20 +16,24 @@
  *   bun scripts/generate-joining-types.ts check
  */
 
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { TaggedError } from "better-result";
-
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const OUTPUT_PATH = path.join(REPO_ROOT, "packages/core/src/utils/joiningTypes.gen.ts");
+const OUTPUT_PATH = path.join(
+  REPO_ROOT,
+  "packages/core/src/utils/joiningTypes.gen.ts",
+);
 
 /** UCD sources, resolved from `specifications/sources.json` cache paths. */
 const ARABIC_SHAPING_ID = "unicode-arabic-shaping";
 const GENERAL_CATEGORY_ID = "unicode-derived-general-category";
 
-class GenerateJoiningTypesError extends TaggedError("GenerateJoiningTypesError")<{
+class GenerateJoiningTypesError extends TaggedError(
+  "GenerateJoiningTypesError",
+)<{
   message: string;
 }> {}
 
@@ -43,10 +47,18 @@ type JoiningType = "C" | "D" | "L" | "R" | "T" | "U";
 
 type Range = { start: number; end: number };
 
-type SourceEntry = { id: string; cachePath: string; version: string; sha256: string };
+type SourceEntry = {
+  id: string;
+  cachePath: string;
+  version: string;
+  sha256: string;
+};
 
 const readSourceEntries = async (): Promise<Map<string, SourceEntry>> => {
-  const raw = await readFile(path.join(REPO_ROOT, "specifications/sources.json"), "utf8");
+  const raw = await readFile(
+    path.join(REPO_ROOT, "specifications/sources.json"),
+    "utf8",
+  );
   const parsed: unknown = JSON.parse(raw);
   if (
     typeof parsed !== "object" ||
@@ -83,7 +95,10 @@ const readSourceEntries = async (): Promise<Map<string, SourceEntry>> => {
   return entries;
 };
 
-const requireSource = (entries: Map<string, SourceEntry>, id: string): SourceEntry => {
+const requireSource = (
+  entries: Map<string, SourceEntry>,
+  id: string,
+): SourceEntry => {
   const entry = entries.get(id);
   if (!entry) {
     throw new GenerateJoiningTypesError({
@@ -115,7 +130,8 @@ const readCachedSource = async (entry: SourceEntry): Promise<string> => {
   return contents;
 };
 
-const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
+const digest = (text: string): string =>
+  createHash("sha256").update(text).digest("hex");
 
 /** Strip a UCD comment tail and surrounding whitespace from one line. */
 const dataPart = (line: string): string => {
@@ -145,7 +161,8 @@ const parseArabicShaping = (text: string): Map<number, JoiningType> => {
   }
   if (explicit.size === 0) {
     throw new GenerateJoiningTypesError({
-      message: "ArabicShaping.txt yielded no entries — parser or source is wrong",
+      message:
+        "ArabicShaping.txt yielded no entries — parser or source is wrong",
     });
   }
   return explicit;
@@ -169,7 +186,10 @@ const parseTransparentDefaults = (text: string): Range[] => {
     const [from, to] = codes.split("..");
     if (from === undefined) continue;
     const start = Number.parseInt(from, 16);
-    ranges.push({ start, end: to === undefined ? start : Number.parseInt(to, 16) });
+    ranges.push({
+      start,
+      end: to === undefined ? start : Number.parseInt(to, 16),
+    });
   }
   if (ranges.length === 0) {
     throw new GenerateJoiningTypesError({
@@ -198,7 +218,9 @@ const coalesce = (ranges: Range[]): Range[] => {
 };
 
 const rangesFromCodePoints = (codePoints: number[]): Range[] =>
-  coalesce([...codePoints].sort((a, b) => a - b).map((cp) => ({ start: cp, end: cp })));
+  coalesce(
+    [...codePoints].sort((a, b) => a - b).map((cp) => ({ start: cp, end: cp })),
+  );
 
 type Tables = {
   /** Joining_Type D, L or C: can connect to the FOLLOWING character. */
@@ -211,7 +233,10 @@ type Tables = {
   letters: Range[];
 };
 
-const buildTables = (explicit: Map<number, JoiningType>, transparentDefaults: Range[]): Tables => {
+const buildTables = (
+  explicit: Map<number, JoiningType>,
+  transparentDefaults: Range[],
+): Tables => {
   const forward: number[] = [];
   const backward: number[] = [];
   const letters: number[] = [];
@@ -219,7 +244,8 @@ const buildTables = (explicit: Map<number, JoiningType>, transparentDefaults: Ra
 
   for (const [cp, joining] of explicit) {
     if (joining === "D" || joining === "L" || joining === "C") forward.push(cp);
-    if (joining === "D" || joining === "R" || joining === "C") backward.push(cp);
+    if (joining === "D" || joining === "R" || joining === "C")
+      backward.push(cp);
     if (joining === "D" || joining === "L" || joining === "R") letters.push(cp);
     if (joining === "T") explicitTransparent.push(cp);
   }
@@ -322,7 +348,9 @@ const main = async (): Promise<void> => {
   const categorySource = requireSource(sources, GENERAL_CATEGORY_ID);
 
   const explicit = parseArabicShaping(await readCachedSource(shapingSource));
-  const transparentDefaults = parseTransparentDefaults(await readCachedSource(categorySource));
+  const transparentDefaults = parseTransparentDefaults(
+    await readCachedSource(categorySource),
+  );
 
   // Two spot checks against the standard's own tables, so a parser regression
   // fails here rather than surfacing as mis-shaped text much later.
@@ -359,7 +387,8 @@ const main = async (): Promise<void> => {
   const existing = await readFile(OUTPUT_PATH, "utf8").catch(() => null);
   if (existing === null || digest(existing) !== digest(rendered)) {
     throw new GenerateJoiningTypesError({
-      message: "joiningTypes.gen.ts is stale. Run `bun run generate:joining-types`.",
+      message:
+        "joiningTypes.gen.ts is stale. Run `bun run generate:joining-types`.",
     });
   }
   process.stdout.write("joiningTypes.gen.ts is up to date\n");

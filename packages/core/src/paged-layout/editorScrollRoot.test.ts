@@ -3,6 +3,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 GlobalRegistrator.register();
 
 import { afterAll, describe, expect, test } from "bun:test";
+
 import {
   getEditorScrollRoot,
   scrollEditorBy,
@@ -59,8 +60,13 @@ describe("editor scroll root ownership", () => {
         for (const block of ["start", "center", "end", "nearest"] as const) {
           const { root, host, viewport, target } = fixture();
           root.scrollTop = scrollTop;
-          target.getBoundingClientRect = () => new DOMRect(0, 702, 400, 40 * scale);
-          scrollEditorElementIntoView(target, { block, margin: 24, behavior: "instant" });
+          target.getBoundingClientRect = () =>
+            new DOMRect(0, 702, 400, 40 * scale);
+          scrollEditorElementIntoView(target, {
+            block,
+            margin: 24,
+            behavior: "instant",
+          });
           const expected = {
             start: scrollTop + 600 - 24,
             center: scrollTop + 600 - (300 - 40 * scale) / 2,
@@ -78,7 +84,11 @@ describe("editor scroll root ownership", () => {
   test("nearest leaves an already visible target and all ancestors still", () => {
     const { root, host, target } = fixture();
     target.getBoundingClientRect = () => new DOMRect(0, 160, 400, 40);
-    scrollEditorElementIntoView(target, { block: "nearest", margin: 40, behavior: "instant" });
+    scrollEditorElementIntoView(target, {
+      block: "nearest",
+      margin: 40,
+      behavior: "instant",
+    });
     expect(root.scrollTop).toBe(200);
     expect(host.scrollTop).toBe(77);
   });
@@ -93,7 +103,10 @@ describe("editor scroll root ownership", () => {
       const { root, host, viewport, target } = fixture();
       root.scrollLeft = 25;
       target.getBoundingClientRect = () => new DOMRect(left, 160, width, 40);
-      scrollEditorElementIntoView(target, { block: "nearest", behavior: "instant" });
+      scrollEditorElementIntoView(target, {
+        block: "nearest",
+        behavior: "instant",
+      });
       expect(root.scrollLeft).toBe(expected);
       expect(host.scrollTop).toBe(77);
       expect(viewport.scrollLeft).toBe(0);
@@ -103,7 +116,11 @@ describe("editor scroll root ownership", () => {
   test("nearest preserves a target spanning both visible vertical edges", () => {
     const { root, target } = fixture();
     target.getBoundingClientRect = () => new DOMRect(0, 50, 400, 500);
-    scrollEditorElementIntoView(target, { block: "nearest", margin: 40, behavior: "instant" });
+    scrollEditorElementIntoView(target, {
+      block: "nearest",
+      margin: 40,
+      behavior: "instant",
+    });
     expect(root.scrollTop).toBe(200);
   });
 

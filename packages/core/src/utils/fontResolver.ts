@@ -7,7 +7,7 @@
  * This module provides mappings to metrically-compatible Google Fonts alternatives.
  */
 
-import type { ThemeFontScheme, ThemeFont } from "../types";
+import type { ThemeFont, ThemeFontScheme } from "../types";
 
 /**
  * Result of resolving a font family
@@ -28,7 +28,8 @@ export type ResolvedFont = {
 /**
  * Font category for fallback selection
  */
-type FontCategory = "sans-serif" | "serif" | "monospace" | "cursive" | "fantasy" | "system-ui";
+type FontCategory =
+  "sans-serif" | "serif" | "monospace" | "cursive" | "fantasy" | "system-ui";
 
 /**
  * Font mapping entry
@@ -102,7 +103,9 @@ type FontLineHeight =
  */
 const singleLineRatioOf = (lineHeight: FontLineHeight): number =>
   lineHeight.source === "hhea"
-    ? (lineHeight.hheaAscent - lineHeight.hheaDescent + lineHeight.hheaLineGap) /
+    ? (lineHeight.hheaAscent -
+        lineHeight.hheaDescent +
+        lineHeight.hheaLineGap) /
       lineHeight.unitsPerEm
     : lineHeight.ratio;
 
@@ -154,7 +157,13 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "aptos display": {
     googleFont: "Lato",
     category: "sans-serif",
-    fallbackStack: ["Aptos Display", "Lato", "Arial", "Helvetica", "sans-serif"],
+    fallbackStack: [
+      "Aptos Display",
+      "Lato",
+      "Arial",
+      "Helvetica",
+      "sans-serif",
+    ],
     singleLineRatio: singleLineRatioOf(APTOS_MEASURED_LINE_HEIGHT),
   },
   calibri: {
@@ -282,7 +291,13 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "segoe ui": {
     googleFont: "Source Sans 3",
     category: "sans-serif",
-    fallbackStack: ["Segoe UI", "Source Sans 3", "Arial", "Helvetica", "sans-serif"],
+    fallbackStack: [
+      "Segoe UI",
+      "Source Sans 3",
+      "Arial",
+      "Helvetica",
+      "sans-serif",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "hhea",
       hheaAscent: 2210,
@@ -342,7 +357,13 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "palatino linotype": {
     googleFont: "EB Garamond",
     category: "serif",
-    fallbackStack: ["Palatino Linotype", "EB Garamond", "Palatino", "Georgia", "serif"],
+    fallbackStack: [
+      "Palatino Linotype",
+      "EB Garamond",
+      "Palatino",
+      "Georgia",
+      "serif",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "hhea",
       hheaAscent: 2150,
@@ -354,7 +375,13 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "book antiqua": {
     googleFont: "EB Garamond",
     category: "serif",
-    fallbackStack: ["Book Antiqua", "EB Garamond", "Palatino", "Georgia", "serif"],
+    fallbackStack: [
+      "Book Antiqua",
+      "EB Garamond",
+      "Palatino",
+      "Georgia",
+      "serif",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "hhea",
       hheaAscent: 1891,
@@ -410,7 +437,13 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   consolas: {
     googleFont: "Inconsolata",
     category: "monospace",
-    fallbackStack: ["Consolas", "Inconsolata", "Cousine", "Courier New", "monospace"],
+    fallbackStack: [
+      "Consolas",
+      "Inconsolata",
+      "Cousine",
+      "Courier New",
+      "monospace",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "hhea",
       hheaAscent: 1521,
@@ -423,7 +456,13 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "arial narrow": {
     googleFont: "Arimo",
     category: "sans-serif",
-    fallbackStack: ["Arial Narrow", "Arimo", "Arial", "Helvetica", "sans-serif"],
+    fallbackStack: [
+      "Arial Narrow",
+      "Arimo",
+      "Arial",
+      "Helvetica",
+      "sans-serif",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "hhea",
       hheaAscent: 1916,
@@ -457,7 +496,12 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "franklin gothic book": {
     googleFont: "Libre Franklin",
     category: "sans-serif",
-    fallbackStack: ["Franklin Gothic Book", "Libre Franklin", "Arial", "sans-serif"],
+    fallbackStack: [
+      "Franklin Gothic Book",
+      "Libre Franklin",
+      "Arial",
+      "sans-serif",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "hhea",
       hheaAscent: 1877,
@@ -469,7 +513,13 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "calibri light": {
     googleFont: "Carlito",
     category: "sans-serif",
-    fallbackStack: ["Calibri Light", "Calibri", "Carlito", "Arial", "sans-serif"],
+    fallbackStack: [
+      "Calibri Light",
+      "Calibri",
+      "Carlito",
+      "Arial",
+      "sans-serif",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "hhea",
       hheaAscent: 1950,
@@ -532,7 +582,12 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "simplified arabic": {
     googleFont: "Noto Naskh Arabic",
     category: "serif",
-    fallbackStack: ["Simplified Arabic", "Noto Naskh Arabic", "Times New Roman", "serif"],
+    fallbackStack: [
+      "Simplified Arabic",
+      "Noto Naskh Arabic",
+      "Times New Roman",
+      "serif",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "measured",
       ratio: 1.6582,
@@ -542,7 +597,12 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "sakkal majalla": {
     googleFont: "Noto Naskh Arabic",
     category: "serif",
-    fallbackStack: ["Sakkal Majalla", "Noto Naskh Arabic", "Times New Roman", "serif"],
+    fallbackStack: [
+      "Sakkal Majalla",
+      "Noto Naskh Arabic",
+      "Times New Roman",
+      "serif",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "measured",
       ratio: 1.3964,
@@ -554,7 +614,12 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   frankruehl: {
     googleFont: "Frank Ruhl Libre",
     category: "serif",
-    fallbackStack: ["FrankRuehl", "Frank Ruhl Libre", "Times New Roman", "serif"],
+    fallbackStack: [
+      "FrankRuehl",
+      "Frank Ruhl Libre",
+      "Times New Roman",
+      "serif",
+    ],
     singleLineRatio: singleLineRatioOf({
       source: "hhea",
       hheaAscent: 1462,
@@ -615,7 +680,12 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   "ｍｓ ｐゴシック": {
     googleFont: "Noto Sans JP",
     category: "sans-serif",
-    fallbackStack: ["MS PGothic", "ＭＳ Ｐゴシック", "Noto Sans JP", "sans-serif"],
+    fallbackStack: [
+      "MS PGothic",
+      "ＭＳ Ｐゴシック",
+      "Noto Sans JP",
+      "sans-serif",
+    ],
     singleLineRatio: singleLineRatioOf(JP_MEASURED_LINE_HEIGHT),
   },
   simhei: {
@@ -660,7 +730,12 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   微软雅黑: {
     googleFont: "Noto Sans SC",
     category: "sans-serif",
-    fallbackStack: ["Microsoft YaHei", "微软雅黑", "Noto Sans SC", "sans-serif"],
+    fallbackStack: [
+      "Microsoft YaHei",
+      "微软雅黑",
+      "Noto Sans SC",
+      "sans-serif",
+    ],
     singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,
   },
   等线: {
@@ -698,7 +773,12 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
   微軟正黑體: {
     googleFont: "Noto Sans TC",
     category: "sans-serif",
-    fallbackStack: ["Microsoft JhengHei", "微軟正黑體", "Noto Sans TC", "sans-serif"],
+    fallbackStack: [
+      "Microsoft JhengHei",
+      "微軟正黑體",
+      "Noto Sans TC",
+      "sans-serif",
+    ],
     singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,
   },
   標楷體: {
@@ -868,7 +948,8 @@ const CJK_NOTO_FAMILIES: ReadonlySet<string> = new Set([
  */
 export function isCjkFont(family: string): boolean {
   const normalizedName = family.trim().toLowerCase();
-  const mapping = FONT_MAPPINGS[CJK_FONT_ALIASES[normalizedName] ?? normalizedName];
+  const mapping =
+    FONT_MAPPINGS[CJK_FONT_ALIASES[normalizedName] ?? normalizedName];
   return mapping !== undefined && CJK_NOTO_FAMILIES.has(mapping.googleFont);
 }
 
@@ -893,7 +974,8 @@ export const CJK_FALLBACK_FONT_FAMILY = "MS Mincho";
 // bundled Arabic face into every fallback chain just before the generic
 // family. Latin text keeps its named font; Arabic runs fall through to Noto.
 const ARABIC_FALLBACK = '"Noto Sans Arabic"';
-const TRAILING_GENERIC = /,\s*(?<generic>sans-serif|serif|monospace|cursive)\s*$/u;
+const TRAILING_GENERIC =
+  /,\s*(?<generic>sans-serif|serif|monospace|cursive)\s*$/u;
 const withArabicFallback = (stack: string): string =>
   TRAILING_GENERIC.test(stack)
     ? stack.replace(TRAILING_GENERIC, `, ${ARABIC_FALLBACK}, $<generic>`)
@@ -930,14 +1012,18 @@ export function resolveFontFamily(
     // target's stack (e.g. Meiryo / Yu Gothic alias to the MS Gothic mapping).
     // Prepend it so the viewer's own copy of the named face is tried first.
     const fallbackStack =
-      aliasTarget && !mapping.fallbackStack.some((f) => f.toLowerCase() === normalizedName)
+      aliasTarget &&
+      !mapping.fallbackStack.some((f) => f.toLowerCase() === normalizedName)
         ? [docxFontName, ...mapping.fallbackStack]
         : mapping.fallbackStack;
     // An embedded face for this name takes priority over both the authored
     // name and the mapped stack — it leads the list; the raw name is dropped
     // entirely rather than also listed, since it was never registered.
     const primaryStack = scopedFamily
-      ? [scopedFamily, ...fallbackStack.filter((f) => f.toLowerCase() !== normalizedName)]
+      ? [
+          scopedFamily,
+          ...fallbackStack.filter((f) => f.toLowerCase() !== normalizedName),
+        ]
       : fallbackStack;
     if (
       alternateFontName === undefined ||
@@ -946,14 +1032,18 @@ export function resolveFontFamily(
     ) {
       return {
         googleFont: googleFontsEnabled ? mapping.googleFont : null,
-        cssFallback: withArabicFallback(primaryStack.map(quoteFontName).join(", ")),
+        cssFallback: withArabicFallback(
+          primaryStack.map(quoteFontName).join(", "),
+        ),
         originalFont: docxFontName,
         hasGoogleEquivalent: googleFontsEnabled,
         singleLineRatio: mapping.singleLineRatio,
       };
     }
 
-    const alternate = resolveFontFamily(alternateFontName, { embeddedFontFamilyMap });
+    const alternate = resolveFontFamily(alternateFontName, {
+      embeddedFontFamilyMap,
+    });
     const category = mapping.category;
     const concreteStack = dedupeFontFamilies([
       scopedFamily ?? docxFontName,
@@ -975,7 +1065,9 @@ export function resolveFontFamily(
 
   const alternateName = alternateFontName?.trim();
   if (alternateName && alternateName.toLowerCase() !== normalizedName) {
-    const alternate = resolveFontFamily(alternateName, { embeddedFontFamilyMap });
+    const alternate = resolveFontFamily(alternateName, {
+      embeddedFontFamilyMap,
+    });
     const category = detectFontCategory(docxFontName);
     const concreteStack = dedupeFontFamilies([
       scopedFamily ?? docxFontName,
@@ -984,7 +1076,9 @@ export function resolveFontFamily(
 
     return {
       googleFont: googleFontsEnabled ? alternate.googleFont : null,
-      cssFallback: withArabicFallback([...concreteStack, category].map(quoteFontName).join(", ")),
+      cssFallback: withArabicFallback(
+        [...concreteStack, category].map(quoteFontName).join(", "),
+      ),
       originalFont: docxFontName,
       hasGoogleEquivalent: googleFontsEnabled && alternate.hasGoogleEquivalent,
       singleLineRatio: alternate.singleLineRatio,
@@ -1005,7 +1099,9 @@ export function resolveFontFamily(
 }
 
 const isCssGenericFontFamily = (family: string): boolean =>
-  /^(?:sans-serif|serif|monospace|cursive|fantasy|system-ui)$/u.test(family.trim().toLowerCase());
+  /^(?:sans-serif|serif|monospace|cursive|fantasy|system-ui)$/u.test(
+    family.trim().toLowerCase(),
+  );
 
 const dedupeFontFamilies = (families: string[]): string[] => {
   const seen = new Set<string>();
@@ -1042,9 +1138,14 @@ function escapeQuotedFontName(fontName: string): string {
 function quoteFontName(fontName: string): string {
   // If it's a generic family, don't quote
   if (
-    ["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"].includes(
-      fontName.toLowerCase(),
-    )
+    [
+      "serif",
+      "sans-serif",
+      "monospace",
+      "cursive",
+      "fantasy",
+      "system-ui",
+    ].includes(fontName.toLowerCase())
   ) {
     return fontName;
   }
@@ -1136,14 +1237,19 @@ export function parseFontFamilyList(list: string): string[] {
  * @param fontScheme - Theme font scheme from the DOCX
  * @returns Resolved font name or null if not found
  */
-export function resolveThemeFont(themeRef: string, fontScheme?: ThemeFontScheme): string | null {
+export function resolveThemeFont(
+  themeRef: string,
+  fontScheme?: ThemeFontScheme,
+): string | null {
   if (!fontScheme) {
     return null;
   }
 
   // Parse the theme reference
   const isMajor = themeRef.toLowerCase().startsWith("major");
-  const themeFont: ThemeFont | undefined = isMajor ? fontScheme.majorFont : fontScheme.minorFont;
+  const themeFont: ThemeFont | undefined = isMajor
+    ? fontScheme.majorFont
+    : fontScheme.minorFont;
 
   if (!themeFont) {
     return null;

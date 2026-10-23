@@ -15,7 +15,11 @@ const shouldReplaceMark = (current: Mark, incoming: Mark): boolean =>
   incoming.attrs["style"] !== HIDDEN_UNDERLINE_STYLE;
 
 /** Collect one representative per mark type, preferring visible underline state. */
-export const collectMarksInRange = ({ doc, from, to }: CollectMarksInRangeOptions): Mark[] => {
+export const collectMarksInRange = ({
+  doc,
+  from,
+  to,
+}: CollectMarksInRangeOptions): Mark[] => {
   const seen = new Map<string, Mark>();
 
   doc.nodesBetween(from, to, (node) => {

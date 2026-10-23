@@ -7,15 +7,15 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+} from "../../layout-engine/measure/measureProvider";
 import type {
   FontMetrics,
   FontStyle,
   RunMeasurement,
 } from "../../layout-engine/measure/measureTypes";
-import {
-  getMeasureProvider,
-  setMeasureProvider,
-} from "../../layout-engine/measure/measureProvider";
 import { buildGlyphs } from "./glyphs";
 
 const METRICS: FontMetrics = {
@@ -35,7 +35,8 @@ const install = (stringWidth?: (text: string) => number): void => {
     [...text].flatMap((char) => (char.length === 2 ? [10, 0] : [10]));
   setMeasureProvider({
     getFontMetrics: () => METRICS,
-    measureTextWidth: (text: string) => stringWidth?.(text) ?? [...text].length * 10,
+    measureTextWidth: (text: string) =>
+      stringWidth?.(text) ?? [...text].length * 10,
     measureText: (text: string) => ({
       width: [...text].length * 10,
       height: 12,

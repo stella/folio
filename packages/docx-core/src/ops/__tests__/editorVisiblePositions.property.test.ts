@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../model/document";
 import {
   editorParagraphGroups,
@@ -37,15 +41,26 @@ test(
                       paraId: (0x12345678 + index).toString(16),
                       ...(index + 1 < parts.length
                         ? {
-                            pPrMark: { kind: "del", info: { id: index + 100, author: "Reviewer" } },
+                            pPrMark: {
+                              kind: "del",
+                              info: { id: index + 100, author: "Reviewer" },
+                            },
                           }
                         : {}),
                       content: [
-                        { type: "run", content: [{ type: "text", text: kept }] },
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: kept }],
+                        },
                         {
                           type: "deletion",
                           info: { id: index + 1, author: "Reviewer" },
-                          content: [{ type: "run", content: [{ type: "text", text: removed }] }],
+                          content: [
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: removed }],
+                            },
+                          ],
                         },
                       ],
                     }) satisfies Paragraph,
@@ -57,9 +72,15 @@ test(
           if (!group) throw new Error("Expected logical paragraph");
           expect(group.text).toBe(parts.map(({ kept }) => kept).join(""));
           for (let offset = 0; offset <= group.text.length; offset++) {
-            const logical = { story: OP_STORIES.MAIN, blockId: group.blockId, offset };
+            const logical = {
+              story: OP_STORIES.MAIN,
+              blockId: group.blockId,
+              offset,
+            };
             const physical = physicalPositionAtEditorOffset(document, logical);
-            expect(editorPositionAtPhysicalPosition(document, physical)).toEqual(logical);
+            expect(
+              editorPositionAtPhysicalPosition(document, physical),
+            ).toEqual(logical);
           }
         },
       ),

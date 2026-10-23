@@ -1,31 +1,51 @@
+import { panic } from "better-result";
 /** Story generators extend the operation oracle beyond the main body. */
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { Document, Paragraph, HeaderFooter, SectionProperties } from "../../model/document";
+
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import type {
+  Document,
+  HeaderFooter,
+  Paragraph,
+  SectionProperties,
+} from "../../model/document";
 import { DEFAULT_TAB_STOP_TWIPS } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
-import { applyStoryLifecycle } from "../storyLifecycle";
-import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { contractViolation, normalizeForOps } from "../contract";
+import { noteStoriesTouchedByReferences } from "../noteMarks";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { documentStories, findStoryBody, sameStory } from "../stories";
+import { applyStoryLifecycle } from "../storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
-  type OpStory,
   INHERIT_RUN_PROPS,
+  type OpStory,
   SPLIT_HALVES,
 } from "../types";
-
-import { documentArbitrary, opSeedArbitrary, opForStory } from "./documentArbitraries";
+import {
+  documentArbitrary,
+  opForStory,
+  opSeedArbitrary,
+} from "./documentArbitraries";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 const paragraph = (id: string, text: string): Paragraph => ({
   type: "paragraph",
   paraId: id,
-  content: [{ type: "run", formatting: { bold: true }, content: [{ type: "text", text }] }],
+  content: [
+    {
+      type: "run",
+      formatting: { bold: true },
+      content: [{ type: "text", text }],
+    },
+  ],
 });
 const seedDocument = (text: string): Document => ({
   package: {
@@ -33,17 +53,29 @@ const seedDocument = (text: string): Document => ({
     headers: new Map([
       [
         "rIdHeader",
-        { type: "header", hdrFtrType: "default", content: [paragraph("00000002", text)] },
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [paragraph("00000002", text)],
+        },
       ],
     ]),
     footers: new Map([
       [
         "rIdFooter",
-        { type: "footer", hdrFtrType: "default", content: [paragraph("00000003", text)] },
+        {
+          type: "footer",
+          hdrFtrType: "default",
+          content: [paragraph("00000003", text)],
+        },
       ],
     ]),
-    footnotes: [{ type: "footnote", id: 1, content: [paragraph("00000004", text)] }],
-    endnotes: [{ type: "endnote", id: 1, content: [paragraph("00000005", text)] }],
+    footnotes: [
+      { type: "footnote", id: 1, content: [paragraph("00000004", text)] },
+    ],
+    endnotes: [
+      { type: "endnote", id: 1, content: [paragraph("00000005", text)] },
+    ],
   },
 });
 
@@ -51,79 +83,100 @@ const expectExact = (document: Document, op: DocumentOp) => {
   const applied = applyDocumentOp(document, op).unwrap();
   expect(contractViolation(applied.document)).toBeUndefined();
   const wireOp: DocumentOp = JSON.parse(JSON.stringify(op));
-  expect(applyDocumentOp(structuredClone(document), wireOp).unwrap()).toEqual(applied);
+  expect(applyDocumentOp(structuredClone(document), wireOp).unwrap()).toEqual(
+    applied,
+  );
   const inverse: DocumentOp[] = JSON.parse(JSON.stringify(applied.inverse));
   const undone = applyDocumentOps(applied.document, inverse).unwrap();
   expect(undone.document).toEqual(document);
-  expect(applyDocumentOps(undone.document, undone.inverse).unwrap().document).toEqual(
-    applied.document,
-  );
+  expect(
+    applyDocumentOps(undone.document, undone.inverse).unwrap().document,
+  ).toEqual(applied.document);
   return applied;
 };
 
 describe("all-story operation laws", () => {
   test("generated text, formatting, split and join operations are exact and local in every story", () => {
     fc.assert(
-      fc.property(fc.stringMatching(/^[A-Za-z]{2,12}$/), fc.nat(), (text, selector) => {
-        const document = normalizeForOps(seedDocument(text));
-        for (const story of documentStories(document)) {
-          const body = findStoryBody(document, story);
-          const block = body?.content.at(0);
-          if (block?.type !== "paragraph" || !block.paraId)
-            return panic("Generated story must hold an identified paragraph.");
-          const at = { story, blockId: block.paraId, offset: selector % text.length };
-          const ops = [
-            { type: DOCUMENT_OP_TYPES.INSERT_TEXT, at, text: "Z", runProps: INHERIT_RUN_PROPS },
-            {
-              type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-              from: at,
-              to: { ...at, story: structuredClone(story), offset: at.offset + 1 },
-            },
-            {
-              type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
-              from: at,
-              to: { ...at, offset: at.offset + 1 },
-              patch: { italic: true },
-            },
-            {
-              type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+      fc.property(
+        fc.stringMatching(/^[A-Za-z]{2,12}$/),
+        fc.nat(),
+        (text, selector) => {
+          const document = normalizeForOps(seedDocument(text));
+          for (const story of documentStories(document)) {
+            const body = findStoryBody(document, story);
+            const block = body?.content.at(0);
+            if (block?.type !== "paragraph" || !block.paraId)
+              return panic(
+                "Generated story must hold an identified paragraph.",
+              );
+            const at = {
               story,
               blockId: block.paraId,
-              patch: { alignment: "center" },
-            },
-            {
-              type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
-              at,
-              newBlockId: "000000A0",
-              newHalf: SPLIT_HALVES.SECOND,
-            },
-          ] as const satisfies readonly DocumentOp[];
-          for (const op of ops) {
-            const applied = expectExact(document, op);
-            for (const untouched of documentStories(document)) {
-              if (sameStory(story, untouched)) continue;
-              expect(findStoryBody(applied.document, untouched)).toBe(
-                findStoryBody(document, untouched),
-              );
-            }
-            if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) {
-              expectExact(applied.document, {
-                type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
-                story: structuredClone(story),
+              offset: selector % text.length,
+            };
+            const ops = [
+              {
+                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                at,
+                text: "Z",
+                runProps: INHERIT_RUN_PROPS,
+              },
+              {
+                type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+                from: at,
+                to: {
+                  ...at,
+                  story: structuredClone(story),
+                  offset: at.offset + 1,
+                },
+              },
+              {
+                type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+                from: at,
+                to: { ...at, offset: at.offset + 1 },
+                patch: { italic: true },
+              },
+              {
+                type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+                story,
                 blockId: block.paraId,
-                nextBlockId: "000000A0",
-              });
+                patch: { alignment: "center" },
+              },
+              {
+                type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+                at,
+                newBlockId: "000000A0",
+                newHalf: SPLIT_HALVES.SECOND,
+              },
+            ] as const satisfies readonly DocumentOp[];
+            for (const op of ops) {
+              const applied = expectExact(document, op);
+              for (const untouched of documentStories(document)) {
+                if (sameStory(story, untouched)) continue;
+                expect(findStoryBody(applied.document, untouched)).toBe(
+                  findStoryBody(document, untouched),
+                );
+              }
+              if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) {
+                expectExact(applied.document, {
+                  type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+                  story: structuredClone(story),
+                  blockId: block.paraId,
+                  nextBlockId: "000000A0",
+                });
+              }
             }
           }
-        }
-      }),
+        },
+      ),
       propertyConfig({ numRuns: 100 }),
     );
   });
 
   test("the existing rich operation generator exercises every other story with the same inverse and locality oracle", () => {
     let appliedCount = 0;
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, opSeedArbitrary, (source, seed) => {
         const stories = [
           { kind: "header", rId: "rIdGenerated" },
@@ -143,7 +196,10 @@ describe("all-story operation laws", () => {
                   package: {
                     ...pkg,
                     headers: new Map([
-                      [story.rId, { type: "header", hdrFtrType: "default", content }],
+                      [
+                        story.rId,
+                        { type: "header", hdrFtrType: "default", content },
+                      ],
                     ]),
                   },
                 } satisfies Document;
@@ -153,7 +209,10 @@ describe("all-story operation laws", () => {
                   package: {
                     ...pkg,
                     footers: new Map([
-                      [story.rId, { type: "footer", hdrFtrType: "default", content }],
+                      [
+                        story.rId,
+                        { type: "footer", hdrFtrType: "default", content },
+                      ],
                     ]),
                   },
                 } satisfies Document;
@@ -171,7 +230,10 @@ describe("all-story operation laws", () => {
               case "endnote":
                 return {
                   ...source,
-                  package: { ...pkg, endnotes: [{ type: "endnote", id: story.id, content }] },
+                  package: {
+                    ...pkg,
+                    endnotes: [{ type: "endnote", id: story.id, content }],
+                  },
                 } satisfies Document;
               default: {
                 const unreachable: never = story;
@@ -181,21 +243,43 @@ describe("all-story operation laws", () => {
           })();
           const op = opForStory({ document, seed, story });
           const result = applyDocumentOp(document, op);
-          expect(result).toEqual(
-            applyDocumentOp(structuredClone(document), JSON.parse(JSON.stringify(op))),
+          const outcome = (candidate: typeof result) =>
+            candidate.isOk()
+              ? candidate.value
+              : {
+                  reason: candidate.error.reason,
+                  opType: candidate.error.opType,
+                  message: candidate.error.message,
+                };
+          expect(outcome(result)).toEqual(
+            outcome(
+              applyDocumentOp(
+                structuredClone(document),
+                JSON.parse(JSON.stringify(op)),
+              ),
+            ),
           );
           if (result.isErr()) continue;
           appliedCount += 1;
           const applied = expectExact(document, op);
+          const touchedNotes = noteStoriesTouchedByReferences(
+            document,
+            applied.document,
+          );
           for (const untouched of documentStories(document)) {
             if (sameStory(story, untouched)) continue;
+            if (touchedNotes.some((touched) => sameStory(touched, untouched)))
+              continue;
             expect(findStoryBody(applied.document, untouched)).toBe(
               findStoryBody(document, untouched),
             );
           }
         }
       }),
-      propertyConfig({ numRuns: 100 }),
+      {
+        numRuns: 100,
+        id: "the existing rich operation generator exercises every other story with the same inverse and locality oracle",
+      },
     );
     expect(appliedCount).toBeGreaterThan(50);
   });
@@ -236,7 +320,9 @@ describe("all-story operation laws", () => {
             referenceType,
           });
           if (referenceType === "first")
-            expect(created.document.package.document.finalSectionProperties?.titlePg).toBe(true);
+            expect(
+              created.document.package.document.finalSectionProperties?.titlePg,
+            ).toBe(true);
           if (referenceType === "even")
             expect(created.document.package.settings).toEqual({
               ...(settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
@@ -247,7 +333,11 @@ describe("all-story operation laws", () => {
           const added = expectExact(document, {
             type: DOCUMENT_OP_TYPES.ADD_NOTE,
             at,
-            note: { type: noteKind, id, content: [paragraph("00000003", "note")] },
+            note: {
+              type: noteKind,
+              id,
+              content: [paragraph("00000003", "note")],
+            },
           });
           expectExact(added.document, {
             type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
@@ -340,7 +430,8 @@ describe("all-story operation laws", () => {
           return panic("Header removal must have a lifecycle inverse.");
         const result = applyStoryLifecycle(missingSection, inverse);
         expect(result.isErr()).toBe(true);
-        if (result.isErr()) expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+        if (result.isErr())
+          expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
       }
       expect(missingSection.package.document.sections).toEqual(sections);
     }
@@ -350,17 +441,24 @@ describe("all-story operation laws", () => {
       story: { kind: "header", rId: "rIdShared" },
       referenceType: "first",
     });
-    const wireInverse: DocumentOp[] = JSON.parse(JSON.stringify(removed.inverse));
-    const restored = applyDocumentOps(removed.document, wireInverse).unwrap().document;
+    const wireInverse: DocumentOp[] = JSON.parse(
+      JSON.stringify(removed.inverse),
+    );
+    const restored = applyDocumentOps(removed.document, wireInverse).unwrap()
+      .document;
     const edited = expectExact(restored, {
       type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-      at: { story: { kind: "header", rId: "rIdShared" }, blockId: "00000002", offset: 0 },
+      at: {
+        story: { kind: "header", rId: "rIdShared" },
+        blockId: "00000002",
+        offset: 0,
+      },
       text: "Z",
       runProps: INHERIT_RUN_PROPS,
     });
-    expect(edited.document.package.document.sections?.at(0)?.headers?.get("first")).toBe(
-      edited.document.package.headers?.get("rIdShared"),
-    );
+    expect(
+      edited.document.package.document.sections?.at(0)?.headers?.get("first"),
+    ).toBe(edited.document.package.headers?.get("rIdShared"));
   });
 
   test("new notes own one zero-width automatic mark before serialization", () => {
@@ -373,11 +471,17 @@ describe("all-story operation laws", () => {
         at: { story: "main", blockId: "00000001", offset: 0 },
         note: { type: kind, id: 1, content: [paragraph("00000002", "note")] },
       });
-      const note = findStoryBody(added.document, { kind, id: 1 })?.content.at(0);
-      if (note?.type !== "paragraph") return panic("The new note has a paragraph.");
+      const note = findStoryBody(added.document, { kind, id: 1 })?.content.at(
+        0,
+      );
+      if (note?.type !== "paragraph")
+        return panic("The new note has a paragraph.");
       expect(note.content.at(0)).toEqual({
         type: "run",
-        formatting: { styleId: kind === "footnote" ? "FootnoteReference" : "EndnoteReference" },
+        formatting: {
+          styleId:
+            kind === "footnote" ? "FootnoteReference" : "EndnoteReference",
+        },
         content: [{ type: "noteMarker", kind }],
       });
       const edited = expectExact(added.document, {
@@ -386,9 +490,69 @@ describe("all-story operation laws", () => {
         text: "Z",
         runProps: INHERIT_RUN_PROPS,
       });
-      const after = findStoryBody(edited.document, { kind, id: 1 })?.content.at(0);
-      if (after?.type !== "paragraph") return panic("The edited note has a paragraph.");
+      const after = findStoryBody(edited.document, { kind, id: 1 })?.content.at(
+        0,
+      );
+      if (after?.type !== "paragraph")
+        return panic("The edited note has a paragraph.");
       expect(after.content.at(0)).toEqual(note.content.at(0));
+    }
+  });
+
+  test("direct and tracked deletions of only an automatic note mark refuse as no change", () => {
+    for (const kind of ["footnote", "endnote"] as const) {
+      const document = normalizeForOps(seedDocument("body"));
+      const story = { kind, id: 1 } as const;
+      const from = {
+        story,
+        blockId: kind === "footnote" ? "00000004" : "00000005",
+        offset: 0,
+      };
+      for (const revision of [undefined, { id: 40, author: "Reviewer" }]) {
+        const result = applyDocumentOp(document, {
+          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+          from: { ...from, zeroWidthBefore: 0 },
+          to: { ...from, zeroWidthBefore: 1 },
+          ...(revision === undefined ? {} : { revision }),
+        });
+        expect(result.isErr()).toBe(true);
+        if (result.isErr())
+          expect(result.error.reason).toBe(
+            DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+          );
+        expect(findStoryBody(document, story)?.content.at(0)).toEqual(
+          findStoryBody(
+            normalizeForOps(seedDocument("body")),
+            story,
+          )?.content.at(0),
+        );
+      }
+    }
+  });
+
+  test("a deletion from an automatic note mark into its text removes the text and keeps the mark", () => {
+    for (const kind of ["footnote", "endnote"] as const) {
+      const document = normalizeForOps(seedDocument("body"));
+      const story = { kind, id: 1 } as const;
+      const blockId = kind === "footnote" ? "00000004" : "00000005";
+      const before = JSON.stringify(
+        findStoryBody(document, story)?.content.at(0),
+      );
+      for (const revision of [undefined, { id: 40, author: "Reviewer" }]) {
+        const result = applyDocumentOp(document, {
+          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+          from: { story, blockId, offset: 0, zeroWidthBefore: 0 },
+          to: { story, blockId, offset: 1 },
+          ...(revision === undefined ? {} : { revision }),
+        });
+        expect(result.isOk()).toBe(true);
+        if (result.isErr()) continue;
+        const after = JSON.stringify(
+          findStoryBody(result.value.document, story)?.content.at(0),
+        );
+        expect(after).not.toBe(before);
+        expect(after).toContain('"noteMarker"');
+      }
     }
   });
 
@@ -404,7 +568,12 @@ describe("all-story operation laws", () => {
                   type: "paragraph",
                   paraId: "00000001",
                   content: [
-                    { type: "run", content: [{ type: referenceType, id: 1, customMarkFollows }] },
+                    {
+                      type: "run",
+                      content: [
+                        { type: referenceType, id: 1, customMarkFollows },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -412,7 +581,11 @@ describe("all-story operation laws", () => {
             ...(kind === "footnote"
               ? {
                   footnotes: [
-                    { type: "footnote", id: 1, content: [paragraph("00000002", "note")] },
+                    {
+                      type: "footnote",
+                      id: 1,
+                      content: [paragraph("00000002", "note")],
+                    },
                     {
                       type: "footnote",
                       id: -1,
@@ -423,7 +596,11 @@ describe("all-story operation laws", () => {
                 }
               : {
                   endnotes: [
-                    { type: "endnote", id: 1, content: [paragraph("00000002", "note")] },
+                    {
+                      type: "endnote",
+                      id: 1,
+                      content: [paragraph("00000002", "note")],
+                    },
                     {
                       type: "endnote",
                       id: -1,
@@ -436,7 +613,8 @@ describe("all-story operation laws", () => {
         };
         const normalized = normalizeForOps(document);
         const note = findStoryBody(normalized, { kind, id: 1 })?.content.at(0);
-        if (note?.type !== "paragraph") return panic("The normalized note must exist.");
+        if (note?.type !== "paragraph")
+          return panic("The normalized note must exist.");
         expect(note.content.at(0)?.type).toBe("run");
         const first = note.content.at(0);
         const mark = first?.type === "run" ? first.content.at(0) : undefined;
@@ -454,7 +632,8 @@ describe("all-story operation laws", () => {
     const header = document.package.headers?.get("rIdHeader");
     if (!header) return panic("Generated header must exist.");
     const first = header.content.at(0);
-    if (first?.type !== "paragraph") return panic("Generated paragraph must exist.");
+    if (first?.type !== "paragraph")
+      return panic("Generated paragraph must exist.");
     first.content.push({ type: "run", content: [{ type: "text", text: "" }] });
     expect(contractViolation(document)?.reason).toBe("emptyRecord");
     expect(contractViolation(normalizeForOps(document))).toBeUndefined();
@@ -476,7 +655,9 @@ describe("all-story operation laws", () => {
     }).unwrap();
     const stale = applyDocumentOps(intervening.document, changed.inverse);
     expect(stale.isErr()).toBe(true);
-    expect(intervening.document.package.document.finalSectionProperties?.marginTop).toBe(1440);
+    expect(
+      intervening.document.package.document.finalSectionProperties?.marginTop,
+    ).toBe(1440);
 
     const created = expectExact(document, {
       type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
@@ -487,19 +668,32 @@ describe("all-story operation laws", () => {
     });
     const edited = applyDocumentOp(created.document, {
       type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-      at: { story: { kind: "header", rId: "rIdNew" }, blockId: "00000006", offset: 0 },
+      at: {
+        story: { kind: "header", rId: "rIdNew" },
+        blockId: "00000006",
+        offset: 0,
+      },
       text: "Z",
       runProps: INHERIT_RUN_PROPS,
     }).unwrap();
-    expect(applyDocumentOps(edited.document, created.inverse).isErr()).toBe(true);
+    expect(applyDocumentOps(edited.document, created.inverse).isErr()).toBe(
+      true,
+    );
     expect(
-      findStoryBody(edited.document, { kind: "header", rId: "rIdNew" })?.content.at(0),
+      findStoryBody(edited.document, {
+        kind: "header",
+        rId: "rIdNew",
+      })?.content.at(0),
     ).toEqual(paragraph("00000006", "Znew"));
   });
 
   test("lifecycle inverse preserves intervening edits to unowned body fields and stories", () => {
     for (const op of [
-      { type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS, sectionIndex: 0, patch: { marginTop: 720 } },
+      {
+        type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+        sectionIndex: 0,
+        patch: { marginTop: 720 },
+      },
       {
         type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
         sectionIndex: 0,
@@ -519,7 +713,11 @@ describe("all-story operation laws", () => {
         },
         {
           type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-          at: { story: { kind: "footer", rId: "rIdFooter" }, blockId: "00000003", offset: 0 },
+          at: {
+            story: { kind: "footer", rId: "rIdFooter" },
+            blockId: "00000003",
+            offset: 0,
+          },
           text: "F",
           runProps: INHERIT_RUN_PROPS,
         },
@@ -527,7 +725,11 @@ describe("all-story operation laws", () => {
           ? [
               {
                 type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                at: { story: { kind: "header", rId: "rIdHeader" }, blockId: "00000002", offset: 0 },
+                at: {
+                  story: { kind: "header", rId: "rIdHeader" },
+                  blockId: "00000002",
+                  offset: 0,
+                },
                 text: "H",
                 runProps: INHERIT_RUN_PROPS,
               } as const,
@@ -539,11 +741,15 @@ describe("all-story operation laws", () => {
         intervening.document,
         JSON.parse(JSON.stringify(changed.inverse)),
       ).unwrap();
-      expect(undone.document).toEqual(applyDocumentOps(document, edits).unwrap().document);
+      expect(undone.document).toEqual(
+        applyDocumentOps(document, edits).unwrap().document,
+      );
       expect(undone.document.package.document.content).toBe(
         intervening.document.package.document.content,
       );
-      expect(undone.document.package.footers).toBe(intervening.document.package.footers);
+      expect(undone.document.package.footers).toBe(
+        intervening.document.package.footers,
+      );
     }
   });
 
@@ -560,7 +766,11 @@ describe("all-story operation laws", () => {
       footer.content = [paragraph("00000003", "footer".repeat(size))];
       return (
         [
-          { type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS, sectionIndex: 0, patch: { marginTop: 720 } },
+          {
+            type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+            sectionIndex: 0,
+            patch: { marginTop: 720 },
+          },
           {
             type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
             sectionIndex: 0,
@@ -599,15 +809,27 @@ describe("all-story operation laws", () => {
             formatting: { bold: true },
             content: [
               { type: "text", text: "a" },
-              { type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id: 1 },
+              {
+                type: kind === "footnote" ? "footnoteRef" : "endnoteRef",
+                id: 1,
+              },
               { type: "text", text: "b" },
             ],
           },
         ],
       };
       if (kind === "footnote")
-        document.package.footnotes?.push({ type: kind, id: 2, content: [holder] });
-      else document.package.endnotes?.push({ type: kind, id: 2, content: [holder] });
+        document.package.footnotes?.push({
+          type: kind,
+          id: 2,
+          content: [holder],
+        });
+      else
+        document.package.endnotes?.push({
+          type: kind,
+          id: 2,
+          content: [holder],
+        });
       const normalized = normalizeForOps(document);
       const removed = expectExact(normalized, {
         type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
@@ -615,17 +837,63 @@ describe("all-story operation laws", () => {
         story: { kind, id: 1 },
       });
       expect(findStoryBody(removed.document, { kind, id: 1 })).toBeUndefined();
-      const retained = findStoryBody(removed.document, { kind, id: 2 })?.content.at(0);
-      if (retained?.type !== "paragraph") return panic("Retained note must hold its paragraph.");
+      const retained = findStoryBody(removed.document, {
+        kind,
+        id: 2,
+      })?.content.at(0);
+      if (retained?.type !== "paragraph")
+        return panic("Retained note must hold its paragraph.");
       const leaves = retained.content.flatMap((inline) =>
         inline.type === "run" ? inline.content : [],
       );
       expect(
-        leaves.filter((leaf) => leaf.type === "footnoteRef" || leaf.type === "endnoteRef"),
+        leaves.filter(
+          (leaf) => leaf.type === "footnoteRef" || leaf.type === "endnoteRef",
+        ),
       ).toEqual([]);
-      expect(leaves.map((leaf) => (leaf.type === "text" ? leaf.text : "")).join("")).toBe("ab");
-      expect(removed.document.package.document.content).toBe(normalized.package.document.content);
+      expect(
+        leaves.map((leaf) => (leaf.type === "text" ? leaf.text : "")).join(""),
+      ).toBe("ab");
+      expect(removed.document.package.document.content).toBe(
+        normalized.package.document.content,
+      );
     }
+  });
+
+  test("a direct final-reference deletion owns the removed note body and its exact inverse", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                { type: "run", content: [{ type: "footnoteRef", id: 7 }] },
+              ],
+            },
+          ],
+        },
+        footnotes: [
+          {
+            type: "footnote",
+            id: 7,
+            content: [paragraph("00000002", "owned note")],
+          },
+        ],
+      },
+    };
+    const applied = expectExact(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: { story: "main", blockId: "00000001", offset: 0 },
+      to: { story: "main", blockId: "00000001", offset: 1 },
+    });
+    expect(applied.document.package.footnotes).toEqual([]);
+    expect(applied.touched.removed).toContain("00000002");
+    expectExact(
+      applied.document,
+      applied.inverse.at(0) ?? panic("Missing lifecycle inverse."),
+    );
   });
 
   test("missing stories and stale note references refuse atomically", () => {
@@ -646,6 +914,8 @@ describe("all-story operation laws", () => {
         story: { kind: "footnote", id: 1 },
       }).isErr(),
     ).toBe(true);
-    expect(findStoryBody(document, "main")?.content.at(0)).toEqual(paragraph("00000001", "body"));
+    expect(findStoryBody(document, "main")?.content.at(0)).toEqual(
+      paragraph("00000001", "body"),
+    );
   });
 });

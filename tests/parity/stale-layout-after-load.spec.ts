@@ -1,6 +1,11 @@
 import type { Page } from "@playwright/test";
 
-import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fixture";
+import {
+  ensureLiveView,
+  expect,
+  forEachAdapter,
+  openEditor,
+} from "./parity-fixture";
 
 // A keystroke schedules a layout pass; the host then loads another revision
 // (`loadDocument`) in the same task. The pass must lay out the loaded state,
@@ -66,7 +71,11 @@ const installProbe = (page: Page, frames: Frames) =>
         if (painted.includes(marker)) {
           probe.markerPainted = true;
         }
-      }).observe(pages, { childList: true, subtree: true, characterData: true });
+      }).observe(pages, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
       window.__staleLayoutProbe = probe;
     },
     { marker: MARKER, pauseFrames: frames === FRAMES.paused },
@@ -80,9 +89,13 @@ const typeThenReload = async (page: Page, frames: Frames): Promise<void> => {
   );
   expect(typed).toBe(true);
   // The edit's scheduler must request its frame before a paused tab resumes.
-  await page.waitForFunction(() => (window.__staleLayoutProbe?.frameRequests ?? 0) > 0);
+  await page.waitForFunction(
+    () => (window.__staleLayoutProbe?.frameRequests ?? 0) > 0,
+  );
   await page.evaluate(() => window.__staleLayoutProbe?.resumeFrames());
-  await page.waitForFunction(() => (window.__staleLayoutProbe?.completedFrames ?? 0) > 0);
+  await page.waitForFunction(
+    () => (window.__staleLayoutProbe?.completedFrames ?? 0) > 0,
+  );
   // Let the painted DOM and MutationObserver run after the scheduler callback.
   await page.evaluate(
     () =>
@@ -102,9 +115,13 @@ for (const frames of [FRAMES.running, FRAMES.paused]) {
       await typeThenReload(page, frames);
 
       expect(
-        await page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""),
+        await page.evaluate(
+          () => window.__folioParity?.getDocumentText() ?? "",
+        ),
       ).not.toContain(MARKER);
-      expect(await page.evaluate(() => window.__staleLayoutProbe?.markerPainted)).toBe(false);
+      expect(
+        await page.evaluate(() => window.__staleLayoutProbe?.markerPainted),
+      ).toBe(false);
     },
   );
 }

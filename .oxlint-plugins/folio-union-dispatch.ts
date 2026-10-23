@@ -14,7 +14,10 @@
 type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
-  report: (descriptor: { node: unknown; messageId: "elseIfChainOverTag" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "elseIfChainOverTag";
+  }) => void;
 };
 
 /** Tags a model union discriminates on. A `.name`, `.kind` of a CSS value and
@@ -53,7 +56,10 @@ const subjectOfTagTest = (test: unknown): string | null => {
   if (!isAstNode(test)) {
     return null;
   }
-  if (test.type === "LogicalExpression" && (test.operator === "||" || test.operator === "&&")) {
+  if (
+    test.type === "LogicalExpression" &&
+    (test.operator === "||" || test.operator === "&&")
+  ) {
     return subjectOfTagTest(test.left);
   }
   if (test.type !== "BinaryExpression" || test.operator !== "===") {

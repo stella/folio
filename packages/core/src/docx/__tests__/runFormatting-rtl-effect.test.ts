@@ -19,7 +19,11 @@ function parseRPr(xml: string): XmlElement {
 
 function roundTrip(innerXml: string) {
   const rPr = parseRPr(innerXml);
-  const formatting = parseRunProperties(rPr, null, RUN_PROPERTY_OWNERS.standalone);
+  const formatting = parseRunProperties(
+    rPr,
+    null,
+    RUN_PROPERTY_OWNERS.standalone,
+  );
   const serialized = serializeTextFormatting(formatting);
   return { formatting, serialized };
 }
@@ -48,7 +52,9 @@ describe("w:rtl run direction round-trip (eigenpal #424 gap 10)", () => {
   });
 
   test("round-trips rtl combined with other formatting", () => {
-    const { formatting, serialized } = roundTrip('<w:b/><w:rtl/><w:color w:val="FF0000"/>');
+    const { formatting, serialized } = roundTrip(
+      '<w:b/><w:rtl/><w:color w:val="FF0000"/>',
+    );
     expect(formatting?.rtl).toBe(true);
     expect(formatting?.bold).toBe(true);
     expect(serialized).toContain("<w:rtl/>");
@@ -74,7 +80,9 @@ describe("w:lang run language round-trip", () => {
       eastAsia: "ja-JP",
       bidi: "ar-SA",
     });
-    expect(serialized).toContain('<w:lang w:val="en-GB" w:eastAsia="ja-JP" w:bidi="ar-SA"/>');
+    expect(serialized).toContain(
+      '<w:lang w:val="en-GB" w:eastAsia="ja-JP" w:bidi="ar-SA"/>',
+    );
   });
 
   test("takes no language from an empty element, and keeps it", () => {
@@ -104,20 +112,26 @@ describe("w:effect text animation round-trip (eigenpal #424 gap 11)", () => {
 
   for (const effect of expectedEffects) {
     test(`parses and re-emits <w:effect w:val="${effect}"/>`, () => {
-      const { formatting, serialized } = roundTrip(`<w:effect w:val="${effect}"/>`);
+      const { formatting, serialized } = roundTrip(
+        `<w:effect w:val="${effect}"/>`,
+      );
       expect(formatting?.effect).toBe(effect);
       expect(serialized).toContain(`<w:effect w:val="${effect}"/>`);
     });
   }
 
   test("takes no effect from an unrecognised value, and keeps the element", () => {
-    const { formatting, serialized } = roundTrip('<w:effect w:val="discoInferno"/>');
+    const { formatting, serialized } = roundTrip(
+      '<w:effect w:val="discoInferno"/>',
+    );
     expect(formatting?.effect).toBeUndefined();
     expect(serialized).toContain('<w:effect w:val="discoInferno"/>');
   });
 
   test("round-trips effect alongside rtl and other formatting", () => {
-    const { formatting, serialized } = roundTrip('<w:i/><w:rtl/><w:effect w:val="shimmer"/>');
+    const { formatting, serialized } = roundTrip(
+      '<w:i/><w:rtl/><w:effect w:val="shimmer"/>',
+    );
     expect(formatting?.italic).toBe(true);
     expect(formatting?.rtl).toBe(true);
     expect(formatting?.effect).toBe("shimmer");

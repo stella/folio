@@ -1,6 +1,9 @@
 /** Zero-width comment or tracked-move range that spans no content. */
 
-import { readRangeAnchorAttrs, readRangeAnchorValues } from "../../rangeAnchorAttrs";
+import {
+  readRangeAnchorAttrs,
+  readRangeAnchorValues,
+} from "../../rangeAnchorAttrs";
 import { createNodeExtension } from "../create";
 
 type RangeAnchorOptions = {
@@ -51,12 +54,17 @@ export const RangeAnchorExtension = createNodeExtension<RangeAnchorOptions>({
       return [
         "span",
         {
-          [RANGE_ANCHOR_DOM_ATTRIBUTE]: attrs.ok ? JSON.stringify(attrs.value) : "",
+          [RANGE_ANCHOR_DOM_ATTRIBUTE]: attrs.ok
+            ? JSON.stringify(attrs.value)
+            : "",
           "aria-hidden": "true",
           contenteditable: "false",
           style: "display: none;",
           ...(options.getInternalClipboardToken
-            ? { "data-docx-internal-clipboard": options.getInternalClipboardToken() }
+            ? {
+                "data-docx-internal-clipboard":
+                  options.getInternalClipboardToken(),
+              }
             : {}),
         },
       ];

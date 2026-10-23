@@ -15,7 +15,10 @@ import type { Document, Paragraph, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { toMarkdown } from "./index";
 
-const RUN = { type: "run", content: [{ type: "text", text: "shalom" }] } as const;
+const RUN = {
+  type: "run",
+  content: [{ type: "text", text: "shalom" }],
+} as const;
 
 const documentWith = (content: (Paragraph | Table)[]): Document => {
   const template = createEmptyDocument();

@@ -11,9 +11,13 @@
 
 import { describe, expect, test } from "bun:test";
 
+import {
+  paragraphNumberingLevel,
+  paragraphNumberingReferenceId,
+} from "@stll/docx-core/model";
+
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
-import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 const CLEAN = {
   annotations: "strip",
@@ -118,25 +122,31 @@ describe("markdown bridge — round-trip", () => {
   });
 
   test("a list followed by prose keeps the blank-line separation", () => {
-    expect(normalize("- item\n\nAfter the list.")).toBe("- item\n\nAfter the list.");
+    expect(normalize("- item\n\nAfter the list.")).toBe(
+      "- item\n\nAfter the list.",
+    );
   });
 
   test("loose list paragraph tokens keep nested marks and links", () => {
     expect(
-      normalize("- **bold** item\n\n  continuation with [link](https://example.com)"),
-    ).toContain("**bold** item  \ncontinuation with [link](https://example.com/)");
+      normalize(
+        "- **bold** item\n\n  continuation with [link](https://example.com)",
+      ),
+    ).toContain(
+      "**bold** item  \ncontinuation with [link](https://example.com/)",
+    );
   });
 
   test("markdown links reject executable hrefs", () => {
-    expect(normalize("[bad](javascript:alert(1)) and [data](data:text/html,evil)")).toBe(
-      "bad and data",
-    );
+    expect(
+      normalize("[bad](javascript:alert(1)) and [data](data:text/html,evil)"),
+    ).toBe("bad and data");
   });
 
   test("markdown links keep safe external and internal hrefs", () => {
-    expect(normalize("[site](https://example.com/a) and [section](#intro)")).toBe(
-      "[site](https://example.com/a) and [section](#intro)",
-    );
+    expect(
+      normalize("[site](https://example.com/a) and [section](#intro)"),
+    ).toBe("[site](https://example.com/a) and [section](#intro)");
   });
 
   test("a soft line break becomes a break node, not a raw newline in a run", () => {

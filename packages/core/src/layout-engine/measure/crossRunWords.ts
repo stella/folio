@@ -3,16 +3,19 @@ import { sliceText } from "../../utils/sliceText";
  * Words that span runs: glue widths between differently formatted runs and
  * the segments of a word collected across several runs.
  */
-
 import { splitTrailingToken } from "../../utils/trailingText";
 import type { ParagraphBlock, TextRun } from "../types";
 import { resolveEffectiveLineBreakPolicy } from "./effectiveLineBreakPolicy";
+import { MAX_HYPHENATION_WORD_LENGTH } from "./lineBreakProvider";
+import { findHyphenationBreaks, findWordBreaks } from "./lineBreaks";
+import { trimTrailingSpacesAndTabs } from "./lineFitting";
 import { measureTextWidth } from "./measureProvider";
 import type { FontStyle } from "./measureTypes";
-import { findHyphenationBreaks, findWordBreaks } from "./lineBreaks";
-import { MAX_HYPHENATION_WORD_LENGTH } from "./lineBreakProvider";
-import { runToFontStyle, isTextRun, isSpaceOrTab } from "./paragraphMeasureShared";
-import { trimTrailingSpacesAndTabs } from "./lineFitting";
+import {
+  isSpaceOrTab,
+  isTextRun,
+  runToFontStyle,
+} from "./paragraphMeasureShared";
 
 /**
  * Width of the unbreakable text glued to the end of each run.
@@ -40,13 +43,17 @@ export function computeTrailingGlueWidths(block: ParagraphBlock): number[] {
     const style = runToFontStyle(nextRun);
     const breaks = findWordBreaks(
       text,
-      resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run: nextRun }).provider,
+      resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run: nextRun })
+        .provider,
     );
     const firstBreak = breaks.at(0);
     const leading =
-      firstBreak === undefined ? text : trimTrailingSpacesAndTabs(text.slice(0, firstBreak));
+      firstBreak === undefined
+        ? text
+        : trimTrailingSpacesAndTabs(text.slice(0, firstBreak));
     widths[index] =
-      measureTextWidth(leading, style) + (firstBreak === undefined ? (widths[index + 1] ?? 0) : 0);
+      measureTextWidth(leading, style) +
+      (firstBreak === undefined ? (widths[index + 1] ?? 0) : 0);
   }
   return widths;
 }
@@ -55,8 +62,13 @@ export function computeTrailingGlueWidths(block: ParagraphBlock): number[] {
  * First character of the text that follows each run, looking through empty
  * text runs; undefined before a non-text run or at the paragraph end.
  */
-export function computeFollowingTextLeads(block: ParagraphBlock): (string | undefined)[] {
-  const leads: (string | undefined)[] = Array.from({ length: block.runs.length }, () => undefined);
+export function computeFollowingTextLeads(
+  block: ParagraphBlock,
+): (string | undefined)[] {
+  const leads: (string | undefined)[] = Array.from(
+    { length: block.runs.length },
+    () => undefined,
+  );
   let lead: string | undefined;
   for (let index = block.runs.length - 1; index >= 0; index--) {
     leads[index] = lead;
@@ -70,14 +82,19 @@ export function computeFollowingTextLeads(block: ParagraphBlock): (string | unde
   return leads;
 }
 
-export function computeProtectedCrossRunGlueWidths(block: ParagraphBlock): number[] {
+export function computeProtectedCrossRunGlueWidths(
+  block: ParagraphBlock,
+): number[] {
   const widths = Array.from({ length: block.runs.length }, () => 0);
   for (let index = 0; index < block.runs.length; index++) {
     const run = block.runs[index];
     if (!run || !isTextRun(run)) {
       continue;
     }
-    const policy = resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run }).provider;
+    const policy = resolveEffectiveLineBreakPolicy({
+      attrs: block.attrs,
+      run,
+    }).provider;
     if (!policy.locale?.toLocaleLowerCase().startsWith("cs")) {
       continue;
     }
@@ -88,10 +105,17 @@ export function computeProtectedCrossRunGlueWidths(block: ParagraphBlock): numbe
     const { token } = trailing;
 
     let separator = trailing.separator;
-    let glueWidth = separator.length > 0 ? measureTextWidth(separator, runToFontStyle(run)) : 0;
+    let glueWidth =
+      separator.length > 0
+        ? measureTextWidth(separator, runToFontStyle(run))
+        : 0;
     let followingWord = "";
     let unseparatedFollowingText = false;
-    for (let nextIndex = index + 1; nextIndex < block.runs.length; nextIndex++) {
+    for (
+      let nextIndex = index + 1;
+      nextIndex < block.runs.length;
+      nextIndex++
+    ) {
       const nextRun = block.runs[nextIndex];
       if (!nextRun || !isTextRun(nextRun)) {
         break;
@@ -124,7 +148,11 @@ export function computeProtectedCrossRunGlueWidths(block: ParagraphBlock): numbe
         break;
       }
     }
-    if (unseparatedFollowingText || separator.length === 0 || followingWord.length === 0) {
+    if (
+      unseparatedFollowingText ||
+      separator.length === 0 ||
+      followingWord.length === 0
+    ) {
       continue;
     }
 
@@ -208,7 +236,9 @@ export function collectCrossRunWord({
       resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run }).provider,
     ).at(0);
     const segmentText = trimTrailingSpacesAndTabs(
-      firstBreak === undefined ? boundedRemainder : boundedRemainder.slice(0, firstBreak),
+      firstBreak === undefined
+        ? boundedRemainder
+        : boundedRemainder.slice(0, firstBreak),
     );
     if (segmentText.length === 0) {
       break;
@@ -218,7 +248,13 @@ export function collectCrossRunWord({
     }
 
     const style = runToFontStyle(run);
-    segments.push({ runIndex, startChar: start, text: segmentText, run, style });
+    segments.push({
+      runIndex,
+      startChar: start,
+      text: segmentText,
+      run,
+      style,
+    });
     text += segmentText;
     width += measureTextWidth(segmentText, style);
 
@@ -239,7 +275,8 @@ export function collectCrossRunWord({
     width,
     breaks: findHyphenationBreaks(
       text,
-      resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run: firstRun }).provider,
+      resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run: firstRun })
+        .provider,
     ),
     segments,
   };

@@ -1,7 +1,6 @@
+import { Result, TaggedError } from "better-result";
 /** Report-only L9 over cached, locked corpus files. Does not fetch or update baselines. */
 import path from "node:path";
-import { Result, TaggedError } from "better-result";
-import { normalizeForOps, REVISION_DECISIONS } from "../packages/docx-core/src/ops/documentOps";
 
 import { parseDocx } from "../packages/core/src/docx/parser";
 import {
@@ -9,13 +8,19 @@ import {
   type ReviewOracleOutcome,
 } from "../packages/core/src/ops/__tests__/reviewOracle";
 import {
+  normalizeForOps,
+  REVISION_DECISIONS,
+} from "../packages/docx-core/src/ops/documentOps";
+import {
   assertOutsideRepository,
   corpusCacheRoot,
   loadCorpusLock,
   sha256Bytes,
 } from "./lib/corpus-manifest";
 
-class ReviewReportError extends TaggedError("ReviewReportError")<{ message: string }> {}
+class ReviewReportError extends TaggedError("ReviewReportError")<{
+  message: string;
+}> {}
 
 type Options = { limit: number; output: string | undefined };
 const optionsFrom = (args: readonly string[]): Options => {
@@ -25,19 +30,25 @@ const optionsFrom = (args: readonly string[]): Options => {
     const flag = args.at(index);
     const value = args.at(index + 1);
     if (value === undefined)
-      throw new ReviewReportError({ message: "Every argument requires a value." });
+      throw new ReviewReportError({
+        message: "Every argument requires a value.",
+      });
     switch (flag) {
       case "--limit":
         limit = Number(value);
         if (!Number.isSafeInteger(limit) || limit < 1) {
-          throw new ReviewReportError({ message: "--limit must be a positive integer." });
+          throw new ReviewReportError({
+            message: "--limit must be a positive integer.",
+          });
         }
         break;
       case "--out":
         output = assertOutsideRepository(path.resolve(value));
         break;
       default:
-        throw new ReviewReportError({ message: "Supported arguments: --limit N, --out PATH." });
+        throw new ReviewReportError({
+          message: "Supported arguments: --limit N, --out PATH.",
+        });
     }
     index += 1;
   }
@@ -62,7 +73,12 @@ const main = async (): Promise<void> => {
         .sort((left, right) => left.path.localeCompare(right.path))
         .map((file) => ({
           sha256: file.sha256,
-          absolutePath: path.join(corpusCacheRoot(), "sources", source.id, file.path),
+          absolutePath: path.join(
+            corpusCacheRoot(),
+            "sources",
+            source.id,
+            file.path,
+          ),
         })),
     )
     .filter(({ sha256 }) => {
@@ -74,7 +90,10 @@ const main = async (): Promise<void> => {
   for (const file of files.slice(0, options.limit)) {
     const local = Bun.file(file.absolutePath);
     if (!(await local.exists())) {
-      findings.push({ sha256: file.sha256, outcome: { type: "missing-cache" } });
+      findings.push({
+        sha256: file.sha256,
+        outcome: { type: "missing-cache" },
+      });
       continue;
     }
     const read = await Result.tryPromise({
@@ -86,13 +105,17 @@ const main = async (): Promise<void> => {
         sha256: file.sha256,
         outcome: {
           type: "file-failed",
-          errorType: read.error instanceof Error ? read.error.name : "UnknownError",
+          errorType:
+            read.error instanceof Error ? read.error.name : "UnknownError",
         },
       });
       continue;
     }
     if (sha256Bytes(new Uint8Array(read.value)) !== file.sha256) {
-      findings.push({ sha256: file.sha256, outcome: { type: "digest-mismatch" } });
+      findings.push({
+        sha256: file.sha256,
+        outcome: { type: "digest-mismatch" },
+      });
       continue;
     }
     const parsed = await Result.tryPromise({
@@ -110,7 +133,8 @@ const main = async (): Promise<void> => {
         sha256: file.sha256,
         outcome: {
           type: "file-failed",
-          errorType: parsed.error instanceof Error ? parsed.error.name : "UnknownError",
+          errorType:
+            parsed.error instanceof Error ? parsed.error.name : "UnknownError",
         },
       });
       continue;
@@ -126,13 +150,17 @@ const main = async (): Promise<void> => {
           ? compared.value
           : {
               type: "file-failed",
-              errorType: compared.error instanceof Error ? compared.error.name : "UnknownError",
+              errorType:
+                compared.error instanceof Error
+                  ? compared.error.name
+                  : "UnknownError",
             },
       });
     }
   }
   const counts: Record<string, number> = {};
-  for (const { outcome } of findings) counts[outcome.type] = (counts[outcome.type] ?? 0) + 1;
+  for (const { outcome } of findings)
+    counts[outcome.type] = (counts[outcome.type] ?? 0) + 1;
   const report = `${JSON.stringify(
     {
       schemaVersion: 1,

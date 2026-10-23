@@ -12,12 +12,16 @@
 import React, { useMemo } from "react";
 
 import {
-  selectionToRects,
+  type CaretPosition,
   getCaretPosition,
   type SelectionRect,
-  type CaretPosition,
+  selectionToRects,
 } from "@stll/folio-core/layout-bridge/engine/selectionRects";
-import type { Layout, FlowBlock, Measure } from "@stll/folio-core/layout-engine/types";
+import type {
+  FlowBlock,
+  Layout,
+  Measure,
+} from "@stll/folio-core/layout-engine/types";
 import "../styles/editor.css";
 
 // =============================================================================
@@ -99,7 +103,10 @@ const caretStyles = (
   pointerEvents: "none",
 });
 
-const selectionRectStyles = (rect: SelectionRect, color: string): React.CSSProperties => ({
+const selectionRectStyles = (
+  rect: SelectionRect,
+  color: string,
+): React.CSSProperties => ({
   position: "absolute",
   left: rect.x,
   top: rect.y,

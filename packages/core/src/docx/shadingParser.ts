@@ -98,7 +98,10 @@ export function parseShading(
     props.fill.themeShade = themeFillShade;
   }
 
-  const pattern = narrowEnum(getAttribute(shd, "w", "val"), ShadingPatternSchema);
+  const pattern = narrowEnum(
+    getAttribute(shd, "w", "val"),
+    ShadingPatternSchema,
+  );
   if (pattern) {
     props.pattern = pattern;
   }

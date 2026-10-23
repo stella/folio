@@ -1,3 +1,4 @@
+import { isCjkCodePoint } from "../../utils/scriptSegments";
 import {
   defaultLineBreakProvider,
   getLineBreakProvider,
@@ -5,25 +6,36 @@ import {
   isNonBreakingGlue,
 } from "./lineBreakProvider";
 import type { LineBreakPolicy } from "./lineBreakProvider";
-import { isCjkCodePoint } from "../../utils/scriptSegments";
 
 /**
  * Indices in `text` where a line may end. Latin text breaks after
  * whitespace or hyphen; CJK text can break after every ideograph so a
  * partial line is filled instead of pushing the whole run to the next line.
  */
-export const findWordBreaks = (text: string, policy?: LineBreakPolicy): number[] =>
-  getLineBreakProvider().findBreaks(text, policy);
+export const findWordBreaks = (
+  text: string,
+  policy?: LineBreakPolicy,
+): number[] => getLineBreakProvider().findBreaks(text, policy);
 
-export const findGraphemeBreaks = (text: string, policy?: LineBreakPolicy): number[] =>
-  getLineBreakProvider().findGraphemeBreaks(text, policy);
+export const findGraphemeBreaks = (
+  text: string,
+  policy?: LineBreakPolicy,
+): number[] => getLineBreakProvider().findGraphemeBreaks(text, policy);
 
-export const findHyphenationBreaks = (text: string, policy?: LineBreakPolicy): number[] =>
+export const findHyphenationBreaks = (
+  text: string,
+  policy?: LineBreakPolicy,
+): number[] =>
   getLineBreakProvider().findHyphenationBreaks?.(text, policy) ?? [];
 
-export const isHangingPunctuation = (text: string, policy?: LineBreakPolicy): boolean => {
+export const isHangingPunctuation = (
+  text: string,
+  policy?: LineBreakPolicy,
+): boolean => {
   const provider = getLineBreakProvider();
-  const classify = provider.isHangingPunctuation ?? defaultLineBreakProvider.isHangingPunctuation;
+  const classify =
+    provider.isHangingPunctuation ??
+    defaultLineBreakProvider.isHangingPunctuation;
   return classify?.(text, policy) ?? false;
 };
 
@@ -31,7 +43,12 @@ export function isBreakChar(char: string | undefined): boolean {
   if (char === undefined || isNonBreakingGlue(char)) {
     return false;
   }
-  if (/\s/u.test(char) || char === "-" || char === "\u00AD" || char === "\u200B") {
+  if (
+    /\s/u.test(char) ||
+    char === "-" ||
+    char === "\u00AD" ||
+    char === "\u200B"
+  ) {
     return true;
   }
   if (char >= "\uDC00" && char <= "\uDFFF") {
@@ -45,6 +62,9 @@ export function isBreakChar(char: string | undefined): boolean {
  * Whether a line may break at a run boundary, between the last character of
  * one run and the first character of the text that follows it.
  */
-export function isBreakBetween(previous: string | undefined, next: string | undefined): boolean {
+export function isBreakBetween(
+  previous: string | undefined,
+  next: string | undefined,
+): boolean {
   return isBreakChar(previous) && gluePermitsBreakBefore(previous, next);
 }

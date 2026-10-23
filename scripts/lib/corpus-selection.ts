@@ -38,7 +38,9 @@ export const corpusFileId = ({
  * `undefined` means the whole corpus, which is what every unfiltered caller
  * wants and what CI always runs.
  */
-export const parseOnlySelection = (values: readonly string[]): readonly string[] | undefined => {
+export const parseOnlySelection = (
+  values: readonly string[],
+): readonly string[] | undefined => {
   if (values.length === 0) {
     return undefined;
   }
@@ -47,7 +49,9 @@ export const parseOnlySelection = (values: readonly string[]): readonly string[]
     .map((pattern) => pattern.trim())
     .filter((pattern) => pattern.length > 0);
   if (patterns.length === 0) {
-    throw new CorpusSelectionError({ message: "--only needs at least one file id" });
+    throw new CorpusSelectionError({
+      message: "--only needs at least one file id",
+    });
   }
   return [...new Set(patterns)];
 };
@@ -64,7 +68,11 @@ export type SelectOnlyOptions<T> = {
   idOf: (entry: T) => string;
 };
 
-export const selectOnly = <T>({ entries, patterns, idOf }: SelectOnlyOptions<T>): T[] => {
+export const selectOnly = <T>({
+  entries,
+  patterns,
+  idOf,
+}: SelectOnlyOptions<T>): T[] => {
   const unmatched = new Set(patterns);
   const selected = entries.filter((entry) => {
     const id = idOf(entry);

@@ -2,7 +2,13 @@
  * History Extension — undo/redo via prosemirror-history
  */
 
-import { closeHistory, history, isHistoryTransaction, undo, redo } from "prosemirror-history";
+import {
+  closeHistory,
+  history,
+  isHistoryTransaction,
+  redo,
+  undo,
+} from "prosemirror-history";
 import { Plugin } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -86,36 +92,49 @@ const inputBoundaryPlugin = (newGroupDelay: number): Plugin => {
         previousInputTime = now;
         previousKind = kind;
         pendingDeletionGroup =
-          kind === "deleteBackward" || kind === "deleteForward" || kind === "deletion"
+          kind === "deleteBackward" ||
+          kind === "deleteForward" ||
+          kind === "deletion"
             ? deletionGroup
             : null;
       };
       const keydown = (event: KeyboardEvent) => {
         if (event.isComposing) return;
         if (event.key === "Backspace" || event.key === "Delete") {
-          startInput(event.key === "Backspace" ? "deleteBackward" : "deleteForward");
+          startInput(
+            event.key === "Backspace" ? "deleteBackward" : "deleteForward",
+          );
           return;
         }
         if (event.key === "Enter") {
           startInput("structure");
           return;
         }
-        if (event.key.length === 1 && !event.metaKey && !event.ctrlKey) startInput("typing");
+        if (event.key.length === 1 && !event.metaKey && !event.ctrlKey)
+          startInput("typing");
       };
       const beforeinput = (event: InputEvent) => {
         if (event.inputType === "insertCompositionText" || event.isComposing) {
           startInput("composition");
           return;
         }
-        if (event.inputType === "insertText" || event.inputType === "insertReplacementText") {
+        if (
+          event.inputType === "insertText" ||
+          event.inputType === "insertReplacementText"
+        ) {
           startInput("typing");
           return;
         }
         if (event.inputType.startsWith("delete")) {
-          if (event.inputType.endsWith("Backward")) startInput("deleteBackward");
-          else if (event.inputType.endsWith("Forward")) startInput("deleteForward");
+          if (event.inputType.endsWith("Backward"))
+            startInput("deleteBackward");
+          else if (event.inputType.endsWith("Forward"))
+            startInput("deleteForward");
           else startInput("deletion");
-        } else if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") {
+        } else if (
+          event.inputType === "insertParagraph" ||
+          event.inputType === "insertLineBreak"
+        ) {
           startInput("structure");
         }
       };
@@ -136,7 +155,11 @@ const inputBoundaryPlugin = (newGroupDelay: number): Plugin => {
           view.dom.removeEventListener("beforeinput", beforeinput, true);
           view.dom.removeEventListener("paste", paste, true);
           view.dom.removeEventListener("drop", drop, true);
-          view.dom.removeEventListener("compositionstart", compositionstart, true);
+          view.dom.removeEventListener(
+            "compositionstart",
+            compositionstart,
+            true,
+          );
         },
       };
     },
@@ -162,7 +185,10 @@ const defaultHistoryOptions: HistoryOptions = {
 export const HistoryExtension = createExtension({
   name: "history",
   defaultOptions: defaultHistoryOptions,
-  onSchemaReady(_ctx: ExtensionContext, options: HistoryOptions): ExtensionRuntime {
+  onSchemaReady(
+    _ctx: ExtensionContext,
+    options: HistoryOptions,
+  ): ExtensionRuntime {
     return {
       plugins: [
         // canonical-gap: pm-history

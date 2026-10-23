@@ -18,7 +18,9 @@ test("document operations address paragraphs inside block custom XML", () => {
               {
                 type: "paragraph",
                 paraId: "00000001",
-                content: [{ type: "run", content: [{ type: "text", text: "clause" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "clause" }] },
+                ],
               },
             ],
           },
@@ -28,7 +30,9 @@ test("document operations address paragraphs inside block custom XML", () => {
   };
 
   expect(
-    storyParagraphs(document.package.document).map(({ paragraph }) => paragraph.paraId),
+    storyParagraphs(document.package.document).map(
+      ({ paragraph }) => paragraph.paraId,
+    ),
   ).toEqual(["00000001"]);
   const edited = applyDocumentOp(document, {
     type: DOCUMENT_OP_TYPES.INSERT_TEXT,

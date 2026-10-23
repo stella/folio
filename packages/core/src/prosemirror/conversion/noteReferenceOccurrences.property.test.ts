@@ -1,12 +1,15 @@
+import { panic, Result } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { Result, panic } from "better-result";
-import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
+
 import { inlineLeafSpans } from "@stll/docx-core/ops";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import { createEmptyDocument } from "../../utils/createDocument";
-import { createDocx } from "../../docx/rezip";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import {
   createHarnessState,
   HARNESS_AUTHOR,
@@ -15,27 +18,42 @@ import {
   resolveAllChanges,
   saveHarnessState,
 } from "../../__tests__/editorHarness";
+import { createDocx } from "../../docx/rezip";
+import type {
+  Paragraph,
+  ParagraphContent,
+  Run,
+  TextFormatting,
+} from "../../types/document";
+import { createEmptyDocument } from "../../utils/createDocument";
 import { toggleBold } from "../commands/formatting";
 import {
-  NoteReferenceEditRefusal,
-  coalesceNoteReferenceOccurrences,
   assertNoteReferenceOccurrences,
+  coalesceNoteReferenceOccurrences,
+  NoteReferenceEditRefusal,
   noteReferenceTransactionIssue,
 } from "../noteReferenceOccurrences";
 import { singletonManager } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
-import { toProseDoc, headerFooterToProseDoc } from "./toProseDoc";
-import type { Paragraph, ParagraphContent, Run, TextFormatting } from "../../types/document";
+import { headerFooterToProseDoc, toProseDoc } from "./toProseDoc";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
 const KINDS = ["footnote", "endnote"] as const;
-const OWNERS = ["live", "ownInsertion", "otherDeletion", "ownDeletion"] as const;
+const OWNERS = [
+  "live",
+  "ownInsertion",
+  "otherDeletion",
+  "ownDeletion",
+] as const;
 const FROM = 2;
 const LABEL = "123";
 type Kind = (typeof KINDS)[number];
 
-const sourceDocument = async (kind: Kind, formatting: TextFormatting = { bold: true }) => {
+const sourceDocument = async (
+  kind: Kind,
+  formatting: TextFormatting = { bold: true },
+) => {
   const source = createEmptyDocument({ initialText: "LR" });
   source.package.document.content = [
     {
@@ -48,7 +66,10 @@ const sourceDocument = async (kind: Kind, formatting: TextFormatting = { bold: t
           formatting,
           content: [
             {
-              type: kind === "footnote" ? ("footnoteRef" as const) : ("endnoteRef" as const),
+              type:
+                kind === "footnote"
+                  ? ("footnoteRef" as const)
+                  : ("endnoteRef" as const),
               id: 123,
             },
           ],
@@ -57,8 +78,10 @@ const sourceDocument = async (kind: Kind, formatting: TextFormatting = { bold: t
       ],
     },
   ];
-  const content = createEmptyDocument({ initialText: "Note" }).package.document.content;
-  if (kind === "footnote") source.package.footnotes = [{ type: "footnote", id: 123, content }];
+  const content = createEmptyDocument({ initialText: "Note" }).package.document
+    .content;
+  if (kind === "footnote")
+    source.package.footnotes = [{ type: "footnote", id: 123, content }];
   else source.package.endnotes = [{ type: "endnote", id: 123, content }];
   return parseShapeDocument(new Uint8Array(await createDocx(source)));
 };
@@ -82,7 +105,9 @@ const tokens = (doc: PMNode) => {
           ? {
               type: revision.type.name,
               author: revision.attrs.author,
-              date: revision.attrs.date ? new Date(revision.attrs.date).toISOString() : null,
+              date: revision.attrs.date
+                ? new Date(revision.attrs.date).toISOString()
+                : null,
               moveKind: revision.attrs.moveKind,
             }
           : null,
@@ -94,7 +119,9 @@ const tokens = (doc: PMNode) => {
 const occurrences = (doc: PMNode) => {
   const ids = new Set<string>();
   doc.descendants((node) => {
-    const reference = node.marks.find((mark) => mark.type.name === "footnoteRef");
+    const reference = node.marks.find(
+      (mark) => mark.type.name === "footnoteRef",
+    );
     if (reference) ids.add(reference.attrs.occurrenceId);
   });
   return ids;
@@ -103,46 +130,68 @@ const occurrences = (doc: PMNode) => {
 test("imported note projections are deterministic and distinct across paragraphs and inline carriers", () => {
   assertProperty(
     fc.property(
-      fc.array(fc.array(fc.integer({ min: 1, max: 123 }), { minLength: 1, maxLength: 6 }), {
-        minLength: 2,
-        maxLength: 5,
-      }),
+      fc.array(
+        fc.array(fc.integer({ min: 1, max: 123 }), {
+          minLength: 1,
+          maxLength: 6,
+        }),
+        {
+          minLength: 2,
+          maxLength: 5,
+        },
+      ),
       (paragraphIds) => {
         const source = createEmptyDocument();
         let expectedOccurrences = 0;
-        source.package.document.content = paragraphIds.map((ids, paragraphIndex) => {
-          const content: ParagraphContent[] = [];
-          for (const [index, id] of ids.entries()) {
-            for (const kind of KINDS) {
-              const run = {
-                type: "run",
-                content: [{ type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id }],
-              } satisfies Run;
-              // Equal note IDs in different runs and carriers remain separate occurrences.
-              content.push(run, {
-                type: "hyperlink",
-                href: "https://example.com/reference",
-                children: [run],
-              });
-              expectedOccurrences += 2;
+        source.package.document.content = paragraphIds.map(
+          (ids, paragraphIndex) => {
+            const content: ParagraphContent[] = [];
+            for (const [index, id] of ids.entries()) {
+              for (const kind of KINDS) {
+                const run = {
+                  type: "run",
+                  content: [
+                    {
+                      type: kind === "footnote" ? "footnoteRef" : "endnoteRef",
+                      id,
+                    },
+                  ],
+                } satisfies Run;
+                // Equal note IDs in different runs and carriers remain separate occurrences.
+                content.push(run, {
+                  type: "hyperlink",
+                  href: "https://example.com/reference",
+                  children: [run],
+                });
+                expectedOccurrences += 2;
+              }
+              if (index % 2 === 0)
+                content.push({
+                  type: "run",
+                  content: [{ type: "text", text: " " }],
+                });
             }
-            if (index % 2 === 0)
-              content.push({ type: "run", content: [{ type: "text", text: " " }] });
-          }
-          return {
-            type: "paragraph",
-            paraId: (0x10000000 + paragraphIndex).toString(16),
-            content,
-          } satisfies Paragraph;
-        });
+            return {
+              type: "paragraph",
+              paraId: (0x10000000 + paragraphIndex).toString(16),
+              content,
+            } satisfies Paragraph;
+          },
+        );
         const projection = toProseDoc(source);
         expect(projection.eq(toProseDoc(source))).toBe(true);
         expect(projection.eq(toProseDoc(structuredClone(source)))).toBe(true);
         expect(occurrences(projection).size).toBe(expectedOccurrences);
         assertNoteReferenceOccurrences(projection);
-        const detached = headerFooterToProseDoc(source.package.document.content);
+        const detached = headerFooterToProseDoc(
+          source.package.document.content,
+        );
         expect(
-          detached.eq(headerFooterToProseDoc(structuredClone(source.package.document.content))),
+          detached.eq(
+            headerFooterToProseDoc(
+              structuredClone(source.package.document.content),
+            ),
+          ),
         ).toBe(true);
         expect(occurrences(detached).size).toBe(expectedOccurrences);
         assertNoteReferenceOccurrences(detached);
@@ -175,7 +224,10 @@ const assertRoundtrip = async (
   expect(sourceCount).toBe(occurrences(state.doc).size);
 };
 
-const withOwnership = (state: EditorState, owners: readonly (typeof OWNERS)[number][]) => {
+const withOwnership = (
+  state: EditorState,
+  owners: readonly (typeof OWNERS)[number][],
+) => {
   const tr = state.tr;
   for (const [index, owner] of owners.entries()) {
     if (owner === "live") continue;
@@ -202,14 +254,23 @@ test("retracted adjacent note occurrences preserve multiplicity and ownership th
     direction: "forward" | "backward",
     owners: readonly (typeof OWNERS)[number][],
   ) => {
-    let state = withOwnership(createHarnessState(bases[kind], "suggesting"), owners);
+    let state = withOwnership(
+      createHarnessState(bases[kind], "suggesting"),
+      owners,
+    );
     state = state.apply(
       state.tr.setSelection(
-        TextSelection.create(state.doc, FROM + LABEL.length, FROM + 2 * LABEL.length),
+        TextSelection.create(
+          state.doc,
+          FROM + LABEL.length,
+          FROM + 2 * LABEL.length,
+        ),
       ),
     );
     const view = new HeadlessEditorView(state);
-    expect(view.pressKey(direction === "forward" ? "Delete" : "Backspace")).toBe(true);
+    expect(
+      view.pressKey(direction === "forward" ? "Delete" : "Backspace"),
+    ).toBe(true);
     const rejected = resolveAllChanges(view.state, "reject");
     if (owners.join(",") === "live,ownInsertion,live")
       expect(rejected.doc.textContent).toBe("L123123R");
@@ -223,7 +284,11 @@ test("retracted adjacent note occurrences preserve multiplicity and ownership th
     fc.asyncProperty(
       fc.constantFrom(...KINDS),
       fc.constantFrom("forward", "backward"),
-      fc.tuple(fc.constantFrom(...OWNERS), fc.constantFrom(...OWNERS), fc.constantFrom(...OWNERS)),
+      fc.tuple(
+        fc.constantFrom(...OWNERS),
+        fc.constantFrom(...OWNERS),
+        fc.constantFrom(...OWNERS),
+      ),
       check,
     ),
     {
@@ -246,9 +311,16 @@ test("arbitrary digit splits preserve adjacent occurrences and whole-unit revisi
         fc.integer({ min: 0, max: 3 }),
         fc.integer({ min: 0, max: 3 }),
       ),
-      fc.tuple(fc.constantFrom(...OWNERS), fc.constantFrom(...OWNERS), fc.constantFrom(...OWNERS)),
+      fc.tuple(
+        fc.constantFrom(...OWNERS),
+        fc.constantFrom(...OWNERS),
+        fc.constantFrom(...OWNERS),
+      ),
       async (kind, splits, owners) => {
-        const state = withOwnership(createHarnessState(bases[kind], "suggesting"), owners);
+        const state = withOwnership(
+          createHarnessState(bases[kind], "suggesting"),
+          owners,
+        );
         const paragraph = state.doc.child(0);
         const nodes: PMNode[] = [];
         let index = 0;
@@ -261,22 +333,27 @@ test("arbitrary digit splits preserve adjacent occurrences and whole-unit revisi
           if (split === undefined) return panic("Missing split shape.");
           let start = 0;
           for (let end = 1; end <= LABEL.length; end += 1) {
-            if (end !== LABEL.length && (split & (1 << (end - 1))) === 0) continue;
+            if (end !== LABEL.length && (split & (1 << (end - 1))) === 0)
+              continue;
             nodes.push(state.schema.text(LABEL.slice(start, end), node.marks));
             start = end;
           }
         });
         // Retain legal adjacent text leaves instead of PM's automatic equal-mark merge.
-        const splitParagraph = paragraph.copy(new Fragment(nodes, paragraph.content.size));
+        const splitParagraph = paragraph.copy(
+          new Fragment(nodes, paragraph.content.size),
+        );
         const doc = state.doc.copy(Fragment.from(splitParagraph));
         const splitState = EditorState.create({ doc, plugins: state.plugins });
         await assertRoundtrip(splitState, bases[kind]);
         expect(
-          fromProseDoc(doc, bases[kind], { stylesheetSource: { type: "package" } }).package.document
-            .content,
+          fromProseDoc(doc, bases[kind], {
+            stylesheetSource: { type: "package" },
+          }).package.document.content,
         ).toEqual(
-          fromProseDoc(state.doc, bases[kind], { stylesheetSource: { type: "package" } }).package
-            .document.content,
+          fromProseDoc(state.doc, bases[kind], {
+            stylesheetSource: { type: "package" },
+          }).package.document.content,
         );
       },
     ),
@@ -323,10 +400,15 @@ test("random public edits keep occurrences saveable or visibly refuse before com
           });
           const left = positions.at(action.left % positions.length);
           const right = positions.at(action.right % positions.length);
-          if (left === undefined || right === undefined) return panic("Missing edit endpoint.");
+          if (left === undefined || right === undefined)
+            return panic("Missing edit endpoint.");
           view.state = view.state.apply(
             view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, Math.min(left, right), Math.max(left, right)),
+              TextSelection.create(
+                view.state.doc,
+                Math.min(left, right),
+                Math.max(left, right),
+              ),
             ),
           );
           const before = view.state;
@@ -341,7 +423,9 @@ test("random public edits keep occurrences saveable or visibly refuse before com
                 case "type":
                   return view.typeText("x");
                 case "paste":
-                  return view.paste(new Slice(Fragment.from(view.state.schema.text("x")), 0, 0));
+                  return view.paste(
+                    new Slice(Fragment.from(view.state.schema.text("x")), 0, 0),
+                  );
                 case "pasteReference":
                   return view.paste(referenceSlice);
                 case "split":
@@ -349,9 +433,15 @@ test("random public edits keep occurrences saveable or visibly refuse before com
                 case "join":
                   return view.pressKey("Backspace");
                 case "undo":
-                  return singletonManager.requireCommand("undo")()(view.state, view.dispatch);
+                  return singletonManager.requireCommand("undo")()(
+                    view.state,
+                    view.dispatch,
+                  );
                 case "redo":
-                  return singletonManager.requireCommand("redo")()(view.state, view.dispatch);
+                  return singletonManager.requireCommand("redo")()(
+                    view.state,
+                    view.dispatch,
+                  );
                 default:
                   return panic(String(action.kind satisfies never));
               }
@@ -360,8 +450,11 @@ test("random public edits keep occurrences saveable or visibly refuse before com
           });
           expect(attempt.isOk()).toBe(true);
           const transaction =
-            view.transactions.length > transactionCount ? view.transactions.at(-1) : undefined;
-          const refusal = transaction && noteReferenceTransactionIssue(transaction);
+            view.transactions.length > transactionCount
+              ? view.transactions.at(-1)
+              : undefined;
+          const refusal =
+            transaction && noteReferenceTransactionIssue(transaction);
           if (refusal) {
             expect(refusal).toBeInstanceOf(NoteReferenceEditRefusal);
             expect(view.state).toBe(before);
@@ -384,10 +477,15 @@ test("pasted note formatting survives empty splits without paragraph-mark defaul
       fc.record({ bold: fc.boolean(), italic: fc.boolean() }),
       fc.integer({ min: 1, max: 3 }),
       async (kind, formatting, splits) => {
-        for (const context of ["plain", "styled", "character-styled"] as const) {
+        for (const context of [
+          "plain",
+          "styled",
+          "character-styled",
+        ] as const) {
           const source = await sourceDocument(kind, formatting);
           const paragraph = source.package.document.content.at(0);
-          if (paragraph?.type !== "paragraph") return panic("Missing reference paragraph.");
+          if (paragraph?.type !== "paragraph")
+            return panic("Missing reference paragraph.");
           paragraph.content.pop();
           if (context === "styled") {
             const styles = source.package.styles;
@@ -399,7 +497,10 @@ test("pasted note formatting survives empty splits without paragraph-mark defaul
               basedOn: "Normal",
               rPr: { bold: !formatting.bold, italic: !formatting.italic },
             });
-            paragraph.formatting = { ...paragraph.formatting, styleId: "NotePaste" };
+            paragraph.formatting = {
+              ...paragraph.formatting,
+              styleId: "NotePaste",
+            };
           }
           if (context === "character-styled") {
             const styles = source.package.styles;
@@ -414,28 +515,42 @@ test("pasted note formatting survives empty splits without paragraph-mark defaul
               if (
                 item.type !== "run" ||
                 !item.content.some(
-                  (content) => content.type === "footnoteRef" || content.type === "endnoteRef",
+                  (content) =>
+                    content.type === "footnoteRef" ||
+                    content.type === "endnoteRef",
                 )
               )
                 continue;
-              item.formatting = { ...item.formatting, styleId: "NotePasteCharacter" };
+              item.formatting = {
+                ...item.formatting,
+                styleId: "NotePasteCharacter",
+              };
             }
           }
-          const base = await parseShapeDocument(new Uint8Array(await createDocx(source)));
-          const view = new HeadlessEditorView(createHarnessState(base, "editing"));
+          const base = await parseShapeDocument(
+            new Uint8Array(await createDocx(source)),
+          );
+          const view = new HeadlessEditorView(
+            createHarnessState(base, "editing"),
+          );
           const reference = view.state.doc.nodeAt(FROM);
-          if (!reference?.isText) return panic("Missing copy source occurrence.");
+          if (!reference?.isText)
+            return panic("Missing copy source occurrence.");
           const slice = new Slice(Fragment.from(reference), 0, 0);
           for (let split = 0; split < splits; split += 1) {
             view.state = view.state.apply(
               view.state.tr.setSelection(
-                TextSelection.create(view.state.doc, view.state.doc.content.size - 1),
+                TextSelection.create(
+                  view.state.doc,
+                  view.state.doc.content.size - 1,
+                ),
               ),
             );
             expect(view.pressKey("Enter")).toBe(true);
             expect(view.state.selection.$from.parent.content.size).toBe(0);
             expect(
-              view.state.selection.$from.parent.attrs._originalFormatting?.runProperties,
+              view.state.selection.$from.parent.attrs._originalFormatting
+                ?.runProperties,
             ).toBeUndefined();
           }
           const before = occurrences(view.state.doc).size;
@@ -459,9 +574,13 @@ test("unattributed or mixed-owner serializer inputs panic instead of guessing", 
   // The source already has bold; use an actual conflicting partial change.
   mixed.addMark(FROM, FROM + 1, state.schema.mark("italic"));
   expect(state.apply(mixed)).toBe(state);
-  expect(noteReferenceTransactionIssue(mixed)).toBeInstanceOf(NoteReferenceEditRefusal);
+  expect(noteReferenceTransactionIssue(mixed)).toBeInstanceOf(
+    NoteReferenceEditRefusal,
+  );
   expect(() =>
-    fromProseDoc(mixed.doc, undefined, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(mixed.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }),
   ).toThrow();
   const mark = state.doc
     .nodeAt(FROM)
@@ -473,16 +592,22 @@ test("unattributed or mixed-owner serializer inputs panic instead of guessing", 
     mark.type.create({ ...mark.attrs, occurrenceId: "" }),
   );
   expect(state.apply(unowned)).toBe(state);
-  expect(noteReferenceTransactionIssue(unowned)).toBeInstanceOf(NoteReferenceEditRefusal);
+  expect(noteReferenceTransactionIssue(unowned)).toBeInstanceOf(
+    NoteReferenceEditRefusal,
+  );
   expect(() =>
-    fromProseDoc(unowned.doc, undefined, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(unowned.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }),
   ).toThrow();
 });
 
 test("DOM and clipboard preserve unit attribution while pasted occurrences get fresh identities", async () => {
   const base = await sourceDocument("footnote");
   const state = createHarnessState(base, "editing");
-  const reference = state.doc.nodeAt(FROM)?.marks.find((mark) => mark.type.name === "footnoteRef");
+  const reference = state.doc
+    .nodeAt(FROM)
+    ?.marks.find((mark) => mark.type.name === "footnoteRef");
   if (!reference) return panic("Missing parsed reference.");
   const slice = new Slice(Fragment.from(state.doc.nodeAt(FROM)), 0, 0);
   const view = new HeadlessEditorView(
@@ -502,7 +627,11 @@ test("saving reuses complete occurrence paragraphs while changed roots still val
   const state = createHarnessState(base, "editing");
   const paragraph = state.doc.child(0);
   expect(coalesceNoteReferenceOccurrences(paragraph)).toBe(paragraph);
-  const plain = state.schema.node("paragraph", null, state.schema.text("Plain"));
+  const plain = state.schema.node(
+    "paragraph",
+    null,
+    state.schema.text("Plain"),
+  );
   expect(coalesceNoteReferenceOccurrences(plain)).toBe(plain);
   assertNoteReferenceOccurrences(state.doc);
   assertNoteReferenceOccurrences(state.doc);

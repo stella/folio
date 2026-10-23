@@ -16,6 +16,7 @@ import {
 } from "@stll/docx-core/model";
 
 import type {
+  ColorValue,
   EffectExtentSlots,
   ImagePadding,
   ImagePosition,
@@ -24,11 +25,11 @@ import type {
   SchemeColorSlot,
   ShapeFill,
   ShapeOutline,
-  ColorValue,
   WrapDistances,
   WrapDistanceSlots,
   WrapPolygonPoint,
 } from "../types/document";
+import { WORDPROCESSING_DRAWING_NAMESPACE_URIS } from "./drawingAnchor";
 import type { ParseContext } from "./parseContext";
 import {
   ImageHorizontalAlignmentSchema,
@@ -39,17 +40,16 @@ import {
   narrowEnum,
 } from "./parserEnums";
 import { captureVerbatimXml } from "./verbatimCapture";
-import { WORDPROCESSING_DRAWING_NAMESPACE_URIS } from "./drawingAnchor";
 import {
+  findChildByLocalName,
   findChildByNamespaceUri,
-  getChildElements,
+  findChildrenByLocalName,
   getAttribute,
+  getChildElements,
   getLocalName,
   getNamespaceUri,
   getTextContent,
   parseNumericAttribute,
-  findChildByLocalName,
-  findChildrenByLocalName,
   parseOnOffValue,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -66,7 +66,9 @@ import type { XmlElement } from "./xmlParser";
  * enumerations, so neither can omit a token.
  */
 const schemeColorToThemeColor = (value: string): ThemeColor | undefined =>
-  isSchemeColorValue(value) ? (THEME_COLOR_BY_SCHEME_COLOR_VALUE[value] ?? undefined) : undefined;
+  isSchemeColorValue(value)
+    ? (THEME_COLOR_BY_SCHEME_COLOR_VALUE[value] ?? undefined)
+    : undefined;
 
 /**
  * sRGB hex per OOXML (ST_HexColorRGB): exactly six hex digits, case-insensitive.
@@ -97,7 +99,10 @@ const PRESET_COLORS: Record<string, string> = {
  * Apply color modifiers (shade, tint) from child elements of a color element.
  * Converts DrawingML 100000ths-scale values to hex (0-FF) for OOXML compatibility.
  */
-function applyColorModifiers(color: ColorValue, element: XmlElement): ColorValue {
+function applyColorModifiers(
+  color: ColorValue,
+  element: XmlElement,
+): ColorValue {
   const children = getChildElements(element);
 
   const shade = children.find((el) => el.name === "a:shade");
@@ -130,7 +135,9 @@ function applyColorModifiers(color: ColorValue, element: XmlElement): ColorValue
  * Handles: a:srgbClr, a:schemeClr, a:sysClr, a:prstClr
  * Applies shade/tint modifiers when present.
  */
-export function parseColorElement(element: XmlElement | null): ColorValue | undefined {
+export function parseColorElement(
+  element: XmlElement | null,
+): ColorValue | undefined {
   if (!element) {
     return undefined;
   }
@@ -152,7 +159,9 @@ export function parseColorElement(element: XmlElement | null): ColorValue | unde
     // `phClr` and anything outside `ST_SchemeColorVal` name no theme slot; the
     // reference falls through to the next colour kind rather than being read as
     // a colour it does not mean.
-    const themeColor = schemeColorToThemeColor(getAttribute(schemeClr, null, "val") ?? "");
+    const themeColor = schemeColorToThemeColor(
+      getAttribute(schemeClr, null, "val") ?? "",
+    );
     if (themeColor !== undefined) {
       return applyColorModifiers({ themeColor }, schemeClr);
     }
@@ -219,7 +228,11 @@ function parseGradientFill(gradientFill: XmlElement): ShapeFill {
       const parsedAngle = Number.parseInt(authoredAngle, 10);
       angle = Number.isNaN(parsedAngle) ? undefined : parsedAngle / 60_000;
     }
-    scaled = parseOnOffValue(getAttribute(linear, null, "scaled"), undefined, "a:lin@scaled");
+    scaled = parseOnOffValue(
+      getAttribute(linear, null, "scaled"),
+      undefined,
+      "a:lin@scaled",
+    );
   }
 
   const path = findChildByLocalName(gradientFill, "path");
@@ -239,7 +252,9 @@ function parseGradientFill(gradientFill: XmlElement): ShapeFill {
   if (stopList) {
     for (const stop of findChildrenByLocalName(stopList, "gs")) {
       const authoredPosition = getAttribute(stop, null, "pos");
-      const parsedPosition = authoredPosition ? Number.parseInt(authoredPosition, 10) : 0;
+      const parsedPosition = authoredPosition
+        ? Number.parseInt(authoredPosition, 10)
+        : 0;
       const color = parseColorElement(stop);
       if (color) {
         stops.push({
@@ -356,9 +371,12 @@ const LINE_END_TYPES = [
   "arrow",
 ] as const satisfies readonly LineEndType[];
 
-function parseLineEnd(element: XmlElement): NonNullable<ShapeOutline["headEnd"]> {
+function parseLineEnd(
+  element: XmlElement,
+): NonNullable<ShapeOutline["headEnd"]> {
   const authoredType = getAttribute(element, null, "type");
-  const type = LINE_END_TYPES.find((allowed) => allowed === authoredType) ?? "none";
+  const type =
+    LINE_END_TYPES.find((allowed) => allowed === authoredType) ?? "none";
 
   const authoredWidth = getAttribute(element, null, "w");
   const authoredLength = getAttribute(element, null, "len");
@@ -367,7 +385,9 @@ function parseLineEnd(element: XmlElement): NonNullable<ShapeOutline["headEnd"]>
       ? authoredWidth
       : undefined;
   const length: LineEndSize =
-    authoredLength === "sm" || authoredLength === "med" || authoredLength === "lg"
+    authoredLength === "sm" ||
+    authoredLength === "med" ||
+    authoredLength === "lg"
       ? authoredLength
       : undefined;
 
@@ -386,17 +406,28 @@ function parseLineEnd(element: XmlElement): NonNullable<ShapeOutline["headEnd"]>
  * Parse horizontal position from wp:positionH element.
  */
 /** A child of a WordprocessingDrawing element, resolved by namespace. */
-const findDrawingChild = (parent: XmlElement | null, localName: string): XmlElement | null =>
-  findChildByNamespaceUri(parent, WORDPROCESSING_DRAWING_NAMESPACE_URIS, localName);
+const findDrawingChild = (
+  parent: XmlElement | null,
+  localName: string,
+): XmlElement | null =>
+  findChildByNamespaceUri(
+    parent,
+    WORDPROCESSING_DRAWING_NAMESPACE_URIS,
+    localName,
+  );
 
-export function parsePositionH(posH: XmlElement | null): ImagePosition["horizontal"] | undefined {
+export function parsePositionH(
+  posH: XmlElement | null,
+): ImagePosition["horizontal"] | undefined {
   if (!posH) {
     return undefined;
   }
 
   const relativeTo =
-    narrowEnum(getAttribute(posH, null, "relativeFrom"), ImageHorizontalRelativeToSchema) ??
-    "column";
+    narrowEnum(
+      getAttribute(posH, null, "relativeFrom"),
+      ImageHorizontalRelativeToSchema,
+    ) ?? "column";
 
   const alignEl = findDrawingChild(posH, "align");
   if (alignEl) {
@@ -423,14 +454,18 @@ export function parsePositionH(posH: XmlElement | null): ImagePosition["horizont
 /**
  * Parse vertical position from wp:positionV element.
  */
-export function parsePositionV(posV: XmlElement | null): ImagePosition["vertical"] | undefined {
+export function parsePositionV(
+  posV: XmlElement | null,
+): ImagePosition["vertical"] | undefined {
   if (!posV) {
     return undefined;
   }
 
   const relativeTo =
-    narrowEnum(getAttribute(posV, null, "relativeFrom"), ImageVerticalRelativeToSchema) ??
-    "paragraph";
+    narrowEnum(
+      getAttribute(posV, null, "relativeFrom"),
+      ImageVerticalRelativeToSchema,
+    ) ?? "paragraph";
 
   const alignEl = findDrawingChild(posV, "align");
   if (alignEl) {
@@ -462,8 +497,14 @@ export function parseAnchorPosition(anchor: XmlElement): ImagePosition {
   const positionV = findDrawingChild(anchor, "positionV");
 
   return {
-    horizontal: parsePositionH(positionH) ?? { relativeTo: "column", posOffset: 0 },
-    vertical: parsePositionV(positionV) ?? { relativeTo: "paragraph", posOffset: 0 },
+    horizontal: parsePositionH(positionH) ?? {
+      relativeTo: "column",
+      posOffset: 0,
+    },
+    vertical: parsePositionV(positionV) ?? {
+      relativeTo: "paragraph",
+      posOffset: 0,
+    },
   };
 }
 
@@ -507,7 +548,9 @@ const WRAP_DISTANCE_KEYS = ["distT", "distB", "distL", "distR"] as const;
  * only `distL`/`distR`, `CT_WrapTopBottom` only `distT`/`distB` — and an
  * attribute the type does not declare cannot be present to read.
  */
-const parseWrapDistances = (el: XmlElement | null): WrapDistances | undefined => {
+const parseWrapDistances = (
+  el: XmlElement | null,
+): WrapDistances | undefined => {
   if (!el) {
     return undefined;
   }
@@ -543,7 +586,9 @@ const wrapDistanceSlots = (
  * reservation on a wrap child says "this wrap reserves nothing", which is not
  * what an absent element says.
  */
-export const parseEffectExtent = (el: XmlElement | null): ImagePadding | undefined =>
+export const parseEffectExtent = (
+  el: XmlElement | null,
+): ImagePadding | undefined =>
   el === null
     ? undefined
     : {
@@ -562,12 +607,17 @@ export const parseEffectExtent = (el: XmlElement | null): ImagePadding | undefin
  * child's is read as authored instead: an absent one there inherits the
  * drawing's, so an explicit all-zero says something an absent one does not.
  */
-export const parseDrawingEffectExtent = (el: XmlElement | null): ImagePadding | undefined => {
+export const parseDrawingEffectExtent = (
+  el: XmlElement | null,
+): ImagePadding | undefined => {
   const extent = parseEffectExtent(el);
   if (extent === undefined) {
     return undefined;
   }
-  return extent.left === 0 && extent.top === 0 && extent.right === 0 && extent.bottom === 0
+  return extent.left === 0 &&
+    extent.top === 0 &&
+    extent.right === 0 &&
+    extent.bottom === 0
     ? undefined
     : extent;
 };
@@ -610,7 +660,9 @@ export function parseInlineWrap(inlineEl: XmlElement): ImageWrap {
 }
 
 /** A `CT_Point2D`, which requires both coordinates. */
-const parseWrapPolygonPoint = (el: XmlElement | null): WrapPolygonPoint | undefined => {
+const parseWrapPolygonPoint = (
+  el: XmlElement | null,
+): WrapPolygonPoint | undefined => {
   const x = parseNumericAttribute(el, null, "x");
   const y = parseNumericAttribute(el, null, "y");
   return x === undefined || y === undefined ? undefined : { x, y };
@@ -682,7 +734,8 @@ export function parseWrapElement({
   anchorEffectExtent,
 }: WrapElementOptions): ImageWrap {
   const drawingDistances =
-    anchorDistances !== undefined && WRAP_DISTANCE_KEYS.some((key) => anchorDistances[key] != null)
+    anchorDistances !== undefined &&
+    WRAP_DISTANCE_KEYS.some((key) => anchorDistances[key] != null)
       ? anchorDistances
       : undefined;
 
@@ -713,7 +766,10 @@ export function parseWrapElement({
 
   const wrap: ImageWrap = { type };
 
-  const wrapText = narrowEnum(getAttribute(wrapEl, null, "wrapText"), ImageWrapTextSchema);
+  const wrapText = narrowEnum(
+    getAttribute(wrapEl, null, "wrapText"),
+    ImageWrapTextSchema,
+  );
   if (wrapText) {
     wrap.wrapText = wrapText;
   }
@@ -766,7 +822,9 @@ export function parseAnchorBehindDoc(anchor: XmlElement): boolean {
 
 export function parseAnchorWrap(anchor: XmlElement): ImageWrap | undefined {
   const anchorDistances = parseWrapDistances(anchor);
-  const anchorEffectExtent = parseDrawingEffectExtent(findDrawingChild(anchor, "effectExtent"));
+  const anchorEffectExtent = parseDrawingEffectExtent(
+    findDrawingChild(anchor, "effectExtent"),
+  );
   return parseWrapElement({
     wrapEl: findWrapElement(anchor),
     behindDoc: parseAnchorBehindDoc(anchor),
@@ -802,7 +860,9 @@ const DEFAULT_THEME_COLOR_HEX = {
  * Resolve a ColorValue to a CSS hex string using default theme colors.
  * For use when no Theme object is available (e.g., shape/text box parsing).
  */
-export function resolveColorValueToHex(color: ColorValue | undefined): string | undefined {
+export function resolveColorValueToHex(
+  color: ColorValue | undefined,
+): string | undefined {
   if (!color) {
     return undefined;
   }

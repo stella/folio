@@ -16,12 +16,17 @@ import JSZip from "jszip";
 import { parseDocx } from "./parser";
 import { createEmptyDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const A_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const WP_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
-const PIC_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+const WP_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const PIC_NAMESPACE =
+  "http://schemas.openxmlformats.org/drawingml/2006/picture";
 
 const IMAGE_RID = "rIdPicture";
 
@@ -60,7 +65,10 @@ const parsedImage = async (prefix: string) => {
   }
   zip.file(
     "[Content_Types].xml",
-    types.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+    types.replace(
+      "</Types>",
+      '<Default Extension="png" ContentType="image/png"/></Types>',
+    ),
   );
   zip.file(
     "word/_rels/document.xml.rels",
@@ -70,11 +78,15 @@ const parsedImage = async (prefix: string) => {
         "</Relationships>",
     ),
   );
-  const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-    preloadFonts: false,
-  });
+  const parsed = await parseDocx(
+    await zip.generateAsync({ type: "arraybuffer" }),
+    {
+      preloadFonts: false,
+    },
+  );
   const paragraph = parsed.package.document.content.at(0);
-  const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+  const run =
+    paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
   const drawing = run?.type === "run" ? run.content.at(0) : undefined;
   return drawing?.type === "drawing" ? drawing.image : undefined;
 };

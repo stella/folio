@@ -5,7 +5,9 @@ import { parseShapeGeometryAdjustments } from "./shapeGeometryAdjustments";
 describe("parseShapeGeometryAdjustments", () => {
   test("accepts bounded named formulas", () => {
     expect(
-      parseShapeGeometryAdjustments(JSON.stringify([{ name: "adj", formula: "val 25000" }])),
+      parseShapeGeometryAdjustments(
+        JSON.stringify([{ name: "adj", formula: "val 25000" }]),
+      ),
     ).toEqual([{ name: "adj", formula: "val 25000" }]);
   });
 
@@ -14,7 +16,9 @@ describe("parseShapeGeometryAdjustments", () => {
     "{}",
     JSON.stringify([{ name: "adj" }]),
     JSON.stringify([{ name: "", formula: "val 1" }]),
-    JSON.stringify(Array.from({ length: 33 }, () => ({ name: "adj", formula: "val 1" }))),
+    JSON.stringify(
+      Array.from({ length: 33 }, () => ({ name: "adj", formula: "val 1" })),
+    ),
   ])("rejects malformed or unbounded input", (raw) => {
     expect(parseShapeGeometryAdjustments(raw)).toBeUndefined();
   });

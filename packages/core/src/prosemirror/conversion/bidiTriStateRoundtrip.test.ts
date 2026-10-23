@@ -25,7 +25,9 @@ const LTR: ParagraphDirection = { source: "manual", value: "ltr" };
 const AUTO: ParagraphDirection = { source: "auto" };
 
 const paraNode = (text: string, direction: ParagraphDirection | null) =>
-  schema.node("doc", null, [schema.node("paragraph", { direction }, [schema.text(text)])]);
+  schema.node("doc", null, [
+    schema.node("paragraph", { direction }, [schema.text(text)]),
+  ]);
 
 const firstParagraphBidi = (doc: Document): unknown => {
   const block = doc.package.document.content.at(0);
@@ -39,7 +41,9 @@ describe("fromProseDoc direction → bidi (new paragraphs, no original)", () => 
   test("manual LTR becomes bidi=false (not dropped)", () => {
     expect(
       firstParagraphBidi(
-        fromProseDoc(paraNode("عربي", LTR), undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(paraNode("عربي", LTR), undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     ).toBe(false);
   });
@@ -47,7 +51,9 @@ describe("fromProseDoc direction → bidi (new paragraphs, no original)", () => 
   test("manual RTL becomes bidi=true", () => {
     expect(
       firstParagraphBidi(
-        fromProseDoc(paraNode("عربي", RTL), undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(paraNode("عربي", RTL), undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     ).toBe(true);
   });
@@ -75,21 +81,29 @@ describe("fromProseDoc direction → bidi (changed vs original)", () => {
             {
               type: "paragraph",
               formatting: { bidi: true },
-              content: [{ type: "run", content: [{ type: "text", text: "عربي" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "عربي" }] },
+              ],
             },
           ],
         },
       },
     };
     const pmDoc = toProseDoc(original);
-    const forcedLtr = EditorState.create({ doc: pmDoc }).tr.setNodeMarkup(0, undefined, {
-      ...pmDoc.child(0).attrs,
-      direction: LTR,
-    }).doc;
+    const forcedLtr = EditorState.create({ doc: pmDoc }).tr.setNodeMarkup(
+      0,
+      undefined,
+      {
+        ...pmDoc.child(0).attrs,
+        direction: LTR,
+      },
+    ).doc;
 
     expect(
       firstParagraphBidi(
-        fromProseDoc(forcedLtr, original, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(forcedLtr, original, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     ).toBe(false);
   });
@@ -98,7 +112,9 @@ describe("fromProseDoc direction → bidi (changed vs original)", () => {
 describe("pageBreakBefore tri-state (same class, fallback path)", () => {
   test("explicit pageBreakBefore=false is preserved on a new paragraph", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { pageBreakBefore: false }, [schema.text("Body")]),
+      schema.node("paragraph", { pageBreakBefore: false }, [
+        schema.text("Body"),
+      ]),
     ]);
     const block = fromProseDoc(doc, undefined, {
       stylesheetSource: { type: "package" },
@@ -134,7 +150,9 @@ describe("auto-detected direction is view-only and never self-serializes", () =>
   test("auto direction on a new paragraph (no original) omits bidi", () => {
     expect(
       firstParagraphBidi(
-        fromProseDoc(paraNode("عربي", AUTO), undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(paraNode("عربي", AUTO), undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     ).toBeUndefined();
   });
@@ -151,20 +169,30 @@ describe("auto-detected direction is view-only and never self-serializes", () =>
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "عربي" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "عربي" }] },
+              ],
             },
           ],
         },
       },
     };
     const pmDoc = toProseDoc(original);
-    const seeded = EditorState.create({ doc: pmDoc }).tr.setNodeMarkup(0, undefined, {
-      ...pmDoc.child(0).attrs,
-      direction: AUTO,
-    }).doc;
+    const seeded = EditorState.create({ doc: pmDoc }).tr.setNodeMarkup(
+      0,
+      undefined,
+      {
+        ...pmDoc.child(0).attrs,
+        direction: AUTO,
+      },
+    ).doc;
 
     expect(
-      firstParagraphBidi(fromProseDoc(seeded, original, { stylesheetSource: { type: "package" } })),
+      firstParagraphBidi(
+        fromProseDoc(seeded, original, {
+          stylesheetSource: { type: "package" },
+        }),
+      ),
     ).toBeUndefined();
     const block = fromProseDoc(seeded, original, {
       stylesheetSource: { type: "package" },
@@ -178,11 +206,19 @@ describe("auto-detected direction is view-only and never self-serializes", () =>
   test("mixed document: auto stays unwritten, manual and undecided round-trip as expected", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { direction: null }, [schema.text("Agreement")]),
-      schema.node("paragraph", { direction: AUTO }, [schema.text("عربي بلا علامة")]),
-      schema.node("paragraph", { direction: RTL }, [schema.text("عربي بعلامة")]),
-      schema.node("paragraph", { direction: LTR }, [schema.text("عربي بالإكراه")]),
+      schema.node("paragraph", { direction: AUTO }, [
+        schema.text("عربي بلا علامة"),
+      ]),
+      schema.node("paragraph", { direction: RTL }, [
+        schema.text("عربي بعلامة"),
+      ]),
+      schema.node("paragraph", { direction: LTR }, [
+        schema.text("عربي بالإكراه"),
+      ]),
     ]);
-    const result = fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
+    const result = fromProseDoc(doc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const bidiOf = (index: number): unknown => {
       const block = result.package.document.content.at(index);
       if (block?.type !== "paragraph") {
@@ -202,7 +238,9 @@ describe("auto-detected direction is view-only and never self-serializes", () =>
     // the paragraph's direction authored content.
     expect(
       firstParagraphBidi(
-        fromProseDoc(paraNode("عربي", RTL), undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(paraNode("عربي", RTL), undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     ).toBe(true);
   });

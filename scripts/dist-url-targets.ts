@@ -17,9 +17,13 @@ export type UrlTargetScan = {
   dangling: string[];
 };
 
-const URL_TARGET_RE = /new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)/gu;
+const URL_TARGET_RE =
+  /new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)/gu;
 
-export const scanDistUrlTargets = (files: DistJsFile[], distDir: string): UrlTargetScan => {
+export const scanDistUrlTargets = (
+  files: DistJsFile[],
+  distDir: string,
+): UrlTargetScan => {
   const dangling: string[] = [];
   let total = 0;
   for (const { file, code } of files) {
@@ -34,7 +38,10 @@ export const scanDistUrlTargets = (files: DistJsFile[], distDir: string): UrlTar
       // A `?query` / `#hash` suffix (e.g. `./x.worker.js?worker`) is bundler
       // routing, not part of the on-disk filename; strip it before resolving.
       const specPath = spec.split(/[?#]/u)[0] ?? spec;
-      const resolved = path.resolve(path.dirname(path.join(distDir, file)), specPath);
+      const resolved = path.resolve(
+        path.dirname(path.join(distDir, file)),
+        specPath,
+      );
       if (!existsSync(resolved)) {
         dangling.push(`${file} -> ${spec}`);
       }

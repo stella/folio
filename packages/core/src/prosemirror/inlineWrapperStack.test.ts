@@ -12,8 +12,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { DOMParser, DOMSerializer, type Mark } from "prosemirror-model";
 import { Window } from "happy-dom";
+import { DOMParser, DOMSerializer, type Mark } from "prosemirror-model";
 
 import {
   INLINE_WRAPPER_STACK_ATTRIBUTE,
@@ -46,7 +46,8 @@ const STACKS: readonly (readonly InlineWrapperLayer[])[] = [
       kind: "smartTag",
       element: "City",
       uri: "urn:schemas-microsoft-com:office:smarttags",
-      propertiesXml: '<w:smartTagPr><w:attr w:name="kind" w:val="example"/></w:smartTagPr>',
+      propertiesXml:
+        '<w:smartTagPr><w:attr w:name="kind" w:val="example"/></w:smartTagPr>',
     },
   ],
   [{ kind: "customXml", element: "party", uri: "urn:folio:test" }],
@@ -59,13 +60,17 @@ const STACKS: readonly (readonly InlineWrapperLayer[])[] = [
 
 const roundTripThroughDom = (
   stack: readonly InlineWrapperLayer[],
-  origin?: { _docxHyperlinkIndex: number; _docxInsideHyperlinkStackStart: number },
+  origin?: {
+    _docxHyperlinkIndex: number;
+    _docxInsideHyperlinkStackStart: number;
+  },
 ): Mark[] => {
   const window = new Window();
   const document = window.document as unknown as globalThis.Document;
   const fragment = DOMSerializer.fromSchema(schema).serializeFragment(
-    schema.node("paragraph", null, [schema.text("x", [markType.create({ stack, ...origin })])])
-      .content,
+    schema.node("paragraph", null, [
+      schema.text("x", [markType.create({ stack, ...origin })]),
+    ]).content,
     { document },
   );
   const host = document.createElement("div");
@@ -83,7 +88,9 @@ const roundTripThroughDom = (
 describe("an inline wrapper mark through the DOM", () => {
   for (const stack of STACKS) {
     test(`keeps its grouping key: ${serializeInlineWrapperStack(stack)}`, () => {
-      const authored = markType.create({ stack: stack.map(inlineWrapperLayer) });
+      const authored = markType.create({
+        stack: stack.map(inlineWrapperLayer),
+      });
       const [reparsed] = roundTripThroughDom(stack);
       expect(reparsed).toBeDefined();
       expect(marksKey([reparsed!])).toBe(marksKey([authored]));
@@ -98,7 +105,9 @@ describe("an inline wrapper mark through the DOM", () => {
       DOMSerializer.fromSchema(schema).serializeFragment(
         schema.node("paragraph", null, [
           schema.text("x", [
-            markType.create({ stack: [{ kind: "bidi", control: "override", direction: "rtl" }] }),
+            markType.create({
+              stack: [{ kind: "bidi", control: "override", direction: "rtl" }],
+            }),
           ]),
         ]).content,
         { document },
@@ -114,7 +123,10 @@ describe("an inline wrapper mark through the DOM", () => {
     if (stack === undefined) {
       throw new Error("Expected a wrapper stack fixture");
     }
-    const origin = { _docxHyperlinkIndex: 4, _docxInsideHyperlinkStackStart: 1 };
+    const origin = {
+      _docxHyperlinkIndex: 4,
+      _docxInsideHyperlinkStackStart: 1,
+    };
     const authored = markType.create({ stack, ...origin });
     const [reparsed] = roundTripThroughDom(stack, origin);
     expect(reparsed).toBeDefined();
@@ -131,12 +143,16 @@ describe("an inline wrapper mark through the DOM", () => {
     host.append(
       DOMSerializer.fromSchema(schema).serializeFragment(
         schema.node("paragraph", null, [
-          schema.text("x", [markType.create({ stack: [{ kind, element: "City" }] })]),
+          schema.text("x", [
+            markType.create({ stack: [{ kind, element: "City" }] }),
+          ]),
         ]).content,
         { document },
       ),
     );
-    expect(host.querySelector(`span[${attribute}]`)?.getAttribute(attribute)).toBe("City");
+    expect(
+      host.querySelector(`span[${attribute}]`)?.getAttribute(attribute),
+    ).toBe("City");
   });
 });
 
@@ -150,27 +166,39 @@ describe("a stack read from markup the editor did not write", () => {
   test("markup that is not a stack carries none", () => {
     expect(parseInlineWrapperStack("not json")).toBeNull();
     expect(parseInlineWrapperStack("[]")).toBeNull();
-    expect(parseInlineWrapperStack('[{"kind":"ruby","element":"date"}]')).toBeNull();
-    expect(parseInlineWrapperStack('[{"kind":"bidi"}]')).toBeNull();
-    expect(parseInlineWrapperStack('[{"kind":"bidi","control":"sideways"}]')).toBeNull();
     expect(
-      parseInlineWrapperStack('[{"kind":"bidi","control":"override","element":"date"}]'),
+      parseInlineWrapperStack('[{"kind":"ruby","element":"date"}]'),
+    ).toBeNull();
+    expect(parseInlineWrapperStack('[{"kind":"bidi"}]')).toBeNull();
+    expect(
+      parseInlineWrapperStack('[{"kind":"bidi","control":"sideways"}]'),
+    ).toBeNull();
+    expect(
+      parseInlineWrapperStack(
+        '[{"kind":"bidi","control":"override","element":"date"}]',
+      ),
     ).toBeNull();
   });
 
   test("a layer that states a field its kind does not carry is refused", () => {
     expect(parseInlineWrapperStack('[{"kind":"smartTag"}]')).toBeNull();
     expect(
-      parseInlineWrapperStack('[{"kind":"smartTag","element":"City","control":"override"}]'),
+      parseInlineWrapperStack(
+        '[{"kind":"smartTag","element":"City","control":"override"}]',
+      ),
     ).toBeNull();
-    expect(parseInlineWrapperStack('[{"kind":"customXml","element":"party","uri":7}]')).toBeNull();
+    expect(
+      parseInlineWrapperStack(
+        '[{"kind":"customXml","element":"party","uri":7}]',
+      ),
+    ).toBeNull();
   });
 
   test("a stack spelled with its keys in another order is canonicalised", () => {
     expect(
-      parseInlineWrapperStack('[{"direction":"rtl","control":"override","kind":"bidi"}]')?.map(
-        (layer) => Object.keys(layer),
-      ),
+      parseInlineWrapperStack(
+        '[{"direction":"rtl","control":"override","kind":"bidi"}]',
+      )?.map((layer) => Object.keys(layer)),
     ).toEqual([["kind", "control", "direction"]]);
     expect(
       parseInlineWrapperStack(

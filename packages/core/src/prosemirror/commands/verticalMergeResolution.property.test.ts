@@ -5,13 +5,16 @@
  */
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { EditorState } from "prosemirror-state";
 import type { Node as PMNode } from "prosemirror-model";
+import { EditorState } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { parseDocx } from "../../docx/parser";
 import { createDocx, repackDocx } from "../../docx/rezip";
-import type { Document, TableCell, Paragraph } from "../../types/document";
+import type { Document, Paragraph, TableCell } from "../../types/document";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
 import {
@@ -55,7 +58,9 @@ const documentFor = ({
               type: "tableRow",
               cells: cells.map((_cell, column): TableCell => ({
                 type: "tableCell",
-                ...(origin === "restart" ? { formatting: { vMerge: "restart" } } : {}),
+                ...(origin === "restart"
+                  ? { formatting: { vMerge: "restart" } }
+                  : {}),
                 content: [paragraph(`Top ${column}`)],
               })),
             },
@@ -66,18 +71,27 @@ const documentFor = ({
                 ...(continuation
                   ? {
                       formatting:
-                        decision === "accept" && origin === "restart" ? { vMerge: "continue" } : {},
+                        decision === "accept" && origin === "restart"
+                          ? { vMerge: "continue" }
+                          : {},
                       structuralChange: {
                         type: "tableCellMerge",
-                        info: date === "present" ? INFO : { id: INFO.id, author: INFO.author },
-                        verticalMerge: decision === "accept" ? "continue" : "rest",
-                        verticalMergeOriginal: decision === "reject" ? "continue" : "rest",
+                        info:
+                          date === "present"
+                            ? INFO
+                            : { id: INFO.id, author: INFO.author },
+                        verticalMerge:
+                          decision === "accept" ? "continue" : "rest",
+                        verticalMergeOriginal:
+                          decision === "reject" ? "continue" : "rest",
                       },
                     }
                   : {}),
                 content: [
                   paragraph(
-                    (rowTexts?.at(row)?.at(column) ?? text) ? `Below ${row}-${column}` : "",
+                    (rowTexts?.at(row)?.at(column) ?? text)
+                      ? `Below ${row}-${column}`
+                      : "",
                   ),
                 ],
               })),
@@ -122,7 +136,8 @@ const exercise = async (options: CaseOptions) => {
     const top = expectedTable.rows.at(0);
     if (!top) throw new Error("Expected origin row");
     for (const [column, cell] of top.cells.entries()) {
-      if (options.cells.at(column)?.continuation) cell.formatting = { vMerge: "restart" };
+      if (options.cells.at(column)?.continuation)
+        cell.formatting = { vMerge: "restart" };
     }
   }
   const expected = shape(toProseDoc(expectedDocument));
@@ -139,7 +154,8 @@ const exercise = async (options: CaseOptions) => {
       options.cells.flatMap(({ continuation, text }, column) => {
         const hasText = options.rowTexts?.at(row)?.at(column) ?? text;
         const folds =
-          continuation && (options.decision === "reject" || (!hasText && !blocked.at(column)));
+          continuation &&
+          (options.decision === "reject" || (!hasText && !blocked.at(column)));
         if (folds) {
           const origin = top.at(column);
           if (!origin) throw new Error("Missing expected merge origin");
@@ -147,7 +163,13 @@ const exercise = async (options: CaseOptions) => {
           return [];
         }
         if (continuation && hasText) blocked[column] = true;
-        return [{ text: hasText ? `Below ${row}-${column}` : "", rowspan: 1, colspan: 1 }];
+        return [
+          {
+            text: hasText ? `Below ${row}-${column}` : "",
+            rowspan: 1,
+            colspan: 1,
+          },
+        ];
       }),
     );
   }
@@ -167,8 +189,14 @@ const exercise = async (options: CaseOptions) => {
       state = state.apply(tr);
     }
     const commands = {
-      accept: { targeted: acceptAIEditRevision(INFO.id), bulk: acceptAllChanges() },
-      reject: { targeted: rejectAIEditRevision(INFO.id), bulk: rejectAllChanges() },
+      accept: {
+        targeted: acceptAIEditRevision(INFO.id),
+        bulk: acceptAllChanges(),
+      },
+      reject: {
+        targeted: rejectAIEditRevision(INFO.id),
+        bulk: rejectAllChanges(),
+      },
     };
     const command = commands[options.decision][path];
     expect(
@@ -180,14 +208,18 @@ const exercise = async (options: CaseOptions) => {
     if (path === "targeted") targeted = state.doc;
     else expect(state.doc.toJSON()).toEqual(targeted?.toJSON());
     state.doc.check();
-    const saved = fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } });
+    const saved = fromProseDoc(state.doc, document, {
+      stylesheetSource: { type: "package" },
+    });
     // The reader's visible cells include stored continuation payload content.
     expect(shape(toProseDoc(saved))).toEqual(expected);
     const reopened = await parseDocx(await createDocx(saved));
     expect(shape(toProseDoc(reopened))).toEqual(expected);
     const reopenedAgain = await parseDocx(
       await repackDocx(
-        fromProseDoc(toProseDoc(reopened), reopened, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(toProseDoc(reopened), reopened, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     );
     expect(shape(toProseDoc(reopenedAgain))).toEqual(expected);
@@ -205,7 +237,10 @@ test("reject folds a continuation with text beside an ordinary cell", async () =
 });
 
 test("reject folds the sole continuation in a single-column row", async () => {
-  await exercise({ cells: [{ continuation: true, text: false }], decision: "reject" });
+  await exercise({
+    cells: [{ continuation: true, text: false }],
+    decision: "reject",
+  });
 });
 
 test("accept keeps an empty continuation below a visible text continuation", async () => {
@@ -222,10 +257,13 @@ test(
   async () => {
     await assertProperty(
       fc.asyncProperty(
-        fc.array(fc.record({ continuation: fc.boolean(), text: fc.boolean() }), {
-          minLength: 1,
-          maxLength: 4,
-        }),
+        fc.array(
+          fc.record({ continuation: fc.boolean(), text: fc.boolean() }),
+          {
+            minLength: 1,
+            maxLength: 4,
+          },
+        ),
         fc.constantFrom("plain", "restart"),
         fc.integer({ min: 1, max: 3 }),
         fc.constantFrom("present", "absent", "null"),
@@ -236,7 +274,14 @@ test(
             text: cell.text,
           }));
           for (const decision of ["accept", "reject"] as const)
-            await exercise({ cells, decision, origin, continuations, date, rowTexts });
+            await exercise({
+              cells,
+              decision,
+              origin,
+              continuations,
+              date,
+              rowTexts,
+            });
         },
       ),
       {

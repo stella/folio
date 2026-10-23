@@ -20,35 +20,37 @@ describe("parseSettings — w:defaultTabStop (§17.6.13)", () => {
   });
 
   test("parses w:defaultTabStop val attribute", () => {
-    expect(parseSettings(wrap(`<w:defaultTabStop w:val="1440"/>`)).defaultTabStop).toBe(1440);
+    expect(
+      parseSettings(wrap(`<w:defaultTabStop w:val="1440"/>`)).defaultTabStop,
+    ).toBe(1440);
   });
 
   test("ignores non-positive values (Word never emits them)", () => {
-    expect(parseSettings(wrap(`<w:defaultTabStop w:val="0"/>`)).defaultTabStop).toBe(
-      DEFAULT_TAB_STOP_TWIPS,
-    );
-    expect(parseSettings(wrap(`<w:defaultTabStop w:val="-100"/>`)).defaultTabStop).toBe(
-      DEFAULT_TAB_STOP_TWIPS,
-    );
+    expect(
+      parseSettings(wrap(`<w:defaultTabStop w:val="0"/>`)).defaultTabStop,
+    ).toBe(DEFAULT_TAB_STOP_TWIPS);
+    expect(
+      parseSettings(wrap(`<w:defaultTabStop w:val="-100"/>`)).defaultTabStop,
+    ).toBe(DEFAULT_TAB_STOP_TWIPS);
   });
 
   test("floors near-zero values that would force thousands of tab stops per line", () => {
-    expect(parseSettings(wrap(`<w:defaultTabStop w:val="1"/>`)).defaultTabStop).toBe(
-      DEFAULT_TAB_STOP_TWIPS,
-    );
+    expect(
+      parseSettings(wrap(`<w:defaultTabStop w:val="1"/>`)).defaultTabStop,
+    ).toBe(DEFAULT_TAB_STOP_TWIPS);
   });
 
   test("ignores non-numeric values", () => {
-    expect(parseSettings(wrap(`<w:defaultTabStop w:val="banana"/>`)).defaultTabStop).toBe(
-      DEFAULT_TAB_STOP_TWIPS,
-    );
+    expect(
+      parseSettings(wrap(`<w:defaultTabStop w:val="banana"/>`)).defaultTabStop,
+    ).toBe(DEFAULT_TAB_STOP_TWIPS);
   });
 
   test("ignores values beyond Word's maximum margin (~22 inches)", () => {
     // 50000 twips ≈ 34.7 inches — past any plausible page width; reject.
-    expect(parseSettings(wrap(`<w:defaultTabStop w:val="50000"/>`)).defaultTabStop).toBe(
-      DEFAULT_TAB_STOP_TWIPS,
-    );
+    expect(
+      parseSettings(wrap(`<w:defaultTabStop w:val="50000"/>`)).defaultTabStop,
+    ).toBe(DEFAULT_TAB_STOP_TWIPS);
   });
 });
 
@@ -59,20 +61,26 @@ describe("parseSettings — w:evenAndOddHeaders (§17.10.1)", () => {
   });
 
   test("a bare element records the on state", () => {
-    expect(parseSettings(wrap(`<w:evenAndOddHeaders/>`)).evenAndOddHeaders).toBe(true);
+    expect(
+      parseSettings(wrap(`<w:evenAndOddHeaders/>`)).evenAndOddHeaders,
+    ).toBe(true);
   });
 
   test('an explicit w:val="0" is an off, not an absence', () => {
     // The serializer writes the off back, so folding it into the absence would
     // delete an element the settings part stated.
-    expect(parseSettings(wrap(`<w:evenAndOddHeaders w:val="0"/>`)).evenAndOddHeaders).toBe(false);
+    expect(
+      parseSettings(wrap(`<w:evenAndOddHeaders w:val="0"/>`)).evenAndOddHeaders,
+    ).toBe(false);
   });
 });
 
 describe("parseSettings — w:mirrorMargins (§17.15.1.57)", () => {
   test("records all three states", () => {
     expect(parseSettings(wrap(`<w:mirrorMargins/>`)).mirrorMargins).toBe(true);
-    expect(parseSettings(wrap(`<w:mirrorMargins w:val="0"/>`)).mirrorMargins).toBe(false);
+    expect(
+      parseSettings(wrap(`<w:mirrorMargins w:val="0"/>`)).mirrorMargins,
+    ).toBe(false);
     expect(parseSettings(wrap("")).mirrorMargins).toBeUndefined();
   });
 });
@@ -80,19 +88,25 @@ describe("parseSettings — w:mirrorMargins (§17.15.1.57)", () => {
 describe("parseSettings — w:themeFontLang (§17.15.1.88)", () => {
   test("reads eastAsia and bidi tags", () => {
     expect(
-      parseSettings(wrap(`<w:themeFontLang w:val="en-US" w:eastAsia="ja-JP" w:bidi="ar-SA"/>`))
-        .themeFontLang,
+      parseSettings(
+        wrap(
+          `<w:themeFontLang w:val="en-US" w:eastAsia="ja-JP" w:bidi="ar-SA"/>`,
+        ),
+      ).themeFontLang,
     ).toEqual({ eastAsia: "ja-JP", bidi: "ar-SA" });
   });
 
   test("keeps only the EastAsian tag when bidi is absent", () => {
     expect(
-      parseSettings(wrap(`<w:themeFontLang w:val="en-US" w:eastAsia="ja-JP"/>`)).themeFontLang,
+      parseSettings(wrap(`<w:themeFontLang w:val="en-US" w:eastAsia="ja-JP"/>`))
+        .themeFontLang,
     ).toEqual({ eastAsia: "ja-JP" });
   });
 
   test("is undefined when only the primary (w:val) lang is present", () => {
-    expect(parseSettings(wrap(`<w:themeFontLang w:val="en-US"/>`)).themeFontLang).toBeUndefined();
+    expect(
+      parseSettings(wrap(`<w:themeFontLang w:val="en-US"/>`)).themeFontLang,
+    ).toBeUndefined();
   });
 
   test("is undefined when the element is absent", () => {
@@ -118,7 +132,8 @@ describe("parseSettings — document line-breaking rules", () => {
 
   test("reads the legacy Ethiopic and Amharic breaking compatibility flag", () => {
     expect(
-      parseSettings(wrap(`<w:compat><w:applyBreakingRules/></w:compat>`)).lineBreakRules,
+      parseSettings(wrap(`<w:compat><w:applyBreakingRules/></w:compat>`))
+        .lineBreakRules,
     ).toEqual({ useLegacyEthiopicAmharicRules: true });
   });
 
@@ -136,10 +151,14 @@ describe("parseSettings — document line-breaking rules", () => {
   test("caps a hostile prohibited-character list instead of carrying it in full", () => {
     const hostileCharacters = "、".repeat(10_000);
     const settings = parseSettings(
-      wrap(`<w:noLineBreaksBefore w:lang="ja-JP" w:val="${hostileCharacters}"/>`),
+      wrap(
+        `<w:noLineBreaksBefore w:lang="ja-JP" w:val="${hostileCharacters}"/>`,
+      ),
     );
 
-    expect(settings.lineBreakRules?.noLineBreaksBefore?.characters).toHaveLength(128);
+    expect(
+      settings.lineBreakRules?.noLineBreaksBefore?.characters,
+    ).toHaveLength(128);
   });
 });
 
@@ -167,13 +186,19 @@ describe("parseSettings — application compatibility generation", () => {
 
 describe("parseSettings — table line-grid compatibility", () => {
   test("records only an enabled adjustLineHeightInTable flag", () => {
-    expect(parseSettings(wrap(`<w:compat><w:adjustLineHeightInTable/></w:compat>`))).toMatchObject({
+    expect(
+      parseSettings(wrap(`<w:compat><w:adjustLineHeightInTable/></w:compat>`)),
+    ).toMatchObject({
       adjustLineHeightInTable: true,
     });
     expect(
-      parseSettings(wrap(`<w:compat><w:adjustLineHeightInTable w:val="0"/></w:compat>`)),
+      parseSettings(
+        wrap(`<w:compat><w:adjustLineHeightInTable w:val="0"/></w:compat>`),
+      ),
     ).not.toHaveProperty("adjustLineHeightInTable");
-    expect(parseSettings(wrap(""))).not.toHaveProperty("adjustLineHeightInTable");
+    expect(parseSettings(wrap(""))).not.toHaveProperty(
+      "adjustLineHeightInTable",
+    );
   });
 
   test("resolves the setting by namespace URI", () => {
@@ -181,22 +206,32 @@ describe("parseSettings — table line-grid compatibility", () => {
     const alternatePrefix = `<?xml version="1.0"?><q:settings xmlns:q="${strictNamespace}"><q:compat><q:adjustLineHeightInTable/></q:compat></q:settings>`;
     const foreignChild = `<?xml version="1.0"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:x="urn:example:foreign"><w:compat><x:adjustLineHeightInTable/></w:compat></w:settings>`;
 
-    expect(parseSettings(alternatePrefix)).toMatchObject({ adjustLineHeightInTable: true });
-    expect(parseSettings(foreignChild)).not.toHaveProperty("adjustLineHeightInTable");
+    expect(parseSettings(alternatePrefix)).toMatchObject({
+      adjustLineHeightInTable: true,
+    });
+    expect(parseSettings(foreignChild)).not.toHaveProperty(
+      "adjustLineHeightInTable",
+    );
   });
 });
 
 describe("parseSettings — numbering tab compatibility", () => {
   test("records only an enabled doNotUseIndentAsNumberingTabStop flag", () => {
     expect(
-      parseSettings(wrap(`<w:compat><w:doNotUseIndentAsNumberingTabStop/></w:compat>`)),
+      parseSettings(
+        wrap(`<w:compat><w:doNotUseIndentAsNumberingTabStop/></w:compat>`),
+      ),
     ).toMatchObject({ doNotUseIndentAsNumberingTabStop: true });
     expect(
       parseSettings(
-        wrap(`<w:compat><w:doNotUseIndentAsNumberingTabStop w:val="false"/></w:compat>`),
+        wrap(
+          `<w:compat><w:doNotUseIndentAsNumberingTabStop w:val="false"/></w:compat>`,
+        ),
       ),
     ).not.toHaveProperty("doNotUseIndentAsNumberingTabStop");
-    expect(parseSettings(wrap(""))).not.toHaveProperty("doNotUseIndentAsNumberingTabStop");
+    expect(parseSettings(wrap(""))).not.toHaveProperty(
+      "doNotUseIndentAsNumberingTabStop",
+    );
   });
 });
 
@@ -254,36 +289,49 @@ describe("parseSettings — break-only paragraph placement", () => {
         .splitPageBreakAndParagraphMark,
     ).toBe(true);
     expect(
-      parseSettings(wrap(`<w:compat><w:splitPgBreakAndParaMark w:val="0"/></w:compat>`))
-        .splitPageBreakAndParagraphMark,
+      parseSettings(
+        wrap(`<w:compat><w:splitPgBreakAndParaMark w:val="0"/></w:compat>`),
+      ).splitPageBreakAndParagraphMark,
     ).toBeUndefined();
-    expect(parseSettings(wrap("")).splitPageBreakAndParagraphMark).toBeUndefined();
+    expect(
+      parseSettings(wrap("")).splitPageBreakAndParagraphMark,
+    ).toBeUndefined();
   });
 });
 
 describe("parseSettings — on/off flags resolve by namespace URI", () => {
-  const TRANSITIONAL_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const TRANSITIONAL_NS =
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
   const STRICT_HEAD = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:settings xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main">`;
   const FOREIGN_HEAD = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:settings xmlns:w="${TRANSITIONAL_NS}" xmlns:x="urn:example:foreign">`;
   const flags = ["updateFields", "evenAndOddHeaders", "mirrorMargins"] as const;
 
-  test.each(flags)("%s: transitional, strict, and alternate-prefix forms are honoured", (flag) => {
-    expect(parseSettings(wrap(`<w:${flag}/>`))[flag]).toBe(true);
-    expect(parseSettings(`${STRICT_HEAD}<w:${flag}/>${SETTINGS_TAIL}`)[flag]).toBe(true);
-    expect(
-      parseSettings(`${FOREIGN_HEAD}<x:${flag} xmlns:x="${TRANSITIONAL_NS}"/>${SETTINGS_TAIL}`)[
-        flag
-      ],
-    ).toBe(true);
-  });
+  test.each(flags)(
+    "%s: transitional, strict, and alternate-prefix forms are honoured",
+    (flag) => {
+      expect(parseSettings(wrap(`<w:${flag}/>`))[flag]).toBe(true);
+      expect(
+        parseSettings(`${STRICT_HEAD}<w:${flag}/>${SETTINGS_TAIL}`)[flag],
+      ).toBe(true);
+      expect(
+        parseSettings(
+          `${FOREIGN_HEAD}<x:${flag} xmlns:x="${TRANSITIONAL_NS}"/>${SETTINGS_TAIL}`,
+        )[flag],
+      ).toBe(true);
+    },
+  );
 
   test.each(flags)(
     "%s: a foreign-namespace element with the same local name is ignored",
     (flag) => {
-      expect(parseSettings(`${FOREIGN_HEAD}<x:${flag}/>${SETTINGS_TAIL}`)[flag]).toBeUndefined();
-      expect(parseSettings(`${FOREIGN_HEAD}<${flag}/>${SETTINGS_TAIL}`)[flag]).toBeUndefined();
+      expect(
+        parseSettings(`${FOREIGN_HEAD}<x:${flag}/>${SETTINGS_TAIL}`)[flag],
+      ).toBeUndefined();
+      expect(
+        parseSettings(`${FOREIGN_HEAD}<${flag}/>${SETTINGS_TAIL}`)[flag],
+      ).toBeUndefined();
     },
   );
 });
@@ -296,12 +344,17 @@ describe("parseSettings — w:endnotePr (§17.11.4)", () => {
           '<w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr>',
       ),
     );
-    expect(settings.endnotePr).toEqual({ position: "sectEnd", numFmt: "decimal" });
+    expect(settings.endnotePr).toEqual({
+      position: "sectEnd",
+      numFmt: "decimal",
+    });
   });
 
   test("leaves the properties absent when only special-note references are listed", () => {
     const settings = parseSettings(
-      wrap('<w:endnotePr><w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr>'),
+      wrap(
+        '<w:endnotePr><w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr>',
+      ),
     );
     expect(settings.endnotePr).toBeUndefined();
   });

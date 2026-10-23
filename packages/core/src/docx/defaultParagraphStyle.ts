@@ -63,11 +63,15 @@ export const mintDefaultParagraphStyle = ({
     type: "paragraph",
     name: BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
     default: true,
-    ...(hasDocDefaults ? {} : { pPr: { ...BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING } }),
+    ...(hasDocDefaults
+      ? {}
+      : { pPr: { ...BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING } }),
   };
 };
 
-export const resolveDefaultParagraphStyle = (styles: Iterable<Style>): Style | undefined => {
+export const resolveDefaultParagraphStyle = (
+  styles: Iterable<Style>,
+): Style | undefined => {
   let flagged: Style | undefined;
   let namedBuiltIn: Style | undefined;
   let idBuiltIn: Style | undefined;
@@ -78,10 +82,16 @@ export const resolveDefaultParagraphStyle = (styles: Iterable<Style>): Style | u
     if (style.default) {
       flagged = style;
     }
-    if (namedBuiltIn === undefined && style.name === BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME) {
+    if (
+      namedBuiltIn === undefined &&
+      style.name === BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME
+    ) {
       namedBuiltIn = style;
     }
-    if (idBuiltIn === undefined && style.styleId === BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID) {
+    if (
+      idBuiltIn === undefined &&
+      style.styleId === BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID
+    ) {
       idBuiltIn = style;
     }
   }

@@ -1,19 +1,22 @@
-import { expect, setDefaultTimeout, test } from "bun:test";
 import { panic } from "better-result";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import {
-  insertedTextBoxDocument,
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
   INSERTED_TEXT_BOX_STYLE,
+  insertedTextBoxDocument,
 } from "../__tests__/insertedTextBoxDocument";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-
 import {
   createFolioAIEditSnapshotWithStyleResolver,
   remapFolioAIEditSnapshotStyleReferences,
   sourceDocumentOf,
 } from "../ai-edits/snapshot";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
@@ -43,7 +46,10 @@ test("inserted resource rebinding preserves full-source identities across duplic
     // this projection boundary and therefore cannot exercise these collisions.
     const leading = schema.node(
       "paragraph",
-      { paraId: identity === "duplicate" ? "A1000001" : null, styleId: ANCHOR_STYLE },
+      {
+        paraId: identity === "duplicate" ? "A1000001" : null,
+        styleId: ANCHOR_STYLE,
+      },
       [schema.text("Leading unchanged anchor")],
     );
     const insertion = schema.node(
@@ -57,7 +63,10 @@ test("inserted resource rebinding preserves full-source identities across duplic
     );
     const trailing = schema.node(
       "paragraph",
-      { paraId: identity === "duplicate" ? "A1000003" : null, styleId: ANCHOR_STYLE },
+      {
+        paraId: identity === "duplicate" ? "A1000003" : null,
+        styleId: ANCHOR_STYLE,
+      },
       [schema.text("Trailing unchanged anchor")],
     );
     const base = createFolioAIEditSnapshotWithStyleResolver(
@@ -71,7 +80,8 @@ test("inserted resource rebinding preserves full-source identities across duplic
     const originalBlocks = revised.blocks.map((block) => ({ ...block }));
     const insertedBlock = revised.blocks.at(1);
     expect(insertedBlock?.id).toBe("seq-0002");
-    if (identity === "positional") expect(insertedBlock?.idStability).toBe("positional");
+    if (identity === "positional")
+      expect(insertedBlock?.idStability).toBe("positional");
 
     const projection = createInsertedResourceProjection({ base, revised });
     expect(projection.revisedBlockIds).toEqual([insertedBlock?.id]);
@@ -138,25 +148,41 @@ test("inserted nested carriers project and rebind every paragraph exactly once",
               toProseDoc(revisedDocument),
               createStyleResolver(revisedDocument.package.styles),
             );
-            const insertedBlocks = revised.blocks.filter(({ text }) => text !== "Unchanged anchor");
-            const expectedTexts = Array.from({ length: carrierCount }, (_, carrierIndex) => {
-              const carrierSuffix =
-                carrierCount === 1 ? suffix : `${suffix} carrier ${carrierIndex + 1}`;
-              return [
-                `Parent text ${carrierSuffix}`,
-                ...Array.from(
-                  { length: innerCount },
-                  (_innerValue, innerIndex) =>
-                    `Inner text ${carrierSuffix}${innerCount === 1 ? "" : ` ${innerIndex + 1}`}`,
-                ),
-              ];
-            }).flat();
+            const insertedBlocks = revised.blocks.filter(
+              ({ text }) => text !== "Unchanged anchor",
+            );
+            const expectedTexts = Array.from(
+              { length: carrierCount },
+              (_, carrierIndex) => {
+                const carrierSuffix =
+                  carrierCount === 1
+                    ? suffix
+                    : `${suffix} carrier ${carrierIndex + 1}`;
+                return [
+                  `Parent text ${carrierSuffix}`,
+                  ...Array.from(
+                    { length: innerCount },
+                    (_innerValue, innerIndex) =>
+                      `Inner text ${carrierSuffix}${innerCount === 1 ? "" : ` ${innerIndex + 1}`}`,
+                  ),
+                ];
+              },
+            ).flat();
             const expectedCount = carrierCount * (1 + innerCount);
-            expect(insertedBlocks.map(({ text }) => text)).toEqual(expectedTexts);
-            const projection = createInsertedResourceProjection({ base, revised });
+            expect(insertedBlocks.map(({ text }) => text)).toEqual(
+              expectedTexts,
+            );
+            const projection = createInsertedResourceProjection({
+              base,
+              revised,
+            });
             expect(projection.snapshot.blocks).toHaveLength(expectedCount);
-            expect(projection.revisedBlockIds).toEqual(insertedBlocks.map(({ id }) => id));
-            expect(new Set(projection.revisedBlockIds).size).toBe(expectedCount);
+            expect(projection.revisedBlockIds).toEqual(
+              insertedBlocks.map(({ id }) => id),
+            );
+            expect(new Set(projection.revisedBlockIds).size).toBe(
+              expectedCount,
+            );
             const rebound = remapFolioAIEditSnapshotStyleReferences({
               snapshot: projection.snapshot,
               styleIdMap: new Map([[INSERTED_TEXT_BOX_STYLE, IMPORTED_STYLE]]),
@@ -172,11 +198,13 @@ test("inserted nested carriers project and rebind every paragraph exactly once",
                 styleId: IMPORTED_STYLE,
               });
             }
-            expect(revised.blocks.filter(({ text }) => text === "Unchanged anchor")).toEqual(
-              base.blocks,
-            );
+            expect(
+              revised.blocks.filter(({ text }) => text === "Unchanged anchor"),
+            ).toEqual(base.blocks);
             for (const block of insertedBlocks) {
-              expect(expectParagraphBlock(block).styleId).toBe(INSERTED_TEXT_BOX_STYLE);
+              expect(expectParagraphBlock(block).styleId).toBe(
+                INSERTED_TEXT_BOX_STYLE,
+              );
             }
           }
         }

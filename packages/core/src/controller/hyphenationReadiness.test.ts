@@ -117,7 +117,10 @@ describe("createHyphenationReadiness", () => {
     expect(latecomer.seen).toEqual({ relayouts: 0, errors: ["sk"] });
     expect(attempts).toBe(1);
     expect(recorded).toEqual([
-      { dictionary: "sk", message: "The sk hyphenation dictionary could not be loaded." },
+      {
+        dictionary: "sk",
+        message: "The sk hyphenation dictionary could not be loaded.",
+      },
     ]);
     expect(hyphenationDictionaryStatus("sk")).toBe("failed");
   });

@@ -1,4 +1,9 @@
-import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fixture";
+import {
+  ensureLiveView,
+  expect,
+  forEachAdapter,
+  openEditor,
+} from "./parity-fixture";
 
 // Both adapters now wire `createAIEditSnapshot` over the shared
 // `@stll/folio-core/ai-edits` snapshot builder. Driving it through the bridge
@@ -6,18 +11,34 @@ import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fix
 // list in each adapter — the precondition the AI chat composer gates "send" on.
 // Because both playgrounds parse the same fixture with the same core builder,
 // the block count is deterministic and identical across React and Vue.
-forEachAdapter("ai-edit: createAIEditSnapshot yields blocks", async (adapter, { page }) => {
-  await openEditor(page, adapter);
-  await ensureLiveView(page);
+forEachAdapter(
+  "ai-edit: createAIEditSnapshot yields blocks",
+  async (adapter, { page }) => {
+    await openEditor(page, adapter);
+    await ensureLiveView(page);
 
-  const blockCount = await page.evaluate(() => window.__folioParity?.aiSnapshotBlockCount() ?? -1);
+    const blockCount = await page.evaluate(
+      () => window.__folioParity?.aiSnapshotBlockCount() ?? -1,
+    );
 
-  expect(blockCount).toBeGreaterThan(0);
-});
+    expect(blockCount).toBeGreaterThan(0);
+  },
+);
 
-forEachAdapter("ai-edit: pending suggestions export and reload", async (adapter, { page }) => {
-  await openEditor(page, adapter, "tracked-insertion-boundary.docx");
-  await ensureLiveView(page);
-  const result = await page.evaluate(() => window.__folioParity?.pendingSuggestionPersistence());
-  expect(result).toEqual({ exported: 1, restaged: 1, stale: 0, active: 1, version: 1 });
-});
+forEachAdapter(
+  "ai-edit: pending suggestions export and reload",
+  async (adapter, { page }) => {
+    await openEditor(page, adapter, "tracked-insertion-boundary.docx");
+    await ensureLiveView(page);
+    const result = await page.evaluate(() =>
+      window.__folioParity?.pendingSuggestionPersistence(),
+    );
+    expect(result).toEqual({
+      exported: 1,
+      restaged: 1,
+      stale: 0,
+      active: 1,
+      version: 1,
+    });
+  },
+);

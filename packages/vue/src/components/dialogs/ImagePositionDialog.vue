@@ -15,32 +15,56 @@
     <div class="ipd-dialog__body">
       <!-- Horizontal -->
       <fieldset class="ipd-fieldset">
-        <legend class="ipd-legend">{{ t("dialogs.imagePosition.horizontal") }}</legend>
+        <legend class="ipd-legend">
+          {{ t("dialogs.imagePosition.horizontal") }}
+        </legend>
         <div class="ipd-row">
           <label class="ipd-label">Mode</label>
           <select v-model="hMode" class="ipd-select">
-            <option value="align">{{ t("dialogs.imagePosition.alignment") }}</option>
-            <option value="offset">{{ t("dialogs.imagePosition.offset") }}</option>
+            <option value="align">
+              {{ t("dialogs.imagePosition.alignment") }}
+            </option>
+            <option value="offset">
+              {{ t("dialogs.imagePosition.offset") }}
+            </option>
           </select>
         </div>
         <div v-if="hMode === 'align'" class="ipd-row">
-          <label class="ipd-label">{{ t("dialogs.imagePosition.align") }}</label>
+          <label class="ipd-label">{{
+            t("dialogs.imagePosition.align")
+          }}</label>
           <select v-model="hAlign" class="ipd-select">
-            <option value="left">{{ t("dialogs.imagePosition.alignOptions.left") }}</option>
-            <option value="center">{{ t("dialogs.imagePosition.alignOptions.center") }}</option>
-            <option value="right">{{ t("dialogs.imagePosition.alignOptions.right") }}</option>
+            <option value="left">
+              {{ t("dialogs.imagePosition.alignOptions.left") }}
+            </option>
+            <option value="center">
+              {{ t("dialogs.imagePosition.alignOptions.center") }}
+            </option>
+            <option value="right">
+              {{ t("dialogs.imagePosition.alignOptions.right") }}
+            </option>
           </select>
         </div>
         <div v-else class="ipd-row">
-          <label class="ipd-label">{{ t("dialogs.imagePosition.offsetPx") }}</label>
+          <label class="ipd-label">{{
+            t("dialogs.imagePosition.offsetPx")
+          }}</label>
           <input v-model.number="hOffset" type="number" class="ipd-input" />
         </div>
         <div class="ipd-row">
-          <label class="ipd-label">{{ t("dialogs.imagePosition.relativeTo") }}</label>
+          <label class="ipd-label">{{
+            t("dialogs.imagePosition.relativeTo")
+          }}</label>
           <select v-model="hRelativeTo" class="ipd-select">
-            <option value="page">{{ t("dialogs.imagePosition.relativeOptions.page") }}</option>
-            <option value="column">{{ t("dialogs.imagePosition.relativeOptions.column") }}</option>
-            <option value="margin">{{ t("dialogs.imagePosition.relativeOptions.margin") }}</option>
+            <option value="page">
+              {{ t("dialogs.imagePosition.relativeOptions.page") }}
+            </option>
+            <option value="column">
+              {{ t("dialogs.imagePosition.relativeOptions.column") }}
+            </option>
+            <option value="margin">
+              {{ t("dialogs.imagePosition.relativeOptions.margin") }}
+            </option>
             <option value="character">
               {{ t("dialogs.imagePosition.relativeOptions.character") }}
             </option>
@@ -50,35 +74,59 @@
 
       <!-- Vertical -->
       <fieldset class="ipd-fieldset">
-        <legend class="ipd-legend">{{ t("dialogs.imagePosition.vertical") }}</legend>
+        <legend class="ipd-legend">
+          {{ t("dialogs.imagePosition.vertical") }}
+        </legend>
         <div class="ipd-row">
           <label class="ipd-label">Mode</label>
           <select v-model="vMode" class="ipd-select">
-            <option value="align">{{ t("dialogs.imagePosition.alignment") }}</option>
-            <option value="offset">{{ t("dialogs.imagePosition.offset") }}</option>
+            <option value="align">
+              {{ t("dialogs.imagePosition.alignment") }}
+            </option>
+            <option value="offset">
+              {{ t("dialogs.imagePosition.offset") }}
+            </option>
           </select>
         </div>
         <div v-if="vMode === 'align'" class="ipd-row">
-          <label class="ipd-label">{{ t("dialogs.imagePosition.align") }}</label>
+          <label class="ipd-label">{{
+            t("dialogs.imagePosition.align")
+          }}</label>
           <select v-model="vAlign" class="ipd-select">
-            <option value="top">{{ t("dialogs.imagePosition.alignOptions.top") }}</option>
-            <option value="center">{{ t("dialogs.imagePosition.alignOptions.center") }}</option>
-            <option value="bottom">{{ t("dialogs.imagePosition.alignOptions.bottom") }}</option>
+            <option value="top">
+              {{ t("dialogs.imagePosition.alignOptions.top") }}
+            </option>
+            <option value="center">
+              {{ t("dialogs.imagePosition.alignOptions.center") }}
+            </option>
+            <option value="bottom">
+              {{ t("dialogs.imagePosition.alignOptions.bottom") }}
+            </option>
           </select>
         </div>
         <div v-else class="ipd-row">
-          <label class="ipd-label">{{ t("dialogs.imagePosition.offsetPx") }}</label>
+          <label class="ipd-label">{{
+            t("dialogs.imagePosition.offsetPx")
+          }}</label>
           <input v-model.number="vOffset" type="number" class="ipd-input" />
         </div>
         <div class="ipd-row">
-          <label class="ipd-label">{{ t("dialogs.imagePosition.relativeTo") }}</label>
+          <label class="ipd-label">{{
+            t("dialogs.imagePosition.relativeTo")
+          }}</label>
           <select v-model="vRelativeTo" class="ipd-select">
-            <option value="page">{{ t("dialogs.imagePosition.relativeOptions.page") }}</option>
-            <option value="margin">{{ t("dialogs.imagePosition.relativeOptions.margin") }}</option>
+            <option value="page">
+              {{ t("dialogs.imagePosition.relativeOptions.page") }}
+            </option>
+            <option value="margin">
+              {{ t("dialogs.imagePosition.relativeOptions.margin") }}
+            </option>
             <option value="paragraph">
               {{ t("dialogs.imagePosition.relativeOptions.paragraph") }}
             </option>
-            <option value="line">{{ t("dialogs.imagePosition.relativeOptions.line") }}</option>
+            <option value="line">
+              {{ t("dialogs.imagePosition.relativeOptions.line") }}
+            </option>
           </select>
         </div>
       </fieldset>
@@ -87,33 +135,62 @@
       <fieldset class="ipd-fieldset">
         <legend class="ipd-legend">Distance from text (px)</legend>
         <div class="ipd-row">
-          <label class="ipd-label">{{ t("dialogs.imagePosition.alignOptions.top") }}</label>
-          <input v-model.number="distTop" type="number" class="ipd-input" min="0" />
+          <label class="ipd-label">{{
+            t("dialogs.imagePosition.alignOptions.top")
+          }}</label>
+          <input
+            v-model.number="distTop"
+            type="number"
+            class="ipd-input"
+            min="0"
+          />
           <label class="ipd-label" style="width: 60px">{{
             t("dialogs.imagePosition.alignOptions.bottom")
           }}</label>
-          <input v-model.number="distBottom" type="number" class="ipd-input" min="0" />
+          <input
+            v-model.number="distBottom"
+            type="number"
+            class="ipd-input"
+            min="0"
+          />
         </div>
         <div class="ipd-row">
-          <label class="ipd-label">{{ t("dialogs.imagePosition.alignOptions.left") }}</label>
-          <input v-model.number="distLeft" type="number" class="ipd-input" min="0" />
+          <label class="ipd-label">{{
+            t("dialogs.imagePosition.alignOptions.left")
+          }}</label>
+          <input
+            v-model.number="distLeft"
+            type="number"
+            class="ipd-input"
+            min="0"
+          />
           <label class="ipd-label" style="width: 60px">{{
             t("dialogs.imagePosition.alignOptions.right")
           }}</label>
-          <input v-model.number="distRight" type="number" class="ipd-input" min="0" />
+          <input
+            v-model.number="distRight"
+            type="number"
+            class="ipd-input"
+            min="0"
+          />
         </div>
       </fieldset>
     </div>
 
     <div class="ipd-dialog__footer">
-      <button class="ipd-btn" @click="$emit('close')">{{ t("common.cancel") }}</button>
-      <button class="ipd-btn ipd-btn--primary" @click="apply">{{ t("common.apply") }}</button>
+      <button class="ipd-btn" @click="$emit('close')">
+        {{ t("common.cancel") }}
+      </button>
+      <button class="ipd-btn ipd-btn--primary" @click="apply">
+        {{ t("common.apply") }}
+      </button>
     </div>
   </FolioDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
+
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -187,11 +264,15 @@ function apply() {
   const data: ImagePositionData = {
     horizontal: {
       relativeTo: hRelativeTo.value,
-      ...(hMode.value === "align" ? { align: hAlign.value } : { posOffset: hOffset.value }),
+      ...(hMode.value === "align"
+        ? { align: hAlign.value }
+        : { posOffset: hOffset.value }),
     },
     vertical: {
       relativeTo: vRelativeTo.value,
-      ...(vMode.value === "align" ? { align: vAlign.value } : { posOffset: vOffset.value }),
+      ...(vMode.value === "align"
+        ? { align: vAlign.value }
+        : { posOffset: vOffset.value }),
     },
     distTop: distTop.value,
     distBottom: distBottom.value,

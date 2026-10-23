@@ -1,9 +1,9 @@
 import type { TextFormatting } from "../types/document";
 import {
+  type AuthoredRunFormattingValues,
   RUN_FORMATTING_BOOLEAN_PROPERTIES,
   RUN_FORMATTING_PROPERTY_SPECS,
   RUN_FORMATTING_VALUE_PROPERTIES,
-  type AuthoredRunFormattingValues,
   type RunFormattingBooleanProperty,
   type RunFormattingOverrideAttrs,
 } from "./schema/marks";
@@ -23,7 +23,9 @@ export const hasAuthoredRunFormattingProvenance = ({
   (_authoredValues != null && Object.keys(_authoredValues).length > 0);
 
 /** Whether an override mark still carries any rendering or authorship signal. */
-export const hasRunFormattingOverrideAttrs = (attrs: RunFormattingOverrideAttrs): boolean => {
+export const hasRunFormattingOverrideAttrs = (
+  attrs: RunFormattingOverrideAttrs,
+): boolean => {
   if (hasAuthoredRunFormattingProvenance(attrs)) {
     return true;
   }

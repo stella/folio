@@ -18,11 +18,13 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
 import {
-  OperationSession,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
   openReviewer,
+  OperationSession,
   paragraphsDocx,
   reopened,
   reopenedAccepted,
@@ -30,15 +32,20 @@ import {
   reviewerPresentation,
   textRun,
 } from "../__tests__/operationBatchDocuments";
-import { createDocx } from "../docx/rezip";
-import { docxToMarkdown } from "../docx/server/docxToMarkdown";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
+import { createDocx } from "../docx/rezip";
+import { docxToMarkdown } from "../docx/server/docxToMarkdown";
 import { fromMarkdown } from "../markdown";
+import { readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import type { Comment, ParagraphContent } from "../types/document";
-import { changesFromSegments, planTextChanges, type TextChange } from "./minimal-replacement";
+import {
+  changesFromSegments,
+  planTextChanges,
+  type TextChange,
+} from "./minimal-replacement";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import { diffWordSegments } from "./word-diff";
 
@@ -46,18 +53,28 @@ setDefaultTimeout(propertyTestTimeout(60_000));
 
 type Mode = "direct" | "tracked-changes";
 
-const markdownAfter = async (source: string, mode: Mode, find: string, replace: string) => {
+const markdownAfter = async (
+  source: string,
+  mode: Mode,
+  find: string,
+  replace: string,
+) => {
   const reviewer = await openReviewer(await createDocx(fromMarkdown(source)));
   const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
   const result = reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       mode,
-      operations: [{ id: "replace", type: "replaceInBlock", blockId, find, replace }],
+      operations: [
+        { id: "replace", type: "replaceInBlock", blockId, find, replace },
+      ],
     },
     { undefinedReferences: "refuse" },
   );
-  const final = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
+  const final =
+    mode === "direct"
+      ? await reopened(reviewer)
+      : await reopenedAccepted(reviewer);
   const markdown = await docxToMarkdown(await final.toBuffer(), {
     annotations: "strip",
     trackedChanges: "clean",
@@ -66,11 +83,64 @@ const markdownAfter = async (source: string, mode: Mode, find: string, replace: 
   });
   return {
     result,
-    markdown: (typeof markdown === "string" ? markdown : markdown.markdown).trim(),
+    markdown: (typeof markdown === "string"
+      ? markdown
+      : markdown.markdown
+    ).trim(),
   };
 };
 
 describe("a replacement across a formatting boundary", () => {
+  test("a whole-block replacement inherits from the replaced block, not its predecessor", async () => {
+    const reviewer = await openReviewer(
+      await paragraphsDocx([
+        [textRun("Heading", { fontSize: 40 })],
+        [textRun("🚀")],
+      ]),
+    );
+    const blockId = reviewer.snapshot().blocks.at(1)?.id ?? "";
+    const headingId = reviewer.snapshot().blocks.at(0)?.id ?? "";
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "empty-heading",
+            type: "replaceInBlock",
+            blockId: headingId,
+            find: "Heading",
+            replace: "",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "replace",
+            type: "replaceInBlock",
+            blockId,
+            find: "🚀",
+            replace: "Customer",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+
+    expect(reviewer.snapshot().blocks.at(1)?.previewRuns).toEqual([
+      expect.objectContaining({ text: "Customer", fontSizePt: 11 }),
+    ]);
+    expect(
+      (await reopened(reviewer)).snapshot().blocks.at(1)?.previewRuns,
+    ).toEqual([expect.objectContaining({ text: "Customer", fontSizePt: 11 })]);
+  });
+
   test.each([
     [
       "a link",
@@ -103,7 +173,11 @@ describe("a replacement across a formatting boundary", () => {
     // `Supp` bold, `lier` plain: appending a letter keeps both runs, and the
     // accepted redline, which rewrites the word, allocates it the same way.
     const buffer = await paragraphsDocx([
-      [textRun("The "), textRun("Supp", { bold: true }), textRun("lier agrees.")],
+      [
+        textRun("The "),
+        textRun("Supp", { bold: true }),
+        textRun("lier agrees."),
+      ],
     ]);
     const presentations = [];
     for (const mode of ["direct", "tracked-changes"] as const) {
@@ -114,12 +188,21 @@ describe("a replacement across a formatting boundary", () => {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode,
           operations: [
-            { id: "r", type: "replaceInBlock", blockId, find: "Supplier", replace: "Suppliers" },
+            {
+              id: "r",
+              type: "replaceInBlock",
+              blockId,
+              find: "Supplier",
+              replace: "Suppliers",
+            },
           ],
         },
         { undefinedReferences: "refuse" },
       );
-      const final = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
+      const final =
+        mode === "direct"
+          ? await reopened(reviewer)
+          : await reopenedAccepted(reviewer);
       presentations.push(await markdownOf(final));
     }
     expect(presentations[0]).toBe("The **Supp**liers agrees.");
@@ -127,7 +210,9 @@ describe("a replacement across a formatting boundary", () => {
   });
 });
 
-const markdownOf = async (reviewer: Awaited<ReturnType<typeof openReviewer>>) => {
+const markdownOf = async (
+  reviewer: Awaited<ReturnType<typeof openReviewer>>,
+) => {
   const markdown = await docxToMarkdown(await reviewer.toBuffer(), {
     annotations: "strip",
     trackedChanges: "clean",
@@ -141,7 +226,17 @@ const markdownOf = async (reviewer: Awaited<ReturnType<typeof openReviewer>>) =>
 // The class: every text-changing operation, over every kind of mark boundary.
 // ---------------------------------------------------------------------------
 
-const WORDS = ["Seller", "shall", "deliver", "the", "goods", "on", "time", "Buyer", "pays"];
+const WORDS = [
+  "Seller",
+  "shall",
+  "deliver",
+  "the",
+  "goods",
+  "on",
+  "time",
+  "Buyer",
+  "pays",
+];
 
 const words = fc
   .array(fc.constantFrom(...WORDS), { minLength: 1, maxLength: 3 })
@@ -163,8 +258,17 @@ const itemArbitrary: fc.Arbitrary<Item> = fc.oneof(
       italic: fc.boolean(),
     }),
   },
-  { weight: 1, arbitrary: fc.record({ kind: fc.constant("link" as const), text: words }) },
-  { weight: 1, arbitrary: fc.record({ kind: fc.constant("comment" as const), text: words }) },
+  {
+    weight: 1,
+    arbitrary: fc.record({ kind: fc.constant("link" as const), text: words }),
+  },
+  {
+    weight: 1,
+    arbitrary: fc.record({
+      kind: fc.constant("comment" as const),
+      text: words,
+    }),
+  },
   {
     weight: 1,
     arbitrary: fc.record({
@@ -240,19 +344,25 @@ const editArbitrary = fc.record({
   ),
 });
 
-type Edit = typeof editArbitrary extends fc.Arbitrary<infer Value> ? Value : never;
+type Edit =
+  typeof editArbitrary extends fc.Arbitrary<infer Value> ? Value : never;
 
 const mutate = (text: string, mutations: Edit["mutations"]): string => {
   let result = text;
   for (const { at, remove, insert } of mutations) {
     const position = Math.floor(at * result.length);
-    result = result.slice(0, position) + insert + result.slice(position + remove);
+    result =
+      result.slice(0, position) + insert + result.slice(position + remove);
   }
   return result;
 };
 
 /** The operation `edit` describes on block `blockId` reading `text`, if it describes one. */
-const operationFor = (edit: Edit, blockId: string, text: string): FolioDocumentOperation | null => {
+const operationFor = (
+  edit: Edit,
+  blockId: string,
+  text: string,
+): FolioDocumentOperation | null => {
   const start = Math.floor(edit.sliceStart * text.length);
   const end = Math.min(
     text.length,
@@ -262,7 +372,9 @@ const operationFor = (edit: Edit, blockId: string, text: string): FolioDocumentO
   switch (edit.kind) {
     case "replaceInBlock": {
       const replace = mutate(find, edit.mutations);
-      return find.length === 0 || replace === find || text.indexOf(find) !== text.lastIndexOf(find)
+      return find.length === 0 ||
+        replace === find ||
+        text.indexOf(find) !== text.lastIndexOf(find)
         ? null
         : { id: "edit", type: "replaceInBlock", blockId, find, replace };
     }
@@ -288,10 +400,21 @@ const operationFor = (edit: Edit, blockId: string, text: string): FolioDocumentO
       const space = text.indexOf(" ", start);
       return space <= 0 || space + 1 >= text.length
         ? null
-        : { id: "edit", type: "splitBlock", blockId, offset: space, separator: " " };
+        : {
+            id: "edit",
+            type: "splitBlock",
+            blockId,
+            offset: space,
+            separator: " ",
+          };
     }
     case "mergeBlockWithNext":
-      return { id: "edit", type: "mergeBlockWithNext", blockId, separator: " " };
+      return {
+        id: "edit",
+        type: "mergeBlockWithNext",
+        blockId,
+        separator: " ",
+      };
     case "deleteBlock":
       return { id: "edit", type: "deleteBlock", blockId };
     case "insertAfterBlock":
@@ -305,7 +428,10 @@ const operationFor = (edit: Edit, blockId: string, text: string): FolioDocumentO
 };
 
 /** Where each character `changes` keeps from `source` lands in the result. */
-const keptCharacters = (source: string, changes: readonly TextChange[]): Map<number, number> => {
+const keptCharacters = (
+  source: string,
+  changes: readonly TextChange[],
+): Map<number, number> => {
   const kept = new Map<number, number>();
   let shift = 0;
   let cursor = 0;
@@ -330,7 +456,10 @@ const keptCharacters = (source: string, changes: readonly TextChange[]): Map<num
  * repeated word matched at a different occurrence), the two keep different
  * characters of equal text, and only the text can be compared.
  */
-const redlineKeepsWhatDirectKeeps = (source: string, replacement: string): boolean => {
+const redlineKeepsWhatDirectKeeps = (
+  source: string,
+  replacement: string,
+): boolean => {
   const direct = keptCharacters(source, planTextChanges(source, replacement));
   const tracked = keptCharacters(
     source,
@@ -353,7 +482,10 @@ const replacedSpan = (
       return { source: operation.find, replacement: operation.replace };
     case "replaceRange":
       return {
-        source: text.slice(operation.range.startOffset, operation.range.endOffset),
+        source: text.slice(
+          operation.range.startOffset,
+          operation.range.endOffset,
+        ),
         replacement: operation.replace,
       };
     case "replaceBlock":
@@ -364,6 +496,56 @@ const replacedSpan = (
 };
 
 describe("an edit applied directly and the same edit accepted", () => {
+  test("allocates several new-list insertions alike in both modes", async () => {
+    const property = fc.asyncProperty(
+      fc.integer({ min: 2, max: 6 }),
+      async (count) => {
+        const base = await openReviewer(
+          await paragraphsDocx(
+            Array.from({ length: count }, (_, index) => [
+              textRun(`Anchor ${String(index)}`),
+            ]),
+          ),
+        );
+        const operations = base.snapshot().blocks.map(({ id }, index) => ({
+          id: `insert-${String(index)}`,
+          type: "insertAfterBlock" as const,
+          blockId: id,
+          text: `List ${String(index)}`,
+          numbering: { kind: "newList" as const, format: "bullet" as const },
+        }));
+        const direct = new OperationSession(base.state);
+        const tracked = new OperationSession(base.state);
+        expect(direct.apply("direct", operations).skipped).toEqual([]);
+        expect(tracked.apply("tracked-changes", operations).skipped).toEqual(
+          [],
+        );
+        tracked.acceptAll();
+
+        const instances = (session: OperationSession) => {
+          const result: Record<string, number> = {};
+          session.state.doc.descendants((node) => {
+            if (
+              node.type.name !== "paragraph" ||
+              !node.textContent.startsWith("List ")
+            )
+              return true;
+            const numbering = readParagraphNumberingAttr(node.attrs["numPr"]);
+            if (numbering?.kind === "reference")
+              result[node.textContent] = numbering.numId;
+            return false;
+          });
+          return result;
+        };
+        expect(instances(tracked)).toEqual(instances(direct));
+      },
+    );
+    await fc.assert(
+      property,
+      propertyConfig({ numRuns: 30, seed: 1101252625 }),
+    );
+  });
+
   test("carries disjoint comments across a saved tracked replacement", async () => {
     const { content, comments } = paragraphOf([
       { kind: "comment", text: "Seller " },
@@ -415,8 +597,11 @@ describe("an edit applied directly and the same edit accepted", () => {
         async (items, edit, placement) => {
           const { content, comments } = paragraphOf(items);
           const untouched = [textRun("Untouched paragraph.")];
-          const paragraphs = placement === "first" ? [content, untouched] : [untouched, content];
-          const base = await openReviewer(await paragraphsDocx(paragraphs, comments));
+          const paragraphs =
+            placement === "first" ? [content, untouched] : [untouched, content];
+          const base = await openReviewer(
+            await paragraphsDocx(paragraphs, comments),
+          );
           const block = base.snapshot().blocks[placement === "first" ? 0 : 1];
           const operation = block && operationFor(edit, block.id, block.text);
           if (!block || !operation) {
@@ -428,11 +613,19 @@ describe("an edit applied directly and the same edit accepted", () => {
           const trackedResult = tracked.apply("tracked-changes", [operation]);
           // Both modes take the edit, or both refuse it for the same reason.
           expect(trackedResult.skipped).toEqual(directResult.skipped);
-          expect(trackedResult.normalizations ?? []).toEqual(directResult.normalizations ?? []);
+          expect(trackedResult.normalizations ?? []).toEqual(
+            directResult.normalizations ?? [],
+          );
           tracked.acceptAll();
           const span = replacedSpan(operation, block.text);
-          if (span !== null && !redlineKeepsWhatDirectKeeps(span.source, span.replacement)) {
-            expect({ operation, text: tracked.presentation().map(({ text }) => text) }).toEqual({
+          if (
+            span !== null &&
+            !redlineKeepsWhatDirectKeeps(span.source, span.replacement)
+          ) {
+            expect({
+              operation,
+              text: tracked.presentation().map(({ text }) => text),
+            }).toEqual({
               operation,
               text: direct.presentation().map(({ text }) => text),
             });
@@ -442,14 +635,23 @@ describe("an edit applied directly and the same edit accepted", () => {
           // stretch the redline rewrites stay by its deletion, while the direct
           // edit keeps the text around them: where such an anchor lands is the
           // planners' alignment, not the formatting rule, and is left out.
-          expect({ operation, document: tracked.presentation({ withAnchors: false }) }).toEqual({
+          expect({
+            operation,
+            document: tracked.presentation({ withAnchors: false }),
+          }).toEqual({
             operation,
             document: direct.presentation({ withAnchors: false }),
           });
         },
       );
-      await fc.assert(equivalenceProperty, propertyConfig({ numRuns: 150, seed: 1383974287 }));
-      await fc.assert(equivalenceProperty, propertyConfig({ numRuns: 150, seed: 1938427620 }));
+      await fc.assert(
+        equivalenceProperty,
+        propertyConfig({ numRuns: 150, seed: 1383974287 }),
+      );
+      await fc.assert(
+        equivalenceProperty,
+        propertyConfig({ numRuns: 150, seed: 1938427620 }),
+      );
       await fc.assert(equivalenceProperty, propertyConfig({ numRuns: 150 }));
     },
     propertyTestTimeout(300_000),

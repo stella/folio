@@ -1,10 +1,14 @@
-import { evaluateCanonicalPage } from "./canonicalPageNavigation";
 import type { Page } from "@playwright/test";
-import type { BrowserInputAction } from "./browserInputTrace";
+
 import { driveBrowserIme } from "./browserImeDriver";
+import type { BrowserInputAction } from "./browserInputTrace";
+import { evaluateCanonicalPage } from "./canonicalPageNavigation";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
-export const driveCanonicalBrowserInput = async (page: Page, action: BrowserInputAction) => {
+export const driveCanonicalBrowserInput = async (
+  page: Page,
+  action: BrowserInputAction,
+) => {
   switch (action.kind) {
     case "typing":
       await page.keyboard.insertText(action.text);
@@ -32,7 +36,9 @@ export const driveCanonicalBrowserInput = async (page: Page, action: BrowserInpu
       return;
     case "historyBurst":
       for (const key of action.keys) {
-        await page.keyboard.press(key === "undo" ? `${MODIFIER}+z` : `${MODIFIER}+Shift+z`);
+        await page.keyboard.press(
+          key === "undo" ? `${MODIFIER}+z` : `${MODIFIER}+Shift+z`,
+        );
       }
       return;
     case "pastePlain":
@@ -41,13 +47,16 @@ export const driveCanonicalBrowserInput = async (page: Page, action: BrowserInpu
     case "pasteListHtml":
     case "pasteTable":
     case "pasteMultiBlock":
-      await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+      await page
+        .context()
+        .grantPermissions(["clipboard-read", "clipboard-write"]);
       await evaluateCanonicalPage(page, () =>
         page.evaluate(async ({ plain, html }) => {
           const parts: Record<string, Blob> = {
             "text/plain": new Blob([plain], { type: "text/plain" }),
           };
-          if (html) parts["text/html"] = new Blob([html], { type: "text/html" });
+          if (html)
+            parts["text/html"] = new Blob([html], { type: "text/html" });
           await navigator.clipboard.write([new ClipboardItem(parts)]);
         }, action),
       );

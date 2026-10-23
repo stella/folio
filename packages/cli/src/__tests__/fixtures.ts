@@ -10,9 +10,12 @@ import path from "node:path";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml";
-const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
-const STYLES_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
+const R_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PKG_REL_NS =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+const STYLES_REL =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
 
 export type FixtureParagraph = {
   text: string;
@@ -25,19 +28,31 @@ export type FixtureParagraph = {
 };
 
 const escapeXml = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 
 /** A table: rows of cells, each cell one or more paragraphs. */
-export type FixtureTable = { rows: readonly (readonly (readonly FixtureParagraph[])[])[] };
+export type FixtureTable = {
+  rows: readonly (readonly (readonly FixtureParagraph[])[])[];
+};
 
 export type FixtureBlock = FixtureParagraph | FixtureTable;
 
 const runXml = ({ text, bold }: { text: string; bold?: boolean }): string =>
   `<w:r>${bold === true ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
 
-const paragraphXml = ({ text, runs, paraId, style }: FixtureParagraph): string => {
-  const id = paraId === undefined ? "" : ` w14:paraId="${paraId}" w14:textId="77777777"`;
-  const properties = style === undefined ? "" : `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>`;
+const paragraphXml = ({
+  text,
+  runs,
+  paraId,
+  style,
+}: FixtureParagraph): string => {
+  const id =
+    paraId === undefined ? "" : ` w14:paraId="${paraId}" w14:textId="77777777"`;
+  const properties =
+    style === undefined ? "" : `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>`;
   return `<w:p${id}>${properties}${(runs ?? [{ text }]).map(runXml).join("")}</w:p>`;
 };
 
@@ -61,7 +76,9 @@ const STYLES_XML =
   "</w:styles>";
 
 /** Build a minimal WordprocessingML package holding the given paragraphs and tables. */
-export const buildDocx = async (paragraphs: readonly FixtureBlock[]): Promise<Uint8Array> => {
+export const buildDocx = async (
+  paragraphs: readonly FixtureBlock[],
+): Promise<Uint8Array> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -126,7 +143,8 @@ const SENTENCES = [
   "Each party shall comply with all applicable laws and regulations in performing its obligations under this Agreement.",
 ];
 
-const paraIdOf = (index: number): string => (0x20000000 + index).toString(16).toUpperCase();
+const paraIdOf = (index: number): string =>
+  (0x20000000 + index).toString(16).toUpperCase();
 
 /**
  * A contract of about four pages: ten numbered clauses of three paragraphs
@@ -148,7 +166,11 @@ export const fourPageContract = (): FixtureBlock[] => {
     },
   ];
   for (const [clause, title] of CLAUSE_TITLES.entries()) {
-    blocks.push({ text: `${clause + 1}. ${title}`, paraId: id(), style: "Heading1" });
+    blocks.push({
+      text: `${clause + 1}. ${title}`,
+      paraId: id(),
+      style: "Heading1",
+    });
     for (let item = 1; item <= 3; item += 1) {
       const body = [0, 1, 2].map(
         (offset) => SENTENCES[(clause + item + offset) % SENTENCES.length],
@@ -157,14 +179,23 @@ export const fourPageContract = (): FixtureBlock[] => {
         clause === 6 && item === 2
           ? "The Supplier's total liability is capped at the fees paid. "
           : "";
-      blocks.push({ text: `${clause + 1}.${item} ${lead}${body.join(" ")}`, paraId: id() });
+      blocks.push({
+        text: `${clause + 1}.${item} ${lead}${body.join(" ")}`,
+        paraId: id(),
+      });
     }
     if (clause === 0) {
       blocks.push({
         rows: [
           [[{ text: "Party", paraId: id() }], [{ text: "Role", paraId: id() }]],
-          [[{ text: "Acme Ltd", paraId: id() }], [{ text: "Supplier", paraId: id() }]],
-          [[{ text: "Beta plc", paraId: id() }], [{ text: "Customer", paraId: id() }]],
+          [
+            [{ text: "Acme Ltd", paraId: id() }],
+            [{ text: "Supplier", paraId: id() }],
+          ],
+          [
+            [{ text: "Beta plc", paraId: id() }],
+            [{ text: "Customer", paraId: id() }],
+          ],
         ],
       });
     }
@@ -173,7 +204,10 @@ export const fourPageContract = (): FixtureBlock[] => {
 };
 
 /** A temporary directory removed by the returned `cleanup`. */
-export const makeTempDir = async (): Promise<{ dir: string; cleanup: () => Promise<void> }> => {
+export const makeTempDir = async (): Promise<{
+  dir: string;
+  cleanup: () => Promise<void>;
+}> => {
   // Real path: the CLI reports resolved paths, and the system temp
   // directory is behind a symlink on some platforms.
   const dir = await realpath(await mkdtemp(path.join(tmpdir(), "folio-cli-")));

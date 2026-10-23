@@ -6,11 +6,10 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import { completeListNumbering, type ListInstanceReference } from "../docx/listNumberingInstances";
 import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumberingReference,
-} from "./numberingAttr";
+  completeListNumbering,
+  type ListInstanceReference,
+} from "../docx/listNumberingInstances";
 import type { NumberingDefinitions } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import {
@@ -18,6 +17,10 @@ import {
   listRenderingFromAttrs,
   type ListRenderingSourceAttrs,
 } from "./listRenderingAttrs";
+import {
+  effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
+} from "./numberingAttr";
 
 const PARAGRAPH_NODE = "paragraph";
 
@@ -31,7 +34,10 @@ type ReferenceSink = {
  * states what it renders as. A reference with no rendering carries nothing to
  * define an instance from.
  */
-const collectReference = (attrs: ListRenderingSourceAttrs, sink: ReferenceSink): void => {
+const collectReference = (
+  attrs: ListRenderingSourceAttrs,
+  sink: ReferenceSink,
+): void => {
   const numbering = effectiveParagraphNumberingReference(
     paragraphNumberingSourcesFromBoundary({
       numPr: attrs.numPr,

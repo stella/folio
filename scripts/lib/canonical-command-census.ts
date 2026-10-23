@@ -37,14 +37,19 @@ const canonicalWrapperNames = new Set([
   "withCanonicalParagraphFormatting",
   "withCanonicalStartParagraphFormatting",
 ]);
-const canonicalCommandsFile = "packages/core/src/prosemirror/canonicalCommands.ts";
+const canonicalCommandsFile =
+  "packages/core/src/prosemirror/canonicalCommands.ts";
 
 const declarationName = (node: ts.Node): string | undefined => {
-  if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name !== undefined) {
+  if (
+    (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
+    node.name !== undefined
+  ) {
     return node.name.text;
   }
 
-  if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) return node.name.text;
+  if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name))
+    return node.name.text;
   return undefined;
 };
 
@@ -59,7 +64,11 @@ const moduleSpecifier = (node: ts.Node): string | undefined => {
   return undefined;
 };
 
-const addUnique = <T>(map: Map<string, T | null>, key: string, value: T): void => {
+const addUnique = <T>(
+  map: Map<string, T | null>,
+  key: string,
+  value: T,
+): void => {
   if (!map.has(key)) {
     map.set(key, value);
     return;
@@ -71,14 +80,26 @@ const importedBindings = (sourceFile: ts.SourceFile) => {
   const bindings = new Map<string, ImportBinding | null>();
   for (const statement of sourceFile.statements) {
     const specifier = moduleSpecifier(statement);
-    if (!specifier || !ts.isImportDeclaration(statement) || !statement.importClause) continue;
+    if (
+      !specifier ||
+      !ts.isImportDeclaration(statement) ||
+      !statement.importClause
+    )
+      continue;
 
     const clause = statement.importClause;
-    if (clause.name) addUnique(bindings, clause.name.text, { name: "default", source: specifier });
+    if (clause.name)
+      addUnique(bindings, clause.name.text, {
+        name: "default",
+        source: specifier,
+      });
 
     const namedBindings = clause.namedBindings;
     if (namedBindings && ts.isNamespaceImport(namedBindings)) {
-      addUnique(bindings, namedBindings.name.text, { name: "*", source: specifier });
+      addUnique(bindings, namedBindings.name.text, {
+        name: "*",
+        source: specifier,
+      });
     }
     if (namedBindings && ts.isNamedImports(namedBindings)) {
       for (const element of namedBindings.elements) {
@@ -109,20 +130,35 @@ const resolveModuleFile = (
   files: ReadonlyMap<string, FileIndex>,
 ) => {
   if (!specifier.startsWith(".")) return undefined;
-  const base = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
-  const candidates = [base, `${base}.ts`, `${base}.tsx`, path.posix.join(base, "index.ts")];
+  const base = path.posix.normalize(
+    path.posix.join(path.posix.dirname(file), specifier),
+  );
+  const candidates = [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    path.posix.join(base, "index.ts"),
+  ];
   return candidates.find((candidate) => files.has(candidate));
 };
 
-const propertyName = (name: ts.PropertyName | undefined): string | undefined => {
+const propertyName = (
+  name: ts.PropertyName | undefined,
+): string | undefined => {
   if (!name) return undefined;
-  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+  if (
+    ts.isIdentifier(name) ||
+    ts.isStringLiteral(name) ||
+    ts.isNumericLiteral(name)
+  ) {
     return name.text;
   }
   return undefined;
 };
 
-const commandInitializer = (command: ts.ObjectLiteralElementLike): ts.Node | undefined => {
+const commandInitializer = (
+  command: ts.ObjectLiteralElementLike,
+): ts.Node | undefined => {
   if (ts.isPropertyAssignment(command)) return command.initializer;
   if (ts.isMethodDeclaration(command)) return command;
   if (ts.isShorthandPropertyAssignment(command)) return command.name;
@@ -141,7 +177,10 @@ const unwrapExpression = (node: ts.Node): ts.Node => {
   return node;
 };
 
-const commandObjectRegistrations = (sourceFile: ts.SourceFile, file: string) => {
+const commandObjectRegistrations = (
+  sourceFile: ts.SourceFile,
+  file: string,
+) => {
   const registrations: CommandRegistration[] = [];
   const visit = (node: ts.Node): void => {
     if (
@@ -151,10 +190,15 @@ const commandObjectRegistrations = (sourceFile: ts.SourceFile, file: string) => 
       propertyName(node.name) === "commands"
     )
       throw new Error(`${file}: command registry shape cannot be censused`);
-    if (ts.isPropertyAssignment(node) && propertyName(node.name) === "commands") {
+    if (
+      ts.isPropertyAssignment(node) &&
+      propertyName(node.name) === "commands"
+    ) {
       const object = unwrapExpression(node.initializer);
       if (!ts.isObjectLiteralExpression(object))
-        throw new Error(`${file}: command registry must be an object literal for the census`);
+        throw new Error(
+          `${file}: command registry must be an object literal for the census`,
+        );
       for (const command of object.properties) {
         const name = propertyName(command.name);
         const initializer = commandInitializer(command);
@@ -172,7 +216,10 @@ const commandObjectRegistrations = (sourceFile: ts.SourceFile, file: string) => 
 };
 
 const declarationValue = (declaration: Declaration): ts.Node => {
-  if (ts.isVariableDeclaration(declaration.node) && declaration.node.initializer) {
+  if (
+    ts.isVariableDeclaration(declaration.node) &&
+    declaration.node.initializer
+  ) {
     return declaration.node.initializer;
   }
   return declaration.node;
@@ -242,7 +289,10 @@ export const censusUndescribedCanonicalCommands = (
     });
   }
 
-  const resolveDeclaration = (file: string, name: string): Declaration | undefined => {
+  const resolveDeclaration = (
+    file: string,
+    name: string,
+  ): Declaration | undefined => {
     const fileIndex = files.get(file);
     if (!fileIndex) return undefined;
     if (fileIndex.imports.has(name)) {
@@ -250,7 +300,8 @@ export const censusUndescribedCanonicalCommands = (
       if (!imported) return undefined;
       const importedFile = resolveModuleFile(file, imported.source, files);
       return importedFile
-        ? (files.get(importedFile)?.declarations.get(imported.name) ?? undefined)
+        ? (files.get(importedFile)?.declarations.get(imported.name) ??
+            undefined)
         : undefined;
     }
     return fileIndex.declarations.get(name) ?? undefined;
@@ -259,10 +310,15 @@ export const censusUndescribedCanonicalCommands = (
   const isCanonicalWrapper = (file: string, name: string): boolean => {
     const imported = files.get(file)?.imports.get(name);
     if (!imported || !canonicalWrapperNames.has(imported.name)) return false;
-    return resolveModuleFile(file, imported.source, files) === canonicalCommandsFile;
+    return (
+      resolveModuleFile(file, imported.source, files) === canonicalCommandsFile
+    );
   };
 
-  const proveDeclaration = (declaration: Declaration, visited: Set<string>): boolean => {
+  const proveDeclaration = (
+    declaration: Declaration,
+    visited: Set<string>,
+  ): boolean => {
     const declarationNameValue = declarationName(declaration.node);
     const key = `${declaration.file}#${declarationNameValue ?? declaration.node.pos}`;
     if (visited.has(key)) return false;
@@ -273,7 +329,10 @@ export const censusUndescribedCanonicalCommands = (
     if (ts.isVariableDeclaration(declaration.node)) {
       if (declaration.node.initializer === undefined) return false;
       const initializer = unwrapExpression(declaration.node.initializer);
-      if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) {
+      if (
+        ts.isArrowFunction(initializer) ||
+        ts.isFunctionExpression(initializer)
+      ) {
         const returns = returnedExpressions(initializer);
         return (
           returns.length > 0 &&
@@ -292,22 +351,30 @@ export const censusUndescribedCanonicalCommands = (
       returns.length > 0 &&
       returns.every(
         ({ expression }) =>
-          expression !== undefined && proveExpression(declaration.file, expression, nextVisited),
+          expression !== undefined &&
+          proveExpression(declaration.file, expression, nextVisited),
       )
     );
   };
 
-  const proveExpression = (file: string, input: ts.Node, visited: Set<string>): boolean => {
+  const proveExpression = (
+    file: string,
+    input: ts.Node,
+    visited: Set<string>,
+  ): boolean => {
     const expression = unwrapExpression(input);
     if (
       ts.isCallExpression(expression) &&
       ts.isIdentifier(unwrapExpression(expression.expression))
     ) {
       const callee = unwrapExpression(expression.expression);
-      if (ts.isIdentifier(callee) && isCanonicalWrapper(file, callee.text)) return true;
+      if (ts.isIdentifier(callee) && isCanonicalWrapper(file, callee.text))
+        return true;
       if (ts.isIdentifier(callee)) {
         const declaration = resolveDeclaration(file, callee.text);
-        return declaration !== undefined && proveDeclaration(declaration, visited);
+        return (
+          declaration !== undefined && proveDeclaration(declaration, visited)
+        );
       }
       return false;
     }
@@ -315,7 +382,9 @@ export const censusUndescribedCanonicalCommands = (
     if (ts.isIdentifier(expression)) {
       if (isCanonicalWrapper(file, expression.text)) return true;
       const declaration = resolveDeclaration(file, expression.text);
-      return declaration !== undefined && proveDeclaration(declaration, visited);
+      return (
+        declaration !== undefined && proveDeclaration(declaration, visited)
+      );
     }
 
     if (ts.isConditionalExpression(expression)) {
@@ -336,7 +405,8 @@ export const censusUndescribedCanonicalCommands = (
       returns.length > 0 &&
       returns.every(
         ({ expression }) =>
-          expression !== undefined && proveExpression(file, expression, new Set()),
+          expression !== undefined &&
+          proveExpression(file, expression, new Set()),
       )
     );
   };
@@ -344,7 +414,9 @@ export const censusUndescribedCanonicalCommands = (
   const registrations = sources.flatMap(({ file }) => {
     const normalizedFile = path.posix.normalize(file);
     const sourceFile = files.get(normalizedFile)?.sourceFile;
-    return sourceFile ? commandObjectRegistrations(sourceFile, normalizedFile) : [];
+    return sourceFile
+      ? commandObjectRegistrations(sourceFile, normalizedFile)
+      : [];
   });
 
   return registrations
@@ -359,7 +431,8 @@ export const checkCanonicalCommandBaseline = (
   baseline: readonly string[],
 ) => {
   const available = new Map<string, number>();
-  for (const command of baseline) available.set(command, (available.get(command) ?? 0) + 1);
+  for (const command of baseline)
+    available.set(command, (available.get(command) ?? 0) + 1);
   const additions: string[] = [];
   for (const command of current) {
     const count = available.get(command) ?? 0;

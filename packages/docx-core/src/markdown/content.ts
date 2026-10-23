@@ -61,13 +61,19 @@ const para = (runs: ParagraphContent[], styleId?: string): Paragraph => {
   };
 };
 
-const listPara = (runs: ParagraphContent[], rendering: ListRendering): Paragraph => ({
+const listPara = (
+  runs: ParagraphContent[],
+  rendering: ListRendering,
+): Paragraph => ({
   type: "paragraph",
   // Real numbering properties, not just display metadata: an editor's list
   // commands (Enter continues the list, Tab indents, toggle) and the live
   // marker counters all key off `numPr`.
   formatting: {
-    numPr: paragraphNumberingReference({ numId: rendering.numId, ilvl: rendering.level }),
+    numPr: paragraphNumberingReference({
+      numId: rendering.numId,
+      ilvl: rendering.level,
+    }),
   },
   listRendering: rendering,
   content: runs.length > 0 ? runs : [textRun("")],
@@ -107,7 +113,11 @@ const LIST_HANGING_INDENT_TWIPS = 360;
  */
 type NumIdLevels = Map<number, ListLevel>;
 
-const buildListLevel = (ilvl: number, isBullet: boolean, start: number): ListLevel => ({
+const buildListLevel = (
+  ilvl: number,
+  isBullet: boolean,
+  start: number,
+): ListLevel => ({
   ilvl,
   ...(!isBullet && { start }),
   numFmt: isBullet ? "bullet" : "decimal",
@@ -179,8 +189,15 @@ const listBlocks = (
 ): BlockContent[] => {
   const out: BlockContent[] = [];
   const start = Number(list.start) || 1;
-  const decimalLevels = Array.from({ length: level + 1 }, () => "decimal" as const);
-  const numId = resolveListNumId(state, parentNumId, buildListLevel(level, !list.ordered, start));
+  const decimalLevels = Array.from(
+    { length: level + 1 },
+    () => "decimal" as const,
+  );
+  const numId = resolveListNumId(
+    state,
+    parentNumId,
+    buildListLevel(level, !list.ordered, start),
+  );
   for (const item of list.items) {
     const rendering: ListRendering = list.ordered
       ? {
@@ -208,7 +225,11 @@ const listBlocks = (
       if (!inTrailing && isNestedBlockToken(child)) {
         inTrailing = true;
       }
-      if (!inTrailing && child.type === "space" && isNestedBlockToken(item.tokens[index + 1])) {
+      if (
+        !inTrailing &&
+        child.type === "space" &&
+        isNestedBlockToken(item.tokens[index + 1])
+      ) {
         continue;
       }
       if (inTrailing) {
@@ -274,7 +295,10 @@ const MAX_HEADING_LEVEL = 4;
  * even when merged into a document whose own heading styles are localized and
  * this id resolves to nothing.
  */
-const headingParagraph = (runs: ParagraphContent[], depth: number): Paragraph => {
+const headingParagraph = (
+  runs: ParagraphContent[],
+  depth: number,
+): Paragraph => {
   const level = Math.min(Math.max(depth, 1), MAX_HEADING_LEVEL);
   const paragraph = para(runs, `Heading${level}`);
   const outlineLevel = headingOutlineLevel(level - 1);
@@ -287,11 +311,19 @@ const headingParagraph = (runs: ParagraphContent[], depth: number): Paragraph =>
 /** The built-in a markdown blockquote compiles to. */
 const QUOTE_STYLE_ID = "Quote";
 
-const blocksFromTokens = (tokens: Token[] | undefined, state: CompileState): BlockContent[] => {
+const blocksFromTokens = (
+  tokens: Token[] | undefined,
+  state: CompileState,
+): BlockContent[] => {
   const blocks: BlockContent[] = [];
   for (const token of tokens ?? []) {
     if (isTokenType(token, "heading")) {
-      blocks.push(headingParagraph(inlineTokensToRuns(token.tokens, token.text), token.depth));
+      blocks.push(
+        headingParagraph(
+          inlineTokensToRuns(token.tokens, token.text),
+          token.depth,
+        ),
+      );
     } else if (isTokenType(token, "paragraph")) {
       blocks.push(para(inlineTokensToRuns(token.tokens, token.text)));
     } else if (isTokenType(token, "list")) {
@@ -302,7 +334,9 @@ const blocksFromTokens = (tokens: Token[] | undefined, state: CompileState): Blo
       blocks.push(tableFromToken(token));
     } else if (isTokenType(token, "code")) {
       for (const line of token.text.split("\n")) {
-        blocks.push(para([textRun(line.length > 0 ? line : " ", { mono: true })]));
+        blocks.push(
+          para([textRun(line.length > 0 ? line : " ", { mono: true })]),
+        );
       }
     } else if (isTokenType(token, "blockquote")) {
       for (const inner of blocksFromTokens(token.tokens, state)) {
@@ -335,11 +369,15 @@ const blocksFromTokens = (tokens: Token[] | undefined, state: CompileState): Blo
 // after remapping). Every level actually visited by that markdown list
 // becomes one `w:lvl`, so serializing the content never references a numId
 // with no definition.
-const buildNumbering = (numIdLevels: Map<number, NumIdLevels>): NumberingDefinitions => {
+const buildNumbering = (
+  numIdLevels: Map<number, NumIdLevels>,
+): NumberingDefinitions => {
   const abstractNums: AbstractNumbering[] = [];
   const nums: NumberingInstance[] = [];
   for (const [numId, levels] of numIdLevels) {
-    const sortedLevels = [...levels.entries()].sort(([a], [b]) => a - b).map(([, lvl]) => lvl);
+    const sortedLevels = [...levels.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, lvl]) => lvl);
     abstractNums.push({
       abstractNumId: numId,
       multiLevelType: sortedLevels.length > 1 ? "multilevel" : "singleLevel",
@@ -361,7 +399,10 @@ export const compileMarkdownToContent = (markdown: string): MarkdownContent => {
   // XML document may contain. They are dropped here, while the input is still
   // one string, rather than at the serializer, where nothing could say which
   // input lost them. This particular drop has no channel to report it on.
-  const content = blocksFromTokens(lexMarkdown(sanitizeXmlCharacters(markdown)), state);
+  const content = blocksFromTokens(
+    lexMarkdown(sanitizeXmlCharacters(markdown)),
+    state,
+  );
   return {
     content,
     ...(state.levels.size > 0 && { numbering: buildNumbering(state.levels) }),

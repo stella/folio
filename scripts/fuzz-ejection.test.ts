@@ -1,11 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import { hash32 } from "../test/commit-seed";
 import {
   failureMarker,
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
+import {
+  consumerReplaySettings,
+  consumerSeed,
+  fileMainFindings,
+  judge,
+  packageOf,
+  propertyReplays,
+  readReplayAttempts,
+  type ReplayAttempt,
+  replayOutcome,
+} from "./fuzz-ejection";
 import {
   type Context,
   RUN_TRIGGER,
@@ -13,19 +32,6 @@ import {
   signatureOf,
 } from "./fuzz-failure-issues";
 import type { Issue } from "./fuzz-issue-classes";
-
-import { hash32 } from "../test/commit-seed";
-import {
-  consumerReplaySettings,
-  consumerSeed,
-  judge,
-  packageOf,
-  propertyReplays,
-  fileMainFindings,
-  replayOutcome,
-  readReplayAttempts,
-  type ReplayAttempt,
-} from "./fuzz-ejection";
 
 const property = (fields: Record<string, unknown>): string =>
   `2026-09-29T10:00:00Z PROPERTY_FAILURE ${JSON.stringify({
@@ -41,7 +47,9 @@ describe("merge group fuzz replay", () => {
   test("the base replays the consumer flows under the seed the group's run derived", () => {
     const sha = "0302a42f5661aaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     // scripts/consumer-scenarios.ts: commitSeed("consumer-scenarios fuzz") >>> 1.
-    expect(consumerSeed(sha)).toBe(hash32(`${sha}\0consumer-scenarios fuzz`) >>> 1);
+    expect(consumerSeed(sha)).toBe(
+      hash32(`${sha}\0consumer-scenarios fuzz`) >>> 1,
+    );
     expect(consumerSeed(sha)).toBeGreaterThanOrEqual(0);
     expect(consumerReplaySettings(sha)).toEqual({
       args: ["scripts/consumer-scenarios.ts", "--typecheck"],
@@ -66,24 +74,31 @@ describe("merge group fuzz replay", () => {
     expect(propertyReplays(log)).toEqual([
       {
         file: "packages/core/src/ai-edits/batchOverlap.test.ts",
-        title: "refuses each conflict and applies the rest as one at a time would",
+        title:
+          "refuses each conflict and applies the rest as one at a time would",
         seed: -440111207,
         path: "136:9:8:8",
         factor: 1,
       },
       {
         file: "packages/core/src/ai-edits/batchOverlap.test.ts",
-        title: "refuses each conflict and applies the rest as one at a time would",
+        title:
+          "refuses each conflict and applies the rest as one at a time would",
         seed: -440111207,
         path: null,
         factor: 1,
       },
     ]);
-    expect(packageOf("packages/core/src/ai-edits/batchOverlap.test.ts")).toEqual({
+    expect(
+      packageOf("packages/core/src/ai-edits/batchOverlap.test.ts"),
+    ).toEqual({
       dir: "packages/core",
       file: "src/ai-edits/batchOverlap.test.ts",
     });
-    expect(packageOf("scripts/x.test.ts")).toEqual({ dir: ".", file: "scripts/x.test.ts" });
+    expect(packageOf("scripts/x.test.ts")).toEqual({
+      dir: ".",
+      file: "scripts/x.test.ts",
+    });
   });
 
   test("a group is pre-existing only when the base fails every way the group did", () => {
@@ -91,7 +106,9 @@ describe("merge group fuzz replay", () => {
       { fingerprint: "aaaaaaaaaaaaaaaa", test: "consumer flow a / direct" },
       { fingerprint: "bbbbbbbbbbbbbbbb", test: "consumer flow b / direct" },
     ];
-    expect(judge(group, new Set(["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"]))).toMatchObject({
+    expect(
+      judge(group, new Set(["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"])),
+    ).toMatchObject({
       verdict: "pre-existing",
       requeue: true,
     });
@@ -99,7 +116,10 @@ describe("merge group fuzz replay", () => {
       verdict: "mixed",
       requeue: false,
     });
-    expect(judge(group, new Set())).toMatchObject({ verdict: "introduced", requeue: false });
+    expect(judge(group, new Set())).toMatchObject({
+      verdict: "introduced",
+      requeue: false,
+    });
     expect(judge([], new Set(["aaaaaaaaaaaaaaaa"]))).toMatchObject({
       verdict: "none",
       requeue: false,
@@ -129,7 +149,8 @@ const finding = (fixture: string) => {
   const record = failureRecord(marker, error);
   return { record, seeds: [marker.seed], records: [record] };
 };
-const signatureIdOf = (fixture: string): string => signatureOf(finding(fixture).record.marker).id;
+const signatureIdOf = (fixture: string): string =>
+  signatureOf(finding(fixture).record.marker).id;
 const withStore = async (
   body: (fixture: {
     root: string;
@@ -202,8 +223,14 @@ test("group-only failures file nothing through the issue store", async () => {
 
 test("matching main failures file one issue per reproduced fingerprint", async () => {
   await withStore(async ({ store, writes }) => {
-    const findings = [finding("stories"), finding("comments"), finding("lists")];
-    const confirmed = findings.slice(0, 2).map(({ record }) => record.marker.fingerprint);
+    const findings = [
+      finding("stories"),
+      finding("comments"),
+      finding("lists"),
+    ];
+    const confirmed = findings
+      .slice(0, 2)
+      .map(({ record }) => record.marker.fingerprint);
     const judged = await fileMainFindings({
       findings,
       attempts: [
@@ -219,15 +246,22 @@ test("matching main failures file one issue per reproduced fingerprint", async (
     expect(writes).toHaveLength(2);
     for (const [index, fixture] of ["stories", "comments"].entries())
       expect(writes.at(index)?.body).toContain(signatureIdOf(fixture));
-    for (const issue of writes) expect(issue.body).not.toContain(signatureIdOf("lists"));
-    expect(judged.fingerprints.map(({ issue }) => issue)).toEqual(["#1", "#2", null]);
+    for (const issue of writes)
+      expect(issue.body).not.toContain(signatureIdOf("lists"));
+    expect(judged.fingerprints.map(({ issue }) => issue)).toEqual([
+      "#1",
+      "#2",
+      null,
+    ]);
   });
 });
 
 test("a failing base replay reproduces only requested fingerprints present in its log", async () => {
   await withStore(async ({ store, writes }) => {
     const findings = [finding("stories"), finding("comments")];
-    const fingerprints = findings.map(({ record }) => record.marker.fingerprint);
+    const fingerprints = findings.map(
+      ({ record }) => record.marker.fingerprint,
+    );
     const matching = findings[0]!.record.marker;
     const unrelatedMarker = finding("lists").record.marker;
     const outcome = replayOutcome({
@@ -250,10 +284,9 @@ test("a failing base replay reproduces only requested fingerprints present in it
       context,
       store,
     });
-    expect(judged.fingerprints.map(({ reproducedOnBase }) => reproducedOnBase)).toEqual([
-      true,
-      false,
-    ]);
+    expect(
+      judged.fingerprints.map(({ reproducedOnBase }) => reproducedOnBase),
+    ).toEqual([true, false]);
     expect(writes).toHaveLength(1);
     expect(writes[0]?.body).toContain(signatureIdOf("stories"));
     expect(writes[0]?.body).not.toContain(signatureIdOf("comments"));
@@ -264,7 +297,9 @@ test("a failing base replay reproduces only requested fingerprints present in it
 test("a fingerprint counts only in the replay that requested it", async () => {
   await withStore(async ({ store, writes }) => {
     const findings = [finding("stories"), finding("comments")];
-    const [stories, comments] = findings.map(({ record }) => record.marker.fingerprint);
+    const [stories, comments] = findings.map(
+      ({ record }) => record.marker.fingerprint,
+    );
     if (stories === undefined || comments === undefined)
       throw new Error("Missing fixture fingerprints");
     const judged = await fileMainFindings({
@@ -272,16 +307,21 @@ test("a fingerprint counts only in the replay that requested it", async () => {
       attempts: [
         // The consumer replay fails and also logs the comments fingerprint,
         // which only the separate passing replay below asked about.
-        { requested: [stories], outcome: { status: "failed", fingerprints: [stories, comments] } },
-        { requested: [comments], outcome: { status: "passed", fingerprints: [] } },
+        {
+          requested: [stories],
+          outcome: { status: "failed", fingerprints: [stories, comments] },
+        },
+        {
+          requested: [comments],
+          outcome: { status: "passed", fingerprints: [] },
+        },
       ],
       context,
       store,
     });
-    expect(judged.fingerprints.map(({ reproducedOnBase }) => reproducedOnBase)).toEqual([
-      true,
-      false,
-    ]);
+    expect(
+      judged.fingerprints.map(({ reproducedOnBase }) => reproducedOnBase),
+    ).toEqual([true, false]);
     expect(writes).toHaveLength(1);
     expect(writes[0]?.body).toContain(signatureIdOf("stories"));
     expect(writes[0]?.body).not.toContain(signatureIdOf("comments"));
@@ -292,7 +332,8 @@ test("unavailable or incomplete main replay prevents every store access", async 
   await withStore(async ({ store, writes, reads }) => {
     const findings = [finding("stories"), finding("comments")];
     const fingerprint = findings.at(0)?.record.marker.fingerprint;
-    if (fingerprint === undefined) throw new Error("Missing fixture fingerprint");
+    if (fingerprint === undefined)
+      throw new Error("Missing fixture fingerprint");
     const valid = {
       requested: [fingerprint],
       outcome: { status: "failed", fingerprints: [fingerprint] },
@@ -302,7 +343,13 @@ test("unavailable or incomplete main replay prevents every store access", async 
       [valid],
       [
         valid,
-        { requested: [], outcome: { status: "unavailable", message: "Main replay could not run" } },
+        {
+          requested: [],
+          outcome: {
+            status: "unavailable",
+            message: "Main replay could not run",
+          },
+        },
       ],
       [
         {
@@ -312,7 +359,9 @@ test("unavailable or incomplete main replay prevents every store access", async 
       ],
     ];
     for (const attempts of cases) {
-      await expect(fileMainFindings({ findings, attempts, context, store })).rejects.toThrow();
+      await expect(
+        fileMainFindings({ findings, attempts, context, store }),
+      ).rejects.toThrow();
       expect(writes).toHaveLength(0);
       expect(reads()).toBe(0);
     }
@@ -327,7 +376,10 @@ test("replay execution distinguishes actual tests from setup, no-match, timeout 
     fingerprints: [marker.fingerprint],
   });
   for (const output of ["1 pass\n0 fail", "ℹ pass 1\nℹ fail 0"]) {
-    expect(replayOutcome({ output, exitCode: 0 })).toEqual({ status: "passed", fingerprints: [] });
+    expect(replayOutcome({ output, exitCode: 0 })).toEqual({
+      status: "passed",
+      fingerprints: [],
+    });
   }
   for (const input of [
     { output: "Module missing", exitCode: 1 },
@@ -354,7 +406,9 @@ test("report evidence requires a completed replay tied to the pinned main and gr
       JSON.stringify({ group: groupSha, main: mainSha, attempts }),
     );
     expect(readReplayAttempts(options)).toEqual(attempts);
-    expect(() => readReplayAttempts({ ...options, baseSha: groupSha })).toThrow("does not match");
+    expect(() => readReplayAttempts({ ...options, baseSha: groupSha })).toThrow(
+      "does not match",
+    );
     const cli = Bun.spawnSync(
       [
         "bun",
@@ -370,7 +424,11 @@ test("report evidence requires a completed replay tied to the pinned main and gr
         mainSha,
         "--dry-run",
       ],
-      { cwd: path.resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" },
+      {
+        cwd: path.resolve(import.meta.dir, ".."),
+        stdout: "pipe",
+        stderr: "pipe",
+      },
     );
     expect(cli.exitCode).not.toBe(0);
     expect(cli.stderr.toString()).toContain("Main replay did not complete");
@@ -380,14 +438,20 @@ test("report evidence requires a completed replay tied to the pinned main and gr
 test("ejection workflow pins main and separates replay from issue writes", () => {
   const workflow = Bun.YAML.parse(
     readFileSync(
-      path.resolve(import.meta.dir, "../.github/workflows/fuzz-ejection-replay.yml"),
+      path.resolve(
+        import.meta.dir,
+        "../.github/workflows/fuzz-ejection-replay.yml",
+      ),
       "utf8",
     ),
   );
   const { replay, report } = workflow.jobs;
   expect(replay.permissions).toEqual({ actions: "read", contents: "read" });
   expect(report.needs).toBe("replay");
-  expect(report.concurrency).toEqual({ group: "fuzz-failure-issues", "cancel-in-progress": false });
+  expect(report.concurrency).toEqual({
+    group: "fuzz-failure-issues",
+    "cancel-in-progress": false,
+  });
   const pin = replay.steps.find((step: { id?: string }) => step.id === "base");
   expect(pin.run).toContain('commits/main" --jq');
   expect(pin.run).not.toContain(".parents[0]");
@@ -395,13 +459,16 @@ test("ejection workflow pins main and separates replay from issue writes", () =>
     step.uses?.startsWith("actions/checkout@"),
   );
   expect(checkouts).toHaveLength(2);
-  for (const checkout of checkouts) expect(checkout.with.ref).toBe("${{ steps.base.outputs.sha }}");
+  for (const checkout of checkouts)
+    expect(checkout.with.ref).toBe("${{ steps.base.outputs.sha }}");
   const execution = replay.steps.find((step: { run?: string }) =>
     step.run?.includes("fuzz-ejection.ts replay"),
   );
   expect(execution.run).toContain('--base-sha "${BASE_SHA}"');
   expect(execution.env.BASE_SHA).toBe("${{ steps.base.outputs.sha }}");
-  expect(report.steps.some((step: { run?: string }) => step.run?.includes("gh pr comment"))).toBe(
-    false,
-  );
+  expect(
+    report.steps.some((step: { run?: string }) =>
+      step.run?.includes("gh pr comment"),
+    ),
+  ).toBe(false);
 });

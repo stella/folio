@@ -97,7 +97,9 @@ const isHiddenWholeBlock = (
   if (pmStart === undefined || pmEnd === undefined) {
     return false;
   }
-  return hidden.some((range) => templatePreviewHidesWholeBlock(range, { pmStart, pmEnd }));
+  return hidden.some((range) =>
+    templatePreviewHidesWholeBlock(range, { pmStart, pmEnd }),
+  );
 };
 
 /**
@@ -200,7 +202,9 @@ function transformParagraph(
   const blockFrom = block.pmStart;
   const blockTo = block.pmEnd;
   if (blockFrom !== undefined && blockTo !== undefined) {
-    const touches = entries.some((entry) => entry.from < blockTo && entry.to > blockFrom);
+    const touches = entries.some(
+      (entry) => entry.from < blockTo && entry.to > blockFrom,
+    );
     if (!touches) {
       return block;
     }
@@ -234,7 +238,9 @@ function transformRun(
     return false;
   }
 
-  const overlapping = entries.filter((entry) => entry.from < pmEnd && entry.to > pmStart);
+  const overlapping = entries.filter(
+    (entry) => entry.from < pmEnd && entry.to > pmStart,
+  );
   if (overlapping.length === 0) {
     out.push(run);
     return false;
@@ -267,7 +273,12 @@ function transformRun(
 }
 
 /** Slice `run` to the PM range [from, to); positions map 1:1 onto chars. */
-function sliceTextRun(run: TextRun, base: number, from: number, to: number): TextRun {
+function sliceTextRun(
+  run: TextRun,
+  base: number,
+  from: number,
+  to: number,
+): TextRun {
   return {
     ...run,
     text: run.text.slice(from - base, to - base),
@@ -293,12 +304,23 @@ type ValueTextRun = TextRun & { pmStart: number; pmEnd: number };
  * the previous span, and the returned flag carries this span's. Without it the
  * halves would count as two breaks and the value would gain a blank line.
  */
-function pushValueSpan(out: Run[], valueRun: ValueTextRun, pendingCr: boolean): boolean {
-  const text = pendingCr && valueRun.text.startsWith("\n") ? valueRun.text.slice(1) : valueRun.text;
+function pushValueSpan(
+  out: Run[],
+  valueRun: ValueTextRun,
+  pendingCr: boolean,
+): boolean {
+  const text =
+    pendingCr && valueRun.text.startsWith("\n")
+      ? valueRun.text.slice(1)
+      : valueRun.text;
   const segments = text.split(VALUE_LINE_BREAK_RE);
   for (const [index, segment] of segments.entries()) {
     if (index > 0) {
-      out.push({ kind: "lineBreak", pmStart: valueRun.pmStart, pmEnd: valueRun.pmEnd });
+      out.push({
+        kind: "lineBreak",
+        pmStart: valueRun.pmStart,
+        pmEnd: valueRun.pmEnd,
+      });
     }
     if (segment !== "") {
       out.push({ ...valueRun, text: segment });
@@ -382,11 +404,34 @@ export function templatePreviewDirtyRange(
   previous: TemplatePreviewFlowState,
   next: TemplatePreviewFlowState,
 ): { from: number; to: number } | null {
-  const bounds = { from: Number.POSITIVE_INFINITY, to: Number.NEGATIVE_INFINITY };
-  growOverUnknown(previous.entries, entryKey, new Set(next.entries.map(entryKey)), bounds);
-  growOverUnknown(next.entries, entryKey, new Set(previous.entries.map(entryKey)), bounds);
-  growOverUnknown(previous.hidden, hiddenKey, new Set(next.hidden.map(hiddenKey)), bounds);
-  growOverUnknown(next.hidden, hiddenKey, new Set(previous.hidden.map(hiddenKey)), bounds);
+  const bounds = {
+    from: Number.POSITIVE_INFINITY,
+    to: Number.NEGATIVE_INFINITY,
+  };
+  growOverUnknown(
+    previous.entries,
+    entryKey,
+    new Set(next.entries.map(entryKey)),
+    bounds,
+  );
+  growOverUnknown(
+    next.entries,
+    entryKey,
+    new Set(previous.entries.map(entryKey)),
+    bounds,
+  );
+  growOverUnknown(
+    previous.hidden,
+    hiddenKey,
+    new Set(next.hidden.map(hiddenKey)),
+    bounds,
+  );
+  growOverUnknown(
+    next.hidden,
+    hiddenKey,
+    new Set(previous.hidden.map(hiddenKey)),
+    bounds,
+  );
   if (bounds.from === Number.POSITIVE_INFINITY) {
     return null;
   }

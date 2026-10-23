@@ -3,22 +3,23 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
+
 import { BLACK } from "../display-list/primitives";
 import type { DisplayFontFace, DisplayList } from "../display-list/types";
-import { parseSfnt, type SfntFont } from "../fonts/sfnt/parse";
 import {
   readShapingTestFont,
   readTestFont,
   SHAPING_TEST_FONTS_INSTALLED,
   SHAPING_TEST_FONTS_SKIP_REASON,
+  type ShapingTestScript,
   TEST_FONTS_INSTALLED,
   TEST_FONTS_SKIP_REASON,
-  type ShapingTestScript,
   type TestFontSubset,
 } from "../fonts/sfnt/__tests__/testFonts";
-import { shaperLoaded } from "../shaping/shaper";
+import { parseSfnt, type SfntFont } from "../fonts/sfnt/parse";
 import { toSfntBytes } from "../fonts/sfnt/woff";
-import { writePdf, type PdfFontSource } from "./writePdf";
+import { shaperLoaded } from "../shaping/shaper";
+import { type PdfFontSource, writePdf } from "./writePdf";
 
 const TIMESTAMP = "2026-01-02T03:04:05Z";
 const FONT_SIZE_PX = 16;
@@ -48,7 +49,8 @@ const FACE: DisplayFontFace = {
   fontBoxDescentRatio: 0.2,
 };
 
-const latin1 = (bytes: Uint8Array): string => new TextDecoder("latin1").decode(bytes);
+const latin1 = (bytes: Uint8Array): string =>
+  new TextDecoder("latin1").decode(bytes);
 
 const readSubset = async (subset: TestFontSubset): Promise<Uint8Array> =>
   readTestFont({ family: "arimo", subset });
@@ -83,7 +85,8 @@ const naturalAdvance = ({ fonts }: Subsets, codePoint: number): number => {
   }
   return (
     (Math.round(
-      (font.advanceWidthFor(font.glyphIdFor(codePoint)) * TEXT_SPACE_UNITS_PER_EM) /
+      (font.advanceWidthFor(font.glyphIdFor(codePoint)) *
+        TEXT_SPACE_UNITS_PER_EM) /
         font.unitsPerEm,
     ) *
       FONT_SIZE_PX) /
@@ -133,7 +136,9 @@ const listFor = ({ text, advances }: ListOptions): DisplayList => ({
 const naturalListFor = (subsets: Subsets, text: string): DisplayList =>
   listFor({
     text,
-    advances: [...text].map((character) => naturalAdvance(subsets, character.codePointAt(0) ?? 0)),
+    advances: [...text].map((character) =>
+      naturalAdvance(subsets, character.codePointAt(0) ?? 0),
+    ),
   });
 
 /** The page's content stream, found by the text run it must contain. */
@@ -145,7 +150,9 @@ const contentStreamOf = (bytes: Uint8Array): string => {
     const [, dict = "", length = "0"] = match;
     const start = match.index + match[0].length;
     if (dict.includes("/FlateDecode") && !dict.includes("/Length1")) {
-      const inflated = latin1(inflateSync(bytes.subarray(start, start + Number(length))));
+      const inflated = latin1(
+        inflateSync(bytes.subarray(start, start + Number(length))),
+      );
       if (inflated.includes(" TJ")) {
         return inflated;
       }
@@ -195,232 +202,300 @@ const fromXmlEntities = (value: string): string => {
 
 const mutool = Bun.which("mutool");
 
-describe.skipIf(!TEST_FONTS_INSTALLED)(`a face split by script (${TEST_FONTS_SKIP_REASON})`, () => {
-  test("paints code points from both subsets in one run, through two font resources", async () => {
-    const subsets = await loadSubsets();
-    const result = await writePdf(naturalListFor(subsets, MIXED_TEXT), {
-      fonts: { load: () => subsets.binaries },
-      timestamp: TIMESTAMP,
+describe.skipIf(!TEST_FONTS_INSTALLED)(
+  `a face split by script (${TEST_FONTS_SKIP_REASON})`,
+  () => {
+    test("paints code points from both subsets in one run, through two font resources", async () => {
+      const subsets = await loadSubsets();
+      const result = await writePdf(naturalListFor(subsets, MIXED_TEXT), {
+        fonts: { load: () => subsets.binaries },
+        timestamp: TIMESTAMP,
+      });
+      if (result.isErr()) {
+        throw result.error;
+      }
+      expect(result.value.substitutions).toEqual([]);
+      expect(result.value.unencodable).toEqual([]);
+
+      const stream = contentStreamOf(result.value.bytes);
+      // `A`, `ř` and `b` are three maximal spans over two binaries: the middle
+      // one changes font and the third changes back.
+      const selected = selectedFonts(stream);
+      expect(selected).toHaveLength(3);
+      expect(new Set(selected).size).toBe(2);
+      expect(selected.at(0)).toBe(selected.at(2) ?? "");
+      expect(shownGlyphIds(stream)).toHaveLength(MIXED_TEXT.length);
+      expect(shownGlyphIds(stream)).not.toContain(NOTDEF_HEX);
+      // Two embedded fonts, each with its own glyph space, widths and mapping.
+      expect(
+        latin1(result.value.bytes).match(/\/Subtype \/CIDFontType2/gu),
+      ).toHaveLength(2);
     });
-    if (result.isErr()) {
-      throw result.error;
-    }
-    expect(result.value.substitutions).toEqual([]);
-    expect(result.value.unencodable).toEqual([]);
 
-    const stream = contentStreamOf(result.value.bytes);
-    // `A`, `ř` and `b` are three maximal spans over two binaries: the middle
-    // one changes font and the third changes back.
-    const selected = selectedFonts(stream);
-    expect(selected).toHaveLength(3);
-    expect(new Set(selected).size).toBe(2);
-    expect(selected.at(0)).toBe(selected.at(2) ?? "");
-    expect(shownGlyphIds(stream)).toHaveLength(MIXED_TEXT.length);
-    expect(shownGlyphIds(stream)).not.toContain(NOTDEF_HEX);
-    // Two embedded fonts, each with its own glyph space, widths and mapping.
-    expect(latin1(result.value.bytes).match(/\/Subtype \/CIDFontType2/gu)).toHaveLength(2);
-  });
+    test("carries each span's own advances, corrected against its own binary", async () => {
+      const subsets = await loadSubsets();
+      const natural = [...MIXED_TEXT].map((character) =>
+        naturalAdvance(subsets, character.codePointAt(0) ?? 0),
+      );
+      const source = { load: () => subsets.binaries };
 
-  test("carries each span's own advances, corrected against its own binary", async () => {
-    const subsets = await loadSubsets();
-    const natural = [...MIXED_TEXT].map((character) =>
-      naturalAdvance(subsets, character.codePointAt(0) ?? 0),
-    );
-    const source = { load: () => subsets.binaries };
+      const agreeing = await writePdf(
+        listFor({ text: MIXED_TEXT, advances: natural }),
+        {
+          fonts: source,
+          timestamp: TIMESTAMP,
+        },
+      );
+      if (agreeing.isErr()) {
+        throw agreeing.error;
+      }
+      // Every correction came out zero and was dropped, which is only true if
+      // each span was corrected against the widths of the binary that serves it.
+      expect(adjustmentsOf(contentStreamOf(agreeing.value.bytes))).toEqual([]);
 
-    const agreeing = await writePdf(listFor({ text: MIXED_TEXT, advances: natural }), {
-      fonts: source,
-      timestamp: TIMESTAMP,
+      const WIDENING_PX = 3;
+      const widened = await writePdf(
+        listFor({
+          text: MIXED_TEXT,
+          advances: natural.map((advance) => advance + WIDENING_PX),
+        }),
+        { fonts: source, timestamp: TIMESTAMP },
+      );
+      if (widened.isErr()) {
+        throw widened.error;
+      }
+      const adjustments = adjustmentsOf(contentStreamOf(widened.value.bytes));
+      expect(adjustments).toHaveLength(MIXED_TEXT.length);
+      for (const adjustment of adjustments) {
+        expect(adjustment).toBeCloseTo(
+          (-WIDENING_PX * TEXT_SPACE_UNITS_PER_EM) / FONT_SIZE_PX,
+          3,
+        );
+      }
     });
-    if (agreeing.isErr()) {
-      throw agreeing.error;
-    }
-    // Every correction came out zero and was dropped, which is only true if
-    // each span was corrected against the widths of the binary that serves it.
-    expect(adjustmentsOf(contentStreamOf(agreeing.value.bytes))).toEqual([]);
 
-    const WIDENING_PX = 3;
-    const widened = await writePdf(
-      listFor({ text: MIXED_TEXT, advances: natural.map((advance) => advance + WIDENING_PX) }),
-      { fonts: source, timestamp: TIMESTAMP },
-    );
-    if (widened.isErr()) {
-      throw widened.error;
-    }
-    const adjustments = adjustmentsOf(contentStreamOf(widened.value.bytes));
-    expect(adjustments).toHaveLength(MIXED_TEXT.length);
-    for (const adjustment of adjustments) {
-      expect(adjustment).toBeCloseTo((-WIDENING_PX * TEXT_SPACE_UNITS_PER_EM) / FONT_SIZE_PX, 3);
-    }
-  });
+    test("shows no .notdef for a document every supplied binary covers between them", async () => {
+      const subsets = await loadSubsets();
+      const covered = `${MIXED_TEXT} ${EXTRACT_TEXT}`;
+      const result = await writePdf(naturalListFor(subsets, covered), {
+        fonts: { load: () => subsets.binaries },
+        timestamp: TIMESTAMP,
+      });
+      if (result.isErr()) {
+        throw result.error;
+      }
+      const glyphIds = shownGlyphIds(contentStreamOf(result.value.bytes));
+      expect(glyphIds).toHaveLength(covered.length);
+      expect(glyphIds).not.toContain(NOTDEF_HEX);
+    });
 
-  test("shows no .notdef for a document every supplied binary covers between them", async () => {
-    const subsets = await loadSubsets();
-    const covered = `${MIXED_TEXT} ${EXTRACT_TEXT}`;
-    const result = await writePdf(naturalListFor(subsets, covered), {
-      fonts: { load: () => subsets.binaries },
-      timestamp: TIMESTAMP,
+    test("embeds two subsets byte for byte alike across runs", async () => {
+      const subsets = await loadSubsets();
+      const source = { load: () => subsets.binaries };
+      const list = naturalListFor(subsets, `${MIXED_TEXT} ${EXTRACT_TEXT}`);
+      const first = await writePdf(list, {
+        fonts: source,
+        timestamp: TIMESTAMP,
+      });
+      const second = await writePdf(list, {
+        fonts: source,
+        timestamp: TIMESTAMP,
+      });
+      if (first.isErr() || second.isErr()) {
+        throw first.isErr() ? first.error : second.error;
+      }
+      expect(
+        Buffer.from(first.value.bytes).equals(Buffer.from(second.value.bytes)),
+      ).toBe(true);
     });
-    if (result.isErr()) {
-      throw result.error;
-    }
-    const glyphIds = shownGlyphIds(contentStreamOf(result.value.bytes));
-    expect(glyphIds).toHaveLength(covered.length);
-    expect(glyphIds).not.toContain(NOTDEF_HEX);
-  });
+  },
+);
 
-  test("embeds two subsets byte for byte alike across runs", async () => {
-    const subsets = await loadSubsets();
-    const source = { load: () => subsets.binaries };
-    const list = naturalListFor(subsets, `${MIXED_TEXT} ${EXTRACT_TEXT}`);
-    const first = await writePdf(list, { fonts: source, timestamp: TIMESTAMP });
-    const second = await writePdf(list, { fonts: source, timestamp: TIMESTAMP });
-    if (first.isErr() || second.isErr()) {
-      throw first.isErr() ? first.error : second.error;
-    }
-    expect(Buffer.from(first.value.bytes).equals(Buffer.from(second.value.bytes))).toBe(true);
-  });
-});
+describe.skipIf(!TEST_FONTS_INSTALLED)(
+  `glyph coverage (${TEST_FONTS_SKIP_REASON})`,
+  () => {
+    test("reports a code point no binary of the face covers", async () => {
+      const subsets = await loadSubsets();
+      const result = await writePdf(
+        listFor({ text: CJK_TEXT, advances: [10, 10] }),
+        {
+          fonts: { load: () => subsets.binaries },
+          timestamp: TIMESTAMP,
+        },
+      );
+      if (result.isErr()) {
+        throw result.error;
+      }
+      expect(result.value.unencodable).toEqual(
+        CJK_CODE_POINTS.map((codePoint) => ({
+          codePoint,
+          family: FACE.family,
+          weight: FACE.weight,
+          italic: FACE.italic,
+        })),
+      );
+      // Reported rather than dropped: the run still paints, as `.notdef`.
+      expect(shownGlyphIds(contentStreamOf(result.value.bytes))).toEqual([
+        NOTDEF_HEX,
+        NOTDEF_HEX,
+      ]);
+    });
 
-describe.skipIf(!TEST_FONTS_INSTALLED)(`glyph coverage (${TEST_FONTS_SKIP_REASON})`, () => {
-  test("reports a code point no binary of the face covers", async () => {
-    const subsets = await loadSubsets();
-    const result = await writePdf(listFor({ text: CJK_TEXT, advances: [10, 10] }), {
-      fonts: { load: () => subsets.binaries },
-      timestamp: TIMESTAMP,
+    test("stops reporting a code point once a covering binary is supplied", async () => {
+      const subsets = await loadSubsets();
+      const [latin] = subsets.binaries;
+      if (latin === undefined) {
+        throw new Error("the latin subset is missing");
+      }
+      const list = naturalListFor(subsets, EXTRACT_TEXT);
+      const withoutExtension = await writePdf(list, {
+        fonts: { load: () => [latin] },
+        timestamp: TIMESTAMP,
+      });
+      const withExtension = await writePdf(list, {
+        fonts: { load: () => subsets.binaries },
+        timestamp: TIMESTAMP,
+      });
+      if (withoutExtension.isErr() || withExtension.isErr()) {
+        throw withoutExtension.isErr()
+          ? withoutExtension.error
+          : withExtension.error;
+      }
+      expect(
+        withoutExtension.value.unencodable.map(({ codePoint }) => codePoint),
+      ).toEqual(
+        [...EXTRACT_TEXT]
+          .map((character) => character.codePointAt(0) ?? 0)
+          .filter(
+            (codePoint) =>
+              (subsets.fonts.at(0)?.glyphIdFor(codePoint) ?? 0) === 0,
+          )
+          .sort((left, right) => left - right),
+      );
+      expect(withExtension.value.unencodable).toEqual([]);
     });
-    if (result.isErr()) {
-      throw result.error;
-    }
-    expect(result.value.unencodable).toEqual(
-      CJK_CODE_POINTS.map((codePoint) => ({
-        codePoint,
-        family: FACE.family,
-        weight: FACE.weight,
-        italic: FACE.italic,
-      })),
-    );
-    // Reported rather than dropped: the run still paints, as `.notdef`.
-    expect(shownGlyphIds(contentStreamOf(result.value.bytes))).toEqual([NOTDEF_HEX, NOTDEF_HEX]);
-  });
 
-  test("stops reporting a code point once a covering binary is supplied", async () => {
-    const subsets = await loadSubsets();
-    const [latin] = subsets.binaries;
-    if (latin === undefined) {
-      throw new Error("the latin subset is missing");
-    }
-    const list = naturalListFor(subsets, EXTRACT_TEXT);
-    const withoutExtension = await writePdf(list, {
-      fonts: { load: () => [latin] },
-      timestamp: TIMESTAMP,
+    test("a stand-in face reports what WinAnsi cannot name", async () => {
+      const NO_FONTS: PdfFontSource = { load: () => [] };
+      const result = await writePdf(
+        listFor({ text: "Ař", advances: [10, 10] }),
+        {
+          fonts: NO_FONTS,
+          timestamp: TIMESTAMP,
+        },
+      );
+      if (result.isErr()) {
+        throw result.error;
+      }
+      expect(result.value.substitutions).toHaveLength(1);
+      expect(
+        result.value.unencodable.map(({ codePoint }) => codePoint),
+      ).toEqual([0x159]);
     });
-    const withExtension = await writePdf(list, {
-      fonts: { load: () => subsets.binaries },
-      timestamp: TIMESTAMP,
-    });
-    if (withoutExtension.isErr() || withExtension.isErr()) {
-      throw withoutExtension.isErr() ? withoutExtension.error : withExtension.error;
-    }
-    expect(withoutExtension.value.unencodable.map(({ codePoint }) => codePoint)).toEqual(
-      [...EXTRACT_TEXT]
-        .map((character) => character.codePointAt(0) ?? 0)
-        .filter((codePoint) => (subsets.fonts.at(0)?.glyphIdFor(codePoint) ?? 0) === 0)
-        .sort((left, right) => left - right),
-    );
-    expect(withExtension.value.unencodable).toEqual([]);
-  });
 
-  test("a stand-in face reports what WinAnsi cannot name", async () => {
-    const NO_FONTS: PdfFontSource = { load: () => [] };
-    const result = await writePdf(listFor({ text: "Ař", advances: [10, 10] }), {
-      fonts: NO_FONTS,
-      timestamp: TIMESTAMP,
+    test("strict coverage refuses the document instead of painting empty boxes", async () => {
+      const subsets = await loadSubsets();
+      const result = await writePdf(
+        listFor({ text: CJK_TEXT, advances: [10, 10] }),
+        {
+          fonts: { load: () => subsets.binaries },
+          timestamp: TIMESTAMP,
+          strictGlyphCoverage: true,
+        },
+      );
+      expect(result.isErr()).toBe(true);
+      if (!result.isErr()) {
+        throw new Error(
+          "strict coverage wrote a document it should have refused",
+        );
+      }
+      expect(result.error.message).toContain("2 code points");
+      expect(result.error.message).toContain("U+5951");
+      expect(result.error.message).toContain("U+7D04");
     });
-    if (result.isErr()) {
-      throw result.error;
-    }
-    expect(result.value.substitutions).toHaveLength(1);
-    expect(result.value.unencodable.map(({ codePoint }) => codePoint)).toEqual([0x159]);
-  });
 
-  test("strict coverage refuses the document instead of painting empty boxes", async () => {
-    const subsets = await loadSubsets();
-    const result = await writePdf(listFor({ text: CJK_TEXT, advances: [10, 10] }), {
-      fonts: { load: () => subsets.binaries },
-      timestamp: TIMESTAMP,
-      strictGlyphCoverage: true,
+    test("strict coverage passes a document every binary covers between them", async () => {
+      const subsets = await loadSubsets();
+      const result = await writePdf(
+        naturalListFor(subsets, `${MIXED_TEXT} ${EXTRACT_TEXT}`),
+        {
+          fonts: { load: () => subsets.binaries },
+          timestamp: TIMESTAMP,
+          strictGlyphCoverage: true,
+        },
+      );
+      if (result.isErr()) {
+        throw result.error;
+      }
+      expect(result.value.unencodable).toEqual([]);
     });
-    expect(result.isErr()).toBe(true);
-    if (!result.isErr()) {
-      throw new Error("strict coverage wrote a document it should have refused");
-    }
-    expect(result.error.message).toContain("2 code points");
-    expect(result.error.message).toContain("U+5951");
-    expect(result.error.message).toContain("U+7D04");
-  });
+  },
+);
 
-  test("strict coverage passes a document every binary covers between them", async () => {
-    const subsets = await loadSubsets();
-    const result = await writePdf(naturalListFor(subsets, `${MIXED_TEXT} ${EXTRACT_TEXT}`), {
-      fonts: { load: () => subsets.binaries },
-      timestamp: TIMESTAMP,
-      strictGlyphCoverage: true,
+describe.skipIf(!TEST_FONTS_INSTALLED || mutool === null)(
+  "mutool over two subsets",
+  () => {
+    test("extracts every letter, from whichever subset carried it", async () => {
+      const subsets = await loadSubsets();
+      const advances = [...EXTRACT_TEXT].map((character) =>
+        naturalAdvance(subsets, character.codePointAt(0) ?? 0),
+      );
+      const result = await writePdf(listFor({ text: EXTRACT_TEXT, advances }), {
+        fonts: { load: () => subsets.binaries },
+        timestamp: TIMESTAMP,
+      });
+      if (result.isErr()) {
+        throw result.error;
+      }
+      const directory = mkdtempSync(join(tmpdir(), "folio-pdf-coverage-"));
+      const file = join(directory, "out.pdf");
+      await Bun.write(file, result.value.bytes);
+      const process = Bun.spawn({
+        cmd: [
+          mutool ?? "mutool",
+          "draw",
+          "-F",
+          "stext",
+          "-o",
+          join(directory, "out.xml"),
+          file,
+        ],
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(await process.exited).toBe(0);
+      const extracted = await Bun.file(join(directory, "out.xml")).text();
+      // The extractor flags a character it synthesized; those are not characters
+      // this file wrote.
+      const SYNTHETIC_FLAG = 4;
+      const characters = [...extracted.matchAll(/<char ([^>]*)\/>/gu)]
+        .filter(
+          ([, attributes = ""]) =>
+            (Number(/flags="(\d+)"/u.exec(attributes)?.[1] ?? "0") &
+              SYNTHETIC_FLAG) ===
+            0,
+        )
+        .map(([, attributes = ""]) => ({
+          character: fromXmlEntities(
+            /c="([^"]*)"/u.exec(attributes)?.[1] ?? "",
+          ),
+          penX: Number(/ x="([\d.-]+)"/u.exec(attributes)?.[1] ?? "0"),
+        }));
+      // Every letter survived subsetting and came back out of `/ToUnicode`,
+      // whichever of the two binaries carried it.
+      expect(characters.map(({ character }) => character).join("")).toBe(
+        EXTRACT_TEXT,
+      );
+      // The pen keeps walking the display list's advances across the point
+      // where the run changes font.
+      let expectedX = RUN_X_PX;
+      for (const [index, { penX }] of characters.entries()) {
+        expect(penX).toBeCloseTo(expectedX * POINTS_PER_PIXEL, 1);
+        expectedX += advances[index] ?? 0;
+      }
     });
-    if (result.isErr()) {
-      throw result.error;
-    }
-    expect(result.value.unencodable).toEqual([]);
-  });
-});
-
-describe.skipIf(!TEST_FONTS_INSTALLED || mutool === null)("mutool over two subsets", () => {
-  test("extracts every letter, from whichever subset carried it", async () => {
-    const subsets = await loadSubsets();
-    const advances = [...EXTRACT_TEXT].map((character) =>
-      naturalAdvance(subsets, character.codePointAt(0) ?? 0),
-    );
-    const result = await writePdf(listFor({ text: EXTRACT_TEXT, advances }), {
-      fonts: { load: () => subsets.binaries },
-      timestamp: TIMESTAMP,
-    });
-    if (result.isErr()) {
-      throw result.error;
-    }
-    const directory = mkdtempSync(join(tmpdir(), "folio-pdf-coverage-"));
-    const file = join(directory, "out.pdf");
-    await Bun.write(file, result.value.bytes);
-    const process = Bun.spawn({
-      cmd: [mutool ?? "mutool", "draw", "-F", "stext", "-o", join(directory, "out.xml"), file],
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    expect(await process.exited).toBe(0);
-    const extracted = await Bun.file(join(directory, "out.xml")).text();
-    // The extractor flags a character it synthesized; those are not characters
-    // this file wrote.
-    const SYNTHETIC_FLAG = 4;
-    const characters = [...extracted.matchAll(/<char ([^>]*)\/>/gu)]
-      .filter(
-        ([, attributes = ""]) =>
-          (Number(/flags="(\d+)"/u.exec(attributes)?.[1] ?? "0") & SYNTHETIC_FLAG) === 0,
-      )
-      .map(([, attributes = ""]) => ({
-        character: fromXmlEntities(/c="([^"]*)"/u.exec(attributes)?.[1] ?? ""),
-        penX: Number(/ x="([\d.-]+)"/u.exec(attributes)?.[1] ?? "0"),
-      }));
-    // Every letter survived subsetting and came back out of `/ToUnicode`,
-    // whichever of the two binaries carried it.
-    expect(characters.map(({ character }) => character).join("")).toBe(EXTRACT_TEXT);
-    // The pen keeps walking the display list's advances across the point
-    // where the run changes font.
-    let expectedX = RUN_X_PX;
-    for (const [index, { penX }] of characters.entries()) {
-      expect(penX).toBeCloseTo(expectedX * POINTS_PER_PIXEL, 1);
-      expectedX += advances[index] ?? 0;
-    }
-  });
-});
+  },
+);
 
 /**
  * Arabic is the case that matters most: a face can carry every code point and
@@ -468,7 +543,9 @@ describe.skipIf(!SHAPING_TEST_FONTS_INSTALLED)(
         const [, dict = "", length = "0"] = match;
         const start = match.index + match[0].length;
         if (dict.includes("/FlateDecode") && !dict.includes("/Length1")) {
-          out.push(latin1(inflateSync(bytes.subarray(start, start + Number(length)))));
+          out.push(
+            latin1(inflateSync(bytes.subarray(start, start + Number(length)))),
+          );
         }
         match = pattern.exec(text);
       }
@@ -493,7 +570,9 @@ describe.skipIf(!SHAPING_TEST_FONTS_INSTALLED)(
       );
       const alone = await Promise.all(
         [...ARABIC_TEXT].map(async (letter) =>
-          shownGlyphIds(contentStreamOf(await write(letter, "Noto Sans Arabic", "arabic"))),
+          shownGlyphIds(
+            contentStreamOf(await write(letter, "Noto Sans Arabic", "arabic")),
+          ),
         ),
       );
 
@@ -506,16 +585,26 @@ describe.skipIf(!SHAPING_TEST_FONTS_INSTALLED)(
     });
 
     test("a Devanagari conjunct still extracts as the characters that formed it", async () => {
-      const bytes = await write(DEVANAGARI_TEXT, "Noto Sans Devanagari", "devanagari");
+      const bytes = await write(
+        DEVANAGARI_TEXT,
+        "Noto Sans Devanagari",
+        "devanagari",
+      );
 
       // A conjunct is one glyph for several characters, so `/ToUnicode` has to
       // map it to all of them or the text cannot be copied off the page.
-      const maps = inflatedStreams(bytes).filter((stream) => stream.includes("beginbfchar"));
-      expect(maps.some((stream) => stream.includes(utf16BeHex(DEVANAGARI_TEXT)))).toBe(true);
+      const maps = inflatedStreams(bytes).filter((stream) =>
+        stream.includes("beginbfchar"),
+      );
+      expect(
+        maps.some((stream) => stream.includes(utf16BeHex(DEVANAGARI_TEXT))),
+      ).toBe(true);
     });
 
     test("Hebrew points are positioned on the letter rather than after it", async () => {
-      const stream = contentStreamOf(await write(HEBREW_TEXT, "Noto Sans Hebrew", "hebrew"));
+      const stream = contentStreamOf(
+        await write(HEBREW_TEXT, "Noto Sans Hebrew", "hebrew"),
+      );
 
       expect(shownGlyphIds(stream)).not.toContain(NOTDEF_HEX);
       // A mark the shaper displaces from the pen takes a placement of its own,
@@ -530,10 +619,13 @@ describe("the shaper is only loaded by a document that needs it", () => {
     // Not a caching claim: the artifact is hundreds of kilobytes, and a
     // document in Latin, Cyrillic or Greek must not fetch it at all.
     const before = shaperLoaded();
-    const result = await writePdf(listFor({ text: "abc", advances: [6, 6, 6] }), {
-      fonts: { load: () => [] },
-      timestamp: TIMESTAMP,
-    });
+    const result = await writePdf(
+      listFor({ text: "abc", advances: [6, 6, 6] }),
+      {
+        fonts: { load: () => [] },
+        timestamp: TIMESTAMP,
+      },
+    );
 
     expect(result.isErr()).toBe(false);
     expect(shaperLoaded()).toBe(before);

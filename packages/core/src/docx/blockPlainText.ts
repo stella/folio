@@ -19,14 +19,16 @@ import { projectAcceptedBlocks } from "../internal/acceptedBlockProjection";
 import type { BlockContent } from "../types/document";
 import { ALT_CHUNK_READER_DIAGNOSTIC, isAltChunkMarkup } from "./altChunk";
 import {
-  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
   isOpaqueNestedRowMarkup,
+  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
   opaqueRevisionCarrierName,
 } from "./opaqueCarrier";
 import { getParagraphText } from "./paragraphParser";
 
 /** One entry per block, so callers can join or count lines as they need. */
-const collectResolvedBlockTexts = (blocks: readonly BlockContent[]): string[] => {
+const collectResolvedBlockTexts = (
+  blocks: readonly BlockContent[],
+): string[] => {
   const texts: string[] = [];
   for (const block of blocks) {
     switch (block.type) {
@@ -40,7 +42,9 @@ const collectResolvedBlockTexts = (blocks: readonly BlockContent[]): string[] =>
             continue;
           }
           texts.push(
-            row.cells.map((cell) => collectResolvedBlockTexts(cell.content).join("\n")).join("\t"),
+            row.cells
+              .map((cell) => collectResolvedBlockTexts(cell.content).join("\n"))
+              .join("\t"),
           );
         }
         break;
@@ -69,7 +73,9 @@ const collectResolvedBlockTexts = (blocks: readonly BlockContent[]): string[] =>
         break;
       default: {
         const unsupported: never = block;
-        panic(`Unsupported block in plain-text extraction: ${JSON.stringify(unsupported)}`);
+        panic(
+          `Unsupported block in plain-text extraction: ${JSON.stringify(unsupported)}`,
+        );
       }
     }
   }
@@ -77,7 +83,9 @@ const collectResolvedBlockTexts = (blocks: readonly BlockContent[]): string[] =>
 };
 
 /** One entry per accepted block; deleted breaks and table structure resolve together. */
-export const collectBlockTexts = (blocks: readonly BlockContent[]): string[] => {
+export const collectBlockTexts = (
+  blocks: readonly BlockContent[],
+): string[] => {
   const projection = projectAcceptedBlocks(blocks, undefined);
   const texts = collectResolvedBlockTexts(projection?.blocks ?? blocks);
   if (projection?.completeness === "partial") {

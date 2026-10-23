@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+
 import { setDocumentBodyComments } from "@stll/docx-core/model";
 
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { COMMENTS_CONTENT_TYPE, COMMENTS_EXTENDED_CONTENT_TYPE, repackDocx } from "./rezip";
+import {
+  COMMENTS_CONTENT_TYPE,
+  COMMENTS_EXTENDED_CONTENT_TYPE,
+  repackDocx,
+} from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 type FixtureOptions = {
   comments: "empty" | "one";
@@ -73,22 +79,28 @@ describe("empty comment package preservation", () => {
     });
     const parsed = await parseDocx(source, { preloadFonts: false });
     const sourceZip = await JSZip.loadAsync(source);
-    const sourceRelationships = await sourceZip.file("word/_rels/document.xml.rels")!.async("text");
+    const sourceRelationships = await sourceZip
+      .file("word/_rels/document.xml.rels")!
+      .async("text");
 
     expect(parsed.package.document.comments).toBeUndefined();
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const savedZip = await JSZip.loadAsync(saved);
-    expect(await savedZip.file("word/_rels/document.xml.rels")!.async("text")).toBe(
-      sourceRelationships,
+    expect(
+      await savedZip.file("word/_rels/document.xml.rels")!.async("text"),
+    ).toBe(sourceRelationships);
+    expect(await savedZip.file("word/comments.xml")!.async("text")).toBe(
+      commentsXml("empty"),
     );
-    expect(await savedZip.file("word/comments.xml")!.async("text")).toBe(commentsXml("empty"));
-    expect(await savedZip.file("word/commentsExtended.xml")!.async("text")).toBe(
-      commentsExtendedXml,
-    );
+    expect(
+      await savedZip.file("word/commentsExtended.xml")!.async("text"),
+    ).toBe(commentsExtendedXml);
 
     const reopened = await parseDocx(saved, { preloadFonts: false });
-    expect(reopened.package.relationships).toEqual(parsed.package.relationships);
+    expect(reopened.package.relationships).toEqual(
+      parsed.package.relationships,
+    );
   });
 
   test("removing the last modeled comment still empties the source part", async () => {
@@ -103,11 +115,17 @@ describe("empty comment package preservation", () => {
     setDocumentBodyComments(parsed.package.document, []);
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const savedZip = await JSZip.loadAsync(saved);
-    const savedComments = await savedZip.file("word/comments.xml")!.async("text");
-    const savedRelationships = await savedZip.file("word/_rels/document.xml.rels")!.async("text");
+    const savedComments = await savedZip
+      .file("word/comments.xml")!
+      .async("text");
+    const savedRelationships = await savedZip
+      .file("word/_rels/document.xml.rels")!
+      .async("text");
 
     expect(savedComments).not.toContain("<w:comment ");
-    expect(savedRelationships).toContain(`Type="${RELATIONSHIP_TYPES.comments}"`);
+    expect(savedRelationships).toContain(
+      `Type="${RELATIONSHIP_TYPES.comments}"`,
+    );
     const reopened = await parseDocx(saved, { preloadFonts: false });
     expect(reopened.package.document.comments).toBeUndefined();
   });

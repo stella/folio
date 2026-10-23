@@ -11,8 +11,15 @@ import type { EmbeddedFont } from "../../fonts/embeddedFonts";
 import { ptToPx } from "../../layout-engine/measure/measureHelpers";
 import { getFontMetrics } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
-import { parseFontFamilyList, resolveFontFamily } from "../../utils/fontResolver";
-import type { DisplayEmbeddedFont, DisplayFontFace, DisplayFontRef } from "../types";
+import {
+  parseFontFamilyList,
+  resolveFontFamily,
+} from "../../utils/fontResolver";
+import type {
+  DisplayEmbeddedFont,
+  DisplayFontFace,
+  DisplayFontRef,
+} from "../types";
 
 const CSS_NORMAL_WEIGHT = 400;
 const CSS_BOLD_WEIGHT = 700;
@@ -37,7 +44,8 @@ const DEFAULT_GENERIC: GenericFamily = "sans-serif";
 const genericOf = (stack: readonly string[]): GenericFamily => {
   for (let index = stack.length - 1; index >= 0; index -= 1) {
     // SAFETY: index is walked down from length - 1.
-    const generic = GENERIC_FAMILIES[stack[index]!.toLowerCase() as GenericFamily];
+    const generic =
+      GENERIC_FAMILIES[stack[index]!.toLowerCase() as GenericFamily];
     if (generic !== undefined) {
       return generic;
     }
@@ -141,7 +149,11 @@ export class FontTable {
       // from the one measured when the first family is not installed.
       fallbacks: stack
         .slice(1)
-        .filter((entry) => GENERIC_FAMILIES[entry.toLowerCase() as GenericFamily] === undefined),
+        .filter(
+          (entry) =>
+            GENERIC_FAMILIES[entry.toLowerCase() as GenericFamily] ===
+            undefined,
+        ),
       fontBoxAscentRatio: metrics.fontBoxAscent * scale,
       fontBoxDescentRatio: metrics.fontBoxDescent * scale,
       ...(embedded === undefined ? {} : { embedded }),

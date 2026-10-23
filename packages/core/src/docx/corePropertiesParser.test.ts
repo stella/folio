@@ -4,7 +4,8 @@ import { parseCoreProperties } from "./corePropertiesParser";
 
 describe("parseCoreProperties", () => {
   test("parses recognized values independently of namespace prefixes", () => {
-    const properties = parseCoreProperties(`<?xml version="1.0" encoding="UTF-8"?>
+    const properties =
+      parseCoreProperties(`<?xml version="1.0" encoding="UTF-8"?>
       <meta:coreProperties xmlns:meta="urn:properties" xmlns:terms="urn:terms">
         <meta:title>Agreement</meta:title>
         <meta:subject>Review</meta:subject>

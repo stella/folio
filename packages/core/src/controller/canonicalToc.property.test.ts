@@ -1,20 +1,32 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
-import fc from "fast-check";
-import { headingOutlineLevel } from "@stll/docx-core/model";
 import { panic } from "better-result";
+import { expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
-import type { Document, Paragraph } from "../types/document";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import { schema, singletonManager } from "../prosemirror/schema";
-import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
-import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
-import { prepareCanonicalCommands } from "./canonicalStructure";
-import { createDocx } from "../docx/rezip";
+
+import { headingOutlineLevel } from "@stll/docx-core/model";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import { schema, singletonManager } from "../prosemirror/schema";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { Document, Paragraph } from "../types/document";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "./canonicalSession";
+import { prepareCanonicalCommands } from "./canonicalStructure";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
-const fixture = (level: number, localized: boolean, width: number): Document => ({
+const fixture = (
+  level: number,
+  localized: boolean,
+  width: number,
+): Document => ({
   package: {
     styles: {
       styles: [
@@ -53,14 +65,22 @@ const fixture = (level: number, localized: boolean, width: number): Document => 
         {
           type: "paragraph",
           paraId: "23456789",
-          content: [{ type: "run", content: [{ type: "text", text: "Body😀text" }] }],
-          sectionProperties: { pageWidth: width, marginLeft: 1000, marginRight: 2000 },
+          content: [
+            { type: "run", content: [{ type: "text", text: "Body😀text" }] },
+          ],
+          sectionProperties: {
+            pageWidth: width,
+            marginLeft: 1000,
+            marginRight: 2000,
+          },
         },
         {
           type: "paragraph",
           paraId: "3456789A",
           formatting: { outlineLevel: headingOutlineLevel(level) },
-          content: [{ type: "run", content: [{ type: "text", text: "Second" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Second" }] },
+          ],
         },
       ],
     },
@@ -83,7 +103,9 @@ const semantic = (document: Document) =>
           return {
             type: item.type,
             anchor: item.anchor,
-            children: item.children.map((run) => (run.type === "run" ? run.content : run)),
+            children: item.children.map((run) =>
+              run.type === "run" ? run.content : run,
+            ),
           };
         case "complexField":
           return {
@@ -111,7 +133,9 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
       fc.constantFrom(0, 4, 10),
       fc.boolean(),
       async (level, localized, width, offset, reverse) => {
-        const session = createCanonicalSession(fixture(level, localized, width)).unwrap();
+        const session = createCanonicalSession(
+          fixture(level, localized, width),
+        ).unwrap();
         let state = EditorState.create({ schema, doc: session.projection.doc });
         const start = session.projection
           .positionAt({ story: "main", blockId: "23456789", offset })
@@ -121,7 +145,11 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
           .unwrap();
         state = state.apply(
           state.tr.setSelection(
-            TextSelection.create(state.doc, reverse ? end : start, reverse ? start : end),
+            TextSelection.create(
+              state.doc,
+              reverse ? end : start,
+              reverse ? start : end,
+            ),
           ),
         );
         const history = [];
@@ -134,17 +162,28 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
             ...selectionMetadata
           } = session.projection.selectionAt(state).unwrap();
           const version = session.version;
-          const command = singletonManager.requireCommand("generateTOC")({ title: "Contents" });
+          const command = singletonManager.requireCommand("generateTOC")({
+            title: "Contents",
+          });
           command(state);
           const intents =
-            getCanonicalCommandIntents(command, state) ?? panic("Missing TOC descriptor");
+            getCanonicalCommandIntents(command, state) ??
+            panic("Missing TOC descriptor");
           expect(getCanonicalCommandIntents(command, state)).toEqual(intents);
           expect(session.document).toBe(before);
           expect(session.version).toBe(version);
           expect(state.selection.toJSON()).toEqual(beforeSelection);
           session.breakUndoGroup();
-          const prepared = prepareCanonicalCommands(session, state, intents).unwrap();
-          state = publishCanonicalProjection({ session, state, commit: prepared }).unwrap().state;
+          const prepared = prepareCanonicalCommands(
+            session,
+            state,
+            intents,
+          ).unwrap();
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: prepared,
+          }).unwrap().state;
           expect(state.doc.eq(session.projection.doc)).toBe(true);
           const {
             anchor: _afterAnchor,
@@ -161,7 +200,9 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
           ).toBe("Body😀text".slice(offset));
           const all = paragraphs(session.document);
           const headings = all.filter(
-            (paragraph) => paragraph.paraId === "12345678" || paragraph.paraId === "3456789A",
+            (paragraph) =>
+              paragraph.paraId === "12345678" ||
+              paragraph.paraId === "3456789A",
           );
           const names = headings.flatMap((paragraph) =>
             paragraph.content
@@ -170,21 +211,34 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
           );
           expect(names).toContain("_TocExisting");
           expect(names).toContain("unrelated");
-          expect(names.filter((name) => name.startsWith("_Toc"))).toHaveLength(2);
-          const entries = all.filter((paragraph) => paragraph.formatting?.styleId === "Entry");
+          expect(names.filter((name) => name.startsWith("_Toc"))).toHaveLength(
+            2,
+          );
+          const entries = all.filter(
+            (paragraph) => paragraph.formatting?.styleId === "Entry",
+          );
           expect(entries).toHaveLength((iteration + 1) * 2);
           for (const entry of entries) {
             expect(entry.formatting?.tabs).toEqual([
               { position: width - 3000, alignment: "right", leader: "dot" },
             ]);
-            const link = entry.content.find((item) => item.type === "hyperlink");
-            const field = entry.content.find((item) => item.type === "complexField");
-            expect(link?.type === "hyperlink" && names.includes(link.anchor ?? "")).toBe(true);
-            expect(field?.type === "complexField" ? field.instruction : undefined).toBe(
+            const link = entry.content.find(
+              (item) => item.type === "hyperlink",
+            );
+            const field = entry.content.find(
+              (item) => item.type === "complexField",
+            );
+            expect(
+              link?.type === "hyperlink" && names.includes(link.anchor ?? ""),
+            ).toBe(true);
+            expect(
+              field?.type === "complexField" ? field.instruction : undefined,
+            ).toBe(
               `PAGEREF ${link?.type === "hyperlink" ? link.anchor : ""} \\h`,
             );
             const address =
-              session.projection.paragraph(entry.paraId ?? "") ?? panic("Missing field address");
+              session.projection.paragraph(entry.paraId ?? "") ??
+              panic("Missing field address");
             expect(address.text.endsWith("\uFFFC\uFFFC")).toBe(true);
             const boundaries = [0];
             let boundary = 0;
@@ -193,7 +247,11 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
               boundaries.push(boundary);
             }
             for (const index of boundaries) {
-              const position = { story: "main", blockId: address.blockId, offset: index } as const;
+              const position = {
+                story: "main",
+                blockId: address.blockId,
+                offset: index,
+              } as const;
               expect(
                 session.projection
                   .addressAt(session.projection.positionAt(position).unwrap())
@@ -208,9 +266,9 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
             afterSelection: state.selection.toJSON(),
           });
         }
-        expect(semantic(await parseDocx(await createDocx(session.document)))).toEqual(
-          semantic(session.document),
-        );
+        expect(
+          semantic(await parseDocx(await createDocx(session.document))),
+        ).toEqual(semantic(session.document));
         for (const entry of history.toReversed()) {
           state = publishCanonicalProjection({
             session,
@@ -240,24 +298,38 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
 
 test("TOC suggesting retains the named expected refusal without publishing headings or allocating ids", () => {
   assertProperty(
-    fc.property(fc.integer({ min: 0, max: 8 }), fc.boolean(), (level, localized) => {
-      const session = createCanonicalSession(fixture(level, localized, 12240)).unwrap();
-      session.setMode({ type: "suggesting", author: "Reviewer" });
-      const state = EditorState.create({ schema, doc: session.projection.doc });
-      const before = session.document;
-      const command = singletonManager.requireCommand("generateTOC")({ title: "Contents" });
-      const prepared = prepareCanonicalCommands(
-        session,
-        state,
-        getCanonicalCommandIntents(command, state) ?? [],
-      );
-      expect(prepared.isErr()).toBe(true);
-      if (prepared.isOk()) return panic("Expected TOC refusal stopped reproducing");
-      expect(prepared.error.gap).toBe(CANONICAL_GAP.trackedHyperlinkResolution);
-      expect(session.document).toBe(before);
-      expect(session.version).toBe(0);
-      expect(session.canUndo).toBe(false);
-    }),
+    fc.property(
+      fc.integer({ min: 0, max: 8 }),
+      fc.boolean(),
+      (level, localized) => {
+        const session = createCanonicalSession(
+          fixture(level, localized, 12240),
+        ).unwrap();
+        session.setMode({ type: "suggesting", author: "Reviewer" });
+        const state = EditorState.create({
+          schema,
+          doc: session.projection.doc,
+        });
+        const before = session.document;
+        const command = singletonManager.requireCommand("generateTOC")({
+          title: "Contents",
+        });
+        const prepared = prepareCanonicalCommands(
+          session,
+          state,
+          getCanonicalCommandIntents(command, state) ?? [],
+        );
+        expect(prepared.isErr()).toBe(true);
+        if (prepared.isOk())
+          return panic("Expected TOC refusal stopped reproducing");
+        expect(prepared.error.gap).toBe(
+          CANONICAL_GAP.trackedHyperlinkResolution,
+        );
+        expect(session.document).toBe(before);
+        expect(session.version).toBe(0);
+        expect(session.canUndo).toBe(false);
+      },
+    ),
     {
       numRuns: 18,
       id: "TOC suggesting retains the named expected refusal without publishing headings or allocating ids",
@@ -272,7 +344,9 @@ test("a document without headings has no TOC changes", () => {
   );
   const session = createCanonicalSession(source).unwrap();
   const state = EditorState.create({ schema, doc: session.projection.doc });
-  const command = singletonManager.requireCommand("generateTOC")({ title: "Contents" });
+  const command = singletonManager.requireCommand("generateTOC")({
+    title: "Contents",
+  });
   expect(command(state)).toBe(false);
   const prepared = prepareCanonicalCommands(
     session,
@@ -299,7 +373,9 @@ test("PAGEREF cache length never changes atom address width", () => {
               fieldType: "PAGEREF",
               instruction: "PAGEREF anchor \\h",
               fieldCode: [],
-              fieldResult: [{ type: "run", content: [{ type: "text", text: cache }] }],
+              fieldResult: [
+                { type: "run", content: [{ type: "text", text: cache }] },
+              ],
             },
             { type: "run", content: [{ type: "text", text: "b" }] },
           ],
@@ -312,54 +388,73 @@ test("PAGEREF cache length never changes atom address width", () => {
           .positionAt({ story: "main", blockId: "12345678", offset })
           .unwrap();
         expect(position).toBe(offset + 1);
-        expect(session.projection.addressAt(position).unwrap().offset).toBe(offset);
+        expect(session.projection.addressAt(position).unwrap().offset).toBe(
+          offset,
+        );
       }
     }),
-    { numRuns: 12, id: "PAGEREF cache length never changes atom address width" },
+    {
+      numRuns: 12,
+      id: "PAGEREF cache length never changes atom address width",
+    },
   );
 });
 
 test("TOC after undo never reuses retired paragraph identities", () => {
   assertProperty(
-    fc.property(fc.boolean(), fc.integer({ min: 0, max: 8 }), (localized, level) => {
-      const session = createCanonicalSession(fixture(level, localized, 12240)).unwrap();
-      let state = EditorState.create({ schema, doc: session.projection.doc });
-      const at = session.projection
-        .positionAt({ story: "main", blockId: "23456789", offset: 4 })
-        .unwrap();
-      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, at)));
-      const originalIds = new Set(
-        paragraphs(session.document).map((paragraph) => paragraph.paraId),
-      );
-      const execute = (title: string) => {
-        const command = singletonManager.requireCommand("generateTOC")({ title });
-        const intents =
-          getCanonicalCommandIntents(command, state) ?? panic("Missing TOC descriptor");
-        session.breakUndoGroup();
+    fc.property(
+      fc.boolean(),
+      fc.integer({ min: 0, max: 8 }),
+      (localized, level) => {
+        const session = createCanonicalSession(
+          fixture(level, localized, 12240),
+        ).unwrap();
+        let state = EditorState.create({ schema, doc: session.projection.doc });
+        const at = session.projection
+          .positionAt({ story: "main", blockId: "23456789", offset: 4 })
+          .unwrap();
+        state = state.apply(
+          state.tr.setSelection(TextSelection.create(state.doc, at)),
+        );
+        const originalIds = new Set(
+          paragraphs(session.document).map((paragraph) => paragraph.paraId),
+        );
+        const execute = (title: string) => {
+          const command = singletonManager.requireCommand("generateTOC")({
+            title,
+          });
+          const intents =
+            getCanonicalCommandIntents(command, state) ??
+            panic("Missing TOC descriptor");
+          session.breakUndoGroup();
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: prepareCanonicalCommands(session, state, intents).unwrap(),
+          }).unwrap().state;
+        };
+        execute("Contents");
+        const retired = new Set(
+          paragraphs(session.document)
+            .filter((paragraph) => !originalIds.has(paragraph.paraId))
+            .map((paragraph) => paragraph.paraId),
+        );
         state = publishCanonicalProjection({
           session,
           state,
-          commit: prepareCanonicalCommands(session, state, intents).unwrap(),
+          commit: session.prepareUndo(state).unwrap(),
         }).unwrap().state;
-      };
-      execute("Contents");
-      const retired = new Set(
-        paragraphs(session.document)
+        execute("New contents");
+        const fresh = paragraphs(session.document)
           .filter((paragraph) => !originalIds.has(paragraph.paraId))
-          .map((paragraph) => paragraph.paraId),
-      );
-      state = publishCanonicalProjection({
-        session,
-        state,
-        commit: session.prepareUndo(state).unwrap(),
-      }).unwrap().state;
-      execute("New contents");
-      const fresh = paragraphs(session.document)
-        .filter((paragraph) => !originalIds.has(paragraph.paraId))
-        .map((paragraph) => paragraph.paraId);
-      expect(fresh.some((id) => retired.has(id))).toBe(false);
-      expect(session.canRedo).toBe(false);
-    }),
-    { numRuns: 12, id: "TOC after undo never reuses retired paragraph identities" },
+          .map((paragraph) => paragraph.paraId);
+        expect(fresh.some((id) => retired.has(id))).toBe(false);
+        expect(session.canRedo).toBe(false);
+      },
+    ),
+    {
+      numRuns: 12,
+      id: "TOC after undo never reuses retired paragraph identities",
+    },
   );
 });

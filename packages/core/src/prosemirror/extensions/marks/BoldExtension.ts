@@ -3,6 +3,7 @@
  */
 
 import { panic } from "better-result";
+
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { toggleMarkForAllScripts } from "./markUtils";
@@ -26,7 +27,8 @@ export const BoldExtension = createMarkExtension({
       },
       {
         style: "font-weight",
-        getAttrs: (value) => (/^(?:bold(?:er)?|[5-9]\d{2})$/u.test(value) ? null : false),
+        getAttrs: (value) =>
+          /^(?:bold(?:er)?|[5-9]\d{2})$/u.test(value) ? null : false,
       },
     ],
     toDOM() {

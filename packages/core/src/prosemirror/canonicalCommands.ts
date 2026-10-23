@@ -1,13 +1,27 @@
-import type { ParagraphPropsPatch, RunPropsPatch } from "@stll/docx-core/ops";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
+
+import type { ParagraphPropsPatch, RunPropsPatch } from "@stll/docx-core/ops";
+
+import type { BlockContent } from "../types/document";
 import { canonicalSelectionRanges } from "./canonicalSelectionRange";
 
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
   | { type: "generateTOC"; at: number; title: string }
-  | { type: "setHyperlink"; from: number; to: number; href: string; tooltip?: string }
-  | { type: "removeHyperlink"; from: number; to: number; hyperlinkStyleId?: string }
+  | {
+      type: "setHyperlink";
+      from: number;
+      to: number;
+      href: string;
+      tooltip?: string;
+    }
+  | {
+      type: "removeHyperlink";
+      from: number;
+      to: number;
+      hyperlinkStyleId?: string;
+    }
   | {
       type: "insertHyperlink";
       from: number;
@@ -23,9 +37,35 @@ export type CanonicalCommandIntent =
   | { type: "removeList" }
   | { type: "restartNumbering"; start?: number }
   | { type: "continueNumbering" }
-  | { type: "insertBreak"; from: number; to: number; breakType: "page" | "textWrapping" };
+  | {
+      type: "setSectionBreak";
+      breakType:
+        "nextPage" | "nextColumn" | "continuous" | "evenPage" | "oddPage";
+    }
+  | { type: "removeSectionBreak" }
+  | {
+      type: "insertNote";
+      at: number;
+      kind: "footnote" | "endnote";
+      id: number;
+      content: BlockContent[];
+    }
+  | {
+      type: "deleteNote";
+      from: number;
+      kind: "footnote" | "endnote";
+      id: number;
+    }
+  | {
+      type: "insertBreak";
+      from: number;
+      to: number;
+      breakType: "page" | "textWrapping";
+    };
 
-type CanonicalCommandDescriptor = (state: EditorState) => readonly CanonicalCommandIntent[];
+type CanonicalCommandDescriptor = (
+  state: EditorState,
+) => readonly CanonicalCommandIntent[] | undefined;
 const descriptors = new WeakMap<Command, CanonicalCommandDescriptor>();
 
 /** Registration leaves execution and side-effect-free command probes unchanged. */
@@ -37,10 +77,15 @@ export const withCanonicalCommand = (
   return command;
 };
 
-export const getCanonicalCommandIntents = (command: Command, state: EditorState) =>
-  descriptors.get(command)?.(state);
+export const getCanonicalCommandIntents = (
+  command: Command,
+  state: EditorState,
+) => descriptors.get(command)?.(state);
 
-export const canonicalRunFormatting = (state: EditorState, patch: RunPropsPatch) =>
+export const canonicalRunFormatting = (
+  state: EditorState,
+  patch: RunPropsPatch,
+) =>
   canonicalSelectionRanges(state).map(({ from, to }) => ({
     type: "formatRun" as const,
     from,
@@ -53,21 +98,28 @@ const canonicalParagraphFormatting = (
   patch: ParagraphPropsPatch | ((paragraph: PMNode) => ParagraphPropsPatch),
 ) => {
   const intents: CanonicalCommandIntent[] = [];
-  state.doc.nodesBetween(state.selection.from, state.selection.to, (node, position) => {
-    if (node.type.name !== "paragraph") return;
-    intents.push({
-      type: "formatParagraph",
-      at: position + 1,
-      patch: typeof patch === "function" ? patch(node) : patch,
-    });
-  });
+  state.doc.nodesBetween(
+    state.selection.from,
+    state.selection.to,
+    (node, position) => {
+      if (node.type.name !== "paragraph") return;
+      intents.push({
+        type: "formatParagraph",
+        at: position + 1,
+        patch: typeof patch === "function" ? patch(node) : patch,
+      });
+    },
+  );
   return intents;
 };
 
 export const withCanonicalParagraphFormatting = (
   command: Command,
   patch: ParagraphPropsPatch | ((paragraph: PMNode) => ParagraphPropsPatch),
-): Command => withCanonicalCommand(command, (state) => canonicalParagraphFormatting(state, patch));
+): Command =>
+  withCanonicalCommand(command, (state) =>
+    canonicalParagraphFormatting(state, patch),
+  );
 
 /** Commands that read the selection start apply that same patch across selected paragraphs. */
 export const withCanonicalStartParagraphFormatting = (

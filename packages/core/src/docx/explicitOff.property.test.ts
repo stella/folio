@@ -16,27 +16,29 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Table } from "../types/document";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
-
 import { parseParagraph } from "./paragraphParser";
 import { parseParagraphProperties } from "./paragraphProperties";
-import { serializeParagraph } from "./serializer/paragraphSerializer";
+import { parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
 import { serializeBlockSdt } from "./serializer/blockSdtSerializer";
 import { serializeBorder } from "./serializer/borderSerializer";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeSectionProperties } from "./serializer/sectionPropertiesSerializer";
 import {
+  serializeTable,
   serializeTableCellFormatting,
   serializeTableFormatting,
   serializeTableRowFormatting,
 } from "./serializer/tableSerializer";
-import { parseSdtProperties } from "./sdtProperties";
 import { parseStyles } from "./styleParser";
-import { serializeTable } from "./serializer/tableSerializer";
 import {
   parseTable,
   parseTableCellProperties,
@@ -45,10 +47,19 @@ import {
 } from "./tableParser";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /** Every spelling `ST_OnOff` accepts, plus the absence it must stay distinct from. */
-const ON_OFF_SPELLINGS = [undefined, "0", "false", "off", "1", "true", "on"] as const;
+const ON_OFF_SPELLINGS = [
+  undefined,
+  "0",
+  "false",
+  "off",
+  "1",
+  "true",
+  "on",
+] as const;
 
 type OnOffSpelling = (typeof ON_OFF_SPELLINGS)[number];
 
@@ -88,7 +99,11 @@ const attribute = (name: string, spelling: OnOffSpelling): string =>
  * an on with no `w:val` at all. `absent` is the element not being there, which
  * is what an explicit off has to stay distinct from.
  */
-const ELEMENT_STATES = ["absent", "bare", ...ON_OFF_SPELLINGS.filter(Boolean)] as const;
+const ELEMENT_STATES = [
+  "absent",
+  "bare",
+  ...ON_OFF_SPELLINGS.filter(Boolean),
+] as const;
 
 type ElementState = (typeof ELEMENT_STATES)[number];
 
@@ -127,90 +142,122 @@ const ON_OFF_ELEMENT_TIERS = {
   "trPr/cantSplit": {
     element: "cantSplit",
     read: (xml: string) =>
-      parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`))?.cantSplit,
+      parseTableRowProperties(
+        parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`),
+      )?.cantSplit,
     save: (xml: string) =>
       serializeTableRowFormatting(
         forcedRebuild(
-          parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`)),
+          parseTableRowProperties(
+            parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`),
+          ),
         ),
       ),
   },
   "trPr/tblHeader": {
     element: "tblHeader",
     read: (xml: string) =>
-      parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`))?.header,
+      parseTableRowProperties(
+        parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`),
+      )?.header,
     save: (xml: string) =>
       serializeTableRowFormatting(
         forcedRebuild(
-          parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`)),
+          parseTableRowProperties(
+            parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`),
+          ),
         ),
       ),
   },
   "trPr/hidden": {
     element: "hidden",
     read: (xml: string) =>
-      parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`))?.hidden,
+      parseTableRowProperties(
+        parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`),
+      )?.hidden,
     save: (xml: string) =>
       serializeTableRowFormatting(
         forcedRebuild(
-          parseTableRowProperties(parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`)),
+          parseTableRowProperties(
+            parseOne(`<w:trPr ${WORD_NAMESPACE}>${xml}</w:trPr>`),
+          ),
         ),
       ),
   },
   "tcPr/tcFitText": {
     element: "tcFitText",
     read: (xml: string) =>
-      parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`))?.fitText,
+      parseTableCellProperties(
+        parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`),
+      )?.fitText,
     save: (xml: string) =>
       serializeTableCellFormatting(
         forcedRebuild(
-          parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`)),
+          parseTableCellProperties(
+            parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`),
+          ),
         ),
       ),
   },
   "tcPr/noWrap": {
     element: "noWrap",
     read: (xml: string) =>
-      parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`))?.noWrap,
+      parseTableCellProperties(
+        parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`),
+      )?.noWrap,
     save: (xml: string) =>
       serializeTableCellFormatting(
         forcedRebuild(
-          parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`)),
+          parseTableCellProperties(
+            parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`),
+          ),
         ),
       ),
   },
   "tcPr/hideMark": {
     element: "hideMark",
     read: (xml: string) =>
-      parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`))?.hideMark,
+      parseTableCellProperties(
+        parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`),
+      )?.hideMark,
     save: (xml: string) =>
       serializeTableCellFormatting(
         forcedRebuild(
-          parseTableCellProperties(parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`)),
+          parseTableCellProperties(
+            parseOne(`<w:tcPr ${WORD_NAMESPACE}>${xml}</w:tcPr>`),
+          ),
         ),
       ),
   },
   "tblPr/bidiVisual": {
     element: "bidiVisual",
     read: (xml: string) =>
-      parseTableProperties(parseOne(`<w:tblPr ${WORD_NAMESPACE}>${xml}</w:tblPr>`))?.bidi,
+      parseTableProperties(
+        parseOne(`<w:tblPr ${WORD_NAMESPACE}>${xml}</w:tblPr>`),
+      )?.bidi,
     save: (xml: string) =>
       serializeTableFormatting(
         forcedRebuild(
-          parseTableProperties(parseOne(`<w:tblPr ${WORD_NAMESPACE}>${xml}</w:tblPr>`)),
+          parseTableProperties(
+            parseOne(`<w:tblPr ${WORD_NAMESPACE}>${xml}</w:tblPr>`),
+          ),
         ),
       ),
   },
   "sdtPr/showingPlcHdr": {
     element: "showingPlcHdr",
     read: (xml: string) =>
-      parseSdtProperties(parseOne(`<w:sdtPr ${WORD_NAMESPACE}>${xml}</w:sdtPr>`))
-        .showingPlaceholder,
+      parseSdtProperties(
+        parseOne(`<w:sdtPr ${WORD_NAMESPACE}>${xml}</w:sdtPr>`),
+      ).showingPlaceholder,
     save: (xml: string) => {
       const { rawPropertiesXml: _raw, ...props } = parseSdtProperties(
         parseOne(`<w:sdtPr ${WORD_NAMESPACE}>${xml}</w:sdtPr>`),
       );
-      return serializeBlockSdt({ type: "blockSdt", properties: props, content: [] }, () => "");
+      return serializeBlockSdt(
+        { type: "blockSdt", properties: props, content: [] },
+        () => "",
+      );
     },
   },
   "rPr/specVanish": {
@@ -267,7 +314,9 @@ describe("CT_OnOff elements", () => {
               return;
             }
             expect(saved).toContain(
-              stated ? `<w:${tier.element}/>` : `<w:${tier.element} w:val="0"/>`,
+              stated
+                ? `<w:${tier.element}/>`
+                : `<w:${tier.element} w:val="0"/>`,
             );
           },
         ),
@@ -287,7 +336,9 @@ describe("CT_OnOff elements", () => {
           (slot, state) => {
             const tier = ON_OFF_ELEMENT_TIERS[slot];
             const stated = statedByElement(state);
-            expect(tier.read(onOffElement(tier.element, canonicalState(stated)))).toBe(stated);
+            expect(
+              tier.read(onOffElement(tier.element, canonicalState(stated))),
+            ).toBe(stated);
           },
         ),
         propertyConfig({ numRuns: 300 }),
@@ -330,9 +381,9 @@ describe("CT_OnOff elements", () => {
     expect(cell?.formatting?.noWrap).toBe(false);
     expect(cell?.formatting?.hideMark).toBe(false);
     expect(row?.formatting?.cantSplit).toBe(false);
-    expect(serializeTableCellFormatting(forcedRebuild(cell?.formatting))).toContain(
-      '<w:noWrap w:val="0"/>',
-    );
+    expect(
+      serializeTableCellFormatting(forcedRebuild(cell?.formatting)),
+    ).toContain('<w:noWrap w:val="0"/>');
   });
 
   test("a cell that states nothing keeps stating nothing through the editor", () => {
@@ -342,7 +393,9 @@ describe("CT_OnOff elements", () => {
           content: [
             {
               type: "table",
-              rows: [{ cells: [{ content: [{ type: "paragraph", content: [] }] }] }],
+              rows: [
+                { cells: [{ content: [{ type: "paragraph", content: [] }] }] },
+              ],
             },
           ],
         },
@@ -357,7 +410,9 @@ describe("CT_OnOff elements", () => {
     const cell = block.rows.at(0)?.cells.at(0);
     expect(cell?.formatting?.noWrap).toBeUndefined();
     expect(cell?.formatting?.hideMark).toBeUndefined();
-    expect(serializeTableCellFormatting(forcedRebuild(cell?.formatting))).not.toContain("w:noWrap");
+    expect(
+      serializeTableCellFormatting(forcedRebuild(cell?.formatting)),
+    ).not.toContain("w:noWrap");
   });
 
   test("a control that states nothing keeps stating nothing through the editor", () => {
@@ -414,21 +469,30 @@ describe("CT_Border @shadow and @frame", () => {
       ).get("Bordered")?.pPr?.borders?.top,
     table: (border: string) =>
       parseTableProperties(
-        parseOne(`<w:tblPr ${WORD_NAMESPACE}><w:tblBorders>${border}</w:tblBorders></w:tblPr>`),
+        parseOne(
+          `<w:tblPr ${WORD_NAMESPACE}><w:tblBorders>${border}</w:tblBorders></w:tblPr>`,
+        ),
       )?.borders?.top,
     cell: (border: string) =>
       parseTableCellProperties(
-        parseOne(`<w:tcPr ${WORD_NAMESPACE}><w:tcBorders>${border}</w:tcBorders></w:tcPr>`),
+        parseOne(
+          `<w:tcPr ${WORD_NAMESPACE}><w:tcBorders>${border}</w:tcBorders></w:tcPr>`,
+        ),
       )?.borders?.top,
     page: (border: string) =>
       parseSectionProperties(
-        parseOne(`<w:sectPr ${WORD_NAMESPACE}><w:pgBorders>${border}</w:pgBorders></w:sectPr>`),
+        parseOne(
+          `<w:sectPr ${WORD_NAMESPACE}><w:pgBorders>${border}</w:pgBorders></w:sectPr>`,
+        ),
       ).pageBorders?.top,
   } as const;
 
   const TIER_NAMES = Object.keys(TIERS) as (keyof typeof TIERS)[];
 
-  const borderXml = (toggle: (typeof BORDER_TOGGLES)[number], spelling: OnOffSpelling): string =>
+  const borderXml = (
+    toggle: (typeof BORDER_TOGGLES)[number],
+    spelling: OnOffSpelling,
+  ): string =>
     `<w:top w:val="single" w:sz="8" w:space="0"${attribute(toggle, spelling)}/>`;
 
   test(
@@ -491,9 +555,13 @@ describe("CT_Border @shadow and @frame", () => {
               state === "no side" ? "" : borderXml("shadow", state);
 
             const saveBorders = (borders: { top?: unknown } | undefined) => {
-              const top = (borders as { top?: Parameters<typeof serializeBorder>[0] } | undefined)
-                ?.top;
-              return top === undefined ? undefined : TIERS.paragraph(serializeBorder(top, "top"));
+              const top = (
+                borders as
+                  { top?: Parameters<typeof serializeBorder>[0] } | undefined
+              )?.top;
+              return top === undefined
+                ? undefined
+                : TIERS.paragraph(serializeBorder(top, "top"));
             };
 
             const styleFormatting = parseStyles(
@@ -506,7 +574,9 @@ describe("CT_Border @shadow and @frame", () => {
               null,
             ).get("Bordered")?.pPr;
             const directFormatting = parseParagraphProperties(
-              parseOne(`<w:pPr ${WORD_NAMESPACE}><w:pBdr>${sideOf(direct)}</w:pBdr></w:pPr>`),
+              parseOne(
+                `<w:pPr ${WORD_NAMESPACE}><w:pBdr>${sideOf(direct)}</w:pBdr></w:pPr>`,
+              ),
               null,
             );
 
@@ -519,7 +589,9 @@ describe("CT_Border @shadow and @frame", () => {
             };
             const resolved = mergeParagraphFormatting(styleFormatting, saved);
 
-            expect(resolved?.borders?.top?.shadow).toBe(effectiveShadow({ direct, fromStyle }));
+            expect(resolved?.borders?.top?.shadow).toBe(
+              effectiveShadow({ direct, fromStyle }),
+            );
           },
         ),
         propertyConfig({ numRuns: 250 }),
@@ -531,7 +603,9 @@ describe("CT_Border @shadow and @frame", () => {
 
 describe("CT_Columns @sep", () => {
   const sectionOf = (cols: string) =>
-    parseSectionProperties(parseOne(`<w:sectPr ${WORD_NAMESPACE}>${cols}</w:sectPr>`));
+    parseSectionProperties(
+      parseOne(`<w:sectPr ${WORD_NAMESPACE}>${cols}</w:sectPr>`),
+    );
 
   /** `serializeSectionProperties` emits the whole `w:sectPr`, so the namespace goes on it. */
   const reparse = (cols: string) => {
@@ -567,15 +641,22 @@ describe("CT_Columns @sep", () => {
    * dropped the whole element, not only the attribute.
    */
   test("a w:cols that states only w:sep keeps its element", () => {
-    expect(serializeSectionProperties(sectionOf('<w:cols w:sep="0"/>'))).toContain('w:sep="0"');
-    expect(serializeSectionProperties(sectionOf('<w:cols w:sep="1"/>'))).toContain('w:sep="1"');
+    expect(
+      serializeSectionProperties(sectionOf('<w:cols w:sep="0"/>')),
+    ).toContain('w:sep="0"');
+    expect(
+      serializeSectionProperties(sectionOf('<w:cols w:sep="1"/>')),
+    ).toContain('w:sep="1"');
   });
 
   test("w:col children keep their @w and @space across the save", () => {
     const reparsed = reparse(
       '<w:cols w:num="2" w:equalWidth="0" w:sep="off"><w:col w:w="4000" w:space="360"/><w:col w:w="5000"/></w:cols>',
     );
-    expect(reparsed.columns).toEqual([{ width: 4000, space: 360 }, { width: 5000 }]);
+    expect(reparsed.columns).toEqual([
+      { width: 4000, space: 360 },
+      { width: 5000 },
+    ]);
     expect(reparsed.equalWidth).toBe(false);
     expect(reparsed.separator).toBe(false);
   });
@@ -588,7 +669,9 @@ describe("CT_Columns @sep", () => {
             {
               type: "paragraph",
               sectionProperties: { columnCount: 2, separator: false },
-              content: [{ type: "run", content: [{ type: "text", text: "Body" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "Body" }] },
+              ],
             },
           ],
         },
@@ -601,7 +684,9 @@ describe("CT_Columns @sep", () => {
       throw new Error("expected a paragraph");
     }
     expect(block.sectionProperties?.separator).toBe(false);
-    expect(serializeSectionProperties(block.sectionProperties)).toContain('w:sep="0"');
+    expect(serializeSectionProperties(block.sectionProperties)).toContain(
+      'w:sep="0"',
+    );
   });
 });
 
@@ -633,7 +718,9 @@ describe("field @fldLock and @dirty", () => {
 
   /** Parse, run the real paragraph serializer, parse the paragraph back. */
   const reparse = (form: keyof typeof FORMS, attrs: string) => {
-    const source = parseOne(`<w:p ${WORD_NAMESPACE}>${FORMS[form](attrs)}</w:p>`);
+    const source = parseOne(
+      `<w:p ${WORD_NAMESPACE}>${FORMS[form](attrs)}</w:p>`,
+    );
     const saved = serializeParagraph(parseParagraph(source, null, null, null));
     return parseFirstField(saved.slice("<w:p>".length, -"</w:p>".length));
   };
@@ -648,7 +735,9 @@ describe("field @fldLock and @dirty", () => {
           fc.constantFrom(...ON_OFF_SPELLINGS),
           (form, toggle, spelling) => {
             const attrs = attribute(toggle, spelling);
-            expect(parseFirstField(FORMS[form](attrs))[toggle]).toBe(statedBy(spelling));
+            expect(parseFirstField(FORMS[form](attrs))[toggle]).toBe(
+              statedBy(spelling),
+            );
             expect(reparse(form, attrs)[toggle]).toBe(statedBy(spelling));
           },
         ),
@@ -664,7 +753,9 @@ describe("field @fldLock and @dirty", () => {
       throw new Error("expected a complex field");
     }
     expect(complex.instruction).toBe(" PAGE ");
-    expect(complex.fieldResult.map((run) => run.content)).toEqual([[{ type: "text", text: "1" }]]);
+    expect(complex.fieldResult.map((run) => run.content)).toEqual([
+      [{ type: "text", text: "1" }],
+    ]);
   });
 
   test("an explicit off survives the editor projection", () => {
@@ -680,7 +771,9 @@ describe("field @fldLock and @dirty", () => {
                   instruction: " PAGE ",
                   fieldType: "PAGE",
                   dirty: false,
-                  content: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "1" }] },
+                  ],
                 },
               ],
             },
@@ -715,7 +808,9 @@ describe("field @fldLock and @dirty", () => {
                   type: "simpleField",
                   instruction: " PAGE ",
                   fieldType: "PAGE",
-                  content: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "1" }] },
+                  ],
                 },
               ],
             },
@@ -757,7 +852,14 @@ describe("w:trPr/w:hidden", () => {
     `<w:tr><w:trPr>${element(spelling)}</w:trPr><w:tc><w:p/></w:tc></w:tr></w:tbl>`;
 
   const parsedTable = (spelling: OnOffSpelling): Table => {
-    const table = parseTable(parseOne(tableXml(spelling)), null, null, null, null, null);
+    const table = parseTable(
+      parseOne(tableXml(spelling)),
+      null,
+      null,
+      null,
+      null,
+      null,
+    );
     if (!table) {
       throw new Error("the table fixture parsed to nothing");
     }
@@ -778,10 +880,16 @@ describe("w:trPr/w:hidden", () => {
 
   const throughEditor = (spelling: OnOffSpelling): Table => {
     const original = {
-      package: { document: { content: [parsedTable(spelling)], finalSectionProperties: {} } },
+      package: {
+        document: {
+          content: [parsedTable(spelling)],
+          finalSectionProperties: {},
+        },
+      },
     } as never;
-    return fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } })
-      .package.document.content[0] as Table;
+    return fromProseDoc(toProseDoc(original), original, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Table;
   };
 
   test(
@@ -790,7 +898,9 @@ describe("w:trPr/w:hidden", () => {
       fc.assert(
         fc.property(fc.constantFrom(...ON_OFF_SPELLINGS), (spelling) => {
           const stated = statedBy(spelling);
-          expect(parsedTable(spelling).rows[0]?.formatting?.hidden).toBe(stated);
+          expect(parsedTable(spelling).rows[0]?.formatting?.hidden).toBe(
+            stated,
+          );
 
           const projected = throughEditor(spelling);
           expect(projected.rows[0]?.formatting?.hidden).toBe(stated);
@@ -820,7 +930,10 @@ describe("w:trPr/w:hidden", () => {
     // The row states nothing else, so a `false` that reached the serializer
     // through `TableRowFormatting.preserved` would come back in the spelling
     // the source used rather than the canonical one.
-    const saved = serializeTable(rebuilt(throughEditor("off")), serializeParagraph);
+    const saved = serializeTable(
+      rebuilt(throughEditor("off")),
+      serializeParagraph,
+    );
 
     expect(saved).toContain('<w:hidden w:val="0"/>');
     expect(saved).not.toContain('w:val="off"');

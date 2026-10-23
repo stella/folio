@@ -21,7 +21,11 @@ function escapeAttr(value: string): string {
     .replace(/"/gu, "&quot;");
 }
 
-function attrString(info: { author?: string; date?: string; id?: number }): string {
+function attrString(info: {
+  author?: string;
+  date?: string;
+  id?: number;
+}): string {
   const parts: string[] = [];
   if (info.author) {
     parts.push(`author="${escapeAttr(info.author)}"`);
@@ -56,26 +60,63 @@ function wrap(
   }
   if (ctx.opts.annotations === "pandoc") {
     const author = info.author ? ` author="${escapeAttr(info.author)}"` : "";
-    const id = mode === "comment" && typeof info.id === "number" ? ` id="${info.id}"` : "";
+    const id =
+      mode === "comment" && typeof info.id === "number"
+        ? ` id="${info.id}"`
+        : "";
     return `[${inner}]{.${pandocClass}${id}${author}}`;
   }
   return `<${htmlTag}${attrString(info)}${extraHtmlAttrs}>${inner}</${htmlTag}>`;
 }
 
-export function wrapInsertion(ctx: RenderContext, info: TrackedChangeInfo, inner: string): string {
+export function wrapInsertion(
+  ctx: RenderContext,
+  info: TrackedChangeInfo,
+  inner: string,
+): string {
   return wrap(ctx, inner, "ins", "ins", info, "", "tracked", true);
 }
 
-export function wrapDeletion(ctx: RenderContext, info: TrackedChangeInfo, inner: string): string {
+export function wrapDeletion(
+  ctx: RenderContext,
+  info: TrackedChangeInfo,
+  inner: string,
+): string {
   return wrap(ctx, inner, "del", "del", info, "", "tracked", false);
 }
 
-export function wrapMoveFrom(ctx: RenderContext, info: TrackedChangeInfo, inner: string): string {
-  return wrap(ctx, inner, "del", "move-from", info, ' data-move="from"', "tracked", false);
+export function wrapMoveFrom(
+  ctx: RenderContext,
+  info: TrackedChangeInfo,
+  inner: string,
+): string {
+  return wrap(
+    ctx,
+    inner,
+    "del",
+    "move-from",
+    info,
+    ' data-move="from"',
+    "tracked",
+    false,
+  );
 }
 
-export function wrapMoveTo(ctx: RenderContext, info: TrackedChangeInfo, inner: string): string {
-  return wrap(ctx, inner, "ins", "move-to", info, ' data-move="to"', "tracked", true);
+export function wrapMoveTo(
+  ctx: RenderContext,
+  info: TrackedChangeInfo,
+  inner: string,
+): string {
+  return wrap(
+    ctx,
+    inner,
+    "ins",
+    "move-to",
+    info,
+    ' data-move="to"',
+    "tracked",
+    true,
+  );
 }
 
 export function wrapComment(

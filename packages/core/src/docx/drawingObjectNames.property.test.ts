@@ -29,8 +29,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Image, RunContent, Shape } from "../types/document";
@@ -125,7 +127,12 @@ const buildShape = ({ kind, placement, names }: DrawingCase): Shape => ({
           content: [
             {
               type: "paragraph" as const,
-              content: [{ type: "run" as const, content: [{ type: "text" as const, text: "t" }] }],
+              content: [
+                {
+                  type: "run" as const,
+                  content: [{ type: "text" as const, text: "t" }],
+                },
+              ],
             },
           ],
         },
@@ -219,9 +226,15 @@ const readNames = (document: Document): DrawingNames | null => {
         }
         if (content.type === "drawing") {
           return presentNames({
-            ...(content.image.docPrName !== undefined ? { name: content.image.docPrName } : {}),
-            ...(content.image.alt !== undefined ? { alt: content.image.alt } : {}),
-            ...(content.image.title !== undefined ? { title: content.image.title } : {}),
+            ...(content.image.docPrName !== undefined
+              ? { name: content.image.docPrName }
+              : {}),
+            ...(content.image.alt !== undefined
+              ? { alt: content.image.alt }
+              : {}),
+            ...(content.image.title !== undefined
+              ? { title: content.image.title }
+              : {}),
           });
         }
       }
@@ -258,7 +271,11 @@ describe("drawing object names survive both save paths", () => {
     });
   });
 
-  test.each(DRAWING_KINDS.flatMap((kind) => PLACEMENTS.map((placement) => ({ kind, placement }))))(
+  test.each(
+    DRAWING_KINDS.flatMap((kind) =>
+      PLACEMENTS.map((placement) => ({ kind, placement })),
+    ),
+  )(
     "an unnamed $placement $kind stays unnamed",
     async ({ kind, placement }) => {
       const template = await parse(await createEmptyDocx());

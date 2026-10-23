@@ -81,16 +81,23 @@ const asStub = (element: HTMLElement) => element as unknown as StubElement;
 const VENDOR_PREFIXES = ["webkit-", "moz-", "ms-", "o-"] as const;
 
 const toKebabCase = (name: string): string => {
-  const hyphenated = name.replaceAll(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`);
+  const hyphenated = name.replaceAll(
+    /[A-Z]/gu,
+    (letter) => `-${letter.toLowerCase()}`,
+  );
   return VENDOR_PREFIXES.some((prefix) => hyphenated.startsWith(prefix))
     ? `-${hyphenated}`
     : hyphenated;
 };
 
 export const escapeHtmlText = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 
-const escapeAttribute = (value: string): string => escapeHtmlText(value).replaceAll('"', "&quot;");
+const escapeAttribute = (value: string): string =>
+  escapeHtmlText(value).replaceAll('"', "&quot;");
 
 const serializeStyle = (style: Record<string, string>): string =>
   Object.entries(style)
@@ -108,12 +115,17 @@ const rawElementText = (text: string): string => text.replaceAll("</", "<\\/");
 
 const serializeElement = (element: StubElement): string => {
   const attributes: string[] = [];
-  if (element.className !== "") attributes.push(`class="${escapeAttribute(element.className)}"`);
+  if (element.className !== "")
+    attributes.push(`class="${escapeAttribute(element.className)}"`);
   if (element.id !== "") attributes.push(`id="${escapeAttribute(element.id)}"`);
-  if (element.href !== "") attributes.push(`href="${escapeAttribute(element.href)}"`);
-  if (element.src !== "") attributes.push(`src="${escapeAttribute(element.src)}"`);
-  if (element.title !== "") attributes.push(`title="${escapeAttribute(element.title)}"`);
-  if (element.tagName === "img") attributes.push(`alt="${escapeAttribute(element.alt)}"`);
+  if (element.href !== "")
+    attributes.push(`href="${escapeAttribute(element.href)}"`);
+  if (element.src !== "")
+    attributes.push(`src="${escapeAttribute(element.src)}"`);
+  if (element.title !== "")
+    attributes.push(`title="${escapeAttribute(element.title)}"`);
+  if (element.tagName === "img")
+    attributes.push(`alt="${escapeAttribute(element.alt)}"`);
   for (const [name, value] of Object.entries(element.attributes)) {
     attributes.push(`${name}="${escapeAttribute(value)}"`);
   }
@@ -168,7 +180,9 @@ export const renderDisplayListPagesToHtml = (
   renderDisplayListToDom(list, {
     doc: stubDocument(),
     binaryUrls: "dataUrl",
-    ...(options.pageBackground !== undefined && { pageBackground: options.pageBackground }),
+    ...(options.pageBackground !== undefined && {
+      pageBackground: options.pageBackground,
+    }),
   }).map((element, index) => {
     const markup = serializeElement(asStub(element));
     const page = list.pages.at(index);

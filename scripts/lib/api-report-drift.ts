@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+
 import { renderReportDiff } from "./api-report-diff";
 
 type RenderApiReportDriftOptions = {
@@ -16,7 +17,8 @@ export const renderApiReportDrift = ({
   maxLines,
 }: RenderApiReportDriftOptions): string => {
   const candidate = readFileSync(candidatePath, "utf8");
-  if (!existsSync(baselinePath)) return `new entry: commit ${reportPath}\n${candidate}`;
+  if (!existsSync(baselinePath))
+    return `new entry: commit ${reportPath}\n${candidate}`;
   return renderReportDiff({
     baseline: readFileSync(baselinePath, "utf8"),
     candidate,

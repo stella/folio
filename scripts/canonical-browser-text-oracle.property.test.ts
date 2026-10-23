@@ -1,14 +1,15 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { assertProperty, propertyTestTimeout } from "../test/property-testing";
-import { schema } from "../packages/core/src/prosemirror/schema";
-import { canonicalTextSelection } from "../tests/parity/canonicalTextSelection";
+
 import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../packages/core/src/controller/canonicalSession";
+import { schema } from "../packages/core/src/prosemirror/schema";
 import { createEmptyDocument } from "../packages/core/src/utils/createDocument";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+import { canonicalTextSelection } from "../tests/parity/canonicalTextSelection";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 
@@ -27,15 +28,21 @@ test("document-position text slices agree with flat text replacement across para
       (paragraphs, ordinal, anchor, head, inserted) => {
         const index = ordinal % paragraphs.length;
         const target = paragraphs.at(index);
-        if (target === undefined) throw new TypeError("Missing generated paragraph");
+        if (target === undefined)
+          throw new TypeError("Missing generated paragraph");
         const content = paragraphs.map((value) =>
-          schema.nodes["paragraph"].create(null, value === "" ? [] : schema.text(value)),
+          schema.nodes["paragraph"].create(
+            null,
+            value === "" ? [] : schema.text(value),
+          ),
         );
         const doc = schema.nodes["doc"].create(null, content);
         let start = 1;
-        for (let prior = 0; prior < index; prior++) start += doc.child(prior).nodeSize;
+        for (let prior = 0; prior < index; prior++)
+          start += doc.child(prior).nodeSize;
         const gaps = [0];
-        for (const character of target) gaps.push((gaps.at(-1) ?? 0) + character.length);
+        for (const character of target)
+          gaps.push((gaps.at(-1) ?? 0) + character.length);
         const left = gaps.at(anchor % gaps.length);
         const right = gaps.at(head % gaps.length);
         if (left === undefined || right === undefined)
@@ -48,13 +55,20 @@ test("document-position text slices agree with flat text replacement across para
           selection: TextSelection.create(doc, start + from, start + to),
         });
         const slices = canonicalTextSelection(state);
-        expect(slices.before + slices.selected + slices.after).toBe(paragraphs.join(""));
+        expect(slices.before + slices.selected + slices.after).toBe(
+          paragraphs.join(""),
+        );
         const expected = [...paragraphs];
         expected[index] = target.slice(0, from) + inserted + target.slice(to);
         expect(slices.before + inserted + slices.after).toBe(expected.join(""));
         expect(
-          state.apply(state.tr.insertText(inserted, state.selection.from, state.selection.to)).doc
-            .textContent,
+          state.apply(
+            state.tr.insertText(
+              inserted,
+              state.selection.from,
+              state.selection.to,
+            ),
+          ).doc.textContent,
         ).toBe(expected.join(""));
       },
     ),
@@ -68,7 +82,8 @@ test("document-position text slices agree with flat text replacement across para
 test("canonical split followed by typing uses text at the caret's paragraph", () => {
   const source = createEmptyDocument({ initialText: "alpha😀café東京" });
   const first = source.package.document.content.at(0);
-  if (first?.type !== "paragraph") throw new TypeError("Missing paragraph fixture");
+  if (first?.type !== "paragraph")
+    throw new TypeError("Missing paragraph fixture");
   first.paraId = "F0220001";
   const session = createCanonicalSession(source).unwrap();
   let state = EditorState.create({

@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 /**
  * Dirty note paragraph ids are hints, not proof of a semantic change. The note
  * save oracle must distinguish stale hints from edits while preserving source
@@ -5,11 +6,13 @@
  * hinted real edits and never exercised unchanged source-less paragraph hints.
  */
 import { describe, expect, test } from "bun:test";
-import { panic } from "better-result";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
@@ -41,15 +44,21 @@ const readPart = async (buffer: ArrayBuffer, path: string): Promise<string> => {
   return entry.async("text");
 };
 
-const createFixture = async (kind: (typeof NOTE_KINDS)[number]): Promise<ArrayBuffer> => {
+const createFixture = async (
+  kind: (typeof NOTE_KINDS)[number],
+): Promise<ArrayBuffer> => {
   const document = createEmptyDocument({ initialText: "Body text" });
   const body = document.package.document.content.at(0);
   if (body?.type !== "paragraph") panic("Expected fixture body paragraph");
   body.content.push({
     type: "run",
-    content: [{ type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id: 1 }],
+    content: [
+      { type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id: 1 },
+    ],
   });
-  const content = NOTE_PARA_IDS.map((id, index) => paragraph(id, `Note paragraph ${index}`));
+  const content = NOTE_PARA_IDS.map((id, index) =>
+    paragraph(id, `Note paragraph ${index}`),
+  );
   if (kind === "footnote") {
     document.package.footnotes = [{ type: "footnote", id: 1, content }];
   } else {
@@ -69,75 +78,129 @@ describe("note dirty hints preserve semantic edits and unchanged parts", () => {
           const sourceZip = await JSZip.loadAsync(originalWithIds);
           sourceZip.file(
             partPath,
-            (await readPart(originalWithIds, partPath)).replace(/ w14:paraId="[^"]+"/gu, ""),
+            (await readPart(originalWithIds, partPath)).replace(
+              / w14:paraId="[^"]+"/gu,
+              "",
+            ),
           );
-          const originalWithoutIds = await sourceZip.generateAsync({ type: "arraybuffer" });
+          const originalWithoutIds = await sourceZip.generateAsync({
+            type: "arraybuffer",
+          });
           await fc.assert(
             fc.asyncProperty(
               fc.subarray(NOTE_PARA_IDS),
               fc.boolean(),
               fc.boolean(),
               fc.boolean(),
-              fc.option(fc.integer({ min: 0, max: NOTE_PARA_IDS.length - 1 }), { nil: null }),
-              async (dirtyIds, includeMissingId, editBody, sourceHasIds, editedNoteIndex) => {
-                const original = sourceHasIds ? originalWithIds : originalWithoutIds;
+              fc.option(fc.integer({ min: 0, max: NOTE_PARA_IDS.length - 1 }), {
+                nil: null,
+              }),
+              async (
+                dirtyIds,
+                includeMissingId,
+                editBody,
+                sourceHasIds,
+                editedNoteIndex,
+              ) => {
+                const original = sourceHasIds
+                  ? originalWithIds
+                  : originalWithoutIds;
                 const originalPart = await readPart(original, partPath);
-                const document = await parseDocx(original, { preloadFonts: false });
+                const document = await parseDocx(original, {
+                  preloadFonts: false,
+                });
                 const notes =
-                  kind === "footnote" ? document.package.footnotes : document.package.endnotes;
-                expect(notes?.at(0)?.content).toHaveLength(NOTE_PARA_IDS.length);
+                  kind === "footnote"
+                    ? document.package.footnotes
+                    : document.package.endnotes;
+                expect(notes?.at(0)?.content).toHaveLength(
+                  NOTE_PARA_IDS.length,
+                );
                 if (!sourceHasIds) {
-                  for (const [index, block] of (notes?.at(0)?.content ?? []).entries()) {
-                    if (block.type !== "paragraph") panic("Expected note fixture paragraph");
+                  for (const [index, block] of (
+                    notes?.at(0)?.content ?? []
+                  ).entries()) {
+                    if (block.type !== "paragraph")
+                      panic("Expected note fixture paragraph");
                     block.paraId = NOTE_PARA_IDS.at(index);
                   }
                 }
                 const body = document.package.document.content.at(0);
-                if (body?.type !== "paragraph") panic("Expected parsed fixture body");
+                if (body?.type !== "paragraph")
+                  panic("Expected parsed fixture body");
                 if (editBody) setText(body, "Changed body text");
                 const changedNoteParaIds = new Set<string>(dirtyIds);
                 if (includeMissingId) changedNoteParaIds.add(STALE_PARA_ID);
                 if (editedNoteIndex !== null) {
-                  const noteParagraph = notes?.at(0)?.content.at(editedNoteIndex);
+                  const noteParagraph = notes
+                    ?.at(0)
+                    ?.content.at(editedNoteIndex);
                   const editedParaId = NOTE_PARA_IDS.at(editedNoteIndex);
                   if (noteParagraph?.type !== "paragraph" || !editedParaId)
                     panic("Expected note edit target");
                   setText(noteParagraph, "Changed note text");
                   changedNoteParaIds.add(editedParaId);
                 }
-                const options = { changedNoteParaIds, updateModifiedDate: false };
+                const options = {
+                  changedNoteParaIds,
+                  updateModifiedDate: false,
+                };
                 const saved =
                   savePath === "repack"
                     ? await repackDocx(document, options)
-                    : await repackDocxFromRaw(document, await unzipDocx(original), options);
+                    : await repackDocxFromRaw(
+                        document,
+                        await unzipDocx(original),
+                        options,
+                      );
                 const savedPart = await readPart(saved, partPath);
-                if (sourceHasIds && editedNoteIndex === null && dirtyIds.length === 0) {
+                if (
+                  sourceHasIds &&
+                  editedNoteIndex === null &&
+                  dirtyIds.length === 0
+                ) {
                   expect(savedPart).toBe(originalPart);
                 }
-                const reparsed = await parseDocx(saved, { preloadFonts: false });
+                const reparsed = await parseDocx(saved, {
+                  preloadFonts: false,
+                });
                 const savedNotes =
-                  kind === "footnote" ? reparsed.package.footnotes : reparsed.package.endnotes;
+                  kind === "footnote"
+                    ? reparsed.package.footnotes
+                    : reparsed.package.endnotes;
                 expect(
                   savedNotes?.at(0)?.content.map((block) =>
                     (block.type === "paragraph" ? block.content : [])
-                      .flatMap((item) => (item.type === "run" ? item.content : []))
+                      .flatMap((item) =>
+                        item.type === "run" ? item.content : [],
+                      )
                       .map((item) => (item.type === "text" ? item.text : ""))
                       .join(""),
                   ),
                 ).toEqual(
                   NOTE_PARA_IDS.map((_, index) =>
-                    index === editedNoteIndex ? "Changed note text" : `Note paragraph ${index}`,
+                    index === editedNoteIndex
+                      ? "Changed note text"
+                      : `Note paragraph ${index}`,
                   ),
                 );
                 const savedAgain =
                   savePath === "repack"
                     ? await repackDocx(reparsed, options)
-                    : await repackDocxFromRaw(reparsed, await unzipDocx(saved), options);
+                    : await repackDocxFromRaw(
+                        reparsed,
+                        await unzipDocx(saved),
+                        options,
+                      );
                 expect(await readPart(savedAgain, partPath)).toBe(savedPart);
                 if (editBody) {
                   const savedBody = reparsed.package.document.content.at(0);
-                  const savedText = (savedBody?.type === "paragraph" ? savedBody.content : [])
-                    .flatMap((item) => (item.type === "run" ? item.content : []))
+                  const savedText = (
+                    savedBody?.type === "paragraph" ? savedBody.content : []
+                  )
+                    .flatMap((item) =>
+                      item.type === "run" ? item.content : [],
+                    )
                     .map((item) => (item.type === "text" ? item.text : ""))
                     .join("");
                   expect(savedText).toBe("Changed body text");

@@ -10,7 +10,11 @@ import { spawnSync } from "node:child_process";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
+import {
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
 import { dataOf, envelopeOf, ISOLATED_GIT_ENV } from "./__tests__/io";
 
 const BIN = path.join(import.meta.dir, "bin.ts");
@@ -26,7 +30,10 @@ afterAll(async () => {
   await cleanup();
 });
 
-const folio = (args: readonly string[], env: Record<string, string | undefined> = {}) => {
+const folio = (
+  args: readonly string[],
+  env: Record<string, string | undefined> = {},
+) => {
   const run = spawnSync(process.execPath, [BIN, ...args], {
     cwd: dir,
     env: { ...ISOLATED_GIT_ENV, FOLIO_AUTHOR: "E2E Reviewer", ...env },
@@ -50,7 +57,10 @@ describe("folio executable", () => {
         Object.entries(sourceZip.files).filter(([, entry]) => !entry.dir),
       );
       const sourceNames = Object.keys(sourceZip.files).toSorted();
-      await writeFile(file, await sourceZip.generateAsync({ type: "uint8array" }));
+      await writeFile(
+        file,
+        await sourceZip.generateAsync({ type: "uint8array" }),
+      );
       const original = path.join(dir, "original.docx");
       await copyFile(file, original);
 
@@ -64,7 +74,12 @@ describe("folio executable", () => {
       await writeFile(
         ops,
         JSON.stringify([
-          { type: "replaceInBlock", blockId: "10000002", find: "$50", replace: "$500" },
+          {
+            type: "replaceInBlock",
+            blockId: "10000002",
+            find: "$50",
+            replace: "$500",
+          },
         ]),
       );
       const suggested = folio([
@@ -81,9 +96,11 @@ describe("folio executable", () => {
       expect(suggested.exitCode).toBe(0);
       const receipt = dataOf(suggested.stdout);
       expect(receipt["saveStrategy"]).toBe("selective");
-      expect(Object.keys((await JSZip.loadAsync(await readFile(file))).files).toSorted()).toEqual(
-        sourceNames,
-      );
+      expect(
+        Object.keys(
+          (await JSZip.loadAsync(await readFile(file))).files,
+        ).toSorted(),
+      ).toEqual(sourceNames);
 
       const stale = folio([
         "suggest",
@@ -95,7 +112,9 @@ describe("folio executable", () => {
         String(readData["fileVersion"]),
       ]);
       expect(stale.exitCode).toBe(10);
-      expect(JSON.stringify(envelopeOf(stale.stdout)["error"])).toContain("stale_version");
+      expect(JSON.stringify(envelopeOf(stale.stdout)["error"])).toContain(
+        "stale_version",
+      );
 
       const changes = folio(["changes", file]);
       const pending = resultOf(dataOf(changes.stdout));
@@ -125,10 +144,19 @@ describe("folio executable", () => {
       expect(diff.stdout).toContain("[- $50-]{+ $500+}");
 
       const redline = path.join(dir, "redline.docx");
-      const written = folio(["compare", original, file, "-o", redline, "--no-expect-version"]);
+      const written = folio([
+        "compare",
+        original,
+        file,
+        "-o",
+        redline,
+        "--no-expect-version",
+      ]);
       expect(written.exitCode).toBe(0);
       expect(dataOf(written.stdout)["saveStrategy"]).toBe("redline");
-      const redlineChanges = resultOf(dataOf(folio(["changes", redline]).stdout));
+      const redlineChanges = resultOf(
+        dataOf(folio(["changes", redline]).stdout),
+      );
       expect(JSON.stringify(redlineChanges)).toContain("$500");
     },
     PROCESS_TEST_TIMEOUT_MS,
@@ -156,7 +184,9 @@ describe("folio executable", () => {
       );
 
       expect(run.exitCode).toBe(2);
-      expect(JSON.stringify(envelopeOf(run.stdout)["error"])).toContain("author_required");
+      expect(JSON.stringify(envelopeOf(run.stdout)["error"])).toContain(
+        "author_required",
+      );
     },
     PROCESS_TEST_TIMEOUT_MS,
   );

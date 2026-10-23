@@ -39,7 +39,10 @@ export function isWhitespace(char: string | undefined): boolean {
  * Find word boundaries around a position in text.
  * Returns [startIndex, endIndex] inclusive start, exclusive end.
  */
-export function findWordBoundaries(text: string, position: number): [number, number] {
+export function findWordBoundaries(
+  text: string,
+  position: number,
+): [number, number] {
   if (!text || text.length === 0) {
     return [0, 0];
   }
@@ -106,7 +109,10 @@ export type WordSelectionResult = {
 /**
  * Find the word at a position and return detailed info
  */
-export function findWordAt(text: string, position: number): WordSelectionResult {
+export function findWordAt(
+  text: string,
+  position: number,
+): WordSelectionResult {
   const [start, end] = findWordBoundaries(text, position);
   return {
     word: text.slice(start, end),

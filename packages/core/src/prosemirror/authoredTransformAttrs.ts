@@ -79,7 +79,9 @@ export const authoredTransformAttrs = (
  * flipped", which is why the attrs exist; such a node never carried them
  * either, so reading it this way loses nothing.
  */
-const transformFromCss = (css: string | undefined): ImageTransform | undefined => {
+const transformFromCss = (
+  css: string | undefined,
+): ImageTransform | undefined => {
   if (!css) {
     return undefined;
   }
@@ -97,7 +99,11 @@ const transformFromCss = (css: string | undefined): ImageTransform | undefined =
   if (css.includes("scaleY(-1)")) {
     transform.flipV = true;
   }
-  if (transform.rotation === undefined && !transform.flipH && !transform.flipV) {
+  if (
+    transform.rotation === undefined &&
+    !transform.flipH &&
+    !transform.flipV
+  ) {
     return undefined;
   }
   return transform;

@@ -38,7 +38,10 @@ const pastedHeading = (level: number, text: string): Slice =>
     schema.node("doc", null, [
       schema.node(
         "paragraph",
-        { styleId: `Heading${level}`, outlineLevel: headingOutlineLevel(level - 1) },
+        {
+          styleId: `Heading${level}`,
+          outlineLevel: headingOutlineLevel(level - 1),
+        },
         [schema.text(text)],
       ),
     ]).content,
@@ -48,7 +51,10 @@ const pastedHeading = (level: number, text: string): Slice =>
 
 const viewWith = (styles: StyleDefinitions | null): EditorView =>
   ({
-    state: EditorState.create({ schema, plugins: [createDocumentStylesPlugin(styles)] }),
+    state: EditorState.create({
+      schema,
+      plugins: [createDocumentStylesPlugin(styles)],
+    }),
   }) as EditorView;
 
 const styleIdsOf = (slice: Slice): (string | null)[] => {
@@ -64,12 +70,14 @@ const styleIdsOf = (slice: Slice): (string | null)[] => {
 describe("retargetPastedHeadingStyles", () => {
   test("points a pasted heading at the document's own heading style", () => {
     const view = viewWith(LOCALIZED);
-    expect(styleIdsOf(retargetPastedHeadingStyles(pastedHeading(1, "Smlouva"), view))).toEqual([
-      "Nadpis1",
-    ]);
-    expect(styleIdsOf(retargetPastedHeadingStyles(pastedHeading(2, "Strany"), view))).toEqual([
-      "Nadpis2",
-    ]);
+    expect(
+      styleIdsOf(
+        retargetPastedHeadingStyles(pastedHeading(1, "Smlouva"), view),
+      ),
+    ).toEqual(["Nadpis1"]);
+    expect(
+      styleIdsOf(retargetPastedHeadingStyles(pastedHeading(2, "Strany"), view)),
+    ).toEqual(["Nadpis2"]);
   });
 
   test("keeps the text and the outline level", () => {
@@ -79,27 +87,44 @@ describe("retargetPastedHeadingStyles", () => {
     );
     const paragraph = retargeted.content.firstChild;
     expect(paragraph?.textContent).toBe("Smlouva");
-    expect(paragraph?.attrs["outlineLevel"]).toEqual({ kind: "heading", level: 0 });
+    expect(paragraph?.attrs["outlineLevel"]).toEqual({
+      kind: "heading",
+      level: 0,
+    });
   });
 
   test("falls back to the deepest heading the document defines", () => {
     // The set stops at level 2. Keeping `Heading3` would leave a style id
     // nothing resolves; promoting to level 1 would restructure the outline.
     expect(
-      styleIdsOf(retargetPastedHeadingStyles(pastedHeading(3, "Detail"), viewWith(LOCALIZED))),
+      styleIdsOf(
+        retargetPastedHeadingStyles(
+          pastedHeading(3, "Detail"),
+          viewWith(LOCALIZED),
+        ),
+      ),
     ).toEqual(["Nadpis2"]);
     expect(
-      styleIdsOf(retargetPastedHeadingStyles(pastedHeading(6, "Deeper"), viewWith(LOCALIZED))),
+      styleIdsOf(
+        retargetPastedHeadingStyles(
+          pastedHeading(6, "Deeper"),
+          viewWith(LOCALIZED),
+        ),
+      ),
     ).toEqual(["Nadpis2"]);
   });
 
   test("leaves the id alone when the document defines no heading style at all", () => {
     const bare: StyleDefinitions = {
-      styles: [{ styleId: "Normln", type: "paragraph", name: "Normal", default: true }],
+      styles: [
+        { styleId: "Normln", type: "paragraph", name: "Normal", default: true },
+      ],
     };
-    expect(styleIdsOf(retargetPastedHeadingStyles(pastedHeading(1, "T"), viewWith(bare)))).toEqual([
-      "Heading1",
-    ]);
+    expect(
+      styleIdsOf(
+        retargetPastedHeadingStyles(pastedHeading(1, "T"), viewWith(bare)),
+      ),
+    ).toEqual(["Heading1"]);
   });
 
   test("leaves a style the document already defines alone", () => {
@@ -120,7 +145,12 @@ describe("retargetPastedHeadingStyles", () => {
       ],
     };
     expect(
-      styleIdsOf(retargetPastedHeadingStyles(pastedHeading(1, "Title"), viewWith(english))),
+      styleIdsOf(
+        retargetPastedHeadingStyles(
+          pastedHeading(1, "Title"),
+          viewWith(english),
+        ),
+      ),
     ).toEqual(["Heading1"]);
   });
 
@@ -132,7 +162,9 @@ describe("retargetPastedHeadingStyles", () => {
   test("leaves a non-heading paragraph alone", () => {
     const slice = new Slice(
       schema.node("doc", null, [
-        schema.node("paragraph", { styleId: "SomeMissingStyle" }, [schema.text("Body")]),
+        schema.node("paragraph", { styleId: "SomeMissingStyle" }, [
+          schema.text("Body"),
+        ]),
       ]).content,
       0,
       0,

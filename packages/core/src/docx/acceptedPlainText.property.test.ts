@@ -1,3 +1,13 @@
+import { expect, test } from "bun:test";
+import fc from "fast-check";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { fromMarkdown, toMarkdown } from "../markdown";
+import type { BlockContent, Paragraph, Table } from "../types/document";
+import { blockPlainText } from "./blockPlainText";
 import {
   getDocumentText,
   getEndnoteText,
@@ -6,18 +16,13 @@ import {
   getTableText,
   getTextBoxText,
 } from "./storyPlainText";
-import { expect, test } from "bun:test";
-import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import type { BlockContent, Paragraph, Table } from "../types/document";
-import { fromMarkdown, toMarkdown } from "../markdown";
-import { blockPlainText } from "./blockPlainText";
 
 const paragraph = (text: string): Paragraph => ({
   type: "paragraph",
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
-const cell = (content: BlockContent[]) => ({ type: "tableCell", content }) as const;
+const cell = (content: BlockContent[]) =>
+  ({ type: "tableCell", content }) as const;
 const envelope = (content: BlockContent[]): Table => ({
   type: "table",
   rows: [{ type: "tableRow", cells: [cell(content)] }],
@@ -25,7 +30,11 @@ const envelope = (content: BlockContent[]): Table => ({
 const markdown = (content: BlockContent[]) => {
   const document = fromMarkdown("");
   document.package.document.content = content;
-  return toMarkdown(document, { trackedChanges: "clean", annotations: "strip", comments: "strip" });
+  return toMarkdown(document, {
+    trackedChanges: "clean",
+    annotations: "strip",
+    comments: "strip",
+  });
 };
 
 const READERS = {
@@ -35,8 +44,10 @@ const READERS = {
     getHeaderFooterText({ type: "header", hdrFtrType: "default", content }),
   footer: (content: BlockContent[]) =>
     getHeaderFooterText({ type: "footer", hdrFtrType: "default", content }),
-  footnote: (content: BlockContent[]) => getFootnoteText({ type: "footnote", id: 1, content }),
-  endnote: (content: BlockContent[]) => getEndnoteText({ type: "endnote", id: 1, content }),
+  footnote: (content: BlockContent[]) =>
+    getFootnoteText({ type: "footnote", id: 1, content }),
+  endnote: (content: BlockContent[]) =>
+    getEndnoteText({ type: "endnote", id: 1, content }),
   table: (content: BlockContent[]) => getTableText(envelope(content)),
   textBox: (content: BlockContent[]) =>
     getTextBoxText({
@@ -59,7 +70,10 @@ test(
         fc.constantFrom("del", "moveFrom"),
         (texts, width, kind) => {
           const deletedMark = { kind, info: { id: 91, author: "Test" } };
-          const joining = texts.map((text) => ({ ...paragraph(text), pPrMark: deletedMark }));
+          const joining = texts.map((text) => ({
+            ...paragraph(text),
+            pPrMark: deletedMark,
+          }));
           const prefix = texts.join("");
           const deletedParagraph = {
             ...paragraph(""),
@@ -68,7 +82,9 @@ test(
               {
                 type: kind === "del" ? "deletion" : "moveFrom",
                 info: deletedMark.info,
-                content: [{ type: "run", content: [{ type: "text", text: prefix }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: prefix }] },
+                ],
               },
             ],
           } satisfies Paragraph;
@@ -93,11 +109,19 @@ test(
             },
             wrappedControl: {
               content: [
-                { type: "blockSdt", properties: {}, content: [...joining, paragraph("Tail.")] },
+                {
+                  type: "blockSdt",
+                  properties: {},
+                  content: [...joining, paragraph("Tail.")],
+                },
                 paragraph("Final."),
               ],
               accepted: [
-                { type: "blockSdt", properties: {}, content: [paragraph(`${prefix}Tail.`)] },
+                {
+                  type: "blockSdt",
+                  properties: {},
+                  content: [paragraph(`${prefix}Tail.`)],
+                },
                 paragraph("Final."),
               ],
               expected: `${prefix}Tail.\nFinal.`,
@@ -213,7 +237,10 @@ test(
                 },
                 paragraph("Tail."),
               ],
-              accepted: [envelope([paragraph("Retained.")]), paragraph("Tail.")],
+              accepted: [
+                envelope([paragraph("Retained.")]),
+                paragraph("Tail."),
+              ],
               expected: "Retained.\nTail.",
             },
             tableCellChain: {
@@ -223,7 +250,10 @@ test(
                   rows: [
                     {
                       type: "tableRow",
-                      cells: [cell([...joining, paragraph("Tail.")]), cell([paragraph("Other.")])],
+                      cells: [
+                        cell([...joining, paragraph("Tail.")]),
+                        cell([paragraph("Other.")]),
+                      ],
                     },
                   ],
                 },
@@ -235,7 +265,10 @@ test(
                   rows: [
                     {
                       type: "tableRow",
-                      cells: [cell([paragraph(`${prefix}Tail.`)]), cell([paragraph("Other.")])],
+                      cells: [
+                        cell([paragraph(`${prefix}Tail.`)]),
+                        cell([paragraph("Other.")]),
+                      ],
                     },
                   ],
                 },
@@ -245,17 +278,29 @@ test(
             },
           } satisfies Record<
             string,
-            { content: BlockContent[]; accepted: BlockContent[]; expected: string }
+            {
+              content: BlockContent[];
+              accepted: BlockContent[];
+              expected: string;
+            }
           >;
-          for (const [scenario, { content, accepted, expected }] of Object.entries(scenarios)) {
+          for (const [
+            scenario,
+            { content, accepted, expected },
+          ] of Object.entries(scenarios)) {
             const original = JSON.stringify(content);
-            expect(markdown(content), `Markdown / ${scenario}`).toBe(markdown(accepted));
+            expect(markdown(content), `Markdown / ${scenario}`).toBe(
+              markdown(accepted),
+            );
             for (const [reader, read] of Object.entries(READERS)) {
-              expect(read(accepted), `${reader} accepted / ${scenario}`).toBe(expected);
-              expect(read(content), `${reader} / ${scenario}`).toBe(expected);
-              expect(JSON.stringify(content), `${reader} must preserve authored content`).toBe(
-                original,
+              expect(read(accepted), `${reader} accepted / ${scenario}`).toBe(
+                expected,
               );
+              expect(read(content), `${reader} / ${scenario}`).toBe(expected);
+              expect(
+                JSON.stringify(content),
+                `${reader} must preserve authored content`,
+              ).toBe(original);
             }
           }
         },

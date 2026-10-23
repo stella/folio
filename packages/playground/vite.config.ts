@@ -3,8 +3,9 @@ import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { defineConfig, type Plugin, searchForWorkspaceRoot } from "vite";
+
 import { fixtureMiddleware } from "../../scripts/playground-fixtures";
-import { defineConfig, searchForWorkspaceRoot, type Plugin } from "vite";
 
 const playgroundRoot = import.meta.dirname;
 const repoRoot = path.resolve(playgroundRoot, "../..");
@@ -28,7 +29,11 @@ function bundledFontPackageDirs(): string[] {
   const requireFromReact = createRequire(reactPackageJsonPath);
   return Object.keys(reactPackage.dependencies ?? {})
     .filter((name) => name.startsWith("@fontsource/"))
-    .map((name) => path.dirname(fs.realpathSync(requireFromReact.resolve(`${name}/package.json`))));
+    .map((name) =>
+      path.dirname(
+        fs.realpathSync(requireFromReact.resolve(`${name}/package.json`)),
+      ),
+    );
 }
 
 // Both lifecycle hooks serve the same repository fixture bytes and path policy.
@@ -36,11 +41,16 @@ function serveFixtures(): Plugin {
   return {
     name: "folio-serve-fixtures",
     configureServer(server) {
-      server.middlewares.use(fixtureMiddleware({ fixturesDir, cacheControl: "no-cache" }));
+      server.middlewares.use(
+        fixtureMiddleware({ fixturesDir, cacheControl: "no-cache" }),
+      );
     },
     configurePreviewServer(server) {
       server.middlewares.use(
-        fixtureMiddleware({ fixturesDir, cacheControl: "public, max-age=3600" }),
+        fixtureMiddleware({
+          fixturesDir,
+          cacheControl: "public, max-age=3600",
+        }),
       );
     },
   };
@@ -66,7 +76,10 @@ export default defineConfig({
     strictPort: true,
     open: false,
     fs: {
-      allow: [searchForWorkspaceRoot(playgroundRoot), ...bundledFontPackageDirs()],
+      allow: [
+        searchForWorkspaceRoot(playgroundRoot),
+        ...bundledFontPackageDirs(),
+      ],
     },
   },
   preview: {

@@ -43,8 +43,9 @@ const DEFAULT_WRAP_POLYGON: ImageWrapPolygon = {
  * module exists to end. The rectangle is minted only where the alternative is
  * omitting a child the type requires.
  */
-export const requiredWrapPolygon = (authored: ImageWrapPolygon | undefined): ImageWrapPolygon =>
-  authored ?? DEFAULT_WRAP_POLYGON;
+export const requiredWrapPolygon = (
+  authored: ImageWrapPolygon | undefined,
+): ImageWrapPolygon => authored ?? DEFAULT_WRAP_POLYGON;
 
 /**
  * The polygon a wrap of `type` has to state, or undefined when its type
@@ -59,7 +60,9 @@ export const wrapPolygonFor = (
   type: ImageWrap["type"],
   authored: ImageWrapPolygon | undefined,
 ): ImageWrapPolygon | undefined =>
-  type === "tight" || type === "through" ? requiredWrapPolygon(authored) : undefined;
+  type === "tight" || type === "through"
+    ? requiredWrapPolygon(authored)
+    : undefined;
 
 /** A copy, deep enough that a ProseMirror attr cannot share a point with the model. */
 export const copiedWrapPolygon = (
@@ -75,9 +78,14 @@ export const copiedWrapPolygon = (
 
 /** `wp:wrapPolygon`, written from a polygon {@link wrapPolygonFor} has approved. */
 export const serializeWrapPolygon = (polygon: ImageWrapPolygon): string => {
-  const edited = polygon.edited === undefined ? "" : ` edited="${polygon.edited ? "1" : "0"}"`;
+  const edited =
+    polygon.edited === undefined
+      ? ""
+      : ` edited="${polygon.edited ? "1" : "0"}"`;
   const lineTo = polygon.lineTo
-    .map((point) => `<wp:lineTo x="${intAttr(point.x)}" y="${intAttr(point.y)}"/>`)
+    .map(
+      (point) => `<wp:lineTo x="${intAttr(point.x)}" y="${intAttr(point.y)}"/>`,
+    )
     .join("");
   return `<wp:wrapPolygon${edited}><wp:start x="${intAttr(polygon.start.x)}" y="${intAttr(polygon.start.y)}"/>${lineTo}</wp:wrapPolygon>`;
 };

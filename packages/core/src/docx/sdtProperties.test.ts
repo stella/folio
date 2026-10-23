@@ -67,7 +67,9 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     ).toBe(true);
     // A bare <w14:checked/> with no val attribute also means true per OnOff.
     expect(
-      parseSdtPrXml(`<w:sdtPr ${ns}><w14:checkbox><w14:checked/></w14:checkbox></w:sdtPr>`).checked,
+      parseSdtPrXml(
+        `<w:sdtPr ${ns}><w14:checkbox><w14:checked/></w14:checkbox></w:sdtPr>`,
+      ).checked,
     ).toBe(true);
     // Negations.
     expect(
@@ -132,12 +134,15 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     // `<w:tag w:val="od:repeat=x0"/>` into `<w:tag w:val="w:repeat=x0"/>`
     // on capture, corrupting every downstream consumer of `props.tag`
     // and breaking the parse → reconcile → re-parse round trip.
-    const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-    const props = parseSdtPrXml(`<w:sdtPr ${ns}><w:tag w:val="od:repeat=x0"/></w:sdtPr>`);
-    expect(props.tag).toBe("od:repeat=x0");
-    expect(rewrite(`<w:sdtPr ${ns}><w:tag w:val="od:repeat=x0"/></w:sdtPr>`)).toBe(
-      '<w:sdtPr><w:tag w:val="od:repeat=x0"/></w:sdtPr>',
+    const ns =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const props = parseSdtPrXml(
+      `<w:sdtPr ${ns}><w:tag w:val="od:repeat=x0"/></w:sdtPr>`,
     );
+    expect(props.tag).toBe("od:repeat=x0");
+    expect(
+      rewrite(`<w:sdtPr ${ns}><w:tag w:val="od:repeat=x0"/></w:sdtPr>`),
+    ).toBe('<w:sdtPr><w:tag w:val="od:repeat=x0"/></w:sdtPr>');
   });
 
   test("does not rewrite prefix-shaped substrings inside w:tag attribute values containing whitespace", () => {
@@ -148,17 +153,22 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     // sitting after that whitespace would be rewritten to canonical. A
     // `w:tag` whose value contains a single space before an OpenDoPE token
     // (a common shape in customer DOCX templates) triggered it.
-    const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const ns =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     // Whitespace inside value, prefix after the whitespace.
-    expect(parseSdtPrXml(`<w:sdtPr ${ns}><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>`).tag).toBe(
-      "foo od:repeat=x0",
-    );
-    expect(rewrite(`<w:sdtPr ${ns}><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>`)).toBe(
-      '<w:sdtPr><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>',
-    );
+    expect(
+      parseSdtPrXml(
+        `<w:sdtPr ${ns}><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>`,
+      ).tag,
+    ).toBe("foo od:repeat=x0");
+    expect(
+      rewrite(`<w:sdtPr ${ns}><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>`),
+    ).toBe('<w:sdtPr><w:tag w:val="foo od:repeat=x0"/></w:sdtPr>');
     // Multiple prefix-shaped tokens separated by whitespace inside the
     // value. Each one was a potential rewrite anchor under the old pass.
-    expect(parseSdtPrXml(`<w:sdtPr ${ns}><w:tag w:val="a:b c:d"/></w:sdtPr>`).tag).toBe("a:b c:d");
+    expect(
+      parseSdtPrXml(`<w:sdtPr ${ns}><w:tag w:val="a:b c:d"/></w:sdtPr>`).tag,
+    ).toBe("a:b c:d");
     expect(rewrite(`<w:sdtPr ${ns}><w:tag w:val="a:b c:d"/></w:sdtPr>`)).toBe(
       '<w:sdtPr><w:tag w:val="a:b c:d"/></w:sdtPr>',
     );
@@ -170,7 +180,8 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     // w: namespace, not w15. The earlier local-name rewrite would have
     // re-emitted it under w15, corrupting run formatting on every
     // parse → save round trip.
-    const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const ns =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     const source = `<w:sdtPr ${ns}><w:rPr><w:color w:val="FF0000"/></w:rPr><w:tag w:val="x"/></w:sdtPr>`;
     expect(parseSdtPrXml(source).tag).toBe("x");
     // Color stays under w:, not silently rewritten to w15:, and `w:rPr`
@@ -219,7 +230,8 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     // The parser used to look for a nested `<w:val>` child inside
     // `<w:docPart>`. The actual OOXML shape is `<w:docPart w:val="…"/>`,
     // so the placeholder reference was silently dropped.
-    const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const ns =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     const props = parseSdtPrXml(
       `<w:sdtPr ${ns}><w:placeholder><w:docPart w:val="DefaultPlaceholder"/></w:placeholder></w:sdtPr>`,
     );
@@ -289,21 +301,27 @@ describe("parseSdtProperties — prefixed marker elements", () => {
     // The presence-implies-true semantics still applies, but an explicit
     // negation must be honored. Previously the parser flipped
     // `val="false"` back to `true` because it ignored the attribute.
-    const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-    expect(parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr/></w:sdtPr>`).showingPlaceholder).toBe(
-      true,
-    );
+    const ns =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     expect(
-      parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr w:val="true"/></w:sdtPr>`).showingPlaceholder,
+      parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr/></w:sdtPr>`)
+        .showingPlaceholder,
     ).toBe(true);
     expect(
-      parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr w:val="false"/></w:sdtPr>`).showingPlaceholder,
+      parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr w:val="true"/></w:sdtPr>`)
+        .showingPlaceholder,
+    ).toBe(true);
+    expect(
+      parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr w:val="false"/></w:sdtPr>`)
+        .showingPlaceholder,
     ).toBe(false);
     expect(
-      parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr w:val="0"/></w:sdtPr>`).showingPlaceholder,
+      parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr w:val="0"/></w:sdtPr>`)
+        .showingPlaceholder,
     ).toBe(false);
     expect(
-      parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr w:val="off"/></w:sdtPr>`).showingPlaceholder,
+      parseSdtPrXml(`<w:sdtPr ${ns}><w:showingPlcHdr w:val="off"/></w:sdtPr>`)
+        .showingPlaceholder,
     ).toBe(false);
   });
 
@@ -345,6 +363,8 @@ describe("parseSdtProperties — prefixed marker elements", () => {
         dateFormat: "yyyy-MM-dd",
         preserved: { children: [{ index: 19, xml: mismatchedDate }] },
       }),
-    ).toThrow("Preserved container markup must be one bounded, well-formed XML element");
+    ).toThrow(
+      "Preserved container markup must be one bounded, well-formed XML element",
+    );
   });
 });

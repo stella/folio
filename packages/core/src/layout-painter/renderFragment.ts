@@ -7,9 +7,9 @@
 
 import type {
   Fragment,
+  ImageFragment,
   ParagraphFragment,
   TableFragment,
-  ImageFragment,
 } from "../layout-engine/types";
 import type { RenderContext } from "./renderUtils";
 import { applySdtDataAttrs } from "./sdtBoundary";
@@ -37,7 +37,9 @@ export type RenderFragmentOptions = {
 /**
  * Check if fragment is a paragraph fragment
  */
-function isParagraphFragment(fragment: Fragment): fragment is ParagraphFragment {
+function isParagraphFragment(
+  fragment: Fragment,
+): fragment is ParagraphFragment {
   return fragment.kind === "paragraph";
 }
 

@@ -10,13 +10,22 @@
  * `useContextMenus`.
  */
 
-import { computed, ref, shallowRef, type ComputedRef, type Ref, type ShallowRef } from "vue";
 import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import {
+  computed,
+  type ComputedRef,
+  type Ref,
+  ref,
+  type ShallowRef,
+  shallowRef,
+} from "vue";
+
 import {
   captureInlinePositionEmu,
   toolbarValueToLayoutTarget,
 } from "@stll/folio-core/layout-painter/imageLayout";
+
 import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
 
 type CommandFactory = (...args: readonly unknown[]) => Command;
@@ -39,10 +48,14 @@ export type UseImageActionsReturn = {
   imageInteracting: Ref<boolean>;
   imageToolbarContext: ComputedRef<ImageToolbarContext | null>;
   handleToolbarImageWrap: (value: string) => void;
-  handleImageTransform: (action: "rotateCW" | "rotateCCW" | "flipH" | "flipV") => void;
+  handleImageTransform: (
+    action: "rotateCW" | "rotateCCW" | "flipH" | "flipV",
+  ) => void;
 };
 
-export function useImageActions(opts: UseImageActionsOptions): UseImageActionsReturn {
+export function useImageActions(
+  opts: UseImageActionsOptions,
+): UseImageActionsReturn {
   // shallowRef so the wrapped HTMLElement isn't proxied — identity comparisons
   // downstream (ImageSelectionOverlay) rely on raw element references.
   const selectedImage: ShallowRef<ImageSelectionInfo | null> = shallowRef(null);
@@ -90,7 +103,12 @@ export function useImageActions(opts: UseImageActionsOptions): UseImageActionsRe
     const currentWrap: unknown = node?.attrs["wrapType"];
     const optsArg =
       currentWrap === "inline" && target !== "inline"
-        ? { initialPositionEmu: captureInlinePositionEmu(sel.element, opts.zoom.value) }
+        ? {
+            initialPositionEmu: captureInlinePositionEmu(
+              sel.element,
+              opts.zoom.value,
+            ),
+          }
         : undefined;
     const factory = opts.getCommands()["setImageWrapType"];
     if (!factory) return;
@@ -101,7 +119,9 @@ export function useImageActions(opts: UseImageActionsOptions): UseImageActionsRe
   // Toolbar transform dropdown → mutate the selected image's
   // `transform` attribute. Rotate is folded mod 360, flip toggles bit
   // flags, then the parts are joined back into a CSS transform string.
-  function handleImageTransform(action: "rotateCW" | "rotateCCW" | "flipH" | "flipV") {
+  function handleImageTransform(
+    action: "rotateCW" | "rotateCCW" | "flipH" | "flipV",
+  ) {
     const view = opts.editorView.value;
     const sel = selectedImage.value;
     if (!view || !sel) return;
@@ -110,7 +130,8 @@ export function useImageActions(opts: UseImageActionsOptions): UseImageActionsRe
 
     const transformRaw: unknown = node.attrs["transform"];
     const current = typeof transformRaw === "string" ? transformRaw : "";
-    const degMatch = /rotate\((?<deg>-?\d+(?:\.\d+)?)deg\)/u.exec(current)?.groups?.["deg"];
+    const degMatch = /rotate\((?<deg>-?\d+(?:\.\d+)?)deg\)/u.exec(current)
+      ?.groups?.["deg"];
     let rotation = degMatch ? Number.parseFloat(degMatch) : 0;
     let flipH = /scaleX\(-1\)/u.test(current);
     let flipV = /scaleY\(-1\)/u.test(current);

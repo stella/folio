@@ -9,11 +9,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
+import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   hashFolioAIBlockText,
 } from "@stll/folio-core/server";
-import { fromMarkdown } from "@stll/folio-core/markdown";
 
 import {
   COLLISION_FIXTURES,
@@ -22,30 +22,43 @@ import {
   packDocument,
   plainDocument,
 } from "../support/documents.ts";
-import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
+import {
+  assertHealthy,
+  saveAndReopen,
+  visibleState,
+} from "../support/invariants.ts";
 import {
   expectedFailure,
   KNOWN_FAILING_COLLISIONS,
   KNOWN_FAILING_FOLLOW_UPS,
 } from "../support/known-issues.ts";
-import { type Block, COLLISIONS, MODES, type Mode, type Operation } from "../support/operations.ts";
+import { captureLinks, comparePreservedLinks } from "../support/link-oracle.ts";
+import {
+  type Block,
+  COLLISIONS,
+  type Mode,
+  MODES,
+  type Operation,
+} from "../support/operations.ts";
 import {
   applyChecked,
   compareComments,
   compareWithModel,
   EXPECTATIONS,
   expectOperation,
+  KEEPS_NOTE_REFERENCES,
   modelOf,
   OPERATION_TYPES,
+  retireNoteReferences,
   type Row,
 } from "../support/oracle.ts";
-import { captureLinks, comparePreservedLinks } from "../support/link-oracle.ts";
 import { compareTableGeometry } from "../support/table-oracle.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
 const ALL_FIXTURES = { ...FIXTURES, ...COLLISION_FIXTURES };
-const blocksOf = (reviewer: Reviewer): Block[] => reviewer.getContent() as Block[];
+const blocksOf = (reviewer: Reviewer): Block[] =>
+  reviewer.getContent() as Block[];
 
 describe("the requested-outcome oracle", () => {
   test("decides, for every public operation type, what an applied receipt means", () => {
@@ -62,7 +75,11 @@ describe("the requested-outcome oracle", () => {
     kind: "paragraph",
     ...extra,
   });
-  const before = [row("a", "First clause."), row("b", "Second clause."), row("c", "Third.")];
+  const before = [
+    row("a", "First clause."),
+    row("b", "Second clause."),
+    row("c", "Third."),
+  ];
   const expecting = (operations: Operation[]) => {
     const model = modelOf(before);
     for (const operation of operations) expectOperation(model, operation);
@@ -70,7 +87,12 @@ describe("the requested-outcome oracle", () => {
   };
 
   test("notices a payload the engine dropped or put on the wrong block", () => {
-    const replace = { type: "replaceInBlock", blockId: "b", find: "Second", replace: "Next" };
+    const replace = {
+      type: "replaceInBlock",
+      blockId: "b",
+      find: "Second",
+      replace: "Next",
+    };
     assert.deepEqual(
       compareWithModel(expecting([replace]), [
         row("a", "First clause."),
@@ -81,10 +103,10 @@ describe("the requested-outcome oracle", () => {
     );
     // The neighbour rewritten instead.
     assert.equal(
-      compareWithModel(expecting([replace, { type: "deleteBlock", blockId: "b" }]), [
-        row("a", "First clause."),
-        row("b", "Next clause."),
-      ]).length,
+      compareWithModel(
+        expecting([replace, { type: "deleteBlock", blockId: "b" }]),
+        [row("a", "First clause."), row("b", "Next clause.")],
+      ).length,
       1,
     );
     // One of two cell texts dropped.
@@ -98,7 +120,10 @@ describe("the requested-outcome oracle", () => {
       blockId: "t1",
       cellTexts: ["New one", "New two"],
     });
-    assert.equal(compareWithModel(model, [...cells, row("n", "New one")]).length, 1);
+    assert.equal(
+      compareWithModel(model, [...cells, row("n", "New one")]).length,
+      1,
+    );
   });
 
   test("notices a paragraph style the request named but the result lacks", () => {
@@ -119,21 +144,40 @@ describe("the requested-outcome oracle", () => {
       row("right", "Role", { table: location(1) }),
     ];
     const model = modelOf(cells);
-    expectOperation(model, { type: "mergeTableCells", blockId: "left", endBlockId: "right" });
+    expectOperation(model, {
+      type: "mergeTableCells",
+      blockId: "left",
+      endBlockId: "right",
+    });
     assert.deepEqual(model.tableGaps, []);
-    assert.match(compareTableGeometry(model.tables, cells).join("\n"), /geometry/u);
+    assert.match(
+      compareTableGeometry(model.tables, cells).join("\n"),
+      /geometry/u,
+    );
   });
 
   test("requires comments while any anchored character survives a text edit", () => {
     const text = "abcdef";
     for (let anchorStart = 0; anchorStart < text.length; anchorStart += 1) {
-      for (let anchorEnd = anchorStart + 1; anchorEnd <= text.length; anchorEnd += 1) {
+      for (
+        let anchorEnd = anchorStart + 1;
+        anchorEnd <= text.length;
+        anchorEnd += 1
+      ) {
         for (let editStart = 0; editStart < text.length; editStart += 1) {
-          for (let editEnd = editStart + 1; editEnd <= text.length; editEnd += 1) {
+          for (
+            let editEnd = editStart + 1;
+            editEnd <= text.length;
+            editEnd += 1
+          ) {
             const model = modelOf([row("b", text)]);
             expectOperation(model, {
               type: "replaceRange",
-              range: { blockId: "b", startOffset: editStart, endOffset: editEnd },
+              range: {
+                blockId: "b",
+                startOffset: editStart,
+                endOffset: editEnd,
+              },
               replace: "",
             });
             const comment = {
@@ -193,13 +237,20 @@ describe("the requested-outcome oracle", () => {
       replace: "",
     });
     assert.deepEqual(compareComments(model, [comment], [], []), []);
-    assert.deepEqual(compareComments(model, [comment], [comment], [row("b", " foo")]), []);
+    assert.deepEqual(
+      compareComments(model, [comment], [comment], [row("b", " foo")]),
+      [],
+    );
   });
 
   test("a nonempty replacement carries a comment, while an empty one removes it", () => {
     const comment = { id: 1, text: "review", anchor: "Signed", blockId: "b" };
     const replaced = modelOf([row("b", "Signed")]);
-    expectOperation(replaced, { type: "replaceBlock", blockId: "b", text: "Written" });
+    expectOperation(replaced, {
+      type: "replaceBlock",
+      blockId: "b",
+      text: "Written",
+    });
     assert.deepEqual(
       compareComments(
         replaced,
@@ -218,7 +269,10 @@ describe("the requested-outcome oracle", () => {
       ).join("\n"),
       /no comment/u,
     );
-    assert.equal(compareComments(replaced, [comment], [], [row("b", "Written")]).length, 1);
+    assert.equal(
+      compareComments(replaced, [comment], [], [row("b", "Written")]).length,
+      1,
+    );
 
     const emptied = modelOf([row("b", "Signed")]);
     expectOperation(emptied, { type: "replaceBlock", blockId: "b", text: "" });
@@ -276,13 +330,24 @@ describe("the requested-outcome oracle", () => {
       /no comment/u,
     );
     assert.match(
-      compareComments(model, [comment], [], [row("b", "New")], [comment], "suggested").join("\n"),
+      compareComments(
+        model,
+        [comment],
+        [],
+        [row("b", "New")],
+        [comment],
+        "suggested",
+      ).join("\n"),
       /no comment/u,
     );
 
     const shared = { id: 2, text: "review", anchor: "The Buyer", blockId: "c" };
     const sharedModel = modelOf([row("c", "The Buyer")]);
-    expectOperation(sharedModel, { type: "replaceBlock", blockId: "c", text: "The Seller" });
+    expectOperation(sharedModel, {
+      type: "replaceBlock",
+      blockId: "c",
+      text: "The Seller",
+    });
     assert.deepEqual(
       compareComments(
         sharedModel,
@@ -323,12 +388,171 @@ describe("the requested-outcome oracle", () => {
     assert.match(problems.join("\n"), /no comment/u);
   });
 
+  test("a comment retires with its removed note story", () => {
+    const comment = {
+      id: 1,
+      text: "review",
+      anchor: "Note text",
+      blockId: "note",
+    };
+    const model = modelOf([row("note", "Note text")]);
+    model.story = "removed";
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+    assert.match(
+      compareComments(model, [comment], [comment], []).join("\n"),
+      /outlived the block it anchored/u,
+    );
+  });
+
+  test("a note comment retires when its body reference is removed", () => {
+    const comment = {
+      id: 1,
+      text: "review",
+      anchor: "Note text",
+      blockId: "note",
+    };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
+  test("a suggested removal of a note reference keeps the note's comment pending", () => {
+    const comment = {
+      id: 1,
+      text: "review",
+      anchor: "Note text",
+      blockId: "note",
+    };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(
+      compareComments(model, [comment], [comment], [], [comment], "suggested"),
+      [],
+    );
+    assert.match(
+      compareComments(model, [comment], [], [], [comment], "suggested").join(
+        "\n",
+      ),
+      /no comment/u,
+    );
+    const removedStory = modelOf([row("note", "Note text")]);
+    removedStory.story = "removed";
+    assert.deepEqual(
+      compareComments(
+        removedStory,
+        [comment],
+        [comment],
+        [],
+        [comment],
+        "suggested",
+      ),
+      [],
+    );
+  });
+
+  test("a merge keeps the note whose reference it moves, and a later deletion retires it", () => {
+    const footnote = { type: "footnote", noteId: 1 } as const;
+    const endnote = { type: "endnote", noteId: 2 } as const;
+    const references: Parameters<typeof retireNoteReferences>[0] = new Map([
+      ["first", [endnote]],
+      ["second", [footnote]],
+    ]);
+    assert.deepEqual(
+      retireNoteReferences(references, "mergeBlockWithNext", "first", [
+        "second",
+      ]),
+      [],
+    );
+    assert.deepEqual(references.get("first"), [endnote, footnote]);
+    assert.equal(references.has("second"), false);
+    assert.deepEqual(
+      retireNoteReferences(references, "deleteBlock", "first", ["first"]),
+      ["endnote:2", "footnote:1"],
+    );
+    assert.equal(references.size, 0);
+  });
+
+  test("a note whose reference an edit may have moved is not predicted either way", () => {
+    const comment = {
+      id: 1,
+      text: "review",
+      anchor: "Note text",
+      blockId: "note",
+    };
+    const model = modelOf([row("body", "Reference")]);
+    model.removedNoteStories.add("footnote:1");
+    model.uncertainNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([["note", "footnote:1"]]);
+    assert.deepEqual(compareComments(model, [comment], [comment], []), []);
+    assert.deepEqual(compareComments(model, [comment], [], []), []);
+  });
+
+  test("every operation that keeps note references in place is a real operation type", () => {
+    for (const type of KEEPS_NOTE_REFERENCES)
+      assert.ok(OPERATION_TYPES.includes(type), type);
+    assert.equal(KEEPS_NOTE_REFERENCES.has("splitBlock"), false);
+    assert.equal(KEEPS_NOTE_REFERENCES.has("replaceBlock"), false);
+  });
+
+  test("a note referenced from two blocks retires only with its last reference", () => {
+    const footnote = { type: "footnote", noteId: 1 } as const;
+    const references: Parameters<typeof retireNoteReferences>[0] = new Map([
+      ["first", [footnote]],
+      ["second", [footnote]],
+    ]);
+    assert.deepEqual(
+      retireNoteReferences(references, "deleteBlock", "first", ["first"]),
+      [],
+    );
+    assert.deepEqual(
+      retireNoteReferences(references, "deleteBlock", "second", ["second"]),
+      ["footnote:1"],
+    );
+  });
+
+  test("removing one of two footnote references retires only that note's comment", () => {
+    const first = {
+      id: 1,
+      text: "first review",
+      anchor: "First note",
+      blockId: "note-1",
+    };
+    const second = {
+      id: 2,
+      text: "second review",
+      anchor: "Second note",
+      blockId: "note-2",
+    };
+    const model = modelOf([
+      row("body-1", "First reference"),
+      row("body-2", "Second reference"),
+    ]);
+    model.removedNoteStories.add("footnote:1");
+    model.noteStoryByBlockId = new Map([
+      ["note-1", "footnote:1"],
+      ["note-2", "footnote:2"],
+    ]);
+
+    assert.deepEqual(compareComments(model, [first, second], [second], []), []);
+    assert.match(
+      compareComments(model, [first, second], [], []).join("\n"),
+      /second review/u,
+    );
+  });
+
   test("a replaced paragraph's comment survives rejecting its tracked deletion", async () => {
     const reviewer = await openReviewer(await plainDocument());
     const block = reviewer.getContent().find(({ text }) => text.length > 0);
     assert.ok(block);
     const note = "Review this paragraph.";
-    const apply = (batch: Omit<Parameters<Reviewer["applyDocumentOperations"]>[0], "version">) => {
+    const apply = (
+      batch: Omit<
+        Parameters<Reviewer["applyDocumentOperations"]>[0],
+        "version"
+      >,
+    ) => {
       const result = reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -342,13 +566,23 @@ describe("the requested-outcome oracle", () => {
     apply({
       mode: "direct",
       operations: [
-        { id: "comment", type: "commentOnBlock", blockId: block.id, comment: { text: note } },
+        {
+          id: "comment",
+          type: "commentOnBlock",
+          blockId: block.id,
+          comment: { text: note },
+        },
       ],
     });
     apply({
       mode: "tracked-changes",
       operations: [
-        { id: "replace", type: "replaceBlock", blockId: block.id, text: "Replacement." },
+        {
+          id: "replace",
+          type: "replaceBlock",
+          blockId: block.id,
+          text: "Replacement.",
+        },
       ],
     });
     apply({
@@ -373,17 +607,34 @@ describe("the requested-outcome oracle", () => {
     const accepted = "Written";
     for (const old of ["Old", "Written before", "before Written after"]) {
       for (const liveAnchor of [old + accepted, accepted + old]) {
-        const comment = { id: 1, text: "review", anchor: accepted, blockId: "b" };
+        const comment = {
+          id: 1,
+          text: "review",
+          anchor: accepted,
+          blockId: "b",
+        };
         const live = { ...comment, anchor: liveAnchor };
         const model = modelOf([row("b", accepted)], [row("b", accepted)]);
         expectOperation(model, { type: "deleteBlock", blockId: "b" });
-        assert.deepEqual(compareComments(model, [comment], [], [], [live], "tracked-changes"), []);
+        assert.deepEqual(
+          compareComments(model, [comment], [], [], [live], "tracked-changes"),
+          [],
+        );
         assert.match(
-          compareComments(model, [comment], [comment], [], [live], "tracked-changes").join("\n"),
+          compareComments(
+            model,
+            [comment],
+            [comment],
+            [],
+            [live],
+            "tracked-changes",
+          ).join("\n"),
           /outlived the block it anchored/u,
         );
         assert.match(
-          compareComments(model, [comment], [], [], [live], "suggested").join("\n"),
+          compareComments(model, [comment], [], [], [live], "suggested").join(
+            "\n",
+          ),
           /no comment/u,
         );
       }
@@ -394,7 +645,11 @@ describe("the requested-outcome oracle", () => {
     const a = { id: 1, text: "same note", anchor: "First", blockId: "a" };
     const moved = { id: 2, text: "same note", anchor: "Signed", blockId: "c" };
     const c = { id: 3, text: "same note", anchor: "Last", blockId: "c" };
-    const model = modelOf([row("a", "First"), row("b", "Signed"), row("c", "Signed Last")]);
+    const model = modelOf([
+      row("a", "First"),
+      row("b", "Signed"),
+      row("c", "Signed Last"),
+    ]);
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
     const live = [a, { ...moved, blockId: "b" }, c];
     assert.deepEqual(
@@ -425,8 +680,15 @@ describe("the requested-outcome oracle", () => {
       [row("a", "First Signed"), row("c", "Other")],
       [row("a", "First"), row("b", "Signed"), row("c", "Other")],
     );
-    expectOperation(model, { type: "replaceBlock", blockId: "c", text: "Revised" });
-    assert.deepEqual(compareComments(model, [joined], [joined], [], [joined]), []);
+    expectOperation(model, {
+      type: "replaceBlock",
+      blockId: "c",
+      text: "Revised",
+    });
+    assert.deepEqual(
+      compareComments(model, [joined], [joined], [], [joined]),
+      [],
+    );
     assert.equal(compareComments(model, [joined], [], [], [joined]).length, 1);
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
     assert.deepEqual(compareComments(model, [joined], [], [], [joined]), []);
@@ -437,8 +699,16 @@ describe("the requested-outcome oracle", () => {
   });
 
   test("an explicit block deletion removes a live comment even when accepted text differs", () => {
-    const comment = { id: 1, text: "review", anchor: "Live quote", blockId: "b" };
-    const model = modelOf([row("b", "Accepted text")], [row("b", "Live quote")]);
+    const comment = {
+      id: 1,
+      text: "review",
+      anchor: "Live quote",
+      blockId: "b",
+    };
+    const model = modelOf(
+      [row("b", "Accepted text")],
+      [row("b", "Live quote")],
+    );
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
     assert.deepEqual(compareComments(model, [comment], [], [], [comment]), []);
     assert.match(
@@ -448,11 +718,19 @@ describe("the requested-outcome oracle", () => {
   });
 
   test("deleting the first block of a spanning comment keeps its surviving anchor", () => {
-    const comment = { id: 1, text: "review", anchor: "FirstSecond", blockId: "b" };
+    const comment = {
+      id: 1,
+      text: "review",
+      anchor: "FirstSecond",
+      blockId: "b",
+    };
     const model = modelOf([row("b", "First"), row("c", "Second")]);
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
     assert.deepEqual(compareComments(model, [comment], [comment], []), []);
-    assert.equal(compareComments(model, [comment], [], [row("c", "Second")]).length, 1);
+    assert.equal(
+      compareComments(model, [comment], [], [row("c", "Second")]).length,
+      1,
+    );
   });
 
   test("a suggested block deletion leaves the live comment in place", () => {
@@ -460,7 +738,14 @@ describe("the requested-outcome oracle", () => {
     const model = modelOf([row("b", "Signed")]);
     expectOperation(model, { type: "deleteBlock", blockId: "b" });
     assert.deepEqual(
-      compareComments(model, [comment], [comment], [row("b", "Signed")], [comment], "suggested"),
+      compareComments(
+        model,
+        [comment],
+        [comment],
+        [row("b", "Signed")],
+        [comment],
+        "suggested",
+      ),
       [],
     );
   });
@@ -469,12 +754,20 @@ describe("the requested-outcome oracle", () => {
 test("a style edit preserves the target of an unchanged link", async () => {
   const reviewer = await openReviewer(
     await packDocument(
-      fromMarkdown("# Terms\n\nRead the [schedule](https://example.com/schedule)."),
+      fromMarkdown(
+        "# Terms\n\nRead the [schedule](https://example.com/schedule).",
+      ),
     ),
   );
-  const block = blocksOf(reviewer).find((candidate) => candidate.text.includes("schedule"));
+  const block = blocksOf(reviewer).find((candidate) =>
+    candidate.text.includes("schedule"),
+  );
   assert.ok(block);
-  assert.ok(captureLinks(reviewer).get(block.id)?.targets.includes("https://example.com/schedule"));
+  assert.ok(
+    captureLinks(reviewer)
+      .get(block.id)
+      ?.targets.includes("https://example.com/schedule"),
+  );
   const { applied } = await applyChecked(
     reviewer,
     [
@@ -492,7 +785,9 @@ test("a style edit preserves the target of an unchanged link", async () => {
 
 test("a missing saved link projection fails for an unchanged reader block", async () => {
   const reviewer = await openReviewer(
-    await packDocument(fromMarkdown("Read the [schedule](https://example.com/schedule).")),
+    await packDocument(
+      fromMarkdown("Read the [schedule](https://example.com/schedule)."),
+    ),
   );
   const before = captureLinks(reviewer);
   const { reopened } = await saveAndReopen(reviewer, "link projection fixture");
@@ -501,23 +796,35 @@ test("a missing saved link projection fails for an unchanged reader block", asyn
   assert.ok(linked);
   assert.ok(after.delete(linked));
 
-  const unchanged = comparePreservedLinks({ before, after, afterRows: blocksOf(reopened) });
+  const unchanged = comparePreservedLinks({
+    before,
+    after,
+    afterRows: blocksOf(reopened),
+  });
   assert.equal(unchanged.checked, 1);
-  assert.match(unchanged.problems.join("\n"), /has no matching link projection/u);
+  assert.match(
+    unchanged.problems.join("\n"),
+    /has no matching link projection/u,
+  );
 
   const editedRows = blocksOf(reopened).map(({ id, text }) => ({
     id,
     text: id === linked ? `${text} changed` : text,
   }));
-  assert.deepEqual(comparePreservedLinks({ before, after, afterRows: editedRows }), {
-    problems: [],
-    checked: 0,
-  });
+  assert.deepEqual(
+    comparePreservedLinks({ before, after, afterRows: editedRows }),
+    {
+      problems: [],
+      checked: 0,
+    },
+  );
 });
 
 test("a signature table has one cell per party after save and reopen", async () => {
   const reviewer = await openReviewer(await plainDocument());
-  const block = blocksOf(reviewer).find((candidate) => candidate.text === "Signed in two copies.");
+  const block = blocksOf(reviewer).find(
+    (candidate) => candidate.text === "Signed in two copies.",
+  );
   assert.ok(block);
   const { applied } = await applyChecked(
     reviewer,
@@ -539,8 +846,12 @@ test("a signature table has one cell per party after save and reopen", async () 
 
 test("cell merge and split predict the saved grid", async () => {
   const reviewer = await openReviewer(await ALL_FIXTURES.tables());
-  const left = blocksOf(reviewer).find((candidate) => candidate.text === "Item");
-  const right = blocksOf(reviewer).find((candidate) => candidate.text === "Price");
+  const left = blocksOf(reviewer).find(
+    (candidate) => candidate.text === "Item",
+  );
+  const right = blocksOf(reviewer).find(
+    (candidate) => candidate.text === "Price",
+  );
   assert.ok(left);
   assert.ok(right);
   const merged = await applyChecked(
@@ -561,7 +872,9 @@ test("cell merge and split predict the saved grid", async () => {
 
 test("a deleted merge neighbor does not join the following table cell", async () => {
   const reviewer = await openReviewer(await ALL_FIXTURES.tables());
-  const heading = blocksOf(reviewer).find((candidate) => candidate.text === "Price Schedule");
+  const heading = blocksOf(reviewer).find(
+    (candidate) => candidate.text === "Price Schedule",
+  );
   const neighbor = blocksOf(reviewer).find(
     (candidate) => candidate.text === "The prices below apply.",
   );
@@ -613,12 +926,20 @@ const runCollision = async (
   const context = `${fixture} / ${mode}: ${name}`;
   const reviewer = await openReviewer(bytes);
   const persisted =
-    mode === "suggested" ? { persisted: await persistedAfterBulkAcceptance(reviewer) } : {};
+    mode === "suggested"
+      ? { persisted: await persistedAfterBulkAcceptance(reviewer) }
+      : {};
   const operations = COLLISIONS[name]?.(blocksOf(reviewer));
   if (!operations) return null;
-  const { applied, issues } = await applyChecked(reviewer, operations, mode, context);
+  const { applied, issues } = await applyChecked(
+    reviewer,
+    operations,
+    mode,
+    context,
+  );
   if (mode === "suggested") reviewer.acceptAll();
-  if (READERS_COMPARABLE(fixture)) await assertHealthy(reviewer, context, persisted);
+  if (READERS_COMPARABLE(fixture))
+    await assertHealthy(reviewer, context, persisted);
   else await saveAndReopen(reviewer, context, persisted);
   return `${name}: applied ${applied.length}${issues.length > 0 ? `, refused ${issues.join(", ")}` : ""}`;
 };
@@ -642,9 +963,14 @@ describe("collision batches", () => {
         assert.ok(ran.length > 0, "no collision fits this fixture");
       });
       for (const { collision, finding, symptom } of known) {
-        expectedFailure(finding, `${fixture} / ${mode}: ${collision}`, symptom, async () => {
-          await runCollision(fixture, await build(), mode, collision);
-        });
+        expectedFailure(
+          finding,
+          `${fixture} / ${mode}: ${collision}`,
+          symptom,
+          async () => {
+            await runCollision(fixture, await build(), mode, collision);
+          },
+        );
       }
     }
   }
@@ -664,7 +990,8 @@ type FollowUp = {
 const INSERTED = "An inserted clause about delivery terms.";
 const anchorOf = (blocks: readonly Block[]) =>
   blocks.find((block) => block.text.startsWith("The Supplier")) as Block;
-const insertedOf = (blocks: readonly Block[]) => blocks.find((block) => block.text === INSERTED);
+const insertedOf = (blocks: readonly Block[]) =>
+  blocks.find((block) => block.text === INSERTED);
 const insertFirst = (blocks: readonly Block[]): Operation[] => [
   { type: "insertAfterBlock", blockId: anchorOf(blocks).id, text: INSERTED },
 ];
@@ -719,23 +1046,49 @@ const FOLLOW_UPS: Record<string, FollowUp> = {
   },
   replaceOverPendingReplacement: {
     first: (blocks) => [
-      { type: "replaceInBlock", blockId: anchorOf(blocks).id, find: "goods", replace: "products" },
+      {
+        type: "replaceInBlock",
+        blockId: anchorOf(blocks).id,
+        find: "goods",
+        replace: "products",
+      },
     ],
     second: (blocks) => {
-      const block = blocks.find((candidate) => candidate.text.includes("products"));
+      const block = blocks.find((candidate) =>
+        candidate.text.includes("products"),
+      );
       return block
-        ? [{ type: "replaceRange", range: rangeOver(block, "products"), replace: "wares" }]
+        ? [
+            {
+              type: "replaceRange",
+              range: rangeOver(block, "products"),
+              replace: "wares",
+            },
+          ]
         : null;
     },
   },
   rewritePendingReplacement: {
     first: (blocks) => [
-      { type: "replaceInBlock", blockId: anchorOf(blocks).id, find: "goods", replace: "products" },
+      {
+        type: "replaceInBlock",
+        blockId: anchorOf(blocks).id,
+        find: "goods",
+        replace: "products",
+      },
     ],
     second: (blocks) => {
-      const block = blocks.find((candidate) => candidate.text.includes("products"));
+      const block = blocks.find((candidate) =>
+        candidate.text.includes("products"),
+      );
       return block
-        ? [{ type: "replaceBlock", blockId: block.id, text: "The Supplier delivers promptly." }]
+        ? [
+            {
+              type: "replaceBlock",
+              blockId: block.id,
+              text: "The Supplier delivers promptly.",
+            },
+          ]
         : null;
     },
   },
@@ -744,12 +1097,20 @@ const FOLLOW_UPS: Record<string, FollowUp> = {
   // rewriting it is refused rather than glued onto that paragraph.
   rewritePendingDeletion: {
     first: deleteFirst,
-    second: onDeleted((block) => ({ type: "replaceBlock", blockId: block.id, text: "Rewritten." })),
+    second: onDeleted((block) => ({
+      type: "replaceBlock",
+      blockId: block.id,
+      text: "Rewritten.",
+    })),
     refusedWith: "pendingDeletion",
   },
   insertAfterPendingDeletion: {
     first: deleteFirst,
-    second: onDeleted((block) => ({ type: "insertAfterBlock", blockId: block.id, text: "Added." })),
+    second: onDeleted((block) => ({
+      type: "insertAfterBlock",
+      blockId: block.id,
+      text: "Added.",
+    })),
   },
   insertBeforePendingDeletion: {
     first: deleteFirst,
@@ -793,17 +1154,30 @@ const runFollowUp = async (name: string, mode: Mode): Promise<void> => {
     "tracked-changes",
     context,
   );
-  assert.ok(first.applied.length > 0, `${context}: the first edit was refused: ${first.issues}`);
-  const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+  assert.ok(
+    first.applied.length > 0,
+    `${context}: the first edit was refused: ${first.issues}`,
+  );
+  const reopened = await openReviewer(
+    new Uint8Array(await reviewer.toBuffer()),
+  );
   const persisted =
-    mode === "suggested" ? { persisted: await persistedAfterBulkAcceptance(reopened) } : {};
+    mode === "suggested"
+      ? { persisted: await persistedAfterBulkAcceptance(reopened) }
+      : {};
   const operations = followUp.second(blocksOf(reopened));
   assert.ok(operations, `${context}: the second edit found nothing to name`);
   const second = await applyChecked(reopened, operations, mode, context);
   if (followUp.refusedWith !== undefined) {
-    assert.deepEqual(second.applied, [], `${context}: applied what it must refuse`);
+    assert.deepEqual(
+      second.applied,
+      [],
+      `${context}: applied what it must refuse`,
+    );
     assert.ok(
-      second.issues.every((issue) => issue.endsWith(`: ${followUp.refusedWith}`)),
+      second.issues.every((issue) =>
+        issue.endsWith(`: ${followUp.refusedWith}`),
+      ),
       `${context}: refused with ${second.issues.join(", ")}, not ${followUp.refusedWith}`,
     );
   }
@@ -819,7 +1193,9 @@ describe("edits of what a saved tracked edit left pending", () => {
       );
       const title = `${name} (${mode})`;
       if (known) {
-        expectedFailure(known.finding, title, known.symptom, () => runFollowUp(name, mode));
+        expectedFailure(known.finding, title, known.symptom, () =>
+          runFollowUp(name, mode),
+        );
       } else {
         test(title, () => runFollowUp(name, mode));
       }
@@ -855,7 +1231,9 @@ const STYLE_REQUESTS: Record<string, (block: Block) => Operation> = {
 
 const runStyleRequest = async (name: string, mode: Mode): Promise<void> => {
   const reviewer = await openReviewer(await ALL_FIXTURES.tables());
-  const block = blocksOf(reviewer).find((candidate) => candidate.text === "Taxes are extra.");
+  const block = blocksOf(reviewer).find(
+    (candidate) => candidate.text === "Taxes are extra.",
+  );
   assert.ok(block);
   const build = STYLE_REQUESTS[name] as (block: Block) => Operation;
   await applyChecked(reviewer, [build(block)], mode, `${name} (${mode})`);
@@ -893,10 +1271,19 @@ describe("findings the oracle pins", () => {
   for (const mode of ["tracked-changes", "suggested"] as const) {
     test(`a row deletion over a pending word leaves the reader no text of that row (${mode})`, async () => {
       const reviewer = await openReviewer(await ALL_FIXTURES.tables());
-      const cell = blocksOf(reviewer).find((block) => block.text === "Price") as Block;
+      const cell = blocksOf(reviewer).find(
+        (block) => block.text === "Price",
+      ) as Block;
       await applyChecked(
         reviewer,
-        [{ type: "replaceInBlock", blockId: cell.id, find: "Price", replace: "amended" }],
+        [
+          {
+            type: "replaceInBlock",
+            blockId: cell.id,
+            find: "Price",
+            replace: "amended",
+          },
+        ],
         mode,
         "a pending word",
       );

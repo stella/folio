@@ -8,7 +8,10 @@
  * coordinates and returns the PM position at the click point.
  */
 
-import { measuredLineAdvance, measuredLineContentOffset } from "../../layout-engine/lineFlow";
+import {
+  measuredLineAdvance,
+  measuredLineContentOffset,
+} from "../../layout-engine/lineFlow";
 import {
   buildRunFontStyle,
   findCharacterAtX as findCharAtX,
@@ -16,19 +19,19 @@ import {
 import { measureRun } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
 import type {
+  MeasuredLine,
   ParagraphBlock,
   ParagraphFragment,
   ParagraphMeasure,
-  MeasuredLine,
   Run,
-  TextRun,
   TabRun,
+  TextRun,
 } from "../../layout-engine/types";
-import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import {
-  resolvePhysicalParagraphInlineLayout,
   type PhysicalParagraphInlineLayout,
+  resolvePhysicalParagraphInlineLayout,
 } from "../../utils/paragraphInlineLayout";
+import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import type { FragmentHit, TableCellHit } from "./hitTest";
 
 // =============================================================================
@@ -64,7 +67,10 @@ function runToFontStyle(run: TextRun | TabRun): FontStyle {
  * trailing surrogate). Nudge such an offset forward to the code-point boundary
  * so ProseMirror never receives — or edits inside — a half-pair position.
  */
-export function snapPastTrailingSurrogate(text: string, offset: number): number {
+export function snapPastTrailingSurrogate(
+  text: string,
+  offset: number,
+): number {
   // codePointAt at a low-surrogate index returns that surrogate's code unit
   // (it only combines when read at the leading surrogate); guard undefined for
   // the out-of-range case the length check already excludes.
@@ -93,7 +99,11 @@ function sliceRunsForLine(block: ParagraphBlock, line: MeasuredLine): Run[] {
     }
 
     // Handle non-text runs as atomic units
-    if (run.kind === "tab" || run.kind === "image" || run.kind === "lineBreak") {
+    if (
+      run.kind === "tab" ||
+      run.kind === "image" ||
+      run.kind === "lineBreak"
+    ) {
       result.push(run);
       continue;
     }
@@ -141,7 +151,11 @@ function computeLinePmRange(
 
   // Calculate character offset to line start
   let charOffset = 0;
-  for (let runIndex = 0; runIndex < block.runs.length && runIndex <= line.toRun; runIndex++) {
+  for (
+    let runIndex = 0;
+    runIndex < block.runs.length && runIndex <= line.toRun;
+    runIndex++
+  ) {
     const run = block.runs[runIndex];
     if (!run) {
       continue;
@@ -415,7 +429,9 @@ function findCharacterInLine({
  * @param fragmentHit - The fragment hit result from hitTestFragment.
  * @returns Position result, or null if mapping fails.
  */
-export function clickToPositionInParagraph(fragmentHit: FragmentHit): PositionResult | null {
+export function clickToPositionInParagraph(
+  fragmentHit: FragmentHit,
+): PositionResult | null {
   const { fragment, block, measure, localX, localY } = fragmentHit;
 
   // Validate types
@@ -480,8 +496,11 @@ export function clickToPositionInParagraph(fragmentHit: FragmentHit): PositionRe
  * @param tableCellHit - The table cell hit result from hitTestTableCell.
  * @returns PM position, or null if mapping fails.
  */
-export function clickToPositionInTableCell(tableCellHit: TableCellHit): number | null {
-  const { cellBlock, cellMeasure, cellLocalX, cellLocalY, cellContentWidth } = tableCellHit;
+export function clickToPositionInTableCell(
+  tableCellHit: TableCellHit,
+): number | null {
+  const { cellBlock, cellMeasure, cellLocalX, cellLocalY, cellContentWidth } =
+    tableCellHit;
 
   if (!cellBlock || !cellMeasure) {
     return null;
@@ -578,7 +597,10 @@ export function positionToX(
   for (let lineIndex = 0; lineIndex < measure.lines.length; lineIndex++) {
     // SAFETY: lineIndex < measure.lines.length in for loop
     const line = measure.lines[lineIndex]!;
-    const { pmStart: linePmStart, pmEnd: linePmEnd } = computeLinePmRange(block, line);
+    const { pmStart: linePmStart, pmEnd: linePmEnd } = computeLinePmRange(
+      block,
+      line,
+    );
 
     if (linePmStart === undefined || linePmEnd === undefined) {
       continue;
@@ -661,7 +683,8 @@ export function getPositionRect(
   }
 
   // Calculate alignment offset
-  const { alignment, indentLeft, indentRight } = resolvePhysicalParagraphInlineLayout(block);
+  const { alignment, indentLeft, indentRight } =
+    resolvePhysicalParagraphInlineLayout(block);
   const availableWidth = Math.max(0, fragmentWidth - indentLeft - indentRight);
 
   const line = measure.lines[result.lineIndex];
@@ -676,7 +699,11 @@ export function getPositionRect(
     alignmentOffset = Math.max(0, availableWidth - line.width);
   }
 
-  const lineY = measuredLineContentOffset(measure.lines, fromLine, result.lineIndex);
+  const lineY = measuredLineContentOffset(
+    measure.lines,
+    fromLine,
+    result.lineIndex,
+  );
 
   return {
     x: fragmentX + indentLeft + alignmentOffset + result.x,

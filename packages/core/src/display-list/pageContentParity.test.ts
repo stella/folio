@@ -29,16 +29,22 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 
+import { layoutDocxHeadless } from "../headless-layout";
+import { ptToPx } from "../layout-engine/measure/measureHelpers";
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+} from "../layout-engine/measure/measureProvider";
+import { getPageTextFromLayout } from "../paged-layout/pageText";
 import { buildDisplayList } from "./build/buildDisplayList";
 import type { DisplayPage, DisplayPrimitive } from "./types";
-import { layoutDocxHeadless } from "../headless-layout";
-import { getMeasureProvider, setMeasureProvider } from "../layout-engine/measure/measureProvider";
-import { ptToPx } from "../layout-engine/measure/measureHelpers";
-import { getPageTextFromLayout } from "../paged-layout/pageText";
 
 const FIXTURES = [
   new URL("../../../../tests/visual/fixtures/sample.docx", import.meta.url),
-  new URL("../../../../tests/visual/fixtures/docx-editor-demo.docx", import.meta.url),
+  new URL(
+    "../../../../tests/visual/fixtures/docx-editor-demo.docx",
+    import.meta.url,
+  ),
   new URL("../../../../tests/visual/fixtures/podily-bps.docx", import.meta.url),
 ] as const;
 
@@ -79,7 +85,9 @@ const installFixedWidthProvider = (): void => {
     },
     measureRun: (text, style) => {
       const per = ptToPx(style.fontSize ?? 11) * FIXED_ADVANCE_RATIO;
-      const charWidths = [...text].flatMap((char) => (char.length === 2 ? [per, 0] : [per]));
+      const charWidths = [...text].flatMap((char) =>
+        char.length === 2 ? [per, 0] : [per],
+      );
       return {
         width: charWidths.reduce((total, width) => total + width, 0),
         charWidths,
@@ -112,14 +120,16 @@ const glyphTextOf = (primitives: readonly DisplayPrimitive[]): string => {
   return text;
 };
 
-const paintedTextOf = (page: DisplayPage): string => glyphTextOf(page.primitives);
+const paintedTextOf = (page: DisplayPage): string =>
+  glyphTextOf(page.primitives);
 
 /**
  * Case is folded because `w:caps` and `w:smallCaps` are rendering transforms:
  * the painted glyph legitimately differs in case from the character in the
  * document. Losing a character is a defect; changing its case is the feature.
  */
-const comparable = (text: string): string => text.replace(/\s+/gu, "").toLocaleUpperCase();
+const comparable = (text: string): string =>
+  text.replace(/\s+/gu, "").toLocaleUpperCase();
 
 /** Index of the first character of `needle` that `haystack` fails to cover. */
 const firstUncoveredIndex = (needle: string, haystack: string): number => {
@@ -167,20 +177,31 @@ describe("every character the engine placed on a page is painted", () => {
       // The document as a whole: nothing may be lost anywhere. This is the
       // assertion that holds for every fixture, table or not.
       const wholeDocument = comparable(
-        laidOut.value.proseDoc.textBetween(0, laidOut.value.proseDoc.content.size, "\n"),
+        laidOut.value.proseDoc.textBetween(
+          0,
+          laidOut.value.proseDoc.content.size,
+          "\n",
+        ),
       );
-      const wholePainted = comparable(list.pages.map((page) => paintedTextOf(page)).join(""));
+      const wholePainted = comparable(
+        list.pages.map((page) => paintedTextOf(page)).join(""),
+      );
       const lostAt = firstUncoveredIndex(wholeDocument, wholePainted);
       expect({
         scope: "document",
         uncoveredAt: lostAt,
-        missingFrom: lostAt === -1 ? "" : wholeDocument.slice(lostAt, lostAt + 40),
+        missingFrom:
+          lostAt === -1 ? "" : wholeDocument.slice(lostAt, lostAt + 40),
       }).toEqual({ scope: "document", uncoveredAt: -1, missingFrom: "" });
 
       // Per page, wherever the oracle can be trusted: content must land on the
       // page the engine put it on, not merely somewhere in the document.
       for (const [index, page] of list.pages.entries()) {
-        if (laidOut.value.layout.pages.at(index)?.fragments.some((f) => f.kind === "table")) {
+        if (
+          laidOut.value.layout.pages
+            .at(index)
+            ?.fragments.some((f) => f.kind === "table")
+        ) {
           continue;
         }
         const expected = comparable(
@@ -190,11 +211,15 @@ describe("every character the engine placed on a page is painted", () => {
             page: index + 1,
           }) ?? "",
         );
-        const uncovered = firstUncoveredIndex(expected, comparable(paintedTextOf(page)));
+        const uncovered = firstUncoveredIndex(
+          expected,
+          comparable(paintedTextOf(page)),
+        );
         expect({
           page: index + 1,
           uncoveredAt: uncovered,
-          missingFrom: uncovered === -1 ? "" : expected.slice(uncovered, uncovered + 40),
+          missingFrom:
+            uncovered === -1 ? "" : expected.slice(uncovered, uncovered + 40),
         }).toEqual({ page: index + 1, uncoveredAt: -1, missingFrom: "" });
       }
     });

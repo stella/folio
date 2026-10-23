@@ -1,20 +1,26 @@
-import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
 import type { FolioRevisionStamp } from "../ai-edits/apply";
-import { buildCleanBlockText, type BuildCleanBlockTextOptions } from "../ai-edits/clean-text";
 import {
-  noteReferenceOf,
+  buildCleanBlockText,
+  type BuildCleanBlockTextOptions,
+} from "../ai-edits/clean-text";
+import {
   type NoteReferenceIdentity,
   type NoteReferenceLabels,
+  noteReferenceOf,
 } from "../ai-edits/note-references";
-import { collectNoteReferenceLabels, sourceDocumentOf } from "../ai-edits/snapshot";
+import {
+  collectNoteReferenceLabels,
+  sourceDocumentOf,
+} from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { drawingXmlWithoutIdentity } from "../docx/drawingIdNormalization";
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/commands/comments";
-import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
 import { mintNoteReferenceOccurrenceId } from "../prosemirror/noteReferenceOccurrences";
+import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
 import { canonicalJson } from "../utils/canonicalJson";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
 
@@ -68,7 +74,11 @@ type InlineAtom = {
 };
 
 /** A footnote or endnote reference read as its marker, over `length` clean-text characters. */
-type NoteReferenceAt = NoteReferenceIdentity & { offset: number; length: number; from: number };
+type NoteReferenceAt = NoteReferenceIdentity & {
+  offset: number;
+  length: number;
+  from: number;
+};
 
 type AtomBlock = TextBlock & {
   cleanText: string;
@@ -92,7 +102,12 @@ type InsertAction = {
   node: PMNode;
   targetBlockId: string | undefined;
 };
-type DeleteAction = { kind: "delete"; from: number; to: number; targetBlockId: string | undefined };
+type DeleteAction = {
+  kind: "delete";
+  from: number;
+  to: number;
+  targetBlockId: string | undefined;
+};
 type ReplaceTextAction = {
   kind: "replace-text";
   from: number;
@@ -143,7 +158,9 @@ const MAX_INLINE_ATOM_LCS_CELLS = 16_384;
 const isSupportedAtom = (node: PMNode): boolean =>
   node.isInline &&
   node.isAtom &&
-  (node.type.name === "field" || node.type.name === "image" || node.type.name === "pageBreakRun");
+  (node.type.name === "field" ||
+    node.type.name === "image" ||
+    node.type.name === "pageBreakRun");
 
 const hasSupportedAtom = (doc: PMNode): boolean => {
   let found = false;
@@ -218,14 +235,17 @@ const documentFactAttrs = (node: PMNode): Record<string, unknown> => {
   if (node.type.name === "field" || node.type.name === "structuredField") {
     const equivalentFieldForms =
       node.type.name === "field" &&
-      (node.attrs["fieldKind"] === "simple" || node.attrs["fieldKind"] === "complex") &&
+      (node.attrs["fieldKind"] === "simple" ||
+        node.attrs["fieldKind"] === "complex") &&
       node.attrs["fieldResultIsFallback"] == null;
     // Source code runs are an editor round-trip carrier. The instruction is
     // the field's semantic identity; tracked simple fields become complex
     // fields with newly authored code runs on save.
     return Object.fromEntries(
       Object.entries(node.attrs).filter(
-        ([name]) => name !== "_docxFieldCode" && (!equivalentFieldForms || name !== "fieldKind"),
+        ([name]) =>
+          name !== "_docxFieldCode" &&
+          (!equivalentFieldForms || name !== "fieldKind"),
       ),
     );
   }
@@ -243,7 +263,9 @@ const documentFactAttrs = (node: PMNode): Record<string, unknown> => {
   }
   const local = CONVERSION_LOCAL_ATTRS[node.type.name];
   if (!local) return node.attrs;
-  return Object.fromEntries(Object.entries(node.attrs).filter(([name]) => !local.includes(name)));
+  return Object.fromEntries(
+    Object.entries(node.attrs).filter(([name]) => !local.includes(name)),
+  );
 };
 
 const atomKey = (node: PMNode): string =>
@@ -258,7 +280,10 @@ const atomBlockOf = (
   fieldResults: BuildCleanBlockTextOptions["fieldResults"],
   noteReferences: NoteReferenceReading,
 ): AtomBlock => {
-  const clean = buildCleanBlockText(node, from, { fieldResults, noteReferences });
+  const clean = buildCleanBlockText(node, from, {
+    fieldResults,
+    noteReferences,
+  });
   const references: NoteReferenceAt[] = [];
   for (const boundary of clean.structuralBoundaries) {
     if (boundary.type !== "noteReference") continue;
@@ -300,7 +325,12 @@ const atomBlockOf = (
       });
       return false;
     }
-    supported.push({ node: prepared, from: position, offset, key: atomKey(prepared) });
+    supported.push({
+      node: prepared,
+      from: position,
+      offset,
+      key: atomKey(prepared),
+    });
     return false;
   });
   return {
@@ -323,14 +353,16 @@ const targetBlockIdLookup = (snapshot: FolioAIEditSnapshot) => {
     let high = anchors.length;
     while (low < high) {
       const middle = Math.floor((low + high) / 2);
-      if ((anchors[middle]?.from ?? Number.POSITIVE_INFINITY) <= position) low = middle + 1;
+      if ((anchors[middle]?.from ?? Number.POSITIVE_INFINITY) <= position)
+        low = middle + 1;
       else high = middle;
     }
     let owner: (typeof anchors)[number] | undefined;
     for (let index = low - 1; index >= 0; index--) {
       const anchor = anchors[index];
       if (!anchor || anchor.to < position) continue;
-      if (!owner || anchor.to - anchor.from < owner.to - owner.from) owner = anchor;
+      if (!owner || anchor.to - anchor.from < owner.to - owner.from)
+        owner = anchor;
     }
     return owner?.id;
   };
@@ -341,10 +373,14 @@ const atomBlocksOf = (
   fieldResults: BuildCleanBlockTextOptions["fieldResults"],
   noteReferences: NoteReferenceReading = "sourceText",
 ): AtomBlock[] =>
-  textBlocksOf(doc).map((block) => atomBlockOf(block, fieldResults, noteReferences));
+  textBlocksOf(doc).map((block) =>
+    atomBlockOf(block, fieldResults, noteReferences),
+  );
 
-const noteReferenceKey = ({ noteType, noteId }: NoteReferenceIdentity): string =>
-  `${noteType}:${noteId}`;
+const noteReferenceKey = ({
+  noteType,
+  noteId,
+}: NoteReferenceIdentity): string => `${noteType}:${noteId}`;
 
 /** Every note a story references, tracked-deleted references included. */
 const referencedNotesOf = (doc: PMNode): ReadonlySet<string> => {
@@ -372,7 +408,10 @@ const hasNoteReference = (doc: PMNode): boolean => {
  * Operations carry clean text, where a reference reads as its marker, so an
  * operation that brings a reference writes the marker as text.
  */
-const wroteNoteReferenceMarker = (doc: PMNode, originalRevisionIdSeed: number): boolean => {
+const wroteNoteReferenceMarker = (
+  doc: PMNode,
+  originalRevisionIdSeed: number,
+): boolean => {
   let found = false;
   doc.descendants((node) => {
     if (found) return false;
@@ -380,21 +419,26 @@ const wroteNoteReferenceMarker = (doc: PMNode, originalRevisionIdSeed: number): 
     if (!node.text?.includes("[^") || noteReferenceOf(node)) return false;
     const insertion = node.marks.find(({ type }) => type.name === "insertion");
     const revisionId: unknown = insertion?.attrs["revisionId"];
-    if (typeof revisionId === "number" && revisionId >= originalRevisionIdSeed) found = true;
+    if (typeof revisionId === "number" && revisionId >= originalRevisionIdSeed)
+      found = true;
     return false;
   });
   return found;
 };
 
 const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean => {
-  if (left.node.type !== right.node.type || left.cleanText !== right.cleanText) return false;
+  if (left.node.type !== right.node.type || left.cleanText !== right.cleanText)
+    return false;
   const supportedOffsets = new Set([
     ...left.supported.map(({ offset }) => offset),
     ...right.supported.map(({ offset }) => offset),
   ]);
   const relevantTopology = ({ unsupportedTopology }: AtomBlock) =>
     unsupportedTopology.filter(({ offset }) => supportedOffsets.has(offset));
-  return canonicalJson(relevantTopology(left)) === canonicalJson(relevantTopology(right));
+  return (
+    canonicalJson(relevantTopology(left)) ===
+    canonicalJson(relevantTopology(right))
+  );
 };
 
 const supportedAtomProjection = (block: AtomBlock) =>
@@ -454,10 +498,15 @@ const matchingAtomGroup = ({
     const width = target.length + 1;
     const table = new Uint16Array((live.length + 1) * width);
     for (let liveIndex = live.length - 1; liveIndex >= 0; liveIndex--) {
-      for (let targetIndex = target.length - 1; targetIndex >= 0; targetIndex--) {
+      for (
+        let targetIndex = target.length - 1;
+        targetIndex >= 0;
+        targetIndex--
+      ) {
         const index = liveIndex * width + targetIndex;
         if (live[liveIndex]?.key === target[targetIndex]?.key) {
-          table[index] = (table[(liveIndex + 1) * width + targetIndex + 1] ?? 0) + 1;
+          table[index] =
+            (table[(liveIndex + 1) * width + targetIndex + 1] ?? 0) + 1;
           continue;
         }
         table[index] = Math.max(
@@ -535,7 +584,12 @@ const matchingAtoms = ({
     const liveGroup = live.slice(liveStart, left);
     const targetGroup = target.slice(targetStart, right);
     matched.push(
-      ...matchingAtomGroup({ live: liveGroup, target: targetGroup, liveStart, targetStart }),
+      ...matchingAtomGroup({
+        live: liveGroup,
+        target: targetGroup,
+        liveStart,
+        targetStart,
+      }),
     );
   }
   return matched;
@@ -563,7 +617,8 @@ const insertionAnchors = ({
     let nextMatchedLiveIndex: number | undefined;
     for (let index = groupEnd - 1; index >= groupStart; index--) {
       const matchedLiveIndex = liveIndexByTargetIndex.get(index);
-      if (matchedLiveIndex !== undefined) nextMatchedLiveIndex = matchedLiveIndex;
+      if (matchedLiveIndex !== undefined)
+        nextMatchedLiveIndex = matchedLiveIndex;
       else if (nextMatchedLiveIndex !== undefined)
         anchors.set(index, live[nextMatchedLiveIndex]!.from);
     }
@@ -576,7 +631,8 @@ const insertionAnchors = ({
       }
       if (!anchors.has(index) && previousMatchedLiveIndex !== undefined) {
         const previous = live[previousMatchedLiveIndex];
-        if (previous) anchors.set(index, previous.from + previous.node.nodeSize);
+        if (previous)
+          anchors.set(index, previous.from + previous.node.nodeSize);
       }
     }
     groupStart = groupEnd;
@@ -588,7 +644,9 @@ const mappedSourcePosition = ({
   mapping,
   position,
 }: {
-  mapping: ReturnType<typeof resolveAllChangesInHeadlessStateWithMapping>["mapping"];
+  mapping: ReturnType<
+    typeof resolveAllChangesInHeadlessStateWithMapping
+  >["mapping"];
   position: number;
 }): number | null => {
   const inverse = mapping.invert();
@@ -598,7 +656,9 @@ const mappedSourcePosition = ({
   return left.deleted ? null : left.pos;
 };
 
-const sourceTextBlockIds = (source: PMNode): ReadonlyMap<string, TextBlock | null> => {
+const sourceTextBlockIds = (
+  source: PMNode,
+): ReadonlyMap<string, TextBlock | null> => {
   const blocks = new Map<string, TextBlock | null>();
   for (const block of textBlocksOf(source)) {
     const paraId = block.node.attrs["paraId"];
@@ -625,8 +685,13 @@ const sameParagraphSourcePosition = ({
   if (typeof paraId !== "string" || paraId.length === 0) return null;
   const source = sourceBlocks.get(paraId);
   if (!source || source.node.type !== reviewed.node.type) return null;
-  const clean = buildCleanBlockText(source.node, source.from, { fieldResults, noteReferences });
-  return clean.text === reviewed.cleanText ? (clean.offsets[offset] ?? null) : null;
+  const clean = buildCleanBlockText(source.node, source.from, {
+    fieldResults,
+    noteReferences,
+  });
+  return clean.text === reviewed.cleanText
+    ? (clean.offsets[offset] ?? null)
+    : null;
 };
 
 const textRangeDisposition = ({
@@ -663,7 +728,10 @@ const textRangeDisposition = ({
     let current: ReplaceTextAction["textDisposition"] = "retained";
     if (insertion) {
       const revisionId = insertion.attrs["revisionId"];
-      if (typeof revisionId !== "number" || revisionId < originalRevisionIdSeed) {
+      if (
+        typeof revisionId !== "number" ||
+        revisionId < originalRevisionIdSeed
+      ) {
         invalid = true;
         return false;
       }
@@ -687,10 +755,14 @@ const atomDisposition = ({
   originalRevisionIdSeed: number;
 }): ReplaceAtomAction["atomDisposition"] | null => {
   if (atom.node.marks.some(({ type }) => type.name === "deletion")) return null;
-  const insertion = atom.node.marks.find(({ type }) => type.name === "insertion");
+  const insertion = atom.node.marks.find(
+    ({ type }) => type.name === "insertion",
+  );
   if (!insertion) return "retained";
   const revisionId = insertion.attrs["revisionId"];
-  return typeof revisionId === "number" && revisionId >= originalRevisionIdSeed ? "inserted" : null;
+  return typeof revisionId === "number" && revisionId >= originalRevisionIdSeed
+    ? "inserted"
+    : null;
 };
 
 /**
@@ -709,14 +781,16 @@ export const matchInlineAtoms = ({
   noteReferenceLabels,
   baseNotes,
 }: MatchInlineAtomsOptions): MatchInlineAtomsResult => {
-  if (!Number.isSafeInteger(maxRanges) || maxRanges < 0) return { status: "budget-exceeded" };
+  if (!Number.isSafeInteger(maxRanges) || maxRanges < 0)
+    return { status: "budget-exceeded" };
   const targetDocument = sourceDocumentOf(targetSnapshot);
   // An operation that brings a note reference writes its marker, which is
   // the reference's clean text. Reading both sides' references with the
   // markers the plan was written in lines that text up with the reference
   // it stands for.
   const restoresNoteReferences =
-    wroteNoteReferenceMarker(state.doc, originalRevisionIdSeed) && hasNoteReference(targetDocument);
+    wroteNoteReferenceMarker(state.doc, originalRevisionIdSeed) &&
+    hasNoteReference(targetDocument);
   const noteReferences: NoteReferenceReading = restoresNoteReferences
     ? (noteReferenceLabels ?? collectNoteReferenceLabels(targetDocument))
     : "sourceText";
@@ -759,11 +833,15 @@ export const matchInlineAtoms = ({
     const fullTarget = targetBlocks[index];
     if (!fullTarget) return { status: "unalignable" };
     if (
-      (fullLive.noteReferences.length > 0 || fullTarget.noteReferences.length > 0) &&
+      (fullLive.noteReferences.length > 0 ||
+        fullTarget.noteReferences.length > 0) &&
       fullLive.cleanText === fullTarget.cleanText
     ) {
       const kept = new Map(
-        fullLive.noteReferences.map((reference) => [reference.offset, reference]),
+        fullLive.noteReferences.map((reference) => [
+          reference.offset,
+          reference,
+        ]),
       );
       for (const reference of fullTarget.noteReferences) {
         const live = kept.get(reference.offset);
@@ -786,7 +864,8 @@ export const matchInlineAtoms = ({
         }
         const node = targetDocument.nodeAt(reference.from);
         const reviewedFrom = fullLive.offsets[reference.offset];
-        const reviewedLast = fullLive.offsets[reference.offset + reference.length - 1];
+        const reviewedLast =
+          fullLive.offsets[reference.offset + reference.length - 1];
         if (
           !node ||
           !noteReferenceOf(node) ||
@@ -795,8 +874,14 @@ export const matchInlineAtoms = ({
         ) {
           return { status: "unalignable" };
         }
-        const from = mappedSourcePosition({ mapping: reviewed.mapping, position: reviewedFrom });
-        const to = mappedSourcePosition({ mapping: reviewed.mapping, position: reviewedLast + 1 });
+        const from = mappedSourcePosition({
+          mapping: reviewed.mapping,
+          position: reviewedFrom,
+        });
+        const to = mappedSourcePosition({
+          mapping: reviewed.mapping,
+          position: reviewedLast + 1,
+        });
         if (
           from === null ||
           to === null ||
@@ -828,7 +913,8 @@ export const matchInlineAtoms = ({
       // A reference the reviewed story keeps where the target has none.
       if (kept.size > 0) return { status: "unalignable" };
     }
-    if (fullLive.supported.length === 0 && fullTarget.supported.length === 0) continue;
+    if (fullLive.supported.length === 0 && fullTarget.supported.length === 0)
+      continue;
     // An unsupported zero-width neighbor cannot make an unchanged supported
     // carrier need reconciliation. Package-local comment ids are the common
     // case: they may be rebound independently while the page break beside
@@ -838,20 +924,37 @@ export const matchInlineAtoms = ({
     let target = fullTarget;
     let fieldResults: BuildCleanBlockTextOptions["fieldResults"] = "text";
     if (!sameBlockTopology(live, target)) {
-      omittedLiveBlocks ??= atomBlocksOf(reviewed.state.doc, "omitted", noteReferences);
-      omittedTargetBlocks ??= atomBlocksOf(targetDocument, "omitted", noteReferences);
+      omittedLiveBlocks ??= atomBlocksOf(
+        reviewed.state.doc,
+        "omitted",
+        noteReferences,
+      );
+      omittedTargetBlocks ??= atomBlocksOf(
+        targetDocument,
+        "omitted",
+        noteReferences,
+      );
       const omittedLive = omittedLiveBlocks[index];
       const omittedTarget = omittedTargetBlocks[index];
-      if (!omittedLive || !omittedTarget || !sameBlockTopology(omittedLive, omittedTarget)) {
+      if (
+        !omittedLive ||
+        !omittedTarget ||
+        !sameBlockTopology(omittedLive, omittedTarget)
+      ) {
         return { status: "unalignable" };
       }
       live = omittedLive;
       target = omittedTarget;
       fieldResults = "omitted";
     }
-    const matches = matchingAtoms({ live: live.supported, target: target.supported });
+    const matches = matchingAtoms({
+      live: live.supported,
+      target: target.supported,
+    });
     const matchedLive = new Set(matches.map(([liveIndex]) => liveIndex));
-    const matchedTarget = new Set(matches.map(([, targetIndex]) => targetIndex));
+    const matchedTarget = new Set(
+      matches.map(([, targetIndex]) => targetIndex),
+    );
     const anchors = insertionAnchors({
       live: live.supported,
       target: target.supported,
@@ -861,7 +964,10 @@ export const matchInlineAtoms = ({
     const targetFieldResultOwnership = fieldResultOwnershipOf(target.supported);
     for (const [liveIndex, atom] of live.supported.entries()) {
       if (matchedLive.has(liveIndex)) continue;
-      const from = mappedSourcePosition({ mapping: reviewed.mapping, position: atom.from });
+      const from = mappedSourcePosition({
+        mapping: reviewed.mapping,
+        position: atom.from,
+      });
       if (from === null) return { status: "unalignable" };
       const resultText = runFormattingInlineAtomResultText(atom.node);
       if (
@@ -929,7 +1035,10 @@ export const matchInlineAtoms = ({
         const to =
           reviewedTo === undefined
             ? null
-            : mappedSourcePosition({ mapping: reviewed.mapping, position: reviewedTo });
+            : mappedSourcePosition({
+                mapping: reviewed.mapping,
+                position: reviewedTo,
+              });
         if (to === null) return { status: "unalignable" };
         const textDisposition = textRangeDisposition({
           doc: state.doc,
@@ -972,14 +1081,19 @@ export const matchInlineAtoms = ({
   let nextRevisionId = revisionStamp.idSeed;
   const changedTargetBlockIds = new Set<string>();
   const ordered = actions.toSorted(
-    (left, right) => right.from - left.from || (left.kind === "delete" ? -1 : 1),
+    (left, right) =>
+      right.from - left.from || (left.kind === "delete" ? -1 : 1),
   );
   for (const action of ordered) {
     if (action.kind === "insert") {
       const at = transaction.mapping.map(action.from, 1);
       const marked = action.node.mark(
         insertionType
-          .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
+          .create({
+            revisionId: nextRevisionId++,
+            author,
+            date: revisionStamp.date,
+          })
           .addToSet(action.node.marks),
       );
       transaction.insert(at, marked);
@@ -1010,7 +1124,11 @@ export const matchInlineAtoms = ({
         at,
         action.node.mark(
           insertionType
-            .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
+            .create({
+              revisionId: nextRevisionId++,
+              author,
+              date: revisionStamp.date,
+            })
             .addToSet(action.node.marks),
         ),
       );
@@ -1021,8 +1139,11 @@ export const matchInlineAtoms = ({
       const from = transaction.mapping.map(action.from, 1);
       const to = transaction.mapping.map(action.to, -1);
       const written = transaction.doc.nodeAt(from);
-      const noteMark = action.node.marks.find(({ type }) => type.name === "footnoteRef");
-      if (from >= to || !written?.isText || !noteMark) return { status: "unalignable" };
+      const noteMark = action.node.marks.find(
+        ({ type }) => type.name === "footnoteRef",
+      );
+      if (from >= to || !written?.isText || !noteMark)
+        return { status: "unalignable" };
       // Target occurrence identities belong to its document, not the comparison result.
       const restoredNoteMark = noteMark.type.create({
         ...noteMark.attrs,
@@ -1031,7 +1152,10 @@ export const matchInlineAtoms = ({
       transaction.replaceWith(
         from,
         to,
-        state.schema.text(action.node.text ?? "", restoredNoteMark.addToSet(written.marks)),
+        state.schema.text(
+          action.node.text ?? "",
+          restoredNoteMark.addToSet(written.marks),
+        ),
       );
       if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
       continue;
@@ -1064,7 +1188,11 @@ export const matchInlineAtoms = ({
         state.schema.text(
           action.text,
           insertionType
-            .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
+            .create({
+              revisionId: nextRevisionId++,
+              author,
+              date: revisionStamp.date,
+            })
             .addToSet(action.marks),
         ),
       );
@@ -1085,13 +1213,18 @@ export const matchInlineAtoms = ({
       if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
       continue;
     }
-    if (node.marks.some(({ type }) => type === deletionType)) return { status: "unalignable" };
+    if (node.marks.some(({ type }) => type === deletionType))
+      return { status: "unalignable" };
     addTrackedDeletionMark({
       insertionPolicy: "preserve-pending",
       tr: transaction,
       from,
       to,
-      mark: deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
+      mark: deletionType.create({
+        revisionId: nextRevisionId++,
+        author,
+        date: revisionStamp.date,
+      }),
     });
     if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
   }
@@ -1105,16 +1238,23 @@ export const matchInlineAtoms = ({
 };
 
 /** Compare supported inline atom identity after accept or reject projection. */
-export const sameInlineAtoms = (leftDocument: PMNode, rightDocument: PMNode): boolean => {
-  if (!hasSupportedAtom(leftDocument) && !hasSupportedAtom(rightDocument)) return true;
+export const sameInlineAtoms = (
+  leftDocument: PMNode,
+  rightDocument: PMNode,
+): boolean => {
+  if (!hasSupportedAtom(leftDocument) && !hasSupportedAtom(rightDocument))
+    return true;
   const leftBlocks = atomBlocksOf(leftDocument, "omitted");
   const rightBlocks = atomBlocksOf(rightDocument, "omitted");
   if (leftBlocks.length !== rightBlocks.length) return false;
   return leftBlocks.every((left, index) => {
     const right = rightBlocks[index];
-    if (left.supported.length === 0 && right?.supported.length === 0) return true;
+    if (left.supported.length === 0 && right?.supported.length === 0)
+      return true;
     return (
-      right !== undefined && left.cleanText === right.cleanText && sameSupportedAtoms(left, right)
+      right !== undefined &&
+      left.cleanText === right.cleanText &&
+      sameSupportedAtoms(left, right)
     );
   });
 };

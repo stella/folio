@@ -1,12 +1,24 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { link, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import path from "node:path";
-import JSZip from "jszip";
 import { panic } from "better-result";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import JSZip from "jszip";
+import {
+  link,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
-import { CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
+import {
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
 import { fileVersionOf } from "./document";
 import { CLI_READ_BOUNDS, executeReadTool } from "./execute-read";
 import { executeWriteTool, type WriteOptions } from "./execute-write";
@@ -71,7 +83,14 @@ const write = async (
 };
 
 const REPLACE_FIFTY = {
-  operations: [{ type: "replaceInBlock", blockId: "10000002", find: "$50", replace: "$500" }],
+  operations: [
+    {
+      type: "replaceInBlock",
+      blockId: "10000002",
+      find: "$50",
+      replace: "$500",
+    },
+  ],
 };
 
 const reopen = async (filePath: string): Promise<FolioDocxReviewer> => {
@@ -89,26 +108,40 @@ describe("suggest_changes in place", () => {
     expect(receipt["fromVersion"]).toBe(before);
     expect(receipt["fileVersion"]).toBe(await versionOf(file));
     expect(receipt["saveStrategy"]).toBe("selective");
-    expect(receipt["changedParts"]).toEqual([{ part: "word/document.xml", change: "modified" }]);
+    expect(receipt["changedParts"]).toEqual([
+      { part: "word/document.xml", change: "modified" },
+    ]);
     expect(await versionOf(String(receipt["backup"]))).toBe(before);
     const changes = (await reopen(file)).getChanges();
     expect(changes.map(({ author, date }) => [author, date])).toEqual([
       ["Reviewer", DATE],
       ["Reviewer", DATE],
     ]);
-    const journal = await readFile(path.join(dir, ".folio", "journal.jsonl"), "utf8");
-    expect(journal).toContain(`"toVersion":"${String(receipt["fileVersion"])}"`);
-    expect((await readdir(dir)).toSorted()).toEqual([".folio", "contract.docx"]);
+    const journal = await readFile(
+      path.join(dir, ".folio", "journal.jsonl"),
+      "utf8",
+    );
+    expect(journal).toContain(
+      `"toVersion":"${String(receipt["fileVersion"])}"`,
+    );
+    expect((await readdir(dir)).toSorted()).toEqual([
+      ".folio",
+      "contract.docx",
+    ]);
   });
 
   test("replays a committed txId and refuses its reuse for another request", async () => {
     const first = (
-      await write("suggest_changes", REPLACE_FIFTY, { overrides: { txId: "tx-1" } })
+      await write("suggest_changes", REPLACE_FIFTY, {
+        overrides: { txId: "tx-1" },
+      })
     ).unwrap();
     const after = await versionOf(file);
 
     const replayed = (
-      await write("suggest_changes", REPLACE_FIFTY, { overrides: { txId: "tx-1" } })
+      await write("suggest_changes", REPLACE_FIFTY, {
+        overrides: { txId: "tx-1" },
+      })
     ).unwrap();
     const conflict = await write(
       "suggest_changes",
@@ -118,7 +151,9 @@ describe("suggest_changes in place", () => {
 
     expect(replayed).toEqual({ ...first, status: "replayed" });
     expect(await versionOf(file)).toBe(after);
-    expect(conflict.isErr() && conflict.error.code).toBe("transaction_conflict");
+    expect(conflict.isErr() && conflict.error.code).toBe(
+      "transaction_conflict",
+    );
   });
 });
 
@@ -156,10 +191,15 @@ describe("block ids of a file without paragraph ids", () => {
       "synthetic",
     ]);
     const [first, liability] = before;
-    if (first === undefined || liability === undefined) throw new Error("fixture blocks missing");
+    if (first === undefined || liability === undefined)
+      throw new Error("fixture blocks missing");
 
     const renamed = (
-      await write("suggest_changes", { operations: [renameIn(liability.blockId)] }, { source })
+      await write(
+        "suggest_changes",
+        { operations: [renameIn(liability.blockId)] },
+        { source },
+      )
     ).unwrap();
     const commented = await write(
       "add_comment",
@@ -176,21 +216,32 @@ describe("block ids of a file without paragraph ids", () => {
     expect(commented.isOk()).toBe(true);
     expect(again.isOk()).toBe(true);
     const after = await readBlocks(source);
-    expect(after.map(({ blockId }) => blockId)).toEqual(before.map(({ blockId }) => blockId));
-    expect(after.every(({ blockIdSource }) => blockIdSource === "package")).toBe(true);
+    expect(after.map(({ blockId }) => blockId)).toEqual(
+      before.map(({ blockId }) => blockId),
+    );
+    expect(
+      after.every(({ blockIdSource }) => blockIdSource === "package"),
+    ).toBe(true);
   });
 
   test("survive a paragraph inserted before them", async () => {
     const source = await writeDocx(dir, "plain.docx", UNIDENTIFIED);
     const before = await readBlocks(source);
     const [first, , notices] = before;
-    if (first === undefined || notices === undefined) throw new Error("fixture blocks missing");
+    if (first === undefined || notices === undefined)
+      throw new Error("fixture blocks missing");
 
     (
       await write(
         "suggest_changes",
         {
-          operations: [{ type: "insertAfterBlock", blockId: first.blockId, text: "A new clause." }],
+          operations: [
+            {
+              type: "insertAfterBlock",
+              blockId: first.blockId,
+              text: "A new clause.",
+            },
+          ],
         },
         { source, overrides: { repack: "allow" } },
       )
@@ -204,7 +255,9 @@ describe("block ids of a file without paragraph ids", () => {
     expect(renamed.isOk()).toBe(true);
     const after = await readBlocks(source);
     expect(
-      after.filter(({ text }) => text !== "A new clause.").map(({ blockId }) => blockId),
+      after
+        .filter(({ text }) => text !== "A new clause.")
+        .map(({ blockId }) => blockId),
     ).toEqual(before.map(({ blockId }) => blockId));
   });
 });
@@ -213,7 +266,10 @@ describe("refusals leave the file untouched", () => {
   const cases: [string, () => ReturnType<typeof write>, string][] = [
     [
       "stale version",
-      () => write("suggest_changes", REPLACE_FIFTY, { fileVersion: "0".repeat(64) }),
+      () =>
+        write("suggest_changes", REPLACE_FIFTY, {
+          fileVersion: "0".repeat(64),
+        }),
       "stale_version",
     ],
     [
@@ -241,7 +297,14 @@ describe("refusals leave the file untouched", () => {
       "ambiguous find",
       () =>
         write("suggest_changes", {
-          operations: [{ type: "replaceInBlock", blockId: "10000002", find: "e", replace: "E" }],
+          operations: [
+            {
+              type: "replaceInBlock",
+              blockId: "10000002",
+              find: "e",
+              replace: "E",
+            },
+          ],
         }),
       "ambiguous_target",
     ],
@@ -249,11 +312,21 @@ describe("refusals leave the file untouched", () => {
       "structural edit without --allow-repack",
       () =>
         write("suggest_changes", {
-          operations: [{ type: "insertAfterBlock", blockId: "10000004", text: "New clause." }],
+          operations: [
+            {
+              type: "insertAfterBlock",
+              blockId: "10000004",
+              text: "New clause.",
+            },
+          ],
         }),
       "repack_required",
     ],
-    ["unknown comment", () => write("reply_comment", { commentId: "404", text: "?" }), "not_found"],
+    [
+      "unknown comment",
+      () => write("reply_comment", { commentId: "404", text: "?" }),
+      "not_found",
+    ],
     [
       "unknown change",
       () => write("resolve_changes", { action: "accept", ids: ["9"] }),
@@ -266,12 +339,16 @@ describe("refusals leave the file untouched", () => {
     ],
     [
       "ids and all together",
-      () => write("resolve_changes", { action: "accept", all: true, ids: ["1"] }),
+      () =>
+        write("resolve_changes", { action: "accept", all: true, ids: ["1"] }),
       "invalid_input",
     ],
     [
       "unsafe txId",
-      () => write("suggest_changes", REPLACE_FIFTY, { overrides: { txId: "../escape" } }),
+      () =>
+        write("suggest_changes", REPLACE_FIFTY, {
+          overrides: { txId: "../escape" },
+        }),
       "invalid_input",
     ],
   ];
@@ -291,7 +368,9 @@ describe("refusals leave the file untouched", () => {
     ).unwrap();
 
     const refused = await write("suggest_changes", REPLACE_FIFTY);
-    const forced = await write("suggest_changes", REPLACE_FIFTY, { overrides: { force: true } });
+    const forced = await write("suggest_changes", REPLACE_FIFTY, {
+      overrides: { force: true },
+    });
 
     expect(refused.isErr() && refused.error.code).toBe("locked");
     expect(forced.isOk()).toBe(true);
@@ -299,7 +378,10 @@ describe("refusals leave the file untouched", () => {
   });
 });
 
-const toFile = (target: string, extra: { overwrite?: boolean; expectedVersion?: string } = {}) => ({
+const toFile = (
+  target: string,
+  extra: { overwrite?: boolean; expectedVersion?: string } = {},
+) => ({
   overrides: {
     destination: {
       type: "file" as const,
@@ -322,7 +404,8 @@ test("compare_documents forwards cleared-reference warnings in its file receipt"
   ]);
   const styleId = "UndefinedInsertionStyle";
   const baseZip = await JSZip.loadAsync(await readFile(source));
-  const stylesPart = baseZip.file("word/styles.xml") ?? panic("Fixture lost its styles part");
+  const stylesPart =
+    baseZip.file("word/styles.xml") ?? panic("Fixture lost its styles part");
   const stylesXml = await stylesPart.async("text");
   baseZip.file(
     "word/styles.xml",
@@ -344,7 +427,8 @@ test("compare_documents forwards cleared-reference warnings in its file receipt"
     revisedSnapshot.blocks.find(({ text }) => text === "Replacement") ??
     panic("Fixture lost its insertion block");
   const anchor =
-    revisedSnapshot.anchors[insertion.id] ?? panic("Fixture lost its insertion anchor");
+    revisedSnapshot.anchors[insertion.id] ??
+    panic("Fixture lost its insertion anchor");
   const receipt = (
     await write(
       "compare_documents",
@@ -355,7 +439,12 @@ test("compare_documents forwards cleared-reference warnings in its file receipt"
   expect(receipt["result"]).toMatchObject({
     skipped: [],
     referenceWarnings: [
-      { kind: "style", id: styleId, paragraphPosition: anchor.from, story: { type: "main" } },
+      {
+        kind: "style",
+        id: styleId,
+        paragraphPosition: anchor.from,
+        story: { type: "main" },
+      },
     ],
   });
 });
@@ -365,7 +454,9 @@ describe("destinations", () => {
     const out = path.join(dir, "out.docx");
     const source = await versionOf(file);
 
-    const receipt = (await write("suggest_changes", REPLACE_FIFTY, toFile(out))).unwrap();
+    const receipt = (
+      await write("suggest_changes", REPLACE_FIFTY, toFile(out))
+    ).unwrap();
 
     expect(receipt["source"]).toEqual({ path: file, fileVersion: source });
     expect(await versionOf(file)).toBe(source);
@@ -373,7 +464,9 @@ describe("destinations", () => {
   });
 
   test("replacing an existing file needs --overwrite and its version, and backs it up", async () => {
-    const out = await writeDocx(dir, "out.docx", [{ text: "Occupied.", paraId: "20000001" }]);
+    const out = await writeDocx(dir, "out.docx", [
+      { text: "Occupied.", paraId: "20000001" },
+    ]);
     const occupied = await versionOf(out);
 
     const refused = await write("suggest_changes", REPLACE_FIFTY, toFile(out));
@@ -410,7 +503,10 @@ describe("destinations", () => {
     await writeFile(path.join(dir, "notes.txt"), "keep");
     const revised = await writeDocx(dir, "revised.docx", CONTRACT_PARAGRAPHS);
     await symlink(file, path.join(dir, "alias.docx"));
-    await symlink(path.join(dir, "notes.txt"), path.join(dir, "disguised.docx"));
+    await symlink(
+      path.join(dir, "notes.txt"),
+      path.join(dir, "disguised.docx"),
+    );
     await symlink(revised, path.join(dir, "revised-alias.docx"));
     await link(file, path.join(dir, "hardlink.docx"));
     await mkdir(path.join(dir, ".folio"));
@@ -429,14 +525,19 @@ describe("destinations", () => {
         REPLACE_FIFTY,
         toFile(target, { overwrite: true }),
       );
-      expect([target, result.isErr() && result.error.code]).toEqual([target, code]);
+      expect([target, result.isErr() && result.error.code]).toEqual([
+        target,
+        code,
+      ]);
     }
     const redlineOntoRevised = await write(
       "compare_documents",
       { revisedPath: revised },
       toFile(path.join(dir, "revised-alias.docx"), { overwrite: true }),
     );
-    expect(redlineOntoRevised.isErr() && redlineOntoRevised.error.code).toBe("invalid_destination");
+    expect(redlineOntoRevised.isErr() && redlineOntoRevised.error.code).toBe(
+      "invalid_destination",
+    );
     expect(await readFile(path.join(dir, "notes.txt"), "utf8")).toBe("keep");
   });
 
@@ -452,7 +553,15 @@ describe("destinations", () => {
     const receipt = (
       await write(
         "suggest_changes",
-        { operations: [{ type: "insertAfterBlock", blockId: "10000004", text: "New clause." }] },
+        {
+          operations: [
+            {
+              type: "insertAfterBlock",
+              blockId: "10000004",
+              text: "New clause.",
+            },
+          ],
+        },
         { overrides: { repack: "allow" } },
       )
     ).unwrap();
@@ -486,7 +595,10 @@ describe("sidecar boundary", () => {
     (await write("resolve_changes", { action: "accept", all: true })).unwrap();
     const backups = path.join(dir, ".folio", "backups");
 
-    expect((await readdir(backups)).toSorted()).toEqual(["contract.docx", "other.docx"]);
+    expect((await readdir(backups)).toSorted()).toEqual([
+      "contract.docx",
+      "other.docx",
+    ]);
     expect((await readdir(path.join(backups, "contract.docx"))).length).toBe(2);
     expect((await readdir(path.join(backups, "other.docx"))).length).toBe(1);
 
@@ -503,16 +615,25 @@ describe("resolve_changes", () => {
     if (!first) throw new Error("no change to accept");
 
     const byId = (
-      await write("resolve_changes", { action: "accept", ids: [String(first.id)] })
+      await write("resolve_changes", {
+        action: "accept",
+        ids: [String(first.id)],
+      })
     ).unwrap();
-    const rest = (await write("resolve_changes", { action: "reject", all: true })).unwrap();
+    const rest = (
+      await write("resolve_changes", { action: "reject", all: true })
+    ).unwrap();
 
     expect(byId["result"]).toEqual({
       action: "accept",
       resolved: [String(first.id)],
       remaining: 1,
     });
-    expect(rest["result"]).toEqual({ action: "reject", resolved: 1, remaining: 0 });
+    expect(rest["result"]).toEqual({
+      action: "reject",
+      resolved: 1,
+      remaining: 0,
+    });
     expect((await reopen(file)).getContent().map(({ text }) => text)).toContain(
       "The buyer pays  on signing.",
     );
@@ -522,7 +643,11 @@ describe("resolve_changes", () => {
 describe("crash recovery", () => {
   test("a later write rolls a journaled stage forward, then checks its version against the result", async () => {
     const original = await readFile(file);
-    (await write("suggest_changes", REPLACE_FIFTY, { overrides: { txId: "tx-1" } })).unwrap();
+    (
+      await write("suggest_changes", REPLACE_FIFTY, {
+        overrides: { txId: "tx-1" },
+      })
+    ).unwrap();
     const committed = await readFile(file);
     // Simulate a crash between the journal line and the rename.
     await rm(file);
@@ -534,10 +659,14 @@ describe("crash recovery", () => {
     const next = (await write("add_comment", comment)).unwrap();
 
     expect(stale.isErr() && stale.error.code).toBe("stale_version");
-    expect(stale.isErr() && JSON.stringify(stale.error.details)).toContain('"rolledForward"');
+    expect(stale.isErr() && JSON.stringify(stale.error.details)).toContain(
+      '"rolledForward"',
+    );
     expect(next["fromVersion"]).toBe(fileVersionOf(new Uint8Array(committed)));
     const reviewer = await reopen(file);
     expect(reviewer.getChanges().length).toBe(2);
-    expect(reviewer.getComments().map(({ text }) => text)).toEqual(["Confirm the rate."]);
+    expect(reviewer.getComments().map(({ text }) => text)).toEqual([
+      "Confirm the rate.",
+    ]);
   });
 });

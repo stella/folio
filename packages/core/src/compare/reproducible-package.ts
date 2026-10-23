@@ -1,4 +1,5 @@
-import { encodeUtf8, decodeText } from "../utils/textEncoding";
+import JSZip from "jszip";
+
 import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * Date comparison output from the comparison's timestamp. Imported entries
@@ -6,7 +7,7 @@ import { writeZipPart } from "@stll/docx-core/zip";
  * clock; restamping both makes repeated comparisons reproducible.
  */
 
-import JSZip from "jszip";
+import { decodeText, encodeUtf8 } from "../utils/textEncoding";
 
 /** JSZip deflate level `repackDocx` writes DOCX parts at. */
 const DOCX_COMPRESSION_LEVEL = 6;

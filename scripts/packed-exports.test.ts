@@ -1,10 +1,19 @@
 import { expect, test } from "bun:test";
+
 import { publicEntries } from "./lib/packed-exports";
 
 test("every packed wildcard target is exercised, including CJS and declarations", () => {
   const exports = {
-    ".": { types: "./dist/index.d.ts", import: "./dist/index.js", require: "./dist/index.cjs" },
-    "./*": { types: "./dist/*.d.ts", import: "./dist/*.js", require: "./dist/*.cjs" },
+    ".": {
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+      require: "./dist/index.cjs",
+    },
+    "./*": {
+      types: "./dist/*.d.ts",
+      import: "./dist/*.js",
+      require: "./dist/*.cjs",
+    },
     "./internal/*": null,
     "./private": null,
     "./editor.css": "./dist/editor.css",
@@ -58,16 +67,25 @@ test("plain JavaScript exports remain public even without a types condition", ()
     },
     files: ["index.js", "commonjs.cjs"],
   });
-  expect(entries.map(({ specifier }) => specifier)).toEqual(["example", "example/commonjs"]);
+  expect(entries.map(({ specifier }) => specifier)).toEqual([
+    "example",
+    "example/commonjs",
+  ]);
   expect(entries.every(({ asset }) => !asset)).toBe(true);
-  expect(entries.find(({ specifier }) => specifier.endsWith("/commonjs"))?.cjs).toBe(true);
+  expect(
+    entries.find(({ specifier }) => specifier.endsWith("/commonjs"))?.cjs,
+  ).toBe(true);
 });
 
 test("default ESM targets are exercised by both module loaders", () => {
   const entries = publicEntries({
     name: "example",
     exports: {
-      ".": { types: "./dist/index.d.ts", import: "./dist/index.js", default: "./dist/index.js" },
+      ".": {
+        types: "./dist/index.d.ts",
+        import: "./dist/index.js",
+        default: "./dist/index.js",
+      },
     },
     files: ["dist/index.js", "dist/index.d.ts"],
   });
@@ -85,6 +103,12 @@ test("type-only public exports are resolved by tsc without runtime imports", () 
     files: ["dist/model.d.ts"],
   });
   expect(entries).toEqual([
-    { specifier: "example/model", esm: false, cjs: false, types: true, asset: false },
+    {
+      specifier: "example/model",
+      esm: false,
+      cjs: false,
+      types: true,
+      asset: false,
+    },
   ]);
 });

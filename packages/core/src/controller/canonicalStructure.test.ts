@@ -1,34 +1,51 @@
+import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
-import { panic } from "better-result";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { paragraphLogicalText, type TextPosition } from "@stll/docx-core/ops";
+
 import { finalizeParagraphFormatting } from "@stll/docx-core/model";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import type { Document } from "../types/document";
-import { schema, singletonManager } from "../prosemirror/schema";
-import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
-import { expectParagraphAttrs } from "../prosemirror/attrs";
-import { directionToAuthoredBidi } from "../prosemirror/paragraphDirection";
-import { TAB_STOP_ALIGNMENT_VALUES, TAB_LEADER_VALUES } from "../types/documentEnumValues";
-import { createDocx } from "../docx/rezip";
-import { parseDocx } from "../docx/parser";
-import { fromMarkdown } from "../markdown/fromMarkdown";
+import {
+  paragraphIdsIn,
+  paragraphLogicalText,
+  type TextPosition,
+} from "@stll/docx-core/ops";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   assignDocumentParagraphPropertySourceContract,
-  cloneDocumentWithParagraphPropertySources,
   assignParagraphPropertySource,
+  cloneDocumentWithParagraphPropertySources,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
 } from "../docx/paragraphPropertySource";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import { fromMarkdown } from "../markdown/fromMarkdown";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
+import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import { collectPairedBookmarkIds } from "../prosemirror/conversion/toProseDoc";
+import { directionToAuthoredBidi } from "../prosemirror/paragraphDirection";
+import { schema, singletonManager } from "../prosemirror/schema";
+import type { Document } from "../types/document";
 import {
-  createCanonicalSession,
-  publishCanonicalProjection,
+  TAB_LEADER_VALUES,
+  TAB_STOP_ALIGNMENT_VALUES,
+} from "../types/documentEnumValues";
+import { projectCanonicalInline } from "./canonicalInlineProjection";
+import {
   type CanonicalCommit,
   type CanonicalSession,
+  createCanonicalSession,
+  publishCanonicalProjection,
 } from "./canonicalSession";
-import { prepareCanonicalAutoformat, prepareCanonicalCommands } from "./canonicalStructure";
+import {
+  prepareCanonicalAutoformat,
+  prepareCanonicalCommands,
+} from "./canonicalStructure";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
@@ -39,7 +56,9 @@ const seed = (): Document => ({
         {
           type: "paragraph",
           paraId: "12345678",
-          content: [{ type: "run", content: [{ type: "text", text: "ab😀cd" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "ab😀cd" }] },
+          ],
         },
         {
           type: "paragraph",
@@ -57,9 +76,18 @@ const paragraphs = (session: CanonicalSession) =>
       return panic("Canonical test lost a paragraph identity.");
     return paragraph;
   });
-const texts = (session: CanonicalSession) => paragraphs(session).map(paragraphLogicalText);
-const accept = (session: CanonicalSession, state: EditorState, commit: CanonicalCommit) => {
-  const applied = publishCanonicalProjection({ session, state, commit }).unwrap();
+const texts = (session: CanonicalSession) =>
+  paragraphs(session).map(paragraphLogicalText);
+const accept = (
+  session: CanonicalSession,
+  state: EditorState,
+  commit: CanonicalCommit,
+) => {
+  const applied = publishCanonicalProjection({
+    session,
+    state,
+    commit,
+  }).unwrap();
   expect(applied.state.doc.eq(session.projection.doc)).toBe(true);
   const identities = paragraphs(session).map(({ paraId }) => paraId);
   expect(new Set(identities).size).toBe(identities.length);
@@ -68,12 +96,17 @@ const accept = (session: CanonicalSession, state: EditorState, commit: Canonical
     return token === undefined ? [] : [token];
   });
   expect(new Set(sourceTokens).size).toBe(sourceTokens.length);
+  const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs(session));
   for (const paragraph of paragraphs(session)) {
     const address =
-      session.projection.paragraph(paragraph.paraId ?? "") ?? panic("Projection lost a paragraph.");
-    expect(address.node.textBetween(0, address.node.content.size, "", "\uFFFC")).toBe(
-      paragraphLogicalText(paragraph),
-    );
+      session.projection.paragraph(paragraph.paraId ?? "") ??
+      panic("Projection lost a paragraph.");
+    const projected = projectCanonicalInline({
+      source: paragraph,
+      paragraph: address.node,
+      pairedBookmarkIds,
+    }).unwrap();
+    expect(projected.text).toBe(paragraphLogicalText(paragraph));
   }
   return applied.state;
 };
@@ -85,80 +118,358 @@ test.each([
   ["toggle numbered", { type: "toggleList", kind: "decimal" } as const],
   ["restart numbering", { type: "restartNumbering", start: 4 } as const],
   ["continue numbering", { type: "continueNumbering" } as const],
-])("%s stays inside a table-cell block container with exact undo", (_name, command) => {
-  const document = fromMarkdown("1. Before\n\n| Head |\n|---|\n| Target |\n\n1. After");
-  const table = document.package.document.content.at(1);
-  if (table?.type !== "table") return panic("Expected the table fixture.");
-  const cell = table.rows.at(1)?.cells.at(0);
-  const target = cell?.content.at(0);
-  if (cell === undefined || target?.type !== "paragraph")
-    return panic("Expected the target cell paragraph.");
-  const preceding = structuredClone(target);
-  preceding.content = [{ type: "run", content: [{ type: "text", text: "Cell list" }] }];
-  preceding.formatting = {
-    numPr: { kind: "reference", numId: command.type === "toggleList" ? 2 : 1, ilvl: 0 },
-  };
-  // The canonical model has no empty formatting: an unformatted paragraph omits it.
-  if (command.type === "toggleList") Reflect.deleteProperty(target, "formatting");
-  else target.formatting = { numPr: { kind: "reference", numId: 2, ilvl: 0 } };
-  cell.content = [preceding, target];
-  let paragraphId = 1;
-  for (const block of document.package.document.content) {
-    if (block.type === "paragraph") block.paraId = (paragraphId++).toString(16).padStart(8, "0");
-    if (block.type !== "table") continue;
-    for (const row of block.rows)
-      for (const tableCell of row.cells)
-        for (const paragraph of tableCell.content)
-          if (paragraph.type === "paragraph")
-            paragraph.paraId = (paragraphId++).toString(16).padStart(8, "0");
-  }
+])(
+  "%s stays inside a table-cell block container with exact undo",
+  (_name, command) => {
+    const document = fromMarkdown(
+      "1. Before\n\n| Head |\n|---|\n| Target |\n\n1. After",
+    );
+    const table = document.package.document.content.at(1);
+    if (table?.type !== "table") return panic("Expected the table fixture.");
+    const cell = table.rows.at(1)?.cells.at(0);
+    const target = cell?.content.at(0);
+    if (cell === undefined || target?.type !== "paragraph")
+      return panic("Expected the target cell paragraph.");
+    const preceding = structuredClone(target);
+    preceding.content = [
+      { type: "run", content: [{ type: "text", text: "Cell list" }] },
+    ];
+    preceding.formatting = {
+      numPr: {
+        kind: "reference",
+        numId: command.type === "toggleList" ? 2 : 1,
+        ilvl: 0,
+      },
+    };
+    // The canonical model has no empty formatting: an unformatted paragraph omits it.
+    if (command.type === "toggleList")
+      Reflect.deleteProperty(target, "formatting");
+    else
+      target.formatting = { numPr: { kind: "reference", numId: 2, ilvl: 0 } };
+    cell.content = [preceding, target];
+    let paragraphId = 1;
+    for (const block of document.package.document.content) {
+      if (block.type === "paragraph")
+        block.paraId = (paragraphId++).toString(16).padStart(8, "0");
+      if (block.type !== "table") continue;
+      for (const row of block.rows)
+        for (const tableCell of row.cells)
+          for (const paragraph of tableCell.content)
+            if (paragraph.type === "paragraph")
+              paragraph.paraId = (paragraphId++).toString(16).padStart(8, "0");
+    }
 
-  const session = createCanonicalSession(document).unwrap();
-  let state = EditorState.create({ schema, doc: session.projection.doc });
-  let targetPosition: number | undefined;
-  state.doc.descendants((node, position) => {
-    if (node.type.name === "paragraph" && node.textContent === "Target") targetPosition = position;
-  });
-  if (targetPosition === undefined) return panic("Projection lost the target cell paragraph.");
-  state = select(state, targetPosition + 1);
-  const before = session.document;
-  const bodyBefore = [before.package.document.content.at(0), before.package.document.content.at(2)];
-  state = publishCanonicalProjection({
-    session,
-    state,
-    commit: prepareCanonicalCommands(session, state, [command]).unwrap(),
-  }).unwrap().state;
-  expect([
-    session.document.package.document.content.at(0),
-    session.document.package.document.content.at(2),
-  ]).toStrictEqual(bodyBefore);
-  const changedTable = session.document.package.document.content.at(1);
-  const changed =
-    changedTable?.type === "table"
-      ? changedTable.rows.at(1)?.cells.at(0)?.content.at(1)
-      : undefined;
-  expect(changed).not.toStrictEqual(target);
-  if (command.type === "toggleList" && command.kind === "decimal")
-    expect(changed?.type === "paragraph" ? changed.formatting?.numPr : undefined).toEqual({
-      kind: "reference",
-      numId: 2,
-      ilvl: 0,
+    const session = createCanonicalSession(document).unwrap();
+    let state = EditorState.create({ schema, doc: session.projection.doc });
+    let targetPosition: number | undefined;
+    state.doc.descendants((node, position) => {
+      if (node.type.name === "paragraph" && node.textContent === "Target")
+        targetPosition = position;
     });
-  state = publishCanonicalProjection({
-    session,
-    state,
-    commit: session.prepareUndo(state).unwrap(),
-  }).unwrap().state;
-  expect(session.document).toStrictEqual(before);
-  expect(session.canUndo).toBe(false);
-});
+    if (targetPosition === undefined)
+      return panic("Projection lost the target cell paragraph.");
+    state = select(state, targetPosition + 1);
+    const before = session.document;
+    const bodyBefore = [
+      before.package.document.content.at(0),
+      before.package.document.content.at(2),
+    ];
+    state = publishCanonicalProjection({
+      session,
+      state,
+      commit: prepareCanonicalCommands(session, state, [command]).unwrap(),
+    }).unwrap().state;
+    expect([
+      session.document.package.document.content.at(0),
+      session.document.package.document.content.at(2),
+    ]).toStrictEqual(bodyBefore);
+    const changedTable = session.document.package.document.content.at(1);
+    const changed =
+      changedTable?.type === "table"
+        ? changedTable.rows.at(1)?.cells.at(0)?.content.at(1)
+        : undefined;
+    expect(changed).not.toStrictEqual(target);
+    if (command.type === "toggleList" && command.kind === "decimal")
+      expect(
+        changed?.type === "paragraph" ? changed.formatting?.numPr : undefined,
+      ).toEqual({
+        kind: "reference",
+        numId: 2,
+        ilvl: 0,
+      });
+    state = publishCanonicalProjection({
+      session,
+      state,
+      commit: session.prepareUndo(state).unwrap(),
+    }).unwrap().state;
+    expect(session.document).toStrictEqual(before);
+    expect(session.canUndo).toBe(false);
+  },
+);
 
-const kinds = ["split", "join", "run", "paragraph", "atom", "list", "input"] as const;
+const kinds = [
+  "split",
+  "join",
+  "run",
+  "paragraph",
+  "atom",
+  "list",
+  "input",
+] as const;
 const inputArbitrary = fc.record({
   kind: fc.constantFrom(...kinds),
   offset: fc.nat(1000),
   reverse: fc.boolean(),
   bold: fc.boolean(),
+});
+
+test("section and note command batches have exact canonical inverses", () => {
+  const document = seed();
+  const session = createCanonicalSession(document).unwrap();
+  let state = EditorState.create({ schema, doc: session.projection.doc });
+  state = select(state, 3);
+  const original = session.document;
+
+  const sectionCommand =
+    singletonManager.requireCommand("insertSectionBreak")("continuous");
+  const sectionIntents =
+    getCanonicalCommandIntents(sectionCommand, state) ??
+    panic("Missing section descriptor.");
+  state = accept(
+    session,
+    state,
+    prepareCanonicalCommands(session, state, sectionIntents).unwrap(),
+  );
+  expect(paragraphs(session).at(0)?.sectionProperties?.sectionStart).toBe(
+    "continuous",
+  );
+  state = accept(session, state, session.prepareUndo(state).unwrap());
+  expect(session.document).toStrictEqual(original);
+
+  const content = [
+    {
+      type: "paragraph" as const,
+      content: [
+        {
+          type: "run" as const,
+          content: [{ type: "text" as const, text: "A note." }],
+        },
+      ],
+    },
+  ];
+  const noteCommand = singletonManager.requireCommand("insertFootnote")(
+    1,
+    content,
+  );
+  const noteIntents =
+    getCanonicalCommandIntents(noteCommand, state) ??
+    panic("Missing note descriptor.");
+  state = accept(
+    session,
+    state,
+    prepareCanonicalCommands(session, state, noteIntents).unwrap(),
+  );
+  expect(session.document.package.footnotes?.at(0)?.content).toHaveLength(1);
+  expect(state.doc.textContent).toContain("1");
+  state = accept(session, state, session.prepareUndo(state).unwrap());
+  expect(session.document).toStrictEqual(original);
+});
+
+test("section break commands apply to every selected paragraph in both editor modes", () => {
+  for (const mode of [
+    { type: "editing" },
+    { type: "suggesting", author: "Reviewer" },
+  ] as const) {
+    const session = createCanonicalSession(seed()).unwrap();
+    session.setMode(mode);
+    let state = EditorState.create({ schema, doc: session.projection.doc });
+    state = select(state, 2, state.doc.content.size - 2);
+    const original = session.document;
+    const command =
+      singletonManager.requireCommand("insertSectionBreak")("nextPage");
+    const intents =
+      getCanonicalCommandIntents(command, state) ??
+      panic("Missing section descriptor.");
+    state = accept(
+      session,
+      state,
+      prepareCanonicalCommands(session, state, intents).unwrap(),
+    );
+    expect(
+      paragraphs(session).map(
+        ({ sectionProperties }) => sectionProperties?.sectionStart,
+      ),
+    ).toEqual(["nextPage", "nextPage"]);
+    state = accept(session, state, session.prepareUndo(state).unwrap());
+    expect(session.document).toStrictEqual(original);
+  }
+});
+
+test("note commands insert after selected text in both editor modes with exact undo", () => {
+  for (const mode of [
+    { type: "editing" },
+    { type: "suggesting", author: "Reviewer" },
+  ] as const) {
+    for (const commandName of ["insertFootnote", "insertEndnote"] as const) {
+      const session = createCanonicalSession(seed()).unwrap();
+      session.setMode(mode);
+      let state = select(
+        EditorState.create({ schema, doc: session.projection.doc }),
+        2,
+        3,
+      );
+      const original = session.document;
+      const originalDoc = state.doc;
+      const command = singletonManager.requireCommand(commandName)(1, [
+        {
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: "A note." }] },
+          ],
+        },
+      ]);
+      const intents =
+        getCanonicalCommandIntents(command, state) ??
+        panic("Missing note insertion descriptor.");
+
+      state = accept(
+        session,
+        state,
+        prepareCanonicalCommands(session, state, intents).unwrap(),
+      );
+
+      expect(state.doc.textContent).toBe("ab1😀cdEF");
+      expect(state.selection.empty).toBe(true);
+      expect(state.selection.from).toBe(4);
+      if (mode.type === "suggesting") {
+        expect(
+          JSON.stringify(session.document.package.document.content),
+        ).toContain('"author":"Reviewer"');
+      }
+
+      state = accept(session, state, session.prepareUndo(state).unwrap());
+      expect(session.document).toStrictEqual(original);
+      expect(state.doc.eq(originalDoc)).toBe(true);
+      expect(state.selection.toJSON()).toEqual({
+        type: "text",
+        anchor: 2,
+        head: 3,
+      });
+    }
+  }
+});
+
+test("a note batch across paragraphs leaves the caret after its own paragraph's reference", () => {
+  const session = createCanonicalSession(seed()).unwrap();
+  let state = select(
+    EditorState.create({ schema, doc: session.projection.doc }),
+    3,
+  );
+  const content = [
+    {
+      type: "paragraph" as const,
+      content: [
+        {
+          type: "run" as const,
+          content: [{ type: "text" as const, text: "A note." }],
+        },
+      ],
+    },
+  ];
+  // The caret sits after "ab"; the second note goes after "E" in the next paragraph.
+  const intents = [
+    ...(getCanonicalCommandIntents(
+      singletonManager.requireCommand("insertFootnote")(1, content),
+      state,
+    ) ?? panic("Missing note descriptor.")),
+    ...(getCanonicalCommandIntents(
+      singletonManager.requireCommand("insertEndnote")(1, content),
+      select(state, 10),
+    ) ?? panic("Missing note descriptor.")),
+  ];
+
+  state = accept(
+    session,
+    state,
+    prepareCanonicalCommands(session, state, intents).unwrap(),
+  );
+  expect(session.document.package.footnotes).toHaveLength(1);
+  expect(session.document.package.endnotes).toHaveLength(1);
+  expect(state.selection.toJSON()).toEqual({
+    type: "text",
+    anchor: 4,
+    head: 4,
+  });
+
+  state = accept(session, state, session.prepareUndo(state).unwrap());
+  state = accept(session, state, session.prepareRedo(state).unwrap());
+  expect(state.selection.toJSON()).toEqual({
+    type: "text",
+    anchor: 4,
+    head: 4,
+  });
+});
+
+test("note-reference descriptors delete beside a caret or across a range with exact undo", () => {
+  for (const mode of [
+    { type: "editing" },
+    { type: "suggesting", author: "Reviewer" },
+  ] as const) {
+    for (const selection of ["before", "after", "range"] as const) {
+      const session = createCanonicalSession(seed()).unwrap();
+      let state = select(
+        EditorState.create({ schema, doc: session.projection.doc }),
+        3,
+      );
+      const insert = singletonManager.requireCommand("insertFootnote")(1, [
+        {
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: "A note." }] },
+          ],
+        },
+      ]);
+      const insertIntents =
+        getCanonicalCommandIntents(insert, state) ??
+        panic("Missing note insertion descriptor.");
+      state = accept(
+        session,
+        state,
+        prepareCanonicalCommands(session, state, insertIntents).unwrap(),
+      );
+      const inserted = session.document;
+      session.setMode(mode);
+      let referenceFrom: number | undefined;
+      state.doc.descendants((node, position) => {
+        if (node.marks.some((mark) => mark.type.name === "footnoteRef"))
+          referenceFrom = position;
+      });
+      if (referenceFrom === undefined)
+        panic("Inserted note has no projected reference.");
+      if (selection === "before") state = select(state, referenceFrom);
+      else if (selection === "after") state = select(state, referenceFrom + 1);
+      else state = select(state, referenceFrom, referenceFrom + 1);
+      const remove = singletonManager.requireCommand("deleteNoteRef")();
+      const removeIntents =
+        getCanonicalCommandIntents(remove, state) ??
+        panic("Missing note deletion descriptor.");
+      state = accept(
+        session,
+        state,
+        prepareCanonicalCommands(session, state, removeIntents).unwrap(),
+      );
+      if (mode.type === "suggesting") {
+        expect(session.document.package.footnotes).toStrictEqual(
+          inserted.package.footnotes,
+        );
+        expect(
+          JSON.stringify(session.document.package.document.content),
+        ).toContain('"author":"Reviewer"');
+      }
+      state = accept(session, state, session.prepareUndo(state).unwrap());
+      expect(session.document).toStrictEqual(inserted);
+    }
+  }
 });
 
 test("list-level commands preserve plain paragraphs and refuse all-plain selections without history", async () => {
@@ -177,12 +488,17 @@ test("list-level commands preserve plain paragraphs and refuse all-plain selecti
             for (const kind of ["plain", "mixed"] as const) {
               const document = seed();
               for (const paragraph of document.package.document.content) {
-                if (paragraph.type !== "paragraph") panic("Expected paragraph fixture.");
-                paragraph.formatting = indent === undefined ? {} : { indentLeft: indent };
+                if (paragraph.type !== "paragraph")
+                  panic("Expected paragraph fixture.");
+                paragraph.formatting =
+                  indent === undefined ? {} : { indentLeft: indent };
               }
               if (kind === "mixed") {
                 const builder = createCanonicalSession(document).unwrap();
-                let state = EditorState.create({ schema, doc: builder.projection.doc });
+                let state = EditorState.create({
+                  schema,
+                  doc: builder.projection.doc,
+                });
                 const last = builder.projection.doc.child(0).nodeSize + 1;
                 state = select(state, last);
                 accept(
@@ -194,12 +510,18 @@ test("list-level commands preserve plain paragraphs and refuse all-plain selecti
                 );
                 Object.assign(document, builder.document);
                 const list = document.package.document.content.at(1);
-                if (list?.type !== "paragraph" || list.formatting?.numPr?.kind !== "reference")
+                if (
+                  list?.type !== "paragraph" ||
+                  list.formatting?.numPr?.kind !== "reference"
+                )
                   panic("Expected list fixture.");
                 list.formatting.numPr.ilvl = level;
               }
               const session = createCanonicalSession(document).unwrap();
-              let state = EditorState.create({ schema, doc: session.projection.doc });
+              let state = EditorState.create({
+                schema,
+                doc: session.projection.doc,
+              });
               const end = state.doc.content.size - 1;
               state = reverse ? select(state, end, 1) : select(state, 1, end);
               const before = session.document;
@@ -209,23 +531,28 @@ test("list-level commands preserve plain paragraphs and refuse all-plain selecti
               ]);
               if (kind === "plain") {
                 expect(prepared.isErr()).toBe(true);
-                if (prepared.isErr()) expect(prepared.error.reason).toBe("noChange");
+                if (prepared.isErr())
+                  expect(prepared.error.reason).toBe("noChange");
                 expect(session.document).toStrictEqual(before);
                 expect(session.version).toBe(0);
                 expect(session.canUndo).toBe(false);
                 continue;
               }
               state = accept(session, state, prepared.unwrap());
-              expect(session.document.package.document.content.at(0)).toStrictEqual(
-                before.package.document.content.at(0),
-              );
+              expect(
+                session.document.package.document.content.at(0),
+              ).toStrictEqual(before.package.document.content.at(0));
               const list = paragraphs(session).at(1);
               expect(
                 list?.formatting?.numPr?.kind === "reference"
                   ? list.formatting.numPr.ilvl
                   : undefined,
               ).toBe(level + (direction === "increase" ? 1 : -1));
-              state = accept(session, state, session.prepareUndo(state).unwrap());
+              state = accept(
+                session,
+                state,
+                session.prepareUndo(state).unwrap(),
+              );
               expect(session.document).toStrictEqual(before);
               expect(state.selection.toJSON()).toEqual(selection);
               expect(session.canUndo).toBe(false);
@@ -242,16 +569,29 @@ test("list-level commands preserve plain paragraphs and refuse all-plain selecti
 });
 
 const autoformatMarkerArbitrary = fc.oneof(
-  fc.constantFrom("*", "-").map((marker) => ({ type: "bullet", marker }) as const),
   fc
-    .record({ start: fc.integer({ min: 1, max: 999 }), punctuation: fc.constantFrom(".", ")") })
+    .constantFrom("*", "-")
+    .map((marker) => ({ type: "bullet", marker }) as const),
+  fc
+    .record({
+      start: fc.integer({ min: 1, max: 999 }),
+      punctuation: fc.constantFrom(".", ")"),
+    })
     .map(
       ({ start, punctuation }) =>
-        ({ type: "numbered", marker: `${start}${punctuation}`, start, punctuation }) as const,
+        ({
+          type: "numbered",
+          marker: `${start}${punctuation}`,
+          start,
+          punctuation,
+        }) as const,
     ),
   fc
     .integer({ min: 1, max: 6 })
-    .map((level) => ({ type: "heading", marker: "#".repeat(level), level }) as const),
+    .map(
+      (level) =>
+        ({ type: "heading", marker: "#".repeat(level), level }) as const,
+    ),
 );
 
 describe("canonical structural commands", () => {
@@ -261,9 +601,15 @@ describe("canonical structural commands", () => {
         fc.array(inputArbitrary, { minLength: 14, maxLength: 28 }),
         async (generated) => {
           const document = seed();
-          assignDocumentParagraphPropertySourceContract(document, "b".repeat(64));
+          assignDocumentParagraphPropertySourceContract(
+            document,
+            "b".repeat(64),
+          );
           const session = createCanonicalSession(document).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           let oracle = ["ab😀cd", "EF"];
           const history: {
             before: Document;
@@ -274,10 +620,16 @@ describe("canonical structural commands", () => {
           const outcomes = { applied: 0, noChange: 0 };
           const exercised = new Set<(typeof kinds)[number]>();
           const repeatedSplits = [0, 1].map(
-            (offset) => ({ kind: "split", offset, reverse: false, bold: false }) as const,
+            (offset) =>
+              ({ kind: "split", offset, reverse: false, bold: false }) as const,
           );
           const inputs = [
-            ...kinds.map((kind) => ({ kind, offset: 2, reverse: false, bold: true })),
+            ...kinds.map((kind) => ({
+              kind,
+              offset: 2,
+              reverse: false,
+              bold: true,
+            })),
             ...repeatedSplits,
             ...generated,
           ];
@@ -286,16 +638,22 @@ describe("canonical structural commands", () => {
             const sources = paragraphs(session);
             const index =
               input.kind === "run"
-                ? sources.findIndex((paragraph) => paragraphLogicalText(paragraph).length > 0)
+                ? sources.findIndex(
+                    (paragraph) => paragraphLogicalText(paragraph).length > 0,
+                  )
                 : input.offset % sources.length;
-            const source = sources.at(index) ?? panic("Sequence has no addressed paragraph.");
+            const source =
+              sources.at(index) ??
+              panic("Sequence has no addressed paragraph.");
             const address =
               session.projection.paragraph(source.paraId ?? "") ??
               panic("Sequence lost its address.");
             const gaps = [0];
-            for (const character of address.text) gaps.push((gaps.at(-1) ?? 0) + character.length);
+            for (const character of address.text)
+              gaps.push((gaps.at(-1) ?? 0) + character.length);
             const offset =
-              gaps.at(input.offset % gaps.length) ?? panic("Sequence lost a code-point gap.");
+              gaps.at(input.offset % gaps.length) ??
+              panic("Sequence lost a code-point gap.");
             state = select(state, address.start + offset);
             let prepare: ReturnType<typeof session.prepareIntent>;
             let expectedCaret: TextPosition | undefined;
@@ -307,22 +665,39 @@ describe("canonical structural commands", () => {
             switch (input.kind) {
               case "split": {
                 prepare = session.prepareSplit(state);
-                expectedCaret = { story: "main", blockId: source.paraId ?? "", offset: 0 };
-                const original = oracle.at(index) ?? panic("Text oracle lost a paragraph.");
-                oracle.splice(index, 1, original.slice(0, offset), original.slice(offset));
+                expectedCaret = {
+                  story: "main",
+                  blockId: source.paraId ?? "",
+                  offset: 0,
+                };
+                const original =
+                  oracle.at(index) ?? panic("Text oracle lost a paragraph.");
+                oracle.splice(
+                  index,
+                  1,
+                  original.slice(0, offset),
+                  original.slice(offset),
+                );
                 break;
               }
               case "join": {
                 if (sources.length === 1) {
-                  prepare = session.prepareJoin(select(state, address.start), "backward");
+                  prepare = session.prepareJoin(
+                    select(state, address.start),
+                    "backward",
+                  );
                   break;
                 }
                 const firstIndex = input.offset % (sources.length - 1);
-                const first = sources.at(firstIndex) ?? panic("Missing join paragraph.");
+                const first =
+                  sources.at(firstIndex) ?? panic("Missing join paragraph.");
                 const firstAddress =
                   session.projection.paragraph(first.paraId ?? "") ??
                   panic("Missing join address.");
-                state = select(state, firstAddress.start + firstAddress.text.length);
+                state = select(
+                  state,
+                  firstAddress.start + firstAddress.text.length,
+                );
                 preSelection = state.selection.toJSON();
                 prepare = session.prepareJoin(state, "forward");
                 expectedCaret = {
@@ -333,14 +708,19 @@ describe("canonical structural commands", () => {
                 oracle.splice(
                   firstIndex,
                   2,
-                  (oracle.at(firstIndex) ?? "") + (oracle.at(firstIndex + 1) ?? ""),
+                  (oracle.at(firstIndex) ?? "") +
+                    (oracle.at(firstIndex + 1) ?? ""),
                 );
                 break;
               }
               case "run": {
                 const from = address.start;
                 const to = from + address.text.length;
-                state = select(state, input.reverse ? to : from, input.reverse ? from : to);
+                state = select(
+                  state,
+                  input.reverse ? to : from,
+                  input.reverse ? from : to,
+                );
                 preSelection = state.selection.toJSON();
                 prepare = prepareCanonicalCommands(session, state, [
                   { type: "formatRun", from, to, patch: { bold: input.bold } },
@@ -357,11 +737,18 @@ describe("canonical structural commands", () => {
                 ]);
                 break;
               case "atom": {
-                const at = session.projection.addressAt(state.selection.head).unwrap();
+                const at = session.projection
+                  .addressAt(state.selection.head)
+                  .unwrap();
                 expectedCaret = { ...at, offset: at.offset + 1 };
                 const atom = (() => {
-                  if (input.offset % 3 === 0) return { type: "break", breakType: "page" } as const;
-                  if (input.reverse) return { type: "break", breakType: "textWrapping" } as const;
+                  if (input.offset % 3 === 0)
+                    return { type: "break", breakType: "page" } as const;
+                  if (input.reverse)
+                    return {
+                      type: "break",
+                      breakType: "textWrapping",
+                    } as const;
                   return { type: "tab" } as const;
                 })();
                 prepare = session.prepareIntent(state, {
@@ -370,25 +757,38 @@ describe("canonical structural commands", () => {
                   to: at,
                   atom,
                 });
-                const original = oracle.at(index) ?? panic("Text oracle lost an atom paragraph.");
-                oracle[index] = original.slice(0, offset) + "\uFFFC" + original.slice(offset);
+                const original =
+                  oracle.at(index) ??
+                  panic("Text oracle lost an atom paragraph.");
+                oracle[index] =
+                  original.slice(0, offset) + "\uFFFC" + original.slice(offset);
                 break;
               }
               case "list":
                 prepare = prepareCanonicalCommands(session, state, [
-                  { type: "toggleList", kind: input.reverse ? "bullet" : "decimal" },
+                  {
+                    type: "toggleList",
+                    kind: input.reverse ? "bullet" : "decimal",
+                  },
                 ]);
                 break;
               case "input": {
-                expectedCaret = { story: "main", blockId: source.paraId ?? "", offset: offset + 1 };
+                expectedCaret = {
+                  story: "main",
+                  blockId: source.paraId ?? "",
+                  offset: offset + 1,
+                };
                 prepare = session.prepareReplace(state, {
                   from: state.selection.head,
                   to: state.selection.head,
                   text: "é",
                   semantic: "replacement",
                 });
-                const original = oracle.at(index) ?? panic("Text oracle lost an input paragraph.");
-                oracle[index] = original.slice(0, offset) + "é" + original.slice(offset);
+                const original =
+                  oracle.at(index) ??
+                  panic("Text oracle lost an input paragraph.");
+                oracle[index] =
+                  original.slice(0, offset) + "é" + original.slice(offset);
                 break;
               }
               default: {
@@ -418,14 +818,20 @@ describe("canonical structural commands", () => {
               expect(selection.anchor.offset).toBe(expectedCaret.offset);
               expect(selection.head).toEqual(selection.anchor);
             }
-            if (input.kind === "run" || input.kind === "paragraph" || input.kind === "list")
+            if (
+              input.kind === "run" ||
+              input.kind === "paragraph" ||
+              input.kind === "list"
+            )
               expect(state.selection.toJSON()).toEqual(preSelection);
             if (input.kind === "run") {
               const updated =
-                paragraphs(session).at(index) ?? panic("Formatted paragraph disappeared.");
+                paragraphs(session).at(index) ??
+                panic("Formatted paragraph disappeared.");
               expect(
                 updated.content.every(
-                  (run) => run.type === "run" && run.formatting?.bold === input.bold,
+                  (run) =>
+                    run.type === "run" && run.formatting?.bold === input.bold,
                 ),
               ).toBe(true);
             }
@@ -477,7 +883,9 @@ describe("canonical structural commands", () => {
             {
               type: "paragraph",
               paraId: "12345678",
-              content: [{ type: "run", content: [{ type: "text", text: marker }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: marker }] },
+              ],
             },
           ];
           if (generated.type === "heading" && styleAvailable) {
@@ -492,7 +900,10 @@ describe("canonical structural commands", () => {
             };
           }
           const session = createCanonicalSession(document).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           state = select(state, marker.length + 1);
           const before = session.document;
           const selection = state.selection.toJSON();
@@ -507,13 +918,17 @@ describe("canonical structural commands", () => {
             expect(state.selection.toJSON()).toEqual(selection);
             return;
           }
-          const commit = prepared ?? panic("Declared marker was not recognized.");
+          const commit =
+            prepared ?? panic("Declared marker was not recognized.");
           state = accept(session, state, commit.unwrap());
           expect(texts(session)).toEqual([""]);
           expect(state.selection.head).toBe(1);
-          const paragraph = paragraphs(session).at(0) ?? panic("Rule paragraph disappeared.");
+          const paragraph =
+            paragraphs(session).at(0) ?? panic("Rule paragraph disappeared.");
           if (generated.type === "heading")
-            expect(paragraph.formatting?.styleId).toBe(`Heading${generated.level}`);
+            expect(paragraph.formatting?.styleId).toBe(
+              `Heading${generated.level}`,
+            );
           else {
             expect(paragraph.formatting?.numPr?.kind).toBe("reference");
             expect(session.document.package.numbering?.nums.length).toBe(1);
@@ -521,13 +936,17 @@ describe("canonical structural commands", () => {
               generated.type === "bullet" ? "bullet" : "decimal",
             );
             if (generated.type === "numbered") {
-              const levels = session.document.package.numbering?.abstractNums.at(0)?.levels;
+              const levels =
+                session.document.package.numbering?.abstractNums.at(0)?.levels;
               expect(levels?.map(({ start }) => start)).toEqual([
                 generated.start,
                 ...Array.from({ length: 8 }, () => 1),
               ]);
               expect(levels?.map(({ lvlText }) => lvlText)).toEqual(
-                Array.from({ length: 9 }, (_, index) => `%${index + 1}${generated.punctuation}`),
+                Array.from(
+                  { length: 9 },
+                  (_, index) => `%${index + 1}${generated.punctuation}`,
+                ),
               );
             }
           }
@@ -560,11 +979,16 @@ describe("canonical structural commands", () => {
             {
               type: "paragraph",
               paraId: "12345678",
-              content: [{ type: "run", content: [{ type: "text", text: marker }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: marker }] },
+              ],
             },
           ];
           const session = createCanonicalSession(document).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           state = select(state, marker.length + 1);
           const history: {
             before: Document;
@@ -573,24 +997,32 @@ describe("canonical structural commands", () => {
             postSelection: ReturnType<typeof state.selection.toJSON>;
           }[] = [];
           const apply = (commit: CanonicalCommit) => {
-            const before = cloneDocumentWithParagraphPropertySources(session.document);
+            const before = cloneDocumentWithParagraphPropertySources(
+              session.document,
+            );
             const preSelection = state.selection.toJSON();
             state = accept(session, state, commit);
             history.push({
               before,
-              after: cloneDocumentWithParagraphPropertySources(session.document),
+              after: cloneDocumentWithParagraphPropertySources(
+                session.document,
+              ),
               preSelection,
               postSelection: state.selection.toJSON(),
             });
           };
-          const initial = cloneDocumentWithParagraphPropertySources(session.document);
+          const initial = cloneDocumentWithParagraphPropertySources(
+            session.document,
+          );
           const initialSelection = state.selection.toJSON();
           const prepared = prepareCanonicalAutoformat(session, state, {
             from: state.selection.head,
             to: state.selection.head,
             text: " ",
           });
-          apply(prepared?.unwrap() ?? panic("Numbered marker was not recognized."));
+          apply(
+            prepared?.unwrap() ?? panic("Numbered marker was not recognized."),
+          );
 
           const expectedStarts = [start, ...Array.from({ length: 8 }, () => 1)];
           const expectedFormats = Array.from({ length: 9 }, () => "decimal");
@@ -602,14 +1034,24 @@ describe("canonical structural commands", () => {
                 ]).unwrap(),
               );
             }
-            const paragraph = paragraphs(session).at(0) ?? panic("List paragraph disappeared.");
+            const paragraph =
+              paragraphs(session).at(0) ?? panic("List paragraph disappeared.");
             const numbering = paragraph.formatting?.numPr;
-            expect(numbering?.kind === "reference" ? numbering.ilvl : undefined).toBe(level);
+            expect(
+              numbering?.kind === "reference" ? numbering.ilvl : undefined,
+            ).toBe(level);
             const attrs =
-              state.doc.firstChild?.attrs ?? panic("Rendered list paragraph disappeared.");
-            expect(attrs["listLevelStarts"]).toEqual(expectedStarts.slice(0, level + 1));
-            expect(attrs["listLevelNumFmts"]).toEqual(expectedFormats.slice(0, level + 1));
-            expect(attrs["listMarkerTemplate"]).toBe(`%${level + 1}${punctuation}`);
+              state.doc.firstChild?.attrs ??
+              panic("Rendered list paragraph disappeared.");
+            expect(attrs["listLevelStarts"]).toEqual(
+              expectedStarts.slice(0, level + 1),
+            );
+            expect(attrs["listLevelNumFmts"]).toEqual(
+              expectedFormats.slice(0, level + 1),
+            );
+            expect(attrs["listMarkerTemplate"]).toBe(
+              `%${level + 1}${punctuation}`,
+            );
           }
 
           for (const entry of history.toReversed()) {
@@ -652,7 +1094,12 @@ describe("canonical structural commands", () => {
                         { type, id },
                         ...(atom === "tab" ? [{ type: "tab" as const }] : []),
                         ...(atom === "break"
-                          ? [{ type: "break" as const, breakType: "page" as const }]
+                          ? [
+                              {
+                                type: "break" as const,
+                                breakType: "page" as const,
+                              },
+                            ]
                           : []),
                         { type: "text", text: punctuation },
                       ],
@@ -661,9 +1108,13 @@ describe("canonical structural commands", () => {
                 },
               ];
               const session = createCanonicalSession(document).unwrap();
-              let state = EditorState.create({ schema, doc: session.projection.doc });
+              let state = EditorState.create({
+                schema,
+                doc: session.projection.doc,
+              });
               const address =
-                session.projection.paragraph("12345678") ?? panic("Note paragraph is absent.");
+                session.projection.paragraph("12345678") ??
+                panic("Note paragraph is absent.");
               const logicalEnd = session.projection
                 .positionAt({
                   story: session.projection.story,
@@ -671,10 +1122,12 @@ describe("canonical structural commands", () => {
                   offset: address.text.length,
                 })
                 .unwrap();
-              expect(session.projection.addressAt(logicalEnd).unwrap().offset).toBe(
-                address.text.length,
+              expect(
+                session.projection.addressAt(logicalEnd).unwrap().offset,
+              ).toBe(address.text.length);
+              expect(logicalEnd).toBe(
+                address.start + address.node.content.size,
               );
-              expect(logicalEnd).toBe(address.start + address.node.content.size);
               state = select(state, logicalEnd);
               const before = structuredClone(session.document);
               const selection = state.selection.toJSON();
@@ -690,7 +1143,10 @@ describe("canonical structural commands", () => {
           }
         }
       }),
-      { numRuns: 4, id: "note-reference digits and inline atoms do not become autoformat markers" },
+      {
+        numRuns: 4,
+        id: "note-reference digits and inline atoms do not become autoformat markers",
+      },
     );
   });
 
@@ -706,23 +1162,34 @@ describe("canonical structural commands", () => {
         ),
         async (generated) => {
           const document = seed();
-          for (const [index, paragraph] of document.package.document.content.entries()) {
+          for (const [
+            index,
+            paragraph,
+          ] of document.package.document.content.entries()) {
             if (paragraph.type === "paragraph")
               assignParagraphPropertySource(
                 paragraph,
                 `<w:pPr><w:rsidRPr w:val="${index}"/></w:pPr>`,
               );
           }
-          assignDocumentParagraphPropertySourceContract(document, "b".repeat(64));
+          assignDocumentParagraphPropertySourceContract(
+            document,
+            "b".repeat(64),
+          );
           const session = createCanonicalSession(document).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           const history: {
             before: Document;
             after: Document;
             preSelection: ReturnType<typeof state.selection.toJSON>;
             postSelection: ReturnType<typeof state.selection.toJSON>;
           }[] = [];
-          const apply = (commands: Parameters<typeof prepareCanonicalCommands>[2]) => {
+          const apply = (
+            commands: Parameters<typeof prepareCanonicalCommands>[2],
+          ) => {
             const before = session.document;
             const preSelection = state.selection.toJSON();
             state = accept(
@@ -746,9 +1213,13 @@ describe("canonical structural commands", () => {
             return panic("List creation omitted first numbering.");
           const firstId = firstNumbering.numId;
           const exercised = new Set<string>();
-          for (const { start, depth } of [{ start: 0, depth: 2 }, ...generated]) {
+          for (const { start, depth } of [
+            { start: 0, depth: 2 },
+            ...generated,
+          ]) {
             const second =
-              paragraphs(session).at(1) ?? panic("Numbering sequence lost its second paragraph.");
+              paragraphs(session).at(1) ??
+              panic("Numbering sequence lost its second paragraph.");
             const address =
               session.projection.paragraph(second.paraId ?? "") ??
               panic("Numbering sequence lost its address.");
@@ -757,9 +1228,12 @@ describe("canonical structural commands", () => {
             apply([{ type: "restartNumbering", start }]);
             exercised.add("restartNumbering");
             const restarted = paragraphs(session).at(1)?.formatting?.numPr;
-            if (restarted?.kind !== "reference") return panic("Restart removed numbering.");
+            if (restarted?.kind !== "reference")
+              return panic("Restart removed numbering.");
             expect(restarted.numId).not.toBe(firstId);
-            expect(session.document.package.numbering?.nums.length).toBe(count + 1);
+            expect(session.document.package.numbering?.nums.length).toBe(
+              count + 1,
+            );
             expect(
               session.document.package.numbering?.nums
                 .find(({ numId }) => numId === restarted.numId)
@@ -770,18 +1244,24 @@ describe("canonical structural commands", () => {
               apply([{ type: "changeListLevel", direction: "increase" }]);
               exercised.add("indent");
               const numbered = paragraphs(session).at(1)?.formatting?.numPr;
-              expect(numbered?.kind === "reference" ? numbered.ilvl : undefined).toBe(level);
+              expect(
+                numbered?.kind === "reference" ? numbered.ilvl : undefined,
+              ).toBe(level);
             }
             for (let level = depth - 1; level >= 0; level -= 1) {
               apply([{ type: "changeListLevel", direction: "decrease" }]);
               exercised.add("outdent");
               const numbered = paragraphs(session).at(1)?.formatting?.numPr;
-              expect(numbered?.kind === "reference" ? numbered.ilvl : undefined).toBe(level);
+              expect(
+                numbered?.kind === "reference" ? numbered.ilvl : undefined,
+              ).toBe(level);
             }
             apply([{ type: "continueNumbering" }]);
             exercised.add("continueNumbering");
             const continued = paragraphs(session).at(1)?.formatting?.numPr;
-            expect(continued?.kind === "reference" ? continued.numId : undefined).toBe(firstId);
+            expect(
+              continued?.kind === "reference" ? continued.numId : undefined,
+            ).toBe(firstId);
           }
           expect([...exercised].sort()).toEqual([
             "continueNumbering",
@@ -834,7 +1314,11 @@ describe("canonical structural commands", () => {
           if (first?.type !== "paragraph" || second?.type !== "paragraph")
             return panic("Cross-paragraph fixture lost its paragraphs.");
           first.content = [
-            { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "ab" }] },
+            {
+              type: "run",
+              formatting: { italic: true },
+              content: [{ type: "text", text: "ab" }],
+            },
             {
               type: "run",
               formatting: { underline: { style: "single" } },
@@ -842,7 +1326,10 @@ describe("canonical structural commands", () => {
             },
           ];
           const session = createCanonicalSession(document).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           const firstAddress =
             session.projection.paragraph(first.paraId ?? "") ??
             panic("Missing first selection address.");
@@ -863,21 +1350,29 @@ describe("canonical structural commands", () => {
           );
           expect(state.selection.toJSON()).toEqual(originalSelection);
           state.doc.nodesBetween(from, to, (node) => {
-            if (node.isText) expect(node.marks.some(({ type }) => type.name === "bold")).toBe(true);
+            if (node.isText)
+              expect(node.marks.some(({ type }) => type.name === "bold")).toBe(
+                true,
+              );
           });
           const formatted = session.document;
           state = accept(
             session,
             state,
-            session.prepareReplace(state, { from, to, text: replacement }).unwrap(),
+            session
+              .prepareReplace(state, { from, to, text: replacement })
+              .unwrap(),
           );
           const replaced = session.document;
-          const expected = "ab😀cd".slice(0, firstOffset) + replacement + "EF".slice(secondOffset);
+          const expected =
+            "ab😀cd".slice(0, firstOffset) +
+            replacement +
+            "EF".slice(secondOffset);
           expect(texts(session)).toEqual([expected]);
           expect(paragraphs(session).at(0)?.paraId).toBe(second.paraId);
-          expect(session.projection.selectionAt(state).unwrap().head.offset).toBe(
-            firstOffset + replacement.length,
-          );
+          expect(
+            session.projection.selectionAt(state).unwrap().head.offset,
+          ).toBe(firstOffset + replacement.length);
           const postSelection = state.selection.toJSON();
           state = accept(session, state, session.prepareUndo(state).unwrap());
           expect(session.document).toEqual(formatted);
@@ -902,7 +1397,10 @@ describe("canonical structural commands", () => {
   test("split identities never reuse retired identities and undo restores each source lineage", async () => {
     await assertProperty(
       fc.asyncProperty(
-        fc.array(fc.constantFrom(0, 1, 2, 4, 5, 6, 7, 8), { minLength: 1, maxLength: 8 }),
+        fc.array(fc.constantFrom(0, 1, 2, 4, 5, 6, 7, 8), {
+          minLength: 1,
+          maxLength: 8,
+        }),
         async (offsets) => {
           const document = seed();
           const first = document.package.document.content.at(0);
@@ -913,19 +1411,36 @@ describe("canonical structural commands", () => {
           second.paraId = "00000002";
           const xml = "<w:pPr><w:keepNext/></w:pPr>";
           assignParagraphPropertySource(first, xml);
-          assignDocumentParagraphPropertySourceContract(document, "a".repeat(64));
+          assignDocumentParagraphPropertySourceContract(
+            document,
+            "a".repeat(64),
+          );
           const token = getParagraphPropertySourceToken(first);
           const session = createCanonicalSession(document).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           state = select(state, 7);
-          state = accept(session, state, session.prepareJoin(state, "forward").unwrap());
+          state = accept(
+            session,
+            state,
+            session.prepareJoin(state, "forward").unwrap(),
+          );
           const joined = session.document;
           const retired = new Set(["00000001"]);
           for (const offset of offsets) {
             state = select(state, offset + 1);
-            state = accept(session, state, session.prepareSplit(state).unwrap());
-            const allocated = paragraphs(session).find(({ paraId }) => paraId !== "00000002");
-            if (allocated?.paraId === undefined) return panic("Split omitted its new identity.");
+            state = accept(
+              session,
+              state,
+              session.prepareSplit(state).unwrap(),
+            );
+            const allocated = paragraphs(session).find(
+              ({ paraId }) => paraId !== "00000002",
+            );
+            if (allocated?.paraId === undefined)
+              return panic("Split omitted its new identity.");
             expect(retired.has(allocated.paraId)).toBe(false);
             retired.add(allocated.paraId);
             expect(getParagraphPropertySource(allocated)).toBeUndefined();
@@ -939,7 +1454,8 @@ describe("canonical structural commands", () => {
           }
           state = accept(session, state, session.prepareUndo(state).unwrap());
           const restored =
-            paragraphs(session).at(0) ?? panic("Undo did not restore retired paragraph.");
+            paragraphs(session).at(0) ??
+            panic("Undo did not restore retired paragraph.");
           expect(restored.paraId).toBe("00000001");
           expect(getParagraphPropertySource(restored)?.xml).toBe(xml);
           expect(getParagraphPropertySourceToken(restored)).toBe(token);
@@ -960,7 +1476,9 @@ describe("canonical structural commands", () => {
     state = accept(
       session,
       state,
-      prepareCanonicalCommands(session, state, [{ type: "toggleList", kind: "decimal" }]).unwrap(),
+      prepareCanonicalCommands(session, state, [
+        { type: "toggleList", kind: "decimal" },
+      ]).unwrap(),
     );
     const authored = paragraphs(session).at(0)?.formatting?.numPr;
     expect(authored?.kind).toBe("reference");
@@ -970,11 +1488,13 @@ describe("canonical structural commands", () => {
       'w:numFmt w:val="decimal"',
     );
     const reopened = await parseDocx(buffer, { preloadFonts: false });
-    expect(reopened.package.numbering?.nums).toEqual(session.document.package.numbering?.nums);
-    const paragraph = reopened.package.document.content.at(0);
-    expect(paragraph?.type === "paragraph" ? paragraph.formatting?.numPr : undefined).toEqual(
-      authored,
+    expect(reopened.package.numbering?.nums).toEqual(
+      session.document.package.numbering?.nums,
     );
+    const paragraph = reopened.package.document.content.at(0);
+    expect(
+      paragraph?.type === "paragraph" ? paragraph.formatting?.numPr : undefined,
+    ).toEqual(authored);
   });
 });
 
@@ -987,16 +1507,22 @@ const paragraphCommandArbitrary = fc.record({
   position: fc.integer({ min: 0, max: 5000 }),
   alignment: fc.constantFrom(...TAB_STOP_ALIGNMENT_VALUES),
   leader: fc.constantFrom(...TAB_LEADER_VALUES),
-  tabs: fc.uniqueArray(tabStopArbitrary, { maxLength: 4, selector: (tab) => tab.position }),
+  tabs: fc.uniqueArray(tabStopArbitrary, {
+    maxLength: 4,
+    selector: (tab) => tab.position,
+  }),
   reverse: fc.boolean(),
   selection: fc.constantFrom("caret", "first", "all"),
 });
-type ParagraphCommandInput = ReturnType<typeof paragraphCommandArbitrary.generate>["value"];
+type ParagraphCommandInput = ReturnType<
+  typeof paragraphCommandArbitrary.generate
+>["value"];
 const paragraphCommandFactories = {
   toggleBidi: () => singletonManager.requireCommand("toggleBidi")(),
   setRtl: () => singletonManager.requireCommand("setRtl")(),
   setLtr: () => singletonManager.requireCommand("setLtr")(),
-  setTabs: ({ tabs }: ParagraphCommandInput) => singletonManager.requireCommand("setTabs")(tabs),
+  setTabs: ({ tabs }: ParagraphCommandInput) =>
+    singletonManager.requireCommand("setTabs")(tabs),
   addTabStop: ({ position, alignment, leader }: ParagraphCommandInput) =>
     singletonManager.requireCommand("addTabStop")(position, alignment, leader),
   removeTabStop: ({ position }: ParagraphCommandInput) =>
@@ -1006,14 +1532,23 @@ const paragraphCommandFactories = {
 test("generated direction and tab command histories preserve authored values and exact inverse", async () => {
   await assertProperty(
     fc.asyncProperty(
-      fc.tuple(fc.constantFrom(undefined, false, true), fc.constantFrom(undefined, false, true)),
+      fc.tuple(
+        fc.constantFrom(undefined, false, true),
+        fc.constantFrom(undefined, false, true),
+      ),
       fc.tuple(
         fc.option(
-          fc.uniqueArray(tabStopArbitrary, { maxLength: 4, selector: (tab) => tab.position }),
+          fc.uniqueArray(tabStopArbitrary, {
+            maxLength: 4,
+            selector: (tab) => tab.position,
+          }),
           { nil: undefined },
         ),
         fc.option(
-          fc.uniqueArray(tabStopArbitrary, { maxLength: 4, selector: (tab) => tab.position }),
+          fc.uniqueArray(tabStopArbitrary, {
+            maxLength: 4,
+            selector: (tab) => tab.position,
+          }),
           { nil: undefined },
         ),
       ),
@@ -1021,7 +1556,10 @@ test("generated direction and tab command histories preserve authored values and
       fc.array(paragraphCommandArbitrary, { minLength: 6, maxLength: 12 }),
       async (directions, tabSets, empty, inputs) => {
         const document = seed();
-        for (const [index, paragraph] of document.package.document.content.entries()) {
+        for (const [
+          index,
+          paragraph,
+        ] of document.package.document.content.entries()) {
           if (paragraph.type !== "paragraph")
             return panic("Paragraph command seed has a nonparagraph.");
           const bidi = directions.at(index);
@@ -1040,7 +1578,10 @@ test("generated direction and tab command histories preserve authored values and
         ] as const) {
           const session = createCanonicalSession(document).unwrap();
           session.setMode(mode);
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           const baseline = session.document;
           const history: {
             before: Document;
@@ -1052,17 +1593,25 @@ test("generated direction and tab command histories preserve authored values and
           const commands = Object.entries(paragraphCommandFactories);
           for (const [index, input] of inputs.entries()) {
             const [name, factory] =
-              commands.at(index % commands.length) ?? panic("Missing paragraph command factory.");
+              commands.at(index % commands.length) ??
+              panic("Missing paragraph command factory.");
             exercised.add(name);
             const first =
-              session.projection.paragraph("12345678") ?? panic("Missing first paragraph address.");
+              session.projection.paragraph("12345678") ??
+              panic("Missing first paragraph address.");
             const last =
-              session.projection.paragraph("00000001") ?? panic("Missing last paragraph address.");
+              session.projection.paragraph("00000001") ??
+              panic("Missing last paragraph address.");
             const from = first.start;
             let to = from;
-            if (input.selection === "first") to = first.start + first.text.length;
+            if (input.selection === "first")
+              to = first.start + first.text.length;
             if (input.selection === "all") to = last.start + last.text.length;
-            state = select(state, input.reverse ? to : from, input.reverse ? from : to);
+            state = select(
+              state,
+              input.reverse ? to : from,
+              input.reverse ? from : to,
+            );
             const command = factory(input);
             const before = session.document;
             const version = session.version;
@@ -1070,7 +1619,8 @@ test("generated direction and tab command histories preserve authored values and
             const storedMarks = state.storedMarks;
             command(state);
             const intents =
-              getCanonicalCommandIntents(command, state) ?? panic(`Missing descriptor for ${name}`);
+              getCanonicalCommandIntents(command, state) ??
+              panic(`Missing descriptor for ${name}`);
             expect(getCanonicalCommandIntents(command, state)).toEqual(intents);
             expect(session.document).toBe(before);
             expect(session.version).toBe(version);
@@ -1114,28 +1664,38 @@ test("generated direction and tab command histories preserve authored values and
             }
             const ordered = (formatting: (typeof authored)[number]) => ({
               ...formatting,
-              tabs: formatting.tabs?.toSorted((a, b) => a.position - b.position),
+              tabs: formatting.tabs?.toSorted(
+                (a, b) => a.position - b.position,
+              ),
             });
             expect(
               paragraphs(session).map((paragraph) =>
-                ordered({ bidi: paragraph.formatting?.bidi, tabs: paragraph.formatting?.tabs }),
+                ordered({
+                  bidi: paragraph.formatting?.bidi,
+                  tabs: paragraph.formatting?.tabs,
+                }),
               ),
             ).toEqual(authored.map(ordered));
             expect(state.selection.toJSON()).toEqual(legacy.selection.toJSON());
           }
-          expect([...exercised].sort()).toEqual(Object.keys(paragraphCommandFactories).sort());
+          expect([...exercised].sort()).toEqual(
+            Object.keys(paragraphCommandFactories).sort(),
+          );
           const saved = await parseDocx(await createDocx(session.document));
           // OOXML omits empty tabs and the default leader; compare their semantic values.
           // History below separately checks exact authored arrays and optional fields.
           const emittedFormatting = (
             paragraph: Document["package"]["document"]["content"][number],
           ) => {
-            if (paragraph.type !== "paragraph") return panic("Reopen lost a paragraph.");
+            if (paragraph.type !== "paragraph")
+              return panic("Reopen lost a paragraph.");
             return {
               bidi: paragraph.formatting?.bidi,
               tabs: (paragraph.formatting?.tabs ?? [])
                 .toSorted((a, b) => a.position - b.position)
-                .map((tab) => Object.assign({}, tab, { leader: tab.leader ?? "none" })),
+                .map((tab) =>
+                  Object.assign({}, tab, { leader: tab.leader ?? "none" }),
+                ),
             };
           };
           expect(saved.package.document.content.map(emittedFormatting)).toEqual(
@@ -1160,4 +1720,99 @@ test("generated direction and tab command histories preserve authored values and
       id: "generated direction and tab command histories preserve authored values and exact inverse",
     },
   );
+});
+
+test("inserted note paragraphs take fresh identities that undo never hands out again", () => {
+  const session = createCanonicalSession(seed()).unwrap();
+  let state = select(
+    EditorState.create({ schema, doc: session.projection.doc }),
+    3,
+  );
+  const bodyIds = new Set(paragraphs(session).map(({ paraId }) => paraId));
+  const content = [
+    {
+      type: "paragraph" as const,
+      paraId: "12345678",
+      content: [
+        {
+          type: "run" as const,
+          content: [{ type: "text" as const, text: "First." }],
+        },
+      ],
+    },
+    {
+      type: "paragraph" as const,
+      content: [
+        {
+          type: "run" as const,
+          content: [{ type: "text" as const, text: "Second." }],
+        },
+      ],
+    },
+  ];
+  const insert = () => {
+    const command = singletonManager.requireCommand("insertFootnote")(
+      1,
+      content,
+    );
+    const intents =
+      getCanonicalCommandIntents(command, state) ??
+      panic("Missing note descriptor.");
+    state = accept(
+      session,
+      state,
+      prepareCanonicalCommands(session, state, intents).unwrap(),
+    );
+    return paragraphIdsIn(session.document.package.footnotes ?? []);
+  };
+
+  const first = insert();
+  expect(first).toHaveLength(2);
+  expect(new Set(first).size).toBe(2);
+  expect(first.filter((id) => bodyIds.has(id))).toEqual([]);
+
+  state = accept(session, state, session.prepareUndo(state).unwrap());
+  const second = insert();
+  expect(second).toHaveLength(2);
+  expect(second.filter((id) => first.includes(id))).toEqual([]);
+});
+
+test("notes inserted in one batch take disjoint fresh identities", () => {
+  const session = createCanonicalSession(seed()).unwrap();
+  let state = select(
+    EditorState.create({ schema, doc: session.projection.doc }),
+    3,
+  );
+  const bodyIds = new Set(paragraphs(session).map(({ paraId }) => paraId));
+  const content = (label: string) =>
+    ["First", "Second"].map((text) => ({
+      type: "paragraph" as const,
+      content: [
+        {
+          type: "run" as const,
+          content: [{ type: "text" as const, text: `${label} ${text}.` }],
+        },
+      ],
+    }));
+  const intents = [
+    singletonManager.requireCommand("insertFootnote")(1, content("Footnote")),
+    singletonManager.requireCommand("insertEndnote")(1, content("Endnote")),
+  ].flatMap(
+    (command) =>
+      getCanonicalCommandIntents(command, state) ??
+      panic("Missing note descriptor."),
+  );
+  state = accept(
+    session,
+    state,
+    prepareCanonicalCommands(session, state, intents).unwrap(),
+  );
+
+  const inserted = [
+    ...paragraphIdsIn(session.document.package.footnotes ?? []),
+    ...paragraphIdsIn(session.document.package.endnotes ?? []),
+  ];
+  expect(inserted).toHaveLength(4);
+  expect(new Set(inserted).size).toBe(4);
+  expect(inserted.filter((id) => bodyIds.has(id))).toEqual([]);
 });

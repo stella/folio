@@ -21,8 +21,15 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { createDocx } from "../docx/rezip";
-import type { Comment, Document, Paragraph, ParagraphContent, Table } from "../types/document";
+import type {
+  Comment,
+  Document,
+  Paragraph,
+  ParagraphContent,
+  Table,
+} from "../types/document";
 import { FolioDocxReviewer, type FolioReviewComment } from "./headless";
+import { createFolioAITextRangeHandle } from "./snapshot";
 
 const run = (text: string): ParagraphContent => ({
   type: "run",
@@ -53,7 +60,9 @@ const table = (cells: Paragraph[][]): Table => ({
   ],
 });
 
-const reopen = async (reviewer: FolioDocxReviewer): Promise<FolioDocxReviewer> =>
+const reopen = async (
+  reviewer: FolioDocxReviewer,
+): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { author: "Editor" });
 
 /** The thread fields a save must round-trip. */
@@ -67,8 +76,10 @@ const threads = (comments: readonly FolioReviewComment[]) =>
 
 const packageCounts = async (buffer: ArrayBuffer) => {
   const zip = await JSZip.loadAsync(buffer);
-  const documentXml = (await zip.file("word/document.xml")?.async("text")) ?? "";
-  const commentsXml = (await zip.file("word/comments.xml")?.async("text")) ?? "";
+  const documentXml =
+    (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const commentsXml =
+    (await zip.file("word/comments.xml")?.async("text")) ?? "";
   return {
     rangeStarts: (documentXml.match(/<w:commentRangeStart\b/gu) ?? []).length,
     references: (documentXml.match(/<w:commentReference\b/gu) ?? []).length,
@@ -93,7 +104,9 @@ const twoParagraphs = async (): Promise<FolioDocxReviewer> => {
       },
     },
   };
-  return FolioDocxReviewer.fromBuffer(await createDocx(document), { author: "Editor" });
+  return FolioDocxReviewer.fromBuffer(await createDocx(document), {
+    author: "Editor",
+  });
 };
 
 /** Insert tracked text after the first block and comment on all of it. */
@@ -101,11 +114,20 @@ const commentOnTrackedInsertion = async (): Promise<FolioDocxReviewer> => {
   const reviewer = await twoParagraphs();
   const [original] = reviewer.snapshot().blocks;
   const inserted = reviewer.applyOperations(
-    [{ id: "insert", type: "insertAfterBlock", blockId: original!.id, text: "Temporary." }],
+    [
+      {
+        id: "insert",
+        type: "insertAfterBlock",
+        blockId: original!.id,
+        text: "Temporary.",
+      },
+    ],
     { undefinedReferences: "refuse", mode: "tracked-changes" },
   );
   expect(inserted.applied).toHaveLength(1);
-  const target = reviewer.snapshot().blocks.find((block) => block.text === "Temporary.");
+  const target = reviewer
+    .snapshot()
+    .blocks.find((block) => block.text === "Temporary.");
   const commented = reviewer.applyOperations(
     [
       {
@@ -118,14 +140,275 @@ const commentOnTrackedInsertion = async (): Promise<FolioDocxReviewer> => {
     { undefinedReferences: "refuse", mode: "direct" },
   );
   expect(commented.applied).toHaveLength(1);
-  expect(threads(reviewer.getComments()).map(({ anchoredText }) => anchoredText)).toEqual([
-    "Keep.",
-    "Temporary.",
-  ]);
+  expect(
+    threads(reviewer.getComments()).map(({ anchoredText }) => anchoredText),
+  ).toEqual(["Keep.", "Temporary."]);
   return reviewer;
 };
 
-const SURVIVOR = { id: 1, text: "On surviving text.", anchoredText: "Keep.", replies: [] };
+const SURVIVOR = {
+  id: 1,
+  text: "On surviving text.",
+  anchoredText: "Keep.",
+  replies: [],
+};
+
+const footnoteComment = async (): Promise<FolioDocxReviewer> => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          paragraph("31000001", [
+            { type: "run", content: [{ type: "footnoteRef", id: 1 }] },
+          ]),
+        ],
+      },
+      footnotes: [
+        {
+          type: "footnote",
+          id: 1,
+          noteType: "normal",
+          content: [paragraph("32000001", [run("Footnote text.")])],
+        },
+      ],
+    },
+  };
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await createDocx(document),
+    {
+      author: "Editor",
+    },
+  );
+  const story = { type: "footnote", noteId: 1 } as const;
+  const [block] = reviewer.snapshotStory(story)!.blocks;
+  const result = reviewer.applyDocumentOperationsToStory({
+    story,
+    batch: {
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "comment",
+          type: "commentOnRange",
+          range: createFolioAITextRangeHandle({
+            blockId: block!.id,
+            text: block!.text,
+            startOffset: 0,
+            endOffset: 8,
+          }),
+          comment: { text: "On note text." },
+        },
+      ],
+    },
+    undefinedReferences: "refuse",
+  });
+  expect(result.applied).toHaveLength(1);
+  return reopen(reviewer);
+};
+
+const NOTE_COMMENT = {
+  id: expect.any(Number),
+  text: "On note text.",
+  anchoredText: "Footnote",
+  replies: [],
+};
+
+describe("a comment in a note whose reference is pending deletion", () => {
+  const pending = async () => {
+    const reviewer = await footnoteComment();
+    const [body] = reviewer.snapshot().blocks;
+    const result = reviewer.applyOperations(
+      [{ id: "delete", type: "deleteBlock", blockId: body!.id }],
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
+    );
+    expect(result.applied).toHaveLength(1);
+    return reviewer;
+  };
+
+  test("stays through save and is retired when the deletion is accepted", async () => {
+    const reviewer = await pending();
+    expect(threads(reviewer.getComments())).toEqual([NOTE_COMMENT]);
+    const reopened = await reopen(reviewer);
+    expect(threads(reopened.getComments())).toEqual([NOTE_COMMENT]);
+
+    reopened.acceptAll();
+    expect(reopened.getComments()).toEqual([]);
+    expect((await reopen(reopened)).getComments()).toEqual([]);
+  });
+
+  test("stays when the deletion is rejected", async () => {
+    const reviewer = await reopen(await pending());
+    reviewer.rejectAll();
+    expect(threads(reviewer.getComments())).toEqual([NOTE_COMMENT]);
+    expect(threads((await reopen(reviewer)).getComments())).toEqual([
+      NOTE_COMMENT,
+    ]);
+  });
+
+  test("keeps only the note comment when unrelated commented text is deleted directly", async () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            paragraph("31000001", [
+              { type: "run", content: [{ type: "footnoteRef", id: 1 }] },
+            ]),
+            paragraph("31000002", [
+              { type: "commentRangeStart", id: 1 },
+              run("Other"),
+              { type: "commentRangeEnd", id: 1 },
+              { type: "commentReference", id: 1 },
+              run(" text."),
+            ]),
+          ],
+        },
+        footnotes: [
+          {
+            type: "footnote",
+            id: 1,
+            noteType: "normal",
+            content: [paragraph("32000001", [run("Footnote text.")])],
+          },
+        ],
+        comments: [comment(1, "On other text.")],
+      },
+    };
+    let reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+      {
+        author: "Editor",
+      },
+    );
+    const story = { type: "footnote", noteId: 1 } as const;
+    const [note] = reviewer.snapshotStory(story)!.blocks;
+    const noteCommented = reviewer.applyDocumentOperationsToStory({
+      story,
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "comment-note",
+            type: "commentOnRange",
+            range: createFolioAITextRangeHandle({
+              blockId: note!.id,
+              text: note!.text,
+              startOffset: 0,
+              endOffset: 8,
+            }),
+            comment: { text: "On note text." },
+          },
+        ],
+      },
+      undefinedReferences: "refuse",
+    });
+    expect(noteCommented.applied).toHaveLength(1);
+    reviewer = await reopen(reviewer);
+    const [reference, other] = reviewer.snapshot().blocks;
+    const commented = reviewer.applyOperations(
+      [
+        {
+          id: "comment-other",
+          type: "commentOnRange",
+          range: createFolioAITextRangeHandle({
+            blockId: other!.id,
+            text: other!.text,
+            startOffset: 0,
+            endOffset: 5,
+          }),
+          comment: { text: "On other text." },
+        },
+      ],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(commented.applied).toHaveLength(1);
+    const tracked = reviewer.applyOperations(
+      [{ id: "delete-reference", type: "deleteBlock", blockId: reference!.id }],
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
+    );
+    expect(tracked.applied).toHaveLength(1);
+    reviewer = await reopen(reviewer);
+    const direct = reviewer.applyOperations(
+      [
+        {
+          id: "delete-other",
+          type: "replaceInBlock",
+          blockId: other!.id,
+          find: "Other text.",
+          replace: "",
+        },
+      ],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(direct.applied).toHaveLength(1);
+
+    expect(threads(reviewer.getComments())).toEqual([NOTE_COMMENT]);
+    expect(threads((await reopen(reviewer)).getComments())).toEqual([
+      NOTE_COMMENT,
+    ]);
+  });
+
+  test("retires comments from a loaded note after its reference is deleted directly", async () => {
+    const reviewer = await footnoteComment();
+    const story = { type: "footnote", noteId: 1 } as const;
+    const [note] = reviewer.snapshotStory(story)!.blocks;
+    const edited = reviewer.applyDocumentOperationsToStory({
+      story,
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "edit-note",
+            type: "insertAfterBlock",
+            blockId: note!.id,
+            text: "Edited note.",
+          },
+        ],
+      },
+      undefinedReferences: "refuse",
+    });
+    expect(edited.applied).toHaveLength(1);
+    const [reference] = reviewer.snapshot().blocks;
+    const deleted = reviewer.applyOperations(
+      [{ id: "delete-reference", type: "deleteBlock", blockId: reference!.id }],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(deleted.applied).toHaveLength(1);
+
+    expect(reviewer.getComments()).toEqual([]);
+    expect((await reopen(reviewer)).getComments()).toEqual([]);
+  });
+});
+
+test("pending note retention never promotes every previous anchor", async () => {
+  const source = await Bun.file(`${import.meta.dir}/headless.ts`).text();
+  expect(source).not.toContain("addAll(anchoredNow, anchoredBefore)");
+});
+
+test("a batch insertion and deletion keep a comment on another block", async () => {
+  const reviewer = await twoParagraphs();
+  const [removed, surviving] = reviewer.getContent();
+  const result = reviewer.applyOperations(
+    [
+      {
+        id: "insert",
+        type: "insertBeforeBlock",
+        blockId: surviving!.id,
+        text: "Inserted.",
+      },
+      { id: "delete", type: "deleteBlock", blockId: removed!.id },
+    ],
+    { undefinedReferences: "refuse", mode: "tracked-changes" },
+  );
+
+  expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+    "delete",
+    "insert",
+  ]);
+  expect(threads(reviewer.getComments())).toEqual([SURVIVOR]);
+  expect(threads((await reopen(reviewer)).getComments())).toEqual([SURVIVOR]);
+});
 
 describe("a comment whose anchored content is removed goes with it", () => {
   const cases: [string, (reviewer: FolioDocxReviewer) => void][] = [
@@ -135,7 +418,9 @@ describe("a comment whose anchored content is removed goes with it", () => {
       // revisions; rejecting both is rejecting the insertion.
       "reject that change",
       (reviewer) => {
-        const changes = reviewer.getChanges().filter((entry) => entry.text === "Temporary.");
+        const changes = reviewer
+          .getChanges()
+          .filter((entry) => entry.text === "Temporary.");
         expect(changes.map(({ type }) => type).toSorted()).toEqual([
           "insertion",
           "paragraphMarkInserted",
@@ -150,13 +435,19 @@ describe("a comment whose anchored content is removed goes with it", () => {
   for (const [name, reject] of cases) {
     test(`${name} before the save`, async () => {
       const reviewer = await commentOnTrackedInsertion();
-      const threadId = reviewer.getComments().find((entry) => entry.text === "On temporary text.");
+      const threadId = reviewer
+        .getComments()
+        .find((entry) => entry.text === "On temporary text.");
       reviewer.replyTo(threadId!, { text: "A reply." });
       reject(reviewer);
 
       expect(threads(reviewer.getComments())).toEqual([SURVIVOR]);
       const saved = await reviewer.toBuffer();
-      expect(await packageCounts(saved)).toEqual({ rangeStarts: 1, references: 1, definitions: 1 });
+      expect(await packageCounts(saved)).toEqual({
+        rangeStarts: 1,
+        references: 1,
+        definitions: 1,
+      });
       const reopened = await FolioDocxReviewer.fromBuffer(saved);
       expect(threads(reopened.getComments())).toEqual([SURVIVOR]);
     });
@@ -194,24 +485,36 @@ describe("a comment whose anchored content is removed goes with it", () => {
 
   test("deleting the only paragraph a comment covers removes the comment", async () => {
     const reviewer = await twoParagraphs();
-    const kept = reviewer.snapshot().blocks.find((block) => block.text === "Keep.");
-    reviewer.applyOperations([{ id: "delete", type: "deleteBlock", blockId: kept!.id }], {
-      undefinedReferences: "refuse",
-      mode: "direct",
-    });
+    const kept = reviewer
+      .snapshot()
+      .blocks.find((block) => block.text === "Keep.");
+    reviewer.applyOperations(
+      [{ id: "delete", type: "deleteBlock", blockId: kept!.id }],
+      {
+        undefinedReferences: "refuse",
+        mode: "direct",
+      },
+    );
     expect(reviewer.getComments()).toEqual([]);
     const saved = await reviewer.toBuffer();
     expect((await packageCounts(saved)).definitions).toBe(0);
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getComments()).toEqual([]);
+    expect((await FolioDocxReviewer.fromBuffer(saved)).getComments()).toEqual(
+      [],
+    );
   });
 
   test("a tracked deletion keeps the comment until it is accepted", async () => {
     const reviewer = await twoParagraphs();
-    const kept = reviewer.snapshot().blocks.find((block) => block.text === "Keep.");
-    reviewer.applyOperations([{ id: "delete", type: "deleteBlock", blockId: kept!.id }], {
-      undefinedReferences: "refuse",
-      mode: "tracked-changes",
-    });
+    const kept = reviewer
+      .snapshot()
+      .blocks.find((block) => block.text === "Keep.");
+    reviewer.applyOperations(
+      [{ id: "delete", type: "deleteBlock", blockId: kept!.id }],
+      {
+        undefinedReferences: "refuse",
+        mode: "tracked-changes",
+      },
+    );
     expect(threads(reviewer.getComments())).toEqual([SURVIVOR]);
     expect(threads((await reopen(reviewer)).getComments())).toEqual([SURVIVOR]);
 
@@ -229,13 +532,24 @@ describe("a comment whose anchored content is removed goes with it", () => {
         },
       },
     };
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+    );
     const [first] = reviewer.snapshot().blocks;
     reviewer.applyOperations(
-      [{ id: "insert", type: "insertAfterBlock", blockId: first!.id, text: "More." }],
+      [
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: first!.id,
+          text: "More.",
+        },
+      ],
       { undefinedReferences: "refuse", mode: "direct" },
     );
-    const expected = [{ id: 4, text: "Anchored nowhere.", anchoredText: "", replies: [] }];
+    const expected = [
+      { id: 4, text: "Anchored nowhere.", anchoredText: "", replies: [] },
+    ];
     expect(threads(reviewer.getComments())).toEqual(expected);
     expect(threads((await reopen(reviewer)).getComments())).toEqual(expected);
   });
@@ -246,7 +560,10 @@ describe("a comment spanning a paragraph and a table", () => {
     package: {
       document: {
         content: [
-          paragraph("31000001", [{ type: "commentRangeStart", id: 7 }, run("Before.")]),
+          paragraph("31000001", [
+            { type: "commentRangeStart", id: 7 },
+            run("Before."),
+          ]),
           table([
             [
               paragraph("31000002", [
@@ -265,7 +582,11 @@ describe("a comment spanning a paragraph and a table", () => {
   });
 
   const cases: [string, string, string][] = [
-    ["between the paragraph and the table", "Before.", "Before.Inserted.Cell A."],
+    [
+      "between the paragraph and the table",
+      "Before.",
+      "Before.Inserted.Cell A.",
+    ],
     ["after the range's last cell paragraph", "Cell A.", "Before.Cell A."],
     ["after the paragraph that follows the table", "After.", "Before.Cell A."],
   ];
@@ -273,19 +594,33 @@ describe("a comment spanning a paragraph and a table", () => {
   for (const mode of ["direct", "tracked-changes"] as const) {
     for (const [where, after, expected] of cases) {
       test(`inserting ${where} (${mode}) reads the same live and reopened`, async () => {
-        const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(spanningDocument()), {
-          author: "Editor",
-        });
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await createDocx(spanningDocument()),
+          {
+            author: "Editor",
+          },
+        );
         expect(reviewer.getComments()[0]?.anchoredText).toBe("Before.Cell A.");
-        const target = reviewer.snapshot().blocks.find((block) => block.text === after);
+        const target = reviewer
+          .snapshot()
+          .blocks.find((block) => block.text === after);
         const receipt = reviewer.applyOperations(
-          [{ id: "insert", type: "insertAfterBlock", blockId: target!.id, text: "Inserted." }],
+          [
+            {
+              id: "insert",
+              type: "insertAfterBlock",
+              blockId: target!.id,
+              text: "Inserted.",
+            },
+          ],
           { undefinedReferences: "refuse", mode },
         );
         expect(receipt.applied).toHaveLength(1);
 
         const live = threads(reviewer.getComments());
-        expect(live.map(({ anchoredText }) => anchoredText)).toEqual([expected]);
+        expect(live.map(({ anchoredText }) => anchoredText)).toEqual([
+          expected,
+        ]);
         expect(threads((await reopen(reviewer)).getComments())).toEqual(live);
       });
     }

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import type { BlockContent, Document, Paragraph, Table } from "../../model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Table,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { identityKeysIn } from "../ids";
@@ -8,9 +13,9 @@ import { revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   OP_STORIES,
   REVISION_DECISIONS,
-  type DocumentOp,
   type RevisionDecision,
 } from "../types";
 
@@ -29,7 +34,13 @@ const makeParagraph = (paraId: string, text = "source"): Paragraph => ({
   content:
     text === ""
       ? []
-      : [{ type: "run", formatting: { italic: true }, content: [{ type: "text", text }] }],
+      : [
+          {
+            type: "run",
+            formatting: { italic: true },
+            content: [{ type: "text", text }],
+          },
+        ],
 });
 const makeTable = (): Table => ({
   type: "table",
@@ -40,20 +51,32 @@ const makeTable = (): Table => ({
       cells: [
         {
           type: "tableCell",
-          content: [makeParagraph("00000010", "first"), makeParagraph("00000011", "last")],
+          content: [
+            makeParagraph("00000010", "first"),
+            makeParagraph("00000011", "last"),
+          ],
         },
         { type: "tableCell", content: [makeParagraph("00000012", "")] },
       ],
     },
     {
       type: "tableRow",
-      cells: [{ type: "tableCell", content: [makeParagraph("00000020", "second row")] }],
+      cells: [
+        {
+          type: "tableCell",
+          content: [makeParagraph("00000020", "second row")],
+        },
+      ],
     },
   ],
 });
-const documentOf = (content: BlockContent[]): Document => ({ package: { document: { content } } });
+const documentOf = (content: BlockContent[]): Document => ({
+  package: { document: { content } },
+});
 const revision = { id: 100, author: "Reviewer", date: "2026-05-06T07:08:09Z" };
-const newIds = { revision: Array.from({ length: 32 }, (_revisionValue, index) => 101 + index) };
+const newIds = {
+  revision: Array.from({ length: 32 }, (_revisionValue, index) => 101 + index),
+};
 const applied = (document: Document, op: DocumentOp) => {
   const result = applyDocumentOp(document, op);
   if (result.isErr()) throw result.error;
@@ -63,7 +86,11 @@ const applied = (document: Document, op: DocumentOp) => {
   expect(undone.value.document).toStrictEqual(document);
   return result.value;
 };
-const resolve = (document: Document, revisionIds: readonly number[], decision: RevisionDecision) =>
+const resolve = (
+  document: Document,
+  revisionIds: readonly number[],
+  decision: RevisionDecision,
+) =>
   applied(document, {
     type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
     story: OP_STORIES.MAIN,
@@ -78,8 +105,11 @@ const refused = (document: Document, op: DocumentOp, reason: string) => {
   expect(document).toStrictEqual(snapshot);
 };
 const firstTable = (document: Document) => {
-  const value = document.package.document.content.find((block) => block.type === "table");
-  if (value?.type !== "table") throw new Error("Fixture table remains present.");
+  const value = document.package.document.content.find(
+    (block) => block.type === "table",
+  );
+  if (value?.type !== "table")
+    throw new Error("Fixture table remains present.");
   return value;
 };
 const trackedInsertion = (value = makeTable()) =>
@@ -109,11 +139,14 @@ describe("tracked whole tables", () => {
       expect(row.structuralChange?.type).toBe("tableRowInsertion");
       for (const cell of row.cells) {
         const last = cell.content.at(-1);
-        if (last?.type !== "paragraph") throw new Error("Cells end in paragraphs.");
+        if (last?.type !== "paragraph")
+          throw new Error("Cells end in paragraphs.");
         expect(last.pPrMark?.kind).toBe("ins");
         for (const block of cell.content) {
-          if (block.type !== "paragraph") throw new Error("Fixture cells contain paragraphs.");
-          if (block.content.length !== 0) expect(block.content.at(0)?.type).toBe("insertion");
+          if (block.type !== "paragraph")
+            throw new Error("Fixture cells contain paragraphs.");
+          if (block.content.length !== 0)
+            expect(block.content.at(0)?.type).toBe("insertion");
           if (block !== last) expect(block.pPrMark).toBeUndefined();
         }
       }
@@ -125,7 +158,8 @@ describe("tracked whole tables", () => {
       new Set(ids.map((key) => Number(key.slice("revision:".length)))),
     );
     expect(
-      resolve(result.document, result.revisions, REVISION_DECISIONS.REJECT).document,
+      resolve(result.document, result.revisions, REVISION_DECISIONS.REJECT)
+        .document,
     ).toStrictEqual(document);
     const direct = applied(document, {
       type: op.type,
@@ -134,7 +168,8 @@ describe("tracked whole tables", () => {
       table: op.table,
     });
     expect(
-      resolve(result.document, result.revisions, REVISION_DECISIONS.ACCEPT).document,
+      resolve(result.document, result.revisions, REVISION_DECISIONS.ACCEPT)
+        .document,
     ).toStrictEqual(direct.document);
   });
 
@@ -149,46 +184,54 @@ describe("tracked whole tables", () => {
     expect(result.document.package.document.content.at(0)).toBe(before);
     expect(before.pPrMark).toBeUndefined();
     expect(
-      resolve(result.document, result.revisions, REVISION_DECISIONS.REJECT).document,
+      resolve(result.document, result.revisions, REVISION_DECISIONS.REJECT)
+        .document,
     ).toStrictEqual(document);
   });
 
-  test.each([DOCUMENT_OP_TYPES.DELETE_TABLE, DOCUMENT_OP_TYPES.DELETE_ROW] as const)(
-    "%s supports tracked deletion of the last row",
-    (type) => {
-      const value = makeTable();
-      const row = value.rows.at(0);
-      if (row === undefined) throw new Error("Fixture has a first row.");
-      const single = { ...value, rows: [row] };
-      const document = documentOf([
-        makeParagraph("00000001"),
-        single,
-        makeParagraph("00000002", ""),
-      ]);
-      const op = {
-        type,
-        story: OP_STORIES.MAIN,
-        blockId: "00000010",
-        revision,
-        newIds,
-      } as const satisfies DocumentOp;
-      const result = applied(document, op);
-      const pending = firstTable(result.document);
-      expect(pending.rows.at(0)?.structuralChange?.type).toBe("tableRowDeletion");
-      for (const cell of pending.rows.at(0)?.cells ?? []) {
-        const last = cell.content.at(-1);
-        if (last?.type !== "paragraph") throw new Error("Cell ends in a paragraph.");
-        expect(last.pPrMark?.kind).toBe("del");
-      }
-      const direct = applied(document, { type, story: OP_STORIES.MAIN, blockId: "00000010" });
-      expect(
-        resolve(result.document, result.revisions, REVISION_DECISIONS.ACCEPT).document,
-      ).toStrictEqual(direct.document);
-      expect(
-        resolve(result.document, result.revisions, REVISION_DECISIONS.REJECT).document,
-      ).toStrictEqual(document);
-    },
-  );
+  test.each([
+    DOCUMENT_OP_TYPES.DELETE_TABLE,
+    DOCUMENT_OP_TYPES.DELETE_ROW,
+  ] as const)("%s supports tracked deletion of the last row", (type) => {
+    const value = makeTable();
+    const row = value.rows.at(0);
+    if (row === undefined) throw new Error("Fixture has a first row.");
+    const single = { ...value, rows: [row] };
+    const document = documentOf([
+      makeParagraph("00000001"),
+      single,
+      makeParagraph("00000002", ""),
+    ]);
+    const op = {
+      type,
+      story: OP_STORIES.MAIN,
+      blockId: "00000010",
+      revision,
+      newIds,
+    } as const satisfies DocumentOp;
+    const result = applied(document, op);
+    const pending = firstTable(result.document);
+    expect(pending.rows.at(0)?.structuralChange?.type).toBe("tableRowDeletion");
+    for (const cell of pending.rows.at(0)?.cells ?? []) {
+      const last = cell.content.at(-1);
+      if (last?.type !== "paragraph")
+        throw new Error("Cell ends in a paragraph.");
+      expect(last.pPrMark?.kind).toBe("del");
+    }
+    const direct = applied(document, {
+      type,
+      story: OP_STORIES.MAIN,
+      blockId: "00000010",
+    });
+    expect(
+      resolve(result.document, result.revisions, REVISION_DECISIONS.ACCEPT)
+        .document,
+    ).toStrictEqual(direct.document);
+    expect(
+      resolve(result.document, result.revisions, REVISION_DECISIONS.REJECT)
+        .document,
+    ).toStrictEqual(document);
+  });
 
   test("revision demand is minimal, distinct and includes empty cell final marks", () => {
     const document = documentOf([makeParagraph("00000002")]);
@@ -196,7 +239,10 @@ describe("tracked whole tables", () => {
     const demand = revisionIdDemand(document, op);
     if (demand.isErr()) throw demand.error;
     expect(demand.value).toBe(7);
-    const exact = { ...op, newIds: { revision: newIds.revision.slice(0, demand.value) } };
+    const exact = {
+      ...op,
+      newIds: { revision: newIds.revision.slice(0, demand.value) },
+    };
     const result = applied(document, exact);
     expect(result.revisions.length).toBe(demand.value + 1);
     refused(
@@ -211,7 +257,10 @@ describe("tracked whole tables", () => {
     );
     refused(
       document,
-      { ...exact, newIds: { revision: [revision.id, ...exact.newIds.revision.slice(1)] } },
+      {
+        ...exact,
+        newIds: { revision: [revision.id, ...exact.newIds.revision.slice(1)] },
+      },
       DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
     );
   });
@@ -236,12 +285,15 @@ describe("tracked whole tables", () => {
             });
       const rows = firstTable(result.document).rows;
       const rowIds = rows.map((row) => {
-        if (row.structuralChange === undefined) throw new Error("Each row is tracked.");
+        if (row.structuralChange === undefined)
+          throw new Error("Each row is tracked.");
         return row.structuralChange.info.id;
       });
       const retained = resolve(result.document, rowIds, decision);
       expect(
-        firstTable(retained.document).rows.every((row) => row.structuralChange === undefined),
+        firstTable(retained.document).rows.every(
+          (row) => row.structuralChange === undefined,
+        ),
       ).toBe(true);
       const cellMarkIds = firstTable(retained.document).rows.flatMap((row) =>
         row.cells.map((cell) => {
@@ -293,7 +345,8 @@ describe("terminal table insertion carrier", () => {
       if (demand.isErr()) throw demand.error;
       expect(demand.value).toBe(8);
       expect(
-        resolve(result.document, result.revisions, REVISION_DECISIONS.REJECT).document,
+        resolve(result.document, result.revisions, REVISION_DECISIONS.REJECT)
+          .document,
       ).toStrictEqual(document);
       const direct = applied(document, {
         type: op.type,
@@ -303,7 +356,8 @@ describe("terminal table insertion carrier", () => {
         terminal: op.terminal,
       });
       expect(
-        resolve(result.document, result.revisions, REVISION_DECISIONS.ACCEPT).document,
+        resolve(result.document, result.revisions, REVISION_DECISIONS.ACCEPT)
+          .document,
       ).toStrictEqual(direct.document);
     },
   );
@@ -314,17 +368,24 @@ describe("terminal table insertion carrier", () => {
     const deletion = {
       type: DOCUMENT_OP_TYPES.DELETE_RANGE,
       from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
-      to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: "replace me".length },
+      to: {
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        offset: "replace me".length,
+      },
     } as const satisfies DocumentOp;
-    const removed = applied(document, { ...deletion, revision: { ...revision, id: 90 } });
+    const removed = applied(document, {
+      ...deletion,
+      revision: { ...revision, id: 90 },
+    });
     const inserted = applied(removed.document, {
       ...trackedInsertion(),
       at: { type: "before", blockId: "00000001" },
     });
     const ids = [...removed.revisions, ...inserted.revisions];
-    expect(resolve(inserted.document, ids, REVISION_DECISIONS.REJECT).document).toStrictEqual(
-      document,
-    );
+    expect(
+      resolve(inserted.document, ids, REVISION_DECISIONS.REJECT).document,
+    ).toStrictEqual(document);
     const directDeletion = applied(document, deletion);
     const direct = applied(directDeletion.document, {
       type: DOCUMENT_OP_TYPES.INSERT_TABLE,
@@ -368,17 +429,29 @@ describe("terminal table insertion carrier", () => {
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
     );
     const rowIds = firstTable(inserted.document).rows.map((row) => {
-      if (row.structuralChange === undefined) throw new Error("Inserted rows are tracked.");
+      if (row.structuralChange === undefined)
+        throw new Error("Inserted rows are tracked.");
       return row.structuralChange.info.id;
     });
-    const tableRemoved = resolve(inserted.document, rowIds, REVISION_DECISIONS.REJECT);
+    const tableRemoved = resolve(
+      inserted.document,
+      rowIds,
+      REVISION_DECISIONS.REJECT,
+    );
     expect(tableRemoved.document.package.document.content.length).toBe(2);
-    const restored = resolve(tableRemoved.document, [markId], REVISION_DECISIONS.REJECT);
+    const restored = resolve(
+      tableRemoved.document,
+      [markId],
+      REVISION_DECISIONS.REJECT,
+    );
     expect(restored.document).toStrictEqual(original);
   });
 
   test("terminal carriers reject wrong placement and colliding identities without mutation", () => {
-    const document = documentOf([makeParagraph("00000001"), makeParagraph("00000002")]);
+    const document = documentOf([
+      makeParagraph("00000001"),
+      makeParagraph("00000002"),
+    ]);
     const base = {
       ...trackedInsertion(),
       at: { type: "after", blockId: "00000002" },
@@ -424,13 +497,19 @@ describe("tracked table refusals", () => {
       const source = makeTable();
       const row = source.rows.at(0);
       const cell = row?.cells.at(0);
-      if (row === undefined || cell === undefined) throw new Error("Fixture has a row and cell.");
+      if (row === undefined || cell === undefined)
+        throw new Error("Fixture has a row and cell.");
       const foreign = { id: 50, author: "Other" };
       const cases = [
         {
           value: {
             ...source,
-            rows: [{ ...row, structuralChange: { type: "tableRowInsertion", info: foreign } }],
+            rows: [
+              {
+                ...row,
+                structuralChange: { type: "tableRowInsertion", info: foreign },
+              },
+            ],
           },
           reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
         },
@@ -441,7 +520,13 @@ describe("tracked table refusals", () => {
               {
                 ...row,
                 cells: [
-                  { ...cell, structuralChange: { type: "tableCellDeletion", info: foreign } },
+                  {
+                    ...cell,
+                    structuralChange: {
+                      type: "tableCellDeletion",
+                      info: foreign,
+                    },
+                  },
                 ],
               },
             ],
@@ -463,7 +548,12 @@ describe("tracked table refusals", () => {
                         rows: [
                           {
                             type: "tableRow",
-                            cells: [{ type: "tableCell", content: [makeParagraph("00000030")] }],
+                            cells: [
+                              {
+                                type: "tableCell",
+                                content: [makeParagraph("00000030")],
+                              },
+                            ],
                           },
                         ],
                       },
@@ -486,7 +576,10 @@ describe("tracked table refusals", () => {
                   {
                     ...cell,
                     content: [
-                      { ...makeParagraph("00000010"), pPrMark: { kind: "ins", info: foreign } },
+                      {
+                        ...makeParagraph("00000010"),
+                        pPrMark: { kind: "ins", info: foreign },
+                      },
                     ],
                   },
                 ],
@@ -514,7 +607,9 @@ describe("tracked table refusals", () => {
                             content: [
                               {
                                 type: "run" as const,
-                                content: [{ type: "text" as const, text: "moved" }],
+                                content: [
+                                  { type: "text" as const, text: "moved" },
+                                ],
                               },
                             ],
                           },
@@ -531,7 +626,9 @@ describe("tracked table refusals", () => {
       ] as const satisfies readonly { value: Table; reason: string }[];
       for (const { value, reason } of cases) {
         const document = documentOf(
-          mode === "insert" ? [makeParagraph("00000002")] : [value, makeParagraph("00000002")],
+          mode === "insert"
+            ? [makeParagraph("00000002")]
+            : [value, makeParagraph("00000002")],
         );
         const op =
           mode === "insert"
@@ -552,7 +649,10 @@ describe("tracked table refusals", () => {
     const value = makeTable();
     const document = documentOf([value, makeParagraph("00000002")]);
     const formatting = makeParagraph("00000011").formatting;
-    const review = { formatting, pPrMark: { kind: "ins", info: revision } } as const;
+    const review = {
+      formatting,
+      pPrMark: { kind: "ins", info: revision },
+    } as const;
     applied(document, {
       type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
       story: OP_STORIES.MAIN,

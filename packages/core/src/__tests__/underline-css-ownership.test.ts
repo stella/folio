@@ -32,13 +32,20 @@ const PACKAGES_DIR = resolve(import.meta.dir, "../../../");
  * be spelled like the CSS keywords; `outlineDash.property.test.ts` holds that
  * table to `ST_Underline`.
  */
-const TABLE_OWNERS = ["core/src/utils/formatToStyle.ts", "core/src/display-list/build/strokes.ts"];
+const TABLE_OWNERS = [
+  "core/src/utils/formatToStyle.ts",
+  "core/src/display-list/build/strokes.ts",
+];
 
 /** The keywords and the members both come from the owner, never a hand list. */
 const CSS_DECORATION_STYLES: ReadonlySet<string> = new Set(
-  Object.values(UNDERLINE_DECORATION_STYLES).filter((keyword) => keyword !== undefined),
+  Object.values(UNDERLINE_DECORATION_STYLES).filter(
+    (keyword) => keyword !== undefined,
+  ),
 );
-const BORDER_STYLES: ReadonlySet<string> = new Set(Object.keys(CSS_BORDER_STYLES));
+const BORDER_STYLES: ReadonlySet<string> = new Set(
+  Object.keys(CSS_BORDER_STYLES),
+);
 const BORDER_KEYWORDS: ReadonlySet<string> = new Set(CSS_BORDER_STYLE_VALUES);
 
 const isUnderlineStyle = (value: string): boolean =>
@@ -75,7 +82,10 @@ const underlineCssRuns = (source: string): TableEntry[][] => {
   // A run that is also a legal `border-style` table belongs to that vocabulary.
   return runs.filter(
     (entries) =>
-      !entries.every(({ key, value }) => BORDER_STYLES.has(key) && BORDER_KEYWORDS.has(value)),
+      !entries.every(
+        ({ key, value }) =>
+          BORDER_STYLES.has(key) && BORDER_KEYWORDS.has(value),
+      ),
   );
 };
 
@@ -105,7 +115,9 @@ describe("one underline → CSS table", () => {
     const violations = scannedFiles().flatMap((file) => {
       const runs = underlineCssRuns(readFileSync(file, "utf-8"));
       return runs.map((entries) => {
-        const mapped = entries.map(({ key, value }) => `${key} -> ${value}`).join(", ");
+        const mapped = entries
+          .map(({ key, value }) => `${key} -> ${value}`)
+          .join(", ");
         return `  ${relative(PACKAGES_DIR, file)}: ${mapped}`;
       });
     });
@@ -149,7 +161,9 @@ describe("one underline → CSS table", () => {
   });
 
   test("a single decision is not a table", () => {
-    expect(underlineCssRuns('  element.style.textDecorationStyle = "dotted";')).toEqual([]);
+    expect(
+      underlineCssRuns('  element.style.textDecorationStyle = "dotted";'),
+    ).toEqual([]);
     expect(underlineCssRuns('  dotted: "dotted",')).toEqual([]);
   });
 });

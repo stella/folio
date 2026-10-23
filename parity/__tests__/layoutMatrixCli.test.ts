@@ -4,8 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { LayoutInteractionCase } from "../fixtures/layout-interaction-matrix";
-import { LayoutMatrixError, type ReferenceLayoutMatrixReport } from "../layoutMatrix";
-import { parseLayoutMatrixCliArgs, writeLayoutMatrixArtifacts } from "../layoutMatrixCli";
+import {
+  LayoutMatrixError,
+  type ReferenceLayoutMatrixReport,
+} from "../layoutMatrix";
+import {
+  parseLayoutMatrixCliArgs,
+  writeLayoutMatrixArtifacts,
+} from "../layoutMatrixCli";
 
 describe("reference layout matrix CLI", () => {
   test("defaults to a cached headless run", () => {
@@ -41,14 +47,18 @@ describe("reference layout matrix CLI", () => {
 
   test("supports help and rejects incomplete flags", () => {
     expect(parseLayoutMatrixCliArgs(["--help"])).toEqual({ type: "help" });
-    expect(() => parseLayoutMatrixCliArgs(["--output"])).toThrow(LayoutMatrixError);
+    expect(() => parseLayoutMatrixCliArgs(["--output"])).toThrow(
+      LayoutMatrixError,
+    );
     expect(() => parseLayoutMatrixCliArgs(["--reference", "pages"])).toThrow(
       "Unknown reference renderer: pages",
     );
   });
 
   test("writes JSON after the visual report recreates its directory", async () => {
-    const outputDirectory = await mkdtemp(path.join(tmpdir(), "layout-matrix-cli-test-"));
+    const outputDirectory = await mkdtemp(
+      path.join(tmpdir(), "layout-matrix-cli-test-"),
+    );
     const outputPath = path.join(outputDirectory, "layout-matrix.json");
     try {
       const scenario = {

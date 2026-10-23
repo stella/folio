@@ -19,16 +19,21 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Table } from "../types/document";
-import { CONTAINER_CHILDREN, type DeclaredChild } from "./containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  type DeclaredChild,
+} from "./containerChildren.gen";
+import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
 import { parseTable } from "./tableParser";
-import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -120,7 +125,10 @@ const withoutReplay = (table: Table): Table => ({
 });
 
 const rebuild = (rowProperties: string): string =>
-  serializeTable(withoutReplay(parsed(tableXml(rowProperties))), serializeParagraph);
+  serializeTable(
+    withoutReplay(parsed(tableXml(rowProperties))),
+    serializeParagraph,
+  );
 
 /** The same table after a no-op pass through the editor's document model. */
 const throughEditor = (rowProperties: string): string => {
@@ -136,7 +144,10 @@ const throughEditor = (rowProperties: string): string => {
 
 /** The outer `w:trPr`'s own children: a `w:trPrChange` nests a second one. */
 const rowPropertiesOf = (saved: string): string =>
-  saved.slice(saved.indexOf("<w:trPr>") + "<w:trPr>".length, saved.lastIndexOf("</w:trPr>"));
+  saved.slice(
+    saved.indexOf("<w:trPr>") + "<w:trPr>".length,
+    saved.lastIndexOf("</w:trPr>"),
+  );
 
 describe("a row's property set survives a rebuild", () => {
   test("every declared child comes back, and the save after it is a fixed point", () => {
@@ -176,14 +187,22 @@ describe("a row's property set survives a rebuild", () => {
 
     const positions = ORDERABLE.map((name) => saved.indexOf(`<w:${name}`));
     expect(positions.every((at) => at > -1)).toBe(true);
-    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    expect(positions).toEqual(
+      [...positions].sort((left, right) => left - right),
+    );
   });
 
   test("a capture comes back between the same two modelled properties", () => {
-    const saved = rebuild('<w:gridBefore w:val="2"/><w:trHeight/><w:tblHeader/>');
+    const saved = rebuild(
+      '<w:gridBefore w:val="2"/><w:trHeight/><w:tblHeader/>',
+    );
 
-    expect(saved.indexOf("<w:gridBefore")).toBeLessThan(saved.indexOf("<w:trHeight/>"));
-    expect(saved.indexOf("<w:trHeight/>")).toBeLessThan(saved.indexOf("<w:tblHeader/>"));
+    expect(saved.indexOf("<w:gridBefore")).toBeLessThan(
+      saved.indexOf("<w:trHeight/>"),
+    );
+    expect(saved.indexOf("<w:trHeight/>")).toBeLessThan(
+      saved.indexOf("<w:tblHeader/>"),
+    );
   });
 
   test("every declared child survives the editor projection", () => {
@@ -215,7 +234,9 @@ describe("a row's property set survives a rebuild", () => {
         `<w:tr>${CELL}</w:tr></w:tbl>`,
     );
 
-    expect(serializeTable(withoutReplay(table), serializeParagraph)).not.toContain("<w:trPr");
+    expect(
+      serializeTable(withoutReplay(table), serializeParagraph),
+    ).not.toContain("<w:trPr");
   });
 
   test("a property change survives a row that states no properties of its own", () => {
@@ -243,11 +264,15 @@ test("row revision carriers preserve absent empty and populated property sets", 
       if (presence === "absent") delete row.formatting;
       else
         row.formatting =
-          presence === "empty" ? {} : { height: { value: 480 }, heightRule: "atLeast" };
+          presence === "empty"
+            ? {}
+            : { height: { value: 480 }, heightRule: "atLeast" };
       const expected = reopen(source).rows.at(0)?.formatting;
       const info = { id: 7, author: "Reviewer" };
       if (kind === "formatting")
-        row.propertyChanges = [{ type: "tableRowPropertyChange", info, previousFormatting: {} }];
+        row.propertyChanges = [
+          { type: "tableRowPropertyChange", info, previousFormatting: {} },
+        ];
       else
         row.structuralChange = {
           type: kind === "insertion" ? "tableRowInsertion" : "tableRowDeletion",

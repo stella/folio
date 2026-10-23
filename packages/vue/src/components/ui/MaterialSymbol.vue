@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
 import { computed, type CSSProperties } from "vue";
+
 import iconPaths from "./icon-paths.json";
 
 const props = withDefaults(
@@ -60,7 +61,8 @@ const registry: Record<string, string[]> = iconPaths;
 const paths = computed<string[] | null>(() => {
   const entry = registry[props.name];
   if (!entry) {
-    if (typeof console !== "undefined") console.warn(`Icon not found: ${props.name}`);
+    if (typeof console !== "undefined")
+      console.warn(`Icon not found: ${props.name}`);
     return null;
   }
   return entry;

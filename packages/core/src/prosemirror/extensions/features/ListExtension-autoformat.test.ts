@@ -27,7 +27,10 @@ type TypedParagraph = {
  */
 const typeMarker = (
   marker: string,
-  { leading = "", listAttrs = {} }: { leading?: string; listAttrs?: Record<string, unknown> } = {},
+  {
+    leading = "",
+    listAttrs = {},
+  }: { leading?: string; listAttrs?: Record<string, unknown> } = {},
 ): TypedParagraph => {
   const plugin = autoformatPlugin();
   const content = `${leading}${marker}`;
@@ -35,7 +38,11 @@ const typeMarker = (
     composing: false,
     state: EditorState.create({
       doc: schema.node("doc", null, [
-        schema.node("paragraph", listAttrs, content === "" ? undefined : [schema.text(content)]),
+        schema.node(
+          "paragraph",
+          listAttrs,
+          content === "" ? undefined : [schema.text(content)],
+        ),
       ]),
       plugins: [plugin],
     }),
@@ -48,23 +55,35 @@ const typeMarker = (
     view.state.tr.setSelection(TextSelection.create(view.state.doc, caret)),
   );
 
-  const handled = plugin.props.handleTextInput?.(view as unknown as EditorView, caret, caret, " ");
+  const handled = plugin.props.handleTextInput?.(
+    view as unknown as EditorView,
+    caret,
+    caret,
+    " ",
+  );
   if (!handled) {
     view.state = view.state.apply(view.state.tr.insertText(" ", caret));
   }
 
   const paragraph = view.state.doc.child(0);
-  return { text: paragraph.textContent, attrs: paragraph.attrs, state: view.state };
+  return {
+    text: paragraph.textContent,
+    attrs: paragraph.attrs,
+    state: view.state,
+  };
 };
 
 describe("list autoformat", () => {
-  test.each(["-", "*"])("%s followed by a space starts a bulleted list", (marker) => {
-    const { text, attrs } = typeMarker(marker);
+  test.each(["-", "*"])(
+    "%s followed by a space starts a bulleted list",
+    (marker) => {
+      const { text, attrs } = typeMarker(marker);
 
-    expect(text).toBe("");
-    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
-    expect(attrs["listIsBullet"]).toBe(true);
-  });
+      expect(text).toBe("");
+      expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
+      expect(attrs["listIsBullet"]).toBe(true);
+    },
+  );
 
   test("1. followed by a space starts a numbered list", () => {
     const { text, attrs } = typeMarker("1.");
@@ -97,7 +116,10 @@ describe("list autoformat", () => {
 
   test("a marker typed in a list item does not toggle the list off", () => {
     const { text, attrs } = typeMarker("-", {
-      listAttrs: { numPr: { kind: "reference", numId: 1, ilvl: 0 }, listIsBullet: true },
+      listAttrs: {
+        numPr: { kind: "reference", numId: 1, ilvl: 0 },
+        listIsBullet: true,
+      },
     });
 
     expect(text).toBe("- ");

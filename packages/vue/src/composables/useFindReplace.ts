@@ -1,32 +1,42 @@
-import { computed, onScopeDispose, reactive, ref, shallowRef, watch } from "vue";
-import type { Ref } from "vue";
 import type { EditorView } from "prosemirror-view";
+import {
+  computed,
+  onScopeDispose,
+  reactive,
+  ref,
+  shallowRef,
+  watch,
+} from "vue";
+import type { Ref } from "vue";
 
-import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
+import type { Layout } from "@stll/folio-core/layout-engine";
 import { getEditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
 import type {
   DisplayMode,
   EditorReadOnlyReason,
 } from "@stll/folio-core/managers/EditorModeManager";
+import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
 import {
   findInDisplayedDocument,
   resolveFindMatchRange,
 } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import type { Document } from "@stll/folio-core/types/document";
-import type { Layout } from "@stll/folio-core/layout-engine";
-import { createFindSearchKey, sameFindSearchKey } from "@stll/folio-core/utils/findSearchKey";
 import {
   createFindMatchView,
   getRenderedSearchStories,
 } from "@stll/folio-core/utils/findMatchView";
 import {
   createDefaultFindOptions,
-  replaceEligibility,
   type FindMatch,
   type FindOptions,
   type FindResult,
   type ReplaceAllSummary,
+  replaceEligibility,
 } from "@stll/folio-core/utils/findReplace";
+import {
+  createFindSearchKey,
+  sameFindSearchKey,
+} from "@stll/folio-core/utils/findSearchKey";
 
 export type UseFindReplaceOptions = {
   editorView: Readonly<Ref<EditorView | null>>;
@@ -60,7 +70,9 @@ export function useFindReplace({
   const options = reactive(createDefaultFindOptions());
   const matches = shallowRef<FindMatch[]>([]);
   const currentIndex = ref(-1);
-  const currentMatch = computed(() => matches.value.at(currentIndex.value) ?? null);
+  const currentMatch = computed(
+    () => matches.value.at(currentIndex.value) ?? null,
+  );
   /** Why replacement is refused: host read-only, viewing mode, or a review view. */
   const getReplacementRefusal = (): EditorReadOnlyReason | null =>
     getEditorReadOnlyReason({
@@ -88,7 +100,11 @@ export function useFindReplace({
     const bodyDoc = editorView.value?.state.doc;
     return {
       query: searchText.value,
-      options: { ...options, displayMode: displayMode.value, includeComments: !!commentRoot },
+      options: {
+        ...options,
+        displayMode: displayMode.value,
+        includeComments: !!commentRoot,
+      },
       document,
       ...(bodyDoc ? { bodyVersion: bodyDoc } : {}),
       context: { renderedStories: getRenderedSearchStories(layout.value) },
@@ -98,7 +114,10 @@ export function useFindReplace({
     const document = getDocument();
     return (
       !!document &&
-      sameFindSearchKey(completedSearchKey, createFindSearchKey(searchInputFor(document)))
+      sameFindSearchKey(
+        completedSearchKey,
+        createFindSearchKey(searchInputFor(document)),
+      )
     );
   };
 
@@ -155,7 +174,8 @@ export function useFindReplace({
       return [];
     }
     const nextSearchKey = createFindSearchKey(input);
-    const refresh = cause === "refresh" && completedSearchKey?.query === nextSearchKey.query;
+    const refresh =
+      cause === "refresh" && completedSearchKey?.query === nextSearchKey.query;
     const result = manager.setMatches(
       nextMatches,
       refresh ? (manager.getResult()?.currentIndex ?? 0) : 0,
@@ -185,7 +205,10 @@ export function useFindReplace({
     cancelSearch();
     searchTimer = setTimeout(() => performSearch("refresh"), 120);
   };
-  const find = (text: string, nextOptions?: Partial<FindOptions>): FindResult | null => {
+  const find = (
+    text: string,
+    nextOptions?: Partial<FindOptions>,
+  ): FindResult | null => {
     searchText.value = text;
     Object.assign(options, createDefaultFindOptions(), nextOptions);
     performSearch();
@@ -219,13 +242,16 @@ export function useFindReplace({
   // must never be interpreted as positions in the body document.
   const replaceCurrent = (): boolean => {
     const view = editorView.value;
-    if (!view || refuseReadonlyReplacement() || refreshStaleResults()) return false;
+    if (!view || refuseReadonlyReplacement() || refreshStaleResults())
+      return false;
     const match = currentMatch.value;
     if (!canReplaceCurrent.value || !view || !match) return false;
     if (match.text === replaceText.value) return true;
     const range = resolveFindMatchRange(view.state.doc, match);
     if (!range) return false;
-    view.dispatch(view.state.tr.insertText(replaceText.value, range.from, range.to));
+    view.dispatch(
+      view.state.tr.insertText(replaceText.value, range.from, range.to),
+    );
     performSearch();
     return true;
   };
@@ -252,7 +278,11 @@ export function useFindReplace({
     if (!ranges.length) return summary;
     let transaction = view.state.tr;
     for (const range of ranges)
-      transaction = transaction.insertText(replaceText.value, range.from, range.to);
+      transaction = transaction.insertText(
+        replaceText.value,
+        range.from,
+        range.to,
+      );
     view.dispatch(transaction);
     performSearch();
     return summary;

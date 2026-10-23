@@ -41,24 +41,33 @@
         </div>
       </template>
     </MenuDropdown>
-    <MenuDropdown v-if="showHelpMenu" :label="t('toolbar.help')" :items="helpItems" />
+    <MenuDropdown
+      v-if="showHelpMenu"
+      :label="t('toolbar.help')"
+      :items="helpItems"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
+
 import { useTranslation } from "../i18n";
+import { useFolioUI } from "../ui/folio-ui";
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
 import type { MenuEntry } from "./ui/MenuDropdown.vue";
 import TableGridInline from "./ui/TableGridInline.vue";
-import { useFolioUI } from "../ui/folio-ui";
 
 // Resolve Menu from the FolioUI injection provider so a host override takes
 // effect here too (previously a static import of MenuDropdown.vue).
 const { Menu: MenuDropdown } = useFolioUI();
 
 const props = withDefaults(
-  defineProps<{ showFileOpen?: boolean; showHelpMenu?: boolean; showTableInsert?: boolean }>(),
+  defineProps<{
+    showFileOpen?: boolean;
+    showHelpMenu?: boolean;
+    showTableInsert?: boolean;
+  }>(),
   {
     showFileOpen: true,
     showHelpMenu: true,
@@ -101,14 +110,26 @@ const fileItems = computed<MenuEntry[]>(() => {
       onClick: act("findReplace"),
     },
     { type: "separator" },
-    { icon: "settings", label: t("toolbar.pageSetup"), onClick: act("pageSetup") },
+    {
+      icon: "settings",
+      label: t("toolbar.pageSetup"),
+      onClick: act("pageSetup"),
+    },
   );
   return items;
 });
 
 const formatItems = computed<MenuEntry[]>(() => [
-  { icon: "format_textdirection_l_to_r", label: t("toolbar.leftToRight"), onClick: act("dirLTR") },
-  { icon: "format_textdirection_r_to_l", label: t("toolbar.rightToLeft"), onClick: act("dirRTL") },
+  {
+    icon: "format_textdirection_l_to_r",
+    label: t("toolbar.leftToRight"),
+    onClick: act("dirLTR"),
+  },
+  {
+    icon: "format_textdirection_r_to_l",
+    label: t("toolbar.rightToLeft"),
+    onClick: act("dirRTL"),
+  },
 ]);
 
 const insertItems = computed<MenuEntry[]>(() => {
@@ -118,23 +139,41 @@ const insertItems = computed<MenuEntry[]>(() => {
   // Gate the Insert > Table item on `showTableInsert`, mirroring React's
   // FormattingBar Insert-Table control gating.
   if (props.showTableInsert) {
-    items.push({ icon: "grid_on", label: t("toolbar.table"), key: "table", submenu: true });
+    items.push({
+      icon: "grid_on",
+      label: t("toolbar.table"),
+      key: "table",
+      submenu: true,
+    });
   }
   items.push(
     { type: "separator" },
-    { icon: "page_break", label: t("toolbar.break"), key: "break", submenu: true },
+    {
+      icon: "page_break",
+      label: t("toolbar.break"),
+      key: "break",
+      submenu: true,
+    },
     {
       icon: "format_list_numbered",
       label: t("toolbar.tableOfContents"),
       onClick: act("insertTOC"),
     },
-    { icon: "branding_watermark", label: t("toolbar.watermark"), onClick: act("watermark") },
+    {
+      icon: "branding_watermark",
+      label: t("toolbar.watermark"),
+      onClick: act("watermark"),
+    },
   );
   return items;
 });
 
 const breakItems = computed(() => [
-  { icon: "page_break", label: t("toolbar.pageBreak"), action: "insertPageBreak" },
+  {
+    icon: "page_break",
+    label: t("toolbar.pageBreak"),
+    action: "insertPageBreak",
+  },
   {
     icon: "horizontal_rule",
     label: t("toolbar.sectionBreakNextPage"),

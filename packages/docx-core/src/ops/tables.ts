@@ -1,23 +1,28 @@
-import { cloneModel } from "./modelClone";
-import { replaceStoryBody } from "./stories";
 /** Whole-table edits and their exact structural inverse. */
-import { Result, panic } from "better-result";
+import { panic, Result } from "better-result";
 
-import type { BlockContent, Document, DocumentBody, Paragraph, Table } from "../model/document";
+import type {
+  BlockContent,
+  Document,
+  DocumentBody,
+  Paragraph,
+  Table,
+} from "../model/document";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import {
   blockListAt,
   endsItsContainer,
+  type ParagraphLocation,
   sameBlockList,
   storyBody,
   storyParagraphs,
   updateBlockList,
   withBodyContent,
-  type ParagraphLocation,
 } from "./blocks";
 import { validateOpsDocument } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
+import { freshenIdentities } from "./identity";
 import {
   collides,
   countIds,
@@ -30,20 +35,25 @@ import {
   paragraphIdsIn,
 } from "./ids";
 import { textsIn } from "./leaves";
-import { freshenIdentities } from "./identity";
-import { stampInfo, WRAP_KINDS } from "./review";
-import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
+import { cloneModel } from "./modelClone";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import { stampInfo, WRAP_KINDS } from "./review";
+import { replaceStoryBody } from "./stories";
 import { locateTableRow } from "./tableLocation";
+import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
 import {
-  DOCUMENT_OP_TYPES,
   type DeleteTableOp,
+  DOCUMENT_OP_TYPES,
   type InsertTableOp,
   type SetContainerBlocksOp,
 } from "./types";
 
 type TableOp = InsertTableOp | DeleteTableOp | SetContainerBlocksOp;
-type RefusalOptions = { op: TableOp; reason: DocumentOpRefusal["reason"]; message: string };
+type RefusalOptions = {
+  op: TableOp;
+  reason: DocumentOpRefusal["reason"];
+  message: string;
+};
 const refuse = ({ op, reason, message }: RefusalOptions) =>
   Result.err(new DocumentOpRefusal({ opType: op.type, reason, message }));
 
@@ -68,7 +78,8 @@ const validStructure = (blocks: readonly BlockContent[]): boolean =>
             (row) =>
               row.cells.length > 0 &&
               row.cells.every(
-                (cell) => endsInParagraph(cell.content) && validStructure(cell.content),
+                (cell) =>
+                  endsInParagraph(cell.content) && validStructure(cell.content),
               ),
           )
         );
@@ -88,8 +99,16 @@ const validStructure = (blocks: readonly BlockContent[]): boolean =>
   });
 
 /** Exact inverses may restore cell marks after independently resolved rows. */
-type StructuralCellMarkOptions = { body: DocumentBody; location: ParagraphLocation; op: TableOp };
-const permitsStructuralCellMark = ({ body, location, op }: StructuralCellMarkOptions): boolean => {
+type StructuralCellMarkOptions = {
+  body: DocumentBody;
+  location: ParagraphLocation;
+  op: TableOp;
+};
+const permitsStructuralCellMark = ({
+  body,
+  location,
+  op,
+}: StructuralCellMarkOptions): boolean => {
   if (permitsCellFinalMark(body, location)) return true;
   const mark = location.paragraph.pPrMark;
   return (
@@ -130,7 +149,8 @@ const commitBlocks = ({
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "The structural inverse requires a surviving paragraph in this block list.",
+      message:
+        "The structural inverse requires a surviving paragraph in this block list.",
     });
   }
   // A table at a container's end needs a terminal carrier, constructed by a
@@ -145,32 +165,43 @@ const commitBlocks = ({
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-      message: "A table has rows and cells; each cell and the story retain a final paragraph.",
+      message:
+        "A table has rows and cells; each cell and the story retain a final paragraph.",
     });
   }
   const fixedBlocks = (items: readonly BlockContent[]) =>
-    items.filter((block) => block.type !== "table" && block.type !== "paragraph");
+    items.filter(
+      (block) => block.type !== "table" && block.type !== "paragraph",
+    );
   if (!structurallyEqual(fixedBlocks(before), fixedBlocks(blocks))) {
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "A table structural inverse preserves surrounding block wrappers and markers.",
+      message:
+        "A table structural inverse preserves surrounding block wrappers and markers.",
     });
   }
   const beforeParagraphs = paragraphsIn(before);
   const afterParagraphs = paragraphsIn(blocks);
   const beforeById = new Map(
-    beforeParagraphs.map((paragraph) => [idKey(paragraph.paraId ?? ""), paragraph]),
+    beforeParagraphs.map((paragraph) => [
+      idKey(paragraph.paraId ?? ""),
+      paragraph,
+    ]),
   );
   const afterById = new Map(
-    afterParagraphs.map((paragraph) => [idKey(paragraph.paraId ?? ""), paragraph]),
+    afterParagraphs.map((paragraph) => [
+      idKey(paragraph.paraId ?? ""),
+      paragraph,
+    ]),
   );
   if (
     [...beforeParagraphs, ...afterParagraphs].some((paragraph) => {
       const id = idKey(paragraph.paraId ?? "");
       return !structurallyEqual(
         paragraph.sectionProperties,
-        (beforeById.has(id) ? afterById : beforeById).get(id)?.sectionProperties,
+        (beforeById.has(id) ? afterById : beforeById).get(id)
+          ?.sectionProperties,
       );
     })
   ) {
@@ -184,7 +215,8 @@ const commitBlocks = ({
     [...beforeParagraphs, ...afterParagraphs].some(
       ({ paraId }) =>
         paraId === undefined ||
-        ((!beforeById.has(idKey(paraId)) || !afterById.has(idKey(paraId))) && !isParaId(paraId)),
+        ((!beforeById.has(idKey(paraId)) || !afterById.has(idKey(paraId))) &&
+          !isParaId(paraId)),
     )
   ) {
     return refuse({
@@ -213,12 +245,16 @@ const commitBlocks = ({
       beforeById.has(idKey(paragraph.paraId ?? "")) &&
       endsItsContainer(body, location) &&
       !permitsStructuralCellMark({ body, location, op }) &&
-      !structurallyEqual(paragraph.pPrMark, afterById.get(idKey(paragraph.paraId ?? ""))?.pPrMark)
+      !structurallyEqual(
+        paragraph.pPrMark,
+        afterById.get(idKey(paragraph.paraId ?? ""))?.pPrMark,
+      )
     ) {
       return refuse({
         op,
         reason: DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
-        message: "Removing this final paragraph mark would make the structural inverse invalid.",
+        message:
+          "Removing this final paragraph mark would make the structural inverse invalid.",
       });
     }
   }
@@ -233,7 +269,8 @@ const commitBlocks = ({
     });
   }
   const records = countKeys(packageIdentityKeys(document.package));
-  for (const key of identityKeysIn(before)) records.set(key, (records.get(key) ?? 1) - 1);
+  for (const key of identityKeysIn(before))
+    records.set(key, (records.get(key) ?? 1) - 1);
   const incoming = identityKeysIn(blocks);
   if (
     incoming.some((key) => (records.get(key) ?? 0) > 0) ||
@@ -242,7 +279,8 @@ const commitBlocks = ({
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      message: "A revision or content-control id is already used in the package.",
+      message:
+        "A revision or content-control id is already used in the package.",
     });
   }
   // Clone incoming values once; unchanged siblings and paragraphs keep their
@@ -258,14 +296,19 @@ const commitBlocks = ({
       switch (block.type) {
         case "paragraph": {
           const known = beforeById.get(idKey(block.paraId ?? ""));
-          return known !== undefined && structurallyEqual(known, block) ? known : block;
+          return known !== undefined && structurallyEqual(known, block)
+            ? known
+            : block;
         }
         case "table":
           return {
             ...block,
             rows: block.rows.map((row) => ({
               ...row,
-              cells: row.cells.map((cell) => ({ ...cell, content: reuseParagraphs(cell.content) })),
+              cells: row.cells.map((cell) => ({
+                ...cell,
+                content: reuseParagraphs(cell.content),
+              })),
             })),
           };
         case "blockSdt":
@@ -287,9 +330,11 @@ const commitBlocks = ({
       id === undefined
         ? before.find((candidate) => structurallyEqual(candidate, block))
         : beforeBlocksById.get(idKey(id));
-    if (existing !== undefined && structurallyEqual(existing, block)) return existing;
+    if (existing !== undefined && structurallyEqual(existing, block))
+      return existing;
     const cloned = reuseParagraphs([cloneModel(block)]).at(0);
-    if (cloned === undefined) return panic("Cloning one block must preserve one block.");
+    if (cloned === undefined)
+      return panic("Cloning one block must preserve one block.");
     return cloned;
   });
   const content = updateBlockList(body.content, anchor.list, () => replacement);
@@ -300,7 +345,10 @@ const commitBlocks = ({
   });
   const nextBody = storyBody(next, op.story);
   const previousParagraphs = new Map(
-    storyParagraphs(body).map(({ paragraph }) => [idKey(paragraph.paraId ?? ""), paragraph]),
+    storyParagraphs(body).map(({ paragraph }) => [
+      idKey(paragraph.paraId ?? ""),
+      paragraph,
+    ]),
   );
   for (const location of storyParagraphs(nextBody)) {
     const paragraph = location.paragraph;
@@ -322,7 +370,11 @@ const commitBlocks = ({
   }
   const valid = validateOpsDocument(next);
   if (valid.isErr())
-    return refuse({ op, reason: valid.error.reason, message: valid.error.message });
+    return refuse({
+      op,
+      reason: valid.error.reason,
+      message: valid.error.message,
+    });
   return Result.ok({
     document: next,
     inverse: [
@@ -339,7 +391,10 @@ const commitBlocks = ({
         .filter(
           (paragraph) =>
             beforeById.has(idKey(paragraph.paraId ?? "")) &&
-            !structurallyEqual(paragraph, beforeById.get(idKey(paragraph.paraId ?? ""))),
+            !structurallyEqual(
+              paragraph,
+              beforeById.get(idKey(paragraph.paraId ?? "")),
+            ),
         )
         .flatMap(({ paraId }) => (paraId === undefined ? [] : [paraId])),
       inserted: afterParagraphs
@@ -366,7 +421,8 @@ export const applyTableOp = (
           message: "Insert before or after a paragraph.",
         });
       const anchor = storyParagraphs(body).find(
-        ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(op.at.blockId),
+        ({ paragraph }) =>
+          idKey(paragraph.paraId ?? "") === idKey(op.at.blockId),
       );
       if (anchor === undefined)
         return refuse({
@@ -380,19 +436,24 @@ export const applyTableOp = (
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-          message: "A terminal insertion must follow its container's final paragraph.",
+          message:
+            "A terminal insertion must follow its container's final paragraph.",
         });
       }
       if (terminal && op.terminal === undefined) {
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-          message: "A terminal table insertion supplies the preceding paragraph id.",
+          message:
+            "A terminal table insertion supplies the preceding paragraph id.",
         });
       }
       let preceding: Paragraph | undefined;
       if (op.terminal !== undefined) {
-        if (op.revision !== undefined && anchor.paragraph.pPrMark !== undefined) {
+        if (
+          op.revision !== undefined &&
+          anchor.paragraph.pPrMark !== undefined
+        ) {
           return refuse({
             op,
             reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -407,11 +468,19 @@ export const applyTableOp = (
             : { formatting: anchor.paragraph.formatting }),
           content: anchor.paragraph.content,
         };
-        blocks.splice(anchor.index, 1, preceding, op.table, { ...anchor.paragraph, content: [] });
+        blocks.splice(anchor.index, 1, preceding, op.table, {
+          ...anchor.paragraph,
+          content: [],
+        });
       } else {
-        blocks.splice(anchor.index + (op.at.type === "after" ? 1 : 0), 0, op.table);
+        blocks.splice(
+          anchor.index + (op.at.type === "after" ? 1 : 0),
+          0,
+          op.table,
+        );
       }
-      if (op.revision === undefined) return commitBlocks({ document, op, anchor, blocks });
+      if (op.revision === undefined)
+        return commitBlocks({ document, op, anchor, blocks });
       if (
         op.table.preserved !== undefined ||
         op.table.bookmarks !== undefined ||
@@ -445,7 +514,12 @@ export const applyTableOp = (
         for (const key of identityKeysIn(table)) outside.add(key);
         const fresh = freshenIdentities({
           before: [anchor.paragraph],
-          after: [{ ...preceding, pPrMark: { kind: "ins", info: stampInfo(op.revision) } }],
+          after: [
+            {
+              ...preceding,
+              pPrMark: { kind: "ins", info: stampInfo(op.revision) },
+            },
+          ],
           newIds: op.newIds ?? {},
           usedElsewhere: () => outside,
         });
@@ -454,7 +528,8 @@ export const applyTableOp = (
             return refuse({
               op,
               reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-              message: "The preceding table break needs an additional revision id.",
+              message:
+                "The preceding table break needs an additional revision id.",
             });
           case "invalidId":
             return refuse({
@@ -465,7 +540,9 @@ export const applyTableOp = (
           case "fresh": {
             const paragraph = fresh.paragraphs.at(0);
             if (paragraph === undefined)
-              return panic("A terminal table insertion must retain its preceding paragraph.");
+              return panic(
+                "A terminal table insertion must retain its preceding paragraph.",
+              );
             blocks[anchor.index] = paragraph;
             break;
           }
@@ -481,7 +558,10 @@ export const applyTableOp = (
       const located = locateTableRow(document, op);
       if (located.isErr()) return Result.err(located.error);
       const location = located.value;
-      if (op.expected !== undefined && !equalForStaleness(location.table, op.expected))
+      if (
+        op.expected !== undefined &&
+        !equalForStaleness(location.table, op.expected)
+      )
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
@@ -494,7 +574,8 @@ export const applyTableOp = (
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message: "Removing a table requires a surviving paragraph in its block list.",
+          message:
+            "Removing a table requires a surviving paragraph in its block list.",
         });
       const blocks = [...blockListAt(body.content, location.list)];
       if (op.revision === undefined) {

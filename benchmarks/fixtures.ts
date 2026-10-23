@@ -85,7 +85,8 @@ function readBenchCorpus(): BenchCorpus {
   return value;
 }
 
-const CORPUS_SIZES: readonly FixtureSize[] = BENCH_CORPUS_SIZES[readBenchCorpus()];
+const CORPUS_SIZES: readonly FixtureSize[] =
+  BENCH_CORPUS_SIZES[readBenchCorpus()];
 
 /** The benchmark corpus, ordered small → large. */
 export const FIXTURES: readonly Fixture[] = SPECS.filter((spec) =>

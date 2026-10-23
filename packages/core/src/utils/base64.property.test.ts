@@ -13,8 +13,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { registerImage } from "../markdown/images";
 import type { RenderContext } from "../markdown/types";
 import { bytesToBase64, bytesToDataUrl, encodeBase64Portable } from "./base64";
@@ -36,7 +38,9 @@ describe("bytes to base64", () => {
   test("every byte array round-trips through atob", () => {
     fc.assert(
       fc.property(byteArrays, (bytes) => {
-        expect([...decodeToBytes(encodeBase64Portable(bytes))]).toEqual([...bytes]);
+        expect([...decodeToBytes(encodeBase64Portable(bytes))]).toEqual([
+          ...bytes,
+        ]);
       }),
       propertyConfig({ numRuns: 400 }),
     );

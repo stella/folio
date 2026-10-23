@@ -40,7 +40,11 @@
  * Quote`), which is why {@link normalizeStyleName} ignores both.
  */
 
-import { type OutlineLevel, headingLevelOf, headingOutlineLevel } from "@stll/docx-core/model";
+import {
+  headingLevelOf,
+  headingOutlineLevel,
+  type OutlineLevel,
+} from "@stll/docx-core/model";
 
 import type { DocDefaults, Style } from "../types/document";
 import {
@@ -111,7 +115,8 @@ export const BUILT_IN_STYLE_NAME = {
   tableGrid: "Table Grid",
 } as const;
 
-type BuiltInStyleName = (typeof BUILT_IN_STYLE_NAME)[keyof typeof BUILT_IN_STYLE_NAME];
+type BuiltInStyleName =
+  (typeof BUILT_IN_STYLE_NAME)[keyof typeof BUILT_IN_STYLE_NAME];
 
 /**
  * The name of a built-in heading, from its zero-based outline level.
@@ -122,7 +127,8 @@ export const builtInHeadingStyleName = (outlineLevel: number): string =>
   `heading ${outlineLevel + 1}`;
 
 /** The name of a built-in TOC entry style, from its one-based level (`toc 1`). */
-export const builtInTableOfContentsStyleName = (level: number): string => `toc ${level}`;
+export const builtInTableOfContentsStyleName = (level: number): string =>
+  `toc ${level}`;
 
 /**
  * `heading 1`…`heading 9` against an already-normalised name. Word's built-in
@@ -138,11 +144,15 @@ const BUILT_IN_TABLE_OF_CONTENTS_NAME = /^toc(?<level>[1-9])$/u;
  * The outline level a built-in heading *name* implies (zero-based, so
  * `heading 1` is 0), or undefined when the name is not a built-in heading.
  */
-const headingOutlineLevelFromStyleName = (name: string | undefined): number | undefined => {
+const headingOutlineLevelFromStyleName = (
+  name: string | undefined,
+): number | undefined => {
   if (name === undefined) {
     return undefined;
   }
-  const level = BUILT_IN_HEADING_NAME.exec(normalizeStyleName(name))?.groups?.["level"];
+  const level = BUILT_IN_HEADING_NAME.exec(normalizeStyleName(name))?.groups?.[
+    "level"
+  ];
   return level === undefined ? undefined : Number.parseInt(level, 10) - 1;
 };
 
@@ -154,16 +164,24 @@ const headingOutlineLevelFromStyleName = (name: string | undefined): number | un
  */
 export type BuiltInStyleIndex = {
   /** The style's effective `w:outlineLvl`, body text included, or undefined. */
-  outlineLevelOf: (styleId: string | null | undefined) => OutlineLevel | undefined;
+  outlineLevelOf: (
+    styleId: string | null | undefined,
+  ) => OutlineLevel | undefined;
   /** The zero-based level a built-in heading *name* implies, or undefined. */
-  headingLevelFromNameOf: (styleId: string | null | undefined) => number | undefined;
+  headingLevelFromNameOf: (
+    styleId: string | null | undefined,
+  ) => number | undefined;
   /** The built-in this style is, by name, or undefined for a custom style. */
-  builtInNameOf: (styleId: string | null | undefined) => BuiltInStyleName | undefined;
+  builtInNameOf: (
+    styleId: string | null | undefined,
+  ) => BuiltInStyleName | undefined;
   /**
    * The level an English built-in heading *id* implies, and only when the
    * package defines no style under it. See {@link resolveHeadingLevel} tier 3.
    */
-  undefinedBuiltInHeadingLevelOf: (styleId: string | null | undefined) => number | undefined;
+  undefinedBuiltInHeadingLevelOf: (
+    styleId: string | null | undefined,
+  ) => number | undefined;
   /** The document's style id for a built-in heading level (zero-based). */
   styleIdForHeadingLevel: (level: number) => string | undefined;
   /** The document's style id for a built-in TOC entry level (one-based, `toc 1`). */
@@ -178,7 +196,10 @@ export type BuiltInStyleIndex = {
  * normalised form it would have to spell a second time.
  */
 const CANONICAL_BY_NORMALIZED = new Map<string, BuiltInStyleName>(
-  Object.values(BUILT_IN_STYLE_NAME).map((name) => [normalizeStyleName(name), name]),
+  Object.values(BUILT_IN_STYLE_NAME).map((name) => [
+    normalizeStyleName(name),
+    name,
+  ]),
 );
 
 const asBuiltInName = (normalized: string): BuiltInStyleName | undefined =>
@@ -210,7 +231,10 @@ const inheritedOutlineLevel = (
         nearestImplicitHeadingLevel = headingOutlineLevel(namedLevel);
       }
     }
-    current = current.basedOn === undefined ? undefined : styleById.get(current.basedOn);
+    current =
+      current.basedOn === undefined
+        ? undefined
+        : styleById.get(current.basedOn);
   }
   return nearestImplicitHeadingLevel;
 };
@@ -261,7 +285,8 @@ export const createBuiltInStyleIndex = (
     // keying by the name would answer `styleIdForHeadingLevel(4)` with a style
     // Word outlines at level 0.
     const namedLevel = headingOutlineLevelFromStyleName(style.name);
-    const statedLevel = inheritedOutlineLevel(style, styleById) ?? docDefaultOutlineLevel;
+    const statedLevel =
+      inheritedOutlineLevel(style, styleById) ?? docDefaultOutlineLevel;
     // A name that is not a built-in heading's indexes nothing; a stated level
     // then overrides the name, body text included, which is how a `TOCHeading`
     // based on `Heading1` stops being one.
@@ -269,12 +294,16 @@ export const createBuiltInStyleIndex = (
     // First definition wins, matching `resolveDefaultParagraphStyle`: a package
     // that names two styles `heading 1` is malformed, and taking the first
     // keeps the choice deterministic.
-    if (headingLevel !== undefined && !styleIdByHeadingLevel.has(headingLevel)) {
+    if (
+      headingLevel !== undefined &&
+      !styleIdByHeadingLevel.has(headingLevel)
+    ) {
       styleIdByHeadingLevel.set(headingLevel, style.styleId);
       continue;
     }
     const normalized = normalizeStyleName(style.name);
-    const tocLevel = BUILT_IN_TABLE_OF_CONTENTS_NAME.exec(normalized)?.groups?.["level"];
+    const tocLevel =
+      BUILT_IN_TABLE_OF_CONTENTS_NAME.exec(normalized)?.groups?.["level"];
     if (tocLevel !== undefined) {
       const level = Number.parseInt(tocLevel, 10);
       if (!styleIdByTableOfContentsLevel.has(level)) {
@@ -297,10 +326,14 @@ export const createBuiltInStyleIndex = (
    */
   const defaultStyle = resolveDefaultParagraphStyle(paragraphStyles);
   const styleFor = (styleId: string | null | undefined): Style | undefined =>
-    (styleId === null || styleId === undefined ? undefined : paragraphStyleById.get(styleId)) ??
-    defaultStyle;
+    (styleId === null || styleId === undefined
+      ? undefined
+      : paragraphStyleById.get(styleId)) ?? defaultStyle;
 
-  const outlineLevelCache = new Map<string | null | undefined, OutlineLevel | undefined>();
+  const outlineLevelCache = new Map<
+    string | null | undefined,
+    OutlineLevel | undefined
+  >();
 
   return {
     outlineLevelOf: (styleId) => {
@@ -309,28 +342,36 @@ export const createBuiltInStyleIndex = (
       }
       const style = styleFor(styleId);
       const level =
-        (style === undefined ? undefined : inheritedOutlineLevel(style, styleById)) ??
-        docDefaultOutlineLevel;
+        (style === undefined
+          ? undefined
+          : inheritedOutlineLevel(style, styleById)) ?? docDefaultOutlineLevel;
       outlineLevelCache.set(styleId, level);
       return level;
     },
-    headingLevelFromNameOf: (styleId) => headingOutlineLevelFromStyleName(styleFor(styleId)?.name),
+    headingLevelFromNameOf: (styleId) =>
+      headingOutlineLevelFromStyleName(styleFor(styleId)?.name),
     builtInNameOf: (styleId) => {
       const name = styleFor(styleId)?.name;
-      return name === undefined ? undefined : asBuiltInName(normalizeStyleName(name));
+      return name === undefined
+        ? undefined
+        : asBuiltInName(normalizeStyleName(name));
     },
     undefinedBuiltInHeadingLevelOf: (styleId) =>
-      styleId === null || styleId === undefined || paragraphStyleById.has(styleId)
+      styleId === null ||
+      styleId === undefined ||
+      paragraphStyleById.has(styleId)
         ? undefined
         : headingOutlineLevelFromStyleName(styleId),
     styleIdForHeadingLevel: (level) => styleIdByHeadingLevel.get(level),
-    styleIdForTableOfContentsLevel: (level) => styleIdByTableOfContentsLevel.get(level),
+    styleIdForTableOfContentsLevel: (level) =>
+      styleIdByTableOfContentsLevel.get(level),
     styleIdForBuiltInName: (name) => styleIdByBuiltInName.get(name),
   };
 };
 
 /** An index over a document that defines no styles: every lookup misses. */
-export const EMPTY_BUILT_IN_STYLE_INDEX: BuiltInStyleIndex = createBuiltInStyleIndex([]);
+export const EMPTY_BUILT_IN_STYLE_INDEX: BuiltInStyleIndex =
+  createBuiltInStyleIndex([]);
 
 /**
  * What a consumer knows about a paragraph: its style id and whatever
@@ -390,7 +431,8 @@ export const resolveHeadingLevel = (
   paragraph: ParagraphOutlineSource,
   index: BuiltInStyleIndex,
 ): number | undefined => {
-  const effective = paragraph.outlineLevel ?? index.outlineLevelOf(paragraph.styleId);
+  const effective =
+    paragraph.outlineLevel ?? index.outlineLevelOf(paragraph.styleId);
   if (effective !== null && effective !== undefined) {
     return headingLevelOf(effective);
   }
@@ -406,5 +448,8 @@ export const isQuoteStyle = (
   index: BuiltInStyleIndex,
 ): boolean => {
   const name = index.builtInNameOf(styleId);
-  return name === BUILT_IN_STYLE_NAME.quote || name === BUILT_IN_STYLE_NAME.intenseQuote;
+  return (
+    name === BUILT_IN_STYLE_NAME.quote ||
+    name === BUILT_IN_STYLE_NAME.intenseQuote
+  );
 };

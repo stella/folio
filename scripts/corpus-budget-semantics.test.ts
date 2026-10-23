@@ -40,10 +40,14 @@ describe("a skipped operation invariant cannot silently pass", () => {
     });
     const missing = result.failures.filter(
       (failure) =>
-        failure.message === "the file time budget prevented an operation invariant verdict",
+        failure.message ===
+        "the file time budget prevented an operation invariant verdict",
     );
     expect(missing.map((failure) => failure.invariant).sort()).toEqual(
-      [EXTENDED_CORPUS_INVARIANTS.opInverse, EXTENDED_CORPUS_INVARIANTS.opLocality].sort(),
+      [
+        EXTENDED_CORPUS_INVARIANTS.opInverse,
+        EXTENDED_CORPUS_INVARIANTS.opLocality,
+      ].sort(),
     );
     expect(result.truncatedAt).toBe(EXTENDED_CORPUS_INVARIANTS.opInverse);
   });
@@ -72,14 +76,18 @@ describe("a stage that merely ran slowly does not truncate the file", () => {
     expect(overruns.length).toBeGreaterThan(0);
     // Nothing was skipped: no stage reports the file budget running out.
     expect(
-      result.failures.some((failure) => failure.message.includes("file time budget was exhausted")),
+      result.failures.some((failure) =>
+        failure.message.includes("file time budget was exhausted"),
+      ),
     ).toBe(false);
   });
 });
 
 describe("the two ways a worker stops answering are not the same finding", () => {
   test("a watchdog expiry reports as timing, so it cannot gate", () => {
-    expect(isGatingFamily(familyOf(EXTENDED_CORPUS_INVARIANTS.performance))).toBe(false);
+    expect(
+      isGatingFamily(familyOf(EXTENDED_CORPUS_INVARIANTS.performance)),
+    ).toBe(false);
   });
 
   test("a worker that exits without a verdict still gates", () => {

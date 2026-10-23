@@ -1,12 +1,15 @@
 import ts from "typescript";
-import { censusUndescribedCanonicalCommands } from "./canonical-command-census";
+
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
 } from "../../packages/core/src/types/canonicalCapabilities";
+import { censusUndescribedCanonicalCommands } from "./canonical-command-census";
 
 /** Legacy PM execution still owns these sources when canonical sessions refuse them. */
-export const PUBLIC_OPERATION_SOURCE_GAPS = Object.entries(CANONICAL_CAPABILITIES)
+export const PUBLIC_OPERATION_SOURCE_GAPS = Object.entries(
+  CANONICAL_CAPABILITIES,
+)
   .filter(
     ([, capability]) =>
       capability.owner === "document-operations" &&
@@ -22,11 +25,13 @@ const sessionName = /experimentalSession|ExperimentalSession|sessionRef/;
 
 const scriptParts = ({ file, source }: CanonicalSource) => {
   if (!file.endsWith(".vue")) return [source];
-  const parts = [...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(
-    (match) => match[1] ?? "",
-  );
+  const parts = [
+    ...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g),
+  ].map((match) => match[1] ?? "");
   // Vue directives are JS expressions too; do not leave template-only gates unmeasured.
-  for (const match of source.matchAll(/(?:v-[\w:-]+|:[\w-]+|@[\w.-]+)="([^"]*)"/g))
+  for (const match of source.matchAll(
+    /(?:v-[\w:-]+|:[\w-]+|@[\w.-]+)="([^"]*)"/g,
+  ))
     parts.push(match[1] ?? "");
   return parts;
 };
@@ -44,7 +49,8 @@ const mutationGap = (
     const name = node.expression.getText();
     if (name === "fromProseDoc" || imports.get(name)?.endsWith(":fromProseDoc"))
       return CANONICAL_GAP.save;
-    if (imports.get(name) === "prosemirror-history:history") return CANONICAL_GAP.history;
+    if (imports.get(name) === "prosemirror-history:history")
+      return CANONICAL_GAP.history;
     if (
       name === "columnResizing" ||
       name === "tableEditing" ||
@@ -52,14 +58,19 @@ const mutationGap = (
       imports.get(name) === "prosemirror-tables:tableEditing"
     )
       return CANONICAL_GAP.tableGeometry;
-    if (name === "applyFolioAIEditOperations" && file.endsWith("/document-operations.ts"))
+    if (
+      name === "applyFolioAIEditOperations" &&
+      file.endsWith("/document-operations.ts")
+    )
       return CANONICAL_GAP.documentOperations;
   }
   if (ts.isMethodDeclaration(node) || ts.isPropertyAssignment(node)) {
     const name = node.name.getText();
     if (name === "appendTransaction") {
-      if (file.endsWith("/suggestionMode.ts")) return CANONICAL_GAP.suggestionPlugin;
-      if (file.endsWith("/ParaIdAllocatorExtension.ts")) return CANONICAL_GAP.paragraphIdentity;
+      if (file.endsWith("/suggestionMode.ts"))
+        return CANONICAL_GAP.suggestionPlugin;
+      if (file.endsWith("/ParaIdAllocatorExtension.ts"))
+        return CANONICAL_GAP.paragraphIdentity;
       if (file.endsWith("/ParagraphChangeTrackerExtension.ts"))
         return CANONICAL_GAP.paragraphTracker;
     }
@@ -71,7 +82,9 @@ const mutationGap = (
   return undefined;
 };
 
-export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => {
+export const inspectCanonicalSources = (
+  sources: readonly CanonicalSource[],
+) => {
   const failures: string[] = [];
   const sites = new Map<string, Set<string>>();
   const branches: Record<string, number> = {};
@@ -99,19 +112,27 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
       const imports = new Map<string, string>();
       const namespaces = new Set<string>();
       for (const statement of tree.statements) {
-        if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier))
+        if (
+          !ts.isImportDeclaration(statement) ||
+          !ts.isStringLiteral(statement.moduleSpecifier)
+        )
           continue;
         const bindings = statement.importClause?.namedBindings;
         if (
           bindings &&
           ts.isNamespaceImport(bindings) &&
-          /(?:^|\/)canonicalCapabilities(?:\.ts)?$/.test(statement.moduleSpecifier.text)
+          /(?:^|\/)canonicalCapabilities(?:\.ts)?$/.test(
+            statement.moduleSpecifier.text,
+          )
         )
           namespaces.add(bindings.name.text);
         if (bindings && ts.isNamedImports(bindings))
           for (const binding of bindings.elements) {
             const imported = binding.propertyName?.text ?? binding.name.text;
-            imports.set(binding.name.text, `${statement.moduleSpecifier.text}:${imported}`);
+            imports.set(
+              binding.name.text,
+              `${statement.moduleSpecifier.text}:${imported}`,
+            );
             if (
               [
                 "usesCanonicalSession",
@@ -121,7 +142,9 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
               ].includes(imported) &&
               imported !== binding.name.text
             )
-              failures.push(`${file}: canonical guard primitives cannot be aliased`);
+              failures.push(
+                `${file}: canonical guard primitives cannot be aliased`,
+              );
           }
       }
       // Canonical persistence has one model-only owner. Consumers must capture
@@ -133,7 +156,9 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
           ts.isIdentifier(node.name) &&
           node.initializer &&
           ts.isCallExpression(node.initializer) &&
-          /(?:\.|\?\.)captureCanonicalSave$/.test(node.initializer.expression.getText())
+          /(?:\.|\?\.)captureCanonicalSave$/.test(
+            node.initializer.expression.getText(),
+          )
         )
           saveSnapshots.add(node.name.text);
         ts.forEachChild(node, collectSaveSnapshots);
@@ -146,12 +171,15 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
           node.name.text === "serializeCanonicalSave" &&
           !file.endsWith("/docx/canonicalSave.ts")
         )
-          failures.push(`${file}: canonical serialization must use its core owner`);
+          failures.push(
+            `${file}: canonical serialization must use its core owner`,
+          );
         if (
           file.endsWith("/docx/canonicalSave.ts") &&
           ts.isIdentifier(node) &&
           (ts.isImportSpecifier(node.parent) ||
-            (ts.isCallExpression(node.parent) && node.parent.expression === node)) &&
+            (ts.isCallExpression(node.parent) &&
+              node.parent.expression === node)) &&
           [
             "fromProseDoc",
             "getChangedParagraphIds",
@@ -159,15 +187,23 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
             "hasUntrackedChanges",
           ].includes(node.text)
         )
-          failures.push(`${file}: canonical serialization cannot derive authority from PM`);
-        if (ts.isCallExpression(node) && node.expression.getText() === "serializeCanonicalSave") {
+          failures.push(
+            `${file}: canonical serialization cannot derive authority from PM`,
+          );
+        if (
+          ts.isCallExpression(node) &&
+          node.expression.getText() === "serializeCanonicalSave"
+        ) {
           const argument = node.arguments.at(0);
           const snapshot =
             argument && ts.isObjectLiteralExpression(argument)
-              ? argument.properties.find((property) => property.name?.getText() === "snapshot")
+              ? argument.properties.find(
+                  (property) => property.name?.getText() === "snapshot",
+                )
               : undefined;
           let name: string | undefined;
-          if (snapshot && ts.isShorthandPropertyAssignment(snapshot)) name = snapshot.name.text;
+          if (snapshot && ts.isShorthandPropertyAssignment(snapshot))
+            name = snapshot.name.text;
           if (
             snapshot &&
             ts.isPropertyAssignment(snapshot) &&
@@ -175,7 +211,9 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
           )
             name = snapshot.initializer.text;
           if (!name || !saveSnapshots.has(name))
-            failures.push(`${file}: canonical serialization requires a controller save snapshot`);
+            failures.push(
+              `${file}: canonical serialization requires a controller save snapshot`,
+            );
         }
         ts.forEachChild(node, checkSaveOwnership);
       };
@@ -193,7 +231,8 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
       const primitiveName = (node: ts.Node): string | undefined => {
         if (ts.isIdentifier(node)) return node.text;
         if (
-          (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+          (ts.isPropertyAccessExpression(node) ||
+            ts.isElementAccessExpression(node)) &&
           ts.isIdentifier(node.expression) &&
           namespaces.has(node.expression.text)
         )
@@ -201,9 +240,17 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
         return undefined;
       };
       const gapKey = (node: ts.Node | undefined): string | undefined => {
-        if (!node || !(ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)))
+        if (
+          !node ||
+          !(
+            ts.isPropertyAccessExpression(node) ||
+            ts.isElementAccessExpression(node)
+          )
+        )
           return undefined;
-        return primitiveName(node.expression) === "CANONICAL_GAP" ? memberKey(node) : undefined;
+        return primitiveName(node.expression) === "CANONICAL_GAP"
+          ? memberKey(node)
+          : undefined;
       };
       const lines = part.split("\n");
       const aliases = new Set<string>();
@@ -220,7 +267,11 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
         return found;
       };
       const collectAliases = (node: ts.Node) => {
-        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        if (
+          ts.isVariableDeclaration(node) &&
+          ts.isIdentifier(node.name) &&
+          node.initializer
+        ) {
           const initial = node.initializer;
           if (
             ts.isArrowFunction(initial) &&
@@ -229,7 +280,9 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
                 parameter.type &&
                 ts.isTypeReferenceNode(parameter.type) &&
                 (parameter.type.typeName.getText() === "CanonicalGap" ||
-                  imports.get(parameter.type.typeName.getText())?.endsWith(":CanonicalGap")),
+                  imports
+                    .get(parameter.type.typeName.getText())
+                    ?.endsWith(":CanonicalGap")),
             )
           )
             gapRelays.add(node.name.text);
@@ -237,7 +290,9 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
             (ts.isIdentifier(initial) ||
               ts.isPropertyAccessExpression(initial) ||
               (ts.isCallExpression(initial) &&
-                /toValue|[gG]etExperimentalSession/.test(initial.expression.getText()))) &&
+                /toValue|[gG]etExperimentalSession/.test(
+                  initial.expression.getText(),
+                ))) &&
             selectorsIn(initial)
           )
             aliases.add(node.name.text);
@@ -256,7 +311,9 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
       const markerFor = (node: ts.Node, gap: string) => {
         const line = tree.getLineAndCharacterOfPosition(node.getStart()).line;
         const marker = markers.find((match) => {
-          const markerLine = tree.getLineAndCharacterOfPosition(match.index).line;
+          const markerLine = tree.getLineAndCharacterOfPosition(
+            match.index,
+          ).line;
           const between = lines.slice(markerLine + 1, line);
           return (
             match[1] === gap &&
@@ -264,7 +321,10 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
             between.every((text) => /^\s*\/\/ canonical-gap:/.test(text))
           );
         });
-        if (!marker) failures.push(`${file}:${line + 1}: ${gap} source needs its ledger marker`);
+        if (!marker)
+          failures.push(
+            `${file}:${line + 1}: ${gap} source needs its ledger marker`,
+          );
         else {
           usedMarkers.add(marker.index);
           record(gap, file);
@@ -277,7 +337,8 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
             (!file.startsWith("packages/core/") &&
               [node.left, node.right].some(
                 (operand) =>
-                  operand.getText() === '"canonical"' || operand.getText() === "'canonical'",
+                  operand.getText() === '"canonical"' ||
+                  operand.getText() === "'canonical'",
               ))) &&
           [
             ts.SyntaxKind.EqualsEqualsEqualsToken,
@@ -310,7 +371,8 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
         const key = gapKey(node);
         if (key !== undefined) {
           const gap = gapNames.get(key);
-          if (gap === undefined) failures.push(`${file}: unknown canonical gap key ${key}`);
+          if (gap === undefined)
+            failures.push(`${file}: unknown canonical gap key ${key}`);
           else record(gap, file);
         }
         const conditionOf = () => {
@@ -326,10 +388,15 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
             ts.isPrefixUnaryExpression(condition)) &&
           selectorsIn(condition) &&
           !condition.getText().includes("usesCanonicalSession") &&
-          ![...safeSelectors].some((selector) => condition.getText().includes(selector))
+          ![...safeSelectors].some((selector) =>
+            condition.getText().includes(selector),
+          )
         )
           failures.push(`${file}: bare session gate must name a ledger id`);
-        if (ts.isCallExpression(node) && node.expression.getText() === "refuseCanonicalModelEdit") {
+        if (
+          ts.isCallExpression(node) &&
+          node.expression.getText() === "refuseCanonicalModelEdit"
+        ) {
           const gap = node.arguments.at(0);
           if (gapKey(gap) === undefined)
             failures.push(`${file}: model refusal must name a ledger id`);
@@ -343,40 +410,57 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
             failures.push(`${file}: session branch needs a ledger id`);
           const gap = node.arguments.at(1);
           if (gapKey(gap) === undefined)
-            failures.push(`${file}: session branch must name a constant ledger id`);
+            failures.push(
+              `${file}: session branch must name a constant ledger id`,
+            );
         }
         if (
           ts.isCallExpression(node) &&
           node.expression.getText() === "handleSessionRefusal" &&
           node.arguments.length !== 2
         )
-          failures.push(`${file}: session refusal handler must receive its gap id`);
-        if (ts.isCallExpression(node) && gapRelays.has(node.expression.getText())) {
+          failures.push(
+            `${file}: session refusal handler must receive its gap id`,
+          );
+        if (
+          ts.isCallExpression(node) &&
+          gapRelays.has(node.expression.getText())
+        ) {
           const message = node.arguments.at(0);
           const gap = node.arguments.at(1);
           if (
             message &&
-            (ts.isPropertyAccessExpression(message) || ts.isElementAccessExpression(message)) &&
+            (ts.isPropertyAccessExpression(message) ||
+              ts.isElementAccessExpression(message)) &&
             memberKey(message) === "message" &&
             memberKey(message.expression) === "error"
           ) {
             if (
               !gap ||
-              !(ts.isPropertyAccessExpression(gap) || ts.isElementAccessExpression(gap)) ||
+              !(
+                ts.isPropertyAccessExpression(gap) ||
+                ts.isElementAccessExpression(gap)
+              ) ||
               memberKey(gap) !== "gap" ||
               gap.expression.getText() !== message.expression.getText()
             )
-              failures.push(`${file}: canonical error relay must forward the original gap id`);
+              failures.push(
+                `${file}: canonical error relay must forward the original gap id`,
+              );
           }
         }
-        if (ts.isNewExpression(node) && isRefusal(primitiveName(node.expression) ?? "")) {
+        if (
+          ts.isNewExpression(node) &&
+          isRefusal(primitiveName(node.expression) ?? "")
+        ) {
           const payload = node.arguments?.at(0);
           if (
             !payload ||
             !ts.isObjectLiteralExpression(payload) ||
             !payload.properties.some(
               (property) =>
-                (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) &&
+                (ts.isPropertyAssignment(property) ||
+                  ts.isShorthandPropertyAssignment(property)) &&
                 property.name.getText() === "gap",
             )
           )
@@ -387,7 +471,10 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
         if (mutation === CANONICAL_GAP.documentOperations) {
           for (const gap of PUBLIC_OPERATION_SOURCE_GAPS) markerFor(node, gap);
         }
-        if (ts.isIfStatement(node) && node.expression.getText() === "intents === undefined")
+        if (
+          ts.isIfStatement(node) &&
+          node.expression.getText() === "intents === undefined"
+        )
           markerFor(node, CANONICAL_GAP.commands);
         ts.forEachChild(node, visit);
       };
@@ -399,7 +486,8 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
     if (counts.branches > 0) branches[file] = counts.branches;
   }
   for (const gap of gapIds)
-    if (!sites.has(gap)) failures.push(`Ledger entry ${gap} has no source site`);
+    if (!sites.has(gap))
+      failures.push(`Ledger entry ${gap} has no source site`);
   const remainingCommands = new Map<string, string[]>();
   for (const [gap, capability] of Object.entries(CANONICAL_CAPABILITIES)) {
     if (!("remainingCommands" in capability)) continue;
@@ -407,7 +495,9 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
       gap,
       censusUndescribedCanonicalCommands(
         sources.filter(
-          ({ file }) => file.startsWith("packages/core/src/prosemirror/") && file.endsWith(".ts"),
+          ({ file }) =>
+            file.startsWith("packages/core/src/prosemirror/") &&
+            file.endsWith(".ts"),
         ),
       ),
     );
@@ -420,13 +510,20 @@ export const checkCanonicalBaseline = (
   baseline: Record<string, number>,
 ) => {
   const failures: string[] = [];
-  for (const file of new Set([...Object.keys(current), ...Object.keys(baseline)])) {
+  for (const file of new Set([
+    ...Object.keys(current),
+    ...Object.keys(baseline),
+  ])) {
     const actual = current[file] ?? 0;
     const allowed = baseline[file] ?? 0;
     if (actual > allowed)
-      failures.push(`${file}: session branches increased from ${allowed} to ${actual}`);
+      failures.push(
+        `${file}: session branches increased from ${allowed} to ${actual}`,
+      );
     if (actual < allowed)
-      failures.push(`${file}: record the session branch decrease from ${allowed} to ${actual}`);
+      failures.push(
+        `${file}: record the session branch decrease from ${allowed} to ${actual}`,
+      );
   }
   return failures;
 };
@@ -436,21 +533,37 @@ type CanonicalCutoverDocsOptions = {
   remainingCommands: Map<string, string[]>;
 };
 
-export const canonicalCutoverDocs = ({ sites, remainingCommands }: CanonicalCutoverDocsOptions) => {
-  const headers = ["Id", "Owner", "Kind", "Adapters", "Remaining work", "Source files"];
-  const rows = Object.entries(CANONICAL_CAPABILITIES).map(([id, capability]) => [
-    id,
-    capability.owner,
-    capability.kind,
-    capability.adapters.join(", "),
-    capability.summary,
-    [...(sites.get(id) ?? [])]
-      .sort()
-      .map((file) => `\`${file}\``)
-      .join("<br>"),
-  ]);
+export const canonicalCutoverDocs = ({
+  sites,
+  remainingCommands,
+}: CanonicalCutoverDocsOptions) => {
+  const headers = [
+    "Id",
+    "Owner",
+    "Kind",
+    "Adapters",
+    "Remaining work",
+    "Source files",
+  ];
+  const rows = Object.entries(CANONICAL_CAPABILITIES).map(
+    ([id, capability]) => [
+      id,
+      capability.owner,
+      capability.kind,
+      capability.adapters.join(", "),
+      capability.summary,
+      [...(sites.get(id) ?? [])]
+        .sort()
+        .map((file) => `\`${file}\``)
+        .join("<br>"),
+    ],
+  );
   const widths = headers.map((header, column) =>
-    Math.max(3, header.length, ...rows.map((row) => row.at(column)?.length ?? 0)),
+    Math.max(
+      3,
+      header.length,
+      ...rows.map((row) => row.at(column)?.length ?? 0),
+    ),
   );
   const tableRow = (cells: string[]) =>
     `| ${cells.map((cell, column) => cell.padEnd(widths.at(column) ?? cell.length)).join(" | ")} |`;

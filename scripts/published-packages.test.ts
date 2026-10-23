@@ -1,9 +1,9 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
-import { setDefaultTimeout, expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 import { discoverPublishedPackages } from "./lib/published-packages";
 
 setDefaultTimeout(scanTestTimeout(30_000));
@@ -11,16 +11,25 @@ setDefaultTimeout(scanTestTimeout(30_000));
 test("new public workspace packages are discovered and built after their dependencies", () => {
   const root = mkdtempSync(path.join(tmpdir(), "folio-public-workspaces-"));
   try {
-    writeFileSync(path.join(root, "package.json"), JSON.stringify({ workspaces: ["modules/*"] }));
+    writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ workspaces: ["modules/*"] }),
+    );
     for (const [slug, manifest] of Object.entries({
       adapter: { name: "adapter", dependencies: { engine: "workspace:*" } },
       engine: { name: "engine" },
       playground: { name: "playground", private: true },
     })) {
       mkdirSync(path.join(root, "modules", slug), { recursive: true });
-      writeFileSync(path.join(root, "modules", slug, "package.json"), JSON.stringify(manifest));
+      writeFileSync(
+        path.join(root, "modules", slug, "package.json"),
+        JSON.stringify(manifest),
+      );
     }
-    expect(discoverPublishedPackages(root).map(({ name }) => name)).toEqual(["engine", "adapter"]);
+    expect(discoverPublishedPackages(root).map(({ name }) => name)).toEqual([
+      "engine",
+      "adapter",
+    ]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

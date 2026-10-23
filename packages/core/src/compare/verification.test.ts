@@ -9,10 +9,16 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlockTableLocation, FolioAIParagraphBlock } from "../ai-edits/types";
-import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
+import type {
+  FolioAIBlockTableLocation,
+  FolioAIParagraphBlock,
+} from "../ai-edits/types";
 import { getCompareSkipDisposition } from "./compare";
-import { classifyProjectionMismatch, revisedFinalParagraphMarks } from "./verification";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
+import {
+  classifyProjectionMismatch,
+  revisedFinalParagraphMarks,
+} from "./verification";
 
 const revision = { id: 1, author: "compare", date: "2024-03-01T00:00:00.000Z" };
 
@@ -30,24 +36,41 @@ const table = (cells: unknown[][]) => ({
 });
 
 test("a singular run-formatting ownership conflict is an unwritable comparison slice", () => {
-  expect(getCompareSkipDisposition("pendingRunPropertyChange")).toBe("unwritable");
+  expect(getCompareSkipDisposition("pendingRunPropertyChange")).toBe(
+    "unwritable",
+  );
 });
 
 describe("revisedFinalParagraphMarks", () => {
   test("a body whose last paragraph mark is deleted is named", () => {
     expect(
       revisedFinalParagraphMarks({
-        document: { content: [paragraph("first"), paragraph("last", { kind: "del" })] },
+        document: {
+          content: [paragraph("first"), paragraph("last", { kind: "del" })],
+        },
       }),
-    ).toEqual([{ container: "package.document.content", paragraphIndex: 1, kind: "del" }]);
+    ).toEqual([
+      { container: "package.document.content", paragraphIndex: 1, kind: "del" },
+    ]);
   });
 
   test("a relocation's source break counts, because it resolves the same way", () => {
     expect(
       revisedFinalParagraphMarks({
-        document: { content: [paragraph("first"), paragraph("last", { kind: "moveFrom" })] },
+        document: {
+          content: [
+            paragraph("first"),
+            paragraph("last", { kind: "moveFrom" }),
+          ],
+        },
       }),
-    ).toEqual([{ container: "package.document.content", paragraphIndex: 1, kind: "moveFrom" }]);
+    ).toEqual([
+      {
+        container: "package.document.content",
+        paragraphIndex: 1,
+        kind: "moveFrom",
+      },
+    ]);
   });
 
   test("a mark deleted on a paragraph that something follows is not a finding", () => {
@@ -67,25 +90,42 @@ describe("revisedFinalParagraphMarks", () => {
     // it survives accepting everything and rejecting everything alike.
     expect(
       revisedFinalParagraphMarks({
-        document: { content: [paragraph("first"), paragraph("added", { kind: "ins" })] },
+        document: {
+          content: [paragraph("first"), paragraph("added", { kind: "ins" })],
+        },
       }),
-    ).toEqual([{ container: "package.document.content", paragraphIndex: 1, kind: "ins" }]);
+    ).toEqual([
+      { container: "package.document.content", paragraphIndex: 1, kind: "ins" },
+    ]);
   });
 
   test("a relocation's destination break counts for the same reason", () => {
     expect(
       revisedFinalParagraphMarks({
-        document: { content: [paragraph("first"), paragraph("moved", { kind: "moveTo" })] },
+        document: {
+          content: [paragraph("first"), paragraph("moved", { kind: "moveTo" })],
+        },
       }),
-    ).toEqual([{ container: "package.document.content", paragraphIndex: 1, kind: "moveTo" }]);
+    ).toEqual([
+      {
+        container: "package.document.content",
+        paragraphIndex: 1,
+        kind: "moveTo",
+      },
+    ]);
   });
 
   test("a cell, a header and a note are containers too", () => {
     const found = revisedFinalParagraphMarks({
       document: {
-        content: [table([[paragraph("cell", { kind: "del" })]]), paragraph("last")],
+        content: [
+          table([[paragraph("cell", { kind: "del" })]]),
+          paragraph("last"),
+        ],
       },
-      headers: new Map([["rId2", { content: [paragraph("header", { kind: "del" })] }]]),
+      headers: new Map([
+        ["rId2", { content: [paragraph("header", { kind: "del" })] }],
+      ]),
       footnotes: [{ id: 2, content: [paragraph("note", { kind: "del" })] }],
     });
     expect(found.map(({ container }) => container).toSorted()).toEqual([
@@ -102,7 +142,11 @@ describe("revisedFinalParagraphMarks", () => {
     // comparison wrote.
     expect(
       revisedFinalParagraphMarks(
-        { document: { content: [paragraph("first"), paragraph("last", { kind: "del" })] } },
+        {
+          document: {
+            content: [paragraph("first"), paragraph("last", { kind: "del" })],
+          },
+        },
         { since: revision.id + 1 },
       ),
     ).toEqual([]);
@@ -116,7 +160,10 @@ describe("revisedFinalParagraphMarks", () => {
       sections: [{ content: [boundary] }, { content: [terminal] }],
     };
     expect(revisedFinalParagraphMarks({ document })).toEqual([]);
-    const changed = { ...document, content: [boundary, paragraph("last", { kind: "del" })] };
+    const changed = {
+      ...document,
+      content: [boundary, paragraph("last", { kind: "del" })],
+    };
     expect(revisedFinalParagraphMarks({ document: changed })).toEqual([
       { container: "package.document.content", paragraphIndex: 1, kind: "del" },
     ]);
@@ -125,7 +172,9 @@ describe("revisedFinalParagraphMarks", () => {
   test("a package with nothing on any final mark reports nothing", () => {
     expect(
       revisedFinalParagraphMarks({
-        document: { content: [table([[paragraph("cell")]]), paragraph("last")] },
+        document: {
+          content: [table([[paragraph("cell")]]), paragraph("last")],
+        },
       }),
     ).toEqual([]);
   });
@@ -204,12 +253,16 @@ describe("classifyProjectionMismatch", () => {
       invariant: "accept-reproduces-target",
       cause: "invisible-structure",
       story: { type: "main" },
-      detail: "every block matches once table coordinates count visible blocks (2 blocks)",
+      detail:
+        "every block matches once table coordinates count visible blocks (2 blocks)",
     });
   });
 
   test("distinguishes a nested table moved to another outer table", () => {
-    const location = (outerTableIndex: number, tableIndex: number): FolioAIBlockTableLocation => ({
+    const location = (
+      outerTableIndex: number,
+      tableIndex: number,
+    ): FolioAIBlockTableLocation => ({
       outerTableIndex,
       tableIndex,
       rowIndex: 0,
@@ -223,7 +276,10 @@ describe("classifyProjectionMismatch", () => {
       classifyProjectionMismatch({
         invariant: "accept-reproduces-target",
         story: { type: "main" },
-        actual: [projectedBlock(location(0, 0), "outer"), projectedBlock(location(0, 2), "nested")],
+        actual: [
+          projectedBlock(location(0, 0), "outer"),
+          projectedBlock(location(0, 2), "nested"),
+        ],
         expected: [
           projectedBlock(location(0, 0), "outer"),
           projectedBlock(location(1, 2), "nested"),
@@ -265,16 +321,30 @@ describe("classifyProjectionMismatch", () => {
     },
     {
       label: "preserved clear",
-      actual: [{ type: "pageBreak" as const, offset: 4, clear: "left" as const }],
-      expected: [{ type: "pageBreak" as const, offset: 4, clear: "right" as const }],
+      actual: [
+        { type: "pageBreak" as const, offset: 4, clear: "left" as const },
+      ],
+      expected: [
+        { type: "pageBreak" as const, offset: 4, clear: "right" as const },
+      ],
     },
   ])("reports an inline page-break $label mismatch", ({ actual, expected }) => {
     expect(
       classifyProjectionMismatch({
         invariant: "accept-reproduces-target",
         story: { type: "main" },
-        actual: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: actual }],
-        expected: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: expected }],
+        actual: [
+          {
+            ...projectedBlock(undefined, "same text"),
+            structuralBoundaries: actual,
+          },
+        ],
+        expected: [
+          {
+            ...projectedBlock(undefined, "same text"),
+            structuralBoundaries: expected,
+          },
+        ],
       }),
     ).toEqual({
       invariant: "accept-reproduces-target",
@@ -286,7 +356,11 @@ describe("classifyProjectionMismatch", () => {
   });
 
   test("treats absent, empty, and equal inline-structure projections as equivalent", () => {
-    const leftBoundary = { type: "pageBreak" as const, offset: 4, clear: "left" as const };
+    const leftBoundary = {
+      type: "pageBreak" as const,
+      offset: 4,
+      clear: "left" as const,
+    };
     const equivalentPairs = [
       [undefined, undefined],
       [undefined, []],
@@ -300,8 +374,18 @@ describe("classifyProjectionMismatch", () => {
         classifyProjectionMismatch({
           invariant: "accept-reproduces-target",
           story: { type: "main" },
-          actual: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: actual }],
-          expected: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: expected }],
+          actual: [
+            {
+              ...projectedBlock(undefined, "same text"),
+              structuralBoundaries: actual,
+            },
+          ],
+          expected: [
+            {
+              ...projectedBlock(undefined, "same text"),
+              structuralBoundaries: expected,
+            },
+          ],
         }),
       ).toBeNull();
     }
@@ -313,7 +397,11 @@ describe("classifyProjectionMismatch", () => {
         invariant: "accept-reproduces-target",
         story: { type: "main" },
         actual: [
-          { ...projectedBlock(undefined, "same text"), styleId: "Body", directAlignment: "left" },
+          {
+            ...projectedBlock(undefined, "same text"),
+            styleId: "Body",
+            directAlignment: "left",
+          },
         ],
         expected: [
           {
@@ -327,7 +415,8 @@ describe("classifyProjectionMismatch", () => {
       invariant: "accept-reproduces-target",
       cause: "alignment",
       story: { type: "main" },
-      detail: "the direct paragraph alignment did not move at block 0/1 (1 blocks against 1)",
+      detail:
+        "the direct paragraph alignment did not move at block 0/1 (1 blocks against 1)",
     });
   });
 
@@ -336,16 +425,25 @@ describe("classifyProjectionMismatch", () => {
       classifyProjectionMismatch({
         invariant: "accept-reproduces-target",
         story: { type: "main" },
-        actual: [{ ...projectedBlock(undefined, "same text"), directSpacing: { spaceAfter: 0 } }],
+        actual: [
+          {
+            ...projectedBlock(undefined, "same text"),
+            directSpacing: { spaceAfter: 0 },
+          },
+        ],
         expected: [
-          { ...projectedBlock(undefined, "same text"), directSpacing: { spaceAfter: 240 } },
+          {
+            ...projectedBlock(undefined, "same text"),
+            directSpacing: { spaceAfter: 240 },
+          },
         ],
       }),
     ).toEqual({
       invariant: "accept-reproduces-target",
       cause: "spacing",
       story: { type: "main" },
-      detail: "the direct paragraph spacing did not move at block 0/1 (1 blocks against 1)",
+      detail:
+        "the direct paragraph spacing did not move at block 0/1 (1 blocks against 1)",
     });
   });
 
@@ -356,14 +454,21 @@ describe("classifyProjectionMismatch", () => {
       classifyProjectionMismatch({
         invariant: "accept-reproduces-target",
         story: { type: "main" },
-        actual: [{ ...projectedBlock(undefined, "same text"), kind: "heading", headingLevel: 2 }],
+        actual: [
+          {
+            ...projectedBlock(undefined, "same text"),
+            kind: "heading",
+            headingLevel: 2,
+          },
+        ],
         expected: [projectedBlock(undefined, "same text")],
       }),
     ).toEqual({
       invariant: "accept-reproduces-target",
       cause: "style",
       story: { type: "main" },
-      detail: "the heading classification did not move at block 0/1 (1 blocks against 1)",
+      detail:
+        "the heading classification did not move at block 0/1 (1 blocks against 1)",
     });
   });
 });

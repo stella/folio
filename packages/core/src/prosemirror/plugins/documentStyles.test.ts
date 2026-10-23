@@ -34,10 +34,16 @@ describe("document style resolver state", () => {
 
     expect(refreshed.doc.eq(state.doc)).toBe(true);
     expect(
-      refreshed.plugins.filter((plugin) => plugin === documentStylesKey.get(refreshed)),
+      refreshed.plugins.filter(
+        (plugin) => plugin === documentStylesKey.get(refreshed),
+      ),
     ).toHaveLength(1);
-    expect(getDocumentStyleResolver(state)?.getStyle("ImportedCharacter")).toBeUndefined();
-    expect(getDocumentStyleResolver(refreshed)?.getStyle("ImportedCharacter")?.rPr).toEqual({
+    expect(
+      getDocumentStyleResolver(state)?.getStyle("ImportedCharacter"),
+    ).toBeUndefined();
+    expect(
+      getDocumentStyleResolver(refreshed)?.getStyle("ImportedCharacter")?.rPr,
+    ).toEqual({
       underline: { style: "double" },
     });
   });

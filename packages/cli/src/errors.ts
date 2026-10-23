@@ -24,18 +24,24 @@ const EXIT_CODE_DESCRIPTIONS = {
   unexpected: "unexpected internal error",
   validation: "usage, input, or refused-operation error",
   notFound: "file, change, or comment not found",
-  permissionDenied: "path outside the allowed roots, or unsafe to write through",
-  conflict: "conflict with current state (stale version, lock held, destination exists)",
+  permissionDenied:
+    "path outside the allowed roots, or unsafe to write through",
+  conflict:
+    "conflict with current state (stale version, lock held, destination exists)",
 } as const satisfies Record<keyof typeof EXIT_CODES, string>;
 
 /** Every exit code with its meaning, ordered numerically, for `--help`. */
-export const exitCodeEntries = (): readonly { code: number; meaning: string }[] => {
+export const exitCodeEntries = (): readonly {
+  code: number;
+  meaning: string;
+}[] => {
   const descriptions: Record<string, string> = EXIT_CODE_DESCRIPTIONS;
   return Object.entries(EXIT_CODES)
     .toSorted(([, left], [, right]) => left - right)
     .map(([key, code]) => ({
       code,
-      meaning: descriptions[key] ?? panic(`exit code ${key} has no description`),
+      meaning:
+        descriptions[key] ?? panic(`exit code ${key} has no description`),
     }));
 };
 
@@ -63,7 +69,8 @@ export const FOLIO_CLI_ERROR_CODES = {
   internal: "internal_error",
 } as const;
 
-export type FolioCliErrorCode = (typeof FOLIO_CLI_ERROR_CODES)[keyof typeof FOLIO_CLI_ERROR_CODES];
+export type FolioCliErrorCode =
+  (typeof FOLIO_CLI_ERROR_CODES)[keyof typeof FOLIO_CLI_ERROR_CODES];
 
 const ERROR_CODE_EXIT = {
   usage_error: EXIT_CODES.validation,
@@ -88,7 +95,8 @@ const ERROR_CODE_EXIT = {
   internal_error: EXIT_CODES.unexpected,
 } as const satisfies Record<FolioCliErrorCode, ExitCode>;
 
-export const exitCodeForError = (code: FolioCliErrorCode): ExitCode => ERROR_CODE_EXIT[code];
+export const exitCodeForError = (code: FolioCliErrorCode): ExitCode =>
+  ERROR_CODE_EXIT[code];
 
 /** Public error context. Lease-bearing fields cannot accept internal records. */
 export type PublicErrorDetails = {
@@ -119,7 +127,12 @@ type CliErrorOptions = {
 };
 
 /** Build a {@link FolioCliError} without spelling absent optional fields. */
-export const cliError = ({ code, message, hint, details }: CliErrorOptions): FolioCliError =>
+export const cliError = ({
+  code,
+  message,
+  hint,
+  details,
+}: CliErrorOptions): FolioCliError =>
   new FolioCliError({
     code,
     message,

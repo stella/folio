@@ -87,13 +87,21 @@ describe("EditorLease", () => {
     fake.requestFlush();
 
     expect(lease.token).toBe("token-1");
-    expect(fake.log).toEqual(["acquire token-1", "keepAlive token-1", "watch token-1"]);
+    expect(fake.log).toEqual([
+      "acquire token-1",
+      "keepAlive token-1",
+      "watch token-1",
+    ]);
     expect(seen).toEqual(["flush"]);
   });
 
   test("a refusal leaves it free, and the next edit tries again", async () => {
     const fake = fakeBackend();
-    const lease = new EditorLease("/work/Report.docx", events().handlers, fake.backend);
+    const lease = new EditorLease(
+      "/work/Report.docx",
+      events().handlers,
+      fake.backend,
+    );
 
     fake.refuseWith("A write is waiting to take the lease.");
     await lease.ensure();
@@ -108,19 +116,31 @@ describe("EditorLease", () => {
 
   test("release stops renewing and watching, then lets the lock go", async () => {
     const fake = fakeBackend();
-    const lease = new EditorLease("/work/Report.docx", events().handlers, fake.backend);
+    const lease = new EditorLease(
+      "/work/Report.docx",
+      events().handlers,
+      fake.backend,
+    );
     await lease.ensure();
 
     await lease.release();
     await lease.release();
 
     expect(lease.token).toBeUndefined();
-    expect(fake.log.slice(3)).toEqual(["stop token-1", "close token-1", "release token-1"]);
+    expect(fake.log.slice(3)).toEqual([
+      "stop token-1",
+      "close token-1",
+      "release token-1",
+    ]);
   });
 
   test("a release during acquisition lets the new lease go", async () => {
     const fake = fakeBackend();
-    const lease = new EditorLease("/work/Report.docx", events().handlers, fake.backend);
+    const lease = new EditorLease(
+      "/work/Report.docx",
+      events().handlers,
+      fake.backend,
+    );
 
     const acquiring = lease.ensure();
     await lease.release();
@@ -145,7 +165,11 @@ describe("EditorLease", () => {
 
   test("once disposed it takes no lease", async () => {
     const fake = fakeBackend();
-    const lease = new EditorLease("/work/Report.docx", events().handlers, fake.backend);
+    const lease = new EditorLease(
+      "/work/Report.docx",
+      events().handlers,
+      fake.backend,
+    );
 
     await lease.dispose();
     await lease.ensure();

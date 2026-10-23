@@ -13,13 +13,13 @@ import { isTableCellMergeRevisionContinuation } from "../../docx/tableParser";
 import type { TableCell, TableCellFormatting } from "../../types/document";
 import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
-import {
-  tableMergeFoldDecisions,
-  resolvedVisibleTableCellMergeAttrs,
-  resolvedTableMergeOriginAttrs,
-} from "./tableMergeFoldDecisions";
-import { removeRowsWithoutCellsInRange } from "../tableGridMutation";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
+import { removeRowsWithoutCellsInRange } from "../tableGridMutation";
+import {
+  resolvedTableMergeOriginAttrs,
+  resolvedVisibleTableCellMergeAttrs,
+  tableMergeFoldDecisions,
+} from "./tableMergeFoldDecisions";
 
 export const tableCellContinuationPayload = (
   node: PMNode,
@@ -39,7 +39,10 @@ export const hasMatchingCollapsedTableCellMerge = (
     payload !== null &&
     payload.cells.some((cell) => {
       const change = getTableCellMergeChange(cell);
-      return change !== null && (revisionSet === null || revisionSet.has(change.info.id));
+      return (
+        change !== null &&
+        (revisionSet === null || revisionSet.has(change.info.id))
+      );
     })
   );
 };
@@ -53,7 +56,9 @@ type TableCellRevisionAttr = {
   verticalMergeOriginal?: "continue" | "rest";
 };
 
-const isTableCellMergeRevisionAttr = (value: unknown): value is TableCellRevisionAttr => {
+const isTableCellMergeRevisionAttr = (
+  value: unknown,
+): value is TableCellRevisionAttr => {
   if (
     typeof value !== "object" ||
     value === null ||
@@ -78,7 +83,10 @@ type TableCellContext = {
   relativeCellPos: number;
 };
 
-const tableCellContext = (doc: PMNode, cellPos: number): TableCellContext | null => {
+const tableCellContext = (
+  doc: PMNode,
+  cellPos: number,
+): TableCellContext | null => {
   const resolved = doc.resolve(cellPos);
   for (let depth = resolved.depth; depth > 0; depth -= 1) {
     const node = resolved.node(depth);
@@ -123,7 +131,11 @@ export const resolveVisibleTableCellMerge = ({
     rectangle.top === 0
   )
     return false;
-  const decisions = tableMergeFoldDecisions({ table: context.table, mode, revisionSet });
+  const decisions = tableMergeFoldDecisions({
+    table: context.table,
+    mode,
+    revisionSet,
+  });
   if (decisions.invalid.has(context.relativeCellPos)) return false;
   const folds = decisions.folds.get(context.relativeCellPos);
   if (folds === undefined) return panic("Merge resolution lost its cell");
@@ -132,7 +144,11 @@ export const resolveVisibleTableCellMerge = ({
     const originPos = context.tableStart + origin;
     const originCell = tr.doc.nodeAt(originPos);
     if (!originCell) return panic("Merge resolution lost its origin");
-    tr.setNodeMarkup(originPos, undefined, resolvedTableMergeOriginAttrs(originCell));
+    tr.setNodeMarkup(
+      originPos,
+      undefined,
+      resolvedTableMergeOriginAttrs(originCell),
+    );
   }
   if (folds) return mergeTableCellWithCellAbove(tr, cellPos);
   tr.setNodeMarkup(
@@ -147,7 +163,10 @@ export const resolveVisibleTableCellMerge = ({
   return true;
 };
 
-const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean => {
+const mergeTableCellWithCellAbove = (
+  tr: Transaction,
+  cellPos: number,
+): boolean => {
   const context = tableCellContext(tr.doc, cellPos);
   const cell = tr.doc.nodeAt(cellPos);
   if (!context || !cell) {
@@ -158,8 +177,12 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
   if (rectangle.top === 0) {
     return false;
   }
-  const aboveRelativePos = map.map[(rectangle.top - 1) * map.width + rectangle.left];
-  if (aboveRelativePos === undefined || aboveRelativePos === context.relativeCellPos) {
+  const aboveRelativePos =
+    map.map[(rectangle.top - 1) * map.width + rectangle.left];
+  if (
+    aboveRelativePos === undefined ||
+    aboveRelativePos === context.relativeCellPos
+  ) {
     return false;
   }
   const aboveRectangle = map.findCell(aboveRelativePos);
@@ -186,7 +209,11 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
 
   // Deeper cell revisions have already resolved. Normalize their tables while
   // the cell still owns live nodes; the continuation payload has no PM positions.
-  removeRowsWithoutCellsInRange({ tr, from: cellPos + 1, to: cellPos + cell.nodeSize - 1 });
+  removeRowsWithoutCellsInRange({
+    tr,
+    from: cellPos + 1,
+    to: cellPos + cell.nodeSize - 1,
+  });
   const capturedCell = tr.doc.nodeAt(cellPos);
   if (!capturedCell) panic("Nested table cleanup removed its owning cell");
   const continuationCells = tableCellContinuationCells(aboveCell, aboveRowspan);
@@ -206,7 +233,10 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
   return true;
 };
 
-export const tableCellContinuationCells = (cell: PMNode, rowspan: number): TableCell[] => {
+export const tableCellContinuationCells = (
+  cell: PMNode,
+  rowspan: number,
+): TableCell[] => {
   const payload = tableCellContinuationPayload(cell);
   const cells = payload ? [...payload.cells] : [];
   while (cells.length < rowspan - 1) {
@@ -274,7 +304,8 @@ export const resolveCollapsedTableCellMerge = (
   const splitIndices = matchingIndices.filter((index) => {
     const change = getTableCellMergeChange(stored[index]);
     return (
-      change?.verticalMerge === "continue" && (change.verticalMergeOriginal ?? "rest") === "rest"
+      change?.verticalMerge === "continue" &&
+      (change.verticalMergeOriginal ?? "rest") === "rest"
     );
   });
   if (splitIndices.length === 0) {
@@ -322,7 +353,8 @@ export const resolveCollapsedTableCellMerge = (
   const mapFrom = tr.mapping.maps.length;
   for (const restoration of restorations) {
     const row = rectangle.top + restoration.index + 1;
-    const insertionPos = context.tableStart + map.positionAt(row, rectangle.left, context.table);
+    const insertionPos =
+      context.tableStart + map.positionAt(row, rectangle.left, context.table);
     tr.insert(tr.mapping.slice(mapFrom).map(insertionPos, 1), restoration.cell);
   }
 
@@ -330,12 +362,16 @@ export const resolveCollapsedTableCellMerge = (
   tr.setNodeMarkup(cellPos, undefined, {
     ...cell.attrs,
     rowspan: firstSplitIndex + 1,
-    _docxVMergeContinuationCells: remainingCells.length > 0 ? remainingCells : null,
+    _docxVMergeContinuationCells:
+      remainingCells.length > 0 ? remainingCells : null,
   });
   return true;
 };
 
-export const createRestoredTableCell = (origin: PMNode, source: TableCell): PMNode | null => {
+export const createRestoredTableCell = (
+  origin: PMNode,
+  source: TableCell,
+): PMNode | null => {
   const formatting = source.formatting ? { ...source.formatting } : undefined;
   if (formatting) {
     delete formatting.vMerge;
@@ -343,12 +379,16 @@ export const createRestoredTableCell = (origin: PMNode, source: TableCell): PMNo
   const restoredSource: TableCell = {
     type: "tableCell",
     ...(formatting ? { formatting } : {}),
-    ...(source.propertyChanges ? { propertyChanges: source.propertyChanges } : {}),
+    ...(source.propertyChanges
+      ? { propertyChanges: source.propertyChanges }
+      : {}),
     content: source.content,
   };
   const restored = standaloneTableCellToProseMirror(
     restoredSource,
     origin.type.name === "tableHeader" ? "tableHeader" : "tableCell",
   );
-  return Result.try(() => origin.type.schema.nodeFromJSON(restored.toJSON())).unwrapOr(null);
+  return Result.try(() =>
+    origin.type.schema.nodeFromJSON(restored.toJSON()),
+  ).unwrapOr(null);
 };

@@ -1,3 +1,6 @@
+import { setDocumentBodyComments } from "@stll/docx-core/model";
+import { survivingComments } from "@stll/docx-core/ops";
+
 import type {
   BlockContent,
   Comment,
@@ -13,12 +16,12 @@ import type {
   TableRow,
 } from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
-import { setDocumentBodyComments } from "@stll/docx-core/model";
-import { survivingComments } from "@stll/docx-core/ops";
 
 type CommentMarker = Extract<
   ParagraphContent,
-  { type: "commentRangeStart" } | { type: "commentRangeEnd" } | { type: "commentReference" }
+  | { type: "commentRangeStart" }
+  | { type: "commentRangeEnd" }
+  | { type: "commentReference" }
 >;
 type TableCellBlock = TableCell["content"][number];
 
@@ -88,11 +91,26 @@ export const withoutOrphanCommentRanges = (doc: Document): Document => {
     (doc.package.document.comments ?? []).map((comment) => comment.id),
   );
 
-  const document = withoutOrphanDocumentBodyMarkers(doc.package.document, validCommentIds);
-  const headers = withoutOrphanHeaderFooterMapMarkers(doc.package.headers, validCommentIds);
-  const footers = withoutOrphanHeaderFooterMapMarkers(doc.package.footers, validCommentIds);
-  const footnotes = withoutOrphanNoteMarkers(doc.package.footnotes, validCommentIds);
-  const endnotes = withoutOrphanNoteMarkers(doc.package.endnotes, validCommentIds);
+  const document = withoutOrphanDocumentBodyMarkers(
+    doc.package.document,
+    validCommentIds,
+  );
+  const headers = withoutOrphanHeaderFooterMapMarkers(
+    doc.package.headers,
+    validCommentIds,
+  );
+  const footers = withoutOrphanHeaderFooterMapMarkers(
+    doc.package.footers,
+    validCommentIds,
+  );
+  const footnotes = withoutOrphanNoteMarkers(
+    doc.package.footnotes,
+    validCommentIds,
+  );
+  const endnotes = withoutOrphanNoteMarkers(
+    doc.package.endnotes,
+    validCommentIds,
+  );
 
   if (!document && !headers && !footers && !footnotes && !endnotes) {
     return doc;
@@ -114,7 +132,8 @@ export const withoutOrphanCommentRanges = (doc: Document): Document => {
 /** A save projection without exhausted definitions or any of their carriers. */
 export const withoutExhaustedComments = (doc: Document): Document => {
   const comments = survivingComments(doc);
-  if (comments.length === (doc.package.document.comments ?? []).length) return doc;
+  if (comments.length === (doc.package.document.comments ?? []).length)
+    return doc;
   const documentBody = { ...doc.package.document };
   setDocumentBodyComments(documentBody, comments);
   return withoutOrphanCommentRanges({
@@ -128,7 +147,10 @@ const withoutOrphanDocumentBodyMarkers = (
   validCommentIds: ReadonlySet<number>,
 ): DocumentBody | null => {
   const content = withoutOrphanBlockMarkers(document.content, validCommentIds);
-  const comments = withoutOrphanCommentBodyMarkers(document.comments, validCommentIds);
+  const comments = withoutOrphanCommentBodyMarkers(
+    document.comments,
+    validCommentIds,
+  );
   if (!content && !comments) {
     return null;
   }
@@ -153,7 +175,10 @@ const withoutOrphanCommentBodyMarkers = (
   let changed = false;
   const next: Comment[] = [];
   for (const comment of comments) {
-    const content = withoutOrphanParagraphListMarkers(comment.content, validCommentIds);
+    const content = withoutOrphanParagraphListMarkers(
+      comment.content,
+      validCommentIds,
+    );
     if (!content) {
       next.push(comment);
       continue;
@@ -172,7 +197,10 @@ const withoutOrphanParagraphListMarkers = (
   let changed = false;
   const next: Paragraph[] = [];
   for (const paragraph of paragraphs) {
-    const nextParagraph = withoutOrphanParagraphMarkers(paragraph, validCommentIds);
+    const nextParagraph = withoutOrphanParagraphMarkers(
+      paragraph,
+      validCommentIds,
+    );
     if (nextParagraph !== paragraph) {
       changed = true;
     }
@@ -193,7 +221,10 @@ const withoutOrphanHeaderFooterMapMarkers = (
   let changed = false;
   const next = new Map<string, HeaderFooter>();
   for (const [rId, headerFooter] of map) {
-    const content = withoutOrphanBlockMarkers(headerFooter.content, validCommentIds);
+    const content = withoutOrphanBlockMarkers(
+      headerFooter.content,
+      validCommentIds,
+    );
     if (!content) {
       next.set(rId, headerFooter);
       continue;
@@ -268,7 +299,10 @@ const withoutOrphanBlockMarker = (
   return { ...block, content };
 };
 
-const withoutOrphanTableMarkers = (table: Table, validCommentIds: ReadonlySet<number>): Table => {
+const withoutOrphanTableMarkers = (
+  table: Table,
+  validCommentIds: ReadonlySet<number>,
+): Table => {
   let changed = false;
   const rows: TableRow[] = [];
   for (const row of table.rows) {
@@ -309,7 +343,10 @@ const withoutOrphanTableCellMarkers = (
   cell: TableCell,
   validCommentIds: ReadonlySet<number>,
 ): TableCell => {
-  const content = withoutOrphanTableCellBlockMarkers(cell.content, validCommentIds);
+  const content = withoutOrphanTableCellBlockMarkers(
+    cell.content,
+    validCommentIds,
+  );
   if (!content) {
     return cell;
   }
@@ -346,7 +383,10 @@ const withoutOrphanTableCellBlockMarker = (
   }
 
   if (block.type === "blockSdt" || block.type === "blockCustomXml") {
-    const content = withoutOrphanTableCellBlockMarkers(block.content, validCommentIds);
+    const content = withoutOrphanTableCellBlockMarkers(
+      block.content,
+      validCommentIds,
+    );
     return content ? { ...block, content } : block;
   }
 

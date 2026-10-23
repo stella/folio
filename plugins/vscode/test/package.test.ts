@@ -3,7 +3,11 @@ import path from "node:path";
 
 // Run after packaging: inspect the shipped archive rather than build inputs.
 test("the packed universal VSIX carries the portable backend and no native binaries", () => {
-  const result = Bun.spawnSync(["unzip", "-Z1", path.resolve(import.meta.dir, "../folio.vsix")]);
+  const result = Bun.spawnSync([
+    "unzip",
+    "-Z1",
+    path.resolve(import.meta.dir, "../folio.vsix"),
+  ]);
   expect(result.exitCode).toBe(0);
   const files = result.stdout.toString().trim().split("\n");
   expect(files).toContain("extension/dist/cli/fuzzy-search.wasm32-wasi.wasm");

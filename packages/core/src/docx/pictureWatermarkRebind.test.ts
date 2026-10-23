@@ -14,7 +14,10 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { getDocumentWatermark, setDocumentWatermark } from "../watermark";
-import { canReplayHeaderFooterVerbatim, getHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
+import {
+  canReplayHeaderFooterVerbatim,
+  getHeaderFooterVerbatimXml,
+} from "./headerFooterVerbatim";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createEmptyDocx, repackDocx, validateDocx } from "./rezip";
@@ -116,7 +119,9 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     expect(canReplayHeaderFooterVerbatim(header)).toBe(true);
     const out = await repackDocx(doc, { updateModifiedDate: false });
     const outZip = await JSZip.loadAsync(out);
-    expect(await outZip.file("word/header1.xml")?.async("text")).toBe(sourceXml);
+    expect(await outZip.file("word/header1.xml")?.async("text")).toBe(
+      sourceXml,
+    );
 
     const reopened = await parseDocx(out, { preloadFonts: false });
     const reopenedHeader = reopened.package.headers?.get("rId10");
@@ -163,12 +168,15 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     // No duplicate media: both headers share the single image part.
     expect(await countMediaImages(zip)).toBe(1);
 
-    const header2Rels = await zip.file("word/_rels/header2.xml.rels")!.async("text");
+    const header2Rels = await zip
+      .file("word/_rels/header2.xml.rels")!
+      .async("text");
     expect(header2Rels).toContain('Target="media/image1.png"');
 
     // header2's imagedata rId must resolve in header2's own rels.
     const header2Xml = await zip.file("word/header2.xml")!.async("text");
-    const usedRId = /<v:imagedata[^>]*\br:id="(?<rid>[^"]+)"/u.exec(header2Xml)?.groups?.["rid"];
+    const usedRId = /<v:imagedata[^>]*\br:id="(?<rid>[^"]+)"/u.exec(header2Xml)
+      ?.groups?.["rid"];
     expect(usedRId).toBeDefined();
     expect(header2Rels).toContain(`Id="${usedRId}"`);
   });
@@ -191,7 +199,9 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
 
     const zip = await JSZip.loadAsync(out);
     expect(await countMediaImages(zip)).toBe(1);
-    const header2Rels = await zip.file("word/_rels/header2.xml.rels")!.async("text");
+    const header2Rels = await zip
+      .file("word/_rels/header2.xml.rels")!
+      .async("text");
     expect(header2Rels).toContain('Target="media/image1.png"');
   });
 
@@ -302,16 +312,22 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     const original = await zip.generateAsync({ type: "arraybuffer" });
 
     const doc = await parseDocx(original, { preloadFonts: false });
-    const out = await repackDocx(setDocumentWatermark(doc, getDocumentWatermark(doc)), {
-      updateModifiedDate: false,
-    });
+    const out = await repackDocx(
+      setDocumentWatermark(doc, getDocumentWatermark(doc)),
+      {
+        updateModifiedDate: false,
+      },
+    );
     expect((await validateDocx(out)).valid).toBe(true);
 
     const outZip = await JSZip.loadAsync(out);
     const header2Xml = await outZip.file("word/header2.xml")!.async("text");
-    const usedRId = /<v:imagedata[^>]*\br:id="(?<rid>[^"]+)"/u.exec(header2Xml)?.groups?.["rid"];
+    const usedRId = /<v:imagedata[^>]*\br:id="(?<rid>[^"]+)"/u.exec(header2Xml)
+      ?.groups?.["rid"];
     expect(usedRId).toBeDefined();
-    const header2Rels = await outZip.file("word/_rels/header2.xml.rels")!.async("text");
+    const header2Rels = await outZip
+      .file("word/_rels/header2.xml.rels")!
+      .async("text");
     // The watermark in header2 must resolve to the watermark image, not the logo.
     expect(header2Rels).toMatch(
       new RegExp(`Id="${usedRId}"[^>]*Target="media/watermark.png"`, "u"),
@@ -402,7 +418,9 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     const outZip = await JSZip.loadAsync(out);
     const paths = Object.keys(outZip.files);
     // The image relationship landed in the subdirectory rels part...
-    const subdirRels = await outZip.file("word/headers/_rels/header1.xml.rels")?.async("text");
+    const subdirRels = await outZip
+      .file("word/headers/_rels/header1.xml.rels")
+      ?.async("text");
     expect(subdirRels).toBeDefined();
     expect(subdirRels).toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
     // Target is relative to word/headers/, so the media (word/media/...) is up one.
@@ -486,13 +504,18 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     const original = await zip.generateAsync({ type: "arraybuffer" });
 
     const doc = await parseDocx(original, { preloadFonts: false });
-    const out = await repackDocx(setDocumentWatermark(doc, getDocumentWatermark(doc)), {
-      updateModifiedDate: false,
-    });
+    const out = await repackDocx(
+      setDocumentWatermark(doc, getDocumentWatermark(doc)),
+      {
+        updateModifiedDate: false,
+      },
+    );
     expect((await validateDocx(out)).valid).toBe(true);
 
     const outZip = await JSZip.loadAsync(out);
-    const header2Rels = await outZip.file("word/headers/_rels/header2.xml.rels")!.async("text");
+    const header2Rels = await outZip
+      .file("word/headers/_rels/header2.xml.rels")!
+      .async("text");
     // Relative to word/headers/, the shared media is one level up.
     expect(header2Rels).toContain('Target="../media/watermark.png"');
     expect(header2Rels).not.toContain('Target="media/watermark.png"');
@@ -570,7 +593,9 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     expect((await validateDocx(out)).valid).toBe(true);
 
     const outZip = await JSZip.loadAsync(out);
-    const rels = await outZip.file("word/_rels/header1.xml.rels")!.async("text");
+    const rels = await outZip
+      .file("word/_rels/header1.xml.rels")!
+      .async("text");
     // The external relationship is preserved, not rewritten into a bogus
     // internal "../https:/..." target.
     expect(rels).toContain('Target="https://example.com/wm.png"');
@@ -645,16 +670,22 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     const original = await zip.generateAsync({ type: "arraybuffer" });
 
     const doc = await parseDocx(original, { preloadFonts: false });
-    const out = await repackDocx(setDocumentWatermark(doc, getDocumentWatermark(doc)), {
-      updateModifiedDate: false,
-    });
+    const out = await repackDocx(
+      setDocumentWatermark(doc, getDocumentWatermark(doc)),
+      {
+        updateModifiedDate: false,
+      },
+    );
     expect((await validateDocx(out)).valid).toBe(true);
 
     const outZip = await JSZip.loadAsync(out);
     const header2Xml = await outZip.file("word/header2.xml")!.async("text");
-    const usedRId = /<v:imagedata[^>]*\br:id="(?<rid>[^"]+)"/u.exec(header2Xml)?.groups?.["rid"];
+    const usedRId = /<v:imagedata[^>]*\br:id="(?<rid>[^"]+)"/u.exec(header2Xml)
+      ?.groups?.["rid"];
     expect(usedRId).toBeDefined();
-    const header2Rels = await outZip.file("word/_rels/header2.xml.rels")!.async("text");
+    const header2Rels = await outZip
+      .file("word/_rels/header2.xml.rels")!
+      .async("text");
     // The sibling header gets an external relationship to the same URL.
     expect(header2Rels).toMatch(
       new RegExp(

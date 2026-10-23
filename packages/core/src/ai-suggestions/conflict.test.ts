@@ -17,7 +17,9 @@ function makeDoc(paragraphs: string[]) {
   return schema.node(
     "doc",
     null,
-    paragraphs.map((p) => schema.node("paragraph", null, p.length === 0 ? [] : [schema.text(p)])),
+    paragraphs.map((p) =>
+      schema.node("paragraph", null, p.length === 0 ? [] : [schema.text(p)]),
+    ),
   );
 }
 
@@ -122,7 +124,10 @@ describe("resolveSuggestionAnchor", () => {
       contextAfter: "",
     });
 
-    expect(resolveSuggestionAnchor(doc, suggestion)).toEqual({ from: 6, to: 11 });
+    expect(resolveSuggestionAnchor(doc, suggestion)).toEqual({
+      from: 6,
+      to: 11,
+    });
   });
 
   test("refuses suggestion text that crosses a page-break carrier", () => {

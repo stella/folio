@@ -8,7 +8,10 @@ export const CANONICAL_SAVE_FALLBACK_DIAGNOSTIC = {
 
 type SaveDiagnosticDisposition =
   | { status: "failure" }
-  | { status: "permitted"; diagnostic: typeof CANONICAL_SAVE_FALLBACK_DIAGNOSTIC };
+  | {
+      status: "permitted";
+      diagnostic: typeof CANONICAL_SAVE_FALLBACK_DIAGNOSTIC;
+    };
 
 /** Every diagnostic kind requires a decision shared with the adapter contract. */
 export const CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS = {

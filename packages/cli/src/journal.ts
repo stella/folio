@@ -1,4 +1,4 @@
-import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+import { Result } from "better-result";
 /**
  * The transaction journal: `.folio/journal.jsonl` beside the document (or
  * `--journal`), one JSON line per committed transaction plus one per crash
@@ -10,11 +10,11 @@ import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
  * discarded. The journal, like every sidecar file, is never read or written
  * through a symlink or a hard link.
  */
-
-import { Result } from "better-result";
 import { constants } from "node:fs";
 import { readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
+
+import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 
 import { errnoCode, fileVersionOf, sameFile } from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
@@ -70,7 +70,10 @@ export type JournalRecovery = {
   txId: string;
   path: string;
   time: string;
-} & ({ action: "rolledForward" } | { action: "discarded"; reason: RecoveryDiscardReason });
+} & (
+  | { action: "rolledForward" }
+  | { action: "discarded"; reason: RecoveryDiscardReason }
+);
 
 export type JournalEntry = JournalCommit | JournalRecovery;
 
@@ -84,7 +87,10 @@ export type CommittedTransaction = {
   receipt: Readonly<Record<string, unknown>>;
 };
 
-export const journalPathFor = (documentPath: string, override: string | undefined): string =>
+export const journalPathFor = (
+  documentPath: string,
+  override: string | undefined,
+): string =>
   override === undefined
     ? path.join(path.dirname(documentPath), SIDECAR_DIRECTORY, "journal.jsonl")
     : path.resolve(override);
@@ -117,7 +123,9 @@ export const appendJournal = async (
     }
   });
   if (written.isErr()) {
-    return Result.err(journalError(`Cannot append to ${journalPath}`, written.error.cause));
+    return Result.err(
+      journalError(`Cannot append to ${journalPath}`, written.error.cause),
+    );
   }
   return await syncDirectory(path.dirname(journalPath));
 };
@@ -142,9 +150,17 @@ const parseCommit = (line: string): CommittedTransaction | null => {
     typeof committedPath === "string" &&
     typeof requestHash === "string" &&
     typeof toVersion === "string" &&
-    (typeof destinationVersionBefore === "string" || destinationVersionBefore === null) &&
+    (typeof destinationVersionBefore === "string" ||
+      destinationVersionBefore === null) &&
     isRecord(receipt)
-    ? { txId, path: committedPath, requestHash, toVersion, destinationVersionBefore, receipt }
+    ? {
+        txId,
+        path: committedPath,
+        requestHash,
+        toVersion,
+        destinationVersionBefore,
+        receipt,
+      }
     : null;
 };
 
@@ -253,7 +269,10 @@ export const stagePrefixFor = (documentPath: string): string =>
   `.${path.basename(documentPath)}.folio-stage-`;
 
 export const stagePathFor = (documentPath: string, txId: string): string =>
-  path.join(path.dirname(documentPath), `${stagePrefixFor(documentPath)}${txId}`);
+  path.join(
+    path.dirname(documentPath),
+    `${stagePrefixFor(documentPath)}${txId}`,
+  );
 
 export type RecoveryAction =
   | { txId: string; action: "rolledForward" }
@@ -265,7 +284,8 @@ type RecoverStagesOptions = {
   now: string;
 };
 
-type StageVerdict = { type: "rollForward" } | { type: "discard"; reason: RecoveryDiscardReason };
+type StageVerdict =
+  { type: "rollForward" } | { type: "discard"; reason: RecoveryDiscardReason };
 
 /** The destination's current version, read without following a symlink; `null` when missing. */
 const destinationVersion = async (
@@ -275,7 +295,9 @@ const destinationVersion = async (
   if (entry.isErr()) return Result.err(entry.error);
   if (entry.value.type === "missing") return Result.ok(null);
   const bytes = await readSidecarFile(documentPath);
-  return bytes.isErr() ? Result.err(bytes.error) : Result.ok(fileVersionOf(bytes.value));
+  return bytes.isErr()
+    ? Result.err(bytes.error)
+    : Result.ok(fileVersionOf(bytes.value));
 };
 
 type JudgeStageOptions = {
@@ -295,16 +317,20 @@ const judgeStage = async ({
   stagePath,
   commit,
 }: JudgeStageOptions): Promise<Result<StageVerdict, FolioCliError>> => {
-  if (commit.path !== documentPath) return Result.ok({ type: "discard", reason: "otherDocument" });
+  if (commit.path !== documentPath)
+    return Result.ok({ type: "discard", reason: "otherDocument" });
   const entry = await inspectPath(stagePath);
   if (entry.isErr()) return Result.err(entry.error);
   if (entry.value.type !== "file" || entry.value.links !== 1) {
     return Result.ok({ type: "discard", reason: "notRegularFile" });
   }
   const opened = await openSidecarFile(stagePath, constants.O_RDONLY);
-  if (opened.isErr()) return Result.ok({ type: "discard", reason: "notRegularFile" });
+  if (opened.isErr())
+    return Result.ok({ type: "discard", reason: "notRegularFile" });
   const { handle, identity } = opened.value;
-  const read = await Result.tryPromise(async () => new Uint8Array(await handle.readFile()));
+  const read = await Result.tryPromise(
+    async () => new Uint8Array(await handle.readFile()),
+  );
   await handle.close();
   if (read.isErr() || !sameFile(identity, entry.value.identity)) {
     return Result.ok({ type: "discard", reason: "stageChanged" });
@@ -313,7 +339,8 @@ const judgeStage = async ({
     return Result.ok({ type: "discard", reason: "stageChanged" });
   }
   const valid = await checkPackageIntegrity(read.value, []);
-  if (valid.isErr()) return Result.ok({ type: "discard", reason: "invalidPackage" });
+  if (valid.isErr())
+    return Result.ok({ type: "discard", reason: "invalidPackage" });
   const current = await destinationVersion(documentPath);
   if (current.isErr()) return Result.err(current.error);
   return current.value === commit.destinationVersionBefore
@@ -338,7 +365,9 @@ export const recoverStages = async ({
   if (listed.isErr()) {
     return errnoCode(listed.error.cause) === "ENOENT"
       ? Result.ok([])
-      : Result.err(journalError(`Cannot list ${directory}`, listed.error.cause));
+      : Result.err(
+          journalError(`Cannot list ${directory}`, listed.error.cause),
+        );
   }
   const actions: RecoveryAction[] = [];
   for (const stage of listed.value.filter((name) => name.startsWith(prefix))) {
@@ -351,13 +380,21 @@ export const recoverStages = async ({
       await rm(stagePath, { force: true });
       continue;
     }
-    const verdict = await judgeStage({ documentPath, stagePath, commit: commit.value });
+    const verdict = await judgeStage({
+      documentPath,
+      stagePath,
+      commit: commit.value,
+    });
     if (verdict.isErr()) return Result.err(verdict.error);
     let action: RecoveryAction;
     if (verdict.value.type === "rollForward") {
-      const renamed = await Result.tryPromise(() => rename(stagePath, documentPath));
+      const renamed = await Result.tryPromise(() =>
+        rename(stagePath, documentPath),
+      );
       if (renamed.isErr()) {
-        return Result.err(journalError(`Cannot complete ${stage}`, renamed.error.cause));
+        return Result.err(
+          journalError(`Cannot complete ${stage}`, renamed.error.cause),
+        );
       }
       const synced = await syncDirectory(directory);
       if (synced.isErr()) return Result.err(synced.error);

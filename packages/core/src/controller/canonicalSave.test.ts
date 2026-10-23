@@ -1,46 +1,64 @@
+import { panic, Result } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic, Result } from "better-result";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 import JSZip from "jszip";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { DOCUMENT_OP_TYPES, OP_STORIES, packageResourcesOpOf } from "@stll/docx-core/ops";
-import { createCanonicalSession } from "./canonicalSession";
-import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
-import { schema } from "../prosemirror/schema";
-import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
-import { parseDocx } from "../docx/parser";
+
 import { validateDocxPackage } from "@stll/docx-core";
-import { createDocx } from "../docx/rezip";
-import { createSimpleDocument } from "../docx/serializer/documentSerializer";
-import { serializeCanonicalSave } from "../docx/canonicalSave";
-import { CanonicalResourceSaveRefusalError } from "../docx/canonicalResourceSave";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import type { SaveDiagnostic } from "../docx/saveDiagnostics";
-import { assertExactModel } from "../../../../test/exactModel";
-import type { Style } from "../types/document";
+import {
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  packageResourcesOpOf,
+} from "@stll/docx-core/ops";
+
+import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
 import { canonicalSaveParagraphXml } from "../../../../test/canonicalSaveSequence";
+import { assertExactModel } from "../../../../test/exactModel";
 import { shapeArrayBuffer } from "../__tests__/documentShapes";
+import { CanonicalResourceSaveRefusalError } from "../docx/canonicalResourceSave";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { ensureParaIds } from "../docx/ensureParaIds";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import type { SaveDiagnostic } from "../docx/saveDiagnostics";
+import { createSimpleDocument } from "../docx/serializer/documentSerializer";
+import { schema } from "../prosemirror/schema";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import type { Style } from "../types/document";
+import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
+import { createCanonicalSession } from "./canonicalSession";
 
 const IDS = ["11111111", "22222222", "33333333"] as const;
 const SOURCE_BLOCKS = IDS.map(
-  (id, index) => `<w:p w14:paraId='${id}'><w:r>\n<w:t>text${index}</w:t>\t</w:r></w:p>`,
+  (id, index) =>
+    `<w:p w14:paraId='${id}'><w:r>\n<w:t>text${index}</w:t>\t</w:r></w:p>`,
 );
 const openSource = async () => {
-  const zip = await JSZip.loadAsync(await createDocx(createSimpleDocument([{ text: "seed" }])));
+  const zip = await JSZip.loadAsync(
+    await createDocx(createSimpleDocument([{ text: "seed" }])),
+  );
   zip.file(
     "word/document.xml",
     `<?xml version='1.0'?>\n<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main' xmlns:w14='http://schemas.microsoft.com/office/word/2010/wordml'><w:body>\n${SOURCE_BLOCKS.join("\n<!-- gap -->\n")}\n</w:body></w:document>`,
   );
-  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), { preloadFonts: false });
+  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+    preloadFonts: false,
+  });
 };
 
 const stylesXmlOf = async (buffer: ArrayBuffer) => {
   const file = (await JSZip.loadAsync(buffer)).file("word/styles.xml");
-  if (!file) return panic("The generated source or saved package is missing its styles part");
+  if (!file)
+    return panic(
+      "The generated source or saved package is missing its styles part",
+    );
   return file.async("text");
 };
 
@@ -76,7 +94,10 @@ test("generated canonical histories save the model and preserve every block outs
             }) satisfies Style,
         );
         const sourceBuffer = resourceBaseline.document.originalBuffer;
-        if (!sourceBuffer) return panic("The generated canonical source is missing its baseline");
+        if (!sourceBuffer)
+          return panic(
+            "The generated canonical source is missing its baseline",
+          );
         const sourceStylesXml = await stylesXmlOf(sourceBuffer);
         const withResources = {
           ...session.document,
@@ -84,12 +105,20 @@ test("generated canonical histories save the model and preserve every block outs
             ...session.document.package,
             styles: {
               ...session.document.package.styles,
-              styles: [...(session.document.package.styles?.styles ?? []), ...addedStyles],
+              styles: [
+                ...(session.document.package.styles?.styles ?? []),
+                ...addedStyles,
+              ],
             },
           },
         };
-        const resourceOp = packageResourcesOpOf({ before: session.document, after: withResources });
-        const resourceCommit = session.prepareOperations(state, [resourceOp]).unwrap();
+        const resourceOp = packageResourcesOpOf({
+          before: session.document,
+          after: withResources,
+        });
+        const resourceCommit = session
+          .prepareOperations(state, [resourceOp])
+          .unwrap();
         state = state.apply(resourceCommit.transaction);
         resourceCommit.publish().unwrap();
         expect(session.captureSaveSnapshot().changedBlockIds).toEqual(
@@ -101,7 +130,10 @@ test("generated canonical histories save the model and preserve every block outs
         const resourceUndo = session.prepareUndo(state).unwrap();
         state = state.apply(resourceUndo.transaction);
         resourceUndo.publish().unwrap();
-        assertExactModel(session.captureSaveSnapshot().document, resourceBaseline.document);
+        assertExactModel(
+          session.captureSaveSnapshot().document,
+          resourceBaseline.document,
+        );
         expect(session.captureSaveSnapshot().changedBlockIds).toEqual(
           resourceBaseline.changedBlockIds,
         );
@@ -119,22 +151,33 @@ test("generated canonical histories save the model and preserve every block outs
             snapshot: resourceSnapshot,
             options: { mode },
           });
-          expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({ valid: true });
-          const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+          expect(
+            await validateDocxPackage(new Uint8Array(saved.buffer)),
+          ).toEqual({ valid: true });
+          const reopened = await parseDocx(saved.buffer, {
+            preloadFonts: false,
+          });
           for (const style of addedStyles)
             expect(reopened.package.styles?.styles).toContainEqual(style);
           const savedStylesXml = await stylesXmlOf(saved.buffer);
           expect(
             savedStylesXml.startsWith(
-              sourceStylesXml.slice(0, sourceStylesXml.lastIndexOf("</w:styles>")),
+              sourceStylesXml.slice(
+                0,
+                sourceStylesXml.lastIndexOf("</w:styles>"),
+              ),
             ),
           ).toBe(true);
-          expect(describePackageDifferences(resourceSnapshot.document, reopened)).toEqual({
+          expect(
+            describePackageDifferences(resourceSnapshot.document, reopened),
+          ).toEqual({
             messages: [],
             omitted: 0,
           });
           for (const [index, id] of IDS.entries())
-            expect(await canonicalSaveParagraphXml(saved.buffer, id)).toBe(SOURCE_BLOCKS[index]);
+            expect(await canonicalSaveParagraphXml(saved.buffer, id)).toBe(
+              SOURCE_BLOCKS[index],
+            );
         }
         for (const { id, text, undo } of edits) {
           const prepared = session
@@ -171,7 +214,9 @@ test("generated canonical histories save the model and preserve every block outs
           .unwrap();
         state = state.apply(split.transaction);
         split.publish().unwrap();
-        expect(session.captureSaveSnapshot().changedBlockIds).toContain(transientId);
+        expect(session.captureSaveSnapshot().changedBlockIds).toContain(
+          transientId,
+        );
 
         const join = session
           .prepareOperations(state, [
@@ -188,7 +233,9 @@ test("generated canonical histories save the model and preserve every block outs
         join.publish().unwrap();
         const snapshot = session.captureSaveSnapshot();
         expect(snapshot.changedBlockIds).not.toContain(transientId);
-        expect(session.document.package.document.content).toHaveLength(IDS.length);
+        expect(session.document.package.document.content).toHaveLength(
+          IDS.length,
+        );
         const selectiveDiagnostics: SaveDiagnostic[] = [];
         const selectiveSave = await serializeCanonicalSave({
           snapshot,
@@ -198,9 +245,11 @@ test("generated canonical histories save the model and preserve every block outs
             onDiagnostic: (diagnostic) => selectiveDiagnostics.push(diagnostic),
           },
         });
-        expect(selectiveDiagnostics.some(({ type }) => type === "selectiveSaveRefused")).toBe(
-          false,
-        );
+        expect(
+          selectiveDiagnostics.some(
+            ({ type }) => type === "selectiveSaveRefused",
+          ),
+        ).toBe(false);
         expect(
           describePackageDifferences(
             snapshot.document,
@@ -209,17 +258,26 @@ test("generated canonical histories save the model and preserve every block outs
         ).toEqual({ messages: [], omitted: 0 });
         for (const [index, id] of IDS.entries()) {
           if (!snapshot.changedBlockIds.includes(id))
-            expect(await canonicalSaveParagraphXml(selectiveSave.buffer, id)).toBe(
-              SOURCE_BLOCKS[index],
-            );
+            expect(
+              await canonicalSaveParagraphXml(selectiveSave.buffer, id),
+            ).toBe(SOURCE_BLOCKS[index]);
         }
         for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
-          const saved = await serializeCanonicalSave({ snapshot, options: { mode } });
-          expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({ valid: true });
-          const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+          const saved = await serializeCanonicalSave({
+            snapshot,
+            options: { mode },
+          });
+          expect(
+            await validateDocxPackage(new Uint8Array(saved.buffer)),
+          ).toEqual({ valid: true });
+          const reopened = await parseDocx(saved.buffer, {
+            preloadFonts: false,
+          });
           for (const style of addedStyles)
             expect(reopened.package.styles?.styles).toContainEqual(style);
-          expect(describePackageDifferences(snapshot.document, reopened)).toEqual({
+          expect(
+            describePackageDifferences(snapshot.document, reopened),
+          ).toEqual({
             messages: [],
             omitted: 0,
           });
@@ -229,14 +287,15 @@ test("generated canonical histories save the model and preserve every block outs
             .file("word/document.xml")
             ?.async("text");
           for (const [index, id] of IDS.entries()) {
-            if (!snapshot.changedBlockIds.includes(id)) expect(xml).toContain(SOURCE_BLOCKS[index]);
+            if (!snapshot.changedBlockIds.includes(id))
+              expect(xml).toContain(SOURCE_BLOCKS[index]);
           }
         }
         const source = snapshot.document.package.document.content.at(0);
         if (source?.type === "paragraph") source.content = [];
-        expect(session.captureSaveSnapshot().document.package.document.content.at(0)).not.toEqual(
-          source,
-        );
+        expect(
+          session.captureSaveSnapshot().document.package.document.content.at(0),
+        ).not.toEqual(source);
       },
     ),
     {
@@ -267,7 +326,9 @@ test("generated browser-shaped paragraph splits save strict XML through history 
         const source =
           shape === "empty"
             ? (
-                await ensureParaIds(await createDocx(createSimpleDocument([{ text: "" }])))
+                await ensureParaIds(
+                  await createDocx(createSimpleDocument([{ text: "" }])),
+                )
               ).docx.slice().buffer
             : await shapeArrayBuffer(shape);
         for (const mode of STRUCTURAL_SAVE_MODES) {
@@ -281,12 +342,18 @@ test("generated browser-shaped paragraph splits save strict XML through history 
               ? { type: "editing" }
               : { type: "suggesting", author: "Canonical save" },
           );
-          let state = EditorState.create({ schema, doc: session.projection.doc });
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
           const first = state.doc.firstChild;
           if (!first || !first.isTextblock)
             return panic("Browser save shapes must begin with a paragraph");
-          const position = 1 + Math.floor((first.content.size * percentage) / 100);
-          state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)));
+          const position =
+            1 + Math.floor((first.content.size * percentage) / 100);
+          state = state.apply(
+            state.tr.setSelection(TextSelection.create(state.doc, position)),
+          );
           const baseline = session.captureSaveSnapshot();
           const split = session.prepareSplit(state).unwrap();
           state = state.apply(split.transaction);
@@ -295,27 +362,41 @@ test("generated browser-shaped paragraph splits save strict XML through history 
           const undo = session.prepareUndo(state).unwrap();
           state = state.apply(undo.transaction);
           undo.publish().unwrap();
-          assertExactModel(session.captureSaveSnapshot().document, baseline.document);
+          assertExactModel(
+            session.captureSaveSnapshot().document,
+            baseline.document,
+          );
           const redo = session.prepareRedo(state).unwrap();
           state = state.apply(redo.transaction);
           redo.publish().unwrap();
-          assertExactModel(session.captureSaveSnapshot().document, expected.document);
-          for (const serializationMode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+          assertExactModel(
+            session.captureSaveSnapshot().document,
+            expected.document,
+          );
+          for (const serializationMode of Object.values(
+            FOLIO_DOCX_SERIALIZATION_MODE,
+          )) {
             const saved = await serializeCanonicalSave({
               snapshot: session.captureSaveSnapshot(),
               featureFlags: { selectiveSave: true },
               options: { mode: serializationMode },
             });
-            expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({
+            expect(
+              await validateDocxPackage(new Uint8Array(saved.buffer)),
+            ).toEqual({
               valid: true,
             });
             const touched = new Set(expected.changedBlockIds);
             for (const block of baseline.document.package.document.content) {
-              if (block.type !== "paragraph" || !block.paraId || touched.has(block.paraId))
+              if (
+                block.type !== "paragraph" ||
+                !block.paraId ||
+                touched.has(block.paraId)
+              )
                 continue;
-              expect(await canonicalSaveParagraphXml(saved.buffer, block.paraId)).toBe(
-                await canonicalSaveParagraphXml(source, block.paraId),
-              );
+              expect(
+                await canonicalSaveParagraphXml(saved.buffer, block.paraId),
+              ).toBe(await canonicalSaveParagraphXml(source, block.paraId));
             }
             expect(
               describePackageDifferences(
@@ -326,8 +407,12 @@ test("generated browser-shaped paragraph splits save strict XML through history 
           }
         }
       }
-      expect([...exercisedShapes].sort()).toEqual([...STRUCTURAL_SAVE_SHAPES].sort());
-      expect([...exercisedModes].sort()).toEqual([...STRUCTURAL_SAVE_MODES].sort());
+      expect([...exercisedShapes].sort()).toEqual(
+        [...STRUCTURAL_SAVE_SHAPES].sort(),
+      );
+      expect([...exercisedModes].sort()).toEqual(
+        [...STRUCTURAL_SAVE_MODES].sort(),
+      );
     }),
     {
       seed: 20261023,
@@ -346,9 +431,15 @@ test("selective refusal emits a typed diagnostic and trusted full replay preserv
     featureFlags: { selectiveSaveMaxBytes: 1 },
     options: { onDiagnostic: (diagnostic) => diagnostics.push(diagnostic) },
   });
-  expect(diagnostics).toEqual([{ type: "selectiveSaveRefused", part: "word/document.xml" }]);
+  expect(diagnostics).toEqual([
+    { type: "selectiveSaveRefused", part: "word/document.xml" },
+  ]);
   expect(saved.diagnostics).toEqual(diagnostics);
-  const xml = await (await JSZip.loadAsync(saved.buffer)).file("word/document.xml")?.async("text");
+  const xml = await (
+    await JSZip.loadAsync(saved.buffer)
+  )
+    .file("word/document.xml")
+    ?.async("text");
   for (const block of SOURCE_BLOCKS) expect(xml).toContain(block);
 });
 
@@ -378,7 +469,9 @@ test("captured canonical saves retain the exact version when a newer commit arri
     ),
   ).toEqual({ messages: [], omitted: 0 });
   session.beginComposition();
-  expect(() => session.captureSaveSnapshot()).toThrow("Composition must finish");
+  expect(() => session.captureSaveSnapshot()).toThrow(
+    "Composition must finish",
+  );
 });
 
 const RESOURCE_REPLACEMENT_KINDS = ["style", "docDefaults", "media"] as const;
@@ -387,7 +480,8 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
     await assertProperty(
       fc.asyncProperty(fc.integer({ min: 3, max: 255 }), async (value) => {
         const original = await openSource();
-        if (!original.originalBuffer) return panic("The generated source is missing its baseline");
+        if (!original.originalBuffer)
+          return panic("The generated source is missing its baseline");
         const zip = await JSZip.loadAsync(original.originalBuffer);
         const mediaPath = "word/media/canonical-resource.png";
         zip.file(
@@ -397,9 +491,12 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
             "base64",
           ),
         );
-        const document = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-          preloadFonts: false,
-        });
+        const document = await parseDocx(
+          await zip.generateAsync({ type: "arraybuffer" }),
+          {
+            preloadFonts: false,
+          },
+        );
         const session = createCanonicalSession(document).unwrap();
         let state = EditorState.create({ schema, doc: session.projection.doc });
         const baseline = session.captureSaveSnapshot();
@@ -407,12 +504,18 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
         if (!styles) return panic("The generated source is missing styles");
         const media = session.document.package.media?.get(mediaPath);
         if (!media) return panic("The generated source is missing media");
-        const next = { ...session.document, package: { ...session.document.package } };
+        const next = {
+          ...session.document,
+          package: { ...session.document.package },
+        };
         switch (kind) {
           case "style":
             next.package.styles = {
               ...styles,
-              styles: styles.styles.map((style) => ({ ...style, name: `Replacement ${value}` })),
+              styles: styles.styles.map((style) => ({
+                ...style,
+                name: `Replacement ${value}`,
+              })),
             };
             break;
           case "docDefaults":
@@ -426,7 +529,10 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
             break;
           case "media":
             next.package.media = new Map(session.document.package.media);
-            next.package.media.set(mediaPath, { ...media, data: new Uint8Array([value]).buffer });
+            next.package.media.set(mediaPath, {
+              ...media,
+              data: new Uint8Array([value]).buffer,
+            });
             break;
           default: {
             const exhaustive: never = kind;
@@ -447,13 +553,21 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
               try: () =>
                 serializeCanonicalSave({
                   snapshot: session.captureSaveSnapshot(),
-                  options: { mode, onDiagnostic: (diagnostic) => diagnostics.push(diagnostic) },
+                  options: {
+                    mode,
+                    onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+                  },
                 }),
               catch: (error: unknown) => error,
             });
             expect(saved.isErr()).toBe(true);
-            if (saved.isOk() || !(saved.error instanceof CanonicalResourceSaveRefusalError))
-              return panic("Resource replacement must produce the typed save refusal");
+            if (
+              saved.isOk() ||
+              !(saved.error instanceof CanonicalResourceSaveRefusalError)
+            )
+              return panic(
+                "Resource replacement must produce the typed save refusal",
+              );
             expect(saved.error.gap).toBe(CANONICAL_GAP.resourceReplacement);
             expect(diagnostics).toEqual([
               {
@@ -468,7 +582,10 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
         const undo = session.prepareUndo(state).unwrap();
         state = state.apply(undo.transaction);
         undo.publish().unwrap();
-        assertExactModel(session.captureSaveSnapshot().document, baseline.document);
+        assertExactModel(
+          session.captureSaveSnapshot().document,
+          baseline.document,
+        );
         for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
           const saved = await serializeCanonicalSave({
             snapshot: session.captureSaveSnapshot(),
@@ -486,7 +603,9 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
         redo.publish().unwrap();
         await refusal();
       }),
-      { id: "generated canonical ${kind} replacements refuse save rather than lose resources" },
+      {
+        id: "generated canonical ${kind} replacements refuse save rather than lose resources",
+      },
     );
   });
 }

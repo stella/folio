@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { ensureLiveView, VUE_ADAPTER } from "../parity/parity-fixture";
 
@@ -13,21 +13,39 @@ declare global {
   }
 }
 
-test("Vue collaboration seeds and synchronizes the shared document", async ({ page }) => {
+test("Vue collaboration seeds and synchronizes the shared document", async ({
+  page,
+}) => {
   await page.goto(`${VUE_ADAPTER.baseUrl}/?collaboration=1`);
   await ensureLiveView(page);
   await expect
-    .poll(() => page.evaluate(() => window.__folioVueCollaboration?.wasSeeded() ?? false))
+    .poll(() =>
+      page.evaluate(() => window.__folioVueCollaboration?.wasSeeded() ?? false),
+    )
     .toBe(true);
 
-  expect(await page.evaluate(() => window.__folioParity?.insertText("shared text"))).toBe(true);
+  expect(
+    await page.evaluate(() => window.__folioParity?.insertText("shared text")),
+  ).toBe(true);
   await expect
-    .poll(() => page.evaluate(() => window.__folioVueCollaboration?.getSharedText() ?? ""))
+    .poll(() =>
+      page.evaluate(
+        () => window.__folioVueCollaboration?.getSharedText() ?? "",
+      ),
+    )
     .toContain("shared text");
 
   await expect
-    .poll(() => page.evaluate(() => window.__folioVueCollaboration?.showRemoteSelection() ?? false))
+    .poll(() =>
+      page.evaluate(
+        () => window.__folioVueCollaboration?.showRemoteSelection() ?? false,
+      ),
+    )
     .toBe(true);
-  await expect.poll(() => page.locator(".folio-remote-selection-rect").count()).toBeGreaterThan(0);
-  await expect(page.locator(".folio-remote-selection-label")).toContainText("Remote collaborator");
+  await expect
+    .poll(() => page.locator(".folio-remote-selection-rect").count())
+    .toBeGreaterThan(0);
+  await expect(page.locator(".folio-remote-selection-label")).toContainText(
+    "Remote collaborator",
+  );
 });

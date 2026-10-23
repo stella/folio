@@ -22,7 +22,11 @@
           <FolioButton variant="ghost" size="xs" @click="insertField('PAGE')">
             {{ t("headerFooter.insertPageNumber") }}
           </FolioButton>
-          <FolioButton variant="ghost" size="xs" @click="insertField('NUMPAGES')">
+          <FolioButton
+            variant="ghost"
+            size="xs"
+            @click="insertField('NUMPAGES')"
+          >
             {{ t("headerFooter.insertPageCount") }}
           </FolioButton>
           <div class="hf-options-divider" />
@@ -47,8 +51,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, type CSSProperties } from "vue";
 import type { EditorView } from "prosemirror-view";
+import {
+  computed,
+  type CSSProperties,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+} from "vue";
 
 import { schema } from "@stll/folio-core/prosemirror";
 
@@ -71,7 +81,9 @@ const { t } = useTranslation();
 const showOptions = ref(false);
 
 const label = computed(() =>
-  props.edit.position === "header" ? t("headerFooter.header") : t("headerFooter.footer"),
+  props.edit.position === "header"
+    ? t("headerFooter.header")
+    : t("headerFooter.footer"),
 );
 
 const containerStyle = computed<CSSProperties>(() => ({

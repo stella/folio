@@ -5,12 +5,13 @@
  * is parsed once (setup, not timed); we bench `toMarkdown` and `fromMarkdown`.
  */
 import { withCodSpeed } from "@codspeed/tinybench-plugin";
-import { parseDocx as folioParse } from "@stll/folio-core/docx/parser";
-import { fromMarkdown, toMarkdown } from "@stll/folio-core/markdown";
 import { Bench } from "tinybench";
 
+import { parseDocx as folioParse } from "@stll/folio-core/docx/parser";
+import { fromMarkdown, toMarkdown } from "@stll/folio-core/markdown";
+
 import { MICRO_BENCH_OPTIONS } from "./config";
-import { FIXTURES, fixtureLabel, freshArrayBuffer } from "./fixtures";
+import { fixtureLabel, FIXTURES, freshArrayBuffer } from "./fixtures";
 
 export async function markdownBench(): Promise<Bench> {
   const bench = withCodSpeed(new Bench(MICRO_BENCH_OPTIONS));

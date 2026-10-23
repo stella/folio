@@ -6,10 +6,10 @@
     "declarationLines": 107
   },
   "docx-core": {
-    "reportBytes": 130813,
-    "reportLines": 4023,
-    "declarationBytes": 299079,
-    "declarationLines": 6450
+    "reportBytes": 133771,
+    "reportLines": 4232,
+    "declarationBytes": 309860,
+    "declarationLines": 6714
   },
   "core": {
     "reportBytes": 343872,
@@ -38,8 +38,8 @@
   "vue": {
     "reportBytes": 57793,
     "reportLines": 1650,
-    "declarationBytes": 267485,
-    "declarationLines": 5489
+    "declarationBytes": 271743,
+    "declarationLines": 5574
   },
   "nuxt": {
     "reportBytes": 442,

@@ -5,7 +5,7 @@
  * Uses generated DOCX packages with real parsing and serialization to ensure round-trip correctness.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import type { Paragraph, Run } from "../types/document";
@@ -13,13 +13,16 @@ import { parseDocx } from "./parser";
 import { repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 import {
-  findParagraphOffsets,
   buildPatchedDocumentXml,
-  validatePatchSafety,
   countParagraphElements,
+  findParagraphOffsets,
+  validatePatchSafety,
 } from "./selectiveXmlPatch";
+import {
+  planCommentParts,
+  serializeComments,
+} from "./serializer/commentSerializer";
 import { serializeDocument } from "./serializer/documentSerializer";
-import { planCommentParts, serializeComments } from "./serializer/commentSerializer";
 
 // ============================================================================
 // Helpers
@@ -33,19 +36,23 @@ type FixtureOptions = {
   includeImage?: boolean;
 };
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const paragraphXml = (id: string, text: string, styleId?: string): string => {
-  const styleXml = styleId ? `<w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>` : "";
+  const styleXml = styleId
+    ? `<w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>`
+    : "";
   return `<w:p w14:paraId="${id}">${styleXml}<w:r><w:t>${text}</w:t></w:r></w:p>`;
 };
 
 const SAMPLE_PNG = new Uint8Array([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
-  0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xff, 0xff, 0x3f,
-  0x00, 0x05, 0xfe, 0x02, 0xfe, 0xdc, 0xcc, 0x59, 0xe7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
-  0x44, 0xae, 0x42, 0x60, 0x82,
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49,
+  0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06,
+  0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44,
+  0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xff, 0xff, 0x3f, 0x00, 0x05, 0xfe, 0x02,
+  0xfe, 0xdc, 0xcc, 0x59, 0xe7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44,
+  0xae, 0x42, 0x60, 0x82,
 ]);
 
 const imageRelationshipId = (includeHeaderFooter: boolean): string =>
@@ -75,7 +82,10 @@ const packageRelsXml = `${XML_DECLARATION}
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
 </Relationships>`;
 
-const documentRelsXml = (includeHeaderFooter: boolean, includeImage: boolean): string => {
+const documentRelsXml = (
+  includeHeaderFooter: boolean,
+  includeImage: boolean,
+): string => {
   const relationships: string[] = [];
   if (includeHeaderFooter) {
     relationships.push(
@@ -143,7 +153,9 @@ const documentXml = ({
   }
 
   if (includeImage) {
-    paragraphs.push(imageParagraphXml(imageRelationshipId(includeHeaderFooter)));
+    paragraphs.push(
+      imageParagraphXml(imageRelationshipId(includeHeaderFooter)),
+    );
   }
 
   const headerFooterRefs = includeHeaderFooter
@@ -169,13 +181,21 @@ const footerXml = `${XML_DECLARATION}
   ${paragraphXml("40000001", "Footer text")}
 </w:ftr>`;
 
-async function createFixtureDocx(options: FixtureOptions): Promise<ArrayBuffer> {
+async function createFixtureDocx(
+  options: FixtureOptions,
+): Promise<ArrayBuffer> {
   const zip = new JSZip();
   const { includeHeaderFooter = false, includeImage = false } = options;
 
-  zip.file("[Content_Types].xml", contentTypesXml(includeHeaderFooter, includeImage));
+  zip.file(
+    "[Content_Types].xml",
+    contentTypesXml(includeHeaderFooter, includeImage),
+  );
   zip.file("_rels/.rels", packageRelsXml);
-  zip.file("word/_rels/document.xml.rels", documentRelsXml(includeHeaderFooter, includeImage));
+  zip.file(
+    "word/_rels/document.xml.rels",
+    documentRelsXml(includeHeaderFooter, includeImage),
+  );
   zip.file("word/document.xml", documentXml(options));
   zip.file("word/styles.xml", stylesXml);
   zip.file("docProps/core.xml", corePropertiesXml);
@@ -218,7 +238,10 @@ async function getDocumentXml(buffer: ArrayBuffer): Promise<string> {
   return file.async("text");
 }
 
-async function getBinaryEntry(buffer: ArrayBuffer, path: string): Promise<ArrayBuffer> {
+async function getBinaryEntry(
+  buffer: ArrayBuffer,
+  path: string,
+): Promise<ArrayBuffer> {
   const zip = await JSZip.loadAsync(buffer);
   const file = zip.file(path);
   if (!file) {
@@ -300,10 +323,16 @@ describe("attemptSelectiveSave", () => {
     if (saved === null) {
       return;
     }
-    expect(await getDocumentXml(saved)).toContain(`xmlns:w="${strictNamespace}"`);
-    expect(await (await JSZip.loadAsync(saved)).file("word/comments.xml")?.async("text")).toBe(
-      commentsXml,
+    expect(await getDocumentXml(saved)).toContain(
+      `xmlns:w="${strictNamespace}"`,
     );
+    expect(
+      await (
+        await JSZip.loadAsync(saved)
+      )
+        .file("word/comments.xml")
+        ?.async("text"),
+    ).toBe(commentsXml);
   });
 
   test("keeps a no-op Strict package but sends changed Strict content to full repack", async () => {
@@ -326,13 +355,17 @@ describe("attemptSelectiveSave", () => {
     if (unchanged === null) {
       return;
     }
-    expect(await getDocumentXml(unchanged)).toContain(`xmlns:w="${strictNamespace}"`);
+    expect(await getDocumentXml(unchanged)).toContain(
+      `xmlns:w="${strictNamespace}"`,
+    );
 
     const paragraph = doc.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected a paragraph");
     }
-    const run = paragraph.content.find((item): item is Run => item.type === "run");
+    const run = paragraph.content.find(
+      (item): item is Run => item.type === "run",
+    );
     const text = run?.content.find((item) => item.type === "text");
     if (text?.type !== "text") {
       throw new Error("Expected text");
@@ -360,7 +393,8 @@ describe("attemptSelectiveSave", () => {
     // selective splice could never ship its removal; the save must fall back
     // to the full repack, which owns orphan cleanup.
     const target = doc.package.document.content.find(
-      (block): block is Paragraph => block.type === "paragraph" && block.paraId !== undefined,
+      (block): block is Paragraph =>
+        block.type === "paragraph" && block.paraId !== undefined,
     );
     if (!target?.paraId) {
       throw new Error("Expected paragraph with paraId");
@@ -453,7 +487,9 @@ describe("attemptSelectiveSave", () => {
 
     const zip = await JSZip.loadAsync(result);
     const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
-    const relationships = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const relationships = await zip
+      .file("word/_rels/document.xml.rels")
+      ?.async("text");
     expect(contentTypes).toContain('ContentType="image/png"');
     expect(relationships).toContain('Target="media/image1.png"');
   });
@@ -486,7 +522,9 @@ describe("attemptSelectiveSave", () => {
 
     if (!targetPara || !targetPara.paraId) {
       // Skip test if no suitable paragraph found
-      console.log("No paragraph with paraId and text found in example-with-image.docx, skipping");
+      console.log(
+        "No paragraph with paraId and text found in example-with-image.docx, skipping",
+      );
       return;
     }
 
@@ -515,7 +553,9 @@ describe("attemptSelectiveSave", () => {
     if (result === null) {
       // Selective save may fail due to paragraph count mismatch (serializer differences)
       // This is expected — fall back to full repack
-      console.log("Selective save returned null (expected fallback), verifying full repack works");
+      console.log(
+        "Selective save returned null (expected fallback), verifying full repack works",
+      );
       const fullResult = await repackDocx(doc);
       expect(fullResult.byteLength).toBeGreaterThan(0);
       return;
@@ -533,8 +573,14 @@ describe("attemptSelectiveSave", () => {
         const origOffsets = findParagraphOffsets(originalXml, para.paraId);
         const resultOffsets = findParagraphOffsets(resultXml, para.paraId);
         if (origOffsets && resultOffsets) {
-          const origPara = originalXml.slice(origOffsets.start, origOffsets.end);
-          const resultPara = resultXml.slice(resultOffsets.start, resultOffsets.end);
+          const origPara = originalXml.slice(
+            origOffsets.start,
+            origOffsets.end,
+          );
+          const resultPara = resultXml.slice(
+            resultOffsets.start,
+            resultOffsets.end,
+          );
           expect(resultPara).toBe(origPara);
         }
       }
@@ -575,7 +621,8 @@ describe("Selective save round-trip", () => {
       if (para.paraId) {
         const hasText = para.content.some(
           (item) =>
-            item.type === "run" && item.content.some((c) => c.type === "text" && c.text.length > 0),
+            item.type === "run" &&
+            item.content.some((c) => c.type === "text" && c.text.length > 0),
         );
         if (hasText) {
           targetPara = para;
@@ -611,7 +658,9 @@ describe("Selective save round-trip", () => {
 
     if (!savedBuffer) {
       // Fallback is acceptable
-      console.log("Selective save fell back, testing full repack round-trip instead");
+      console.log(
+        "Selective save fell back, testing full repack round-trip instead",
+      );
       const fullBuffer = await repackDocx(doc);
       const reopened = await parseDocx(fullBuffer, { preloadFonts: false });
       expect(reopened.package.document.content.length).toBeGreaterThan(0);
@@ -708,7 +757,11 @@ describe("buildPatchedDocumentXml with real DOCX XML", () => {
       modifiedParagraph +
       originalXml.slice(origOffsets.end);
 
-    const patched = buildPatchedDocumentXml(originalXml, serializedXml, new Set([testId]));
+    const patched = buildPatchedDocumentXml(
+      originalXml,
+      serializedXml,
+      new Set([testId]),
+    );
     expect(patched).not.toBeNull();
 
     if (patched) {
@@ -717,12 +770,17 @@ describe("buildPatchedDocumentXml with real DOCX XML", () => {
       if (!patchedOffsets) {
         throw new Error("Expected patchedOffsets");
       }
-      const patchedPara = patched.slice(patchedOffsets.start, patchedOffsets.end);
+      const patchedPara = patched.slice(
+        patchedOffsets.start,
+        patchedOffsets.end,
+      );
       expect(patchedPara).toContain("PATCHED_TEXT");
 
       // All other content should be identical
       // Check that the content before the patched paragraph is byte-for-byte identical
-      expect(patched.slice(0, patchedOffsets.start)).toBe(originalXml.slice(0, origOffsets.start));
+      expect(patched.slice(0, patchedOffsets.start)).toBe(
+        originalXml.slice(0, origOffsets.start),
+      );
     }
   });
 });
@@ -794,8 +852,11 @@ describe("Selective save with comments", () => {
 
     // Check if original has comments entries (it probably doesn't)
     const originalZip = await JSZip.loadAsync(buffer);
-    const originalCt = await originalZip.file("[Content_Types].xml")?.async("text");
-    const hadCommentsEntry = originalCt?.includes("/word/comments.xml") ?? false;
+    const originalCt = await originalZip
+      .file("[Content_Types].xml")
+      ?.async("text");
+    const hadCommentsEntry =
+      originalCt?.includes("/word/comments.xml") ?? false;
 
     // Add a comment
     doc.package.document.comments = [
@@ -834,7 +895,9 @@ describe("Selective save with comments", () => {
     expect(ctXml).toContain("/word/comments.xml");
 
     // Relationship should be present
-    const relsXml = await resultZip.file("word/_rels/document.xml.rels")?.async("text");
+    const relsXml = await resultZip
+      .file("word/_rels/document.xml.rels")
+      ?.async("text");
     expect(relsXml).toContain("comments.xml");
 
     // If the original didn't have comments, verify the entries were added
@@ -940,7 +1003,9 @@ describe("Selective save with comments", () => {
     );
     const target = paragraphs.find((p) =>
       p.content.some(
-        (i) => i.type === "run" && i.content.some((c) => c.type === "text" && c.text.length > 0),
+        (i) =>
+          i.type === "run" &&
+          i.content.some((c) => c.type === "text" && c.text.length > 0),
       ),
     );
 
@@ -1060,7 +1125,9 @@ describe("Selective save updates core properties", () => {
 
     // Get original modification date
     const originalZip = await JSZip.loadAsync(buffer);
-    const originalCoreProps = await originalZip.file("docProps/core.xml")?.async("text");
+    const originalCoreProps = await originalZip
+      .file("docProps/core.xml")
+      ?.async("text");
 
     const result = await attemptSelectiveSave(doc, buffer, {
       changedParaIds: new Set(),
@@ -1073,7 +1140,9 @@ describe("Selective save updates core properties", () => {
       throw new Error("Expected result");
     }
     const resultZip = await JSZip.loadAsync(result);
-    const resultCoreProps = await resultZip.file("docProps/core.xml")?.async("text");
+    const resultCoreProps = await resultZip
+      .file("docProps/core.xml")
+      ?.async("text");
 
     if (originalCoreProps && resultCoreProps) {
       // The modification date should have been updated
@@ -1164,7 +1233,9 @@ describe("Selective save edge cases", () => {
 
     const target = paragraphs.find((p) =>
       p.content.some(
-        (i) => i.type === "run" && i.content.some((c) => c.type === "text" && c.text.length > 0),
+        (i) =>
+          i.type === "run" &&
+          i.content.some((c) => c.type === "text" && c.text.length > 0),
       ),
     );
 
@@ -1202,8 +1273,14 @@ describe("Selective save edge cases", () => {
             const origOffsets = findParagraphOffsets(originalXml, para.paraId);
             const resultOffsets = findParagraphOffsets(resultXml, para.paraId);
             if (origOffsets && resultOffsets) {
-              const origText = originalXml.slice(origOffsets.start, origOffsets.end);
-              const resultText = resultXml.slice(resultOffsets.start, resultOffsets.end);
+              const origText = originalXml.slice(
+                origOffsets.start,
+                origOffsets.end,
+              );
+              const resultText = resultXml.slice(
+                resultOffsets.start,
+                resultOffsets.end,
+              );
               expect(resultText).toBe(origText);
               checkedCount++;
             }
@@ -1236,7 +1313,9 @@ describe("Selective save edge cases", () => {
         b.type === "paragraph" &&
         !!b.paraId &&
         b.content.some(
-          (i) => i.type === "run" && i.content.some((c) => c.type === "text" && c.text.length > 0),
+          (i) =>
+            i.type === "run" &&
+            i.content.some((c) => c.type === "text" && c.text.length > 0),
         ),
     );
 
@@ -1282,8 +1361,14 @@ describe("Selective save edge cases", () => {
       );
       if (uneditedPara?.paraId) {
         const originalXml = await getDocumentXml(buffer);
-        const origOffsets = findParagraphOffsets(originalXml, uneditedPara.paraId);
-        const resultOffsets = findParagraphOffsets(resultXml, uneditedPara.paraId);
+        const origOffsets = findParagraphOffsets(
+          originalXml,
+          uneditedPara.paraId,
+        );
+        const resultOffsets = findParagraphOffsets(
+          resultXml,
+          uneditedPara.paraId,
+        );
         if (origOffsets && resultOffsets) {
           expect(resultXml.slice(resultOffsets.start, resultOffsets.end)).toBe(
             originalXml.slice(origOffsets.start, origOffsets.end),

@@ -25,14 +25,15 @@
  * fix that only reached the serializer would be undone by the first round trip.
  */
 
-import { readFileSync } from "node:fs";
-
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { readFileSync } from "node:fs";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { parseDocx } from "./parser";
@@ -40,11 +41,18 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 type SchemaGraph = {
-  children: Array<{ owner: string; kind?: string; name?: string; ref?: string }>;
+  children: Array<{
+    owner: string;
+    kind?: string;
+    name?: string;
+    ref?: string;
+  }>;
   symbols: Array<{ id: string; kind?: string; name?: string }>;
 };
 
@@ -67,7 +75,11 @@ const FF_DATA_CHILDREN: readonly string[] = (() => {
   const owner = `complexType:{${W_NAMESPACE}}CT_FFData`;
   const declared = graph.children
     .filter((child) => child.owner === owner && child.kind === "element")
-    .map((child) => (child.ref === undefined ? child.name : byId.get(`element:${child.ref}`)?.name))
+    .map((child) =>
+      child.ref === undefined
+        ? child.name
+        : byId.get(`element:${child.ref}`)?.name,
+    )
     .filter((name): name is string => name !== undefined);
   if (declared.length === 0) {
     throw new Error("CT_FFData declares no children in the schema graph");
@@ -93,9 +105,12 @@ const FF_DATA_CHILD_MARKUP: Readonly<Record<string, string>> = {
   exitMacro: '<w:exitMacro w:val="OnExit"/>',
   helpText: '<w:helpText w:type="text" w:val="what to type"/>',
   statusText: '<w:statusText w:type="text" w:val="on the status bar"/>',
-  checkBox: '<w:checkBox><w:size w:val="24"/><w:default w:val="1"/></w:checkBox>',
-  ddList: '<w:ddList><w:result w:val="1"/><w:listEntry w:val="one"/></w:ddList>',
-  textInput: '<w:textInput><w:type w:val="regular"/><w:default w:val="typed"/></w:textInput>',
+  checkBox:
+    '<w:checkBox><w:size w:val="24"/><w:default w:val="1"/></w:checkBox>',
+  ddList:
+    '<w:ddList><w:result w:val="1"/><w:listEntry w:val="one"/></w:ddList>',
+  textInput:
+    '<w:textInput><w:type w:val="regular"/><w:default w:val="typed"/></w:textInput>',
 };
 
 const FIELD_CHAR_TYPES = ["begin", "separate", "end"] as const;
@@ -110,12 +125,22 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
 };
 
 const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(saved)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 /** The part a plain save writes, and the part the editor round trip writes. */
-const savedAndProjected = async (body: string): Promise<{ saved: string; projected: string }> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
-  const saved = await documentXmlOf(await repackDocx(parsed, { updateModifiedDate: false }));
+const savedAndProjected = async (
+  body: string,
+): Promise<{ saved: string; projected: string }> => {
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
+  const saved = await documentXmlOf(
+    await repackDocx(parsed, { updateModifiedDate: false }),
+  );
   const roundTripped = fromProseDoc(toProseDoc(parsed), parsed, {
     stylesheetSource: { type: "package" },
   });
@@ -131,7 +156,9 @@ const fieldCharRun = (charType: string, inner: string): string =>
 describe("a field character with no field keeps itself and its run", () => {
   test("every child w:ffData declares has markup here", () => {
     expect([...FF_DATA_CHILDREN].sort()).toEqual(
-      Object.keys(FF_DATA_CHILD_MARKUP).sort((left, right) => left.localeCompare(right)),
+      Object.keys(FF_DATA_CHILD_MARKUP).sort((left, right) =>
+        left.localeCompare(right),
+      ),
     );
   });
 
@@ -149,7 +176,11 @@ describe("a field character with no field keeps itself and its run", () => {
           // The child, the element that holds it, and the text the dropped run
           // used to take with it.
           for (const part of [saved, projected]) {
-            expect({ childName, charType, part: part.includes(markup ?? "") }).toEqual({
+            expect({
+              childName,
+              charType,
+              part: part.includes(markup ?? ""),
+            }).toEqual({
               childName,
               charType,
               part: true,

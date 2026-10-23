@@ -1,4 +1,8 @@
-import type { LegalDraft, LegalDraftBlock, LegalDraftDiagnostic } from "./types";
+import type {
+  LegalDraft,
+  LegalDraftBlock,
+  LegalDraftDiagnostic,
+} from "./types";
 
 // `**whole paragraph**` or `__whole paragraph__`: emphasis wrapping every
 // character of a body string.
@@ -26,7 +30,9 @@ const bodyStrings = (block: LegalDraftBlock): string[] => {
   }
 };
 
-export const validateLegalDraft = (draft: LegalDraft): LegalDraftDiagnostic[] => {
+export const validateLegalDraft = (
+  draft: LegalDraft,
+): LegalDraftDiagnostic[] => {
   const diagnostics: LegalDraftDiagnostic[] = [];
 
   // A body paragraph bold from end to end usually carries chat prose over
@@ -34,7 +40,9 @@ export const validateLegalDraft = (draft: LegalDraft): LegalDraftDiagnostic[] =>
   // into a heading. The compiler renders it as written and reports it, so
   // the author can decide.
   for (const block of draft.blocks) {
-    if (bodyStrings(block).some((text) => WHOLE_TEXT_EMPHASIS.test(text.trim()))) {
+    if (
+      bodyStrings(block).some((text) => WHOLE_TEXT_EMPHASIS.test(text.trim()))
+    ) {
       diagnostics.push({
         code: "whole-paragraph-emphasis",
         message:
@@ -62,7 +70,8 @@ export const validateLegalDraft = (draft: LegalDraft): LegalDraftDiagnostic[] =>
       if (block.level > 1 && !hasTopLevelClause) {
         diagnostics.push({
           code: "subclause-before-clause",
-          message: "A subclause cannot appear before the first top-level clause.",
+          message:
+            "A subclause cannot appear before the first top-level clause.",
           severity: "error",
         });
       }

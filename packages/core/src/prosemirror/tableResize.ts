@@ -63,7 +63,11 @@ export function readColumnWidths(
  * `pmStart`. Returns null if the row has no explicit height — the caller
  * can fall back to measuring the rendered DOM cell.
  */
-export function readRowHeight(view: EditorView, pmStart: number, rowIndex: number): number | null {
+export function readRowHeight(
+  view: EditorView,
+  pmStart: number,
+  rowIndex: number,
+): number | null {
   const found = findTableAt(view, pmStart);
   if (!found) return null;
   let rowHeight: number | null = null;
@@ -129,7 +133,11 @@ export function commitColumnResize(
         tr.setNodeMarkup(
           tr.mapping.map(cellOffset),
           undefined,
-          mergeTableCellAttrs(cell, { width: newWidth, widthType: "dxa", colwidth: null }),
+          mergeTableCellAttrs(cell, {
+            width: newWidth,
+            widthType: "dxa",
+            colwidth: null,
+          }),
         );
       }
       cellOffset += cell.nodeSize;
@@ -202,7 +210,11 @@ export function commitRightEdgeResize(
         tr.setNodeMarkup(
           tr.mapping.map(cellOffset),
           undefined,
-          mergeTableCellAttrs(cell, { width: newWidth, widthType: "dxa", colwidth: null }),
+          mergeTableCellAttrs(cell, {
+            width: newWidth,
+            widthType: "dxa",
+            colwidth: null,
+          }),
         );
       }
       cellOffset += cell.nodeSize;

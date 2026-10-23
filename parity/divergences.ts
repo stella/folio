@@ -9,9 +9,9 @@
  */
 import path from "node:path";
 
+import { createLiteralSearchScope } from "./literalSearch";
 import { isReferenceRendererId } from "./referenceRenderer";
 import { normalizeLineText } from "./textNorm";
-import { createLiteralSearchScope } from "./literalSearch";
 import type { CorpusReport, Divergence, DivergenceKind } from "./types";
 
 type Flags = {
@@ -82,7 +82,10 @@ const parseArgs = (argv: string[]): Flags => {
   if (!flags.report) {
     throw new Error("--report is required");
   }
-  if (flags.page !== undefined && (!Number.isInteger(flags.page) || flags.page <= 0)) {
+  if (
+    flags.page !== undefined &&
+    (!Number.isInteger(flags.page) || flags.page <= 0)
+  ) {
     throw new Error("--page must be a positive integer");
   }
   if (!Number.isInteger(flags.limit) || flags.limit <= 0) {
@@ -97,7 +100,9 @@ const readReport = async (file: string): Promise<CorpusReport> => {
     throw new Error(`${file} is not a parity JSON report`);
   }
   if (!report.reference || !isReferenceRendererId(report.reference.id)) {
-    throw new Error(`${file} predates explicit reference-renderer metadata; regenerate it`);
+    throw new Error(
+      `${file} predates explicit reference-renderer metadata; regenerate it`,
+    );
   }
   return report;
 };
@@ -174,7 +179,8 @@ const matchesDoc = (file: string, filter: string | undefined): boolean => {
   return file === path.resolve(filter) || path.basename(file) === filter;
 };
 
-const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+const shellQuote = (value: string): string =>
+  `'${value.replaceAll("'", "'\\''")}'`;
 
 const main = async (): Promise<void> => {
   const flags = parseArgs(process.argv.slice(2));
@@ -203,11 +209,13 @@ const main = async (): Promise<void> => {
     .filter((row) => flags.kind === undefined || row.kind === flags.kind)
     .filter(
       (row) =>
-        matchesText === undefined || matchesText(normalizeLineText(row.text).toLocaleLowerCase()),
+        matchesText === undefined ||
+        matchesText(normalizeLineText(row.text).toLocaleLowerCase()),
     )
     .toSorted(
       (a, b) =>
-        (a.page ?? Number.MAX_SAFE_INTEGER) - (b.page ?? Number.MAX_SAFE_INTEGER) ||
+        (a.page ?? Number.MAX_SAFE_INTEGER) -
+          (b.page ?? Number.MAX_SAFE_INTEGER) ||
         KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
         a.index - b.index,
     );

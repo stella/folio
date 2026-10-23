@@ -1,32 +1,40 @@
-import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
-import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
 import { panic } from "better-result";
-import { Fragment, Slice, type Mark, type MarkType, type Node as PMNode } from "prosemirror-model";
-import { ReplaceStep, StepMap, type Step } from "prosemirror-transform";
-
-import { recordNodeResolution } from "./revisionResolutionEdits";
-import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
+import {
+  Fragment,
+  type Mark,
+  type MarkType,
+  type Node as PMNode,
+  Slice,
+} from "prosemirror-model";
+import { ReplaceStep, type Step, StepMap } from "prosemirror-transform";
 
 import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
-import { expectFieldAttrs, expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import {
+  expectFieldAttrs,
+  expectRunPropertyChangeMarkAttrs,
+  expectTrackedChangeMarkAttrs,
+} from "../prosemirror/attrs";
+import { readCommentReferenceAttrs } from "../prosemirror/commentReferenceAttrs";
 import {
   resolutionRemovesControl,
   withoutResolvedEnclosures,
 } from "../prosemirror/contentControlRevisions";
 import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
-import { readCommentReferenceAttrs } from "../prosemirror/commentReferenceAttrs";
+import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
+import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
+import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
   reconstructRejectedRunFormattingMarks,
   restoreHistoricalRunFormatting,
 } from "../prosemirror/runPropertyChangeResolution";
-import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
-  paragraphRunStyleContext,
   type ParagraphRunStyleContext,
+  paragraphRunStyleContext,
   type RunStyleResolver,
 } from "../prosemirror/runStyleFormatting";
+import { recordNodeResolution } from "./revisionResolutionEdits";
 
 export type RevisionResolutionMode = "accept" | "reject";
 
@@ -110,16 +118,22 @@ const resolveInlineNode = ({
     context.mode === "reject" &&
     node.marks.some(
       (mark) =>
-        mark.type === context.keepType && expectTrackedChangeMarkAttrs(mark)._historicalFormatting,
+        mark.type === context.keepType &&
+        expectTrackedChangeMarkAttrs(mark)._historicalFormatting,
     )
   ) {
     marks = restoreHistoricalRunFormatting({
       node,
-      paragraphContext: resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
+      paragraphContext: resolveParagraphRunStyleScope(
+        paragraphScope,
+        context.styleResolver,
+      ),
       styleResolver: context.styleResolver,
     });
   }
-  const runPropertyChangeMark = marks.find((mark) => mark.type.name === "runPropertyChange");
+  const runPropertyChangeMark = marks.find(
+    (mark) => mark.type.name === "runPropertyChange",
+  );
   if (runPropertyChangeMark) {
     const { changes } = expectRunPropertyChangeMarkAttrs(runPropertyChangeMark);
     if (changes.length > 0) {
@@ -129,19 +143,31 @@ const resolveInlineNode = ({
           ? expectFieldAttrs(node)._docxEmptyResultRuns
           : undefined;
       const resolvedRuns = emptyRuns
-        ? resolveEmptyFieldResultRuns({ runs: emptyRuns, mode: context.mode, revisionIds: null })
+        ? resolveEmptyFieldResultRuns({
+            runs: emptyRuns,
+            mode: context.mode,
+            revisionIds: null,
+          })
         : null;
       if (resolvedRuns) {
         attrs = { ...attrs, _docxEmptyResultRuns: resolvedRuns.runs };
       }
-      if (context.mode === "reject" && (!resolvedRuns || resolvedRuns.visibleFormattingChanged)) {
-        marks = marks.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
+      if (
+        context.mode === "reject" &&
+        (!resolvedRuns || resolvedRuns.visibleFormattingChanged)
+      ) {
+        marks = marks.filter(
+          (mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name),
+        );
         const previousFormatting = resolvedRuns
           ? resolvedRuns.visibleFormatting
           : changes.at(0)?.previousFormatting;
         for (const previousMark of reconstructRejectedRunFormattingMarks({
           node,
-          paragraphContext: resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
+          paragraphContext: resolveParagraphRunStyleScope(
+            paragraphScope,
+            context.styleResolver,
+          ),
           previousFormatting,
           styleResolver: context.styleResolver,
         })) {
@@ -154,15 +180,17 @@ const resolveInlineNode = ({
   const nestedRemoval = node.marks.some(
     (mark) =>
       (mark.type.name === "insertion" || mark.type.name === "deletion") &&
-      expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.some((layer) =>
-        context.mode === "accept"
-          ? layer.type === "deletion" || layer.type === "moveFrom"
-          : layer.type === "insertion" || layer.type === "moveTo",
+      expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.some(
+        (layer) =>
+          context.mode === "accept"
+            ? layer.type === "deletion" || layer.type === "moveFrom"
+            : layer.type === "insertion" || layer.type === "moveTo",
       ),
   );
   if (
     nestedRemoval ||
-    (context.removeType && node.marks.some((mark) => mark.type === context.removeType))
+    (context.removeType &&
+      node.marks.some((mark) => mark.type === context.removeType))
   ) {
     return null;
   }
@@ -170,7 +198,8 @@ const resolveInlineNode = ({
     marks = marks.filter((mark) => mark.type !== context.keepType);
   }
   if (attrs === node.attrs) attrs = resolvedPreservedXmlAttrs(node, marks);
-  if (attrs !== node.attrs) return rebuildNode(node, attrs, node.content, marks);
+  if (attrs !== node.attrs)
+    return rebuildNode(node, attrs, node.content, marks);
   return marksEqual(marks, node.marks) ? node : node.mark(marks);
 };
 
@@ -202,7 +231,8 @@ const rejoinResolvedRuns = ({
     const marks = continuedRunMarks({
       left,
       right,
-      context: () => resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
+      context: () =>
+        resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
       styleResolver: context.styleResolver,
     });
     if (marks !== null) {
@@ -234,12 +264,18 @@ const resolveInlineContent = ({
   if (node.type.name === "commentReference") {
     const attrs = readCommentReferenceAttrs(node);
     if (attrs.ok && context.pointComments.has(attrs.value.commentId)) {
-      context.replacementRanges.push({ from: position, to: position + node.nodeSize, newSize: 0 });
+      context.replacementRanges.push({
+        from: position,
+        to: position + node.nodeSize,
+        newSize: 0,
+      });
       return null;
     }
   }
   const paragraphScope =
-    node.type.name === "paragraph" ? { paragraph: node } : inheritedParagraphScope;
+    node.type.name === "paragraph"
+      ? { paragraph: node }
+      : inheritedParagraphScope;
   const replacementRangeStart = context.replacementRanges.length;
   let resolvedNode = node;
   if (node.isInline) {
@@ -257,7 +293,12 @@ const resolveInlineContent = ({
       return null;
     }
     resolvedNode = resolved;
-    recordNodeResolution({ before: node, after: resolvedNode, position, steps: context.steps });
+    recordNodeResolution({
+      before: node,
+      after: resolvedNode,
+      position,
+      steps: context.steps,
+    });
     if (resolvedNode.isLeaf) {
       return resolvedNode;
     }
@@ -273,7 +314,11 @@ const resolveInlineContent = ({
       resolves: () => true,
     })
   ) {
-    context.replacementRanges.push({ from: position, to: position + node.nodeSize, newSize: 0 });
+    context.replacementRanges.push({
+      from: position,
+      to: position + node.nodeSize,
+      newSize: 0,
+    });
     return null;
   }
 
@@ -288,7 +333,9 @@ const resolveInlineContent = ({
       node: child,
       position: contentStart + offset,
       context,
-      ...(paragraphScope !== undefined ? { inheritedParagraphScope: paragraphScope } : {}),
+      ...(paragraphScope !== undefined
+        ? { inheritedParagraphScope: paragraphScope }
+        : {}),
     });
     if (resolved !== child) {
       contentChanged = true;
@@ -306,7 +353,8 @@ const resolveInlineContent = ({
   // Every revision resolves here, so none a control names encloses it any more.
   const resolvedAttrs =
     resolvedNode.type.name === INLINE_CONTENT_CONTROL_NODE_NAME
-      ? (withoutResolvedEnclosures(resolvedNode, () => true) ?? resolvedNode.attrs)
+      ? (withoutResolvedEnclosures(resolvedNode, () => true) ??
+        resolvedNode.attrs)
       : resolvedNode.attrs;
   if (resolvedAttrs !== resolvedNode.attrs)
     recordNodeResolution({
@@ -319,12 +367,20 @@ const resolveInlineContent = ({
     return resolvedNode;
   }
   if (contentChanged && resolvedNode.inlineContent) {
-    rejoinResolvedRuns({ children, positions, resolvedBoundaries, paragraphScope, context });
+    rejoinResolvedRuns({
+      children,
+      positions,
+      resolvedBoundaries,
+      paragraphScope,
+      context,
+    });
   }
   let resolvedContent = Fragment.fromArray(children);
   if (
     !resolvedNode.type.validContent(resolvedContent) &&
-    !(resolvedNode.type.name === "structuredField" && resolvedContent.size === 0)
+    !(
+      resolvedNode.type.name === "structuredField" && resolvedContent.size === 0
+    )
   ) {
     // A required-content parent may need a generated child after resolution
     // removes its last carrier. Let the schema choose that filler instead of
@@ -336,7 +392,9 @@ const resolveInlineContent = ({
     );
     if (!fitted || !resolvedNode.type.validContent(fitted.content)) {
       if (!resolvedNode.isInline) {
-        return panic(`Revision inline resolution invalidated ${resolvedNode.type.name} content`);
+        return panic(
+          `Revision inline resolution invalidated ${resolvedNode.type.name} content`,
+        );
       }
       context.replacementRanges.splice(
         replacementRangeStart,
@@ -361,14 +419,27 @@ const resolveInlineContent = ({
     resolvedContent = fitted.content;
   }
   if (resolvedNode.type.name === "paragraph") {
-    context.changedParagraphRanges.push({ from: position, to: position + resolvedNode.nodeSize });
+    context.changedParagraphRanges.push({
+      from: position,
+      to: position + resolvedNode.nodeSize,
+    });
   }
   // Rebuild through the provenance-aware owner so a filled paragraph keeps
   // its captured property source.
-  const rebuilt = rebuildNode(node, resolvedAttrs, resolvedContent, resolvedNode.marks);
+  const rebuilt = rebuildNode(
+    node,
+    resolvedAttrs,
+    resolvedContent,
+    resolvedNode.marks,
+  );
   const canonical = canonicalFieldNode(rebuilt);
   if (canonical !== rebuilt && canonical.type === rebuilt.type) {
-    recordNodeResolution({ before: rebuilt, after: canonical, position, steps: context.steps });
+    recordNodeResolution({
+      before: rebuilt,
+      after: canonical,
+      position,
+      steps: context.steps,
+    });
   } else if (canonical !== rebuilt) {
     // Replace the entire carrier: nested deletion maps no longer address children
     // after the result becomes an atom. Mark edits recorded above still run first.
@@ -392,7 +463,12 @@ const coalesceReplacementRanges = (
   const coalesced: RevisionReplacementRange[] = [];
   for (const range of replacementRanges) {
     const previous = coalesced.at(-1);
-    if (previous && previous.newSize === 0 && range.newSize === 0 && range.from <= previous.to) {
+    if (
+      previous &&
+      previous.newSize === 0 &&
+      range.newSize === 0 &&
+      range.from <= previous.to
+    ) {
       previous.to = Math.max(previous.to, range.to);
     } else {
       coalesced.push({ ...range });
@@ -432,12 +508,23 @@ export const resolveInlineRevisions = ({
   if (!resolved || resolved.eq(doc)) {
     return null;
   }
-  const replacementRanges = coalesceReplacementRanges(context.replacementRanges);
+  const replacementRanges = coalesceReplacementRanges(
+    context.replacementRanges,
+  );
   const positionMap = new StepMap(
-    replacementRanges.flatMap(({ from, to, newSize }) => [from, to - from, newSize]),
+    replacementRanges.flatMap(({ from, to, newSize }) => [
+      from,
+      to - from,
+      newSize,
+    ]),
   );
   for (const { from, to, slice } of replacementRanges.toReversed()) {
     context.steps.push(new ReplaceStep(from, to, slice ?? Slice.empty));
   }
-  return { resolved, positionMap, ranges: context.changedParagraphRanges, steps: context.steps };
+  return {
+    resolved,
+    positionMap,
+    ranges: context.changedParagraphRanges,
+    steps: context.steps,
+  };
 };

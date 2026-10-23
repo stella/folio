@@ -19,29 +19,36 @@
  */
 
 import assert from "node:assert/strict";
-import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/content-types";
 
+import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/content-types";
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
-  getFolioDocumentOperationRemovedBlockIds,
-  getTrackedFolioDocumentOperationRemovedBlockIds,
   type FolioDocumentOperationType,
   type FolioDocumentStoryHandle,
+  getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
   inspectDocumentStylesFromDocx,
   parseDocx,
 } from "@stll/folio-core/server";
 
 import { recordFeatureHit, recordHit, type StepKind } from "./coverage.ts";
-import { operationSelection, targetFeatureSignature } from "./feature-coverage.ts";
 import { openReviewer, toArrayBuffer } from "./documents.ts";
-import { captureLinks, comparePreservedLinks, type LinkSnapshot } from "./link-oracle.ts";
+import {
+  operationSelection,
+  targetFeatureSignature,
+} from "./feature-coverage.ts";
+import {
+  captureLinks,
+  comparePreservedLinks,
+  type LinkSnapshot,
+} from "./link-oracle.ts";
 import { coreBatch, type Mode, type Operation } from "./operations.ts";
 import {
   applyTableOperation,
   compareTableGeometry,
   modelFromRows,
-  UnsupportedTableExpectation,
   type TableModel,
+  UnsupportedTableExpectation,
 } from "./table-oracle.ts";
 import {
   blocksOfStory,
@@ -55,14 +62,22 @@ import {
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 type ParsedDocument = Awaited<ReturnType<typeof parseDocx>>;
 type ParsedBlock = ParsedDocument["package"]["document"]["content"][number];
-type ParsedInline = Extract<ParsedBlock, { type: "paragraph" }>["content"][number];
+type ParsedInline = Extract<
+  ParsedBlock,
+  { type: "paragraph" }
+>["content"][number];
 type ParsedNumbering = NonNullable<
-  NonNullable<Extract<ParsedBlock, { type: "paragraph" }>["formatting"]>["numPr"]
+  NonNullable<
+    Extract<ParsedBlock, { type: "paragraph" }>["formatting"]
+  >["numPr"]
 >;
 /** Expected numbering uses input numeric facts, without invoking the production allocator. */
 type Numbering =
   | Exclude<ParsedNumbering, { kind: "reference" }>
-  | Pick<Extract<ParsedNumbering, { kind: "reference" }>, "kind" | "numId" | "ilvl">
+  | Pick<
+      Extract<ParsedNumbering, { kind: "reference" }>,
+      "kind" | "numId" | "ilvl"
+    >
   | undefined;
 type NumberingFacts = {
   styles: Map<string, Numbering>;
@@ -77,7 +92,10 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
     case "none":
       return stated;
     case "reference":
-      return { ...stated, ilvl: stated.ilvl ?? (base?.kind === "none" ? undefined : base?.ilvl) };
+      return {
+        ...stated,
+        ilvl: stated.ilvl ?? (base?.kind === "none" ? undefined : base?.ilvl),
+      };
     case "levelOnly":
       if (base?.kind === "reference") return { ...base, ilvl: stated.ilvl };
       return base?.kind === "none" ? base : stated;
@@ -89,14 +107,21 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
 };
 
 /** Capture the authored story, including proposals omitted from the saved model. */
-const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts => {
+const liveNumberingFacts = (
+  reviewer: Reviewer,
+  story: Story,
+): NumberingFacts => {
   const facts = numberingFactsFromDocument(reviewer.toDocument());
   const snapshot = reviewer.snapshotStory(story);
   if (!snapshot) return facts;
   const { anchors, blocks } = snapshot;
   const pendingInsertionBlockIds = new Set<string>();
   for (const { operation } of reviewer.exportPendingSuggestions()) {
-    if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") continue;
+    if (
+      operation.type !== "insertAfterBlock" &&
+      operation.type !== "insertBeforeBlock"
+    )
+      continue;
     if (operation.numbering?.kind !== "newList") continue;
     let anchorIndex = blocks.findIndex(({ id }) => id === operation.blockId);
     if (anchorIndex < 0) continue;
@@ -104,12 +129,14 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
     const anchorTable = blocks[anchorIndex]?.table;
     if (anchorTable) {
       while (
-        blocks.at(anchorIndex + direction)?.table?.outerTableIndex === anchorTable.outerTableIndex
+        blocks.at(anchorIndex + direction)?.table?.outerTableIndex ===
+        anchorTable.outerTableIndex
       ) {
         anchorIndex += direction;
       }
     }
-    const blockAt = (index: number) => (index >= 0 ? blocks.at(index) : undefined);
+    const blockAt = (index: number) =>
+      index >= 0 ? blocks.at(index) : undefined;
     let insertedIndex = anchorIndex + direction;
     while (pendingInsertionBlockIds.has(blockAt(insertedIndex)?.id ?? "")) {
       insertedIndex += direction;
@@ -123,7 +150,9 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
       continue;
     pendingInsertionBlockIds.add(inserted.id);
     const level = inserted.statedNumbering.ilvl ?? 0;
-    const levels = facts.markerLevels.get(inserted.statedNumbering.numId) ?? new Set<number>();
+    const levels =
+      facts.markerLevels.get(inserted.statedNumbering.numId) ??
+      new Set<number>();
     levels.add(level);
     facts.markerLevels.set(inserted.statedNumbering.numId, levels);
   }
@@ -133,16 +162,23 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
     assert.ok(anchor, `Live block ${block.id} has no anchor`);
     facts.direct.set(
       block.id,
-      block.statedNumbering.kind === "inherit" ? undefined : block.statedNumbering,
+      block.statedNumbering.kind === "inherit"
+        ? undefined
+        : block.statedNumbering,
     );
   }
   return facts;
 };
 
 /** Package definitions and direct provenance, never an effective reader sample. */
-const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts => {
+const numberingFactsFromDocument = (
+  document: ParsedDocument,
+): NumberingFacts => {
   const definitions = new Map(
-    (document.package.styles?.styles ?? []).map((style) => [style.styleId, style]),
+    (document.package.styles?.styles ?? []).map((style) => [
+      style.styleId,
+      style,
+    ]),
   );
   const styles = new Map<string, Numbering>();
   const resolve = (id: string, path = new Set<string>()): Numbering => {
@@ -171,7 +207,8 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
         for (const child of node.children) visitInline(child);
         break;
       case "complexField":
-        for (const run of [...node.fieldCode, ...node.fieldResult]) visitInline(run);
+        for (const run of [...node.fieldCode, ...node.fieldResult])
+          visitInline(run);
         break;
       case "simpleField":
       case "insertion":
@@ -210,7 +247,8 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
           break;
         }
         case "table":
-          for (const row of block.rows) for (const cell of row.cells) visit(cell.content);
+          for (const row of block.rows)
+            for (const cell of row.cells) visit(cell.content);
           break;
         case "blockSdt":
         case "blockCustomXml":
@@ -245,10 +283,13 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
     if (link !== undefined && abstract?.levels.length === 0) {
       abstract =
         abstractNums.find(
-          (definition) => definition.styleLink === link && definition.levels.length > 0,
+          (definition) =>
+            definition.styleLink === link && definition.levels.length > 0,
         ) ?? abstract;
     }
-    const levels = new Map((abstract?.levels ?? []).map((level) => [level.ilvl, level]));
+    const levels = new Map(
+      (abstract?.levels ?? []).map((level) => [level.ilvl, level]),
+    );
     for (const override of instance.levelOverrides ?? []) {
       if (override.lvl) levels.set(override.ilvl, override.lvl);
     }
@@ -259,12 +300,16 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
           .filter((level) => {
             if (level.rPr?.hidden) return false;
             // A legal level counts in decimal whatever its own format says.
-            if (level.lvlText.length === 0) return level.isLgl === true || level.numFmt !== "none";
+            if (level.lvlText.length === 0)
+              return level.isLgl === true || level.numFmt !== "none";
             // Only marker presence matters here; counter values and numbering glyphs do not.
             return (
               level.lvlText
                 .replace(/%([1-9])/gu, (_, slot: string) =>
-                  !level.isLgl && levels.get(Number(slot) - 1)?.numFmt === "none" ? "" : "1",
+                  !level.isLgl &&
+                  levels.get(Number(slot) - 1)?.numFmt === "none"
+                    ? ""
+                    : "1",
                 )
                 .trim().length > 0
             );
@@ -276,7 +321,9 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
   return { styles, direct, markerLevels };
 };
 
-export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFacts> => {
+export const numberingFactsOf = async (
+  bytes: Uint8Array,
+): Promise<NumberingFacts> => {
   const facts = numberingFactsFromDocument(
     await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }),
   );
@@ -292,7 +339,9 @@ export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFact
       assert.ok(anchor, `Block ${block.id} must have an anchor`);
       facts.direct.set(
         block.id,
-        block.statedNumbering.kind === "inherit" ? undefined : block.statedNumbering,
+        block.statedNumbering.kind === "inherit"
+          ? undefined
+          : block.statedNumbering,
       );
     }
   }
@@ -325,7 +374,8 @@ export type Row = {
   styleId?: string;
   headingLevel?: number;
   /** The outline level the paragraph states itself, over its style's. */
-  directOutlineLevel?: { kind: "heading"; level: number } | { kind: "bodyText" };
+  directOutlineLevel?:
+    { kind: "heading"; level: number } | { kind: "bodyText" };
   /** The authored numbering override reported by the reader snapshot. */
   statedNumbering?: FolioContentStatedNumbering;
   /** Effective display level, derived from listReference by rowsOf. */
@@ -343,10 +393,66 @@ const KEPT_FIELDS = ["kind", "styleId", "headingLevel", "listLevel"] as const;
 
 /** A field the request leaves to the document (a style's own outline or numbering). */
 const ANY = Symbol("any");
-type Fields = { [Key in (typeof KEPT_FIELDS)[number] | "directAlignment"]?: Row[Key] | typeof ANY };
+type Fields = {
+  [Key in (typeof KEPT_FIELDS)[number] | "directAlignment"]?:
+    Row[Key] | typeof ANY;
+};
 
 type Story = FolioDocumentStoryHandle;
 const MAIN: Story = { type: "main" };
+type NoteStory = Extract<Story, { type: "footnote" | "endnote" }>;
+const noteStoryKey = ({ type, noteId }: NoteStory): string =>
+  `${type}:${String(noteId)}`;
+
+/**
+ * Operations that leave every note reference in their target block where it
+ * is: formatting, comments and insertions beside the block. Any other edit of
+ * a block holding a reference leaves that note's comments unpredicted.
+ */
+export const KEEPS_NOTE_REFERENCES: ReadonlySet<string> = new Set([
+  "formatRange",
+  "setBlockParagraphProperties",
+  "commentOnRange",
+  "commentOnBlock",
+  "insertAfterBlock",
+  "insertBeforeBlock",
+]);
+
+/**
+ * Update `references` (the note references each live block holds) for one
+ * operation that removed `removal`, and return the note stories whose last
+ * reference it removed. A merge moves the next block's content, and the note
+ * references in it, into the surviving block, so those notes stay.
+ */
+export const retireNoteReferences = (
+  references: Map<string, readonly Story[]>,
+  operationType: string,
+  blockId: string,
+  removal: readonly string[],
+): string[] => {
+  const candidates = new Set<string>();
+  for (const removedBlockId of removal) {
+    const held = references.get(removedBlockId) ?? [];
+    references.delete(removedBlockId);
+    if (operationType === "mergeBlockWithNext" && removedBlockId !== blockId) {
+      references.set(blockId, [...(references.get(blockId) ?? []), ...held]);
+      continue;
+    }
+    for (const story of held) {
+      if (story.type === "footnote" || story.type === "endnote")
+        candidates.add(noteStoryKey(story));
+    }
+  }
+  // A note stays while any live block still references it.
+  for (const held of references.values()) {
+    for (const story of held) {
+      if (story.type === "footnote" || story.type === "endnote") {
+        candidates.delete(noteStoryKey(story));
+      }
+    }
+  }
+  return [...candidates];
+};
 
 /** The blocks of `story` (the body by default) a reader lists. */
 export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
@@ -358,17 +464,21 @@ export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
       case "listItem": {
         const row: Row = { id: block.id, kind: block.kind, text: block.text };
         if (block.styleId !== undefined) row.styleId = block.styleId;
-        if (block.headingLevel !== undefined) row.headingLevel = block.headingLevel;
+        if (block.headingLevel !== undefined)
+          row.headingLevel = block.headingLevel;
         if (block.directOutlineLevel !== undefined)
           row.directOutlineLevel = block.directOutlineLevel;
         row.statedNumbering = block.statedNumbering;
-        if (block.directAlignment !== undefined) row.directAlignment = block.directAlignment;
-        if (block.directSpacing !== undefined) row.directSpacing = { ...block.directSpacing };
+        if (block.directAlignment !== undefined)
+          row.directAlignment = block.directAlignment;
+        if (block.directSpacing !== undefined)
+          row.directSpacing = { ...block.directSpacing };
         if (block.listReference !== undefined) {
           row.listReference = block.listReference;
           row.listLevel = block.listReference.level;
         }
-        if (block.displayLabel !== undefined) row.displayLabel = block.displayLabel;
+        if (block.displayLabel !== undefined)
+          row.displayLabel = block.displayLabel;
         if (block.table !== undefined) row.table = block.table;
         if (block.previewRuns !== undefined) {
           row.previewRuns = block.previewRuns.map((run) => {
@@ -379,7 +489,10 @@ export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
               underline: run.underline,
             };
             if (run.directFormatting === undefined) return preview;
-            return { ...preview, directFormatting: { ...run.directFormatting } };
+            return {
+              ...preview,
+              directFormatting: { ...run.directFormatting },
+            };
           });
         }
         rows.push(row);
@@ -439,7 +552,12 @@ export const resolvedState = async (
   };
 };
 
-type Comment = { id: number; text: string; anchor: string; blockId: string | null };
+type Comment = {
+  id: number;
+  text: string;
+  anchor: string;
+  blockId: string | null;
+};
 const commentsOf = (reviewer: Reviewer): Comment[] =>
   reviewer.getComments().map((comment) => ({
     id: comment.id,
@@ -494,7 +612,11 @@ type ModelRow = {
   before: ModelRow[];
   after: ModelRow[];
   /** Formatting that must hold over `[start, end)` of the result's text. */
-  formats: { start: number; end: number; property: "bold" | "italic" | "underline" }[];
+  formats: {
+    start: number;
+    end: number;
+    property: "bold" | "italic" | "underline";
+  }[];
 };
 
 export type Model = {
@@ -513,6 +635,15 @@ export type Model = {
   liveTextById: ReadonlyMap<string, string>;
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
+  /** Note stories whose references were removed by applied structural operations. */
+  removedNoteStories: Set<string>;
+  /**
+   * Note stories whose references an operation other than a removal may have
+   * moved or deleted; their comments are not predicted either way.
+   */
+  uncertainNoteStories: Set<string>;
+  /** Note story containing each comment-addressable block in the pre-state. */
+  noteStoryByBlockId: ReadonlyMap<string, string>;
   /** Paragraph style ids the saved package must define. */
   styles: Set<string>;
   /** Comments that must exist, with their anchored text when it is known. */
@@ -535,7 +666,8 @@ export type Model = {
 
 const fieldsOf = (row: Row): Fields => {
   const fields: Fields = {};
-  for (const key of KEPT_FIELDS) (fields as Record<string, unknown>)[key] = row[key];
+  for (const key of KEPT_FIELDS)
+    (fields as Record<string, unknown>)[key] = row[key];
   return fields;
 };
 
@@ -558,7 +690,10 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => ({
  * deletion reads as a blank block): an operation may name one, and what it
  * asks for is then placed where the reader saw that block.
  */
-export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Model => {
+export const modelOf = (
+  rows: readonly Row[],
+  live: readonly Row[] = rows,
+): Model => {
   const model: Model = {
     rows: rows.map((row) => modelRow(row.text, fieldsOf(row), row)),
     pendingJoins: new Map(),
@@ -568,11 +703,16 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     tableGaps: [],
     styleExamples: new Map(
       rows.flatMap((row) =>
-        row.styleId !== undefined && row.text.length > 0 ? [[row.styleId, row] as const] : [],
+        row.styleId !== undefined && row.text.length > 0
+          ? [[row.styleId, row] as const]
+          : [],
       ),
     ),
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     deletedBlockIds: new Set(),
+    removedNoteStories: new Set(),
+    uncertainNoteStories: new Set(),
+    noteStoryByBlockId: new Map(),
     styles: new Set(),
     comments: [],
     unmodelled: [],
@@ -580,7 +720,9 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
   };
   const known = new Set(rows.map((row) => row.id));
   const indexOf = (id: string | undefined): number =>
-    id === undefined ? -1 : model.rows.findIndex((candidate) => candidate.pre?.id === id);
+    id === undefined
+      ? -1
+      : model.rows.findIndex((candidate) => candidate.pre?.id === id);
   let previous: string | undefined;
   // Blocks whose mark accepting removes, waiting for the block they run into.
   let joining = false;
@@ -595,10 +737,16 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
         // but operations target the live snapshot. A pending table-row
         // deletion can renumber the accepted projection's surviving rows;
         // keep the live table coordinates for source-anchor placement.
-        survivor.pre = { ...survivor.pre, ...(row.table !== undefined && { table: row.table }) };
+        survivor.pre = {
+          ...survivor.pre,
+          ...(row.table !== undefined && { table: row.table }),
+        };
         if (joining) {
           survivor.pendingJoin = true;
-          model.pendingJoins.set(survivor, { sources: joiningSources, destination: row });
+          model.pendingJoins.set(survivor, {
+            sources: joiningSources,
+            destination: row,
+          });
         }
       }
       joining = false;
@@ -636,10 +784,18 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
 /** Why an operation could not be modelled; the check reports it as an oracle gap. */
 class Unmodelled extends Error {}
 
-const target = (model: Model, blockId: unknown, { adjacent = false } = {}): ModelRow => {
+const target = (
+  model: Model,
+  blockId: unknown,
+  { adjacent = false } = {},
+): ModelRow => {
   const row = model.rows.find((candidate) => candidate.pre?.id === blockId);
-  if (!row) throw new Unmodelled(`block ${String(blockId)} is not in the resolved pre-state`);
-  if (row.pendingJoin) throw new Unmodelled(`block ${String(blockId)} has a pending join`);
+  if (!row)
+    throw new Unmodelled(
+      `block ${String(blockId)} is not in the resolved pre-state`,
+    );
+  if (row.pendingJoin)
+    throw new Unmodelled(`block ${String(blockId)} has a pending join`);
   // An insertion only places a block beside its anchor, which may go.
   if (row.removed && !adjacent) {
     throw new Error(
@@ -667,7 +823,9 @@ const isContainerCarrier = (model: Model, row: ModelRow): boolean => {
   return model.rows
     .slice(index + 1)
     .every(
-      (candidate) => candidate.pre === undefined || !sameParagraphContainer(pre, candidate.pre),
+      (candidate) =>
+        candidate.pre === undefined ||
+        !sameParagraphContainer(pre, candidate.pre),
     );
 };
 
@@ -681,7 +839,10 @@ const tableRows = (model: Model, tableIndex: number): ModelRow[] =>
   model.rows.filter((row) => row.pre?.table?.tableIndex === tableIndex);
 
 /** Table removal owns live cells, including comments, rather than joined outside text. */
-const removeTableRows = (model: Model, removedRows: readonly ModelRow[]): void => {
+const removeTableRows = (
+  model: Model,
+  removedRows: readonly ModelRow[],
+): void => {
   const newlyRemoved = removedRows.filter((row) => !row.removed);
   for (const row of removedRows) {
     row.removed = true;
@@ -695,9 +856,12 @@ const removeTableRows = (model: Model, removedRows: readonly ModelRow[]): void =
     model.pendingJoins.delete(survivor);
     if (ownership) {
       const { sources, destination } = ownership;
-      const joinedText = sources.map(({ text }) => text).join("") + destination.text;
+      const joinedText =
+        sources.map(({ text }) => text).join("") + destination.text;
       if (survivor.text !== joinedText) {
-        throw new Error(`Pending join ownership does not reconstruct block ${destination.id}`);
+        throw new Error(
+          `Pending join ownership does not reconstruct block ${destination.id}`,
+        );
       }
       prefix += sources
         .filter((source) => !model.deletedBlockIds.has(source.id))
@@ -705,7 +869,9 @@ const removeTableRows = (model: Model, removedRows: readonly ModelRow[]): void =
         .join("");
     }
     if (prefix.length === 0) continue;
-    const next = model.rows.slice(model.rows.indexOf(survivor) + 1).find((row) => !row.removed);
+    const next = model.rows
+      .slice(model.rows.indexOf(survivor) + 1)
+      .find((row) => !row.removed);
     if (next) {
       const existing = model.preservedJoinPrefixes.get(next);
       if (existing) existing.replace += prefix;
@@ -716,23 +882,33 @@ const removeTableRows = (model: Model, removedRows: readonly ModelRow[]): void =
       }
       continue;
     }
-    const first = ownership?.sources.find((source) => !model.deletedBlockIds.has(source.id));
-    model.rows.push(modelRow(prefix, first ? fieldsOf(first) : survivor.fields));
+    const first = ownership?.sources.find(
+      (source) => !model.deletedBlockIds.has(source.id),
+    );
+    model.rows.push(
+      modelRow(prefix, first ? fieldsOf(first) : survivor.fields),
+    );
   }
 };
 
 /** Removing a table region may target the destination of a pending outside join. */
 const tableRemovalTarget = (model: Model, blockId: unknown): ModelRow => {
   const row = model.rows.find((candidate) => candidate.pre?.id === blockId);
-  if (!row) throw new Error(`Table removal anchor ${String(blockId)} is absent`);
-  if (row.removed) throw new Error(`Table removal anchor ${String(blockId)} was already removed`);
+  if (!row)
+    throw new Error(`Table removal anchor ${String(blockId)} is absent`);
+  if (row.removed)
+    throw new Error(
+      `Table removal anchor ${String(blockId)} was already removed`,
+    );
   tableOf(row);
   return row;
 };
 
 const hasMergedCells = (model: Model, tableIndex: number): boolean =>
   tableRows(model, tableIndex).some(
-    (row) => (row.pre?.table?.rowSpan ?? 1) > 1 || (row.pre?.table?.columnSpan ?? 1) > 1,
+    (row) =>
+      (row.pre?.table?.rowSpan ?? 1) > 1 ||
+      (row.pre?.table?.columnSpan ?? 1) > 1,
   );
 
 const paragraphsOf = (text: string): string[] =>
@@ -779,17 +955,29 @@ const requestedStyleNumbering = (
   return numberingOver(style, direct);
 };
 
-const numberingFields = (model: Model, styleId: string | null, row?: Row): Fields => {
+const numberingFields = (
+  model: Model,
+  styleId: string | null,
+  row?: Row,
+): Fields => {
   const numbering = requestedStyleNumbering(model, styleId, row);
   if (numbering === UNKNOWN_NUMBERING) return { listLevel: ANY };
-  return { listLevel: numbering?.kind === "reference" ? (numbering.ilvl ?? 0) : undefined };
+  return {
+    listLevel:
+      numbering?.kind === "reference" ? (numbering.ilvl ?? 0) : undefined,
+  };
 };
 
 /** A retained reference alone is not a rendered marker: its level must exist and be visible. */
 const numberingKind = (model: Model, numbering: Numbering): Fields["kind"] => {
   if (numbering?.kind !== "reference") return "paragraph";
-  assert.ok(model.numberingFacts, "Numbering definitions are required to classify a reference");
-  return model.numberingFacts.markerLevels.get(numbering.numId)?.has(numbering.ilvl ?? 0)
+  assert.ok(
+    model.numberingFacts,
+    "Numbering definitions are required to classify a reference",
+  );
+  return model.numberingFacts.markerLevels
+    .get(numbering.numId)
+    ?.has(numbering.ilvl ?? 0)
     ? "listItem"
     : "paragraph";
 };
@@ -809,14 +997,25 @@ const styleFields = (
   inherited?: Row,
 ): Fields => {
   if (styleId !== null) model.styles.add(styleId);
-  const example = styleId === null ? undefined : model.styleExamples.get(styleId);
-  const styleExample = example?.directOutlineLevel === undefined ? example : undefined;
+  const example =
+    styleId === null ? undefined : model.styleExamples.get(styleId);
+  const styleExample =
+    example?.directOutlineLevel === undefined ? example : undefined;
   const heading =
-    styleId === null ? undefined : /^Heading(?<level>[1-9])$/u.exec(styleId)?.groups?.["level"];
-  const plain = pre !== undefined && pre.kind !== "heading" && pre.directOutlineLevel === undefined;
-  const stated = pre === undefined && styleId !== null ? inherited?.directOutlineLevel : undefined;
+    styleId === null
+      ? undefined
+      : /^Heading(?<level>[1-9])$/u.exec(styleId)?.groups?.["level"];
+  const plain =
+    pre !== undefined &&
+    pre.kind !== "heading" &&
+    pre.directOutlineLevel === undefined;
+  const stated =
+    pre === undefined && styleId !== null
+      ? inherited?.directOutlineLevel
+      : undefined;
   let headingLevel: Fields["headingLevel"] = ANY;
-  if (stated) headingLevel = stated.kind === "heading" ? stated.level + 1 : undefined;
+  if (stated)
+    headingLevel = stated.kind === "heading" ? stated.level + 1 : undefined;
   else if (styleExample && pre?.headingLevel === undefined) {
     headingLevel = styleExample.headingLevel;
   } else if (heading && plain) headingLevel = Number(heading);
@@ -824,15 +1023,21 @@ const styleFields = (
   // A sample's classification may come from different direct numbering or marker visibility.
   let exampleKind = styleExample?.kind;
   const numbering = requestedStyleNumbering(model, styleId, pre ?? inherited);
-  if (exampleKind !== undefined && exampleKind !== "heading" && numbering !== UNKNOWN_NUMBERING) {
+  if (
+    exampleKind !== undefined &&
+    exampleKind !== "heading" &&
+    numbering !== UNKNOWN_NUMBERING
+  ) {
     const kind = numberingKind(model, numbering);
     if (kind !== ANY) exampleKind = kind;
   }
   // Whether the block is a list item then depends on numbering that is not known.
-  const undecided = exampleKind === "listItem" && numberedFields.listLevel === ANY;
+  const undecided =
+    exampleKind === "listItem" && numberedFields.listLevel === ANY;
   return {
     styleId: styleId ?? undefined,
-    kind: stated || undecided ? ANY : (exampleKind ?? (heading ? "heading" : ANY)),
+    kind:
+      stated || undecided ? ANY : (exampleKind ?? (heading ? "heading" : ANY)),
     headingLevel,
     ...numberedFields,
   };
@@ -868,7 +1073,8 @@ const paragraphRequest = (
           : "the requested style introduced unexpected numbering";
       });
     }
-    const example = styleId === null ? undefined : model.styleExamples.get(styleId);
+    const example =
+      styleId === null ? undefined : model.styleExamples.get(styleId);
     if (
       model.mode !== "suggested" &&
       example &&
@@ -877,11 +1083,14 @@ const paragraphRequest = (
     ) {
       for (const property of ["bold", "italic", "underline"] as const) {
         const flags =
-          formattingAt({ row: example, property }) ?? Array(example.text.length).fill(false);
+          formattingAt({ row: example, property }) ??
+          Array(example.text.length).fill(false);
         if (!flags.every((flag) => flag === flags[0])) continue;
         const expected = flags[0] === true;
         checks.push((row) => {
-          const actual = formattingAt({ row, property }) ?? Array(row.text.length).fill(false);
+          const actual =
+            formattingAt({ row, property }) ??
+            Array(row.text.length).fill(false);
           return actual.every(
             (flag, offset) =>
               flag === expected ||
@@ -890,7 +1099,9 @@ const paragraphRequest = (
                   entry.pre === pre &&
                   entry.formats.some(
                     (format) =>
-                      format.property === property && offset >= format.start && offset < format.end,
+                      format.property === property &&
+                      offset >= format.start &&
+                      offset < format.end,
                   ),
               ),
           )
@@ -901,7 +1112,8 @@ const paragraphRequest = (
     }
   }
   if ("alignment" in request) {
-    fields.directAlignment = (request["alignment"] as string | null) ?? undefined;
+    fields.directAlignment =
+      (request["alignment"] as string | null) ?? undefined;
   }
   if ("spacing" in request) {
     const spacing = request["spacing"] as Record<string, unknown> | null;
@@ -938,7 +1150,8 @@ const paragraphRequest = (
       fields.listLevel = ANY;
     } else if (numbering["kind"] === "inherit") {
       const effective = styleNumbering;
-      fields.listLevel = effective?.kind === "reference" ? (effective.ilvl ?? 0) : undefined;
+      fields.listLevel =
+        effective?.kind === "reference" ? (effective.ilvl ?? 0) : undefined;
       if ((pre ?? inherited) && preKind !== "heading")
         fields.kind = numberingKind(model, effective);
       checks.push((row) => {
@@ -961,10 +1174,13 @@ const paragraphRequest = (
       if (preKind === "listItem") fields.kind = "paragraph";
     } else if (numbering["kind"] === "newList") {
       const kind = numbering["format"];
-      fields.listLevel = typeof numbering["level"] === "number" ? numbering["level"] : 0;
+      fields.listLevel =
+        typeof numbering["level"] === "number" ? numbering["level"] : 0;
       if ((pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
       const used = new Set(
-        model.rows.flatMap((row) => (row.pre?.listReference ? [row.pre.listReference.numId] : [])),
+        model.rows.flatMap((row) =>
+          row.pre?.listReference ? [row.pre.listReference.numId] : [],
+        ),
       );
       checks.push((row) => {
         if (!row.listReference) return "not numbered";
@@ -978,11 +1194,16 @@ const paragraphRequest = (
       });
     } else if (numbering["kind"] === "reference") {
       const numId = numbering["numId"];
-      assert.ok(typeof numId === "number", "A reference request must name a numeric list id");
+      assert.ok(
+        typeof numId === "number",
+        "A reference request must name a numeric list id",
+      );
       const effective = numberingOver(styleNumbering, {
         kind: "reference",
         numId,
-        ...(typeof numbering["ilvl"] === "number" ? { ilvl: numbering["ilvl"] } : {}),
+        ...(typeof numbering["ilvl"] === "number"
+          ? { ilvl: numbering["ilvl"] }
+          : {}),
       });
       const reference =
         effective?.kind === "reference"
@@ -1046,18 +1267,25 @@ const addComment = (
   }
 };
 
-const coveredRangeWasRemoved = (row: ModelRow, start: number, end: number): boolean =>
+const coveredRangeWasRemoved = (
+  row: ModelRow,
+  start: number,
+  end: number,
+): boolean =>
   start < end &&
-  Array.from({ length: end - start }, (_, index) => start + index).every((offset) =>
-    row.edits.some(
-      ({ start: cutStart, end: cutEnd, replace }) =>
-        replace === "" && cutStart <= offset && offset < cutEnd,
-    ),
+  Array.from({ length: end - start }, (_, index) => start + index).every(
+    (offset) =>
+      row.edits.some(
+        ({ start: cutStart, end: cutEnd, replace }) =>
+          replace === "" && cutStart <= offset && offset < cutEnd,
+      ),
   );
 
 /** Whether the row's text is still the pre-state's, so offsets into it hold. */
 const untouchedText = (row: ModelRow): boolean =>
-  row.edits.length === 0 && row.splits.length === 0 && row.mergeSeparator === undefined;
+  row.edits.length === 0 &&
+  row.splits.length === 0 &&
+  row.mergeSeparator === undefined;
 
 type Expect = (model: Model, operation: Operation) => void;
 
@@ -1067,7 +1295,8 @@ type Expect = (model: Model, operation: Operation) => void;
  */
 const textBoxRowsOf = (model: Model, row: ModelRow): ModelRow[] => {
   const boxed = (candidate: ModelRow): boolean =>
-    candidate.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
+    candidate.pre !== undefined &&
+    model.inTextBox?.has(candidate.pre.id) === true;
   if (boxed(row)) return [];
   const rows: ModelRow[] = [];
   for (const candidate of model.rows.slice(model.rows.indexOf(row) + 1)) {
@@ -1089,12 +1318,17 @@ const pastTextBoxes = (model: Model, row: ModelRow): ModelRow =>
  * a row inside a table, next to the outermost table (the documented rule:
  * an insertion anchored in a cell lands beside the table, not in the cell).
  */
-const insertionAnchor = (model: Model, row: ModelRow, position: "before" | "after"): ModelRow => {
+const insertionAnchor = (
+  model: Model,
+  row: ModelRow,
+  position: "before" | "after",
+): ModelRow => {
   if (position === "after") row = pastTextBoxes(model, row);
   const table = row.pre?.table;
   if (!table) return row;
   const rows = model.rows.filter(
-    (candidate) => candidate.pre?.table?.outerTableIndex === table.outerTableIndex,
+    (candidate) =>
+      candidate.pre?.table?.outerTableIndex === table.outerTableIndex,
   );
   return (position === "before" ? rows[0] : rows.at(-1)) ?? row;
 };
@@ -1104,8 +1338,14 @@ const insertBlock =
   (model, operation) => {
     const named = target(model, operation["blockId"], { adjacent: true });
     const anchor = insertionAnchor(model, named, position);
-    const inherited = operation["inheritFormatting"] === false ? undefined : named.pre;
-    const { fields: requested, checks } = paragraphRequest(model, operation, undefined, inherited);
+    const inherited =
+      operation["inheritFormatting"] === false ? undefined : named.pre;
+    const { fields: requested, checks } = paragraphRequest(
+      model,
+      operation,
+      undefined,
+      inherited,
+    );
     const fields = { ...(inherited ? fieldsOf(inherited) : {}), ...requested };
     const scope = operation["formattingScope"] ?? "firstParagraph";
     const texts =
@@ -1131,10 +1371,17 @@ const insertBlock =
  * blocks: after any the batch put there before them, and nearer the table
  * than a block inserted beside the table.
  */
-const addToTable = (row: ModelRow, side: "before" | "after", cells: readonly ModelRow[]) => {
+const addToTable = (
+  row: ModelRow,
+  side: "before" | "after",
+  cells: readonly ModelRow[],
+) => {
   const gap = row[side];
   const beside = gap.filter((entry) => entry.besideTable === true);
-  const inside = [...gap.filter((entry) => entry.besideTable !== true), ...cells];
+  const inside = [
+    ...gap.filter((entry) => entry.besideTable !== true),
+    ...cells,
+  ];
   gap.splice(
     0,
     gap.length,
@@ -1147,15 +1394,29 @@ const addToTable = (row: ModelRow, side: "before" | "after", cells: readonly Mod
  * An insertion after one block and one before the next land in one gap, in
  * batch order.
  */
-const gapOf = (model: Model, row: ModelRow, position: "before" | "after"): ModelRow[] => {
+const gapOf = (
+  model: Model,
+  row: ModelRow,
+  position: "before" | "after",
+): ModelRow[] => {
   if (position === "after") return row.after;
   const previous = model.rows[model.rows.indexOf(row) - 1];
   return previous && !previous.pendingJoin ? previous.after : row.before;
 };
 
-const rangeOf = (operation: Operation): { blockId: string; start: number; end: number } => {
-  const range = operation["range"] as { blockId: string; startOffset: number; endOffset: number };
-  return { blockId: range.blockId, start: range.startOffset, end: range.endOffset };
+const rangeOf = (
+  operation: Operation,
+): { blockId: string; start: number; end: number } => {
+  const range = operation["range"] as {
+    blockId: string;
+    startOffset: number;
+    endOffset: number;
+  };
+  return {
+    blockId: range.blockId,
+    start: range.startOffset,
+    end: range.endOffset,
+  };
 };
 
 /**
@@ -1169,13 +1430,22 @@ export const EXPECTATIONS = {
     const find = String(operation["find"]);
     const text = row.pre?.text ?? row.text;
     const start = text.indexOf(find);
-    if (start === -1) throw new Error(`applied, but "${find}" is not in "${text}"`);
-    row.edits.push({ start, end: start + find.length, replace: String(operation["replace"]) });
+    if (start === -1)
+      throw new Error(`applied, but "${find}" is not in "${text}"`);
+    row.edits.push({
+      start,
+      end: start + find.length,
+      replace: String(operation["replace"]),
+    });
     addComment(model, operation);
   },
   replaceRange: (model, operation) => {
     const { blockId, start, end } = rangeOf(operation);
-    target(model, blockId).edits.push({ start, end, replace: String(operation["replace"]) });
+    target(model, blockId).edits.push({
+      start,
+      end,
+      replace: String(operation["replace"]),
+    });
     addComment(model, operation);
   },
   formatRange: (model, operation) => {
@@ -1183,7 +1453,8 @@ export const EXPECTATIONS = {
     const row = target(model, blockId);
     const formatting = operation["formatting"] as Record<string, unknown>;
     for (const property of ["bold", "italic", "underline"] as const) {
-      if (formatting[property] === true) row.formats.push({ start, end, property });
+      if (formatting[property] === true)
+        row.formats.push({ start, end, property });
     }
   },
   commentOnRange: (model, operation) => {
@@ -1192,7 +1463,10 @@ export const EXPECTATIONS = {
     addComment(
       model,
       operation,
-      () => (untouchedText(row) && !row.removed ? row.text.slice(start, end) : undefined),
+      () =>
+        untouchedText(row) && !row.removed
+          ? row.text.slice(start, end)
+          : undefined,
       () => coveredRangeWasRemoved(row, start, end),
     );
   },
@@ -1205,7 +1479,8 @@ export const EXPECTATIONS = {
     addComment(
       model,
       operation,
-      () => (untouchedText(row) && !row.removed ? (anchored ?? row.text) : undefined),
+      () =>
+        untouchedText(row) && !row.removed ? (anchored ?? row.text) : undefined,
       () => start >= 0 && coveredRangeWasRemoved(row, start, end),
     );
   },
@@ -1213,7 +1488,11 @@ export const EXPECTATIONS = {
   insertBeforeBlock: insertBlock("before"),
   replaceBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);
-    row.edits.push({ start: 0, end: row.text.length, replace: String(operation["text"]) });
+    row.edits.push({
+      start: 0,
+      end: row.text.length,
+      replace: String(operation["text"]),
+    });
     if ("styleId" in operation) {
       const { fields, checks } = paragraphRequest(
         model,
@@ -1236,15 +1515,24 @@ export const EXPECTATIONS = {
   splitBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);
     const offset = Number(operation["offset"]);
-    const separator = typeof operation["separator"] === "string" ? operation["separator"] : "";
-    const first = operation["firstParagraphProperties"] as ParagraphRequest | undefined;
-    const second = operation["secondParagraphProperties"] as ParagraphRequest | undefined;
-    if (first) Object.assign(row.fields, paragraphRequest(model, first, row.pre).fields);
+    const separator =
+      typeof operation["separator"] === "string" ? operation["separator"] : "";
+    const first = operation["firstParagraphProperties"] as
+      ParagraphRequest | undefined;
+    const second = operation["secondParagraphProperties"] as
+      ParagraphRequest | undefined;
+    if (first)
+      Object.assign(row.fields, paragraphRequest(model, first, row.pre).fields);
     row.splits.push({
       offset,
       consumed: separator.length,
       ...(second
-        ? { second: { ...row.fields, ...paragraphRequest(model, second, row.pre).fields } }
+        ? {
+            second: {
+              ...row.fields,
+              ...paragraphRequest(model, second, row.pre).fields,
+            },
+          }
         : {}),
     });
   },
@@ -1255,13 +1543,23 @@ export const EXPECTATIONS = {
       // Whether the join keeps that paragraph's pending deletion is not modelled yet.
       throw new Unmodelled("a join with a paragraph pending deletion");
     }
-    if (model.mode !== "direct" && next?.removed && isContainerCarrier(model, next)) {
+    if (
+      model.mode !== "direct" &&
+      next?.removed &&
+      isContainerCarrier(model, next)
+    ) {
       next.removed = false;
       next.edits.push({ start: 0, end: next.text.length, replace: "" });
     }
-    row.mergeSeparator = typeof operation["separator"] === "string" ? operation["separator"] : "";
-    const merged = operation["mergedParagraphProperties"] as ParagraphRequest | undefined;
-    if (merged) Object.assign(row.fields, paragraphRequest(model, merged, row.pre).fields);
+    row.mergeSeparator =
+      typeof operation["separator"] === "string" ? operation["separator"] : "";
+    const merged = operation["mergedParagraphProperties"] as
+      ParagraphRequest | undefined;
+    if (merged)
+      Object.assign(
+        row.fields,
+        paragraphRequest(model, merged, row.pre).fields,
+      );
   },
   setBlockParagraphProperties: (model, operation) => {
     const row = target(model, operation["blockId"]);
@@ -1279,22 +1577,28 @@ export const EXPECTATIONS = {
     const anchor = position === "after" ? pastTextBoxes(model, named) : named;
     const rows = operation["rows"] as string[][];
     // A cell's line break starts a paragraph there; a blank one stays blank.
-    const texts = rows.flatMap((cells) => cells.flatMap((cell) => cell.split(/\r\n|\r|\n/u)));
+    const texts = rows.flatMap((cells) =>
+      cells.flatMap((cell) => cell.split(/\r\n|\r|\n/u)),
+    );
     gapOf(model, anchor, position).push(...texts.map((text) => modelRow(text)));
   },
   deleteTable: (model, operation) => {
-    const { tableIndex } = tableOf(tableRemovalTarget(model, operation["blockId"]));
+    const { tableIndex } = tableOf(
+      tableRemovalTarget(model, operation["blockId"]),
+    );
     removeTableRows(model, tableRows(model, tableIndex));
   },
   insertTableRow: (model, operation) => {
     // A row may go in beside one the batch deletes.
-    const anchor = tableOf(target(model, operation["blockId"], { adjacent: true }));
+    const anchor = tableOf(
+      target(model, operation["blockId"], { adjacent: true }),
+    );
     const inRow = tableRows(model, anchor.tableIndex).filter(
       (row) => row.pre?.table?.rowIndex === anchor.rowIndex,
     );
-    const texts = ((operation["cellTexts"] as string[] | undefined) ?? []).flatMap((text) =>
-      text.split(/\r\n|\r|\n/u),
-    );
+    const texts = (
+      (operation["cellTexts"] as string[] | undefined) ?? []
+    ).flatMap((text) => text.split(/\r\n|\r|\n/u));
     const added = texts.map((text) => modelRow(text));
     // Every supplied text lands in one new row, one cell after another.
     const cells: ModelRow[] = added.filter((row) => row.text.length > 0);
@@ -1308,7 +1612,8 @@ export const EXPECTATIONS = {
   },
   deleteTableRow: (model, operation) => {
     const anchor = tableOf(tableRemovalTarget(model, operation["blockId"]));
-    if (hasMergedCells(model, anchor.tableIndex)) throw new Unmodelled("merged cells");
+    if (hasMergedCells(model, anchor.tableIndex))
+      throw new Unmodelled("merged cells");
     removeTableRows(
       model,
       tableRows(model, anchor.tableIndex).filter(
@@ -1318,16 +1623,18 @@ export const EXPECTATIONS = {
   },
   insertTableColumn: (model, operation) => {
     const anchor = tableOf(target(model, operation["blockId"]));
-    if (hasMergedCells(model, anchor.tableIndex)) throw new Unmodelled("merged cells");
+    if (hasMergedCells(model, anchor.tableIndex))
+      throw new Unmodelled("merged cells");
     const texts = (operation["cellTexts"] as string[] | undefined) ?? [];
     const after = operation["position"] !== "before";
     const rows = tableRows(model, anchor.tableIndex);
-    const rowIndexes = [...new Set(rows.map((row) => row.pre?.table?.rowIndex ?? 0))].sort(
-      (left, right) => left - right,
-    );
+    const rowIndexes = [
+      ...new Set(rows.map((row) => row.pre?.table?.rowIndex ?? 0)),
+    ].sort((left, right) => left - right);
     texts.forEach((text, index) => {
       const rowIndex = rowIndexes[index];
-      if (rowIndex === undefined) throw new Error("more cell texts than rows were applied");
+      if (rowIndex === undefined)
+        throw new Error("more cell texts than rows were applied");
       const inRow = rows.filter((row) => row.pre?.table?.rowIndex === rowIndex);
       // The new cell follows the anchor's column (or precedes it) in each row.
       const column = anchor.gridColumnIndex;
@@ -1343,7 +1650,8 @@ export const EXPECTATIONS = {
   },
   deleteTableColumn: (model, operation) => {
     const anchor = tableOf(tableRemovalTarget(model, operation["blockId"]));
-    if (hasMergedCells(model, anchor.tableIndex)) throw new Unmodelled("merged cells");
+    if (hasMergedCells(model, anchor.tableIndex))
+      throw new Unmodelled("merged cells");
     removeTableRows(
       model,
       tableRows(model, anchor.tableIndex).filter(
@@ -1381,18 +1689,26 @@ export const EXPECTATIONS = {
 } as const satisfies Record<FolioDocumentOperationType, Expect | null>;
 
 /** The public operation types, for the completeness scenario. */
-export const OPERATION_TYPES: readonly string[] = FOLIO_DOCUMENT_OPERATION_TYPES;
+export const OPERATION_TYPES: readonly string[] =
+  FOLIO_DOCUMENT_OPERATION_TYPES;
 
 /** Apply one applied operation's expectation to `model`. */
 export const expectOperation = (model: Model, operation: Operation): void => {
-  if (operation.type === "deleteBlock" && typeof operation["blockId"] === "string") {
+  if (
+    operation.type === "deleteBlock" &&
+    typeof operation["blockId"] === "string"
+  ) {
     model.deletedBlockIds.add(operation["blockId"]);
   }
   if (
     model.mode === "suggested" &&
-    ["deleteTable", "deleteTableRow", "deleteTableColumn"].includes(operation.type)
+    ["deleteTable", "deleteTableRow", "deleteTableColumn"].includes(
+      operation.type,
+    )
   ) {
-    model.tableGaps.push(`${operation.type}: a pending deletion remains in the live grid`);
+    model.tableGaps.push(
+      `${operation.type}: a pending deletion remains in the live grid`,
+    );
   } else if (model.tableGaps.length === 0) {
     try {
       applyTableOperation(model.tables, operation);
@@ -1404,9 +1720,13 @@ export const expectOperation = (model: Model, operation: Operation): void => {
       }
     }
   }
-  const expectation = (EXPECTATIONS as Record<string, Expect | null | undefined>)[operation.type];
+  const expectation = (
+    EXPECTATIONS as Record<string, Expect | null | undefined>
+  )[operation.type];
   if (expectation === undefined) {
-    throw new Error(`the oracle has no entry for operation type ${operation.type}`);
+    throw new Error(
+      `the oracle has no entry for operation type ${operation.type}`,
+    );
   }
   if (expectation === null) {
     model.unmodelled.push(`${operation.type}: no block-text expectation yet`);
@@ -1436,9 +1756,18 @@ type Expected = {
   pre?: Row;
 };
 
-const applyEdits = (text: string, edits: readonly TextEdit[], splits: ModelRow["splits"]) => {
+const applyEdits = (
+  text: string,
+  edits: readonly TextEdit[],
+  splits: ModelRow["splits"],
+) => {
   // Everything in pre-state coordinates, applied from the end backwards.
-  type Cut = { start: number; end: number; replace: string; split?: ModelRow["splits"][number] };
+  type Cut = {
+    start: number;
+    end: number;
+    replace: string;
+    split?: ModelRow["splits"][number];
+  };
   const cuts: Cut[] = [
     ...edits.map((edit) => ({ ...edit })),
     ...splits.map((split) => ({
@@ -1453,7 +1782,8 @@ const applyEdits = (text: string, edits: readonly TextEdit[], splits: ModelRow["
   let current = "";
   let cursor = text.length;
   for (const cut of cuts) {
-    if (cut.end > cursor) throw new Error(`two applied edits overlap in "${text}"`);
+    if (cut.end > cursor)
+      throw new Error(`two applied edits overlap in "${text}"`);
     current = cut.replace + tail.slice(cut.end, cursor) + current;
     cursor = cut.start;
     if (cut.split) {
@@ -1495,7 +1825,8 @@ const materialize = (model: Model): Expected[] => {
   };
   const emit = (row: ModelRow) => {
     for (const inserted of row.before) emit(inserted);
-    const gone = row.removed || (row.pendingDeletion === true && row.edits.length === 0);
+    const gone =
+      row.removed || (row.pendingDeletion === true && row.edits.length === 0);
     if (!gone) {
       const segments = applyEdits(row.text, row.edits, row.splits);
       const whole = untouchedText(row);
@@ -1503,7 +1834,8 @@ const materialize = (model: Model): Expected[] => {
         push(
           {
             text: segment.text,
-            fields: index === 0 ? row.fields : (segment.split?.second ?? row.fields),
+            fields:
+              index === 0 ? row.fields : (segment.split?.second ?? row.fields),
             checks: row.checks,
             formats: whole ? row.formats : [],
             ...(whole && row.pre ? { pre: row.pre } : {}),
@@ -1547,7 +1879,10 @@ const formattingAt = ({
 };
 
 /** Compare `actual` with what `model` expects; every mismatch, as text. */
-export const compareWithModel = (model: Model, actual: readonly Row[]): string[] => {
+export const compareWithModel = (
+  model: Model,
+  actual: readonly Row[],
+): string[] => {
   const expected = visible(materialize(model));
   const got = visible(actual);
   const problems: string[] = [];
@@ -1581,7 +1916,9 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
       const requestedFlags = restyled
         ? formattingAt({ row, property: format.property, source: "direct" })
         : flags;
-      const missing = requestedFlags?.slice(format.start, format.end).some((flag) => flag !== true);
+      const missing = requestedFlags
+        ?.slice(format.start, format.end)
+        .some((flag) => flag !== true);
       if (missing) {
         problems.push(
           `"${row.text}": [${format.start}, ${format.end}) is not all ${format.property}`,
@@ -1589,17 +1926,26 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
       }
       // A restyle may change inherited values; the range must still preserve direct provenance.
       const source = restyled ? "direct" : "effective";
-      const outsideFlags = formattingAt({ row, property: format.property, source });
+      const outsideFlags = formattingAt({
+        row,
+        property: format.property,
+        source,
+      });
       const before =
-        entry.pre && formattingAt({ row: entry.pre, property: format.property, source });
+        entry.pre &&
+        formattingAt({ row: entry.pre, property: format.property, source });
       const inside = (offset: number) =>
         entry.formats.some(
           (other) =>
-            other.property === format.property && offset >= other.start && offset < other.end,
+            other.property === format.property &&
+            offset >= other.start &&
+            offset < other.end,
         );
       const changed =
         before && outsideFlags
-          ? outsideFlags.findIndex((flag, offset) => !inside(offset) && flag !== before[offset])
+          ? outsideFlags.findIndex(
+              (flag, offset) => !inside(offset) && flag !== before[offset],
+            )
           : -1;
       if (changed !== -1) {
         problems.push(
@@ -1616,11 +1962,14 @@ type AnchorDisposition = "kept" | "removed" | "ambiguous";
 /** Decide whether the model removed the anchor, accounting for repeated text. */
 const anchorDisposition = (model: Model, entry: Comment): AnchorDisposition => {
   if (entry.blockId === null) return "kept";
-  const row = model.rows.find((candidate) => candidate.pre?.id === entry.blockId);
+  const row = model.rows.find(
+    (candidate) => candidate.pre?.id === entry.blockId,
+  );
   const explicitlyDeleted = model.deletedBlockIds.has(entry.blockId);
   if (explicitlyDeleted || (row?.removed && !row.pendingJoin)) {
     const liveText = model.liveTextById.get(entry.blockId);
-    return entry.anchor === "" || (liveText !== undefined && liveText.includes(entry.anchor))
+    return entry.anchor === "" ||
+      (liveText !== undefined && liveText.includes(entry.anchor))
       ? "removed"
       : "kept";
   }
@@ -1628,7 +1977,11 @@ const anchorDisposition = (model: Model, entry: Comment): AnchorDisposition => {
   // block has not been removed by this batch.
   if (!row?.pre || row.removed || entry.anchor === "") return "kept";
   const starts: number[] = [];
-  for (let start = 0; start <= row.pre.text.length - entry.anchor.length; start += 1) {
+  for (
+    let start = 0;
+    start <= row.pre.text.length - entry.anchor.length;
+    start += 1
+  ) {
     if (row.pre.text.startsWith(entry.anchor, start)) starts.push(start);
   }
   if (starts.length === 0) return "kept";
@@ -1636,10 +1989,16 @@ const anchorDisposition = (model: Model, entry: Comment): AnchorDisposition => {
     ...row.edits
       .filter(({ replace }) => replace.length === 0)
       .map(({ start, end }) => ({ start, end })),
-    ...row.splits.map(({ offset, consumed }) => ({ start: offset, end: offset + consumed })),
+    ...row.splits.map(({ offset, consumed }) => ({
+      start: offset,
+      end: offset + consumed,
+    })),
   ];
   const removedPlacements = starts.map((start) =>
-    Array.from({ length: entry.anchor.length }, (_, index) => start + index).every((offset) =>
+    Array.from(
+      { length: entry.anchor.length },
+      (_, index) => start + index,
+    ).every((offset) =>
       removed.some((cut) => cut.start <= offset && offset < cut.end),
     ),
   );
@@ -1648,14 +2007,29 @@ const anchorDisposition = (model: Model, entry: Comment): AnchorDisposition => {
 };
 
 /** A full-block anchor has an exact replacement when one edit rewrites the block. */
-const expectedKeptAnchor = (model: Model, entry: Comment): string | undefined => {
-  const row = model.rows.find((candidate) => candidate.pre?.id === entry.blockId);
-  if (!row?.pre || row.removed || row.pendingJoin || row.splits.length > 0) return undefined;
-  if (entry.anchor === "" || entry.anchor !== row.pre.text || row.edits.length !== 1) {
+const expectedKeptAnchor = (
+  model: Model,
+  entry: Comment,
+): string | undefined => {
+  const row = model.rows.find(
+    (candidate) => candidate.pre?.id === entry.blockId,
+  );
+  if (!row?.pre || row.removed || row.pendingJoin || row.splits.length > 0)
+    return undefined;
+  if (
+    entry.anchor === "" ||
+    entry.anchor !== row.pre.text ||
+    row.edits.length !== 1
+  ) {
     return undefined;
   }
   const edit = row.edits[0];
-  if (!edit || edit.start !== 0 || edit.end !== row.pre.text.length || edit.replace === "") {
+  if (
+    !edit ||
+    edit.start !== 0 ||
+    edit.end !== row.pre.text.length ||
+    edit.replace === ""
+  ) {
     return undefined;
   }
   return edit.replace.includes("\n") ? undefined : edit.replace;
@@ -1672,8 +2046,13 @@ const containsInOrder = (text: string, expected: string): boolean => {
   return true;
 };
 
-const pendingAnchorMatches = (actual: string, old: string, replacement: string): boolean => {
-  if (!containsInOrder(actual, old) || !containsInOrder(actual, replacement)) return false;
+const pendingAnchorMatches = (
+  actual: string,
+  old: string,
+  replacement: string,
+): boolean => {
+  if (!containsInOrder(actual, old) || !containsInOrder(actual, replacement))
+    return false;
   // A retained character can serve both texts. With disjoint characters, the
   // deleted text must precede the insertion in the live tracked range.
   const replacementCharacters = new Set(replacement);
@@ -1694,12 +2073,36 @@ export const compareComments = (
   const remaining = [...after];
   const kept: Comment[] = [];
   const gone: { entry: Comment; located: Comment }[] = [];
+  const storyBlockIds = new Set(
+    model.rows.flatMap((row) => (row.pre === undefined ? [] : [row.pre.id])),
+  );
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
     // The accepted quote belongs to the accepted model. Use a live quote
     // only when a pending paragraph join moved its anchor to another block.
     const located = live && live.blockId !== entry.blockId ? live : entry;
-    const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
+    let disposition =
+      mode === "suggested" ? "kept" : anchorDisposition(model, located);
+    // A suggested removal stays pending and rejectable, so its comments stay.
+    if (
+      mode !== "suggested" &&
+      ((model.story === "removed" &&
+        located.blockId !== null &&
+        storyBlockIds.has(located.blockId)) ||
+        (located.blockId !== null &&
+          model.removedNoteStories.has(
+            model.noteStoryByBlockId.get(located.blockId) ?? "",
+          )))
+    )
+      disposition = "removed";
+    if (
+      mode !== "suggested" &&
+      located.blockId !== null &&
+      model.uncertainNoteStories.has(
+        model.noteStoryByBlockId.get(located.blockId) ?? "",
+      )
+    )
+      disposition = "ambiguous";
     if (disposition === "removed") gone.push({ entry, located });
     else if (disposition === "kept") kept.push(entry);
   }
@@ -1715,7 +2118,9 @@ export const compareComments = (
             : actualAnchor === anchor)),
     );
     if (index === -1) {
-      problems.push(`no comment ${JSON.stringify(comment)} among ${JSON.stringify(after)}`);
+      problems.push(
+        `no comment ${JSON.stringify(comment)} among ${JSON.stringify(after)}`,
+      );
     } else {
       remaining.splice(index, 1);
     }
@@ -1771,21 +2176,30 @@ export const compareComments = (
         survivor.blockId === null ||
         !survivingBlockIds.has(survivor.blockId))
     ) {
-      problems.push(`comment ${JSON.stringify(entry)} outlived the block it anchored`);
+      problems.push(
+        `comment ${JSON.stringify(entry)} outlived the block it anchored`,
+      );
     }
   }
   return problems;
 };
 
-const compareStyles = async (model: Model, bytes: Uint8Array): Promise<string[]> => {
+const compareStyles = async (
+  model: Model,
+  bytes: Uint8Array,
+): Promise<string[]> => {
   if (model.styles.size === 0) return [];
   const catalog = await inspectDocumentStylesFromDocx(toArrayBuffer(bytes));
   const paragraphStyles = new Set(
-    catalog.styles.filter((style) => style.type === "paragraph").map((style) => style.styleId),
+    catalog.styles
+      .filter((style) => style.type === "paragraph")
+      .map((style) => style.styleId),
   );
   return [...model.styles]
     .filter((styleId) => !paragraphStyles.has(styleId))
-    .map((styleId) => `the saved package defines no paragraph style "${styleId}"`);
+    .map(
+      (styleId) => `the saved package defines no paragraph style "${styleId}"`,
+    );
 };
 
 // ---------------------------------------------------------------------------
@@ -1807,7 +2221,9 @@ export type Pre = {
   /** The reviewer's own blocks, when `rows` are another view of them. */
   liveRows: Row[];
   /** Immutable pre-state; suggestions have not entered saved package bytes yet. */
-  numberingSource: { type: "package"; bytes: Uint8Array } | { type: "live"; facts: NumberingFacts };
+  numberingSource:
+    | { type: "package"; bytes: Uint8Array }
+    | { type: "live"; facts: NumberingFacts };
   comments: Comment[];
   links: LinkSnapshot;
   liveComments: Comment[];
@@ -1906,7 +2322,10 @@ export const capture = async (
       rows,
       resolvedStory: "present",
       liveRows: rows,
-      numberingSource: { type: "live", facts: liveNumberingFacts(reviewer, story) },
+      numberingSource: {
+        type: "live",
+        facts: liveNumberingFacts(reviewer, story),
+      },
       comments: liveComments,
       liveComments,
       links: captureLinks(reviewer),
@@ -1946,14 +2365,23 @@ const LEDGER_MODES: Record<Mode, string> = {
 };
 
 /** The offsets an operation acts at, in its block's text, when it names any. */
-const offsetsOf = (operation: Operation, text: string): [number, number] | null => {
-  const range = operation["range"] as { startOffset?: unknown; endOffset?: unknown } | undefined;
-  if (typeof range?.startOffset === "number" && typeof range.endOffset === "number") {
+const offsetsOf = (
+  operation: Operation,
+  text: string,
+): [number, number] | null => {
+  const range = operation["range"] as
+    { startOffset?: unknown; endOffset?: unknown } | undefined;
+  if (
+    typeof range?.startOffset === "number" &&
+    typeof range.endOffset === "number"
+  ) {
     return [range.startOffset, range.endOffset];
   }
-  if (typeof operation["offset"] === "number") return [operation["offset"], operation["offset"]];
+  if (typeof operation["offset"] === "number")
+    return [operation["offset"], operation["offset"]];
   const find = operation["find"] ?? operation["quote"];
-  const at = typeof find === "string" && find.length > 0 ? text.indexOf(find) : -1;
+  const at =
+    typeof find === "string" && find.length > 0 ? text.indexOf(find) : -1;
   return at === -1 ? null : [at, at + (find as string).length];
 };
 
@@ -1965,12 +2393,18 @@ const recordOutcome = (pre: Pre, outcome: Outcome): void => {
     const range = operation["range"] as { blockId?: unknown } | undefined;
     const blockId = operation["blockId"] ?? range?.blockId;
     const block = pre.liveRows.find((row) => row.id === blockId);
-    const features = new Set<Feature | "none">(pre.targets.features.get(String(blockId)) ?? []);
+    const features = new Set<Feature | "none">(
+      pre.targets.features.get(String(blockId)) ?? [],
+    );
     // A block with an astral character counts as a surrogate boundary only
     // where the operation's own offsets meet one.
     features.delete("surrogateBoundary");
     const offsets = block && offsetsOf(operation, block.text);
-    if (block && offsets && touchesSurrogate(block.text, offsets[0], offsets[1])) {
+    if (
+      block &&
+      offsets &&
+      touchesSurrogate(block.text, offsets[0], offsets[1])
+    ) {
       features.add("surrogateBoundary");
     }
     if (features.size === 0) features.add("none");
@@ -2039,21 +2473,36 @@ export const assertRequestedOutcome = async (
   ) {
     switch (pre.numberingSource.type) {
       case "package":
-        model.numberingFacts = await numberingFactsOf(pre.numberingSource.bytes);
+        model.numberingFacts = await numberingFactsOf(
+          pre.numberingSource.bytes,
+        );
         break;
       case "live":
         model.numberingFacts = pre.numberingSource.facts;
         break;
       default: {
         const unhandled: never = pre.numberingSource;
-        throw new Error(`Unhandled numbering source ${JSON.stringify(unhandled)}`);
+        throw new Error(
+          `Unhandled numbering source ${JSON.stringify(unhandled)}`,
+        );
       }
     }
   }
   model.inTextBox = pre.targets.inTextBox;
+  model.noteStoryByBlockId = new Map(
+    [...pre.targets.noteStoryByBlockId].flatMap(([blockId, story]) =>
+      story.type === "footnote" || story.type === "endnote"
+        ? [[blockId, noteStoryKey(story)] as const]
+        : [],
+    ),
+  );
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
   const removedBlocksBy = new Map<string, { id: string; type: string }>();
+  // The note references each live block holds, followed through merges.
+  const noteReferences = new Map<string, readonly FolioDocumentStoryHandle[]>(
+    pre.targets.noteReferences,
+  );
   for (const [index, operation] of outcome.applied.entries()) {
     const range = operation["range"];
     const targetBlockId =
@@ -2078,7 +2527,8 @@ export const assertRequestedOutcome = async (
         ? removedBlocksBy.get(targetBlockId)
         : undefined;
     const continuesMergeChain =
-      operation.type === "mergeBlockWithNext" && removedBy?.type === "mergeBlockWithNext";
+      operation.type === "mergeBlockWithNext" &&
+      removedBy?.type === "mergeBlockWithNext";
     if (removedBy !== undefined && !continuesMergeChain) {
       throw new Error(
         `applied an operation on block ${targetBlockId}, which an earlier one of the batch removed`,
@@ -2087,7 +2537,9 @@ export const assertRequestedOutcome = async (
     expectOperation(model, operation);
 
     if (pre.mode !== "direct" && operation.type === "mergeBlockWithNext") {
-      const anchorIndex = pre.rows.findIndex(({ id }) => id === operation["blockId"]);
+      const anchorIndex = pre.rows.findIndex(
+        ({ id }) => id === operation["blockId"],
+      );
       const carrier = anchorIndex < 0 ? undefined : pre.rows[anchorIndex + 1];
       const carrierRow = model.rows.find((row) => row.pre?.id === carrier?.id);
       if (carrierRow !== undefined && isContainerCarrier(model, carrierRow)) {
@@ -2111,7 +2563,9 @@ export const assertRequestedOutcome = async (
           return getRemovedBlockIds(
             pre.rows.map(({ id, table }) => ({
               id,
-              ...(table !== undefined && { table: { ...table, paragraphIndex: 0 } }),
+              ...(table !== undefined && {
+                table: { ...table, paragraphIndex: 0 },
+              }),
             })),
             {
               id: `oracle-${String(index)}`,
@@ -2123,6 +2577,24 @@ export const assertRequestedOutcome = async (
           return [];
       }
     })();
+    const removedIds = [...removal];
+    for (const story of retireNoteReferences(
+      noteReferences,
+      operation.type,
+      blockId,
+      removedIds,
+    )) {
+      model.removedNoteStories.add(story);
+    }
+    if (removedIds.length === 0 && !KEEPS_NOTE_REFERENCES.has(operation.type)) {
+      // A split, replacement or other edit of a block may move or delete the
+      // note references it holds; the oracle does not follow them.
+      for (const story of noteReferences.get(blockId) ?? []) {
+        if (story.type === "footnote" || story.type === "endnote") {
+          model.uncertainNoteStories.add(noteStoryKey(story));
+        }
+      }
+    }
     for (const removedBlockId of removal) {
       if (!removedBlocksBy.has(removedBlockId)) {
         removedBlocksBy.set(removedBlockId, {
@@ -2158,13 +2630,31 @@ export const assertRequestedOutcome = async (
   }
   const problems = [
     ...(predictable ? compareWithModel(model, rows) : []),
-    ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
-    ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
-    ...compareComments(model, pre.comments, comments, rows, pre.liveComments, pre.mode),
+    ...(model.tableGaps.length === 0
+      ? compareTableGeometry(model.tables, rows)
+      : []),
+    ...comparePreservedLinks({
+      before: pre.links,
+      after: links,
+      afterRows: rows,
+    }).problems,
+    ...compareComments(
+      model,
+      pre.comments,
+      comments,
+      rows,
+      pre.liveComments,
+      pre.mode,
+    ),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];
-  if (process.env["FOLIO_ORACLE_GAPS"] && (!predictable || model.tableGaps.length > 0)) {
-    console.log(`oracle gap: ${context}: ${[...model.unmodelled, ...model.tableGaps].join("; ")}`);
+  if (
+    process.env["FOLIO_ORACLE_GAPS"] &&
+    (!predictable || model.tableGaps.length > 0)
+  ) {
+    console.log(
+      `oracle gap: ${context}: ${[...model.unmodelled, ...model.tableGaps].join("; ")}`,
+    );
   }
   if (problems.length > 0) {
     throw new Error(
@@ -2192,11 +2682,17 @@ export const applyChecked = async (
     undefinedReferences: "refuse",
   });
   const applied = new Set(result.applied.map(({ id }) => id));
-  const issues = result.issues.map((issue) => `${issue.operationId}: ${issue.code}`);
+  const issues = result.issues.map(
+    (issue) => `${issue.operationId}: ${issue.code}`,
+  );
   await assertRequestedOutcome(
     reviewer,
     pre,
-    { applied: batch.operations.filter((operation) => applied.has(operation.id)) },
+    {
+      applied: batch.operations.filter((operation) =>
+        applied.has(operation.id),
+      ),
+    },
     `${context} ${JSON.stringify(operations)} (refused: ${issues.join(", ") || "none"})`,
   );
   return { applied: [...applied], issues };
@@ -2228,12 +2724,20 @@ export const assertResolvedTo = async (
   if (expected.boundaries) {
     assert.deepEqual(fullProject(rows), fullProject(expected.rows), message);
   } else {
-    assert.deepEqual(authoredInlineProject(rows), authoredInlineProject(expected.rows), message);
+    assert.deepEqual(
+      authoredInlineProject(rows),
+      authoredInlineProject(expected.rows),
+      message,
+    );
     if (
       JSON.stringify(visible(rows).map((row) => row.text)) ===
       JSON.stringify(visible(expected.rows).map((row) => row.text))
     ) {
-      assert.deepEqual(suggestedProject(rows), suggestedProject(expected.rows), message);
+      assert.deepEqual(
+        suggestedProject(rows),
+        suggestedProject(expected.rows),
+        message,
+      );
     }
   }
 };

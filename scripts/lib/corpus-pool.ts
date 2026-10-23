@@ -9,12 +9,21 @@
 
 import path from "node:path";
 
-import { REPOSITORY_ROOT } from "./corpus-manifest";
 import type { CorpusCheckResult } from "./corpus-check";
 import { EXTENDED_CORPUS_INVARIANTS } from "./corpus-invariants/contract";
-import { CORPUS_INVARIANTS, type CorpusFailure, failureFromAssertion } from "./corpus-signature";
+import { REPOSITORY_ROOT } from "./corpus-manifest";
+import {
+  CORPUS_INVARIANTS,
+  type CorpusFailure,
+  failureFromAssertion,
+} from "./corpus-signature";
 
-const WORKER_ENTRY = path.join(REPOSITORY_ROOT, "scripts", "lib", "corpus-worker.ts");
+const WORKER_ENTRY = path.join(
+  REPOSITORY_ROOT,
+  "scripts",
+  "lib",
+  "corpus-worker.ts",
+);
 
 /** Advisory per-file time budgets, forwarded to the extended invariants. */
 export type CorpusBudgets = {
@@ -103,7 +112,9 @@ class PooledWorker {
 
     this.#nextId += 1;
     const id = this.#nextId;
-    child.stdin.write(`${JSON.stringify({ id, path: task.absolutePath, ...budgets })}\n`);
+    child.stdin.write(
+      `${JSON.stringify({ id, path: task.absolutePath, ...budgets })}\n`,
+    );
     child.stdin.flush();
 
     const timeout = Promise.withResolvers<PendingLine>();
@@ -114,7 +125,9 @@ class PooledWorker {
       lines
         .next()
         .then((result): PendingLine =>
-          result.done === true ? { line: null, ended: "eof" } : { line: result.value },
+          result.done === true
+            ? { line: null, ended: "eof" }
+            : { line: result.value },
         ),
       timeout.promise,
     ]);
@@ -135,7 +148,10 @@ class PooledWorker {
         ],
       };
     }
-    const parsed = JSON.parse(answered.line) as { id: number; result: CorpusCheckResult };
+    const parsed = JSON.parse(answered.line) as {
+      id: number;
+      result: CorpusCheckResult;
+    };
     if (parsed.id !== id) {
       this.kill();
       return abortedOutcome("the worker answered out of order");
@@ -178,5 +194,7 @@ export const runCorpusPool = async ({
     }
     pooled.kill();
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, tasks.length) }, worker),
+  );
 };

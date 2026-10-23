@@ -18,8 +18,10 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BorderSpec, Document } from "../types/document";
@@ -27,7 +29,8 @@ import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const NS = [
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
   'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"',
@@ -64,7 +67,9 @@ const relationshipId = fc
 
 type ArtCase = Record<Side, Partial<Record<ArtAttribute, string>>>;
 
-const sideArt = (side: Side): fc.Arbitrary<Partial<Record<ArtAttribute, string>>> =>
+const sideArt = (
+  side: Side,
+): fc.Arbitrary<Partial<Record<ArtAttribute, string>>> =>
   fc.record(
     Object.fromEntries(
       SIDE_ART_ATTRIBUTES[side].map((attribute) => [attribute, relationshipId]),
@@ -83,7 +88,10 @@ const allIds = (artCase_: ArtCase): string[] => [
   ...new Set(SIDES.flatMap((side) => Object.values(artCase_[side]))),
 ];
 
-const sideXml = (side: Side, art: Partial<Record<ArtAttribute, string>>): string => {
+const sideXml = (
+  side: Side,
+  art: Partial<Record<ArtAttribute, string>>,
+): string => {
   const attributes = Object.entries(art)
     .map(([attribute, id]) => ` r:${attribute}="${id}"`)
     .join("");
@@ -129,7 +137,8 @@ const docxFor = (art: ArtCase): Promise<ArrayBuffer> => {
 
 /** The art ids the model holds, side by side. */
 const readArt = (document: Document): ArtCase => {
-  const borders = document.package.document.sections?.at(-1)?.properties.pageBorders;
+  const borders =
+    document.package.document.sections?.at(-1)?.properties.pageBorders;
   const read = (side: Side): Partial<Record<ArtAttribute, string>> => {
     const spec = borders?.[side];
     const art: Partial<Record<ArtAttribute, string>> = {};
@@ -141,7 +150,12 @@ const readArt = (document: Document): ArtCase => {
     }
     return art;
   };
-  return { top: read("top"), bottom: read("bottom"), left: read("left"), right: read("right") };
+  return {
+    top: read("top"),
+    bottom: read("bottom"),
+    left: read("left"),
+    right: read("right"),
+  };
 };
 
 const parse = (buffer: ArrayBuffer): Promise<Document> =>
@@ -161,29 +175,44 @@ const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
 /** Every art attribute the saved `w:pgBorders` carries, prefix included. */
 const artAttributeNames = async (buffer: ArrayBuffer): Promise<string[]> => {
   const xml = await documentXml(buffer);
-  const borders = /<w:pgBorders\b[\s\S]*?<\/w:pgBorders>|<w:pgBorders\b[^>]*\/>/u.exec(xml);
+  const borders =
+    /<w:pgBorders\b[\s\S]*?<\/w:pgBorders>|<w:pgBorders\b[^>]*\/>/u.exec(xml);
   return [
-    ...(borders?.[0] ?? "").matchAll(/\s(\w+:(?:id|topLeft|topRight|bottomLeft|bottomRight))=/gu),
+    ...(borders?.[0] ?? "").matchAll(
+      /\s(\w+:(?:id|topLeft|topRight|bottomLeft|bottomRight))=/gu,
+    ),
   ]
     .map((match) => match[1] ?? "")
     .toSorted();
 };
 
 const expectedAttributeNames = (art: ArtCase): string[] =>
-  SIDES.flatMap((side) => Object.keys(art[side]).map((attribute) => `r:${attribute}`)).toSorted();
+  SIDES.flatMap((side) =>
+    Object.keys(art[side]).map((attribute) => `r:${attribute}`),
+  ).toSorted();
 
 describe("page-border art relationship ids survive a rebuild", () => {
   test("every art id is written back in the relationships namespace", async () => {
     const art: ArtCase = {
       top: { id: "rIdArt", topLeft: "rIdTopLeft", topRight: "rIdTopRight" },
-      bottom: { id: "rIdArt", bottomLeft: "rIdBottomLeft", bottomRight: "rIdBottomRight" },
+      bottom: {
+        id: "rIdArt",
+        bottomLeft: "rIdBottomLeft",
+        bottomRight: "rIdBottomRight",
+      },
       left: { id: "rIdArt" },
       right: { id: "rIdArt" },
     };
     const saved = await save(await parse(await docxFor(art)));
     const xml = await documentXml(saved);
 
-    for (const attribute of ["id", "topLeft", "topRight", "bottomLeft", "bottomRight"] as const) {
+    for (const attribute of [
+      "id",
+      "topLeft",
+      "topRight",
+      "bottomLeft",
+      "bottomRight",
+    ] as const) {
       expect(xml).toContain(`r:${attribute}="rId`);
     }
     expect(xml).not.toContain("w:topLeft=");
@@ -203,7 +232,9 @@ describe("page-border art relationship ids survive a rebuild", () => {
           // The model round trip alone cannot see the defect: folio's own
           // reader falls back to any prefix, so a `w:id` it wrote it reads
           // back. Only Word can tell, so the written namespace is asserted.
-          expect(await artAttributeNames(saved)).toEqual(expectedAttributeNames(art));
+          expect(await artAttributeNames(saved)).toEqual(
+            expectedAttributeNames(art),
+          );
 
           const edited = fromProseDoc(toProseDoc(opened), opened, {
             stylesheetSource: { type: "package" },

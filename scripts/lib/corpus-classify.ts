@@ -32,7 +32,8 @@ export const NOT_A_DOCX_REASONS = {
   malformedDocumentXml: "malformed-document-xml",
 } as const;
 
-export type NotADocxReason = (typeof NOT_A_DOCX_REASONS)[keyof typeof NOT_A_DOCX_REASONS];
+export type NotADocxReason =
+  (typeof NOT_A_DOCX_REASONS)[keyof typeof NOT_A_DOCX_REASONS];
 
 export type CorpusClassification =
   | { kind: "docx"; documentPart: string }
@@ -52,7 +53,16 @@ const WORDPROCESSINGML_NAMESPACES: ReadonlySet<string> = new Set([
 const DOCUMENT_ROOT_LOCAL_NAME = "document";
 
 /** OLE2 compound-file signature: an encrypted OOXML package or a legacy binary document. */
-const OLE_SIGNATURE = Uint8Array.of(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1);
+const OLE_SIGNATURE = Uint8Array.of(
+  0xd0,
+  0xcf,
+  0x11,
+  0xe0,
+  0xa1,
+  0xb1,
+  0x1a,
+  0xe1,
+);
 /** `EncryptedPackage`, the CFB stream name an ECMA-376 encrypted package carries, in UTF-16LE. */
 const ENCRYPTED_PACKAGE_STREAM = Buffer.from("EncryptedPackage", "utf16le");
 
@@ -61,10 +71,12 @@ const RELATIONSHIP_RE = /<(?:[\w.-]+:)?Relationship\b[^>]*>/gu;
 const ATTRIBUTE_RE = /([\w:.-]+)\s*=\s*"([^"]*)"/gu;
 /** The first element start tag, after any XML declaration, comment or doctype. */
 const ROOT_ELEMENT_RE = /<([\w:.-]+)((?:\s[^<>]*)?)\/?>/u;
-const PROLOG_RE = /^(?:\s|<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>[]*(?:\[[\s\S]*?\])?\s*>)*/u;
+const PROLOG_RE =
+  /^(?:\s|<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>[]*(?:\[[\s\S]*?\])?\s*>)*/u;
 
 const startsWith = (bytes: Uint8Array, prefix: Uint8Array): boolean =>
-  bytes.length >= prefix.length && prefix.every((byte, index) => bytes[index] === byte);
+  bytes.length >= prefix.length &&
+  prefix.every((byte, index) => bytes[index] === byte);
 
 const errorMessage = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
@@ -97,7 +109,9 @@ const mainPartName = (relationshipsXml: string): string | null => {
 };
 
 /** The root element's namespace URI and local name, resolved through its own prefix declarations. */
-const rootElement = (xml: string): { namespace: string; localName: string } | null => {
+const rootElement = (
+  xml: string,
+): { namespace: string; localName: string } | null => {
   const body = xml.slice(PROLOG_RE.exec(xml)?.[0].length ?? 0);
   const match = ROOT_ELEMENT_RE.exec(body);
   if (match?.[1] === undefined) {
@@ -107,16 +121,22 @@ const rootElement = (xml: string): { namespace: string; localName: string } | nu
   const attributes = attributesOf(match[2] ?? "");
   const separator = qualifiedName.indexOf(":");
   const prefix = separator === -1 ? null : qualifiedName.slice(0, separator);
-  const localName = separator === -1 ? qualifiedName : qualifiedName.slice(separator + 1);
-  const namespace = attributes.get(prefix === null ? "xmlns" : `xmlns:${prefix}`) ?? "";
+  const localName =
+    separator === -1 ? qualifiedName : qualifiedName.slice(separator + 1);
+  const namespace =
+    attributes.get(prefix === null ? "xmlns" : `xmlns:${prefix}`) ?? "";
   return { namespace, localName };
 };
 
-export const classifyCorpusFile = async (bytes: Uint8Array): Promise<CorpusClassification> => {
+export const classifyCorpusFile = async (
+  bytes: Uint8Array,
+): Promise<CorpusClassification> => {
   if (startsWith(bytes, OLE_SIGNATURE)) {
-    const encrypted = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).includes(
-      ENCRYPTED_PACKAGE_STREAM,
-    );
+    const encrypted = Buffer.from(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+    ).includes(ENCRYPTED_PACKAGE_STREAM);
     return encrypted
       ? {
           kind: "not-a-docx",

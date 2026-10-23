@@ -8,13 +8,19 @@
  * Script sizing: eigenpal/docx-editor@585413d0 (Apache-2.0), modified for Folio.
  */
 
-import { parseFontFamilyList, resolveFontFamily } from "../../utils/fontResolver";
+import {
+  parseFontFamilyList,
+  resolveFontFamily,
+} from "../../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../../utils/fontWeights";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { eastAsiaHintApplies } from "../../utils/scriptSegments";
 import type { RunFormatting } from "../types";
 import type { FontStyle } from "./measureTypes";
-import { FONT_KERNING_MODE, getRunFontKerningMode } from "./textMeasurementPolicy";
+import {
+  FONT_KERNING_MODE,
+  getRunFontKerningMode,
+} from "./textMeasurementPolicy";
 
 // Constants for OOXML unit conversions
 const TWIPS_PER_INCH = 1440;
@@ -48,7 +54,9 @@ export function docxScriptFontSize(fontSize: number): number {
  * small ones (matching the else-if in formatToStyle.ts's live editor
  * styling).
  */
-function capsStyleOf(run: RunFormatting): Pick<FontStyle, "textTransform" | "fontVariant"> {
+function capsStyleOf(
+  run: RunFormatting,
+): Pick<FontStyle, "textTransform" | "fontVariant"> {
   if (run.allCaps) {
     return { textTransform: "uppercase" };
   }
@@ -73,15 +81,21 @@ export function buildRunFontStyle(
 ): FontStyle {
   const baseFontSize = run.fontSize ?? fallbackFontSize;
   const fontSize =
-    run.superscript || run.subscript ? docxScriptFontSize(baseFontSize) : baseFontSize;
+    run.superscript || run.subscript
+      ? docxScriptFontSize(baseFontSize)
+      : baseFontSize;
   const horizontalScale = normalizeHorizontalScalePercent(run.horizontalScale);
   return {
     fontFamily: run.fontFamily ?? fallbackFontFamily,
-    ...(run.embeddedFontFamilyMap ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap } : {}),
+    ...(run.embeddedFontFamilyMap
+      ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap }
+      : {}),
     ...(run.alternateFontFamily !== undefined
       ? { alternateFontFamily: run.alternateFontFamily }
       : {}),
-    ...(run.eastAsiaFontFamily !== undefined ? { eastAsiaFontFamily: run.eastAsiaFontFamily } : {}),
+    ...(run.eastAsiaFontFamily !== undefined
+      ? { eastAsiaFontFamily: run.eastAsiaFontFamily }
+      : {}),
     ...(run.eastAsiaAlternateFontFamily !== undefined
       ? { eastAsiaAlternateFontFamily: run.eastAsiaAlternateFontFamily }
       : {}),
@@ -90,23 +104,34 @@ export function buildRunFontStyle(
       ? { complexScriptFontFamily: run.complexScriptFontFamily }
       : {}),
     ...(run.complexScriptAlternateFontFamily !== undefined
-      ? { complexScriptAlternateFontFamily: run.complexScriptAlternateFontFamily }
+      ? {
+          complexScriptAlternateFontFamily:
+            run.complexScriptAlternateFontFamily,
+        }
       : {}),
     ...(run.complexScriptFontSize !== undefined
       ? { complexScriptFontSize: run.complexScriptFontSize }
       : {}),
-    ...(run.complexScriptBold !== undefined ? { complexScriptBold: run.complexScriptBold } : {}),
+    ...(run.complexScriptBold !== undefined
+      ? { complexScriptBold: run.complexScriptBold }
+      : {}),
     ...(run.complexScriptItalic !== undefined
       ? { complexScriptItalic: run.complexScriptItalic }
       : {}),
-    ...(run.forceComplexScript !== undefined ? { forceComplexScript: run.forceComplexScript } : {}),
+    ...(run.forceComplexScript !== undefined
+      ? { forceComplexScript: run.forceComplexScript }
+      : {}),
     fontSize,
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
-    ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
+    ...(run.letterSpacing !== undefined
+      ? { letterSpacing: run.letterSpacing }
+      : {}),
     ...capsStyleOf(run),
     ...(horizontalScale !== undefined ? { horizontalScale } : {}),
-    kerning: getRunFontKerningMode(run, fallbackFontSize) === FONT_KERNING_MODE.enabled,
+    kerning:
+      getRunFontKerningMode(run, fallbackFontSize) ===
+      FONT_KERNING_MODE.enabled,
   };
 }
 

@@ -3,7 +3,9 @@ import JSZip from "jszip";
 
 import { DOCX_PACKAGE_ISSUE_CODES, validateDocxPackage } from "./docx";
 
-const packageWithDocument = async (documentXml: string): Promise<Uint8Array> => {
+const packageWithDocument = async (
+  documentXml: string,
+): Promise<Uint8Array> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -35,7 +37,8 @@ describe("validateDocxPackage", () => {
     expect(result).toEqual({
       valid: false,
       code: DOCX_PACKAGE_ISSUE_CODES.MissingPackagePart,
-      error: "Generated DOCX is missing required package part: [Content_Types].xml",
+      error:
+        "Generated DOCX is missing required package part: [Content_Types].xml",
     });
   });
 
@@ -45,22 +48,27 @@ describe("validateDocxPackage", () => {
       "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
     ],
     ["Strict namespace", "http://purl.oclc.org/ooxml/wordprocessingml/main"],
-  ])("accepts %s without optional styles or document relationships", async (_name, namespace) => {
-    const bytes = await packageWithDocument(
-      `<x:document xmlns:x="${namespace}"><x:body/></x:document>`,
-    );
+  ])(
+    "accepts %s without optional styles or document relationships",
+    async (_name, namespace) => {
+      const bytes = await packageWithDocument(
+        `<x:document xmlns:x="${namespace}"><x:body/></x:document>`,
+      );
 
-    expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
-  });
+      expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
+    },
+  );
 
   test("saved-package oracle detects a timestamp-sized comment id mutation", async () => {
-    const namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const namespace =
+      "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     const valid = await packageWithDocument(
       `<w:document xmlns:w="${namespace}"><w:body><w:p/></w:body></w:document>`,
     );
     const zip = await JSZip.loadAsync(valid);
     const declarations = await zip.file("[Content_Types].xml")?.async("string");
-    if (!declarations) throw new TypeError("Missing mutation fixture declarations");
+    if (!declarations)
+      throw new TypeError("Missing mutation fixture declarations");
     zip.file(
       "[Content_Types].xml",
       declarations.replace(
@@ -82,9 +90,12 @@ describe("validateDocxPackage", () => {
       "word/comments.xml",
       `<w:comments xmlns:w="${namespace}"><w:comment w:id="1790870400000" w:author="Reviewer"><w:p/></w:comment></w:comments>`,
     );
-    const mutated = await validateDocxPackage(await zip.generateAsync({ type: "uint8array" }));
+    const mutated = await validateDocxPackage(
+      await zip.generateAsync({ type: "uint8array" }),
+    );
     expect(mutated.valid).toBe(false);
-    if (mutated.valid) throw new TypeError("Comment mutation escaped the validity oracle");
+    if (mutated.valid)
+      throw new TypeError("Comment mutation escaped the validity oracle");
     expect(mutated.code).toBe(DOCX_PACKAGE_ISSUE_CODES.InvalidSchemaAttribute);
     expect(mutated.error).toContain("word/comments.xml");
   });
@@ -114,7 +125,8 @@ describe("validateDocxPackage", () => {
   });
 
   test("rejects oversized document XML before parsing it", async () => {
-    const namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const namespace =
+      "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     const bytes = await packageWithDocument(
       `<w:document xmlns:w="${namespace}"><w:body><w:p>${"x".repeat(32 * 1024 * 1024)}</w:p></w:body></w:document>`,
     );
@@ -149,7 +161,11 @@ const LOCAL_HEADER_SIGNATURE = 0x04_03_4b_50;
  * Rewrite the uncompressed size `entryPath` declares in its local header and
  * central-directory record, leaving its compressed data untouched.
  */
-const withDeclaredSize = (source: Uint8Array, entryPath: string, declaredBytes: number) => {
+const withDeclaredSize = (
+  source: Uint8Array,
+  entryPath: string,
+  declaredBytes: number,
+) => {
   const bytes = source.slice();
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const name = new TextEncoder().encode(entryPath);
@@ -176,7 +192,9 @@ const withDeclaredSize = (source: Uint8Array, entryPath: string, declaredBytes: 
     }
   }
   if (patched !== 2) {
-    throw new Error(`Expected one local and one central record for ${entryPath}`);
+    throw new Error(
+      `Expected one local and one central record for ${entryPath}`,
+    );
   }
   return bytes;
 };
@@ -195,7 +213,8 @@ describe("validateDocxPackage archive inflation limits", () => {
     expect(await validateDocxPackage(bytes)).toEqual({
       valid: false,
       code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
-      error: 'Generated DOCX entry "word/document.xml" inflates past its declared size.',
+      error:
+        'Generated DOCX entry "word/document.xml" inflates past its declared size.',
     });
   });
 
@@ -211,9 +230,12 @@ describe("validateDocxPackage archive inflation limits", () => {
   });
 
   test("leaves a highly compressible binary entry to the byte and archive limits", async () => {
-    const zip = await JSZip.loadAsync(await packageWithDocument(documentOfSize(16)));
+    const zip = await JSZip.loadAsync(
+      await packageWithDocument(documentOfSize(16)),
+    );
     const declarations = await zip.file("[Content_Types].xml")?.async("string");
-    if (!declarations) throw new TypeError("Missing binary fixture declarations");
+    if (!declarations)
+      throw new TypeError("Missing binary fixture declarations");
     zip.file(
       "[Content_Types].xml",
       declarations.replace(
@@ -221,12 +243,18 @@ describe("validateDocxPackage archive inflation limits", () => {
         '<Default Extension="bmp" ContentType="image/bmp"/><Default Extension="bin" ContentType="application/octet-stream"/></Types>',
       ),
     );
-    zip.file("word/media/image1.bmp", new Uint8Array(5 * 1024 * 1024).fill(0xff));
+    zip.file(
+      "word/media/image1.bmp",
+      new Uint8Array(5 * 1024 * 1024).fill(0xff),
+    );
     // Incompressible padding keeps the archive as a whole under the ratio cap.
     zip.file("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)), {
       compression: "STORE",
     });
-    const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    const bytes = await zip.generateAsync({
+      type: "uint8array",
+      compression: "DEFLATE",
+    });
 
     expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
   });
@@ -234,7 +262,9 @@ describe("validateDocxPackage archive inflation limits", () => {
   test("counts archive records before the archive is parsed", async () => {
     const zip = new JSZip();
     for (let index = 0; index < 4100; index += 1) {
-      zip.file(`customXml/item${String(index)}.xml`, "", { createFolders: false });
+      zip.file(`customXml/item${String(index)}.xml`, "", {
+        createFolders: false,
+      });
     }
     const bytes = await zip.generateAsync({ type: "uint8array" });
 

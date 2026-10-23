@@ -24,22 +24,22 @@
 // Exits non-zero on any failure. Run via `bun run test:packaged-consumer`.
 
 import { $ } from "bun";
-import { cp, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { installCleanRoomDependencies } from "./clean-room-install";
 import { assertHostPeerResolution } from "./host-peer-policy";
 import {
-  REACT_PEER_FLOOR,
   buildAndPack,
   consumerSrc,
   coreDir,
   docxCoreDir,
-  isDocxKernelWasmAsset,
   hostPeerInstallArgs,
-  reactPeerInstallArgs,
+  isDocxKernelWasmAsset,
+  REACT_PEER_FLOOR,
   reactDir,
+  reactPeerInstallArgs,
   utf8BoundariesDir,
   writeConsumerPackageJson,
 } from "./packaged-consumer-lib";
@@ -61,9 +61,14 @@ try {
   docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
   corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
   reactPackDir = await mkdtemp(path.join(tmpdir(), "folio-react-pack-"));
-  utf8BoundariesPackDir = await mkdtemp(path.join(tmpdir(), "folio-utf8-boundaries-pack-"));
+  utf8BoundariesPackDir = await mkdtemp(
+    path.join(tmpdir(), "folio-utf8-boundaries-pack-"),
+  );
 
-  const utf8BoundariesTarball = await buildAndPack(utf8BoundariesDir, utf8BoundariesPackDir);
+  const utf8BoundariesTarball = await buildAndPack(
+    utf8BoundariesDir,
+    utf8BoundariesPackDir,
+  );
   const docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir);
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
@@ -77,8 +82,13 @@ try {
     // Copy the checked-in consumer app out of the monorepo so no workspace
     // linkage leaks in; install the packed artifacts npm-style.
     console.log(`→ staging React ${reactVersion} consumer in ${consumerDir}`);
-    await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
-    await cp(path.join(consumerSrc, "vite.config.ts"), path.join(consumerDir, "vite.config.ts"));
+    await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), {
+      recursive: true,
+    });
+    await cp(
+      path.join(consumerSrc, "vite.config.ts"),
+      path.join(consumerDir, "vite.config.ts"),
+    );
 
     await writeConsumerPackageJson({
       consumerDir,
@@ -103,7 +113,9 @@ try {
     });
 
     assertHostPeerResolution(consumerDir);
-    console.log(`→ production vite build over the packed tarballs (React ${reactVersion})`);
+    console.log(
+      `→ production vite build over the packed tarballs (React ${reactVersion})`,
+    );
     const build = await $`bun x vite build`.cwd(consumerDir).nothrow();
     if (build.exitCode !== 0) {
       console.error(build.stderr.toString() || build.stdout.toString());
@@ -114,7 +126,9 @@ try {
     // The worker must have resolved and emitted its own chunk; otherwise the
     // URL target silently vanished (e.g. externalized away) and the gate would
     // be moot.
-    const distFiles = await readdir(path.join(consumerDir, "dist"), { recursive: true });
+    const distFiles = await readdir(path.join(consumerDir, "dist"), {
+      recursive: true,
+    });
     const workerChunk = distFiles.find(
       (f) => f.includes("font-metrics.worker") && f.endsWith(".js"),
     );
@@ -124,10 +138,20 @@ try {
     }
     workerChunks.push(`React ${reactVersion}: ${workerChunk}`);
 
-    const main = await readFile(path.join(consumerDir, "dist", "main.js"), "utf8");
+    const main = await readFile(
+      path.join(consumerDir, "dist", "main.js"),
+      "utf8",
+    );
     const wasmAsset = distFiles.find(isDocxKernelWasmAsset);
     const packagedWasm = await readFile(
-      path.join(consumerDir, "node_modules", "@stll", "docx-core", "dist", "docx_kernel_bg.wasm"),
+      path.join(
+        consumerDir,
+        "node_modules",
+        "@stll",
+        "docx-core",
+        "dist",
+        "docx_kernel_bg.wasm",
+      ),
     );
     const inlineWasm = main.includes(
       `data:application/wasm;base64,${packagedWasm.toString("base64")}`,
@@ -136,7 +160,9 @@ try {
       failure = `✗ packaged-consumer: React ${reactVersion} build produced no DOCX kernel WebAssembly output. dist: ${distFiles.join(", ")}`;
       return;
     }
-    wasmOutputs.push(`React ${reactVersion}: ${wasmAsset ?? "library-mode inline asset"}`);
+    wasmOutputs.push(
+      `React ${reactVersion}: ${wasmAsset ?? "library-mode inline asset"}`,
+    );
   };
 
   await runBuild(REACT_PEER_FLOOR.version);

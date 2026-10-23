@@ -26,7 +26,9 @@ import type {
 
 /** `true` for exactly the paragraph-content types `Admitted` holds. */
 type AdmissionMap<Admitted extends ParagraphContent> = {
-  [Type in ParagraphContent["type"]]: Type extends Admitted["type"] ? true : false;
+  [Type in ParagraphContent["type"]]: Type extends Admitted["type"]
+    ? true
+    : false;
 };
 
 /**
@@ -40,9 +42,10 @@ type AdmissionMap<Admitted extends ParagraphContent> = {
  * Neither says anything about the revision, so lifting one out of a revision
  * takes its text out of the revision with it.
  *
- * Move-range markers stay inside the revision that owns their authored
- * position. Comment ranges remain paragraph-level because the editor projects
- * them as marks over content rather than as boundary atoms.
+ * Range markers stay inside the revision that owns their authored position.
+ * Comment range markers are positions even though the editor projects their
+ * extent as marks; lifting a marker changes which side of the tracked content
+ * owns that position when the revision is resolved.
  */
 export const TRACKED_CHANGE_WRAPPER_CONTENT = {
   inlineWrapper: true,
@@ -59,9 +62,12 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
   preservedInline: true,
   run: true,
   simpleField: true,
-  commentRangeEnd: false,
-  commentRangeStart: false,
-  commentReference: false,
+  commentRangeEnd: true,
+  commentRangeStart: true,
+  // The model lifts w:commentReference out of its w:r carrier. Keeping the
+  // record here writes that carrier within CT_RunTrackChange at the same
+  // position.
+  commentReference: true,
   moveFromRangeEnd: true,
   moveFromRangeStart: true,
   moveToRangeEnd: true,
@@ -192,17 +198,20 @@ export const SIMPLE_FIELD_CONTENT = {
  */
 export const isTrackedChangeWrapperChild = <Content extends ParagraphContent>(
   content: Content,
-): content is Extract<Content, TrackedRunContent> => TRACKED_CHANGE_WRAPPER_CONTENT[content.type];
+): content is Extract<Content, TrackedRunContent> =>
+  TRACKED_CHANGE_WRAPPER_CONTENT[content.type];
 
 /** Whether an inline content control keeps this content inside `<w:sdtContent>`. */
 export const isInlineSdtContent = <Content extends ParagraphContent>(
   content: Content,
-): content is Extract<Content, InlineSdt["content"][number]> => INLINE_SDT_CONTENT[content.type];
+): content is Extract<Content, InlineSdt["content"][number]> =>
+  INLINE_SDT_CONTENT[content.type];
 
 /** Whether a `w:hyperlink` keeps this content inside itself. */
 export const isHyperlinkContent = <Content extends ParagraphContent>(
   content: Content,
-): content is Extract<Content, Hyperlink["children"][number]> => HYPERLINK_CONTENT[content.type];
+): content is Extract<Content, Hyperlink["children"][number]> =>
+  HYPERLINK_CONTENT[content.type];
 
 /** Whether a `w:fldSimple` keeps this content inside itself. */
 export const isSimpleFieldContent = <Content extends ParagraphContent>(

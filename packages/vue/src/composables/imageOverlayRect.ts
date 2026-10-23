@@ -41,7 +41,8 @@ export function computeImageOverlayRect(i: OverlayRectInputs): OverlayRect {
   const leftGutter = reservedX / 2;
   const z = i.zoom || 1;
   return {
-    left: (i.imageRect.left - i.parentRect.left - leftGutter + i.scrollLeft) / z,
+    left:
+      (i.imageRect.left - i.parentRect.left - leftGutter + i.scrollLeft) / z,
     top: (i.imageRect.top - i.parentRect.top + i.scrollTop) / z,
     width: i.imageRect.width / z,
     height: i.imageRect.height / z,

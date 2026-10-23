@@ -15,7 +15,8 @@ import path from "node:path";
 import type { OoxmlSchemaGraph } from "../../generate-ooxml-schema-graph";
 import { orderedParticlesByOwner } from "../ooxml-schema-graph";
 
-export const WML_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+export const WML_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /** @see INLINE_NAMESPACES in `scripts/generate-strict-value-encodings.ts`. */
 export const INLINE_NAMESPACES: ReadonlySet<string> = new Set([
@@ -27,8 +28,10 @@ export const INLINE_NAMESPACES: ReadonlySet<string> = new Set([
   "http://schemas.openxmlformats.org/officeDocument/2006/math",
 ]);
 
-const RELATIONSHIP_BASE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const CONTENT_TYPE_BASE = "application/vnd.openxmlformats-officedocument.wordprocessingml";
+const RELATIONSHIP_BASE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const CONTENT_TYPE_BASE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml";
 
 /**
  * Where each rebuilt part lives, and how a package points at it.
@@ -128,7 +131,8 @@ const GRAPH_PATH = path.join(
 export type QualifiedName = { namespace: string; name: string };
 
 /** `{namespace}local` — the spelling the schema graph uses for a reference. */
-export const qualify = ({ namespace, name }: QualifiedName): string => `{${namespace}}${name}`;
+export const qualify = ({ namespace, name }: QualifiedName): string =>
+  `{${namespace}}${name}`;
 
 /**
  * A container is an element *declared with a particular complex type*.
@@ -169,10 +173,16 @@ export const attributeSlotKey = (slot: AttributeSlot): string =>
   `${containerKey(slot.container)}@${qualify(slot.attribute)}`;
 
 type Index = {
-  attributesByOwner: ReadonlyMap<string, readonly OoxmlSchemaGraph["attributes"][number][]>;
+  attributesByOwner: ReadonlyMap<
+    string,
+    readonly OoxmlSchemaGraph["attributes"][number][]
+  >;
   baseOf: ReadonlyMap<string, string>;
   byId: ReadonlyMap<string, OoxmlSchemaGraph["symbols"][number]>;
-  childrenByOwner: ReadonlyMap<string, readonly OoxmlSchemaGraph["children"][number][]>;
+  childrenByOwner: ReadonlyMap<
+    string,
+    readonly OoxmlSchemaGraph["children"][number][]
+  >;
   compositorKinds: ReadonlyMap<string, string>;
   /** Compositors that need no member: `minOccurs="0"` on themselves or on an ancestor. */
   optionalCompositors: ReadonlySet<string>;
@@ -190,7 +200,9 @@ type Index = {
  * how a generated fixture ends up several kilobytes of markup nobody asked for.
  */
 const optionalCompositorsOf = (graph: OoxmlSchemaGraph): Set<string> => {
-  const byId = new Map(graph.compositors.map((compositor) => [compositor.id, compositor]));
+  const byId = new Map(
+    graph.compositors.map((compositor) => [compositor.id, compositor]),
+  );
   const optional = new Set<string>();
   const resolve = (id: string, seen: Set<string>): boolean => {
     if (optional.has(id)) {
@@ -220,7 +232,9 @@ export const buildIndex = (graph: OoxmlSchemaGraph): Index => ({
   // subject sat at an ordinal this file computed for itself was scored by the
   // corpus validator against a different sequence.
   attributesByOwner: orderedParticlesByOwner(graph.attributes),
-  baseOf: new Map(graph.inheritance.map(({ derived, base }) => [derived, base])),
+  baseOf: new Map(
+    graph.inheritance.map(({ derived, base }) => [derived, base]),
+  ),
   byId: new Map(graph.symbols.map((symbol) => [symbol.id, symbol])),
   childrenByOwner: orderedParticlesByOwner(graph.children),
   compositorKinds: new Map(graph.compositors.map(({ id, kind }) => [id, kind])),
@@ -267,7 +281,9 @@ export const attributesOf = (
   for (const attribute of index.attributesByOwner.get(ownerId) ?? []) {
     if (attribute.kind === "group") {
       if (attribute.ref) {
-        resolved.push(...attributesOf(index, `attributeGroup:${attribute.ref}`, seen));
+        resolved.push(
+          ...attributesOf(index, `attributeGroup:${attribute.ref}`, seen),
+        );
       }
       continue;
     }
@@ -302,7 +318,8 @@ export const attributesOf = (
   }
 
   const base = index.baseOf.get(ownerId);
-  const baseType = base === undefined ? undefined : index.byId.get(`complexType:${base}`);
+  const baseType =
+    base === undefined ? undefined : index.byId.get(`complexType:${base}`);
   if (baseType) {
     resolved.push(...attributesOf(index, baseType.id, seen));
   }
@@ -342,9 +359,12 @@ export const childrenOf = (
   // an out-of-order child, and the fixture would be blamed for a loss it did
   // not cause.
   const base = index.baseOf.get(ownerId);
-  const baseType = base === undefined ? undefined : index.byId.get(`complexType:${base}`);
+  const baseType =
+    base === undefined ? undefined : index.byId.get(`complexType:${base}`);
   const resolved: ResolvedChild[] =
-    baseType === undefined ? [] : childrenOf(index, baseType.id, seen, inherited);
+    baseType === undefined
+      ? []
+      : childrenOf(index, baseType.id, seen, inherited);
 
   for (const child of index.childrenByOwner.get(ownerId) ?? []) {
     if (child.kind === "group") {
@@ -363,7 +383,9 @@ export const childrenOf = (
     if (child.kind !== "element") {
       continue;
     }
-    const declared = child.ref ? index.byId.get(`element:${child.ref}`) : undefined;
+    const declared = child.ref
+      ? index.byId.get(`element:${child.ref}`)
+      : undefined;
     const namespace = declared?.namespace ?? child.namespace;
     const name = declared?.name ?? child.name;
     if (namespace === undefined || name === undefined) {
@@ -403,7 +425,10 @@ export const childrenOf = (
  * exactly once, from the sorted index. Membership therefore cannot drift from
  * {@link childrenOf}, only the order differs.
  */
-export const declaredSequence = (index: Index, ownerId: string): ResolvedChild[] => {
+export const declaredSequence = (
+  index: Index,
+  ownerId: string,
+): ResolvedChild[] => {
   const compositors = new Map(
     index.graph.compositors.map((compositor) => [compositor.id, compositor]),
   );
@@ -420,16 +445,25 @@ export const declaredSequence = (index: Index, ownerId: string): ResolvedChild[]
     }
     return ordinals;
   };
-  const byDeclaration = new Map<string, OoxmlSchemaGraph["children"][number][]>();
+  const byDeclaration = new Map<
+    string,
+    OoxmlSchemaGraph["children"][number][]
+  >();
   for (const [owner, particles] of index.childrenByOwner) {
-    const paths = new Map(particles.map((particle) => [particle, pathOf(particle)]));
+    const paths = new Map(
+      particles.map((particle) => [particle, pathOf(particle)]),
+    );
     byDeclaration.set(
       owner,
       [...particles].sort((left, right) => {
         // SAFETY: both keys were just put in the map.
         const leftPath = paths.get(left) as number[];
         const rightPath = paths.get(right) as number[];
-        for (let at = 0; at < Math.max(leftPath.length, rightPath.length); at += 1) {
+        for (
+          let at = 0;
+          at < Math.max(leftPath.length, rightPath.length);
+          at += 1
+        ) {
           const difference = (leftPath[at] ?? -1) - (rightPath[at] ?? -1);
           if (difference !== 0) {
             return difference;
@@ -519,7 +553,12 @@ const BLOCK_CONTAINERS: ReadonlySet<string> = new Set([
   "txbxContent",
 ]);
 
-const BLOCK_CHILDREN: ReadonlySet<string> = new Set(["body", "p", "sdt", "tbl"]);
+const BLOCK_CHILDREN: ReadonlySet<string> = new Set([
+  "body",
+  "p",
+  "sdt",
+  "tbl",
+]);
 
 const DETOUR_COST = 6;
 
@@ -557,12 +596,21 @@ const stepCost = (parent: QualifiedName, child: QualifiedName): number => {
  * costs more to build and has more ways to be invalid for reasons that have
  * nothing to do with the pair under test.
  */
-export const buildContainerSpace = (graph: OoxmlSchemaGraph): ContainerSpace => {
+export const buildContainerSpace = (
+  graph: OoxmlSchemaGraph,
+): ContainerSpace => {
   const index = buildIndex(graph);
   const containers = new Map<string, Container>();
 
-  const best = new Map<string, { cost: number; path: readonly ContainerId[] }>();
-  const queue: Array<{ id: ContainerId; path: readonly ContainerId[]; cost: number }> = [];
+  const best = new Map<
+    string,
+    { cost: number; path: readonly ContainerId[] }
+  >();
+  const queue: Array<{
+    id: ContainerId;
+    path: readonly ContainerId[];
+    cost: number;
+  }> = [];
 
   /**
    * Every root is a source, but `w:document` is free and the others are not.
@@ -596,7 +644,8 @@ export const buildContainerSpace = (graph: OoxmlSchemaGraph): ContainerSpace => 
       for (let candidate = 1; candidate < queue.length; candidate += 1) {
         // SAFETY: both indices are inside the queue the loop bounds.
         if (
-          (queue[candidate] as { cost: number }).cost < (queue[cheapest] as { cost: number }).cost
+          (queue[candidate] as { cost: number }).cost <
+          (queue[cheapest] as { cost: number }).cost
         ) {
           cheapest = candidate;
         }
@@ -634,23 +683,30 @@ export const buildContainerSpace = (graph: OoxmlSchemaGraph): ContainerSpace => 
       maxOccurs: child.maxOccurs,
       order,
     }));
-    const attributes: AttributeSlot[] = attributesOf(index, `complexType:${id.typeQName}`).map(
-      (attribute) => ({
-        container: id,
-        attribute: attribute.attribute,
-        typeQName: attribute.typeQName,
-        required: attribute.required,
-        default: attribute.default,
-        fixed: attribute.fixed,
-      }),
-    );
+    const attributes: AttributeSlot[] = attributesOf(
+      index,
+      `complexType:${id.typeQName}`,
+    ).map((attribute) => ({
+      container: id,
+      attribute: attribute.attribute,
+      typeQName: attribute.typeQName,
+      required: attribute.required,
+      default: attribute.default,
+      fixed: attribute.fixed,
+    }));
     containers.set(key, { id, children, attributes, path: chain });
 
     for (const child of resolved) {
-      if (child.typeQName === undefined || !INLINE_NAMESPACES.has(child.child.namespace)) {
+      if (
+        child.typeQName === undefined ||
+        !INLINE_NAMESPACES.has(child.child.namespace)
+      ) {
         continue;
       }
-      const childId: ContainerId = { element: child.child, typeQName: child.typeQName };
+      const childId: ContainerId = {
+        element: child.child,
+        typeQName: child.typeQName,
+      };
       const childKey = containerKey(childId);
       const childCost = cost + stepCost(id.element, child.child);
       const known = best.get(childKey);
@@ -682,13 +738,17 @@ export const childSlots = (space: ContainerSpace): ChildSlot[] =>
   [...space.containers.values()]
     .flatMap((container) => container.children)
     .filter((slot) => INLINE_NAMESPACES.has(slot.child.namespace))
-    .sort((left, right) => childSlotKey(left).localeCompare(childSlotKey(right)));
+    .sort((left, right) =>
+      childSlotKey(left).localeCompare(childSlotKey(right)),
+    );
 
 /** Every attribute slot in the space, in a stable order. */
 export const attributeSlots = (space: ContainerSpace): AttributeSlot[] =>
   [...space.containers.values()]
     .flatMap((container) => container.attributes)
-    .sort((left, right) => attributeSlotKey(left).localeCompare(attributeSlotKey(right)));
+    .sort((left, right) =>
+      attributeSlotKey(left).localeCompare(attributeSlotKey(right)),
+    );
 
 let graphPromise: Promise<OoxmlSchemaGraph> | undefined;
 

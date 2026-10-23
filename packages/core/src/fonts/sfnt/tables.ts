@@ -1,4 +1,4 @@
-import { decodeText } from "../../utils/textEncoding";
+import { Result, TaggedError } from "better-result";
 /**
  * Shared sfnt container primitives: table tags, the container magics, the
  * table directory, and the `loca` offset array.
@@ -10,7 +10,7 @@ import { decodeText } from "../../utils/textEncoding";
  * table means.
  */
 
-import { Result, TaggedError } from "better-result";
+import { decodeText } from "../../utils/textEncoding";
 
 /** Four-character table tags this package addresses by name. */
 export const SFNT_TABLE = {
@@ -66,7 +66,9 @@ const DIRECTORY_ENTRY = {
 const TAG_LENGTH = 4;
 
 /** A structural problem in the container: bad header, or a table out of bounds. */
-export class SfntDirectoryError extends TaggedError("SfntDirectoryError")<{ message: string }> {}
+export class SfntDirectoryError extends TaggedError("SfntDirectoryError")<{
+  message: string;
+}> {}
 
 /** One entry of the table directory, already bounds-checked against the buffer. */
 export type SfntTableRecord = {
@@ -82,7 +84,11 @@ export type SfntDirectory = {
 };
 
 /** Whether `[offset, offset + length)` lies wholly inside `view`. */
-export const fitsInView = (view: DataView, offset: number, length: number): boolean =>
+export const fitsInView = (
+  view: DataView,
+  offset: number,
+  length: number,
+): boolean =>
   Number.isInteger(offset) &&
   Number.isInteger(length) &&
   offset >= 0 &&
@@ -95,9 +101,12 @@ export const readTag = (view: DataView, offset: number): string => {
     return "";
   }
 
-  return decodeText(new Uint8Array(view.buffer, view.byteOffset + offset, TAG_LENGTH), {
-    encoding: "binary",
-  });
+  return decodeText(
+    new Uint8Array(view.buffer, view.byteOffset + offset, TAG_LENGTH),
+    {
+      encoding: "binary",
+    },
+  );
 };
 
 /** The leading version word, or `undefined` when the buffer is shorter than it. */
@@ -105,7 +114,11 @@ export const readSfntVersion = (bytes: Uint8Array): number | undefined => {
   if (bytes.byteLength < TAG_LENGTH) {
     return undefined;
   }
-  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0);
+  return new DataView(
+    bytes.buffer,
+    bytes.byteOffset,
+    bytes.byteLength,
+  ).getUint32(0);
 };
 
 /**
@@ -115,7 +128,9 @@ export const readSfntVersion = (bytes: Uint8Array): number | undefined => {
  * or WOFF header parsed as a directory yields nonsense offsets and a much
  * worse error message than the container check gives.
  */
-export const readSfntDirectory = (bytes: Uint8Array): Result<SfntDirectory, SfntDirectoryError> => {
+export const readSfntDirectory = (
+  bytes: Uint8Array,
+): Result<SfntDirectory, SfntDirectoryError> => {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (!fitsInView(view, 0, SFNT_HEADER_SIZE)) {
     return Result.err(
@@ -181,7 +196,10 @@ export const readLocaOffsets = ({
 }: LocaOffsetsOptions): readonly number[] | undefined => {
   const entrySize = longFormat ? 4 : 2;
   const count = numGlyphs + 1;
-  if (loca.length < count * entrySize || !fitsInView(view, loca.offset, count * entrySize)) {
+  if (
+    loca.length < count * entrySize ||
+    !fitsInView(view, loca.offset, count * entrySize)
+  ) {
     return undefined;
   }
 

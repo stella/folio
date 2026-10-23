@@ -28,9 +28,11 @@ describe("serializeTable required children", () => {
 
     const xml = serializeTable(table, serializeParagraph);
 
-    expect(xml.startsWith("<w:tbl><w:tblPr/><w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid>")).toBe(
-      true,
-    );
+    expect(
+      xml.startsWith(
+        "<w:tbl><w:tblPr/><w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid>",
+      ),
+    ).toBe(true);
   });
 
   test("declares a grid column for every column the widest row spans", () => {
@@ -56,6 +58,8 @@ describe("serializeTable required children", () => {
 
     const xml = serializeTable(table, serializeParagraph);
 
-    expect(xml).toContain('<w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="3000"/></w:tblGrid>');
+    expect(xml).toContain(
+      '<w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="3000"/></w:tblGrid>',
+    );
   });
 });

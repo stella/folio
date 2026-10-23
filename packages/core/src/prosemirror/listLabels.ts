@@ -13,20 +13,23 @@
 
 import type { ResolvedParagraphNumbering } from "@stll/docx-core/model";
 
-import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
-import type { ListRendering } from "../types/document";
 import {
-  effectiveParagraphNumberingReference,
-  paragraphNumberingAttr,
-  paragraphNumberingSourcesFromBoundary,
-  type ParagraphNumberingSources,
-} from "./numberingAttr";
+  bulletMarkerFontName,
+  convertBulletToUnicode,
+} from "../docx/bulletMarkers";
+import type { ListRendering } from "../types/document";
 import {
   advanceVisibleListMarker,
   createListCounterState,
   type ListCounterStreams,
 } from "./listMarker";
 import { hasListRendering } from "./listRenderingAttrs";
+import {
+  effectiveParagraphNumberingReference,
+  paragraphNumberingAttr,
+  type ParagraphNumberingSources,
+  paragraphNumberingSourcesFromBoundary,
+} from "./numberingAttr";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /**
@@ -51,7 +54,10 @@ const staticMarker = (attrs: Readonly<ParagraphAttrs>): string | undefined => {
   }
   const text = (
     attrs.listIsBullet
-      ? convertBulletToUnicode(marker, bulletMarkerFontName(attrs.listMarkerFormatting))
+      ? convertBulletToUnicode(
+          marker,
+          bulletMarkerFontName(attrs.listMarkerFormatting),
+        )
       : marker
   ).trim();
   return text || undefined;
@@ -61,7 +67,8 @@ const visibleLabel = (
   counterAttrs: Readonly<ParagraphAttrs>,
   marker: string | null,
 ): string | undefined => {
-  if (counterAttrs.listMarkerHidden === true || !hasListRendering(counterAttrs)) return undefined;
+  if (counterAttrs.listMarkerHidden === true || !hasListRendering(counterAttrs))
+    return undefined;
   const counted = marker?.trim();
   if (counted) {
     return `${counted}${foldedFieldSuffix(counterAttrs)}`;
@@ -89,16 +96,20 @@ export const listLabelAttrsFromRendering = (
   };
   if (rendering === undefined) return attrs;
   if (rendering.marker) attrs.listMarker = rendering.marker;
-  if (rendering.markerTemplate) attrs.listMarkerTemplate = rendering.markerTemplate;
+  if (rendering.markerTemplate)
+    attrs.listMarkerTemplate = rendering.markerTemplate;
   if (rendering.isBullet) attrs.listIsBullet = true;
   if (rendering.isLegal) attrs.listIsLegal = true;
   if (rendering.numFmt) attrs.listNumFmt = rendering.numFmt;
   if (rendering.markerHidden) attrs.listMarkerHidden = true;
-  if (rendering.markerFormatting) attrs.listMarkerFormatting = rendering.markerFormatting;
+  if (rendering.markerFormatting)
+    attrs.listMarkerFormatting = rendering.markerFormatting;
   if (rendering.levelNumFmts) attrs.listLevelNumFmts = rendering.levelNumFmts;
   if (rendering.levelStarts) attrs.listLevelStarts = rendering.levelStarts;
-  if (rendering.abstractNumId !== undefined) attrs.listAbstractNumId = rendering.abstractNumId;
-  if (rendering.startOverride !== undefined) attrs.listStartOverride = rendering.startOverride;
+  if (rendering.abstractNumId !== undefined)
+    attrs.listAbstractNumId = rendering.abstractNumId;
+  if (rendering.startOverride !== undefined)
+    attrs.listStartOverride = rendering.startOverride;
   if (rendering.implicitChildLevelAdvances !== undefined) {
     attrs.listImplicitChildLevelAdvances = rendering.implicitChildLevelAdvances;
   }
@@ -107,14 +118,17 @@ export const listLabelAttrsFromRendering = (
 
 type VisibleListLabel = {
   label: string | undefined;
-  numbering: Extract<ResolvedParagraphNumbering, { kind: "reference" }> | undefined;
+  numbering:
+    Extract<ResolvedParagraphNumbering, { kind: "reference" }> | undefined;
 };
 
 /**
  * Advances past one paragraph and answers the label it shows, or `undefined`
  * when it shows none, with the numbering that label is counted in.
  */
-export type ListLabelCounter = (attrs: Readonly<ParagraphAttrs>) => VisibleListLabel;
+export type ListLabelCounter = (
+  attrs: Readonly<ParagraphAttrs>,
+) => VisibleListLabel;
 
 /**
  * A counter over paragraph attrs in document order. Call it for every

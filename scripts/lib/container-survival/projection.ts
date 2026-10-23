@@ -27,5 +27,11 @@ import type { Document } from "@stll/folio-core/types/document";
 type ProjectedNode = Parameters<typeof fromProseDoc>[0];
 
 /** Convert a ProseMirror document back to the model, rebuilding every record. */
-export const projectWithoutReuse = (pmDoc: ProjectedNode, base: Document): Document =>
-  fromProseDoc(pmDoc, base, { reuse: "none", stylesheetSource: { type: "package" } });
+export const projectWithoutReuse = (
+  pmDoc: ProjectedNode,
+  base: Document,
+): Document =>
+  fromProseDoc(pmDoc, base, {
+    reuse: "none",
+    stylesheetSource: { type: "package" },
+  });

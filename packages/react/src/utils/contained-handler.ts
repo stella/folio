@@ -40,7 +40,10 @@ export const containedHandler =
     if (handler === undefined) {
       return;
     }
-    if (event.target instanceof Node && !event.currentTarget.contains(event.target)) {
+    if (
+      event.target instanceof Node &&
+      !event.currentTarget.contains(event.target)
+    ) {
       return;
     }
     handler(event);

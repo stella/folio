@@ -4,7 +4,9 @@ import { isReadOnlyEditKey } from "./readOnlyEditAttempt";
 
 const keyEvent = (
   key: string,
-  modifiers: Partial<Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey">> = {},
+  modifiers: Partial<
+    Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey">
+  > = {},
 ) => ({
   altKey: modifiers.altKey ?? false,
   ctrlKey: modifiers.ctrlKey ?? false,

@@ -1,6 +1,7 @@
-import { encodeUtf8, decodeText } from "../utils/textEncoding";
+import type JSZip from "jszip";
+
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import { writeZipPart } from "@stll/docx-core/zip";
-import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 /**
  * Selective Save Module
  *
@@ -11,61 +12,69 @@ import type { SaveDiagnosticOptions } from "./saveDiagnostics";
  * Returns null on any failure, signaling the caller to fall back to full repack.
  */
 
-import type JSZip from "jszip";
-
 import type { Document } from "../types/document";
-import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
-import { detectDocxConformanceClass } from "./conformance";
-import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
-import { withoutExhaustedComments, withoutOrphanCommentRanges } from "./commentRangeIntegrity";
+import { decodeText, encodeUtf8 } from "../utils/textEncoding";
+import {
+  type CommentExtendedInfo,
+  parseCommentsExtended,
+} from "./commentParser";
+import {
+  withoutExhaustedComments,
+  withoutOrphanCommentRanges,
+} from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
+import { detectDocxConformanceClass } from "./conformance";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
 import { normalizeImportedNumericIds } from "./numericIdNormalization";
 import { isUnsafePackagePath } from "./packageParts";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
-  hasUnmaterializedInlineResources,
-  hasUnmaterializedHyperlinkBindings,
+  addCommentsExtendedOverride,
+  addCommentsExtendedRelationship,
   applyUpdatesToZip,
-  planAddedStyles,
-  publishCanonicalImageResources,
-  findMaxRId,
-  updateCoreProperties,
   collectHeaderFooterUpdates,
-  hasUnmaterializedHeaderFooter,
-  hasModelDrivenPictureWatermark,
   COMMENTS_CONTENT_TYPE,
   COMMENTS_EXTENDED_PART,
   COMMENTS_EXTENDED_PART_LOWER,
-  addCommentsExtendedOverride,
-  addCommentsExtendedRelationship,
+  findMaxRId,
+  hasModelDrivenPictureWatermark,
+  hasUnmaterializedHeaderFooter,
+  hasUnmaterializedHyperlinkBindings,
+  hasUnmaterializedInlineResources,
+  planAddedStyles,
+  publishCanonicalImageResources,
+  updateCoreProperties,
   withoutAttachedTemplate,
 } from "./rezip";
+import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES } from "./selectiveSaveFlags";
 import {
   buildPatchedDocumentXml,
   buildPatchedNoteXml,
-  collectParaIds,
   collectAddedNumberingDefs,
+  collectParaIds,
   patchNumberingDefinitions,
 } from "./selectiveXmlPatch";
 import {
-  type CommentPartPlan,
-  planCommentParts,
-  hasOwnedCommentsPart,
   canReplayCommentsPart,
+  type CommentPartPlan,
+  hasOwnedCommentsPart,
+  planCommentParts,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
-import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 import {
-  serializeDocument,
   type DocumentBodyAuthorityOptions,
+  serializeDocument,
 } from "./serializer/documentSerializer";
-import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
+import {
+  serializeEndnotes,
+  serializeFootnotes,
+} from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { readRootNamespaceBindings } from "./serializer/partNamespaces";
+import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 
 /**
  * Splice edited footnote/endnote paragraphs into their parts and return the
@@ -143,7 +152,9 @@ async function patchNoteParts(
 
   if (
     footnotes.length > 0 &&
-    !(await patchPart("word/footnotes.xml", () => serializeFootnotes(footnotes)))
+    !(await patchPart("word/footnotes.xml", () =>
+      serializeFootnotes(footnotes),
+    ))
   ) {
     return null;
   }
@@ -157,7 +168,10 @@ async function patchNoteParts(
   return remainingIds;
 }
 
-const findZipEntryCaseInsensitive = (zip: JSZip, lowerPath: string): JSZip.JSZipObject | null => {
+const findZipEntryCaseInsensitive = (
+  zip: JSZip,
+  lowerPath: string,
+): JSZip.JSZipObject | null => {
   const direct = zip.file(lowerPath);
   if (direct) {
     return direct;
@@ -213,7 +227,10 @@ async function patchCommentsExtended(
   updates: Map<string, string>,
 ): Promise<boolean> {
   const desiredXml = serializeCommentsExtended(plan);
-  const existing = findZipEntryCaseInsensitive(zip, COMMENTS_EXTENDED_PART_LOWER);
+  const existing = findZipEntryCaseInsensitive(
+    zip,
+    COMMENTS_EXTENDED_PART_LOWER,
+  );
 
   if (!desiredXml) {
     return existing === null;
@@ -221,10 +238,14 @@ async function patchCommentsExtended(
 
   const baselineInfo = existing
     ? parseCommentsExtended(
-        await existing.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+        await existing
+          .async("uint8array")
+          .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
       )
     : new Map<string, CommentExtendedInfo>();
-  if (commentsExtendedInfoEqual(parseCommentsExtended(desiredXml), baselineInfo)) {
+  if (
+    commentsExtendedInfoEqual(parseCommentsExtended(desiredXml), baselineInfo)
+  ) {
     return true;
   }
 
@@ -297,7 +318,10 @@ async function patchNumberingPart(
   updates: Map<string, string>,
 ): Promise<boolean> {
   const numbering = doc.package.numbering;
-  if (!numbering || (numbering.abstractNums.length === 0 && numbering.nums.length === 0)) {
+  if (
+    !numbering ||
+    (numbering.abstractNums.length === 0 && numbering.nums.length === 0)
+  ) {
     return true;
   }
 
@@ -318,12 +342,18 @@ async function patchNumberingPart(
   const originalXml = await file
     .async("uint8array")
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
-  const baselineXml = serializeNumberingXml(parseNumbering(originalXml).definitions);
+  const baselineXml = serializeNumberingXml(
+    parseNumbering(originalXml).definitions,
+  );
   const currentXml = serializeNumberingXml(numbering);
   if (currentXml === baselineXml) {
     return true;
   }
-  const patched = patchNumberingDefinitions({ originalXml, baselineXml, currentXml });
+  const patched = patchNumberingDefinitions({
+    originalXml,
+    baselineXml,
+    currentXml,
+  });
   if (patched === null) {
     return false;
   }
@@ -363,15 +393,22 @@ export type SelectiveSaveOptions = SaveDiagnosticOptions &
  * `withoutAttachedTemplate` with the full-repack path so both saves emit the
  * same package for the same source.
  */
-const queueSettingsUpdates = async (zip: JSZip, updates: Map<string, string>): Promise<void> => {
+const queueSettingsUpdates = async (
+  zip: JSZip,
+  updates: Map<string, string>,
+): Promise<void> => {
   const settingsFile = zip.file("word/settings.xml");
   if (!settingsFile) {
     return;
   }
   const relsFile = zip.file("word/_rels/settings.xml.rels");
   const filtered = withoutAttachedTemplate(
-    await settingsFile.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
-    await relsFile?.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+    await settingsFile
+      .async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+    await relsFile
+      ?.async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
   );
 
   if (filtered.settingsXml !== undefined) {
@@ -477,20 +514,32 @@ export async function attemptSelectiveSave(
       const sourceParts = new Map<string, string>();
       for (const [path, file] of Object.entries(zip.files)) {
         const lowerPath = path.toLowerCase();
-        if (file.dir || !lowerPath.startsWith("word/") || !lowerPath.endsWith(".xml")) continue;
+        if (
+          file.dir ||
+          !lowerPath.startsWith("word/") ||
+          !lowerPath.endsWith(".xml")
+        )
+          continue;
         // oxlint-disable-next-line no-await-in-loop -- reserve the complete baseline id spaces before remapping
         sourceParts.set(
           path,
-          await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+          await file
+            .async("uint8array")
+            .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
         );
       }
       for (const [path, xml] of normalizeImportedNumericIds(sourceParts)) {
-        if (xml !== sourceParts.get(path)) writeZipPart({ zip, path, data: encodeUtf8(xml) });
+        if (xml !== sourceParts.get(path))
+          writeZipPart({ zip, path, data: encodeUtf8(xml) });
       }
     }
 
     if (options.bodyAuthority === "canonical")
-      await publishCanonicalImageResources({ document: doc, zip, compressionLevel: 6 });
+      await publishCanonicalImageResources({
+        document: doc,
+        zip,
+        compressionLevel: 6,
+      });
 
     const updates = new Map<string, string>();
 
@@ -513,18 +562,27 @@ export async function attemptSelectiveSave(
       // when the source part is asked, and the save bails to a full repack on
       // every edit. What a changed id names is a body paragraph exactly when
       // the body serializes it.
-      const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml), {
-        xml: originalDocXml,
-        bodyAuthority: options.bodyAuthority,
-        onDiagnostic: options.onDiagnostic,
-      });
+      const serializedDocXml = serializeDocument(
+        doc,
+        readRootNamespaceBindings(originalDocXml),
+        {
+          xml: originalDocXml,
+          bodyAuthority: options.bodyAuthority,
+          onDiagnostic: options.onDiagnostic,
+        },
+      );
       const bodyParaIds = collectParaIds(serializedDocXml);
-      const originalBodyParaIds = structuralChange ? collectParaIds(originalDocXml) : undefined;
+      const originalBodyParaIds = structuralChange
+        ? collectParaIds(originalDocXml)
+        : undefined;
 
       // Adding numbering definitions requires packaging and relationship work.
       // Keep that outside the structural paragraph splice contract.
       if (structuralChange && doc.package.numbering) {
-        const numberingFile = findZipEntryCaseInsensitive(zip, "word/numbering.xml");
+        const numberingFile = findZipEntryCaseInsensitive(
+          zip,
+          "word/numbering.xml",
+        );
         const baselineNumbering = numberingFile
           ? serializeNumberingXml(
               parseNumbering(
@@ -552,7 +610,12 @@ export async function attemptSelectiveSave(
       }
 
       if (noteCandidateIds.size > 0) {
-        const unrouted = await patchNoteParts(zip, doc, noteCandidateIds, updates);
+        const unrouted = await patchNoteParts(
+          zip,
+          doc,
+          noteCandidateIds,
+          updates,
+        );
         // A splice failure, or a changed id that is neither a body nor a note
         // paragraph, falls back to full repack — matching the prior safety when
         // buildPatchedDocumentXml met a paraId it could not resolve.
@@ -568,7 +631,11 @@ export async function attemptSelectiveSave(
               serializedXml: serializedDocXml,
               changedIds: bodyChangedIds,
             })
-          : buildPatchedDocumentXml(originalDocXml, serializedDocXml, bodyChangedIds);
+          : buildPatchedDocumentXml(
+              originalDocXml,
+              serializedDocXml,
+              bodyChangedIds,
+            );
         if (!patchedDocXml) {
           return null;
         }
@@ -580,7 +647,10 @@ export async function attemptSelectiveSave(
     // even if the editor now has zero comments — otherwise the stale
     // entries linger in the saved file (the rezip baseline copies the
     // previous part as-is) and round-trip back as phantom threads.
-    const sourceCommentsFile = findZipEntryCaseInsensitive(zip, "word/comments.xml");
+    const sourceCommentsFile = findZipEntryCaseInsensitive(
+      zip,
+      "word/comments.xml",
+    );
     const commentsPartPath = sourceCommentsFile?.name ?? "word/comments.xml";
     const sourceCommentsXml = sourceCommentsFile
       ? await sourceCommentsFile
@@ -588,11 +658,17 @@ export async function attemptSelectiveSave(
           .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
       : undefined;
     const commentsUnchanged =
-      sourceCommentsXml !== undefined && canReplayCommentsPart(doc, sourceCommentsXml);
-    if (!commentsUnchanged && (hasComments || ownsCommentsPart || sourceCommentsFile)) {
+      sourceCommentsXml !== undefined &&
+      canReplayCommentsPart(doc, sourceCommentsXml);
+    if (
+      !commentsUnchanged &&
+      (hasComments || ownsCommentsPart || sourceCommentsFile)
+    ) {
       const commentsXml = serializeComments(
         commentPlan,
-        sourceCommentsXml === undefined ? undefined : readRootNamespaceBindings(sourceCommentsXml),
+        sourceCommentsXml === undefined
+          ? undefined
+          : readRootNamespaceBindings(sourceCommentsXml),
       );
       if (commentsXml !== sourceCommentsXml) {
         updates.set(commentsPartPath, commentsXml);
@@ -640,7 +716,10 @@ export async function attemptSelectiveSave(
     // only when the model's threading differs from what the file already
     // encodes, so an unrelated body edit leaves the part byte-exact. Bail to
     // full repack when the part cannot be reconciled safely (e.g. a removal).
-    if (!commentsUnchanged && !(await patchCommentsExtended(zip, commentPlan, updates))) {
+    if (
+      !commentsUnchanged &&
+      !(await patchCommentsExtended(zip, commentPlan, updates))
+    ) {
       return null;
     }
 
@@ -661,7 +740,10 @@ export async function attemptSelectiveSave(
         updates.set(styles.path, styles.xml);
         break;
       case "materialize":
-        options.onDiagnostic?.({ type: "selectiveSaveRefused", part: "word/styles.xml" });
+        options.onDiagnostic?.({
+          type: "selectiveSaveRefused",
+          part: "word/styles.xml",
+        });
         return null;
       default: {
         const exhaustive: never = styles;
@@ -705,11 +787,13 @@ export async function attemptSelectiveSave(
         );
       })
     ) {
-      const sourceDocumentXml = await findZipEntryCaseInsensitive(zip, "word/document.xml")?.async(
-        "text",
-      );
+      const sourceDocumentXml = await findZipEntryCaseInsensitive(
+        zip,
+        "word/document.xml",
+      )?.async("text");
       if (
-        detectDocxConformanceClass(sourceDocumentXml ?? null) === DOCX_CONFORMANCE_CLASSES.STRICT
+        detectDocxConformanceClass(sourceDocumentXml ?? null) ===
+        DOCX_CONFORMANCE_CLASSES.STRICT
       ) {
         return null;
       }

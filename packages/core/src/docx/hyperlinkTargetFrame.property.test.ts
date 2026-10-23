@@ -15,13 +15,16 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { anchorTargetAttrs } from "../utils/urlSecurity";
-
 import { parseDocumentBody } from "./documentParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const ALLOWED_TARGETS = ["_blank", "_self", "_parent", "_top"];
 
 const documentXml = (frame: string): string =>
@@ -40,12 +43,20 @@ const relationships = new Map([
 ]);
 
 const parsedFrame = (frame: string): string | undefined => {
-  const body = parseDocumentBody(documentXml(frame), null, null, null, relationships);
+  const body = parseDocumentBody(
+    documentXml(frame),
+    null,
+    null,
+    null,
+    relationships,
+  );
   const paragraph = body.content.at(0);
   if (paragraph?.type !== "paragraph") {
     throw new Error("expected a paragraph");
   }
-  const hyperlink = paragraph.content.find((child) => child.type === "hyperlink");
+  const hyperlink = paragraph.content.find(
+    (child) => child.type === "hyperlink",
+  );
   return hyperlink?.type === "hyperlink" ? hyperlink.target : undefined;
 };
 
@@ -70,14 +81,20 @@ describe("authored hyperlink target frames", () => {
 
           // Re-serialized from the model, with no captured markup to replay:
           // what the serializer writes is what the model kept.
-          const body = parseDocumentBody(documentXml(frame), null, null, null, relationships);
+          const body = parseDocumentBody(
+            documentXml(frame),
+            null,
+            null,
+            null,
+            relationships,
+          );
           const paragraph = body.content.at(0);
           if (paragraph?.type !== "paragraph") {
             throw new Error("expected a paragraph");
           }
-          expect(serializeParagraph({ ...paragraph, verbatimXml: undefined })).toContain(
-            `w:tgtFrame="${frame}"`,
-          );
+          expect(
+            serializeParagraph({ ...paragraph, verbatimXml: undefined }),
+          ).toContain(`w:tgtFrame="${frame}"`);
         }),
         propertyConfig({ numRuns: 60 }),
       );

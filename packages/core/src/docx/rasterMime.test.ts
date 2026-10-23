@@ -10,7 +10,9 @@ const RASTER_HEADERS = {
   "image/jpeg": [[0xff, 0xd8, 0xff, 0xe0]],
   "image/gif": [[0x47, 0x49, 0x46, 0x38, 0x39, 0x61]],
   "image/bmp": [[0x42, 0x4d, 0x20, 0, 0, 0]],
-  "image/webp": [[0x52, 0x49, 0x46, 0x46, 0x10, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]],
+  "image/webp": [
+    [0x52, 0x49, 0x46, 0x46, 0x10, 0, 0, 0, 0x57, 0x45, 0x42, 0x50],
+  ],
   "image/tiff": [
     [0x49, 0x49, 0x2a, 0],
     [0x4d, 0x4d, 0, 0x2a],
@@ -19,7 +21,16 @@ const RASTER_HEADERS = {
   ],
 } as const satisfies Record<RasterMimeType, readonly (readonly number[])[]>;
 
-const RASTER_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "tif", "tiff"];
+const RASTER_EXTENSIONS = [
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "bmp",
+  "webp",
+  "tif",
+  "tiff",
+];
 
 const createPackage = () => {
   const zip = new JSZip();
@@ -64,11 +75,20 @@ describe("raster package MIME detection", () => {
 
   test("requires both declared and detected raster types to satisfy the allowlist", async () => {
     const zip = createPackage();
-    zip.file("word/media/declared.png", new Uint8Array(RASTER_HEADERS["image/gif"][0]));
-    zip.file("word/media/declared.gif", new Uint8Array(RASTER_HEADERS["image/png"][0]));
-    const raw = await unzipDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-      allowedMediaMimeTypes: new Set(["image/png"]),
-    });
+    zip.file(
+      "word/media/declared.png",
+      new Uint8Array(RASTER_HEADERS["image/gif"][0]),
+    );
+    zip.file(
+      "word/media/declared.gif",
+      new Uint8Array(RASTER_HEADERS["image/png"][0]),
+    );
+    const raw = await unzipDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+      {
+        allowedMediaMimeTypes: new Set(["image/png"]),
+      },
+    );
     expect(raw.media.size).toBe(0);
   });
 
@@ -90,7 +110,9 @@ describe("raster package MIME detection", () => {
     for (const [path, bytes] of Object.entries(rejected)) {
       zip.file(path, bytes);
     }
-    const raw = await unzipDocx(await zip.generateAsync({ type: "arraybuffer" }));
+    const raw = await unzipDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+    );
     expect(raw.media.size).toBe(0);
     for (const path of Object.keys(rejected)) {
       expect(raw.originalZip.file(path)).not.toBeNull();

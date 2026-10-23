@@ -17,7 +17,9 @@
       @keydown.esc="handleCancel"
     />
     <div class="add-comment-card__actions">
-      <button class="add-comment-card__cancel" @click="handleCancel">Cancel</button>
+      <button class="add-comment-card__cancel" @click="handleCancel">
+        Cancel
+      </button>
       <button
         class="add-comment-card__submit"
         :class="{ 'add-comment-card__submit--active': trimmed }"
@@ -31,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 const emit = defineEmits<{
   (e: "submit", text: string): void;

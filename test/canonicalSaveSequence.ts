@@ -1,31 +1,39 @@
-import JSZip from "jszip";
 import { panic } from "better-result";
-import { extractParagraphXml } from "../packages/core/src/docx/selectiveXmlPatch";
-/** Generated adapter save histories share operations, not a PM-derived expected model. */
-import { createEmptyDocument } from "../packages/core/src/utils/createDocument";
+import JSZip from "jszip";
+
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
 } from "../packages/core/src/controller/canonicalOperations";
+import { extractParagraphXml } from "../packages/core/src/docx/selectiveXmlPatch";
+/** Generated adapter save histories share operations, not a PM-derived expected model. */
+import { createEmptyDocument } from "../packages/core/src/utils/createDocument";
 
 export const CANONICAL_SAVE_SEEDS = [20261004, 20261005, 20261006] as const;
 
 export const canonicalSaveFixture = (seed: number) => {
   const document = createEmptyDocument({ initialText: "" });
-  document.package.document.content = ["Direct", "Tracked", "Formatting", "Untouched"].map(
-    (label, index) => ({
-      type: "paragraph" as const,
-      paraId: (seed + index).toString(16).padStart(8, "0").toUpperCase(),
-      content: [
-        { type: "run" as const, content: [{ type: "text" as const, text: `${label} ${seed}` }] },
-      ],
-    }),
-  );
+  document.package.document.content = [
+    "Direct",
+    "Tracked",
+    "Formatting",
+    "Untouched",
+  ].map((label, index) => ({
+    type: "paragraph" as const,
+    paraId: (seed + index).toString(16).padStart(8, "0").toUpperCase(),
+    content: [
+      {
+        type: "run" as const,
+        content: [{ type: "text" as const, text: `${label} ${seed}` }],
+      },
+    ],
+  }));
   return document;
 };
 
 export const canonicalSaveSequence = (seed: number): DocumentOp[][] => {
-  const blockId = (index: number) => (seed + index).toString(16).padStart(8, "0").toUpperCase();
+  const blockId = (index: number) =>
+    (seed + index).toString(16).padStart(8, "0").toUpperCase();
   const position = (index: number, offset: number) => ({
     story: "main" as const,
     blockId: blockId(index),
@@ -90,9 +98,13 @@ export const canonicalSaveSequence = (seed: number): DocumentOp[][] => {
   ];
 };
 
-export const canonicalSaveParagraphXml = async (bytes: ArrayBuffer, paraId: string) => {
+export const canonicalSaveParagraphXml = async (
+  bytes: ArrayBuffer,
+  paraId: string,
+) => {
   const zip = await JSZip.loadAsync(bytes);
-  const part = zip.file("word/document.xml") ?? panic("Expected main document part");
+  const part =
+    zip.file("word/document.xml") ?? panic("Expected main document part");
   return (
     extractParagraphXml(await part.async("string"), paraId) ??
     panic("Expected preserved paragraph XML")

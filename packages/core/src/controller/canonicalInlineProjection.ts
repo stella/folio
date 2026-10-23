@@ -1,31 +1,34 @@
 import { panic, Result, TaggedError } from "better-result";
-import { inlineLeafSpans, paragraphLogicalText } from "@stll/docx-core/ops";
-import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import type { Node as PMNode } from "prosemirror-model";
-import type {
-  Paragraph,
-  ParagraphContent,
-  RunContent,
-  NoteReferenceContent,
-} from "../types/document";
-import {
-  readBookmarkBoundaryAttrs,
-  bookmarkMarkerFromAttrs,
-} from "../prosemirror/bookmarkBoundaryAttrs";
-import { readMoveRangeBoundaryAttrs } from "../prosemirror/moveRangeBoundaryAttrs";
-import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
+
+import { hasIllegalXmlCharacters } from "@stll/docx-core";
+import { inlineLeafSpans, paragraphLogicalText } from "@stll/docx-core/ops";
+
 import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
 import {
   readCommentMarkAttrs,
   readFootnoteRefMarkAttrs,
   readPreservedXmlAttrs,
 } from "../prosemirror/attrs/index";
+import {
+  bookmarkMarkerFromAttrs,
+  readBookmarkBoundaryAttrs,
+} from "../prosemirror/bookmarkBoundaryAttrs";
+import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
+import { readMoveRangeBoundaryAttrs } from "../prosemirror/moveRangeBoundaryAttrs";
+import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { PRESERVED_XML_LEVELS } from "../prosemirror/schema/nodes";
 import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "../prosemirror/trackedRunInlineAtoms";
-import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
+import type {
+  NoteReferenceContent,
+  Paragraph,
+  ParagraphContent,
+  RunContent,
+} from "../types/document";
 
 type SourceKind = ParagraphContent["type"] | RunContent["type"];
-type SourcePolicy = "container" | "leaf" | "text" | "rawField" | "control" | "layout";
+type SourcePolicy =
+  "container" | "leaf" | "text" | "rawField" | "control" | "layout";
 export const CANONICAL_SOURCE_INLINE_POLICIES = {
   run: "container",
   hyperlink: "container",
@@ -65,7 +68,8 @@ export const CANONICAL_SOURCE_INLINE_POLICIES = {
   shape: "leaf",
 } as const satisfies Record<SourceKind, SourcePolicy>;
 
-type NativePolicy = "text" | "unit" | "markers" | "noteMarker" | "capture" | "refused";
+type NativePolicy =
+  "text" | "unit" | "markers" | "noteMarker" | "capture" | "refused";
 export const CANONICAL_NATIVE_INLINE_POLICIES = {
   text: "text",
   bookmarkBoundary: "markers",
@@ -94,8 +98,11 @@ const nativePolicies = new Map<string, NativePolicy>(
   Object.entries(CANONICAL_NATIVE_INLINE_POLICIES),
 );
 
-class InlineProjectionError extends TaggedError("InlineProjectionError")<{ message: string }> {}
-const refuse = (message: string) => Result.err(new InlineProjectionError({ message }));
+class InlineProjectionError extends TaggedError("InlineProjectionError")<{
+  message: string;
+}> {}
+const refuse = (message: string) =>
+  Result.err(new InlineProjectionError({ message }));
 
 /** Every source variant makes a decision before conversion can discard its positions. */
 export const canonicalInlineSourceIssue = (
@@ -140,7 +147,8 @@ export const canonicalInlineSourceIssue = (
         // Fields are one positional unit, but their cached payload still needs validation.
         let children: readonly (ParagraphContent | RunContent)[] = [];
         if (item.type === "simpleField") children = item.content;
-        if (item.type === "complexField") children = [...item.fieldCode, ...item.fieldResult];
+        if (item.type === "complexField")
+          children = [...item.fieldCode, ...item.fieldResult];
         const issue = canonicalInlineSourceIssue(children, "fieldPayload");
         if (issue !== null) return issue;
         break;
@@ -164,7 +172,9 @@ const sourceContainerChildren = (item: ParagraphContent | RunContent) => {
     case "inlineWrapper":
       return item.content;
     default:
-      return panic(`Source policy incorrectly classified ${item.type} as a container.`);
+      return panic(
+        `Source policy incorrectly classified ${item.type} as a container.`,
+      );
   }
 };
 
@@ -199,14 +209,17 @@ export const canonicalNativeCells = (
     const policy = nativePolicies.get(node.type.name);
     switch (policy) {
       case "text": {
-        const reference = node.marks.find(({ type }) => type.name === "footnoteRef");
+        const reference = node.marks.find(
+          ({ type }) => type.name === "footnoteRef",
+        );
         if (!reference) {
           cells.push({ type: "text", text: node.text ?? "", from, to, node });
           return;
         }
         const attrs = readFootnoteRefMarkAttrs(reference);
         if (!attrs.ok) {
-          issue = "Canonical editing requires valid note-reference mark attributes.";
+          issue =
+            "Canonical editing requires valid note-reference mark attributes.";
           return;
         }
         const label = String(attrs.value.id);
@@ -216,14 +229,16 @@ export const canonicalNativeCells = (
           text.length % label.length !== 0 ||
           text !== label.repeat(text.length / label.length)
         ) {
-          issue = "Canonical editing cannot map the rendered note-reference labels.";
+          issue =
+            "Canonical editing cannot map the rendered note-reference labels.";
           return;
         }
         // Identical marks merge adjacent labels into one native text node.
         for (let offset = 0; offset < text.length; offset += label.length) {
           cells.push({
             type: "markedUnit",
-            sourceType: attrs.value.noteType === "endnote" ? "endnoteRef" : "footnoteRef",
+            sourceType:
+              attrs.value.noteType === "endnote" ? "endnoteRef" : "footnoteRef",
             label,
             from: from + offset,
             to: from + offset + label.length,
@@ -239,7 +254,8 @@ export const canonicalNativeCells = (
         if (node.type.name === "bookmarkBoundary") {
           const attrs = readBookmarkBoundaryAttrs(node);
           if (!attrs.ok) {
-            issue = "Canonical editing requires valid bookmark boundary attributes.";
+            issue =
+              "Canonical editing requires valid bookmark boundary attributes.";
             return;
           }
           cells.push({
@@ -252,14 +268,22 @@ export const canonicalNativeCells = (
         } else if (node.type.name === "moveRangeBoundary") {
           const attrs = readMoveRangeBoundaryAttrs(node);
           if (!attrs.ok) {
-            issue = "Canonical editing requires valid move-range boundary attributes.";
+            issue =
+              "Canonical editing requires valid move-range boundary attributes.";
             return;
           }
-          cells.push({ type: "zeroWidth", sources: [attrs.value], from, to, node });
+          cells.push({
+            type: "zeroWidth",
+            sources: [attrs.value],
+            from,
+            to,
+            node,
+          });
         } else {
           const attrs = readRangeAnchorAttrs(node);
           if (!attrs.ok) {
-            issue = "Canonical editing requires a valid collapsed range anchor.";
+            issue =
+              "Canonical editing requires a valid collapsed range anchor.";
             return;
           }
           cells.push({
@@ -293,10 +317,15 @@ export const canonicalNativeCells = (
           issue = "Canonical editing requires valid preserved inline markup.";
           return;
         }
-        if (attrs.value.level === PRESERVED_XML_LEVELS.inline && attrs.value.text === "")
+        if (
+          attrs.value.level === PRESERVED_XML_LEVELS.inline &&
+          attrs.value.text === ""
+        )
           cells.push({
             type: "zeroWidth",
-            sources: [{ type: "preservedInline", xml: attrs.value.xml, text: "" }],
+            sources: [
+              { type: "preservedInline", xml: attrs.value.xml, text: "" },
+            ],
             from,
             to,
             node,
@@ -336,7 +365,11 @@ const sameSourceMarker = (
     case "noteMarker":
       return right.type === "noteMarker" && left.kind === right.kind;
     case "preservedInline":
-      return right.type === "preservedInline" && left.xml === right.xml && left.text === right.text;
+      return (
+        right.type === "preservedInline" &&
+        left.xml === right.xml &&
+        left.text === right.text
+      );
     default:
       return false;
   }
@@ -360,7 +393,10 @@ const commentMarkTransitions = ({
   source,
   paragraph,
   commentContext,
-}: Pick<CanonicalInlineProjectionArgs, "source" | "paragraph" | "commentContext">) => {
+}: Pick<
+  CanonicalInlineProjectionArgs,
+  "source" | "paragraph" | "commentContext"
+>) => {
   const spans = inlineLeafSpans(source.content);
   const rangedIds = new Set(commentContext?.rangedIds);
   const pointIds = new Set(commentContext?.pointIds);
@@ -378,7 +414,8 @@ const commentMarkTransitions = ({
   const record = (position: number, current: Set<number>) => {
     const starts = new Set([...current].filter((id) => !previous.has(id)));
     const ends = new Set([...previous].filter((id) => !current.has(id)));
-    if (starts.size > 0 || ends.size > 0) transitions.set(position, { starts, ends });
+    if (starts.size > 0 || ends.size > 0)
+      transitions.set(position, { starts, ends });
     previous = current;
   };
   paragraph.forEach((node, position) => {
@@ -394,7 +431,8 @@ const commentMarkTransitions = ({
       const id = attrs.value.commentId;
       if (rangedIds.has(id)) current.add(id);
       else if (!pointIds.has(id)) {
-        issue = "Canonical editing cannot attribute a comment mark to its source.";
+        issue =
+          "Canonical editing cannot attribute a comment mark to its source.";
         return;
       }
     }
@@ -411,7 +449,10 @@ export const projectCanonicalInline = ({
   paragraph,
   pairedBookmarkIds,
   commentContext,
-}: CanonicalInlineProjectionArgs): Result<InlineProjection, InlineProjectionError> => {
+}: CanonicalInlineProjectionArgs): Result<
+  InlineProjection,
+  InlineProjectionError
+> => {
   const native = canonicalNativeCells(paragraph);
   if (native.isErr()) return native;
   const comments = commentMarkTransitions({
@@ -428,13 +469,16 @@ export const projectCanonicalInline = ({
   ): void => {
     for (const item of items) {
       if (item.type === "bookmarkStart" || item.type === "bookmarkEnd") {
-        if (context === "paragraph" && !pairedBookmarkIds.has(item.id)) erasedBookmarks.add(item);
+        if (context === "paragraph" && !pairedBookmarkIds.has(item.id))
+          erasedBookmarks.add(item);
         continue;
       }
       if (CANONICAL_SOURCE_INLINE_POLICIES[item.type] !== "container") continue;
       collectErasedBookmarks(
         sourceContainerChildren(item),
-        item.type === "run" || item.type === "inlineWrapper" ? context : "nested",
+        item.type === "run" || item.type === "inlineWrapper"
+          ? context
+          : "nested",
       );
     }
   };
@@ -451,9 +495,13 @@ export const projectCanonicalInline = ({
       if (attrs.ok) markedCommentIds.add(attrs.value.commentId);
     }
   });
-  const commentRangeOffsets = new Map<number, { start?: number; end?: number }>();
+  const commentRangeOffsets = new Map<
+    number,
+    { start?: number; end?: number }
+  >();
   for (const { node, before } of spans) {
-    if (node.type !== "commentRangeStart" && node.type !== "commentRangeEnd") continue;
+    if (node.type !== "commentRangeStart" && node.type !== "commentRangeEnd")
+      continue;
     const offsets = commentRangeOffsets.get(node.id) ?? {};
     if (node.type === "commentRangeStart") offsets.start = before.offset;
     else offsets.end = before.offset;
@@ -461,19 +509,32 @@ export const projectCanonicalInline = ({
   }
   const erasedCommentMarkers = new Set<ParagraphContent | RunContent>();
   for (const { node } of spans) {
-    if (node.type !== "commentRangeStart" && node.type !== "commentRangeEnd") continue;
+    if (node.type !== "commentRangeStart" && node.type !== "commentRangeEnd")
+      continue;
     const offsets = commentRangeOffsets.get(node.id);
     const collapsed =
-      offsets?.start !== undefined && offsets.end !== undefined && offsets.start === offsets.end;
-    if (!collapsed && markedCommentIds.has(node.id)) erasedCommentMarkers.add(node);
+      offsets?.start !== undefined &&
+      offsets.end !== undefined &&
+      offsets.start === offsets.end;
+    if (!collapsed && markedCommentIds.has(node.id))
+      erasedCommentMarkers.add(node);
   }
   const text = paragraphLogicalText(source);
-  const boundaries: CanonicalInlineGap[][] = Array.from({ length: text.length + 1 }, () => []);
+  const boundaries: CanonicalInlineGap[][] = Array.from(
+    { length: text.length + 1 },
+    () => [],
+  );
   let index = 0;
   let consumed = 0;
-  const addGap = (position: number, gap: { offset: number; zeroWidthBefore: number }) => {
+  const addGap = (
+    position: number,
+    gap: { offset: number; zeroWidthBefore: number },
+  ) => {
     const gaps = boundaries.at(gap.offset);
-    if (!gaps) panic(`Source leaf offset ${gap.offset} exceeds paragraph ${source.paraId}.`);
+    if (!gaps)
+      panic(
+        `Source leaf offset ${gap.offset} exceeds paragraph ${source.paraId}.`,
+      );
     const existing = gaps.findIndex((entry) => entry.position === position);
     const entry = { position, zeroWidthBefore: gap.zeroWidthBefore };
     // Erased source leaves share a native seam: keep its right-affine source gap.
@@ -486,10 +547,14 @@ export const projectCanonicalInline = ({
       if (
         position !== null &&
         span &&
-        (span.node.type === "commentRangeStart" || span.node.type === "commentRangeEnd")
+        (span.node.type === "commentRangeStart" ||
+          span.node.type === "commentRangeEnd")
       ) {
         const transition = comments.value.get(position);
-        const ids = span.node.type === "commentRangeStart" ? transition?.starts : transition?.ends;
+        const ids =
+          span.node.type === "commentRangeStart"
+            ? transition?.starts
+            : transition?.ends;
         if (ids?.delete(span.node.id)) {
           index += 1;
           addGap(position, span.after);
@@ -516,10 +581,14 @@ export const projectCanonicalInline = ({
     consumeErasedLeaves(cell.from);
     let span = spans.at(index);
     if (!span)
-      return refuse(`Canonical editing cannot map native ${cell.node.type.name} to a source leaf.`);
+      return refuse(
+        `Canonical editing cannot map native ${cell.node.type.name} to a source leaf.`,
+      );
     addGap(
       cell.from,
-      consumed === 0 ? span.before : { offset: span.before.offset + consumed, zeroWidthBefore: 0 },
+      consumed === 0
+        ? span.before
+        : { offset: span.before.offset + consumed, zeroWidthBefore: 0 },
     );
     switch (cell.type) {
       case "zeroWidth":
@@ -537,18 +606,22 @@ export const projectCanonicalInline = ({
             );
           index += 1;
         }
-        if (!span) return refuse("Canonical editing lost a source range boundary.");
+        if (!span)
+          return refuse("Canonical editing lost a source range boundary.");
         addGap(cell.to, span.after);
         break;
       case "unit":
       case "markedUnit":
         if (
           cell.type === "markedUnit" &&
-          ((span.node.type !== "footnoteRef" && span.node.type !== "endnoteRef") ||
+          ((span.node.type !== "footnoteRef" &&
+            span.node.type !== "endnoteRef") ||
             span.node.type !== cell.sourceType ||
             String(span.node.id) !== cell.label)
         )
-          return refuse("Canonical editing cannot preserve note-reference identity.");
+          return refuse(
+            "Canonical editing cannot preserve note-reference identity.",
+          );
         if (
           consumed !== 0 ||
           span.node.type === "text" ||
@@ -583,7 +656,9 @@ export const projectCanonicalInline = ({
               );
           }
           if (value.charAt(consumed) !== cell.text.charAt(unit))
-            return refuse("Canonical editing cannot preserve the source text carrier.");
+            return refuse(
+              "Canonical editing cannot preserve the source text carrier.",
+            );
           consumed += 1;
           addGap(cell.from + unit + 1, {
             offset: span.before.offset + consumed,
@@ -600,8 +675,14 @@ export const projectCanonicalInline = ({
     }
   }
   consumeErasedLeaves(paragraph.content.size);
-  if ([...comments.value.values()].some(({ starts, ends }) => starts.size > 0 || ends.size > 0))
-    return refuse("Canonical editing cannot attribute a comment mark transition to its source.");
+  if (
+    [...comments.value.values()].some(
+      ({ starts, ends }) => starts.size > 0 || ends.size > 0,
+    )
+  )
+    return refuse(
+      "Canonical editing cannot attribute a comment mark transition to its source.",
+    );
   const missing = spans.at(index);
   if (missing || consumed !== 0)
     return refuse(

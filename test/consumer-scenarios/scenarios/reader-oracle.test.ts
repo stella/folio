@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import type { FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
-import type { FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
-import { assertReadersAgree } from "../support/invariants.ts";
 import {
   directNumberedDocument,
   listDocument,
@@ -15,8 +14,9 @@ import {
   packDocument,
 } from "../support/documents.ts";
 import { htmlTableViews } from "../support/html-table-views.ts";
-import { contentView, markdownViews, readAll } from "../support/readers.ts";
+import { assertReadersAgree } from "../support/invariants.ts";
 import { createRandom } from "../support/random.ts";
+import { contentView, markdownViews, readAll } from "../support/readers.ts";
 
 test("loose list whitespace preserves empty nested items and rejects heading reclassification", () => {
   const expected = [
@@ -33,13 +33,18 @@ test("loose list whitespace preserves empty nested items and rejects heading rec
     /Unsupported list item Markdown token: space/u,
   );
   assert.throws(
-    () => markdownViews("- Parent\n\n  - Child", [expected[0], { ...expected[1], text: "Child" }]),
+    () =>
+      markdownViews("- Parent\n\n  - Child", [
+        expected[0],
+        { ...expected[1], text: "Child" },
+      ]),
     /Unsupported list item Markdown token: space/u,
   );
 });
 
 test("Markdown HTML tables use the literal-text oracle", () => {
-  const html = "<table><tr><td>0007</td><td><strong>true</strong></td></tr></table>";
+  const html =
+    "<table><tr><td>0007</td><td><strong>true</strong></td></tr></table>";
   const expected = htmlTableViews(html);
   assert.deepEqual(expected, [
     { text: "0007", kind: "paragraph" },
@@ -51,8 +56,14 @@ test("Markdown HTML tables use the literal-text oracle", () => {
 type Document = ReturnType<typeof fromMarkdown>;
 type Numbering = NonNullable<Document["package"]["numbering"]>;
 type NumberingLevel = Numbering["abstractNums"][number]["levels"][number];
-type Paragraph = Extract<Document["package"]["document"]["content"][number], { type: "paragraph" }>;
-type Table = Extract<Document["package"]["document"]["content"][number], { type: "table" }>;
+type Paragraph = Extract<
+  Document["package"]["document"]["content"][number],
+  { type: "paragraph" }
+>;
+type Table = Extract<
+  Document["package"]["document"]["content"][number],
+  { type: "table" }
+>;
 
 const paragraphs = (texts: readonly string[]) =>
   texts.map((text) => ({ text, kind: "paragraph" as const }));
@@ -61,7 +72,10 @@ const listGlyphDocument = async (): Promise<Uint8Array> => {
   const document = fromMarkdown("Bullet glyph\n\nLetter item");
   const bulletId = 91;
   const letterId = 92;
-  const level = (numFmt: NumberingLevel["numFmt"], lvlText: string): NumberingLevel => ({
+  const level = (
+    numFmt: NumberingLevel["numFmt"],
+    lvlText: string,
+  ): NumberingLevel => ({
     ilvl: 0,
     start: 1,
     numFmt,
@@ -69,9 +83,16 @@ const listGlyphDocument = async (): Promise<Uint8Array> => {
     suffix: "space",
     pPr: { indentLeft: 0, indentFirstLine: 0 },
   });
-  const numbering = document.package.numbering ?? { abstractNums: [], nums: [] };
+  const numbering = document.package.numbering ?? {
+    abstractNums: [],
+    nums: [],
+  };
   numbering.abstractNums.push(
-    { abstractNumId: bulletId, multiLevelType: "singleLevel", levels: [level("bullet", "o")] },
+    {
+      abstractNumId: bulletId,
+      multiLevelType: "singleLevel",
+      levels: [level("bullet", "o")],
+    },
     {
       abstractNumId: letterId,
       multiLevelType: "singleLevel",
@@ -95,17 +116,22 @@ const listGlyphDocument = async (): Promise<Uint8Array> => {
     paragraph.content.some(
       (item) =>
         item.type === "run" &&
-        item.content.some((run) => run.type === "text" && run.text === "Bullet glyph"),
+        item.content.some(
+          (run) => run.type === "text" && run.text === "Bullet glyph",
+        ),
     ),
   );
   const letter = paragraphBlocks.find((paragraph) =>
     paragraph.content.some(
       (item) =>
         item.type === "run" &&
-        item.content.some((run) => run.type === "text" && run.text === "Letter item"),
+        item.content.some(
+          (run) => run.type === "text" && run.text === "Letter item",
+        ),
     ),
   );
-  if (!bullet || !letter) throw new Error("Numbering fixture paragraphs are missing");
+  if (!bullet || !letter)
+    throw new Error("Numbering fixture paragraphs are missing");
   bullet.formatting = {
     ...bullet.formatting,
     numPr: paragraphNumberingFromSlots({ numId: bulletId, ilvl: 0 }),
@@ -125,7 +151,10 @@ const numberedTableDocument = async (
     "## Terms\n\n| Service | Value |\n| --- | --- |\n| Term | Included |",
   );
   const numId = 93;
-  const numbering = document.package.numbering ?? { abstractNums: [], nums: [] };
+  const numbering = document.package.numbering ?? {
+    abstractNums: [],
+    nums: [],
+  };
   numbering.abstractNums.push({
     abstractNumId: numId,
     multiLevelType: "singleLevel",
@@ -146,8 +175,11 @@ const numberedTableDocument = async (
     (block): block is Table => block.type === "table",
   );
   const cell = table?.rows.at(1)?.cells.at(0);
-  const paragraph = cell?.content.find((block): block is Paragraph => block.type === "paragraph");
-  if (!paragraph || !cell || !table) throw new Error("Numbered table cell fixture is missing");
+  const paragraph = cell?.content.find(
+    (block): block is Paragraph => block.type === "paragraph",
+  );
+  if (!paragraph || !cell || !table)
+    throw new Error("Numbered table cell fixture is missing");
   if (rendering === "html") {
     cell.formatting = { ...cell.formatting, gridSpan: 2 };
     table.rows.at(1)?.cells.splice(1, 1);
@@ -181,8 +213,12 @@ test("parses Markdown block boundaries while retaining source hard breaks", () =
       first: "First line\nSecond line\nThird line",
     },
     {
-      markdown: "First line  \nSecond line\\\nThird line  \nFourth line\n\nNext paragraph",
-      texts: ["First line\nSecond line\nThird line\nFourth line", "Next paragraph"],
+      markdown:
+        "First line  \nSecond line\\\nThird line  \nFourth line\n\nNext paragraph",
+      texts: [
+        "First line\nSecond line\nThird line\nFourth line",
+        "Next paragraph",
+      ],
       first: "First line\nSecond line\nThird line\nFourth line",
     },
   ];
@@ -197,9 +233,10 @@ test("parses Markdown block boundaries while retaining source hard breaks", () =
 test("ignores opaque images and compares visible link text", () => {
   const markdown =
     "Text ![diagram](data:image/svg+xml,%3Csvg%3E(a(b))%3C/svg%3E) [visible text](https://example.test/a_(b))";
-  assert.deepEqual(markdownViews(markdown, paragraphs(["Text  visible text"])), [
-    { text: "Text  visible text", kind: "paragraph" },
-  ]);
+  assert.deepEqual(
+    markdownViews(markdown, paragraphs(["Text  visible text"])),
+    [{ text: "Text  visible text", kind: "paragraph" }],
+  );
 });
 
 test("keeps a numbered table cell label in the Markdown comparison", async () => {
@@ -220,7 +257,9 @@ test("normalizes bullet table cells in GFM and HTML without hiding changed text"
     const bytes = await numberedTableDocument("bullet", rendering);
     const views = await readAll(bytes);
     assert.ok(
-      views.getContent.some(({ text, number }) => text === "Term" && number === "(bullet)"),
+      views.getContent.some(
+        ({ text, number }) => text === "Term" && number === "(bullet)",
+      ),
     );
     assert.ok(views.markdown.some(({ text }) => text === "Term"));
     assert.deepEqual(views.markdown, views.getContentAsMarkdown);
@@ -230,19 +269,36 @@ test("normalizes bullet table cells in GFM and HTML without hiding changed text"
       ),
       views.getContentAsMarkdown,
     );
-    await assertReadersAgree(bytes, `${rendering} bullet table cell reader fixture`);
+    await assertReadersAgree(
+      bytes,
+      `${rendering} bullet table cell reader fixture`,
+    );
   }
-  const expected = [{ text: "Term", kind: "listItem" as const, number: "(bullet)" }];
-  assert.deepEqual(markdownViews("| - Term |\n| --- |", expected), paragraphs(["Term"]));
-  assert.notDeepEqual(markdownViews("| - Changed |\n| --- |", expected), paragraphs(["Term"]));
+  const expected = [
+    { text: "Term", kind: "listItem" as const, number: "(bullet)" },
+  ];
   assert.deepEqual(
-    markdownViews("| - Literal prose |\n| --- |", paragraphs(["- Literal prose"])),
+    markdownViews("| - Term |\n| --- |", expected),
+    paragraphs(["Term"]),
+  );
+  assert.notDeepEqual(
+    markdownViews("| - Changed |\n| --- |", expected),
+    paragraphs(["Term"]),
+  );
+  assert.deepEqual(
+    markdownViews(
+      "| - Literal prose |\n| --- |",
+      paragraphs(["- Literal prose"]),
+    ),
     paragraphs(["- Literal prose"]),
   );
 });
 
 test("keeps ordinary list reader agreement", async () => {
-  await assertReadersAgree(await listDocument(), "ordinary list reader fixture");
+  await assertReadersAgree(
+    await listDocument(),
+    "ordinary list reader fixture",
+  );
 });
 
 test("retains every rendered ordered-list label, including restarts", () => {
@@ -251,7 +307,10 @@ test("retains every rendered ordered-list label, including restarts", () => {
     { text: "Restarted", kind: "listItem", number: "1." },
   ] as const;
   assert.deepEqual(markdownViews("1. First\n1. Restarted", expected), expected);
-  assert.notDeepEqual(markdownViews("1. First\n2. Restarted", expected), expected);
+  assert.notDeepEqual(
+    markdownViews("1. First\n2. Restarted", expected),
+    expected,
+  );
 });
 
 test("an undefined numbering level without a displayed marker reads as prose", () => {
@@ -266,7 +325,10 @@ test("an undefined numbering level without a displayed marker reads as prose", (
     FolioAIParagraphBlock,
     "id" | "kind" | "text" | "statedNumbering" | "listReference"
   >;
-  assert.deepEqual(contentView(block, formats), { text: "No marker", kind: "paragraph" });
+  assert.deepEqual(contentView(block, formats), {
+    text: "No marker",
+    kind: "paragraph",
+  });
   assert.throws(
     () => contentView({ ...block, displayLabel: "1." }, formats),
     /Missing numbering format for displayed label/,
@@ -283,10 +345,15 @@ test("custom markers retain boundaries, hard breaks and actual rendered labels",
   for (const { markers } of cases) {
     // The first item contains a marker-shaped hard-break line. It is one
     // source block; only a matching complete source prefix grants a split.
-    const texts = ["First\n(a) stays inside the first item", "Second", "Restarted"];
+    const texts = [
+      "First\n(a) stays inside the first item",
+      "Second",
+      "Restarted",
+    ];
     const expected = texts.map((text, index) => {
       const number = markers.at(index);
-      if (number === undefined) throw new Error("List-marker fixture is missing a label");
+      if (number === undefined)
+        throw new Error("List-marker fixture is missing a label");
       return { text, kind: "listItem" as const, number };
     });
     const lines = expected.map(({ text, number }) => `${number} ${text}`);
@@ -303,20 +370,31 @@ test("custom markers retain boundaries, hard breaks and actual rendered labels",
       markdownViews(markdown.replace(secondMarker, "wrong)"), expected),
       expected,
     );
-    assert.throws(() => markdownViews(lines.slice(0, 2).join("\n"), expected), /fewer text blocks/);
+    assert.throws(
+      () => markdownViews(lines.slice(0, 2).join("\n"), expected),
+      /fewer text blocks/,
+    );
   }
 });
 
 test("removing the prose between custom-numbered blocks keeps every saved reader block", async () => {
   for (const mode of ["direct", "tracked-changes"] as const) {
     const reviewer = await openReviewer(await directNumberedDocument());
-    const separator = reviewer.getContent().find(({ text }) => text === "Unnumbered body text.");
+    const separator = reviewer
+      .getContent()
+      .find(({ text }) => text === "Unnumbered body text.");
     assert.ok(separator);
     const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode,
-        operations: [{ id: "delete-separator", type: "deleteBlock", blockId: separator.id }],
+        operations: [
+          {
+            id: "delete-separator",
+            type: "deleteBlock",
+            blockId: separator.id,
+          },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -336,7 +414,9 @@ test("generated empty list structure is accounted for before filtering reader co
     for (let sample = 0; sample < 12; sample++) {
       const count = 3 + random.int(4);
       const document = fromMarkdown(
-        Array.from({ length: count }, (_, index) => `Clause ${index}`).join("\n\n"),
+        Array.from({ length: count }, (_, index) => `Clause ${index}`).join(
+          "\n\n",
+        ),
       );
       document.package.numbering = {
         abstractNums: [
@@ -348,7 +428,11 @@ test("generated empty list structure is accounted for before filtering reader co
                 ilvl: 0,
                 start: 1 + random.int(20),
                 numFmt: kind === "bullet" ? "bullet" : "decimal",
-                lvlText: { bullet: "•", customDecimal: "(%1)", nativeDecimal: "%1." }[kind],
+                lvlText: {
+                  bullet: "•",
+                  customDecimal: "(%1)",
+                  nativeDecimal: "%1.",
+                }[kind],
                 suffix: "space",
               },
             ],
@@ -356,15 +440,26 @@ test("generated empty list structure is accounted for before filtering reader co
         ],
         nums: [{ numId: 7, abstractNumId: 7 }],
       };
-      for (const [index, paragraph] of document.package.document.content.entries()) {
+      for (const [
+        index,
+        paragraph,
+      ] of document.package.document.content.entries()) {
         assert.equal(paragraph.type, "paragraph");
         if (paragraph.type !== "paragraph") continue;
-        paragraph.formatting = { numPr: paragraphNumberingFromSlots({ numId: 7, ilvl: 0 }) };
+        paragraph.formatting = {
+          numPr: paragraphNumberingFromSlots({ numId: 7, ilvl: 0 }),
+        };
         // Every format exercises leading/trailing and adjacent empty markers,
         // with generated mixtures between them and a nonempty comparison block.
-        if (index < 2 || index === count - 1 || (index !== 2 && random.chance(0.5))) {
+        if (
+          index < 2 ||
+          index === count - 1 ||
+          (index !== 2 && random.chance(0.5))
+        ) {
           paragraph.content =
-            sample % 2 === 0 ? [] : [{ type: "run", content: [{ type: "text", text: " " }] }];
+            sample % 2 === 0
+              ? []
+              : [{ type: "run", content: [{ type: "text", text: " " }] }];
         }
       }
       await assertReadersAgree(
@@ -374,7 +469,11 @@ test("generated empty list structure is accounted for before filtering reader co
       exercised.add(kind);
     }
   }
-  assert.deepEqual([...exercised].sort(), ["bullet", "customDecimal", "nativeDecimal"]);
+  assert.deepEqual([...exercised].sort(), [
+    "bullet",
+    "customDecimal",
+    "nativeDecimal",
+  ]);
 });
 
 test("empty list structure cannot hide a changed marker or an extra body block", () => {
@@ -384,7 +483,10 @@ test("empty list structure cannot hide a changed marker or an extra body block",
       () => markdownViews(marker === "1." ? "2." : "(2)", expected),
       /empty list marker/u,
     );
-    assert.throws(() => markdownViews(`${marker}\n\nExtra text`, expected), /more text blocks/u);
+    assert.throws(
+      () => markdownViews(`${marker}\n\nExtra text`, expected),
+      /more text blocks/u,
+    );
   }
 });
 
@@ -412,8 +514,13 @@ test("partial numbered deletions retain empty structure across saved review reso
       { undefinedReferences: "refuse" },
     );
     assert.equal(result.applied.length, 1);
-    reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()), "Second Reviewer");
-    const deletion = reviewer.getChanges().find((change) => change.type === "deletion");
+    reviewer = await openReviewer(
+      new Uint8Array(await reviewer.toBuffer()),
+      "Second Reviewer",
+    );
+    const deletion = reviewer
+      .getChanges()
+      .find((change) => change.type === "deletion");
     assert.ok(deletion);
     assert.equal(reviewer.acceptChange(deletion), true);
     const remaining = reviewer.getChanges().length;
@@ -467,12 +574,18 @@ test("extracts visible nested inline text without losing leaf-token fallback tex
   const cases = [
     { markdown: "Plain leaf text", text: "Plain leaf text" },
     { markdown: "**bold *nested* tail**", text: "bold nested tail" },
-    { markdown: "~~deleted **bold *nested*** tail~~", text: "deleted bold nested tail" },
+    {
+      markdown: "~~deleted **bold *nested*** tail~~",
+      text: "deleted bold nested tail",
+    },
     {
       markdown: "[**linked *nested* text**](https://example.test/target)",
       text: "linked nested text",
     },
-    { markdown: "Text `literal *stars*` tail", text: "Text literal *stars* tail" },
+    {
+      markdown: "Text `literal *stars*` tail",
+      text: "Text literal *stars* tail",
+    },
     { markdown: "Text \\*escaped\\* tail", text: "Text *escaped* tail" },
   ];
   for (const { markdown, text } of cases) {
@@ -514,11 +627,17 @@ test("Markdown custom marker oracle recognizes legal indentation without hiding 
       ];
       const prefix = " ".repeat(indent);
       assert.deepEqual(
-        markdownViews(`${prefix}${marker} First\n${prefix}${marker} Second`, expected),
+        markdownViews(
+          `${prefix}${marker} First\n${prefix}${marker} Second`,
+          expected,
+        ),
         expected,
       );
       assert.notDeepEqual(
-        markdownViews(`${prefix}wrong. First\n${prefix}${marker} Second`, expected),
+        markdownViews(
+          `${prefix}wrong. First\n${prefix}${marker} Second`,
+          expected,
+        ),
         expected,
       );
       cases++;

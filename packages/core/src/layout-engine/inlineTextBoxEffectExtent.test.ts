@@ -65,8 +65,11 @@ describe("inline text box effect extent", () => {
     const blocks: FlowBlock[] = [box, paragraph("after")];
     const measures: Measure[] = [boxMeasure, paragraphMeasure(20)];
 
-    const fragments = layoutDocument(blocks, measures, layoutOptions).pages[0]?.fragments ?? [];
-    const boxFragment = fragments.find((fragment) => fragment.kind === "textBox");
+    const fragments =
+      layoutDocument(blocks, measures, layoutOptions).pages[0]?.fragments ?? [];
+    const boxFragment = fragments.find(
+      (fragment) => fragment.kind === "textBox",
+    );
     const after = fragments.find((fragment) => fragment.kind === "paragraph");
 
     expect(boxFragment?.x).toBe(54);

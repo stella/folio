@@ -58,8 +58,12 @@ describe("segmentByScript", () => {
   });
 
   test("returns one segment for single-class input", () => {
-    expect(segmentByScript("plain ascii")).toEqual([{ text: "plain ascii", script: "western" }]);
-    expect(segmentByScript("日本語")).toEqual([{ text: "日本語", script: "eastAsia" }]);
+    expect(segmentByScript("plain ascii")).toEqual([
+      { text: "plain ascii", script: "western" },
+    ]);
+    expect(segmentByScript("日本語")).toEqual([
+      { text: "日本語", script: "eastAsia" },
+    ]);
   });
 
   // Word routes Arabic, Hebrew and the Indic scripts through the `w:cs` slot,
@@ -135,8 +139,14 @@ describe('w:rFonts w:hint="eastAsia"', () => {
       0x0416, // Cyrillic capital zhe
       0xe000, // private use
     ]) {
-      expect({ cp, hinted: scriptClassOf(cp, true) }).toEqual({ cp, hinted: "eastAsia" });
-      expect({ cp, plain: scriptClassOf(cp) }).toEqual({ cp, plain: "western" });
+      expect({ cp, hinted: scriptClassOf(cp, true) }).toEqual({
+        cp,
+        hinted: "eastAsia",
+      });
+      expect({ cp, plain: scriptClassOf(cp) }).toEqual({
+        cp,
+        plain: "western",
+      });
     }
   });
 
@@ -154,8 +164,14 @@ describe('w:rFonts w:hint="eastAsia"', () => {
       0x0101, // a with macron
       0x1ea1, // a with dot below
     ]) {
-      expect({ cp, eastAsia: isEastAsiaHintCodePoint(cp) }).toEqual({ cp, eastAsia: false });
-      expect({ cp, hinted: scriptClassOf(cp, true) }).toEqual({ cp, hinted: "western" });
+      expect({ cp, eastAsia: isEastAsiaHintCodePoint(cp) }).toEqual({
+        cp,
+        eastAsia: false,
+      });
+      expect({ cp, hinted: scriptClassOf(cp, true) }).toEqual({
+        cp,
+        hinted: "western",
+      });
     }
   });
 
@@ -184,7 +200,9 @@ describe('w:rFonts w:hint="eastAsia"', () => {
 
   test("w:cs and w:rtl keep the hint from taking effect", () => {
     expect(eastAsiaHintApplies({ eastAsiaHint: true })).toBe(true);
-    expect(eastAsiaHintApplies({ eastAsiaHint: true, forceComplexScript: true })).toBe(false);
+    expect(
+      eastAsiaHintApplies({ eastAsiaHint: true, forceComplexScript: true }),
+    ).toBe(false);
     expect(eastAsiaHintApplies({ eastAsiaHint: true, rtl: true })).toBe(false);
     expect(eastAsiaHintApplies({ eastAsiaHint: false })).toBe(false);
     expect(eastAsiaHintApplies({})).toBe(false);

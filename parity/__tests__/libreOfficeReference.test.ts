@@ -1,6 +1,5 @@
-import path from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 
 import { buildLibreOfficeExportArgs } from "../libreOfficeReference";
 
@@ -18,7 +17,9 @@ describe("LibreOffice reference renderer", () => {
     expect(args).toContain("/tmp/folio/input.docx");
     expect(args).toContain("/tmp/folio/output");
 
-    const profileArg = args.find((arg) => arg.startsWith("-env:UserInstallation="));
+    const profileArg = args.find((arg) =>
+      arg.startsWith("-env:UserInstallation="),
+    );
     expect(profileArg).toBeDefined();
     expect(profileArg).toContain("file://");
     expect(profileArg).toContain("profile%20with%20spaces");

@@ -24,18 +24,23 @@
  *   bun scripts/container-contract-doc-counts.ts write
  */
 
-import path from "node:path";
-
 import { TaggedError } from "better-result";
+import path from "node:path";
 
 import type {
   ContainerContract,
   ContractEntry,
 } from "../specifications/container-contract/dispositions";
-import { DISPOSITIONS, DROP_REASONS } from "../specifications/container-contract/dispositions";
+import {
+  DISPOSITIONS,
+  DROP_REASONS,
+} from "../specifications/container-contract/dispositions";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
-const CONTRACT_PATH = path.join(REPOSITORY_ROOT, "specifications/container-contract/contract.json");
+const CONTRACT_PATH = path.join(
+  REPOSITORY_ROOT,
+  "specifications/container-contract/contract.json",
+);
 const DOC_PATH = path.join(REPOSITORY_ROOT, "docs/container-contract.md");
 
 class DocCountError extends TaggedError("DocCountError")<{ message: string }> {}
@@ -95,7 +100,10 @@ const FIELDS = {
 type Field = keyof typeof FIELDS;
 
 /** The values each field may be compared against, so a typo fails rather than matching nothing. */
-const vocabularyOf = (pairs: readonly Pair[], field: Field): ReadonlySet<string> => {
+const vocabularyOf = (
+  pairs: readonly Pair[],
+  field: Field,
+): ReadonlySet<string> => {
   const values = new Set<string>();
   for (const pair of pairs) {
     for (const value of FIELDS[field](pair)) {
@@ -124,11 +132,15 @@ export const parseQuery = (query: string): Filter[] =>
       const comparison = negated ? "!=" : "=";
       const parts = term.split(comparison).map((part) => part.trim());
       if (parts.length !== 2 || parts.some((part) => part === "")) {
-        throw new DocCountError({ message: `a count filter is not \`field=value\`: ${term}` });
+        throw new DocCountError({
+          message: `a count filter is not \`field=value\`: ${term}`,
+        });
       }
       const [fieldName, values] = parts;
       if (fieldName === undefined || values === undefined) {
-        throw new DocCountError({ message: `a count filter is not \`field=value\`: ${term}` });
+        throw new DocCountError({
+          message: `a count filter is not \`field=value\`: ${term}`,
+        });
       }
       const field = fieldName.trim();
       if (!isField(field)) {
@@ -136,7 +148,11 @@ export const parseQuery = (query: string): Filter[] =>
           message: `a count filter names no contract field: ${field} (have ${Object.keys(FIELDS).join(", ")})`,
         });
       }
-      return { field, negated, values: values.split(",").map((value) => value.trim()) };
+      return {
+        field,
+        negated,
+        values: values.split(",").map((value) => value.trim()),
+      };
     });
 
 const matches = (pair: Pair, filters: readonly Filter[]): boolean =>
@@ -176,23 +192,32 @@ type Rewrite = { markdown: string; problems: string[] };
 
 const rewrite = (markdown: string, pairs: readonly Pair[]): Rewrite => {
   const problems: string[] = [];
-  const next = markdown.replaceAll(MARKER, (_match, query: string, text: string) => {
-    const count = String(countFor(pairs, query.trim()));
-    if (text !== count) {
-      problems.push(`count:${query.trim()} reads ${text}, the contract says ${count}`);
-    }
-    return `<!--count:${query.trim()}-->${count}<!--/count-->`;
-  });
+  const next = markdown.replaceAll(
+    MARKER,
+    (_match, query: string, text: string) => {
+      const count = String(countFor(pairs, query.trim()));
+      if (text !== count) {
+        problems.push(
+          `count:${query.trim()} reads ${text}, the contract says ${count}`,
+        );
+      }
+      return `<!--count:${query.trim()}-->${count}<!--/count-->`;
+    },
+  );
   return { markdown: next, problems };
 };
 
 const main = async (): Promise<number> => {
   const mode = Bun.argv.at(2);
   if (mode !== "check" && mode !== "write") {
-    throw new DocCountError({ message: "usage: container-contract-doc-counts.ts check|write" });
+    throw new DocCountError({
+      message: "usage: container-contract-doc-counts.ts check|write",
+    });
   }
   const contract = (await Bun.file(CONTRACT_PATH).json()) as ContainerContract;
-  const pairs = Object.entries(contract.entries).map(([key, entry]) => pairOf(key, entry));
+  const pairs = Object.entries(contract.entries).map(([key, entry]) =>
+    pairOf(key, entry),
+  );
   const markdown = await Bun.file(DOC_PATH).text();
   const { markdown: next, problems } = rewrite(markdown, pairs);
 
@@ -214,7 +239,9 @@ const main = async (): Promise<number> => {
     console.error("  re-run with `bun run container-contract:doc-counts`");
     return 1;
   }
-  console.log("docs/container-contract.md: every derived count agrees with the contract");
+  console.log(
+    "docs/container-contract.md: every derived count agrees with the contract",
+  );
   return 0;
 };
 

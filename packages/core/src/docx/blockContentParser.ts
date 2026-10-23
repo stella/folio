@@ -16,8 +16,8 @@ import type {
   RelationshipMap,
   Theme,
 } from "../types/document";
-import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import { blockCustomXmlShell } from "./blockCustomXmlShell";
+import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import {
   CAPTURE,
   type ChildHandlers,
@@ -26,12 +26,15 @@ import {
   ownedElsewhere,
   withPreservedChildren,
 } from "./containerChildren";
+import {
+  computeListMarker,
+  type PreviousListState,
+} from "./listMarkerComputation";
 import type { NumberingMap } from "./numberingParser";
-import { computeListMarker, type PreviousListState } from "./listMarkerComputation";
 import { parseParagraph } from "./paragraphParser";
+import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import type { ParseContext } from "./parseContext";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
-import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
 import { parseTable } from "./tableParser";
@@ -193,11 +196,22 @@ const parseBlockCustomXml = (
 };
 
 export const BLOCK_CONTENT_HANDLERS = {
-  p: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
-    const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, {
-      ...state.options,
-      runConsolidation: "deferred",
-    });
+  p: (
+    child,
+    { resources: { styles, theme, numbering, rels, media }, state, modelled },
+  ) => {
+    const paragraph = parseParagraph(
+      child,
+      styles,
+      theme,
+      numbering,
+      rels,
+      media,
+      {
+        ...state.options,
+        runConsolidation: "deferred",
+      },
+    );
     enrichParagraphTextBoxes(
       paragraph,
       child,
@@ -219,8 +233,19 @@ export const BLOCK_CONTENT_HANDLERS = {
     });
     modelled.push(paragraph);
   },
-  tbl: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
-    const table = parseTable(child, styles, theme, numbering, rels, media, state.options);
+  tbl: (
+    child,
+    { resources: { styles, theme, numbering, rels, media }, state, modelled },
+  ) => {
+    const table = parseTable(
+      child,
+      styles,
+      theme,
+      numbering,
+      rels,
+      media,
+      state.options,
+    );
     if (!table) {
       const hasUnmodeledTableContent =
         child.elements?.some((tableChild) => {
@@ -232,11 +257,21 @@ export const BLOCK_CONTENT_HANDLERS = {
     modelled.push(table);
     return undefined;
   },
-  sdt: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
-    modelled.push(parseBlockSdt(child, styles, theme, numbering, rels, media, state));
+  sdt: (
+    child,
+    { resources: { styles, theme, numbering, rels, media }, state, modelled },
+  ) => {
+    modelled.push(
+      parseBlockSdt(child, styles, theme, numbering, rels, media, state),
+    );
   },
-  customXml: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
-    modelled.push(parseBlockCustomXml(child, styles, theme, numbering, rels, media, state));
+  customXml: (
+    child,
+    { resources: { styles, theme, numbering, rels, media }, state, modelled },
+  ) => {
+    modelled.push(
+      parseBlockCustomXml(child, styles, theme, numbering, rels, media, state),
+    );
   },
   // A block container declares the marker beside its blocks, so the model
   // keeps it there: it is a block in its own right, between the same two
@@ -290,7 +325,11 @@ const parseBlockContentWithState = (
     capturePosition: () => modelled.length,
     undeclared: BLOCK_CONTENT_UNDECLARED,
     handlers: BLOCK_CONTENT_HANDLERS,
-    context: { resources: { styles, theme, numbering, rels, media }, state, modelled },
+    context: {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+    },
   });
 
   return withPreservedChildren(modelled, preserved, (xml): PreservedBlock => ({

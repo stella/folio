@@ -7,10 +7,14 @@
  * - Basic image sizing
  */
 
-import type { ImageFragment, ImageBlock, ImageMeasure } from "../layout-engine/types";
-import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
-import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
+import type {
+  ImageBlock,
+  ImageFragment,
+  ImageMeasure,
+} from "../layout-engine/types";
 import { imageLuminanceFilter } from "../utils/imageLuminance";
+import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
+import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
 import type { RenderContext } from "./renderUtils";
 
 /**
@@ -53,7 +57,10 @@ export type ImageBorderAttrs = {
  * uses `borderStyle` (not upstream's `borderKind`); the painter mirrors the
  * editor DOM serialization while keeping the authored image box size stable.
  */
-export function applyImageBorder(element: HTMLElement, border: ImageBorderAttrs): void {
+export function applyImageBorder(
+  element: HTMLElement,
+  border: ImageBorderAttrs,
+): void {
   if (border.borderWidth == null || border.borderWidth <= 0) {
     return;
   }
@@ -85,7 +92,10 @@ export function hasImageCrop(v: ImageVisualAttrs): boolean {
 }
 
 /** Apply non-geometric opacity and luminance effects to an image element. */
-export function applyImageColorAttrs(img: HTMLImageElement, v: ImageVisualAttrs): void {
+export function applyImageColorAttrs(
+  img: HTMLImageElement,
+  v: ImageVisualAttrs,
+): void {
   if (v.opacity != null && v.opacity < 1) {
     img.style.opacity = String(Math.max(0, v.opacity));
   }
@@ -115,7 +125,10 @@ export function applyImageColorAttrs(img: HTMLImageElement, v: ImageVisualAttrs)
  * Caller should gate with `hasImageVisualAttrs(v)` to avoid the function
  * call for plain images.
  */
-export function applyImageVisualAttrs(img: HTMLImageElement, v: ImageVisualAttrs): void {
+export function applyImageVisualAttrs(
+  img: HTMLImageElement,
+  v: ImageVisualAttrs,
+): void {
   applyImageColorAttrs(img, v);
   const top = v.cropTop ?? 0;
   const right = v.cropRight ?? 0;

@@ -9,8 +9,10 @@ import type {
 } from "../types/document";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
-export const DANGLING_HEADER_REFERENCE_WARNING = PARSE_WARNING_CODES.danglingHeaderReference;
-export const DANGLING_FOOTER_REFERENCE_WARNING = PARSE_WARNING_CODES.danglingFooterReference;
+export const DANGLING_HEADER_REFERENCE_WARNING =
+  PARSE_WARNING_CODES.danglingHeaderReference;
+export const DANGLING_FOOTER_REFERENCE_WARNING =
+  PARSE_WARNING_CODES.danglingFooterReference;
 
 type NormalizeHeaderFooterReferencesInput = {
   documentBody: DocumentBody;
@@ -31,8 +33,13 @@ export const normalizeHeaderFooterReferences = ({
   let removedDanglingHeaderReferences = 0;
   let removedDanglingFooterReferences = 0;
 
-  const normalizeSectionProperties = (sectionProperties: SectionProperties): void => {
-    const headerResult = removeDanglingReferences(sectionProperties.headerReferences, headers);
+  const normalizeSectionProperties = (
+    sectionProperties: SectionProperties,
+  ): void => {
+    const headerResult = removeDanglingReferences(
+      sectionProperties.headerReferences,
+      headers,
+    );
     if (headerResult.changed) {
       removedDanglingHeaderReferences += headerResult.removed;
       if (headerResult.references.length > 0) {
@@ -42,7 +49,10 @@ export const normalizeHeaderFooterReferences = ({
       }
     }
 
-    const footerResult = removeDanglingReferences(sectionProperties.footerReferences, footers);
+    const footerResult = removeDanglingReferences(
+      sectionProperties.footerReferences,
+      footers,
+    );
     if (footerResult.changed) {
       removedDanglingFooterReferences += footerResult.removed;
       if (footerResult.references.length > 0) {
@@ -70,7 +80,9 @@ const forEachSectionProperties = (
   visit: (sectionProperties: SectionProperties) => void,
 ): void => {
   const seen = new Set<SectionProperties>();
-  const visitOnce = (sectionProperties: SectionProperties | undefined): void => {
+  const visitOnce = (
+    sectionProperties: SectionProperties | undefined,
+  ): void => {
     if (!sectionProperties || seen.has(sectionProperties)) {
       return;
     }
@@ -130,7 +142,8 @@ export const assignHeaderFooterRoles = ({
 }: AssignHeaderFooterRolesInput): void => {
   const assigned = new Set<HeaderFooter>();
   const assign = (
-    references: readonly { type: HeaderFooter["hdrFtrType"]; rId: string }[] | undefined,
+    references:
+      readonly { type: HeaderFooter["hdrFtrType"]; rId: string }[] | undefined,
     parts: Map<string, HeaderFooter> | undefined,
   ): void => {
     for (const { type, rId } of references ?? []) {

@@ -1,4 +1,4 @@
-import { encodeUtf8 } from "../utils/textEncoding";
+import { Result, TaggedError } from "better-result";
 /**
  * The PDF backend's entry point.
  *
@@ -10,9 +10,8 @@ import { encodeUtf8 } from "../utils/textEncoding";
  * deflate level) exists to keep it true. Nothing here reads a clock or a
  * random source.
  */
-
-import { Result, TaggedError } from "better-result";
 import { createHash } from "node:crypto";
+
 import type {
   DisplayCommentAnnotation,
   DisplayLink,
@@ -20,28 +19,37 @@ import type {
   DisplayOutlineEntry,
   DisplayPage,
 } from "../display-list/types";
-import { collectResources, renderContentStream, type ContentResources } from "./contentStream";
-import { prepareFonts, type PdfFontSource, type PdfSubstitution } from "./fonts";
+import { getShaper } from "../shaping/shaper";
+import { encodeUtf8 } from "../utils/textEncoding";
+import {
+  collectResources,
+  type ContentResources,
+  renderContentStream,
+} from "./contentStream";
+import {
+  type PdfFontSource,
+  type PdfSubstitution,
+  prepareFonts,
+} from "./fonts";
 import { decodeImage, type PdfImageSamples } from "./images";
 import {
   createPdfDocument,
   pdfArray,
   pdfAsciiString,
   pdfDict,
+  type PdfDocument,
   pdfFlateStream,
   pdfName,
   pdfNull,
   pdfNumber,
   pdfNumberArray,
+  type PdfRef,
   pdfStream,
   pdfTextString,
-  type PdfDocument,
-  type PdfRef,
   type PdfValue,
 } from "./objects";
-import { collectUsage, paintPage } from "./paint";
-import { getShaper } from "../shaping/shaper";
 import { displayPointToPdf, pxToPt } from "./pageSpace";
+import { collectUsage, paintPage } from "./paint";
 
 export type { PdfFontSource, PdfSubstitution } from "./fonts";
 
@@ -112,7 +120,8 @@ const describeUnencodable = (points: readonly PdfUnencodable[]): string => {
 /** Every `/ProcSet` folio's own output can need. */
 const PROC_SET = ["PDF", "Text", "ImageB", "ImageC", "ImageI"] as const;
 
-const pad = (value: number, width: number): string => String(value).padStart(width, "0");
+const pad = (value: number, width: number): string =>
+  String(value).padStart(width, "0");
 
 const YEAR_DIGITS = 4;
 const FIELD_DIGITS = 2;
@@ -126,7 +135,9 @@ const formatPdfDate = (timestamp: string): Result<string, WritePdfError> => {
   const milliseconds = Date.parse(timestamp);
   if (Number.isNaN(milliseconds)) {
     return Result.err(
-      new WritePdfError({ message: `timestamp is not an ISO-8601 instant: ${timestamp}` }),
+      new WritePdfError({
+        message: `timestamp is not an ISO-8601 instant: ${timestamp}`,
+      }),
     );
   }
   const date = new Date(milliseconds);
@@ -144,12 +155,17 @@ const asciiUri = (href: string): string => {
   let out = "";
   for (const character of href) {
     out +=
-      (character.codePointAt(0) ?? 0) <= LAST_ASCII ? character : encodeURIComponent(character);
+      (character.codePointAt(0) ?? 0) <= LAST_ASCII
+        ? character
+        : encodeURIComponent(character);
   }
   return out;
 };
 
-const buildImageObject = (document: PdfDocument, samples: PdfImageSamples): PdfRef => {
+const buildImageObject = (
+  document: PdfDocument,
+  samples: PdfImageSamples,
+): PdfRef => {
   const alphaRef =
     samples.alpha === undefined
       ? undefined
@@ -173,11 +189,19 @@ const buildImageObject = (document: PdfDocument, samples: PdfImageSamples): PdfR
     ["Height", pdfNumber(samples.heightPx)],
     ["ColorSpace", samples.colorSpace],
     ["BitsPerComponent", pdfNumber(samples.bitsPerComponent)],
-    ["Decode", samples.decode === undefined ? undefined : pdfNumberArray(samples.decode)],
+    [
+      "Decode",
+      samples.decode === undefined ? undefined : pdfNumberArray(samples.decode),
+    ],
     ["SMask", alphaRef],
   ] as const satisfies readonly (readonly [string, PdfValue | undefined])[];
   return samples.encoding === "jpeg"
-    ? document.add(pdfStream(pdfDict([...entries, ["Filter", pdfName("DCTDecode")]]), samples.data))
+    ? document.add(
+        pdfStream(
+          pdfDict([...entries, ["Filter", pdfName("DCTDecode")]]),
+          samples.data,
+        ),
+      )
     : document.add(pdfFlateStream(entries, samples.data));
 };
 
@@ -187,7 +211,11 @@ type ResourceDictOptions = {
   readonly imageRefs: ReadonlyMap<number, PdfRef>;
 };
 
-const buildResources = ({ resources, fontRefs, imageRefs }: ResourceDictOptions): PdfValue => {
+const buildResources = ({
+  resources,
+  fontRefs,
+  imageRefs,
+}: ResourceDictOptions): PdfValue => {
   const fontEntries = [...resources.fontNames].map(
     ([resourceIndex, name]) => [name, fontRefs.get(resourceIndex)] as const,
   );
@@ -209,7 +237,10 @@ const buildResources = ({ resources, fontRefs, imageRefs }: ResourceDictOptions)
     ["ProcSet", pdfArray(PROC_SET.map(pdfName))],
     ["Font", fontEntries.length === 0 ? undefined : pdfDict(fontEntries)],
     ["XObject", imageEntries.length === 0 ? undefined : pdfDict(imageEntries)],
-    ["ExtGState", stateEntries.length === 0 ? undefined : pdfDict(stateEntries)],
+    [
+      "ExtGState",
+      stateEntries.length === 0 ? undefined : pdfDict(stateEntries),
+    ],
   ]);
 };
 
@@ -240,7 +271,9 @@ const buildDestination = ({
     );
   }
   const point = displayPointToPdf(page.heightPx, 0, yPx);
-  return Result.ok(pdfArray([pageRef, pdfName("XYZ"), pdfNull, pdfNumber(point.y), pdfNull]));
+  return Result.ok(
+    pdfArray([pageRef, pdfName("XYZ"), pdfNull, pdfNumber(point.y), pdfNull]),
+  );
 };
 
 type LinkAnnotationOptions = {
@@ -260,7 +293,11 @@ const buildLinkAnnotation = ({
 }: LinkAnnotationOptions): Result<PdfRef, WritePdfError> => {
   // Annotation rectangles live in default user space, untouched by the
   // content stream's CTM, so they run the page matrix themselves.
-  const topLeft = displayPointToPdf(page.heightPx, link.rect.xPx, link.rect.yPx);
+  const topLeft = displayPointToPdf(
+    page.heightPx,
+    link.rect.xPx,
+    link.rect.yPx,
+  );
   const bottomRight = displayPointToPdf(
     page.heightPx,
     link.rect.xPx + link.rect.widthPx,
@@ -291,7 +328,9 @@ const buildLinkAnnotation = ({
     default: {
       const unreachable: never = link.target;
       return Result.err(
-        new WritePdfError({ message: `unhandled link target: ${JSON.stringify(unreachable)}` }),
+        new WritePdfError({
+          message: `unhandled link target: ${JSON.stringify(unreachable)}`,
+        }),
       );
     }
   }
@@ -310,7 +349,10 @@ const buildLinkAnnotation = ({
           ]),
         ],
         ["Border", pdfNumberArray([0, 0, 0])],
-        ["Contents", link.tooltip === undefined ? undefined : pdfTextString(link.tooltip)],
+        [
+          "Contents",
+          link.tooltip === undefined ? undefined : pdfTextString(link.tooltip),
+        ],
         ["A", action],
         ["Dest", destination],
       ]),
@@ -396,7 +438,10 @@ const buildOutlineTree = (
 
 /** Every node is open, so a node's `/Count` is its whole subtree. */
 const openDescendantCount = (nodes: readonly OutlineNode[]): number =>
-  nodes.reduce((total, node) => total + 1 + openDescendantCount(node.children), 0);
+  nodes.reduce(
+    (total, node) => total + 1 + openDescendantCount(node.children),
+    0,
+  );
 
 type DefineOutlineOptions = {
   readonly document: PdfDocument;
@@ -464,7 +509,9 @@ export const writePdf = async (
   options: WritePdfOptions,
 ): Promise<Result<WritePdfResult, WritePdfError>> => {
   if (list.pages.length === 0) {
-    return Result.err(new WritePdfError({ message: "a PDF needs at least one page" }));
+    return Result.err(
+      new WritePdfError({ message: "a PDF needs at least one page" }),
+    );
   }
   const stamp = formatPdfDate(options.timestamp);
   if (stamp.isErr()) {
@@ -472,7 +519,9 @@ export const writePdf = async (
   }
   const usage = collectUsage(list.pages, list.fonts.length, list.images.length);
   if (usage.isErr()) {
-    return Result.err(new WritePdfError({ message: usage.error.message, cause: usage.error }));
+    return Result.err(
+      new WritePdfError({ message: usage.error.message, cause: usage.error }),
+    );
   }
 
   const document = createPdfDocument();
@@ -485,26 +534,34 @@ export const writePdf = async (
 
   // The one place the artifact is resolved for painting, and only once a run
   // that needs it has actually been found.
-  const shaper = usage.value.shapedRunsByFont.size === 0 ? null : await getShaper();
+  const shaper =
+    usage.value.shapedRunsByFont.size === 0 ? null : await getShaper();
 
-  const { byFontIndex, fontRefByResourceIndex, substitutions, unencodable } = prepareFonts({
-    document,
-    faces: list.fonts,
-    usedCodePoints: usage.value.codePointsByFont,
-    shapedRuns: usage.value.shapedRunsByFont,
-    shaper,
-    source: options.fonts,
-  });
+  const { byFontIndex, fontRefByResourceIndex, substitutions, unencodable } =
+    prepareFonts({
+      document,
+      faces: list.fonts,
+      usedCodePoints: usage.value.codePointsByFont,
+      shapedRuns: usage.value.shapedRunsByFont,
+      shaper,
+      source: options.fonts,
+    });
   if (options.strictGlyphCoverage === true && unencodable.length > 0) {
-    return Result.err(new WritePdfError({ message: describeUnencodable(unencodable) }));
+    return Result.err(
+      new WritePdfError({ message: describeUnencodable(unencodable) }),
+    );
   }
 
   const imageRefs = new Map<number, PdfRef>();
-  for (const imageIndex of [...usage.value.imageIndices].sort((left, right) => left - right)) {
+  for (const imageIndex of [...usage.value.imageIndices].sort(
+    (left, right) => left - right,
+  )) {
     const source = list.images[imageIndex];
     if (source === undefined) {
       return Result.err(
-        new WritePdfError({ message: `image ${String(imageIndex)} is outside the image table` }),
+        new WritePdfError({
+          message: `image ${String(imageIndex)} is outside the image table`,
+        }),
       );
     }
     const decoded = decodeImage(source);
@@ -520,7 +577,8 @@ export const writePdf = async (
   }
 
   const outlineRoots = buildOutlineTree(list.outline, document);
-  const outlineRef = outlineRoots.length === 0 ? undefined : document.allocate();
+  const outlineRef =
+    outlineRoots.length === 0 ? undefined : document.allocate();
 
   // A comment range may cross runs, lines and pages. PDF represents it as one
   // text annotation, anchored at the final painted rectangle as Word does.
@@ -538,7 +596,9 @@ export const writePdf = async (
     const pageRef = pageRefs[pageIndex];
     if (pageRef === undefined) {
       return Result.err(
-        new WritePdfError({ message: `page ${String(pageIndex)} lost its object` }),
+        new WritePdfError({
+          message: `page ${String(pageIndex)} lost its object`,
+        }),
       );
     }
     const parts = paintPage({ page, fonts: byFontIndex });
@@ -548,13 +608,22 @@ export const writePdf = async (
     );
     const annotationRefs: PdfRef[] = [];
     for (const link of page.links) {
-      const annotation = buildLinkAnnotation({ document, link, page, pages: list.pages, pageRefs });
+      const annotation = buildLinkAnnotation({
+        document,
+        link,
+        page,
+        pages: list.pages,
+        pageRefs,
+      });
       if (annotation.isErr()) {
         return Result.err(annotation.error);
       }
       annotationRefs.push(annotation.value);
     }
-    for (const { pageIndex: commentPageIndex, comment } of commentLocations.values()) {
+    for (const {
+      pageIndex: commentPageIndex,
+      comment,
+    } of commentLocations.values()) {
       if (commentPageIndex !== pageIndex) {
         continue;
       }
@@ -569,10 +638,23 @@ export const writePdf = async (
       pdfDict([
         ["Type", pdfName("Page")],
         ["Parent", pagesRef],
-        ["MediaBox", pdfNumberArray([0, 0, pxToPt(page.widthPx), pxToPt(page.heightPx)])],
-        ["Resources", buildResources({ resources, fontRefs: fontRefByResourceIndex, imageRefs })],
+        [
+          "MediaBox",
+          pdfNumberArray([0, 0, pxToPt(page.widthPx), pxToPt(page.heightPx)]),
+        ],
+        [
+          "Resources",
+          buildResources({
+            resources,
+            fontRefs: fontRefByResourceIndex,
+            imageRefs,
+          }),
+        ],
         ["Contents", contentRef],
-        ["Annots", annotationRefs.length === 0 ? undefined : pdfArray(annotationRefs)],
+        [
+          "Annots",
+          annotationRefs.length === 0 ? undefined : pdfArray(annotationRefs),
+        ],
       ]),
     );
   }
@@ -613,17 +695,40 @@ export const writePdf = async (
       ["Type", pdfName("Catalog")],
       ["Pages", pagesRef],
       ["Outlines", outlineRef],
-      ["PageMode", outlineRef === undefined ? undefined : pdfName("UseOutlines")],
+      [
+        "PageMode",
+        outlineRef === undefined ? undefined : pdfName("UseOutlines"),
+      ],
     ]),
   );
   const { metadata } = list;
   document.define(
     infoRef,
     pdfDict([
-      ["Title", metadata.title === undefined ? undefined : pdfTextString(metadata.title)],
-      ["Author", metadata.author === undefined ? undefined : pdfTextString(metadata.author)],
-      ["Subject", metadata.subject === undefined ? undefined : pdfTextString(metadata.subject)],
-      ["Keywords", metadata.keywords === undefined ? undefined : pdfTextString(metadata.keywords)],
+      [
+        "Title",
+        metadata.title === undefined
+          ? undefined
+          : pdfTextString(metadata.title),
+      ],
+      [
+        "Author",
+        metadata.author === undefined
+          ? undefined
+          : pdfTextString(metadata.author),
+      ],
+      [
+        "Subject",
+        metadata.subject === undefined
+          ? undefined
+          : pdfTextString(metadata.subject),
+      ],
+      [
+        "Keywords",
+        metadata.keywords === undefined
+          ? undefined
+          : pdfTextString(metadata.keywords),
+      ],
       ["Producer", pdfTextString(options.producer ?? DEFAULT_PRODUCER)],
       ["CreationDate", pdfAsciiString(stamp.value)],
       ["ModDate", pdfAsciiString(stamp.value)],
@@ -634,7 +739,8 @@ export const writePdf = async (
     bytes: document.serialize({
       rootRef: catalogRef,
       infoRef,
-      idHex: (body) => createHash("sha256").update(body).digest("hex").toUpperCase(),
+      idHex: (body) =>
+        createHash("sha256").update(body).digest("hex").toUpperCase(),
     }),
     substitutions,
     unencodable,

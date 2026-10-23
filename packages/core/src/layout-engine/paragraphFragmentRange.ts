@@ -56,7 +56,8 @@ export function getParagraphFragmentPmRange(
 
   let pmStart =
     fromLine === 0
-      ? (block.pmStart ?? runBoundaryPmPos(firstRun, firstLine?.fromChar ?? 0, "start"))
+      ? (block.pmStart ??
+        runBoundaryPmPos(firstRun, firstLine?.fromChar ?? 0, "start"))
       : runBoundaryPmPos(firstRun, firstLine?.fromChar ?? 0, "start");
   let pmEnd =
     toLine >= measure.lines.length

@@ -1,21 +1,30 @@
 import type { FolioAgentBridge } from "../src/bridge";
 import { executeFolioToolCall } from "../src/execute";
-import { FOLIO_AGENT_TOOL_NAMES } from "../src/types";
 import type {
   FolioAgentBlock,
   FolioAgentComment,
   FolioAgentScopedFindTextResult,
 } from "../src/index";
 import type { FolioToolCallResultFor } from "../src/tool-contract";
+import { FOLIO_AGENT_TOOL_NAMES } from "../src/types";
 
 declare const bridge: FolioAgentBridge;
 
-// @ts-expect-error empty-input tools reject undeclared fields
-executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, { unexpected: true }, bridge);
+executeFolioToolCall(
+  FOLIO_AGENT_TOOL_NAMES.readDocument,
+  // @ts-expect-error empty-input tools reject undeclared fields
+  { unexpected: true },
+  bridge,
+);
 
-const readDocumentResult = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge);
-const readDocumentCheck: FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.readDocument> =
-  readDocumentResult;
+const readDocumentResult = executeFolioToolCall(
+  FOLIO_AGENT_TOOL_NAMES.readDocument,
+  {},
+  bridge,
+);
+const readDocumentCheck: FolioToolCallResultFor<
+  typeof FOLIO_AGENT_TOOL_NAMES.readDocument
+> = readDocumentResult;
 if (readDocumentCheck.ok) {
   const blocks: FolioAgentBlock[] = readDocumentCheck.result;
   void blocks;
@@ -31,7 +40,11 @@ if (findTextResult.ok) {
   void matches;
 }
 
-const readCommentsResult = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, {}, bridge);
+const readCommentsResult = executeFolioToolCall(
+  FOLIO_AGENT_TOOL_NAMES.readComments,
+  {},
+  bridge,
+);
 if (readCommentsResult.ok) {
   const comments: FolioAgentComment[] = readCommentsResult.result;
   void comments;

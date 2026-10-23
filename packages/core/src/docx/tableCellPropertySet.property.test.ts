@@ -19,12 +19,17 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Table } from "../types/document";
-import { CONTAINER_CHILDREN, type DeclaredChild } from "./containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  type DeclaredChild,
+} from "./containerChildren.gen";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
 import { parseTable } from "./tableParser";
@@ -53,8 +58,10 @@ const SAMPLES = {
   vAlign: '<w:vAlign w:val="center"/>',
   hideMark: "<w:hideMark/>",
   headers: '<w:headers><w:header w:val="TopLeft"/></w:headers>',
-  cellIns: '<w:cellIns w:id="11" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
-  cellDel: '<w:cellDel w:id="12" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
+  cellIns:
+    '<w:cellIns w:id="11" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
+  cellDel:
+    '<w:cellDel w:id="12" w:author="Reviewer" w:date="2026-05-15T12:00:00Z"/>',
   cellMerge:
     '<w:cellMerge w:id="13" w:author="Reviewer" w:date="2026-05-15T12:00:00Z" w:vMerge="cont"/>',
   tcPrChange:
@@ -68,7 +75,10 @@ const SAMPLES = {
  * assertion authors the insertion and leaves the other two out, rather than
  * asking the model to hold a revision it has no place for.
  */
-const STRUCTURAL_ALTERNATIVES: ReadonlySet<string> = new Set(["cellDel", "cellMerge"]);
+const STRUCTURAL_ALTERNATIVES: ReadonlySet<string> = new Set([
+  "cellDel",
+  "cellMerge",
+]);
 const ORDERABLE = DECLARED.filter((name) => !STRUCTURAL_ALTERNATIVES.has(name));
 
 /**
@@ -119,7 +129,10 @@ const withoutReplay = (table: Table): Table => ({
 });
 
 const rebuild = (cellProperties: string): string =>
-  serializeTable(withoutReplay(parsed(tableXml(cellProperties))), serializeParagraph);
+  serializeTable(
+    withoutReplay(parsed(tableXml(cellProperties))),
+    serializeParagraph,
+  );
 
 /** The same table after a no-op pass through the editor's document model. */
 const throughEditor = (cellProperties: string): string => {
@@ -135,7 +148,10 @@ const throughEditor = (cellProperties: string): string => {
 
 /** The outer `w:tcPr`'s own children: a `w:tcPrChange` nests a second one. */
 const cellPropertiesOf = (saved: string): string =>
-  saved.slice(saved.indexOf("<w:tcPr>") + "<w:tcPr>".length, saved.lastIndexOf("</w:tcPr>"));
+  saved.slice(
+    saved.indexOf("<w:tcPr>") + "<w:tcPr>".length,
+    saved.lastIndexOf("</w:tcPr>"),
+  );
 
 describe("a cell's property set survives a rebuild", () => {
   test("every declared child comes back, and the save after it is a fixed point", () => {
@@ -174,11 +190,15 @@ describe("a cell's property set survives a rebuild", () => {
 
     const positions = ORDERABLE.map((name) => saved.indexOf(`<w:${name}`));
     expect(positions.every((at) => at > -1)).toBe(true);
-    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    expect(positions).toEqual(
+      [...positions].sort((left, right) => left - right),
+    );
   });
 
   test("a capture comes back between the same two modelled properties", () => {
-    const saved = rebuild('<w:tcW w:w="2400" w:type="dxa"/><w:hMerge/><w:shd w:val="clear"/>');
+    const saved = rebuild(
+      '<w:tcW w:w="2400" w:type="dxa"/><w:hMerge/><w:shd w:val="clear"/>',
+    );
 
     expect(saved.indexOf("<w:tcW")).toBeLessThan(saved.indexOf("<w:hMerge/>"));
     expect(saved.indexOf("<w:hMerge/>")).toBeLessThan(saved.indexOf("<w:shd "));
@@ -210,7 +230,9 @@ describe("a cell's property set survives a rebuild", () => {
         "<w:tr><w:tc><w:p/></w:tc></w:tr></w:tbl>",
     );
 
-    expect(serializeTable(withoutReplay(table), serializeParagraph)).not.toContain("<w:tcPr");
+    expect(
+      serializeTable(withoutReplay(table), serializeParagraph),
+    ).not.toContain("<w:tcPr");
   });
 
   test("a snapshot's own structural revision rides the change that recorded it", () => {

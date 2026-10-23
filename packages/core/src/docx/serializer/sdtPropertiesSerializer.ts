@@ -15,7 +15,10 @@
  */
 
 import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
-import { assertSafePreservedMarkup, serializeSequenceChildren } from "@stll/docx-core/schema";
+import {
+  assertSafePreservedMarkup,
+  serializeSequenceChildren,
+} from "@stll/docx-core/schema";
 
 import type { SdtProperties } from "../../types/document";
 import type { DeclaredChild } from "../containerChildren.gen";
@@ -30,9 +33,15 @@ import { isSingleWellFormedElement } from "./xmlUtils";
  * The slot is named by a declared child rather than given as a number, so the
  * order comes from the generated sequence instead of from a second table here.
  */
-type PlacedChild = readonly [slot: DeclaredChild<"content-control-properties">, xml: string];
+type PlacedChild = readonly [
+  slot: DeclaredChild<"content-control-properties">,
+  xml: string,
+];
 
-const listElement = (name: "dropDownList" | "comboBox", props: SdtProperties): string => {
+const listElement = (
+  name: "dropDownList" | "comboBox",
+  props: SdtProperties,
+): string => {
   const lastValue =
     props.dropdownLastValue === undefined
       ? ""
@@ -110,7 +119,10 @@ export const serializeSdtProperties = (props: SdtProperties): string => {
   assertSafePreservedMarkup(props.preserved);
   const modelled: PlacedChild[] = [];
   if (props.alias !== undefined) {
-    modelled.push(["alias", `<w:alias w:val="${escapeXmlAttribute(props.alias)}"/>`]);
+    modelled.push([
+      "alias",
+      `<w:alias w:val="${escapeXmlAttribute(props.alias)}"/>`,
+    ]);
   }
   if (props.tag !== undefined) {
     modelled.push(["tag", `<w:tag w:val="${escapeXmlAttribute(props.tag)}"/>`]);
@@ -145,7 +157,10 @@ export const serializeSdtProperties = (props: SdtProperties): string => {
       return child;
     }
     statedKind = true;
-    return { index: child.index, xml: withModelledControlState(child.xml, props) };
+    return {
+      index: child.index,
+      xml: withModelledControlState(child.xml, props),
+    };
   });
   if (!statedKind) {
     modelled.push(synthesizedKind(props));
@@ -154,7 +169,8 @@ export const serializeSdtProperties = (props: SdtProperties): string => {
   const children = serializeSequenceChildren({
     container: "content-control-properties",
     modelled,
-    preserved: props.preserved === undefined ? undefined : { children: preserved },
+    preserved:
+      props.preserved === undefined ? undefined : { children: preserved },
   });
   const body = children.join("");
   return body.length === 0 ? "<w:sdtPr/>" : `<w:sdtPr>${body}</w:sdtPr>`;
@@ -167,7 +183,9 @@ export const serializeSdtProperties = (props: SdtProperties): string => {
  * The record's presence is the element's: `<w:sdtEndPr/>` with no `w:rPr` is
  * what Word writes for most controls and differs from a missing element.
  */
-export const serializeSdtEndProperties = (properties: SdtProperties): string => {
+export const serializeSdtEndProperties = (
+  properties: SdtProperties,
+): string => {
   if (
     properties.rawEndPropertiesXml &&
     isSingleWellFormedElement(properties.rawEndPropertiesXml, "sdtEndPr")
@@ -179,15 +197,22 @@ export const serializeSdtEndProperties = (properties: SdtProperties): string => 
     return "";
   }
   const runProperties = serializeTextFormatting(endProperties.runProperties);
-  return runProperties.length > 0 ? `<w:sdtEndPr>${runProperties}</w:sdtEndPr>` : "<w:sdtEndPr/>";
+  return runProperties.length > 0
+    ? `<w:sdtEndPr>${runProperties}</w:sdtEndPr>`
+    : "<w:sdtEndPr/>";
 };
 
 /** `w:sdtPr` followed by `w:sdtEndPr`, in schema order. */
-export const serializeSdtPropertyElements = (properties: SdtProperties): string =>
+export const serializeSdtPropertyElements = (
+  properties: SdtProperties,
+): string =>
   `${serializeSdtProperties(properties)}${serializeSdtEndProperties(properties)}`;
 
 /** The one writer of an SDT wrapper at every content-model level. */
-export const serializeSdtWrapper = (properties: SdtProperties, contentXml: string): string => {
+export const serializeSdtWrapper = (
+  properties: SdtProperties,
+  contentXml: string,
+): string => {
   const propertyElements = serializeSdtPropertyElements(properties);
   const before = properties.rawSdtChildrenBeforeContent ?? "";
   const after = properties.rawSdtChildrenAfterContent ?? "";

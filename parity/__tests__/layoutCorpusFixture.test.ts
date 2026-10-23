@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import path from "node:path";
-
 import JSZip from "jszip";
+import path from "node:path";
 
 import {
   buildLayoutCorpus,
@@ -17,7 +16,9 @@ const FIXTURE_NAMES = [
   "layout-kitchen-sink.docx",
 ] as const;
 
-const loadFixture = async (name: (typeof FIXTURE_NAMES)[number]): Promise<JSZip> =>
+const loadFixture = async (
+  name: (typeof FIXTURE_NAMES)[number],
+): Promise<JSZip> =>
   JSZip.loadAsync(await Bun.file(path.join(FIXTURES_DIR, name)).arrayBuffer());
 
 describe("synthetic layout corpus", () => {
@@ -25,16 +26,20 @@ describe("synthetic layout corpus", () => {
     const generated = await buildLayoutCorpus(FIXTURES_DIR);
 
     for (const name of FIXTURE_NAMES) {
-      const committed = new Uint8Array(await Bun.file(path.join(FIXTURES_DIR, name)).arrayBuffer());
+      const committed = new Uint8Array(
+        await Bun.file(path.join(FIXTURES_DIR, name)).arrayBuffer(),
+      );
       const expected = generated.get(name);
       if (!expected) {
         throw new TypeError(`generator omitted ${name}`);
       }
       expect(Buffer.from(committed).equals(Buffer.from(expected))).toBeTrue();
     }
-    expect(await Bun.file(path.join(FIXTURES_DIR, "layout-interaction-matrix.json")).text()).toBe(
-      layoutInteractionMatrixManifest(),
-    );
+    expect(
+      await Bun.file(
+        path.join(FIXTURES_DIR, "layout-interaction-matrix.json"),
+      ).text(),
+    ).toBe(layoutInteractionMatrixManifest());
   });
 
   test("keeps isolated, pairwise, and kitchen-sink coverage structurally distinct", async () => {
@@ -53,9 +58,13 @@ describe("synthetic layout corpus", () => {
     }
 
     const pairwise = await loadFixture("pairwise-layout-interactions.docx");
-    const pairwiseDocument = await pairwise.file("word/document.xml")!.async("text");
+    const pairwiseDocument = await pairwise
+      .file("word/document.xml")!
+      .async("text");
     const scenarios = buildLayoutInteractionMatrix();
-    const authoredFlowBreaks = scenarios.filter(({ flow }) => flow === "hardPageBreak").length;
+    const authoredFlowBreaks = scenarios.filter(
+      ({ flow }) => flow === "hardPageBreak",
+    ).length;
     const interCaseBreaks = scenarios
       .slice(1)
       .filter((_, index) => scenarios[index]?.section !== "nextPage").length;
@@ -85,7 +94,9 @@ describe("synthetic layout corpus", () => {
     }
 
     const kitchenSink = await loadFixture("layout-kitchen-sink.docx");
-    const kitchenDocument = await kitchenSink.file("word/document.xml")!.async("text");
+    const kitchenDocument = await kitchenSink
+      .file("word/document.xml")!
+      .async("text");
     expect(kitchenDocument).toContain("<w:tbl>");
     expect(kitchenDocument).toContain("<w:footnoteReference");
     expect(kitchenDocument).toContain("<w:bidi/>");
@@ -96,7 +107,9 @@ describe("synthetic layout corpus", () => {
   test("isolates every matrix case with an observable section boundary", async () => {
     for (const scenario of buildLayoutInteractionMatrix()) {
       // oxlint-disable-next-line no-await-in-loop -- validates each bounded generated case independently
-      const zip = await JSZip.loadAsync(await buildLayoutInteractionCaseFixture(scenario));
+      const zip = await JSZip.loadAsync(
+        await buildLayoutInteractionCaseFixture(scenario),
+      );
       // oxlint-disable-next-line no-await-in-loop -- JSZip exposes async part reads
       const document = await zip.file("word/document.xml")!.async("text");
       expect(document).toContain(`${scenario.id} post-boundary sentinel.`);

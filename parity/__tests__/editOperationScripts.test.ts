@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import path from "node:path";
-
 import JSZip from "jszip";
+import path from "node:path";
 
 import { EDIT_OPERATION_SCRIPTS } from "../fixtures/edit-operation-scripts";
 import { readEditStructure } from "../fixtures/edit-structure";
@@ -22,7 +21,11 @@ describe("saved synthetic edit scripts", () => {
       const structure = await readEditStructure(saved);
       expect(structure.blocks.length, script.id).toBeGreaterThan(0);
       if (script.action === "replyToComment") {
-        expect(structure.comments.some(({ replies }) => replies.includes(script.text))).toBeTrue();
+        expect(
+          structure.comments.some(({ replies }) =>
+            replies.includes(script.text),
+          ),
+        ).toBeTrue();
       }
       if (script.action === "deleteTableRow") {
         expect(structure.cells.length).toBeGreaterThan(0);

@@ -2,7 +2,10 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { StepMap } from "prosemirror-transform";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { indexedPositionMap } from "./indexedPositionMap";
 
 test(

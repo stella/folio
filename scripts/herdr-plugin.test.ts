@@ -26,13 +26,16 @@ const readManifest = async (): Promise<Manifest> => {
   const parsed: unknown = Bun.TOML.parse(
     await readFile(path.join(PLUGIN_ROOT, "herdr-plugin.toml"), "utf8"),
   );
-  if (!isManifest(parsed)) throw new Error("herdr-plugin.toml lacks actions, panes, or handlers");
+  if (!isManifest(parsed))
+    throw new Error("herdr-plugin.toml lacks actions, panes, or handlers");
   return parsed;
 };
 
 /** The handler's Rust pattern as a JavaScript one: the same syntax, with `(?i)` as a flag. */
 const handlerPattern = (pattern: string): RegExp =>
-  pattern.startsWith("(?i)") ? new RegExp(pattern.slice(4), "iu") : new RegExp(pattern, "u");
+  pattern.startsWith("(?i)")
+    ? new RegExp(pattern.slice(4), "iu")
+    : new RegExp(pattern, "u");
 
 describe("herdr plugin manifest", () => {
   test("every handler, action, and pane resolves to something the plugin ships", async () => {
@@ -44,9 +47,15 @@ describe("herdr plugin manifest", () => {
     }
     for (const { command } of [...manifest.actions, ...manifest.panes]) {
       const script = command.at(-1) ?? "";
-      expect([script, existsSync(path.join(PLUGIN_ROOT, script))]).toEqual([script, true]);
+      expect([script, existsSync(path.join(PLUGIN_ROOT, script))]).toEqual([
+        script,
+        true,
+      ]);
     }
-    const opener = await readFile(path.join(PLUGIN_ROOT, "bin", "open-docx.sh"), "utf8");
+    const opener = await readFile(
+      path.join(PLUGIN_ROOT, "bin", "open-docx.sh"),
+      "utf8",
+    );
     expect(opener).toContain(`--entrypoint ${manifest.panes[0]?.id ?? "?"}`);
     expect(opener).toContain(`HERDR_PLUGIN_ID:-${manifest.id}`);
   });
@@ -55,10 +64,19 @@ describe("herdr plugin manifest", () => {
     const [handler] = (await readManifest()).link_handlers;
     const pattern = handlerPattern(handler?.pattern ?? "");
 
-    for (const link of ["file:///tmp/a%20b.docx", "/home/me/Contract.DOCX", "file://host/x.docx"]) {
+    for (const link of [
+      "file:///tmp/a%20b.docx",
+      "/home/me/Contract.DOCX",
+      "file://host/x.docx",
+    ]) {
       expect([link, pattern.test(link)]).toEqual([link, true]);
     }
-    for (const link of ["https://example.com/a.docx", "/tmp/a.docx.pdf", "a b.docx", "x.docx?y"]) {
+    for (const link of [
+      "https://example.com/a.docx",
+      "/tmp/a.docx.pdf",
+      "a b.docx",
+      "x.docx?y",
+    ]) {
       expect([link, pattern.test(link)]).toEqual([link, false]);
     }
   });
@@ -73,7 +91,10 @@ describe("open-docx.sh", () => {
     dir = await mkdtemp(path.join(tmpdir(), "herdr-plugin-"));
     stub = path.join(dir, "herdr");
     record = path.join(dir, "args");
-    await writeFile(stub, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "${record}"\n`);
+    await writeFile(
+      stub,
+      `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "${record}"\n`,
+    );
     await chmod(stub, 0o755);
   });
 
@@ -83,17 +104,23 @@ describe("open-docx.sh", () => {
 
   const open = async (link: string) => {
     await rm(record, { force: true });
-    const run = spawnSync("bash", [path.join(PLUGIN_ROOT, "bin", "open-docx.sh")], {
-      env: {
-        PATH: process.env["PATH"],
-        HERDR_BIN_PATH: stub,
-        HERDR_PLUGIN_ID: "stll.folio",
-        HERDR_PANE_ID: "pane-7",
-        HERDR_PLUGIN_CLICKED_URL: link,
+    const run = spawnSync(
+      "bash",
+      [path.join(PLUGIN_ROOT, "bin", "open-docx.sh")],
+      {
+        env: {
+          PATH: process.env["PATH"],
+          HERDR_BIN_PATH: stub,
+          HERDR_PLUGIN_ID: "stll.folio",
+          HERDR_PANE_ID: "pane-7",
+          HERDR_PLUGIN_CLICKED_URL: link,
+        },
+        encoding: "utf8",
       },
-      encoding: "utf8",
-    });
-    const args = existsSync(record) ? (await readFile(record, "utf8")).trim().split("\n") : [];
+    );
+    const args = existsSync(record)
+      ? (await readFile(record, "utf8")).trim().split("\n")
+      : [];
     return { status: run.status, args };
   };
 
@@ -126,7 +153,11 @@ describe("open-docx.sh", () => {
   });
 
   test("refuses other hosts and other files without opening a pane", async () => {
-    for (const link of ["file://elsewhere.invalid/x.docx", "/srv/notes.pdf", ""]) {
+    for (const link of [
+      "file://elsewhere.invalid/x.docx",
+      "/srv/notes.pdf",
+      "",
+    ]) {
       const result = await open(link);
       expect([link, result.status, result.args]).toEqual([link, 1, []]);
     }

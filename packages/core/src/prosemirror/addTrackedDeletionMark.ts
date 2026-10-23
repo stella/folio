@@ -26,7 +26,8 @@ export const addTrackedDeletionMark = ({
   mark,
   insertionPolicy,
 }: AddTrackedDeletionMarkOptions): void => {
-  if (mark.type.name !== "deletion") panic("A tracked deletion requires a deletion mark");
+  if (mark.type.name !== "deletion")
+    panic("A tracked deletion requires a deletion mark");
   // AddMarkStep also marks descendants of an inline atom (a structured field).
   // Restore their existing deletion marks after marking the enclosing carrier.
   const preservedDeletions: { from: number; to: number; mark: Mark }[] = [];
@@ -36,7 +37,8 @@ export const addTrackedDeletionMark = ({
     if (node.isInline && existing) {
       const start = Math.max(from, position);
       const end = Math.min(to, position + node.nodeSize);
-      if (start < end) preservedDeletions.push({ from: start, to: end, mark: existing });
+      if (start < end)
+        preservedDeletions.push({ from: start, to: end, mark: existing });
       const at = tr.doc.resolve(position);
       for (let depth = 1; depth <= at.depth; depth++) {
         const ancestor = at.node(depth);
@@ -46,7 +48,12 @@ export const addTrackedDeletionMark = ({
     return true;
   });
   const mapFrom = tr.mapping.maps.length;
-  const ranges: { from: number; to: number; mark: Mark; disposition: "mark" | "retract" }[] = [];
+  const ranges: {
+    from: number;
+    to: number;
+    mark: Mark;
+    disposition: "mark" | "retract";
+  }[] = [];
   const descendantDeletions: { from: number; to: number; mark: Mark }[] = [];
   const deletionFor = (node: PMNode): Mark => {
     const insertion = node.marks.find(({ type }) => type.name === "insertion");
@@ -56,7 +63,10 @@ export const addTrackedDeletionMark = ({
     return insertion && ancestors?.length
       ? mark.type.create({
           ...mark.attrs,
-          _docxRevisionAncestors: [...ancestors, trackedRevisionLayerOf(insertion, node)],
+          _docxRevisionAncestors: [
+            ...ancestors,
+            trackedRevisionLayerOf(insertion, node),
+          ],
         })
       : mark;
   };
@@ -68,10 +78,13 @@ export const addTrackedDeletionMark = ({
     if (start >= end) return false;
     const insertion = node.marks.find(({ type }) => type.name === "insertion");
     const ownInsertion =
-      insertion !== undefined && insertion.attrs["author"] === mark.attrs["author"];
+      insertion !== undefined &&
+      insertion.attrs["author"] === mark.attrs["author"];
     const deletion = deletionFor(node);
     const disposition =
-      insertionPolicy === "retract-own" && ownInsertion && !protectedCarriers.has(node)
+      insertionPolicy === "retract-own" &&
+      ownInsertion &&
+      !protectedCarriers.has(node)
         ? "retract"
         : "mark";
     const previous = ranges.at(-1);
@@ -84,13 +97,18 @@ export const addTrackedDeletionMark = ({
     else ranges.push({ from: start, to: end, mark: deletion, disposition });
     if (disposition === "mark") {
       node.descendants((child, offset) => {
-        if (child.marks.some(({ type }) => type.name === "deletion")) return false;
+        if (child.marks.some(({ type }) => type.name === "deletion"))
+          return false;
         const childDeletion = deletionFor(child);
         if (childDeletion === mark) return true;
         const childStart = Math.max(from, position + 1 + offset);
         const childEnd = Math.min(to, position + 1 + offset + child.nodeSize);
         if (childStart < childEnd)
-          descendantDeletions.push({ from: childStart, to: childEnd, mark: childDeletion });
+          descendantDeletions.push({
+            from: childStart,
+            to: childEnd,
+            mark: childDeletion,
+          });
         return true;
       });
     }

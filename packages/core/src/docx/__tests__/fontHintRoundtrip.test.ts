@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document } from "../../types/document";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import type { Document } from "../../types/document";
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "../runParser";
 import { serializeTextFormatting } from "../serializer/textFormattingSerializer";
 import { parseXml } from "../xmlParser";
@@ -29,7 +29,9 @@ describe("run font hint round-trip", () => {
       );
 
       expect(formatting?.fontFamily).toEqual({ hint });
-      expect(serializeTextFormatting(formatting)).toContain(`<w:rFonts w:hint="${hint}"/>`);
+      expect(serializeTextFormatting(formatting)).toContain(
+        `<w:rFonts w:hint="${hint}"/>`,
+      );
     });
   }
 
@@ -44,7 +46,9 @@ describe("run font hint round-trip", () => {
     // rather than an empty one; the element the author wrote comes back from
     // the verbatim sink instead of being dropped.
     expect(formatting?.fontFamily).toBeUndefined();
-    expect(serializeTextFormatting(formatting)).toContain('<w:rFonts w:hint="unsupported"/>');
+    expect(serializeTextFormatting(formatting)).toContain(
+      '<w:rFonts w:hint="unsupported"/>',
+    );
   });
 
   test("preserves the hint through the editor model", () => {

@@ -13,7 +13,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isMarkerId = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
-const isRangeStartType = (value: unknown): value is keyof typeof RANGE_END_FOR_START =>
+const isRangeStartType = (
+  value: unknown,
+): value is keyof typeof RANGE_END_FOR_START =>
   typeof value === "string" && value in RANGE_END_FOR_START;
 
 const validateRangeMarkerAttrs = (
@@ -28,7 +30,10 @@ const validateRangeMarkerAttrs = (
     });
   }
   const displacedByCustomXml = marker["displacedByCustomXml"];
-  if (displacedByCustomXml !== undefined && !isDisplacedByCustomXml(displacedByCustomXml)) {
+  if (
+    displacedByCustomXml !== undefined &&
+    !isDisplacedByCustomXml(displacedByCustomXml)
+  ) {
     issues.push({
       path: `${path}.displacedByCustomXml`,
       message: 'Expected "next" or "prev".',
@@ -42,7 +47,10 @@ const validateMoveRangeStartAttrs = (
   issues: ProseMirrorAttrIssue[],
 ): void => {
   for (const required of ["name", "author"]) {
-    if (typeof marker[required] !== "string" || marker[required].trim() === "") {
+    if (
+      typeof marker[required] !== "string" ||
+      marker[required].trim() === ""
+    ) {
       issues.push({
         path: `${path}.${required}`,
         message: "Expected a non-empty string on a move range start.",
@@ -143,7 +151,9 @@ export const expectRangeAnchorAttrs = (node: PMNode): RangeAnchorAttrs => {
   }
   const result = readRangeAnchorAttrs(node);
   if (!result.ok) {
-    const details = result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
+    const details = result.issues
+      .map((issue) => `${issue.path}: ${issue.message}`)
+      .join("\n");
     panic(`Invalid ProseMirror range anchor attrs:\n${details}`);
   }
   attrsCache.set(node, result.value);

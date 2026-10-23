@@ -1,13 +1,14 @@
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { TaggedError } from "better-result";
-
 type LicenseAuditStatus = "needs-review" | "reviewed";
-type RedistributionPolicy = "cache-only" | "license-compliant" | "reference-only";
-type GeneratedOutputPolicy = "implementation-facts-only" | "license-compliant" | "review-required";
+type RedistributionPolicy =
+  "cache-only" | "license-compliant" | "reference-only";
+type GeneratedOutputPolicy =
+  "implementation-facts-only" | "license-compliant" | "review-required";
 
 type SourceLicense = {
   auditStatus: LicenseAuditStatus;
@@ -54,7 +55,11 @@ class SpecificationSourceError extends TaggedError("SpecificationSourceError")<{
 }> {}
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
-const MANIFEST_PATH = path.join(REPOSITORY_ROOT, "specifications", "sources.json");
+const MANIFEST_PATH = path.join(
+  REPOSITORY_ROOT,
+  "specifications",
+  "sources.json",
+);
 const CACHE_ROOT = path.join(REPOSITORY_ROOT, ".cache", "specifications");
 const SOURCE_FETCH_TIMEOUT_MS = 120_000;
 const SOURCE_ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -145,25 +150,43 @@ const validateRequiredString = (
   }
 };
 
-const validateProfiles = (value: unknown, location: string, issues: string[]): void => {
+const validateProfiles = (
+  value: unknown,
+  location: string,
+  issues: string[],
+): void => {
   if (!Array.isArray(value) || value.length === 0) {
     issues.push(`${location}: expected a non-empty array`);
     return;
   }
-  if (!value.every((profile) => typeof profile === "string" && SOURCE_ID_RE.test(profile))) {
+  if (
+    !value.every(
+      (profile) => typeof profile === "string" && SOURCE_ID_RE.test(profile),
+    )
+  ) {
     issues.push(`${location}: expected kebab-case profile names`);
     return;
   }
-  const profiles = value.filter((profile): profile is string => typeof profile === "string");
+  const profiles = value.filter(
+    (profile): profile is string => typeof profile === "string",
+  );
   if (new Set(profiles).size !== profiles.length) {
     issues.push(`${location}: duplicate profiles`);
   }
-  if (profiles.toSorted(compareStrings).some((profile, index) => profile !== profiles[index])) {
+  if (
+    profiles
+      .toSorted(compareStrings)
+      .some((profile, index) => profile !== profiles[index])
+  ) {
     issues.push(`${location}: profiles must be sorted`);
   }
 };
 
-const validateLicense = (value: unknown, location: string, issues: string[]): void => {
+const validateLicense = (
+  value: unknown,
+  location: string,
+  issues: string[],
+): void => {
   if (!isRecord(value)) {
     issues.push(`${location}: expected an object`);
     return;
@@ -186,7 +209,11 @@ const validateLicense = (value: unknown, location: string, issues: string[]): vo
   }
 };
 
-const validateSource = (value: unknown, index: number, issues: string[]): void => {
+const validateSource = (
+  value: unknown,
+  index: number,
+  issues: string[],
+): void => {
   const location = `sources[${index}]`;
   if (!isRecord(value)) {
     issues.push(`${location}: expected an object`);
@@ -197,7 +224,12 @@ const validateSource = (value: unknown, index: number, issues: string[]): void =
     issues.push(`${location}.sourceType: expected artifact or git`);
     return;
   }
-  validateExactKeys(value, sourceType === "artifact" ? ARTIFACT_KEYS : GIT_KEYS, location, issues);
+  validateExactKeys(
+    value,
+    sourceType === "artifact" ? ARTIFACT_KEYS : GIT_KEYS,
+    location,
+    issues,
+  );
   for (const key of ["cachePath", "id", "publisher", "title", "version"]) {
     validateRequiredString(value, key, location, issues);
   }
@@ -210,7 +242,9 @@ const validateSource = (value: unknown, index: number, issues: string[]): void =
     typeof cachePath === "string" &&
     (!CACHE_PATH_RE.test(cachePath) || cachePath.split("/").includes(".."))
   ) {
-    issues.push(`${location}.cachePath: expected a path under .cache/specifications`);
+    issues.push(
+      `${location}.cachePath: expected a path under .cache/specifications`,
+    );
   }
   validateProfiles(value["profiles"], `${location}.profiles`, issues);
   validateLicense(value["license"], `${location}.license`, issues);
@@ -226,7 +260,11 @@ const validateSource = (value: unknown, index: number, issues: string[]): void =
       issues.push(`${location}.sha256: expected a lowercase SHA-256 digest`);
     }
     const bytes = value["bytes"];
-    if (typeof bytes !== "number" || !Number.isSafeInteger(bytes) || bytes <= 0) {
+    if (
+      typeof bytes !== "number" ||
+      !Number.isSafeInteger(bytes) ||
+      bytes <= 0
+    ) {
       issues.push(`${location}.bytes: expected a positive safe integer`);
     }
     return;
@@ -234,7 +272,10 @@ const validateSource = (value: unknown, index: number, issues: string[]): void =
 
   validateRequiredString(value, "repository", location, issues);
   const repository = value["repository"];
-  if (typeof repository === "string" && !repository.startsWith("https://github.com/")) {
+  if (
+    typeof repository === "string" &&
+    !repository.startsWith("https://github.com/")
+  ) {
     issues.push(`${location}.repository: expected a GitHub HTTPS URL`);
   }
   for (const key of ["commit", "tree"]) {
@@ -245,12 +286,19 @@ const validateSource = (value: unknown, index: number, issues: string[]): void =
   }
 };
 
-export const validateSpecificationSourceManifest = (value: unknown): string[] => {
+export const validateSpecificationSourceManifest = (
+  value: unknown,
+): string[] => {
   const issues: string[] = [];
   if (!isRecord(value)) {
     return ["manifest: expected an object"];
   }
-  validateExactKeys(value, new Set(["schemaVersion", "sources"]), "manifest", issues);
+  validateExactKeys(
+    value,
+    new Set(["schemaVersion", "sources"]),
+    "manifest",
+    issues,
+  );
   if (value["schemaVersion"] !== 1) {
     issues.push("manifest.schemaVersion: expected 1");
   }
@@ -277,7 +325,9 @@ export const validateSpecificationSourceManifest = (value: unknown): string[] =>
   return issues;
 };
 
-const isSpecificationSourceManifest = (value: unknown): value is SpecificationSourceManifest =>
+const isSpecificationSourceManifest = (
+  value: unknown,
+): value is SpecificationSourceManifest =>
   validateSpecificationSourceManifest(value).length === 0;
 
 const loadManifest = async (): Promise<SpecificationSourceManifest> => {
@@ -298,7 +348,9 @@ const loadManifest = async (): Promise<SpecificationSourceManifest> => {
     });
   }
   if (!isSpecificationSourceManifest(value)) {
-    throw new SpecificationSourceError({ message: "Specification manifest validation failed" });
+    throw new SpecificationSourceError({
+      message: "Specification manifest validation failed",
+    });
   }
   return value;
 };
@@ -306,14 +358,20 @@ const loadManifest = async (): Promise<SpecificationSourceManifest> => {
 const resolveCachePath = (cachePath: string): string => {
   const resolved = path.resolve(REPOSITORY_ROOT, cachePath);
   if (!resolved.startsWith(`${CACHE_ROOT}${path.sep}`)) {
-    throw new SpecificationSourceError({ message: `Cache path escapes cache root: ${cachePath}` });
+    throw new SpecificationSourceError({
+      message: `Cache path escapes cache root: ${cachePath}`,
+    });
   }
   return resolved;
 };
 
-const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const sha256 = (bytes: Uint8Array): string =>
+  createHash("sha256").update(bytes).digest("hex");
 
-const readBoundedResponse = async (response: Response, maxBytes: number): Promise<Uint8Array> => {
+const readBoundedResponse = async (
+  response: Response,
+  maxBytes: number,
+): Promise<Uint8Array> => {
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null && Number(contentLength) > maxBytes) {
     throw new SpecificationSourceError({
@@ -321,7 +379,9 @@ const readBoundedResponse = async (response: Response, maxBytes: number): Promis
     });
   }
   if (response.body === null) {
-    throw new SpecificationSourceError({ message: "Source response has no body" });
+    throw new SpecificationSourceError({
+      message: "Source response has no body",
+    });
   }
   const chunks: Uint8Array[] = [];
   const reader = response.body.getReader();
@@ -396,7 +456,10 @@ const verifyArtifact = async (
   return "verified";
 };
 
-const runGit = async (args: string[], cwd = REPOSITORY_ROOT): Promise<string> => {
+const runGit = async (
+  args: string[],
+  cwd = REPOSITORY_ROOT,
+): Promise<string> => {
   const process = Bun.spawn(["git", ...args], {
     cwd,
     signal: AbortSignal.timeout(SOURCE_FETCH_TIMEOUT_MS),
@@ -425,7 +488,13 @@ const verifyGitSource = async (
   if (!existsSync(gitDirectory) && fetchMissing) {
     await rm(cachePath, { recursive: true, force: true });
     await mkdir(path.dirname(cachePath), { recursive: true });
-    await runGit(["clone", "--filter=blob:none", "--no-checkout", source.repository, cachePath]);
+    await runGit([
+      "clone",
+      "--filter=blob:none",
+      "--no-checkout",
+      source.repository,
+      cachePath,
+    ]);
   }
   if (!existsSync(gitDirectory)) {
     return "missing";
@@ -439,7 +508,11 @@ const verifyGitSource = async (
     runGit(["rev-parse", "HEAD"], cachePath),
     runGit(["rev-parse", "HEAD^{tree}"], cachePath),
   ]);
-  if (origin !== source.repository || commit !== source.commit || tree !== source.tree) {
+  if (
+    origin !== source.repository ||
+    commit !== source.commit ||
+    tree !== source.tree
+  ) {
     throw new SpecificationSourceError({
       message: `Cached repository does not match manifest: ${source.id}`,
     });
@@ -461,7 +534,8 @@ const main = async (args: string[]): Promise<void> => {
   const command = args.at(0) ?? "check";
   if (command !== "check" && command !== "fetch") {
     throw new SpecificationSourceError({
-      message: "Usage: bun scripts/specification-sources.ts [check|fetch] [--profile <name>]",
+      message:
+        "Usage: bun scripts/specification-sources.ts [check|fetch] [--profile <name>]",
     });
   }
 

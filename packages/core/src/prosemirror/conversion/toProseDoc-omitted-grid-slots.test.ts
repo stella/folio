@@ -9,7 +9,9 @@ import { toProseDoc } from "./toProseDoc";
 
 const paragraph = (text: string) => ({
   type: "paragraph" as const,
-  content: [{ type: "run" as const, content: [{ type: "text" as const, text }] }],
+  content: [
+    { type: "run" as const, content: [{ type: "text" as const, text }] },
+  ],
 });
 
 const documentWithOmittedGridSlots = (): Document => ({

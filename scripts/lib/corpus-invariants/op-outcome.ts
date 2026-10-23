@@ -1,8 +1,12 @@
-import { EnsureParaIdsError, ENSURE_PARA_IDS_REASONS } from "@stll/folio-core/docx/ensureParaIds";
+import {
+  ENSURE_PARA_IDS_REASONS,
+  EnsureParaIdsError,
+} from "@stll/folio-core/docx/ensureParaIds";
+
 import { failureFromError } from "../corpus-signature";
 import {
-  DECLARED_REFUSAL_REASONS,
   type CorpusInvariantOutcome,
+  DECLARED_REFUSAL_REASONS,
   type DeclaredRefusalInvariant,
   type StageTimings,
 } from "./contract";
@@ -28,5 +32,9 @@ export const opErrorOutcome = ({
       refusal: { invariant, reason: DECLARED_REFUSAL_REASONS.SIGNED_PACKAGE },
       timings,
     };
-  return { status: "evaluated", failures: [failureFromError(invariant, error)], timings };
+  return {
+    status: "evaluated",
+    failures: [failureFromError(invariant, error)],
+    timings,
+  };
 };

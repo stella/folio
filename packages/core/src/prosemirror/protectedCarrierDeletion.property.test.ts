@@ -1,15 +1,18 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
+  createHarnessPlugins,
   HARNESS_AUTHOR,
   HeadlessEditorView,
-  createHarnessPlugins,
 } from "../__tests__/editorHarness";
-import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { expectTrackedChangeMarkAttrs } from "./attrs";
 import { resolveAllChangesInHeadlessState } from "./commands/comments";
@@ -23,14 +26,21 @@ const protectedRevision = schema.mark("deletion", {
   date: "2026-01-02T03:04:05Z",
   initials: "OR",
   _docxRevisionAncestors: [
-    { type: "insertion", revisionId: 36, author: "First Reviewer", outerWrapperCount: 0 },
+    {
+      type: "insertion",
+      revisionId: 36,
+      author: "First Reviewer",
+      outerWrapperCount: 0,
+    },
   ],
 });
 
 for (const direction of ["Delete", "Backspace"] as const) {
   test(`${direction} preserves another author's deletion inside an own-inserted field`, async () => {
     const source = createEmptyDocument();
-    const hyperlink = schema.mark("hyperlink", { href: "https://example.test/field" });
+    const hyperlink = schema.mark("hyperlink", {
+      href: "https://example.test/field",
+    });
     const field = schema.node(
       "structuredField",
       {
@@ -49,10 +59,15 @@ for (const direction of ["Delete", "Backspace"] as const) {
     const doc = schema.node(
       "doc",
       null,
-      schema.node("paragraph", null, [schema.text("left"), field, schema.text("right")]),
+      schema.node("paragraph", null, [
+        schema.text("left"),
+        field,
+        schema.text("right"),
+      ]),
     );
     const fieldPosition = 5;
-    const caret = direction === "Delete" ? fieldPosition : fieldPosition + field.nodeSize;
+    const caret =
+      direction === "Delete" ? fieldPosition : fieldPosition + field.nodeSize;
     const view = new HeadlessEditorView(
       EditorState.create({
         doc,
@@ -80,9 +95,13 @@ for (const direction of ["Delete", "Backspace"] as const) {
       // Resolve before saving: pending child revisions in simple fields are not
       // representable by the current DOCX field model.
       const saved = await createDocx(
-        fromProseDoc(live.doc, source, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(live.doc, source, {
+          stylesheetSource: { type: "package" },
+        }),
       );
-      const reopened = toProseDoc(await parseDocx(saved, { preloadFonts: false }));
+      const reopened = toProseDoc(
+        await parseDocx(saved, { preloadFonts: false }),
+      );
       expect(reopened.textContent).toBe(live.doc.textContent);
     }
   });
@@ -103,7 +122,10 @@ test(
                   : [
                       schema.mark("insertion", {
                         revisionId: 35,
-                        author: ownership === "own" ? HARNESS_AUTHOR : "Other Inserter",
+                        author:
+                          ownership === "own"
+                            ? HARNESS_AUTHOR
+                            : "Other Inserter",
                       }),
                     ];
               const child = schema.text(
@@ -124,7 +146,11 @@ test(
               const doc = schema.node(
                 "doc",
                 null,
-                schema.node("paragraph", null, [schema.text("left"), field, schema.text("right")]),
+                schema.node("paragraph", null, [
+                  schema.text("left"),
+                  field,
+                  schema.text("right"),
+                ]),
               );
               const view = new HeadlessEditorView(
                 EditorState.create({
@@ -142,29 +168,34 @@ test(
                 expect(view.state.doc.textContent).toBe("leftright");
               } else {
                 expect(retained?.type.name).toBe("structuredField");
-                expect(retained?.marks.some(({ type }) => type.name === "deletion")).toBe(true);
+                expect(
+                  retained?.marks.some(({ type }) => type.name === "deletion"),
+                ).toBe(true);
                 expect(retained?.textContent).toBe(field.textContent);
                 if (protection === "protected") {
                   const marks = [];
                   retained?.descendants((node) => {
                     const mark = node.marks.find(
-                      ({ attrs, type }) => type.name === "deletion" && attrs["revisionId"] === 37,
+                      ({ attrs, type }) =>
+                        type.name === "deletion" && attrs["revisionId"] === 37,
                     );
                     if (mark) marks.push(mark.toJSON());
                   });
                   expect(marks).toEqual([protectedRevision.toJSON()]);
                 }
               }
-              expect(resolveAllChangesInHeadlessState(view.state, "accept").doc.textContent).toBe(
-                "leftright",
-              );
+              expect(
+                resolveAllChangesInHeadlessState(view.state, "accept").doc
+                  .textContent,
+              ).toBe("leftright");
               const rejectedText =
                 ownership === "plain"
                   ? `leftbefore${protection === "plain" ? child.textContent : ""}afterright`
                   : "leftright";
-              expect(resolveAllChangesInHeadlessState(view.state, "reject").doc.textContent).toBe(
-                rejectedText,
-              );
+              expect(
+                resolveAllChangesInHeadlessState(view.state, "reject").doc
+                  .textContent,
+              ).toBe(rejectedText);
             }
           }
         }

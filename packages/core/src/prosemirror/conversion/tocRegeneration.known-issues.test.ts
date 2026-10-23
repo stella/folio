@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { EditorState, TextSelection } from "prosemirror-state";
+
 import {
   expectedFailure,
   FINDING_SYMPTOMS,
 } from "../../../../../test/consumer-scenarios/support/known-issues";
-import { schema, singletonManager } from "../schema";
 import { createDocumentStylesPlugin } from "../plugins/documentStyles";
+import { schema, singletonManager } from "../schema";
 
 expectedFailure(
   "LEGACY_TOC_REGENERATION_DANGLING_REFERENCES",
@@ -17,15 +18,21 @@ expectedFailure(
       schema,
       plugins: [
         createDocumentStylesPlugin({
-          styles: [{ type: "paragraph", styleId: "Heading", name: "heading 1" }],
+          styles: [
+            { type: "paragraph", styleId: "Heading", name: "heading 1" },
+          ],
         }),
       ],
       doc: schema.node("doc", null, [
-        schema.node("paragraph", { styleId: "Heading", bookmarks: [{ id: 7, name: oldName }] }, [
-          schema.text("Heading"),
-        ]),
+        schema.node(
+          "paragraph",
+          { styleId: "Heading", bookmarks: [{ id: 7, name: oldName }] },
+          [schema.text("Heading")],
+        ),
         schema.node("paragraph", null, [
-          schema.text("Old entry", [schema.mark("hyperlink", { href: `#${oldName}` })]),
+          schema.text("Old entry", [
+            schema.mark("hyperlink", { href: `#${oldName}` }),
+          ]),
           schema.node("field", {
             fieldKind: "complex",
             fieldType: "PAGEREF",
@@ -49,17 +56,25 @@ expectedFailure(
     let oldLink = false;
     let oldField = false;
     state.doc.descendants((node) => {
-      if (node.type.name === "paragraph" && Array.isArray(node.attrs["bookmarks"])) {
+      if (
+        node.type.name === "paragraph" &&
+        Array.isArray(node.attrs["bookmarks"])
+      ) {
         for (const bookmark of node.attrs["bookmarks"])
           if (typeof bookmark.name === "string") names.add(bookmark.name);
       }
       if (
         node.marks.some(
-          (mark) => mark.type.name === "hyperlink" && mark.attrs["href"] === `#${oldName}`,
+          (mark) =>
+            mark.type.name === "hyperlink" &&
+            mark.attrs["href"] === `#${oldName}`,
         )
       )
         oldLink = true;
-      if (node.type.name === "field" && node.attrs["instruction"] === `PAGEREF ${oldName} \\h`)
+      if (
+        node.type.name === "field" &&
+        node.attrs["instruction"] === `PAGEREF ${oldName} \\h`
+      )
         oldField = true;
     });
     assert.equal(oldLink && oldField, true);

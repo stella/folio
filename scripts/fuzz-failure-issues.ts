@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { $ } from "bun";
 import { panic, TaggedError } from "better-result";
+import { $ } from "bun";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,15 +11,23 @@ import type {
   FailureMarker,
   FailureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
-import { CONSUMER_SCENARIO_REPLAY_INPUTS, consumerScenarioReplay } from "./consumer-scenario-args";
+import {
+  CONSUMER_SCENARIO_REPLAY_INPUTS,
+  consumerScenarioReplay,
+} from "./consumer-scenario-args";
 import { extractFailureMarkers } from "./failure-fingerprints";
-import { failureClass } from "./fuzz-failure-class";
-import { type ClosedIssueDisposition, type Issue, type IssueStore } from "./fuzz-issue-classes";
+import { normalizeFailureMessage } from "./fuzz-failure-class";
+import {
+  type ClosedIssueDisposition,
+  fileClasses,
+  type Issue,
+  type IssueStore,
+} from "./fuzz-issue-classes";
 
 export const LABEL = {
   name: "fuzz-failure",
   color: "b60205",
-  description: "A failure a fuzz run found, one issue per signature",
+  description: "A failure a fuzz run found, one issue per invariant class",
 };
 
 export const TITLE_PREFIX = "Fuzz failure";
@@ -46,10 +54,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /** A failure record read from disk, or null when it is not one. */
 export const parseFailureRecord = (value: unknown): FailureRecord | null => {
-  if (!isRecord(value) || value["version"] !== 1 || !isRecord(value["marker"])) return null;
+  if (!isRecord(value) || value["version"] !== 1 || !isRecord(value["marker"]))
+    return null;
   let marker: FailureMarker | undefined;
   try {
-    [marker] = extractFailureMarkers(`FOLIO_FAILURE ${JSON.stringify(value["marker"])}`);
+    [marker] = extractFailureMarkers(
+      `FOLIO_FAILURE ${JSON.stringify(value["marker"])}`,
+    );
   } catch {
     return null;
   }
@@ -58,7 +69,9 @@ export const parseFailureRecord = (value: unknown): FailureRecord | null => {
     marker === undefined ||
     !Array.isArray(replays) ||
     replays.length === 0 ||
-    !replays.every((replay) => typeof replay === "string" && !replay.includes("\n")) ||
+    !replays.every(
+      (replay) => typeof replay === "string" && !replay.includes("\n"),
+    ) ||
     typeof value["error"] !== "string"
   ) {
     return null;
@@ -74,15 +87,26 @@ export const parseFailureRecord = (value: unknown): FailureRecord | null => {
     typeof shrink["steps"] === "number" &&
     typeof shrink["from"] === "number" &&
     typeof shrink["attempts"] === "number"
-      ? { shrink: { steps: shrink["steps"], from: shrink["from"], attempts: shrink["attempts"] } }
+      ? {
+          shrink: {
+            steps: shrink["steps"],
+            from: shrink["from"],
+            attempts: shrink["attempts"],
+          },
+        }
       : {}),
   };
 };
 
 /** One fingerprint's failures from a run: the most useful record and every seed. */
-export type Finding = { record: FailureRecord; seeds: number[]; records: FailureRecord[] };
+export type Finding = {
+  record: FailureRecord;
+  seeds: number[];
+  records: FailureRecord[];
+};
 
-const stepsOf = (record: FailureRecord): number => record.shrink?.steps ?? Number.POSITIVE_INFINITY;
+const stepsOf = (record: FailureRecord): number =>
+  record.shrink?.steps ?? Number.POSITIVE_INFINITY;
 
 /**
  * Group records and bare markers by fingerprint. A record beats a bare
@@ -102,12 +126,17 @@ export const collectFindings = (
     }
     if (!found.seeds.includes(seed)) found.seeds.push(seed);
     const existingIndex = found.records.findIndex(
-      ({ marker }) => marker.seed === seed && marker.path === record.marker.path,
+      ({ marker }) =>
+        marker.seed === seed && marker.path === record.marker.path,
     );
     if (existingIndex < 0) found.records.push(record);
     else {
       const existing = found.records.at(existingIndex);
-      if (existing !== undefined && !bare && stepsOf(record) < stepsOf(existing)) {
+      if (
+        existing !== undefined &&
+        !bare &&
+        stepsOf(record) < stepsOf(existing)
+      ) {
         found.records[existingIndex] = record;
       }
     }
@@ -115,7 +144,10 @@ export const collectFindings = (
   };
   for (const record of records) add(record, false);
   for (const marker of markers) {
-    add({ version: 1, marker, replays: [marker.repro], error: marker.assertion }, true);
+    add(
+      { version: 1, marker, replays: [marker.repro], error: marker.assertion },
+      true,
+    );
   }
   return [...findings.values()];
 };
@@ -163,12 +195,14 @@ const parseArgs = (argv: readonly string[]) => {
     else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--lane") {
       const lane = value();
-      if (!LANE.test(lane)) throw new UsageError({ message: `Invalid --lane ${lane}` });
+      if (!LANE.test(lane))
+        throw new UsageError({ message: `Invalid --lane ${lane}` });
       options.lane = lane;
     } else if (arg === "--result") {
       const result = value();
       options.result = runResultOf(result) ?? null;
-      if (options.result === null) throw new UsageError({ message: `Invalid --result ${result}` });
+      if (options.result === null)
+        throw new UsageError({ message: `Invalid --result ${result}` });
     } else if (arg === "--trigger") {
       const trigger = value();
       options.trigger = runTriggerOf(trigger) ?? null;
@@ -179,7 +213,9 @@ const parseArgs = (argv: readonly string[]) => {
   }
   const { lane, result, trigger } = options;
   if (lane === null || result === null || trigger === null) {
-    throw new UsageError({ message: "--lane, --result and --trigger are required" });
+    throw new UsageError({
+      message: "--lane, --result and --trigger are required",
+    });
   }
   return { ...options, lane, result, trigger };
 };
@@ -191,7 +227,9 @@ const readRecords = (dir: string): FailureRecord[] => {
     .filter((file) => file.endsWith(".json"))
     .flatMap((file) => {
       try {
-        const record = parseFailureRecord(JSON.parse(readFileSync(path.join(dir, file), "utf8")));
+        const record = parseFailureRecord(
+          JSON.parse(readFileSync(path.join(dir, file), "utf8")),
+        );
         return record === null ? [] : [record];
       } catch {
         return [];
@@ -205,7 +243,9 @@ const writeBody = (body: string): string => {
   return file;
 };
 
-class IssueResponseError extends TaggedError("IssueResponseError")<{ message: string }> {}
+class IssueResponseError extends TaggedError("IssueResponseError")<{
+  message: string;
+}> {}
 
 /** GitHub's close reasons (REST `state_reason`, GraphQL `stateReason`) a closed issue can carry. */
 const CLOSE_REASONS = {
@@ -219,12 +259,15 @@ const isCloseReason = (reason: string): reason is CloseReason =>
   Object.hasOwn(CLOSE_REASONS, reason);
 
 /** A closed issue's disposition; a close reason this reporter does not know fails. */
-const closedIssueDisposition = (stateReason: unknown): ClosedIssueDisposition => {
+const closedIssueDisposition = (
+  stateReason: unknown,
+): ClosedIssueDisposition => {
   // Issues closed before GitHub recorded close reasons carry none: they were closed as done.
   if (stateReason === null || stateReason === undefined || stateReason === "") {
     return CLOSE_REASONS.completed;
   }
-  const reason = typeof stateReason === "string" ? stateReason.toLowerCase() : null;
+  const reason =
+    typeof stateReason === "string" ? stateReason.toLowerCase() : null;
   if (reason === null || !isCloseReason(reason)) {
     throw new IssueResponseError({
       message: `Unknown close reason ${JSON.stringify(stateReason)} on a closed issue`,
@@ -235,11 +278,13 @@ const closedIssueDisposition = (stateReason: unknown): ClosedIssueDisposition =>
 
 /** Reject malformed API responses before they can affect matching or writes. */
 export const parseIssueResponse = (value: unknown): Issue => {
-  if (!isRecord(value)) throw new IssueResponseError({ message: "Invalid GitHub issue response" });
+  if (!isRecord(value))
+    throw new IssueResponseError({ message: "Invalid GitHub issue response" });
   const number = value["number"];
   const title = value["title"];
   const body = value["body"];
-  const state = typeof value["state"] === "string" ? value["state"].toLowerCase() : null;
+  const state =
+    typeof value["state"] === "string" ? value["state"].toLowerCase() : null;
   const closedAt = value["closed_at"] ?? value["closedAt"] ?? null;
   const stateReason = value["state_reason"] ?? value["stateReason"] ?? null;
   if (
@@ -253,7 +298,14 @@ export const parseIssueResponse = (value: unknown): Issue => {
   )
     throw new IssueResponseError({ message: "Invalid GitHub issue fields" });
   if (state === "open") return { number, title, body, state, closedAt: null };
-  return { number, title, body, state, closedAt, disposition: closedIssueDisposition(stateReason) };
+  return {
+    number,
+    title,
+    body,
+    state,
+    closedAt,
+    disposition: closedIssueDisposition(stateReason),
+  };
 };
 
 /** The bodies of an issue's comments, from paginated GitHub responses. */
@@ -263,7 +315,9 @@ export const parseCommentPages = (pages: unknown): string[] => {
   }
   return pages.flat().map((comment: unknown) => {
     if (!isRecord(comment) || typeof comment["body"] !== "string") {
-      throw new IssueResponseError({ message: "Invalid GitHub comment fields" });
+      throw new IssueResponseError({
+        message: "Invalid GitHub comment fields",
+      });
     }
     return comment["body"];
   });
@@ -286,6 +340,7 @@ export type SignatureIssueStore = Pick<IssueStore, "list" | "create"> & {
   edit: (number: number, content: IssueContent) => Promise<void>;
   reopen: (number: number) => Promise<void>;
   close: (number: number, reason: CloseReason) => Promise<void>;
+  closingCommit?: (number: number) => Promise<string | null>;
 };
 
 const PAGE_SIZE = 100;
@@ -302,10 +357,35 @@ const ghPages = async (endpoint: string): Promise<unknown[]> => {
   }
 };
 
+/** The commit attached to the latest close event, or null for a manual close. */
+export const parseClosingCommitPages = (pages: unknown): string | null => {
+  if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
+    throw new IssueResponseError({
+      message: "Invalid GitHub issue event pages",
+    });
+  }
+  const closing = pages
+    .flat()
+    .findLast(
+      (event: unknown) => isRecord(event) && event["event"] === "closed",
+    );
+  if (!isRecord(closing)) return null;
+  const commit = closing["commit_id"];
+  if (commit === null || commit === undefined) return null;
+  if (typeof commit !== "string" || !/^[0-9a-f]{40}$/iu.test(commit)) {
+    throw new IssueResponseError({ message: "Invalid GitHub closing commit" });
+  }
+  return commit;
+};
+
 export const githubIssueStore = () =>
   ({
     list: async () =>
-      parseIssuePages(await ghPages(`repos/{owner}/{repo}/issues?state=all&labels=${LABEL.name}`)),
+      parseIssuePages(
+        await ghPages(
+          `repos/{owner}/{repo}/issues?state=all&labels=${LABEL.name}`,
+        ),
+      ),
     create: async (title, body) => {
       await $`gh label create ${LABEL.name} --color ${LABEL.color} --description ${LABEL.description} --force`.quiet();
       const url = (
@@ -326,11 +406,37 @@ export const githubIssueStore = () =>
     close: async (number, reason) => {
       await $`gh api -X PATCH ${`repos/{owner}/{repo}/issues/${number}`} -f state=closed -f ${`state_reason=${reason}`}`.quiet();
     },
+    closingCommit: async (number) =>
+      parseClosingCommitPages(
+        await ghPages(`repos/{owner}/{repo}/issues/${number}/events`),
+      ),
     comments: async (number: number) =>
-      parseCommentPages(await ghPages(`repos/{owner}/{repo}/issues/${number}/comments`)),
-  }) satisfies SignatureIssueStore & { comments: (number: number) => Promise<string[]> };
+      parseCommentPages(
+        await ghPages(`repos/{owner}/{repo}/issues/${number}/comments`),
+      ),
+  }) satisfies SignatureIssueStore & {
+    comments: (number: number) => Promise<string[]>;
+  };
 
-class MissingFailuresError extends TaggedError("MissingFailuresError")<{ message: string }> {}
+const githubClassIssueStore = (): IssueStore => {
+  const issues = githubIssueStore();
+  return {
+    list: issues.list,
+    create: issues.create,
+    edit: async (number, body) => {
+      await $`gh issue edit ${number} --body-file ${writeBody(body)}`.quiet();
+    },
+    reopen: async (number, comment) => {
+      await issues.reopen(number);
+      await $`gh issue comment ${number} --body ${comment}`.quiet();
+    },
+    close: (number) => issues.close(number, "completed"),
+  };
+};
+
+class MissingFailuresError extends TaggedError("MissingFailuresError")<{
+  message: string;
+}> {}
 
 export const requireFindings = (findings: readonly Finding[]): void => {
   if (findings.length === 0) {
@@ -358,7 +464,10 @@ const line = (value: string, limit = FIELD_LIMIT): string =>
 const code = (value: string, limit = FIELD_LIMIT): string => {
   const bounded = field(value, limit);
   const fence = "`".repeat(
-    Math.max(3, ...[...bounded.matchAll(/`+/gu)].map(([run]) => run.length + 1)),
+    Math.max(
+      3,
+      ...[...bounded.matchAll(/`+/gu)].map(([run]) => run.length + 1),
+    ),
   );
   return `${fence}\n${bounded}\n${fence}`;
 };
@@ -367,26 +476,58 @@ const code = (value: string, limit = FIELD_LIMIT): string => {
 const inlineText = (value: string, limit = FIELD_LIMIT): string =>
   JSON.stringify(field(value, limit)).replaceAll("|", "\\u007c");
 
-const parseInlineText = (value: string, limit = FIELD_LIMIT): string | undefined => {
+const parseInlineText = (
+  value: string,
+  limit = FIELD_LIMIT,
+): string | undefined => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
   } catch {
     return undefined;
   }
-  return typeof parsed === "string" && inlineText(parsed, limit) === value ? parsed : undefined;
+  return typeof parsed === "string" && inlineText(parsed, limit) === value
+    ? parsed
+    : undefined;
 };
 
-const parseLegacyField = (value: string, limit = FIELD_LIMIT): string | undefined => {
+const parseLegacyField = (
+  value: string,
+  limit = FIELD_LIMIT,
+): string | undefined => {
   // Remove this read-only path once no open fuzz-failure issue has a legacy body.
   return line(value, limit) === value ? value : undefined;
 };
 
 export type Signature = { id: string; test: string; failure: string };
 
-export const signatureOf = ({ test, assertion }: Pick<FailureMarker, "test" | "assertion">) => {
-  const failure = failureClass(test, assertion).message;
-  const id = createHash("sha256").update(`${test}\0${failure}`).digest("hex").slice(0, 16);
+const legacySignatureFailure = (assertion: string): string => {
+  if (/^Missing numbering format for displayed label/u.test(assertion))
+    return "Missing numbering format for displayed label";
+  if (/listLevel is .*expected/u.test(assertion)) return "listLevel mismatch";
+  if (/\[directTracked\]/u.test(assertion))
+    return "accepted tracked batches differ from direct batches";
+  if (/\[rejectAll\]/u.test(assertion))
+    return "rejected tracked batches differ from fixture";
+  if (/\[batchSequential\]/u.test(assertion))
+    return "batch differs from sequential operations";
+  if (/\[readerStability\]/u.test(assertion))
+    return "content reads differ after save";
+  if (/\[saveIdempotent\]/u.test(assertion))
+    return "saving reopened package changes XML";
+  if (/^block texts differ/u.test(assertion)) return "block texts differ";
+  return normalizeFailureMessage(assertion);
+};
+
+export const signatureOf = ({
+  test,
+  assertion,
+}: Pick<FailureMarker, "test" | "assertion">) => {
+  const failure = legacySignatureFailure(assertion);
+  const id = createHash("sha256")
+    .update(`${test}\0${failure}`)
+    .digest("hex")
+    .slice(0, 16);
   return { id, test, failure } satisfies Signature;
 };
 
@@ -405,7 +546,10 @@ export type SignatureState = {
 
 const ISSUE_BODY_LIMIT = 65_535;
 const ISSUE_BODY_FORMAT_MARKER = "<!-- fuzz-issue-format: 2 -->";
-const LANE_TABLE_HEADER = ["| Lane | Last run | Clean scheduled runs |", "| --- | --- | --- |"];
+const LANE_TABLE_HEADER = [
+  "| Lane | Last run | Clean scheduled runs |",
+  "| --- | --- | --- |",
+];
 
 type ShellWord = { raw: string; value: string };
 
@@ -418,7 +562,11 @@ export const shellWords = (command: string): ShellWord[] | null => {
     if (index === command.length) break;
     const start = index;
     let value = "";
-    while (index < command.length && command[index] !== " " && command[index] !== "\t") {
+    while (
+      index < command.length &&
+      command[index] !== " " &&
+      command[index] !== "\t"
+    ) {
       const character = command[index] ?? "";
       if (character === "'") {
         const end = command.indexOf("'", index + 1);
@@ -445,7 +593,12 @@ export const shellWords = (command: string): ShellWord[] | null => {
           }
           const escaped = command[index + 1];
           if (escaped === undefined) return null;
-          if (escaped === "$" || escaped === "`" || escaped === '"' || escaped === "\\") {
+          if (
+            escaped === "$" ||
+            escaped === "`" ||
+            escaped === '"' ||
+            escaped === "\\"
+          ) {
             value += escaped;
           } else if (escaped !== "\n") {
             value += `\\${escaped}`;
@@ -479,10 +632,14 @@ export const cliRepro = (command: string): string => {
   let index = 0;
   while (index < words.length) {
     const word = words[index];
-    const assignment = /^(FOLIO_SCENARIO_[A-Z_]+)=(.*)$/su.exec(word?.value ?? "");
+    const assignment = /^(FOLIO_SCENARIO_[A-Z_]+)=(.*)$/su.exec(
+      word?.value ?? "",
+    );
     if (assignment === null) break;
     const [, name = "", value = ""] = assignment;
-    const flag = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ env }) => env === name)?.flag;
+    const flag = CONSUMER_SCENARIO_REPLAY_INPUTS.find(
+      ({ env }) => env === name,
+    )?.flag;
     if (flag === undefined) break;
     const option = flag
       .slice(2)
@@ -505,7 +662,9 @@ export const cliRepro = (command: string): string => {
       flags.push(...suffix.slice(suffixIndex).map(({ raw }) => raw));
       break;
     }
-    const replayInput = CONSUMER_SCENARIO_REPLAY_INPUTS.find(({ flag }) => flag === word?.value);
+    const replayInput = CONSUMER_SCENARIO_REPLAY_INPUTS.find(
+      ({ flag }) => flag === word?.value,
+    );
     if (replayInput === undefined) {
       flags.push(word?.raw ?? "");
       continue;
@@ -521,7 +680,11 @@ export const cliRepro = (command: string): string => {
   return consumerScenarioReplay({ inputs, flags: [flags.join(" ")] });
 };
 
-const flowArtifactReplay = (command: string, seed: number, artifact: string): string => {
+const flowArtifactReplay = (
+  command: string,
+  seed: number,
+  artifact: string,
+): string => {
   const replay = cliRepro(command);
   const substituted = replay.replace(
     /(--flow\s+)(?:'(?:'\\''|[^'])*'|"(?:\\.|[^"])*"|\S+)/u,
@@ -550,30 +713,48 @@ export const renderSignatureIssue = (state: SignatureState): IssueContent => {
     "",
     ...LANE_TABLE_HEADER,
     ...state.lanes.map(
-      ({ lane, lastRun, cleanRuns }) => `| ${lane} | ${inlineText(lastRun, 500)} | ${cleanRuns} |`,
+      ({ lane, lastRun, cleanRuns }) =>
+        `| ${lane} | ${inlineText(lastRun, 500)} | ${cleanRuns} |`,
     ),
     "",
     `Closes after ${AUTO_CLOSE_CLEAN_RUNS} consecutive clean scheduled runs in every lane.`,
     "",
   ];
   let repro = wholeRepro(state.repro);
-  const availableForAssertion = ISSUE_BODY_LIMIT - prefix.join("\n").length - repro.length - 24;
+  const availableForAssertion =
+    ISSUE_BODY_LIMIT - prefix.join("\n").length - repro.length - 24;
   let assertion = code(
-    field(state.assertion, Math.max(0, Math.min(FIELD_LIMIT, availableForAssertion))),
+    field(
+      state.assertion,
+      Math.max(0, Math.min(FIELD_LIMIT, availableForAssertion)),
+    ),
   );
-  let body = [...prefix, `Latest assertion:\n${assertion}`, "", repro].join("\n");
+  let body = [...prefix, `Latest assertion:\n${assertion}`, "", repro].join(
+    "\n",
+  );
   if (body.length > ISSUE_BODY_LIMIT) {
     const artifact =
-      state.repro.flowPath ?? `findings/${signature.id}-${state.repro.seed}.flow.json`;
+      state.repro.flowPath ??
+      `findings/${signature.id}-${state.repro.seed}.flow.json`;
     repro = [
       `Flow artifact: ${artifact}`,
       wholeRepro({
         seed: state.repro.seed,
-        command: flowArtifactReplay(state.repro.command, state.repro.seed, artifact),
+        command: flowArtifactReplay(
+          state.repro.command,
+          state.repro.seed,
+          artifact,
+        ),
       }),
     ].join("\n");
-    const fallbackAvailable = ISSUE_BODY_LIMIT - prefix.join("\n").length - repro.length - 24;
-    assertion = code(field(state.assertion, Math.max(0, Math.min(FIELD_LIMIT, fallbackAvailable))));
+    const fallbackAvailable =
+      ISSUE_BODY_LIMIT - prefix.join("\n").length - repro.length - 24;
+    assertion = code(
+      field(
+        state.assertion,
+        Math.max(0, Math.min(FIELD_LIMIT, fallbackAvailable)),
+      ),
+    );
     body = [...prefix, `Latest assertion:\n${assertion}`, "", repro].join("\n");
   }
   return {
@@ -582,7 +763,9 @@ export const renderSignatureIssue = (state: SignatureState): IssueContent => {
   };
 };
 
-class SignatureStateError extends TaggedError("SignatureStateError")<{ message: string }> {}
+class SignatureStateError extends TaggedError("SignatureStateError")<{
+  message: string;
+}> {}
 
 const fieldOf = (body: string, name: string): string | undefined =>
   new RegExp(`^${name}: (.*)$`, "mu").exec(body)?.at(1);
@@ -590,19 +773,30 @@ const fieldOf = (body: string, name: string): string | undefined =>
 const seedsOf = (text: string): number[] =>
   text === ""
     ? []
-    : text.split(", ").map((seed) => (/^-?\d+$/u.test(seed) ? Number(seed) : Number.NaN));
+    : text
+        .split(", ")
+        .map((seed) => (/^-?\d+$/u.test(seed) ? Number(seed) : Number.NaN));
 
-export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "body">) => {
+export const parseSignatureState = ({
+  number,
+  body,
+}: Pick<Issue, "number" | "body">) => {
   const id = body === null ? undefined : fieldOf(body, "Signature");
   if (body === null || id === undefined) return null;
   const malformed = (what: string) =>
-    new SignatureStateError({ message: `Issue #${number} has a malformed ${what}` });
+    new SignatureStateError({
+      message: `Issue #${number} has a malformed ${what}`,
+    });
   if (!SIGNATURE.test(id)) throw malformed("signature");
   // The writer emits the marker as the first line; a marker elsewhere is body text.
-  const format = body.split("\n", 1)[0] === ISSUE_BODY_FORMAT_MARKER ? "canonical" : "legacy";
+  const format =
+    body.split("\n", 1)[0] === ISSUE_BODY_FORMAT_MARKER
+      ? "canonical"
+      : "legacy";
   const encodedTest = fieldOf(body, "Test") ?? "";
   const encodedFailure = fieldOf(body, "Failure") ?? "";
-  const parseBodyField = format === "canonical" ? parseInlineText : parseLegacyField;
+  const parseBodyField =
+    format === "canonical" ? parseInlineText : parseLegacyField;
   const test = parseBodyField(encodedTest);
   const failure = parseBodyField(encodedFailure);
   const occurrences = Number(fieldOf(body, "Occurrences"));
@@ -610,11 +804,13 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   const lastSeen = /^Last seen: (\S+) (.*)$/mu.exec(body);
   const evidence = /^Latest assertion:\n(`{3,})\n([\s\S]*?)\n\1$/mu.exec(body);
   const assertion = evidence?.at(2);
-  const repro = /^Latest repro \(seed (-?\d+)\):\n(`{3,})\n([\s\S]*?)\n\2$/mu.exec(
-    body.slice((evidence?.index ?? 0) + (evidence?.[0].length ?? 0)),
-  );
+  const repro =
+    /^Latest repro \(seed (-?\d+)\):\n(`{3,})\n([\s\S]*?)\n\2$/mu.exec(
+      body.slice((evidence?.index ?? 0) + (evidence?.[0].length ?? 0)),
+    );
   if (test === undefined || failure === undefined) throw malformed("signature");
-  if (!Number.isSafeInteger(occurrences) || occurrences < 0) throw malformed("occurrence count");
+  if (!Number.isSafeInteger(occurrences) || occurrences < 0)
+    throw malformed("occurrence count");
   if (!seeds.every(Number.isSafeInteger)) throw malformed("seed list");
   const [, seenLane, encodedSeenRun] = lastSeen ?? [];
   const seenRun =
@@ -625,12 +821,19 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
     throw malformed("last seen run");
   }
   const [, reproSeed, , command] = repro ?? [];
-  if (assertion === undefined || reproSeed === undefined || command === undefined) {
+  if (
+    assertion === undefined ||
+    reproSeed === undefined ||
+    command === undefined
+  ) {
     throw malformed("evidence");
   }
   const tableStart = body.indexOf(LANE_TABLE_HEADER.join("\n"));
   if (tableStart < 0) throw malformed("lane table");
-  const rows = body.slice(tableStart).split("\n").slice(LANE_TABLE_HEADER.length);
+  const rows = body
+    .slice(tableStart)
+    .split("\n")
+    .slice(LANE_TABLE_HEADER.length);
   const end = rows.findIndex((row) => !row.startsWith("|"));
   const lanes = rows.slice(0, end < 0 ? rows.length : end).map((row) => {
     const canonicalRow = /^\| (\S+) \| ((?:\\.|[^|])+) \| (\d+) \|$/u.exec(row);
@@ -641,7 +844,8 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
       format === "canonical"
         ? parseInlineText(encodedLastRun, 500)
         : parseLegacyField(encodedLastRun, 500);
-    if (!LANE.test(lane) || lastRun === undefined) throw malformed("lane table");
+    if (!LANE.test(lane) || lastRun === undefined)
+      throw malformed("lane table");
     return { lane, lastRun, cleanRuns: Number(cleanRuns) };
   });
   return {
@@ -655,7 +859,10 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   } satisfies SignatureState;
 };
 
-export const mergeSeeds = (seeds: readonly number[], added: readonly number[]): number[] => {
+export const mergeSeeds = (
+  seeds: readonly number[],
+  added: readonly number[],
+): number[] => {
   const merged = [...seeds];
   for (const seed of added) if (!merged.includes(seed)) merged.push(seed);
   return merged.slice(-MAX_LISTED_SEEDS);
@@ -668,7 +875,9 @@ type SignatureFinding = {
   record: FailureRecord;
 };
 
-export const groupBySignature = (findings: readonly Finding[]): SignatureFinding[] => {
+export const groupBySignature = (
+  findings: readonly Finding[],
+): SignatureFinding[] => {
   const groups = new Map<string, SignatureFinding>();
   for (const { record, records } of findings) {
     const signature = signatureOf(record.marker);
@@ -683,7 +892,8 @@ export const groupBySignature = (findings: readonly Finding[]): SignatureFinding
       });
       continue;
     }
-    for (const seed of seeds) if (!group.seeds.includes(seed)) group.seeds.push(seed);
+    for (const seed of seeds)
+      if (!group.seeds.includes(seed)) group.seeds.push(seed);
     if (!group.fingerprints.includes(record.marker.fingerprint)) {
       group.fingerprints.push(record.marker.fingerprint);
     }
@@ -692,7 +902,8 @@ export const groupBySignature = (findings: readonly Finding[]): SignatureFinding
   return [...groups.values()];
 };
 
-const runKeyOf = (context: Context): string => context.runUrl ?? `local:${context.date}`;
+const runKeyOf = (context: Context): string =>
+  context.runUrl ?? `local:${context.date}`;
 
 type RecordReproductionOptions = {
   state: SignatureState | null;
@@ -706,8 +917,13 @@ export const recordReproduction = ({
   context,
 }: RecordReproductionOptions): SignatureState => {
   const run = runKeyOf(context);
-  if (state?.lastSeen.lane === context.lane && state.lastSeen.run === run) return state;
-  const lanes = (state?.lanes ?? []).map(({ lane, lastRun }) => ({ lane, lastRun, cleanRuns: 0 }));
+  if (state?.lastSeen.lane === context.lane && state.lastSeen.run === run)
+    return state;
+  const lanes = (state?.lanes ?? []).map(({ lane, lastRun }) => ({
+    lane,
+    lastRun,
+    cleanRuns: 0,
+  }));
   if (context.trigger === RUN_TRIGGER.scheduled) {
     const row = { lane: context.lane, lastRun: run, cleanRuns: 0 };
     const index = lanes.findIndex(({ lane }) => lane === context.lane);
@@ -734,10 +950,17 @@ export const recordReproduction = ({
   };
 };
 
-export const recordCleanRun = (state: SignatureState, context: Context): SignatureState => {
+export const recordCleanRun = (
+  state: SignatureState,
+  context: Context,
+): SignatureState => {
   const run = runKeyOf(context);
   const row = state.lanes.find(({ lane }) => lane === context.lane);
-  if (context.trigger !== RUN_TRIGGER.scheduled || row === undefined || row.lastRun === run) {
+  if (
+    context.trigger !== RUN_TRIGGER.scheduled ||
+    row === undefined ||
+    row.lastRun === run
+  ) {
     return state;
   }
   return {
@@ -756,11 +979,15 @@ export const recordCleanRun = (state: SignatureState, context: Context): Signatu
 };
 
 export const resolved = ({ lanes }: SignatureState): boolean =>
-  lanes.length > 0 && lanes.every(({ cleanRuns }) => cleanRuns >= AUTO_CLOSE_CLEAN_RUNS);
+  lanes.length > 0 &&
+  lanes.every(({ cleanRuns }) => cleanRuns >= AUTO_CLOSE_CLEAN_RUNS);
 
 type Tracked = { issue: Issue; state: SignatureState };
 
-const trackedIssue = (tracked: readonly Tracked[], id: string): Tracked | undefined => {
+const trackedIssue = (
+  tracked: readonly Tracked[],
+  id: string,
+): Tracked | undefined => {
   const matching = tracked.filter(({ state }) => state.signature.id === id);
   const open = matching
     .filter(({ issue }) => issue.state === "open")
@@ -770,13 +997,18 @@ const trackedIssue = (tracked: readonly Tracked[], id: string): Tracked | undefi
   return matching
     .toSorted(
       (a, b) =>
-        (Date.parse(b.issue.closedAt ?? "") || 0) - (Date.parse(a.issue.closedAt ?? "") || 0) ||
+        (Date.parse(b.issue.closedAt ?? "") || 0) -
+          (Date.parse(a.issue.closedAt ?? "") || 0) ||
         b.issue.number - a.issue.number,
     )
     .at(0);
 };
 
-type RecurOptions = { store: SignatureIssueStore; issue: Issue; state: SignatureState };
+type RecurOptions = {
+  store: SignatureIssueStore;
+  issue: Issue;
+  state: SignatureState;
+};
 const recur = async ({ store, issue, state }: RecurOptions): Promise<void> => {
   if (issue.state === "closed") {
     const { disposition } = issue;
@@ -789,7 +1021,9 @@ const recur = async ({ store, issue, state }: RecurOptions): Promise<void> => {
         break;
       default: {
         const unhandled: never = disposition;
-        panic(`Unhandled closed issue disposition ${JSON.stringify(unhandled)}`);
+        panic(
+          `Unhandled closed issue disposition ${JSON.stringify(unhandled)}`,
+        );
       }
     }
   }
@@ -800,12 +1034,36 @@ type FileFindingsOptions = {
   findings: readonly Finding[];
   context: Context;
   store?: SignatureIssueStore;
+  isAncestor?: (
+    ancestor: string,
+    descendant: string,
+  ) => boolean | Promise<boolean>;
 };
 type FileFindingsResult = { filed: Filed[]; closed: number[] };
+
+export const gitIsAncestor = (
+  ancestor: string,
+  descendant: string,
+): boolean => {
+  const result = Bun.spawnSync(
+    ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+    {
+      stdout: "ignore",
+      stderr: "pipe",
+    },
+  );
+  if (result.exitCode === 0) return true;
+  if (result.exitCode === 1) return false;
+  throw new Error(
+    result.stderr.toString().trim() || "git merge-base --is-ancestor failed",
+  );
+};
+
 export const fileFindings = async ({
   findings,
   context,
   store = githubIssueStore(),
+  isAncestor = gitIsAncestor,
 }: FileFindingsOptions): Promise<FileFindingsResult> => {
   const tracked = (await store.list()).flatMap((issue) => {
     const state = parseSignatureState(issue);
@@ -821,7 +1079,28 @@ export const fileFindings = async ({
   for (const finding of groupBySignature(unique)) {
     seen.add(finding.signature.id);
     const existing = trackedIssue(tracked, finding.signature.id);
-    const state = recordReproduction({ state: existing?.state ?? null, finding, context });
+    if (
+      existing?.issue.state === "closed" &&
+      existing.issue.disposition.type === "fixed"
+    ) {
+      const closingCommit = await store.closingCommit?.(existing.issue.number);
+      // A manual close has no commit to compare, so preserve the established reopen behavior.
+      if (
+        closingCommit !== null &&
+        closingCommit !== undefined &&
+        context.sha !== null &&
+        !(await isAncestor(closingCommit, context.sha))
+      ) {
+        for (const fingerprint of finding.fingerprints)
+          filed.push({ fingerprint, issue: null });
+        continue;
+      }
+    }
+    const state = recordReproduction({
+      state: existing?.state ?? null,
+      finding,
+      context,
+    });
     let number: number;
     if (existing === undefined) {
       const { title, body } = renderSignatureIssue(state);
@@ -829,7 +1108,8 @@ export const fileFindings = async ({
       tracked.push({ issue, state });
       number = issue.number;
     } else {
-      if (state !== existing.state) await recur({ store, issue: existing.issue, state });
+      if (state !== existing.state)
+        await recur({ store, issue: existing.issue, state });
       number = existing.issue.number;
     }
     for (const fingerprint of finding.fingerprints)
@@ -850,35 +1130,26 @@ export const fileFindings = async ({
 
 /** Discover selected logs without merging matrix artifacts with identical filenames. */
 export const artifactInputs = (root: string, pattern = "**/*.log") => {
-  const logs = [...new Bun.Glob(pattern).scanSync({ cwd: root, onlyFiles: true })].map((file) =>
-    path.join(root, file),
-  );
-  return { logs, records: [...new Set(logs.map((file) => path.dirname(file)))] };
+  const logs = [
+    ...new Bun.Glob(pattern).scanSync({ cwd: root, onlyFiles: true }),
+  ].map((file) => path.join(root, file));
+  return {
+    logs,
+    records: [...new Set(logs.map((file) => path.dirname(file)))],
+  };
 };
 
 /** The findings in `logs` (their FOLIO_FAILURE lines) and the record directories. */
-export const readFindings = (logs: readonly string[], records: readonly string[]): Finding[] =>
+export const readFindings = (
+  logs: readonly string[],
+  records: readonly string[],
+): Finding[] =>
   collectFindings(
     records.flatMap(readRecords),
     logs
       .filter((log) => existsSync(log))
       .flatMap((log) => extractFailureMarkers(readFileSync(log, "utf8"))),
   );
-
-const dryRunStore = (): SignatureIssueStore => {
-  let number = 0;
-  return {
-    list: () => Promise.resolve([]),
-    create: (title, body) => {
-      console.log(`=== ${title}\n${body}\n`);
-      number += 1;
-      return Promise.resolve({ number, title, body, state: "open", closedAt: null });
-    },
-    edit: () => Promise.resolve(),
-    reopen: () => Promise.resolve(),
-    close: () => Promise.resolve(),
-  };
-};
 
 const main = async (): Promise<void> => {
   const options = parseArgs(process.argv.slice(2));
@@ -899,15 +1170,32 @@ const main = async (): Promise<void> => {
     lane: options.lane,
     trigger: options.trigger,
   };
-  const { filed, closed } = await fileFindings({
+  const filed = await fileClasses({
     findings,
     context,
-    ...(options.dryRun && { store: dryRunStore() }),
+    store: options.dryRun
+      ? {
+          list: () => Promise.resolve([]),
+          create: (title, body) => {
+            console.log(`=== ${title}\n${body}\n`);
+            return Promise.resolve({
+              number: 1,
+              title,
+              body,
+              state: "open",
+              closedAt: null,
+            });
+          },
+          edit: () => Promise.resolve(),
+          reopen: () => Promise.resolve(),
+          close: () => Promise.resolve(),
+        }
+      : githubClassIssueStore(),
+    known: new Map(),
   });
   for (const { fingerprint, issue } of filed) {
     console.log(`${fingerprint}: ${issue ?? "not filed"}`);
   }
-  for (const number of closed) console.log(`closed #${number}: not reproduced`);
 };
 
 if (import.meta.main) {

@@ -17,14 +17,17 @@ import type {
   SetContentControlContentInput,
   SetContentControlValueInput,
 } from "../../content-controls";
+import { checkboxDisplayContent } from "../../content-controls/checkboxDisplay";
 import {
   ContentControlBoundError,
   ContentControlLockedError,
   ContentControlTypeError,
 } from "../../content-controls/errors";
-import { checkboxDisplayContent } from "../../content-controls/checkboxDisplay";
 import { formatDate } from "../../docx/fieldParser";
-import { preservedSdtChild, withoutPreservedSdtChild } from "../../docx/sdtProperties";
+import {
+  preservedSdtChild,
+  withoutPreservedSdtChild,
+} from "../../docx/sdtProperties";
 import type { PreservedMarkup, SdtProperties } from "../../types/document";
 import { expectBlockSdtAttrs } from "../attrs";
 import { SUGGESTION_BYPASS_META } from "../plugins/suggestionMode";
@@ -39,7 +42,11 @@ export type BlockSdtPMMatch = {
   path: number[];
 };
 
-function nodeMatchesFilter(node: PMNode, pos: number, filter: ContentControlFilter): boolean {
+function nodeMatchesFilter(
+  node: PMNode,
+  pos: number,
+  filter: ContentControlFilter,
+): boolean {
   if (node.type.name !== "blockSdt") {
     return false;
   }
@@ -152,7 +159,9 @@ export function blockSdtAttrsToSdtProperties(node: PMNode): SdtProperties {
   return props;
 }
 
-function parseListItemsAttr(raw: string): { displayText: string; value: string }[] | null {
+function parseListItemsAttr(
+  raw: string,
+): { displayText: string; value: string }[] | null {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
@@ -181,7 +190,9 @@ function attrsToProperties(node: PMNode): SdtProperties {
   // Used only for lock-error messages; keep the projection minimal so the
   // error path does not pull through the full attrs reader.
   const attrs = node.attrs;
-  const sdtType = String(attrs["sdtType"] ?? "richText") as SdtProperties["sdtType"];
+  const sdtType = String(
+    attrs["sdtType"] ?? "richText",
+  ) as SdtProperties["sdtType"];
   const props: SdtProperties = { sdtType };
   if (attrs["alias"]) {
     props.alias = String(attrs["alias"]);
@@ -195,7 +206,10 @@ function attrsToProperties(node: PMNode): SdtProperties {
   return props;
 }
 
-function throwLockedNode(node: PMNode, lock: NonNullable<SdtProperties["lock"]>): never {
+function throwLockedNode(
+  node: PMNode,
+  lock: NonNullable<SdtProperties["lock"]>,
+): never {
   const props = attrsToProperties(node);
   throw new ContentControlLockedError({
     message: `Control "${props.tag ?? props.alias ?? "(unnamed)"}" has w:lock=${lock}.`,
@@ -242,7 +256,9 @@ function ensureSdtNotLocked(node: PMNode, options: ForceOption): void {
  */
 const preservedOf = (node: PMNode): PreservedMarkup | undefined => {
   const value = node.attrs["_preserved"];
-  return value === null || value === undefined ? undefined : (value as PreservedMarkup);
+  return value === null || value === undefined
+    ? undefined
+    : (value as PreservedMarkup);
 };
 
 /**
@@ -250,7 +266,10 @@ const preservedOf = (node: PMNode): PreservedMarkup | undefined => {
  * attrs override that drops the `w:dataBinding` child, so the caller can
  * persist it on the new node. Mirrors the headless `ensureContentNotBound`.
  */
-function ensureContentNotBound(node: PMNode, options: ForceOption): Record<string, unknown> {
+function ensureContentNotBound(
+  node: PMNode,
+  options: ForceOption,
+): Record<string, unknown> {
   const preserved = preservedOf(node);
   const attrs = preservedSdtChild(preserved, "dataBinding");
   if (attrs === undefined) {
@@ -270,7 +289,9 @@ function ensureContentNotBound(node: PMNode, options: ForceOption): Record<strin
       ...(props.alias !== undefined ? { alias: props.alias } : {}),
     });
   }
-  return { _preserved: withoutPreservedSdtChild(preserved, "dataBinding") ?? null };
+  return {
+    _preserved: withoutPreservedSdtChild(preserved, "dataBinding") ?? null,
+  };
 }
 
 function paragraphFromText(schema: Schema, text: string): PMNode {
@@ -327,7 +348,8 @@ export function setContentControlContentTr(
     throw new ContentControlTypeError({
       message:
         "Block-content fill must go through `setContentControlContentBlocksTr` (avoids a schema/plugin import cycle); pass a string here.",
-      sdtType: (match.node.attrs["sdtType"] ?? "richText") as SdtProperties["sdtType"],
+      sdtType: (match.node.attrs["sdtType"] ??
+        "richText") as SdtProperties["sdtType"],
       reason: "PM-direct path takes string input only",
     });
   }
@@ -435,7 +457,10 @@ export function setContentControlValueTr(
     );
     let content =
       display.type === "symbol"
-        ? state.schema.node("symbol", { font: display.font, char: display.char })
+        ? state.schema.node("symbol", {
+            font: display.font,
+            char: display.char,
+          })
         : state.schema.text(display.text);
     const sourceParagraph = match.node.firstChild;
     const sourceInline = sourceParagraph?.firstChild;
@@ -467,13 +492,21 @@ export function setContentControlValueTr(
     input.date,
     typeof dateFormatAttr === "string" ? dateFormatAttr : undefined,
   );
-  return replaceBlockSdtChildren(state, match, [paragraphFromText(state.schema, display)], {
-    dateValueISO: input.date,
-    ...bindingOverride,
-  });
+  return replaceBlockSdtChildren(
+    state,
+    match,
+    [paragraphFromText(state.schema, display)],
+    {
+      dateValueISO: input.date,
+      ...bindingOverride,
+    },
+  );
 }
 
-function formatDateForBody(isoDate: string, dateFormat: string | undefined): string {
+function formatDateForBody(
+  isoDate: string,
+  dateFormat: string | undefined,
+): string {
   if (!dateFormat) {
     return isoDate;
   }
@@ -546,8 +579,10 @@ export function removeContentControlTr(
   if (options.keepContent) {
     if (isRepeatingSection(match.node) && !options.force) {
       throw new ContentControlTypeError({
-        message: "Refusing to unwrap a w15:repeatingSection — would orphan its w15 row items.",
-        sdtType: (match.node.attrs["sdtType"] ?? "richText") as SdtProperties["sdtType"],
+        message:
+          "Refusing to unwrap a w15:repeatingSection — would orphan its w15 row items.",
+        sdtType: (match.node.attrs["sdtType"] ??
+          "richText") as SdtProperties["sdtType"],
         reason: "repeatingSection unwrap orphans items",
       });
     }
@@ -571,7 +606,11 @@ export function removeContentControlTr(
   const parent = $pos.parent;
   if (parent.childCount === 1) {
     return state.tr
-      .replaceWith(match.pos, match.pos + match.node.nodeSize, paragraphFromText(state.schema, ""))
+      .replaceWith(
+        match.pos,
+        match.pos + match.node.nodeSize,
+        paragraphFromText(state.schema, ""),
+      )
       .setMeta(SUGGESTION_BYPASS_META, true);
   }
   return state.tr

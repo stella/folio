@@ -13,9 +13,9 @@
  * {@link JOINED_RUNS_RESTYLED_META}, and is left as it is.
  */
 
-import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { Plugin } from "prosemirror-state";
 
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
@@ -34,7 +34,8 @@ const createPastedTableEndPlugin = (): Plugin =>
     key: pastedTableEndKey.createKey(),
     appendTransaction(transactions, oldState, newState) {
       const pasted = transactions.some(
-        (transaction) => transaction.docChanged && transaction.getMeta("uiEvent") === "paste",
+        (transaction) =>
+          transaction.docChanged && transaction.getMeta("uiEvent") === "paste",
       );
       if (!pasted) {
         return null;
@@ -47,7 +48,9 @@ const createPastedTableEndPlugin = (): Plugin =>
         return null;
       }
       const paragraph = newState.schema.nodes["paragraph"]?.createAndFill();
-      return paragraph ? newState.tr.insert(newState.doc.content.size, paragraph) : null;
+      return paragraph
+        ? newState.tr.insert(newState.doc.content.size, paragraph)
+        : null;
     },
   });
 

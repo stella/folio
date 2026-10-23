@@ -2,10 +2,7 @@
  * Selection Tracker Extension — wraps createSelectionTrackerPlugin
  */
 
-import {
-  createSelectionTrackerPlugin,
-  extractSelectionContext,
-} from "../../plugins/selectionTracker";
+import { createSelectionTrackerPlugin } from "../../plugins/selectionTracker";
 import type { SelectionChangeCallback } from "../../plugins/selectionTracker";
 import { createExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
@@ -19,15 +16,12 @@ const defaultSelectionTrackerOptions: SelectionTrackerOptions = {};
 export const SelectionTrackerExtension = createExtension({
   name: "selectionTracker",
   defaultOptions: defaultSelectionTrackerOptions,
-  onSchemaReady(_ctx: ExtensionContext, options: SelectionTrackerOptions): ExtensionRuntime {
+  onSchemaReady(
+    _ctx: ExtensionContext,
+    options: SelectionTrackerOptions,
+  ): ExtensionRuntime {
     return {
       plugins: [createSelectionTrackerPlugin(options.onSelectionChange)],
-      commands: {
-        extractSelectionContext: () => (state, _dispatch) => {
-          extractSelectionContext(state);
-          return true;
-        },
-      },
     };
   },
 });

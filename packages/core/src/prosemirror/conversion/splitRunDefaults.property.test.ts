@@ -1,19 +1,22 @@
+import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { TextFormatting } from "../../types/document";
-
-import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
-import { createDocx } from "../../docx/rezip";
-import { createEmptyDocument } from "../../utils/createDocument";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import {
   createHarnessState,
   HeadlessEditorView,
   parseShapeDocument,
   saveHarnessState,
 } from "../../__tests__/editorHarness";
+import { createDocx } from "../../docx/rezip";
+import type { TextFormatting } from "../../types/document";
+import { createEmptyDocument } from "../../utils/createDocument";
 import { toggleBold } from "../commands/formatting";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
@@ -40,7 +43,8 @@ const sourceDocument = async (runProperties?: TextFormatting) => {
     {
       type: "footnote",
       id: 123,
-      content: createEmptyDocument({ initialText: "Note" }).package.document.content,
+      content: createEmptyDocument({ initialText: "Note" }).package.document
+        .content,
     },
   ];
   return parseShapeDocument(new Uint8Array(await createDocx(source)));
@@ -89,10 +93,15 @@ test("seed 666618706 keeps note formatting after split, format, split and paste"
     });
     const left = positions.at(action.left % positions.length);
     const right = positions.at(action.right % positions.length);
-    if (left === undefined || right === undefined) return panic("Missing selection endpoint");
+    if (left === undefined || right === undefined)
+      return panic("Missing selection endpoint");
     view.state = view.state.apply(
       view.state.tr.setSelection(
-        TextSelection.create(view.state.doc, Math.min(left, right), Math.max(left, right)),
+        TextSelection.create(
+          view.state.doc,
+          Math.min(left, right),
+          Math.max(left, right),
+        ),
       ),
     );
     if (action.kind === "split") view.pressKey("Enter");
@@ -100,7 +109,10 @@ test("seed 666618706 keeps note formatting after split, format, split and paste"
     else view.paste(referenceSlice);
 
     const saved = await saveHarnessState(view.state, base);
-    const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "editing");
+    const reopened = createHarnessState(
+      await parseShapeDocument(saved.bytes),
+      "editing",
+    );
     const referenceBold = (doc: PMNode) => {
       const values: boolean[] = [];
       doc.descendants((node) => {
@@ -131,12 +143,20 @@ test("split paragraphs retain authored run defaults through typed and pasted con
       async ({ runProperties, paragraphProperties, endpoint, action }) => {
         const source = await sourceDocument(runProperties);
         const paragraph = source.package.document.content.at(0);
-        if (paragraph?.type !== "paragraph") return panic("Missing source paragraph.");
+        if (paragraph?.type !== "paragraph")
+          return panic("Missing source paragraph.");
         // One authored reference keeps this invariant independent of adjacent occurrence coalescing.
         paragraph.content.splice(2, 2);
-        paragraph.formatting = { ...paragraph.formatting, ...paragraphProperties };
-        const base = await parseShapeDocument(new Uint8Array(await createDocx(source)));
-        const view = new HeadlessEditorView(createHarnessState(base, "editing"));
+        paragraph.formatting = {
+          ...paragraph.formatting,
+          ...paragraphProperties,
+        };
+        const base = await parseShapeDocument(
+          new Uint8Array(await createDocx(source)),
+        );
+        const view = new HeadlessEditorView(
+          createHarnessState(base, "editing"),
+        );
         const reference = view.state.doc.nodeAt(2);
         if (!reference?.isText) return panic("Missing source reference.");
         const position = {
@@ -145,10 +165,14 @@ test("split paragraphs retain authored run defaults through typed and pasted con
           end: view.state.doc.content.size - 1,
         }[endpoint];
         view.state = view.state.apply(
-          view.state.tr.setSelection(TextSelection.create(view.state.doc, position)),
+          view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, position),
+          ),
         );
         expect(view.pressKey("Enter")).toBe(true);
-        expect(view.state.selection.$from.parent.attrs._originalFormatting).toMatchObject({
+        expect(
+          view.state.selection.$from.parent.attrs._originalFormatting,
+        ).toMatchObject({
           runProperties,
           ...paragraphProperties,
         });
@@ -156,10 +180,12 @@ test("split paragraphs retain authored run defaults through typed and pasted con
         else view.paste(new Slice(Fragment.from(reference), 0, 0));
         const saved = await saveHarnessState(view.state, base);
         const addedParagraph = saved.model.package.document.content.at(1);
-        if (addedParagraph?.type !== "paragraph") return panic("Missing split paragraph.");
+        if (addedParagraph?.type !== "paragraph")
+          return panic("Missing split paragraph.");
         expect(addedParagraph.formatting).toMatchObject(paragraphProperties);
         const reopenedDocument = await parseShapeDocument(saved.bytes);
-        const reopenedParagraph = reopenedDocument.package.document.content.at(1);
+        const reopenedParagraph =
+          reopenedDocument.package.document.content.at(1);
         if (reopenedParagraph?.type !== "paragraph")
           return panic("Missing reopened split paragraph.");
         expect(reopenedParagraph.formatting).toMatchObject(paragraphProperties);

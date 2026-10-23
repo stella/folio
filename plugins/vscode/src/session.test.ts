@@ -2,14 +2,18 @@ import { describe, expect, test } from "bun:test";
 
 import { decodeBackup } from "./backup";
 import type { FolioEditorSaveStrategy, HostMessage } from "./editor-protocol";
-import { fileVersionOf, type CliSaveOutcome, type CliSaveRequest } from "./save";
 import {
+  type CliSaveOutcome,
+  type CliSaveRequest,
+  fileVersionOf,
+} from "./save";
+import {
+  type ConflictChoice,
   DocxSession,
   needsRewriteConfirmation,
-  SaveCancelled,
-  type ConflictChoice,
   type RewriteChoice,
   type RewriteWarning,
+  SaveCancelled,
   type SessionLease,
   type SessionOptions,
   type StaleChoice,
@@ -22,7 +26,10 @@ const EDITED = bytesOf("PK edited");
 const THEIRS = bytesOf("PK theirs");
 
 const SELECTIVE: FolioEditorSaveStrategy = { type: "selective-first" };
-const REPACK: FolioEditorSaveStrategy = { type: "full-repack", reason: "structuralChange" };
+const REPACK: FolioEditorSaveStrategy = {
+  type: "full-repack",
+  reason: "structuralChange",
+};
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -105,14 +112,20 @@ const harness = (overrides: Partial<SessionOptions> = {}): Harness => {
   const session: DocxSession = new DocxSession({
     fileName: "Report.docx",
     documentPath: "/work/Report.docx",
-    initial: { bytes: OPENED, baseline: fileVersionOf(OPENED), restored: false },
+    initial: {
+      bytes: OPENED,
+      baseline: fileVersionOf(OPENED),
+      restored: false,
+    },
     author: "Ada Lovelace",
     locale: "en",
     mode: "editing",
     disk: {
       read: () => Promise.resolve(state.disk),
       versionOf: (filePath) =>
-        Promise.resolve(filePath === "/work/Existing.docx" ? fileVersionOf(THEIRS) : null),
+        Promise.resolve(
+          filePath === "/work/Existing.docx" ? fileVersionOf(THEIRS) : null,
+        ),
       write: (filePath) => {
         calls.push(`write ${filePath}`);
         return Promise.resolve();
@@ -129,7 +142,8 @@ const harness = (overrides: Partial<SessionOptions> = {}): Harness => {
         status: "committed",
       });
     },
-    describeChange: (version) => Promise.resolve(`changed to ${version.slice(0, 8)}`),
+    describeChange: (version) =>
+      Promise.resolve(`changed to ${version.slice(0, 8)}`),
     lease,
     ui: {
       confirmRewrite: () => {
@@ -192,7 +206,15 @@ const harness = (overrides: Partial<SessionOptions> = {}): Harness => {
     }
   });
   session.handleMessage({ type: "ready" });
-  return Object.assign(state, { session, posted, saves, lease, rewrite, calls, notices });
+  return Object.assign(state, {
+    session,
+    posted,
+    saves,
+    lease,
+    rewrite,
+    calls,
+    notices,
+  });
 };
 
 const edit = (h: Harness) => h.session.handleMessage({ type: "edit" });
@@ -213,7 +235,11 @@ describe("loading", () => {
 
   test("sends the bytes as a plain Uint8Array, even when the file system gave a Buffer", () => {
     const h = harness({
-      initial: { bytes: Buffer.from(OPENED), baseline: fileVersionOf(OPENED), restored: false },
+      initial: {
+        bytes: Buffer.from(OPENED),
+        baseline: fileVersionOf(OPENED),
+        restored: false,
+      },
     });
 
     const [load] = h.posted;
@@ -256,7 +282,10 @@ describe("edits and undo", () => {
     h.session.redo();
     expect(h.session.dirty).toBe(true);
 
-    expect(h.posted.slice(1).map((message) => message.type)).toEqual(["undo", "redo"]);
+    expect(h.posted.slice(1).map((message) => message.type)).toEqual([
+      "undo",
+      "redo",
+    ]);
   });
 });
 
@@ -331,7 +360,8 @@ describe("save", () => {
 
     const reload = h.posted.at(-1);
     expect(reload?.type).toBe("reload");
-    if (reload?.type === "reload") expect(reload.document.bytes).toEqual(THEIRS);
+    if (reload?.type === "reload")
+      expect(reload.document.bytes).toEqual(THEIRS);
     expect(h.session.baseline).toBe(fileVersionOf(THEIRS));
     expect(h.saves).toHaveLength(1);
   });
@@ -351,17 +381,33 @@ describe("save", () => {
     const h = harness();
     edit(h);
     await settle();
-    h.outcomes = [{ type: "error", code: "locked", message: "not held under that lease token" }];
+    h.outcomes = [
+      {
+        type: "error",
+        code: "locked",
+        message: "not held under that lease token",
+      },
+    ];
 
     await h.session.save();
 
     expect(h.lease.forgotten).toBe(1);
-    expect(h.saves.map((save) => save.leaseToken)).toEqual(["lease-token", undefined]);
+    expect(h.saves.map((save) => save.leaseToken)).toEqual([
+      "lease-token",
+      undefined,
+    ]);
   });
 
   test("any other refusal fails the save with the CLI's message and hint", async () => {
     const h = harness();
-    h.outcomes = [{ type: "error", code: "locked", message: "Held by folio-cli.", hint: "Retry." }];
+    h.outcomes = [
+      {
+        type: "error",
+        code: "locked",
+        message: "Held by folio-cli.",
+        hint: "Retry.",
+      },
+    ];
 
     await expect(h.session.save()).rejects.toThrow("Held by folio-cli. Retry.");
   });
@@ -392,8 +438,12 @@ describe("the rewrite warning", () => {
 
     expect(needsRewriteConfirmation(REPACK, warning)).toBe(true);
     expect(needsRewriteConfirmation(SELECTIVE, warning)).toBe(false);
-    expect(needsRewriteConfirmation(REPACK, { ...warning, confirmed: true })).toBe(false);
-    expect(needsRewriteConfirmation(REPACK, { ...warning, enabled: () => false })).toBe(false);
+    expect(
+      needsRewriteConfirmation(REPACK, { ...warning, confirmed: true }),
+    ).toBe(false);
+    expect(
+      needsRewriteConfirmation(REPACK, { ...warning, enabled: () => false }),
+    ).toBe(false);
   });
 
   test("asks once per session", async () => {
@@ -493,7 +543,9 @@ describe("changes on disk", () => {
 
     expect(h.posted.at(-1)?.type).toBe("reload");
     expect(h.session.baseline).toBe(fileVersionOf(THEIRS));
-    expect(h.notices).toEqual([`changed to ${fileVersionOf(THEIRS).slice(0, 8)}`]);
+    expect(h.notices).toEqual([
+      `changed to ${fileVersionOf(THEIRS).slice(0, 8)}`,
+    ]);
   });
 
   test("a dirty document asks; Keep Mine makes the next save replace theirs", async () => {
@@ -529,7 +581,11 @@ describe("changes on disk", () => {
 
     await h.session.diskChanged();
 
-    expect(h.calls).toEqual(["resolveConflict", "saveCopy", "revertThroughWorkbench"]);
+    expect(h.calls).toEqual([
+      "resolveConflict",
+      "saveCopy",
+      "revertThroughWorkbench",
+    ]);
   });
 
   test("its own save's rename is not a change", async () => {
@@ -544,7 +600,10 @@ describe("changes on disk", () => {
 
     expect(h.calls).toEqual([]);
     expect(h.notices).toEqual([]);
-    expect(h.posted.map((message) => message.type)).toEqual(["load", "serialize"]);
+    expect(h.posted.map((message) => message.type)).toEqual([
+      "load",
+      "serialize",
+    ]);
   });
 });
 
@@ -626,7 +685,11 @@ describe("backup and restore", () => {
 
   test("a restored document is dirty, holds the lease, and saves against its baseline", async () => {
     const h = harness({
-      initial: { bytes: EDITED, baseline: fileVersionOf(OPENED), restored: true },
+      initial: {
+        bytes: EDITED,
+        baseline: fileVersionOf(OPENED),
+        restored: true,
+      },
     });
     await settle();
 

@@ -58,16 +58,25 @@ async function benchFolio(absPath: string): Promise<number> {
 }
 
 /** Spawn a self-timing program that prints `[{ path, median_ms }]` JSON. */
-function benchExternal(label: string, cmd: string, args: string[]): Map<string, number> {
+function benchExternal(
+  label: string,
+  cmd: string,
+  args: string[],
+): Map<string, number> {
   const out = new Map<string, number>();
   const result = spawnSync(cmd, args, { encoding: "utf-8" });
   if (result.status !== 0) {
-    const why = (result.stderr || result.error?.message || "").slice(0, 120).trim();
+    const why = (result.stderr || result.error?.message || "")
+      .slice(0, 120)
+      .trim();
     console.warn(`  ${label}: skipped (${why})`);
     return out;
   }
   try {
-    const parsed = JSON.parse(result.stdout) as Array<{ path: string; median_ms: number }>;
+    const parsed = JSON.parse(result.stdout) as Array<{
+      path: string;
+      median_ms: number;
+    }>;
     for (const row of parsed) {
       out.set(resolve(row.path), row.median_ms);
     }
@@ -89,10 +98,14 @@ function benchRust(absPaths: string[]): Map<string, number> {
 }
 
 const absPaths = FIXTURES.map((fixture) => resolve(REPO_ROOT, fixture.path));
-const python = benchExternal("python-docx", "python3", [resolve(HERE, "parse.py"), ...absPaths]);
+const python = benchExternal("python-docx", "python3", [
+  resolve(HERE, "parse.py"),
+  ...absPaths,
+]);
 const rust = benchRust(absPaths);
 
-const fmt = (n: number | undefined): string => (n === undefined ? "—" : n.toFixed(2));
+const fmt = (n: number | undefined): string =>
+  n === undefined ? "—" : n.toFixed(2);
 
 const rows: Array<Record<string, string>> = [];
 for (const fixture of FIXTURES) {
@@ -105,5 +118,7 @@ for (const fixture of FIXTURES) {
   });
 }
 
-console.log("\nparse · median ms per parse (lower is faster; outputs differ per library)\n");
+console.log(
+  "\nparse · median ms per parse (lower is faster; outputs differ per library)\n",
+);
 console.table(rows);

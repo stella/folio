@@ -4,7 +4,13 @@ import path from "node:path";
 import ts from "typescript";
 
 const parse = (source: string) =>
-  ts.createSourceFile("authority.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  ts.createSourceFile(
+    "authority.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
 
 const fixedAuthority = (call: ts.CallExpression, authority: string) => {
   const options = call.arguments.at(0);
@@ -50,11 +56,17 @@ const randomBrowserAuthorityProblems = (source: string) => {
   let calls = 0;
   const visit = (node: ts.Node, randomLane = false) => {
     const inLane =
-      randomLane || (ts.isForOfStatement(node) && node.expression.getText() === "config.seeds");
+      randomLane ||
+      (ts.isForOfStatement(node) &&
+        node.expression.getText() === "config.seeds");
     if (inLane && ts.isCallExpression(node)) {
-      if (ts.isIdentifier(node.expression) && node.expression.text === "runMode") {
+      if (
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "runMode"
+      ) {
         calls += 1;
-        if (!fixedAuthority(node, "canonical")) problems.push("random browser authority");
+        if (!fixedAuthority(node, "canonical"))
+          problems.push("random browser authority");
       }
       if (
         ts.isPropertyAccessExpression(node.expression) &&
@@ -71,7 +83,10 @@ const randomBrowserAuthorityProblems = (source: string) => {
 
 test("standing conformance cannot select legacy authority through its public factory", () => {
   const source = readFileSync(
-    new URL("../packages/core/src/__tests__/editorCommandConformance.ts", import.meta.url),
+    new URL(
+      "../packages/core/src/__tests__/editorCommandConformance.ts",
+      import.meta.url,
+    ),
     "utf8",
   );
   expect(standingFactoryIsCanonical(source)).toBe(true);
@@ -80,7 +95,9 @@ test("standing conformance cannot select legacy authority through its public fac
       source.replaceAll('authority: "canonical"', 'authority: "prosemirror"'),
     ),
   ).toBe(false);
-  expect(standingFactoryIsCanonical("const runConformanceCase = () => legacy();")).toBe(false);
+  expect(
+    standingFactoryIsCanonical("const runConformanceCase = () => legacy();"),
+  ).toBe(false);
   expect(
     standingFactoryIsCanonical(
       'const runConformanceCase = (options) => runCaseWithAuthority({ authority: "canonical", ...options });',
@@ -90,19 +107,27 @@ test("standing conformance cannot select legacy authority through its public fac
 
 test("random browser conformance is strict canonical; legacy acceptance stays in explicit replay", () => {
   const source = readFileSync(
-    new URL("../tests/visual/browser-input-fuzz.interactions.spec.ts", import.meta.url),
+    new URL(
+      "../tests/visual/browser-input-fuzz.interactions.spec.ts",
+      import.meta.url,
+    ),
     "utf8",
   );
   expect(randomBrowserAuthorityProblems(source)).toEqual([]);
-  const lane = 'for (const seed of config.seeds) { runMode({ authority: "canonical" }); }';
+  const lane =
+    'for (const seed of config.seeds) { runMode({ authority: "canonical" }); }';
   expect(randomBrowserAuthorityProblems(lane)).toEqual([]);
-  expect(randomBrowserAuthorityProblems(lane.replace('"canonical"', '"prosemirror"'))).toHaveLength(
-    1,
-  );
-  expect(randomBrowserAuthorityProblems(lane.replace("});", "}); test.fail(true);"))).toHaveLength(
-    1,
-  );
-  expect(randomBrowserAuthorityProblems("for (const seed of config.seeds) {}")).toHaveLength(1);
+  expect(
+    randomBrowserAuthorityProblems(
+      lane.replace('"canonical"', '"prosemirror"'),
+    ),
+  ).toHaveLength(1);
+  expect(
+    randomBrowserAuthorityProblems(lane.replace("});", "}); test.fail(true);")),
+  ).toHaveLength(1);
+  expect(
+    randomBrowserAuthorityProblems("for (const seed of config.seeds) {}"),
+  ).toHaveLength(1);
 });
 
 // Representation readers and execution owners are allowed by exact export name.
@@ -111,7 +136,10 @@ test("random browser conformance is strict canonical; legacy acceptance stays in
 const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
   // The planner may supply tie ORDER only; expected results stay independent.
   ["packages/core/src/ai-edits/batch-claims", ["compareBatchTieOrder"]],
-  ["packages/core/src/docx/paragraphPropertySource", ["cloneDocumentWithParagraphPropertySources"]],
+  [
+    "packages/core/src/docx/paragraphPropertySource",
+    ["cloneDocumentWithParagraphPropertySources"],
+  ],
   [
     "packages/core/src/controller/hiddenEditorManager",
     ["createHiddenEditorManager", "CanonicalSessionRefusalError"],
@@ -120,9 +148,18 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
     "packages/core/src/controller/canonicalSession",
     ["createCanonicalSession", "publishCanonicalProjection"],
   ],
-  ["packages/core/src/prosemirror/executeEditorCommand", ["executeEditorCommand"]],
-  ["packages/core/src/prosemirror/rangeAnchorAttrs", ["expectRangeAnchorAttrs"]],
-  ["packages/core/src/types/canonicalCapabilities", ["CANONICAL_GAP", "CANONICAL_CAPABILITIES"]],
+  [
+    "packages/core/src/prosemirror/executeEditorCommand",
+    ["executeEditorCommand"],
+  ],
+  [
+    "packages/core/src/prosemirror/rangeAnchorAttrs",
+    ["expectRangeAnchorAttrs"],
+  ],
+  [
+    "packages/core/src/types/canonicalCapabilities",
+    ["CANONICAL_GAP", "CANONICAL_CAPABILITIES"],
+  ],
   ["packages/core/src/docx/canonicalSave", ["serializeCanonicalSave"]],
   [
     "packages/core/src/__tests__/editorHarness",
@@ -150,13 +187,25 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
   ["packages/core/src/docx/numberingParser", ["getCachedNumberingMap"]],
   [
     "packages/core/src/prosemirror/commands/comments",
-    ["acceptAllChanges", "acceptChange", "addCommentMark", "rejectAllChanges", "rejectChange"],
+    [
+      "acceptAllChanges",
+      "acceptChange",
+      "addCommentMark",
+      "rejectAllChanges",
+      "rejectChange",
+    ],
   ],
   ["packages/core/src/prosemirror/commands/formatting", ["clearFormatting"]],
   ["packages/core/src/prosemirror/commands/pageBreak", ["insertPageBreak"]],
   ["packages/core/src/prosemirror/conversion/fromProseDoc", ["fromProseDoc"]],
-  ["packages/core/src/prosemirror/plugins/suggestionMode", ["deleteSelectionAsSuggestion"]],
-  ["packages/core/src/prosemirror/styles/styleResolver", ["createStyleResolver"]],
+  [
+    "packages/core/src/prosemirror/plugins/suggestionMode",
+    ["deleteSelectionAsSuggestion"],
+  ],
+  [
+    "packages/core/src/prosemirror/styles/styleResolver",
+    ["createStyleResolver"],
+  ],
   ["packages/core/src/docx/noteReferenceMark", ["createNote"]],
   ["packages/core/src/docx/parser", ["parseDocx"]],
   ["packages/docx-core/src/validate/docx", ["validateDocxPackage"]],
@@ -164,19 +213,27 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
 
 const expectationImportProblems = (source: string, owner: string) =>
   parse(source).statements.flatMap((node) => {
-    if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) return [];
+    if (
+      !ts.isImportDeclaration(node) ||
+      !ts.isStringLiteral(node.moduleSpecifier)
+    )
+      return [];
     const clause = node.importClause;
     if (clause?.isTypeOnly) return [];
     const module = node.moduleSpecifier.text;
     if (!module.startsWith(".") && !module.startsWith("@stll/")) return [];
-    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(owner), module));
-    if (!resolved.startsWith("packages/") && !module.startsWith("@stll/")) return [];
+    const resolved = path.posix.normalize(
+      path.posix.join(path.posix.dirname(owner), module),
+    );
+    if (!resolved.startsWith("packages/") && !module.startsWith("@stll/"))
+      return [];
     if (!clause) return [`${module}: side-effect import`];
     const allowed = CONFORMANCE_PRODUCTION_IMPORTS.get(resolved) ?? [];
     const problems: string[] = [];
     if (clause.name) problems.push(`${module}: default import`);
     const bindings = clause.namedBindings;
-    if (bindings && ts.isNamespaceImport(bindings)) problems.push(`${module}: namespace import`);
+    if (bindings && ts.isNamespaceImport(bindings))
+      problems.push(`${module}: namespace import`);
     if (bindings && ts.isNamedImports(bindings))
       for (const binding of bindings.elements) {
         if (binding.isTypeOnly) continue;
@@ -194,7 +251,10 @@ test("conformance expectations cannot import production decision code", () => {
     "packages/core/src/__tests__/editorCommandConformance.ts",
     "tests/visual/canonicalBrowserHistoryOracle.ts",
   ]) {
-    const source = readFileSync(new URL(`../${owner}`, import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL(`../${owner}`, import.meta.url),
+      "utf8",
+    );
     expect(expectationImportProblems(source, owner)).toEqual([]);
   }
 });
@@ -255,9 +315,12 @@ test("the expectation import guard catches predicates in new and mixed modules",
       owner,
     ),
   ).toEqual([]);
-  expect(expectationImportProblems('import { Slice } from "prosemirror-model";', owner)).toEqual(
-    [],
-  );
+  expect(
+    expectationImportProblems(
+      'import { Slice } from "prosemirror-model";',
+      owner,
+    ),
+  ).toEqual([]);
   expect(
     expectationImportProblems(
       'import "../packages/core/src/controller/canonicalClipboard";',

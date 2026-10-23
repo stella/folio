@@ -18,22 +18,22 @@ import type { StepKind } from "../support/coverage.ts";
 import { openReviewer, storiesDocument } from "../support/documents.ts";
 import { SECOND_REVIEWER } from "../support/fuzz.ts";
 import { assertHealthy } from "../support/invariants.ts";
-import { assertRequestedOutcome, capture } from "../support/oracle.ts";
 import {
   coreBatch,
   GENERATORS,
-  MODES,
   type Mode,
+  MODES,
   type Operation,
   supports,
 } from "../support/operations.ts";
+import { assertRequestedOutcome, capture } from "../support/oracle.ts";
 import { createRandom, type Random } from "../support/random.ts";
 import {
   biasedPicker,
   blocksOfStory,
   type Feature,
-  FEATURES,
   featureIndex,
+  FEATURES,
   type Picker,
 } from "../support/targets.ts";
 
@@ -54,7 +54,9 @@ const applyChecked = async (
   const batch = coreBatch([operation], mode);
   const result =
     story.type === "main"
-      ? reviewer.applyDocumentOperations(batch as never, { undefinedReferences: "refuse" })
+      ? reviewer.applyDocumentOperations(batch as never, {
+          undefinedReferences: "refuse",
+        })
       : reviewer.applyDocumentOperationsToStory({
           undefinedReferences: "refuse",
           story,
@@ -83,7 +85,11 @@ const storyTexts = (reviewer: Reviewer) =>
   );
 
 /** Saves, reopens as shown, and every header, footer and note reopens as shown. */
-const assertStoriesHealthy = async (reviewer: Reviewer, mode: Mode, context: string) => {
+const assertStoriesHealthy = async (
+  reviewer: Reviewer,
+  mode: Mode,
+  context: string,
+) => {
   const suggested = mode === "suggested";
   const { reopened } = await assertHealthy(
     reviewer,
@@ -100,13 +106,19 @@ const assertStoriesHealthy = async (reviewer: Reviewer, mode: Mode, context: str
 };
 
 /** A picker aimed at blocks with `feature`, and at boundary spans in them. */
-const featurePicker = (reviewer: Reviewer, feature: Feature, random: Random): Picker => {
+const featurePicker = (
+  reviewer: Reviewer,
+  feature: Feature,
+  random: Random,
+): Picker => {
   const index = featureIndex(reviewer);
   const aimed = biasedPicker(random, { index, recent: [], uniform: 0 });
   return {
     ...aimed,
     block: (candidates) => {
-      const hot = candidates.filter((block) => index.features.get(block.id)?.has(feature));
+      const hot = candidates.filter((block) =>
+        index.features.get(block.id)?.has(feature),
+      );
       return random.pick(hot.length > 0 ? hot : candidates);
     },
   };
@@ -129,19 +141,25 @@ describe("operations in every header, footer and note", () => {
     test(`stories / ${mode}: every operation type in every secondary story does what it asked`, async () => {
       const reviewer = await openReviewer(await storiesDocument());
       const random = createRandom(
-        mode === "tracked-changes" ? TRACKED_STORY_REVISION_SEED : mode.length * 97,
+        mode === "tracked-changes"
+          ? TRACKED_STORY_REVISION_SEED
+          : mode.length * 97,
       );
       const applied = new Map<string, number>();
       // One of each kind; the fuzz flows reach the first-page and even-page parts.
       const stories = secondaryStories(reviewer).filter(
-        (story, index, all) => all.findIndex((other) => other.type === story.type) === index,
+        (story, index, all) =>
+          all.findIndex((other) => other.type === story.type) === index,
       );
       let generatedSteps = 0;
       for (const story of stories) {
         for (const type of Object.keys(GENERATORS)) {
           if (!supports(type, mode)) continue;
           const blocks = blocksOfStory(reviewer, story);
-          const pick = biasedPicker(random, { index: featureIndex(reviewer, story), recent: [] });
+          const pick = biasedPicker(random, {
+            index: featureIndex(reviewer, story),
+            recent: [],
+          });
           const operation = GENERATORS[type]?.(blocks, random, pick);
           if (!operation) continue;
           generatedSteps += 1;
@@ -153,18 +171,23 @@ describe("operations in every header, footer and note", () => {
             // Positive control: this seed must reach the occupied survivor,
             // rather than merely run a merge that has nothing to guard.
             assert.equal(generatedSteps, 44);
-            assert.deepEqual(operation["mergedParagraphProperties"], { alignment: "center" });
+            assert.deepEqual(operation["mergedParagraphProperties"], {
+              alignment: "center",
+            });
             const note = reviewer
               .toDocument()
               .package.footnotes?.find(({ id }) => id === story.noteId);
             assert.ok(note);
             const sourceIndex = note.content.findIndex(
-              (block) => block.type === "paragraph" && block.paraId === operation["blockId"],
+              (block) =>
+                block.type === "paragraph" &&
+                block.paraId === operation["blockId"],
             );
             assert.ok(sourceIndex >= 0, "the recorded merge source must exist");
             const following = note.content.slice(sourceIndex + 1);
             assert.ok(
-              following.length > 0 && following.every((block) => block.type === "paragraph"),
+              following.length > 0 &&
+                following.every((block) => block.type === "paragraph"),
             );
             const survivor = following.find(
               (block) =>
@@ -172,7 +195,10 @@ describe("operations in every header, footer and note", () => {
                 block.pPrMark?.kind !== "del" &&
                 block.pPrMark?.kind !== "moveFrom",
             );
-            assert.ok(survivor?.type === "paragraph", "the merge must leave a paragraph");
+            assert.ok(
+              survivor?.type === "paragraph",
+              "the merge must leave a paragraph",
+            );
             assert.equal(
               survivor.propertyChanges?.length,
               1,
@@ -183,10 +209,17 @@ describe("operations in every header, footer and note", () => {
             applied.set(story.type, (applied.get(story.type) ?? 0) + 1);
           }
         }
-        await assertStoriesHealthy(reviewer, mode, `${JSON.stringify(story)} / ${mode}`);
+        await assertStoriesHealthy(
+          reviewer,
+          mode,
+          `${JSON.stringify(story)} / ${mode}`,
+        );
       }
       for (const kind of ["header", "footer", "footnote", "endnote"]) {
-        assert.ok((applied.get(kind) ?? 0) > 0, `no operation applied in a ${kind}`);
+        assert.ok(
+          (applied.get(kind) ?? 0) > 0,
+          `no operation applied in a ${kind}`,
+        );
       }
     });
   }
@@ -197,12 +230,19 @@ describe("operations aimed at every feature of the body", () => {
     test(`stories / ${mode}: operations at each feature do what they asked`, async () => {
       const reviewer = await openReviewer(await storiesDocument());
       // A pending revision to aim at, whatever the mode.
-      const payment = reviewer.getContent().find((block) => block.text.startsWith("Payment is"));
+      const payment = reviewer
+        .getContent()
+        .find((block) => block.text.startsWith("Payment is"));
       assert.ok(payment);
       await applyChecked(
         reviewer,
         MAIN,
-        { type: "replaceInBlock", blockId: payment.id, find: "receipt", replace: "invoice" },
+        {
+          type: "replaceInBlock",
+          blockId: payment.id,
+          find: "receipt",
+          replace: "invoice",
+        },
         "tracked-changes",
         "fresh",
       );
@@ -210,22 +250,26 @@ describe("operations aimed at every feature of the body", () => {
       for (const [index, feature] of FEATURES.entries()) {
         // Two operation types per feature, rotating, so each type meets several features.
         for (const offset of [0, 3]) {
-          const type = FEATURE_OPERATIONS[(index + offset) % FEATURE_OPERATIONS.length] as string;
+          const type = FEATURE_OPERATIONS[
+            (index + offset) % FEATURE_OPERATIONS.length
+          ] as string;
           if (!supports(type, mode)) continue;
           const operation = GENERATORS[type]?.(
             reviewer.getContent(),
             random,
             featurePicker(reviewer, feature, random),
           );
-          if (operation) await applyChecked(reviewer, MAIN, operation, mode, "fresh");
+          if (operation)
+            await applyChecked(reviewer, MAIN, operation, mode, "fresh");
         }
       }
       await assertStoriesHealthy(reviewer, mode, `features / ${mode}`);
       // The text box survives every edit around its paragraph (none deletes it).
       assert.ok(
         JSON.stringify(
-          (await openReviewer(new Uint8Array(await reviewer.toBuffer()))).toDocument().package
-            .document.content,
+          (
+            await openReviewer(new Uint8Array(await reviewer.toBuffer()))
+          ).toDocument().package.document.content,
         ).includes('"shapeType":"textBox"'),
         `features / ${mode}: the text box is gone`,
       );
@@ -239,15 +283,20 @@ describe("operations aimed at every feature of the body", () => {
       const random = createRandom(mode.length * 151);
       for (const type of FEATURE_OPERATIONS) {
         const index = featureIndex(reviewer);
-        const blocks = reviewer.getContent().filter((block) => index.inTextBox.has(block.id));
+        const blocks = reviewer
+          .getContent()
+          .filter((block) => index.inTextBox.has(block.id));
         if (!supports(type, mode) || blocks.length === 0) continue;
         const pick = biasedPicker(random, { index, recent: [] });
         const operation = GENERATORS[type]?.(blocks, random, pick);
-        if (operation) await applyChecked(reviewer, MAIN, operation, mode, "fresh");
+        if (operation)
+          await applyChecked(reviewer, MAIN, operation, mode, "fresh");
       }
       await assertStoriesHealthy(reviewer, mode, `text box / ${mode}`);
       assert.ok(
-        reviewer.getContent().some((block) => featureIndex(reviewer).inTextBox.has(block.id)),
+        reviewer
+          .getContent()
+          .some((block) => featureIndex(reviewer).inTextBox.has(block.id)),
         `text box / ${mode}: no paragraph is left in the text box`,
       );
     });
@@ -260,7 +309,10 @@ describe("operations aimed at every feature of the body", () => {
       const blocks = reviewer.getContent();
       const first = blocks.findIndex((block) => inTextBox.has(block.id));
       const anchor = blocks.at(first - 1);
-      assert.ok(first > 0 && anchor && !inTextBox.has(anchor.id), "no paragraph draws a text box");
+      assert.ok(
+        first > 0 && anchor && !inTextBox.has(anchor.id),
+        "no paragraph draws a text box",
+      );
       assert.ok(
         await applyChecked(
           reviewer,
@@ -271,7 +323,11 @@ describe("operations aimed at every feature of the body", () => {
         ),
         `text box / ${mode}: deleting its paragraph applied nothing`,
       );
-      await assertStoriesHealthy(reviewer, mode, `text box anchor deleted / ${mode}`);
+      await assertStoriesHealthy(
+        reviewer,
+        mode,
+        `text box anchor deleted / ${mode}`,
+      );
     });
   }
 });
@@ -290,11 +346,17 @@ describe("a document carried across sessions", () => {
         const { bytes } = await assertHealthy(
           reviewer,
           `${mode} before ${step}`,
-          mode === "suggested" && reviewer.getChanges().length > 0 ? { compare: false } : {},
+          mode === "suggested" && reviewer.getChanges().length > 0
+            ? { compare: false }
+            : {},
         );
         reviewer = await open(bytes);
         for (const story of [MAIN, ...secondaryStories(reviewer).slice(0, 1)]) {
-          for (const type of ["replaceInBlock", "insertAfterBlock", "formatRange"]) {
+          for (const type of [
+            "replaceInBlock",
+            "insertAfterBlock",
+            "formatRange",
+          ]) {
             if (!supports(type, mode)) continue;
             const index = featureIndex(reviewer, story);
             const blocks = blocksOfStory(reviewer, story).filter(
@@ -302,7 +364,8 @@ describe("a document carried across sessions", () => {
             );
             const pick = biasedPicker(random, { index, recent: [] });
             const operation = GENERATORS[type]?.(blocks, random, pick);
-            if (operation) await applyChecked(reviewer, story, operation, mode, step);
+            if (operation)
+              await applyChecked(reviewer, story, operation, mode, step);
           }
         }
         // The same reviewer keeps working after a selective save.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { HistoryManager, classifyHistoryShortcut } from "./HistoryManager";
+import { classifyHistoryShortcut, HistoryManager } from "./HistoryManager";
 
 describe("HistoryManager", () => {
   test("push records undo entries and exposes the current state", () => {
@@ -31,7 +31,11 @@ describe("HistoryManager", () => {
 
     expect(manager.undo()).toBe(1);
     expect(manager.state).toBe(1);
-    expect(manager.getSnapshot()).toMatchObject({ canUndo: true, canRedo: true, redoCount: 1 });
+    expect(manager.getSnapshot()).toMatchObject({
+      canUndo: true,
+      canRedo: true,
+      redoCount: 1,
+    });
 
     expect(manager.redo()).toBe(2);
     expect(manager.state).toBe(2);
@@ -68,7 +72,10 @@ describe("HistoryManager", () => {
   });
 
   test("caps the undo stack at maxEntries", () => {
-    const manager = new HistoryManager<number>(0, { groupingInterval: 0, maxEntries: 3 });
+    const manager = new HistoryManager<number>(0, {
+      groupingInterval: 0,
+      maxEntries: 3,
+    });
     for (let i = 1; i <= 5; i++) {
       manager.push(i);
     }
@@ -101,7 +108,10 @@ describe("HistoryManager", () => {
     manager.reset();
 
     expect(manager.state).toBe(7);
-    expect(manager.getSnapshot()).toMatchObject({ canUndo: false, canRedo: false });
+    expect(manager.getSnapshot()).toMatchObject({
+      canUndo: false,
+      canRedo: false,
+    });
 
     manager.reset(42);
     expect(manager.state).toBe(42);
@@ -131,7 +141,10 @@ describe("HistoryManager", () => {
 });
 
 describe("classifyHistoryShortcut", () => {
-  const event = (key: string, mods: { ctrl?: boolean; meta?: boolean; shift?: boolean } = {}) => ({
+  const event = (
+    key: string,
+    mods: { ctrl?: boolean; meta?: boolean; shift?: boolean } = {},
+  ) => ({
     key,
     ctrlKey: mods.ctrl ?? false,
     metaKey: mods.meta ?? false,
@@ -151,10 +164,16 @@ describe("classifyHistoryShortcut", () => {
   test("Ctrl/Cmd+Shift+Z is redo even though Shift reports the uppercase key", () => {
     // The browser delivers `event.key === "Z"` (uppercase) while Shift is held;
     // a case-sensitive `=== "z"` check would miss the standard redo chord.
-    expect(classifyHistoryShortcut(event("Z", { meta: true, shift: true }))).toBe("redo");
-    expect(classifyHistoryShortcut(event("Z", { ctrl: true, shift: true }))).toBe("redo");
+    expect(
+      classifyHistoryShortcut(event("Z", { meta: true, shift: true })),
+    ).toBe("redo");
+    expect(
+      classifyHistoryShortcut(event("Z", { ctrl: true, shift: true })),
+    ).toBe("redo");
     // Defensive: a lowercase "z" with Shift (some synthetic event sources) too.
-    expect(classifyHistoryShortcut(event("z", { meta: true, shift: true }))).toBe("redo");
+    expect(
+      classifyHistoryShortcut(event("z", { meta: true, shift: true })),
+    ).toBe("redo");
   });
 
   test("ignores chords without a Ctrl/Cmd modifier or unrelated keys", () => {

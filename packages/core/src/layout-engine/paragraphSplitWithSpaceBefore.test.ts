@@ -5,9 +5,9 @@ import type {
   FlowBlock,
   LayoutOptions,
   Measure,
+  PageMargins,
   ParagraphBlock,
   ParagraphMeasure,
-  PageMargins,
 } from "./types";
 
 // Regression: a multi-line paragraph with `spaceBefore` whose first
@@ -98,7 +98,13 @@ describe("paragraph split with spaceBefore", () => {
     };
 
     const first = makePara(0, "filler", { after: 0 }, 1, 10);
-    const second = makePara(1, "threeLineWidowControlled", { before: 0 }, 3, 10);
+    const second = makePara(
+      1,
+      "threeLineWidowControlled",
+      { before: 0 },
+      3,
+      10,
+    );
 
     const layout = layoutDocument(
       [first.block, second.block],
@@ -139,12 +145,16 @@ describe("paragraph split with spaceBefore", () => {
     const layout = layoutDocument(blocks, measures, layoutOptions);
 
     const page1 = layout.pages[0]!;
-    const page1SecondPara = page1.fragments.find((f) => f.kind === "paragraph" && f.blockId === 1);
+    const page1SecondPara = page1.fragments.find(
+      (f) => f.kind === "paragraph" && f.blockId === 1,
+    );
     expect(page1SecondPara).toBeDefined();
     // The first fragment of paragraph 1 must land on page 1, not page 2.
     expect(layout.pages.length).toBeGreaterThanOrEqual(2);
     const page2 = layout.pages[1]!;
-    const page2SecondPara = page2.fragments.find((f) => f.kind === "paragraph" && f.blockId === 1);
+    const page2SecondPara = page2.fragments.find(
+      (f) => f.kind === "paragraph" && f.blockId === 1,
+    );
     // Continuation must exist on page 2.
     expect(page2SecondPara).toBeDefined();
   });
@@ -182,7 +192,9 @@ describe("paragraph split with spaceBefore", () => {
     // forced once the remaining lines no longer fit), so its first fragment
     // lands on page 1 instead of jumping wholesale to page 2.
     const page1 = layout.pages[0]!;
-    const page1Second = page1.fragments.find((f) => f.kind === "paragraph" && f.blockId === 1);
+    const page1Second = page1.fragments.find(
+      (f) => f.kind === "paragraph" && f.blockId === 1,
+    );
     expect(page1Second).toBeDefined();
 
     expect(layout.pages.length).toBeGreaterThanOrEqual(2);

@@ -2,22 +2,28 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, spyOn, test } from "bun:test";
-import { panic } from "better-result";
 import { act, Profiler, useCallback, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+
+import { panic } from "better-result";
+import { afterAll, expect, spyOn, test } from "bun:test";
+
 import type { Document } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import {
   createEmptyHeaderFooter,
   resolveHeaderFooterContent,
 } from "@stll/folio-core/utils/headerFooter";
+
 import { useHistory } from "../../hooks/useHistory";
 import type { PagedEditorRef } from "../../paged-editor/PagedEditor";
 import { useHeaderFooterEditor } from "./useHeaderFooterEditor";
 import { useZoomAndPageInfo } from "./useZoomAndPageInfo";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -58,7 +64,8 @@ test("header/footer content and active ids survive transient empty documents and
     await act(async () => root.render(<HeaderHarness document={first} />));
     const firstOutput = container.textContent;
     expect(firstOutput).toContain(
-      resolveHeaderFooterContent(first.package).activeHeaderRId ?? panic("Header id missing"),
+      resolveHeaderFooterContent(first.package).activeHeaderRId ??
+        panic("Header id missing"),
     );
     for (let index = 0; index < 3; index++) {
       await act(async () => root.render(<HeaderHarness document={null} />));
@@ -67,7 +74,8 @@ test("header/footer content and active ids survive transient empty documents and
     await act(async () => root.render(<HeaderHarness document={second} />));
     const secondOutput = container.textContent;
     expect(secondOutput).toContain(
-      resolveHeaderFooterContent(second.package).activeFooterRId ?? panic("Footer id missing"),
+      resolveHeaderFooterContent(second.package).activeFooterRId ??
+        panic("Footer id missing"),
     );
     expect(secondOutput).not.toBe(firstOutput);
     await act(async () => root.render(<HeaderHarness document={null} />));
@@ -79,13 +87,18 @@ test("header/footer content and active ids survive transient empty documents and
 
 const createCommitProbe = () => {
   const commits: string[] = [];
-  return { commits, onRender: (_id: string, phase: string) => commits.push(phase) };
+  return {
+    commits,
+    onRender: (_id: string, phase: string) => commits.push(phase),
+  };
 };
 
 const ZoomHarness = ({ mounted }: { mounted: boolean }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pagedEditorRef = useRef<PagedEditorRef>(null);
-  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
   const attach = useCallback((element: HTMLDivElement | null) => {
     scrollContainerRef.current = element;
     setScrollContainer(element);
@@ -119,18 +132,22 @@ test("the committed scroll container attaches one listener without per-scroll re
     await act(async () => root.render(render(false)));
     await act(async () => root.render(render(true)));
     const scrollContainer =
-      container.querySelector<HTMLDivElement>('[data-testid="scroll-container"]') ??
-      panic("Scroll container missing");
+      container.querySelector<HTMLDivElement>(
+        '[data-testid="scroll-container"]',
+      ) ?? panic("Scroll container missing");
     const scrollCalls = add.mock.calls.filter(([type]) => type === "scroll");
     expect(scrollCalls.length).toBe(1);
     const commitCount = commits.length;
     await act(async () => {
-      for (let index = 0; index < 12; index++) scrollContainer.dispatchEvent(new Event("scroll"));
+      for (let index = 0; index < 12; index++)
+        scrollContainer.dispatchEvent(new Event("scroll"));
     });
     expect(commits.length).toBe(commitCount);
     expect(add.mock.calls.filter(([type]) => type === "scroll").length).toBe(1);
     await act(async () => root.render(render(false)));
-    expect(remove.mock.calls.filter(([type]) => type === "scroll").length).toBe(1);
+    expect(remove.mock.calls.filter(([type]) => type === "scroll").length).toBe(
+      1,
+    );
   } finally {
     await act(async () => root.unmount());
     add.mockRestore();

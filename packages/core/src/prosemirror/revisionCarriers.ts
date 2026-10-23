@@ -114,12 +114,18 @@ export const PROPERTY_REVISION_SITES = {
   // The mapped `satisfies` binds each entry's key to its own `kind`, so a site
   // cannot name a revision other than the one it is filed under, and the kind
   // survives into the derived unions below.
-} as const satisfies { [Kind in PropertyRevisionKind]: PropertyRevisionSite & { kind: Kind } };
+} as const satisfies {
+  [Kind in PropertyRevisionKind]: PropertyRevisionSite & { kind: Kind };
+};
 
-type SiteOf<TKind extends PropertyRevisionKind> = (typeof PROPERTY_REVISION_SITES)[TKind];
+type SiteOf<TKind extends PropertyRevisionKind> =
+  (typeof PROPERTY_REVISION_SITES)[TKind];
 
 /** One property revision carried on a node's attrs rather than on a mark. */
-export type NodePropertyRevisionSite = Extract<SiteOf<PropertyRevisionKind>, { carrier: string }>;
+export type NodePropertyRevisionSite = Extract<
+  SiteOf<PropertyRevisionKind>,
+  { carrier: string }
+>;
 
 /** The sites the shared node-attr pass resolves, and therefore must patch. */
 export type NodeAttrsPropertyRevisionSite = Extract<
@@ -128,22 +134,23 @@ export type NodeAttrsPropertyRevisionSite = Extract<
 >;
 
 /** The kinds that pass resolves. */
-export type NodeAttrsPropertyRevisionKind = NodeAttrsPropertyRevisionSite["kind"];
+export type NodeAttrsPropertyRevisionKind =
+  NodeAttrsPropertyRevisionSite["kind"];
 
 /** The reviewer-facing name of a property revision carried on a node. */
 export type PropertyRevisionCarrier = NodePropertyRevisionSite["carrier"];
 
 export type FolioNodeRevisionKind =
-  | "paragraphMarkInserted"
-  | "paragraphMarkDeleted"
-  | PropertyRevisionCarrier;
+  "paragraphMarkInserted" | "paragraphMarkDeleted" | PropertyRevisionCarrier;
 
-const NODE_PROPERTY_REVISION_SITES = Object.values(PROPERTY_REVISION_SITES).flatMap((site) =>
-  site.resolution === "inline-mark" ? [] : [site],
-);
+const NODE_PROPERTY_REVISION_SITES = Object.values(
+  PROPERTY_REVISION_SITES,
+).flatMap((site) => (site.resolution === "inline-mark" ? [] : [site]));
 
 /** The property revisions a PM node of this type can carry, in element order. */
-export const nodePropertyRevisionSites = (nodeTypeName: string): NodePropertyRevisionSite[] =>
+export const nodePropertyRevisionSites = (
+  nodeTypeName: string,
+): NodePropertyRevisionSite[] =>
   NODE_PROPERTY_REVISION_SITES.filter(({ nodeTypes }) =>
     nodeTypes.some((name) => name === nodeTypeName),
   );
@@ -163,7 +170,9 @@ const PARAGRAPH_MARK_KIND_CARRIERS = {
   moveFrom: "paragraphMarkDeleted",
 } as const satisfies Record<ParagraphMarkChangeKind, FolioNodeRevisionKind>;
 
-const isParagraphMarkChangeKind = (value: unknown): value is ParagraphMarkChangeKind =>
+const isParagraphMarkChangeKind = (
+  value: unknown,
+): value is ParagraphMarkChangeKind =>
   PARAGRAPH_MARK_CHANGE_KINDS.some((kind) => kind === value);
 
 export type FolioNodeRevisionCarrier = {
@@ -176,13 +185,18 @@ export type FolioNodeRevisionCarrier = {
   to: number;
 };
 
-type RevisionMetadata = Pick<FolioNodeRevisionCarrier, "id" | "author" | "date">;
+type RevisionMetadata = Pick<
+  FolioNodeRevisionCarrier,
+  "id" | "author" | "date"
+>;
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 /** The `w:id`, author and date a stored revision's `info` carries, or null. */
-export const propertyRevisionMetadata = (value: unknown): RevisionMetadata | null => {
+export const propertyRevisionMetadata = (
+  value: unknown,
+): RevisionMetadata | null => {
   if (!isObjectRecord(value) || typeof value["id"] !== "number") {
     return null;
   }
@@ -263,7 +277,8 @@ export const getFolioNodeRevisionCarriers = (
   if (node.type.name === "paragraph") {
     const paragraphMark = node.attrs["pPrMark"];
     const paragraphMarkKind =
-      isObjectRecord(paragraphMark) && isParagraphMarkChangeKind(paragraphMark["kind"])
+      isObjectRecord(paragraphMark) &&
+      isParagraphMarkChangeKind(paragraphMark["kind"])
         ? PARAGRAPH_MARK_KIND_CARRIERS[paragraphMark["kind"]]
         : undefined;
     if (paragraphMarkKind !== undefined && isObjectRecord(paragraphMark)) {

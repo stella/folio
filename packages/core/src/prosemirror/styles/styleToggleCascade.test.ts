@@ -58,7 +58,9 @@ describe("style toggle cascade", () => {
   }
 
   test("style off behaves like omission", () => {
-    const inherited = cascadeStyleTextFormatting([{ formatting: { bold: true }, type: "style" }]);
+    const inherited = cascadeStyleTextFormatting([
+      { formatting: { bold: true }, type: "style" },
+    ]);
     const absent = cascadeStyleTextFormatting([
       { cascade: inherited, type: "carried" },
       { formatting: { italic: true }, type: "style" },
@@ -109,7 +111,9 @@ describe("style toggle cascade", () => {
     ]);
     const clonedParagraph = {
       ...paragraph,
-      formatting: paragraph.formatting ? { ...paragraph.formatting } : undefined,
+      formatting: paragraph.formatting
+        ? { ...paragraph.formatting }
+        : undefined,
       toggleStates: new Map(paragraph.toggleStates),
     };
     expect(clonedParagraph.formatting).not.toBe(paragraph.formatting);

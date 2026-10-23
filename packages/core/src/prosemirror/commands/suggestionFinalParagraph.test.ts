@@ -1,13 +1,13 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { getTrackedChangesFromDoc } from "../../ai-edits/read";
-import { createDocx } from "../../docx/rezip";
 import { revisedFinalParagraphMarks } from "../../compare/verification";
+import { createDocx } from "../../docx/rezip";
 import type { Document, StyleDefinitions } from "../../types/document";
 import { expectParagraphAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
@@ -52,16 +52,22 @@ const sourceDocuments = new WeakMap<PMNode, Document>();
 
 type ContainerKind = "body" | "table cell";
 type SuggestionAcceptance = "targeted" | "all";
-type TrackedResolution = "targeted accept" | "accept all" | "targeted reject" | "reject all";
+type TrackedResolution =
+  "targeted accept" | "accept all" | "targeted reject" | "reject all";
 
 const paragraph = (
   text: string,
   attrs: Record<string, unknown> = {},
   marks: readonly Mark[] = [],
 ): PMNode =>
-  schema.node("paragraph", attrs, text.length > 0 ? schema.text(text, marks) : undefined);
+  schema.node(
+    "paragraph",
+    attrs,
+    text.length > 0 ? schema.text(text, marks) : undefined,
+  );
 
-const tableCell = (paragraphs: PMNode[]): PMNode => schema.node("tableCell", null, paragraphs);
+const tableCell = (paragraphs: PMNode[]): PMNode =>
+  schema.node("tableCell", null, paragraphs);
 
 const table = (cell: PMNode): PMNode =>
   schema.node("table", null, [schema.node("tableRow", null, [cell])]);
@@ -95,9 +101,12 @@ const makeSuggestedTailState = (containerKind: ContainerKind): EditorState => {
     suggestionId: TAIL_SUGGESTION_ID,
   };
   const carrier = alignedParagraph(CARRIER_TEXT, "center");
-  const inserted = alignedParagraph(INSERTED_TEXT, "right", { _suggestedInsert: marker }, [
-    insertion.create(marker),
-  ]);
+  const inserted = alignedParagraph(
+    INSERTED_TEXT,
+    "right",
+    { _suggestedInsert: marker },
+    [insertion.create(marker)],
+  );
   const blocks =
     containerKind === "body"
       ? [carrier, inserted]
@@ -132,7 +141,9 @@ const suggestedParagraph = ({
   ]);
 };
 
-const makeAdjacentSuggestedTailState = (containerKind: ContainerKind): EditorState => {
+const makeAdjacentSuggestedTailState = (
+  containerKind: ContainerKind,
+): EditorState => {
   const paragraphs = [
     alignedParagraph(CARRIER_TEXT, "center"),
     suggestedParagraph({
@@ -149,7 +160,9 @@ const makeAdjacentSuggestedTailState = (containerKind: ContainerKind): EditorSta
     }),
   ];
   const blocks =
-    containerKind === "body" ? paragraphs : [table(tableCell(paragraphs)), paragraph("")];
+    containerKind === "body"
+      ? paragraphs
+      : [table(tableCell(paragraphs)), paragraph("")];
   return EditorState.create({ schema, doc: schema.node("doc", null, blocks) });
 };
 
@@ -185,7 +198,9 @@ const makeThreeSuggestedTailState = (
     }),
   ];
   const blocks =
-    containerKind === "body" ? paragraphs : [table(tableCell(paragraphs)), paragraph("")];
+    containerKind === "body"
+      ? paragraphs
+      : [table(tableCell(paragraphs)), paragraph("")];
   return EditorState.create({ schema, doc: schema.node("doc", null, blocks) });
 };
 
@@ -203,7 +218,10 @@ const dispatcher = (state: EditorState) => {
   return view;
 };
 
-const acceptedSuggestedTail = (containerKind: ContainerKind, acceptance: SuggestionAcceptance) => {
+const acceptedSuggestedTail = (
+  containerKind: ContainerKind,
+  acceptance: SuggestionAcceptance,
+) => {
   const view = dispatcher(makeSuggestedTailState(containerKind));
   const command =
     acceptance === "targeted"
@@ -218,13 +236,17 @@ const paragraphsInChangedContainer = (
   containerKind: ContainerKind,
 ): PMNode[] => {
   if (containerKind === "body") {
-    return Array.from({ length: state.doc.childCount }, (_, index) => state.doc.child(index));
+    return Array.from({ length: state.doc.childCount }, (_, index) =>
+      state.doc.child(index),
+    );
   }
   const cell = state.doc.firstChild?.firstChild?.firstChild;
   if (!cell) {
     return panic("expected the changed table cell");
   }
-  return Array.from({ length: cell.childCount }, (_, index) => cell.child(index));
+  return Array.from({ length: cell.childCount }, (_, index) =>
+    cell.child(index),
+  );
 };
 
 const documentModel = (state: EditorState): Document => {
@@ -250,7 +272,9 @@ const documentXml = async (state: EditorState): Promise<string> => {
 };
 
 const reopenedState = async (state: EditorState): Promise<EditorState> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await documentBuffer(state));
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await documentBuffer(state),
+  );
   const sourceDocument = reviewer.toDocument();
   const doc = toProseDoc(sourceDocument);
   sourceDocuments.set(doc, sourceDocument);
@@ -266,7 +290,9 @@ const paragraphXmlContaining = (xml: string, text: string): string => {
 const expectAtMostOneParagraphPropertyChange = (xml: string): void => {
   const paragraphs = xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/gu) ?? [];
   for (const paragraphXml of paragraphs) {
-    expect(paragraphXml.match(/<w:pPrChange\b/gu)?.length ?? 0).toBeLessThanOrEqual(1);
+    expect(
+      paragraphXml.match(/<w:pPrChange\b/gu)?.length ?? 0,
+    ).toBeLessThanOrEqual(1);
   }
 };
 
@@ -285,13 +311,20 @@ const paragraphPropertyChangeParts = (
     return panic("expected a paragraph property change");
   }
   return {
-    current: paragraphXml.slice(propertiesStart + "<w:pPr>".length, changeStart),
+    current: paragraphXml.slice(
+      propertiesStart + "<w:pPr>".length,
+      changeStart,
+    ),
     previous,
   };
 };
 
-const ACCEPTANCE_CASES = (["body", "table cell"] as const).flatMap((containerKind) =>
-  (["targeted", "all"] as const).map((acceptance) => ({ acceptance, containerKind })),
+const ACCEPTANCE_CASES = (["body", "table cell"] as const).flatMap(
+  (containerKind) =>
+    (["targeted", "all"] as const).map((acceptance) => ({
+      acceptance,
+      containerKind,
+    })),
 );
 
 const TRACKED_RESOLUTIONS = [
@@ -302,16 +335,42 @@ const TRACKED_RESOLUTIONS = [
 ] as const satisfies readonly TrackedResolution[];
 
 type AdjacentSuggestionDecision = "accept" | "reject";
-type AdjacentSuggestionId = typeof FIRST_ADJACENT_SUGGESTION | typeof SECOND_ADJACENT_SUGGESTION;
-type ThreeSuggestionId = AdjacentSuggestionId | typeof THIRD_ADJACENT_SUGGESTION;
+type AdjacentSuggestionId =
+  typeof FIRST_ADJACENT_SUGGESTION | typeof SECOND_ADJACENT_SUGGESTION;
+type ThreeSuggestionId =
+  AdjacentSuggestionId | typeof THIRD_ADJACENT_SUGGESTION;
 
 const THREE_SUGGESTION_ORDERS = [
-  [FIRST_ADJACENT_SUGGESTION, SECOND_ADJACENT_SUGGESTION, THIRD_ADJACENT_SUGGESTION],
-  [FIRST_ADJACENT_SUGGESTION, THIRD_ADJACENT_SUGGESTION, SECOND_ADJACENT_SUGGESTION],
-  [SECOND_ADJACENT_SUGGESTION, FIRST_ADJACENT_SUGGESTION, THIRD_ADJACENT_SUGGESTION],
-  [SECOND_ADJACENT_SUGGESTION, THIRD_ADJACENT_SUGGESTION, FIRST_ADJACENT_SUGGESTION],
-  [THIRD_ADJACENT_SUGGESTION, FIRST_ADJACENT_SUGGESTION, SECOND_ADJACENT_SUGGESTION],
-  [THIRD_ADJACENT_SUGGESTION, SECOND_ADJACENT_SUGGESTION, FIRST_ADJACENT_SUGGESTION],
+  [
+    FIRST_ADJACENT_SUGGESTION,
+    SECOND_ADJACENT_SUGGESTION,
+    THIRD_ADJACENT_SUGGESTION,
+  ],
+  [
+    FIRST_ADJACENT_SUGGESTION,
+    THIRD_ADJACENT_SUGGESTION,
+    SECOND_ADJACENT_SUGGESTION,
+  ],
+  [
+    SECOND_ADJACENT_SUGGESTION,
+    FIRST_ADJACENT_SUGGESTION,
+    THIRD_ADJACENT_SUGGESTION,
+  ],
+  [
+    SECOND_ADJACENT_SUGGESTION,
+    THIRD_ADJACENT_SUGGESTION,
+    FIRST_ADJACENT_SUGGESTION,
+  ],
+  [
+    THIRD_ADJACENT_SUGGESTION,
+    FIRST_ADJACENT_SUGGESTION,
+    SECOND_ADJACENT_SUGGESTION,
+  ],
+  [
+    THIRD_ADJACENT_SUGGESTION,
+    SECOND_ADJACENT_SUGGESTION,
+    FIRST_ADJACENT_SUGGESTION,
+  ],
 ] as const satisfies readonly (readonly ThreeSuggestionId[])[];
 
 const THREE_SUGGESTION_DECISIONS = [
@@ -339,7 +398,9 @@ const threeSuggestionDecision = (
   }
 };
 
-const acceptedThreeSuggestionDetails = (decisions: (typeof THREE_SUGGESTION_DECISIONS)[number]) =>
+const acceptedThreeSuggestionDetails = (
+  decisions: (typeof THREE_SUGGESTION_DECISIONS)[number],
+) =>
   [
     {
       text: FIRST_ADJACENT_TEXT,
@@ -379,23 +440,37 @@ const terminalChainState = (state: EditorState, containerKind: ContainerKind) =>
     };
   });
 
-const terminalChainFormattingState = (state: EditorState, containerKind: ContainerKind) =>
-  terminalChainState(state, containerKind).map(({ text, alignment, markId, propertyChanges }) => ({
-    text,
-    alignment,
-    markId,
-    previousAlignments: propertyChanges.map(({ previousAlignment }) => previousAlignment),
-  }));
+const terminalChainFormattingState = (
+  state: EditorState,
+  containerKind: ContainerKind,
+) =>
+  terminalChainState(state, containerKind).map(
+    ({ text, alignment, markId, propertyChanges }) => ({
+      text,
+      alignment,
+      markId,
+      previousAlignments: propertyChanges.map(
+        ({ previousAlignment }) => previousAlignment,
+      ),
+    }),
+  );
 
 const isPPrMarkWithId = (value: unknown): value is { info: { id: number } } => {
   if (typeof value !== "object" || value === null || !("info" in value)) {
     return false;
   }
   const info = value.info;
-  return typeof info === "object" && info !== null && "id" in info && typeof info.id === "number";
+  return (
+    typeof info === "object" &&
+    info !== null &&
+    "id" in info &&
+    typeof info.id === "number"
+  );
 };
 
-const expectedTerminalChainState = (decisions: (typeof THREE_SUGGESTION_DECISIONS)[number]) => {
+const expectedTerminalChainState = (
+  decisions: (typeof THREE_SUGGESTION_DECISIONS)[number],
+) => {
   const accepted = acceptedThreeSuggestionDetails(decisions);
   return [
     {
@@ -418,15 +493,16 @@ const expectedTerminalChainState = (decisions: (typeof THREE_SUGGESTION_DECISION
   ];
 };
 
-const ADJACENT_DECISION_CASES = (["body", "table cell"] as const).flatMap((containerKind) =>
-  (["accept", "reject"] as const).flatMap((firstDecision) =>
-    (["accept", "reject"] as const).map((secondDecision) => ({
-      containerKind,
-      firstDecision,
-      secondDecision,
-      label: `${firstDecision} first and ${secondDecision} second in the ${containerKind}`,
-    })),
-  ),
+const ADJACENT_DECISION_CASES = (["body", "table cell"] as const).flatMap(
+  (containerKind) =>
+    (["accept", "reject"] as const).flatMap((firstDecision) =>
+      (["accept", "reject"] as const).map((secondDecision) => ({
+        containerKind,
+        firstDecision,
+        secondDecision,
+        label: `${firstDecision} first and ${secondDecision} second in the ${containerKind}`,
+      })),
+    ),
 );
 
 const applySuggestionDecision = (
@@ -435,7 +511,10 @@ const applySuggestionDecision = (
   decision: AdjacentSuggestionDecision,
 ): boolean =>
   decision === "accept"
-    ? acceptSuggestion(suggestionId, { author: "Reviewer", date: DATE })(view.state, view.dispatch)
+    ? acceptSuggestion(suggestionId, { author: "Reviewer", date: DATE })(
+        view.state,
+        view.dispatch,
+      )
     : rejectSuggestion(suggestionId)(view.state, view.dispatch);
 
 const resolveAdjacentSuggestions = (
@@ -479,7 +558,9 @@ describe("accepted suggested container-final paragraphs", () => {
             ).toBe(true);
           }
           expect(getSuggestions(view.state)).toEqual([]);
-          expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual([]);
+          expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual(
+            [],
+          );
           expect(terminalChainState(view.state, containerKind)).toEqual(
             expectedTerminalChainState(decisions),
           );
@@ -514,33 +595,47 @@ describe("accepted suggested container-final paragraphs", () => {
 
           expect(getSuggestions(view.state)).toEqual([]);
           const accepted = acceptedThreeSuggestionDetails(decisions);
-          const paragraphs = paragraphsInChangedContainer(view.state, containerKind);
+          const paragraphs = paragraphsInChangedContainer(
+            view.state,
+            containerKind,
+          );
           expect(paragraphs.map((node) => node.textContent)).toEqual([
             "",
             ...accepted.map(({ text }) => text),
           ]);
           expect(
-            expectParagraphAttrs(paragraphs[0] ?? panic("expected the carrier")),
+            expectParagraphAttrs(
+              paragraphs[0] ?? panic("expected the carrier"),
+            ),
           ).toMatchObject({
             ...EMPTY_CARRIER_FORMATTING,
             _originalFormatting: EMPTY_CARRIER_FORMATTING,
           });
           for (const [index, { revisionId }] of accepted.entries()) {
-            const left = paragraphs[index] ?? panic("expected the preceding paragraph");
-            const right = paragraphs[index + 1] ?? panic("expected the inserted paragraph");
-            expect(expectParagraphAttrs(left).pPrMark).toMatchObject({ info: { id: revisionId } });
+            const left =
+              paragraphs[index] ?? panic("expected the preceding paragraph");
+            const right =
+              paragraphs[index + 1] ?? panic("expected the inserted paragraph");
+            expect(expectParagraphAttrs(left).pPrMark).toMatchObject({
+              info: { id: revisionId },
+            });
             expect(expectParagraphAttrs(right)._propertyChanges).toEqual([
               expect.objectContaining({
                 info: expect.objectContaining({ id: revisionId }),
-                previousFormatting: expect.objectContaining(EMPTY_CARRIER_FORMATTING),
+                previousFormatting: expect.objectContaining(
+                  EMPTY_CARRIER_FORMATTING,
+                ),
               }),
             ]);
           }
           expect(
-            expectParagraphAttrs(paragraphs.at(-1) ?? panic("expected a final paragraph"))
-              .pPrMark ?? null,
+            expectParagraphAttrs(
+              paragraphs.at(-1) ?? panic("expected a final paragraph"),
+            ).pPrMark ?? null,
           ).toBeNull();
-          expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual([]);
+          expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual(
+            [],
+          );
 
           if (canonical === undefined) {
             canonical = view.state.doc.toJSON();
@@ -551,7 +646,10 @@ describe("accepted suggested container-final paragraphs", () => {
           if (accepted.length > 0) {
             expect(rejectAllChanges()(view.state, view.dispatch)).toBe(true);
           }
-          const rejected = paragraphsInChangedContainer(view.state, containerKind);
+          const rejected = paragraphsInChangedContainer(
+            view.state,
+            containerKind,
+          );
           expect(rejected).toHaveLength(1);
           expect(rejected[0]?.textContent).toBe("");
           const rejectedAttrs = expectParagraphAttrs(
@@ -574,7 +672,10 @@ describe("accepted suggested container-final paragraphs", () => {
       for (const order of THREE_SUGGESTION_ORDERS) {
         const view = dispatcher(makeThreeSuggestedTailState(containerKind));
         expect(
-          acceptAllSuggestions({ author: "Reviewer", date: DATE })(view.state, view.dispatch),
+          acceptAllSuggestions({ author: "Reviewer", date: DATE })(
+            view.state,
+            view.dispatch,
+          ),
         ).toBe(true);
         for (const suggestionId of order) {
           const revisionId = (() => {
@@ -595,7 +696,9 @@ describe("accepted suggested container-final paragraphs", () => {
         }
 
         expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
-        expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual([]);
+        expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual(
+          [],
+        );
         // Rejecting the second suggestion removes the break it added, which
         // ends the first one's words: they run on into the second paragraph,
         // and its mark and properties are what stay. The same in every order.
@@ -623,7 +726,9 @@ describe("accepted suggested container-final paragraphs", () => {
         expect(terminalChainState(reopened, containerKind)).toEqual(
           terminalChainState(view.state, containerKind),
         );
-        expect(await documentXml(reopened)).not.toMatch(/<w:(?:ins|del|pPrChange)\b/u);
+        expect(await documentXml(reopened)).not.toMatch(
+          /<w:(?:ins|del|pPrChange)\b/u,
+        );
       }
     },
   );
@@ -633,40 +738,64 @@ describe("accepted suggested container-final paragraphs", () => {
     async (containerKind) => {
       const tracked = dispatcher(makeThreeSuggestedTailState(containerKind));
       expect(
-        acceptAllSuggestions({ author: "Reviewer", date: DATE })(tracked.state, tracked.dispatch),
+        acceptAllSuggestions({ author: "Reviewer", date: DATE })(
+          tracked.state,
+          tracked.dispatch,
+        ),
       ).toBe(true);
       expect(terminalChainState(tracked.state, containerKind)).toEqual(
         expectedTerminalChainState(["accept", "accept", "accept"]),
       );
       expectAtMostOneParagraphPropertyChange(await documentXml(tracked.state));
       const reopenedTracked = await reopenedState(tracked.state);
-      expect(terminalChainFormattingState(reopenedTracked, containerKind)).toEqual(
-        terminalChainFormattingState(tracked.state, containerKind),
-      );
+      expect(
+        terminalChainFormattingState(reopenedTracked, containerKind),
+      ).toEqual(terminalChainFormattingState(tracked.state, containerKind));
       const reopenedChanges = getTrackedChangesFromDoc(reopenedTracked.doc);
       expect(reopenedChanges).toHaveLength(9);
       expect(new Set(reopenedChanges.map(({ id }) => id)).size).toBe(9);
-      expect(revisedFinalParagraphMarks(documentModel(reopenedTracked))).toEqual([]);
+      expect(
+        revisedFinalParagraphMarks(documentModel(reopenedTracked)),
+      ).toEqual([]);
 
-      const accepting = dispatcher(EditorState.create({ schema, doc: reopenedTracked.doc }));
-      expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
+      const accepting = dispatcher(
+        EditorState.create({ schema, doc: reopenedTracked.doc }),
+      );
+      expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(
+        true,
+      );
       expect(getTrackedChangesFromDoc(accepting.state.doc)).toEqual([]);
       expect(accepting.state.doc.textContent).toBe(
-        [CARRIER_TEXT, FIRST_ADJACENT_TEXT, SECOND_ADJACENT_TEXT, THIRD_ADJACENT_TEXT].join(""),
+        [
+          CARRIER_TEXT,
+          FIRST_ADJACENT_TEXT,
+          SECOND_ADJACENT_TEXT,
+          THIRD_ADJACENT_TEXT,
+        ].join(""),
       );
 
-      const rejecting = dispatcher(EditorState.create({ schema, doc: reopenedTracked.doc }));
-      expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(true);
+      const rejecting = dispatcher(
+        EditorState.create({ schema, doc: reopenedTracked.doc }),
+      );
+      expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(
+        true,
+      );
       expect(getTrackedChangesFromDoc(rejecting.state.doc)).toEqual([]);
       expect(rejecting.state.doc.textContent).toBe(CARRIER_TEXT);
 
-      const suggestions = dispatcher(makeThreeSuggestedTailState(containerKind));
-      expect(rejectAllSuggestions()(suggestions.state, suggestions.dispatch)).toBe(true);
+      const suggestions = dispatcher(
+        makeThreeSuggestedTailState(containerKind),
+      );
+      expect(
+        rejectAllSuggestions()(suggestions.state, suggestions.dispatch),
+      ).toBe(true);
       expect(getSuggestions(suggestions.state)).toEqual([]);
       expect(suggestions.state.doc.textContent).toBe(CARRIER_TEXT);
 
       for (const resolved of [accepting, rejecting, suggestions]) {
-        expect(revisedFinalParagraphMarks(documentModel(resolved.state))).toEqual([]);
+        expect(
+          revisedFinalParagraphMarks(documentModel(resolved.state)),
+        ).toEqual([]);
         const reopened = await reopenedState(resolved.state);
         expect(reopened.doc.textContent).toBe(resolved.state.doc.textContent);
         expect(revisedFinalParagraphMarks(documentModel(reopened))).toEqual([]);
@@ -678,7 +807,10 @@ describe("accepted suggested container-final paragraphs", () => {
     "$acceptance suggestion acceptance rotates the $containerKind final mark and its formatting",
     async ({ acceptance, containerKind }) => {
       const view = acceptedSuggestedTail(containerKind, acceptance);
-      const [carrier, inserted] = paragraphsInChangedContainer(view.state, containerKind);
+      const [carrier, inserted] = paragraphsInChangedContainer(
+        view.state,
+        containerKind,
+      );
       if (!carrier || !inserted) {
         return panic("expected the carrier and inserted paragraphs");
       }
@@ -722,8 +854,12 @@ describe("accepted suggested container-final paragraphs", () => {
         current: '<w:jc w:val="right"/>',
         previous: '<w:jc w:val="center"/>',
       });
-      expect(insertedXml).toContain(`<w:pPrChange w:id="0" w:author="Reviewer" w:date="${DATE}">`);
-      expect(insertedXml).toContain(`<w:ins w:id="1" w:author="Reviewer" w:date="${DATE}">`);
+      expect(insertedXml).toContain(
+        `<w:pPrChange w:id="0" w:author="Reviewer" w:date="${DATE}">`,
+      );
+      expect(insertedXml).toContain(
+        `<w:ins w:id="1" w:author="Reviewer" w:date="${DATE}">`,
+      );
       expect(paragraphProperties(insertedXml)).not.toContain("<w:rPr>");
 
       const reopened = await reopenedState(view.state);
@@ -731,7 +867,8 @@ describe("accepted suggested container-final paragraphs", () => {
       expect(
         paragraphsInChangedContainer(reopened, containerKind).map((node) => ({
           alignment: expectParagraphAttrs(node).alignment,
-          directAlignment: expectParagraphAttrs(node)._originalFormatting?.alignment,
+          directAlignment:
+            expectParagraphAttrs(node)._originalFormatting?.alignment,
           text: node.textContent,
         })),
       ).toEqual([
@@ -761,7 +898,10 @@ describe("accepted suggested container-final paragraphs", () => {
     const view = dispatcher(
       EditorState.create({
         schema,
-        doc: state.doc.type.create(state.doc.attrs, [carrier, withPendingPropertyChange]),
+        doc: state.doc.type.create(state.doc.attrs, [
+          carrier,
+          withPendingPropertyChange,
+        ]),
       }),
     );
     const before = view.state.doc.toJSON();
@@ -794,15 +934,20 @@ describe("accepted suggested container-final paragraphs", () => {
         })();
         expect(command(view.state, view.dispatch)).toBe(true);
 
-        const resolved = paragraphsInChangedContainer(view.state, containerKind);
-        const rejectsInsertion = resolution === "targeted reject" || resolution === "reject all";
+        const resolved = paragraphsInChangedContainer(
+          view.state,
+          containerKind,
+        );
+        const rejectsInsertion =
+          resolution === "targeted reject" || resolution === "reject all";
         expect(resolved.map((node) => node.textContent)).toEqual(
           rejectsInsertion ? [CARRIER_TEXT] : [CARRIER_TEXT, INSERTED_TEXT],
         );
         expect(
           resolved.map((node) => ({
             alignment: expectParagraphAttrs(node).alignment,
-            directAlignment: expectParagraphAttrs(node)._originalFormatting?.alignment,
+            directAlignment:
+              expectParagraphAttrs(node)._originalFormatting?.alignment,
             pPrMark: node.attrs["pPrMark"] ?? null,
             propertyChanges: node.attrs["_propertyChanges"] ?? null,
           })),
@@ -836,15 +981,15 @@ describe("accepted suggested container-final paragraphs", () => {
         expect(revisedFinalParagraphMarks(model)).toEqual([]);
         const xml = await documentXml(view.state);
         expect(xml).not.toMatch(/<w:(?:ins|del|pPrChange)\b/u);
-        expect(paragraphProperties(paragraphXmlContaining(xml, CARRIER_TEXT))).toBe(
-          '<w:jc w:val="center"/>',
-        );
+        expect(
+          paragraphProperties(paragraphXmlContaining(xml, CARRIER_TEXT)),
+        ).toBe('<w:jc w:val="center"/>');
         if (rejectsInsertion) {
           expect(xml).not.toContain(INSERTED_TEXT);
         } else {
-          expect(paragraphProperties(paragraphXmlContaining(xml, INSERTED_TEXT))).toBe(
-            '<w:jc w:val="right"/>',
-          );
+          expect(
+            paragraphProperties(paragraphXmlContaining(xml, INSERTED_TEXT)),
+          ).toBe('<w:jc w:val="right"/>');
         }
 
         const reopened = await reopenedState(view.state);
@@ -859,9 +1004,14 @@ describe("accepted suggested container-final paragraphs", () => {
   test.each(ACCEPTANCE_CASES.filter(({ acceptance }) => acceptance === "all"))(
     "bulk suggestion resolution keeps adjacent tail paragraphs atomic in the $containerKind",
     async ({ containerKind }) => {
-      const accepted = dispatcher(makeAdjacentSuggestedTailState(containerKind));
+      const accepted = dispatcher(
+        makeAdjacentSuggestedTailState(containerKind),
+      );
       expect(
-        acceptAllSuggestions({ author: "Reviewer", date: DATE })(accepted.state, accepted.dispatch),
+        acceptAllSuggestions({ author: "Reviewer", date: DATE })(
+          accepted.state,
+          accepted.dispatch,
+        ),
       ).toBe(true);
 
       const targeted = resolveAdjacentSuggestions(
@@ -876,19 +1026,24 @@ describe("accepted suggested container-final paragraphs", () => {
 
       const mixed = dispatcher(makeAdjacentSuggestedTailState(containerKind));
       expect(
-        acceptSuggestion(FIRST_ADJACENT_SUGGESTION, { author: "Reviewer", date: DATE })(
-          mixed.state,
-          mixed.dispatch,
-        ),
+        acceptSuggestion(FIRST_ADJACENT_SUGGESTION, {
+          author: "Reviewer",
+          date: DATE,
+        })(mixed.state, mixed.dispatch),
       ).toBe(true);
       expect(rejectAllSuggestions()(mixed.state, mixed.dispatch)).toBe(true);
-      const mixedParagraphs = paragraphsInChangedContainer(mixed.state, containerKind);
+      const mixedParagraphs = paragraphsInChangedContainer(
+        mixed.state,
+        containerKind,
+      );
       expect(mixedParagraphs.map((node) => node.textContent)).toEqual([
         CARRIER_TEXT,
         FIRST_ADJACENT_TEXT,
       ]);
       expect(
-        expectParagraphAttrs(mixedParagraphs[0] ?? panic("expected the carrier")).pPrMark,
+        expectParagraphAttrs(
+          mixedParagraphs[0] ?? panic("expected the carrier"),
+        ).pPrMark,
       ).toEqual({
         kind: "ins",
         info: {
@@ -898,22 +1053,33 @@ describe("accepted suggested container-final paragraphs", () => {
         },
       });
       expect(
-        expectParagraphAttrs(mixedParagraphs[1] ?? panic("expected the accepted paragraph"))
-          ._propertyChanges,
+        expectParagraphAttrs(
+          mixedParagraphs[1] ?? panic("expected the accepted paragraph"),
+        )._propertyChanges,
       ).toMatchObject([
         {
           info: { id: FIRST_ADJACENT_ID, author: "Reviewer", date: DATE },
           previousFormatting: { alignment: "center" },
         },
       ]);
-      expect(revisedFinalParagraphMarks(documentModel(mixed.state))).toEqual([]);
+      expect(revisedFinalParagraphMarks(documentModel(mixed.state))).toEqual(
+        [],
+      );
 
-      const rejected = dispatcher(makeAdjacentSuggestedTailState(containerKind));
-      expect(rejectAllSuggestions()(rejected.state, rejected.dispatch)).toBe(true);
+      const rejected = dispatcher(
+        makeAdjacentSuggestedTailState(containerKind),
+      );
+      expect(rejectAllSuggestions()(rejected.state, rejected.dispatch)).toBe(
+        true,
+      );
       expect(
-        paragraphsInChangedContainer(rejected.state, containerKind).map((node) => node.textContent),
+        paragraphsInChangedContainer(rejected.state, containerKind).map(
+          (node) => node.textContent,
+        ),
       ).toEqual([CARRIER_TEXT]);
-      expect(await documentXml(rejected.state)).not.toMatch(/<w:(?:ins|del|pPrChange)\b/u);
+      expect(await documentXml(rejected.state)).not.toMatch(
+        /<w:(?:ins|del|pPrChange)\b/u,
+      );
     },
   );
 
@@ -923,7 +1089,9 @@ describe("accepted suggested container-final paragraphs", () => {
       const decisions = {
         [FIRST_ADJACENT_SUGGESTION]: firstDecision,
         [SECOND_ADJACENT_SUGGESTION]: secondDecision,
-      } as const satisfies Readonly<Record<AdjacentSuggestionId, AdjacentSuggestionDecision>>;
+      } as const satisfies Readonly<
+        Record<AdjacentSuggestionId, AdjacentSuggestionDecision>
+      >;
       const forward = resolveAdjacentSuggestions(
         containerKind,
         [FIRST_ADJACENT_SUGGESTION, SECOND_ADJACENT_SUGGESTION],
@@ -936,30 +1104,50 @@ describe("accepted suggested container-final paragraphs", () => {
       );
 
       expect(reverse.state.doc.toJSON()).toEqual(forward.state.doc.toJSON());
-      expect(await documentXml(reverse.state)).toBe(await documentXml(forward.state));
+      expect(await documentXml(reverse.state)).toBe(
+        await documentXml(forward.state),
+      );
       const acceptedTexts = [
         ...(firstDecision === "accept" ? [FIRST_ADJACENT_TEXT] : []),
         ...(secondDecision === "accept" ? [SECOND_ADJACENT_TEXT] : []),
       ];
-      expect(forward.state.doc.textContent).toBe([CARRIER_TEXT, ...acceptedTexts].join(""));
+      expect(forward.state.doc.textContent).toBe(
+        [CARRIER_TEXT, ...acceptedTexts].join(""),
+      );
 
       for (const pending of [forward, reverse]) {
-        const accepting = dispatcher(EditorState.create({ schema, doc: pending.state.doc }));
-        const rejecting = dispatcher(EditorState.create({ schema, doc: pending.state.doc }));
+        const accepting = dispatcher(
+          EditorState.create({ schema, doc: pending.state.doc }),
+        );
+        const rejecting = dispatcher(
+          EditorState.create({ schema, doc: pending.state.doc }),
+        );
         const hasTrackedInsert = acceptedTexts.length > 0;
         if (hasTrackedInsert) {
-          expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
-          expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(true);
+          expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(
+            true,
+          );
+          expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(
+            true,
+          );
         }
-        expect(accepting.state.doc.textContent).toBe([CARRIER_TEXT, ...acceptedTexts].join(""));
+        expect(accepting.state.doc.textContent).toBe(
+          [CARRIER_TEXT, ...acceptedTexts].join(""),
+        );
         expect(rejecting.state.doc.textContent).toBe(CARRIER_TEXT);
         for (const resolved of [accepting, rejecting]) {
           expect(getSuggestions(resolved.state)).toEqual([]);
-          expect(revisedFinalParagraphMarks(documentModel(resolved.state))).toEqual([]);
-          expect(await documentXml(resolved.state)).not.toMatch(/<w:(?:ins|del|pPrChange)\b/u);
+          expect(
+            revisedFinalParagraphMarks(documentModel(resolved.state)),
+          ).toEqual([]);
+          expect(await documentXml(resolved.state)).not.toMatch(
+            /<w:(?:ins|del|pPrChange)\b/u,
+          );
           const reopened = await reopenedState(resolved.state);
           expect(getSuggestions(reopened)).toEqual([]);
-          expect(revisedFinalParagraphMarks(documentModel(reopened))).toEqual([]);
+          expect(revisedFinalParagraphMarks(documentModel(reopened))).toEqual(
+            [],
+          );
           expect(reopened.doc.textContent).toBe(resolved.state.doc.textContent);
         }
       }
@@ -987,7 +1175,10 @@ describe("accepted suggested container-final paragraphs", () => {
     const view = dispatcher(
       EditorState.create({
         schema,
-        doc: state.doc.type.create(state.doc.attrs, [withUnrelatedSuggestion, state.doc.child(1)]),
+        doc: state.doc.type.create(state.doc.attrs, [
+          withUnrelatedSuggestion,
+          state.doc.child(1),
+        ]),
       }),
     );
 
@@ -997,13 +1188,17 @@ describe("accepted suggested container-final paragraphs", () => {
         view.dispatch,
       ),
     ).toBe(true);
-    expect(getSuggestions(view.state).map(({ suggestionId }) => suggestionId)).toEqual([
-      "unrelated-inline",
-    ]);
-    expect(rejectAIEditRevision(TAIL_REVISION_ID)(view.state, view.dispatch)).toBe(true);
-    expect(view.state.doc.textContent).toBe(`${CARRIER_TEXT} Pending addition.`);
-    expect(getSuggestions(view.state).map(({ suggestionId }) => suggestionId)).toEqual([
-      "unrelated-inline",
-    ]);
+    expect(
+      getSuggestions(view.state).map(({ suggestionId }) => suggestionId),
+    ).toEqual(["unrelated-inline"]);
+    expect(
+      rejectAIEditRevision(TAIL_REVISION_ID)(view.state, view.dispatch),
+    ).toBe(true);
+    expect(view.state.doc.textContent).toBe(
+      `${CARRIER_TEXT} Pending addition.`,
+    );
+    expect(
+      getSuggestions(view.state).map(({ suggestionId }) => suggestionId),
+    ).toEqual(["unrelated-inline"]);
   });
 });

@@ -24,8 +24,12 @@ export type DocxParagraphSurfaces = {
 };
 
 /** Visit every run directly owned by a paragraph's inline-content tree. */
-export const visitParagraphRuns = (paragraph: Paragraph, visit: (run: Run) => void): void => {
-  type ParagraphRunTreeNode = ParagraphContent | TrackedRunContent | InlineSdt["content"][number];
+export const visitParagraphRuns = (
+  paragraph: Paragraph,
+  visit: (run: Run) => void,
+): void => {
+  type ParagraphRunTreeNode =
+    ParagraphContent | TrackedRunContent | InlineSdt["content"][number];
 
   const visitParagraphContent = (content: ParagraphRunTreeNode): void => {
     switch (content.type) {
@@ -142,7 +146,9 @@ export const visitInlineContentSlots = (
           break;
         default: {
           const unsupported: never = item;
-          panic(`Unsupported paragraph content: ${JSON.stringify(unsupported)}`);
+          panic(
+            `Unsupported paragraph content: ${JSON.stringify(unsupported)}`,
+          );
         }
       }
     }
@@ -157,7 +163,8 @@ export const BLOCK_TREE_DESCENT = {
   prune: "prune",
 } as const;
 
-export type BlockTreeDescent = (typeof BLOCK_TREE_DESCENT)[keyof typeof BLOCK_TREE_DESCENT];
+export type BlockTreeDescent =
+  (typeof BLOCK_TREE_DESCENT)[keyof typeof BLOCK_TREE_DESCENT];
 
 /**
  * Every record a block tree owns in document order: a paragraph, table, and
@@ -225,7 +232,13 @@ export const visitBlockTreeRecords = (
 };
 
 export const visitDocxParagraphs = (
-  { documentBody, headers, footers, footnotes, endnotes }: DocxParagraphSurfaces,
+  {
+    documentBody,
+    headers,
+    footers,
+    footnotes,
+    endnotes,
+  }: DocxParagraphSurfaces,
   visit: (paragraph: Paragraph) => void,
 ): void => {
   const seenParagraphs = new WeakSet<Paragraph>();

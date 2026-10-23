@@ -13,7 +13,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-const SOURCE = readFileSync(path.join(import.meta.dirname, "clickToPositionDom.ts"), "utf-8");
+const SOURCE = readFileSync(
+  path.join(import.meta.dirname, "clickToPositionDom.ts"),
+  "utf-8",
+);
 
 describe("clickToPositionDom selector scope (issue #406)", () => {
   test("page-container span queries are scoped to body content", () => {
@@ -42,7 +45,9 @@ describe("clickToPositionDom selector scope (issue #406)", () => {
   test("page-container .layout-line query is scoped to body content", () => {
     // `pageEl.querySelectorAll('.layout-line')` would also match HF lines
     // and lead the click resolver to an HF position; scope it.
-    const dangerous = SOURCE.match(/pageEl\.querySelectorAll\(\s*"\.layout-line"/gu);
+    const dangerous = SOURCE.match(
+      /pageEl\.querySelectorAll\(\s*"\.layout-line"/gu,
+    );
 
     expect(dangerous).toBeNull();
   });

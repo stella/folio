@@ -1,33 +1,36 @@
-import { findStoryBody, sameStory, storyBody } from "./stories";
+import { panic, Result } from "better-result";
 /**
  * Pure planning around tracked operations: how many new revision ids an
  * operation takes, and the operations a tracked deletion of a range is made
  * of once the author's own insertions and comment anchors are accounted for.
  */
 
-import { Result, panic } from "better-result";
-
 import { type Document, MAX_REVISION_ID } from "../model/document";
-import { applyDocumentOp, stampOf, type AppliedDocumentOp } from "./apply";
-import { blockListAt, sameBlockList, storyParagraphs, type ParagraphLocation } from "./blocks";
+import { type AppliedDocumentOp, applyDocumentOp, stampOf } from "./apply";
+import {
+  blockListAt,
+  type ParagraphLocation,
+  sameBlockList,
+  storyParagraphs,
+} from "./blocks";
 import { structurallyEqual } from "./equality";
 import {
   IDENTITY_SPACES,
-  type IdentitySpace,
   identityKeysIn,
+  type IdentitySpace,
   idKey,
   packageIdentityKeys,
 } from "./ids";
-import { isRangeBoundary, paragraphLength } from "./offsets";
 import {
   compareGaps,
+  type Gap,
   isCommentAnchor,
   isParagraphContent,
-  type Gap,
   type LeafSpan,
   leafSpans,
   zeroWidthLeavesAt,
 } from "./leaves";
+import { isRangeBoundary, paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   isAddedRevision,
@@ -35,29 +38,32 @@ import {
   isTrackedWrapper,
   paragraphPropertiesOf,
 } from "./review";
+import { findStoryBody, sameStory, storyBody } from "./stories";
 import {
-  DOCUMENT_OP_TYPES,
-  SECTION_BOUNDARY_POLICIES,
+  type CreateCommentOp,
   type DeleteRangeOp,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  EMPTY_PROPERTY_SETS,
   type InsertContentOp,
   type JoinBlocksOp,
-  type SetParagraphPropsOp,
-  type SetRunPropsOp,
-  type ReplaceInlineOp,
-  type SplitBlockOp,
-  EMPTY_PROPERTY_SETS,
-  type DocumentOp,
   type NewIds,
   type OpStory,
-  type CreateCommentOp,
+  type ReplaceInlineOp,
   type RevisionStamp,
+  SECTION_BOUNDARY_POLICIES,
+  type SetParagraphPropsOp,
+  type SetRunPropsOp,
+  type SplitBlockOp,
   type TextPosition,
 } from "./types";
 
 /** The ids of one space among slot keys. */
 const idsIn = (keys: readonly string[], space: IdentitySpace): number[] => {
   const prefix = `${space}:`;
-  return keys.flatMap((key) => (key.startsWith(prefix) ? [Number(key.slice(prefix.length))] : []));
+  return keys.flatMap((key) =>
+    key.startsWith(prefix) ? [Number(key.slice(prefix.length))] : [],
+  );
 };
 
 /** The ids a package uses in one space. */
@@ -89,6 +95,8 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
       return { ...op, newIds };
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
@@ -96,8 +104,6 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
-    case DOCUMENT_OP_TYPES.ADD_NOTE:
-    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
@@ -130,7 +136,9 @@ export const filterNewIds = (
   const { revision, control } = op.newIds;
   const newIds: NewIds = {};
   if (revision !== undefined)
-    newIds.revision = revision.filter((id) => keep(IDENTITY_SPACES.REVISION, id));
+    newIds.revision = revision.filter((id) =>
+      keep(IDENTITY_SPACES.REVISION, id),
+    );
   if (control !== undefined)
     newIds.control = control.filter((id) => keep(IDENTITY_SPACES.CONTROL, id));
   return withNewIds(op, newIds);
@@ -151,7 +159,9 @@ export const trimAppliedNewIds = ({
   story,
 }: TrimAppliedNewIdsOptions): DocumentOp => {
   if (!("newIds" in op) || op.newIds === undefined) return op;
-  const touched = new Set([...applied.touched.modified, ...applied.touched.inserted].map(idKey));
+  const touched = new Set(
+    [...applied.touched.modified, ...applied.touched.inserted].map(idKey),
+  );
   const paragraphs = storyParagraphs(storyBody(applied.document, story))
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
@@ -162,7 +172,8 @@ export const trimAppliedNewIds = ({
     const key = `${space}:${id}`;
     return (
       !known.has(key) &&
-      (identities.has(key) || (space === IDENTITY_SPACES.REVISION && revisions.has(id)))
+      (identities.has(key) ||
+        (space === IDENTITY_SPACES.REVISION && revisions.has(id)))
     );
   });
 };
@@ -172,13 +183,19 @@ export const allocateCommentAnchorIds = (
   document: Document,
   op: CreateCommentOp,
 ): Result<NewIds, DocumentOpRefusal> => {
-  const keys = [...packageIdentityKeys(document.package), ...identityKeysIn(op)];
+  const keys = [
+    ...packageIdentityKeys(document.package),
+    ...identityKeysIn(op),
+  ];
   const firstIn = (space: IdentitySpace): number => {
     let largest = 0;
     for (const id of idsIn(keys, space)) largest = Math.max(largest, id);
     return largest + 1;
   };
-  const firstRevision = Math.max(firstIn(IDENTITY_SPACES.REVISION), op.comment.id + 1);
+  const firstRevision = Math.max(
+    firstIn(IDENTITY_SPACES.REVISION),
+    op.comment.id + 1,
+  );
   const firstControl = firstIn(IDENTITY_SPACES.CONTROL);
   const pool = (first: number, count: number): number[] =>
     Array.from({ length: count }, (_, index) => first + index);
@@ -204,7 +221,10 @@ export const allocateCommentAnchorIds = (
     if (trial.error.reason !== DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS)
       return Result.err(trial.error);
     const next = count === 0 ? 1 : count * 2;
-    if (next > MAX_DEMAND || count >= Math.max(capacity.revision, capacity.control))
+    if (
+      next > MAX_DEMAND ||
+      count >= Math.max(capacity.revision, capacity.control)
+    )
       return Result.err(
         new DocumentOpRefusal({
           opType: op.type,
@@ -225,7 +245,8 @@ export const allocateCommentAnchorIds = (
       const middle = Math.floor((low + high) / 2);
       const trial = attempt({ ...counts, [space]: middle });
       if (trial.isOk()) high = middle;
-      else if (trial.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS) low = middle + 1;
+      else if (trial.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS)
+        low = middle + 1;
       else return Result.err(trial.error);
     }
     counts[space] = low;
@@ -274,9 +295,15 @@ export const revisionIdDemand = (
       ]),
       0,
     ) + 1;
-  const control = Array.from({ length: 64 }, (_, index) => firstControl + index);
+  const control = Array.from(
+    { length: 64 },
+    (_, index) => firstControl + index,
+  );
   const attempt = (count: number) =>
-    applyDocumentOp(document, withNewIds(op, { revision: pool(count), control }));
+    applyDocumentOp(
+      document,
+      withNewIds(op, { revision: pool(count), control }),
+    );
   const needsMore = (count: number): boolean | DocumentOpRefusal => {
     const applied = attempt(count);
     if (applied.isOk()) return false;
@@ -326,15 +353,24 @@ const leafPlan = ({ node, ancestors }: LeafSpan, author: string): LeafPlan => {
   if (isCommentAnchor(node)) return "anchor";
   const own = ancestors.some(
     (ancestor) =>
-      isAddedRevision(ancestor) && isTrackedWrapper(ancestor) && ancestor.info.author === author,
+      isAddedRevision(ancestor) &&
+      isTrackedWrapper(ancestor) &&
+      ancestor.info.author === author,
   );
   return own ? "direct" : "tracked";
 };
 
-type Segment = { plan: "direct" | "tracked"; from: Gap; to: Gap; records: boolean };
+type Segment = {
+  plan: "direct" | "tracked";
+  from: Gap;
+  to: Gap;
+  records: boolean;
+};
 
-const laterGap = (left: Gap, right: Gap): Gap => (compareGaps(left, right) >= 0 ? left : right);
-const earlierGap = (left: Gap, right: Gap): Gap => (compareGaps(left, right) <= 0 ? left : right);
+const laterGap = (left: Gap, right: Gap): Gap =>
+  compareGaps(left, right) >= 0 ? left : right;
+const earlierGap = (left: Gap, right: Gap): Gap =>
+  compareGaps(left, right) <= 0 ? left : right;
 
 /**
  * The stretches of a range to delete directly and with tracking, in document
@@ -374,7 +410,11 @@ export const replacementDeletionSegments = ({
     }
     const segmentPlan = plan === "untouched" ? "tracked" : plan;
     const records = plan !== "untouched";
-    if (open !== undefined && open.plan === segmentPlan && compareGaps(open.to, start) === 0) {
+    if (
+      open !== undefined &&
+      open.plan === segmentPlan &&
+      compareGaps(open.to, start) === 0
+    ) {
       open.to = end;
       open.records ||= records;
       continue;
@@ -427,7 +467,11 @@ type TrackedPlanOptions = {
 };
 
 /** Shared allocation and simulation for all pieces of one planned edit. */
-export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOptions) => {
+export const createTrackedPlan = ({
+  document,
+  revision,
+  newIds,
+}: TrackedPlanOptions) => {
   const used = usedIds(document, IDENTITY_SPACES.REVISION);
   const pool = [...new Set(newIds?.revision ?? [])].filter(
     (id) => !used.has(id) && id !== revision.id,
@@ -445,14 +489,19 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
   };
   const append = (input: PlannedReviewOp): Result<void, DocumentOpRefusal> => {
     let op: DocumentOp = input;
-    if (input.type !== DOCUMENT_OP_TYPES.REPLACE_INLINE && input.revision !== undefined) {
+    if (
+      input.type !== DOCUMENT_OP_TYPES.REPLACE_INLINE &&
+      input.revision !== undefined
+    ) {
       // Source cuts consume the caller's pool in the same order as editing.
       // Additional mode-owned stamps use its other end and cannot displace them.
       let stampId = revision.id;
       if (stampUsed) {
         if (remaining <= taken) return outOfIds();
         remaining -= 1;
-        stampId = pool.at(remaining) ?? panic("A reserved stamp has an allocated pool entry.");
+        stampId =
+          pool.at(remaining) ??
+          panic("A reserved stamp has an allocated pool entry.");
       }
       op = { ...input, revision: { ...revision, id: stampId } };
     }
@@ -467,7 +516,8 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     });
     const applied = applyDocumentOp(current, op);
     if (applied.isErr()) return Result.err(applied.error);
-    stampUsed ||= stampOf(input) !== undefined && applied.value.revisions.length > 0;
+    stampUsed ||=
+      stampOf(input) !== undefined && applied.value.revisions.length > 0;
     const before = current;
     current = applied.value.document;
     const story = (() => {
@@ -503,9 +553,18 @@ export const selectedParagraphRuns = (
   to: TextPosition,
 ): Result<ParagraphLocation[][], DocumentOpRefusal> => {
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
-    Result.err(new DocumentOpRefusal({ reason, message, opType: DOCUMENT_OP_TYPES.DELETE_RANGE }));
+    Result.err(
+      new DocumentOpRefusal({
+        reason,
+        message,
+        opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      }),
+    );
   if (!sameStory(from.story, to.story))
-    return refuse(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE, "A text range stays in one story.");
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A text range stays in one story.",
+    );
   const locations = storyParagraphs(storyBody(document, from.story));
   const first = locations.findIndex(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(from.blockId),
@@ -514,7 +573,10 @@ export const selectedParagraphRuns = (
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
   );
   if (first < 0 || last < 0)
-    return refuse(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND, "A range endpoint does not exist.");
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+      "A range endpoint does not exist.",
+    );
   if (first > last)
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
@@ -551,18 +613,30 @@ export const appendTrackedDeletion = ({
 }: PlanDeletionOptions): Result<void, DocumentOpRefusal> => {
   const { from, to, revision } = options;
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
-    Result.err(new DocumentOpRefusal({ reason, message, opType: DOCUMENT_OP_TYPES.DELETE_RANGE }));
+    Result.err(
+      new DocumentOpRefusal({
+        reason,
+        message,
+        opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      }),
+    );
   const partitioned = selectedParagraphRuns(document, from, to);
   if (partitioned.isErr()) return Result.err(partitioned.error);
   if (partitioned.value.length > 1) {
     for (const run of partitioned.value.toReversed()) {
       const first = run.at(0)?.paragraph;
       const last = run.at(-1)?.paragraph;
-      if (!first || !last) panic("A selected paragraph run must contain its endpoints.");
+      if (!first || !last)
+        panic("A selected paragraph run must contain its endpoints.");
       const start =
         idKey(first.paraId ?? "") === idKey(from.blockId)
           ? from
-          : { story: from.story, blockId: first.paraId ?? "", offset: 0, zeroWidthBefore: 0 };
+          : {
+              story: from.story,
+              blockId: first.paraId ?? "",
+              offset: 0,
+              zeroWidthBefore: 0,
+            };
       const end =
         idKey(last.paraId ?? "") === idKey(to.blockId)
           ? to
@@ -570,7 +644,10 @@ export const appendTrackedDeletion = ({
               story: to.story,
               blockId: last.paraId ?? "",
               offset: paragraphLength(last),
-              zeroWidthBefore: zeroWidthLeavesAt(last.content, paragraphLength(last)).length,
+              zeroWidthBefore: zeroWidthLeavesAt(
+                last.content,
+                paragraphLength(last),
+              ).length,
             };
       const appended = appendTrackedDeletion({
         document: plan.document(),
@@ -583,7 +660,10 @@ export const appendTrackedDeletion = ({
   }
   const body = findStoryBody(document, from.story);
   if (!body)
-    return refuse(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND, "The story does not exist.");
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+      "The story does not exist.",
+    );
   const paragraphs = storyParagraphs(body);
   const first = paragraphs.find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(from.blockId),
@@ -592,7 +672,10 @@ export const appendTrackedDeletion = ({
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
   );
   if (first === undefined || last === undefined)
-    return refuse(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND, "A range endpoint does not exist.");
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+      "A range endpoint does not exist.",
+    );
   if (first.index > last.index)
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
@@ -607,7 +690,11 @@ export const appendTrackedDeletion = ({
         DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
         "A planned range cannot cross a non-paragraph block.",
       );
-    const at = { story: from.story, blockId: paragraph.paraId ?? "", offset: 0 };
+    const at = {
+      story: from.story,
+      blockId: paragraph.paraId ?? "",
+      offset: 0,
+    };
     const start = index === first.index ? from : { ...at, zeroWidthBefore: 0 };
     const end =
       index === last.index
@@ -615,8 +702,10 @@ export const appendTrackedDeletion = ({
         : {
             ...at,
             offset: paragraphLength(paragraph),
-            zeroWidthBefore: zeroWidthLeavesAt(paragraph.content, paragraphLength(paragraph))
-              .length,
+            zeroWidthBefore: zeroWidthLeavesAt(
+              paragraph.content,
+              paragraphLength(paragraph),
+            ).length,
           };
     const check = revisionIdDemand(document, {
       type: DOCUMENT_OP_TYPES.DELETE_RANGE,
@@ -629,7 +718,9 @@ export const appendTrackedDeletion = ({
       spans: leafSpans(content),
       from: {
         offset: start.offset,
-        zeroWidthBefore: start.zeroWidthBefore ?? zeroWidthLeavesAt(content, start.offset).length,
+        zeroWidthBefore:
+          start.zeroWidthBefore ??
+          zeroWidthLeavesAt(content, start.offset).length,
       },
       to: { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
       mode: { type: "suggesting", author: revision.author },
@@ -646,12 +737,16 @@ export const appendTrackedDeletion = ({
         from: positionOf(at, segment.from),
         to: positionOf(at, segment.to),
       } satisfies DeleteRangeOp;
-      const appended = plan.append(segment.plan === "tracked" ? { ...op, revision } : op);
+      const appended = plan.append(
+        segment.plan === "tracked" ? { ...op, revision } : op,
+      );
       if (appended.isErr()) return appended;
       const allocated = plan.ops.at(-1);
       const simulated = applyDocumentOp(direct, {
         ...op,
-        ...(allocated?.type === DOCUMENT_OP_TYPES.DELETE_RANGE ? { newIds: allocated.newIds } : {}),
+        ...(allocated?.type === DOCUMENT_OP_TYPES.DELETE_RANGE
+          ? { newIds: allocated.newIds }
+          : {}),
       });
       if (simulated.isErr()) return Result.err(simulated.error);
       direct = simulated.value.document;
@@ -661,10 +756,14 @@ export const appendTrackedDeletion = ({
   for (let index = ranges.length - 2; index >= 0; index -= 1) {
     const leading = ranges[index];
     if (leading === undefined)
-      return refuse(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE, "A planned join has no endpoint.");
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        "A planned join has no endpoint.",
+      );
     const currentBody = storyBody(plan.document(), from.story);
     const currentLeading = storyParagraphs(currentBody).find(
-      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(leading.at.blockId),
+      ({ paragraph }) =>
+        idKey(paragraph.paraId ?? "") === idKey(leading.at.blockId),
     );
     if (currentLeading === undefined)
       return refuse(
@@ -674,8 +773,11 @@ export const appendTrackedDeletion = ({
     const mark = currentLeading.paragraph.pPrMark;
     if (mark?.kind === "del" || mark?.kind === "moveFrom") continue;
     const ownAddedMark =
-      (mark?.kind === "ins" || mark?.kind === "moveTo") && mark.info.author === revision.author;
-    const next = blockListAt(currentBody.content, currentLeading.list).at(currentLeading.index + 1);
+      (mark?.kind === "ins" || mark?.kind === "moveTo") &&
+      mark.info.author === revision.author;
+    const next = blockListAt(currentBody.content, currentLeading.list).at(
+      currentLeading.index + 1,
+    );
     if (next?.type !== "paragraph")
       return refuse(
         DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
@@ -692,7 +794,8 @@ export const appendTrackedDeletion = ({
     if (appended.isErr()) return appended;
     const directBody = storyBody(direct, from.story);
     const directLeading = storyParagraphs(directBody).find(
-      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(leading.at.blockId),
+      ({ paragraph }) =>
+        idKey(paragraph.paraId ?? "") === idKey(leading.at.blockId),
     );
     if (directLeading === undefined)
       return refuse(
@@ -707,14 +810,19 @@ export const appendTrackedDeletion = ({
         DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
         "A simulated join has no following paragraph.",
       );
-    const simulated = applyDocumentOp(direct, { ...join, nextBlockId: directNext.paraId ?? "" });
+    const simulated = applyDocumentOp(direct, {
+      ...join,
+      nextBlockId: directNext.paraId ?? "",
+    });
     if (simulated.isErr()) return Result.err(simulated.error);
     direct = simulated.value.document;
   }
   const survivor = storyParagraphs(storyBody(direct, from.story)).find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
   );
-  const trackedSurvivor = storyParagraphs(storyBody(plan.document(), from.story)).find(
+  const trackedSurvivor = storyParagraphs(
+    storyBody(plan.document(), from.story),
+  ).find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
   );
   if (survivor === undefined || trackedSurvivor === undefined)
@@ -752,7 +860,11 @@ export const planTrackedDeletion = (
   document: Document,
   options: PlanTrackedDeletionOptions,
 ): Result<DocumentOp[], DocumentOpRefusal> => {
-  const plan = createTrackedPlan({ document, revision: options.revision, newIds: options.newIds });
+  const plan = createTrackedPlan({
+    document,
+    revision: options.revision,
+    newIds: options.newIds,
+  });
   const appended = appendTrackedDeletion({ document, options, plan });
   return appended.isErr() ? Result.err(appended.error) : Result.ok(plan.ops);
 };

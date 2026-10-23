@@ -1,5 +1,11 @@
+import type {
+  Image,
+  MediaFile,
+  PreviewShape,
+  RelationshipMap,
+} from "../types/document";
 import { decodeText } from "../utils/textEncoding";
-import type { Image, MediaFile, PreviewShape, RelationshipMap } from "../types/document";
+import { resolveRelationshipIdOfType, resolveRelativePath } from "./relsParser";
 import {
   findChildByNamespaceUri,
   getAttribute,
@@ -9,7 +15,6 @@ import {
   parseNumericAttribute,
   parseXmlDocument,
 } from "./xmlParser";
-import { resolveRelationshipIdOfType, resolveRelativePath } from "./relsParser";
 import type { XmlElement } from "./xmlParser";
 
 /**
@@ -49,7 +54,11 @@ const extent = (drawing: XmlElement): { width: number; height: number } => {
   const container =
     findChildByNamespaceUri(drawing, WORD_DRAWING_NAMESPACE_URIS, "inline") ??
     findChildByNamespaceUri(drawing, WORD_DRAWING_NAMESPACE_URIS, "anchor");
-  const value = findChildByNamespaceUri(container, WORD_DRAWING_NAMESPACE_URIS, "extent");
+  const value = findChildByNamespaceUri(
+    container,
+    WORD_DRAWING_NAMESPACE_URIS,
+    "extent",
+  );
   return {
     width: parseNumericAttribute(value, null, "cx") ?? 0,
     height: parseNumericAttribute(value, null, "cy") ?? 0,
@@ -86,13 +95,18 @@ const partByRelationshipId = ({
   if (resolved.status !== "resolved" || !resolved.relationship.target) {
     return null;
   }
-  const path = resolveRelativePath(DOCUMENT_PART_PATH, resolved.relationship.target);
+  const path = resolveRelativePath(
+    DOCUMENT_PART_PATH,
+    resolved.relationship.target,
+  );
   const cached = cache.get(path);
   if (cached !== undefined) {
     return cached;
   }
   const file = media.get(path);
-  const parsed = file?.data ? parseXmlDocument(decodeText(new Uint8Array(file.data))) : null;
+  const parsed = file?.data
+    ? parseXmlDocument(decodeText(new Uint8Array(file.data)))
+    : null;
   cache.set(path, parsed);
   return parsed;
 };
@@ -172,12 +186,20 @@ const cachedDiagramShapes = (
   media: Map<string, MediaFile>,
   cache: DiagramPartCache,
 ): PreviewShape[] => {
-  const relIds = findChildByNamespaceUri(graphicData, DIAGRAM_NAMESPACE_URIS, "relIds");
+  const relIds = findChildByNamespaceUri(
+    graphicData,
+    DIAGRAM_NAMESPACE_URIS,
+    "relIds",
+  );
   const data = partByRelationshipId({
     rels,
     media,
     cache,
-    rId: getAttributeByNamespaceUri(relIds, OFFICE_RELATIONSHIP_NAMESPACE_URIS, "dm"),
+    rId: getAttributeByNamespaceUri(
+      relIds,
+      OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+      "dm",
+    ),
     type: DIAGRAM_DATA_RELATIONSHIP_TYPE,
   });
   if (!data) {
@@ -205,17 +227,41 @@ const cachedDiagramShapes = (
     "sp",
     MAX_PREVIEW_SHAPES,
   )) {
-    const properties = findChildByNamespaceUri(shape, DIAGRAM_DRAWING_NAMESPACE_URIS, "spPr");
-    const transform = findChildByNamespaceUri(properties, DRAWINGML_NAMESPACE_URIS, "xfrm");
-    const offset = findChildByNamespaceUri(transform, DRAWINGML_NAMESPACE_URIS, "off");
-    const size = findChildByNamespaceUri(transform, DRAWINGML_NAMESPACE_URIS, "ext");
+    const properties = findChildByNamespaceUri(
+      shape,
+      DIAGRAM_DRAWING_NAMESPACE_URIS,
+      "spPr",
+    );
+    const transform = findChildByNamespaceUri(
+      properties,
+      DRAWINGML_NAMESPACE_URIS,
+      "xfrm",
+    );
+    const offset = findChildByNamespaceUri(
+      transform,
+      DRAWINGML_NAMESPACE_URIS,
+      "off",
+    );
+    const size = findChildByNamespaceUri(
+      transform,
+      DRAWINGML_NAMESPACE_URIS,
+      "ext",
+    );
     const width = parseNumericAttribute(size, null, "cx") ?? 0;
     const height = parseNumericAttribute(size, null, "cy") ?? 0;
     if (width <= 0 || height <= 0) {
       continue;
     }
-    const fill = findChildByNamespaceUri(properties, DRAWINGML_NAMESPACE_URIS, "solidFill");
-    const color = findChildByNamespaceUri(fill, DRAWINGML_NAMESPACE_URIS, "srgbClr");
+    const fill = findChildByNamespaceUri(
+      properties,
+      DRAWINGML_NAMESPACE_URIS,
+      "solidFill",
+    );
+    const color = findChildByNamespaceUri(
+      fill,
+      DRAWINGML_NAMESPACE_URIS,
+      "srgbClr",
+    );
     shapes.push({
       type: "rect",
       x: parseNumericAttribute(offset, null, "x") ?? 0,
@@ -262,8 +308,15 @@ export const parseDiagramPreview = (
   if (!rels || !media) {
     return null;
   }
-  const graphicData = firstDescendantByNamespace(drawing, DRAWINGML_NAMESPACE_URIS, "graphicData");
-  if (!graphicData || !DIAGRAM_NAMESPACE_URIS.has(getAttribute(graphicData, null, "uri") ?? "")) {
+  const graphicData = firstDescendantByNamespace(
+    drawing,
+    DRAWINGML_NAMESPACE_URIS,
+    "graphicData",
+  );
+  if (
+    !graphicData ||
+    !DIAGRAM_NAMESPACE_URIS.has(getAttribute(graphicData, null, "uri") ?? "")
+  ) {
     return null;
   }
   const { width, height } = extent(drawing);
@@ -279,7 +332,12 @@ export const parseDiagramPreview = (
     preview: {
       kind: "diagram",
       extent: { width, height },
-      shapes: cachedDiagramShapes(graphicData, rels, media, partCacheFor(media)),
+      shapes: cachedDiagramShapes(
+        graphicData,
+        rels,
+        media,
+        partCacheFor(media),
+      ),
     },
     size: { width, height },
     wrap: { type: "inline" },

@@ -1,6 +1,6 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
-import { TableMap, type Rect } from "prosemirror-tables";
+import { type Rect, TableMap } from "prosemirror-tables";
 import { StepMap } from "prosemirror-transform";
 
 import {
@@ -13,9 +13,13 @@ import {
 } from "../../docx/tableParser";
 import type { TableCell } from "../../types/document";
 import { expectTableAttrs, mergeTableAttrs } from "../attrs";
-import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
+import {
+  nodePropertyRevisionSites,
+  propertyRevisionRecords,
+} from "../revisionCarriers";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
-import { nodePropertyRevisionSites, propertyRevisionRecords } from "../revisionCarriers";
+import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
+import { resolveAllNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 import {
   createRestoredTableCell,
   hasMatchingCollapsedTableCellMerge,
@@ -24,11 +28,10 @@ import {
   tableCellContinuationPayload,
 } from "./tableCellMergeResolution";
 import {
-  tableMergeFoldDecisions,
-  resolvedVisibleTableCellMergeAttrs,
   resolvedTableMergeOriginAttrs,
+  resolvedVisibleTableCellMergeAttrs,
+  tableMergeFoldDecisions,
 } from "./tableMergeFoldDecisions";
-import { resolveAllNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 
 // TableMap.findCell scans the grid for each lookup. Index each rectangle once
 // because whole-table resolution visits every cell.
@@ -41,13 +44,18 @@ const indexedTableCells = (map: TableMap) => {
     const top = Math.floor(index / map.width);
     let right = left + 1;
     let bottom = top + 1;
-    while (right < map.width && map.map[index + right - left] === position) right++;
-    while (bottom < map.height && map.map[index + (bottom - top) * map.width] === position)
+    while (right < map.width && map.map[index + right - left] === position)
+      right++;
+    while (
+      bottom < map.height &&
+      map.map[index + (bottom - top) * map.width] === position
+    )
       bottom++;
     rectangles.set(position, { left, top, right, bottom });
   }
   return (position: number): Rect =>
-    rectangles.get(position) ?? panic("Missing table resolution rectangle", { position });
+    rectangles.get(position) ??
+    panic("Missing table resolution rectangle", { position });
 };
 
 type ResolveMode = "accept" | "reject";
@@ -84,12 +92,17 @@ type CellPlacement = {
   touched: boolean;
 };
 
-type CellMetadata = Pick<CellPlacement, "sourcePosition" | "mapSourcePosition" | "touched">;
+type CellMetadata = Pick<
+  CellPlacement,
+  "sourcePosition" | "mapSourcePosition" | "touched"
+>;
 type RowMetadata = { touched: boolean; cells: readonly CellMetadata[] };
 
 const elementAt = <T>(items: readonly T[], index: number): T => {
   const item = items.at(index);
-  return item === undefined ? panic("Missing table resolution element", { index }) : item;
+  return item === undefined
+    ? panic("Missing table resolution element", { index })
+    : item;
 };
 
 type TableResolutionMetadataOptions = {
@@ -117,7 +130,10 @@ const tableResolutionMetadata = ({
     const row = table.child(rowIndex);
     const metadata = elementAt(rows, rowIndex);
     if (!tableTouched && metadata.touched) {
-      changedParagraphRanges.push({ from: rowStart, to: rowStart + row.nodeSize });
+      changedParagraphRanges.push({
+        from: rowStart,
+        to: rowStart + row.nodeSize,
+      });
     }
     let cellStart = rowStart + 1;
     for (let cellIndex = 0; cellIndex < row.childCount; cellIndex++) {
@@ -132,7 +148,10 @@ const tableResolutionMetadata = ({
         });
       }
       if (!tableTouched && !metadata.touched && cellMetadata.touched) {
-        changedParagraphRanges.push({ from: cellStart, to: cellStart + cell.nodeSize });
+        changedParagraphRanges.push({
+          from: cellStart,
+          to: cellStart + cell.nodeSize,
+        });
       }
       if (cellMetadata.sourcePosition >= 0) {
         const sourceCellPosition = cellMetadata.sourcePosition;
@@ -197,12 +216,18 @@ const tableResolutionMetadata = ({
     sourceCursor = anchor.source + anchor.size;
     finalCursor = anchor.final + anchor.size;
   }
-  return { changedParagraphRanges, paragraphOffsets, positionMap: new StepMap(ranges) };
+  return {
+    changedParagraphRanges,
+    paragraphOffsets,
+    positionMap: new StepMap(ranges),
+  };
 };
 
 const hasNodePropertyRevision = (node: PMNode): boolean =>
   nodePropertyRevisionSites(node.type.name).some(
-    (site) => site.resolution === "node-attrs" && propertyRevisionRecords(node, site).length > 0,
+    (site) =>
+      site.resolution === "node-attrs" &&
+      propertyRevisionRecords(node, site).length > 0,
   );
 
 const rowRevisionKind = (row: PMNode): "trIns" | "trDel" | null => {
@@ -233,7 +258,9 @@ const cellRevisionMarker = (cell: PMNode): CellMarker | null => {
     typeof marker !== "object" ||
     marker === null ||
     !("kind" in marker) ||
-    (marker.kind !== "ins" && marker.kind !== "del" && marker.kind !== "merge") ||
+    (marker.kind !== "ins" &&
+      marker.kind !== "del" &&
+      marker.kind !== "merge") ||
     !("info" in marker) ||
     typeof marker.info !== "object" ||
     marker.info === null ||
@@ -243,11 +270,13 @@ const cellRevisionMarker = (cell: PMNode): CellMarker | null => {
     return null;
   }
   const verticalMergeOriginal =
-    "verticalMergeOriginal" in marker && isTableCellMergeRevisionValue(marker.verticalMergeOriginal)
+    "verticalMergeOriginal" in marker &&
+    isTableCellMergeRevisionValue(marker.verticalMergeOriginal)
       ? marker.verticalMergeOriginal
       : undefined;
   const verticalMerge =
-    "verticalMerge" in marker && isTableCellMergeRevisionValue(marker.verticalMerge)
+    "verticalMerge" in marker &&
+    isTableCellMergeRevisionValue(marker.verticalMerge)
       ? marker.verticalMerge
       : undefined;
   return {
@@ -271,13 +300,24 @@ export const resolveAllTableChanges = ({
   mode,
 }: ResolveAllTableChangesOptions): ResolvedTableChanges => {
   const sourceRows =
-    resolvedRows ?? Array.from({ length: table.childCount }, (_, i) => table.child(i));
-  const tableWithResolvedChildren = table.type.create(table.attrs, sourceRows, table.marks);
-  const tablePropertyTouched = hasNodePropertyRevision(tableWithResolvedChildren);
+    resolvedRows ??
+    Array.from({ length: table.childCount }, (_, i) => table.child(i));
+  const tableWithResolvedChildren = table.type.create(
+    table.attrs,
+    sourceRows,
+    table.marks,
+  );
+  const tablePropertyTouched = hasNodePropertyRevision(
+    tableWithResolvedChildren,
+  );
   const rowPropertyTouched = sourceRows.map(hasNodePropertyRevision);
-  const propertyResolvedTable = resolveTablePropertyAttrs(tableWithResolvedChildren, mode);
-  const rows = Array.from({ length: propertyResolvedTable.childCount }, (_, i) =>
-    propertyResolvedTable.child(i),
+  const propertyResolvedTable = resolveTablePropertyAttrs(
+    tableWithResolvedChildren,
+    mode,
+  );
+  const rows = Array.from(
+    { length: propertyResolvedTable.childCount },
+    (_, i) => propertyResolvedTable.child(i),
   );
   const rowKinds = rows.map(rowRevisionKind);
   const keepRows = rowKinds.map(
@@ -308,7 +348,8 @@ export const resolveAllTableChanges = ({
       const cell = row.child(cellIndex);
       const rectangle = cellRectangle(cellOffset);
       const marker = cellRevisionMarker(cell);
-      const membership = marker?.kind === "ins" || marker?.kind === "del" ? marker : null;
+      const membership =
+        marker?.kind === "ins" || marker?.kind === "del" ? marker : null;
       if (membership !== null) {
         hasCellRevision = true;
       }
@@ -319,7 +360,9 @@ export const resolveAllTableChanges = ({
         bottom: rectangle.bottom,
         sourcePosition: cellOffset,
         mapSourcePosition: cellOffset,
-        touched: hasNodePropertyRevision(elementAt(sourceRows, rowIndex).child(cellIndex)),
+        touched: hasNodePropertyRevision(
+          elementAt(sourceRows, rowIndex).child(cellIndex),
+        ),
       });
       cellOffset += cell.nodeSize;
     }
@@ -354,10 +397,12 @@ export const resolveAllTableChanges = ({
     if (destination >= cell.bottom) {
       continue;
     }
-    const rowspan = elementAt(keptBefore, cell.bottom) - elementAt(keptBefore, destination);
+    const rowspan =
+      elementAt(keptBefore, cell.bottom) - elementAt(keptBefore, destination);
     elementAt(placements, destination)[cell.left] = {
       ...cell,
-      mapSourcePosition: destination === cell.originRow ? cell.mapSourcePosition : -1,
+      mapSourcePosition:
+        destination === cell.originRow ? cell.mapSourcePosition : -1,
       touched: cell.touched || rowspan !== cell.node.attrs["rowspan"],
       node:
         rowspan === cell.node.attrs["rowspan"]
@@ -405,7 +450,9 @@ export const resolveAllTableChanges = ({
     });
   }
   const structural =
-    hasRowRevision || hasCellRevision || hasTablePropertyRevision(tableWithResolvedChildren);
+    hasRowRevision ||
+    hasCellRevision ||
+    hasTablePropertyRevision(tableWithResolvedChildren);
   return {
     node: nextTable,
     changed: structural || !nextTable.eq(table),
@@ -420,7 +467,10 @@ export const resolveAllTableChanges = ({
   };
 };
 
-const resolveTablePropertyAttrs = (table: PMNode, mode: ResolveMode): PMNode => {
+const resolveTablePropertyAttrs = (
+  table: PMNode,
+  mode: ResolveMode,
+): PMNode => {
   const rows: PMNode[] = [];
   for (let rowIndex = 0; rowIndex < table.childCount; rowIndex++) {
     const row = table.child(rowIndex);
@@ -429,10 +479,16 @@ const resolveTablePropertyAttrs = (table: PMNode, mode: ResolveMode): PMNode => 
       cells.push(resolveAllNodePropertyChangeAttrs(row.child(cellIndex), mode));
     }
     rows.push(
-      resolveAllNodePropertyChangeAttrs(row.type.create(row.attrs, cells, row.marks), mode),
+      resolveAllNodePropertyChangeAttrs(
+        row.type.create(row.attrs, cells, row.marks),
+        mode,
+      ),
     );
   }
-  return resolveAllNodePropertyChangeAttrs(table.type.create(table.attrs, rows, table.marks), mode);
+  return resolveAllNodePropertyChangeAttrs(
+    table.type.create(table.attrs, rows, table.marks),
+    mode,
+  );
 };
 
 const hasTablePropertyRevision = (table: PMNode): boolean => {
@@ -465,16 +521,24 @@ type MutableCell = {
 };
 
 type ContinuationLink = { cell: TableCell; next: ContinuationLink | null };
-type ContinuationSequence = { head: ContinuationLink | null; tail: ContinuationLink | null };
+type ContinuationSequence = {
+  head: ContinuationLink | null;
+  tail: ContinuationLink | null;
+};
 
-const appendContinuation = (sequence: ContinuationSequence, cell: TableCell): void => {
+const appendContinuation = (
+  sequence: ContinuationSequence,
+  cell: TableCell,
+): void => {
   const link = { cell, next: null };
   if (sequence.tail) sequence.tail.next = link;
   else sequence.head = link;
   sequence.tail = link;
 };
 
-const continuationSequence = (cells: readonly TableCell[]): ContinuationSequence => {
+const continuationSequence = (
+  cells: readonly TableCell[],
+): ContinuationSequence => {
   const sequence: ContinuationSequence = { head: null, tail: null };
   for (const cell of cells) appendContinuation(sequence, cell);
   return sequence;
@@ -499,7 +563,8 @@ const materializeContinuation = (entry: MutableCell): void => {
   entry.node = entry.node.type.create(
     {
       ...entry.node.attrs,
-      _docxVMergeContinuationCells: transportTableCellsWithParagraphPropertySources(cells),
+      _docxVMergeContinuationCells:
+        transportTableCellsWithParagraphPropertySources(cells),
     },
     entry.node.content,
     entry.node.marks,
@@ -554,7 +619,11 @@ const compactColumnWidths = (
         }
       }
       removed[originalIndex] = 1;
-      for (let index = originalIndex + 1; index <= length; index += index & -index) {
+      for (
+        let index = originalIndex + 1;
+        index <= length;
+        index += index & -index
+      ) {
         tree[index] = (tree[index] ?? 0) - 1;
       }
       remaining--;
@@ -572,16 +641,23 @@ const resolvePureTableMerges = ({
   sourceTable,
 }: ResolvePureTableMergesOptions): ResolvedTableChanges => {
   const map = TableMap.get(table);
-  const mergeDecisions = tableMergeFoldDecisions({ table, mode, revisionSet: null });
+  const mergeDecisions = tableMergeFoldDecisions({
+    table,
+    mode,
+    revisionSet: null,
+  });
   if (mergeDecisions.invalid.size > 0) return failedTableResolution(table);
   const cellRectangle = indexedTableCells(map);
-  const rows = Array.from({ length: table.childCount }, (_, index) => table.child(index));
+  const rows = Array.from({ length: table.childCount }, (_, index) =>
+    table.child(index),
+  );
   const rowCells = rows.map(() => new Map<number, MutableCell>());
   const rowOccupancy = rows.map(() => 0);
   const activeRows = rows.map(() => true);
   const widthCounts = new Map<number, number>();
   const authoredWidths = expectTableAttrs(table).columnWidths;
-  const columnWidths = authoredWidths?.length === map.width ? [...authoredWidths] : undefined;
+  const columnWidths =
+    authoredWidths?.length === map.width ? [...authoredWidths] : undefined;
   const widthRemovals: ColumnWidthRemoval[] = [];
   let currentWidth = map.width;
   let removedCell = false;
@@ -596,14 +672,26 @@ const resolvePureTableMerges = ({
       const node = row.child(cellIndex);
       const rectangle = cellRectangle(cellOffset);
       const left = rectangle.left;
-      for (let coveredRow = rectangle.top; coveredRow < rectangle.bottom; coveredRow++) {
+      for (
+        let coveredRow = rectangle.top;
+        coveredRow < rectangle.bottom;
+        coveredRow++
+      ) {
         rowOccupancy[coveredRow] =
-          elementAt(rowOccupancy, coveredRow) + (rectangle.right - rectangle.left);
+          elementAt(rowOccupancy, coveredRow) +
+          (rectangle.right - rectangle.left);
       }
-      const initial = elementAt(elementAt(rowMetadata, rowIndex).cells, cellIndex);
+      const initial = elementAt(
+        elementAt(rowMetadata, rowIndex).cells,
+        cellIndex,
+      );
       const entry: MutableCell = {
         node: mergeDecisions.origins.has(cellOffset)
-          ? node.type.create(resolvedTableMergeOriginAttrs(node), node.content, node.marks)
+          ? node.type.create(
+              resolvedTableMergeOriginAttrs(node),
+              node.content,
+              node.marks,
+            )
           : node,
         position: cellOffset,
         left,
@@ -649,8 +737,15 @@ const resolvePureTableMerges = ({
         const previousWidth = currentWidth;
         const rectangle = cellRectangle(entry.position);
         const colspan = rectangle.right - rectangle.left;
-        for (let coveredRow = rectangle.top; coveredRow < rectangle.bottom; coveredRow++) {
-          changeRowWidth(coveredRow, elementAt(rowOccupancy, coveredRow) - colspan);
+        for (
+          let coveredRow = rectangle.top;
+          coveredRow < rectangle.bottom;
+          coveredRow++
+        ) {
+          changeRowWidth(
+            coveredRow,
+            elementAt(rowOccupancy, coveredRow) - colspan,
+          );
         }
         elementAt(rowCells, entry.row).delete(entry.left);
         if (elementAt(rowCells, entry.row).size === 0) {
@@ -663,12 +758,16 @@ const resolvePureTableMerges = ({
           currentWidth--;
         }
         if (columnWidths && currentWidth < previousWidth) {
-          widthRemovals.push({ left: entry.left, count: previousWidth - currentWidth });
+          widthRemovals.push({
+            left: entry.left,
+            count: previousWidth - currentWidth,
+          });
         }
       }
     } else if (marker?.kind === "merge") {
       const joinsAbove = mergeDecisions.folds.get(entry.position);
-      if (joinsAbove === undefined) return panic("Merge resolution lost its cell");
+      if (joinsAbove === undefined)
+        return panic("Merge resolution lost its cell");
       if (
         mode === "reject" &&
         isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal) &&
@@ -692,7 +791,8 @@ const resolvePureTableMerges = ({
         if (rectangle.top === 0) {
           return failedTableResolution(table);
         }
-        const abovePosition = map.map[(rectangle.top - 1) * map.width + rectangle.left];
+        const abovePosition =
+          map.map[(rectangle.top - 1) * map.width + rectangle.left];
         if (abovePosition === undefined) {
           return failedTableResolution(table);
         }
@@ -722,10 +822,15 @@ const resolvePureTableMerges = ({
         );
         // Legacy's topology replacement does not mark the surviving anchor
         // paragraph in the change tracker.
-        appendContinuation(above.continuation, tableCellContinuationFromNode(entry.node));
+        appendContinuation(
+          above.continuation,
+          tableCellContinuationFromNode(entry.node),
+        );
         const nested =
           entry.continuation ??
-          continuationSequence(tableCellContinuationPayload(entry.node)?.cells ?? []);
+          continuationSequence(
+            tableCellContinuationPayload(entry.node)?.cells ?? [],
+          );
         appendContinuationSequence(above.continuation, nested);
         above.node = above.node.type.create(
           {
@@ -743,7 +848,12 @@ const resolvePureTableMerges = ({
       continue;
     }
     const originalPayload = tableCellContinuationPayload(entry.node);
-    if (!originalPayload?.cells.some((cell) => getTableCellMergeChange(cell) !== null)) continue;
+    if (
+      !originalPayload?.cells.some(
+        (cell) => getTableCellMergeChange(cell) !== null,
+      )
+    )
+      continue;
     materializeContinuation(entry);
     const payload = tableCellContinuationPayload(entry.node);
     if (!payload) return failedTableResolution(table);
@@ -779,7 +889,9 @@ const resolvePureTableMerges = ({
     if (
       firstSplitIndex === undefined ||
       splitIndices.length !== stored.length - firstSplitIndex ||
-      splitIndices.some((splitIndex, offset) => splitIndex !== firstSplitIndex + offset)
+      splitIndices.some(
+        (splitIndex, offset) => splitIndex !== firstSplitIndex + offset,
+      )
     ) {
       return failedTableResolution(table);
     }
@@ -795,7 +907,8 @@ const resolvePureTableMerges = ({
     const restored = restoreTableCellsWithParagraphPropertySources(payload);
     for (const splitIndex of splitIndices) {
       const source = restored[splitIndex];
-      const restoredCell = source && createRestoredTableCell(entry.node, source);
+      const restoredCell =
+        source && createRestoredTableCell(entry.node, source);
       const rowIndex = rectangle.top + splitIndex + 1;
       if (!restoredCell || elementAt(rowCells, rowIndex).has(rectangle.left)) {
         return failedTableResolution(table);
@@ -836,7 +949,9 @@ const resolvePureTableMerges = ({
   }
   const keptBefore = [0];
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-    keptBefore.push((keptBefore.at(-1) ?? 0) + Number(!deletedRows.has(rowIndex)));
+    keptBefore.push(
+      (keptBefore.at(-1) ?? 0) + Number(!deletedRows.has(rowIndex)),
+    );
   }
   const compacted = rows.map(() => new Map<number, MutableCell>());
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
@@ -846,9 +961,11 @@ const resolvePureTableMerges = ({
       if (typeof originalRowspan !== "number") continue;
       const bottom = Math.min(rowIndex + originalRowspan, rows.length);
       let destination = rowIndex;
-      while (destination < bottom && deletedRows.has(destination)) destination++;
+      while (destination < bottom && deletedRows.has(destination))
+        destination++;
       if (destination === bottom) continue;
-      const rowspan = elementAt(keptBefore, bottom) - elementAt(keptBefore, destination);
+      const rowspan =
+        elementAt(keptBefore, bottom) - elementAt(keptBefore, destination);
       const node =
         rowspan === originalRowspan
           ? entry.node
@@ -888,14 +1005,18 @@ const resolvePureTableMerges = ({
   const gridChanged = removedCell && nextWidth < map.width;
   if (gridChanged) {
     const survivingColumnWidths =
-      columnWidths === undefined ? undefined : compactColumnWidths(columnWidths, widthRemovals);
+      columnWidths === undefined
+        ? undefined
+        : compactColumnWidths(columnWidths, widthRemovals);
     const formatting = expectTableAttrs(nextTable)._originalFormatting;
     const originalFormatting = formatting ? { ...formatting } : undefined;
     if (originalFormatting) delete originalFormatting.gridSourceXml;
     nextTable = nextTable.type.create(
       mergeTableAttrs(nextTable, {
         columnWidths:
-          survivingColumnWidths?.length === nextWidth ? survivingColumnWidths : undefined,
+          survivingColumnWidths?.length === nextWidth
+            ? survivingColumnWidths
+            : undefined,
         _originalFormatting: originalFormatting,
       }),
       nextTable.content,

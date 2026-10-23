@@ -22,15 +22,19 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const AUTHORED = 'w:author="A" w:date="2024-01-01T00:00:00Z"';
 
 /**
@@ -81,13 +85,17 @@ type Placement = (typeof PLACEMENTS)[keyof typeof PLACEMENTS];
 
 const PLACEMENT_VALUES = Object.values(PLACEMENTS);
 
-const paragraph = (text: string): string => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const paragraph = (text: string): string =>
+  `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
 
 const table = (inner: string): string =>
   `<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid>` +
   `<w:tr><w:tc><w:tcPr/>${inner}</w:tc></w:tr></w:tbl>`;
 
-const bodyFor = (placement: Placement, { start, end }: { start: string; end: string }): string => {
+const bodyFor = (
+  placement: Placement,
+  { start, end }: { start: string; end: string },
+): string => {
   switch (placement) {
     case PLACEMENTS.bodyStart:
       return `${start}${paragraph("one")}${end}${paragraph("two")}`;
@@ -114,7 +122,9 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
 };
 
 const savedDocumentXml = async (body: string): Promise<string> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
   const saved = await repackDocx(parsed, { updateModifiedDate: false });
   const zip = await JSZip.loadAsync(saved);
   return (await zip.file("word/document.xml")?.async("text")) ?? "";
@@ -135,8 +145,16 @@ describe("a range marker between blocks survives a save", () => {
           const marker = MARKERS[kind](id);
           const saved = await savedDocumentXml(bodyFor(placement, marker));
 
-          const [startAt, endAt] = positionsOf(saved, [marker.start, marker.end]);
-          expect({ kind, placement, start: startAt !== -1, end: endAt !== -1 }).toEqual({
+          const [startAt, endAt] = positionsOf(saved, [
+            marker.start,
+            marker.end,
+          ]);
+          expect({
+            kind,
+            placement,
+            start: startAt !== -1,
+            end: endAt !== -1,
+          }).toEqual({
             kind,
             placement,
             start: true,
@@ -153,7 +171,9 @@ describe("a range marker between blocks survives a save", () => {
 
   test("a protected range keeps its grant and its place around the paragraph it protects", async () => {
     const marker = MARKERS.perm(900);
-    const saved = await savedDocumentXml(bodyFor(PLACEMENTS.betweenBlocks, marker));
+    const saved = await savedDocumentXml(
+      bodyFor(PLACEMENTS.betweenBlocks, marker),
+    );
 
     expect(saved).toContain('<w:permStart w:id="900" w:edGrp="everyone"/>');
     expect(saved).toContain('<w:permEnd w:id="900"/>');

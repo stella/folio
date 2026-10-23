@@ -1,21 +1,27 @@
 /** Pure wire-fixture construction, shared by snapshot tests and generation. */
 import path from "node:path";
-import type { Document, Paragraph, Table, TableRow } from "../../model/document";
-import { captureSectionView, captureSectionViewState } from "../blocks";
-import { packageResourcesOpOf } from "../packageResources";
+
+import type {
+  Document,
+  Paragraph,
+  Table,
+  TableRow,
+} from "../../model/document";
 import { applyDocumentOp } from "../apply";
+import { captureSectionView, captureSectionViewState } from "../blocks";
 import { cloneModel } from "../modelClone";
+import { packageResourcesOpOf } from "../packageResources";
 import { captureStoryParts } from "../storyLifecycle";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
-  SECTION_BOUNDARY_POLICIES,
-  PROPERTY_REVIEW_POLICIES,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type DocumentOpEnvelope,
-  toOpEnvelope,
   OP_STORIES,
+  PROPERTY_REVIEW_POLICIES,
   REVISION_DECISIONS,
+  SECTION_BOUNDARY_POLICIES,
+  toOpEnvelope,
 } from "../types";
 
 export const wireFixturePath = path.join(
@@ -31,7 +37,11 @@ const stamp = (id: number) => ({
   initials: "R",
 });
 
-const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+const at = (blockId: string, offset: number) => ({
+  story: OP_STORIES.MAIN,
+  blockId,
+  offset,
+});
 
 const first: Paragraph = {
   type: "paragraph",
@@ -39,7 +49,11 @@ const first: Paragraph = {
   formatting: { alignment: "center" },
   preservedAttributes: [{ name: "rsidR", value: "00A1B2C3" }],
   content: [
-    { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "Alpha " }] },
+    {
+      type: "run",
+      formatting: { bold: true },
+      content: [{ type: "text", text: "Alpha " }],
+    },
     { type: "bookmarkStart", id: 1, name: "_Ref1" },
     {
       type: "insertion",
@@ -47,7 +61,10 @@ const first: Paragraph = {
       content: [{ type: "run", content: [{ type: "text", text: "beta" }] }],
     },
     { type: "bookmarkEnd", id: 1 },
-    { type: "run", content: [{ type: "text", text: " gamma" }, { type: "tab" }] },
+    {
+      type: "run",
+      content: [{ type: "text", text: " gamma" }, { type: "tab" }],
+    },
   ],
 };
 
@@ -57,7 +74,9 @@ const second: Paragraph = {
   content: [{ type: "run", content: [{ type: "text", text: "Delta" }] }],
 };
 
-const document: Document = { package: { document: { content: [first, second] } } };
+const document: Document = {
+  package: { document: { content: [first, second] } },
+};
 
 /** Each operation, applied in turn to what the previous one produced. */
 const OPS: readonly DocumentOp[] = [
@@ -90,7 +109,9 @@ const OPS: readonly DocumentOp[] = [
         {
           type: "paragraph",
           paraId: "00001000",
-          content: [{ type: "run", content: [{ type: "text", text: "Comment" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Comment" }] },
+          ],
         },
       ],
     },
@@ -108,7 +129,11 @@ const OPS: readonly DocumentOp[] = [
     ],
     patch: { date: "2026-02-03T04:05:06Z" },
   },
-  { type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION, id: 400, status: "resolved" },
+  {
+    type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+    id: 400,
+    status: "resolved",
+  },
   { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id: 400, scope: "thread" },
   {
     type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
@@ -149,7 +174,11 @@ const OPS: readonly DocumentOp[] = [
     text: "X",
     runProps: { italic: true },
   },
-  { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from: at("00000001", 5), to: at("00000001", 9) },
+  {
+    type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+    from: at("00000001", 5),
+    to: at("00000001", 9),
+  },
   { type: DOCUMENT_OP_TYPES.SPLIT_INLINE, at: at("00000002", 2), depth: 2 },
   { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at: at("00000002", 2), depth: 2 },
   {
@@ -279,7 +308,9 @@ export const envelopes = (): DocumentOpEnvelope[] => {
           {
             type: "paragraph",
             paraId,
-            content: [{ type: "run", content: [{ type: "text", text: "Cell" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "Cell" }] },
+            ],
           },
         ],
       },
@@ -369,7 +400,10 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       document: {
         package: {
           document: {
-            content: [{ type: "table", rows: [row("00000042"), row("00000043")] }, second],
+            content: [
+              { type: "table", rows: [row("00000042"), row("00000043")] },
+              second,
+            ],
           },
         },
       },
@@ -410,7 +444,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       const resolved = applyDocumentOp(result.value.document, resolution);
       if (resolved.isErr()) throw resolved.error;
       out.push(toOpEnvelope(resolution));
-      for (const inverse of resolved.value.inverse) out.push(toOpEnvelope(inverse));
+      for (const inverse of resolved.value.inverse)
+        out.push(toOpEnvelope(inverse));
     }
   }
   const terminalOp = {
@@ -426,7 +461,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   );
   if (terminalResult.isErr()) throw terminalResult.error;
   out.push(toOpEnvelope(terminalOp));
-  for (const inverse of terminalResult.value.inverse) out.push(toOpEnvelope(inverse));
+  for (const inverse of terminalResult.value.inverse)
+    out.push(toOpEnvelope(inverse));
   const sectionBoundary: Paragraph = {
     ...second,
     paraId: "00000051",
@@ -450,7 +486,9 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       },
     },
   };
-  const snapshot = captureSectionView(sectionDocument.package.document.sections ?? []);
+  const snapshot = captureSectionView(
+    sectionDocument.package.document.sections ?? [],
+  );
   const sectionOps = [
     {
       type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
@@ -469,7 +507,9 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
       story: OP_STORIES.MAIN,
       expected: [sectionBoundary],
-      blocks: [{ ...sectionBoundary, sectionProperties: { pageWidth: 11_000 } }],
+      blocks: [
+        { ...sectionBoundary, sectionProperties: { pageWidth: 11_000 } },
+      ],
       sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
     },
     {
@@ -483,7 +523,9 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
       endpoint: { type: "final" },
       properties: { type: "present", value: { pageHeight: 12_000 } },
-      expectedSectionMetadata: captureSectionViewState(sectionDocument.package.document),
+      expectedSectionMetadata: captureSectionViewState(
+        sectionDocument.package.document,
+      ),
       sectionMetadata: {
         type: "sections",
         value: snapshot.map(({ properties, headers }) => ({
@@ -514,9 +556,13 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     const applied = applyDocumentOp(sectionDocument, op);
     if (applied.isErr()) throw applied.error;
     out.push(toOpEnvelope(op));
-    for (const inverse of applied.value.inverse) out.push(toOpEnvelope(inverse));
+    for (const inverse of applied.value.inverse)
+      out.push(toOpEnvelope(inverse));
   }
-  for (const endpoint of [{ type: "paragraph", blockId: "00000002" }, { type: "final" }] as const) {
+  for (const endpoint of [
+    { type: "paragraph", blockId: "00000002" },
+    { type: "final" },
+  ] as const) {
     const input: Document = {
       package: {
         document: {
@@ -539,7 +585,12 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     package: {
       document: {
         content: [
-          { type: "paragraph", paraId: "00000001", formatting: { numPr: undefined }, content: [] },
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            formatting: { numPr: undefined },
+            content: [],
+          },
         ],
       },
     },
@@ -604,12 +655,15 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       story: { kind: "footnote", id: 1 },
     },
   ] as const satisfies readonly DocumentOp[];
-  let lifecycleDocument: Document = { package: { document: { content: [second] } } };
+  let lifecycleDocument: Document = {
+    package: { document: { content: [second] } },
+  };
   for (const op of lifecycleOps) {
     const applied = applyDocumentOp(lifecycleDocument, op);
     if (applied.isErr()) throw applied.error;
     out.push(toOpEnvelope(op));
-    for (const inverse of applied.value.inverse) out.push(toOpEnvelope(inverse));
+    for (const inverse of applied.value.inverse)
+      out.push(toOpEnvelope(inverse));
     lifecycleDocument = applied.value.document;
   }
   // Persist the producer's own-undefined lifecycle presence across every target.
@@ -620,7 +674,14 @@ export const envelopes = (): DocumentOpEnvelope[] => {
         background: undefined,
         finalSectionProperties: undefined,
         comments: undefined,
-        sections: [{ content: [second], properties: {}, headers: undefined, footers: undefined }],
+        sections: [
+          {
+            content: [second],
+            properties: {},
+            headers: undefined,
+            footers: undefined,
+          },
+        ],
       },
       headers: undefined,
       footers: undefined,
@@ -656,11 +717,15 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       cells: [0, 1].map((column) => ({
         type: "tableCell",
         formatting: { verticalAlign: "center", noWrap: true },
-        content: [{ type: "paragraph", paraId: `000001${index}${column}`, content: [] }],
+        content: [
+          { type: "paragraph", paraId: `000001${index}${column}`, content: [] },
+        ],
       })),
     })),
   };
-  const editDocument: Document = { package: { document: { content: [editTable, second] } } };
+  const editDocument: Document = {
+    package: { document: { content: [editTable, second] } },
+  };
   const editTarget = {
     story: OP_STORIES.MAIN,
     blockId: "00000100",
@@ -684,7 +749,11 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       right: 2,
       newBlockIds: ["00000202"],
     },
-    { ...editTarget, type: DOCUMENT_OP_TYPES.SET_TABLE_GRID, columnWidths: [1600, 2200] },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+      columnWidths: [1600, 2200],
+    },
     {
       ...editTarget,
       type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
@@ -708,7 +777,12 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     {
       ...editTarget,
       type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
-      patch: { justification: "right", layout: "autofit", styleId: null, bidi: true },
+      patch: {
+        justification: "right",
+        layout: "autofit",
+        styleId: null,
+        bidi: true,
+      },
     },
     {
       ...editTarget,
@@ -777,7 +851,9 @@ export const envelopes = (): DocumentOpEnvelope[] => {
           {
             type: "tableCell",
             formatting: { gridSpan: 2 },
-            content: [{ type: "paragraph", paraId: `0000030${index}`, content: [] }],
+            content: [
+              { type: "paragraph", paraId: `0000030${index}`, content: [] },
+            ],
           },
         ],
       }),
@@ -796,7 +872,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   );
   if (splitResult.isErr()) throw splitResult.error;
   out.push(toOpEnvelope(splitOp));
-  for (const inverse of splitResult.value.inverse) out.push(toOpEnvelope(inverse));
+  for (const inverse of splitResult.value.inverse)
+    out.push(toOpEnvelope(inverse));
   const trackedSplitOp = {
     ...splitOp,
     revision: stamp(570),
@@ -808,7 +885,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   );
   if (trackedSplitResult.isErr()) throw trackedSplitResult.error;
   out.push(toOpEnvelope(trackedSplitOp));
-  for (const inverse of trackedSplitResult.value.inverse) out.push(toOpEnvelope(inverse));
+  for (const inverse of trackedSplitResult.value.inverse)
+    out.push(toOpEnvelope(inverse));
 
   return out;
 };

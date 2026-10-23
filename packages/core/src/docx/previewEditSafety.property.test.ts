@@ -27,20 +27,24 @@ import fc from "fast-check";
 import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-import type { Document, DrawingContent } from "../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { expectImageAttrs, mergeImageAttrs } from "../prosemirror/attrs";
-import { allowsDirectDrawingEdit, classifyDrawingSafety } from "./imageRawXml";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { ImageAttrs } from "../prosemirror/schema/nodes";
+import type { Document, DrawingContent } from "../types/document";
+import { allowsDirectDrawingEdit, classifyDrawingSafety } from "./imageRawXml";
 import { parseDocx, parseDocxWithPreviewBudget } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const DOCUMENT_NAMESPACES = [
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
@@ -158,12 +162,18 @@ const imageNodeIn = (document: PMNode): { node: PMNode; position: number } => {
  * Apply an edit the way a host that ignores the refusal would: straight onto
  * the node's attrs, through the merge the commit seam uses.
  */
-const withEditedImage = (projected: PMNode, patch: Partial<ImageAttrs>): PMNode => {
+const withEditedImage = (
+  projected: PMNode,
+  patch: Partial<ImageAttrs>,
+): PMNode => {
   const { node } = imageNodeIn(projected);
   const edited = node.type.create(mergeImageAttrs(node, patch));
   const paragraph = projected.child(0);
   return projected.copy(
-    projected.content.replaceChild(0, paragraph.copy(paragraph.content.replaceChild(0, edited))),
+    projected.content.replaceChild(
+      0,
+      paragraph.copy(paragraph.content.replaceChild(0, edited)),
+    ),
   );
 };
 
@@ -174,17 +184,22 @@ type SavedPackage = {
 };
 
 const savedPackageOf = async (document: Document): Promise<SavedPackage> => {
-  const zip = await JSZip.loadAsync(await repackDocx(document, { updateModifiedDate: false }));
+  const zip = await JSZip.loadAsync(
+    await repackDocx(document, { updateModifiedDate: false }),
+  );
   return {
     documentXml: (await zip.file("word/document.xml")?.async("string")) ?? "",
-    relationshipsXml: (await zip.file("word/_rels/document.xml.rels")?.async("string")) ?? "",
+    relationshipsXml:
+      (await zip.file("word/_rels/document.xml.rels")?.async("string")) ?? "",
     entries: Object.keys(zip.files),
   };
 };
 
 describe("a preview names no relationship", () => {
   test.each(PREVIEW_KINDS_UNDER_TEST)("%s", async (kind) => {
-    const document = await parseDocx(await packageWith(kind), { preloadFonts: false });
+    const document = await parseDocx(await packageWith(kind), {
+      preloadFonts: false,
+    });
     const drawing = drawingOf(document);
 
     expect(drawing.image.rId).toBeUndefined();
@@ -200,7 +215,11 @@ describe("an edited preview saves the drawing it was made from", () => {
     const sources = new Map(
       await Promise.all(
         PREVIEW_KINDS_UNDER_TEST.map(
-          async (kind) => [kind, await packageWith(kind)] as const satisfies [string, ArrayBuffer],
+          async (kind) =>
+            [kind, await packageWith(kind)] as const satisfies [
+              string,
+              ArrayBuffer,
+            ],
         ),
       ),
     );
@@ -241,8 +260,12 @@ describe("an edited preview saves the drawing it was made from", () => {
           expect(classifyDrawingSafety(savedDrawing)).not.toBe("native");
 
           // Nothing folio drew became part of the package.
-          expect(saved.entries.some((path) => path.startsWith("word/media/"))).toBe(false);
-          expect(saved.relationshipsXml).not.toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
+          expect(
+            saved.entries.some((path) => path.startsWith("word/media/")),
+          ).toBe(false);
+          expect(saved.relationshipsXml).not.toContain(
+            `Type="${RELATIONSHIP_TYPES.image}"`,
+          );
           expect(saved.documentXml).not.toContain("r:embed=");
 
           // And reopening the save gives back the drawing that went in.
@@ -253,7 +276,9 @@ describe("an edited preview saves the drawing it was made from", () => {
           const reopenedDrawing = drawingOf(reopened);
           expect(reopenedDrawing.rawXml).toBe(authoredCapture);
           expect(reopenedDrawing.image.rId).toBeUndefined();
-          expect(expectImageAttrs(imageNodeIn(toProseDoc(reopened)).node).rId).toBeUndefined();
+          expect(
+            expectImageAttrs(imageNodeIn(toProseDoc(reopened)).node).rId,
+          ).toBeUndefined();
         },
       ),
       propertyConfig(),

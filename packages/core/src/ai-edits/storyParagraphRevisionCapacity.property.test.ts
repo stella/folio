@@ -1,10 +1,13 @@
-import { expect, test } from "bun:test";
 import { panic } from "better-result";
+import { expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
@@ -12,7 +15,7 @@ import {
 import { createDocx } from "../docx/rezip";
 import type { Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./headless";
+import { type FolioDocumentStoryHandle, FolioDocxReviewer } from "./headless";
 
 const STORIES = {
   main: { type: "main" },
@@ -20,7 +23,10 @@ const STORIES = {
   footer: { type: "footer", relationshipId: "rIdFooter1" },
   footnote: { type: "footnote", noteId: 1 },
   endnote: { type: "endnote", noteId: 1 },
-} as const satisfies Record<FolioDocumentStoryHandle["type"], FolioDocumentStoryHandle>;
+} as const satisfies Record<
+  FolioDocumentStoryHandle["type"],
+  FolioDocumentStoryHandle
+>;
 
 const PARTS = {
   main: "word/document.xml",
@@ -30,7 +36,10 @@ const PARTS = {
   endnote: "word/endnotes.xml",
 } as const satisfies Record<keyof typeof STORIES, string>;
 
-const fixture = async (length: number, referencePosition: "leading" | "trailing" = "trailing") => {
+const fixture = async (
+  length: number,
+  referencePosition: "leading" | "trailing" = "trailing",
+) => {
   const document = createEmptyDocument();
   const paragraphs = (prefix: number) =>
     Array.from(
@@ -40,7 +49,12 @@ const fixture = async (length: number, referencePosition: "leading" | "trailing"
           type: "paragraph",
           paraId: (prefix + index).toString(16),
           formatting: { alignment: "left" },
-          content: [{ type: "run", content: [{ type: "text", text: `Clause ${index}.` }] }],
+          content: [
+            {
+              type: "run",
+              content: [{ type: "text", text: `Clause ${index}.` }],
+            },
+          ],
         }) satisfies Paragraph,
     );
   document.package.document.content = paragraphs(0x10000000);
@@ -57,7 +71,8 @@ const fixture = async (length: number, referencePosition: "leading" | "trailing"
       },
     ],
   } satisfies Paragraph;
-  if (referencePosition === "leading") document.package.document.content.unshift(references);
+  if (referencePosition === "leading")
+    document.package.document.content.unshift(references);
   else document.package.document.content.push(references);
   document.package.headers = new Map([
     [
@@ -79,8 +94,12 @@ const fixture = async (length: number, referencePosition: "leading" | "trailing"
       },
     ],
   ]);
-  document.package.footnotes = [{ type: "footnote", id: 1, content: paragraphs(0x50000000) }];
-  document.package.endnotes = [{ type: "endnote", id: 1, content: paragraphs(0x60000000) }];
+  document.package.footnotes = [
+    { type: "footnote", id: 1, content: paragraphs(0x50000000) },
+  ];
+  document.package.endnotes = [
+    { type: "endnote", id: 1, content: paragraphs(0x60000000) },
+  ];
   document.package.document.finalSectionProperties = {
     ...document.package.document.finalSectionProperties,
     headerReferences: [{ type: "default", rId: STORIES.header.relationshipId }],
@@ -97,7 +116,8 @@ type BlockOptions = {
 
 const block = ({ reviewer, story, index }: BlockOptions) => {
   const target = reviewer.snapshotStory(story)?.blocks.at(index);
-  if (!target) panic("The story capacity fixture lost its paragraph", { story, index });
+  if (!target)
+    panic("The story capacity fixture lost its paragraph", { story, index });
   return target;
 };
 
@@ -125,15 +145,22 @@ type CapacityOptions = {
   occupiedParaId?: string;
 };
 
-const capacity = async ({ reviewer, kind, occupiedParaId }: CapacityOptions) => {
+const capacity = async ({
+  reviewer,
+  kind,
+  occupiedParaId,
+}: CapacityOptions) => {
   const zip = await JSZip.loadAsync(await reviewer.toBuffer());
   const part = zip.file(PARTS[kind]);
-  if (!part) panic("The story capacity fixture lost its package part", { kind });
+  if (!part)
+    panic("The story capacity fixture lost its package part", { kind });
   const xml = await part.async("string");
   const paragraphs = xml.match(/<w:p\b[\s\S]*?<\/w:p>/gu) ?? [];
   expect(paragraphs.length).toBeGreaterThan(0);
   for (const paragraph of paragraphs) {
-    expect(paragraph.match(/<w:pPrChange\b/gu)?.length ?? 0).toBeLessThanOrEqual(1);
+    expect(
+      paragraph.match(/<w:pPrChange\b/gu)?.length ?? 0,
+    ).toBeLessThanOrEqual(1);
   }
   if (occupiedParaId !== undefined) {
     const target = paragraphs.find((paragraph) =>
@@ -152,7 +179,13 @@ type CapacityCase = {
   merge: "explicit" | "carried";
 };
 
-const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: CapacityCase) => {
+const checkCapacity = async ({
+  kind,
+  attempts,
+  length,
+  pendingAt,
+  merge,
+}: CapacityCase) => {
   const story = STORIES[kind];
   const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(length));
   // Deleted intermediate marks move the formatting destination beyond the next paragraph.
@@ -172,7 +205,10 @@ const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: Capac
   const targetIndex = pendingAt === "first" ? 0 : length - 1;
   for (let index = 0; index < attempts; index++) {
     const before = reviewer.snapshotStory(story);
-    const changes = reviewer.readReviewedStory({ story, view: "current-markup" })?.changes;
+    const changes = reviewer.readReviewedStory({
+      story,
+      view: "current-markup",
+    })?.changes;
     const result = apply({
       reviewer,
       story,
@@ -190,9 +226,9 @@ const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: Capac
         { id: `property-${index}`, reason: "pendingParagraphPropertyChange" },
       ]);
       expect(reviewer.snapshotStory(story)).toEqual(before);
-      expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual(
-        changes,
-      );
+      expect(
+        reviewer.readReviewedStory({ story, view: "current-markup" })?.changes,
+      ).toEqual(changes);
     }
     await capacity({ reviewer, kind });
   }
@@ -205,7 +241,10 @@ const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: Capac
     });
   }
   const before = reviewer.snapshotStory(story);
-  const changes = reviewer.readReviewedStory({ story, view: "current-markup" })?.changes;
+  const changes = reviewer.readReviewedStory({
+    story,
+    view: "current-markup",
+  })?.changes;
   const result = apply({
     reviewer,
     story,
@@ -227,7 +266,9 @@ const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: Capac
       { id: "formatting-merge", reason: "pendingParagraphPropertyChange" },
     ]);
     expect(reviewer.snapshotStory(story)).toEqual(before);
-    expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual(changes);
+    expect(
+      reviewer.readReviewedStory({ story, view: "current-markup" })?.changes,
+    ).toEqual(changes);
   } else {
     expect(result.status).toBe("committed");
   }
@@ -235,31 +276,44 @@ const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: Capac
   const saved = await reviewer.toBuffer();
   const rejecting = await FolioDocxReviewer.fromBuffer(saved);
   rejecting.rejectAll();
-  const reopenedRejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+  const reopenedRejected = await FolioDocxReviewer.fromBuffer(
+    await rejecting.toBuffer(),
+  );
   expect(
     reopenedRejected
       .snapshotStory(story)
       ?.blocks.slice(0, length)
       .map((snapshotBlock) => {
         const paragraph = expectParagraphBlock(snapshotBlock);
-        return { text: paragraph.text, directAlignment: paragraph.directAlignment };
+        return {
+          text: paragraph.text,
+          directAlignment: paragraph.directAlignment,
+        };
       }),
   ).toEqual(
-    Array.from({ length }, (_, index) => ({ text: `Clause ${index}.`, directAlignment: "left" })),
+    Array.from({ length }, (_, index) => ({
+      text: `Clause ${index}.`,
+      directAlignment: "left",
+    })),
   );
   const accepting = await FolioDocxReviewer.fromBuffer(saved);
   accepting.acceptAll();
-  const reopenedAccepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
-  expect(reopenedAccepted.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual(
-    [],
+  const reopenedAccepted = await FolioDocxReviewer.fromBuffer(
+    await accepting.toBuffer(),
   );
+  expect(
+    reopenedAccepted.readReviewedStory({ story, view: "current-markup" })
+      ?.changes,
+  ).toEqual([]);
   const aligned = reopenedAccepted
     .snapshotStory(story)
     ?.blocks.find(({ text }) => text.includes(`Clause ${targetIndex}.`));
   let mergedAlignment = "left";
   if (merge === "explicit") mergedAlignment = "both";
   if (attempts > 0 && pendingAt === "first") mergedAlignment = "center";
-  expect(expectParagraphBlock(aligned).directAlignment).toBe(refused ? "center" : mergedAlignment);
+  expect(expectParagraphBlock(aligned).directAlignment).toBe(
+    refused ? "center" : mergedAlignment,
+  );
 };
 
 // The old merge guard inspected only the first paragraph; its formatting writer
@@ -300,10 +354,19 @@ test.each(Object.values(STORIES))(
         fc.constantFrom("first" as const, "survivor" as const),
         fc.constantFrom("explicit" as const, "carried" as const),
         async (attempts, length, pendingAt, merge) => {
-          await checkCapacity({ kind: type, attempts, length, pendingAt, merge });
+          await checkCapacity({
+            kind: type,
+            attempts,
+            length,
+            pendingAt,
+            merge,
+          });
         },
       ),
-      { numRuns: 20, id: "$type formatting sequences preserve paragraph revision capacity" },
+      {
+        numRuns: 20,
+        id: "$type formatting sequences preserve paragraph revision capacity",
+      },
     );
   },
   propertyTestTimeout(120_000),
@@ -362,14 +425,18 @@ test.each(Object.values(STORIES))(
     const saved = await reviewer.toBuffer();
     const accepting = await FolioDocxReviewer.fromBuffer(saved);
     accepting.acceptAll();
-    const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    const accepted = await FolioDocxReviewer.fromBuffer(
+      await accepting.toBuffer(),
+    );
     expect(accepted.snapshotStory(story)?.blocks.at(0)).toMatchObject({
       text: "Clause 0. Clause 1.",
       directAlignment: "center",
     });
     const rejecting = await FolioDocxReviewer.fromBuffer(saved);
     rejecting.rejectAll();
-    const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+    const rejected = await FolioDocxReviewer.fromBuffer(
+      await rejecting.toBuffer(),
+    );
     expect(
       rejected
         .snapshotStory(story)
@@ -429,9 +496,10 @@ test.each(Object.values(STORIES))(
     const saved = await reviewer.toBuffer();
     const accepting = await FolioDocxReviewer.fromBuffer(saved);
     accepting.acceptAll();
-    expect(expectParagraphBlock(accepting.snapshotStory(story)?.blocks.at(0)).directAlignment).toBe(
-      "center",
-    );
+    expect(
+      expectParagraphBlock(accepting.snapshotStory(story)?.blocks.at(0))
+        .directAlignment,
+    ).toBe("center");
     const rejecting = await FolioDocxReviewer.fromBuffer(saved);
     rejecting.rejectAll();
     expect(
@@ -440,7 +508,10 @@ test.each(Object.values(STORIES))(
         ?.blocks.slice(0, 2)
         .map((snapshotBlock) => {
           const paragraph = expectParagraphBlock(snapshotBlock);
-          return { text: paragraph.text, directAlignment: paragraph.directAlignment };
+          return {
+            text: paragraph.text,
+            directAlignment: paragraph.directAlignment,
+          };
         }),
     ).toEqual([
       { text: "Clause 0.", directAlignment: "left" },
@@ -494,7 +565,10 @@ test.each(Object.values(STORIES))(
     };
     const batch = await prepare();
     const sequential = await prepare();
-    const operations = ({ source, survivor }: Awaited<ReturnType<typeof prepare>>) =>
+    const operations = ({
+      source,
+      survivor,
+    }: Awaited<ReturnType<typeof prepare>>) =>
       [
         {
           id: "delete-final",
@@ -510,7 +584,11 @@ test.each(Object.values(STORIES))(
       ] as const satisfies FolioDocumentOperationBatch["operations"];
     const sequentialOperations = operations(sequential);
     expect(
-      apply({ reviewer: sequential.reviewer, story, operation: sequentialOperations[0] }).status,
+      apply({
+        reviewer: sequential.reviewer,
+        story,
+        operation: sequentialOperations[0],
+      }).status,
     ).toBe("committed");
     await capacity({
       reviewer: sequential.reviewer,
@@ -519,8 +597,14 @@ test.each(Object.values(STORIES))(
     });
     const before = sequential.reviewer.snapshotStory(story);
     expect(
-      apply({ reviewer: sequential.reviewer, story, operation: sequentialOperations[1] }).skipped,
-    ).toEqual([{ id: "explicit-merge", reason: "pendingParagraphPropertyChange" }]);
+      apply({
+        reviewer: sequential.reviewer,
+        story,
+        operation: sequentialOperations[1],
+      }).skipped,
+    ).toEqual([
+      { id: "explicit-merge", reason: "pendingParagraphPropertyChange" },
+    ]);
     expect(sequential.reviewer.snapshotStory(story)).toEqual(before);
     const result = batch.reviewer.applyDocumentOperationsToStory({
       undefinedReferences: "refuse",
@@ -540,7 +624,10 @@ test.each(Object.values(STORIES))(
     const content = (reviewer: FolioDocxReviewer) =>
       reviewer.snapshotStory(story)?.blocks.map((snapshotBlock) => {
         const paragraph = expectParagraphBlock(snapshotBlock);
-        return { text: paragraph.text, directAlignment: paragraph.directAlignment };
+        return {
+          text: paragraph.text,
+          directAlignment: paragraph.directAlignment,
+        };
       });
     expect(content(batch.reviewer)).toEqual(content(sequential.reviewer));
   },

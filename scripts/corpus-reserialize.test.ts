@@ -10,12 +10,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
+
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
 import type { Document, DrawingContent } from "@stll/folio-core/types/document";
-import JSZip from "jszip";
 
 import {
   type CorpusInvariantInput,
@@ -48,15 +49,20 @@ const PREVIEW_ONLY_MODE = "previewOnly";
 /** `REPLAY_PREFIX` in the module under test. */
 const REPLAY_PREFIX = "replay hides a serializer difference at";
 
-const WORDPROCESSING = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const OFFICE_RELATIONSHIP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const WORDPROCESSING =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const OFFICE_RELATIONSHIP =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const WORDML_2010 = "http://schemas.microsoft.com/office/word/2010/wordml";
 const DRAWING_WORDPROCESSING =
   "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
 const DRAWING_MAIN = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const WORD_GROUP = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
-const WORD_SHAPE = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
-const DRAWING_PICTURE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+const WORD_GROUP =
+  "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
+const WORD_SHAPE =
+  "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+const DRAWING_PICTURE =
+  "http://schemas.openxmlformats.org/drawingml/2006/picture";
 
 /**
  * A package whose only authored part is the body: `createEmptyDocx` supplies
@@ -97,7 +103,8 @@ const packageWithBody = async (
 };
 
 /** Attribute order as the producer wrote it: replay reproduces this spelling. */
-const AUTHORED_SPACING = '<w:spacing w:line="360" w:lineRule="auto" w:before="240" w:after="120"/>';
+const AUTHORED_SPACING =
+  '<w:spacing w:line="360" w:lineRule="auto" w:before="240" w:after="120"/>';
 const AUTHORED_INDENT = '<w:ind w:firstLine="360" w:left="720"/>';
 
 /** Attribute order the serializer produces from the model, once replay is gone. */
@@ -154,7 +161,9 @@ const documentXmlOf = async (buffer: ArrayBuffer): Promise<string> => {
   return xml;
 };
 
-const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => ({
+const inputFor = async (
+  buffer: ArrayBuffer,
+): Promise<CorpusInvariantInput> => ({
   bytes: new Uint8Array(buffer),
   buffer,
   parsed: await parseDocx(buffer, { preloadFonts: false }),
@@ -172,7 +181,9 @@ type CaptureCensus = {
 };
 
 const captureCensus = (document: Document): CaptureCensus => {
-  const table = document.package.document.content.find((block) => block.type === "table");
+  const table = document.package.document.content.find(
+    (block) => block.type === "table",
+  );
   if (table === undefined) {
     throw new Error("the fixture has no table");
   }
@@ -192,7 +203,10 @@ const captureCensus = (document: Document): CaptureCensus => {
  * slots. The narrowing doubles as the assertion that `rawXmlMode` survived:
  * a clone that lost it would not reach the branch.
  */
-type PreviewDrawing = Extract<DrawingContent, { rawXmlMode: typeof PREVIEW_ONLY_MODE }>;
+type PreviewDrawing = Extract<
+  DrawingContent,
+  { rawXmlMode: typeof PREVIEW_ONLY_MODE }
+>;
 
 const previewDrawing = (document: Document): PreviewDrawing => {
   const block = document.package.document.content.at(0);
@@ -204,7 +218,9 @@ const previewDrawing = (document: Document): PreviewDrawing => {
     .flatMap((run) => run.content)
     .find((content) => content.type === "drawing");
   if (drawing?.rawXmlMode !== PREVIEW_ONLY_MODE) {
-    throw new Error("the grouped fixture did not parse as a rasterized preview");
+    throw new Error(
+      "the grouped fixture did not parse as a rasterized preview",
+    );
   }
   return drawing;
 };
@@ -214,9 +230,13 @@ describe("removing the captures makes the serializers run", () => {
     const buffer = await packageWithBody(DIRECTLY_FORMATTED_BODY);
     const parsed = await parseDocx(buffer, { preloadFonts: false });
 
-    const replayed = await documentXmlOf(await repackDocx(parsed, { updateModifiedDate: false }));
+    const replayed = await documentXmlOf(
+      await repackDocx(parsed, { updateModifiedDate: false }),
+    );
     const forced = await documentXmlOf(
-      await repackDocx(withoutSerializerCaptures(parsed), { updateModifiedDate: false }),
+      await repackDocx(withoutSerializerCaptures(parsed), {
+        updateModifiedDate: false,
+      }),
     );
 
     expect(forced).not.toBe(replayed);
@@ -258,9 +278,12 @@ describe("removing the captures makes the serializers run", () => {
   });
 
   test("a drawing's fingerprint is poisoned while its raw XML and mode are kept", async () => {
-    const parsed = await parseDocx(await packageWithBody(GROUPED_DRAWING_BODY), {
-      preloadFonts: false,
-    });
+    const parsed = await parseDocx(
+      await packageWithBody(GROUPED_DRAWING_BODY),
+      {
+        preloadFonts: false,
+      },
+    );
     const drawing = previewDrawing(parsed);
 
     const cloned = previewDrawing(withoutSerializerCaptures(parsed));
@@ -300,7 +323,9 @@ describe("removing the captures makes the serializers run", () => {
    */
   test("a difference only the forced path shows is reported as a hidden one", async () => {
     const outcome = await runReserializeInvariant(
-      await inputFor(await packageWithBody(PICTURE_DRAWING_BODY, PICTURE_RELATIONSHIP_ID)),
+      await inputFor(
+        await packageWithBody(PICTURE_DRAWING_BODY, PICTURE_RELATIONSHIP_ID),
+      ),
     );
 
     expect(outcome.failures.length).toBeGreaterThan(0);
@@ -310,9 +335,9 @@ describe("removing the captures makes the serializers run", () => {
     expect(Object.keys(outcome.timings)).toContain("control-save");
     // Every difference, not the first: the signatures are distinct, which is
     // what stops a fix to one of them from revealing the next as a new defect.
-    expect(new Set(outcome.failures.map((failure) => failure.message)).size).toBe(
-      outcome.failures.length,
-    );
+    expect(
+      new Set(outcome.failures.map((failure) => failure.message)).size,
+    ).toBe(outcome.failures.length);
   });
 
   test("a poisoned group preview replays, so the forced path reports nothing", async () => {

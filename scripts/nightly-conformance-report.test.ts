@@ -1,7 +1,17 @@
 import { expect, test } from "bun:test";
-import type { ClosedIssueDisposition, Issue, IssueStore } from "./fuzz-issue-classes";
-import { conformanceReportBody, fileConformanceReport } from "./nightly-failure-issues";
-import { groupConformanceFailures, parseFailures, unparsedFailure } from "./nightly-failure-issues";
+
+import type {
+  ClosedIssueDisposition,
+  Issue,
+  IssueStore,
+} from "./fuzz-issue-classes";
+import {
+  conformanceReportBody,
+  fileConformanceReport,
+  groupConformanceFailures,
+  parseFailures,
+  unparsedFailure,
+} from "./nightly-failure-issues";
 
 const context = {
   kind: "conformance" as const,
@@ -39,7 +49,13 @@ const fakeStore = (initial: Issue[] = []) => {
       const issue = issues.find((candidate) => candidate.number === number);
       if (issue === undefined) throw new Error("Unknown test issue");
       const { title, body } = issue;
-      issues[issues.indexOf(issue)] = { number, title, body, state: "open", closedAt: null };
+      issues[issues.indexOf(issue)] = {
+        number,
+        title,
+        body,
+        state: "open",
+        closedAt: null,
+      };
       writes.push("reopen");
       comments.push(comment);
     },
@@ -91,7 +107,10 @@ test("arbitrary group counts and later runs update one standing issue, preservin
   expect(writes).toEqual(["edit"]);
   await fileConformanceReport({
     failures: [unparsedFailure("conformance")],
-    context: { ...context, runUrl: "https://github.com/stella/folio/actions/runs/12345678902" },
+    context: {
+      ...context,
+      runUrl: "https://github.com/stella/folio/actions/runs/12345678902",
+    },
     store,
   });
   expect(writes).toEqual(["edit", "edit"]);
@@ -114,7 +133,9 @@ test("a closed standing issue reopens even after fourteen days", async () => {
   ]);
   await fileConformanceReport({ failures, context, store });
   expect(writes).toEqual(["reopen"]);
-  expect(comments).toEqual([`Reopening: conformance failures recurred in ${context.runUrl}.`]);
+  expect(comments).toEqual([
+    `Reopening: conformance failures recurred in ${context.runUrl}.`,
+  ]);
   expect(issues.at(0)?.state).toBe("open");
   await fileConformanceReport({ failures, context, store });
   expect(writes).toEqual(["reopen"]);
@@ -132,7 +153,13 @@ test("marker matches anywhere in the body independently of the title", async () 
       closedAt: "2026-10-01T00:00:00Z",
       disposition: FIXED,
     },
-    { number: 2, title: "Renamed standing report", state: "open", body, closedAt: null },
+    {
+      number: 2,
+      title: "Renamed standing report",
+      state: "open",
+      body,
+      closedAt: null,
+    },
   ]);
   await fileConformanceReport({ failures, context, store });
   expect(writes).toEqual([]);
@@ -147,11 +174,21 @@ test("out-of-order runs never replace or reopen newer evidence", async () => {
       const { store, writes, issues } = fakeStore([
         state === "open"
           ? { number: 1404, title: "Tracker", body, state, closedAt: null }
-          : { number: 1404, title: "Tracker", body, state, closedAt: null, disposition: FIXED },
+          : {
+              number: 1404,
+              title: "Tracker",
+              body,
+              state,
+              closedAt: null,
+              disposition: FIXED,
+            },
       ]);
       await fileConformanceReport({
         failures: [],
-        context: { ...context, runUrl: `https://github.com/stella/folio/actions/runs/${olderRun}` },
+        context: {
+          ...context,
+          runUrl: `https://github.com/stella/folio/actions/runs/${olderRun}`,
+        },
         store,
       });
       expect(writes).toEqual([]);
@@ -177,7 +214,11 @@ test("missing or ambiguous standing markers never create or update an issue", as
       ),
     );
     await expect(
-      fileConformanceReport({ failures: [unparsedFailure("conformance")], context, store }),
+      fileConformanceReport({
+        failures: [unparsedFailure("conformance")],
+        context,
+        store,
+      }),
     ).rejects.toThrow("Expected one issue marked");
     expect(writes).toEqual([]);
   }

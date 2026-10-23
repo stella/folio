@@ -2,20 +2,23 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import type { Comment } from "@stll/folio-core/types/content";
-import type { Document } from "@stll/folio-core/types/document";
-import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { act, useLayoutEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+
 import { writeCommentAnchorIds } from "@stll/folio-core/render-dom/commentAnchorAttributes";
+import type { Comment } from "@stll/folio-core/types/content";
+import type { Document } from "@stll/folio-core/types/document";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
 import { allocateCommentId, createComment } from "./commentsHelpers";
 import { useFolioComments } from "./useFolioComments";
 
 // React only silences its "not wrapped in act" warning when this flag is set.
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 // Unmount every root so the hook's effect cleanup cancels its pending frame
 // and timer; otherwise that work outlives the test that scheduled it.
@@ -116,7 +119,10 @@ describe("useFolioComments.setComments", () => {
     const loaded = [makeComment(41)];
     doc.package.document.comments = loaded;
     const changes: Comment[][] = [];
-    const harness = mount({ doc, onCommentsChange: (next) => changes.push(next) });
+    const harness = mount({
+      doc,
+      onCommentsChange: (next) => changes.push(next),
+    });
     expect(changes).toEqual([loaded]);
     expect(harness.hook.comments).toBe(loaded);
     harness.rerender();
@@ -242,7 +248,9 @@ describe("useFolioComments.setComments", () => {
     act(() => {
       harness.hook.setComments(next);
       expect(harness.hook.commentsRef.current).toBe(authoritative);
-      expect(harness.hook.commentsRef.current.map((comment) => comment.id)).toEqual([1]);
+      expect(
+        harness.hook.commentsRef.current.map((comment) => comment.id),
+      ).toEqual([1]);
     });
 
     expect(changes).toEqual([next]);
@@ -260,7 +268,9 @@ describe("useFolioComments.setComments", () => {
         return [...previous, makeComment(3)];
       });
     });
-    expect(changes.map((comments) => comments.map((comment) => comment.id))).toEqual([
+    expect(
+      changes.map((comments) => comments.map((comment) => comment.id)),
+    ).toEqual([
       [1, 2],
       [1, 3],
     ]);
@@ -291,7 +301,11 @@ describe("useFolioComments.setComments", () => {
 
 describe("useFolioComments highlight sync", () => {
   /** A painted content root: one run in comment 7, one in both 7 and 9. */
-  const paintedRoot = (): { root: HTMLElement; inOne: HTMLElement; inBoth: HTMLElement } => {
+  const paintedRoot = (): {
+    root: HTMLElement;
+    inOne: HTMLElement;
+    inBoth: HTMLElement;
+  } => {
     const root = document.createElement("div");
     const inOne = document.createElement("span");
     const inBoth = document.createElement("span");
@@ -347,7 +361,10 @@ describe("useFolioComments auto-open", () => {
 describe("useFolioComments committed canonical comments", () => {
   const hostModes = [
     { name: "uncontrolled", commentsProp: undefined },
-    { name: "controlled with unchanged host props", commentsProp: [] as Comment[] },
+    {
+      name: "controlled with unchanged host props",
+      commentsProp: [] as Comment[],
+    },
   ] as const;
 
   for (const { name, commentsProp } of hostModes) {
@@ -377,7 +394,11 @@ describe("useFolioComments committed canonical comments", () => {
   for (const { name, commentsProp } of hostModes) {
     test(`${name}: loaded canonical threads open the sidebar once when enabled`, () => {
       const committed = { current: [makeComment(41)] };
-      const harness = mount({ commentsProp, committed, autoOpenReviewSidebar: true });
+      const harness = mount({
+        commentsProp,
+        committed,
+        autoOpenReviewSidebar: true,
+      });
       expect(harness.hook.showCommentsSidebar).toBe(true);
       act(() => harness.hook.setShowCommentsSidebar(false));
       committed.current = [makeComment(41), makeComment(42)];
@@ -387,17 +408,23 @@ describe("useFolioComments committed canonical comments", () => {
 
     test(`${name}: disabled auto-open and resolved canonical threads keep the sidebar closed`, () => {
       const committed = { current: [makeComment(41)] };
-      expect(mount({ commentsProp, committed }).hook.showCommentsSidebar).toBe(false);
+      expect(mount({ commentsProp, committed }).hook.showCommentsSidebar).toBe(
+        false,
+      );
       committed.current = [{ ...makeComment(41), done: true }];
       expect(
-        mount({ commentsProp, committed, autoOpenReviewSidebar: true }).hook.showCommentsSidebar,
+        mount({ commentsProp, committed, autoOpenReviewSidebar: true }).hook
+          .showCommentsSidebar,
       ).toBe(false);
     });
   }
 
   test("without a canonical list the host comments stay the source", () => {
     const hostComment = makeComment(7);
-    const harness = mount({ commentsProp: [hostComment], committed: { current: null } });
+    const harness = mount({
+      commentsProp: [hostComment],
+      committed: { current: null },
+    });
     expect(harness.hook.visibleComments).toEqual([hostComment]);
   });
 });

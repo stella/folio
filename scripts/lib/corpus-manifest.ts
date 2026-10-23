@@ -9,11 +9,10 @@
  * any of its bytes.
  */
 
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
-
-import { TaggedError } from "better-result";
 
 export class CorpusManifestError extends TaggedError("CorpusManifestError")<{
   message: string;
@@ -43,7 +42,9 @@ export const CORPUS_TIERS = {
 
 export type CorpusTier = (typeof CORPUS_TIERS)[keyof typeof CORPUS_TIERS];
 
-export const DEFAULT_CORPUS_TIERS: readonly CorpusTier[] = [CORPUS_TIERS.permissive];
+export const DEFAULT_CORPUS_TIERS: readonly CorpusTier[] = [
+  CORPUS_TIERS.permissive,
+];
 
 const CORPUS_TIER_VALUES = new Set<unknown>(Object.values(CORPUS_TIERS));
 
@@ -95,8 +96,14 @@ export const CORPUS_DIRECTORY = path.join(REPOSITORY_ROOT, "corpus");
 export const MANIFEST_PATH = path.join(CORPUS_DIRECTORY, "sources.json");
 export const LOCK_PATH = path.join(CORPUS_DIRECTORY, "sources.lock.json");
 export const BASELINE_PATH = path.join(CORPUS_DIRECTORY, "baseline.json");
-export const EXPECTED_REFUSALS_PATH = path.join(CORPUS_DIRECTORY, "expected-refusals.json");
-export const EXPECTED_DISPOSITIONS_PATH = path.join(CORPUS_DIRECTORY, "expected-dispositions.json");
+export const EXPECTED_REFUSALS_PATH = path.join(
+  CORPUS_DIRECTORY,
+  "expected-refusals.json",
+);
+export const EXPECTED_DISPOSITIONS_PATH = path.join(
+  CORPUS_DIRECTORY,
+  "expected-dispositions.json",
+);
 
 const SOURCE_ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SHA256_RE = /^[a-f0-9]{64}$/u;
@@ -109,7 +116,12 @@ const SOURCE_PATH_RE = /^\/[\w./*-]*\*\.docx$/u;
 
 const AUDIT_STATUSES = new Set<unknown>(["needs-review", "reviewed"]);
 const REDISTRIBUTION_POLICIES = new Set<unknown>(["cache-only"]);
-const LICENSE_KEYS = new Set(["auditStatus", "noticeUrl", "redistribution", "spdxId"]);
+const LICENSE_KEYS = new Set([
+  "auditStatus",
+  "noticeUrl",
+  "redistribution",
+  "spdxId",
+]);
 const SOURCE_KEYS = new Set([
   "commit",
   "id",
@@ -122,7 +134,12 @@ const SOURCE_KEYS = new Set([
   "title",
   "tree",
 ]);
-const MANIFEST_KEYS = new Set(["fileLimit", "maxFileBytes", "schemaVersion", "sources"]);
+const MANIFEST_KEYS = new Set([
+  "fileLimit",
+  "maxFileBytes",
+  "schemaVersion",
+  "sources",
+]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -159,7 +176,11 @@ const validateRequiredString = (
   }
 };
 
-const validateLicense = (value: unknown, location: string, issues: string[]): void => {
+const validateLicense = (
+  value: unknown,
+  location: string,
+  issues: string[],
+): void => {
   if (!isRecord(value)) {
     issues.push(`${location}: expected an object`);
     return;
@@ -181,14 +202,20 @@ const validateLicense = (value: unknown, location: string, issues: string[]): vo
   }
 };
 
-const validatePaths = (value: unknown, location: string, issues: string[]): void => {
+const validatePaths = (
+  value: unknown,
+  location: string,
+  issues: string[],
+): void => {
   if (!Array.isArray(value) || value.length === 0) {
     issues.push(`${location}: expected a non-empty array`);
     return;
   }
   for (const [index, pattern] of value.entries()) {
     if (typeof pattern !== "string" || !SOURCE_PATH_RE.test(pattern)) {
-      issues.push(`${location}[${index}]: expected a rooted \`*.docx\` sparse-checkout pattern`);
+      issues.push(
+        `${location}[${index}]: expected a rooted \`*.docx\` sparse-checkout pattern`,
+      );
       continue;
     }
     if (pattern.split("/").includes("..")) {
@@ -197,7 +224,11 @@ const validatePaths = (value: unknown, location: string, issues: string[]): void
   }
 };
 
-const validateSource = (value: unknown, index: number, issues: string[]): void => {
+const validateSource = (
+  value: unknown,
+  index: number,
+  issues: string[],
+): void => {
   const location = `sources[${index}]`;
   if (!isRecord(value)) {
     issues.push(`${location}: expected an object`);
@@ -214,8 +245,13 @@ const validateSource = (value: unknown, index: number, issues: string[]): void =
   if (typeof id === "string" && !SOURCE_ID_RE.test(id)) {
     issues.push(`${location}.id: expected kebab-case`);
   }
-  if (typeof repository === "string" && !GITHUB_REPOSITORY_RE.test(repository)) {
-    issues.push(`${location}.repository: expected a GitHub HTTPS repository URL`);
+  if (
+    typeof repository === "string" &&
+    !GITHUB_REPOSITORY_RE.test(repository)
+  ) {
+    issues.push(
+      `${location}.repository: expected a GitHub HTTPS repository URL`,
+    );
   }
   for (const key of ["commit", "tree"]) {
     const objectId = value[key];
@@ -238,7 +274,11 @@ export const validateCorpusManifest = (value: unknown): string[] => {
   }
   for (const key of ["fileLimit", "maxFileBytes"]) {
     const limit = value[key];
-    if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit <= 0) {
+    if (
+      typeof limit !== "number" ||
+      !Number.isSafeInteger(limit) ||
+      limit <= 0
+    ) {
       issues.push(`manifest.${key}: expected a positive safe integer`);
     }
   }
@@ -269,7 +309,10 @@ const parseJson = (text: string, what: string): unknown => {
   try {
     return JSON.parse(text);
   } catch (cause) {
-    throw new CorpusManifestError({ message: `${what} is not valid JSON`, cause });
+    throw new CorpusManifestError({
+      message: `${what} is not valid JSON`,
+      cause,
+    });
   }
 };
 
@@ -309,9 +352,13 @@ export const loadCorpusManifest = async (): Promise<LoadedCorpusManifest> => {
     });
   }
   if (!isCorpusManifest(value)) {
-    throw new CorpusManifestError({ message: "corpus/sources.json validation failed" });
+    throw new CorpusManifestError({
+      message: "corpus/sources.json validation failed",
+    });
   }
-  const unreviewed = value.sources.filter((source) => source.license.auditStatus !== "reviewed");
+  const unreviewed = value.sources.filter(
+    (source) => source.license.auditStatus !== "reviewed",
+  );
   if (unreviewed.length > 0) {
     throw new CorpusManifestError({
       message: `Licence review is pending for: ${unreviewed.map((source) => source.id).join(", ")}`,
@@ -324,12 +371,19 @@ export const loadCorpusLock = async (): Promise<CorpusLock> => {
   const file = Bun.file(LOCK_PATH);
   if (!(await file.exists())) {
     throw new CorpusManifestError({
-      message: "corpus/sources.lock.json is missing. Run `bun run corpus:lock`.",
+      message:
+        "corpus/sources.lock.json is missing. Run `bun run corpus:lock`.",
     });
   }
   const value = parseJson(await file.text(), "corpus/sources.lock.json");
-  if (!isRecord(value) || value["schemaVersion"] !== 1 || !Array.isArray(value["sources"])) {
-    throw new CorpusManifestError({ message: "corpus/sources.lock.json has an unknown shape" });
+  if (
+    !isRecord(value) ||
+    value["schemaVersion"] !== 1 ||
+    !Array.isArray(value["sources"])
+  ) {
+    throw new CorpusManifestError({
+      message: "corpus/sources.lock.json has an unknown shape",
+    });
   }
   // SAFETY: the shape check above plus `corpusLockDigest`'s field reads are the
   // only contract this lock has; it is generated by `corpus-sources.ts lock`.
@@ -355,7 +409,10 @@ export const corpusLockDigest = (lock: CorpusLock): string => {
   const hash = createHash("sha256");
   for (const source of lock.sources) {
     for (const file of source.files) {
-      hash.update(`${source.id}\u0000${file.path}\u0000${file.sha256}\n`, "utf8");
+      hash.update(
+        `${source.id}\u0000${file.path}\u0000${file.sha256}\n`,
+        "utf8",
+      );
     }
   }
   return hash.digest("hex");
@@ -372,7 +429,10 @@ const DEFAULT_CACHE_DIRECTORY = path.join(homedir(), ".cache", "folio-corpus");
  */
 export const assertOutsideRepository = (directory: string): string => {
   const resolved = path.resolve(directory);
-  if (resolved === REPOSITORY_ROOT || resolved.startsWith(`${REPOSITORY_ROOT}${path.sep}`)) {
+  if (
+    resolved === REPOSITORY_ROOT ||
+    resolved.startsWith(`${REPOSITORY_ROOT}${path.sep}`)
+  ) {
     throw new CorpusManifestError({
       message: `${resolved} is inside the repository; corpus content is never committed.`,
     });
@@ -388,13 +448,19 @@ export const assertOutsideRepository = (directory: string): string => {
  */
 export const corpusCacheRoot = (): string => {
   const override = Bun.env["FOLIO_CORPUS_CACHE"];
-  const root = override === undefined || override.length === 0 ? DEFAULT_CACHE_DIRECTORY : override;
+  const root =
+    override === undefined || override.length === 0
+      ? DEFAULT_CACHE_DIRECTORY
+      : override;
   return assertOutsideRepository(root);
 };
 
 export const sourceCheckoutPath = (sourceId: string): string =>
   path.join(corpusCacheRoot(), "sources", sourceId);
 
-export const writeJsonFile = async (filePath: string, value: unknown): Promise<void> => {
+export const writeJsonFile = async (
+  filePath: string,
+  value: unknown,
+): Promise<void> => {
   await Bun.write(filePath, `${JSON.stringify(value, null, 2)}\n`);
 };

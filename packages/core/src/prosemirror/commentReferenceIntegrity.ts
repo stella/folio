@@ -52,18 +52,30 @@ export const planCommentReferenceRepairs = ({
 
   for (const reference of references) {
     if (reference.status === "malformed") {
-      deletions.push({ type: "delete", position: reference.position, size: reference.size });
+      deletions.push({
+        type: "delete",
+        position: reference.position,
+        size: reference.size,
+      });
       continue;
     }
     // An orphan: the comment it names no longer covers anything, so nothing
     // in the editor can show it. A second reference for a live comment is a
     // duplicate; the first one wins so the repair is order-independent.
     if (!markedIds.has(reference.commentId)) {
-      deletions.push({ type: "delete", position: reference.position, size: reference.size });
+      deletions.push({
+        type: "delete",
+        position: reference.position,
+        size: reference.size,
+      });
       continue;
     }
     if (keptIds.has(reference.commentId)) {
-      deletions.push({ type: "delete", position: reference.position, size: reference.size });
+      deletions.push({
+        type: "delete",
+        position: reference.position,
+        size: reference.size,
+      });
       continue;
     }
     keptIds.add(reference.commentId);

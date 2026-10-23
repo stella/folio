@@ -10,7 +10,10 @@ import type { FolioCheckboxProps } from "../folio-ui";
  */
 export function DefaultCheckbox({ className, ...props }: FolioCheckboxProps) {
   return (
-    <CheckboxPrimitive.Root className={cn("folio-default-checkbox", className)} {...props}>
+    <CheckboxPrimitive.Root
+      className={cn("folio-default-checkbox", className)}
+      {...props}
+    >
       <CheckboxPrimitive.Indicator className="folio-default-checkbox-indicator">
         <svg
           aria-hidden="true"

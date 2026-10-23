@@ -55,7 +55,10 @@ function isKeepNextPassThroughParagraph(block: ParagraphBlock): boolean {
   return !isAuthoredEmptyParagraph(block);
 }
 
-function startsTrailingTableSeparatorChain(blocks: FlowBlock[], index: number): boolean {
+function startsTrailingTableSeparatorChain(
+  blocks: FlowBlock[],
+  index: number,
+): boolean {
   const block = blocks[index];
   if (
     block?.kind !== "paragraph" ||
@@ -88,7 +91,9 @@ function startsTrailingTableSeparatorChain(blocks: FlowBlock[], index: number): 
  *
  * Returns a map from chain start index to chain info.
  */
-export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNextChain> {
+export function computeKeepNextChains(
+  blocks: FlowBlock[],
+): Map<number, KeepNextChain> {
   const chains = new Map<number, KeepNextChain>();
   const processed = new Set<number>();
 
@@ -108,7 +113,10 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
     const para = block;
     // Word carries a trailing table separator to the next visible paragraph
     // instead of leaving the blank at the bottom of the preceding page.
-    if (!para.attrs?.keepNext && !startsTrailingTableSeparatorChain(blocks, i)) {
+    if (
+      !para.attrs?.keepNext &&
+      !startsTrailingTableSeparatorChain(blocks, i)
+    ) {
       continue;
     }
 
@@ -135,7 +143,10 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
       }
 
       const nextPara = nextBlock;
-      if (nextPara.attrs?.keepNext || isKeepNextPassThroughParagraph(nextPara)) {
+      if (
+        nextPara.attrs?.keepNext ||
+        isKeepNextPassThroughParagraph(nextPara)
+      ) {
         // Word carries keepNext across structural empty paragraphs. Treat
         // them as pass-through members so a blank separator cannot strand a
         // heading at the bottom of the preceding page.
@@ -187,7 +198,10 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
  *   longer one needs its first two lines.
  * - Otherwise a single line.
  */
-function minimumOpeningLineCount(block: ParagraphBlock, measure: ParagraphMeasure): number {
+function minimumOpeningLineCount(
+  block: ParagraphBlock,
+  measure: ParagraphMeasure,
+): number {
   const lineCount = measure.lines.length;
   if (block.attrs?.keepLines === true) {
     return lineCount;
@@ -239,7 +253,8 @@ export function calculateChainHeight(
     collapseParagraphSpacing({
       before: firstBlock.attrs?.spacing?.before ?? 0,
       after: incomingSpacing,
-    }) + measuredLineRangeHeight(firstMeasure.lines, 0, firstMeasure.lines.length);
+    }) +
+    measuredLineRangeHeight(firstMeasure.lines, 0, firstMeasure.lines.length);
   let trailingSpacing = firstBlock.attrs?.spacing?.after ?? 0;
 
   const successorIndices = [...chain.memberIndices.slice(1)];
@@ -262,9 +277,16 @@ export function calculateChainHeight(
     ) {
       // A table has no paragraph spacing of its own: the gap before it is the
       // previous paragraph's space after.
-      return totalHeight + trailingSpacing + tableOpeningHeight(successorBlock, successorMeasure);
+      return (
+        totalHeight +
+        trailingSpacing +
+        tableOpeningHeight(successorBlock, successorMeasure)
+      );
     }
-    if (successorBlock?.kind !== "paragraph" || successorMeasure?.kind !== "paragraph") {
+    if (
+      successorBlock?.kind !== "paragraph" ||
+      successorMeasure?.kind !== "paragraph"
+    ) {
       return totalHeight;
     }
 
@@ -277,9 +299,17 @@ export function calculateChainHeight(
       return totalHeight;
     }
 
-    const isAnchor = index === successorIndices.length - 1 && chain.anchorIndex !== -1;
-    const openingLines = minimumOpeningLineCount(successorBlock, successorMeasure);
-    totalHeight += measuredLineRangeHeight(successorMeasure.lines, 0, openingLines);
+    const isAnchor =
+      index === successorIndices.length - 1 && chain.anchorIndex !== -1;
+    const openingLines = minimumOpeningLineCount(
+      successorBlock,
+      successorMeasure,
+    );
+    totalHeight += measuredLineRangeHeight(
+      successorMeasure.lines,
+      0,
+      openingLines,
+    );
     if (isAnchor || openingLines < lineCount) {
       return totalHeight;
     }
@@ -294,7 +324,9 @@ export function calculateChainHeight(
  * Get the set of indices that are mid-chain (not chain starters).
  * These should skip the keepNext check since their chain starter already decided.
  */
-export function getMidChainIndices(chains: Map<number, KeepNextChain>): Set<number> {
+export function getMidChainIndices(
+  chains: Map<number, KeepNextChain>,
+): Set<number> {
   const midChain = new Set<number>();
 
   for (const chain of chains.values()) {

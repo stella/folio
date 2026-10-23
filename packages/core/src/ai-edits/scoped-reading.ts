@@ -26,7 +26,9 @@ const toSectionHandle = (
 };
 
 /** Build a flat, ordered outline with stable handles and explicit parents. */
-export const getFolioDocumentOutline = (snapshot: FolioAIEditSnapshot): FolioDocumentOutline => {
+export const getFolioDocumentOutline = (
+  snapshot: FolioAIEditSnapshot,
+): FolioDocumentOutline => {
   const sections: FolioDocumentOutlineEntry[] = [];
   const parentStack: FolioDocumentOutlineEntry[] = [];
 
@@ -78,7 +80,9 @@ export const readFolioDocumentSection = (
     return { status: "stale" };
   }
 
-  const startIndex = snapshot.blocks.findIndex(({ id }) => id === handle.headingBlockId);
+  const startIndex = snapshot.blocks.findIndex(
+    ({ id }) => id === handle.headingBlockId,
+  );
   if (startIndex === -1) {
     return { status: "missing" };
   }
@@ -108,7 +112,9 @@ export const readFolioDocumentSection = (
       heading,
       // A section is what a reader would read. The blank paragraphs between
       // its blocks are part of the document's shape, not part of the section.
-      blocks: snapshot.blocks.slice(startIndex, endIndex).filter(isFolioAIContentBlock),
+      blocks: snapshot.blocks
+        .slice(startIndex, endIndex)
+        .filter(isFolioAIContentBlock),
     },
   };
 };

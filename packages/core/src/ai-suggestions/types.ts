@@ -164,7 +164,8 @@ export type AICitation = {
 /**
  * Bar status, surfaced by Folio to the user.
  */
-export type AIBarStatus = "idle" | "generating" | "review-ready" | "applying" | "error";
+export type AIBarStatus =
+  "idle" | "generating" | "review-ready" | "applying" | "error";
 
 /**
  * Configuration for the AI suggestions feature.
@@ -214,7 +215,8 @@ export const DEFAULT_AI_SUGGESTION_PRESETS: AISuggestionPreset[] = [
     id: "summary",
     label: "Summarise this document",
     description: "Quick overview of the parties, subject, and key terms.",
-    prompt: "Summarise this document. List parties, subject matter, and key terms.",
+    prompt:
+      "Summarise this document. List parties, subject matter, and key terms.",
     mode: "ask",
   },
   {
@@ -242,14 +244,16 @@ export const DEFAULT_AI_SUGGESTION_PRESETS: AISuggestionPreset[] = [
     id: "defined-terms",
     label: "Check defined terms",
     description: "Flag inconsistent capitalization of defined terms.",
-    prompt: "Flag inconsistent capitalization or usage of defined terms across the document.",
+    prompt:
+      "Flag inconsistent capitalization or usage of defined terms across the document.",
     mode: "edit",
   },
   {
     id: "shall",
     label: "Plain-language pass",
     description: "Replace “shall” and other archaisms with modern equivalents.",
-    prompt: "Replace “shall” and other legal archaisms with modern equivalents.",
+    prompt:
+      "Replace “shall” and other legal archaisms with modern equivalents.",
     mode: "edit",
   },
   {

@@ -1,11 +1,15 @@
 import { defineConfig } from "@playwright/test";
-import { PINNED_BROWSER_INPUT_TAG } from "./tests/visual/browserInputRegressions";
+
 import { PLAYGROUND_HOSTS } from "./tests/parity/playgroundHosts";
+import { PINNED_BROWSER_INPUT_TAG } from "./tests/visual/browserInputRegressions";
 
 const vuePlaygroundPort = new URL(PLAYGROUND_HOSTS.vue).port;
 
 const managedConfig = defineConfig({
-  globalSetup: ["./tests/parity/previewSetup.ts", "./tests/parity/playgroundSetup.ts"],
+  globalSetup: [
+    "./tests/parity/previewSetup.ts",
+    "./tests/parity/playgroundSetup.ts",
+  ],
   testDir: "./tests/visual",
   // Bun unit tests share helper directories; browser projects discover only specs.
   testMatch: /\.spec\.ts$/u,
@@ -63,7 +67,10 @@ const managedConfig = defineConfig({
     // Measure/paint parity compares two numbers read from the SAME browser in
     // the same layout pass, so unlike the screenshot baselines it cannot go
     // flaky on cross-machine font rendering, and it is safe to gate CI on.
-    { name: "measure-parity", testMatch: /measure(?:-backend)?-parity\.spec\.ts/u },
+    {
+      name: "measure-parity",
+      testMatch: /measure(?:-backend)?-parity\.spec\.ts/u,
+    },
     // Report-only second-engine evidence. These never join a gating lane: the
     // nightly webkit workflow runs `webkit-layout-parity` and records
     // differences. `engine-layout-record` writes the Chromium reference that
@@ -78,7 +85,10 @@ const managedConfig = defineConfig({
       testMatch: /measure-backend-parity\.spec\.ts/u,
       use: { browserName: "webkit" },
     },
-    { name: "engine-layout-record", testMatch: /engine-layout-parity\.spec\.ts/u },
+    {
+      name: "engine-layout-record",
+      testMatch: /engine-layout-parity\.spec\.ts/u,
+    },
     { name: "rendering", testMatch: /rendering\.spec\.ts/u },
     { name: "performance", testMatch: /editing-performance\.spec\.ts/u },
     {
@@ -127,7 +137,8 @@ const managedConfig = defineConfig({
 
 export const PLAYGROUND_SERVERS = managedConfig.webServer;
 
-const serverMode = process.env["FOLIO_PLAYGROUND_SERVER_MODE"] ?? "managed-preview";
+const serverMode =
+  process.env["FOLIO_PLAYGROUND_SERVER_MODE"] ?? "managed-preview";
 if (serverMode !== "managed-preview" && serverMode !== "existing-preview") {
   throw new TypeError(`Unknown playground server mode: ${serverMode}`);
 }

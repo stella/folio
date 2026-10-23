@@ -1,16 +1,13 @@
-import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumbering,
-} from "./numberingAttr";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 /**
  * Selection State Utilities
  *
  * Extracts selection state from ProseMirror for toolbar integration.
  */
-
-import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
+import type { ParagraphFormatting, TextFormatting } from "../types/document";
+import { FONT_THEME_VALUES } from "../types/documentEnumValues";
 import {
   expectFontFamilyMarkAttrs,
   expectFontSizeMarkAttrs,
@@ -21,11 +18,13 @@ import {
   expectUnderlineMarkAttrs,
 } from "./attrs";
 import { type ListState, resolveListState } from "./listState";
+import {
+  effectiveParagraphNumbering,
+  paragraphNumberingSourcesFromBoundary,
+} from "./numberingAttr";
 import { directionIsRtl } from "./paragraphDirection";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { collectMarksInRange } from "./selectionMarks";
-import type { TextFormatting, ParagraphFormatting } from "../types/document";
-import { FONT_THEME_VALUES } from "../types/documentEnumValues";
 
 // ============================================================================
 // TYPES
@@ -58,7 +57,9 @@ export type SelectionSnapshot = {
 /** Compatibility name for the public toolbar selection contract. */
 export type SelectionState = SelectionSnapshot;
 
-type FontTheme = NonNullable<NonNullable<TextFormatting["fontFamily"]>["asciiTheme"]>;
+type FontTheme = NonNullable<
+  NonNullable<TextFormatting["fontFamily"]>["asciiTheme"]
+>;
 
 const isFontTheme = (value: string | undefined): value is FontTheme =>
   value !== undefined && FONT_THEME_VALUES.some((theme) => theme === value);
@@ -71,22 +72,34 @@ const isFontTheme = (value: string | undefined): value is FontTheme =>
  * Extract the canonical selection snapshot from editor state.
  * Used by both the toolbar callback and the selection tracker plugin.
  */
-export function extractSelectionSnapshot(state: EditorState): SelectionSnapshot {
+export function extractSelectionSnapshot(
+  state: EditorState,
+): SelectionSnapshot {
   const { selection, doc } = state;
   const { from, to, empty } = selection;
   const $from = doc.resolve(from);
 
-  const { startParagraphIndex, endParagraphIndex } = paragraphIndexes(doc, from, to);
+  const { startParagraphIndex, endParagraphIndex } = paragraphIndexes(
+    doc,
+    from,
+    to,
+  );
   const paragraph = $from.parent;
   const paragraphAttrs =
-    paragraph.type.name === "paragraph" ? expectParagraphAttrs(paragraph) : null;
+    paragraph.type.name === "paragraph"
+      ? expectParagraphAttrs(paragraph)
+      : null;
 
   const marks = selectionMarks(state);
   let textFormatting = extractTextFormatting(marks);
   const isEmptyParagraph =
     paragraph.type.name === "paragraph" && paragraph.textContent.length === 0;
 
-  if (isEmptyParagraph && marks.length === 0 && paragraphAttrs?.defaultTextFormatting) {
+  if (
+    isEmptyParagraph &&
+    marks.length === 0 &&
+    paragraphAttrs?.defaultTextFormatting
+  ) {
     textFormatting = { ...paragraphAttrs.defaultTextFormatting };
   }
 
@@ -153,7 +166,9 @@ export function extractSelectionSnapshot(state: EditorState): SelectionSnapshot 
 }
 
 /** Compatibility entry point used by existing React and Vue integrations. */
-export function extractSelectionState(state: EditorState): SelectionState | null {
+export function extractSelectionState(
+  state: EditorState,
+): SelectionState | null {
   return extractSelectionSnapshot(state);
 }
 
@@ -223,9 +238,15 @@ function extractTextFormatting(marks: readonly Mark[]): TextFormatting {
         const attrs = expectTextColorMarkAttrs(mark);
         formatting.color = {
           ...(attrs.rgb !== undefined ? { rgb: attrs.rgb } : {}),
-          ...(attrs.themeColor !== undefined ? { themeColor: attrs.themeColor } : {}),
-          ...(attrs.themeTint !== undefined ? { themeTint: attrs.themeTint } : {}),
-          ...(attrs.themeShade !== undefined ? { themeShade: attrs.themeShade } : {}),
+          ...(attrs.themeColor !== undefined
+            ? { themeColor: attrs.themeColor }
+            : {}),
+          ...(attrs.themeTint !== undefined
+            ? { themeTint: attrs.themeTint }
+            : {}),
+          ...(attrs.themeShade !== undefined
+            ? { themeShade: attrs.themeShade }
+            : {}),
         };
         break;
       }
@@ -243,9 +264,15 @@ function extractTextFormatting(marks: readonly Mark[]): TextFormatting {
           ...(attrs.eastAsia !== undefined ? { eastAsia: attrs.eastAsia } : {}),
           ...(attrs.cs !== undefined ? { cs: attrs.cs } : {}),
           ...(attrs.hint !== undefined ? { hint: attrs.hint } : {}),
-          ...(isFontTheme(attrs.asciiTheme) ? { asciiTheme: attrs.asciiTheme } : {}),
-          ...(attrs.hAnsiTheme !== undefined ? { hAnsiTheme: attrs.hAnsiTheme } : {}),
-          ...(attrs.eastAsiaTheme !== undefined ? { eastAsiaTheme: attrs.eastAsiaTheme } : {}),
+          ...(isFontTheme(attrs.asciiTheme)
+            ? { asciiTheme: attrs.asciiTheme }
+            : {}),
+          ...(attrs.hAnsiTheme !== undefined
+            ? { hAnsiTheme: attrs.hAnsiTheme }
+            : {}),
+          ...(attrs.eastAsiaTheme !== undefined
+            ? { eastAsiaTheme: attrs.eastAsiaTheme }
+            : {}),
           ...(attrs.csTheme !== undefined ? { csTheme: attrs.csTheme } : {}),
         };
         break;

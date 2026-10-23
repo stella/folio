@@ -24,20 +24,22 @@ const parseParagraphXml = (attributes: string) => {
 
 describe("paragraph identity attributes resolve by namespace URI", () => {
   test("w14:textId under the Word 2010 URI is read", () => {
-    expect(parseParagraphXml(`xmlns:w14="${W14_URI}" w14:textId="1A2B3C4D"`).textId).toBe(
-      "1A2B3C4D",
-    );
+    expect(
+      parseParagraphXml(`xmlns:w14="${W14_URI}" w14:textId="1A2B3C4D"`).textId,
+    ).toBe("1A2B3C4D");
   });
 
   test("an alternate prefix bound to the same URI is read", () => {
-    expect(parseParagraphXml(`xmlns:ns0="${W14_URI}" ns0:textId="1A2B3C4D"`).textId).toBe(
-      "1A2B3C4D",
-    );
+    expect(
+      parseParagraphXml(`xmlns:ns0="${W14_URI}" ns0:textId="1A2B3C4D"`).textId,
+    ).toBe("1A2B3C4D");
   });
 
   test("a textId under a foreign URI is not Word's", () => {
     expect(
-      parseParagraphXml('xmlns:vendor="urn:example:vendor" vendor:textId="1A2B3C4D"').textId,
+      parseParagraphXml(
+        'xmlns:vendor="urn:example:vendor" vendor:textId="1A2B3C4D"',
+      ).textId,
     ).toBeUndefined();
   });
 });

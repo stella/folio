@@ -20,13 +20,13 @@
  * supplies the session the format itself says such a run belongs to.
  */
 
-import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { isHistoryTransaction, undoDepth } from "prosemirror-history";
 import { Plugin, type Transaction } from "prosemirror-state";
 
 import { expectRunIdentityMarkAttrs } from "../../attrs";
 import { nodesBetweenIndexed } from "../../indexedNodeLookup";
-import { sweepPositions, type PositionQuery } from "../../positionSweep";
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
+import { type PositionQuery, sweepPositions } from "../../positionSweep";
 import {
   RUN_IDENTITY_ATTRIBUTE,
   RUN_IDENTITY_MARK_NAME,
@@ -80,7 +80,10 @@ export const insertedRanges = (
         if (newEnd <= newStart) {
           return;
         }
-        queries.push({ pos: newStart, assoc: -1, from }, { pos: newEnd, assoc: 1, from });
+        queries.push(
+          { pos: newStart, assoc: -1, from },
+          { pos: newEnd, assoc: 1, from },
+        );
       });
     });
   }
@@ -133,18 +136,23 @@ const createRunIdentityStripPlugin = (): Plugin =>
           return false;
         }
         let rangeStripped = false;
-        nodesBetweenIndexed(newState.doc, clampedFrom, clampedTo, (node, pos) => {
-          if (!node.isInline || !markType.isInSet(node.marks)) {
+        nodesBetweenIndexed(
+          newState.doc,
+          clampedFrom,
+          clampedTo,
+          (node, pos) => {
+            if (!node.isInline || !markType.isInSet(node.marks)) {
+              return true;
+            }
+            tr.removeMark(
+              Math.max(pos, clampedFrom),
+              Math.min(pos + node.nodeSize, clampedTo),
+              markType,
+            );
+            rangeStripped = true;
             return true;
-          }
-          tr.removeMark(
-            Math.max(pos, clampedFrom),
-            Math.min(pos + node.nodeSize, clampedTo),
-            markType,
-          );
-          rangeStripped = true;
-          return true;
-        });
+          },
+        );
         return rangeStripped;
       };
       let stripped = false;
@@ -160,7 +168,9 @@ const createRunIdentityStripPlugin = (): Plugin =>
       tr.setMeta("addToHistory", false);
       tr.setMeta(runIdentityStripKey, "stripped");
       if (newState.storedMarks !== null) {
-        tr.setStoredMarks(newState.storedMarks.filter((mark) => mark.type !== markType));
+        tr.setStoredMarks(
+          newState.storedMarks.filter((mark) => mark.type !== markType),
+        );
       }
       return tr;
     },

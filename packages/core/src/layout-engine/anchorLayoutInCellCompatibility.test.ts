@@ -10,7 +10,10 @@ describe("resolveAnchorLayoutInCellCompatibility", () => {
     },
   );
 
-  test.each([15, 16])("forces in-cell layout at compatibilityMode %p", (mode) => {
-    expect(resolveAnchorLayoutInCellCompatibility(mode)).toBe(true);
-  });
+  test.each([15, 16])(
+    "forces in-cell layout at compatibilityMode %p",
+    (mode) => {
+      expect(resolveAnchorLayoutInCellCompatibility(mode)).toBe(true);
+    },
+  );
 });

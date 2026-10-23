@@ -48,7 +48,9 @@ export function smallCapsMask(text: string): boolean[] {
   const mask: boolean[] = [];
   let previous = false;
   for (const char of text) {
-    const small: boolean = WHITESPACE_PATTERN.test(char) ? previous : isSmallCapsLetter(char);
+    const small: boolean = WHITESPACE_PATTERN.test(char)
+      ? previous
+      : isSmallCapsLetter(char);
     mask.push(small);
     previous = small;
   }

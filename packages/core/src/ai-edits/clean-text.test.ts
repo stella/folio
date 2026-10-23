@@ -18,7 +18,8 @@ const schema = new Schema({
   },
 });
 
-const paragraph = (content: PMNode | readonly PMNode[]) => schema.node("paragraph", null, content);
+const paragraph = (content: PMNode | readonly PMNode[]) =>
+  schema.node("paragraph", null, content);
 
 describe("buildCleanBlockText", () => {
   test("shares one frozen empty boundary projection across ordinary blocks", () => {
@@ -70,15 +71,21 @@ describe("resolveCleanTextRange", () => {
   test("maps the common carrierless path directly through clean offsets", () => {
     const cleanBlock = buildCleanBlockText(paragraph(schema.text("AB")), 10);
 
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 2 })).toEqual({
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 2 }),
+    ).toEqual({
       from: 11,
       to: 13,
     });
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 1, endOffset: 1 })).toEqual({
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 1, endOffset: 1 }),
+    ).toEqual({
       from: 12,
       to: 12,
     });
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: -1, endOffset: 1 })).toBeNull();
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: -1, endOffset: 1 }),
+    ).toBeNull();
   });
 
   test("biases either side of consecutive carriers in one boundary pass", () => {
@@ -92,19 +99,27 @@ describe("resolveCleanTextRange", () => {
       0,
     );
 
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 1 })).toEqual({
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 1 }),
+    ).toEqual({
       from: 1,
       to: 2,
     });
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 1, endOffset: 2 })).toEqual({
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 1, endOffset: 2 }),
+    ).toEqual({
       from: 4,
       to: 5,
     });
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 1, endOffset: 1 })).toEqual({
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 1, endOffset: 1 }),
+    ).toEqual({
       from: 4,
       to: 4,
     });
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 2 })).toBeNull();
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 2 }),
+    ).toBeNull();
   });
 });
 
@@ -128,11 +143,15 @@ describe("field results in the clean projection", () => {
     expect(cleanBlock.structuralBoundaries).toEqual([
       { type: "field", offset: 11, length: 6, from: 12, to: 13 },
     ]);
-    expect(cleanBlock.offsets.slice(11, 18)).toEqual([12, 12, 12, 12, 12, 12, 13]);
+    expect(cleanBlock.offsets.slice(11, 18)).toEqual([
+      12, 12, 12, 12, 12, 12, 13,
+    ]);
   });
 
   test("omits the result when the caller asks for an alignment coordinate", () => {
-    expect(buildCleanBlockText(fieldParagraph(), 0, { fieldResults: "omitted" })).toMatchObject({
+    expect(
+      buildCleanBlockText(fieldParagraph(), 0, { fieldResults: "omitted" }),
+    ).toMatchObject({
       text: "see Clause  above",
       structuralBoundaries: [],
     });
@@ -141,13 +160,21 @@ describe("field results in the clean projection", () => {
   test("refuses a range that cuts into the result and allows one around it", () => {
     const cleanBlock = buildCleanBlockText(fieldParagraph(), 0);
 
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 13, endOffset: 20 })).toBeNull();
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 13 })).toBeNull();
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 11, endOffset: 17 })).toEqual({
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 13, endOffset: 20 }),
+    ).toBeNull();
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 13 }),
+    ).toBeNull();
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 11, endOffset: 17 }),
+    ).toEqual({
       from: 12,
       to: 13,
     });
-    expect(resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 11 })).toEqual({
+    expect(
+      resolveCleanTextRange({ cleanBlock, startOffset: 0, endOffset: 11 }),
+    ).toEqual({
       from: 1,
       to: 12,
     });

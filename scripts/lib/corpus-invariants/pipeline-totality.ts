@@ -23,6 +23,8 @@
  * so two stages dying of the same error stay two signatures.
  */
 
+import { Result } from "better-result";
+
 import { compareDocx } from "@stll/folio-core/compare/compare";
 import { buildDisplayList } from "@stll/folio-core/display-list/build/buildDisplayList";
 import { exportDocxToPdf } from "@stll/folio-core/export-pdf";
@@ -30,10 +32,12 @@ import {
   type HeadlessFontSource,
   installHeadlessMeasureProvider,
 } from "@stll/folio-core/fonts/headlessMeasure";
-import { type HeadlessLayoutResult, layoutDocxHeadless } from "@stll/folio-core/headless-layout";
+import {
+  type HeadlessLayoutResult,
+  layoutDocxHeadless,
+} from "@stll/folio-core/headless-layout";
 import { toMarkdown } from "@stll/folio-core/markdown";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
-import { Result } from "better-result";
 
 import {
   type CorpusFailure,
@@ -42,8 +46,8 @@ import {
   failureFromError,
 } from "../corpus-signature";
 import {
-  type CorpusInvariantInput,
   type CorpusEvaluatedOutcome,
+  type CorpusInvariantInput,
   EXTENDED_CORPUS_INVARIANTS,
   type StageTimings,
   timeStage,
@@ -145,7 +149,10 @@ export const PIPELINE_STAGE_TABLE = [
       // Nothing to build when layout never produced a result; the layout stage
       // has already reported why, and a second failure would say no more.
       if (laidOut !== null) {
-        buildDisplayList({ layout: laidOut.layout, blockLookup: laidOut.blockLookup });
+        buildDisplayList({
+          layout: laidOut.layout,
+          blockLookup: laidOut.blockLookup,
+        });
       }
       return Promise.resolve([]);
     },
@@ -182,10 +189,14 @@ export const PIPELINE_STAGE_TABLE = [
       // Two independent copies: the comparison holds both sides at once, and a
       // single buffer passed twice would let either side's handling alias the
       // other's bytes.
-      const compared = await compareDocx(input.buffer.slice(0), input.buffer.slice(0), {
-        author: COMPARE_AUTHOR,
-        timestamp: FIXED_TIMESTAMP,
-      });
+      const compared = await compareDocx(
+        input.buffer.slice(0),
+        input.buffer.slice(0),
+        {
+          author: COMPARE_AUTHOR,
+          timestamp: FIXED_TIMESTAMP,
+        },
+      );
       if (compared.isErr()) {
         return [describeError(compared.error)];
       }
@@ -198,7 +209,9 @@ export const PIPELINE_STAGE_TABLE = [
         problems.push(`the self-comparison is ${verification.status}`);
       }
       if (compatibility.status !== STANDARD_OOXML) {
-        problems.push(`the self-comparison encodes revisions as ${compatibility.status}`);
+        problems.push(
+          `the self-comparison encodes revisions as ${compatibility.status}`,
+        );
       }
       return problems;
     },
@@ -206,10 +219,18 @@ export const PIPELINE_STAGE_TABLE = [
 ] as const satisfies readonly PipelineStage[];
 
 /** The stage names, for the census's slowest-files report. */
-export const PIPELINE_STAGES: readonly string[] = PIPELINE_STAGE_TABLE.map(({ name }) => name);
+export const PIPELINE_STAGES: readonly string[] = PIPELINE_STAGE_TABLE.map(
+  ({ name }) => name,
+);
 
-const failureFromStageError = (stage: string, cause: unknown): CorpusFailure => {
-  const failure = failureFromError(EXTENDED_CORPUS_INVARIANTS.pipelineTotality, cause);
+const failureFromStageError = (
+  stage: string,
+  cause: unknown,
+): CorpusFailure => {
+  const failure = failureFromError(
+    EXTENDED_CORPUS_INVARIANTS.pipelineTotality,
+    cause,
+  );
   return { ...failure, message: `${stage}: ${failure.message}` };
 };
 
@@ -232,7 +253,10 @@ export const runPipelineStages = async (
     // oxlint-disable-next-line no-await-in-loop -- the stages share the process-wide
     // measure provider and hand results forward, so they cannot overlap.
     const outcome = await timeStage(timings, name, () =>
-      Result.tryPromise({ try: () => run(context), catch: (cause: unknown) => cause }),
+      Result.tryPromise({
+        try: () => run(context),
+        catch: (cause: unknown) => cause,
+      }),
     );
     if (outcome.isErr()) {
       failures.push(failureFromStageError(name, outcome.error));
@@ -240,7 +264,10 @@ export const runPipelineStages = async (
     }
     for (const problem of outcome.value) {
       failures.push(
-        failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.pipelineTotality, `${name}: ${problem}`),
+        failureFromAssertion(
+          EXTENDED_CORPUS_INVARIANTS.pipelineTotality,
+          `${name}: ${problem}`,
+        ),
       );
     }
   }
@@ -250,4 +277,5 @@ export const runPipelineStages = async (
 
 export const runPipelineTotalityInvariant = (
   input: CorpusInvariantInput,
-): Promise<CorpusEvaluatedOutcome> => runPipelineStages(PIPELINE_STAGE_TABLE, input);
+): Promise<CorpusEvaluatedOutcome> =>
+  runPipelineStages(PIPELINE_STAGE_TABLE, input);

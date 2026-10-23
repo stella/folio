@@ -11,9 +11,9 @@
 
 import {
   acquireEditorLease,
+  type FlushRequest,
   keepEditorLeaseAlive,
   watchFlushRequests,
-  type FlushRequest,
 } from "../../../packages/cli/src/editor-lease";
 import type { AcquiredLease } from "../../../packages/cli/src/lock";
 import { EDITOR_LEASE_OWNER } from "./save";
@@ -45,12 +45,16 @@ export type HeldLease = {
 
 type AcquiredHandle = HeldLease & { readonly acquired: AcquiredLease };
 
-const isAcquiredHandle = (lease: HeldLease): lease is AcquiredHandle => "acquired" in lease;
+const isAcquiredHandle = (lease: HeldLease): lease is AcquiredHandle =>
+  "acquired" in lease;
 
 /** The lease module itself. */
 export const folioLeaseBackend: LeaseBackend = {
   acquire: async (documentPath) => {
-    const acquired = await acquireEditorLease({ documentPath, owner: EDITOR_LEASE_OWNER });
+    const acquired = await acquireEditorLease({
+      documentPath,
+      owner: EDITOR_LEASE_OWNER,
+    });
     if (acquired.isErr()) return { ok: false, message: acquired.error.message };
     const lease = acquired.value;
     const handle: AcquiredHandle = {
@@ -61,10 +65,14 @@ export const folioLeaseBackend: LeaseBackend = {
     return { ok: true, lease: handle };
   },
   keepAlive: (lease, onLost) => {
-    if (!isAcquiredHandle(lease)) throw new Error("Not a lease this backend acquired.");
-    return keepEditorLeaseAlive(lease.acquired, { onLost: (error) => onLost(error.message) });
+    if (!isAcquiredHandle(lease))
+      throw new Error("Not a lease this backend acquired.");
+    return keepEditorLeaseAlive(lease.acquired, {
+      onLost: (error) => onLost(error.message),
+    });
   },
-  watch: (documentPath, token, onRequest) => watchFlushRequests({ documentPath, token, onRequest }),
+  watch: (documentPath, token, onRequest) =>
+    watchFlushRequests({ documentPath, token, onRequest }),
 };
 
 export type EditorLeaseEvents = {
@@ -90,7 +98,11 @@ export class EditorLease {
   private readonly events: EditorLeaseEvents;
   private readonly backend: LeaseBackend;
 
-  constructor(documentPath: string, events: EditorLeaseEvents, backend = folioLeaseBackend) {
+  constructor(
+    documentPath: string,
+    events: EditorLeaseEvents,
+    backend = folioLeaseBackend,
+  ) {
     this.documentPath = documentPath;
     this.events = events;
     this.backend = backend;
@@ -118,7 +130,10 @@ export class EditorLease {
     try {
       acquired = await this.backend.acquire(this.documentPath);
     } catch (error) {
-      acquired = { ok: false, message: error instanceof Error ? error.message : String(error) };
+      acquired = {
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      };
     }
     if (!acquired.ok) {
       this.lastRefusal = acquired.message;
@@ -135,8 +150,10 @@ export class EditorLease {
       this.stop();
       this.events.onLost(message);
     });
-    const watcher = this.backend.watch(this.documentPath, lease.token, (request) =>
-      this.events.onFlushRequest(request),
+    const watcher = this.backend.watch(
+      this.documentPath,
+      lease.token,
+      (request) => this.events.onFlushRequest(request),
     );
     this.held = { lease, keeper, watcher };
   }

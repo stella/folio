@@ -6,7 +6,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { MeasuredLine, ParagraphBlock, TextRun } from "../layout-engine/types";
+import type {
+  MeasuredLine,
+  ParagraphBlock,
+  TextRun,
+} from "../layout-engine/types";
 import { renderLine } from "./renderParagraph";
 
 class FakeElement {
@@ -163,7 +167,9 @@ describe("renderParagraph w:vanish (hidden text) — eigenpal #424 gap 9", () =>
     // shorthand was overwritten by the later `textDecorationLine` assignment
     // once `decorations` contained anything (e.g. line-through from w:strike),
     // silently dropping the hidden underline. Longhand keeps both visible.
-    const { block, line } = buildLine([{ kind: "text", text: "gone", hidden: true, strike: true }]);
+    const { block, line } = buildLine([
+      { kind: "text", text: "gone", hidden: true, strike: true },
+    ]);
 
     const lineEl = renderLine(block, line, undefined, fakeDocument, {
       availableWidth: 600,

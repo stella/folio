@@ -5,14 +5,20 @@ import {
   findChangeAtPosition,
   findParagraphBoundaryChangeAtPosition,
 } from "@stll/folio-core/prosemirror/commands/comments";
-import type { ActiveTrackedChangeInfo, ImageContextInfo } from "./DocxEditor.props";
+
+import type {
+  ActiveTrackedChangeInfo,
+  ImageContextInfo,
+} from "./DocxEditor.props";
 
 /**
  * If the editor's current selection is a `NodeSelection` of an `image`
  * node, return the toolbar/image-dialog context derived from its attrs;
  * otherwise return `null`. Pure — no state mutation, no DOM access.
  */
-export function detectImageContext(state: EditorState): ImageContextInfo | null {
+export function detectImageContext(
+  state: EditorState,
+): ImageContextInfo | null {
   const sel = state.selection;
   // `instanceof NodeSelection` is the idiomatic ProseMirror narrowing —
   // it gives us a typed `.node` without an unsafe `as` cast and rejects
@@ -55,7 +61,9 @@ export function detectImageContext(state: EditorState): ImageContextInfo | null 
  * The returned `from`/`to` cover the full extent of the change (expanded
  * via `findChangeAtPosition`), not just the cursor's node.
  */
-export function detectActiveTrackedChange(state: EditorState): ActiveTrackedChangeInfo | null {
+export function detectActiveTrackedChange(
+  state: EditorState,
+): ActiveTrackedChangeInfo | null {
   const { from } = state.selection;
   const $pos = state.doc.resolve(from);
   const node = $pos.parent;

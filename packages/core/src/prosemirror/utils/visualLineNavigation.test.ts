@@ -34,7 +34,9 @@ describe("findPositionOnLineAtClientX", () => {
     line.querySelector = () => emptyRun;
     line.querySelectorAll = () => [emptyRun];
 
-    expect(findPositionOnLineAtClientX(line as unknown as HTMLElement, 800)).toBe(24);
+    expect(
+      findPositionOnLineAtClientX(line as unknown as HTMLElement, 800),
+    ).toBe(24);
   });
 
   test("falls back to the paragraph content start for a structural empty line", () => {
@@ -44,7 +46,9 @@ describe("findPositionOnLineAtClientX", () => {
     const line = element();
     line.querySelector = () => emptyRun;
 
-    expect(findPositionOnLineAtClientX(line as unknown as HTMLElement, 200)).toBe(31);
+    expect(
+      findPositionOnLineAtClientX(line as unknown as HTMLElement, 200),
+    ).toBe(31);
   });
 });
 
@@ -59,7 +63,12 @@ const LINE_HEIGHT = 18;
 const SPACE_ADVANCE = 4;
 const CONTENT_LEFT = 100;
 
-type FakeText = { nodeType: 3; length: number; owner: FakeHTMLElement; offsetInOwner: number };
+type FakeText = {
+  nodeType: 3;
+  length: number;
+  owner: FakeHTMLElement;
+  offsetInOwner: number;
+};
 
 const rect = (values: Partial<DOMRect>): DOMRect =>
   ({
@@ -134,7 +143,9 @@ class FakeHTMLElement {
   }
 
   closest(selector: string): FakeHTMLElement | null {
-    return this.matches(selector) ? this : (this.parent?.closest(selector) ?? null);
+    return this.matches(selector)
+      ? this
+      : (this.parent?.closest(selector) ?? null);
   }
 
   getBoundingClientRect(): DOMRect {
@@ -166,9 +177,12 @@ class FakeHTMLElement {
         this.dataset["pmEnd"] !== undefined
       );
     }
-    if (selector.endsWith(".layout-empty-run")) return this.classes.has("layout-empty-run");
-    if (selector.endsWith(".layout-line")) return this.classes.has("layout-line");
-    if (selector.endsWith(".layout-paragraph")) return this.classes.has("layout-paragraph");
+    if (selector.endsWith(".layout-empty-run"))
+      return this.classes.has("layout-empty-run");
+    if (selector.endsWith(".layout-line"))
+      return this.classes.has("layout-line");
+    if (selector.endsWith(".layout-paragraph"))
+      return this.classes.has("layout-paragraph");
     return false;
   }
 }
@@ -286,7 +300,9 @@ const createView = (): EditorView => {
 };
 
 const placeCaret = (view: EditorView, pos: number): void => {
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)),
+  );
 };
 
 const arrow = (key: "ArrowDown" | "ArrowUp"): KeyboardEvent =>
@@ -308,7 +324,9 @@ describe("getCaretClientX", () => {
     const container = buildContainer(WRAPPED_LINES);
     const visibleRight = CONTENT_LEFT + "one two".length * CHAR_WIDTH;
 
-    expect(getCaretClientX(container, WRAP_BOUNDARY)).toBe(visibleRight + SPACE_ADVANCE);
+    expect(getCaretClientX(container, WRAP_BOUNDARY)).toBe(
+      visibleRight + SPACE_ADVANCE,
+    );
   });
 });
 
@@ -319,14 +337,18 @@ describe("handleVisualLineKeyDown", () => {
     const view = createView();
 
     placeCaret(view, WRAP_BOUNDARY);
-    expect(handleVisualLineKeyDown(state, view, arrow("ArrowDown"), container)).toBe(true);
+    expect(
+      handleVisualLineKeyDown(state, view, arrow("ArrowDown"), container),
+    ).toBe(true);
     const firstStep = view.state.selection.from;
     expect(firstStep).toBe(14);
 
     // A click (or find result, or agent edit) puts the caret back without any
     // key the handler sees: the next step must start from where the caret is.
     placeCaret(view, WRAP_BOUNDARY);
-    expect(handleVisualLineKeyDown(state, view, arrow("ArrowDown"), container)).toBe(true);
+    expect(
+      handleVisualLineKeyDown(state, view, arrow("ArrowDown"), container),
+    ).toBe(true);
 
     expect(view.state.selection.from).toBe(firstStep);
   });

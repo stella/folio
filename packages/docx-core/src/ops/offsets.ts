@@ -33,7 +33,8 @@ import type {
   TrackedRunContent,
 } from "../model/document";
 
-type InlineKind = "run" | "container" | "atom" | "opaque" | "openingMarker" | "closingMarker";
+type InlineKind =
+  "run" | "container" | "atom" | "opaque" | "openingMarker" | "closingMarker";
 
 /** How each paragraph child takes part in the offset space. */
 const INLINE_KINDS = {
@@ -61,16 +62,20 @@ const INLINE_KINDS = {
 } as const satisfies Record<ParagraphContent["type"], InlineKind>;
 
 type ContainerType = {
-  [Type in keyof typeof INLINE_KINDS]: (typeof INLINE_KINDS)[Type] extends "container"
-    ? Type
-    : never;
+  [
+    Type in keyof typeof INLINE_KINDS
+  ]: (typeof INLINE_KINDS)[Type] extends "container" ? Type : never;
 }[keyof typeof INLINE_KINDS];
 
 /** A paragraph child whose content is counted in place. */
-export type InlineContainer = Extract<ParagraphContent, { type: ContainerType }>;
+export type InlineContainer = Extract<
+  ParagraphContent,
+  { type: ContainerType }
+>;
 
-export const isInlineContainer = (item: ParagraphContent): item is InlineContainer =>
-  INLINE_KINDS[item.type] === "container";
+export const isInlineContainer = (
+  item: ParagraphContent,
+): item is InlineContainer => INLINE_KINDS[item.type] === "container";
 
 /** A zero-width boundary that opens a range: it belongs with what follows it. */
 export const isOpeningMarker = (item: ParagraphContent): boolean =>
@@ -78,7 +83,21 @@ export const isOpeningMarker = (item: ParagraphContent): boolean =>
 
 /** A source range boundary is zero-width and remains outside replacement revisions. */
 export const isRangeBoundary = (item: ParagraphContent): boolean =>
-  INLINE_KINDS[item.type] === "openingMarker" || INLINE_KINDS[item.type] === "closingMarker";
+  INLINE_KINDS[item.type] === "openingMarker" ||
+  INLINE_KINDS[item.type] === "closingMarker";
+
+/**
+ * Whether a paragraph holds content its mark must not take away: visible text
+ * or a range marker or comment reference, which have no width.
+ */
+export const paragraphHoldsContent = (paragraph: Paragraph): boolean => {
+  return (
+    paragraphLength(paragraph) > 0 ||
+    paragraph.content.some(
+      (item) => isRangeBoundary(item) || item.type === "commentReference",
+    )
+  );
+};
 
 /** Tracked content that direct text must not join: it is on its way out. */
 export const isRemovedRevision = (item: ParagraphContent): boolean =>
@@ -105,7 +124,9 @@ export const runWidth = (run: Run): number => {
   return width;
 };
 
-export const childrenOf = (container: InlineContainer): readonly ParagraphContent[] =>
+export const childrenOf = (
+  container: InlineContainer,
+): readonly ParagraphContent[] =>
   container.type === "hyperlink" ? container.children : container.content;
 
 export const inlineWidth = (item: ParagraphContent): number => {
@@ -130,12 +151,16 @@ export const contentWidth = (items: readonly ParagraphContent[]): number => {
 };
 
 /** The number of logical units in a paragraph: its largest valid offset. */
-export const paragraphLength = (paragraph: Paragraph): number => contentWidth(paragraph.content);
+export const paragraphLength = (paragraph: Paragraph): number =>
+  contentWidth(paragraph.content);
 
 /** The character a unit that is not run text stands for in {@link paragraphLogicalText}. */
 export const OBJECT_REPLACEMENT_CHARACTER = "￼";
 
-const appendLogicalText = (items: readonly ParagraphContent[], out: string[]): void => {
+const appendLogicalText = (
+  items: readonly ParagraphContent[],
+  out: string[],
+): void => {
   for (const item of items) {
     if (item.type === "run") {
       for (const content of item.content) {
@@ -184,6 +209,8 @@ const TRACKED_CHILD_TYPES = {
   hyperlink: true,
   bookmarkStart: true,
   bookmarkEnd: true,
+  commentRangeStart: true,
+  commentRangeEnd: true,
   moveFromRangeStart: true,
   moveFromRangeEnd: true,
   moveToRangeStart: true,
@@ -198,7 +225,10 @@ const TRACKED_CHILD_TYPES = {
   deletion: true,
   moveFrom: true,
   moveTo: true,
-} as const satisfies Record<TrackedRunContent["type"], true>;
+} as const satisfies Record<
+  Exclude<TrackedRunContent["type"], "commentReference">,
+  true
+>;
 
 const INLINE_SDT_CHILD_TYPES = {
   run: true,
@@ -225,7 +255,9 @@ const isHyperlinkChild = (item: ParagraphContent): item is HyperlinkChild =>
   Object.hasOwn(HYPERLINK_CHILD_TYPES, item.type);
 
 /** Whether a tracked change (`w:ins`, `w:del`, a move) can hold the record. */
-export const isTrackedChild = (item: ParagraphContent): item is TrackedRunContent =>
+export const isTrackedChild = (
+  item: ParagraphContent,
+): item is Exclude<TrackedRunContent, { type: "commentReference" }> =>
   Object.hasOwn(TRACKED_CHILD_TYPES, item.type);
 
 const isInlineSdtChild = (item: ParagraphContent): item is InlineSdtChild =>
@@ -258,14 +290,23 @@ export const withChildren = (
 ): InlineContainer => {
   switch (container.type) {
     case "hyperlink":
-      return { ...container, children: narrowChildren(items, isHyperlinkChild, container.type) };
+      return {
+        ...container,
+        children: narrowChildren(items, isHyperlinkChild, container.type),
+      };
     case "insertion":
     case "deletion":
     case "moveFrom":
     case "moveTo":
-      return { ...container, content: narrowChildren(items, isTrackedChild, container.type) };
+      return {
+        ...container,
+        content: narrowChildren(items, isTrackedChild, container.type),
+      };
     case "inlineSdt":
-      return { ...container, content: narrowChildren(items, isInlineSdtChild, container.type) };
+      return {
+        ...container,
+        content: narrowChildren(items, isInlineSdtChild, container.type),
+      };
     case "inlineWrapper":
       return { ...container, content: [...items] };
     default: {

@@ -8,9 +8,14 @@ type InlineBookmarksForParagraphJoinOptions = {
 };
 
 /** The inline form of boundaries whose enclosing paragraph break was removed. */
-export const inlineBookmarksOf = (boundaries: readonly PMNode[]): PMNode[] | null => {
+export const inlineBookmarksOf = (
+  boundaries: readonly PMNode[],
+): PMNode[] | null => {
   const inlineType = boundaries.at(0)?.type.schema.nodes["bookmarkBoundary"];
-  if (!inlineType || boundaries.some((node) => node.type.name !== "blockBookmarkBoundary")) {
+  if (
+    !inlineType ||
+    boundaries.some((node) => node.type.name !== "blockBookmarkBoundary")
+  ) {
     return null;
   }
   return boundaries.map((node) => inlineType.create(node.attrs));
@@ -22,7 +27,8 @@ export const inlineBookmarksForParagraphJoin = ({
   boundaries,
   second,
 }: InlineBookmarksForParagraphJoinOptions): PMNode[] | null => {
-  if (first.type.name !== "paragraph" || second.type !== first.type) return null;
+  if (first.type.name !== "paragraph" || second.type !== first.type)
+    return null;
   const inline = inlineBookmarksOf(boundaries);
   if (!inline) return null;
   const content = Fragment.fromArray([
@@ -51,8 +57,14 @@ export const paragraphJoinAfter = (doc: PMNode, position: number) => {
   const next = index < at.parent.childCount ? at.parent.child(index) : null;
   if (!next || next.type !== first.type) return null;
   if (boundaries.length === 0) {
-    return canJoin(doc, position) ? { next, nextPosition, inlineBookmarks: [] } : null;
+    return canJoin(doc, position)
+      ? { next, nextPosition, inlineBookmarks: [] }
+      : null;
   }
-  const inlineBookmarks = inlineBookmarksForParagraphJoin({ first, boundaries, second: next });
+  const inlineBookmarks = inlineBookmarksForParagraphJoin({
+    first,
+    boundaries,
+    second: next,
+  });
   return inlineBookmarks ? { next, nextPosition, inlineBookmarks } : null;
 };

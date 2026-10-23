@@ -11,10 +11,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
-import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { type Node as PMNode, Schema } from "prosemirror-model";
 
+import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
+
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { compareContent } from "../compare/content";
 import type { RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import { schema as folioSchema } from "../prosemirror/schema";
@@ -28,11 +29,11 @@ import {
   hashFolioAIBlockStructuralBoundaries,
   hashFolioAIBlockText,
   isFolioAIContentBlock,
+  projectFolioAIBlockStructuralBoundaries,
   remapFolioAIEditSnapshotStyleReferences,
   sourceDocumentOf,
-  styleResolverOf,
-  projectFolioAIBlockStructuralBoundaries,
   storyTablesOf,
+  styleResolverOf,
 } from "./snapshot";
 
 const schema = new Schema({
@@ -63,11 +64,17 @@ const schema = new Schema({
 });
 
 const paragraph = (text: string): PMNode =>
-  schema.node("paragraph", { paraId: null }, text.length === 0 ? [] : [schema.text(text)]);
+  schema.node(
+    "paragraph",
+    { paraId: null },
+    text.length === 0 ? [] : [schema.text(text)],
+  );
 
-const cell = (content: PMNode[]): PMNode => schema.node("tableCell", null, content);
+const cell = (content: PMNode[]): PMNode =>
+  schema.node("tableCell", null, content);
 
-const row = (cells: PMNode[], hidden = false): PMNode => schema.node("tableRow", { hidden }, cells);
+const row = (cells: PMNode[], hidden = false): PMNode =>
+  schema.node("tableRow", { hidden }, cells);
 
 const table = (rows: PMNode[]): PMNode => schema.node("table", null, rows);
 
@@ -79,7 +86,9 @@ const refusingToResolve = (doc: PMNode): PMNode => {
   Object.defineProperty(doc, "resolve", {
     configurable: true,
     value: () => {
-      throw new Error("The snapshot resolved a position; walk the document instead.");
+      throw new Error(
+        "The snapshot resolved a position; walk the document instead.",
+      );
     },
   });
   return doc;
@@ -105,12 +114,18 @@ describe("createFolioAIEditSnapshot", () => {
     });
     const emptyCleanProjection = { structuralBoundaries: [] };
     const deletionOnlyCleanProjection = {
-      structuralBoundaries: [boundary({ offset: 1, presentInCleanView: false, clear: "all" })],
+      structuralBoundaries: [
+        boundary({ offset: 1, presentInCleanView: false, clear: "all" }),
+      ],
     };
     const cleanProjections = [
       emptyCleanProjection,
       deletionOnlyCleanProjection,
-      { structuralBoundaries: [boundary({ offset: 1, presentInCleanView: true })] },
+      {
+        structuralBoundaries: [
+          boundary({ offset: 1, presentInCleanView: true }),
+        ],
+      },
       {
         structuralBoundaries: [
           boundary({ offset: 1, presentInCleanView: true, clear: "none" }),
@@ -121,26 +136,36 @@ describe("createFolioAIEditSnapshot", () => {
     ];
 
     for (const cleanProjection of cleanProjections) {
-      const projected = projectFolioAIBlockStructuralBoundaries(cleanProjection);
-      expect(projectFolioAIBlockStructuralBoundaries(cleanProjection)).toEqual(projected);
+      const projected =
+        projectFolioAIBlockStructuralBoundaries(cleanProjection);
+      expect(projectFolioAIBlockStructuralBoundaries(cleanProjection)).toEqual(
+        projected,
+      );
       expect(hashFolioAIBlockStructuralBoundaries(cleanProjection)).toBe(
         hashFolioAIBlockText(JSON.stringify(projected)),
       );
     }
 
     const empty = projectFolioAIBlockStructuralBoundaries(emptyCleanProjection);
-    const deletionOnly = projectFolioAIBlockStructuralBoundaries(deletionOnlyCleanProjection);
+    const deletionOnly = projectFolioAIBlockStructuralBoundaries(
+      deletionOnlyCleanProjection,
+    );
     expect(empty).toBe(deletionOnly);
     expect(Object.isFrozen(empty)).toBe(true);
   });
 
   test("locates a block in a table inside a table", () => {
-    const nested = table([row([cell([paragraph("nested first"), paragraph("nested second")])])]);
+    const nested = table([
+      row([cell([paragraph("nested first"), paragraph("nested second")])]),
+    ]);
     const doc = schema.node("doc", null, [
       paragraph("opening"),
       table([
         row([cell([paragraph("r0c0")]), cell([paragraph("r0c1")])]),
-        row([cell([paragraph("r1c0")]), cell([paragraph("before nested"), nested])]),
+        row([
+          cell([paragraph("r1c0")]),
+          cell([paragraph("before nested"), nested]),
+        ]),
       ]),
       paragraph("closing"),
     ]);
@@ -230,13 +255,20 @@ describe("createFolioAIEditSnapshot", () => {
       table([
         row([cell([paragraph("visible")])]),
         row(
-          [cell([paragraph("hidden"), table([row([cell([paragraph("hidden nested")])])])])],
+          [
+            cell([
+              paragraph("hidden"),
+              table([row([cell([paragraph("hidden nested")])])]),
+            ]),
+          ],
           true,
         ),
       ]),
     ]);
 
-    expect(createFolioAIEditSnapshot(doc).blocks.map(({ text }) => text)).toEqual(["visible"]);
+    expect(
+      createFolioAIEditSnapshot(doc).blocks.map(({ text }) => text),
+    ).toEqual(["visible"]);
   });
 
   test("resolves no positions, so its cost stays linear in block count", () => {
@@ -276,7 +308,10 @@ describe("createFolioAIEditSnapshot", () => {
 
     expect(wholeDocumentWalks).toBe(1);
     expect(
-      storyTablesOf(snapshot).map(({ index, node }) => ({ index, text: node.textContent })),
+      storyTablesOf(snapshot).map(({ index, node }) => ({
+        index,
+        text: node.textContent,
+      })),
     ).toEqual([{ index: 0, text: "table cell" }]);
   });
 
@@ -306,7 +341,9 @@ describe("createFolioAIEditSnapshot", () => {
   });
 
   test("binds each table census to the immutable document that produced its snapshot", () => {
-    const before = schema.node("doc", null, [table([row([cell([paragraph("before mutation")])])])]);
+    const before = schema.node("doc", null, [
+      table([row([cell([paragraph("before mutation")])])]),
+    ]);
     const after = schema.node("doc", null, [
       table([row([cell([paragraph("after mutation")])])]),
       table([row([cell([paragraph("new table")])])]),
@@ -315,18 +352,19 @@ describe("createFolioAIEditSnapshot", () => {
     const beforeSnapshot = createFolioAIEditSnapshot(before);
     const afterSnapshot = createFolioAIEditSnapshot(after);
 
-    expect(storyTablesOf(beforeSnapshot).map(({ node }) => node.textContent)).toEqual([
-      "before mutation",
-    ]);
-    expect(storyTablesOf(afterSnapshot).map(({ node }) => node.textContent)).toEqual([
-      "after mutation",
-      "new table",
-    ]);
+    expect(
+      storyTablesOf(beforeSnapshot).map(({ node }) => node.textContent),
+    ).toEqual(["before mutation"]);
+    expect(
+      storyTablesOf(afterSnapshot).map(({ node }) => node.textContent),
+    ).toEqual(["after mutation", "new table"]);
   });
 
   test("projects carrierless run marks without consulting the style package", () => {
     const refuseStyleResolution = (): never => {
-      throw new Error("Carrierless run marks already own their effective formatting");
+      throw new Error(
+        "Carrierless run marks already own their effective formatting",
+      );
     };
     const styleResolver = {
       getDefaultCharacterStyle: refuseStyleResolution,
@@ -336,7 +374,10 @@ describe("createFolioAIEditSnapshot", () => {
       getStyle: refuseStyleResolution,
       resolveParagraphStyle: refuseStyleResolution,
     } satisfies RunStyleResolver;
-    const inheritedMarks = [folioSchema.mark("bold"), folioSchema.mark("fontSize", { size: 22 })];
+    const inheritedMarks = [
+      folioSchema.mark("bold"),
+      folioSchema.mark("fontSize", { size: 22 }),
+    ];
     const doc = folioSchema.node("doc", null, [
       folioSchema.node(
         "paragraph",
@@ -346,13 +387,18 @@ describe("createFolioAIEditSnapshot", () => {
         },
         [
           folioSchema.text("Inherited", inheritedMarks),
-          folioSchema.text(" direct", [...inheritedMarks, folioSchema.mark("italic")]),
+          folioSchema.text(" direct", [
+            ...inheritedMarks,
+            folioSchema.mark("italic"),
+          ]),
         ],
       ),
     ]);
 
     expect(
-      createFolioAIEditSnapshotWithStyleResolver(doc, styleResolver).blocks.at(0)?.previewRuns,
+      createFolioAIEditSnapshotWithStyleResolver(doc, styleResolver).blocks.at(
+        0,
+      )?.previewRuns,
     ).toEqual([
       { text: "Inherited", bold: true, fontSizePt: 11 },
       {
@@ -368,16 +414,26 @@ describe("createFolioAIEditSnapshot", () => {
   test("rebinds imported paragraph styles to the proven candidate resolver", () => {
     const source = createFolioAIEditSnapshotWithStyleResolver(
       folioSchema.node("doc", null, [
-        folioSchema.node("paragraph", { paraId: "A1000001", styleId: "SourceStyle" }, [
-          folioSchema.text("Styled"),
-        ]),
+        folioSchema.node(
+          "paragraph",
+          { paraId: "A1000001", styleId: "SourceStyle" },
+          [folioSchema.text("Styled")],
+        ),
       ]),
       createStyleResolver({
-        styles: [{ styleId: "SourceStyle", type: "paragraph", rPr: { bold: true } }],
+        styles: [
+          { styleId: "SourceStyle", type: "paragraph", rPr: { bold: true } },
+        ],
       }),
     );
     const candidateResolver = createStyleResolver({
-      styles: [{ styleId: "FolioImportedStyle1", type: "paragraph", rPr: { bold: true } }],
+      styles: [
+        {
+          styleId: "FolioImportedStyle1",
+          type: "paragraph",
+          rPr: { bold: true },
+        },
+      ],
     });
 
     const remapped = remapFolioAIEditSnapshotStyleReferences({
@@ -387,7 +443,9 @@ describe("createFolioAIEditSnapshot", () => {
       importedStyleResolver: candidateResolver,
     });
 
-    expect(sourceDocumentOf(remapped).firstChild?.attrs["styleId"]).toBe("FolioImportedStyle1");
+    expect(sourceDocumentOf(remapped).firstChild?.attrs["styleId"]).toBe(
+      "FolioImportedStyle1",
+    );
     expect(styleResolverOf(remapped)).toBe(candidateResolver);
   });
 
@@ -408,8 +466,12 @@ describe("createFolioAIEditSnapshot", () => {
     expect(block?.previewRuns).toEqual([
       { text: "Shown ", bold: true, directFormatting: { bold: true } },
     ]);
-    expect(block?.previewRuns?.map(({ text }) => text).join("")).toBe(block?.text);
-    expect(compareContent({ base: snapshot, revised: snapshot }).isOk()).toBe(true);
+    expect(block?.previewRuns?.map(({ text }) => text).join("")).toBe(
+      block?.text,
+    );
+    expect(compareContent({ base: snapshot, revised: snapshot }).isOk()).toBe(
+      true,
+    );
   });
 
   test("keeps preview text on the same clean projection as field results", () => {
@@ -435,13 +497,18 @@ describe("createFolioAIEditSnapshot", () => {
       [folioSchema.text("shown", [bold])],
     );
     const doc = folioSchema.node("doc", null, [
-      folioSchema.node("paragraph", null, [folioSchema.text("Label ", [bold]), field]),
+      folioSchema.node("paragraph", null, [
+        folioSchema.text("Label ", [bold]),
+        field,
+      ]),
       folioSchema.node("paragraph", null, [structured]),
     ]);
 
     const blocks = createFolioAIEditSnapshot(doc).blocks;
     for (const block of blocks) {
-      expect(block.previewRuns?.map(({ text }) => text).join("") ?? "").toBe(block.text);
+      expect(block.previewRuns?.map(({ text }) => text).join("") ?? "").toBe(
+        block.text,
+      );
     }
     expect(blocks[0]?.text).toBe("Label 3");
     expect(blocks[1]?.text).toBe("shown");
@@ -458,7 +525,9 @@ describe("createFolioAIEditSnapshot", () => {
 
     const block = createFolioAIEditSnapshot(doc).blocks.at(0);
     expect(block?.text).toBe("Before\nAfter");
-    expect(block?.previewRuns?.map(({ text }) => text).join("")).toBe(block?.text);
+    expect(block?.previewRuns?.map(({ text }) => text).join("")).toBe(
+      block?.text,
+    );
   });
 
   test("retains authored boolean-off runs when their effective formatting is unchanged", () => {
@@ -475,16 +544,20 @@ describe("createFolioAIEditSnapshot", () => {
               _authoredOff: [property],
             });
       const direct = folioSchema.node("doc", null, [
-        folioSchema.node("paragraph", null, [folioSchema.text("off", [authoredOff])]),
+        folioSchema.node("paragraph", null, [
+          folioSchema.text("off", [authoredOff]),
+        ]),
       ]);
       const absent = folioSchema.node("doc", null, [
         folioSchema.node("paragraph", null, [folioSchema.text("off")]),
       ]);
 
-      expect(createFolioAIEditSnapshot(direct).blocks.at(0)?.previewRuns).toEqual([
-        { text: "off", directFormatting: { [property]: false } },
-      ]);
-      expect(createFolioAIEditSnapshot(absent).blocks.at(0)?.previewRuns).toBeUndefined();
+      expect(
+        createFolioAIEditSnapshot(direct).blocks.at(0)?.previewRuns,
+      ).toEqual([{ text: "off", directFormatting: { [property]: false } }]);
+      expect(
+        createFolioAIEditSnapshot(absent).blocks.at(0)?.previewRuns,
+      ).toBeUndefined();
     }
   });
 
@@ -540,7 +613,12 @@ describe("createFolioAIEditSnapshot", () => {
         .blocks.filter(isFolioAIContentBlock)
         .map(({ id }) => id);
 
-    expect(seqIdsOf(withoutBlanks)).toEqual(["seq-0001", "seq-0002", "seq-0003", "seq-0004"]);
+    expect(seqIdsOf(withoutBlanks)).toEqual([
+      "seq-0001",
+      "seq-0002",
+      "seq-0003",
+      "seq-0004",
+    ]);
     expect(seqIdsOf(withBlanks)).toEqual(seqIdsOf(withoutBlanks));
 
     // The blanks are addressable, and in their own sequence.
@@ -548,7 +626,13 @@ describe("createFolioAIEditSnapshot", () => {
       createFolioAIEditSnapshot(withBlanks)
         .blocks.filter((block) => !isFolioAIContentBlock(block))
         .map(({ id }) => id),
-    ).toEqual(["blank-0001", "blank-0002", "blank-0003", "blank-0004", "blank-0005"]);
+    ).toEqual([
+      "blank-0001",
+      "blank-0002",
+      "blank-0003",
+      "blank-0004",
+      "blank-0005",
+    ]);
   });
 
   test("a seq- id resolves to the paragraph it numbered, past any blanks", () => {
@@ -560,7 +644,9 @@ describe("createFolioAIEditSnapshot", () => {
     ]);
     const snapshot = createFolioAIEditSnapshot(doc);
 
-    expect(resolveSequentialBlockAnchor("seq-0002", snapshot)?.text).toBe("second");
+    expect(resolveSequentialBlockAnchor("seq-0002", snapshot)?.text).toBe(
+      "second",
+    );
     expect(resolveSequentialBlockAnchor("seq-0003", snapshot)).toBeUndefined();
   });
 
@@ -570,29 +656,49 @@ describe("createFolioAIEditSnapshot", () => {
     const numberedParagraph = (attrs: Record<string, unknown>, text: string) =>
       folioSchema.node("paragraph", attrs, [folioSchema.text(text)]);
     const doc = folioSchema.node("doc", null, [
-      numberedParagraph({ outlineLevel: heading2, numPr: numbered, listMarker: "1." }, "Numbered"),
       numberedParagraph(
-        { outlineLevel: heading2, numPr: numbered, listMarker: "Art. 2", listMarkerHidden: true },
+        { outlineLevel: heading2, numPr: numbered, listMarker: "1." },
+        "Numbered",
+      ),
+      numberedParagraph(
+        {
+          outlineLevel: heading2,
+          numPr: numbered,
+          listMarker: "Art. 2",
+          listMarkerHidden: true,
+        },
         "Hidden marker heading",
       ),
       numberedParagraph(
         { numPr: numbered, listMarker: "3.", listMarkerHidden: true },
         "Hidden marker",
       ),
-      numberedParagraph({ numPr: paragraphNumberingFromSlots({ numId: 0 }) }, "Cancelled"),
+      numberedParagraph(
+        { numPr: paragraphNumberingFromSlots({ numId: 0 }) },
+        "Cancelled",
+      ),
       numberedParagraph({ numPr: numbered, listMarker: "4." }, "Item"),
     ]);
 
     const blocks = createFolioAIEditSnapshot(doc)
       .blocks.map(expectParagraphBlock)
-      .map(({ text, kind, headingLevel, displayLabel, listReference, statedNumbering }) => ({
-        text,
-        kind,
-        headingLevel,
-        displayLabel,
-        listReference: listReference ?? null,
-        statedNumbering,
-      }));
+      .map(
+        ({
+          text,
+          kind,
+          headingLevel,
+          displayLabel,
+          listReference,
+          statedNumbering,
+        }) => ({
+          text,
+          kind,
+          headingLevel,
+          displayLabel,
+          listReference: listReference ?? null,
+          statedNumbering,
+        }),
+      );
 
     expect(blocks).toEqual([
       {
@@ -642,7 +748,11 @@ describe("createFolioAIEditSnapshot", () => {
 
 test("opaque diagnostic blocks expose no paragraph numbering", () => {
   const doc = folioSchema.node("doc", null, [
-    folioSchema.node("paragraph", { paraId: "12345678" }, folioSchema.text("Plain")),
+    folioSchema.node(
+      "paragraph",
+      { paraId: "12345678" },
+      folioSchema.text("Plain"),
+    ),
     folioSchema.node("preservedBlock", {
       xml: '<w:altChunk xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>',
     }),
@@ -652,6 +762,8 @@ test("opaque diagnostic blocks expose no paragraph numbering", () => {
   expect(diagnostic).toBeDefined();
   expect(diagnostic).not.toHaveProperty("statedNumbering");
   expect(diagnostic).not.toHaveProperty("listReference");
-  const plainBlock = expectParagraphBlock(blocks.find((block) => block.kind === "paragraph"));
+  const plainBlock = expectParagraphBlock(
+    blocks.find((block) => block.kind === "paragraph"),
+  );
   expect(plainBlock.statedNumbering).toEqual({ kind: "inherit" });
 });

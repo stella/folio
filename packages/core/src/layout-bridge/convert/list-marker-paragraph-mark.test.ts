@@ -1,10 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
-import { computeListRendering, parseNumbering } from "../../docx/numberingParser";
+import {
+  computeListRendering,
+  parseNumbering,
+} from "../../docx/numberingParser";
 import { resolveListMarkerFont } from "../../layout-engine/measure/listMarkerWidth";
 import type { ParagraphBlock } from "../../layout-engine/types";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { Document, Paragraph, StyleDefinitions, TextFormatting } from "../../types/document";
+import type {
+  Document,
+  Paragraph,
+  StyleDefinitions,
+  TextFormatting,
+} from "../../types/document";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 const numberingXml = (levelRPr = "") => `<w:numbering
@@ -33,7 +41,11 @@ const styles: StyleDefinitions = {
       type: "paragraph",
       basedOn: "Normal",
       name: "Strong Body",
-      rPr: { fontFamily: { ascii: "Arial", hAnsi: "Arial" }, fontSize: 20, bold: true },
+      rPr: {
+        fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+        fontSize: 20,
+        bold: true,
+      },
     },
     {
       styleId: "BigMark",
@@ -85,7 +97,13 @@ const listDocument = ({
     listRendering: { ...rendering, marker: "1." },
     content: empty
       ? []
-      : [{ type: "run", formatting: runFormatting, content: [{ type: "text", text }] }],
+      : [
+          {
+            type: "run",
+            formatting: runFormatting,
+            content: [{ type: "text", text }],
+          },
+        ],
   };
   return {
     package: {
@@ -117,7 +135,9 @@ describe("list marker formatting follows the paragraph mark (§17.9)", () => {
 
   test("takes bold, size and colour from direct paragraph-mark run properties", () => {
     const font = resolveListMarkerFont(
-      listBlock({ mark: { bold: true, fontSize: 32, color: { rgb: "C00000" } } }),
+      listBlock({
+        mark: { bold: true, fontSize: 32, color: { rgb: "C00000" } },
+      }),
     );
 
     expect(font.bold).toBe(true);
@@ -126,7 +146,9 @@ describe("list marker formatting follows the paragraph mark (§17.9)", () => {
   });
 
   test("resolves a character style named by the paragraph mark's w:rStyle", () => {
-    const font = resolveListMarkerFont(listBlock({ mark: { styleId: "BigMark" } }));
+    const font = resolveListMarkerFont(
+      listBlock({ mark: { styleId: "BigMark" } }),
+    );
 
     expect(font.fontSize).toBe(24);
     expect(font.color?.toUpperCase()).toContain("2E74B5");
@@ -160,9 +182,10 @@ describe("list marker formatting follows the paragraph mark (§17.9)", () => {
   });
 
   test("an empty paragraph is sized by the mark's w:rStyle character style", () => {
-    expect(listBlock({ mark: { styleId: "BigMark" }, empty: true }).attrs?.defaultFontSize).toBe(
-      24,
-    );
+    expect(
+      listBlock({ mark: { styleId: "BigMark" }, empty: true }).attrs
+        ?.defaultFontSize,
+    ).toBe(24);
     const whitespaceOnly = listBlock({
       mark: { styleId: "BigMark" },
       runFormatting: {},

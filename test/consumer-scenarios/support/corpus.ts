@@ -8,12 +8,24 @@
  * small, minimized part that is checked in. Imports nothing from folio.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 import { type FlowFile, flowId, parseFlowFile } from "./flow-file.ts";
 
-export type CorpusEntry = { id: string; flow: FlowFile; signature: string[]; found: string };
+export type CorpusEntry = {
+  id: string;
+  flow: FlowFile;
+  signature: string[];
+  found: string;
+};
 
 export type Corpus = {
   /** Where new entries are written, or null to keep them in memory. */
@@ -33,10 +45,16 @@ const count = (corpus: Corpus, entry: CorpusEntry, delta: 1 | -1): void => {
 
 const readEntry = (file: string): CorpusEntry | null => {
   try {
-    const value = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    const value = JSON.parse(readFileSync(file, "utf8")) as Record<
+      string,
+      unknown
+    >;
     const flow = parseFlowFile(value["flow"]);
     const signature = value["signature"];
-    if (!Array.isArray(signature) || !signature.every((item) => typeof item === "string")) {
+    if (
+      !Array.isArray(signature) ||
+      !signature.every((item) => typeof item === "string")
+    ) {
       return null;
     }
     return {
@@ -52,7 +70,10 @@ const readEntry = (file: string): CorpusEntry | null => {
 };
 
 /** The corpus in `dir` (created if missing), plus `seeds` with no signature yet. */
-export const loadCorpus = (dir: string | null, seeds: readonly FlowFile[] = []): Corpus => {
+export const loadCorpus = (
+  dir: string | null,
+  seeds: readonly FlowFile[] = [],
+): Corpus => {
   const corpus: Corpus = { dir, entries: [], counts: new Map() };
   const seen = new Set<string>();
   const add = (entry: CorpusEntry): void => {
@@ -70,12 +91,16 @@ export const loadCorpus = (dir: string | null, seeds: readonly FlowFile[] = []):
       if (entry !== null) add(entry);
     }
   }
-  for (const flow of seeds) add({ id: flowId(flow), flow, signature: [], found: "" });
+  for (const flow of seeds)
+    add({ id: flowId(flow), flow, signature: [], found: "" });
   return corpus;
 };
 
 /** The elements of `signature` no corpus entry has. */
-export const newElements = (corpus: Corpus, signature: readonly string[]): string[] =>
+export const newElements = (
+  corpus: Corpus,
+  signature: readonly string[],
+): string[] =>
   [...new Set(signature)].filter((element) => !corpus.counts.has(element));
 
 /**
@@ -90,8 +115,14 @@ export const admit = (
 ): string[] => {
   const fresh = newElements(corpus, signature);
   const id = flowId(flow);
-  if (fresh.length === 0 || corpus.entries.some((entry) => entry.id === id)) return [];
-  const entry: CorpusEntry = { id, flow, signature: [...new Set(signature)].sort(), found };
+  if (fresh.length === 0 || corpus.entries.some((entry) => entry.id === id))
+    return [];
+  const entry: CorpusEntry = {
+    id,
+    flow,
+    signature: [...new Set(signature)].sort(),
+    found,
+  };
   corpus.entries.push(entry);
   count(corpus, entry, 1);
   if (corpus.dir !== null) {
@@ -124,7 +155,10 @@ export const prune = (corpus: Corpus, max: number): number => {
       .sort((a, b) => a.found.localeCompare(b.found));
   for (const entry of byAge()) {
     if (corpus.entries.length <= max) break;
-    if (entry.signature.every((element) => (corpus.counts.get(element) ?? 0) > 1)) drop(entry);
+    if (
+      entry.signature.every((element) => (corpus.counts.get(element) ?? 0) > 1)
+    )
+      drop(entry);
   }
   for (const entry of byAge()) {
     if (corpus.entries.length <= max) break;
@@ -141,6 +175,8 @@ export const readFlowDir = (dir: string): { file: string; flow: FlowFile }[] =>
         .sort()
         .map((file) => ({
           file,
-          flow: parseFlowFile(JSON.parse(readFileSync(join(dir, file), "utf8"))),
+          flow: parseFlowFile(
+            JSON.parse(readFileSync(join(dir, file), "utf8")),
+          ),
         }))
     : [];

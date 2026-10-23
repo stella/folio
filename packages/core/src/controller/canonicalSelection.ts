@@ -1,7 +1,16 @@
 import { panic } from "better-result";
-import { AllSelection, NodeSelection, TextSelection, type Transaction } from "prosemirror-state";
+import {
+  AllSelection,
+  NodeSelection,
+  TextSelection,
+  type Transaction,
+} from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
-import type { CanonicalProjection, CanonicalSelection } from "./canonicalSession";
+
+import type {
+  CanonicalProjection,
+  CanonicalSelection,
+} from "./canonicalSession";
 
 type RestoreCanonicalSelectionOptions = {
   transaction: Transaction;
@@ -25,14 +34,17 @@ export const restoreCanonicalSelection = ({
       const cellPosition = (position: number): number | undefined => {
         const resolved = transaction.doc.resolve(position);
         for (let depth = resolved.depth; depth > 0; depth--) {
-          if (resolved.node(depth).type.spec["tableRole"] === "cell") return resolved.before(depth);
+          if (resolved.node(depth).type.spec["tableRole"] === "cell")
+            return resolved.before(depth);
         }
         return undefined;
       };
       const anchorCell = cellPosition(anchor.value);
       const headCell = cellPosition(head.value);
       if (anchorCell === undefined || headCell === undefined) return false;
-      transaction.setSelection(CellSelection.create(transaction.doc, anchorCell, headCell));
+      transaction.setSelection(
+        CellSelection.create(transaction.doc, anchorCell, headCell),
+      );
       return true;
     }
     case "inlineNode": {
@@ -47,7 +59,9 @@ export const restoreCanonicalSelection = ({
         anchor.value + node.nodeSize !== head.value
       )
         return false;
-      transaction.setSelection(NodeSelection.create(transaction.doc, anchor.value));
+      transaction.setSelection(
+        NodeSelection.create(transaction.doc, anchor.value),
+      );
       return true;
     }
     case "all":
@@ -57,7 +71,9 @@ export const restoreCanonicalSelection = ({
       const anchor = projection.positionAt(selection.anchor);
       const head = projection.positionAt(selection.head);
       if (anchor.isOk() && head.isOk()) {
-        transaction.setSelection(TextSelection.create(transaction.doc, anchor.value, head.value));
+        transaction.setSelection(
+          TextSelection.create(transaction.doc, anchor.value, head.value),
+        );
         return true;
       }
       switch (unavailable.type) {
@@ -66,7 +82,9 @@ export const restoreCanonicalSelection = ({
         case "near":
           transaction.setSelection(
             TextSelection.near(
-              transaction.doc.resolve(Math.min(unavailable.anchor, transaction.doc.content.size)),
+              transaction.doc.resolve(
+                Math.min(unavailable.anchor, transaction.doc.content.size),
+              ),
             ),
           );
           return true;

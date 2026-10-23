@@ -30,7 +30,8 @@ const scaledDocumentHeight = (pages: number, zoom: number) =>
 const boxAt = (container: Container, zoom: number) => {
   const inner = container.width - 2 * container.border;
   const overflows =
-    scaledDocumentHeight(container.pages, zoom) > container.height - 2 * container.border;
+    scaledDocumentHeight(container.pages, zoom) >
+    container.height - 2 * container.border;
   return {
     offsetWidth: container.width,
     clientWidth: inner - (overflows ? container.scrollbar : 0),
@@ -43,7 +44,11 @@ const settle = (container: Container) => {
   let reservedEdge = 0;
   const zooms: number[] = [];
   for (let step = 0; step < 10; step += 1) {
-    const fit = fitWidthZoom({ ...boxAt(container, zoom), pageWidth: PAGE_WIDTH, reservedEdge });
+    const fit = fitWidthZoom({
+      ...boxAt(container, zoom),
+      pageWidth: PAGE_WIDTH,
+      reservedEdge,
+    });
     reservedEdge = fit.reservedEdge;
     if (fit.zoom === null || Math.abs(fit.zoom - zoom) <= 0.005) {
       return { zoom, zooms, settled: true };
@@ -55,11 +60,19 @@ const settle = (container: Container) => {
 };
 
 /** Heights a few pixels around the overflow threshold of every zoom the width can fit to. */
-const thresholdHeights = (width: number, scrollbar: number, border: number, pages: number) => {
+const thresholdHeights = (
+  width: number,
+  scrollbar: number,
+  border: number,
+  pages: number,
+) => {
   const heights = new Set<number>();
   for (const gutter of [0, scrollbar]) {
     const available = width - 2 * border - gutter - FIT_TO_WIDTH_PADDING_PX;
-    const zoom = Math.min(FIT_TO_WIDTH_MAX_ZOOM, Math.round((available / PAGE_WIDTH) * 100) / 100);
+    const zoom = Math.min(
+      FIT_TO_WIDTH_MAX_ZOOM,
+      Math.round((available / PAGE_WIDTH) * 100) / 100,
+    );
     const threshold = Math.ceil(scaledDocumentHeight(pages, zoom)) + 2 * border;
     for (const delta of [-3, -1, 0, 1, 3]) heights.add(threshold + delta);
   }
@@ -73,7 +86,12 @@ describe("fitWidthZoom", () => {
       for (const scrollbar of [0, 15, 17]) {
         for (const border of [0, 1]) {
           for (const pages of [1, 3]) {
-            for (const height of thresholdHeights(width, scrollbar, border, pages)) {
+            for (const height of thresholdHeights(
+              width,
+              scrollbar,
+              border,
+              pages,
+            )) {
               const container = { width, height, border, scrollbar, pages };
               const result = settle(container);
               containers += 1;
@@ -98,19 +116,31 @@ describe("fitWidthZoom", () => {
   test("the container model reproduces the clientWidth feedback loop", () => {
     // The reported case: 427 px wide, a 17 px classic scrollbar, a height
     // between the document heights at the two adjacent fits.
-    const container = { width: 427, height: 0, border: 0, scrollbar: 17, pages: 1 };
+    const container = {
+      width: 427,
+      height: 0,
+      border: 0,
+      scrollbar: 17,
+      pages: 1,
+    };
     container.height = Math.round(
       (scaledDocumentHeight(1, 0.5) + scaledDocumentHeight(1, 0.52)) / 2,
     );
     const clientWidthFit = (zoom: number) =>
       Math.round(
-        ((boxAt(container, zoom).clientWidth - FIT_TO_WIDTH_PADDING_PX) / PAGE_WIDTH) * 100,
+        ((boxAt(container, zoom).clientWidth - FIT_TO_WIDTH_PADDING_PX) /
+          PAGE_WIDTH) *
+          100,
       ) / 100;
     expect(clientWidthFit(0.5)).toBe(0.52);
     expect(clientWidthFit(0.52)).toBe(0.5);
 
     // The reserved gutter fits once, below the threshold, and holds there.
-    expect(settle(container)).toEqual({ zoom: 0.5, zooms: [0.5], settled: true });
+    expect(settle(container)).toEqual({
+      zoom: 0.5,
+      zooms: [0.5],
+      settled: true,
+    });
   });
 
   test("keeps the widest edge it has seen", () => {
@@ -132,15 +162,28 @@ describe("fitWidthZoom", () => {
 
   test("caps the fit at natural size and answers null without room", () => {
     expect(
-      fitWidthZoom({ offsetWidth: 2000, clientWidth: 2000, pageWidth: PAGE_WIDTH, reservedEdge: 0 })
-        .zoom,
+      fitWidthZoom({
+        offsetWidth: 2000,
+        clientWidth: 2000,
+        pageWidth: PAGE_WIDTH,
+        reservedEdge: 0,
+      }).zoom,
     ).toBe(FIT_TO_WIDTH_MAX_ZOOM);
     expect(
-      fitWidthZoom({ offsetWidth: 30, clientWidth: 13, pageWidth: PAGE_WIDTH, reservedEdge: 0 })
-        .zoom,
+      fitWidthZoom({
+        offsetWidth: 30,
+        clientWidth: 13,
+        pageWidth: PAGE_WIDTH,
+        reservedEdge: 0,
+      }).zoom,
     ).toBeNull();
     expect(
-      fitWidthZoom({ offsetWidth: 600, clientWidth: 600, pageWidth: 0, reservedEdge: 0 }).zoom,
+      fitWidthZoom({
+        offsetWidth: 600,
+        clientWidth: 600,
+        pageWidth: 0,
+        reservedEdge: 0,
+      }).zoom,
     ).toBeNull();
   });
 });

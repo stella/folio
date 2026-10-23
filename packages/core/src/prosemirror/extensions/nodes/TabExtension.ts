@@ -20,7 +20,10 @@ export const TabExtension = createNodeExtension({
       {
         tag: "span.docx-tab",
         getAttrs(node) {
-          if (!(node instanceof HTMLElement) || !node.dataset["docxPositionalTab"]) {
+          if (
+            !(node instanceof HTMLElement) ||
+            !node.dataset["docxPositionalTab"]
+          ) {
             return null;
           }
 
@@ -60,7 +63,9 @@ const parsePositionalTab = (element: HTMLElement): PositionalTab => {
   const leader = element.dataset["docxTabLeader"];
 
   return {
-    ...(relativeTo === "margin" || relativeTo === "indent" ? { relativeTo } : {}),
+    ...(relativeTo === "margin" || relativeTo === "indent"
+      ? { relativeTo }
+      : {}),
     ...(alignment === "left" || alignment === "center" || alignment === "right"
       ? { alignment }
       : {}),

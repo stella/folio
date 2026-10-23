@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { buildTableDocx } from "../__tests__/tableOperationDocument";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   createHarnessState,
   HeadlessEditorView,
@@ -14,11 +16,13 @@ import {
   saveHarnessState,
   summarizeState,
 } from "../__tests__/editorHarness";
+import { buildTableDocx } from "../__tests__/tableOperationDocument";
 import { acceptChange, rejectChange } from "./commands/comments";
 
 const assertTableGrids = (doc: PMNode): void => {
   doc.descendants((node) => {
-    if (node.type.name === "table") expect(TableMap.get(node).problems ?? []).toEqual([]);
+    if (node.type.name === "table")
+      expect(TableMap.get(node).problems ?? []).toEqual([]);
   });
 };
 
@@ -61,15 +65,21 @@ test(
               schema.node("paragraph", null, schema.text("Merged paste")),
             ]);
             const rows = [schema.node("tableRow", null, [cell])];
-            for (let row = 1; row < rowspan; row++) rows.push(schema.node("tableRow"));
+            for (let row = 1; row < rowspan; row++)
+              rows.push(schema.node("tableRow"));
             const view = new HeadlessEditorView(state);
-            view.paste(new Slice(Fragment.from(schema.node("table", null, rows)), 0, 0));
+            view.paste(
+              new Slice(Fragment.from(schema.node("table", null, rows)), 0, 0),
+            );
             return view.state;
           };
           const direct = paste("editing");
           const tracked = paste("suggesting");
           const saved = await saveHarnessState(tracked, base);
-          const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "suggesting");
+          const reopened = createHarnessState(
+            await parseShapeDocument(saved.bytes),
+            "suggesting",
+          );
           for (const state of [tracked, reopened]) {
             const accepted = resolveAllChanges(state, "accept");
             const rejected = resolveAllChanges(state, "reject");
@@ -82,7 +92,9 @@ test(
             for (const mode of ["accept", "reject"] as const) {
               const view = new HeadlessEditorView(state);
               const command = mode === "accept" ? acceptChange : rejectChange;
-              expect(command(0, state.doc.content.size)(state, view.dispatch)).toBe(true);
+              expect(
+                command(0, state.doc.content.size)(state, view.dispatch),
+              ).toBe(true);
               expect(summarizeState(view.state)).toEqual(
                 summarizeState(mode === "accept" ? accepted : rejected),
               );

@@ -35,10 +35,17 @@ const rootTransaction = (transaction: Transaction): Transaction => {
   return root instanceof Transaction ? root : transaction;
 };
 
-const classify = (state: EditorState, previous: EditorState): HistoryChange | null => {
+const classify = (
+  state: EditorState,
+  previous: EditorState,
+): HistoryChange | null => {
   const current = historyBridgeKey.getState(state);
   const before = historyBridgeKey.getState(previous);
-  if (current === undefined || before === undefined || current.lineage !== before.lineage) {
+  if (
+    current === undefined ||
+    before === undefined ||
+    current.lineage !== before.lineage
+  ) {
     return null;
   }
   if (state.doc === previous.doc) {
@@ -58,7 +65,9 @@ const classify = (state: EditorState, previous: EditorState): HistoryChange | nu
  * each document change and whether it opened a new undo step. Keep one
  * instance per mounted editor.
  */
-export const createHistoryBridgePlugin = (onChange: (change: HistoryChange) => void): Plugin =>
+export const createHistoryBridgePlugin = (
+  onChange: (change: HistoryChange) => void,
+): Plugin =>
   new Plugin<BridgeState>({
     key: historyBridgeKey,
     state: {
@@ -67,7 +76,9 @@ export const createHistoryBridgePlugin = (onChange: (change: HistoryChange) => v
         if (!transaction.docChanged) {
           return value;
         }
-        const lastWasUndoRedo = isHistoryTransaction(rootTransaction(transaction));
+        const lastWasUndoRedo = isHistoryTransaction(
+          rootTransaction(transaction),
+        );
         return lastWasUndoRedo === value.lastWasUndoRedo
           ? value
           : { lineage: value.lineage, lastWasUndoRedo };

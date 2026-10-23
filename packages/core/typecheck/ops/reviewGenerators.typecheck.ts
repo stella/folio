@@ -1,20 +1,31 @@
+import { panic } from "better-result";
+import fc from "fast-check";
+
 /** Tracked-family generators compiled by the package's typecheck contract. */
-import type { BlockContent, Document, Paragraph, TableRow } from "@stll/docx-core/model";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  TableRow,
+} from "@stll/docx-core/model";
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   INHERIT_RUN_PROPS,
   normalizeForOps,
   OP_STORIES,
   paragraphLength,
   paragraphLogicalText,
-  type DocumentOp,
 } from "@stll/docx-core/ops";
-import { panic } from "better-result";
-import fc from "fast-check";
+
 import { parseDocx } from "../../src/docx/parser";
 import { createDocx } from "../../src/docx/rezip";
 
-type WithRevision<Op> = Op extends DocumentOp ? ("revision" extends keyof Op ? Op : never) : never;
+type WithRevision<Op> = Op extends DocumentOp
+  ? "revision" extends keyof Op
+    ? Op
+    : never
+  : never;
 type TrackedOp = WithRevision<DocumentOp>;
 
 export const FIRST_ID = "00000001";
@@ -25,8 +36,16 @@ const NEW_ID = "00000020";
 const DATE = "2026-05-06T07:08:09.000Z";
 
 export const seedArbitrary = fc.record({
-  text: fc.string({ unit: fc.constantFrom("a", "b", " ", "ž", "😀"), minLength: 2, maxLength: 12 }),
-  insertion: fc.string({ unit: fc.constantFrom("x", "y", "ž"), minLength: 1, maxLength: 6 }),
+  text: fc.string({
+    unit: fc.constantFrom("a", "b", " ", "ž", "😀"),
+    minLength: 2,
+    maxLength: 12,
+  }),
+  insertion: fc.string({
+    unit: fc.constantFrom("x", "y", "ž"),
+    minLength: 1,
+    maxLength: 6,
+  }),
   offset: fc.nat(),
   container: fc.constantFrom("body", "cell"),
   nesting: fc.constantFrom("plain", "insertion-deletion"),
@@ -82,8 +101,13 @@ export const fixture = async (seed: Seed): Promise<Document> => {
       },
     ];
   }
+  const first = paragraph({ id: FIRST_ID, text: seed.text, seed });
+  first.content.push({
+    type: "run",
+    content: [{ type: "footnoteRef", id: 2 }],
+  });
   const targets: BlockContent[] = [
-    paragraph({ id: FIRST_ID, text: seed.text, seed }),
+    first,
     paragraph({ id: SECOND_ID, text: seed.text, seed }),
     nested,
     paragraph({ id: "00000004", text: "tail", seed }),
@@ -94,11 +118,23 @@ export const fixture = async (seed: Seed): Promise<Document> => {
       : [
           {
             type: "table",
-            rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: targets }] }],
+            rows: [
+              {
+                type: "tableRow",
+                cells: [{ type: "tableCell", content: targets }],
+              },
+            ],
           },
         ];
   const model: Document = {
     package: {
+      footnotes: [
+        {
+          type: "footnote",
+          id: 2,
+          content: [paragraph({ id: "00000006", text: seed.insertion, seed })],
+        },
+      ],
       document: {
         content: [
           ...targetBlocks,
@@ -106,8 +142,14 @@ export const fixture = async (seed: Seed): Promise<Document> => {
             type: "table",
             columnWidths: [100, 100, 100],
             rows: [0, 1, 2].map((index) => {
-              const rowId = (0x10 + index).toString(16).toUpperCase().padStart(8, "0");
-              const rightId = (0x30 + index).toString(16).toUpperCase().padStart(8, "0");
+              const rowId = (0x10 + index)
+                .toString(16)
+                .toUpperCase()
+                .padStart(8, "0");
+              const rightId = (0x30 + index)
+                .toString(16)
+                .toUpperCase()
+                .padStart(8, "0");
               return {
                 type: "tableRow",
                 cells: [
@@ -122,7 +164,9 @@ export const fixture = async (seed: Seed): Promise<Document> => {
                   },
                   {
                     type: "tableCell",
-                    content: [paragraph({ id: rightId, text: seed.text, seed })],
+                    content: [
+                      paragraph({ id: rightId, text: seed.text, seed }),
+                    ],
                   },
                 ],
               };
@@ -142,9 +186,19 @@ export const fixture = async (seed: Seed): Promise<Document> => {
 };
 
 type OperationOptions = { document: Document; seed: Seed };
-export const stamp = { id: 1000, author: "Reviewer", date: "2026-06-07T08:09:10.000Z" };
-export const newIds = { revision: Array.from({ length: 128 }, (_, index) => 1001 + index) };
-export const at = (offset: number) => ({ story: OP_STORIES.MAIN, blockId: FIRST_ID, offset });
+export const stamp = {
+  id: 1000,
+  author: "Reviewer",
+  date: "2026-06-07T08:09:10.000Z",
+};
+export const newIds = {
+  revision: Array.from({ length: 128 }, (_, index) => 1001 + index),
+};
+export const at = (offset: number) => ({
+  story: OP_STORIES.MAIN,
+  blockId: FIRST_ID,
+  offset,
+});
 
 export const findParagraph = (
   blocks: readonly BlockContent[],
@@ -201,6 +255,24 @@ const targetOffset = ({ document, seed }: OperationOptions): number => {
 
 /** Total over the tracked members of DocumentOp; a new family requires a case. */
 export const operations = {
+  [DOCUMENT_OP_TYPES.ADD_NOTE]: ({ document, seed }: OperationOptions) => ({
+    type: DOCUMENT_OP_TYPES.ADD_NOTE,
+    at: at(targetOffset({ document, seed })),
+    note: {
+      type: "footnote",
+      id: 1,
+      content: [paragraph({ id: NEW_ID, text: seed.insertion, seed })],
+    },
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.REMOVE_NOTE]: ({ document }: OperationOptions) => ({
+    type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+    at: at(targetLength(document) - 1),
+    story: { kind: "footnote", id: 2 },
+    revision: stamp,
+    newIds,
+  }),
   [DOCUMENT_OP_TYPES.INSERT_TEXT]: ({ document, seed }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.INSERT_TEXT,
     at: at(targetOffset({ document, seed })),
@@ -209,7 +281,10 @@ export const operations = {
     revision: stamp,
     newIds,
   }),
-  [DOCUMENT_OP_TYPES.INSERT_CONTENT]: ({ document, seed }: OperationOptions) => ({
+  [DOCUMENT_OP_TYPES.INSERT_CONTENT]: ({
+    document,
+    seed,
+  }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
     at: at(targetOffset({ document, seed })),
     slice: {
@@ -276,7 +351,11 @@ export const operations = {
     type: DOCUMENT_OP_TYPES.INSERT_TABLE,
     story: OP_STORIES.MAIN,
     at: { type: seed.offset % 2 === 0 ? "before" : "after", blockId: FIRST_ID },
-    table: { type: "table", columnWidths: [100, 100, 100], rows: [insertedRow(seed)] },
+    table: {
+      type: "table",
+      columnWidths: [100, 100, 100],
+      rows: [insertedRow(seed)],
+    },
     revision: stamp,
     newIds,
   }),
@@ -368,5 +447,7 @@ export const operations = {
     newIds,
   }),
 } as const satisfies {
-  [Kind in TrackedOp["type"]]: (options: OperationOptions) => Extract<TrackedOp, { type: Kind }>;
+  [Kind in TrackedOp["type"]]: (
+    options: OperationOptions,
+  ) => Extract<TrackedOp, { type: Kind }>;
 };

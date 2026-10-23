@@ -15,20 +15,20 @@
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE,
-  InvalidFolioDocumentOperationBatchError,
-  parseFolioDocumentOperationBatch,
   type FolioAIComment,
   type FolioAIEditOperation,
   type FolioDocumentOperationBatch,
   type FolioDocumentOperationBatchPrecondition,
   type FolioDocumentOperationMode,
   type FolioDocumentOperationType,
+  InvalidFolioDocumentOperationBatchError,
+  parseFolioDocumentOperationBatch,
 } from "@stll/folio-core/server";
 
 import {
-  resolveSuggestChangesOptions,
   type FolioSuggestChangesOptions,
   type ResolvedFolioSuggestChangesOptions,
+  resolveSuggestChangesOptions,
 } from "./suggest-changes-options";
 import type { FolioAgentInputNormalization } from "./types";
 
@@ -93,7 +93,10 @@ const readOperationPrecondition = (
     return "`precondition` must be an object when provided.";
   }
   const blockTextHash = value["blockTextHash"];
-  if (!isNonEmptyString(blockTextHash) || !NORMALIZED_TEXT_HASH_PATTERN.test(blockTextHash)) {
+  if (
+    !isNonEmptyString(blockTextHash) ||
+    !NORMALIZED_TEXT_HASH_PATTERN.test(blockTextHash)
+  ) {
     return "`precondition.blockTextHash` must be a normalized block text hash, echoed from read_document / read_section / find_text.";
   }
   return { blockTextHash };
@@ -140,8 +143,7 @@ export const prepareFolioAgentDocumentOperationBatch = ({
 
 /** Result of {@link parseAddCommentInput}. */
 export type ParseAddCommentResult =
-  | { ok: true; operation: FolioAIEditOperation }
-  | { ok: false; error: string };
+  { ok: true; operation: FolioAIEditOperation } | { ok: false; error: string };
 
 /**
  * Validate `add_comment`'s raw tool-call arguments and build the
@@ -150,25 +152,43 @@ export type ParseAddCommentResult =
  */
 export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
   if (!isPlainObject(args)) {
-    return { ok: false, error: "add_comment expects an object with `blockId` and `text` strings." };
+    return {
+      ok: false,
+      error: "add_comment expects an object with `blockId` and `text` strings.",
+    };
   }
   const blockId = args["blockId"];
   const quote = args["quote"];
   const text = args["text"];
   if (!isNonEmptyString(blockId)) {
-    return { ok: false, error: "add_comment requires a non-empty string `blockId`." };
+    return {
+      ok: false,
+      error: "add_comment requires a non-empty string `blockId`.",
+    };
   }
   if (!isNonEmptyString(text)) {
-    return { ok: false, error: "add_comment requires a non-empty string `text`." };
+    return {
+      ok: false,
+      error: "add_comment requires a non-empty string `text`.",
+    };
   }
   if (text.length > MAX_OPERATION_TEXT_LENGTH) {
-    return { ok: false, error: explainTextTooLong("add_comment's `text`", text.length) };
+    return {
+      ok: false,
+      error: explainTextTooLong("add_comment's `text`", text.length),
+    };
   }
   if (quote !== undefined && typeof quote !== "string") {
-    return { ok: false, error: "add_comment's `quote` must be a string when provided." };
+    return {
+      ok: false,
+      error: "add_comment's `quote` must be a string when provided.",
+    };
   }
   if (typeof quote === "string" && quote.length > MAX_OPERATION_TEXT_LENGTH) {
-    return { ok: false, error: explainTextTooLong("add_comment's `quote`", quote.length) };
+    return {
+      ok: false,
+      error: explainTextTooLong("add_comment's `quote`", quote.length),
+    };
   }
   const precondition = readOperationPrecondition(args["precondition"]);
   if (typeof precondition === "string") {
@@ -202,10 +222,20 @@ export type ParseSuggestChangesResult =
     }
   | { ok: false; error: string };
 
-const SUGGEST_CHANGES_ARGUMENT_KEYS = ["operations", "documentVersion"] as const;
+const SUGGEST_CHANGES_ARGUMENT_KEYS = [
+  "operations",
+  "documentVersion",
+] as const;
 
 /** String-valued operation fields that count against the text caps. */
-const TEXT_FIELDS = ["find", "replace", "text", "quote", "styleId", "area"] as const;
+const TEXT_FIELDS = [
+  "find",
+  "replace",
+  "text",
+  "quote",
+  "styleId",
+  "area",
+] as const;
 
 /**
  * Try to read a value the model serialised as a JSON string where an object
@@ -248,7 +278,10 @@ const decodeSuggestChangesInput = (
   let args = rawArgs;
   const embeddedArgs = parseEmbeddedJson(args);
   if (isPlainObject(embeddedArgs)) {
-    normalizations.push({ path: "$", message: "arguments were supplied as a JSON string" });
+    normalizations.push({
+      path: "$",
+      message: "arguments were supplied as a JSON string",
+    });
     args = embeddedArgs;
   }
   if (!isPlainObject(args)) {
@@ -256,7 +289,10 @@ const decodeSuggestChangesInput = (
   }
   for (const key of Object.keys(args)) {
     if (!(SUGGEST_CHANGES_ARGUMENT_KEYS as readonly string[]).includes(key)) {
-      normalizations.push({ path: key, message: `unknown argument \`${key}\` was ignored` });
+      normalizations.push({
+        path: key,
+        message: `unknown argument \`${key}\` was ignored`,
+      });
     }
   }
 
@@ -285,7 +321,10 @@ const decodeSuggestChangesInput = (
     let operation = rawOperation;
     const embeddedOperation = parseEmbeddedJson(operation);
     if (isPlainObject(embeddedOperation)) {
-      normalizations.push({ path, message: "operation was supplied as a JSON string" });
+      normalizations.push({
+        path,
+        message: "operation was supplied as a JSON string",
+      });
       operation = embeddedOperation;
     }
     if (!isPlainObject(operation)) {
@@ -294,14 +333,18 @@ const decodeSuggestChangesInput = (
     let type = operation["type"];
     let typeKey = "type";
     if (type === undefined && typeof operation["kind"] === "string") {
-      normalizations.push({ path: `${path}.kind`, message: "`kind` was read as `type`" });
+      normalizations.push({
+        path: `${path}.kind`,
+        message: "`kind` was read as `type`",
+      });
       type = operation["kind"];
       typeKey = "kind";
     }
     if (!isAllowedOperationType(type, options)) {
       return `${path}.type must be one of ${options.operationTypes.join(", ")}.`;
     }
-    const allowedKeys: readonly string[] = FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type];
+    const allowedKeys: readonly string[] =
+      FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type];
     const decoded: Record<string, unknown> = { type };
     for (const [key, value] of Object.entries(operation)) {
       if (key === typeKey) {
@@ -318,7 +361,11 @@ const decodeSuggestChangesInput = (
     }
     operations.push(decoded);
   }
-  return { operations, documentVersion: args["documentVersion"], normalizations };
+  return {
+    operations,
+    documentVersion: args["documentVersion"],
+    normalizations,
+  };
 };
 
 const isAllowedOperationType = (
@@ -343,7 +390,9 @@ const checkTextCaps = (
     if (value.length > MAX_OPERATION_TEXT_LENGTH) {
       return explainTextTooLong(label(field), value.length);
     }
-    return consumeTextBudget(budget, value.length) ? explainAggregateTextTooLong(index) : undefined;
+    return consumeTextBudget(budget, value.length)
+      ? explainAggregateTextTooLong(index)
+      : undefined;
   };
   for (const field of TEXT_FIELDS) {
     const breach = charge(field, operation[field]);
@@ -352,7 +401,10 @@ const checkTextCaps = (
     }
   }
   const comment = operation["comment"];
-  const commentBreach = charge("comment", isPlainObject(comment) ? comment["text"] : comment);
+  const commentBreach = charge(
+    "comment",
+    isPlainObject(comment) ? comment["text"] : comment,
+  );
   if (commentBreach !== undefined) {
     return commentBreach;
   }
@@ -429,7 +481,8 @@ export const parseSuggestChangesInput = (
   } else if (decoded.documentVersion !== undefined) {
     decoded.normalizations.push({
       path: "documentVersion",
-      message: "`documentVersion` is not pinned on this surface and was ignored",
+      message:
+        "`documentVersion` is not pinned on this surface and was ignored",
     });
   }
 
@@ -481,7 +534,9 @@ export const parseSuggestChangesInput = (
     return {
       ok: true,
       operations: [...batch.operations],
-      ...(batch.precondition !== undefined && { precondition: batch.precondition }),
+      ...(batch.precondition !== undefined && {
+        precondition: batch.precondition,
+      }),
       normalizations: decoded.normalizations,
     };
   } catch (error) {

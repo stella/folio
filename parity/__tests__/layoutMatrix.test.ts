@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import { buildLayoutInteractionMatrix } from "../fixtures/layout-interaction-matrix";
 import { summarizeLayoutMatrix } from "../layoutMatrix";
-import type { CorpusReport, Divergence, FeatureAttributedResult } from "../types";
+import type {
+  CorpusReport,
+  Divergence,
+  FeatureAttributedResult,
+} from "../types";
 
 const scenarios = buildLayoutInteractionMatrix().slice(0, 2);
 
@@ -22,7 +26,12 @@ const resultFor = (
   divergences,
   attributed: [],
   docFeatures: [],
-  fontEnvironment: { status: "native", tags: [], comparedLines: 1, matchingLines: 1 },
+  fontEnvironment: {
+    status: "native",
+    tags: [],
+    comparedLines: 1,
+    matchingLines: 1,
+  },
   rasterComparison: {
     status: "compared",
     score: rasterStatus === "match" ? 1 : 0.9,
@@ -72,7 +81,12 @@ describe("reference layout matrix summary", () => {
     const report = summarizeLayoutMatrix(
       reportFor([
         resultFor(first.id, [
-          { kind: "pagination", text: "Synthetic", referencePage: 1, folioPage: 2 },
+          {
+            kind: "pagination",
+            text: "Synthetic",
+            referencePage: 1,
+            folioPage: 2,
+          },
         ]),
         resultFor(second.id, [], "difference"),
       ]),
@@ -83,7 +97,9 @@ describe("reference layout matrix summary", () => {
     expect(report.cases.at(0)?.requiredDivergences).toEqual({ pagination: 1 });
     expect(report.requiredInteractionClusters.length).toBeGreaterThan(0);
     expect(
-      report.requiredInteractionClusters.every(({ caseIds }) => caseIds.includes(first.id)),
+      report.requiredInteractionClusters.every(({ caseIds }) =>
+        caseIds.includes(first.id),
+      ),
     ).toBeTrue();
   });
 
@@ -101,9 +117,19 @@ describe("reference layout matrix summary", () => {
   test("does not gate line flow when font geometry is unverified", () => {
     const first = scenarios.at(0)!;
     const result = resultFor(first.id, [
-      { kind: "line-break", page: 1, referenceTexts: ["A"], folioTexts: ["A", "B"] },
+      {
+        kind: "line-break",
+        page: 1,
+        referenceTexts: ["A"],
+        folioTexts: ["A", "B"],
+      },
     ]);
-    result.fontEnvironment = { status: "mismatch", tags: [], comparedLines: 1, matchingLines: 0 };
+    result.fontEnvironment = {
+      status: "mismatch",
+      tags: [],
+      comparedLines: 1,
+      matchingLines: 0,
+    };
     const report = summarizeLayoutMatrix(reportFor([result]), [first]);
 
     expect(report.summary).toEqual({ total: 1, pass: 0, advisory: 1, fail: 0 });
@@ -112,7 +138,9 @@ describe("reference layout matrix summary", () => {
   test("supports each reference and rejects incomplete case sets", () => {
     const first = scenarios.at(0)!;
     expect(
-      summarizeLayoutMatrix(reportFor([resultFor(first.id)], "libreoffice"), [first]).reference.id,
+      summarizeLayoutMatrix(reportFor([resultFor(first.id)], "libreoffice"), [
+        first,
+      ]).reference.id,
     ).toBe("libreoffice");
     expect(() => summarizeLayoutMatrix(reportFor([]), [first])).toThrow(
       `Missing matrix result: ${first.id}`,

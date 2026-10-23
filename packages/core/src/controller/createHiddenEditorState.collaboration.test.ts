@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import * as yProseMirror from "y-prosemirror";
 import * as yjs from "yjs";
 
-import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import {
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
@@ -21,9 +21,12 @@ const PROSEMIRROR_FRAGMENT_NAME = "prosemirror";
 const collaborationModules = { yProseMirror, yjs };
 
 const parsedDocument = async () =>
-  await parseDocx(await createDocx(createEmptyDocument({ initialText: "Room" })), {
-    preloadFonts: false,
-  });
+  await parseDocx(
+    await createDocx(createEmptyDocument({ initialText: "Room" })),
+    {
+      preloadFonts: false,
+    },
+  );
 
 describe("createHiddenEditorState with collaboration", () => {
   test("seeding stamps the attr-schema version", async () => {
@@ -57,7 +60,9 @@ describe("createHiddenEditorState with collaboration", () => {
       throw new Error("Fixture must carry a paragraph source contract");
     }
     ydoc.getMap(METADATA_MAP_NAME).set(PARAGRAPH_SOURCE_CONTRACT_KEY, contract);
-    expect(ydoc.getMap(METADATA_MAP_NAME).get(ATTR_SCHEMA_VERSION_KEY)).toBeUndefined();
+    expect(
+      ydoc.getMap(METADATA_MAP_NAME).get(ATTR_SCHEMA_VERSION_KEY),
+    ).toBeUndefined();
 
     const state = createHiddenEditorState({
       collaboration: { shouldSeed: false, yXmlFragment: fragment },
@@ -74,7 +79,9 @@ describe("createHiddenEditorState with collaboration", () => {
     const ydoc = new yjs.Doc();
     const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
     yProseMirror.prosemirrorToYXmlFragment(toProseDoc(document), fragment);
-    ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, FOLIO_YJS_ATTR_SCHEMA_VERSION + 1);
+    ydoc
+      .getMap(METADATA_MAP_NAME)
+      .set(ATTR_SCHEMA_VERSION_KEY, FOLIO_YJS_ATTR_SCHEMA_VERSION + 1);
 
     expect(() =>
       createHiddenEditorState({

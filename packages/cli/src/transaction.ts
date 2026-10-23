@@ -10,23 +10,28 @@ import { Result } from "better-result";
 import { readdir, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
 
-import { fileVersionOf, readDocumentFile, sameFile, type FileIdentity } from "./document";
+import {
+  type FileIdentity,
+  fileVersionOf,
+  readDocumentFile,
+  sameFile,
+} from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import {
   appendJournal,
-  stagePathFor,
   type JournalCommit,
   type RecoveryDiscardReason,
+  stagePathFor,
 } from "./journal";
-import { checkPackageIntegrity, type ChangedPart } from "./package-parts";
+import { type ChangedPart, checkPackageIntegrity } from "./package-parts";
 import {
   inspectPath,
+  type PathEntry,
   readSidecarFile,
   sidecarDirectory,
   syncDirectory,
   unsafePath,
   writeNewSidecarFile,
-  type PathEntry,
 } from "./sidecar";
 
 /** Backups kept per document. */
@@ -64,16 +69,21 @@ export const pruneBackups = async (
 ): Promise<Result<void, FolioCliError>> => {
   const names = await Result.tryPromise(() => readdir(directory));
   if (names.isErr())
-    return Result.err(fileSystemError(`Cannot list ${directory}`, names.error.cause));
+    return Result.err(
+      fileSystemError(`Cannot list ${directory}`, names.error.cause),
+    );
   const backups: { name: string; modifiedMs: number }[] = [];
   for (const name of names.value.filter((entry) => BACKUP_NAME.test(entry))) {
     const entry = await inspectPath(path.join(directory, name));
     if (entry.isErr()) return Result.err(entry.error);
-    if (entry.value.type === "file") backups.push({ name, modifiedMs: entry.value.modifiedMs });
+    if (entry.value.type === "file")
+      backups.push({ name, modifiedMs: entry.value.modifiedMs });
   }
   const stale = backups
     .toSorted(
-      (left, right) => right.modifiedMs - left.modifiedMs || right.name.localeCompare(left.name),
+      (left, right) =>
+        right.modifiedMs - left.modifiedMs ||
+        right.name.localeCompare(left.name),
     )
     .slice(keep);
   for (const { name } of stale) {
@@ -82,7 +92,11 @@ export const pruneBackups = async (
   return Result.ok();
 };
 
-type BackUpOptions = { documentPath: string; version: string; bytes: Uint8Array };
+type BackUpOptions = {
+  documentPath: string;
+  version: string;
+  bytes: Uint8Array;
+};
 
 /**
  * Write the bytes a transaction replaces to
@@ -104,7 +118,9 @@ const backUp = async ({
     const kept = await readSidecarFile(backupPath);
     if (kept.isErr()) return Result.err(kept.error);
     if (fileVersionOf(kept.value) !== version) {
-      return Result.err(unsafePath(`${backupPath} does not hold the version its name says.`));
+      return Result.err(
+        unsafePath(`${backupPath} does not hold the version its name says.`),
+      );
     }
   } else {
     const written = await writeNewSidecarFile(backupPath, bytes);
@@ -132,7 +148,12 @@ export type CommitRequest = {
   /** The journal line, completed with the stage, versions, and backup here. */
   entry: Omit<
     JournalCommit,
-    "type" | "path" | "toVersion" | "destinationVersionBefore" | "stage" | "receipt"
+    | "type"
+    | "path"
+    | "toVersion"
+    | "destinationVersionBefore"
+    | "stage"
+    | "receipt"
   >;
   /** The receipt returned to the caller; completed with `toVersion` and `backup`. */
   receipt: Readonly<Record<string, unknown>>;
@@ -146,7 +167,12 @@ export type CommitResult = {
 
 type ExistingDestination =
   | { type: "missing" }
-  | { type: "file"; identity: FileIdentity; version: string; bytes: Uint8Array<ArrayBuffer> };
+  | {
+      type: "file";
+      identity: FileIdentity;
+      version: string;
+      bytes: Uint8Array<ArrayBuffer>;
+    };
 
 /** The destination as it is now: missing, or a regular single-link file read without following a symlink. */
 const readDestination = async (
@@ -172,7 +198,11 @@ const readDestination = async (
   });
 };
 
-const staleError = (message: string, expected: string, actual: string | null): FolioCliError =>
+const staleError = (
+  message: string,
+  expected: string,
+  actual: string | null,
+): FolioCliError =>
   cliError({
     code: FOLIO_CLI_ERROR_CODES.staleVersion,
     message,
@@ -187,7 +217,8 @@ const checkDestination = (
 ): Result<void, FolioCliError> => {
   const { destination, destinationPath } = request;
   if (destination.type === "inPlace" || existing.type === "missing") {
-    return destination.type === "file" && destination.expectedVersion !== undefined
+    return destination.type === "file" &&
+      destination.expectedVersion !== undefined
       ? Result.err(
           staleError(
             `${destinationPath} does not exist, but a destination version was expected.`,
@@ -235,22 +266,34 @@ type RenameGuard = {
 };
 
 const sameEntry = (entry: PathEntry, identity: FileIdentity): boolean =>
-  entry.type === "file" && entry.links === 1 && sameFile(entry.identity, identity);
+  entry.type === "file" &&
+  entry.links === 1 &&
+  sameFile(entry.identity, identity);
 
 /**
  * Just before the rename: the directory still resolves where it did, the
  * stage is still the file written, and the destination is still the file
  * checked (or still absent).
  */
-const checkBeforeRename = async (guard: RenameGuard): Promise<Result<void, FolioCliError>> => {
-  const parent = await Result.tryPromise(() => realpath(path.dirname(guard.destinationPath)));
+const checkBeforeRename = async (
+  guard: RenameGuard,
+): Promise<Result<void, FolioCliError>> => {
+  const parent = await Result.tryPromise(() =>
+    realpath(path.dirname(guard.destinationPath)),
+  );
   if (parent.isErr() || parent.value !== guard.parentRealPath) {
-    return Result.err(unsafePath(`${path.dirname(guard.destinationPath)} moved during the write.`));
+    return Result.err(
+      unsafePath(
+        `${path.dirname(guard.destinationPath)} moved during the write.`,
+      ),
+    );
   }
   const stage = await inspectPath(guard.stagePath);
   if (stage.isErr()) return Result.err(stage.error);
   if (!sameEntry(stage.value, guard.stageIdentity)) {
-    return Result.err(unsafePath(`${guard.stagePath} was replaced during the write.`));
+    return Result.err(
+      unsafePath(`${guard.stagePath} was replaced during the write.`),
+    );
   }
   const destination = await inspectPath(guard.destinationPath);
   if (destination.isErr()) return Result.err(destination.error);
@@ -260,7 +303,9 @@ const checkBeforeRename = async (guard: RenameGuard): Promise<Result<void, Folio
       : sameEntry(destination.value, guard.existing.identity);
   return unchanged
     ? Result.ok()
-    : Result.err(unsafePath(`${guard.destinationPath} was replaced during the write.`));
+    : Result.err(
+        unsafePath(`${guard.destinationPath} was replaced during the write.`),
+      );
 };
 
 /**
@@ -293,18 +338,26 @@ export const commitTransaction = async (
   if (existing.isErr()) return Result.err(existing.error);
   const destinationChecked = checkDestination(request, existing.value);
   if (destinationChecked.isErr()) return Result.err(destinationChecked.error);
-  const destinationVersionBefore = existing.value.type === "file" ? existing.value.version : null;
-  const parentRealPath = await Result.tryPromise(() => realpath(path.dirname(destinationPath)));
+  const destinationVersionBefore =
+    existing.value.type === "file" ? existing.value.version : null;
+  const parentRealPath = await Result.tryPromise(() =>
+    realpath(path.dirname(destinationPath)),
+  );
   if (parentRealPath.isErr()) {
     return Result.err(
-      fileSystemError(`Cannot resolve ${destinationPath}`, parentRealPath.error.cause),
+      fileSystemError(
+        `Cannot resolve ${destinationPath}`,
+        parentRealPath.error.cause,
+      ),
     );
   }
 
   const stagePath = stagePathFor(destinationPath, txId);
   const staged = await writeNewSidecarFile(stagePath, bytes);
   if (staged.isErr()) return Result.err(staged.error);
-  const discardStage = async <T>(error: FolioCliError): Promise<Result<T, FolioCliError>> => {
+  const discardStage = async <T>(
+    error: FolioCliError,
+  ): Promise<Result<T, FolioCliError>> => {
     await rm(stagePath, { force: true });
     return Result.err(error);
   };
@@ -372,7 +425,9 @@ export const commitTransaction = async (
   });
   if (guarded.isErr()) return await abandon("renameRefused", guarded.error);
 
-  const renamed = await Result.tryPromise(() => rename(stagePath, destinationPath));
+  const renamed = await Result.tryPromise(() =>
+    rename(stagePath, destinationPath),
+  );
   if (renamed.isErr()) {
     return Result.err(
       fileSystemError(

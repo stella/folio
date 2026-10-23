@@ -6,8 +6,8 @@ import { parseDocx } from "../parser";
 import { createDocx } from "../rezip";
 import {
   type BilingualRow,
-  type CreateBilingualDocumentOptions,
   createBilingualDocument,
+  type CreateBilingualDocumentOptions,
   readBilingualDocument,
 } from "./createBilingualDocument";
 
@@ -53,7 +53,9 @@ export async function createBilingualDocx(
 }
 
 /** Bytes-in form of {@link readBilingualDocument}. */
-export async function readBilingualDocx(input: ArrayBuffer | Uint8Array): Promise<BilingualRow[]> {
+export async function readBilingualDocx(
+  input: ArrayBuffer | Uint8Array,
+): Promise<BilingualRow[]> {
   const buffer = await toArrayBuffer(input);
   const document = await parseDocx(buffer, { preloadFonts: false });
   const editableParagraphIds = new Set(

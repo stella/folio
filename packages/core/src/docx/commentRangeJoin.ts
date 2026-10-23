@@ -27,7 +27,9 @@ type MarkerSlot = Pick<CommentMarkerSlot, "content" | "index">;
  * Collapse each comment's range markers to its first start and its last end.
  * Answers how many markers were dropped.
  */
-export const joinCommentRangesAcrossParagraphs = (blocks: readonly BlockContent[]): number => {
+export const joinCommentRangesAcrossParagraphs = (
+  blocks: readonly BlockContent[],
+): number => {
   const startsById = new Map<number, MarkerSlot[]>();
   const endsById = new Map<number, MarkerSlot[]>();
 

@@ -2,5 +2,12 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./tsconfig.json",
   "include": ["src", "typecheck"],
-  "exclude": ["node_modules", "dist", "scripts", "**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "scripts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__tests__/**"
+  ]
 }

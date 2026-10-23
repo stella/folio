@@ -16,22 +16,23 @@
  * core; the toolbar-facing handlers below already work against our command map.
  */
 
-import type { Ref } from "vue";
 import type { EditorView } from "prosemirror-view";
-import type { Document } from "@stll/folio-core/types/document";
+import type { Ref } from "vue";
+
+import { getCachedNumberingMap } from "@stll/folio-core/docx";
+import { createStyleResolver } from "@stll/folio-core/prosemirror";
+import { clearFormatting } from "@stll/folio-core/prosemirror/commands/formatting";
+import { insertPageBreak } from "@stll/folio-core/prosemirror/commands/pageBreak";
 import {
   applyStyle,
   type ResolvedStyleAttrs,
 } from "@stll/folio-core/prosemirror/commands/paragraph";
-import { createStyleResolver } from "@stll/folio-core/prosemirror";
-import { getCachedNumberingMap } from "@stll/folio-core/docx";
-import { clearFormatting } from "@stll/folio-core/prosemirror/commands/formatting";
-import { insertPageBreak } from "@stll/folio-core/prosemirror/commands/pageBreak";
-import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import {
-  insertSectionBreakNextPage,
   insertSectionBreakContinuous,
+  insertSectionBreakNextPage,
 } from "@stll/folio-core/prosemirror/commands/sectionBreak";
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
+import type { Document } from "@stll/folio-core/types/document";
 
 export type UseFormattingActionsOptions = {
   editorView: Ref<EditorView | null>;
@@ -65,9 +66,12 @@ export function useFormattingActions(opts: UseFormattingActionsOptions) {
       // Build the attrs conditionally: under exactOptionalPropertyTypes an
       // explicit `undefined` is not assignable to the optional style fields.
       const attrs: ResolvedStyleAttrs = {
-        numbering: doc?.package?.numbering ? getCachedNumberingMap(doc.package.numbering) : null,
+        numbering: doc?.package?.numbering
+          ? getCachedNumberingMap(doc.package.numbering)
+          : null,
       };
-      if (resolved.paragraphFormatting) attrs.paragraphFormatting = resolved.paragraphFormatting;
+      if (resolved.paragraphFormatting)
+        attrs.paragraphFormatting = resolved.paragraphFormatting;
       if (resolved.runFormatting) attrs.runFormatting = resolved.runFormatting;
       const styleName = resolver.getStyle(styleId)?.name;
       if (styleName) attrs.styleName = styleName;

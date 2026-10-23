@@ -1,4 +1,5 @@
 import { sliceText } from "@stll/folio-core/utils/sliceText";
+
 import type { FolioDatePickerPopoverProps } from "../folio-ui";
 
 /**
@@ -18,7 +19,9 @@ const toISODate = (value: string | Date | null): string => {
     const day = value.getDate().toString().padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
-  return value.length >= 10 ? sliceText({ text: value, units: "codeUnits", end: 10 }) : value;
+  return value.length >= 10
+    ? sliceText({ text: value, units: "codeUnits", end: 10 })
+    : value;
 };
 
 export function DefaultDatePickerPopover({

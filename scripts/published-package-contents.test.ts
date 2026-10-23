@@ -7,12 +7,17 @@ const PACKED_FILE_RE = /^packed\s+\S+\s+(?<file>.+)$/u;
 const PRIVATE_SOURCE_RE =
   /(?:^|\/)(?:__fixtures__|__snapshots__|__tests__|fixtures)(?:\/|$)|\.test\.tsx?$/u;
 
-const dryRunPackageFiles = (packageName: (typeof PACKAGES)[number]): string[] => {
-  const result = Bun.spawnSync(["bun", "pm", "pack", "--dry-run", "--ignore-scripts"], {
-    cwd: path.join(REPO_ROOT, "packages", packageName),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+const dryRunPackageFiles = (
+  packageName: (typeof PACKAGES)[number],
+): string[] => {
+  const result = Bun.spawnSync(
+    ["bun", "pm", "pack", "--dry-run", "--ignore-scripts"],
+    {
+      cwd: path.join(REPO_ROOT, "packages", packageName),
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
   expect(result.exitCode).toBe(0);
   const output = `${result.stdout.toString()}\n${result.stderr.toString()}`;
   return output

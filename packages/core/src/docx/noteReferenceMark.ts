@@ -17,20 +17,32 @@ type NoteKind = "footnote" | "endnote";
 /** The run carrying a note's in-note reference mark, in the note reference style. */
 export const noteReferenceMarkRun = (kind: NoteKind): Run => ({
   type: "run",
-  formatting: { styleId: kind === "footnote" ? "FootnoteReference" : "EndnoteReference" },
+  formatting: {
+    styleId: kind === "footnote" ? "FootnoteReference" : "EndnoteReference",
+  },
   content: [{ type: "noteMarker", kind }],
 });
 
 /** Whether a note already owns its typed marker, including inside tracked content. */
-export const hasNoteReferenceMark = (kind: NoteKind, content: readonly BlockContent[]): boolean => {
+export const hasNoteReferenceMark = (
+  kind: NoteKind,
+  content: readonly BlockContent[],
+): boolean => {
   let found = false;
-  visitDocxParagraphs({ documentBody: { content: [...content] } }, (paragraph) => {
-    visitParagraphRuns(paragraph, (run) => {
-      if (run.content.some((child) => child.type === "noteMarker" && child.kind === kind)) {
-        found = true;
-      }
-    });
-  });
+  visitDocxParagraphs(
+    { documentBody: { content: [...content] } },
+    (paragraph) => {
+      visitParagraphRuns(paragraph, (run) => {
+        if (
+          run.content.some(
+            (child) => child.type === "noteMarker" && child.kind === kind,
+          )
+        ) {
+          found = true;
+        }
+      });
+    },
+  );
   return found;
 };
 
@@ -52,7 +64,9 @@ export const withNoteReferenceMark = (
   }
   return content.map((block, position) =>
     position === index && block.type === "paragraph"
-      ? cloneParagraphWithPropertySource(block, { content: [mark, ...block.content] })
+      ? cloneParagraphWithPropertySource(block, {
+          content: [mark, ...block.content],
+        })
       : block,
   );
 };
@@ -63,7 +77,11 @@ export function createNote(
   id: number,
   content: readonly BlockContent[],
 ): Footnote;
-export function createNote(kind: "endnote", id: number, content: readonly BlockContent[]): Endnote;
+export function createNote(
+  kind: "endnote",
+  id: number,
+  content: readonly BlockContent[],
+): Endnote;
 export function createNote(
   kind: NoteKind,
   id: number,

@@ -13,25 +13,28 @@ import {
 } from "./codecs";
 import {
   FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
-  FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
   FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
+  FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
   FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
   FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT,
-  FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
   FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA,
+  FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
   FOLIO_PRECONDITION_JSON_SCHEMA,
 } from "./operation-schema";
 import {
   DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
-  resolveSuggestChangesOptions,
   type FolioAgentToolOptions,
   type FolioSuggestChangesOptions,
   type ResolvedFolioSuggestChangesOptions,
+  resolveSuggestChangesOptions,
 } from "./suggest-changes-options";
 import { defineFolioAgentToolDefinition } from "./tool-contract";
-import type { FolioAgentToolInputByName, FolioAgentToolOutputByName } from "./tool-contract";
+import type {
+  FolioAgentToolInputByName,
+  FolioAgentToolOutputByName,
+} from "./tool-contract";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
   FolioAgentJsonObjectSchema,
@@ -58,27 +61,34 @@ export const SUGGEST_CHANGES_OPERATION_TYPES: readonly FolioDocumentOperationTyp
 
 /** One-line meaning of each contract operation type, for schemas and prompts. */
 const OPERATION_TYPE_SUMMARIES = {
-  replaceInBlock: "replace an exact text match inside one block (`find` -> `replace`)",
+  replaceInBlock:
+    "replace an exact text match inside one block (`find` -> `replace`)",
   replaceRange: "replace the text covered by a `range` copied from find_text",
   commentOnRange: "attach a comment to a `range` copied from find_text",
-  formatRange: "toggle bold, italic, or underline on a `range` copied from find_text",
+  formatRange:
+    "toggle bold, italic, or underline on a `range` copied from find_text",
   insertAfterBlock:
     "insert a new paragraph after a block, with optional direct alignment and spacing",
   insertBeforeBlock:
     "insert a new paragraph before a block, with optional direct alignment and spacing",
   replaceBlock: "replace one block's entire text",
   deleteBlock: "delete one block",
-  splitBlock: "break one block in two at `offset`, moving a paragraph mark and no words",
-  mergeBlockWithNext: "join one block with the block after it in the same container",
+  splitBlock:
+    "break one block in two at `offset`, moving a paragraph mark and no words",
+  mergeBlockWithNext:
+    "join one block with the block after it in the same container",
   setBlockParagraphProperties:
     "change one block's paragraph properties (list level, paragraph style, direct alignment or spacing) without touching its words",
   insertTable: "insert a whole table of `rows` next to the anchor block",
   deleteTable: "delete the whole table the anchor block sits in",
-  commentOnBlock: "attach a comment to one block, optionally quoting text within it",
-  insertSignatureTable: "insert a side-by-side signature table for the given `parties`",
+  commentOnBlock:
+    "attach a comment to one block, optionally quoting text within it",
+  insertSignatureTable:
+    "insert a side-by-side signature table for the given `parties`",
   insertTableRow: "insert a table row next to the row containing a cell block",
   deleteTableRow: "delete the table row containing a cell block",
-  insertTableColumn: "insert a table column next to the column containing a cell block",
+  insertTableColumn:
+    "insert a table column next to the column containing a cell block",
   deleteTableColumn: "delete the table column containing a cell block",
   mergeTableCells:
     "merge table cells from a cell block to `endBlockId`, or `rowCount` rows downward",
@@ -111,7 +121,8 @@ const OPERATION_PROPERTY_SCHEMAS = {
   },
   area: {
     type: "string",
-    description: 'Short review area label (e.g. "Payment terms"), used to group a review queue.',
+    description:
+      'Short review area label (e.g. "Payment terms"), used to group a review queue.',
   },
   precondition: FOLIO_PRECONDITION_JSON_SCHEMA,
   endBlockId: {
@@ -123,7 +134,8 @@ const OPERATION_PROPERTY_SCHEMAS = {
     type: "integer",
     minimum: 2,
     maximum: Number.MAX_SAFE_INTEGER,
-    description: "For vertical cell merging, the number of grid rows to merge downward.",
+    description:
+      "For vertical cell merging, the number of grid rows to merge downward.",
   },
   range: {
     ...FOLIO_TEXT_RANGE_JSON_SCHEMA,
@@ -158,11 +170,16 @@ const OPERATION_PROPERTY_SCHEMAS = {
   },
   inheritFormatting: {
     type: "boolean",
-    description: "For inserts: inherit the anchor block's formatting for the inserted paragraph.",
+    description:
+      "For inserts: inherit the anchor block's formatting for the inserted paragraph.",
   },
   alignment: {
-    oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
-    description: "For inserts: direct paragraph alignment; null restores style inheritance.",
+    oneOf: [
+      { type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES },
+      { type: "null" },
+    ],
+    description:
+      "For inserts: direct paragraph alignment; null restores style inheritance.",
   },
   spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
   indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
@@ -194,13 +211,20 @@ const OPERATION_PROPERTY_SCHEMAS = {
   },
   parties: {
     type: "array",
-    description: "For `insertSignatureTable`: the signing parties, one table cell per party.",
+    description:
+      "For `insertSignatureTable`: the signing parties, one table cell per party.",
     items: {
       type: "object",
       properties: {
         name: { type: "string", description: "Party name (rendered bold)." },
-        signatory: { type: "string", description: "Name of the person signing." },
-        title: { type: "string", description: "Signatory title (rendered in italics)." },
+        signatory: {
+          type: "string",
+          description: "Name of the person signing.",
+        },
+        title: {
+          type: "string",
+          description: "Signatory title (rendered in italics).",
+        },
       },
       required: ["name"],
       additionalProperties: false,
@@ -276,9 +300,14 @@ const OPERATION_PROPERTY_SCHEMAS = {
 } as const;
 
 /** Wire keys the model never sees (`type` is emitted separately with its enum). */
-const HIDDEN_OPERATION_KEYS: ReadonlySet<string> = new Set(["suggestionId", "type"]);
+const HIDDEN_OPERATION_KEYS: ReadonlySet<string> = new Set([
+  "suggestionId",
+  "type",
+]);
 
-const operationPropertyKeys = (types: readonly FolioDocumentOperationType[]): Set<string> => {
+const operationPropertyKeys = (
+  types: readonly FolioDocumentOperationType[],
+): Set<string> => {
   const keys = new Set<string>();
   for (const type of types) {
     for (const key of FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type]) {
@@ -290,7 +319,9 @@ const operationPropertyKeys = (types: readonly FolioDocumentOperationType[]): Se
   return keys;
 };
 
-const summarizeOperationTypes = (types: readonly FolioDocumentOperationType[]): string =>
+const summarizeOperationTypes = (
+  types: readonly FolioDocumentOperationType[],
+): string =>
   types.map((type) => `${type} (${OPERATION_TYPE_SUMMARIES[type]})`).join("; ");
 
 const buildSuggestChangesOperationSchema = (
@@ -313,7 +344,10 @@ const buildSuggestChangesOperationSchema = (
     type: "object",
     properties,
     ...FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT,
-    required: resolved.reviewMeta === "required" ? ["type", "severity", "area"] : ["type"],
+    required:
+      resolved.reviewMeta === "required"
+        ? ["type", "severity", "area"]
+        : ["type"],
     additionalProperties: false,
   };
 };
@@ -330,17 +364,28 @@ const hasAnyType = (
  * inside the tool description and exported so a host can paste the same
  * text into its system prompt instead of hand-maintaining a copy that drifts.
  */
-export const describeSuggestChangesCapabilities = (options?: FolioSuggestChangesOptions): string =>
+export const describeSuggestChangesCapabilities = (
+  options?: FolioSuggestChangesOptions,
+): string =>
   describeResolvedCapabilities(resolveSuggestChangesOptions(options));
 
-const describeResolvedCapabilities = (resolved: ResolvedFolioSuggestChangesOptions): string => {
-  const lines = [`Supported operations: ${summarizeOperationTypes(resolved.operationTypes)}.`];
+const describeResolvedCapabilities = (
+  resolved: ResolvedFolioSuggestChangesOptions,
+): string => {
+  const lines = [
+    `Supported operations: ${summarizeOperationTypes(resolved.operationTypes)}.`,
+  ];
   const styleIdTargets = [
-    ...(hasAnyType(resolved, ["insertAfterBlock", "insertBeforeBlock"]) ? ["an insert"] : []),
+    ...(hasAnyType(resolved, ["insertAfterBlock", "insertBeforeBlock"])
+      ? ["an insert"]
+      : []),
     ...(hasAnyType(resolved, ["replaceBlock"]) ? ["replaceBlock"] : []),
   ];
   if (styleIdTargets.length > 0) {
-    const supportsInsert = hasAnyType(resolved, ["insertAfterBlock", "insertBeforeBlock"]);
+    const supportsInsert = hasAnyType(resolved, [
+      "insertAfterBlock",
+      "insertBeforeBlock",
+    ]);
     const pageBreak = supportsInsert
       ? "set `pageBreakBefore: true` on an insert to start it on a new page; "
       : "";
@@ -414,7 +459,9 @@ const buildSuggestChangesToolDefinition = (
         },
       },
       required:
-        resolved.documentVersion !== null ? ["documentVersion", "operations"] : ["operations"],
+        resolved.documentVersion !== null
+          ? ["documentVersion", "operations"]
+          : ["operations"],
       additionalProperties: false,
     },
   });
@@ -427,8 +474,9 @@ type FolioAgentToolRegistry = {
   >;
 };
 
-const definitionsFromRegistry = (registry: FolioAgentToolRegistry): FolioAgentToolDefinition[] =>
-  Object.values(registry);
+const definitionsFromRegistry = (
+  registry: FolioAgentToolRegistry,
+): FolioAgentToolDefinition[] => Object.values(registry);
 
 /**
  * The tools this package exposes, described for an LLM. Every tool that reads
@@ -497,7 +545,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
         },
         afterBlockId: {
           type: "string",
-          description: "Continue after this block id from the preceding read_section response.",
+          description:
+            "Continue after this block id from the preceding read_section response.",
         },
       },
       required: ["handle"],
@@ -516,7 +565,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
   }),
   [FOLIO_AGENT_TOOL_NAMES.readStory]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readStory,
-    description: "Read one document story using a handle returned by `list_stories`.",
+    description:
+      "Read one document story using a handle returned by `list_stories`.",
     inputSchema: {
       type: "object",
       properties: {
@@ -544,7 +594,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
         },
         matchCase: {
           type: "boolean",
-          description: "Case-sensitive match. Defaults to false (case-insensitive).",
+          description:
+            "Case-sensitive match. Defaults to false (case-insensitive).",
         },
         wholeWord: {
           type: "boolean",
@@ -553,7 +604,10 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
         scope: {
           type: "object",
           properties: {
-            type: { type: "string", enum: ["document", "section", "page", "story"] },
+            type: {
+              type: "string",
+              enum: ["document", "section", "page", "story"],
+            },
             handle: FOLIO_SCOPED_HANDLE_JSON_SCHEMA,
             page: { type: "integer", minimum: 1 },
           },
@@ -608,14 +662,18 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
       properties: {
         blockId: {
           type: "string",
-          description: "The block to comment on, from `read_document` or `find_text`.",
+          description:
+            "The block to comment on, from `read_document` or `find_text`.",
         },
         quote: {
           type: "string",
           description:
             "Optional exact text within the block this comment is about, up to 100,000 characters.",
         },
-        text: { type: "string", description: "The comment body, up to 100,000 characters." },
+        text: {
+          type: "string",
+          description: "The comment body, up to 100,000 characters.",
+        },
         precondition: FOLIO_PRECONDITION_JSON_SCHEMA,
       },
       required: ["blockId", "text"],
@@ -634,7 +692,10 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
       type: "object",
       properties: {
         commentId: FOLIO_COMMENT_ID_JSON_SCHEMA,
-        text: { type: "string", description: "The reply body, up to 100,000 characters." },
+        text: {
+          type: "string",
+          description: "The reply body, up to 100,000 characters.",
+        },
       },
       required: ["commentId", "text"],
       additionalProperties: false,
@@ -650,7 +711,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
         commentId: FOLIO_COMMENT_ID_JSON_SCHEMA,
         reopen: {
           type: "boolean",
-          description: "Reopen an already-resolved thread instead of resolving it.",
+          description:
+            "Reopen an already-resolved thread instead of resolving it.",
         },
       },
       required: ["commentId"],
@@ -708,7 +770,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
       properties: {
         blockId: {
           type: "string",
-          description: "The block to scroll to, from `read_document` or `find_text`.",
+          description:
+            "The block to scroll to, from `read_document` or `find_text`.",
         },
       },
       required: ["blockId"],
@@ -717,7 +780,9 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
   }),
 } as const satisfies FolioAgentToolRegistry;
 
-export const FOLIO_AGENT_TOOLS = definitionsFromRegistry(FOLIO_AGENT_TOOL_REGISTRY);
+export const FOLIO_AGENT_TOOLS = definitionsFromRegistry(
+  FOLIO_AGENT_TOOL_REGISTRY,
+);
 
 /**
  * The tool definitions this package exposes. Without options this is
@@ -736,6 +801,8 @@ export const getFolioToolDefinitions = (
     resolveSuggestChangesOptions(options.suggestChanges),
   );
   return FOLIO_AGENT_TOOLS.map((definition) =>
-    definition.name === FOLIO_AGENT_TOOL_NAMES.suggestChanges ? suggestChanges : definition,
+    definition.name === FOLIO_AGENT_TOOL_NAMES.suggestChanges
+      ? suggestChanges
+      : definition,
   );
 };

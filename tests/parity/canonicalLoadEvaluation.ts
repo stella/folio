@@ -1,5 +1,6 @@
 import type { Page, PlaywrightWorkerOptions } from "@playwright/test";
 import { TaggedError } from "better-result";
+
 import type {} from "./canonicalBridge";
 
 const CANONICAL_LOAD_TRANSPORTS = {
@@ -11,12 +12,16 @@ const CANONICAL_LOAD_TRANSPORTS = {
   { type: "cdp" | "unsupported" }
 >;
 
-export class CanonicalLoadTransportError extends TaggedError("CanonicalLoadTransportError")<{
+export class CanonicalLoadTransportError extends TaggedError(
+  "CanonicalLoadTransportError",
+)<{
   message: string;
   engine: string;
 }> {}
 
-const isCanonicalLoadEngine = (engine: string): engine is keyof typeof CANONICAL_LOAD_TRANSPORTS =>
+const isCanonicalLoadEngine = (
+  engine: string,
+): engine is keyof typeof CANONICAL_LOAD_TRANSPORTS =>
   Object.hasOwn(CANONICAL_LOAD_TRANSPORTS, engine);
 
 const getCanonicalLoadTransport = (engine: string) => {
@@ -30,7 +35,8 @@ const getCanonicalLoadTransport = (engine: string) => {
 
 /** Retain the exact promise CDP awaits, including across Chromium collection. */
 export const evaluateCanonicalLoad = async (page: Page, bytes: number[]) => {
-  const engine = page.context().browser()?.browserType().name() ?? "unavailable";
+  const engine =
+    page.context().browser()?.browserType().name() ?? "unavailable";
   const transport = getCanonicalLoadTransport(engine);
   switch (transport.type) {
     case "unsupported":
@@ -56,10 +62,16 @@ export const evaluateCanonicalLoad = async (page: Page, bytes: number[]) => {
       awaitPromise: false,
     });
     promiseObjectId = operation.result.objectId;
-    if (operation.exceptionDetails || operation.result.subtype !== "promise" || !promiseObjectId)
+    if (
+      operation.exceptionDetails ||
+      operation.result.subtype !== "promise" ||
+      !promiseObjectId
+    )
       throw new CanonicalLoadTransportError({
         engine,
-        message: operation.exceptionDetails?.text ?? "Canonical load did not return a promise",
+        message:
+          operation.exceptionDetails?.text ??
+          "Canonical load did not return a promise",
       });
 
     const completion = await session.send("Runtime.awaitPromise", {
@@ -70,7 +82,8 @@ export const evaluateCanonicalLoad = async (page: Page, bytes: number[]) => {
       throw new CanonicalLoadTransportError({
         engine,
         message:
-          completion.exceptionDetails.exception?.description ?? completion.exceptionDetails.text,
+          completion.exceptionDetails.exception?.description ??
+          completion.exceptionDetails.text,
       });
     if (typeof completion.result.value !== "boolean")
       throw new CanonicalLoadTransportError({
@@ -81,7 +94,9 @@ export const evaluateCanonicalLoad = async (page: Page, bytes: number[]) => {
   } finally {
     try {
       if (promiseObjectId)
-        await session.send("Runtime.releaseObject", { objectId: promiseObjectId });
+        await session.send("Runtime.releaseObject", {
+          objectId: promiseObjectId,
+        });
     } finally {
       await session.detach();
     }

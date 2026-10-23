@@ -2,15 +2,20 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+
+import { afterAll, expect, test } from "bun:test";
 import { IntlProvider } from "use-intl";
+
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 
 import { FormattingBar } from "./FormattingBar";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -21,8 +26,14 @@ afterAll(() => {
 // detached/remounted the secondary group before changing its natural width.
 test("secondary controls remain observed after collapsing and remounting", async () => {
   const previousObserver = globalThis.ResizeObserver;
-  const previousClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
-  const previousOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+  const previousClientWidth = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
+  const previousOffsetWidth = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "offsetWidth",
+  );
   const observers: ObservedResize[] = [];
   class ObservedResize implements ResizeObserver {
     readonly targets = new Set<Element>();
@@ -57,7 +68,9 @@ test("secondary controls remain observed after collapsing and remounting", async
     configurable: true,
     get(this: HTMLElement) {
       if (!this.parentElement?.classList.contains("overflow-x-auto")) return 0;
-      return this.querySelector("[data-secondary-probe]") ? secondaryWidth : 200;
+      return this.querySelector("[data-secondary-probe]")
+        ? secondaryWidth
+        : 200;
     },
   });
   const container = document.createElement("div");
@@ -76,7 +89,11 @@ test("secondary controls remain observed after collapsing and remounting", async
   try {
     await act(async () =>
       root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
           <FormattingBar {...toolbarProps} />
         </IntlProvider>,
       ),
@@ -84,7 +101,8 @@ test("secondary controls remain observed after collapsing and remounting", async
     const scroll = container.querySelector(".overflow-x-auto");
     if (!scroll) throw new Error("Toolbar scroll region did not mount");
     const secondary = () =>
-      scroll.querySelector("[data-secondary-probe]")?.parentElement?.parentElement;
+      scroll.querySelector("[data-secondary-probe]")?.parentElement
+        ?.parentElement;
     const initial = secondary();
     expect(initial).toBeDefined();
     const notify = async (target: Element) => {
@@ -95,13 +113,17 @@ test("secondary controls remain observed after collapsing and remounting", async
     available = 350;
     await notify(scroll);
     expect(secondary()).toBeUndefined();
-    expect(observers.some((observer) => initial && observer.targets.has(initial))).toBe(false);
+    expect(
+      observers.some((observer) => initial && observer.targets.has(initial)),
+    ).toBe(false);
     available = 800;
     await notify(scroll);
     const remounted = secondary();
     if (!remounted) throw new Error("Secondary group did not remount");
     expect(remounted).not.toBe(initial);
-    expect(observers.some((observer) => observer.targets.has(remounted))).toBe(true);
+    expect(observers.some((observer) => observer.targets.has(remounted))).toBe(
+      true,
+    );
     secondaryWidth = 700;
     await notify(remounted);
     expect(secondary()).toBeUndefined();
@@ -110,10 +132,18 @@ test("secondary controls remain observed after collapsing and remounting", async
     container.remove();
     globalThis.ResizeObserver = previousObserver;
     if (previousClientWidth)
-      Object.defineProperty(HTMLElement.prototype, "clientWidth", previousClientWidth);
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "clientWidth",
+        previousClientWidth,
+      );
     else Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
     if (previousOffsetWidth)
-      Object.defineProperty(HTMLElement.prototype, "offsetWidth", previousOffsetWidth);
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "offsetWidth",
+        previousOffsetWidth,
+      );
     else Reflect.deleteProperty(HTMLElement.prototype, "offsetWidth");
   }
 });

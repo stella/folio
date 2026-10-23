@@ -5,13 +5,16 @@
 
 import { TaggedError } from "better-result";
 
-import type { FolioDocumentStoryHandle, FolioNumberingLevel } from "../ai-edits/headless";
-import type { WordDiffGranularity } from "../ai-edits/word-diff";
+import type {
+  FolioDocumentStoryHandle,
+  FolioNumberingLevel,
+} from "../ai-edits/headless";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditSkippedOperation,
 } from "../ai-edits/types";
+import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import type { FolioContentFormatRange } from "./content-types";
 import type {
   CompareVerification,
@@ -266,7 +269,8 @@ export const COMPARE_UNSUPPORTED_REASONS = Object.freeze([
   "unsupported-content",
 ] as const);
 
-export type CompareUnsupportedReason = (typeof COMPARE_UNSUPPORTED_REASONS)[number];
+export type CompareUnsupportedReason =
+  (typeof COMPARE_UNSUPPORTED_REASONS)[number];
 
 /**
  * A package part the comparison did not cover. Reported rather than dropped so
@@ -293,7 +297,8 @@ export type CompareCompatibility =
       reasons: readonly [CompareFolioRequirement, ...CompareFolioRequirement[]];
     };
 
-export type CompareFolioRequirement = "section-reference-history" | "terminal-table-carrier";
+export type CompareFolioRequirement =
+  "section-reference-history" | "terminal-table-carrier";
 
 export type CompareResult = {
   /** The base package carrying the generated tracked changes. */
@@ -310,13 +315,17 @@ export type CompareResult = {
   unsupported: readonly CompareUnsupportedPart[];
 };
 
-export class InvalidCompareDocxOptionsError extends TaggedError("InvalidCompareDocxOptionsError")<{
+export class InvalidCompareDocxOptionsError extends TaggedError(
+  "InvalidCompareDocxOptionsError",
+)<{
   message: string;
   option: "timestamp" | "revisionFormat";
   receivedValue: unknown;
 }> {}
 
-export class CompareDocxParseError extends TaggedError("CompareDocxParseError")<{
+export class CompareDocxParseError extends TaggedError(
+  "CompareDocxParseError",
+)<{
   message: string;
   side: "base" | "target";
   cause: unknown;
@@ -327,7 +336,9 @@ export class CompareDocxParseError extends TaggedError("CompareDocxParseError")<
  * would not reproduce the target. Reported instead of returning a package that
  * silently under-represents the difference.
  */
-export class CompareDocxApplyError extends TaggedError("CompareDocxApplyError")<{
+export class CompareDocxApplyError extends TaggedError(
+  "CompareDocxApplyError",
+)<{
   message: string;
   skipped: readonly FolioAIEditSkippedOperation[];
 }> {}
@@ -338,7 +349,9 @@ export class CompareDocxApplyError extends TaggedError("CompareDocxApplyError")<
  * quietly loses part of the difference is worse than no redline, so the
  * mismatch is surfaced instead of the document.
  */
-export class CompareDocxRoundTripError extends TaggedError("CompareDocxRoundTripError")<{
+export class CompareDocxRoundTripError extends TaggedError(
+  "CompareDocxRoundTripError",
+)<{
   message: string;
   story: FolioDocumentStoryHandle;
   /** The invariant that did not hold, and what diverged under it. */
@@ -354,12 +367,16 @@ export class CompareDocxRoundTripError extends TaggedError("CompareDocxRoundTrip
 }> {}
 
 /** The difference needs more operations than the engine will generate. */
-export class CompareDocxOperationLimitError extends TaggedError("CompareDocxOperationLimitError")<{
+export class CompareDocxOperationLimitError extends TaggedError(
+  "CompareDocxOperationLimitError",
+)<{
   message: string;
   limit: number;
 }> {}
 
-export class CompareDocxSerializeError extends TaggedError("CompareDocxSerializeError")<{
+export class CompareDocxSerializeError extends TaggedError(
+  "CompareDocxSerializeError",
+)<{
   message: string;
   cause: unknown;
 }> {}

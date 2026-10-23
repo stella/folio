@@ -7,10 +7,10 @@
  */
 
 import type {
-  FootnoteProperties,
+  EndnotePosition,
   EndnoteProperties,
   FootnotePosition,
-  EndnotePosition,
+  FootnoteProperties,
   NoteNumberRestart,
   NumberFormat,
 } from "../types/document";
@@ -22,14 +22,18 @@ import type { XmlElement } from "./xmlParser";
 // HELPER PARSERS
 // ============================================================================
 
-function parseNumberFormat(numFmtAttr: string | null): NumberFormat | undefined {
+function parseNumberFormat(
+  numFmtAttr: string | null,
+): NumberFormat | undefined {
   return narrowEnum(numFmtAttr, NumberFormatSchema);
 }
 
 /**
  * Parse footnote position
  */
-function parseFootnotePosition(posAttr: string | null): FootnotePosition | undefined {
+function parseFootnotePosition(
+  posAttr: string | null,
+): FootnotePosition | undefined {
   switch (posAttr) {
     case "pageBottom":
       return "pageBottom";
@@ -47,7 +51,9 @@ function parseFootnotePosition(posAttr: string | null): FootnotePosition | undef
 /**
  * Parse endnote position
  */
-function parseEndnotePosition(posAttr: string | null): EndnotePosition | undefined {
+function parseEndnotePosition(
+  posAttr: string | null,
+): EndnotePosition | undefined {
   switch (posAttr) {
     case "sectEnd":
       return "sectEnd";
@@ -61,7 +67,9 @@ function parseEndnotePosition(posAttr: string | null): EndnotePosition | undefin
 /**
  * Parse number restart type
  */
-function parseNumberRestart(restartAttr: string | null): NoteNumberRestart | undefined {
+function parseNumberRestart(
+  restartAttr: string | null,
+): NoteNumberRestart | undefined {
   switch (restartAttr) {
     case "continuous":
       return "continuous";
@@ -82,7 +90,9 @@ function parseNumberRestart(restartAttr: string | null): NoteNumberRestart | und
  * Parse footnote properties from w:footnotePr element
  * (Can appear in w:sectPr or w:settings)
  */
-export function parseFootnoteProperties(element: XmlElement | null): FootnoteProperties {
+export function parseFootnoteProperties(
+  element: XmlElement | null,
+): FootnoteProperties {
   const props: FootnoteProperties = {};
 
   if (!element) {
@@ -119,7 +129,9 @@ export function parseFootnoteProperties(element: XmlElement | null): FootnotePro
 
   const numRestartEl = findChild(element, "w", "numRestart");
   if (numRestartEl) {
-    const numRestart = parseNumberRestart(getAttribute(numRestartEl, "w", "val"));
+    const numRestart = parseNumberRestart(
+      getAttribute(numRestartEl, "w", "val"),
+    );
     if (numRestart !== undefined) {
       props.numRestart = numRestart;
     }
@@ -132,7 +144,9 @@ export function parseFootnoteProperties(element: XmlElement | null): FootnotePro
  * Parse endnote properties from w:endnotePr element
  * (Can appear in w:sectPr or w:settings)
  */
-export function parseEndnoteProperties(element: XmlElement | null): EndnoteProperties {
+export function parseEndnoteProperties(
+  element: XmlElement | null,
+): EndnoteProperties {
   const props: EndnoteProperties = {};
 
   if (!element) {
@@ -169,7 +183,9 @@ export function parseEndnoteProperties(element: XmlElement | null): EndnotePrope
 
   const numRestartEl = findChild(element, "w", "numRestart");
   if (numRestartEl) {
-    const numRestart = parseNumberRestart(getAttribute(numRestartEl, "w", "val"));
+    const numRestart = parseNumberRestart(
+      getAttribute(numRestartEl, "w", "val"),
+    );
     if (numRestart !== undefined) {
       props.numRestart = numRestart;
     }

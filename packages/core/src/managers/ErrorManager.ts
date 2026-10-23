@@ -11,7 +11,11 @@
  */
 
 import { Subscribable } from "./Subscribable";
-import type { ErrorManagerSnapshot, ErrorNotification, ErrorSeverity } from "./types";
+import type {
+  ErrorManagerSnapshot,
+  ErrorNotification,
+  ErrorSeverity,
+} from "./types";
 
 export class ErrorManager extends Subscribable<ErrorManagerSnapshot> {
   private notifications: ErrorNotification[] = [];
@@ -76,7 +80,11 @@ export class ErrorManager extends Subscribable<ErrorManagerSnapshot> {
   // PRIVATE
   // --------------------------------------------------------------------------
 
-  private addNotification(message: string, severity: ErrorSeverity, details?: string): string {
+  private addNotification(
+    message: string,
+    severity: ErrorSeverity,
+    details?: string,
+  ): string {
     const id = `error-${++this.idCounter}-${Date.now()}`;
     const notification: ErrorNotification = {
       id,

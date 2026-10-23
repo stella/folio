@@ -1,8 +1,12 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
 import { relationshipIdOf } from "@stll/docx-core/model";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Image, Shape } from "../types/document";
 import { resetAutoIdCounter, serializeRun } from "./serializer/runSerializer";
 
@@ -42,7 +46,9 @@ test("every rebuilt drawing uses bounded numeric ids without changing its lexica
             { type: "shape", shape },
           ],
         });
-        const identifiers = [...xml.matchAll(/<(?:wp:docPr|pic:cNvPr|wps:cNvPr) id="([^"]*)"/gu)];
+        const identifiers = [
+          ...xml.matchAll(/<(?:wp:docPr|pic:cNvPr|wps:cNvPr) id="([^"]*)"/gu),
+        ];
         expect(identifiers).toHaveLength(4);
         const numericSource = id === undefined ? NaN : Number(id);
         const sourceIsNumeric =

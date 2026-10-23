@@ -62,7 +62,9 @@
             class="review-controls__option"
             @click.prevent="select(mode)"
           >
-            <span class="review-controls__option-label">{{ labelFor(mode) }}</span>
+            <span class="review-controls__option-label">{{
+              labelFor(mode)
+            }}</span>
             <MaterialSymbol
               v-if="mode === displayMode"
               name="check"
@@ -78,11 +80,13 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+
 import { DISPLAY_MODES } from "@stll/folio-core/managers/EditorModeManager";
 import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
-import MaterialSymbol from "./ui/MaterialSymbol.vue";
+
 import { useTranslation } from "../i18n";
 import { useFolioUI } from "../ui/folio-ui";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
 
 const { t } = useTranslation();
 

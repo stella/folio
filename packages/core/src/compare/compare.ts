@@ -1,6 +1,13 @@
-import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
-import { isAltChunkMarkup } from "../docx/altChunk";
-import { isOpaqueNestedRowMarkup, opaqueRevisionCarrierName } from "../docx/opaqueCarrier";
+import { panic, Result } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
+
+import {
+  type FolioDocumentStoryHandle,
+  FolioDocxReviewer,
+  type FolioNumberingLevel,
+  type FolioRevisionStamp,
+  getFolioDocxComparisonAccess,
+} from "../ai-edits/headless";
 /**
  * Deterministic `.docx` compare: two packages in, one redlined package plus a
  * JSON change list out.
@@ -36,68 +43,74 @@ import { isOpaqueNestedRowMarkup, opaqueRevisionCarrierName } from "../docx/opaq
  *
  * @packageDocumentation
  */
-
-import { panic, Result } from "better-result";
-import type { Node as PMNode } from "prosemirror-model";
-import type { SectionProperties } from "../types/document";
-
-import {
-  FolioDocxReviewer,
-  getFolioDocxComparisonAccess,
-  type FolioDocumentStoryHandle,
-  type FolioNumberingLevel,
-  type FolioRevisionStamp,
-} from "../ai-edits/headless";
-import { projectTableGeometry } from "../ai-edits/table-geometry";
-import {
-  tableTemplateCanCrossPackageLosslessly,
-  type FolioTableTemplates,
-} from "../ai-edits/table-template";
+import { withComparisonNoteReferenceEdits } from "../ai-edits/note-references";
 import {
   alignedNoteReferenceLabels,
-  numberingReferenceKeysOf,
   detachFolioAIEditSnapshotExternalHyperlinks,
+  numberingReferenceKeysOf,
   relabelFolioAIEditSnapshotNoteReferences,
   sourceDocumentOf,
   storyTablesOf,
 } from "../ai-edits/snapshot";
-import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
-import { withComparisonNoteReferenceEdits } from "../ai-edits/note-references";
-import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
+import { projectTableGeometry } from "../ai-edits/table-geometry";
+import {
+  type FolioTableTemplates,
+  tableTemplateCanCrossPackageLosslessly,
+} from "../ai-edits/table-template";
+import type {
+  FolioAIBlock,
+  FolioAIEditSkipReason,
+  FolioAIEditSnapshot,
+} from "../ai-edits/types";
+import {
+  createScopedWordDiffOptions,
+  type WordDiffGranularity,
+} from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
-import { importStyleClosureWithNumbering } from "./import-style-closure";
-import { sameAuthoredInlineProvenance } from "./inline-provenance";
-import { MISSING_NOTE_DETAIL, sameInlineAtoms } from "./inline-atoms";
-import { compareSectionBoundaryProperties } from "./section-boundary-properties";
-import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
-import { createContentComparisonWorkSession } from "./content";
-import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
-import { withFixedPackageDates } from "./reproducible-package";
-import { canonicalJson } from "../utils/canonicalJson";
-import { revisionIdSeedAbove } from "../prosemirror/plugins/revisionIds";
+import { isAltChunkMarkup } from "../docx/altChunk";
 import {
+  isOpaqueNestedRowMarkup,
+  opaqueRevisionCarrierName,
+} from "../docx/opaqueCarrier";
+import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
+import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
+import { revisionIdSeedAbove } from "../prosemirror/plugins/revisionIds";
+import type { SectionProperties } from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
+import { createContentComparisonWorkSession } from "./content";
+import { importStyleClosureWithNumbering } from "./import-style-closure";
+import { MISSING_NOTE_DETAIL, sameInlineAtoms } from "./inline-atoms";
+import { sameAuthoredInlineProvenance } from "./inline-provenance";
+import {
+  type CompareStoryPlan,
+  type CompareTableTemplateRequest,
+  planStoryCompare,
+} from "./plan";
+import { withFixedPackageDates } from "./reproducible-package";
+import { compareSectionBoundaryProperties } from "./section-boundary-properties";
+import {
+  type CompareChange,
   CompareDocxApplyError,
+  type CompareDocxError,
   CompareDocxFinalParagraphMarkError,
   CompareDocxOperationLimitError,
+  type CompareDocxOptions,
   CompareDocxParseError,
   CompareDocxRoundTripError,
-  compareDocxSerializeError,
-  InvalidCompareDocxOptionsError,
-  type CompareChange,
   type CompareDocxSerializeError,
-  type CompareDocxError,
-  type CompareDocxOptions,
+  compareDocxSerializeError,
   type CompareFolioRequirement,
   type CompareResult,
   type CompareUnsupportedPart,
+  InvalidCompareDocxOptionsError,
 } from "./types";
 import {
   classifyGeometryMismatch,
   classifyProjectionMismatch,
-  revisedFinalParagraphMarks,
   type CompareVerification,
   type CompareVerificationFailure,
+  revisedFinalParagraphMarks,
 } from "./verification";
 
 /**
@@ -121,7 +134,9 @@ const parseSide = async (
       }),
   });
 
-const snapshotContainsUnsupportedCarrier = (snapshot: FolioAIEditSnapshot): boolean => {
+const snapshotContainsUnsupportedCarrier = (
+  snapshot: FolioAIEditSnapshot,
+): boolean => {
   let found = false;
   sourceDocumentOf(snapshot).descendants((node) => {
     if (node.type.name === "preservedBlock") {
@@ -136,7 +151,11 @@ const snapshotContainsUnsupportedCarrier = (snapshot: FolioAIEditSnapshot): bool
       }
     }
     const preserved = node.attrs["_preserved"];
-    if (preserved !== null && typeof preserved === "object" && "children" in preserved) {
+    if (
+      preserved !== null &&
+      typeof preserved === "object" &&
+      "children" in preserved
+    ) {
       const children: unknown = preserved.children;
       if (!Array.isArray(children)) {
         return;
@@ -148,7 +167,8 @@ const snapshotContainsUnsupportedCarrier = (snapshot: FolioAIEditSnapshot): bool
         const xml = child.xml;
         if (
           typeof xml === "string" &&
-          (opaqueRevisionCarrierName(xml) !== undefined || isOpaqueNestedRowMarkup(xml))
+          (opaqueRevisionCarrierName(xml) !== undefined ||
+            isOpaqueNestedRowMarkup(xml))
         ) {
           found = true;
         }
@@ -164,7 +184,9 @@ type FormattingRoundTripFailureOptions = {
   changes: readonly CompareChange[];
   actualBlocks: readonly FolioAIBlock[];
   expectedBlocks: readonly FolioAIBlock[];
-  expectedBlockId: (change: Extract<CompareChange, { kind: "format" }>) => string;
+  expectedBlockId: (
+    change: Extract<CompareChange, { kind: "format" }>,
+  ) => string;
 };
 
 /** Verify formatting only where the plan claims a text-equal formatting change. */
@@ -176,7 +198,9 @@ const formattingRoundTripFailure = ({
   expectedBlocks,
   expectedBlockId,
 }: FormattingRoundTripFailureOptions): CompareVerificationFailure | null => {
-  const expectedIndexById = new Map(expectedBlocks.map(({ id }, index) => [id, index]));
+  const expectedIndexById = new Map(
+    expectedBlocks.map(({ id }, index) => [id, index]),
+  );
   const checkedExpectedIds = new Set<string>();
   for (const change of changes) {
     if (change.kind !== "format") {
@@ -195,7 +219,8 @@ const formattingRoundTripFailure = ({
         invariant,
         cause: "inline-formatting",
         story,
-        detail: "a text-equal aligned block could not be projected for formatting verification",
+        detail:
+          "a text-equal aligned block could not be projected for formatting verification",
       };
     }
     if (!sameCanonicalInlinePresentation(actual, expected)) {
@@ -203,18 +228,27 @@ const formattingRoundTripFailure = ({
         invariant,
         cause: "inline-formatting",
         story,
-        detail: "supported inline formatting differs in a text-equal aligned block",
+        detail:
+          "supported inline formatting differs in a text-equal aligned block",
       };
     }
   }
   return null;
 };
 
-const numberingKey = ({ numId, level }: Pick<FolioNumberingLevel, "numId" | "level">): string =>
+const numberingKey = ({
+  numId,
+  level,
+}: Pick<FolioNumberingLevel, "numId" | "level">): string =>
   `${String(numId)}:${String(level)}`;
 
-const sameNumbering = (left: FolioNumberingLevel, right: FolioNumberingLevel): boolean =>
-  left.format === right.format && left.levelText === right.levelText && left.start === right.start;
+const sameNumbering = (
+  left: FolioNumberingLevel,
+  right: FolioNumberingLevel,
+): boolean =>
+  left.format === right.format &&
+  left.levelText === right.levelText &&
+  left.start === right.start;
 
 /**
  * Referenced numbering levels that differ between the two packages, in
@@ -235,10 +269,14 @@ const compareNumbering = (
   referenced: ReadonlySet<string>,
 ): NumberingChange[] => {
   const baseLevels = new Map(
-    base.readNumberingDefinitions().map((level) => [numberingKey(level), level]),
+    base
+      .readNumberingDefinitions()
+      .map((level) => [numberingKey(level), level]),
   );
   const targetLevels = new Map(
-    target.readNumberingDefinitions().map((level) => [numberingKey(level), level]),
+    target
+      .readNumberingDefinitions()
+      .map((level) => [numberingKey(level), level]),
   );
   const changes: NumberingChange[] = [];
   for (const [key, before] of baseLevels) {
@@ -247,7 +285,13 @@ const compareNumbering = (
     }
     const after = targetLevels.get(key) ?? null;
     if (after === null || !sameNumbering(before, after)) {
-      changes.push({ kind: "numbering", numId: before.numId, level: before.level, before, after });
+      changes.push({
+        kind: "numbering",
+        numId: before.numId,
+        level: before.level,
+        before,
+        after,
+      });
     }
   }
   for (const [key, after] of targetLevels) {
@@ -261,7 +305,9 @@ const compareNumbering = (
       });
     }
   }
-  return changes.toSorted((left, right) => left.numId - right.numId || left.level - right.level);
+  return changes.toSorted(
+    (left, right) => left.numId - right.numId || left.level - right.level,
+  );
 };
 
 /** Two stories the comparison will align against one another. */
@@ -302,7 +348,9 @@ const sectionRelationshipMap = (
 };
 
 const remapSectionReferences = (
-  references: SectionProperties["headerReferences"] | SectionProperties["footerReferences"],
+  references:
+    | SectionProperties["headerReferences"]
+    | SectionProperties["footerReferences"],
   relationshipIds: ReadonlyMap<string, string>,
 ) => {
   if (references === undefined) return undefined;
@@ -326,15 +374,24 @@ const safelyStageSectionProperties = ({
   relationshipIds: ReadonlyMap<string, string>;
   revisionFormat: "word" | "folio-exact";
 }): { previous: SectionProperties; target: SectionProperties } | null => {
-  const targetHeaders = remapSectionReferences(target.headerReferences, relationshipIds);
-  const targetFooters = remapSectionReferences(target.footerReferences, relationshipIds);
+  const targetHeaders = remapSectionReferences(
+    target.headerReferences,
+    relationshipIds,
+  );
+  const targetFooters = remapSectionReferences(
+    target.footerReferences,
+    relationshipIds,
+  );
   if (
     targetHeaders === null ||
     targetFooters === null ||
     (revisionFormat === "word" &&
-      (canonicalJson(targetHeaders) !== canonicalJson(current.headerReferences) ||
-        canonicalJson(targetFooters) !== canonicalJson(current.footerReferences))) ||
-    target.printerSettingsRelationshipId !== current.printerSettingsRelationshipId
+      (canonicalJson(targetHeaders) !==
+        canonicalJson(current.headerReferences) ||
+        canonicalJson(targetFooters) !==
+          canonicalJson(current.footerReferences))) ||
+    target.printerSettingsRelationshipId !==
+      current.printerSettingsRelationshipId
   ) {
     return null;
   }
@@ -360,8 +417,14 @@ const stageInsertedSectionProperties = ({
   relationshipIds: ReadonlyMap<string, string>;
 }): SectionProperties | null => {
   if (target.printerSettingsRelationshipId !== undefined) return null;
-  const headers = remapSectionReferences(target.headerReferences, relationshipIds);
-  const footers = remapSectionReferences(target.footerReferences, relationshipIds);
+  const headers = remapSectionReferences(
+    target.headerReferences,
+    relationshipIds,
+  );
+  const footers = remapSectionReferences(
+    target.footerReferences,
+    relationshipIds,
+  );
   if (headers === null || footers === null) return null;
   return {
     ...withoutSectionChangeHistory(target),
@@ -386,8 +449,14 @@ const compareFinalSectionProperties = ({
       ? { status: "same" }
       : { status: "unsupported", detail: "final section presence differs" };
   }
-  if (base.propertyChanges !== undefined || target.propertyChanges !== undefined) {
-    return { status: "unsupported", detail: "input final section already carries tracked changes" };
+  if (
+    base.propertyChanges !== undefined ||
+    target.propertyChanges !== undefined
+  ) {
+    return {
+      status: "unsupported",
+      detail: "input final section already carries tracked changes",
+    };
   }
   const staged = safelyStageSectionProperties({
     current: base,
@@ -396,7 +465,10 @@ const compareFinalSectionProperties = ({
     revisionFormat,
   });
   if (!staged)
-    return { status: "unsupported", detail: "final section relationship references differ" };
+    return {
+      status: "unsupported",
+      detail: "final section relationship references differ",
+    };
   return canonicalJson(staged.previous) === canonicalJson(staged.target)
     ? { status: "same" }
     : { status: "stage", ...staged };
@@ -421,7 +493,9 @@ export type ParsedComparison = {
   pairs: readonly ComparedStoryPair[];
   /** Package-level numbering differences, which belong to no story. */
   numberingChanges: readonly CompareChange[];
-  numberingStage: ReturnType<typeof importStyleClosureWithNumbering>["numberingStage"];
+  numberingStage: ReturnType<
+    typeof importStyleClosureWithNumbering
+  >["numberingStage"];
   finalSectionComparison: FinalSectionComparison;
   styleImportFailure: string | undefined;
   unsupported: readonly CompareUnsupportedPart[];
@@ -432,7 +506,12 @@ export const parseComparison = async (
   base: ArrayBuffer,
   target: ArrayBuffer,
   options: CompareDocxOptions,
-): Promise<Result<ParsedComparison, CompareDocxParseError | InvalidCompareDocxOptionsError>> => {
+): Promise<
+  Result<
+    ParsedComparison,
+    CompareDocxParseError | InvalidCompareDocxOptionsError
+  >
+> => {
   const revisionFormat = options.revisionFormat ?? "word";
   if (revisionFormat !== "word" && revisionFormat !== "folio-exact") {
     return Result.err(
@@ -477,14 +556,22 @@ export const parseComparison = async (
   // still ships in the result, so it ships accepted like the rest -- and an
   // unresolvable mark it carried, on the paragraph a note ends with, would
   // otherwise fail the structural guard on bytes this comparison never wrote.
-  const baseProjection =
-    getFolioDocxComparisonAccess(reviewer).projectStories("with-revision-census");
-  const targetProjection =
-    getFolioDocxComparisonAccess(targetReviewer).projectStories("without-revision-census");
+  const baseProjection = getFolioDocxComparisonAccess(reviewer).projectStories(
+    "with-revision-census",
+  );
+  const targetProjection = getFolioDocxComparisonAccess(
+    targetReviewer,
+  ).projectStories("without-revision-census");
   const baseStories: FolioDocumentStoryHandle[] = [];
   const targetStories: FolioDocumentStoryHandle[] = [];
-  const baseSnapshots = new Map<FolioDocumentStoryHandle, FolioAIEditSnapshot | null>();
-  const targetSnapshots = new Map<FolioDocumentStoryHandle, FolioAIEditSnapshot | null>();
+  const baseSnapshots = new Map<
+    FolioDocumentStoryHandle,
+    FolioAIEditSnapshot | null
+  >();
+  const targetSnapshots = new Map<
+    FolioDocumentStoryHandle,
+    FolioAIEditSnapshot | null
+  >();
   for (const { handle, snapshot } of baseProjection.stories) {
     baseStories.push(handle);
     baseSnapshots.set(handle, snapshot);
@@ -498,7 +585,9 @@ export const parseComparison = async (
   const unsupported: CompareUnsupportedPart[] = [];
   const referencedNumberingLevels = new Set<string>();
   let terminalTableCarrierStaged = false;
-  const collectNumberingReferences = (snapshot: FolioAIEditSnapshot | null | undefined): void => {
+  const collectNumberingReferences = (
+    snapshot: FolioAIEditSnapshot | null | undefined,
+  ): void => {
     if (!snapshot) {
       return;
     }
@@ -507,7 +596,10 @@ export const parseComparison = async (
     }
   };
 
-  for (const storyPair of pairFolioDocumentStories(baseStories, targetStories)) {
+  for (const storyPair of pairFolioDocumentStories(
+    baseStories,
+    targetStories,
+  )) {
     let { baseStory, revisedStory: targetStory } = storyPair;
     let targetHeaderFooterWasImported = false;
     let targetHeaderFooterNeedsExternalHyperlinkRebinding = false;
@@ -519,10 +611,9 @@ export const parseComparison = async (
       targetStory &&
       (targetStory.type === "header" || targetStory.type === "footer")
     ) {
-      baseStory = await getFolioDocxComparisonAccess(reviewer).createComparisonHeaderFooter(
-        targetReviewer,
-        targetStory,
-      );
+      baseStory = await getFolioDocxComparisonAccess(
+        reviewer,
+      ).createComparisonHeaderFooter(targetReviewer, targetStory);
       if (baseStory) {
         targetHeaderFooterWasImported = true;
         targetHeaderFooterNeedsExternalHyperlinkRebinding = true;
@@ -539,14 +630,20 @@ export const parseComparison = async (
       // Its content is unchanged; the reference selection owns its removal.
       continue;
     }
-    if (!targetStory && baseStory && (baseStory.type === "header" || baseStory.type === "footer")) {
-      targetStory = await getFolioDocxComparisonAccess(targetReviewer).createComparisonHeaderFooter(
-        reviewer,
-        baseStory,
-      );
+    if (
+      !targetStory &&
+      baseStory &&
+      (baseStory.type === "header" || baseStory.type === "footer")
+    ) {
+      targetStory = await getFolioDocxComparisonAccess(
+        targetReviewer,
+      ).createComparisonHeaderFooter(reviewer, baseStory);
       if (targetStory) {
         targetHeaderFooterNeedsExternalHyperlinkRebinding = true;
-        targetSnapshots.set(targetStory, targetReviewer.snapshotStory(targetStory));
+        targetSnapshots.set(
+          targetStory,
+          targetReviewer.snapshotStory(targetStory),
+        );
       }
     }
     if (!baseStory) {
@@ -554,12 +651,20 @@ export const parseComparison = async (
         panic("A story pair contained neither a base nor a target story");
       }
       collectNumberingReferences(targetSnapshots.get(targetStory));
-      unsupported.push({ reason: "story-missing-in-base", baseStory: null, targetStory });
+      unsupported.push({
+        reason: "story-missing-in-base",
+        baseStory: null,
+        targetStory,
+      });
       continue;
     }
     if (!targetStory) {
       collectNumberingReferences(baseSnapshots.get(baseStory));
-      unsupported.push({ reason: "story-missing-in-target", baseStory, targetStory: null });
+      unsupported.push({
+        reason: "story-missing-in-target",
+        baseStory,
+        targetStory: null,
+      });
       continue;
     }
     let baseSnapshot = baseSnapshots.get(baseStory);
@@ -567,14 +672,22 @@ export const parseComparison = async (
     collectNumberingReferences(baseSnapshot);
     collectNumberingReferences(targetSnapshot);
     if (!baseSnapshot || !targetSnapshot) {
-      unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
+      unsupported.push({
+        reason: "story-not-editable",
+        baseStory,
+        targetStory,
+      });
       continue;
     }
     if (
       snapshotContainsUnsupportedCarrier(baseSnapshot) ||
       snapshotContainsUnsupportedCarrier(targetSnapshot)
     ) {
-      unsupported.push({ reason: "unsupported-content", baseStory, targetStory });
+      unsupported.push({
+        reason: "unsupported-content",
+        baseStory,
+        targetStory,
+      });
       continue;
     }
     const rawBaseSnapshot = baseSnapshot;
@@ -594,20 +707,27 @@ export const parseComparison = async (
       terminalTableCarrierStaged = true;
     }
     if (targetHeaderFooterNeedsExternalHyperlinkRebinding) {
-      const detached = detachFolioAIEditSnapshotExternalHyperlinks(targetSnapshot);
+      const detached =
+        detachFolioAIEditSnapshotExternalHyperlinks(targetSnapshot);
       if (!detached) {
-        unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
+        unsupported.push({
+          reason: "story-not-editable",
+          baseStory,
+          targetStory,
+        });
         continue;
       }
       targetSnapshot = detached;
       targetSnapshots.set(targetStory, targetSnapshot);
     }
-    if (targetHeaderFooterWasImported) importedHeaderFooterTargetSnapshots.add(targetSnapshot);
+    if (targetHeaderFooterWasImported)
+      importedHeaderFooterTargetSnapshots.add(targetSnapshot);
     pairs.push({
       baseStory,
       targetStory,
       baseSnapshot,
-      ...(terminalTableCarrierStaged && rawBaseSnapshot !== baseSnapshot && { rawBaseSnapshot }),
+      ...(terminalTableCarrierStaged &&
+        rawBaseSnapshot !== baseSnapshot && { rawBaseSnapshot }),
       targetSnapshot,
     });
   }
@@ -623,12 +743,18 @@ export const parseComparison = async (
           return block.listReference ? [block.listReference] : [];
         default: {
           const unreachable: never = block;
-          return panic("Unhandled comparison block kind", { block: unreachable });
+          return panic("Unhandled comparison block kind", {
+            block: unreachable,
+          });
         }
       }
     }),
   );
-  const numberingChanges = compareNumbering(reviewer, targetReviewer, referencedNumberingLevels);
+  const numberingChanges = compareNumbering(
+    reviewer,
+    targetReviewer,
+    referencedNumberingLevels,
+  );
   const resources = importStyleClosureWithNumbering({
     destination: reviewer,
     source: targetReviewer,
@@ -644,13 +770,15 @@ export const parseComparison = async (
       baseSnapshot,
       rawBaseSnapshot: rawBaseSnapshot ?? baseSnapshot,
       targetSnapshot:
-        resources.snapshots.at(index) ?? panic("A comparison resource import lost its snapshot"),
+        resources.snapshots.at(index) ??
+        panic("A comparison resource import lost its snapshot"),
     }),
   );
 
   const finalSectionComparison = compareFinalSectionProperties({
     base: getFolioDocxComparisonAccess(reviewer).finalSectionProperties(),
-    target: getFolioDocxComparisonAccess(targetReviewer).finalSectionProperties(),
+    target:
+      getFolioDocxComparisonAccess(targetReviewer).finalSectionProperties(),
     pairs: comparisonPairs,
     revisionFormat,
   });
@@ -671,7 +799,8 @@ export const parseComparison = async (
     numberingChanges,
     numberingStage,
     finalSectionComparison,
-    styleImportFailure: styleImport.status === "unalignable" ? styleImport.detail : undefined,
+    styleImportFailure:
+      styleImport.status === "unalignable" ? styleImport.detail : undefined,
     unsupported,
   });
 };
@@ -684,21 +813,28 @@ const noteReferenceLabelsOf = (pair: ComparedStoryPair) =>
   );
 
 /** One story's plan, kept with the pair it belongs to. */
-export type PlannedStoryComparison = { pair: ComparedStoryPair; plan: CompareStoryPlan };
+export type PlannedStoryComparison = {
+  pair: ComparedStoryPair;
+  plan: CompareStoryPlan;
+};
 
 const planCopiesNonPortableWholeTable = (
   pair: ComparedStoryPair,
   plan: CompareStoryPlan,
 ): boolean => {
   const targetTables = new Map(
-    storyTablesOf(pair.targetSnapshot).map(({ index, node }) => [index, node] as const),
+    storyTablesOf(pair.targetSnapshot).map(
+      ({ index, node }) => [index, node] as const,
+    ),
   );
   return plan.tableTemplates.some(({ targetRowIndex, targetTableIndex }) => {
     if (targetRowIndex !== undefined) {
       return false;
     }
     const table = targetTables.get(targetTableIndex);
-    return table === undefined || !tableTemplateCanCrossPackageLosslessly(table);
+    return (
+      table === undefined || !tableTemplateCanCrossPackageLosslessly(table)
+    );
   });
 };
 
@@ -708,13 +844,17 @@ const planCopiesNonPortableWholeTable = (
  */
 export const planComparison = ({
   pairs,
-}: ParsedComparison): Result<readonly PlannedStoryComparison[], CompareDocxOperationLimitError> => {
+}: ParsedComparison): Result<
+  readonly PlannedStoryComparison[],
+  CompareDocxOperationLimitError
+> => {
   const planned: PlannedStoryComparison[] = [];
   const workSession = createContentComparisonWorkSession();
   let remainingOperations = MAX_COMPARE_OPERATIONS;
   for (const pair of pairs) {
     const remainingLcsCells = workSession.alignment.remainingLcsCells;
-    const remainingStructuralTokenLookups = workSession.alignment.remainingStructuralTokenLookups;
+    const remainingStructuralTokenLookups =
+      workSession.alignment.remainingStructuralTokenLookups;
     const remainingMoveComparisons = workSession.remainingMoveComparisons;
     const remainingMoveTokenLookups = workSession.remainingMoveTokenLookups;
     // Planned against the base's note-reference markers, so a reference both
@@ -736,7 +876,8 @@ export const planComparison = ({
       // The first plan was speculative. Re-run the chosen fallback against
       // the same package-wide comparison allowance rather than charging both.
       workSession.alignment.remainingLcsCells = remainingLcsCells;
-      workSession.alignment.remainingStructuralTokenLookups = remainingStructuralTokenLookups;
+      workSession.alignment.remainingStructuralTokenLookups =
+        remainingStructuralTokenLookups;
       workSession.remainingMoveComparisons = remainingMoveComparisons;
       workSession.remainingMoveTokenLookups = remainingMoveTokenLookups;
       plan = planStoryCompare({
@@ -751,7 +892,8 @@ export const planComparison = ({
     if (plan === null) {
       return Result.err(
         new CompareDocxOperationLimitError({
-          message: "The comparison needs more operations than the engine generates.",
+          message:
+            "The comparison needs more operations than the engine generates.",
           limit: MAX_COMPARE_OPERATIONS,
         }),
       );
@@ -805,8 +947,9 @@ const COMPARE_SKIP_DISPOSITION = {
   pendingDeletion: "unwritable",
 } as const satisfies Record<FolioAIEditSkipReason, "fatal" | "unwritable">;
 
-export const getCompareSkipDisposition = (reason: FolioAIEditSkipReason): "fatal" | "unwritable" =>
-  COMPARE_SKIP_DISPOSITION[reason];
+export const getCompareSkipDisposition = (
+  reason: FolioAIEditSkipReason,
+): "fatal" | "unwritable" => COMPARE_SKIP_DISPOSITION[reason];
 
 /** What stage 3 produced: the change list, whether it was proven, and whether it wrote anything. */
 export type AppliedComparison = {
@@ -881,7 +1024,10 @@ export const applyComparison = (
     unsupported,
   }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
-): Result<AppliedComparison, CompareDocxApplyError | CompareDocxOperationLimitError> => {
+): Result<
+  AppliedComparison,
+  CompareDocxApplyError | CompareDocxOperationLimitError
+> => {
   const relationshipIds = sectionRelationshipMap(pairs);
   // Every note the base package defines: the paired ones and those only it has.
   const baseNotes = new Set<string>();
@@ -894,11 +1040,16 @@ export const applyComparison = (
     (count, { plan }) => count + plan.operations.length,
     0,
   );
-  const finalSectionOperationCount = finalSectionComparison.status === "stage" ? 1 : 0;
-  if (plannedOperationCount + finalSectionOperationCount > MAX_COMPARE_OPERATIONS) {
+  const finalSectionOperationCount =
+    finalSectionComparison.status === "stage" ? 1 : 0;
+  if (
+    plannedOperationCount + finalSectionOperationCount >
+    MAX_COMPARE_OPERATIONS
+  ) {
     return Result.err(
       new CompareDocxOperationLimitError({
-        message: "The comparison needs more operations than the engine generates.",
+        message:
+          "The comparison needs more operations than the engine generates.",
         limit: MAX_COMPARE_OPERATIONS,
       }),
     );
@@ -921,7 +1072,10 @@ export const applyComparison = (
       revision: revisionStamp,
     });
   if (finalSectionChanged) {
-    changes.push({ kind: "section-properties", location: { story: { type: "main" } } });
+    changes.push({
+      kind: "section-properties",
+      location: { story: { type: "main" } },
+    });
   }
   if (finalSectionComparison.status === "unsupported") {
     failures.push({
@@ -967,9 +1121,13 @@ export const applyComparison = (
     // written against, and rejecting every revision has to return to it.
     const rawBaseSnapshot = pair.rawBaseSnapshot ?? pair.baseSnapshot;
     const baseBefore = rawBaseSnapshot.blocks;
-    const baseBeforeGeometry = projectTableGeometry(storyTablesOf(rawBaseSnapshot));
+    const baseBeforeGeometry = projectTableGeometry(
+      storyTablesOf(rawBaseSnapshot),
+    );
     const targetTables = new Map(
-      storyTablesOf(pair.targetSnapshot).map(({ index, node }) => [index, node] as const),
+      storyTablesOf(pair.targetSnapshot).map(
+        ({ index, node }) => [index, node] as const,
+      ),
     );
 
     // Table properties first, while the base's table indices still describe
@@ -1001,7 +1159,10 @@ export const applyComparison = (
             mode: "tracked-changes",
             operations: plan.operations,
           },
-          tableTemplates: resolveTableTemplates(targetTables, plan.tableTemplates),
+          tableTemplates: resolveTableTemplates(
+            targetTables,
+            plan.tableTemplates,
+          ),
           // The comparison states every run's properties itself, from the target
           // document, so a replacement must not clear the background first: the
           // clear writes a run-property change that the provenance pass takes
@@ -1017,13 +1178,18 @@ export const applyComparison = (
       if (nextRevisionId === undefined) {
         // Only a host bridge that does not allocate ids itself omits this, and
         // the comparison drives the in-process applier.
-        panic("The applier did not report where it left the revision-id counter", {
-          story: pair.baseStory,
-        });
+        panic(
+          "The applier did not report where it left the revision-id counter",
+          {
+            story: pair.baseStory,
+          },
+        );
       }
       idSeed = nextRevisionId;
       documentChanged = true;
-      const refused = skipped.filter(({ reason }) => getCompareSkipDisposition(reason) === "fatal");
+      const refused = skipped.filter(
+        ({ reason }) => getCompareSkipDisposition(reason) === "fatal",
+      );
       if (refused.length > 0) {
         return Result.err(
           new CompareDocxApplyError({
@@ -1083,10 +1249,17 @@ export const applyComparison = (
         documentChanged ||= atoms.documentChanged;
         const changedAtomTargetIds = new Set(atoms.changedTargetBlockIds);
         for (const block of pair.targetSnapshot.blocks) {
-          if (!changedAtomTargetIds.has(block.id) || describedTargetIds.has(block.id)) continue;
+          if (
+            !changedAtomTargetIds.has(block.id) ||
+            describedTargetIds.has(block.id)
+          )
+            continue;
           changes.push({
             kind: "inline-atom",
-            location: { story: pair.baseStory, ...(block.table ? { cell: block.table } : {}) },
+            location: {
+              story: pair.baseStory,
+              ...(block.table ? { cell: block.table } : {}),
+            },
             targetBlockId: block.id,
             text: block.text,
           });
@@ -1099,19 +1272,23 @@ export const applyComparison = (
           cause: "inline-structure",
           story: pair.baseStory,
           detail:
-            atoms.detail ?? "supported inline atoms could not be aligned to the revised content",
+            atoms.detail ??
+            "supported inline atoms could not be aligned to the revised content",
         });
         break;
       case "budget-exceeded":
         return Result.err(
           new CompareDocxOperationLimitError({
-            message: "The comparison exceeds its inline presentation range budget.",
+            message:
+              "The comparison exceeds its inline presentation range budget.",
             limit: MAX_COMPARE_OPERATIONS,
           }),
         );
       default: {
         const unreachable: never = atoms;
-        return panic("Unhandled inline atom projection result", { result: unreachable });
+        return panic("Unhandled inline atom projection result", {
+          result: unreachable,
+        });
       }
     }
 
@@ -1129,10 +1306,17 @@ export const applyComparison = (
         documentChanged ||= provenance.documentChanged;
         const changedTargetIds = new Set(provenance.changedTargetBlockIds);
         for (const block of pair.targetSnapshot.blocks) {
-          if (!changedTargetIds.has(block.id) || describedTargetIds.has(block.id)) continue;
+          if (
+            !changedTargetIds.has(block.id) ||
+            describedTargetIds.has(block.id)
+          )
+            continue;
           changes.push({
             kind: "run-format",
-            location: { story: pair.baseStory, ...(block.table ? { cell: block.table } : {}) },
+            location: {
+              story: pair.baseStory,
+              ...(block.table ? { cell: block.table } : {}),
+            },
             targetBlockId: block.id,
             text: block.text,
           });
@@ -1144,19 +1328,23 @@ export const applyComparison = (
           invariant: "accept-reproduces-target",
           cause: "inline-formatting",
           story: pair.baseStory,
-          detail: "authored run properties could not be aligned to the revised content",
+          detail:
+            "authored run properties could not be aligned to the revised content",
         });
         break;
       case "budget-exceeded":
         return Result.err(
           new CompareDocxOperationLimitError({
-            message: "The comparison exceeds its inline presentation range budget.",
+            message:
+              "The comparison exceeds its inline presentation range budget.",
             limit: MAX_COMPARE_OPERATIONS,
           }),
         );
       default: {
         const unreachable: never = provenance;
-        return panic("Unhandled authored inline projection result", { result: unreachable });
+        return panic("Unhandled authored inline projection result", {
+          result: unreachable,
+        });
       }
     }
     if (pair.baseStory.type === "main") {
@@ -1168,7 +1356,10 @@ export const applyComparison = (
         revision: { date: revisionStamp.date, idSeed },
         mapTargetProperties: ({ kind, current, target }) => {
           if (kind === "inserted") {
-            const inserted = stageInsertedSectionProperties({ target, relationshipIds });
+            const inserted = stageInsertedSectionProperties({
+              target,
+              relationshipIds,
+            });
             return inserted ? { kind: "inserted", target: inserted } : null;
           }
           if (current === undefined) return null;
@@ -1178,7 +1369,8 @@ export const applyComparison = (
             relationshipIds,
             revisionFormat,
           });
-          if (staged && sectionReferenceHistory(staged) !== undefined) boundaryRequiresFolio = true;
+          if (staged && sectionReferenceHistory(staged) !== undefined)
+            boundaryRequiresFolio = true;
           return staged ? { kind: "retained", ...staged } : null;
         },
       });
@@ -1187,20 +1379,24 @@ export const applyComparison = (
           remainingProvenanceRanges -= insertedBoundaries.rangeCount;
           idSeed = insertedBoundaries.nextRevisionId;
           documentChanged ||= insertedBoundaries.documentChanged;
-          if (boundaryRequiresFolio) folioRequirements.add("section-reference-history");
+          if (boundaryRequiresFolio)
+            folioRequirements.add("section-reference-history");
           break;
         case "unalignable":
           break;
         case "budget-exceeded":
           return Result.err(
             new CompareDocxOperationLimitError({
-              message: "The comparison exceeds its section boundary range budget.",
+              message:
+                "The comparison exceeds its section boundary range budget.",
               limit: MAX_COMPARE_OPERATIONS,
             }),
           );
         default: {
           const unreachable: never = insertedBoundaries;
-          return panic("Unhandled inserted section boundary result", { result: unreachable });
+          return panic("Unhandled inserted section boundary result", {
+            result: unreachable,
+          });
         }
       }
     }
@@ -1241,17 +1437,24 @@ export const applyComparison = (
         failures.push(formattingFailure);
       }
     }
-    if (acceptedSnapshot && !sameAuthoredInlineProvenance(acceptedSnapshot, pair.targetSnapshot)) {
+    if (
+      acceptedSnapshot &&
+      !sameAuthoredInlineProvenance(acceptedSnapshot, pair.targetSnapshot)
+    ) {
       failures.push({
         invariant: "accept-reproduces-target",
         cause: "inline-formatting",
         story: pair.baseStory,
-        detail: "accepted authored run properties differ from the revised document",
+        detail:
+          "accepted authored run properties differ from the revised document",
       });
     }
     if (
       acceptedSnapshot &&
-      !sameInlineAtoms(sourceDocumentOf(acceptedSnapshot), sourceDocumentOf(pair.targetSnapshot))
+      !sameInlineAtoms(
+        sourceDocumentOf(acceptedSnapshot),
+        sourceDocumentOf(pair.targetSnapshot),
+      )
     ) {
       failures.push({
         invariant: "accept-reproduces-target",
@@ -1267,7 +1470,10 @@ export const applyComparison = (
         mapTargetProperties: (target) =>
           stageInsertedSectionProperties({ target, relationshipIds }),
       });
-      if (sectionBoundaries.status === "unalignable" || sectionBoundaries.changes.length > 0) {
+      if (
+        sectionBoundaries.status === "unalignable" ||
+        sectionBoundaries.changes.length > 0
+      ) {
         failures.push({
           invariant: "accept-reproduces-target",
           cause: "section-properties",
@@ -1304,17 +1510,24 @@ export const applyComparison = (
         failures.push(formattingFailure);
       }
     }
-    if (rejectedSnapshot && !sameAuthoredInlineProvenance(rejectedSnapshot, rawBaseSnapshot)) {
+    if (
+      rejectedSnapshot &&
+      !sameAuthoredInlineProvenance(rejectedSnapshot, rawBaseSnapshot)
+    ) {
       failures.push({
         invariant: "reject-reproduces-base",
         cause: "inline-formatting",
         story: pair.baseStory,
-        detail: "rejected authored run properties differ from the base document",
+        detail:
+          "rejected authored run properties differ from the base document",
       });
     }
     if (
       rejectedSnapshot &&
-      !sameInlineAtoms(sourceDocumentOf(rejectedSnapshot), sourceDocumentOf(rawBaseSnapshot))
+      !sameInlineAtoms(
+        sourceDocumentOf(rejectedSnapshot),
+        sourceDocumentOf(rawBaseSnapshot),
+      )
     ) {
       failures.push({
         invariant: "reject-reproduces-base",
@@ -1328,7 +1541,10 @@ export const applyComparison = (
         current: sourceDocumentOf(rejectedSnapshot),
         target: sourceDocumentOf(rawBaseSnapshot),
       });
-      if (sectionBoundaries.status === "unalignable" || sectionBoundaries.changes.length > 0) {
+      if (
+        sectionBoundaries.status === "unalignable" ||
+        sectionBoundaries.changes.length > 0
+      ) {
         failures.push({
           invariant: "reject-reproduces-base",
           cause: "section-properties",
@@ -1349,7 +1565,9 @@ export const applyComparison = (
     const geometryAcceptFailure = classifyGeometryMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: projectTableGeometry(acceptedSnapshot ? storyTablesOf(acceptedSnapshot) : []),
+      actual: projectTableGeometry(
+        acceptedSnapshot ? storyTablesOf(acceptedSnapshot) : [],
+      ),
       expected: projectTableGeometry(storyTablesOf(pair.targetSnapshot)),
     });
     if (geometryAcceptFailure) {
@@ -1358,7 +1576,9 @@ export const applyComparison = (
     const geometryRejectFailure = classifyGeometryMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: projectTableGeometry(rejectedSnapshot ? storyTablesOf(rejectedSnapshot) : []),
+      actual: projectTableGeometry(
+        rejectedSnapshot ? storyTablesOf(rejectedSnapshot) : [],
+      ),
       expected: baseBeforeGeometry,
     });
     if (geometryRejectFailure) {
@@ -1369,14 +1589,19 @@ export const applyComparison = (
   return Result.ok({
     changes,
     verification:
-      failures.length === 0 ? { status: "verified" } : { status: "unverified", failures },
+      failures.length === 0
+        ? { status: "verified" }
+        : { status: "unverified", failures },
     documentChanged,
     compatibility:
       firstFolioRequirement === undefined
         ? { status: "standard-ooxml" }
         : {
             status: "requires-folio",
-            reasons: [firstFolioRequirement, ...[...folioRequirements].slice(1)],
+            reasons: [
+              firstFolioRequirement,
+              ...[...folioRequirements].slice(1),
+            ],
           },
   });
 };
@@ -1401,9 +1626,20 @@ export const applyComparison = (
  * one within a single run.
  */
 export const serializeComparison = async (
-  { baseBuffer, baseCarriedRevisions, reviewer, packageDate, revisionStamp }: ParsedComparison,
+  {
+    baseBuffer,
+    baseCarriedRevisions,
+    reviewer,
+    packageDate,
+    revisionStamp,
+  }: ParsedComparison,
   { documentChanged }: AppliedComparison,
-): Promise<Result<ArrayBuffer, CompareDocxSerializeError | CompareDocxFinalParagraphMarkError>> => {
+): Promise<
+  Result<
+    ArrayBuffer,
+    CompareDocxSerializeError | CompareDocxFinalParagraphMarkError
+  >
+> => {
   if (!baseCarriedRevisions && !documentChanged) {
     return Result.ok(baseBuffer);
   }
@@ -1418,7 +1654,9 @@ export const serializeComparison = async (
   // one on a paragraph of a part no story mounts, so resolving to its accepted
   // view does not reach it; folio preserves what it parses, and refusing the
   // comparison would report the base's own bytes as this call's doing.
-  const revisions = revisedFinalParagraphMarks(document, { since: revisionStamp.idSeed });
+  const revisions = revisedFinalParagraphMarks(document, {
+    since: revisionStamp.idSeed,
+  });
   const [first] = revisions;
   if (first !== undefined) {
     return Result.err(
@@ -1432,9 +1670,13 @@ export const serializeComparison = async (
     );
   }
   return await Result.tryPromise({
-    try: async () => await withFixedPackageDates(await reviewer.toBuffer(), packageDate),
+    try: async () =>
+      await withFixedPackageDates(await reviewer.toBuffer(), packageDate),
     catch: (cause) =>
-      compareDocxSerializeError("The compared document could not be serialized", cause),
+      compareDocxSerializeError(
+        "The compared document could not be serialized",
+        cause,
+      ),
   });
 };
 
@@ -1473,11 +1715,14 @@ export const compareDocx = async (
   // none, so it is refused under either `onUnverified` setting.
   const missingNote =
     verification.status === "unverified"
-      ? verification.failures.find(({ detail }) => detail === MISSING_NOTE_DETAIL)
+      ? verification.failures.find(
+          ({ detail }) => detail === MISSING_NOTE_DETAIL,
+        )
       : undefined;
   if (
     verification.status === "unverified" &&
-    (missingNote !== undefined || (options.onUnverified ?? "refuse") === "refuse")
+    (missingNote !== undefined ||
+      (options.onUnverified ?? "refuse") === "refuse")
   ) {
     const firstFailure = missingNote ?? verification.failures[0];
     if (firstFailure === undefined) {

@@ -11,7 +11,12 @@
 
 import { panic } from "better-result";
 
-import type { FontMetrics, FontStyle, RunMeasurement, TextMeasurement } from "./measureTypes";
+import type {
+  FontMetrics,
+  FontStyle,
+  RunMeasurement,
+  TextMeasurement,
+} from "./measureTypes";
 import { toPaintedText } from "./textMeasurementPolicy";
 
 /**

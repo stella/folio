@@ -9,10 +9,17 @@ import {
 export const OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC =
   "[Unsupported block-level tracked-change content]";
 
-const REVISION_WRAPPERS: ReadonlySet<string> = new Set(["ins", "del", "moveFrom", "moveTo"]);
+const REVISION_WRAPPERS: ReadonlySet<string> = new Set([
+  "ins",
+  "del",
+  "moveFrom",
+  "moveTo",
+]);
 
 export const opaqueRevisionCarrierName = (xml: string): string | undefined => {
-  const visit = (element: ReturnType<typeof getChildElements>[number]): string | undefined => {
+  const visit = (
+    element: ReturnType<typeof getChildElements>[number],
+  ): string | undefined => {
     const localName = getLocalName(element.name);
     if (
       WORDPROCESSINGML_NAMESPACE_URIS.has(element.namespaceUri ?? "") &&
@@ -38,7 +45,9 @@ export const opaqueRevisionCarrierName = (xml: string): string | undefined => {
 };
 
 export const countOpaqueRevisionWrappers = (xml: string): number => {
-  const count = (element: ReturnType<typeof getChildElements>[number]): number => {
+  const count = (
+    element: ReturnType<typeof getChildElements>[number],
+  ): number => {
     const localName = getLocalName(element.name);
     let total =
       WORDPROCESSINGML_NAMESPACE_URIS.has(element.namespaceUri ?? "") &&

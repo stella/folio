@@ -22,7 +22,12 @@ function DefaultSelectRoot(props: FolioSelectRootProps) {
   return <SelectPrimitive.Root {...props} />;
 }
 
-function DefaultSelectTrigger({ className, children, size, ...props }: FolioSelectTriggerProps) {
+function DefaultSelectTrigger({
+  className,
+  children,
+  size,
+  ...props
+}: FolioSelectTriggerProps) {
   return (
     <SelectPrimitive.Trigger
       className={cn("folio-default-select-trigger", className)}
@@ -52,11 +57,18 @@ function DefaultSelectTrigger({ className, children, size, ...props }: FolioSele
 
 function DefaultSelectValue({ className, ...props }: FolioSelectValueProps) {
   return (
-    <SelectPrimitive.Value className={cn("folio-default-select-value", className)} {...props} />
+    <SelectPrimitive.Value
+      className={cn("folio-default-select-value", className)}
+      {...props}
+    />
   );
 }
 
-function DefaultSelectPopup({ className, children, ...props }: FolioSelectPopupProps) {
+function DefaultSelectPopup({
+  className,
+  children,
+  ...props
+}: FolioSelectPopupProps) {
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Positioner
@@ -68,7 +80,10 @@ function DefaultSelectPopup({ className, children, ...props }: FolioSelectPopupP
         side="bottom"
         sideOffset={4}
       >
-        <SelectPrimitive.Popup className={cn("folio-default-select-popup", className)} {...props}>
+        <SelectPrimitive.Popup
+          className={cn("folio-default-select-popup", className)}
+          {...props}
+        >
           <SelectPrimitive.List>{children}</SelectPrimitive.List>
         </SelectPrimitive.Popup>
       </SelectPrimitive.Positioner>
@@ -76,9 +91,16 @@ function DefaultSelectPopup({ className, children, ...props }: FolioSelectPopupP
   );
 }
 
-function DefaultSelectItem({ className, children, ...props }: FolioSelectItemProps) {
+function DefaultSelectItem({
+  className,
+  children,
+  ...props
+}: FolioSelectItemProps) {
   return (
-    <SelectPrimitive.Item className={cn("folio-default-select-item", className)} {...props}>
+    <SelectPrimitive.Item
+      className={cn("folio-default-select-item", className)}
+      {...props}
+    >
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
     </SelectPrimitive.Item>
   );

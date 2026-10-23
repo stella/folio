@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { sliceText } from "./sliceText";
 
 const scalar = fc.oneof(
@@ -39,13 +42,22 @@ test(
           expect(sliceText({ text: result, units: "codeUnits" })).toBe(result);
         },
       ),
-      { numRuns: 200, id: "code-unit windows retain complete Unicode characters" },
+      {
+        numRuns: 200,
+        id: "code-unit windows retain complete Unicode characters",
+      },
     );
   },
   propertyTestTimeout(10_000),
 );
 
-const grapheme = fc.constantFrom("a", "e\u0301", "\u{1f1e8}\u{1f1ff}", "👨‍👩‍👧", "👩🏽‍⚖️");
+const grapheme = fc.constantFrom(
+  "a",
+  "e\u0301",
+  "\u{1f1e8}\u{1f1ff}",
+  "👨‍👩‍👧",
+  "👩🏽‍⚖️",
+);
 
 test(
   "initials keep flags, joined emoji and combining marks whole",
@@ -57,7 +69,11 @@ test(
         (characters, boundary) => {
           const text = characters.join("");
           const before = sliceText({ text, units: "graphemes", end: boundary });
-          const after = sliceText({ text, units: "graphemes", start: boundary });
+          const after = sliceText({
+            text,
+            units: "graphemes",
+            start: boundary,
+          });
           expect(before).toBe(characters.slice(0, boundary).join(""));
           expect(after).toBe(characters.slice(boundary).join(""));
           expect(before + after).toBe(text);
@@ -79,7 +95,9 @@ test(
         expect(before + after).toBe(text);
         expect(/[\uD800-\uDFFF]/u.test(before)).toBe(false);
         expect(/[\uD800-\uDFFF]/u.test(after)).toBe(false);
-        expect(Array.from(before).length).toBe(Math.min(boundary, Array.from(text).length));
+        expect(Array.from(before).length).toBe(
+          Math.min(boundary, Array.from(text).length),
+        );
       }),
       { numRuns: 200, id: "code-point partitions preserve Unicode text" },
     );

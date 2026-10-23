@@ -24,15 +24,15 @@ import path from "node:path";
 import { installCleanRoomDependencies } from "./clean-room-install";
 import { assertHostPeerResolution } from "./host-peer-policy";
 import {
-  REACT_PEER_FLOOR,
   buildAndPack,
   consumerSrc,
   coreDir,
   docxCoreDir,
-  isDocxKernelWasmAsset,
   hostPeerInstallArgs,
-  reactPeerInstallArgs,
+  isDocxKernelWasmAsset,
+  REACT_PEER_FLOOR,
   reactDir,
+  reactPeerInstallArgs,
   repoRoot,
   utf8BoundariesDir,
   writeConsumerPackageJson,
@@ -43,7 +43,10 @@ const previewUrl = `http://localhost:${previewPort}`;
 const runtimeDistDirectory = "dist-runtime";
 
 // Poll the preview server until it answers or the deadline passes.
-const waitForServer = async (url: string, timeoutMs: number): Promise<boolean> => {
+const waitForServer = async (
+  url: string,
+  timeoutMs: number,
+): Promise<boolean> => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -88,9 +91,14 @@ try {
   docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
   corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
   reactPackDir = await mkdtemp(path.join(tmpdir(), "folio-react-pack-"));
-  utf8BoundariesPackDir = await mkdtemp(path.join(tmpdir(), "folio-utf8-boundaries-pack-"));
+  utf8BoundariesPackDir = await mkdtemp(
+    path.join(tmpdir(), "folio-utf8-boundaries-pack-"),
+  );
 
-  const utf8BoundariesTarball = await buildAndPack(utf8BoundariesDir, utf8BoundariesPackDir);
+  const utf8BoundariesTarball = await buildAndPack(
+    utf8BoundariesDir,
+    utf8BoundariesPackDir,
+  );
   const docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir);
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
@@ -109,12 +117,23 @@ try {
       // Stage the checked-in consumer OUT of the monorepo so no workspace linkage
       // leaks in. The runtime build needs index.html, the runtime config, the app
       // source, and the served fixture.
-      console.log(`→ staging React ${reactVersion} runtime consumer in ${consumerDir}`);
-      await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
-      await cp(path.join(consumerSrc, "public"), path.join(consumerDir, "public"), {
+      console.log(
+        `→ staging React ${reactVersion} runtime consumer in ${consumerDir}`,
+      );
+      await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), {
         recursive: true,
       });
-      await cp(path.join(consumerSrc, "index.html"), path.join(consumerDir, "index.html"));
+      await cp(
+        path.join(consumerSrc, "public"),
+        path.join(consumerDir, "public"),
+        {
+          recursive: true,
+        },
+      );
+      await cp(
+        path.join(consumerSrc, "index.html"),
+        path.join(consumerDir, "index.html"),
+      );
       await cp(
         path.join(consumerSrc, "vite.runtime.config.ts"),
         path.join(consumerDir, "vite.runtime.config.ts"),
@@ -143,7 +162,9 @@ try {
       });
 
       assertHostPeerResolution(consumerDir);
-      console.log(`→ production SPA build over the packed tarballs (React ${reactVersion})`);
+      console.log(
+        `→ production SPA build over the packed tarballs (React ${reactVersion})`,
+      );
       const build = await $`bun x vite build --config vite.runtime.config.ts`
         .cwd(consumerDir)
         .nothrow();
@@ -153,16 +174,21 @@ try {
           `packaged-consumer-smoke: React ${reactVersion} production vite build FAILED against the tarballs.`,
         );
       }
-      const distFiles = await readdir(path.join(consumerDir, runtimeDistDirectory), {
-        recursive: true,
-      });
+      const distFiles = await readdir(
+        path.join(consumerDir, runtimeDistDirectory),
+        {
+          recursive: true,
+        },
+      );
       if (!distFiles.some(isDocxKernelWasmAsset)) {
         throw new Error(
           `packaged-consumer-smoke: React ${reactVersion} production app emitted no lazy DOCX kernel WebAssembly asset.`,
         );
       }
 
-      console.log(`→ serving the React ${reactVersion} built app on ${previewUrl}`);
+      console.log(
+        `→ serving the React ${reactVersion} built app on ${previewUrl}`,
+      );
       // Redirect the server's stdio to files rather than piping: an unread pipe
       // blocks the child once the OS buffer fills, and the files double as CI
       // debugging output; they are dumped below whenever the smoke fails.
@@ -191,11 +217,14 @@ try {
         );
       }
 
-      console.log(`→ running the React ${reactVersion} runtime smoke (Playwright chromium)`);
-      const smoke = await $`bun x playwright test --config playwright.smoke.config.ts`
-        .cwd(repoRoot)
-        .env({ ...process.env, PLAYWRIGHT_BASE_URL: previewUrl })
-        .nothrow();
+      console.log(
+        `→ running the React ${reactVersion} runtime smoke (Playwright chromium)`,
+      );
+      const smoke =
+        await $`bun x playwright test --config playwright.smoke.config.ts`
+          .cwd(repoRoot)
+          .env({ ...process.env, PLAYWRIGHT_BASE_URL: previewUrl })
+          .nothrow();
       if (smoke.exitCode === 0) {
         succeeded = true;
         return;

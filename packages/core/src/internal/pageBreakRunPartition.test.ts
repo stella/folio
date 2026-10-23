@@ -7,8 +7,16 @@ const alternatingRanges = (count: number) => {
   const pageBreaks = [];
   for (let index = 0; index < count; index += 1) {
     const runStart = index * 2;
-    runs.push({ id: `run-${String(index)}`, pmStart: runStart, pmEnd: runStart + 1 });
-    pageBreaks.push({ id: `break-${String(index)}`, pmStart: runStart + 1, pmEnd: runStart + 2 });
+    runs.push({
+      id: `run-${String(index)}`,
+      pmStart: runStart,
+      pmEnd: runStart + 1,
+    });
+    pageBreaks.push({
+      id: `break-${String(index)}`,
+      pmStart: runStart + 1,
+      pmEnd: runStart + 2,
+    });
   }
   return { runs, pageBreaks };
 };
@@ -41,15 +49,19 @@ describe("page-break run partitioning", () => {
       if (result.type !== "partitioned") {
         throw new Error("Expected ordered alternating ranges to partition");
       }
-      expect([...readsByIndex.values()].reduce((sum, count) => sum + count, 0)).toBe(
-        pairCount * 2 - 1,
+      expect(
+        [...readsByIndex.values()].reduce((sum, count) => sum + count, 0),
+      ).toBe(pairCount * 2 - 1);
+      expect([...readsByIndex.values()].every((count) => count <= 2)).toBe(
+        true,
       );
-      expect([...readsByIndex.values()].every((count) => count <= 2)).toBe(true);
       expect(result.partitions).toHaveLength(pairCount);
       expect(
         result.partitions.every(
           ({ before, pageBreak }, index) =>
-            before.length === 1 && before[0] === runs[index] && pageBreak === pageBreaks[index],
+            before.length === 1 &&
+            before[0] === runs[index] &&
+            pageBreak === pageBreaks[index],
         ),
       ).toBe(true);
       expect(result.partitions.at(0)?.before.at(0)).toBe(runs.at(0));

@@ -2,23 +2,26 @@
  * Unit tests for ParagraphChangeTrackerExtension
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Schema, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { AddMarkStep, RemoveMarkStep, ReplaceStep } from "prosemirror-transform";
+import {
+  AddMarkStep,
+  RemoveMarkStep,
+  ReplaceStep,
+} from "prosemirror-transform";
 
 import {
+  clearTrackedChanges,
   getChangedParagraphIds,
+  getChangeTrackerState,
   hasStructuralChanges,
   hasUntrackedChanges,
-  clearTrackedChanges,
   ignoreTrackedChanges,
   markChangedParagraphRanges,
   markPackageChange,
   ParagraphChangeTrackerExtension,
-  getChangeTrackerState,
 } from "./ParagraphChangeTrackerExtension";
-
 import { ParaIdAllocatorExtension } from "./ParaIdAllocatorExtension";
 
 // Minimal schema with paraId support
@@ -65,7 +68,11 @@ function createDoc(...paras: { text: string; paraId?: string }[]) {
     "doc",
     null,
     paras.map((p) =>
-      schema.node("paragraph", { paraId: p.paraId ?? null }, p.text ? [schema.text(p.text)] : []),
+      schema.node(
+        "paragraph",
+        { paraId: p.paraId ?? null },
+        p.text ? [schema.text(p.text)] : [],
+      ),
     ),
   );
 }
@@ -81,7 +88,11 @@ function typeText(state: EditorState, text: string, pos?: number): EditorState {
   return state.apply(tr);
 }
 
-function deleteRange(state: EditorState, from: number, to: number): EditorState {
+function deleteRange(
+  state: EditorState,
+  from: number,
+  to: number,
+): EditorState {
   const tr = state.tr.delete(from, to);
   return state.apply(tr);
 }
@@ -103,7 +114,11 @@ describe("ParagraphChangeTrackerExtension", () => {
         { text: "Second", paraId: "P2" },
       ]);
       const replacement = createDoc({ text: "Replacement", paraId: "P3" });
-      const tr = state.tr.replaceWith(0, state.doc.content.size, replacement.content);
+      const tr = state.tr.replaceWith(
+        0,
+        state.doc.content.size,
+        replacement.content,
+      );
       state = state.apply(markPackageChange(tr));
 
       expect(getChangeTrackerState(state)).toMatchObject({ paragraphCount: 1 });
@@ -457,10 +472,16 @@ describe("ParagraphChangeTrackerExtension", () => {
       { text: "new", paraId: "P2" },
       { text: "last", paraId: "P3" },
     );
-    const tr = state.tr.replaceWith(0, state.doc.content.size, replacement.content);
+    const tr = state.tr.replaceWith(
+      0,
+      state.doc.content.size,
+      replacement.content,
+    );
     const secondFrom = replacement.child(0).nodeSize;
     markChangedParagraphRanges(tr, {
-      ranges: [{ from: secondFrom, to: secondFrom + replacement.child(1).nodeSize }],
+      ranges: [
+        { from: secondFrom, to: secondFrom + replacement.child(1).nodeSize },
+      ],
       mappingFrom: tr.steps.length,
       replacesStepMapAt: 0,
     });
@@ -501,12 +522,17 @@ describe("ParagraphChangeTrackerExtension", () => {
 });
 
 describe("paragraph tracking with the ID allocator", () => {
-  const allocator = ParaIdAllocatorExtension().onSchemaReady({ schema }).plugins?.at(0);
+  const allocator = ParaIdAllocatorExtension()
+    .onSchemaReady({ schema })
+    .plugins?.at(0);
   if (!allocator) {
     throw new Error("Expected paragraph ID allocator plugin");
   }
   const trackedState = (...paras: { text: string; paraId?: string }[]) =>
-    EditorState.create({ doc: createDoc(...paras), plugins: [plugin, allocator] });
+    EditorState.create({
+      doc: createDoc(...paras),
+      plugins: [plugin, allocator],
+    });
 
   test.each([0, 2, 5])("tracks both split halves at offset %i", (offset) => {
     const initial = trackedState({ text: "Hello", paraId: "11111111" });
@@ -526,7 +552,11 @@ describe("paragraph tracking with the ID allocator", () => {
     "tracks only the inserted paragraph after allocating its supplied ID %j",
     (paraId) => {
       const initial = trackedState({ text: "Original", paraId: "11111111" });
-      const inserted = schema.node("paragraph", { paraId }, schema.text("Inserted"));
+      const inserted = schema.node(
+        "paragraph",
+        { paraId },
+        schema.text("Inserted"),
+      );
       const next = initial.apply(initial.tr.insert(0, inserted));
       const insertedId = next.doc.child(0).attrs.paraId;
 
@@ -559,7 +589,9 @@ describe("paragraph tracking with the ID allocator", () => {
       { text: "Deleted", paraId: "11111111" },
       { text: "Kept", paraId: "22222222" },
     );
-    const next = initial.apply(initial.tr.delete(0, initial.doc.child(0).nodeSize));
+    const next = initial.apply(
+      initial.tr.delete(0, initial.doc.child(0).nodeSize),
+    );
 
     expect(next.doc.childCount).toBe(1);
     expect(getChangedParagraphIds(next)).toEqual(new Set());
@@ -586,11 +618,17 @@ describe("paragraph tracking with the ID allocator", () => {
       { text: "Kept", paraId: "22222222" },
     );
     const next = initial.apply(
-      initial.tr.replaceWith(0, initial.doc.child(0).nodeSize, schema.node("paragraph")),
+      initial.tr.replaceWith(
+        0,
+        initial.doc.child(0).nodeSize,
+        schema.node("paragraph"),
+      ),
     );
 
     expect(next.doc.childCount).toBe(initial.doc.childCount);
-    expect(getChangedParagraphIds(next)).toEqual(new Set([next.doc.child(0).attrs.paraId]));
+    expect(getChangedParagraphIds(next)).toEqual(
+      new Set([next.doc.child(0).attrs.paraId]),
+    );
     expect(hasStructuralChanges(next)).toBe(true);
     expect(hasUntrackedChanges(next)).toBe(false);
   });
@@ -611,9 +649,15 @@ describe("paragraph tracking with the ID allocator", () => {
   });
 
   test("detects a table attribute change with stable paragraph membership", () => {
-    const paragraph = schema.node("paragraph", { paraId: "11111111" }, schema.text("Cell"));
+    const paragraph = schema.node(
+      "paragraph",
+      { paraId: "11111111" },
+      schema.text("Cell"),
+    );
     const table = schema.node("table", null, [
-      schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph])]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [paragraph]),
+      ]),
     ]);
     const initial = EditorState.create({
       doc: schema.node("doc", null, [table]),
@@ -629,7 +673,9 @@ describe("paragraph tracking with the ID allocator", () => {
     const initial = trackedState({ text: "Unedited source" });
     const next = initial.apply(initial.tr.insert(0, schema.node("paragraph")));
 
-    expect(getChangedParagraphIds(next)).toEqual(new Set([next.doc.child(0).attrs.paraId]));
+    expect(getChangedParagraphIds(next)).toEqual(
+      new Set([next.doc.child(0).attrs.paraId]),
+    );
     expect(hasUntrackedChanges(next)).toBe(false);
   });
 
@@ -648,7 +694,9 @@ describe("paragraph tracking with the ID allocator", () => {
       { text: "Unidentified source" },
       { text: "Kept", paraId: "11111111" },
     );
-    const next = initial.apply(initial.tr.delete(0, initial.doc.child(0).nodeSize));
+    const next = initial.apply(
+      initial.tr.delete(0, initial.doc.child(0).nodeSize),
+    );
 
     expect(hasUntrackedChanges(next)).toBe(true);
   });
@@ -659,7 +707,9 @@ describe("paragraph tracking with the ID allocator", () => {
     const cleared = edited.apply(clearTrackedChanges(edited));
     const next = cleared.apply(cleared.tr.insert(0, schema.node("paragraph")));
 
-    expect(getChangedParagraphIds(next)).toEqual(new Set([next.doc.child(0).attrs.paraId]));
+    expect(getChangedParagraphIds(next)).toEqual(
+      new Set([next.doc.child(0).attrs.paraId]),
+    );
     expect(hasUntrackedChanges(next)).toBe(false);
   });
 });

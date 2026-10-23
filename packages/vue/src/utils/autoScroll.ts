@@ -30,7 +30,10 @@ export function computeAutoScrollDelta(
     );
   }
   if (mouseY > rect.bottom - AUTO_SCROLL_EDGE_ZONE) {
-    const proximity = Math.max(0, mouseY - (rect.bottom - AUTO_SCROLL_EDGE_ZONE));
+    const proximity = Math.max(
+      0,
+      mouseY - (rect.bottom - AUTO_SCROLL_EDGE_ZONE),
+    );
     return Math.min(
       AUTO_SCROLL_MAX_SPEED,
       (proximity / AUTO_SCROLL_EDGE_ZONE) * AUTO_SCROLL_MAX_SPEED,

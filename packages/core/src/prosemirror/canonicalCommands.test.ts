@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { getCanonicalCommandIntents, withCanonicalCommand } from "./canonicalCommands";
+
+import {
+  getCanonicalCommandIntents,
+  withCanonicalCommand,
+} from "./canonicalCommands";
 import { schema, singletonManager } from "./schema";
 
 const stateWithSelection = () => {
@@ -8,7 +12,11 @@ const stateWithSelection = () => {
     schema.node("paragraph", { indentLeft: 360 }, [schema.text("first")]),
     schema.node("paragraph", { indentLeft: 720 }, [schema.text("second")]),
   ]);
-  return EditorState.create({ schema, doc, selection: TextSelection.create(doc, 2, 10) });
+  return EditorState.create({
+    schema,
+    doc,
+    selection: TextSelection.create(doc, 2, 10),
+  });
 };
 
 describe("canonical command descriptors", () => {
@@ -64,7 +72,9 @@ describe("canonical command descriptors", () => {
       singletonManager.requireCommand("toggleBidi")(),
       singletonManager.requireCommand("setRtl")(),
       singletonManager.requireCommand("setLtr")(),
-      singletonManager.requireCommand("setTabs")([{ position: 720, alignment: "left" }]),
+      singletonManager.requireCommand("setTabs")([
+        { position: 720, alignment: "left" },
+      ]),
       singletonManager.requireCommand("addTabStop")(1440, "right", "dot"),
       singletonManager.requireCommand("removeTabStop")(720),
       singletonManager.requireCommand("setHyperlink")("example.com", "Tip"),
@@ -90,7 +100,11 @@ describe("canonical command descriptors", () => {
     for (const tooltip of [undefined, "", "Tip"]) {
       for (const command of [
         singletonManager.requireCommand("setHyperlink")("example.com", tooltip),
-        singletonManager.requireCommand("insertHyperlink")("Link", "#anchor", tooltip),
+        singletonManager.requireCommand("insertHyperlink")(
+          "Link",
+          "#anchor",
+          tooltip,
+        ),
       ]) {
         const intents = getCanonicalCommandIntents(command, state);
         expect(intents).toHaveLength(1);
@@ -112,20 +126,75 @@ describe("canonical command descriptors", () => {
   test("numbering command descriptors retain their start value", () => {
     const state = stateWithSelection();
     expect(
-      getCanonicalCommandIntents(singletonManager.requireCommand("restartNumbering")(), state),
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("restartNumbering")(),
+        state,
+      ),
     ).toEqual([{ type: "restartNumbering" }]);
     expect(
-      getCanonicalCommandIntents(singletonManager.requireCommand("setNumberingValue")(7), state),
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("setNumberingValue")(7),
+        state,
+      ),
     ).toEqual([{ type: "restartNumbering", start: 7 }]);
     expect(
-      getCanonicalCommandIntents(singletonManager.requireCommand("continueNumbering")(), state),
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("continueNumbering")(),
+        state,
+      ),
     ).toEqual([{ type: "continueNumbering" }]);
+  });
+
+  test("section and note factories describe their complete canonical meaning", () => {
+    const state = stateWithSelection();
+    expect(
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("insertSectionBreak")("continuous"),
+        state,
+      ),
+    ).toEqual([{ type: "setSectionBreak", breakType: "continuous" }]);
+    expect(
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("removeSectionBreak")(),
+        state,
+      ),
+    ).toEqual([{ type: "removeSectionBreak" }]);
+    const content = [
+      {
+        type: "paragraph" as const,
+        content: [
+          {
+            type: "run" as const,
+            content: [{ type: "text" as const, text: "Note" }],
+          },
+        ],
+      },
+    ];
+    expect(
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("insertFootnote")(7, content),
+        state,
+      ),
+    ).toEqual([
+      { type: "insertNote", kind: "footnote", id: 7, content, at: 10 },
+    ]);
+    expect(
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("insertEndnote")(8, content),
+        state,
+      ),
+    ).toEqual([
+      { type: "insertNote", kind: "endnote", id: 8, content, at: 10 },
+    ]);
   });
 
   test("formats each selected paragraph using its own indentation", () => {
     const state = stateWithSelection();
     expect(
-      getCanonicalCommandIntents(singletonManager.requireCommand("increaseIndent")(120), state),
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("increaseIndent")(120),
+        state,
+      ),
     ).toEqual([
       { type: "formatParagraph", at: 1, patch: { indentLeft: 480 } },
       { type: "formatParagraph", at: 8, patch: { indentLeft: 840 } },
@@ -134,24 +203,57 @@ describe("canonical command descriptors", () => {
 
   test("disabling styled toggle formatting states false for both script families", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("bold", [schema.mark("bold")])]),
+      schema.node("paragraph", null, [
+        schema.text("bold", [schema.mark("bold")]),
+      ]),
     ]);
-    const state = EditorState.create({ schema, doc, selection: TextSelection.create(doc, 1, 5) });
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 1, 5),
+    });
     expect(
-      getCanonicalCommandIntents(singletonManager.requireCommand("toggleBold")(), state),
-    ).toEqual([{ type: "formatRun", from: 1, to: 5, patch: { bold: false, boldCs: false } }]);
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("toggleBold")(),
+        state,
+      ),
+    ).toEqual([
+      {
+        type: "formatRun",
+        from: 1,
+        to: 5,
+        patch: { bold: false, boldCs: false },
+      },
+    ]);
   });
 
   test("underline toggles preserve each selected run's underline color", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.text("a", [schema.mark("underline", { style: "single", color: { rgb: "123456" } })]),
-        schema.text("b", [schema.mark("underline", { style: "double", color: { rgb: "654321" } })]),
+        schema.text("a", [
+          schema.mark("underline", {
+            style: "single",
+            color: { rgb: "123456" },
+          }),
+        ]),
+        schema.text("b", [
+          schema.mark("underline", {
+            style: "double",
+            color: { rgb: "654321" },
+          }),
+        ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc, selection: TextSelection.create(doc, 1, 3) });
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 1, 3),
+    });
     expect(
-      getCanonicalCommandIntents(singletonManager.requireCommand("toggleUnderline")(), state),
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("toggleUnderline")(),
+        state,
+      ),
     ).toEqual([
       {
         type: "formatRun",
@@ -171,25 +273,40 @@ describe("canonical command descriptors", () => {
   test("font-family writes retain each run's independent script-family properties", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.text("a", [schema.mark("fontFamily", { ascii: "Old", eastAsia: "East A" })]),
-        schema.text("b", [schema.mark("fontFamily", { ascii: "Old", eastAsia: "East B" })]),
+        schema.text("a", [
+          schema.mark("fontFamily", { ascii: "Old", eastAsia: "East A" }),
+        ]),
+        schema.text("b", [
+          schema.mark("fontFamily", { ascii: "Old", eastAsia: "East B" }),
+        ]),
       ]),
     ]);
-    const state = EditorState.create({ schema, doc, selection: TextSelection.create(doc, 1, 3) });
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 1, 3),
+    });
     expect(
-      getCanonicalCommandIntents(singletonManager.requireCommand("setFontFamily")("New"), state),
+      getCanonicalCommandIntents(
+        singletonManager.requireCommand("setFontFamily")("New"),
+        state,
+      ),
     ).toEqual([
       {
         type: "formatRun",
         from: 1,
         to: 2,
-        patch: { fontFamily: { ascii: "New", hAnsi: "New", eastAsia: "East A" } },
+        patch: {
+          fontFamily: { ascii: "New", hAnsi: "New", eastAsia: "East A" },
+        },
       },
       {
         type: "formatRun",
         from: 2,
         to: 3,
-        patch: { fontFamily: { ascii: "New", hAnsi: "New", eastAsia: "East B" } },
+        patch: {
+          fontFamily: { ascii: "New", hAnsi: "New", eastAsia: "East B" },
+        },
       },
     ]);
   });

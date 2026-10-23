@@ -35,8 +35,10 @@ import JSZip from "jszip";
 import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import {
@@ -48,8 +50,6 @@ import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { runFormattingInlineAtomCleanText } from "../prosemirror/runFormattingInlineCarriers";
 import { buildCleanBlockText, type CleanBlockText } from "./clean-text";
 import { FolioDocxReviewer } from "./headless";
-import { createFolioAITextRangeHandle } from "./snapshot";
-import type { FolioAIEditOperation } from "./types";
 import {
   changesFromSegments,
   keepAtomicSpans,
@@ -62,17 +62,31 @@ import {
   noteReferenceOf,
   planChangesAroundNoteReferences,
 } from "./note-references";
+import { createFolioAITextRangeHandle } from "./snapshot";
+import type { FolioAIEditOperation } from "./types";
 import { diffWordSegments, type WordDiffGranularity } from "./word-diff";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 /** Neighbouring items never share a note: two references to one note would read as one. */
 const NOTE_IDS = [1, 2, 3] as const;
-const noteIdAt = (index: number): number => NOTE_IDS[index % NOTE_IDS.length] ?? 1;
+const noteIdAt = (index: number): number =>
+  NOTE_IDS[index % NOTE_IDS.length] ?? 1;
 
-const WORDS = ["Seller", "shall", "deliver", "the", "goods", "on", "time", "Buyer", "pays"];
+const WORDS = [
+  "Seller",
+  "shall",
+  "deliver",
+  "the",
+  "goods",
+  "on",
+  "time",
+  "Buyer",
+  "pays",
+];
 
 type RunProperties = {
   bold: boolean;
@@ -142,14 +156,26 @@ const itemOf = (properties: fc.Arbitrary<RunProperties>): fc.Arbitrary<Item> =>
     },
     { weight: 1, arbitrary: fc.constant({ kind: "tab" as const }) },
     { weight: 1, arbitrary: fc.constant({ kind: "break" as const }) },
-    { weight: 1, arbitrary: fc.record({ kind: fc.constant("bookmark" as const), text: words }) },
-    { weight: 1, arbitrary: fc.record({ kind: fc.constant("link" as const), text: words }) },
+    {
+      weight: 1,
+      arbitrary: fc.record({
+        kind: fc.constant("bookmark" as const),
+        text: words,
+      }),
+    },
+    {
+      weight: 1,
+      arbitrary: fc.record({ kind: fc.constant("link" as const), text: words }),
+    },
   );
 
 const item = itemOf(runProperties);
 
 const escapeXml = (value: string): string =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 
 const runXml = (
   text: string,
@@ -168,7 +194,12 @@ const runXml = (
   );
 };
 
-const PLAIN: RunProperties = { bold: false, italic: false, size: null, rsid: false };
+const PLAIN: RunProperties = {
+  bold: false,
+  italic: false,
+  size: null,
+  rsid: false,
+};
 
 const itemXml = (entry: Item, index: number): string => {
   switch (entry.kind) {
@@ -250,7 +281,11 @@ const createDocx = async (paragraphXml: string): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-type CleanCharacter = { character: string; marks: readonly Mark[]; control: number | null };
+type CleanCharacter = {
+  character: string;
+  marks: readonly Mark[];
+  control: number | null;
+};
 
 /**
  * Every clean-text character of a paragraph, with its marks and the control it
@@ -271,16 +306,26 @@ const cleanCharacters = (paragraph: PMNode): CleanCharacter[] => {
     const atomText = runFormattingInlineAtomCleanText(node);
     if (atomText !== null) {
       for (const character of atomText) {
-        characters.push({ character, marks: node.marks, control: controlOf(parent) });
+        characters.push({
+          character,
+          marks: node.marks,
+          control: controlOf(parent),
+        });
       }
       return false;
     }
     if (node.isText) {
       const reference = noteReferenceOf(node);
       const text =
-        reference === null ? (node.text ?? "") : (noteLabels.labelOf(reference) ?? "[^?]");
+        reference === null
+          ? (node.text ?? "")
+          : (noteLabels.labelOf(reference) ?? "[^?]");
       for (const character of text) {
-        characters.push({ character, marks: node.marks, control: controlOf(parent) });
+        characters.push({
+          character,
+          marks: node.marks,
+          control: controlOf(parent),
+        });
       }
     }
     return true;
@@ -320,7 +365,8 @@ const editContract = (
       (boundary) =>
         boundary.type === type &&
         [start, end].some(
-          (edge) => edge > boundary.offset && edge < boundary.offset + boundary.length,
+          (edge) =>
+            edge > boundary.offset && edge < boundary.offset + boundary.length,
         ),
     );
   if (cutsInto("noteReference")) {
@@ -372,18 +418,30 @@ const editArbitrary = fc.record({
     fc.record({
       at: fc.double({ min: 0, max: 1, noNaN: true }),
       remove: fc.nat({ max: 6 }),
-      insert: fc.constantFrom("", "‸", "new ", " and", "X", "shall not ", "[^1]"),
+      insert: fc.constantFrom(
+        "",
+        "‸",
+        "new ",
+        " and",
+        "X",
+        "shall not ",
+        "[^1]",
+      ),
     }),
     { minLength: 1, maxLength: 3 },
   ),
 });
 
-type Edit = typeof editArbitrary extends fc.Arbitrary<infer Value> ? Value : never;
+type Edit =
+  typeof editArbitrary extends fc.Arbitrary<infer Value> ? Value : never;
 
 type PickedEdit = { start: number; end: number; find: string; replace: string };
 
 /** The same edit as a find-and-replace or as a replacement of the range it matches. */
-const operationType = fc.constantFrom("replaceInBlock" as const, "replaceRange" as const);
+const operationType = fc.constantFrom(
+  "replaceInBlock" as const,
+  "replaceRange" as const,
+);
 
 const editOperation = (
   type: "replaceInBlock" | "replaceRange",
@@ -410,7 +468,10 @@ const pickEdit = (text: string, edit: Edit): PickedEdit | null => {
   const start = edit.whole ? 0 : Math.floor(edit.sliceStart * text.length);
   const end = edit.whole
     ? text.length
-    : Math.min(text.length, start + 1 + Math.floor(edit.sliceLength * (text.length - start)));
+    : Math.min(
+        text.length,
+        start + 1 + Math.floor(edit.sliceLength * (text.length - start)),
+      );
   const find = text.slice(start, end);
   if (find.length === 0 || text.indexOf(find) !== text.lastIndexOf(find)) {
     return null;
@@ -418,7 +479,8 @@ const pickEdit = (text: string, edit: Edit): PickedEdit | null => {
   let replace = find;
   for (const { at, remove, insert } of edit.mutations) {
     const position = Math.floor(at * replace.length);
-    replace = replace.slice(0, position) + insert + replace.slice(position + remove);
+    replace =
+      replace.slice(0, position) + insert + replace.slice(position + remove);
   }
   return replace === find ? null : { start, end, find, replace };
 };
@@ -435,8 +497,9 @@ const firstParagraphOf = (doc: PMNode): { node: PMNode; from: number } => {
   throw new Error("expected a paragraph");
 };
 
-const firstParagraph = (reviewer: FolioDocxReviewer): { node: PMNode; from: number } =>
-  firstParagraphOf(reviewer.state.doc);
+const firstParagraph = (
+  reviewer: FolioDocxReviewer,
+): { node: PMNode; from: number } => firstParagraphOf(reviewer.state.doc);
 
 describe("a direct replacement changes only the characters it changes", () => {
   test(
@@ -451,7 +514,8 @@ describe("a direct replacement changes only the characters it changes", () => {
             await createDocx(items.map(itemXml).join("")),
           );
           const block = reviewer.snapshot().blocks.at(0);
-          const picked = block === undefined ? null : pickEdit(block.text, edit);
+          const picked =
+            block === undefined ? null : pickEdit(block.text, edit);
           if (!block || picked === null) {
             return;
           }
@@ -468,58 +532,91 @@ describe("a direct replacement changes only the characters it changes", () => {
           );
           const contract = editContract(cleanBefore, picked);
 
-          const result = reviewer.applyOperations([editOperation(type, block, picked)], {
-            undefinedReferences: "refuse",
-            mode: "direct",
-          });
+          const result = reviewer.applyOperations(
+            [editOperation(type, block, picked)],
+            {
+              undefinedReferences: "refuse",
+              mode: "direct",
+            },
+          );
           if (contract.refusal !== null) {
             // A match that begins or ends inside a field result or a note
             // reference names text no run holds, and a reference is not text
             // a replacement may drop or write: the operation contract refuses
             // it before any change.
-            expect(result.skipped).toEqual([{ id: "edit", reason: contract.refusal }]);
+            expect(result.skipped).toEqual([
+              { id: "edit", reason: contract.refusal },
+            ]);
             expect(firstParagraph(reviewer).node.eq(before.node)).toBe(true);
             return;
           }
           const changes = widenChangesToAtomicSpans(
             find,
-            planChangesAroundNoteReferences(find, replace, contract.spans, planTextChanges) ?? [],
+            planChangesAroundNoteReferences(
+              find,
+              replace,
+              contract.spans,
+              planTextChanges,
+            ) ?? [],
             fields,
           );
           expect(result.skipped).toEqual([]);
 
-          const expectedText = block.text.slice(0, start) + replace + block.text.slice(end);
+          const expectedText =
+            block.text.slice(0, start) + replace + block.text.slice(end);
           expect(reviewer.snapshot().blocks.at(0)?.text).toBe(expectedText);
-          expect(reviewer.snapshot().blocks.at(1)?.text).toBe("Untouched paragraph.");
+          expect(reviewer.snapshot().blocks.at(1)?.text).toBe(
+            "Untouched paragraph.",
+          );
 
           const after = firstParagraph(reviewer);
           const afterCharacters = cleanCharacters(after.node);
-          expect(afterCharacters.map((entry) => entry.character).join("")).toBe(expectedText);
+          expect(afterCharacters.map((entry) => entry.character).join("")).toBe(
+            expectedText,
+          );
 
           // Characters outside every change keep their marks and their control.
           for (const [index, was] of beforeCharacters.entries()) {
             const local = index - start;
-            if (changes.some((change) => local >= change.start && local < change.end)) {
+            if (
+              changes.some(
+                (change) => local >= change.start && local < change.end,
+              )
+            ) {
               continue;
             }
             const shift = changes
               .filter((change) => change.end <= local)
-              .reduce((sum, change) => sum + change.text.length - (change.end - change.start), 0);
+              .reduce(
+                (sum, change) =>
+                  sum + change.text.length - (change.end - change.start),
+                0,
+              );
             const now = afterCharacters[index + shift];
             expect({
               index,
               character: now?.character,
-              sameMarks: now !== undefined && Mark.sameSet(was.marks, now.marks),
+              sameMarks:
+                now !== undefined && Mark.sameSet(was.marks, now.marks),
               control: now?.control,
-            }).toEqual({ index, character: was.character, sameMarks: true, control: was.control });
+            }).toEqual({
+              index,
+              character: was.character,
+              sameMarks: true,
+              control: was.control,
+            });
           }
 
-          expect(countNodes(after.node, "sdt")).toBe(countNodes(before.node, "sdt"));
+          expect(countNodes(after.node, "sdt")).toBe(
+            countNodes(before.node, "sdt"),
+          );
           expect(countNodes(after.node, "bookmarkBoundary")).toBe(
             countNodes(before.node, "bookmarkBoundary"),
           );
           const touchedFields = fields.filter(({ offset, length }) =>
-            changes.some((change) => change.start < offset + length && change.end > offset),
+            changes.some(
+              (change) => change.start < offset + length && change.end > offset,
+            ),
           ).length;
           expect(countNodes(after.node, "field")).toBe(
             countNodes(before.node, "field") - touchedFields,
@@ -532,17 +629,29 @@ describe("a direct replacement changes only the characters it changes", () => {
           if (items.some((entry) => entry.kind === "link")) {
             // Where a saved `w:hyperlink` lands among its sibling runs is the
             // serializer's contract, tested with it; the edit is checked above.
-            expect([...reopenedText].toSorted()).toEqual([...expectedText].toSorted());
+            expect([...reopenedText].toSorted()).toEqual(
+              [...expectedText].toSorted(),
+            );
           } else {
             expect(reopenedText).toBe(expectedText);
           }
           const xml =
-            (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
-          expect((xml.match(/<w:sdt>/gu) ?? []).length).toBe(countNodes(before.node, "sdt"));
+            (await (
+              await JSZip.loadAsync(saved)
+            )
+              .file("word/document.xml")
+              ?.async("text")) ?? "";
+          expect((xml.match(/<w:sdt>/gu) ?? []).length).toBe(
+            countNodes(before.node, "sdt"),
+          );
           // No reference is removed, rewritten or reordered.
           expect(noteReferenceIds(after.node)).toEqual(beforeReferences);
-          expect(noteReferenceIds(firstParagraph(reopened).node)).toEqual(beforeReferences);
-          expect((xml.match(/<w:footnoteReference /gu) ?? []).length).toBe(beforeReferences.length);
+          expect(noteReferenceIds(firstParagraph(reopened).node)).toEqual(
+            beforeReferences,
+          );
+          expect((xml.match(/<w:footnoteReference /gu) ?? []).length).toBe(
+            beforeReferences.length,
+          );
         },
       );
       await assertProperty(directReplacementProperty, {
@@ -554,20 +663,33 @@ describe("a direct replacement changes only the characters it changes", () => {
   );
 });
 
-const REVISION_MARKS: ReadonlySet<string> = new Set(["insertion", "deletion", "runPropertyChange"]);
-const BACKGROUND_MARKS: ReadonlySet<string> = new Set(["highlight", "runShading"]);
+const REVISION_MARKS: ReadonlySet<string> = new Set([
+  "insertion",
+  "deletion",
+  "runPropertyChange",
+]);
+const BACKGROUND_MARKS: ReadonlySet<string> = new Set([
+  "highlight",
+  "runShading",
+]);
 
 const hasMark = (marks: readonly Mark[], name: string): boolean =>
   marks.some((mark) => mark.type.name === name);
 
-const withoutMarks = (marks: readonly Mark[], names: ReadonlySet<string>): readonly Mark[] =>
-  marks.filter((mark) => !names.has(mark.type.name));
+const withoutMarks = (
+  marks: readonly Mark[],
+  names: ReadonlySet<string>,
+): readonly Mark[] => marks.filter((mark) => !names.has(mark.type.name));
 
 /** Non-text inline content: what no clean-text character stands for. */
 const inlineContentWithoutText = (paragraph: PMNode): PMNode[] => {
   const nodes: PMNode[] = [];
   paragraph.descendants((node) => {
-    if (node.isInline && !node.isText && runFormattingInlineAtomCleanText(node) === null) {
+    if (
+      node.isInline &&
+      !node.isText &&
+      runFormattingInlineAtomCleanText(node) === null
+    ) {
       nodes.push(node);
     }
     return true;
@@ -608,7 +730,9 @@ const formattingOf = (paragraph: PMNode): string[] => {
       .filter((mark) => mark.type.spec.inclusive === false)
       .map((mark) => JSON.stringify([mark.type.name, mark.attrs]));
     for (const character of node.isText ? (node.text ?? "") : [""]) {
-      nodes.push(`${node.type.name}:${character}:${formatting}:${others.join()}`);
+      nodes.push(
+        `${node.type.name}:${character}:${formatting}:${others.join()}`,
+      );
     }
     return true;
   });
@@ -729,7 +853,10 @@ describe("a tracked or suggested replacement redlines only the characters it cha
     async () => {
       await assertProperty(
         fc.asyncProperty(
-          fc.array(itemOf(highlightedRunProperties), { minLength: 1, maxLength: 8 }),
+          fc.array(itemOf(highlightedRunProperties), {
+            minLength: 1,
+            maxLength: 8,
+          }),
           editArbitrary,
           fc.constantFrom<ReviewMode>("tracked-changes", "suggested"),
           fc.constantFrom<WordDiffGranularity>("word", "character"),
@@ -738,7 +865,8 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             const source = await createDocx(items.map(itemXml).join(""));
             const reviewer = await FolioDocxReviewer.fromBuffer(source);
             const block = reviewer.snapshot().blocks.at(0);
-            const picked = block === undefined ? null : pickEdit(block.text, edit);
+            const picked =
+              block === undefined ? null : pickEdit(block.text, edit);
             if (!block || picked === null) {
               return;
             }
@@ -748,24 +876,35 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             const beforeCharacters = cleanCharacters(before.node);
             const beforeReferences = noteReferenceIds(before.node);
             const cleanBefore = buildCleanBlockText(before.node, before.from);
-            const fields = cleanBefore.structuralBoundaries.flatMap((boundary) =>
-              boundary.type === "field"
-                ? [{ offset: boundary.offset - start, length: boundary.length }]
-                : [],
+            const fields = cleanBefore.structuralBoundaries.flatMap(
+              (boundary) =>
+                boundary.type === "field"
+                  ? [
+                      {
+                        offset: boundary.offset - start,
+                        length: boundary.length,
+                      },
+                    ]
+                  : [],
             );
             const contract = editContract(cleanBefore, picked);
 
-            const result = reviewer.applyOperations([editOperation(type, block, picked)], {
-              undefinedReferences: "refuse",
-              mode,
-              wordDiff: { granularity },
-            });
+            const result = reviewer.applyOperations(
+              [editOperation(type, block, picked)],
+              {
+                undefinedReferences: "refuse",
+                mode,
+                wordDiff: { granularity },
+              },
+            );
             if (contract.refusal !== null) {
               // A match that begins or ends inside a field result or a note
               // reference names text no run holds, and a reference is not text
               // a replacement may drop or write: the operation contract refuses
               // it before any change.
-              expect(result.skipped).toEqual([{ id: "edit", reason: contract.refusal }]);
+              expect(result.skipped).toEqual([
+                { id: "edit", reason: contract.refusal },
+              ]);
               expect(firstParagraph(reviewer).node.eq(before.node)).toBe(true);
               return;
             }
@@ -778,34 +917,52 @@ describe("a tracked or suggested replacement redlines only the characters it cha
               replace,
               widenChangesToAtomicSpans(
                 find,
-                planChangesAroundNoteReferences(find, replace, contract.spans, (piece, target) =>
-                  changesFromSegments(diffWordSegments(piece, target, { granularity })),
+                planChangesAroundNoteReferences(
+                  find,
+                  replace,
+                  contract.spans,
+                  (piece, target) =>
+                    changesFromSegments(
+                      diffWordSegments(piece, target, { granularity }),
+                    ),
                 ) ?? [],
                 fields,
               ),
               widenChangesToAtomicSpans(
                 find,
-                planChangesAroundNoteReferences(find, replace, contract.spans, planTextChanges) ??
-                  [],
+                planChangesAroundNoteReferences(
+                  find,
+                  replace,
+                  contract.spans,
+                  planTextChanges,
+                ) ?? [],
                 fields,
               ),
               fields,
             );
             for (const change of changes) {
-              expect({ change, rewritten: find.slice(change.start, change.end) }).not.toEqual({
+              expect({
+                change,
+                rewritten: find.slice(change.start, change.end),
+              }).not.toEqual({
                 change,
                 rewritten: change.text,
               });
             }
             expect(result.skipped).toEqual([]);
-            const expectedText = block.text.slice(0, start) + replace + block.text.slice(end);
+            const expectedText =
+              block.text.slice(0, start) + replace + block.text.slice(end);
 
             // The redline: the original characters in order, each deleted
             // exactly when a change removes it, and the new text inserted.
             const edited = firstParagraph(reviewer).node;
             const editedCharacters = cleanCharacters(edited);
-            const kept = editedCharacters.filter((entry) => !hasMark(entry.marks, "insertion"));
-            expect(kept.map((entry) => entry.character).join("")).toBe(block.text);
+            const kept = editedCharacters.filter(
+              (entry) => !hasMark(entry.marks, "insertion"),
+            );
+            expect(kept.map((entry) => entry.character).join("")).toBe(
+              block.text,
+            );
             expect(
               editedCharacters
                 .filter((entry) => hasMark(entry.marks, "insertion"))
@@ -813,9 +970,13 @@ describe("a tracked or suggested replacement redlines only the characters it cha
                 .join(""),
             ).toBe(changes.map((change) => change.text).join(""));
             const removedAt = (index: number) =>
-              index >= start && index < end && removedBy(changes, index - start);
+              index >= start &&
+              index < end &&
+              removedBy(changes, index - start);
             const touched = touchedHighlight(
-              beforeCharacters.slice(start, end).map((entry) => hasMark(entry.marks, "highlight")),
+              beforeCharacters
+                .slice(start, end)
+                .map((entry) => hasMark(entry.marks, "highlight")),
               changes,
             );
             for (const [index, was] of beforeCharacters.entries()) {
@@ -825,7 +986,8 @@ describe("a tracked or suggested replacement redlines only the characters it cha
               expect({
                 index,
                 deleted: now !== undefined && hasMark(now.marks, "deletion"),
-                propertyChange: now !== undefined && hasMark(now.marks, "runPropertyChange"),
+                propertyChange:
+                  now !== undefined && hasMark(now.marks, "runPropertyChange"),
                 control: now?.control,
               }).toEqual({
                 index,
@@ -846,15 +1008,19 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             }
             for (const entry of editedCharacters) {
               if (hasMark(entry.marks, "insertion")) {
-                expect(entry.marks.some((mark) => BACKGROUND_MARKS.has(mark.type.name))).toBe(
-                  false,
-                );
+                expect(
+                  entry.marks.some((mark) =>
+                    BACKGROUND_MARKS.has(mark.type.name),
+                  ),
+                ).toBe(false);
               }
             }
             for (const node of inlineContentWithoutText(edited)) {
               expect({
                 node: node.type.name,
-                revision: node.marks.some((mark) => REVISION_MARKS.has(mark.type.name)),
+                revision: node.marks.some((mark) =>
+                  REVISION_MARKS.has(mark.type.name),
+                ),
               }).toEqual({ node: node.type.name, revision: false });
             }
 
@@ -864,21 +1030,30 @@ describe("a tracked or suggested replacement redlines only the characters it cha
               resolveEverything(reviewer.state, mode, "accept").doc,
             );
             const acceptedCharacters = cleanCharacters(accepted.node);
-            expect(acceptedCharacters.map((entry) => entry.character).join("")).toBe(expectedText);
+            expect(
+              acceptedCharacters.map((entry) => entry.character).join(""),
+            ).toBe(expectedText);
             for (const entry of acceptedCharacters) {
-              expect(entry.marks.some((mark) => REVISION_MARKS.has(mark.type.name))).toBe(false);
+              expect(
+                entry.marks.some((mark) => REVISION_MARKS.has(mark.type.name)),
+              ).toBe(false);
             }
             // Accepted or rejected, every reference is where it was.
             expect(noteReferenceIds(accepted.node)).toEqual(beforeReferences);
             // The change revises the text inside a control, not the control:
             // accepting the deletion of all its text leaves it standing,
             // emptied, as the direct replacement does.
-            expect(countNodes(accepted.node, "sdt")).toBe(countNodes(before.node, "sdt"));
+            expect(countNodes(accepted.node, "sdt")).toBe(
+              countNodes(before.node, "sdt"),
+            );
             expect(countNodes(accepted.node, "bookmarkBoundary")).toBe(
               countNodes(before.node, "bookmarkBoundary"),
             );
             const touchedFields = fields.filter(({ offset, length }) =>
-              changes.some((change) => change.start < offset + length && change.end > offset),
+              changes.some(
+                (change) =>
+                  change.start < offset + length && change.end > offset,
+              ),
             ).length;
             expect(countNodes(accepted.node, "field")).toBe(
               countNodes(before.node, "field") - touchedFields,
@@ -894,7 +1069,9 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             if (touched.size === 0) {
               expect(rejected.node.content.eq(before.node.content)).toBe(true);
             } else {
-              expect(formattingOf(rejected.node)).toEqual(formattingOf(before.node));
+              expect(formattingOf(rejected.node)).toEqual(
+                formattingOf(before.node),
+              );
             }
 
             if (mode === "tracked-changes") {
@@ -903,18 +1080,24 @@ describe("a tracked or suggested replacement redlines only the characters it cha
               const saved = await reviewer.toBuffer();
               const acceptedPackage = await FolioDocxReviewer.fromBuffer(saved);
               acceptedPackage.acceptAll();
-              expect(countNodes(firstParagraph(acceptedPackage).node, "sdt")).toBe(
-                countNodes(before.node, "sdt"),
-              );
-              const acceptedText = acceptedPackage.snapshot().blocks.at(0)?.text ?? "";
+              expect(
+                countNodes(firstParagraph(acceptedPackage).node, "sdt"),
+              ).toBe(countNodes(before.node, "sdt"));
+              const acceptedText =
+                acceptedPackage.snapshot().blocks.at(0)?.text ?? "";
               const rejectedPackage = await FolioDocxReviewer.fromBuffer(saved);
               rejectedPackage.rejectAll();
-              const rejectedText = rejectedPackage.snapshot().blocks.at(0)?.text ?? "";
+              const rejectedText =
+                rejectedPackage.snapshot().blocks.at(0)?.text ?? "";
               if (items.some((entry) => entry.kind === "link")) {
                 // Where a saved `w:hyperlink` lands among its sibling runs is
                 // the serializer's contract, tested with it.
-                expect([...acceptedText].toSorted()).toEqual([...expectedText].toSorted());
-                expect([...rejectedText].toSorted()).toEqual([...block.text].toSorted());
+                expect([...acceptedText].toSorted()).toEqual(
+                  [...expectedText].toSorted(),
+                );
+                expect([...rejectedText].toSorted()).toEqual(
+                  [...block.text].toSorted(),
+                );
               } else {
                 expect(acceptedText).toBe(expectedText);
                 expect(rejectedText).toBe(block.text);
@@ -922,8 +1105,12 @@ describe("a tracked or suggested replacement redlines only the characters it cha
                 // from alike runs it merely separates, and joins both once the
                 // revision is gone: the paragraph says the same, in no more runs.
                 const reopenedXml = firstParagraphXml(rejectedPackage);
-                expect(joinAlikeRuns(reopenedXml)).toBe(joinAlikeRuns(originalXml));
-                expect(runCount(reopenedXml)).toBeLessThanOrEqual(runCount(originalXml));
+                expect(joinAlikeRuns(reopenedXml)).toBe(
+                  joinAlikeRuns(originalXml),
+                );
+                expect(runCount(reopenedXml)).toBeLessThanOrEqual(
+                  runCount(originalXml),
+                );
               }
             }
 
@@ -952,7 +1139,12 @@ describe("a tracked or suggested replacement redlines only the characters it cha
  * changes no character.
  */
 const savedFirstParagraph = async (saved: ArrayBuffer): Promise<string> => {
-  const xml = (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  const xml =
+    (await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")
+      ?.async("text")) ?? "";
   const start = xml.search(/<w:p[ >]/u);
   return xml
     .slice(start, xml.indexOf("</w:p>", start) + "</w:p>".length)
@@ -975,7 +1167,8 @@ const firstParagraphXml = (reviewer: FolioDocxReviewer): string => {
     .replaceAll(' xml:space="preserve"', "");
 };
 
-const runCount = (xml: string): number => (xml.match(/<w:r[ >]/gu) ?? []).length;
+const runCount = (xml: string): number =>
+  (xml.match(/<w:r[ >]/gu) ?? []).length;
 
 /** `xml` with each run of text joined to a following run that has the same attributes and `w:rPr`. */
 const joinAlikeRuns = (xml: string): string => {
@@ -983,7 +1176,8 @@ const joinAlikeRuns = (xml: string): string => {
     /<w:r((?: [^>]*)?)>((?:<w:rPr>(?:(?!<\/w:rPr>).)*<\/w:rPr>)?)<w:t>([^<]*)<\/w:t><\/w:r><w:r\1>\2<w:t>([^<]*)<\/w:t><\/w:r>/u;
   let joined = xml;
   for (let match = alike.exec(joined); match; match = alike.exec(joined)) {
-    const [whole, attributes = "", properties = "", first = "", second = ""] = match;
+    const [whole, attributes = "", properties = "", first = "", second = ""] =
+      match;
     joined = joined.replace(
       whole,
       `<w:r${attributes}>${properties}<w:t>${first}${second}</w:t></w:r>`,
@@ -1012,11 +1206,17 @@ const replaceFirst = async (paragraphXml: string, options: ReplaceOptions) => {
     throw new Error("expected a block");
   }
   const find = options.find ?? block.text;
-  const comment = options.comment === undefined ? {} : { comment: { text: options.comment } };
+  const comment =
+    options.comment === undefined ? {} : { comment: { text: options.comment } };
   const result = reviewer.applyOperations(
     [
       options.type === "replaceBlock"
-        ? { id: "edit", type: "replaceBlock", blockId: block.id, text: options.replace(block.text) }
+        ? {
+            id: "edit",
+            type: "replaceBlock",
+            blockId: block.id,
+            text: options.replace(block.text),
+          }
         : {
             id: "edit",
             type: "replaceInBlock",
@@ -1044,12 +1244,23 @@ const APPENDED = "‸";
 const appendedRun = (properties = "") =>
   `<w:r>${properties === "" ? "" : `<w:rPr>${properties}</w:rPr>`}<w:t>${APPENDED}</w:t></w:r>`;
 const controlOf = (text: string, index: number) =>
-  itemXml({ kind: "control", runs: [{ text, properties: { ...PLAIN, italic: true } }] }, index);
+  itemXml(
+    {
+      kind: "control",
+      runs: [{ text, properties: { ...PLAIN, italic: true } }],
+    },
+    index,
+  );
 
 describe("direct replacement examples", () => {
   test("appending one character to a mixed paragraph changes nothing else", async () => {
     const paragraph =
-      runXml("Bold start ", { bold: true, italic: false, size: 28, rsid: true }) +
+      runXml("Bold start ", {
+        bold: true,
+        italic: false,
+        size: 28,
+        rsid: true,
+      }) +
       controlOf("John", 1) +
       runXml(" pays ", PLAIN) +
       itemXml({ kind: "field", result: "3.6" }, 2) +
@@ -1059,12 +1270,16 @@ describe("direct replacement examples", () => {
       replace: (text) => text + APPENDED,
     });
     expect(edited).toBe(
-      control.replace(/end<\/w:t><\/w:r><\/w:p>$/u, `end${APPENDED}</w:t></w:r></w:p>`),
+      control.replace(
+        /end<\/w:t><\/w:r><\/w:p>$/u,
+        `end${APPENDED}</w:t></w:r></w:p>`,
+      ),
     );
   });
 
   test("text appended after a note reference is not styled as the reference", async () => {
-    const paragraph = runXml("See the note", PLAIN) + itemXml({ kind: "noteReference" }, 0);
+    const paragraph =
+      runXml("See the note", PLAIN) + itemXml({ kind: "noteReference" }, 0);
     const { control, edited } = await replaceFirst(paragraph, {
       replace: (text) => text + APPENDED,
     });
@@ -1076,7 +1291,9 @@ describe("direct replacement examples", () => {
     const { control, edited } = await replaceFirst(paragraph, {
       replace: (text) => text + APPENDED,
     });
-    expect(edited).toBe(control.replace(/<\/w:p>$/u, `${appendedRun("<w:i/>")}</w:p>`));
+    expect(edited).toBe(
+      control.replace(/<\/w:p>$/u, `${appendedRun("<w:i/>")}</w:p>`),
+    );
   });
 
   test("an edit matching only the control's text stays inside the control", async () => {
@@ -1093,12 +1310,18 @@ describe("direct replacement examples", () => {
       runXml("see ", PLAIN) +
       itemXml({ kind: "field", result: "3.6" }, 0) +
       runXml(" above", PLAIN);
-    const kept = await replaceFirst(paragraph, { replace: () => "see 3.6 below" });
+    const kept = await replaceFirst(paragraph, {
+      replace: () => "see 3.6 below",
+    });
     expect(kept.edited).toContain("<w:instrText");
     expect(kept.edited).toContain(">3.6</w:t>");
-    const replaced = await replaceFirst(paragraph, { replace: () => "see 3.7 above" });
+    const replaced = await replaceFirst(paragraph, {
+      replace: () => "see 3.7 above",
+    });
     expect(replaced.edited).not.toContain("<w:instrText");
-    expect(replaced.reviewer.snapshot().blocks.at(0)?.text).toBe("see 3.7 above");
+    expect(replaced.reviewer.snapshot().blocks.at(0)?.text).toBe(
+      "see 3.7 above",
+    );
   });
 
   test("changing one digit of a highlighted amount clears the whole amount's highlight only", async () => {
@@ -1112,14 +1335,19 @@ describe("direct replacement examples", () => {
     const { edited, reviewer } = await replaceFirst(paragraph, {
       replace: (text) => text.replace("2000", "3000"),
     });
-    expect(reviewer.snapshot().blocks.at(0)?.text).toBe("Draft penalty 3000 CZK");
-    expect(edited).toMatch(/<w:highlight w:val="yellow"\/><\/w:rPr><w:t[^>]*>Draft<\/w:t>/u);
+    expect(reviewer.snapshot().blocks.at(0)?.text).toBe(
+      "Draft penalty 3000 CZK",
+    );
+    expect(edited).toMatch(
+      /<w:highlight w:val="yellow"\/><\/w:rPr><w:t[^>]*>Draft<\/w:t>/u,
+    );
     expect((edited.match(/<w:highlight /gu) ?? []).length).toBe(1);
   });
 
   test("an operation comment covers the replaced text", async () => {
     const paragraph =
-      runXml("The Seller ", { ...PLAIN, bold: true }) + runXml("shall deliver.", PLAIN);
+      runXml("The Seller ", { ...PLAIN, bold: true }) +
+      runXml("shall deliver.", PLAIN);
     const { edited } = await replaceFirst(paragraph, {
       replace: (text) => text.replace("shall", "must"),
       comment: "Stronger wording.",
@@ -1131,12 +1359,15 @@ describe("direct replacement examples", () => {
 
   test("replaceBlock writes only the difference too", async () => {
     const paragraph =
-      runXml("Bold ", { ...PLAIN, bold: true }) + runXml("italic", { ...PLAIN, italic: true });
+      runXml("Bold ", { ...PLAIN, bold: true }) +
+      runXml("italic", { ...PLAIN, italic: true });
     const { control, edited } = await replaceFirst(paragraph, {
       type: "replaceBlock",
       replace: (text) => text + APPENDED,
     });
-    expect(edited).toBe(control.replace(/italic<\/w:t>/u, `italic${APPENDED}</w:t>`));
+    expect(edited).toBe(
+      control.replace(/italic<\/w:t>/u, `italic${APPENDED}</w:t>`),
+    );
   });
 });
 
@@ -1149,8 +1380,13 @@ describe("tracked replacement examples", () => {
     const highlighted = `<w:r><w:rPr><w:i/><w:highlight w:val="yellow"/></w:rPr><w:t>2000 CZK</w:t></w:r>`;
     for (const [paragraph, replace] of [
       [
-        runXml("Seller shall deliver the goods on time.", { ...PLAIN, bold: true, rsid: true }),
-        (text: string) => text.replace("shall", "must").replace("time", "schedule"),
+        runXml("Seller shall deliver the goods on time.", {
+          ...PLAIN,
+          bold: true,
+          rsid: true,
+        }),
+        (text: string) =>
+          text.replace("shall", "must").replace("time", "schedule"),
       ],
       [
         runXml("Penalty ", PLAIN) + highlighted + runXml(" per day.", PLAIN),
@@ -1158,14 +1394,21 @@ describe("tracked replacement examples", () => {
       ],
     ] as const) {
       for (const mode of ["tracked-changes", "suggested"] as const) {
-        const { control, reviewer } = await replaceFirst(paragraph, { replace, mode });
+        const { control, reviewer } = await replaceFirst(paragraph, {
+          replace,
+          mode,
+        });
         const saved = await reviewer.toBuffer();
         reviewer.rejectAll();
-        expect(await savedFirstParagraph(await reviewer.toBuffer())).toBe(control);
+        expect(await savedFirstParagraph(await reviewer.toBuffer())).toBe(
+          control,
+        );
         if (mode === "tracked-changes") {
           const reopened = await FolioDocxReviewer.fromBuffer(saved);
           reopened.rejectAll();
-          expect(await savedFirstParagraph(await reopened.toBuffer())).toBe(control);
+          expect(await savedFirstParagraph(await reopened.toBuffer())).toBe(
+            control,
+          );
         }
       }
     }
@@ -1173,7 +1416,12 @@ describe("tracked replacement examples", () => {
 
   test("appending one character to a mixed paragraph inserts only that character", async () => {
     const paragraph =
-      runXml("Bold start ", { bold: true, italic: false, size: 28, rsid: true }) +
+      runXml("Bold start ", {
+        bold: true,
+        italic: false,
+        size: 28,
+        rsid: true,
+      }) +
       controlOf("John", 1) +
       itemXml({ kind: "noteReference" }, 0) +
       runXml(" pays ", PLAIN) +
@@ -1188,7 +1436,9 @@ describe("tracked replacement examples", () => {
     expect(edited).not.toContain("<w:del ");
     expect(edited).not.toContain("<w:rPrChange ");
     expect(edited.match(/<w:ins [^>]*>.*?<\/w:ins>/gu)).toEqual([
-      expect.stringContaining(`<w:i/></w:rPr><w:t>${APPENDED}</w:t></w:r></w:ins>`),
+      expect.stringContaining(
+        `<w:i/></w:rPr><w:t>${APPENDED}</w:t></w:r></w:ins>`,
+      ),
     ]);
     expect(withoutInsertions(edited)).toBe(control);
   });
@@ -1208,7 +1458,9 @@ describe("tracked replacement examples", () => {
     ]);
     expect(edited).toContain("<w:instrText");
     expect(edited).toContain("<w:tab/>");
-    const accepting = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const accepting = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+    );
     accepting.acceptAll();
     expect(accepting.snapshot().blocks.at(0)?.text).toBe("see 3.6\tbelow here");
   });
@@ -1229,9 +1481,13 @@ describe("tracked replacement examples", () => {
       });
       const redline: string[] = [];
       firstParagraph(reviewer).node.descendants((node) => {
-        const revision = node.marks.find((mark) => REVISION_MARKS.has(mark.type.name));
+        const revision = node.marks.find((mark) =>
+          REVISION_MARKS.has(mark.type.name),
+        );
         if (node.isInline && node.type.name !== "field") {
-          redline.push(`${node.isText ? node.text : node.type.name}:${revision?.type.name ?? ""}`);
+          redline.push(
+            `${node.isText ? node.text : node.type.name}:${revision?.type.name ?? ""}`,
+          );
         }
         return node.type.name !== "field";
       });
@@ -1240,7 +1496,9 @@ describe("tracked replacement examples", () => {
         redline: ["tab:deletion", " and:insertion", "Seller :"],
       });
       expect(countNodes(firstParagraph(reviewer).node, "field")).toBe(1);
-      const accepted = firstParagraphOf(resolveEverything(reviewer.state, mode, "accept").doc);
+      const accepted = firstParagraphOf(
+        resolveEverything(reviewer.state, mode, "accept").doc,
+      );
       expect(countNodes(accepted.node, "field")).toBe(1);
       expect(
         cleanCharacters(accepted.node)

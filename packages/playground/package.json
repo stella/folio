@@ -10,8 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "bun test src",
-    "typecheck": "bun check --no-pretty --all --project=tsconfig.json",
-    "format": "oxfmt ."
+    "typecheck": "bun check --no-pretty --all --project=tsconfig.json"
   },
   "dependencies": {
     "@stll/folio-core": "workspace:*",

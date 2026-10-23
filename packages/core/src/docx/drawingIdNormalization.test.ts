@@ -1,17 +1,21 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import JSZip from "jszip";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { createEmptyDocument } from "../utils/createDocument";
+import JSZip from "jszip";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document, DrawingContent } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(10_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const textBoxDrawing = (text: string, id?: string): string => `
   <w:drawing>
@@ -57,7 +61,9 @@ const buildDocx = async (): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
-const shapeIds = ({ package: { document } }: Document): (string | undefined)[] =>
+const shapeIds = ({
+  package: { document },
+}: Document): (string | undefined)[] =>
   document.content.flatMap((block) => {
     if (block.type !== "paragraph") {
       return [];
@@ -83,7 +89,13 @@ describe("drawing ID normalization", () => {
   });
 
   test("reassigns a detached header drawing that collides with a main-story drawing", () => {
-    const rawDrawing = ({ id, rId }: { id: string; rId: string }): DrawingContent => ({
+    const rawDrawing = ({
+      id,
+      rId,
+    }: {
+      id: string;
+      rId: string;
+    }): DrawingContent => ({
       type: "drawing",
       image: {
         type: "image",
@@ -99,7 +111,10 @@ describe("drawing ID normalization", () => {
     const importedHeader = rawDrawing({ id: "9", rId: "rId_img_compare" });
     const documentBody = {
       content: [
-        { type: "paragraph" as const, content: [{ type: "run" as const, content: [main] }] },
+        {
+          type: "paragraph" as const,
+          content: [{ type: "run" as const, content: [main] }],
+        },
       ],
     };
     const headers = new Map([

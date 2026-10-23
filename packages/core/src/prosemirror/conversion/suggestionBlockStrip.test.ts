@@ -18,7 +18,10 @@ const DATE = "2026-07-17T00:00:00.000Z";
 
 const para = (text: string, attrs: Record<string, unknown> = {}): PMNode =>
   // SAFETY: editor schema always defines paragraph.
-  schema.nodes["paragraph"]!.create(attrs, text.length > 0 ? [schema.text(text)] : []);
+  schema.nodes["paragraph"]!.create(
+    attrs,
+    text.length > 0 ? [schema.text(text)] : [],
+  );
 
 const cell = (text: string, attrs: Record<string, unknown> = {}): PMNode =>
   // SAFETY: editor schema always defines tableCell.
@@ -51,7 +54,8 @@ const structuralInsert = (revisionId: number, suggestionId: string) => ({
   suggestionId,
 });
 
-const blocks = (model: Document): BlockContent[] => model.package.document.content;
+const blocks = (model: Document): BlockContent[] =>
+  model.package.document.content;
 
 const firstTable = (model: Document): Table => {
   const block = blocks(model).find((b) => b.type === "table");
@@ -61,14 +65,17 @@ const firstTable = (model: Document): Table => {
   return block;
 };
 
-const plainText = (model: Document): string => JSON.stringify(model.package.document.content);
+const plainText = (model: Document): string =>
+  JSON.stringify(model.package.document.content);
 
 describe("block/table suggestion strip", () => {
   test("a suggested-inserted paragraph is dropped entirely", () => {
     const model = fromProseDoc(
       doc([
         para("keep me"),
-        para("proposed paragraph", { _suggestedInsert: structuralInsert(900, "s1") }),
+        para("proposed paragraph", {
+          _suggestedInsert: structuralInsert(900, "s1"),
+        }),
       ]),
       undefined,
       { stylesheetSource: { type: "package" } },
@@ -82,7 +89,9 @@ describe("block/table suggestion strip", () => {
     const model = fromProseDoc(
       doc([
         para("before"),
-        table([row([cell("proposed cell")])], { _suggestedInsert: structuralInsert(901, "s2") }),
+        table([row([cell("proposed cell")])], {
+          _suggestedInsert: structuralInsert(901, "s2"),
+        }),
       ]),
       undefined,
       { stylesheetSource: { type: "package" } },
@@ -108,13 +117,20 @@ describe("block/table suggestion strip", () => {
     expect(plainText(model)).not.toContain("suggested added");
     expect(plainText(model)).toContain("real added");
     // The real inserted row keeps its structural change; the suggested one is gone.
-    const inserted = t.rows.filter((r) => r.structuralChange?.type === "tableRowInsertion");
+    const inserted = t.rows.filter(
+      (r) => r.structuralChange?.type === "tableRowInsertion",
+    );
     expect(inserted.length).toBe(1);
   });
 
   test("a suggested-deleted row serializes as a plain row (deletion never happened)", () => {
     const model = fromProseDoc(
-      doc([table([row([cell("stays")], { trDel: suggested(12, "s4") }), row([cell("other")])])]),
+      doc([
+        table([
+          row([cell("stays")], { trDel: suggested(12, "s4") }),
+          row([cell("other")]),
+        ]),
+      ]),
       undefined,
       { stylesheetSource: { type: "package" } },
     );
@@ -149,7 +165,12 @@ describe("block/table suggestion strip", () => {
     const model = fromProseDoc(
       doc([
         table([
-          row([cell("a"), cell("b", { cellMarker: { kind: "del", info: suggested(14, "s6") } })]),
+          row([
+            cell("a"),
+            cell("b", {
+              cellMarker: { kind: "del", info: suggested(14, "s6") },
+            }),
+          ]),
         ]),
       ]),
       undefined,
@@ -157,7 +178,9 @@ describe("block/table suggestion strip", () => {
     );
     const t = firstTable(model);
     expect(t.rows[0]?.cells.length).toBe(2);
-    expect(t.rows[0]?.cells.every((c) => c.structuralChange === undefined)).toBe(true);
+    expect(
+      t.rows[0]?.cells.every((c) => c.structuralChange === undefined),
+    ).toBe(true);
     expect(plainText(model)).toContain("b");
   });
 
@@ -173,9 +196,10 @@ describe("block/table suggestion strip", () => {
       doc([
         para("anchor"),
         // SAFETY: schema always defines paragraph/text/insertion.
-        schema.nodes["paragraph"]!.create({ _suggestedInsert: structuralInsert(20, "s7") }, [
-          schema.text("nested proposed", [insMark]),
-        ]),
+        schema.nodes["paragraph"]!.create(
+          { _suggestedInsert: structuralInsert(20, "s7") },
+          [schema.text("nested proposed", [insMark])],
+        ),
       ]),
       undefined,
       { stylesheetSource: { type: "package" } },

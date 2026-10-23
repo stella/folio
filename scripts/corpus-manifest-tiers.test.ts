@@ -6,7 +6,9 @@ import { CORPUS_TIERS, validateCorpusManifest } from "./lib/corpus-manifest";
 const cloneManifest = (): Record<string, unknown> =>
   structuredClone(corpusManifest) as unknown as Record<string, unknown>;
 
-const firstSource = (manifest: Record<string, unknown>): Record<string, unknown> => {
+const firstSource = (
+  manifest: Record<string, unknown>,
+): Record<string, unknown> => {
   const sources = manifest["sources"];
   if (!Array.isArray(sources)) {
     throw new Error("the committed manifest has no sources");
@@ -28,13 +30,17 @@ describe("the manifest's licence tier", () => {
     const manifest = cloneManifest();
     const source = firstSource(manifest);
     delete source["tier"];
-    expect(validateCorpusManifest(manifest)).toContain("sources[0].tier: expected 1, 2 or 3");
+    expect(validateCorpusManifest(manifest)).toContain(
+      "sources[0].tier: expected 1, 2 or 3",
+    );
   });
 
   test("a tier outside the three is refused", () => {
     const manifest = cloneManifest();
     firstSource(manifest)["tier"] = 4;
-    expect(validateCorpusManifest(manifest)).toContain("sources[0].tier: expected 1, 2 or 3");
+    expect(validateCorpusManifest(manifest)).toContain(
+      "sources[0].tier: expected 1, 2 or 3",
+    );
   });
 
   /**

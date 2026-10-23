@@ -4,7 +4,13 @@
  * Edit mode: text + URL inputs with Apply.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   ClipboardCopyIcon,
@@ -143,7 +149,10 @@ function HyperlinkPopupContent({
         onClose();
       }
     };
-    const timer = setTimeout(() => document.addEventListener("mousedown", handle), 0);
+    const timer = setTimeout(
+      () => document.addEventListener("mousedown", handle),
+      0,
+    );
     return () => {
       clearTimeout(timer);
       document.removeEventListener("mousedown", handle);
@@ -208,7 +217,9 @@ function HyperlinkPopupContent({
       <div
         ref={popupRef}
         className="fixed z-[10000] w-80 rounded-lg border border-[var(--doc-border)] bg-[var(--doc-page)] p-3 shadow-lg"
-        onMouseDown={containedHandler((e: React.MouseEvent) => e.stopPropagation())}
+        onMouseDown={containedHandler((e: React.MouseEvent) =>
+          e.stopPropagation(),
+        )}
         role="presentation"
         style={{ top, left }}
       >
@@ -251,7 +262,9 @@ function HyperlinkPopupContent({
     <div
       ref={popupRef}
       className="fixed z-[10000] flex max-w-[400px] items-center gap-2 rounded-lg border border-[var(--doc-border)] bg-[var(--doc-page)] px-3 py-2 shadow-lg"
-      onMouseDown={containedHandler((e: React.MouseEvent) => e.stopPropagation())}
+      onMouseDown={containedHandler((e: React.MouseEvent) =>
+        e.stopPropagation(),
+      )}
       role="presentation"
       style={{ top, left }}
     >
@@ -291,7 +304,12 @@ function HyperlinkPopupContent({
           >
             <PencilIcon size={16} />
           </button>
-          <button className={iconBtn} onClick={onRemove} title={t("removeLink")} type="button">
+          <button
+            className={iconBtn}
+            onClick={onRemove}
+            title={t("removeLink")}
+            type="button"
+          >
             <UnlinkIcon size={16} />
           </button>
         </>

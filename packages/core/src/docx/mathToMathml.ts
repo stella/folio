@@ -29,7 +29,11 @@
 
 import { escapeXmlText } from "@stll/docx-core";
 
-import { type XmlElement, findChildByLocalName, getLocalName } from "./xmlParser";
+import {
+  findChildByLocalName,
+  getLocalName,
+  type XmlElement,
+} from "./xmlParser";
 
 /**
  * Convert an OMML element (`<m:oMath>` or `<m:oMathPara>`) into a MathML
@@ -54,7 +58,8 @@ export function ommlToMathml(omml: XmlElement): string | null {
   let bodyMathml: string;
   if (isBlock) {
     const oMathChildren = (omml.elements ?? []).filter(
-      (child) => child.type === "element" && getLocalName(child.name ?? "") === "oMath",
+      (child) =>
+        child.type === "element" && getLocalName(child.name ?? "") === "oMath",
     );
     if (oMathChildren.length > 0) {
       bodyMathml = oMathChildren.map((child) => renderChildren(child)).join("");
@@ -402,10 +407,14 @@ function renderNary(el: XmlElement): string {
         : `<msubsup>${opMml}${subMml}${supMml}</msubsup>`;
   } else if (subMml) {
     nary =
-      limLoc === "undOvr" ? `<munder>${opMml}${subMml}</munder>` : `<msub>${opMml}${subMml}</msub>`;
+      limLoc === "undOvr"
+        ? `<munder>${opMml}${subMml}</munder>`
+        : `<msub>${opMml}${subMml}</msub>`;
   } else if (supMml) {
     nary =
-      limLoc === "undOvr" ? `<mover>${opMml}${supMml}</mover>` : `<msup>${opMml}${supMml}</msup>`;
+      limLoc === "undOvr"
+        ? `<mover>${opMml}${supMml}</mover>`
+        : `<msup>${opMml}${supMml}</msup>`;
   } else {
     nary = opMml;
   }
@@ -463,7 +472,9 @@ function renderBar(el: XmlElement): string {
   const base = findChildByLocalName(el, "e");
   const baseMml = base ? wrapMrow(renderChildren(base)) : "<mrow/>";
   const bar = '<mo stretchy="true">¯</mo>';
-  return pos === "bot" ? `<munder>${baseMml}${bar}</munder>` : `<mover>${baseMml}${bar}</mover>`;
+  return pos === "bot"
+    ? `<munder>${baseMml}${bar}</munder>`
+    : `<mover>${baseMml}${bar}</mover>`;
 }
 
 function renderGroupChr(el: XmlElement): string {

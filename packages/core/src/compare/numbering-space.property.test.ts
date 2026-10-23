@@ -3,15 +3,11 @@ import fc from "fast-check";
 
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumberingReference,
-  readParagraphNumberingAttr,
-} from "../prosemirror/numberingAttr";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   createFolioAIEditSnapshotWithStyleResolver,
   remapFolioAIEditSnapshotNumberingReferences,
@@ -19,6 +15,13 @@ import {
   sourceDocumentOf,
   styleResolverOf,
 } from "../ai-edits/snapshot";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
+  readParagraphNumberingAttr,
+} from "../prosemirror/numberingAttr";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { createEmptyDocument } from "../utils/createDocument";
 import type { FolioContentStatedNumbering } from "./content-types";
 
@@ -48,8 +51,18 @@ const REMAP_SCENARIOS = [
 ] as const;
 
 const PARAGRAPH_CASES = [
-  { paraId: "A1000001", styleId: "SourceFive", sourceNumId: 5, stated: { kind: "inherit" } },
-  { paraId: "A1000002", styleId: "SourceSix", sourceNumId: 6, stated: { kind: "inherit" } },
+  {
+    paraId: "A1000001",
+    styleId: "SourceFive",
+    sourceNumId: 5,
+    stated: { kind: "inherit" },
+  },
+  {
+    paraId: "A1000002",
+    styleId: "SourceSix",
+    sourceNumId: 6,
+    stated: { kind: "inherit" },
+  },
   {
     paraId: "A1000003",
     styleId: "SourceFive",
@@ -114,19 +127,29 @@ const fixtureSnapshot = () => {
         numPrFromStyle: paragraphNumberingReference({ numId: sourceNumId }),
         ...(stated.kind !== "inherit" && { numPr: stated }),
       },
-      content: [{ type: "run" as const, content: [{ type: "text" as const, text: paraId }] }],
+      content: [
+        {
+          type: "run" as const,
+          content: [{ type: "text" as const, text: paraId }],
+        },
+      ],
     }),
   );
 
   const styleResolver = createStyleResolver(document.package.styles);
   return {
-    snapshot: createFolioAIEditSnapshotWithStyleResolver(toProseDoc(document), styleResolver),
+    snapshot: createFolioAIEditSnapshotWithStyleResolver(
+      toProseDoc(document),
+      styleResolver,
+    ),
     sourceStyles,
   };
 };
 
-const mapNumberOnce = (numId: number, entries: readonly (readonly [number, number])[]) =>
-  new Map(entries).get(numId) ?? numId;
+const mapNumberOnce = (
+  numId: number,
+  entries: readonly (readonly [number, number])[],
+) => new Map(entries).get(numId) ?? numId;
 
 const reference = (numId: number, level: number) => ({ numId, level });
 
@@ -135,7 +158,10 @@ test("style rebinding then numbering remapping applies source ids once", async (
     fc.asyncProperty(fc.constant(REMAP_SCENARIOS), async (scenarios) => {
       const { snapshot, sourceStyles } = fixtureSnapshot();
       const sourceDocument = sourceDocumentOf(snapshot);
-      const sourceNodes: Array<{ attrs: Record<string, unknown>; text: string }> = [];
+      const sourceNodes: Array<{
+        attrs: Record<string, unknown>;
+        text: string;
+      }> = [];
       sourceDocument.descendants((node) => {
         if (node.type.name !== "paragraph") return;
         sourceNodes.push({ attrs: node.attrs, text: node.textContent });
@@ -151,13 +177,20 @@ test("style rebinding then numbering remapping applies source ids once", async (
             styleId: STYLE_ID_MAP.get(style.styleId) ?? style.styleId,
             name: style.name,
             pPr: {
-              numPr: paragraphNumberingReference({ numId: mapNumberOnce(sourceNumId, entries) }),
+              numPr: paragraphNumberingReference({
+                numId: mapNumberOnce(sourceNumId, entries),
+              }),
             },
           };
         });
         const importedStyleResolver = createStyleResolver({
           styles: [
-            { type: "paragraph", styleId: "Normal", name: "Normal", default: true },
+            {
+              type: "paragraph",
+              styleId: "Normal",
+              name: "Normal",
+              default: true,
+            },
             ...importedStyles,
           ],
         });
@@ -172,7 +205,10 @@ test("style rebinding then numbering remapping applies source ids once", async (
           styleRebound,
           numberingReferenceMap,
         );
-        const reboundNodes: Array<{ attrs: Record<string, unknown>; text: string }> = [];
+        const reboundNodes: Array<{
+          attrs: Record<string, unknown>;
+          text: string;
+        }> = [];
         sourceDocumentOf(remapped).descendants((node) => {
           if (node.type.name !== "paragraph") return;
           reboundNodes.push({ attrs: node.attrs, text: node.textContent });
@@ -181,7 +217,8 @@ test("style rebinding then numbering remapping applies source ids once", async (
         for (const [index, paragraph] of PARAGRAPH_CASES.entries()) {
           const sourceNode = sourceNodes.at(index);
           const reboundNode = reboundNodes.at(index);
-          const sourceDirect = paragraph.stated.kind === "inherit" ? undefined : paragraph.stated;
+          const sourceDirect =
+            paragraph.stated.kind === "inherit" ? undefined : paragraph.stated;
           const expectedDirect =
             sourceDirect?.kind === "reference"
               ? paragraphNumberingReference({
@@ -189,7 +226,10 @@ test("style rebinding then numbering remapping applies source ids once", async (
                   ilvl: sourceDirect.ilvl,
                 })
               : sourceDirect;
-          const expectedStyleNumId = mapNumberOnce(paragraph.sourceNumId, entries);
+          const expectedStyleNumId = mapNumberOnce(
+            paragraph.sourceNumId,
+            entries,
+          );
           expect(sourceNode).toBeDefined();
           expect(reboundNode).toBeDefined();
           expect(sourceNode?.attrs["numPr"]).toEqual(
@@ -198,7 +238,9 @@ test("style rebinding then numbering remapping applies source ids once", async (
           expect(sourceNode?.attrs["numPrFromStyle"]).toEqual(
             paragraphNumberingReference({ numId: paragraph.sourceNumId }),
           );
-          expect(reboundNode?.attrs["styleId"]).toBe(STYLE_ID_MAP.get(paragraph.styleId));
+          expect(reboundNode?.attrs["styleId"]).toBe(
+            STYLE_ID_MAP.get(paragraph.styleId),
+          );
           expect(reboundNode?.attrs["numPr"]).toEqual(expectedDirect ?? null);
           expect(reboundNode?.attrs["numPrFromStyle"]).toEqual(
             paragraphNumberingReference({ numId: expectedStyleNumId }),
@@ -224,7 +266,9 @@ test("style rebinding then numbering remapping applies source ids once", async (
             }
           })();
           if (expectedEffective === undefined) {
-            throw new Error("Fixture paragraph unexpectedly has no effective numbering reference");
+            throw new Error(
+              "Fixture paragraph unexpectedly has no effective numbering reference",
+            );
           }
           const expectedStated =
             paragraph.stated.kind === "reference"
@@ -237,7 +281,9 @@ test("style rebinding then numbering remapping applies source ids once", async (
             effectiveParagraphNumberingReference(
               paragraphNumberingSourcesFromBoundary({
                 numPr: readParagraphNumberingAttr(reboundNode?.attrs["numPr"]),
-                numPrFromStyle: readParagraphNumberingAttr(reboundNode?.attrs["numPrFromStyle"]),
+                numPrFromStyle: readParagraphNumberingAttr(
+                  reboundNode?.attrs["numPrFromStyle"],
+                ),
               }),
             ),
           ).toEqual(
@@ -254,6 +300,9 @@ test("style rebinding then numbering remapping applies source ids once", async (
         }
       }
     }),
-    { id: "style rebinding then numbering remapping applies source ids once", numRuns: 1 },
+    {
+      id: "style rebinding then numbering remapping applies source ids once",
+      numRuns: 1,
+    },
   );
 });

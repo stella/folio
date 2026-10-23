@@ -24,9 +24,13 @@ export const writeCleanRoomInstallConfig = async (
     !Number.isSafeInteger(minimumReleaseAge) ||
     minimumReleaseAge <= 0 ||
     !Array.isArray(minimumReleaseAgeExcludes) ||
-    !minimumReleaseAgeExcludes.every((name: unknown) => typeof name === "string")
+    !minimumReleaseAgeExcludes.every(
+      (name: unknown) => typeof name === "string",
+    )
   ) {
-    return panic("bunfig.toml must declare a positive release age and package exclusions");
+    return panic(
+      "bunfig.toml must declare a positive release age and package exclusions",
+    );
   }
   await writeFile(
     path.join(consumerDir, "bunfig.toml"),
@@ -34,9 +38,14 @@ export const writeCleanRoomInstallConfig = async (
   );
 };
 
-/** Bootstrap a locked repository environment using its complete install policy. */
-export const installFrozenRepositoryDependencies = (repoRoot: string): void => {
-  const config: unknown = Bun.TOML.parse(readFileSync(path.join(repoRoot, "bunfig.toml"), "utf8"));
+/** Run one repository install under its complete install policy. */
+const installRepository = (
+  repoRoot: string,
+  mode: "--frozen-lockfile" | "--lockfile-only",
+): void => {
+  const config: unknown = Bun.TOML.parse(
+    readFileSync(path.join(repoRoot, "bunfig.toml"), "utf8"),
+  );
   if (
     !isRecord(config) ||
     !isRecord(config["install"]) ||
@@ -44,14 +53,23 @@ export const installFrozenRepositoryDependencies = (repoRoot: string): void => {
     !Number.isSafeInteger(config["install"]["minimumReleaseAge"]) ||
     config["install"]["minimumReleaseAge"] <= 0
   )
-    throw new TypeError("Frozen repository installs require the release-age policy");
-  const result = Bun.spawnSync([process.execPath, "install", "--frozen-lockfile"], {
+    throw new TypeError("Repository installs require the release-age policy");
+  const result = Bun.spawnSync([process.execPath, "install", mode], {
     cwd: repoRoot,
     stdout: "inherit",
     stderr: "inherit",
   });
-  if (result.exitCode !== 0) throw new TypeError("Frozen repository install failed");
+  if (result.exitCode !== 0)
+    throw new TypeError(`Repository install ${mode} failed`);
 };
+
+/** Bootstrap a locked repository environment using its complete install policy. */
+export const installFrozenRepositoryDependencies = (repoRoot: string): void =>
+  installRepository(repoRoot, "--frozen-lockfile");
+
+/** Let Bun rewrite the lockfile only, under the same install policy. */
+export const settleRepositoryLockfile = (repoRoot: string): void =>
+  installRepository(repoRoot, "--lockfile-only");
 
 type CleanRoomInstallOptions = {
   consumerDir: string;

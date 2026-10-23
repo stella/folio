@@ -1,25 +1,34 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
+
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
-import { panic } from "better-result";
 
 import { createNumberingMap } from "../docx/numberingParser";
-import { fromMarkdown } from "../markdown/fromMarkdown";
-import type { NumberingDefinitions } from "../types/document";
-import { toProseDoc } from "./conversion/toProseDoc";
-import { toggleBulletList, toggleNumberedList } from "./extensions/features/ListExtension";
-import { completeNumberingForDoc } from "./listInstanceReferences";
 import {
   paragraphNumberingReference,
   paragraphNumberingReferenceId,
 } from "../docx/numberingReference";
-import { paragraphNumberingAttr } from "./numberingAttr";
+import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { NumberingDefinitions } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
-import { createDocumentNumberingPlugin, getDocumentNumbering } from "./plugins/documentNumbering";
+import { toProseDoc } from "./conversion/toProseDoc";
+import {
+  toggleBulletList,
+  toggleNumberedList,
+} from "./extensions/features/ListExtension";
+import { completeNumberingForDoc } from "./listInstanceReferences";
+import { paragraphNumberingAttr } from "./numberingAttr";
+import {
+  createDocumentNumberingPlugin,
+  getDocumentNumbering,
+} from "./plugins/documentNumbering";
 import { storyListNumbering } from "./storyListNumbering";
 
 /** A one-paragraph story editor over a package that defines `definitions`. */
-const storyState = (definitions: NumberingDefinitions | undefined): EditorState => {
+const storyState = (
+  definitions: NumberingDefinitions | undefined,
+): EditorState => {
   const state = EditorState.create({
     doc: toProseDoc(fromMarkdown("Story line")),
     plugins: [createDocumentNumberingPlugin(definitions)],
@@ -27,7 +36,10 @@ const storyState = (definitions: NumberingDefinitions | undefined): EditorState 
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
 };
 
-const toggled = (state: EditorState, command: typeof toggleBulletList): EditorState => {
+const toggled = (
+  state: EditorState,
+  command: typeof toggleBulletList,
+): EditorState => {
   let next = state;
   command(state, (tr) => {
     next = state.apply(tr);
@@ -35,9 +47,13 @@ const toggled = (state: EditorState, command: typeof toggleBulletList): EditorSt
   return next;
 };
 
-const firstNumId = (state: EditorState | { doc: EditorState["doc"] }): number | undefined => {
+const firstNumId = (
+  state: EditorState | { doc: EditorState["doc"] },
+): number | undefined => {
   const node = state.doc.firstChild;
-  return node ? paragraphNumberingReferenceId(expectParagraphAttrs(node).numPr) : undefined;
+  return node
+    ? paragraphNumberingReferenceId(expectParagraphAttrs(node).numPr)
+    : undefined;
 };
 
 describe("lists started in two stories", () => {
@@ -51,7 +67,9 @@ describe("lists started in two stories", () => {
       originalHeader.tr.setNodeAttribute(
         0,
         "numPr",
-        paragraphNumberingAttr(paragraphNumberingReference({ numId: bodyNumId, ilvl: 0 })),
+        paragraphNumberingAttr(
+          paragraphNumberingReference({ numId: bodyNumId, ilvl: 0 }),
+        ),
       ),
     );
     expect(firstNumId(header)).toBe(firstNumId(body));
@@ -64,7 +82,9 @@ describe("lists started in two stories", () => {
 
     const headerNumId = firstNumId(story);
     expect(headerNumId).not.toBe(firstNumId(body));
-    const map = createNumberingMap(story.numbering ?? { abstractNums: [], nums: [] });
+    const map = createNumberingMap(
+      story.numbering ?? { abstractNums: [], nums: [] },
+    );
     expect(map.getLevel(firstNumId(body) ?? -1, 0)?.numFmt).toBe("bullet");
     expect(map.getLevel(headerNumId ?? -1, 0)?.numFmt).toBe("decimal");
   });
@@ -85,7 +105,11 @@ describe("lists started in two stories", () => {
     const bodyNumbering = completeNumberingForDoc(undefined, body.doc);
     const abstract = bodyNumbering?.abstractNums.at(0);
     const instance = bodyNumbering?.nums.at(0);
-    if (headerId === undefined || abstract === undefined || instance === undefined) {
+    if (
+      headerId === undefined ||
+      abstract === undefined ||
+      instance === undefined
+    ) {
       panic("Story lists have no numbering definitions");
     }
     const numbering = {
@@ -101,7 +125,9 @@ describe("lists started in two stories", () => {
     expect(remappedId).not.toBe(MAX_REVISION_ID);
     for (const id of [
       ...(story.numbering?.nums ?? []).map(({ numId }) => numId),
-      ...(story.numbering?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
+      ...(story.numbering?.abstractNums ?? []).map(
+        ({ abstractNumId }) => abstractNumId,
+      ),
     ]) {
       expect(Number.isInteger(id)).toBe(true);
       expect(id).toBeGreaterThanOrEqual(0);
@@ -120,9 +146,13 @@ describe("document numbering state", () => {
     const typed = state.apply(state.tr.insertText("x", 1));
     expect(getDocumentNumbering(typed)).toBe(getDocumentNumbering(state));
 
-    const inserted = typed.apply(typed.tr.insert(typed.doc.content.size, listParagraph));
+    const inserted = typed.apply(
+      typed.tr.insert(typed.doc.content.size, listParagraph),
+    );
     const numId = firstNumId(withList) ?? -1;
-    expect(getDocumentNumbering(inserted)?.getLevel(numId, 0)?.numFmt).toBe("decimal");
+    expect(getDocumentNumbering(inserted)?.getLevel(numId, 0)?.numFmt).toBe(
+      "decimal",
+    );
 
     const attrState = storyState(undefined);
     const byAttr = attrState.apply(

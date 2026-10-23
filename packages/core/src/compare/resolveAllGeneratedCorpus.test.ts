@@ -1,14 +1,22 @@
 import { expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState, type Command, type Transaction } from "prosemirror-state";
+import { type Command, EditorState, type Transaction } from "prosemirror-state";
 import { Step } from "prosemirror-transform";
 
-import { buildDocumentPackage, DOCUMENT_CLASSES } from "../../../../benchmarks/compare/documents";
+import {
+  buildDocumentPackage,
+  DOCUMENT_CLASSES,
+} from "../../../../benchmarks/compare/documents";
 import { zipPackage } from "../../../../benchmarks/compare/package-xml";
-import { applyVariant, EDIT_VARIANTS } from "../../../../benchmarks/compare/variants";
-import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "../ai-edits/headless";
+import {
+  applyVariant,
+  EDIT_VARIANTS,
+} from "../../../../benchmarks/compare/variants";
+import {
+  type FolioDocumentStoryHandle,
+  FolioDocxReviewer,
+} from "../ai-edits/headless";
 import { parseDocx } from "../docx/parser";
-import type { Document } from "../types/document";
 import {
   acceptAllChanges,
   acceptChange,
@@ -23,6 +31,7 @@ import {
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
+import type { Document } from "../types/document";
 import { compareDocx } from "./compare";
 
 const OPTIONS = {
@@ -31,7 +40,10 @@ const OPTIONS = {
   onUnverified: "emit",
 } as const;
 
-const storyDoc = (document: Document, handle: FolioDocumentStoryHandle): PMNode => {
+const storyDoc = (
+  document: Document,
+  handle: FolioDocumentStoryHandle,
+): PMNode => {
   const options = {
     ...(document.package.styles && { styles: document.package.styles }),
     ...(document.package.theme && { theme: document.package.theme }),
@@ -42,17 +54,23 @@ const storyDoc = (document: Document, handle: FolioDocumentStoryHandle): PMNode 
     case "header":
     case "footer": {
       const part = (
-        handle.type === "header" ? document.package.headers : document.package.footers
+        handle.type === "header"
+          ? document.package.headers
+          : document.package.footers
       )?.get(handle.relationshipId);
-      if (!part) throw new Error(`Missing ${handle.type} ${handle.relationshipId}`);
+      if (!part)
+        throw new Error(`Missing ${handle.type} ${handle.relationshipId}`);
       return headerFooterToProseDoc(part.content, options);
     }
     case "footnote":
     case "endnote": {
       const note = (
-        handle.type === "footnote" ? document.package.footnotes : document.package.endnotes
+        handle.type === "footnote"
+          ? document.package.footnotes
+          : document.package.endnotes
       )?.find(({ id }) => id === handle.noteId);
-      if (!note) throw new Error(`Missing ${handle.type} ${String(handle.noteId)}`);
+      if (!note)
+        throw new Error(`Missing ${handle.type} ${String(handle.noteId)}`);
       return footnoteToProseDoc(note.content, options);
     }
     default: {
@@ -95,7 +113,9 @@ test("generated compare corpus resolves every parsed story like the full-range c
         detectVariables: false,
         preloadFonts: false,
       });
-      const reviewer = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        compared.value.buffer,
+      );
       configurations += 1;
       for (const { handle } of reviewer.listStories()) {
         const doc = storyDoc(parsed, handle);
@@ -109,7 +129,10 @@ test("generated compare corpus resolves every parsed story like the full-range c
         });
         stories += 1;
         for (const mode of ["accept", "reject"] as const) {
-          const bulk = run(state, mode === "accept" ? acceptAllChanges() : rejectAllChanges());
+          const bulk = run(
+            state,
+            mode === "accept" ? acceptAllChanges() : rejectAllChanges(),
+          );
           const full = run(
             state,
             mode === "accept"
@@ -119,9 +142,12 @@ test("generated compare corpus resolves every parsed story like the full-range c
           const label = `${id} ${JSON.stringify(handle)} ${mode}`;
           if (
             bulk.handled !== full.handled ||
-            JSON.stringify(bulk.doc.toJSON()) !== JSON.stringify(full.doc.toJSON())
+            JSON.stringify(bulk.doc.toJSON()) !==
+              JSON.stringify(full.doc.toJSON())
           ) {
-            throw new Error(`${label}: bulk resolution differs from full-range resolution`);
+            throw new Error(
+              `${label}: bulk resolution differs from full-range resolution`,
+            );
           }
           if (!bulk.transaction) continue;
           changedStories += 1;
@@ -135,7 +161,8 @@ test("generated compare corpus resolves every parsed story like the full-range c
           const replay = Step.fromJSON(schema, step.toJSON()).apply(doc);
           if (
             !replay.doc ||
-            JSON.stringify(replay.doc.toJSON()) !== JSON.stringify(bulk.doc.toJSON())
+            JSON.stringify(replay.doc.toJSON()) !==
+              JSON.stringify(bulk.doc.toJSON())
           ) {
             throw new Error(
               `${label}: serialized resolution step differs from cached result: ${replay.failed ?? "document mismatch"}`,

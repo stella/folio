@@ -11,9 +11,17 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
-import type { Document, Paragraph, ParagraphContent, Run, TextFormatting } from "../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import type {
+  Document,
+  Paragraph,
+  ParagraphContent,
+  Run,
+  TextFormatting,
+} from "../types/document";
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
 
@@ -27,7 +35,12 @@ const CLEAN = {
   footnotes: "strip",
 } as const;
 
-type Segment = { text: string; bold: boolean; italic: boolean; strike: boolean };
+type Segment = {
+  text: string;
+  bold: boolean;
+  italic: boolean;
+  strike: boolean;
+};
 
 const run = ({ text, bold, italic, strike }: Segment): Run => {
   const formatting: TextFormatting = {
@@ -60,7 +73,12 @@ const documentOf = (segments: readonly Segment[]): Document => ({
   },
 });
 
-type Character = { char: string; bold: boolean; italic: boolean; strike: boolean };
+type Character = {
+  char: string;
+  bold: boolean;
+  italic: boolean;
+  strike: boolean;
+};
 
 const charactersOf = (paragraph: Paragraph): Character[] =>
   paragraph.content.flatMap((item) =>
@@ -89,7 +107,18 @@ const segmentOf = (chars: readonly string[]): fc.Arbitrary<Segment> =>
   });
 
 const WORDS = ["a", "b", "Z", "7", " ", "é"];
-const WORDS_AND_PUNCTUATION = [...WORDS, ".", ",", "!", "(", ")", "'", "*", "_", "~"];
+const WORDS_AND_PUNCTUATION = [
+  ...WORDS,
+  ".",
+  ",",
+  "!",
+  "(",
+  ")",
+  "'",
+  "*",
+  "_",
+  "~",
+];
 
 const isLetter = (char: string) => /[\p{L}\p{N}]/u.test(char);
 
@@ -97,56 +126,85 @@ const roundTrip = (segments: readonly Segment[]) => {
   const source = documentOf(segments);
   const markdown = toMarkdown(source, CLEAN);
   const [paragraph] = fromMarkdown(markdown).package.document.content;
-  if (paragraph?.type !== "paragraph") throw new Error(`no paragraph read from ${markdown}`);
+  if (paragraph?.type !== "paragraph")
+    throw new Error(`no paragraph read from ${markdown}`);
   const [written] = source.package.document.content;
   if (written?.type !== "paragraph") throw new Error("no paragraph written");
-  return { markdown, before: charactersOf(written), after: charactersOf(paragraph) };
+  return {
+    markdown,
+    before: charactersOf(written),
+    after: charactersOf(paragraph),
+  };
 };
 
-const textOf = (characters: readonly Character[]) => characters.map(({ char }) => char).join("");
+const textOf = (characters: readonly Character[]) =>
+  characters.map(({ char }) => char).join("");
 
 describe("markdown emphasis boundaries (properties)", () => {
   test("clean revision boundaries preserve visible text without adding emphasis", () => {
     const revisionSegment = fc.record({
       segment: segmentOf(WORDS_AND_PUNCTUATION),
-      revision: fc.constantFrom("run", "insertion", "moveTo", "deletion", "moveFrom"),
+      revision: fc.constantFrom(
+        "run",
+        "insertion",
+        "moveTo",
+        "deletion",
+        "moveFrom",
+      ),
     });
     fc.assert(
-      fc.property(fc.array(revisionSegment, { minLength: 1, maxLength: 6 }), (segments) => {
-        const visible = segments
-          .filter(({ revision }) => revision !== "deletion" && revision !== "moveFrom")
-          .map(({ segment }) => segment);
-        const source = documentOf(visible);
-        const expectedMarkdown = toMarkdown(source, CLEAN);
-        const paragraph = source.package.document.content.at(0);
-        if (paragraph?.type !== "paragraph") throw new Error("no source paragraph");
-        const before = charactersOf(paragraph);
-        const revised = segments.map(({ segment, revision }, index): ParagraphContent => {
-          const item = run(segment);
-          if (revision === "run") return item;
-          return {
-            type: revision,
-            info: { id: index, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
-            content: [item],
-          };
-        });
-        paragraph.content = [
-          run({ text: "Start ", bold: false, italic: false, strike: false }),
-          ...revised,
-          run({ text: " end", bold: false, italic: false, strike: false }),
-        ];
-        const markdown = toMarkdown(source, CLEAN);
-        expect(markdown).toBe(expectedMarkdown);
-        const read = fromMarkdown(markdown).package.document.content.at(0);
-        if (read?.type !== "paragraph") throw new Error(`no paragraph read from ${markdown}`);
-        const after = charactersOf(read);
-        expect({ markdown, text: textOf(after) }).toEqual({ markdown, text: textOf(before) });
-        for (const [index, character] of after.entries()) {
-          for (const key of ["bold", "italic", "strike"] as const) {
-            if (character[key]) expect(before[index]?.[key]).toBe(true);
+      fc.property(
+        fc.array(revisionSegment, { minLength: 1, maxLength: 6 }),
+        (segments) => {
+          const visible = segments
+            .filter(
+              ({ revision }) =>
+                revision !== "deletion" && revision !== "moveFrom",
+            )
+            .map(({ segment }) => segment);
+          const source = documentOf(visible);
+          const expectedMarkdown = toMarkdown(source, CLEAN);
+          const paragraph = source.package.document.content.at(0);
+          if (paragraph?.type !== "paragraph")
+            throw new Error("no source paragraph");
+          const before = charactersOf(paragraph);
+          const revised = segments.map(
+            ({ segment, revision }, index): ParagraphContent => {
+              const item = run(segment);
+              if (revision === "run") return item;
+              return {
+                type: revision,
+                info: {
+                  id: index,
+                  author: "Reviewer",
+                  date: "2026-01-01T00:00:00Z",
+                },
+                content: [item],
+              };
+            },
+          );
+          paragraph.content = [
+            run({ text: "Start ", bold: false, italic: false, strike: false }),
+            ...revised,
+            run({ text: " end", bold: false, italic: false, strike: false }),
+          ];
+          const markdown = toMarkdown(source, CLEAN);
+          expect(markdown).toBe(expectedMarkdown);
+          const read = fromMarkdown(markdown).package.document.content.at(0);
+          if (read?.type !== "paragraph")
+            throw new Error(`no paragraph read from ${markdown}`);
+          const after = charactersOf(read);
+          expect({ markdown, text: textOf(after) }).toEqual({
+            markdown,
+            text: textOf(before),
+          });
+          for (const [index, character] of after.entries()) {
+            for (const key of ["bold", "italic", "strike"] as const) {
+              if (character[key]) expect(before[index]?.[key]).toBe(true);
+            }
           }
-        }
-      }),
+        },
+      ),
       propertyConfig({ numRuns: 300 }),
     );
   });
@@ -155,21 +213,38 @@ describe("markdown emphasis boundaries (properties)", () => {
     // Words apart, each emphasized whole or in two parts. (Three differently
     // emphasized parts of one word can overlap in a way the reader cannot
     // match; the next property covers any mix for its text.)
-    const word = fc.array(segmentOf(["a", "b", "Z", "7", "é"]), { minLength: 1, maxLength: 2 });
-    const plainSpace: Segment = { text: " ", bold: false, italic: false, strike: false };
+    const word = fc.array(segmentOf(["a", "b", "Z", "7", "é"]), {
+      minLength: 1,
+      maxLength: 2,
+    });
+    const plainSpace: Segment = {
+      text: " ",
+      bold: false,
+      italic: false,
+      strike: false,
+    };
     const words = fc
       .array(word, { minLength: 1, maxLength: 4 })
       .map((list) =>
-        list.flatMap((parts, index) => (index === 0 ? parts : [plainSpace, ...parts])),
+        list.flatMap((parts, index) =>
+          index === 0 ? parts : [plainSpace, ...parts],
+        ),
       );
     fc.assert(
       fc.property(words, (segments) => {
         const { markdown, before, after } = roundTrip(segments);
-        expect({ markdown, text: textOf(after) }).toEqual({ markdown, text: textOf(before) });
+        expect({ markdown, text: textOf(after) }).toEqual({
+          markdown,
+          text: textOf(before),
+        });
         for (const [index, written] of before.entries()) {
           const read = after[index];
           if (!read || !isLetter(written.char)) continue;
-          expect({ markdown, index, ...read }).toEqual({ markdown, index, ...written });
+          expect({ markdown, index, ...read }).toEqual({
+            markdown,
+            index,
+            ...written,
+          });
         }
       }),
       propertyConfig({ numRuns: 300 }),
@@ -179,21 +254,29 @@ describe("markdown emphasis boundaries (properties)", () => {
   test("beside punctuation, the text reads back and no emphasis is added", () => {
     fc.assert(
       fc.property(
-        fc.array(segmentOf(WORDS_AND_PUNCTUATION), { minLength: 1, maxLength: 6 }),
+        fc.array(segmentOf(WORDS_AND_PUNCTUATION), {
+          minLength: 1,
+          maxLength: 6,
+        }),
         (segments) => {
           const { markdown, before, after } = roundTrip(segments);
-          expect({ markdown, text: textOf(after) }).toEqual({ markdown, text: textOf(before) });
+          expect({ markdown, text: textOf(after) }).toEqual({
+            markdown,
+            text: textOf(before),
+          });
           for (const [index, written] of before.entries()) {
             const read = after[index];
             if (!read) continue;
             for (const key of ["bold", "italic", "strike"] as const) {
               if (read[key])
-                expect({ markdown, index, key, written: written[key] }).toEqual({
-                  markdown,
-                  index,
-                  key,
-                  written: true,
-                });
+                expect({ markdown, index, key, written: written[key] }).toEqual(
+                  {
+                    markdown,
+                    index,
+                    key,
+                    written: true,
+                  },
+                );
             }
           }
         },
@@ -207,7 +290,9 @@ describe("markdown emphasis boundaries (properties)", () => {
       { text: "Closing.", bold: false, italic: true, strike: false },
       { text: "revised", bold: false, italic: false, strike: false },
     ]);
-    expect(after.map(({ char }) => char).join("")).toBe("Start Closing.revised end");
+    expect(after.map(({ char }) => char).join("")).toBe(
+      "Start Closing.revised end",
+    );
     expect(after.find(({ char }) => char === "C")?.italic).toBe(true);
     expect(markdown).not.toContain("\\*");
   });

@@ -5,10 +5,10 @@ import type {
   FlowBlock,
   LayoutOptions,
   Measure,
+  PageMargins,
   ParagraphAttrs,
   ParagraphBlock,
   ParagraphMeasure,
-  PageMargins,
 } from "./types";
 
 // Issue #402 (eigenpal): Word collapses style-inherited spacing on bare empty
@@ -19,7 +19,11 @@ import type {
 const PAGE_SIZE = { w: 600, h: 1200 };
 const MARGINS: PageMargins = { top: 0, right: 0, bottom: 0, left: 0 };
 
-function makePara(id: number, text: string, attrs: ParagraphAttrs): ParagraphBlock {
+function makePara(
+  id: number,
+  text: string,
+  attrs: ParagraphAttrs,
+): ParagraphBlock {
   return {
     kind: "paragraph",
     id,
@@ -65,7 +69,11 @@ describe("empty-paragraph spacing collapse (issue #402)", () => {
       makePara(1, "", { spacing: { before: 80, after: 80 } }),
       makePara(2, "Body", { spacing: { before: 0 } }),
     ];
-    const measures: Measure[] = [makeMeasure(16), makeMeasure(16), makeMeasure(16)];
+    const measures: Measure[] = [
+      makeMeasure(16),
+      makeMeasure(16),
+      makeMeasure(16),
+    ];
 
     const layout = layoutDocument(blocks, measures, layoutOptions);
     const fragments = layout.pages[0]!.fragments;
@@ -90,7 +98,11 @@ describe("empty-paragraph spacing collapse (issue #402)", () => {
       }),
       makePara(2, "Body", { spacing: { before: 0 } }),
     ];
-    const measures: Measure[] = [makeMeasure(16), makeMeasure(16), makeMeasure(16)];
+    const measures: Measure[] = [
+      makeMeasure(16),
+      makeMeasure(16),
+      makeMeasure(16),
+    ];
 
     const layout = layoutDocument(blocks, measures, layoutOptions);
     const fragments = layout.pages[0]!.fragments;
@@ -110,7 +122,11 @@ describe("empty-paragraph spacing collapse (issue #402)", () => {
       }),
       makePara(2, "Body", { spacing: { before: 0 } }),
     ];
-    const measures: Measure[] = [makeMeasure(16), makeMeasure(16), makeMeasure(16)];
+    const measures: Measure[] = [
+      makeMeasure(16),
+      makeMeasure(16),
+      makeMeasure(16),
+    ];
 
     const layout = layoutDocument(blocks, measures, layoutOptions);
     const fragments = layout.pages[0]!.fragments;
@@ -128,7 +144,11 @@ describe("empty-paragraph spacing collapse (issue #402)", () => {
       }),
       makePara(2, "Body", { spacing: { before: 0 } }),
     ];
-    const measures: Measure[] = [makeMeasure(16), makeMeasure(16), makeMeasure(16)];
+    const measures: Measure[] = [
+      makeMeasure(16),
+      makeMeasure(16),
+      makeMeasure(16),
+    ];
 
     const layout = layoutDocument(blocks, measures, layoutOptions);
     const fragments = layout.pages[0]!.fragments;
@@ -146,7 +166,11 @@ describe("empty-paragraph spacing collapse (issue #402)", () => {
       }),
       makePara(2, "Body", { spacing: { before: 0 } }),
     ];
-    const measures: Measure[] = [makeMeasure(16), makeMeasure(16), makeMeasure(16)];
+    const measures: Measure[] = [
+      makeMeasure(16),
+      makeMeasure(16),
+      makeMeasure(16),
+    ];
 
     const layout = layoutDocument(blocks, measures, layoutOptions);
     const fragments = layout.pages[0]!.fragments;

@@ -9,8 +9,10 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   applyTextChanges,
   type AtomicTextSpan,
@@ -43,9 +45,15 @@ const fragment = fc.constantFrom(
   "é",
   "x",
 );
-const text = fc.array(fragment, { maxLength: 14 }).map((parts) => parts.join(""));
+const text = fc
+  .array(fragment, { maxLength: 14 })
+  .map((parts) => parts.join(""));
 
-const assertWellFormed = (source: string, replacement: string, changes: readonly TextChange[]) => {
+const assertWellFormed = (
+  source: string,
+  replacement: string,
+  changes: readonly TextChange[],
+) => {
   expect(applyTextChanges(source, changes)).toBe(replacement);
   let previousEnd = 0;
   for (const change of changes) {
@@ -59,7 +67,12 @@ const assertWellFormed = (source: string, replacement: string, changes: readonly
 const splitsSurrogatePair = (value: string, offset: number): boolean => {
   const before = value.charCodeAt(offset - 1);
   const after = value.charCodeAt(offset);
-  return before >= 0xd8_00 && before <= 0xdb_ff && after >= 0xdc_00 && after <= 0xdf_ff;
+  return (
+    before >= 0xd8_00 &&
+    before <= 0xdb_ff &&
+    after >= 0xdc_00 &&
+    after <= 0xdf_ff
+  );
 };
 
 const WORD_CHARACTER = /[\p{L}\p{N}\p{M}\p{Pc}]/u;
@@ -78,7 +91,10 @@ const isWordBoundary = (value: string, index: number): boolean => {
 };
 
 /** Token LCS by dynamic programming, the length the shortest edit script must match. */
-const lcsLength = (before: readonly string[], after: readonly string[]): number => {
+const lcsLength = (
+  before: readonly string[],
+  after: readonly string[],
+): number => {
   let previous: number[] = Array.from({ length: after.length + 1 }, () => 0);
   for (const token of before) {
     const current = [0];
@@ -96,13 +112,15 @@ const lcsLength = (before: readonly string[], after: readonly string[]): number 
 
 describe("planTextChanges", () => {
   test("appending a character changes only the end", () => {
-    expect(planTextChanges("Bold start italic end", "Bold start italic end‸")).toEqual([
-      { start: 21, end: 21, text: "‸" },
-    ]);
+    expect(
+      planTextChanges("Bold start italic end", "Bold start italic end‸"),
+    ).toEqual([{ start: 21, end: 21, text: "‸" }]);
   });
 
   test("a changed word keeps the letters it shares", () => {
-    expect(planTextChanges("pay John and 3.6 now", "pay Jane and 3.7 now")).toEqual([
+    expect(
+      planTextChanges("pay John and 3.6 now", "pay Jane and 3.7 now"),
+    ).toEqual([
       { start: 5, end: 8, text: "ane" },
       { start: 15, end: 16, text: "7" },
     ]);
@@ -115,14 +133,18 @@ describe("planTextChanges", () => {
       { start: 0, end: 15, text: "Provider performs" },
     ]);
     // Within one word the shared letters stay: they belong to the same word.
-    expect(planTextChanges("the Supplier agrees", "the Provider agrees")).toEqual([
-      { start: 4, end: 10, text: "Provid" },
+    expect(
+      planTextChanges("the Supplier agrees", "the Provider agrees"),
+    ).toEqual([{ start: 4, end: 10, text: "Provid" }]);
+    expect(planTextChanges("3.6the", "3.6")).toEqual([
+      { start: 3, end: 6, text: "" },
     ]);
-    expect(planTextChanges("3.6the", "3.6")).toEqual([{ start: 3, end: 6, text: "" }]);
   });
 
   test("a change within one word keeps the letters it shares", () => {
-    expect(planTextChanges("Supplier", "Suppliers")).toEqual([{ start: 8, end: 8, text: "s" }]);
+    expect(planTextChanges("Supplier", "Suppliers")).toEqual([
+      { start: 8, end: 8, text: "s" },
+    ]);
   });
 
   test("a short match between two changes is kept", () => {
@@ -148,11 +170,16 @@ describe("planTextChanges", () => {
           } else {
             // Across words, only what ends on a word boundary of both is kept.
             for (let length = 1; length <= prefix; length++) {
-              expect(isWordBoundary(removed, length) && isWordBoundary(change.text, length)).toBe(
-                false,
-              );
+              expect(
+                isWordBoundary(removed, length) &&
+                  isWordBoundary(change.text, length),
+              ).toBe(false);
             }
-            for (let length = 1; length <= Math.min(suffix, removed.length - prefix); length++) {
+            for (
+              let length = 1;
+              length <= Math.min(suffix, removed.length - prefix);
+              length++
+            ) {
               expect(
                 isWordBoundary(removed, removed.length - length) &&
                   isWordBoundary(change.text, change.text.length - length),
@@ -203,7 +230,11 @@ describe("shortestTokenDiff", () => {
   test("reconstructs both strings over word tokens", () => {
     fc.assert(
       fc.property(text, text, (source, replacement) => {
-        const segments = shortestTokenDiff(tokenizeWords(source), tokenizeWords(replacement)) ?? [];
+        const segments =
+          shortestTokenDiff(
+            tokenizeWords(source),
+            tokenizeWords(replacement),
+          ) ?? [];
         expect(
           segments
             .filter((segment) => segment.type !== "ins")
@@ -223,7 +254,9 @@ describe("shortestTokenDiff", () => {
 
   test("gives up past the edit budget", () => {
     expect(shortestTokenDiff(["a", "b", "c"], ["x", "y", "z"], 2)).toBeNull();
-    expect(shortestTokenDiff(["a", "b"], ["a", "b"], 0)).toEqual([{ type: "equal", text: "ab" }]);
+    expect(shortestTokenDiff(["a", "b"], ["a", "b"], 0)).toEqual([
+      { type: "equal", text: "ab" },
+    ]);
   });
 });
 
@@ -231,7 +264,10 @@ describe("widenChangesToAtomicSpans", () => {
   const spansIn = (source: string) =>
     fc
       .array(
-        fc.tuple(fc.nat({ max: Math.max(source.length, 1) }), fc.integer({ min: 2, max: 5 })),
+        fc.tuple(
+          fc.nat({ max: Math.max(source.length, 1) }),
+          fc.integer({ min: 2, max: 5 }),
+        ),
         { maxLength: 3 },
       )
       .map((pairs) => {
@@ -251,7 +287,9 @@ describe("widenChangesToAtomicSpans", () => {
   test("never cuts into a span and still reconstructs the replacement", () => {
     fc.assert(
       fc.property(
-        text.chain((source) => fc.tuple(fc.constant(source), text, spansIn(source))),
+        text.chain((source) =>
+          fc.tuple(fc.constant(source), text, spansIn(source)),
+        ),
         ([source, replacement, spans]) => {
           const changes = widenChangesToAtomicSpans(
             source,
@@ -261,8 +299,13 @@ describe("widenChangesToAtomicSpans", () => {
           expect(applyTextChanges(source, changes)).toBe(replacement);
           for (const change of changes) {
             for (const { offset, length } of spans) {
-              const cuts = (position: number) => position > offset && position < offset + length;
-              expect({ change, cutsStart: cuts(change.start), cutsEnd: cuts(change.end) }).toEqual({
+              const cuts = (position: number) =>
+                position > offset && position < offset + length;
+              expect({
+                change,
+                cutsStart: cuts(change.start),
+                cutsEnd: cuts(change.end),
+              }).toEqual({
                 change,
                 cutsStart: false,
                 cutsEnd: false,
@@ -270,7 +313,9 @@ describe("widenChangesToAtomicSpans", () => {
             }
           }
           for (let index = 1; index < changes.length; index++) {
-            expect(changes[index]!.start).toBeGreaterThanOrEqual(changes[index - 1]!.end);
+            expect(changes[index]!.start).toBeGreaterThanOrEqual(
+              changes[index - 1]!.end,
+            );
           }
         },
       ),

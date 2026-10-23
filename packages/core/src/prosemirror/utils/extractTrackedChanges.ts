@@ -11,17 +11,20 @@
  * @packageDocumentation
  * @public
  */
+import type { Mark, MarkType } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
-import { getTableCellMergeChange } from "../tableCellMergeRevision";
-import type { Mark, MarkType } from "prosemirror-model";
-import { expectRunPropertyChangeMarkAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
+import {
+  expectRunPropertyChangeMarkAttrs,
+  expectTrackedChangeMarkAttrs,
+} from "../attrs";
 import {
   nodePropertyRevisionSites,
+  type PropertyRevisionCarrier,
   propertyRevisionMetadata,
   propertyRevisionRecords,
-  type PropertyRevisionCarrier,
 } from "../revisionCarriers";
+import { getTableCellMergeChange } from "../tableCellMergeRevision";
 
 /**
  * One tracked change surfaced by {@link extractTrackedChanges}. Each entry
@@ -148,7 +151,10 @@ type RowRevisionScope = {
  * fresh `w:id` per element, so an author + timestamp match counts too. Returns
  * false for a third party's edit inside the row, which keeps its own card.
  */
-const foldIntoRowRevision = (scope: RowRevisionScope | undefined, mark: Mark): boolean => {
+const foldIntoRowRevision = (
+  scope: RowRevisionScope | undefined,
+  mark: Mark,
+): boolean => {
   if (!scope || mark.type !== scope.markType) {
     return false;
   }
@@ -182,19 +188,25 @@ const foldIntoRowRevision = (scope: RowRevisionScope | undefined, mark: Mark): b
  *
  * @public
  */
-export function extractTrackedChanges(state: EditorState | null): TrackedChangesResult {
+export function extractTrackedChanges(
+  state: EditorState | null,
+): TrackedChangesResult {
   if (!state) return EMPTY_RESULT;
   const { doc, schema } = state;
   const insertionType = schema.marks["insertion"];
   const deletionType = schema.marks["deletion"];
   const commentType = schema.marks["comment"];
   const runPropertyChangeType = schema.marks["runPropertyChange"];
-  if (!insertionType && !deletionType && !runPropertyChangeType) return EMPTY_RESULT;
+  if (!insertionType && !deletionType && !runPropertyChangeType)
+    return EMPTY_RESULT;
 
   const raw: TrackedChangeEntry[] = [];
   const nestedRevisionIds = new Set<number>();
   const commentToRevision = new Map<number, number>();
-  const commentMetadata = new Map<number, { revisions: Set<number>; hasCleanText: boolean }>();
+  const commentMetadata = new Map<
+    number,
+    { revisions: Set<number>; hasCleanText: boolean }
+  >();
   // A tracked row insertion / deletion is marked on the row AND around every
   // run in its cells, the way Word writes it. Both halves are one change, so
   // the run marks fold into the row's card instead of listing a second time.
@@ -267,7 +279,11 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
           revisionId: trIns.revisionId,
         };
         raw.push(entry);
-        rowRevisionScopes.push({ end: pos + node.nodeSize, markType: insertionType, entry });
+        rowRevisionScopes.push({
+          end: pos + node.nodeSize,
+          markType: insertionType,
+          entry,
+        });
       }
       if (trDel) {
         const entry: TrackedChangeEntry = {
@@ -280,7 +296,11 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
           revisionId: trDel.revisionId,
         };
         raw.push(entry);
-        rowRevisionScopes.push({ end: pos + node.nodeSize, markType: deletionType, entry });
+        rowRevisionScopes.push({
+          end: pos + node.nodeSize,
+          markType: deletionType,
+          entry,
+        });
       }
       // Descend into cells.
     }
@@ -396,7 +416,10 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
           let visibleText = "";
           if (deletionType && sharedAttr === "trIns") {
             node.descendants((child) => {
-              if (child.isText && !child.marks.some((m) => m.type === deletionType)) {
+              if (
+                child.isText &&
+                !child.marks.some((m) => m.type === deletionType)
+              ) {
                 visibleText += child.text || "";
               }
             });
@@ -449,7 +472,8 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
     if (!node.isInline) return;
     let inlineText: string;
     if (node.isText) inlineText = node.text || "";
-    else if (node.type.name === "image") inlineText = (node.attrs["alt"] as string) || "image";
+    else if (node.type.name === "image")
+      inlineText = (node.attrs["alt"] as string) || "image";
     else inlineText = node.type.name;
     let tcMark: Mark | null = null;
     for (const mark of node.marks) {
@@ -551,21 +575,52 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   const STRUCTURAL_COALESCING = {
     tableInserted: { type: "coalesce", family: "insertion", priority: 6 },
     tableDeleted: { type: "coalesce", family: "deletion", priority: 6 },
-    tablePropertiesChanged: { type: "coalesce", family: "properties", priority: 5 },
+    tablePropertiesChanged: {
+      type: "coalesce",
+      family: "properties",
+      priority: 5,
+    },
     tablePropertyExceptionsChanged: { type: "separate" },
     rowInserted: { type: "coalesce", family: "insertion", priority: 4 },
     rowDeleted: { type: "coalesce", family: "deletion", priority: 4 },
-    rowPropertiesChanged: { type: "coalesce", family: "properties", priority: 4 },
+    rowPropertiesChanged: {
+      type: "coalesce",
+      family: "properties",
+      priority: 4,
+    },
     cellInserted: { type: "coalesce", family: "insertion", priority: 3 },
     cellDeleted: { type: "coalesce", family: "deletion", priority: 3 },
     cellMerged: { type: "coalesce", family: "merge", priority: 3 },
-    cellPropertiesChanged: { type: "coalesce", family: "properties", priority: 3 },
-    paragraphMarkInsertion: { type: "coalesce", family: "insertion", priority: 2 },
-    paragraphMarkDeletion: { type: "coalesce", family: "deletion", priority: 2 },
-    paragraphPropertiesChanged: { type: "coalesce", family: "properties", priority: 2 },
+    cellPropertiesChanged: {
+      type: "coalesce",
+      family: "properties",
+      priority: 3,
+    },
+    paragraphMarkInsertion: {
+      type: "coalesce",
+      family: "insertion",
+      priority: 2,
+    },
+    paragraphMarkDeletion: {
+      type: "coalesce",
+      family: "deletion",
+      priority: 2,
+    },
+    paragraphPropertiesChanged: {
+      type: "coalesce",
+      family: "properties",
+      priority: 2,
+    },
     sectionPropertiesChanged: { type: "separate" },
-    runPropertiesChanged: { type: "coalesce", family: "properties", priority: 1 },
-  } as const satisfies Record<StructuralTrackedChangeType, StructuralCoalescingPolicy>;
+    runPropertiesChanged: {
+      type: "coalesce",
+      family: "properties",
+      priority: 1,
+    },
+  } as const satisfies Record<
+    StructuralTrackedChangeType,
+    StructuralCoalescingPolicy
+  >;
   const isStructuralType = (
     type: TrackedChangeEntry["type"],
   ): type is StructuralTrackedChangeType =>
@@ -574,7 +629,10 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   const ordered: TrackedChangeEntry[] = [];
   // Helper: collect every distinct `w:id` involved in coalescing the dropped
   // entry into the survivor, EXCLUDING the survivor's own primary id.
-  const mergeIds = (survivor: TrackedChangeEntry, dropped: TrackedChangeEntry): number[] => {
+  const mergeIds = (
+    survivor: TrackedChangeEntry,
+    dropped: TrackedChangeEntry,
+  ): number[] => {
     const ids = new Set<number>(survivor.coalescedRevisionIds ?? []);
     for (const id of dropped.coalescedRevisionIds ?? []) ids.add(id);
     ids.add(dropped.revisionId);
@@ -598,17 +656,26 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
     const key = `${policy.family}|${entry.author}|${entry.date ?? ""}`;
     const slot = slotByKey.get(key);
     if (slot === undefined) {
-      slotByKey.set(key, { index: ordered.push(entry) - 1, priority: policy.priority });
+      slotByKey.set(key, {
+        index: ordered.push(entry) - 1,
+        priority: policy.priority,
+      });
       continue;
     }
     const existing = ordered[slot.index]!;
     if (policy.priority > slot.priority) {
       // Incoming wins (broader scope). Carry the existing id forward.
-      ordered[slot.index] = { ...entry, coalescedRevisionIds: mergeIds(entry, existing) };
+      ordered[slot.index] = {
+        ...entry,
+        coalescedRevisionIds: mergeIds(entry, existing),
+      };
       slotByKey.set(key, { index: slot.index, priority: policy.priority });
     } else {
       // Existing stays; absorb the dropped id so accept clears every site.
-      ordered[slot.index] = { ...existing, coalescedRevisionIds: mergeIds(existing, entry) };
+      ordered[slot.index] = {
+        ...existing,
+        coalescedRevisionIds: mergeIds(existing, entry),
+      };
     }
   }
 
@@ -621,7 +688,8 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   const inlineGroups = new Map<string, TrackedChangeEntry>();
   const merged: TrackedChangeEntry[] = [];
   for (const entry of ordered) {
-    const isInlineType = entry.type === "insertion" || entry.type === "deletion";
+    const isInlineType =
+      entry.type === "insertion" || entry.type === "deletion";
     if (!isInlineType) {
       merged.push({ ...entry });
       continue;
@@ -693,20 +761,31 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   // the surviving inline entry so one Accept still clears every site.
   const inlineByKey = new Map<string, TrackedChangeEntry>();
   for (const e of final) {
-    if (e.type === "insertion" || e.type === "deletion" || e.type === "replacement") {
+    if (
+      e.type === "insertion" ||
+      e.type === "deletion" ||
+      e.type === "replacement"
+    ) {
       const k = `${e.author}|${e.date ?? ""}`;
       if (!inlineByKey.has(k)) inlineByKey.set(k, e);
     }
   }
   for (const e of final) {
-    if (e.type !== "paragraphMarkInsertion" && e.type !== "paragraphMarkDeletion") continue;
+    if (
+      e.type !== "paragraphMarkInsertion" &&
+      e.type !== "paragraphMarkDeletion"
+    )
+      continue;
     const survivor = inlineByKey.get(`${e.author}|${e.date ?? ""}`);
     if (!survivor) continue;
     const ids = new Set<number>(survivor.coalescedRevisionIds ?? []);
     for (const id of e.coalescedRevisionIds ?? []) ids.add(id);
     ids.add(e.revisionId);
     ids.delete(survivor.revisionId);
-    if (survivor.type === "replacement" && survivor.insertionRevisionId != null) {
+    if (
+      survivor.type === "replacement" &&
+      survivor.insertionRevisionId != null
+    ) {
       ids.delete(survivor.insertionRevisionId);
     }
     survivor.coalescedRevisionIds = ids.size > 0 ? [...ids] : undefined;
@@ -744,7 +823,11 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   // the table's `coalescedRevisionIds`. Without this, accepting the table
   // card would leave the orphaned pPrIns/pPrDel behind.
   for (const e of final) {
-    if (e.type !== "paragraphMarkInsertion" && e.type !== "paragraphMarkDeletion") continue;
+    if (
+      e.type !== "paragraphMarkInsertion" &&
+      e.type !== "paragraphMarkDeletion"
+    )
+      continue;
     const survivor = tableByKey.get(`${e.author}|${e.date ?? ""}`);
     if (!survivor) continue;
     const ids = new Set<number>(survivor.coalescedRevisionIds ?? []);
@@ -767,11 +850,15 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   // same-author insertion would fold into it. In practice only the parser and
   // the list-toggle author `pPrChange`, so the window is tiny; folding errs
   // toward one Reject clearing related edits, matching the pPrIns fold above.
-  const inlineHosts = final.filter((e) => e.type === "insertion" || e.type === "replacement");
+  const inlineHosts = final.filter(
+    (e) => e.type === "insertion" || e.type === "replacement",
+  );
   const foldedPropChanges = new Set<TrackedChangeEntry>();
   for (const e of final) {
     if (e.type !== "paragraphPropertiesChanged") continue;
-    const host = inlineHosts.find((c) => c.author === e.author && c.from < e.to && e.from < c.to);
+    const host = inlineHosts.find(
+      (c) => c.author === e.author && c.from < e.to && e.from < c.to,
+    );
     if (!host) continue;
     const ids = new Set<number>(mergeIds(host, e));
     if (host.type === "replacement" && host.insertionRevisionId != null) {
@@ -788,13 +875,20 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
       // rest so an inline card takes over.
       return emptyTableEntries.has(e);
     }
-    if (e.type === "paragraphMarkInsertion" || e.type === "paragraphMarkDeletion") {
+    if (
+      e.type === "paragraphMarkInsertion" ||
+      e.type === "paragraphMarkDeletion"
+    ) {
       return !inlineByKey.has(key) && !tableByKey.has(key);
     }
     if (e.type === "paragraphPropertiesChanged") {
       return !foldedPropChanges.has(e);
     }
-    if (e.type === "insertion" || e.type === "deletion" || e.type === "replacement") {
+    if (
+      e.type === "insertion" ||
+      e.type === "deletion" ||
+      e.type === "replacement"
+    ) {
       return !tableByKey.has(key);
     }
     return true;

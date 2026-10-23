@@ -12,17 +12,25 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState, TextSelection, type Transaction } from "prosemirror-state";
+import {
+  EditorState,
+  TextSelection,
+  type Transaction,
+} from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
-import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
 import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMode";
 import { schema } from "../prosemirror/schema";
 import { FolioDocxReviewer } from "./headless";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const createDocx = async (bodyXml: string): Promise<ArrayBuffer> => {
   const zip = new JSZip();
@@ -48,8 +56,16 @@ const createDocx = async (bodyXml: string): Promise<ArrayBuffer> => {
 };
 
 const bodyOf = async (saved: ArrayBuffer): Promise<string> => {
-  const xml = (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
-  return xml.slice(xml.indexOf("<w:body>") + "<w:body>".length, xml.indexOf("<w:sectPr>"));
+  const xml =
+    (await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")
+      ?.async("text")) ?? "";
+  return xml.slice(
+    xml.indexOf("<w:body>") + "<w:body>".length,
+    xml.indexOf("<w:sectPr>"),
+  );
 };
 
 const CONTROL_PROPERTIES =
@@ -85,7 +101,9 @@ const deleteControlText = async (
   mode: (typeof MODES)[number],
 ) => {
   const source = await createDocx(fixture.bodyXml);
-  const original = await bodyOf(await (await FolioDocxReviewer.fromBuffer(source)).toBuffer());
+  const original = await bodyOf(
+    await (await FolioDocxReviewer.fromBuffer(source)).toBuffer(),
+  );
   const reviewer = await FolioDocxReviewer.fromBuffer(source);
   const blockWithControl = reviewer
     .snapshot()
@@ -109,23 +127,26 @@ const deleteControlText = async (
   return { reviewer, original, blockId: blockWithControl.id };
 };
 
-const controlCount = (xml: string): number => (xml.match(/<w:sdt>/gu) ?? []).length;
+const controlCount = (xml: string): number =>
+  (xml.match(/<w:sdt>/gu) ?? []).length;
 
 describe("deleting all of a content control's text", () => {
   for (const fixture of FIXTURES) {
     for (const mode of MODES) {
       test(`accepting leaves the ${fixture.kind} control, emptied (${mode})`, async () => {
         const { reviewer, blockId } = await deleteControlText(fixture, mode);
-        if (mode === "suggested") expect(reviewer.acceptSuggestion("empty")).toBe(true);
+        if (mode === "suggested")
+          expect(reviewer.acceptSuggestion("empty")).toBe(true);
         reviewer.acceptAll();
         const accepted = await bodyOf(await reviewer.toBuffer());
         expect(controlCount(accepted)).toBe(1);
         expect(accepted).toContain('<w:alias w:val="Name"/>');
         expect(accepted).toContain('<w:docPart w:val="DefaultPlaceholder"/>');
         expect(accepted).not.toContain(fixture.find);
-        expect(reviewer.snapshot().blocks.find((block) => block.id === blockId)?.text).toBe(
-          fixture.acceptedText,
-        );
+        expect(
+          reviewer.snapshot().blocks.find((block) => block.id === blockId)
+            ?.text,
+        ).toBe(fixture.acceptedText);
       });
 
       test(`rejecting restores the ${fixture.kind} control (${mode})`, async () => {
@@ -146,7 +167,10 @@ describe("deleting all of a content control's text", () => {
   }
 
   test("accepting one change by its id leaves the control too", async () => {
-    const { reviewer } = await deleteControlText(FIXTURES[0], "tracked-changes");
+    const { reviewer } = await deleteControlText(
+      FIXTURES[0],
+      "tracked-changes",
+    );
     for (const change of reviewer.getChanges()) {
       reviewer.acceptChange(change);
     }
@@ -157,24 +181,36 @@ describe("deleting all of a content control's text", () => {
 
   test("a deleted paragraph takes its controls with it", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
-      await createDocx(FIXTURES[0].bodyXml + "<w:p><w:r><w:t>Next.</w:t></w:r></w:p>"),
+      await createDocx(
+        FIXTURES[0].bodyXml + "<w:p><w:r><w:t>Next.</w:t></w:r></w:p>",
+      ),
     );
     const block = reviewer.snapshot().blocks.at(0);
     if (!block) {
       throw new Error("expected a block");
     }
-    reviewer.applyOperations([{ id: "drop", type: "deleteBlock", blockId: block.id }], {
-      undefinedReferences: "refuse",
-      mode: "tracked-changes",
-    });
+    reviewer.applyOperations(
+      [{ id: "drop", type: "deleteBlock", blockId: block.id }],
+      {
+        undefinedReferences: "refuse",
+        mode: "tracked-changes",
+      },
+    );
     const saved = await reviewer.toBuffer();
     // The paragraph's deletion is written around the control, not inside it.
-    expect(await bodyOf(saved)).toContain("<w:sdtContent><w:r><w:delText>John</w:delText>");
-    for (const accepting of [reviewer, await FolioDocxReviewer.fromBuffer(saved)]) {
+    expect(await bodyOf(saved)).toContain(
+      "<w:sdtContent><w:r><w:delText>John</w:delText>",
+    );
+    for (const accepting of [
+      reviewer,
+      await FolioDocxReviewer.fromBuffer(saved),
+    ]) {
       accepting.acceptAll();
       const accepted = await bodyOf(await accepting.toBuffer());
       expect(controlCount(accepted)).toBe(0);
-      expect(accepting.snapshot().blocks.map((candidate) => candidate.text)).toEqual(["Next."]);
+      expect(
+        accepting.snapshot().blocks.map((candidate) => candidate.text),
+      ).toEqual(["Next."]);
     }
   });
 });
@@ -201,8 +237,14 @@ describe("a tracked deletion typed in the editor", () => {
     return { state, controlPos, controlEnd: controlPos + control.nodeSize };
   };
 
-  const backspaceOver = (state: EditorState, from: number, to: number): EditorState => {
-    let next = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
+  const backspaceOver = (
+    state: EditorState,
+    from: number,
+    to: number,
+  ): EditorState => {
+    let next = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, from, to)),
+    );
     const view = {
       get state() {
         return next;
@@ -216,13 +258,18 @@ describe("a tracked deletion typed in the editor", () => {
     const editorView = view as unknown as EditorView;
     const event = { key: "Backspace" } as KeyboardEvent;
     const handled = next.plugins
-      .map((plugin) => plugin.props.handleKeyDown?.call(plugin, editorView, event))
+      .map((plugin) =>
+        plugin.props.handleKeyDown?.call(plugin, editorView, event),
+      )
       .some(Boolean);
     expect(handled).toBe(true);
     return next;
   };
 
-  const resolve = (state: EditorState, command: typeof acceptAllChanges): PMNode => {
+  const resolve = (
+    state: EditorState,
+    command: typeof acceptAllChanges,
+  ): PMNode => {
     let next = state;
     command()(state, (transaction) => {
       next = state.apply(transaction);
@@ -243,7 +290,11 @@ describe("a tracked deletion typed in the editor", () => {
 
   test("over the control's text only, accepting leaves the control, emptied", () => {
     const { state, controlPos } = editorState();
-    const deleted = backspaceOver(state, controlPos + 1, controlPos + 1 + CONTROL_TEXT.length);
+    const deleted = backspaceOver(
+      state,
+      controlPos + 1,
+      controlPos + 1 + CONTROL_TEXT.length,
+    );
     expect(controlsIn(resolve(deleted, acceptAllChanges))).toEqual([""]);
     expect(resolve(deleted, rejectAllChanges).eq(state.doc)).toBe(true);
   });
@@ -254,6 +305,8 @@ describe("a tracked deletion typed in the editor", () => {
     const accepted = resolve(deleted, acceptAllChanges);
     expect(controlsIn(accepted)).toEqual([]);
     expect(accepted.textContent).toBe("Name:pays.");
-    expect(controlsIn(resolve(deleted, rejectAllChanges))).toEqual([CONTROL_TEXT]);
+    expect(controlsIn(resolve(deleted, rejectAllChanges))).toEqual([
+      CONTROL_TEXT,
+    ]);
   });
 });

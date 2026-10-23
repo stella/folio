@@ -16,7 +16,8 @@ export const PAGE_RENDERER = {
   displayList: "display-list",
 } as const;
 
-export type PageRendererName = (typeof PAGE_RENDERER)[keyof typeof PAGE_RENDERER];
+export type PageRendererName =
+  (typeof PAGE_RENDERER)[keyof typeof PAGE_RENDERER];
 
 export const isPageRendererName = (value: unknown): value is PageRendererName =>
   value === PAGE_RENDERER.legacy || value === PAGE_RENDERER.displayList;
@@ -31,11 +32,15 @@ export const isPageRendererName = (value: unknown): value is PageRendererName =>
  * second derivation is how the two renderers would come to disagree about
  * which header a page carries.
  */
-export const displayListFurnitureFrom = (options: RenderPageOptions): PageFurnitureInputs => ({
+export const displayListFurnitureFrom = (
+  options: RenderPageOptions,
+): PageFurnitureInputs => ({
   ...(options.embeddedFontFamilyMap
     ? { embeddedFontFamilyMap: options.embeddedFontFamilyMap }
     : {}),
-  ...(options.pageBorders === undefined ? {} : { pageBorders: options.pageBorders }),
+  ...(options.pageBorders === undefined
+    ? {}
+    : { pageBorders: options.pageBorders }),
   ...(options.theme === undefined ? {} : { theme: options.theme }),
   ...(options.watermark === undefined ? {} : { watermark: options.watermark }),
   ...(options.watermarkByHeaderRId === undefined
@@ -44,8 +49,12 @@ export const displayListFurnitureFrom = (options: RenderPageOptions): PageFurnit
   ...(options.watermarkImageSrc === undefined
     ? {}
     : { watermarkImageSrc: options.watermarkImageSrc }),
-  ...(options.headerContent === undefined ? {} : { headerContent: options.headerContent }),
-  ...(options.footerContent === undefined ? {} : { footerContent: options.footerContent }),
+  ...(options.headerContent === undefined
+    ? {}
+    : { headerContent: options.headerContent }),
+  ...(options.footerContent === undefined
+    ? {}
+    : { footerContent: options.footerContent }),
   ...(options.headerContentByRId === undefined
     ? {}
     : { headerContentByRId: options.headerContentByRId }),
@@ -59,6 +68,10 @@ export const displayListFurnitureFrom = (options: RenderPageOptions): PageFurnit
     ? {}
     : { firstPageFooterContent: options.firstPageFooterContent }),
   ...(options.titlePg === undefined ? {} : { titlePg: options.titlePg }),
-  ...(options.headerDistance === undefined ? {} : { headerDistancePx: options.headerDistance }),
-  ...(options.footerDistance === undefined ? {} : { footerDistancePx: options.footerDistance }),
+  ...(options.headerDistance === undefined
+    ? {}
+    : { headerDistancePx: options.headerDistance }),
+  ...(options.footerDistance === undefined
+    ? {}
+    : { footerDistancePx: options.footerDistance }),
 });

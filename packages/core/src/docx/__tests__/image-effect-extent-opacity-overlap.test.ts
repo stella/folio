@@ -86,7 +86,9 @@ describe("wp:effectExtent stays separate from wp:inline/wp:anchor dist*", () => 
     }
 
     expect(drawing.rawXml).toBeDefined();
-    const document: Document = { package: { document: { content: body.content } } };
+    const document: Document = {
+      package: { document: { content: body.content } },
+    };
     const restored = fromProseDoc(toProseDoc(document), document, {
       stylesheetSource: { type: "package" },
     });
@@ -124,7 +126,9 @@ describe("wp:effectExtent stays separate from wp:inline/wp:anchor dist*", () => 
       type: "inline",
       // `wp:inline` is the element that stated the reservation, and an inline
       // drawing has no wrap child to state one instead.
-      effectExtentSlots: { drawing: { left: 300, top: 100, right: 400, bottom: 200 } },
+      effectExtentSlots: {
+        drawing: { left: 300, top: 100, right: 400, bottom: 200 },
+      },
     });
   });
 
@@ -341,14 +345,17 @@ describe("a:lum brightness and contrast round-trip", () => {
       stylesheetSource: { type: "package" },
     });
     const paragraph = restored.package.document.content.at(0);
-    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     const drawing = run?.type === "run" ? run.content.at(0) : undefined;
     if (drawing?.type !== "drawing" || !drawing.image) {
       throw new Error("Expected restored image drawing");
     }
 
     expect(drawing.image.effects).toEqual(image.effects);
-    expect(serializeImage(drawing.image)).toContain('<a:lum bright="70001" contrast="-70000"/>');
+    expect(serializeImage(drawing.image)).toContain(
+      '<a:lum bright="70001" contrast="-70000"/>',
+    );
   });
 
   test("preserves explicit zeroes when regenerating", () => {

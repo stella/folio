@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
+
 import { TRANSACTION_LAYOUT_TIMING } from "../packages/core/src/controller/layoutScheduler";
 
 const ADAPTER_FILES = [
@@ -44,7 +45,9 @@ describe("adapter transaction layout timing", () => {
 
       const schedulerConfigs: ts.ObjectLiteralExpression[] = [];
       const visit = (node: ts.Node): void => {
-        const config = ts.isCallExpression(node) ? node.arguments.at(0) : undefined;
+        const config = ts.isCallExpression(node)
+          ? node.arguments.at(0)
+          : undefined;
         if (
           ts.isCallExpression(node) &&
           ts.isIdentifier(node.expression) &&
@@ -72,7 +75,8 @@ describe("adapter transaction layout timing", () => {
       expect(
         properties.filter(
           (property) =>
-            (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) &&
+            (ts.isPropertyAssignment(property) ||
+              ts.isShorthandPropertyAssignment(property)) &&
             ts.isIdentifier(property.name) &&
             TIMING_PROPERTIES.has(property.name.text),
         ),

@@ -8,6 +8,7 @@
  */
 
 import JSZip from "jszip";
+
 import { generateDocxFixture } from "./validatedDocxFixture";
 
 export type PanelLayoutReview = "none" | "changes-only" | "comment-and-changes";
@@ -33,7 +34,8 @@ const CLAUSE =
 const escapeXml = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-const run = (text: string) => `<w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
+const run = (text: string) =>
+  `<w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
 
 const paragraph = (content: string) => `<w:p>${content}</w:p>`;
 
@@ -45,7 +47,11 @@ const clauses = (count: number) =>
 
 const reviewedParagraph = (review: PanelLayoutReview) => {
   if (review === "none") {
-    return paragraph(run("Each party discloses information to the other under this Agreement."));
+    return paragraph(
+      run(
+        "Each party discloses information to the other under this Agreement.",
+      ),
+    );
   }
   const hasComment = review === "comment-and-changes";
   return paragraph(
@@ -53,7 +59,10 @@ const reviewedParagraph = (review: PanelLayoutReview) => {
       ...(hasComment ? ['<w:commentRangeStart w:id="1"/>'] : []),
       run("Each party discloses information to the other"),
       ...(hasComment
-        ? ['<w:commentRangeEnd w:id="1"/>', '<w:r><w:commentReference w:id="1"/></w:r>']
+        ? [
+            '<w:commentRangeEnd w:id="1"/>',
+            '<w:r><w:commentReference w:id="1"/></w:r>',
+          ]
         : []),
       `<w:ins w:id="10" w:author="Counsel" w:date="${REVIEW_DATE}">${run(" in writing")}</w:ins>`,
       run(" under this Agreement"),
@@ -66,7 +75,10 @@ const reviewedParagraph = (review: PanelLayoutReview) => {
 const pageSection = (width: number, height: number) =>
   `<w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="${String(width)}" w:h="${String(height)}"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>`;
 
-const documentXml = (review: PanelLayoutReview, sections: PanelLayoutSections) => {
+const documentXml = (
+  review: PanelLayoutReview,
+  sections: PanelLayoutSections,
+) => {
   const [definitions, obligations, disclosures, term] = PANEL_LAYOUT_HEADINGS;
   const body = [
     paragraph(run("Mutual Non-Disclosure Agreement")),
@@ -74,7 +86,9 @@ const documentXml = (review: PanelLayoutReview, sections: PanelLayoutSections) =
     heading(definitions.text, definitions.level),
     clauses(6),
     ...(sections === "landscape-then-portrait"
-      ? [`<w:p><w:pPr>${pageSection(15840, 12240)}</w:pPr>${run("Section break")}</w:p>`]
+      ? [
+          `<w:p><w:pPr>${pageSection(15840, 12240)}</w:pPr>${run("Section break")}</w:p>`,
+        ]
       : []),
     heading(obligations.text, obligations.level),
     clauses(6),

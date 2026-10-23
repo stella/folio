@@ -10,12 +10,13 @@
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+
 import {
   addFeatureHit,
   emptyFeatureCoverage,
-  mergeFeatureCoverage,
   type FeatureCell,
   type FeatureCoverage,
+  mergeFeatureCoverage,
 } from "./feature-coverage.ts";
 
 export const DIMENSIONS = ["op", "story", "mode", "feature", "step"] as const;
@@ -45,10 +46,14 @@ export const cellOf = (key: string): Cell => {
 const ledger: Ledger = { version: 1, cells: {} };
 const featureCoverage = emptyFeatureCoverage();
 
-export const recordFeatureHit = (cell: FeatureCell): void => addFeatureHit(featureCoverage, cell);
-export const registerFeatureOperations = (operations: readonly string[]): void => {
+export const recordFeatureHit = (cell: FeatureCell): void =>
+  addFeatureHit(featureCoverage, cell);
+export const registerFeatureOperations = (
+  operations: readonly string[],
+): void => {
   for (const operation of operations) {
-    if (!featureCoverage.operations.includes(operation)) featureCoverage.operations.push(operation);
+    if (!featureCoverage.operations.includes(operation))
+      featureCoverage.operations.push(operation);
   }
 };
 
@@ -96,12 +101,16 @@ export const mergeLedgers = (dir: string): Ledger => {
   const merged: Ledger = { version: 1, cells: {} };
   let files: string[] = [];
   try {
-    files = readdirSync(dir).filter((file) => file.startsWith("ledger-") && file.endsWith(".json"));
+    files = readdirSync(dir).filter(
+      (file) => file.startsWith("ledger-") && file.endsWith(".json"),
+    );
   } catch {
     return merged;
   }
   for (const file of files) {
-    const part = JSON.parse(readFileSync(path.join(dir, file), "utf8")) as Ledger;
+    const part = JSON.parse(
+      readFileSync(path.join(dir, file), "utf8"),
+    ) as Ledger;
     for (const [key, count] of Object.entries(part.cells)) {
       const into = (merged.cells[key] ??= { applied: 0, refused: 0 });
       into.applied += count.applied;
@@ -121,7 +130,12 @@ export const mergeFeatureFiles = (dir: string): FeatureCoverage => {
     return emptyFeatureCoverage();
   }
   return mergeFeatureCoverage(
-    files.map((file) => JSON.parse(readFileSync(path.join(dir, file), "utf8")) as FeatureCoverage),
+    files.map(
+      (file) =>
+        JSON.parse(
+          readFileSync(path.join(dir, file), "utf8"),
+        ) as FeatureCoverage,
+    ),
   );
 };
 
@@ -144,7 +158,9 @@ const matches = (pattern: Pattern, cell: Cell): boolean =>
   });
 
 export const describePattern = (pattern: Pattern): string =>
-  DIMENSIONS.map((dimension) => `${dimension}=${pattern[dimension] ?? "*"}`).join(" ");
+  DIMENSIONS.map(
+    (dimension) => `${dimension}=${pattern[dimension] ?? "*"}`,
+  ).join(" ");
 
 /** The total count of every cell `pattern` matches. */
 export const countOf = (merged: Ledger, pattern: Pattern): Count => {
@@ -158,13 +174,21 @@ export const countOf = (merged: Ledger, pattern: Pattern): Count => {
 };
 
 /** Required cells nothing applied, each named. */
-export const missingCells = (merged: Ledger, expectations: Expectations): string[] =>
+export const missingCells = (
+  merged: Ledger,
+  expectations: Expectations,
+): string[] =>
   expectations.required
     .filter(({ cell }) => countOf(merged, cell).applied === 0)
-    .map(({ cell, why }) => `${describePattern(cell)}${why ? ` (${why})` : ""}`);
+    .map(
+      ({ cell, why }) => `${describePattern(cell)}${why ? ` (${why})` : ""}`,
+    );
 
 /** Declared unreachable patterns with any attempted operation, applied or refused. */
-export const hitUnreachableCells = (merged: Ledger, expectations: Expectations) =>
+export const hitUnreachableCells = (
+  merged: Ledger,
+  expectations: Expectations,
+) =>
   expectations.unreachable
     .map(({ cell, reason }) => ({ cell, reason, ...countOf(merged, cell) }))
     .filter(({ applied, refused }) => applied + refused > 0);
@@ -183,7 +207,11 @@ const pivot = (merged: Ledger, rows: Dimension, columns: Dimension) => {
   return { table, columnKeys: [...columnKeys].sort() };
 };
 
-const formatPivot = (merged: Ledger, rows: Dimension, columns: Dimension): string => {
+const formatPivot = (
+  merged: Ledger,
+  rows: Dimension,
+  columns: Dimension,
+): string => {
   const { table, columnKeys } = pivot(merged, rows, columns);
   const rowKeys = [...table.keys()].sort();
   const width = Math.max(rows.length, ...rowKeys.map((key) => key.length));
@@ -196,7 +224,9 @@ const formatPivot = (merged: Ledger, rows: Dimension, columns: Dimension): strin
     ...rowKeys.map((key) =>
       line(
         key,
-        columnKeys.map((column) => String(table.get(key)?.get(column) ?? 0).replace(/^0$/u, "·")),
+        columnKeys.map((column) =>
+          String(table.get(key)?.get(column) ?? 0).replace(/^0$/u, "·"),
+        ),
       ),
     ),
   ].join("\n");

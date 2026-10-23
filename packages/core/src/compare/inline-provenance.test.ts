@@ -2,21 +2,30 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-import type { Paragraph, TextFormatting } from "../types/document";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import {
+  createFolioAIEditSnapshot,
+  sourceDocumentOf,
+} from "../ai-edits/snapshot";
+import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
-import { createEmptyDocument } from "../utils/createDocument";
-import { FolioDocxReviewer } from "../ai-edits/headless";
-import { createFolioAIEditSnapshot, sourceDocumentOf } from "../ai-edits/snapshot";
-import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { schema } from "../prosemirror/schema";
+import type { Paragraph, TextFormatting } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
 import { sameAuthoredInlineProvenance } from "./inline-provenance";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const OPTIONS = { author: "compare", timestamp: "2026-09-13T00:00:00.000Z" } as const;
+const OPTIONS = {
+  author: "compare",
+  timestamp: "2026-09-13T00:00:00.000Z",
+} as const;
 
 type RunSpec = { text: string; formatting?: TextFormatting };
 
@@ -25,7 +34,14 @@ const INLINE_FORMATTING_CATALOG = [
   { italic: false },
   { boldCs: true },
   { italicCs: true },
-  { fontFamily: { ascii: "Aptos", hAnsi: "Aptos", eastAsia: "Yu Gothic", cs: "Arial" } },
+  {
+    fontFamily: {
+      ascii: "Aptos",
+      hAnsi: "Aptos",
+      eastAsia: "Yu Gothic",
+      cs: "Arial",
+    },
+  },
   { fontSize: 23, fontSizeCs: 27 },
   { color: { auto: true } },
   { color: { themeColor: "accent1", themeTint: "80" } },
@@ -58,7 +74,10 @@ const partitionMatchingRun = (cuts: readonly boolean[]): RunSpec[] => {
   let start = 0;
   for (let index = 1; index < text.length; index++) {
     if (!cuts[index - 1]) continue;
-    chunks.push({ text: text.slice(start, index), formatting: { bold: false } });
+    chunks.push({
+      text: text.slice(start, index),
+      formatting: { bold: false },
+    });
     start = index;
   }
   chunks.push({ text: text.slice(start), formatting: { bold: false } });
@@ -114,7 +133,9 @@ const paragraph = (paraId: string, runs: readonly RunSpec[]): Paragraph => ({
   })),
 });
 
-const documentWith = (paragraphs: readonly Paragraph[]): Promise<ArrayBuffer> => {
+const documentWith = (
+  paragraphs: readonly Paragraph[],
+): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   document.package.document.content = [...paragraphs];
   return createDocx(document);
@@ -129,9 +150,15 @@ type FormattedCharacter = {
 const directFormattingCharacters = async (
   buffer: ArrayBuffer,
 ): Promise<readonly FormattedCharacter[]> => {
-  const document = await parseDocx(buffer, { detectVariables: false, preloadFonts: false });
+  const document = await parseDocx(buffer, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
   const characters: FormattedCharacter[] = [];
-  for (const [paragraphIndex, block] of document.package.document.content.entries()) {
+  for (const [
+    paragraphIndex,
+    block,
+  ] of document.package.document.content.entries()) {
     if (block.type !== "paragraph") continue;
     for (const run of block.content) {
       if (run.type !== "run") continue;
@@ -162,17 +189,23 @@ const expectAcceptedAndRejectedFormatting = async ({
 
   const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  expect(await directFormattingCharacters(await accepting.toBuffer())).toEqual(expectedRevised);
+  expect(await directFormattingCharacters(await accepting.toBuffer())).toEqual(
+    expectedRevised,
+  );
 
   const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  expect(await directFormattingCharacters(await rejecting.toBuffer())).toEqual(expectedBase);
+  expect(await directFormattingCharacters(await rejecting.toBuffer())).toEqual(
+    expectedBase,
+  );
 };
 
 describe("inline formatting provenance through comparison", () => {
   test("accepting a replacement retains every revised direct run property", async () => {
     await expectAcceptedAndRejectedFormatting({
-      base: await documentWith([paragraph("10000001", [{ text: "Base terms" }])]),
+      base: await documentWith([
+        paragraph("10000001", [{ text: "Base terms" }]),
+      ]),
       revised: await documentWith([paragraph("20000001", MIXED_TARGET_RUNS)]),
     });
   });
@@ -235,10 +268,21 @@ describe("inline formatting provenance through comparison", () => {
             minLength: INLINE_FORMATTING_CATALOG.length,
             maxLength: INLINE_FORMATTING_CATALOG.length,
           }),
-          baseMatchingCuts: fc.array(fc.boolean(), { minLength: 3, maxLength: 3 }),
-          revisedMatchingCuts: fc.array(fc.boolean(), { minLength: 3, maxLength: 3 }),
+          baseMatchingCuts: fc.array(fc.boolean(), {
+            minLength: 3,
+            maxLength: 3,
+          }),
+          revisedMatchingCuts: fc.array(fc.boolean(), {
+            minLength: 3,
+            maxLength: 3,
+          }),
         }),
-        async ({ baseCuts, revisedCuts, baseMatchingCuts, revisedMatchingCuts }) => {
+        async ({
+          baseCuts,
+          revisedCuts,
+          baseMatchingCuts,
+          revisedMatchingCuts,
+        }) => {
           const base = await documentWith([
             paragraph("60000001", [
               ...partitionMatchingRun(baseMatchingCuts),
@@ -282,23 +326,33 @@ const refusingToResolve = (doc: PMNode): PMNode => {
   Object.defineProperty(doc, "resolve", {
     configurable: true,
     value: () => {
-      throw new Error("Inline provenance resolved a position; walk the document instead.");
+      throw new Error(
+        "Inline provenance resolved a position; walk the document instead.",
+      );
     },
   });
   return doc;
 };
 
 describe("sameAuthoredInlineProvenance", () => {
-  type ProvenanceParagraphOptions = { label: string; bold?: boolean; inherited?: boolean };
+  type ProvenanceParagraphOptions = {
+    label: string;
+    bold?: boolean;
+    inherited?: boolean;
+  };
   const provenanceParagraph = ({
     label,
     bold = true,
     inherited = false,
   }: ProvenanceParagraphOptions): PMNode =>
-    schema.node("paragraph", inherited ? { defaultTextFormatting: { bold: true } } : null, [
-      schema.text(`${label} plain `),
-      schema.text(`${label} bold`, bold ? [schema.mark("bold")] : []),
-    ]);
+    schema.node(
+      "paragraph",
+      inherited ? { defaultTextFormatting: { bold: true } } : null,
+      [
+        schema.text(`${label} plain `),
+        schema.text(`${label} bold`, bold ? [schema.mark("bold")] : []),
+      ],
+    );
   const tableOf = (content: PMNode[]): PMNode =>
     schema.node("table", null, [
       schema.node("tableRow", null, [schema.node("tableCell", null, content)]),
@@ -309,7 +363,10 @@ describe("sameAuthoredInlineProvenance", () => {
   }: { nestedBold?: boolean; nestedInherited?: boolean } = {}): PMNode =>
     schema.node("doc", null, [
       ...Array.from({ length: 50 }, (_unused, index) =>
-        provenanceParagraph({ label: `body ${String(index)}`, inherited: index % 2 === 0 }),
+        provenanceParagraph({
+          label: `body ${String(index)}`,
+          inherited: index % 2 === 0,
+        }),
       ),
       tableOf([
         provenanceParagraph({ label: "outer cell" }),
@@ -331,9 +388,12 @@ describe("sameAuthoredInlineProvenance", () => {
   };
 
   test("resolves no positions, so its cost stays linear in run count", () => {
-    expect(sameAuthoredInlineProvenance(snapshotOf(documentOf()), snapshotOf(documentOf()))).toBe(
-      true,
-    );
+    expect(
+      sameAuthoredInlineProvenance(
+        snapshotOf(documentOf()),
+        snapshotOf(documentOf()),
+      ),
+    ).toBe(true);
     expect(
       sameAuthoredInlineProvenance(
         snapshotOf(documentOf()),

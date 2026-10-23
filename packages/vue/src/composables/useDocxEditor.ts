@@ -1,10 +1,5 @@
-import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
-import {
-  CANONICAL_GAP,
-  usesCanonicalSession,
-  type CanonicalGap,
-  canonicalRefusalMessage,
-} from "@stll/folio-core/types/canonicalCapabilities";
+import type { EditorState, Plugin } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 /**
  * useDocxEditor — Vue composable for the folio DOCX editor lifecycle.
  *
@@ -30,13 +25,10 @@ import {
  * `handleScrollToSelection: suppressHiddenEditorScrollToSelection` on the view,
  * so no local scroll-flag stripping is needed here.
  */
-
 import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
-import type { EditorState, Plugin } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
-
+import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import {
   createFolioEditor,
   FOLIO_DOCX_SERIALIZATION_MODE,
@@ -44,29 +36,20 @@ import {
   type FolioEditorDocumentIO,
   type FolioGetDocxOptions,
 } from "@stll/folio-core/controller/folioEditor";
-import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
-import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import {
-  CanonicalSaveDiagnosticError,
-  serializeCanonicalSave,
-} from "@stll/folio-core/docx/canonicalSave";
-import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
+  readFontSetSignature,
+  waitForInitialLayoutFonts,
+  watchLayoutFontLoads,
+} from "@stll/folio-core/controller/fontReadiness";
 import { createHeaderFooterEditorManager } from "@stll/folio-core/controller/headerFooterEditorManager";
 import type {
   HeaderFooterEditorManager,
   HeaderFooterPartKind,
 } from "@stll/folio-core/controller/headerFooterEditorManager";
 import {
-  createNoteEditorManager,
-  type NoteEditorManager,
-  type NoteStoryKey,
-} from "@stll/folio-core/controller/noteEditorManager";
-import {
-  collectRemoteSelections,
   CanonicalSessionRefusalError,
+  collectRemoteSelections,
   createHiddenEditorManager,
   createHiddenEditorState,
 } from "@stll/folio-core/controller/hiddenEditorManager";
@@ -77,25 +60,32 @@ import type {
   HiddenProseMirrorCollaboration,
   HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
+import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
 import type { LayoutOutcome } from "@stll/folio-core/controller/layoutPipeline";
 import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
-import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
-import {
-  readFontSetSignature,
-  waitForInitialLayoutFonts,
-  watchLayoutFontLoads,
-} from "@stll/folio-core/controller/fontReadiness";
 import {
   browserClock,
   createLayoutScheduler,
   TRANSACTION_LAYOUT_TIMING,
 } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
+import {
+  createNoteEditorManager,
+  type NoteEditorManager,
+  type NoteStoryKey,
+} from "@stll/folio-core/controller/noteEditorManager";
+import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import {
+  CanonicalSaveDiagnosticError,
+  serializeCanonicalSave,
+} from "@stll/folio-core/docx/canonicalSave";
+import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { parseDocx } from "@stll/folio-core/docx/parser";
-
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
+import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
 import type {
   ConvertHeaderFooterOptions,
   HeaderFooterMetrics,
@@ -104,7 +94,10 @@ import {
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
 } from "@stll/folio-core/layout-bridge/convert/headerFooterLayout";
-import { resolveSectionHeaderFooterRefs, type ColumnLayout } from "@stll/folio-core/layout-engine";
+import {
+  type ColumnLayout,
+  resolveSectionHeaderFooterRefs,
+} from "@stll/folio-core/layout-engine";
 import type {
   FlowBlock,
   FootnoteContent,
@@ -114,6 +107,7 @@ import type {
 } from "@stll/folio-core/layout-engine/types";
 import { LayoutPainter } from "@stll/folio-core/layout-painter";
 import type { FootnoteRenderItem } from "@stll/folio-core/layout-painter/renderPage";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 import {
   getMargins,
@@ -121,10 +115,7 @@ import {
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
-import {
-  createNoteReferenceFollower,
-  withoutUnreferencedNotes,
-} from "@stll/folio-core/prosemirror/noteReferenceReview";
+import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
   getChangedParagraphIds,
@@ -132,16 +123,19 @@ import {
   hasUntrackedChanges,
   repackWithEditorSectionRemovals,
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
 import type { CommandMap } from "@stll/folio-core/prosemirror/extensions/types";
+import {
+  createNoteReferenceFollower,
+  withoutUnreferencedNotes,
+} from "@stll/folio-core/prosemirror/noteReferenceReview";
+import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
+import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
+import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
 } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
-import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import type {
@@ -153,8 +147,18 @@ import type {
   TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import {
+  CANONICAL_GAP,
+  type CanonicalGap,
+  canonicalRefusalMessage,
+  usesCanonicalSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
 import type { Footnote } from "@stll/folio-core/types/content";
-import type { Document, HeaderFooter, SectionProperties } from "@stll/folio-core/types/document";
+import type {
+  Document,
+  HeaderFooter,
+  SectionProperties,
+} from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter";
 
@@ -179,7 +183,9 @@ type HfPmsHandle = Pick<HeaderFooterEditorManager, "getView"> | null;
 // ============================================================================
 
 /** Column geometry from `<w:cols>` (twips → px). */
-function getColumns(sectionProps: SectionProperties | null | undefined): ColumnLayout | undefined {
+function getColumns(
+  sectionProps: SectionProperties | null | undefined,
+): ColumnLayout | undefined {
   const count = sectionProps?.columnCount ?? 1;
   if (count <= 1) {
     return undefined;
@@ -212,10 +218,17 @@ function renderHfFromContentOrPm(
   if (!hf) {
     return undefined;
   }
-  const optsWithRId: ConvertHeaderFooterOptions = rId ? { ...options, rId } : options;
+  const optsWithRId: ConvertHeaderFooterOptions = rId
+    ? { ...options, rId }
+    : options;
   const view = rId ? hfPMs?.getView(rId) : null;
   if (view) {
-    return convertHeaderFooterPmDocToContent(view.state.doc, contentWidth, metrics, optsWithRId);
+    return convertHeaderFooterPmDocToContent(
+      view.state.doc,
+      contentWidth,
+      metrics,
+      optsWithRId,
+    );
   }
   return convertHeaderFooterToContent(hf, contentWidth, metrics, optsWithRId);
 }
@@ -232,7 +245,14 @@ function renderHeaderFooterContentByRId(
   }
   const rendered = new Map<string, HeaderFooterContent>();
   for (const [rId, hf] of source) {
-    const content = renderHfFromContentOrPm(hf, rId, hfPMs, contentWidth, metrics, options);
+    const content = renderHfFromContentOrPm(
+      hf,
+      rId,
+      hfPMs,
+      contentWidth,
+      metrics,
+      options,
+    );
     if (content) {
       rendered.set(rId, content);
     }
@@ -319,7 +339,9 @@ function describeInvalidHighlightMarks(doc: EditorState["doc"]): string {
         mark.type.name === "highlight" &&
         !VALID_HIGHLIGHT_COLORS.has(String(mark.attrs["color"]))
       ) {
-        invalidHighlights.push(`${path}.marks[${index}]=${JSON.stringify(mark.attrs)}`);
+        invalidHighlights.push(
+          `${path}.marks[${index}]=${JSON.stringify(mark.attrs)}`,
+        );
       }
     }
     // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
@@ -383,7 +405,9 @@ export type UseDocxEditorOptions = {
    * installed (inert until terms are pushed via `setAnonymizationTermsMeta`),
    * mirroring the React adapter.
    */
-  onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
+  onAnonymizationMatchesChange?: (
+    matches: readonly AnonymizationMatch[],
+  ) => void;
   /**
    * Install the template-directive + slash-menu plugins so `{{...}}` markers are
    * scanned and the `/` trigger is active. Reactive: toggling reconfigures the
@@ -439,7 +463,9 @@ export type HeaderFooterSelectionState = {
 };
 
 export type UseDocxEditorReturn = {
-  setEmbeddedFontFamilies: (families: ReadonlyMap<string, string> | null) => void;
+  setEmbeddedFontFamilies: (
+    families: ReadonlyMap<string, string> | null,
+  ) => void;
   /** The headless controller (imperative API + layout access + events). */
   editor: FolioEditor;
   /** Off-screen ProseMirror EditorView, or null before mount. */
@@ -502,7 +528,9 @@ export type UseDocxEditorReturn = {
   destroy: () => void;
 };
 
-export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorReturn {
+export function useDocxEditor(
+  options: UseDocxEditorOptions,
+): UseDocxEditorReturn {
   const {
     hiddenContainer,
     hiddenHeaderFooterContainer,
@@ -538,7 +566,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     onSelectiveSaveTripwire,
   } = options;
   const headerFooterHost = hiddenHeaderFooterContainer ?? hiddenContainer;
-  const getSuggestionAuthor = () => toValue(author) ?? DEFAULT_SUGGESTION_AUTHOR;
+  const getSuggestionAuthor = () =>
+    toValue(author) ?? DEFAULT_SUGGESTION_AUTHOR;
 
   // ---- Reactive state -----------------------------------------------------
   // `docModel` (not `document`) so the global `document` stays reachable for the
@@ -554,7 +583,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const editorState = shallowRef<EditorState | null>(null);
   const collaborationModules = shallowRef<CollaborationModules | null>(null);
   const remoteSelections = shallowRef<HiddenProseMirrorRemoteSelection[]>([]);
-  const headerFooterSelection = shallowRef<HeaderFooterSelectionState | null>(null);
+  const headerFooterSelection = shallowRef<HeaderFooterSelectionState | null>(
+    null,
+  );
   const activeNoteStory = shallowRef<NoteStoryKey | null>(null);
   const layout = shallowRef<Layout | null>(null);
   // Latest flow blocks + measures — the range-projection fallback (off-screen /
@@ -573,9 +604,14 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // this flag — not the tracker — is what surfaces pending edits to the ref API.
   const isDirty = ref(false);
   const isCanonicalSession = () =>
-    usesCanonicalSession(toValue(experimentalSession), CANONICAL_GAP.authorityRouting);
+    usesCanonicalSession(
+      toValue(experimentalSession),
+      CANONICAL_GAP.authorityRouting,
+    );
   const cloneForHost = (document: Document) =>
-    isCanonicalSession() ? cloneDocumentWithParagraphPropertySources(document) : document;
+    isCanonicalSession()
+      ? cloneDocumentWithParagraphPropertySources(document)
+      : document;
   const refuseCanonicalModelEdit = (gap: CanonicalGap, message: string) => {
     if (!isCanonicalSession()) return false;
     const error = new CanonicalSessionRefusalError({
@@ -588,7 +624,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   // ---- Long-lived controller singletons -----------------------------------
   // One ExtensionManager owns the schema + plugins + commands for the body view.
-  const extensionManager = new ExtensionManager(createStarterKit({ historyShortcuts }));
+  const extensionManager = new ExtensionManager(
+    createStarterKit({ historyShortcuts }),
+  );
   extensionManager.buildSchema();
   extensionManager.initializeRuntime();
 
@@ -619,7 +657,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   });
   const templatePreviewPlugin = createTemplatePreviewValuesPlugin();
 
-  const templatePluginsEnabled = (): boolean => toValue(showTemplateDirectives) === true;
+  const templatePluginsEnabled = (): boolean =>
+    toValue(showTemplateDirectives) === true;
 
   // Plugin list installed on every (re)created hidden-editor state. Autocomplete
   // leads so its active-suggestion keymap wins before extension keymaps;
@@ -632,7 +671,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       ...externalPlugins,
       ...(toValue(collaboration)?.plugins ?? []),
       anonymizationPlugin,
-      ...(templatePluginsEnabled() ? [templateDirectivesPlugin, templateSlashMenu] : []),
+      ...(templatePluginsEnabled()
+        ? [templateDirectivesPlugin, templateSlashMenu]
+        : []),
       templatePreviewPlugin,
     ];
   }
@@ -699,7 +740,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       syncCoordinator.requestRender();
     },
   });
-  const noteEditorManagerHolder: { current: NoteEditorManager | null } = { current: null };
+  const noteEditorManagerHolder: { current: NoteEditorManager | null } = {
+    current: null,
+  };
   const noteEditorManager = createNoteEditorManager({
     getHost: () => noteEditorContainer?.value ?? null,
     getPlugins: () => notePlugins,
@@ -768,7 +811,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
    * fresh here, so there is no stale-closure risk (the pipeline treats them as
    * plain inputs, matching the React adapter).
    */
-  function runLayoutPipeline(state: EditorState, runOptions: LayoutRunOptions = {}): void {
+  function runLayoutPipeline(
+    state: EditorState,
+    runOptions: LayoutRunOptions = {},
+  ): void {
     if (initialFontWaitPending) {
       return;
     }
@@ -781,7 +827,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     const body = model?.package.document;
     // Lead geometry from the first section; trailing section falls back to the
     // body's final section properties. Mirrors the React split.
-    const sectionProps = body?.sections?.[0]?.properties ?? body?.finalSectionProperties ?? null;
+    const sectionProps =
+      body?.sections?.[0]?.properties ?? body?.finalSectionProperties ?? null;
 
     const pageSize = getPageSize(sectionProps);
     const margins = getMargins(sectionProps);
@@ -885,7 +932,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
         canonical ??
         noteFollower.reconcile(
           // canonical-gap: pm-save-projection
-          fromProseDoc(view.state.doc, base, { stylesheetSource: { type: "package" } }),
+          fromProseDoc(view.state.doc, base, {
+            stylesheetSource: { type: "package" },
+          }),
           view.state.doc,
         );
       docModel.value = updated;
@@ -961,7 +1010,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     const modules = collaborationModules.value;
     const view = manager.getView();
     remoteSelections.value =
-      awareness && modules && view ? collectRemoteSelections(view.state, awareness, modules) : [];
+      awareness && modules && view
+        ? collectRemoteSelections(view.state, awareness, modules)
+        : [];
   };
 
   watch(
@@ -1064,13 +1115,20 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
         return;
       }
       initialFontWaitPending = false;
-      if (destroyed || loadSequence !== sequence || manager.getView() !== view) {
+      if (
+        destroyed ||
+        loadSequence !== sequence ||
+        manager.getView() !== view
+      ) {
         return;
       }
       runLayoutPipeline(view.state, { reason: "initial" });
       syncCoordinator.requestRender();
     };
-    void waitForInitialLayoutFonts(model, view.state.doc).then(runInitialLayout, runInitialLayout);
+    void waitForInitialLayoutFonts(model, view.state.doc).then(
+      runInitialLayout,
+      runInitialLayout,
+    );
 
     // Apply the current editor mode to the mounted suggestion plugin.
     syncSuggestionMode(view);
@@ -1150,7 +1208,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       return;
     }
     const plugins = view.state.plugins.filter(
-      (plugin) => plugin !== templateDirectivesPlugin && plugin !== templateSlashMenu,
+      (plugin) =>
+        plugin !== templateDirectivesPlugin && plugin !== templateSlashMenu,
     );
     if (enabled) {
       // Insert at the same position as `buildExternalPlugins` (right before the
@@ -1331,7 +1390,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
               }),
             );
         }
-        if (result.tripwireResult) onSelectiveSaveTripwire?.(result.tripwireResult);
+        if (result.tripwireResult)
+          onSelectiveSaveTripwire?.(result.tripwireResult);
         return result;
       }
     } catch (error) {
@@ -1355,7 +1415,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
     );
 
-    const { resolveSelectiveSaveFlags } = await import("@stll/folio-core/docx/selectiveSaveFlags");
+    const { resolveSelectiveSaveFlags } =
+      await import("@stll/folio-core/docx/selectiveSaveFlags");
     const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
 
     // A note goes with its reference: one nothing refers to any more is not saved.
@@ -1364,14 +1425,18 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // The tripwire observes the selective path independently of the user-visible
     // save mode. Only `useSelectiveForSave` is allowed to pick the returned bytes.
     const useSelectiveForSave =
-      flags.selectiveSave && serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
-    const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
+      flags.selectiveSave &&
+      serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
+    const shouldAttemptSelective =
+      useSelectiveForSave || flags.selectiveSaveTripwire;
 
-    const { repackDocx, createDocx } = await import("@stll/folio-core/docx/rezip");
+    const { repackDocx, createDocx } =
+      await import("@stll/folio-core/docx/rezip");
 
     let selectiveBuffer: ArrayBuffer | null = null;
     if (shouldAttemptSelective && baselineBuffer) {
-      const { attemptSelectiveSave } = await import("@stll/folio-core/docx/selectiveSave");
+      const { attemptSelectiveSave } =
+        await import("@stll/folio-core/docx/selectiveSave");
       selectiveBuffer = await attemptSelectiveSave(updatedDoc, baselineBuffer, {
         changedParaIds: getChangedParagraphIds(state),
         structuralChange: hasStructuralChanges(state),
@@ -1380,7 +1445,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       });
     }
 
-    let buffer: ArrayBuffer | null = useSelectiveForSave ? selectiveBuffer : null;
+    let buffer: ArrayBuffer | null = useSelectiveForSave
+      ? selectiveBuffer
+      : null;
     let fullBuffer: ArrayBuffer | null = null;
 
     // A section the editor removed on purpose (its ending paragraph deleted,
@@ -1395,7 +1462,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
     if (!buffer) {
       // No original buffer means a from-scratch document — build one via createDocx.
-      fullBuffer = baselineBuffer ? await repackFull() : await createDocx(updatedDoc);
+      fullBuffer = baselineBuffer
+        ? await repackFull()
+        : await createDocx(updatedDoc);
       buffer = fullBuffer;
     } else if (flags.selectiveSaveTripwire) {
       try {
@@ -1411,7 +1480,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       try {
         const { compareSelectiveVsFull } =
           await import("@stll/folio-core/docx/selectiveSaveTripwire");
-        onSelectiveSaveTripwire(await compareSelectiveVsFull(selectiveBuffer, fullBuffer));
+        onSelectiveSaveTripwire(
+          await compareSelectiveVsFull(selectiveBuffer, fullBuffer),
+        );
       } catch {
         // Comparison failures must never poison the save path.
       }
@@ -1420,7 +1491,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     return { buffer, document: updatedDoc };
   }
 
-  async function save(saveOptions?: { selective?: boolean }): Promise<Blob | null> {
+  async function save(saveOptions?: {
+    selective?: boolean;
+  }): Promise<Blob | null> {
     const savedView = editorView.value;
     const savedState = savedView?.state;
     const result = await serializeCurrentDocx({
@@ -1441,7 +1514,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (
       editorView.value === savedView &&
       savedView?.state.doc === savedState?.doc &&
-      (result.version === undefined || manager.api.isCanonicalSaveCurrent(result.version))
+      (result.version === undefined ||
+        manager.api.isCanonicalSaveCurrent(result.version))
     ) {
       docModel.value = result.document;
       syncSecondaryStoryEditors();
@@ -1461,7 +1535,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (!document) return null;
     const live = manager.api.getDocument() ?? document;
     return cloneForHost(
-      noteEditorManager.snapshotDocument(headerFooterManager.snapshotDocument(live)),
+      noteEditorManager.snapshotDocument(
+        headerFooterManager.snapshotDocument(live),
+      ),
     );
   }
 
@@ -1476,7 +1552,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     }
     docModel.value = doc;
     syncSecondaryStoryEditors();
-    if (activeNoteStory.value && !noteEditorManager.getView(activeNoteStory.value)) {
+    if (
+      activeNoteStory.value &&
+      !noteEditorManager.getView(activeNoteStory.value)
+    ) {
       activeNoteStory.value = null;
     }
   }
@@ -1558,7 +1637,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   onScopeDispose(destroy);
 
   return {
-    setEmbeddedFontFamilies: (families: ReadonlyMap<string, string> | null): void => {
+    setEmbeddedFontFamilies: (
+      families: ReadonlyMap<string, string> | null,
+    ): void => {
       if (families) {
         session.embeddedFontFamilyMap = new Map(families);
         return;

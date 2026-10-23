@@ -88,7 +88,8 @@ export function resolveFloatingTablePageX({
       anchor.horzAnchor satisfies never;
   }
   const resolvedX =
-    frameLeft + resolveFloatingTableX(anchor, justification, tableWidth, frameWidth);
+    frameLeft +
+    resolveFloatingTableX(anchor, justification, tableWidth, frameWidth);
   const maxX = Math.max(0, pageWidth - tableWidth);
   return Math.max(0, Math.min(resolvedX, maxX));
 }

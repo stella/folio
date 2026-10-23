@@ -1,5 +1,5 @@
 /**
- * Pinned regression flows from scenario-seeds.json run before the generated
+ * Pinned regression flows from the seeds directory run before the generated
  * random and collision runs. The generated seed and run counts are controlled
  * by FOLIO_SCENARIO_SEED, FOLIO_SCENARIO_FUZZ_RUNS,
  * FOLIO_SCENARIO_COLLISION_RUNS and FOLIO_SCENARIO_FUZZ_STEPS.
@@ -12,15 +12,18 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 
-import { consumerScenarioReplay, consumerScenarioReplayInputs } from "../support/replay-inputs.ts";
 import {
   failureMarker,
   logFailureMarker,
   reportScenarioFailure,
 } from "../support/failure-fingerprints.ts";
 import { describeFlow, type FlowKind, runFlow } from "../support/fuzz.ts";
-import { ENABLED_RELATIONS, relationSummary } from "../support/metamorphic.ts";
 import { KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
+import { ENABLED_RELATIONS, relationSummary } from "../support/metamorphic.ts";
+import {
+  consumerScenarioReplay,
+  consumerScenarioReplayInputs,
+} from "../support/replay-inputs.ts";
 import { PINNED_SCENARIO_FLOWS } from "../support/scenario-seeds.ts";
 
 const integer = (value: string | undefined, fallback: number): number => {
@@ -38,7 +41,12 @@ const REPORT_ONLY = process.env["FOLIO_SCENARIO_FUZZ_REPORT_ONLY"] === "1";
 
 const saveSample = async (
   bytes: Uint8Array,
-  { seed, kind, fixture, mode }: { seed: number; kind: FlowKind; fixture: string; mode: string },
+  {
+    seed,
+    kind,
+    fixture,
+    mode,
+  }: { seed: number; kind: FlowKind; fixture: string; mode: string },
 ): Promise<void> => {
   if (SAMPLE_DIR === undefined) {
     throw new Error("FOLIO_SCENARIO_SAMPLE_DIR is required to save samples");
@@ -82,12 +90,21 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
       const shouldSave = sampleIndex < SAVE_SAMPLE;
       let saved: Uint8Array | undefined;
       try {
-        ({ saved } = await runFlow(seed, STEPS, kind, { captureSaved: shouldSave }));
+        ({ saved } = await runFlow(seed, STEPS, kind, {
+          captureSaved: shouldSave,
+        }));
       } catch (error) {
-        const failure = { test: `consumer flow ${fixture} / ${mode}`, seed, repro, failure: error };
+        const failure = {
+          test: `consumer flow ${fixture} / ${mode}`,
+          seed,
+          repro,
+          failure: error,
+        };
         if (REPORT_ONLY) {
           logFailureMarker(failureMarker(failure));
-          console.warn(`report-only: ${label} run ${run} failed; replay: ${repro}`);
+          console.warn(
+            `report-only: ${label} run ${run} failed; replay: ${repro}`,
+          );
           return;
         }
         reportScenarioFailure(failure);
@@ -113,7 +130,8 @@ for (const flow of PINNED_SCENARIO_FLOWS) {
           knownFlow.steps === flow.steps &&
           (knownFlow.kind ?? "random") === flow.kind &&
           (knownFlow.generation ?? "targeted") === flow.generation &&
-          (knownFlow.relation === undefined || ENABLED_RELATIONS.has(knownFlow.relation)),
+          (knownFlow.relation === undefined ||
+            ENABLED_RELATIONS.has(knownFlow.relation)),
       )
     : undefined;
   test(
@@ -121,7 +139,9 @@ for (const flow of PINNED_SCENARIO_FLOWS) {
     known ? { skip: `${known.reason}; runs in known-issues.test.ts` } : {},
     async () => {
       try {
-        await runFlow(flow.seed, flow.steps, flow.kind, { generation: flow.generation });
+        await runFlow(flow.seed, flow.steps, flow.kind, {
+          generation: flow.generation,
+        });
       } catch (error) {
         const { fixture, mode } = describeFlow(flow.seed, flow.kind);
         const repro = consumerScenarioReplay({
@@ -144,5 +164,7 @@ for (const flow of PINNED_SCENARIO_FLOWS) {
   );
 }
 
-for (let run = 0; run < RUNS; run += 1) generatedFlowTest("random", run, SEED + run);
-for (let run = 0; run < COLLISION_RUNS; run += 1) generatedFlowTest("collisions", run, SEED + run);
+for (let run = 0; run < RUNS; run += 1)
+  generatedFlowTest("random", run, SEED + run);
+for (let run = 0; run < COLLISION_RUNS; run += 1)
+  generatedFlowTest("collisions", run, SEED + run);

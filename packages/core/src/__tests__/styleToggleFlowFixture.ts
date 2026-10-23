@@ -1,7 +1,11 @@
 import { panic } from "better-result";
 
 import type { FlowBlock, TextRun } from "../layout-engine/types";
-import type { Paragraph, StyleDefinitions, TextFormatting } from "../types/document";
+import type {
+  Paragraph,
+  StyleDefinitions,
+  TextFormatting,
+} from "../types/document";
 import { STYLE_TOGGLE_KEYS } from "../utils/textFormattingMerge";
 
 export const STYLE_TOGGLE_TEXT = "Style toggle cascade";
@@ -19,7 +23,8 @@ const ACTIVE_STYLE_TOGGLES = {
   shadow: true,
   smallCaps: true,
   strike: true,
-} as const satisfies TextFormatting & Record<(typeof STYLE_TOGGLE_KEYS)[number], true>;
+} as const satisfies TextFormatting &
+  Record<(typeof STYLE_TOGGLE_KEYS)[number], true>;
 
 export const EXPECTED_CANCELLED_STYLE_TOGGLES = {
   allCaps: false,

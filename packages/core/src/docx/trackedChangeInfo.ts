@@ -12,20 +12,35 @@ export const DATE_UTC_NAMESPACE_URI =
   "http://schemas.microsoft.com/office/word/2023/wordml/word16du";
 export const DATE_UTC_ATTRIBUTE = "w16du:dateUtc";
 
-const DATE_UTC_NAMESPACE_URIS: ReadonlySet<string> = new Set([DATE_UTC_NAMESPACE_URI]);
+const DATE_UTC_NAMESPACE_URIS: ReadonlySet<string> = new Set([
+  DATE_UTC_NAMESPACE_URI,
+]);
 
 /** Parse the metadata shared by every WordprocessingML tracked-change element. */
 export const parseTrackedChangeInfo = (node: XmlElement): TrackedChangeInfo => {
-  const rawId = getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "id");
+  const rawId = getAttributeByNamespaceUri(
+    node,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "id",
+  );
   const parsedId = rawId ? Number.parseInt(rawId, 10) : 0;
   const author = (
-    getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "author") ?? ""
+    getAttributeByNamespaceUri(
+      node,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "author",
+    ) ?? ""
   ).trim();
   const date = (
-    getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "date") ?? ""
+    getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "date") ??
+    ""
   ).trim();
   const initials = (
-    getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "initials") ?? ""
+    getAttributeByNamespaceUri(
+      node,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "initials",
+    ) ?? ""
   ).trim();
 
   const info: TrackedChangeInfo = {
@@ -39,7 +54,11 @@ export const parseTrackedChangeInfo = (node: XmlElement): TrackedChangeInfo => {
   if (initials.length > 0) {
     info.initials = initials;
   }
-  const utcDate = findAttributeByNamespaceUri(node, DATE_UTC_NAMESPACE_URIS, "dateUtc");
+  const utcDate = findAttributeByNamespaceUri(
+    node,
+    DATE_UTC_NAMESPACE_URIS,
+    "dateUtc",
+  );
   const utcDateValue = utcDate?.value.trim() ?? "";
   if (utcDate && utcDateValue.length > 0) {
     // The source prefix is scoped to the parsed part. Keep only its namespace
@@ -50,10 +69,13 @@ export const parseTrackedChangeInfo = (node: XmlElement): TrackedChangeInfo => {
 };
 
 /** Parse the shared metadata plus the optional property-change revision session. */
-export const parsePropertyChangeInfo = (node: XmlElement): PropertyChangeInfo => {
+export const parsePropertyChangeInfo = (
+  node: XmlElement,
+): PropertyChangeInfo => {
   const info = parseTrackedChangeInfo(node);
   const rsid = (
-    getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "rsid") ?? ""
+    getAttributeByNamespaceUri(node, WORDPROCESSINGML_NAMESPACE_URIS, "rsid") ??
+    ""
   ).trim();
   return rsid.length > 0 ? { ...info, rsid } : info;
 };

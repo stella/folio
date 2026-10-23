@@ -23,16 +23,16 @@
  * `--dry-run` prints the issues instead of calling `gh`.
  */
 
-import { seedFileFor } from "../test/seed-registry";
-import { $ } from "bun";
 import { TaggedError } from "better-result";
+import { $ } from "bun";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { IssueStore } from "./fuzz-issue-classes";
+import { seedFileFor } from "../test/seed-registry";
 import { parseIssueResponse } from "./fuzz-failure-issues";
+import type { IssueStore } from "./fuzz-issue-classes";
 
 export type Kind = "property" | "conformance";
 
@@ -66,7 +66,10 @@ export type ConformanceGroup = {
 
 const MAX_ISSUES = 20;
 const MAX_TEXT = 6_000;
-const LABELS: Record<Kind, { name: string; color: string; description: string }> = {
+const LABELS: Record<
+  Kind,
+  { name: string; color: string; description: string }
+> = {
   property: {
     name: "nightly-property-failure",
     color: "d93f0b",
@@ -87,12 +90,14 @@ const FAIL_LINE = /^\(fail\) (.+?)(?: \[[\d.]+m?s\])?$/;
 const GROUP_FILE = /^(?:::group::)?((?:[\w.@-]+\/)*[\w.@-]+\.test\.tsx?):$/;
 const SEED_LINE = /^\{ seed: (-?\d+), path: "([\d:]*)", endOnFailure: true \}$/;
 const ERROR_FILE = /::error file=((?:[\w.@-]+\/)*[\w.@-]+\.test\.tsx?),/;
-const FRAME_FILE = /\/(packages\/[\w.-]+\/(?:[\w.@-]+\/)*[\w.@-]+\.test\.tsx?):\d+:\d+\)?$/;
+const FRAME_FILE =
+  /\/(packages\/[\w.-]+\/(?:[\w.@-]+\/)*[\w.@-]+\.test\.tsx?):\d+:\d+\)?$/;
 /** A received violation in a conformance case's diff: `+   "[editing] undo: …",`. */
 const VIOLATION_LINE = /^\+\s+"\[([\w-]+)\] ([\w-]+):/;
 /** A conformance case: `… > shape › operation @ placement`. */
 const CASE_NAME = /(?:^| > )([^>]+?) › (.+) @ ([^@]+)$/;
-export const CONFORMANCE_FILE = "packages/core/src/__tests__/editorCommandConformance.test.ts";
+export const CONFORMANCE_FILE =
+  "packages/core/src/__tests__/editorCommandConformance.test.ts";
 const CONFORMANCE_COMMAND =
   "cd packages/core && FOLIO_CONFORMANCE=full bun test src/__tests__/editorCommandConformance.test.ts";
 
@@ -125,7 +130,8 @@ export const parseFailures = (
   let summary = false;
 
   const resolveGroup = (file: string): string => {
-    if (file.startsWith("packages/") || file.startsWith("scripts/")) return file;
+    if (file.startsWith("packages/") || file.startsWith("scripts/"))
+      return file;
     const pkg = packageOf?.(file) ?? null;
     return pkg === null ? file : `${pkg}/${file}`;
   };
@@ -161,13 +167,24 @@ export const parseFailures = (
       pending.path = seed[2] === "" ? null : (seed[2] as string);
       continue;
     }
-    if (line.startsWith("Counterexample: ") && pending.counterexample === undefined) {
+    if (
+      line.startsWith("Counterexample: ") &&
+      pending.counterexample === undefined
+    ) {
       pending.counterexample = line.slice("Counterexample: ".length);
       continue;
     }
-    if (/^error: /.test(line) && !line.startsWith("error: Property failed") && !pending.error) {
+    if (
+      /^error: /.test(line) &&
+      !line.startsWith("error: Property failed") &&
+      !pending.error
+    ) {
       const detail = [line.slice("error: ".length)];
-      for (let next = index + 1; next < lines.length && next < index + 8; next += 1) {
+      for (
+        let next = index + 1;
+        next < lines.length && next < index + 8;
+        next += 1
+      ) {
         const text = lines[next] as string;
         if (/^\s+at /.test(text) || FAIL_LINE.test(text)) break;
         detail.push(text);
@@ -193,7 +210,8 @@ export const parseFailures = (
         file,
         seed: marker?.seed ?? pending.seed ?? null,
         path: marker === null ? (pending.path ?? null) : marker.path,
-        counterexample: marker?.counterexample ?? pending.counterexample ?? null,
+        counterexample:
+          marker?.counterexample ?? pending.counterexample ?? null,
         title: marker?.test ?? null,
         replay: marker?.replay ?? null,
         error: marker?.error ?? pending.error ?? null,
@@ -209,11 +227,14 @@ export const parseFailures = (
   return [...failures.values()];
 };
 
-const shellQuote = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`;
-const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const shellQuote = (text: string): string =>
+  `'${text.replaceAll("'", `'\\''`)}'`;
+const escapeRegExp = (text: string): string =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The innermost test title of a `describe > test` name. */
-const lastSegment = (name: string): string => name.split(" > ").at(-1) as string;
+const lastSegment = (name: string): string =>
+  name.split(" > ").at(-1) as string;
 
 const packageDirOf = (file: string): string | null =>
   /^(packages\/[^/]+)\//.exec(file)?.[1] ?? null;
@@ -223,7 +244,11 @@ export const suiteReplay = (kind: Kind): string =>
   kind === "conformance" ? CONFORMANCE_COMMAND : "bun run test:property";
 
 /** The `FOLIO_CONFORMANCE_FILTER` regex that selects exactly these cases. */
-export const caseFilter = (shapes: readonly string[], operation: string, placement: string) => {
+export const caseFilter = (
+  shapes: readonly string[],
+  operation: string,
+  placement: string,
+) => {
   const shape =
     shapes.length === 1
       ? escapeRegExp(shapes[0] as string)
@@ -232,7 +257,11 @@ export const caseFilter = (shapes: readonly string[], operation: string, placeme
 };
 
 /** A replay command for a failure whose log did not carry one. */
-export const replayFor = (kind: Kind, failure: Failure, factor: number | null): string => {
+export const replayFor = (
+  kind: Kind,
+  failure: Failure,
+  factor: number | null,
+): string => {
   if (failure.replay !== null) return failure.replay;
   const pattern = shellQuote(escapeRegExp(lastSegment(failure.name)));
   if (kind === "conformance") {
@@ -254,9 +283,12 @@ export const replayFor = (kind: Kind, failure: Failure, factor: number | null): 
   }
   if (failure.file === null) return suiteReplay(kind);
   const env: string[] = [];
-  if (failure.seed !== null) env.push(`PROPERTY_TEST_SEED=${String(failure.seed)}`);
-  if (failure.path !== null) env.push(`PROPERTY_TEST_PATH=${shellQuote(failure.path)}`);
-  if (factor !== null && factor !== 1) env.push(`PROPERTY_TEST_NUM_RUNS_FACTOR=${String(factor)}`);
+  if (failure.seed !== null)
+    env.push(`PROPERTY_TEST_SEED=${String(failure.seed)}`);
+  if (failure.path !== null)
+    env.push(`PROPERTY_TEST_PATH=${shellQuote(failure.path)}`);
+  if (factor !== null && factor !== 1)
+    env.push(`PROPERTY_TEST_NUM_RUNS_FACTOR=${String(factor)}`);
   const file = failure.file;
   const pkg = packageDirOf(file);
   const cd = pkg === null ? "" : `cd ${pkg} && `;
@@ -270,7 +302,9 @@ export const replayFor = (kind: Kind, failure: Failure, factor: number | null): 
  * and mode it broke in. A failure that is not a case (a coverage test, the
  * stale-gap check) stays on its own.
  */
-export const groupConformanceFailures = (failures: readonly Failure[]): Failure[] => {
+export const groupConformanceFailures = (
+  failures: readonly Failure[],
+): Failure[] => {
   const groups = new Map<string, Failure & { group: ConformanceGroup }>();
   const rest: Failure[] = [];
   for (const failure of failures) {
@@ -279,7 +313,12 @@ export const groupConformanceFailures = (failures: readonly Failure[]): Failure[
       rest.push(failure);
       continue;
     }
-    const [, shape, operation, placement] = match as unknown as [string, string, string, string];
+    const [, shape, operation, placement] = match as unknown as [
+      string,
+      string,
+      string,
+      string,
+    ];
     const byKind = new Map<string, Set<string>>();
     for (const violation of failure.violations ?? []) {
       const [mode, kind] = violation.split(" ") as [string, string];
@@ -323,11 +362,17 @@ export const overflowFailure = (
 ): Failure => ({
   ...unparsedFailure(kind),
   name: `more failing ${kind === "conformance" ? "groups" : "tests"} than one run files`,
-  error: rest.map((failure) => `${failure.name}\n  ${replayFor(kind, failure, factor)}`).join("\n"),
+  error: rest
+    .map((failure) => `${failure.name}\n  ${replayFor(kind, failure, factor)}`)
+    .join("\n"),
 });
 
 /** The test/property-seeds/ entry that pins a property failure. */
-export const seedEntry = (failure: Failure, date: string, runUrl: string | null): string | null => {
+export const seedEntry = (
+  failure: Failure,
+  date: string,
+  runUrl: string | null,
+): string | null => {
   if (failure.seed === null || failure.file === null) return null;
   const key = failure.title ?? lastSegment(failure.name);
   const entry = {
@@ -358,7 +403,10 @@ export type Context = {
 };
 
 export const issueTitle = (kind: Kind, failure: Failure): string => {
-  const where = failure.group !== undefined || failure.file === null ? "" : `${failure.file}::`;
+  const where =
+    failure.group !== undefined || failure.file === null
+      ? ""
+      : `${failure.file}::`;
   const title = `Nightly ${kind} failure: ${where}${failure.name}`;
   if (title.length <= 240) return title;
   const key = createHash("sha256").update(title).digest("hex").slice(0, 12);
@@ -366,9 +414,15 @@ export const issueTitle = (kind: Kind, failure: Failure): string => {
 };
 
 /** The body of a new issue, or of a comment on the open one, for a failure. */
-export const issueBody = (failure: Failure, context: Context, recurrence: boolean): string => {
+export const issueBody = (
+  failure: Failure,
+  context: Context,
+  recurrence: boolean,
+): string => {
   const where = [
-    context.runUrl === null ? "the nightly run" : `[the nightly run](${context.runUrl})`,
+    context.runUrl === null
+      ? "the nightly run"
+      : `[the nightly run](${context.runUrl})`,
     context.sha === null ? null : `commit \`${context.sha.slice(0, 12)}\``,
     context.kind === "property" && context.factor !== null
       ? `factor ${String(context.factor)}`
@@ -381,7 +435,10 @@ export const issueBody = (failure: Failure, context: Context, recurrence: boolea
       ? `Failed again in ${where}.`
       : `${failure.seed === null ? "A test" : "A property"} failed in ${where}.`,
     ...(failure.pinned
-      ? ["", "This is a seed `test/property-seeds/` already pins: a fixed failure came back."]
+      ? [
+          "",
+          "This is a seed `test/property-seeds/` already pins: a fixed failure came back.",
+        ]
       : []),
     "",
     ...(failure.group === undefined
@@ -431,25 +488,33 @@ export const unparsedFailure = (kind: Kind): Failure => ({
   counterexample: null,
   title: null,
   replay: suiteReplay(kind),
-  error: "The job failed before or outside a test (setup, crash or timeout); see the run log.",
+  error:
+    "The job failed before or outside a test (setup, crash or timeout); see the run log.",
   pinned: false,
 });
 
 const REPORT_MARKER = "<!-- standing-conformance -->";
 const REPORT_START = "<!-- conformance-results:start -->";
 const REPORT_END = "<!-- conformance-results:end -->";
-class StandingConformanceIssueError extends TaggedError("StandingConformanceIssueError")<{
+class StandingConformanceIssueError extends TaggedError(
+  "StandingConformanceIssueError",
+)<{
   message: string;
 }> {}
 const MAX_BODY_LENGTH = 48_000;
 
 /** Latest-run evidence stays bounded; the linked run retains the complete log. */
-export const conformanceReportBody = (failures: readonly Failure[], context: Context): string => {
+export const conformanceReportBody = (
+  failures: readonly Failure[],
+  context: Context,
+): string => {
   const sections = [
     REPORT_START,
     "This standing issue tracks the latest failed nightly conformance run.",
     `Failure groups: ${failures.length}.`,
-    context.runUrl === null ? `Date: ${context.date}.` : `Latest run: ${context.runUrl}`,
+    context.runUrl === null
+      ? `Date: ${context.date}.`
+      : `Latest run: ${context.runUrl}`,
     context.sha === null ? "" : `Commit: ${context.sha}`,
   ];
   let length = sections.join("\n\n").length;
@@ -491,7 +556,9 @@ export const fileConformanceReport = async ({
   }
   const existing = candidates.at(0);
   if (existing === undefined)
-    throw new StandingConformanceIssueError({ message: "Standing conformance issue missing." });
+    throw new StandingConformanceIssueError({
+      message: "Standing conformance issue missing.",
+    });
   const original = existing.body ?? "";
   const report = conformanceReportBody(failures, context);
   const start = original.indexOf(REPORT_START);
@@ -504,7 +571,9 @@ export const fileConformanceReport = async ({
   // Compare reporter-owned metadata so owner notes cannot change run ordering.
   const previousReport = start < 0 ? "" : original.slice(start, end);
   const previousRun = previousReport
-    .match(/^Latest run: https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)$/mu)
+    .match(
+      /^Latest run: https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)$/mu,
+    )
     ?.at(1);
   const incomingRun = context.runUrl
     ?.match(/^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)$/u)
@@ -522,7 +591,10 @@ export const fileConformanceReport = async ({
   if (existing.body !== body) await store.edit(existing.number, body);
   if (existing.state === "closed") {
     const run = context.runUrl ?? `the run of ${context.date}`;
-    await store.reopen(existing.number, `Reopening: conformance failures recurred in ${run}.`);
+    await store.reopen(
+      existing.number,
+      `Reopening: conformance failures recurred in ${run}.`,
+    );
   }
 };
 
@@ -538,7 +610,8 @@ const parseArgs = (argv: readonly string[]) => {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const value = (): string => argv[++index] ?? "";
-    if (arg === "--kind") options.kind = value() === "conformance" ? "conformance" : "property";
+    if (arg === "--kind")
+      options.kind = value() === "conformance" ? "conformance" : "property";
     else if (arg === "--log") options.log = value();
     else if (arg === "--run-url") options.runUrl = value() || null;
     else if (arg === "--sha") options.sha = value() || null;
@@ -568,10 +641,14 @@ const main = async (): Promise<void> => {
   const options = parseArgs(process.argv.slice(2));
   const root = path.resolve(import.meta.dir, "..");
   const log =
-    options.log !== "" && existsSync(options.log) ? readFileSync(options.log, "utf8") : "";
+    options.log !== "" && existsSync(options.log)
+      ? readFileSync(options.log, "utf8")
+      : "";
   const found = parseFailures(log, packageOfFile(root));
-  const parsed = options.kind === "conformance" ? groupConformanceFailures(found) : found;
-  const failures = parsed.length === 0 ? [unparsedFailure(options.kind)] : parsed;
+  const parsed =
+    options.kind === "conformance" ? groupConformanceFailures(found) : found;
+  const failures =
+    parsed.length === 0 ? [unparsedFailure(options.kind)] : parsed;
   const context: Context = {
     kind: options.kind,
     runUrl: options.runUrl,
@@ -582,7 +659,9 @@ const main = async (): Promise<void> => {
   const label = LABELS[options.kind];
   const shown = failures.slice(0, MAX_ISSUES);
   if (failures.length > MAX_ISSUES) {
-    shown.push(overflowFailure(options.kind, failures.slice(MAX_ISSUES), options.factor));
+    shown.push(
+      overflowFailure(options.kind, failures.slice(MAX_ISSUES), options.factor),
+    );
   }
 
   if (options.kind === "conformance" && options.dryRun) {
@@ -604,12 +683,17 @@ const main = async (): Promise<void> => {
     .nothrow();
   if (options.kind === "conformance") {
     const endpoint = "repos/{owner}/{repo}/issues/1404";
-    const bodyFile = path.join(tmpdir(), `nightly-conformance-${String(process.pid)}.md`);
+    const bodyFile = path.join(
+      tmpdir(),
+      `nightly-conformance-${String(process.pid)}.md`,
+    );
     await fileConformanceReport({
       failures,
       context,
       store: {
-        list: async () => [parseIssueResponse(JSON.parse(await $`gh api ${endpoint}`.text()))],
+        list: async () => [
+          parseIssueResponse(JSON.parse(await $`gh api ${endpoint}`.text())),
+        ],
         edit: async (number, body) => {
           writeFileSync(bodyFile, body);
           await $`gh issue edit ${String(number)} --body-file ${bodyFile}`.quiet();
@@ -622,7 +706,9 @@ const main = async (): Promise<void> => {
     return;
   }
   const issueEndpoint = `repos/{owner}/{repo}/issues?state=open&labels=${label.name}&per_page=100`;
-  const openPages = JSON.parse(await $`gh api --paginate --slurp ${issueEndpoint}`.text()) as {
+  const openPages = JSON.parse(
+    await $`gh api --paginate --slurp ${issueEndpoint}`.text(),
+  ) as {
     number: number;
     title: string;
   }[][];
@@ -630,8 +716,14 @@ const main = async (): Promise<void> => {
   for (const failure of shown) {
     const title = issueTitle(options.kind, failure);
     const existing = open.find((issue) => issue.title === title);
-    const bodyFile = path.join(tmpdir(), `nightly-failure-${String(process.pid)}.md`);
-    writeFileSync(bodyFile, issueBody(failure, context, existing !== undefined));
+    const bodyFile = path.join(
+      tmpdir(),
+      `nightly-failure-${String(process.pid)}.md`,
+    );
+    writeFileSync(
+      bodyFile,
+      issueBody(failure, context, existing !== undefined),
+    );
     if (existing === undefined) {
       const url = (
         await $`gh issue create --title ${title} --label ${label.name} --body-file ${bodyFile}`.text()

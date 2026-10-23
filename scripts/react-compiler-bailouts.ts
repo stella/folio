@@ -62,7 +62,9 @@ for (const file of files) {
       code: false,
       ast: false,
       parserOpts: { plugins: ["typescript", "jsx"] },
-      plugins: [[reactCompiler, { target: "18", panicThreshold: "none", logger }]],
+      plugins: [
+        [reactCompiler, { target: "18", panicThreshold: "none", logger }],
+      ],
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -82,21 +84,28 @@ const current = Object.fromEntries(
 
 if (mode === "write") {
   writeFileSync(BASELINE_PATH, `${JSON.stringify(current, null, 2)}\n`);
-  console.log(`Wrote ${Object.keys(current).length} bailout files to ${BASELINE_PATH}`);
+  console.log(
+    `Wrote ${Object.keys(current).length} bailout files to ${BASELINE_PATH}`,
+  );
   process.exit(0);
 }
 
 if (mode === "report") {
-  for (const [file, { reasons }] of Array.from(bailouts.entries()).toSorted(([left], [right]) =>
-    left.localeCompare(right),
+  for (const [file, { reasons }] of Array.from(bailouts.entries()).toSorted(
+    ([left], [right]) => left.localeCompare(right),
   )) {
     console.log(`${file}\t${Array.from(reasons).join(", ")}`);
   }
-  console.log(`\nscanned ${files.length} files; ${bailouts.size} contain compiler bailouts`);
+  console.log(
+    `\nscanned ${files.length} files; ${bailouts.size} contain compiler bailouts`,
+  );
   process.exit(0);
 }
 
-const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<string, number>;
+const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<
+  string,
+  number
+>;
 const failures: string[] = [];
 
 for (const [file, memos] of Object.entries(current)) {
@@ -105,7 +114,9 @@ for (const [file, memos] of Object.entries(current)) {
     continue;
   }
   if (memos < baseline[file]!) {
-    failures.push(`${file}: manual memoization decreased from ${baseline[file]} to ${memos}`);
+    failures.push(
+      `${file}: manual memoization decreased from ${baseline[file]} to ${memos}`,
+    );
   }
 }
 

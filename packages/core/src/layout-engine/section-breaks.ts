@@ -9,7 +9,7 @@ import { panic } from "better-result";
 
 import type { SectionStart } from "@stll/docx-core/model";
 
-import type { SectionBreakBlock, PageMargins, ColumnLayout } from "./types";
+import type { ColumnLayout, PageMargins, SectionBreakBlock } from "./types";
 
 /**
  * State tracking for sections during layout.
@@ -77,7 +77,9 @@ export const DEFAULT_SECTION_BREAK_TYPE = "nextPage" satisfies NonNullable<
  * `ST_SectionMark` is not, so it panics rather than resolving to the same
  * default and hiding whichever producer invented it.
  */
-export function normalizeSectionBreakType(sectionStart: SectionBreakBlock["type"]): SectionStart {
+export function normalizeSectionBreakType(
+  sectionStart: SectionBreakBlock["type"],
+): SectionStart {
   switch (sectionStart) {
     case undefined:
       return DEFAULT_SECTION_BREAK_TYPE;
@@ -89,7 +91,9 @@ export function normalizeSectionBreakType(sectionStart: SectionBreakBlock["type"
       return sectionStart;
     default:
       sectionStart satisfies never;
-      return panic(`Section break: "${String(sectionStart)}" is not an ST_SectionMark member`);
+      return panic(
+        `Section break: "${String(sectionStart)}" is not an ST_SectionMark member`,
+      );
   }
 }
 
@@ -115,12 +119,17 @@ export type SectionStartAdvance = (typeof SECTION_START_ADVANCE)[SectionStart];
 /** The disposition of the section starting at a boundary. Total over `ST_SectionMark`. */
 export const sectionStartAdvanceOf = (
   sectionStart: SectionBreakBlock["type"],
-): SectionStartAdvance => SECTION_START_ADVANCE[normalizeSectionBreakType(sectionStart)];
+): SectionStartAdvance =>
+  SECTION_START_ADVANCE[normalizeSectionBreakType(sectionStart)];
 
-const sameTrack = (left: readonly number[] | undefined, right: readonly number[] | undefined) =>
+const sameTrack = (
+  left: readonly number[] | undefined,
+  right: readonly number[] | undefined,
+) =>
   left === undefined || right === undefined
     ? left === right
-    : left.length === right.length && left.every((value, index) => value === right[index]);
+    : left.length === right.length &&
+      left.every((value, index) => value === right[index]);
 
 /**
  * Whether a section start can continue into the column region the outgoing
@@ -196,7 +205,10 @@ function isColumnsChanging(
   activeColumns: ColumnLayout,
 ): boolean {
   if (newColumns) {
-    return newColumns.count !== activeColumns.count || newColumns.gap !== activeColumns.gap;
+    return (
+      newColumns.count !== activeColumns.count ||
+      newColumns.gap !== activeColumns.gap
+    );
   }
   // No columns specified = reset to single column (DOCX default)
   // This is only a change if currently in multi-column layout
@@ -207,7 +219,9 @@ function isColumnsChanging(
  * Get column configuration, defaulting to single column if not specified.
  */
 function getColumnConfig(columns?: ColumnLayout): ColumnLayout {
-  return columns ? { count: columns.count, gap: columns.gap } : { ...DEFAULT_COLUMNS };
+  return columns
+    ? { count: columns.count, gap: columns.gap }
+    : { ...DEFAULT_COLUMNS };
 }
 
 /**

@@ -12,7 +12,10 @@ export type JsonSchema = { readonly [keyword: string]: unknown };
 export type ToolAccess = "read" | "write";
 
 /** One problem with one input value. */
-export type ToolInputIssue = { readonly path: string; readonly message: string };
+export type ToolInputIssue = {
+  readonly path: string;
+  readonly message: string;
+};
 
 /**
  * The one error shape every tool answers with. `code` is machine-readable,
@@ -64,7 +67,10 @@ export type ToolDefinition<Context> = {
    * what a call may do (overwrite, repack) must be JSON `true` to count.
    */
   readonly exactProperties?: readonly string[];
-  readonly run: (args: Record<string, unknown>, context: Context) => Promise<ToolOutcome>;
+  readonly run: (
+    args: Record<string, unknown>,
+    context: Context,
+  ) => Promise<ToolOutcome>;
 };
 
 /** A tool as `tools/list` advertises it. */
@@ -72,7 +78,11 @@ export type ListedTool = {
   name: string;
   description: string;
   inputSchema: { type: "object"; [keyword: string]: unknown };
-  annotations: { readOnlyHint: boolean; destructiveHint: boolean; openWorldHint: boolean };
+  annotations: {
+    readOnlyHint: boolean;
+    destructiveHint: boolean;
+    openWorldHint: boolean;
+  };
 };
 
 /** A `tools/call` answer: a JSON payload or `{ error }`, as text. */

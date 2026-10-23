@@ -1,4 +1,4 @@
-import { useLayoutEffect, useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 
 import {
@@ -12,6 +12,7 @@ import type {
   HostShortcut,
   KeyboardShortcutScope,
 } from "@stll/folio-core/managers/editorShortcuts";
+
 import type { PagedEditorRef } from "../../paged-editor/PagedEditor";
 import { readFindSelectionSeed } from "../dialogs/findReplaceSelectionSeed";
 import type { UseFindReplaceReturn } from "../dialogs/useFindReplace";
@@ -69,9 +70,21 @@ export function useKeyboardShortcuts({
   // Keep callbacks and roots fresh without re-attaching the listener on every
   // change to `findReplace.state` (which updates on every search keystroke) or
   // on a fresh `roots` array identity.
-  const callbacksRef = useRef({ findReplace, tableSelection, onDirectPrint, hostShortcuts, roots });
+  const callbacksRef = useRef({
+    findReplace,
+    tableSelection,
+    onDirectPrint,
+    hostShortcuts,
+    roots,
+  });
   useLayoutEffect(() => {
-    callbacksRef.current = { findReplace, tableSelection, onDirectPrint, hostShortcuts, roots };
+    callbacksRef.current = {
+      findReplace,
+      tableSelection,
+      onDirectPrint,
+      hostShortcuts,
+      roots,
+    };
   });
 
   useEffect(() => {

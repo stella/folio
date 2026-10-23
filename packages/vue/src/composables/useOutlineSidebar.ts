@@ -6,9 +6,10 @@
  * "click-outside-sidebar clears active item" mouse-down handler.
  */
 
-import type { Ref } from "vue";
-import type { EditorView } from "prosemirror-view";
 import { TextSelection } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
+import type { Ref } from "vue";
+
 import { getDocumentBuiltInStyles } from "@stll/folio-core/prosemirror";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
@@ -67,7 +68,9 @@ export function useOutlineSidebar(opts: UseOutlineSidebarOptions) {
     if (!view) return;
     // Put the caret on the heading in the hidden PM (so typing continues from
     // there), then scroll the VISIBLE pages — not the hidden PM — to it.
-    const $pos = view.state.doc.resolve(Math.min(pmPos + 1, view.state.doc.content.size));
+    const $pos = view.state.doc.resolve(
+      Math.min(pmPos + 1, view.state.doc.content.size),
+    );
     const sel = TextSelection.near($pos);
     view.dispatch(view.state.tr.setSelection(sel));
     opts.scrollToVisiblePosition(pmPos);

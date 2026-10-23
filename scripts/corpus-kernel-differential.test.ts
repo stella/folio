@@ -1,24 +1,24 @@
+import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
-import { describe, expect, test } from "bun:test";
-import { panic } from "better-result";
 
+import { parseDocx } from "@stll/folio-core/docx/parser";
+import type { BlockContent } from "@stll/folio-core/types/document";
+
+import { BODY_TEXT_OUTLINE_LEVEL } from "../packages/docx-core/src/model/outlineLevel";
 import {
   type DocxProjectionFactSet,
   type DocxProjectionFormattingFamily,
   type DocxProjectionFormattingFamilyStatus,
   type DocxProjectionOutlineLevelFact,
   type DocxProjectionParagraph,
-  type DocxProjectionWire,
   docxProjectionSchemaVersion,
+  type DocxProjectionWire,
   initializeDocxProjection,
-  projectMainDocumentXml,
   projectCompressedDocx,
+  projectMainDocumentXml,
 } from "../packages/docx-core/src/projection";
-import { parseDocx } from "@stll/folio-core/docx/parser";
-import type { BlockContent } from "@stll/folio-core/types/document";
-import { BODY_TEXT_OUTLINE_LEVEL } from "../packages/docx-core/src/model/outlineLevel";
-
 import { DEFAULT_INVARIANT_BUDGET_MS } from "./lib/corpus-invariants/contract";
 import {
   kernelDifferentialFailures,
@@ -27,14 +27,20 @@ import {
   typeScriptDocumentFacts,
 } from "./lib/corpus-invariants/kernel-differential";
 
-const UNKNOWN_FACTS = ["known", []] as const satisfies DocxProjectionFactSet<never>;
+const UNKNOWN_FACTS = [
+  "known",
+  [],
+] as const satisfies DocxProjectionFactSet<never>;
 
 const KNOWN_FORMATTING = {
   bold: ["known"],
   highlight: ["known"],
   superscript: ["known"],
   alignment: ["known"],
-} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
+} as const satisfies Record<
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus
+>;
 
 type ProjectionOptions = {
   paragraphs: readonly DocxProjectionParagraph[];
@@ -43,7 +49,10 @@ type ProjectionOptions = {
 
 await initializeDocxProjection({
   wasm: await readFile(
-    new URL("../packages/docx-core/src/generated/docx_kernel_bg.wasm", import.meta.url),
+    new URL(
+      "../packages/docx-core/src/generated/docx_kernel_bg.wasm",
+      import.meta.url,
+    ),
   ),
 });
 
@@ -95,7 +104,10 @@ const typeScriptParagraph = (
   outlineLevel: number | null = null,
 ): TypeScriptDocumentFacts["paragraphs"][number] => ({ styleId, outlineLevel });
 
-const messages = (wire: DocxProjectionWire, facts: TypeScriptDocumentFacts): string[] =>
+const messages = (
+  wire: DocxProjectionWire,
+  facts: TypeScriptDocumentFacts,
+): string[] =>
   kernelDifferentialFailures(wire, facts).map(({ message }) => message);
 
 describe("typeScriptDocumentFacts", () => {
@@ -110,7 +122,13 @@ describe("typeScriptDocumentFacts", () => {
             cells: [
               {
                 type: "tableCell",
-                content: [{ type: "paragraph", content: [], formatting: { styleId: "Inside" } }],
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [],
+                    formatting: { styleId: "Inside" },
+                  },
+                ],
               },
             ],
           },
@@ -119,11 +137,9 @@ describe("typeScriptDocumentFacts", () => {
       { type: "paragraph", content: [], formatting: { styleId: "After" } },
     ] satisfies BlockContent[];
 
-    expect(typeScriptDocumentFacts(blocks).paragraphs.map(({ styleId }) => styleId)).toEqual([
-      "Before",
-      "Inside",
-      "After",
-    ]);
+    expect(
+      typeScriptDocumentFacts(blocks).paragraphs.map(({ styleId }) => styleId),
+    ).toEqual(["Before", "Inside", "After"]);
   });
 
   test("descends into a block content control, which the kernel treats as transparent", () => {
@@ -131,11 +147,19 @@ describe("typeScriptDocumentFacts", () => {
       {
         type: "blockSdt",
         properties: { sdtType: "richText" },
-        content: [{ type: "paragraph", content: [], formatting: { styleId: "Controlled" } }],
+        content: [
+          {
+            type: "paragraph",
+            content: [],
+            formatting: { styleId: "Controlled" },
+          },
+        ],
       },
     ] satisfies BlockContent[];
 
-    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([typeScriptParagraph("Controlled")]);
+    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([
+      typeScriptParagraph("Controlled"),
+    ]);
   });
 
   test("counts paragraphs inside block custom XML", () => {
@@ -144,11 +168,19 @@ describe("typeScriptDocumentFacts", () => {
         type: "blockCustomXml",
         openingXml: '<w:customXml w:element="clause">',
         closingXml: "</w:customXml>",
-        content: [{ type: "paragraph", content: [], formatting: { styleId: "Wrapped" } }],
+        content: [
+          {
+            type: "paragraph",
+            content: [],
+            formatting: { styleId: "Wrapped" },
+          },
+        ],
       },
     ] satisfies BlockContent[];
 
-    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([typeScriptParagraph("Wrapped")]);
+    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([
+      typeScriptParagraph("Wrapped"),
+    ]);
   });
 
   test("numbers a nested table after its parent, matching the kernel's w:tbl counter", () => {
@@ -178,9 +210,13 @@ describe("typeScriptDocumentFacts", () => {
   });
 
   test("reports an absent style id and outline level as none, not as zero", () => {
-    const blocks = [{ type: "paragraph", content: [] }] satisfies BlockContent[];
+    const blocks = [
+      { type: "paragraph", content: [] },
+    ] satisfies BlockContent[];
 
-    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([typeScriptParagraph(null, null)]);
+    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([
+      typeScriptParagraph(null, null),
+    ]);
   });
 
   test("projects the body-text outline sentinel into the kernel's numeric terms", () => {
@@ -192,13 +228,17 @@ describe("typeScriptDocumentFacts", () => {
       },
     ] satisfies BlockContent[];
 
-    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([typeScriptParagraph(null, 9)]);
+    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([
+      typeScriptParagraph(null, 9),
+    ]);
   });
 });
 
 describe("kernelDifferentialFailures: paragraph counts", () => {
   test("claims nothing when the two walks disagree on how many paragraphs exist", () => {
-    const wire = projection({ paragraphs: [kernelParagraph({ ordinal: 0, styleId: "A" })] });
+    const wire = projection({
+      paragraphs: [kernelParagraph({ ordinal: 0, styleId: "A" })],
+    });
 
     expect(
       messages(wire, {
@@ -211,35 +251,54 @@ describe("kernelDifferentialFailures: paragraph counts", () => {
 
 describe("kernelDifferentialFailures: style ids", () => {
   test("says nothing when both read the same w:pStyle", () => {
-    const wire = projection({ paragraphs: [kernelParagraph({ ordinal: 0, styleId: "Heading1" })] });
+    const wire = projection({
+      paragraphs: [kernelParagraph({ ordinal: 0, styleId: "Heading1" })],
+    });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph("Heading1")], tables: [] })).toEqual(
-      [],
-    );
+    expect(
+      messages(wire, {
+        paragraphs: [typeScriptParagraph("Heading1")],
+        tables: [],
+      }),
+    ).toEqual([]);
   });
 
   test("classifies the kernel reading no style where TypeScript read one", () => {
     const wire = projection({ paragraphs: [kernelParagraph({ ordinal: 0 })] });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph("Heading1")], tables: [] })).toEqual([
+    expect(
+      messages(wire, {
+        paragraphs: [typeScriptParagraph("Heading1")],
+        tables: [],
+      }),
+    ).toEqual([
       "per-paragraph style id: the kernel reports none where TypeScript reports one",
     ]);
   });
 
   test("classifies the opposite direction separately", () => {
-    const wire = projection({ paragraphs: [kernelParagraph({ ordinal: 0, styleId: "Heading1" })] });
+    const wire = projection({
+      paragraphs: [kernelParagraph({ ordinal: 0, styleId: "Heading1" })],
+    });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph(null)], tables: [] })).toEqual([
+    expect(
+      messages(wire, { paragraphs: [typeScriptParagraph(null)], tables: [] }),
+    ).toEqual([
       "per-paragraph style id: TypeScript reports none where the kernel reports one",
     ]);
   });
 
   test("reports a plain disagreement without naming either style", () => {
-    const wire = projection({ paragraphs: [kernelParagraph({ ordinal: 0, styleId: "Heading1" })] });
+    const wire = projection({
+      paragraphs: [kernelParagraph({ ordinal: 0, styleId: "Heading1" })],
+    });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph("Heading2")], tables: [] })).toEqual([
-      "per-paragraph style id disagrees",
-    ]);
+    expect(
+      messages(wire, {
+        paragraphs: [typeScriptParagraph("Heading2")],
+        tables: [],
+      }),
+    ).toEqual(["per-paragraph style id disagrees"]);
   });
 
   test("reports one defect once, however many paragraphs carry it", () => {
@@ -253,7 +312,11 @@ describe("kernelDifferentialFailures: style ids", () => {
 
     expect(
       messages(wire, {
-        paragraphs: [typeScriptParagraph("X"), typeScriptParagraph("Y"), typeScriptParagraph("Z")],
+        paragraphs: [
+          typeScriptParagraph("X"),
+          typeScriptParagraph("Y"),
+          typeScriptParagraph("Z"),
+        ],
         tables: [],
       }),
     ).toEqual(["per-paragraph style id disagrees"]);
@@ -267,7 +330,12 @@ describe("kernelDifferentialFailures: outline levels", () => {
       outlineLevels: ["known", [[0, 3]]],
     });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph(null, 3)], tables: [] })).toEqual([]);
+    expect(
+      messages(wire, {
+        paragraphs: [typeScriptParagraph(null, 3)],
+        tables: [],
+      }),
+    ).toEqual([]);
   });
 
   test("reports a direct level the kernel resolved to something else", () => {
@@ -276,15 +344,23 @@ describe("kernelDifferentialFailures: outline levels", () => {
       outlineLevels: ["known", [[0, 1]]],
     });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph(null, 3)], tables: [] })).toEqual([
-      "direct outline level disagrees",
-    ]);
+    expect(
+      messages(wire, {
+        paragraphs: [typeScriptParagraph(null, 3)],
+        tables: [],
+      }),
+    ).toEqual(["direct outline level disagrees"]);
   });
 
   test("reports a direct level the kernel gave no fact for", () => {
     const wire = projection({ paragraphs: [kernelParagraph({ ordinal: 0 })] });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph(null, 3)], tables: [] })).toEqual([
+    expect(
+      messages(wire, {
+        paragraphs: [typeScriptParagraph(null, 3)],
+        tables: [],
+      }),
+    ).toEqual([
       "direct outline level: the kernel reports none where TypeScript reports one",
     ]);
   });
@@ -295,9 +371,12 @@ describe("kernelDifferentialFailures: outline levels", () => {
       outlineLevels: ["known", [[0, 2]]],
     });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph(null, null)], tables: [] })).toEqual(
-      [],
-    );
+    expect(
+      messages(wire, {
+        paragraphs: [typeScriptParagraph(null, null)],
+        tables: [],
+      }),
+    ).toEqual([]);
   });
 
   test("treats an unknown family as the kernel declining to claim completeness", () => {
@@ -306,7 +385,12 @@ describe("kernelDifferentialFailures: outline levels", () => {
       outlineLevels: ["unknown", "unsupported-styles"],
     });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph(null, 3)], tables: [] })).toEqual([]);
+    expect(
+      messages(wire, {
+        paragraphs: [typeScriptParagraph(null, 3)],
+        tables: [],
+      }),
+    ).toEqual([]);
   });
 
   test("compares an empty known family, which is authoritative negative evidence", () => {
@@ -315,14 +399,21 @@ describe("kernelDifferentialFailures: outline levels", () => {
       outlineLevels: ["known", []],
     });
 
-    expect(messages(wire, { paragraphs: [typeScriptParagraph(null, 0)], tables: [] })).toEqual([
+    expect(
+      messages(wire, {
+        paragraphs: [typeScriptParagraph(null, 0)],
+        tables: [],
+      }),
+    ).toEqual([
       "direct outline level: the kernel reports none where TypeScript reports one",
     ]);
   });
 });
 
 describe("kernelDifferentialFailures: table structure", () => {
-  const inTable = (table: readonly [string, number, number]): DocxProjectionWire =>
+  const inTable = (
+    table: readonly [string, number, number],
+  ): DocxProjectionWire =>
     projection({ paragraphs: [kernelParagraph({ ordinal: 0, table })] });
 
   test("says nothing when the coordinate lies inside the modelled table", () => {
@@ -340,7 +431,9 @@ describe("kernelDifferentialFailures: table structure", () => {
         paragraphs: [typeScriptParagraph()],
         tables: [{ cellsPerRow: [1] }],
       }),
-    ).toEqual(["table structure: the kernel reports a table the TypeScript model lacks"]);
+    ).toEqual([
+      "table structure: the kernel reports a table the TypeScript model lacks",
+    ]);
   });
 
   test("reports a row the TypeScript model does not have", () => {
@@ -349,7 +442,9 @@ describe("kernelDifferentialFailures: table structure", () => {
         paragraphs: [typeScriptParagraph()],
         tables: [{ cellsPerRow: [1, 1] }],
       }),
-    ).toEqual(["table structure: the kernel reports a row the TypeScript model lacks"]);
+    ).toEqual([
+      "table structure: the kernel reports a row the TypeScript model lacks",
+    ]);
   });
 
   test("reports a cell the TypeScript model does not have", () => {
@@ -358,7 +453,9 @@ describe("kernelDifferentialFailures: table structure", () => {
         paragraphs: [typeScriptParagraph()],
         tables: [{ cellsPerRow: [2] }],
       }),
-    ).toEqual(["table structure: the kernel reports a cell the TypeScript model lacks"]);
+    ).toEqual([
+      "table structure: the kernel reports a cell the TypeScript model lacks",
+    ]);
   });
 
   test("accepts a row folio holds and the kernel never observed a paragraph in", () => {
@@ -380,7 +477,9 @@ describe("kernelDifferentialFailures: table structure", () => {
   });
 });
 
-const packageFromDocumentXml = async (documentXml: string): Promise<Uint8Array> => {
+const packageFromDocumentXml = async (
+  documentXml: string,
+): Promise<Uint8Array> => {
   const archive = new JSZip();
   archive.file("word/document.xml", documentXml);
   return archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
@@ -417,7 +516,10 @@ describe("runKernelDifferentialInvariant", () => {
     ) as ArrayBuffer;
     await initializeDocxProjection({
       wasm: await readFile(
-        new URL("../packages/docx-core/src/generated/docx_kernel_bg.wasm", import.meta.url),
+        new URL(
+          "../packages/docx-core/src/generated/docx_kernel_bg.wasm",
+          import.meta.url,
+        ),
       ),
     });
 

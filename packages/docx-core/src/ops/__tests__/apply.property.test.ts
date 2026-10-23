@@ -1,7 +1,4 @@
-import {
-  assertOutsideRunReviewCoverage,
-  resolvePendingRunFormatting,
-} from "./runPropertyReviewOracle";
+import { panic } from "better-result";
 /**
  * The laws every direct operation keeps, over synthetic documents built from
  * the model (tracked operations: `review.property.test.ts`).
@@ -25,19 +22,17 @@ import {
  * 5. **Offsets.** Each operation changes the paragraph's logical text and run
  *    properties exactly as its definition says.
  */
-
-import { assertExactModel } from "../../../../../test/exactModel";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
 
+import { assertExactModel } from "../../../../../test/exactModel";
 import {
   assertProperty,
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
-import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
 import { projectReview } from "../../../../../test/reviewProjection";
+import { finalizeParagraphFormatting } from "../../model/canonical";
 import type {
   BlockContent,
   Document,
@@ -46,31 +41,49 @@ import type {
   SectionProperties,
   TextFormatting,
 } from "../../model/document";
-import { finalizeParagraphFormatting } from "../../model/canonical";
-import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "../apply";
 import { sameBlockList, storyBody, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
-import { paragraphIdsIn, identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
-import { sameRunFormatting } from "../inline";
-import { compareGaps, isCommentAnchor, leafSpans, zeroWidthLeavesAt } from "../leaves";
-import { packageResourcesOf, packageResourcesOpOf } from "../packageResources";
 import {
   allocateEditorIntentIds,
   compileEditorIntent,
+  type EditorIntent,
   editorParagraphGroups,
   physicalPositionAtEditorOffset,
-  type EditorIntent,
 } from "../editorIntent";
+import {
+  IDENTITY_SPACES,
+  identityKeysIn,
+  packageIdentityKeys,
+  paragraphIdsIn,
+} from "../ids";
+import { sameRunFormatting } from "../inline";
+import {
+  compareGaps,
+  isCommentAnchor,
+  leafSpans,
+  zeroWidthLeavesAt,
+} from "../leaves";
+import { removedNoteStories } from "../noteMarks";
 import {
   childrenOf,
   isInlineContainer,
   isRemovedRevision,
-  paragraphLogicalText,
   paragraphLength,
+  paragraphLogicalText,
   runContentWidth,
 } from "../offsets";
+import { packageResourcesOf, packageResourcesOpOf } from "../packageResources";
 import { applyFormattingPatch } from "../patch";
-import { DOCUMENT_OP_REFUSAL_REASONS, type DocumentOpRefusalReason } from "../refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  type DocumentOpRefusalReason,
+} from "../refusal";
+import { findStoryBody } from "../stories";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -84,20 +97,33 @@ import {
   documentArbitrary,
   GENERATED_OP_KINDS,
   independentCopy,
-  type OpSeed,
   opFor,
+  type OpSeed,
   opSeedArbitrary,
 } from "./documentArbitraries";
+import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
+import {
+  assertOutsideRunReviewCoverage,
+  resolvePendingRunFormatting,
+} from "./runPropertyReviewOracle";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
-const expectCompactIntentIds = (document: Document, ops: readonly DocumentOp[]): void => {
+const expectCompactIntentIds = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): void => {
   let current = document;
   for (const op of ops) {
     const applied = applyDocumentOp(current, op).unwrap();
     if ("newIds" in op && op.newIds !== undefined) {
-      const changed = new Set([...applied.touched.modified, ...applied.touched.inserted]);
-      const records = storyParagraphs(storyBody(applied.document, OP_STORIES.MAIN))
+      const changed = new Set([
+        ...applied.touched.modified,
+        ...applied.touched.inserted,
+      ]);
+      const records = storyParagraphs(
+        storyBody(applied.document, OP_STORIES.MAIN),
+      )
         .filter(({ paragraph }) => changed.has(paragraph.paraId ?? ""))
         .map(({ paragraph }) => paragraph);
       const identities = new Set(identityKeysIn(records));
@@ -155,7 +181,12 @@ const INVERSE_KINDS = {
   removeNote: ["restoreStoryParts"],
   setSectionProps: ["restoreStoryParts"],
   restoreStoryParts: ["restoreStoryParts"],
-  deleteBlocks: ["insertBlocks", "replaceBlocks", "replaceInline", "setParagraphReview"],
+  deleteBlocks: [
+    "insertBlocks",
+    "replaceBlocks",
+    "replaceInline",
+    "setParagraphReview",
+  ],
   insertBlocks: ["replaceBlocks"],
   insertTable: ["setContainerBlocks"],
   deleteTable: ["setContainerBlocks", "replaceInline", "setParagraphReview"],
@@ -163,19 +194,34 @@ const INVERSE_KINDS = {
   insertRow: ["setTableRows"],
   deleteRow: ["setTableRows", "replaceInline", "setParagraphReview"],
   setTableRows: ["setTableRows"],
-  insertText: ["deleteRange"],
-  insertContent: ["deleteRange"],
-  deleteRange: ["insertContent"],
-  splitInline: ["joinInline"],
-  joinInline: ["splitInline"],
+  insertText: ["deleteRange", "restoreStoryParts"],
+  insertContent: ["deleteRange", "restoreStoryParts"],
+  deleteRange: ["insertContent", "restoreStoryParts"],
+  splitInline: ["joinInline", "restoreStoryParts"],
+  joinInline: ["splitInline", "restoreStoryParts"],
   setRunProps: ["setRunProps"],
   setParagraphProps: ["setParagraphProps"],
-  splitBlock: ["joinBlocks", "replaceInline", "setParagraphReview"],
-  joinBlocks: ["splitBlock", "replaceInline", "setParagraphReview"],
-  replaceBlocks: ["replaceBlocks"],
+  splitBlock: [
+    "joinBlocks",
+    "replaceInline",
+    "setParagraphReview",
+    "restoreStoryParts",
+  ],
+  joinBlocks: [
+    "splitBlock",
+    "replaceInline",
+    "setParagraphReview",
+    "restoreStoryParts",
+  ],
+  replaceBlocks: ["replaceBlocks", "restoreStoryParts"],
   setParagraphReview: ["setParagraphReview"],
-  replaceInline: ["replaceInline"],
-  resolveRevision: ["replaceInline", "setParagraphReview", "joinBlocks", "replaceBlocks"],
+  replaceInline: ["replaceInline", "restoreStoryParts"],
+  resolveRevision: [
+    "replaceInline",
+    "setParagraphReview",
+    "joinBlocks",
+    "replaceBlocks",
+  ],
   createNumberingInstance: ["deleteNumberingInstance"],
   deleteNumberingInstance: ["createNumberingInstance"],
   setSectionEndpoint: ["setSectionEndpoint"],
@@ -190,7 +236,9 @@ const paragraphsById = (document: Document): Map<string, Paragraph> =>
   );
 
 const orderedIds = (document: Document): string[] =>
-  storyParagraphs(document.package.document).map(({ paragraph }) => paragraph.paraId ?? "");
+  storyParagraphs(document.package.document).map(
+    ({ paragraph }) => paragraph.paraId ?? "",
+  );
 
 const blockHolds = (block: BlockContent, ids: ReadonlySet<string>): boolean => {
   switch (block.type) {
@@ -198,7 +246,9 @@ const blockHolds = (block: BlockContent, ids: ReadonlySet<string>): boolean => {
       return block.paraId !== undefined && ids.has(block.paraId);
     case "table":
       return block.rows.some((row) =>
-        row.cells.some((cell) => cell.content.some((child) => blockHolds(child, ids))),
+        row.cells.some((cell) =>
+          cell.content.some((child) => blockHolds(child, ids)),
+        ),
       );
     case "blockSdt":
       return block.content.some((child) => blockHolds(child, ids));
@@ -214,7 +264,9 @@ const namedIds = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return new Set([
         op.at.blockId,
-        ...op.blocks.flatMap(({ paraId }) => (paraId === undefined ? [] : [paraId])),
+        ...op.blocks.flatMap(({ paraId }) =>
+          paraId === undefined ? [] : [paraId],
+        ),
       ]);
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
@@ -256,7 +308,9 @@ const namedIds = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
       return new Set();
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
-      return new Set(op.endpoint.type === "paragraph" ? [op.endpoint.blockId] : []);
+      return new Set(
+        op.endpoint.type === "paragraph" ? [op.endpoint.blockId] : [],
+      );
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
@@ -280,7 +334,11 @@ const namedIds = (op: DocumentOp): Set<string> => {
 const touchedIds = ({ touched }: AppliedDocumentOp): Set<string> =>
   new Set([...touched.modified, ...touched.inserted, ...touched.removed]);
 
-type Unit = { formatting: TextFormatting | undefined; inRun: boolean; removed: boolean };
+type Unit = {
+  formatting: TextFormatting | undefined;
+  inRun: boolean;
+  removed: boolean;
+};
 
 /** The run properties and revision state of every unit, in offset order. */
 const unitsOf = (paragraph: Paragraph): Unit[] => {
@@ -300,7 +358,10 @@ const unitsOf = (paragraph: Paragraph): Unit[] => {
         walk(childrenOf(item), removed || isRemovedRevision(item));
         continue;
       }
-      if (paragraphLogicalText({ type: "paragraph", content: [item] }).length === 1) {
+      if (
+        paragraphLogicalText({ type: "paragraph", content: [item] }).length ===
+        1
+      ) {
         out.push({ formatting: undefined, inRun: false, removed });
       }
     }
@@ -317,7 +378,10 @@ const applyAll = (document: Document, ops: readonly DocumentOp[]): Document => {
   return applied.value.document;
 };
 
-const expectRestores = (applied: AppliedDocumentOp, original: Document): void => {
+const expectRestores = (
+  applied: AppliedDocumentOp,
+  original: Document,
+): void => {
   // An operation leaves the seed contract holding: checked afresh, not from memory.
   expect(contractViolation(applied.document)).toBeUndefined();
   const restored = applyDocumentOps(applied.document, applied.inverse);
@@ -329,7 +393,9 @@ const expectRestores = (applied: AppliedDocumentOp, original: Document): void =>
   // SAFETY: operations are plain data; this is the journal's round-trip.
   const replayed = JSON.parse(JSON.stringify(applied.inverse)) as DocumentOp[];
   expect(applyAll(applied.document, replayed)).toStrictEqual(original);
-  expect(applyAll(restored.value.document, restored.value.inverse)).toStrictEqual(applied.document);
+  expect(
+    applyAll(restored.value.document, restored.value.inverse),
+  ).toStrictEqual(applied.document);
 };
 
 const plainInputArbitrary = fc
@@ -362,10 +428,17 @@ describe("document operations", () => {
   test("rejecting generated run formatting restores authored boundaries inside wrappers and pending review", () => {
     assertProperty(
       fc.property(
-        fc.array(fc.string({ unit: fc.constantFrom("a", "b", "é"), minLength: 2, maxLength: 5 }), {
-          minLength: 2,
-          maxLength: 4,
-        }),
+        fc.array(
+          fc.string({
+            unit: fc.constantFrom("a", "b", "é"),
+            minLength: 2,
+            maxLength: 5,
+          }),
+          {
+            minLength: 2,
+            maxLength: 4,
+          },
+        ),
         fc.boolean(),
         fc.boolean(),
         fc.boolean(),
@@ -397,14 +470,24 @@ describe("document operations", () => {
                     type: "paragraph",
                     paraId: "00000001",
                     content: wrapped
-                      ? [{ type: "hyperlink", anchor: "target", children: runs }]
+                      ? [
+                          {
+                            type: "hyperlink",
+                            anchor: "target",
+                            children: runs,
+                          },
+                        ]
                       : runs,
                   },
                 ],
               },
             },
           } satisfies Document);
-          const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: partial ? 1 : 0 };
+          const at = {
+            story: OP_STORIES.MAIN,
+            blockId: "00000001",
+            offset: partial ? 1 : 0,
+          };
           const intent = {
             type: "formatRun",
             from: at,
@@ -416,7 +499,11 @@ describe("document operations", () => {
             intent,
             mode: {
               type: "suggesting",
-              revision: { id: allocation.revisionId, author: "New", date: "2026-10-02T00:00:00Z" },
+              revision: {
+                id: allocation.revisionId,
+                author: "New",
+                date: "2026-10-02T00:00:00Z",
+              },
               newIds: allocation.newIds,
             },
           }).unwrap();
@@ -440,7 +527,10 @@ describe("document operations", () => {
           );
           const undone = applyDocumentOps(edit.document, edit.inverse).unwrap();
           assertExactModel(undone.document, original);
-          const redone = applyDocumentOps(undone.document, undone.inverse).unwrap();
+          const redone = applyDocumentOps(
+            undone.document,
+            undone.inverse,
+          ).unwrap();
           assertExactModel(redone.document, edit.document);
           const firstText = texts.at(0);
           const secondText = texts.at(1);
@@ -452,7 +542,9 @@ describe("document operations", () => {
             to: {
               ...at,
               offset:
-                firstText.length + secondText.length - (texts.length === 2 && partial ? 1 : 0),
+                firstText.length +
+                secondText.length -
+                (texts.length === 2 && partial ? 1 : 0),
             },
             patch: { underline: { style: "single" } },
           } as const satisfies EditorIntent;
@@ -461,7 +553,11 @@ describe("document operations", () => {
             intent: laterIntent,
             mode: {
               type: "suggesting",
-              revision: { id: laterIds.revisionId, author: "Later", date: "2026-10-02T00:00:00Z" },
+              revision: {
+                id: laterIds.revisionId,
+                author: "Later",
+                date: "2026-10-02T00:00:00Z",
+              },
               newIds: laterIds.newIds,
             },
           }).unwrap();
@@ -534,7 +630,9 @@ describe("document operations", () => {
     const to = { ...from, offset: 1 };
     assertOutsideRunReviewCoverage({ before, after, from, to });
     delete run.propertyChanges;
-    expect(() => assertOutsideRunReviewCoverage({ before, after, from, to })).toThrow();
+    expect(() =>
+      assertOutsideRunReviewCoverage({ before, after, from, to }),
+    ).toThrow();
   });
 
   // Undo restores each edit-time record; rejection restores the first pending baseline.
@@ -595,7 +693,9 @@ describe("document operations", () => {
               type: "formatRun",
               from: at,
               to: { ...at, offset: 2 },
-              patch: { underline: { style: index % 2 === 0 ? "single" : "double" } },
+              patch: {
+                underline: { style: index % 2 === 0 ? "single" : "double" },
+              },
             } as const satisfies EditorIntent;
             const ids = allocateEditorIntentIds(document, intent);
             const compiled = compileEditorIntent(document, {
@@ -608,9 +708,15 @@ describe("document operations", () => {
             }).unwrap();
             const applied = applyDocumentOps(document, compiled.ops).unwrap();
             expect(applied.revisions).toHaveLength(2);
-            for (const paragraph of storyParagraphs(applied.document.package.document)) {
-              for (const [runIndex, run] of paragraph.paragraph.content.entries()) {
-                if (run.type !== "run") panic("Formatting changed the authored run structure.");
+            for (const paragraph of storyParagraphs(
+              applied.document.package.document,
+            )) {
+              for (const [
+                runIndex,
+                run,
+              ] of paragraph.paragraph.content.entries()) {
+                if (run.type !== "run")
+                  panic("Formatting changed the authored run structure.");
                 expect(run.propertyChanges?.at(-1)?.info.author).toBe(author);
                 expect(run.propertyChanges).toHaveLength(1);
                 expect(run.propertyChanges?.at(0)?.info.date).toBe(date);
@@ -667,7 +773,11 @@ describe("document operations", () => {
                   type: "paragraph",
                   paraId: "00000001",
                   content: [
-                    { type: "run", formatting, content: [{ type: "text", text: "authored" }] },
+                    {
+                      type: "run",
+                      formatting,
+                      content: [{ type: "text", text: "authored" }],
+                    },
                   ],
                 },
               ],
@@ -704,14 +814,18 @@ describe("document operations", () => {
             newIds: allocation.newIds,
           } as const,
         ].map((mode) => {
-          const compiled = compileEditorIntent(document, { intent, mode }).unwrap();
+          const compiled = compileEditorIntent(document, {
+            intent,
+            mode,
+          }).unwrap();
           const insertion = compiled.ops.findLast(
             (op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT,
           );
           if (insertion?.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT)
             panic("An insertion intent must author content.");
           const authored = insertion.slice.content.at(0);
-          if (authored?.type !== "run") panic("An insertion intent must author a run.");
+          if (authored?.type !== "run")
+            panic("An insertion intent must author a run.");
           expect(authored.formatting).toStrictEqual({
             boldCs: false,
             noProof: true,
@@ -721,7 +835,8 @@ describe("document operations", () => {
           });
           const applied = applyDocumentOps(document, compiled.ops).unwrap();
           expect(
-            applyDocumentOps(applied.document, applied.inverse).unwrap().document,
+            applyDocumentOps(applied.document, applied.inverse).unwrap()
+              .document,
           ).toStrictEqual(document);
           if (mode.type === "editing") return applied.document;
           expect(
@@ -784,7 +899,10 @@ describe("document operations", () => {
               numbering: {
                 nums: [{ numId: 1, abstractNumId: 1 }],
                 abstractNums: [
-                  { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+                  {
+                    abstractNumId: 1,
+                    levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+                  },
                 ],
               },
               document: {
@@ -802,7 +920,8 @@ describe("document operations", () => {
                     content: [
                       {
                         type: "run",
-                        formatting: index === 0 ? { bold: true } : { italic: true },
+                        formatting:
+                          index === 0 ? { bold: true } : { italic: true },
                         content: [{ type: "text", text }],
                       },
                     ],
@@ -823,18 +942,24 @@ describe("document operations", () => {
               ({ paragraph }) => paragraph,
             );
             const source = paragraphs.at(input.paragraph % paragraphs.length);
-            if (source === undefined) panic("Generated editor paragraph disappeared.");
+            if (source === undefined)
+              panic("Generated editor paragraph disappeared.");
             const group = editorParagraphGroups(tracked, OP_STORIES.MAIN).find(
               ({ blockId }) => blockId === source.paraId,
             );
-            if (group === undefined) panic("Generated editor tracked paragraph disappeared.");
+            if (group === undefined)
+              panic("Generated editor tracked paragraph disappeared.");
             const visible = paragraphLogicalText(source);
             expect(group.text).toBe(visible);
             const gaps = codePointGaps(visible);
             const anchor = gaps.at(input.anchor % gaps.length) ?? 0;
             const head = gaps.at(input.head % gaps.length) ?? 0;
             const blockId = source.paraId ?? "";
-            const position = (offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+            const position = (offset: number) => ({
+              story: OP_STORIES.MAIN,
+              blockId,
+              offset,
+            });
             let intent: EditorIntent;
             let suggested: EditorIntent;
             if (input.kind === "split") {
@@ -847,14 +972,20 @@ describe("document operations", () => {
               suggested = {
                 ...intent,
                 at: physicalPositionAtEditorOffset(tracked, intent.at),
-                to: physicalPositionAtEditorOffset(tracked, intent.to ?? intent.at),
+                to: physicalPositionAtEditorOffset(
+                  tracked,
+                  intent.to ?? intent.at,
+                ),
               };
             } else if (input.kind === "formatRun") {
               intent = {
                 type: "formatRun",
                 from: position(Math.min(anchor, head)),
                 to: position(Math.max(anchor, head)),
-                patch: { bold: input.anchor % 2 === 0, italic: input.head % 2 === 0 },
+                patch: {
+                  bold: input.anchor % 2 === 0,
+                  italic: input.head % 2 === 0,
+                },
               };
               suggested = {
                 ...intent,
@@ -892,10 +1023,16 @@ describe("document operations", () => {
                 blockId: first.paraId ?? "",
                 nextBlockId: second.paraId ?? "",
               };
-              const firstGroup = editorParagraphGroups(tracked, OP_STORIES.MAIN).find(
+              const firstGroup = editorParagraphGroups(
+                tracked,
+                OP_STORIES.MAIN,
+              ).find(
                 ({ blockId: groupBlockId }) => groupBlockId === first.paraId,
               );
-              const secondGroup = editorParagraphGroups(tracked, OP_STORIES.MAIN).find(
+              const secondGroup = editorParagraphGroups(
+                tracked,
+                OP_STORIES.MAIN,
+              ).find(
                 ({ blockId: groupBlockId }) => groupBlockId === second.paraId,
               );
               suggested = {
@@ -904,8 +1041,10 @@ describe("document operations", () => {
                 nextBlockId: secondGroup?.paragraphs.at(0)?.paraId ?? "",
               };
             } else {
-              const from = input.kind === "insert" ? anchor : Math.min(anchor, head);
-              const to = input.kind === "insert" ? anchor : Math.max(anchor, head);
+              const from =
+                input.kind === "insert" ? anchor : Math.min(anchor, head);
+              const to =
+                input.kind === "insert" ? anchor : Math.max(anchor, head);
               intent = {
                 type: "replaceText",
                 from: position(from),
@@ -919,16 +1058,26 @@ describe("document operations", () => {
               };
             }
             const ids = allocateEditorIntentIds(tracked, suggested);
-            if (intent.type === "splitParagraph" && suggested.type === "splitParagraph") {
+            if (
+              intent.type === "splitParagraph" &&
+              suggested.type === "splitParagraph"
+            ) {
               intent = { ...intent, newBlockId: ids.newBlockId };
               suggested = { ...suggested, newBlockId: ids.newBlockId };
             }
-            const editPlan = compileEditorIntent(direct, { intent, mode: { type: "editing" } });
+            const editPlan = compileEditorIntent(direct, {
+              intent,
+              mode: { type: "editing" },
+            });
             const trackedPlan = compileEditorIntent(tracked, {
               intent: suggested,
               mode: {
                 type: "suggesting",
-                revision: { id: ids.revisionId, author: "Editor", date: "2026-10-01T12:00:00Z" },
+                revision: {
+                  id: ids.revisionId,
+                  author: "Editor",
+                  date: "2026-10-01T12:00:00Z",
+                },
                 newIds: ids.newIds,
               },
             });
@@ -937,7 +1086,10 @@ describe("document operations", () => {
             expectCompactIntentIds(direct, editPlan.value.ops);
             expectCompactIntentIds(tracked, trackedPlan.value.ops);
             const edited = applyDocumentOps(direct, editPlan.value.ops);
-            const suggestedEdit = applyDocumentOps(tracked, trackedPlan.value.ops);
+            const suggestedEdit = applyDocumentOps(
+              tracked,
+              trackedPlan.value.ops,
+            );
             if (edited.isErr()) throw edited.error;
             if (suggestedEdit.isErr()) throw suggestedEdit.error;
             expectRestores(suggestedEdit.value, tracked);
@@ -945,7 +1097,9 @@ describe("document operations", () => {
             direct = edited.value.document;
             tracked = suggestedEdit.value.document;
             tally.add(
-              intent.type === "replaceText" && input.kind === "join" ? "replace" : input.kind,
+              intent.type === "replaceText" && input.kind === "join"
+                ? "replace"
+                : input.kind,
             );
             expect(contractViolation(tracked)).toBeUndefined();
             const keys = packageIdentityKeys(tracked.package);
@@ -962,8 +1116,11 @@ describe("document operations", () => {
                 text: "invalid",
               },
             ]);
-            if (invalid.isOk()) panic("An absent-block insertion unexpectedly applied.");
-            expect(invalid.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND);
+            if (invalid.isOk())
+              panic("An absent-block insertion unexpectedly applied.");
+            expect(invalid.error.reason).toBe(
+              DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+            );
           }
           const prefix = `${IDENTITY_SPACES.REVISION}:`;
           const revisionIds = identityKeysIn({
@@ -988,12 +1145,21 @@ describe("document operations", () => {
             return result.value.document;
           };
           expect(
-            projectReview({ document: resolve(REVISION_DECISIONS.ACCEPT), projection: "π" }),
+            projectReview({
+              document: resolve(REVISION_DECISIONS.ACCEPT),
+              projection: "π",
+            }),
           ).toStrictEqual(projectReview({ document: direct, projection: "π" }));
           expect(
-            projectReview({ document: resolve(REVISION_DECISIONS.REJECT), projection: "π" }),
-          ).toStrictEqual(projectReview({ document: original, projection: "π" }));
-          for (const entry of journal.toReversed()) tracked = applyAll(tracked, entry.inverse);
+            projectReview({
+              document: resolve(REVISION_DECISIONS.REJECT),
+              projection: "π",
+            }),
+          ).toStrictEqual(
+            projectReview({ document: original, projection: "π" }),
+          );
+          for (const entry of journal.toReversed())
+            tracked = applyAll(tracked, entry.inverse);
           expect(tracked).toStrictEqual(original);
         },
       ),
@@ -1012,7 +1178,11 @@ describe("document operations", () => {
       { type: "bookmarkEnd", id: 4 },
     ] satisfies Paragraph["content"];
     const document: Document = {
-      package: { document: { content: [{ type: "paragraph", paraId: "00000001", content }] } },
+      package: {
+        document: {
+          content: [{ type: "paragraph", paraId: "00000001", content }],
+        },
+      },
       warnings: [],
     };
     const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 6 };
@@ -1032,7 +1202,9 @@ describe("document operations", () => {
               {
                 type: "hyperlink",
                 anchor: "target",
-                children: [{ type: "run", content: [{ type: "text", text: "link" }] }],
+                children: [
+                  { type: "run", content: [{ type: "text", text: "link" }] },
+                ],
               },
             ],
           },
@@ -1041,7 +1213,9 @@ describe("document operations", () => {
       mode: { type: "editing" },
     });
     if (compiled.isErr()) throw compiled.error;
-    const insertion = compiled.value.ops.find((op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT);
+    const insertion = compiled.value.ops.find(
+      (op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT,
+    );
     if (insertion?.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT)
       panic("A clipboard fragment must insert its content.");
     expect(insertion.slice.content).toContainEqual({
@@ -1049,7 +1223,10 @@ describe("document operations", () => {
       id: 1,
       name: "target_paste1",
     });
-    expect(insertion.slice.content).toContainEqual({ type: "bookmarkEnd", id: 1 });
+    expect(insertion.slice.content).toContainEqual({
+      type: "bookmarkEnd",
+      id: 1,
+    });
     expect(insertion.slice.content).toContainEqual({
       type: "hyperlink",
       anchor: "target_paste1",
@@ -1077,7 +1254,12 @@ describe("document operations", () => {
         },
       },
     } satisfies Document);
-    const from = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1, zeroWidthBefore: 0 };
+    const from = {
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      offset: 1,
+      zeroWidthBefore: 0,
+    };
     const to = { ...from, zeroWidthBefore: 2 };
     const copied = [
       {
@@ -1093,7 +1275,10 @@ describe("document operations", () => {
       mode: { type: "editing" },
     }).unwrap();
     expect(replacement.ops).toEqual([]);
-    assertExactModel(applyDocumentOps(original, replacement.ops).unwrap().document, original);
+    assertExactModel(
+      applyDocumentOps(original, replacement.ops).unwrap().document,
+      original,
+    );
     const intent = {
       type: "moveFragment",
       from,
@@ -1109,7 +1294,9 @@ describe("document operations", () => {
       mode: { type: "editing", newIds: allocation.newIds },
     }).unwrap();
     expect(move.ops.length).toBeGreaterThan(0);
-    const cuts = [{ type: DOCUMENT_OP_TYPES.DELETE_RANGE, from, to }] satisfies DocumentOp[];
+    const cuts = [
+      { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from, to },
+    ] satisfies DocumentOp[];
     for (const { ops, expected } of [
       {
         ops: cuts,
@@ -1129,12 +1316,15 @@ describe("document operations", () => {
       },
     ]) {
       const edit = applyDocumentOps(original, ops).unwrap();
-      const paragraph = storyParagraphs(edit.document.package.document).at(0)?.paragraph;
+      const paragraph = storyParagraphs(edit.document.package.document).at(
+        0,
+      )?.paragraph;
       if (!paragraph) panic("Marker operation lost its paragraph.");
       expect(paragraphLogicalText(paragraph)).toBe("ab");
       assertExactModel(
         paragraph.content.filter(
-          (item) => item.type === "bookmarkStart" || item.type === "bookmarkEnd",
+          (item) =>
+            item.type === "bookmarkStart" || item.type === "bookmarkEnd",
         ),
         expected,
       );
@@ -1146,10 +1336,30 @@ describe("document operations", () => {
   });
   test("clipboard paragraph allocation handles the final available id and exhausted inline paste atomically", () => {
     for (const scenario of [
-      { existing: "7FFFFFFF", firstBlockId: 0x80000000, count: 1, allowed: true },
-      { existing: "7FFFFFFE", firstBlockId: 0x7fffffff, count: 2, allowed: true },
-      { existing: "7FFFFFFE", firstBlockId: 0x7fffffff, count: 3, allowed: false },
-      { existing: "7FFFFFFF", firstBlockId: 0x80000000, count: 2, allowed: false },
+      {
+        existing: "7FFFFFFF",
+        firstBlockId: 0x80000000,
+        count: 1,
+        allowed: true,
+      },
+      {
+        existing: "7FFFFFFE",
+        firstBlockId: 0x7fffffff,
+        count: 2,
+        allowed: true,
+      },
+      {
+        existing: "7FFFFFFE",
+        firstBlockId: 0x7fffffff,
+        count: 3,
+        allowed: false,
+      },
+      {
+        existing: "7FFFFFFF",
+        firstBlockId: 0x80000000,
+        count: 2,
+        allowed: false,
+      },
     ]) {
       const original = normalizeForOps({
         package: {
@@ -1158,13 +1368,19 @@ describe("document operations", () => {
               {
                 type: "paragraph",
                 paraId: scenario.existing,
-                content: [{ type: "run", content: [{ type: "text", text: "ab" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "ab" }] },
+                ],
               },
             ],
           },
         },
       } satisfies Document);
-      const at = { story: OP_STORIES.MAIN, blockId: scenario.existing, offset: 1 };
+      const at = {
+        story: OP_STORIES.MAIN,
+        blockId: scenario.existing,
+        offset: 1,
+      };
       const intent = {
         type: "replaceFragment",
         from: at,
@@ -1177,7 +1393,12 @@ describe("document operations", () => {
             ({
               type: "paragraph",
               paraId: "00000001",
-              content: [{ type: "run", content: [{ type: "text", text: `paste${index}` }] }],
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: `paste${index}` }],
+                },
+              ],
             }) satisfies Paragraph,
         ),
       } as const satisfies EditorIntent;
@@ -1190,7 +1411,9 @@ describe("document operations", () => {
       assertExactModel(original, snapshot);
       expect(plan.isOk()).toBe(scenario.allowed);
       if (plan.isErr()) {
-        expect(plan.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID);
+        expect(plan.error.reason).toBe(
+          DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
+        );
       } else {
         const edit = applyDocumentOps(original, plan.value.ops).unwrap();
         const ids = paragraphIdsIn(edit.document.package.document);
@@ -1214,13 +1437,18 @@ describe("document operations", () => {
               type: "paragraph",
               paraId: "00000001",
               formatting: { alignment: "right" },
-              content: [{ type: "run", content: [{ type: "text", text: "ab" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "ab" }] },
+              ],
             },
           ],
         },
       },
     } satisfies Document);
-    const sectionProperties = { pageWidth: 12240, pageHeight: 15840 } satisfies SectionProperties;
+    const sectionProperties = {
+      pageWidth: 12240,
+      pageHeight: 15840,
+    } satisfies SectionProperties;
     const paragraphs = [
       {
         type: "paragraph",
@@ -1256,14 +1484,18 @@ describe("document operations", () => {
         const edit = applyDocumentOps(original, plan.ops).unwrap();
         const pasted = storyParagraphs(edit.document.package.document)
           .map(({ paragraph }) => paragraph)
-          .find((paragraph) => paragraphLogicalText(paragraph).includes("clip"));
+          .find((paragraph) =>
+            paragraphLogicalText(paragraph).includes("clip"),
+          );
         if (!pasted) panic("Clipboard metadata fixture disappeared.");
         if (openStart === 0 && openEnd === 0) {
           expect(pasted.formatting?.alignment).toBe("center");
           expect(pasted.sectionProperties).toEqual(sectionProperties);
           expect(pasted.propertyChanges?.at(0)?.info.id).not.toBe(12);
           expect(pasted.propertyChanges?.at(0)?.info.author).toBe("Source");
-          expect(pasted.propertyChanges?.at(0)?.previousFormatting.alignment).toBe("end");
+          expect(
+            pasted.propertyChanges?.at(0)?.previousFormatting.alignment,
+          ).toBe("end");
         } else {
           expect(pasted.propertyChanges).toBeUndefined();
           expect(pasted.sectionProperties).toBeUndefined();
@@ -1284,7 +1516,9 @@ describe("document operations", () => {
               type: "paragraph",
               paraId: "00000001",
               formatting: { alignment: "right" },
-              content: [{ type: "run", content: [{ type: "text", text: "a" }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "a" }] },
+              ],
             },
           ],
         },
@@ -1294,7 +1528,9 @@ describe("document operations", () => {
     for (const metadata of ["review", "section", "mark"] as const) {
       const copied = {
         type: "paragraph",
-        content: [{ type: "run", content: [{ type: "text", text: "metadata" }] }],
+        content: [
+          { type: "run", content: [{ type: "text", text: "metadata" }] },
+        ],
         ...(metadata === "review"
           ? {
               propertyChanges: [
@@ -1325,7 +1561,9 @@ describe("document operations", () => {
                 copied,
                 {
                   type: "paragraph",
-                  content: [{ type: "run", content: [{ type: "text", text: "tail" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "tail" }] },
+                  ],
                 },
               ]
             : [copied],
@@ -1347,7 +1585,9 @@ describe("document operations", () => {
         assertExactModel(original, snapshot);
         expect(plan.isOk()).toBe(leading && metadata !== "mark");
         if (plan.isErr()) {
-          expect(plan.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+          expect(plan.error.reason).toBe(
+            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          );
         } else {
           const edit = applyDocumentOps(original, plan.value.ops).unwrap();
           const undo = applyDocumentOps(edit.document, edit.inverse).unwrap();
@@ -1362,7 +1602,10 @@ describe("document operations", () => {
   test("generated clipboard fragments preserve history and accepted tracked content", () => {
     assertProperty(
       fc.property(
-        fc.array(fc.string({ minLength: 1, maxLength: 8 }), { minLength: 1, maxLength: 4 }),
+        fc.array(fc.string({ minLength: 1, maxLength: 8 }), {
+          minLength: 1,
+          maxLength: 4,
+        }),
         fc.constantFrom(0 as const, 1 as const),
         fc.constantFrom(0 as const, 1 as const),
         fc.boolean(),
@@ -1395,11 +1638,19 @@ describe("document operations", () => {
                 paraId: "00000001",
                 formatting: { alignment: "center" },
                 content: [
-                  { type: "run", formatting: { bold: true }, content: [{ type: "text", text }] },
+                  {
+                    type: "run",
+                    formatting: { bold: true },
+                    content: [{ type: "text", text }],
+                  },
                 ],
               }) satisfies Paragraph,
           );
-          const from = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 6 };
+          const from = {
+            story: OP_STORIES.MAIN,
+            blockId: "00000001",
+            offset: 6,
+          };
           const intent = {
             type: "replaceFragment",
             from,
@@ -1425,20 +1676,29 @@ describe("document operations", () => {
             if (compiled.isErr()) throw compiled.error;
             const applied = applyDocumentOps(document, compiled.value.ops);
             if (applied.isErr()) throw applied.error;
-            const undo = applyDocumentOps(applied.value.document, applied.value.inverse);
+            const undo = applyDocumentOps(
+              applied.value.document,
+              applied.value.inverse,
+            );
             if (undo.isErr()) throw undo.error;
             assertExactModel(undo.value.document, document);
-            const redo = applyDocumentOps(undo.value.document, undo.value.inverse);
+            const redo = applyDocumentOps(
+              undo.value.document,
+              undo.value.inverse,
+            );
             if (redo.isErr()) throw redo.error;
             assertExactModel(redo.value.document, applied.value.document);
             const expectedCount =
-              texts.length + (openStart === 0 ? 1 : 0) + (openEnd === 0 ? 1 : 0);
-            expect(paragraphIdsIn(applied.value.document.package.document)).toHaveLength(
-              expectedCount,
-            );
-            expect(new Set(paragraphIdsIn(applied.value.document.package.document)).size).toBe(
-              expectedCount,
-            );
+              texts.length +
+              (openStart === 0 ? 1 : 0) +
+              (openEnd === 0 ? 1 : 0);
+            expect(
+              paragraphIdsIn(applied.value.document.package.document),
+            ).toHaveLength(expectedCount);
+            expect(
+              new Set(paragraphIdsIn(applied.value.document.package.document))
+                .size,
+            ).toBe(expectedCount);
             const failed = applyDocumentOps(document, [
               ...compiled.value.ops,
               {
@@ -1503,12 +1763,19 @@ describe("document operations", () => {
                 {
                   type: "inlineSdt",
                   properties: { id: 7 },
-                  content: [{ type: "run", content: [{ type: "text", text: "owned" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "owned" }] },
+                  ],
                 },
                 {
                   type: "insertion",
                   info: { id: 10, author: "Owned" },
-                  content: [{ type: "run", content: [{ type: "text", text: "review" }] }],
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "review" }],
+                    },
+                  ],
                 },
               ],
             },
@@ -1546,7 +1813,9 @@ describe("document operations", () => {
                     },
                   ],
                 },
-                content: [{ type: "run", content: [{ type: "text", text: "first" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "first" }] },
+                ],
               },
             ],
           },
@@ -1557,7 +1826,9 @@ describe("document operations", () => {
               {
                 type: "insertion",
                 info: { id: 11, author: "Foreign" },
-                content: [{ type: "run", content: [{ type: "text", text: "second" }] }],
+                content: [
+                  { type: "run", content: [{ type: "text", text: "second" }] },
+                ],
               },
             ],
           },
@@ -1574,7 +1845,10 @@ describe("document operations", () => {
     } as const satisfies EditorIntent;
     const original = structuredClone(destination);
     const incoming = structuredClone(paragraphs);
-    const plan = compileEditorIntent(destination, { intent, mode: { type: "editing" } }).unwrap();
+    const plan = compileEditorIntent(destination, {
+      intent,
+      mode: { type: "editing" },
+    }).unwrap();
     const edit = applyDocumentOps(destination, plan.ops).unwrap();
     const copied = storyParagraphs(edit.document.package.document).find(
       ({ paragraph }) => paragraphLogicalText(paragraph) === "firstsecond",
@@ -1647,7 +1921,11 @@ describe("document operations", () => {
                   {
                     type: "paragraph",
                     paraId: "00000001",
-                    formatting: { alignment: reverseDestinationFormatting ? "right" : "left" },
+                    formatting: {
+                      alignment: reverseDestinationFormatting
+                        ? "right"
+                        : "left",
+                    },
                     content: [
                       {
                         type: "run",
@@ -1659,8 +1937,17 @@ describe("document operations", () => {
                   {
                     type: "paragraph",
                     paraId: "00000002",
-                    formatting: { alignment: reverseDestinationFormatting ? "left" : "right" },
-                    content: [{ type: "run", content: [{ type: "text", text: "secondé" }] }],
+                    formatting: {
+                      alignment: reverseDestinationFormatting
+                        ? "left"
+                        : "right",
+                    },
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "secondé" }],
+                      },
+                    ],
                   },
                 ],
               },
@@ -1668,8 +1955,12 @@ describe("document operations", () => {
           } satisfies Document);
           if (priorReview) {
             const paragraph = original.package.document.content.at(0);
-            const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
-            if (run?.type !== "run") panic("Prior clipboard review fixture disappeared.");
+            const run =
+              paragraph?.type === "paragraph"
+                ? paragraph.content.at(0)
+                : undefined;
+            if (run?.type !== "run")
+              panic("Prior clipboard review fixture disappeared.");
             run.propertyChanges = [
               {
                 type: "runPropertyChange",
@@ -1685,7 +1976,9 @@ describe("document operations", () => {
             before: Document;
             ops: readonly DocumentOp[];
           }[] = [];
-          const optionalFixture = storyParagraphs(original.package.document).at(1)?.paragraph;
+          const optionalFixture = storyParagraphs(original.package.document).at(
+            1,
+          )?.paragraph;
           if (optionalFixture?.formatting === undefined)
             panic("Optional-field fixture disappeared.");
           Object.defineProperty(optionalFixture.formatting, "keepNext", {
@@ -1708,19 +2001,30 @@ describe("document operations", () => {
             );
             const source = paragraphs.at(sourceIndex);
             const end = paragraphs.at(endIndex);
-            if (!source?.paraId || !end?.paraId) panic("Generated clipboard range disappeared.");
+            if (!source?.paraId || !end?.paraId)
+              panic("Generated clipboard range disappeared.");
             const sourceText = paragraphLogicalText(source);
             const endText = paragraphLogicalText(end);
             const sourceGaps = codePointGaps(sourceText);
             const endGaps = codePointGaps(endText);
             const anchor = sourceGaps.at(step.anchor % sourceGaps.length) ?? 0;
             const head = endGaps.at(step.head % endGaps.length) ?? 0;
-            const fromOffset = sourceIndex === endIndex ? Math.min(anchor, head) : anchor;
-            const toOffset = sourceIndex === endIndex ? Math.max(anchor, head) : head;
+            const fromOffset =
+              sourceIndex === endIndex ? Math.min(anchor, head) : anchor;
+            const toOffset =
+              sourceIndex === endIndex ? Math.max(anchor, head) : head;
             const intent = {
               type: "replaceFragment",
-              from: { story: OP_STORIES.MAIN, blockId: source.paraId, offset: fromOffset },
-              to: { story: OP_STORIES.MAIN, blockId: end.paraId, offset: toOffset },
+              from: {
+                story: OP_STORIES.MAIN,
+                blockId: source.paraId,
+                offset: fromOffset,
+              },
+              to: {
+                story: OP_STORIES.MAIN,
+                blockId: end.paraId,
+                offset: toOffset,
+              },
               paragraphs: step.texts.map(
                 (text) =>
                   ({
@@ -1755,14 +2059,23 @@ describe("document operations", () => {
                       {
                         path,
                         mimeType: "image/png",
-                        data: Uint8Array.from([137, 80, 78, 71, step.resourceByte]).buffer,
+                        data: Uint8Array.from([
+                          137,
+                          80,
+                          78,
+                          71,
+                          step.resourceByte,
+                        ]).buffer,
                       },
                     ],
                   ]),
                 },
               },
             });
-            const resourceBaseline = applyDocumentOp(before, resourceOp).unwrap().document;
+            const resourceBaseline = applyDocumentOp(
+              before,
+              resourceOp,
+            ).unwrap().document;
             const outcomes = [
               { type: "editing", newIds: allocation.newIds } as const,
               {
@@ -1775,25 +2088,41 @@ describe("document operations", () => {
                 },
               } as const,
             ].map((mode) => {
-              const plan = compileEditorIntent(resourceBaseline, { intent, mode });
+              const plan = compileEditorIntent(resourceBaseline, {
+                intent,
+                mode,
+              });
               if (plan.isErr()) {
-                refusals.set(plan.error.reason, (refusals.get(plan.error.reason) ?? 0) + 1);
+                refusals.set(
+                  plan.error.reason,
+                  (refusals.get(plan.error.reason) ?? 0) + 1,
+                );
                 throw plan.error;
               }
               const ops = [resourceOp, ...plan.value.ops];
               const edit = applyDocumentOps(before, ops);
               if (edit.isErr()) {
-                refusals.set(edit.error.reason, (refusals.get(edit.error.reason) ?? 0) + 1);
+                refusals.set(
+                  edit.error.reason,
+                  (refusals.get(edit.error.reason) ?? 0) + 1,
+                );
                 throw edit.error;
               }
               assertExactModel(before, snapshot);
-              const undo = applyDocumentOps(edit.value.document, edit.value.inverse);
+              const undo = applyDocumentOps(
+                edit.value.document,
+                edit.value.inverse,
+              );
               if (undo.isErr()) throw undo.error;
               assertExactModel(undo.value.document, before);
-              const redo = applyDocumentOps(undo.value.document, undo.value.inverse);
+              const redo = applyDocumentOps(
+                undo.value.document,
+                undo.value.inverse,
+              );
               if (redo.isErr()) throw redo.error;
               assertExactModel(redo.value.document, edit.value.document);
-              if (mode.type === "editing") return Object.assign({}, edit.value, { ops });
+              if (mode.type === "editing")
+                return Object.assign({}, edit.value, { ops });
               const rejected = applyDocumentOp(edit.value.document, {
                 type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
                 story: OP_STORIES.MAIN,
@@ -1809,17 +2138,28 @@ describe("document operations", () => {
                 decision: REVISION_DECISIONS.ACCEPT,
               });
               if (accepted.isErr()) throw accepted.error;
-              return Object.assign({}, edit.value, { ops, document: accepted.value.document });
+              return Object.assign({}, edit.value, {
+                ops,
+                document: accepted.value.document,
+              });
             });
             const direct = outcomes.at(0);
             const accepted = outcomes.at(1);
-            if (!direct || !accepted) panic("Clipboard sequence lost a compilation mode.");
+            if (!direct || !accepted)
+              panic("Clipboard sequence lost a compilation mode.");
             assertExactModel(accepted.document, direct.document);
-            assertExactModel(packageResourcesOf(direct.document), resourceOp.resources);
-            assertExactModel(direct.document.package.media, resourceBaseline.package.media);
+            assertExactModel(
+              packageResourcesOf(direct.document),
+              resourceOp.resources,
+            );
+            assertExactModel(
+              direct.document.package.media,
+              resourceBaseline.package.media,
+            );
             const expected = step.texts.map((text) => `paste${text}`);
-            const expectedAlignments: NonNullable<Paragraph["formatting"]>["alignment"][] =
-              step.texts.map(() => undefined);
+            const expectedAlignments: NonNullable<
+              Paragraph["formatting"]
+            >["alignment"][] = step.texts.map(() => undefined);
             const prefix = sourceText.slice(0, fromOffset);
             const suffix = endText.slice(toOffset);
             if (step.openStart === 1) {
@@ -1831,7 +2171,8 @@ describe("document operations", () => {
             }
             if (step.openEnd === 1) {
               expected[expected.length - 1] += suffix;
-              const leadingWins = step.texts.length === 1 && step.openStart === 1;
+              const leadingWins =
+                step.texts.length === 1 && step.openStart === 1;
               expectedAlignments[expectedAlignments.length - 1] = leadingWins
                 ? source.formatting?.alignment
                 : end.formatting?.alignment;
@@ -1845,8 +2186,8 @@ describe("document operations", () => {
               ...paragraphs.slice(endIndex + 1).map(paragraphLogicalText),
             ];
             expect(
-              storyParagraphs(direct.document.package.document).map(({ paragraph }) =>
-                paragraphLogicalText(paragraph),
+              storyParagraphs(direct.document.package.document).map(
+                ({ paragraph }) => paragraphLogicalText(paragraph),
               ),
             ).toEqual(oracle);
             expect(
@@ -1858,7 +2199,9 @@ describe("document operations", () => {
                 .slice(0, sourceIndex)
                 .map((paragraph) => paragraph.formatting?.alignment),
               ...expectedAlignments,
-              ...paragraphs.slice(endIndex + 1).map((paragraph) => paragraph.formatting?.alignment),
+              ...paragraphs
+                .slice(endIndex + 1)
+                .map((paragraph) => paragraph.formatting?.alignment),
             ]);
             const stale = applyDocumentOps(before, [
               ...direct.ops,
@@ -1868,9 +2211,15 @@ describe("document operations", () => {
                 text: "invalid",
               },
             ]);
-            if (stale.isOk()) panic("Clipboard sequence accepted a missing target.");
-            refusals.set(stale.error.reason, (refusals.get(stale.error.reason) ?? 0) + 1);
-            expect(stale.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND);
+            if (stale.isOk())
+              panic("Clipboard sequence accepted a missing target.");
+            refusals.set(
+              stale.error.reason,
+              (refusals.get(stale.error.reason) ?? 0) + 1,
+            );
+            expect(stale.error.reason).toBe(
+              DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+            );
             assertExactModel(before, snapshot);
             journal.push({ edit: direct, before, ops: direct.ops });
             document = direct.document;
@@ -1897,102 +2246,129 @@ describe("document operations", () => {
       },
     );
     expect(applied.get("replaceFragment") ?? 0).toBeGreaterThan(0);
-    expect([...refusals.keys()]).toEqual([DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND]);
-    expect(refusals.get(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND) ?? 0).toBeGreaterThan(0);
+    expect([...refusals.keys()]).toEqual([
+      DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+    ]);
+    expect(
+      refusals.get(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND) ?? 0,
+    ).toBeGreaterThan(0);
   });
 
   test("generated move intents rebase the original target and refuse atomically", () => {
     assertProperty(
-      fc.property(fc.integer({ min: 0, max: 12 }), fc.boolean(), (targetOffset, tracked) => {
-        const document: Document = {
-          package: {
-            document: {
-              content: [
-                {
-                  type: "paragraph",
-                  paraId: "00000001",
-                  content: [{ type: "run", content: [{ type: "text", text: "prefixsuffix" }] }],
-                },
-              ],
-            },
-          },
-          warnings: [],
-        };
-        const from = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 3 };
-        const target = { ...from, offset: targetOffset };
-        const intent = {
-          type: "moveFragment",
-          from,
-          to: { ...from, offset: 6 },
-          target,
-          openStart: 1,
-          openEnd: 1,
-          paragraphs: [
-            {
-              type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "fix" }] }],
-            },
-          ],
-        } as const satisfies EditorIntent;
-        const allocation = allocateEditorIntentIds(document, intent);
-        const mode = tracked
-          ? ({
-              type: "suggesting",
-              revision: {
-                id: allocation.revisionId,
-                author: "Property",
-                date: "2026-10-02T00:00:00Z",
+      fc.property(
+        fc.integer({ min: 0, max: 12 }),
+        fc.boolean(),
+        (targetOffset, tracked) => {
+          const document: Document = {
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "00000001",
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "prefixsuffix" }],
+                      },
+                    ],
+                  },
+                ],
               },
-              newIds: allocation.newIds,
-            } as const)
-          : ({ type: "editing", newIds: allocation.newIds } as const);
-        const compiled = compileEditorIntent(document, { intent, mode });
-        if (compiled.isErr()) throw compiled.error;
-        const edit = applyDocumentOps(document, compiled.value.ops);
-        if (edit.isErr()) throw edit.error;
-        const undo = applyDocumentOps(edit.value.document, edit.value.inverse);
-        if (undo.isErr()) throw undo.error;
-        assertExactModel(undo.value.document, document);
-        const redo = applyDocumentOps(undo.value.document, undo.value.inverse);
-        if (redo.isErr()) throw redo.error;
-        expect(redo.value.document).toStrictEqual(edit.value.document);
-        if (targetOffset >= 3 && targetOffset <= 6) {
-          expect(compiled.value.ops).toEqual([]);
-          expect(edit.value.document).toStrictEqual(document);
-          return;
-        }
-        let accepted = edit.value.document;
-        if (tracked) {
-          const accept = applyDocumentOp(accepted, {
-            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            },
+            warnings: [],
+          };
+          const from = {
             story: OP_STORIES.MAIN,
-            revisionIds: edit.value.revisions,
-            decision: REVISION_DECISIONS.ACCEPT,
+            blockId: "00000001",
+            offset: 3,
+          };
+          const target = { ...from, offset: targetOffset };
+          const intent = {
+            type: "moveFragment",
+            from,
+            to: { ...from, offset: 6 },
+            target,
+            openStart: 1,
+            openEnd: 1,
+            paragraphs: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "run", content: [{ type: "text", text: "fix" }] },
+                ],
+              },
+            ],
+          } as const satisfies EditorIntent;
+          const allocation = allocateEditorIntentIds(document, intent);
+          const mode = tracked
+            ? ({
+                type: "suggesting",
+                revision: {
+                  id: allocation.revisionId,
+                  author: "Property",
+                  date: "2026-10-02T00:00:00Z",
+                },
+                newIds: allocation.newIds,
+              } as const)
+            : ({ type: "editing", newIds: allocation.newIds } as const);
+          const compiled = compileEditorIntent(document, { intent, mode });
+          if (compiled.isErr()) throw compiled.error;
+          const edit = applyDocumentOps(document, compiled.value.ops);
+          if (edit.isErr()) throw edit.error;
+          const undo = applyDocumentOps(
+            edit.value.document,
+            edit.value.inverse,
+          );
+          if (undo.isErr()) throw undo.error;
+          assertExactModel(undo.value.document, document);
+          const redo = applyDocumentOps(
+            undo.value.document,
+            undo.value.inverse,
+          );
+          if (redo.isErr()) throw redo.error;
+          expect(redo.value.document).toStrictEqual(edit.value.document);
+          if (targetOffset >= 3 && targetOffset <= 6) {
+            expect(compiled.value.ops).toEqual([]);
+            expect(edit.value.document).toStrictEqual(document);
+            return;
+          }
+          let accepted = edit.value.document;
+          if (tracked) {
+            const accept = applyDocumentOp(accepted, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: edit.value.revisions,
+              decision: REVISION_DECISIONS.ACCEPT,
+            });
+            if (accept.isErr()) throw accept.error;
+            accepted = accept.value.document;
+            const reject = applyDocumentOp(edit.value.document, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: edit.value.revisions,
+              decision: REVISION_DECISIONS.REJECT,
+            });
+            if (reject.isErr()) throw reject.error;
+            expect(reject.value.document).toStrictEqual(document);
+          }
+          const rebased = targetOffset > 6 ? targetOffset - 3 : targetOffset;
+          const remaining = "presuffix";
+          expect(
+            storyParagraphs(accepted.package.document)
+              .map(({ paragraph }) => paragraphLogicalText(paragraph))
+              .join("\n"),
+          ).toBe(
+            remaining.slice(0, rebased) + "fix" + remaining.slice(rebased),
+          );
+          const failed = compileEditorIntent(document, {
+            intent: { ...intent, target: { ...target, blockId: "FFFFFFFF" } },
+            mode,
           });
-          if (accept.isErr()) throw accept.error;
-          accepted = accept.value.document;
-          const reject = applyDocumentOp(edit.value.document, {
-            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-            story: OP_STORIES.MAIN,
-            revisionIds: edit.value.revisions,
-            decision: REVISION_DECISIONS.REJECT,
-          });
-          if (reject.isErr()) throw reject.error;
-          expect(reject.value.document).toStrictEqual(document);
-        }
-        const rebased = targetOffset > 6 ? targetOffset - 3 : targetOffset;
-        const remaining = "presuffix";
-        expect(
-          storyParagraphs(accepted.package.document)
-            .map(({ paragraph }) => paragraphLogicalText(paragraph))
-            .join("\n"),
-        ).toBe(remaining.slice(0, rebased) + "fix" + remaining.slice(rebased));
-        const failed = compileEditorIntent(document, {
-          intent: { ...intent, target: { ...target, blockId: "FFFFFFFF" } },
-          mode,
-        });
-        expect(failed.isErr()).toBe(true);
-      }),
+          expect(failed.isErr()).toBe(true);
+        },
+      ),
       {
         numRuns: 100,
         id: "generated move intents rebase the original target and refuse atomically",
@@ -2002,10 +2378,13 @@ describe("document operations", () => {
   test("generated comment-anchor move sequences retain source anchors when suggesting and move them when editing", () => {
     assertProperty(
       fc.property(
-        fc.array(fc.record({ target: fc.nat(), gap: fc.nat(), tracked: fc.boolean() }), {
-          minLength: 8,
-          maxLength: 16,
-        }),
+        fc.array(
+          fc.record({ target: fc.nat(), gap: fc.nat(), tracked: fc.boolean() }),
+          {
+            minLength: 8,
+            maxLength: 16,
+          },
+        ),
         (steps) => {
           const original = {
             package: {
@@ -2034,14 +2413,17 @@ describe("document operations", () => {
             ops: readonly DocumentOp[];
           }[] = [];
           for (const [index, step] of steps.entries()) {
-            const paragraph = storyParagraphs(document.package.document).at(0)?.paragraph;
+            const paragraph = storyParagraphs(document.package.document).at(
+              0,
+            )?.paragraph;
             if (!paragraph) panic("Comment move sequence lost its paragraph.");
             const anchors = leafSpans(paragraph.content).filter(({ node }) =>
               isCommentAnchor(node),
             );
             const start = anchors.at(0);
             const end = anchors.at(-1);
-            if (!start || !end) panic("Comment move sequence lost its anchors.");
+            if (!start || !end)
+              panic("Comment move sequence lost its anchors.");
             let targetOffset = step.target % (paragraphLength(paragraph) + 1);
             let tracked = step.tracked;
             if (index === 0) {
@@ -2053,13 +2435,18 @@ describe("document operations", () => {
               tracked = true;
             }
             const targetGap =
-              step.gap % (zeroWidthLeavesAt(paragraph.content, targetOffset).length + 1);
+              step.gap %
+              (zeroWidthLeavesAt(paragraph.content, targetOffset).length + 1);
             const at = { story: OP_STORIES.MAIN, blockId: "00000001" };
             const intent = {
               type: "moveFragment",
               from: { ...at, ...start.before },
               to: { ...at, ...end.after },
-              target: { ...at, offset: targetOffset, zeroWidthBefore: targetGap },
+              target: {
+                ...at,
+                offset: targetOffset,
+                zeroWidthBefore: targetGap,
+              },
               openStart: 1,
               openEnd: 1,
               paragraphs: [
@@ -2092,13 +2479,20 @@ describe("document operations", () => {
               compareGaps(intent.target, end.after) <= 0;
             const compiled = compileEditorIntent(document, { intent, mode });
             if (compiled.isErr()) throw compiled.error;
-            const edit = applyDocumentOps(document, compiled.value.ops).unwrap();
+            const edit = applyDocumentOps(
+              document,
+              compiled.value.ops,
+            ).unwrap();
             if (inside) expect(compiled.value.ops).toEqual([]);
-            const moved = storyParagraphs(edit.document.package.document).at(0)?.paragraph;
+            const moved = storyParagraphs(edit.document.package.document).at(
+              0,
+            )?.paragraph;
             if (!moved) panic("Comment move lost its result paragraph.");
             const text = paragraphLogicalText(paragraph);
-            const remaining = text.slice(0, start.before.offset) + text.slice(end.after.offset);
-            const rebased = targetOffset > end.after.offset ? targetOffset - 1 : targetOffset;
+            const remaining =
+              text.slice(0, start.before.offset) + text.slice(end.after.offset);
+            const rebased =
+              targetOffset > end.after.offset ? targetOffset - 1 : targetOffset;
             expect(paragraphLogicalText(moved)).toBe(
               inside || tracked
                 ? text
@@ -2109,7 +2503,9 @@ describe("document operations", () => {
             if (tracked) {
               assertExactModel(edit.document, snapshot);
               assertExactModel(
-                leafSpans(moved.content).filter(({ node }) => isCommentAnchor(node)),
+                leafSpans(moved.content).filter(({ node }) =>
+                  isCommentAnchor(node),
+                ),
                 anchors,
               );
             }
@@ -2134,7 +2530,8 @@ describe("document operations", () => {
             document = redo.document;
           }
           for (const entry of journal.toReversed()) {
-            document = applyDocumentOps(document, entry.edit.inverse).unwrap().document;
+            document = applyDocumentOps(document, entry.edit.inverse).unwrap()
+              .document;
             assertExactModel(document, entry.before);
           }
           assertExactModel(document, original);
@@ -2155,11 +2552,14 @@ describe("document operations", () => {
     fc.assert(
       fc.property(
         documentArbitrary,
-        fc.tuple(plainInputArbitrary, plainInputArbitrary).map((parts) => parts.join("")),
+        fc
+          .tuple(plainInputArbitrary, plainInputArbitrary)
+          .map((parts) => parts.join("")),
         fc.array(replaceInputArbitrary, { minLength: 8, maxLength: 24 }),
         (generated, initialText, inputs) => {
           const first = storyParagraphs(generated.package.document).at(0);
-          if (!first?.paragraph.paraId) panic("Generated paragraph id unavailable");
+          if (!first?.paragraph.paraId)
+            panic("Generated paragraph id unavailable");
           const blockId = first.paragraph.paraId;
           // Retain the existing generator's package metadata and secondary-story IDs.
           const document = normalizeForOps({
@@ -2177,7 +2577,8 @@ describe("document operations", () => {
                       (point, index) =>
                         ({
                           type: "run",
-                          formatting: index % 2 === 0 ? { bold: true } : { italic: true },
+                          formatting:
+                            index % 2 === 0 ? { bold: true } : { italic: true },
                           content: [{ type: "text", text: point }],
                         }) satisfies Run,
                     ),
@@ -2194,18 +2595,31 @@ describe("document operations", () => {
             const gaps = codePointGaps(text);
             const anchor = gaps.at(input.anchor % gaps.length) ?? 0;
             const head = gaps.at(input.head % gaps.length) ?? 0;
-            const from = input.kind === "insert" ? anchor : Math.min(anchor, head);
-            const to = input.kind === "insert" ? anchor : Math.max(anchor, head);
+            const from =
+              input.kind === "insert" ? anchor : Math.min(anchor, head);
+            const to =
+              input.kind === "insert" ? anchor : Math.max(anchor, head);
             const replacement = input.kind === "delete" ? "" : input.text;
-            const position = (offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
-            const source = storyParagraphs(current.package.document).at(0)?.paragraph;
-            if (!source) panic("Generated authored input paragraph disappeared");
+            const position = (offset: number) => ({
+              story: OP_STORIES.MAIN,
+              blockId,
+              offset,
+            });
+            const source = storyParagraphs(current.package.document).at(
+              0,
+            )?.paragraph;
+            if (!source)
+              panic("Generated authored input paragraph disappeared");
             const authoredUnit = from === to && from > 0 ? from - 1 : from;
             let runProps: TextFormatting = {};
             let end = 0;
             for (const run of source.content) {
-              if (run.type !== "run") panic("Generated authored input encountered a wrapper");
-              end += run.content.reduce((width, child) => width + runContentWidth(child), 0);
+              if (run.type !== "run")
+                panic("Generated authored input encountered a wrapper");
+              end += run.content.reduce(
+                (width, child) => width + runContentWidth(child),
+                0,
+              );
               if (authoredUnit < end) {
                 runProps = run.formatting ?? {};
                 break;
@@ -2248,15 +2662,22 @@ describe("document operations", () => {
             text = text.slice(0, from) + replacement + text.slice(to);
             current = applied.value.document;
             expect(orderedIds(current)).toEqual([blockId]);
-            const paragraph = storyParagraphs(current.package.document).at(0)?.paragraph;
+            const paragraph = storyParagraphs(current.package.document).at(
+              0,
+            )?.paragraph;
             if (!paragraph) panic("Generated paragraph disappeared");
             expect(paragraphLogicalText(paragraph)).toBe(text);
             // Every inserted UTF-16 unit carries the pre-deletion authored formatting.
             let runOffset = 0;
             for (const run of paragraph.content) {
-              if (run.type !== "run") panic("Generated authored input produced a wrapper");
+              if (run.type !== "run")
+                panic("Generated authored input produced a wrapper");
               const runEnd =
-                runOffset + run.content.reduce((width, child) => width + runContentWidth(child), 0);
+                runOffset +
+                run.content.reduce(
+                  (width, child) => width + runContentWidth(child),
+                  0,
+                );
               if (runEnd > from && runOffset < from + replacement.length)
                 expect(run.formatting ?? {}).toStrictEqual(runProps);
               runOffset = runEnd;
@@ -2280,7 +2701,8 @@ describe("document operations", () => {
       propertyConfig({ numRuns: NUM_RUNS }),
     );
     expect([...tally.keys()].sort()).toEqual([...PLAIN_INPUT_KINDS].sort());
-    for (const applied of tally.values()) expect(applied).toBeGreaterThan(NUM_RUNS / 1000);
+    for (const applied of tally.values())
+      expect(applied).toBeGreaterThan(NUM_RUNS / 1000);
   });
 
   test("an operation's inverse restores the document exactly", () => {
@@ -2311,20 +2733,28 @@ describe("document operations", () => {
             (inverse) => inverse.type === DOCUMENT_OP_TYPES.REPLACE_INLINE,
           );
           const review = applied.value.inverse.filter(
-            (inverse) => inverse.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+            (inverse) =>
+              inverse.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
           );
-          expect(new Set(restoring.map(({ blockId }) => blockId)).size).toBe(restoring.length);
+          expect(new Set(restoring.map(({ blockId }) => blockId)).size).toBe(
+            restoring.length,
+          );
           expect(restoring.length).toBeLessThanOrEqual(
             op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ? 1 : 2,
           );
           expect(review.length).toBeLessThanOrEqual(1);
-          expect(applied.value.inverse.length - restoring.length - review.length).toBe(1);
+          expect(
+            applied.value.inverse.length - restoring.length - review.length,
+          ).toBe(1);
         } else if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
           expect(applied.value.inverse.length).toBeLessThanOrEqual(1);
         }
         expectRestores(applied.value, original);
       }),
-      { numRuns: NUM_RUNS, id: "an operation's inverse restores the document exactly" },
+      {
+        numRuns: NUM_RUNS,
+        id: "an operation's inverse restores the document exactly",
+      },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });
@@ -2352,7 +2782,9 @@ describe("document operations", () => {
             inverses.push(applied.value.inverse);
             current = applied.value.document;
           }
-          expect(applyAll(current, inverses.toReversed().flat())).toStrictEqual(original);
+          expect(applyAll(current, inverses.toReversed().flat())).toStrictEqual(
+            original,
+          );
 
           const batch = applyDocumentOps(document, ops);
           if (batch.isErr()) {
@@ -2363,11 +2795,19 @@ describe("document operations", () => {
 
           // JSON is the journal wire format; IDs and section/list model state survive both ways.
           const wireOps = JSON.parse(JSON.stringify(ops)) as DocumentOp[];
-          const wireBatch = applyDocumentOps(independentCopy(document), wireOps);
+          const wireBatch = applyDocumentOps(
+            independentCopy(document),
+            wireOps,
+          );
           if (wireBatch.isErr()) throw wireBatch.error;
           expect(wireBatch.value.document).toStrictEqual(current);
-          const wireInverse = JSON.parse(JSON.stringify(wireBatch.value.inverse)) as DocumentOp[];
-          const wireUndo = applyDocumentOps(independentCopy(wireBatch.value.document), wireInverse);
+          const wireInverse = JSON.parse(
+            JSON.stringify(wireBatch.value.inverse),
+          ) as DocumentOp[];
+          const wireUndo = applyDocumentOps(
+            independentCopy(wireBatch.value.document),
+            wireInverse,
+          );
           if (wireUndo.isErr()) throw wireUndo.error;
           expect(wireUndo.value.document).toStrictEqual(original);
         },
@@ -2387,15 +2827,29 @@ describe("document operations", () => {
         fc
           .constantFrom(undefined, {}, { alignment: "center" as const })
           .map(finalizeParagraphFormatting),
-        fc.constantFrom(undefined, {}, { keepNext: true }).map(finalizeParagraphFormatting),
+        fc
+          .constantFrom(undefined, {}, { keepNext: true })
+          .map(finalizeParagraphFormatting),
         fc.constantFrom(undefined, {}, { bold: false }),
-        (contentKind, leadingProperties, trailingProperties, markProperties) => {
-          const run = { type: "run", content: [{ type: "text", text: "a" }] } satisfies Run;
+        (
+          contentKind,
+          leadingProperties,
+          trailingProperties,
+          markProperties,
+        ) => {
+          const run = {
+            type: "run",
+            content: [{ type: "text", text: "a" }],
+          } satisfies Run;
           const content = (() => {
             if (contentKind === "empty") return [];
             if (contentKind === "deleted")
               return [
-                { type: "deletion", info: { id: 1, author: "Source" }, content: [run] },
+                {
+                  type: "deletion",
+                  info: { id: 1, author: "Source" },
+                  content: [run],
+                },
               ] satisfies Paragraph["content"];
             return [run];
           })();
@@ -2403,7 +2857,9 @@ describe("document operations", () => {
             type: "paragraph",
             paraId: "00000001",
             content,
-            ...(leadingProperties === undefined ? {} : { formatting: leadingProperties }),
+            ...(leadingProperties === undefined
+              ? {}
+              : { formatting: leadingProperties }),
           } satisfies Paragraph;
           const trailingFormatting =
             markProperties === undefined
@@ -2413,7 +2869,9 @@ describe("document operations", () => {
             type: "paragraph",
             paraId: "00000002",
             content: [{ type: "run", content: [{ type: "text", text: "b" }] }],
-            ...(trailingFormatting === undefined ? {} : { formatting: trailingFormatting }),
+            ...(trailingFormatting === undefined
+              ? {}
+              : { formatting: trailingFormatting }),
           } satisfies Paragraph;
           const document = {
             package: { document: { content: [leading, trailing] } },
@@ -2429,10 +2887,16 @@ describe("document operations", () => {
           const expectedFormatting = finalizeParagraphFormatting(
             (() => {
               if (contentKind !== "visible") return trailingFormatting;
-              if (sourceProperties === undefined && markProperties === undefined) return undefined;
+              if (
+                sourceProperties === undefined &&
+                markProperties === undefined
+              )
+                return undefined;
               return {
                 ...sourceProperties,
-                ...(markProperties === undefined ? {} : { runProperties: markProperties }),
+                ...(markProperties === undefined
+                  ? {}
+                  : { runProperties: markProperties }),
               };
             })(),
           );
@@ -2445,7 +2909,10 @@ describe("document operations", () => {
               newIds: allocation.newIds,
             },
           ] as const) {
-            const plan = compileEditorIntent(document, { intent, mode }).unwrap();
+            const plan = compileEditorIntent(document, {
+              intent,
+              mode,
+            }).unwrap();
             const edit = applyDocumentOps(document, plan.ops).unwrap();
             const accepted =
               mode.type === "editing"
@@ -2456,13 +2923,18 @@ describe("document operations", () => {
                     revisionIds: edit.revisions,
                     decision: REVISION_DECISIONS.ACCEPT,
                   }).unwrap().document;
-            const survivor = storyParagraphs(accepted.package.document).at(0)?.paragraph;
+            const survivor = storyParagraphs(accepted.package.document).at(
+              0,
+            )?.paragraph;
             expect(survivor?.paraId).toBe(trailing.paraId);
             assertExactModel(survivor?.formatting, expectedFormatting);
             expect(Object.hasOwn(survivor ?? {}, "formatting")).toBe(
               expectedFormatting !== undefined,
             );
-            const inverse = applyDocumentOps(edit.document, edit.inverse).unwrap();
+            const inverse = applyDocumentOps(
+              edit.document,
+              edit.inverse,
+            ).unwrap();
             assertExactModel(inverse.document, document);
           }
         },
@@ -2485,11 +2957,22 @@ describe("document operations", () => {
         const first = paragraphs.at(0);
         const paragraph = first?.paragraph;
         if (paragraph?.paraId === undefined) return;
-        const at = { story: OP_STORIES.MAIN, blockId: paragraph.paraId, offset: 0 };
-        const initialAllocation = allocateEditorIntentIds(document, { type: "splitParagraph", at });
+        const at = {
+          story: OP_STORIES.MAIN,
+          blockId: paragraph.paraId,
+          offset: 0,
+        };
+        const initialAllocation = allocateEditorIntentIds(document, {
+          type: "splitParagraph",
+          at,
+        });
         const length = paragraphLogicalText(paragraph).length;
         const intents: EditorIntent[] = [
-          { type: "formatParagraph", at, patch: { alignment: "center", keepNext: true } },
+          {
+            type: "formatParagraph",
+            at,
+            patch: { alignment: "center", keepNext: true },
+          },
           {
             type: "formatRun",
             from: at,
@@ -2497,8 +2980,17 @@ describe("document operations", () => {
             patch: { bold: true, italic: false },
           },
           { type: "insertAtom", from: at, to: at, atom: { type: "tab" } },
-          { type: "replaceText", from: at, to: { ...at, offset: length }, text: "edited" },
-          { type: "splitParagraph", at, newBlockId: initialAllocation.newBlockId },
+          {
+            type: "replaceText",
+            from: at,
+            to: { ...at, offset: length },
+            text: "edited",
+          },
+          {
+            type: "splitParagraph",
+            at,
+            newBlockId: initialAllocation.newBlockId,
+          },
           {
             type: "setList",
             items: [{ at, ilvl: 0 }],
@@ -2519,12 +3011,17 @@ describe("document operations", () => {
           intents.push({
             type: "setList",
             items: [{ at, ilvl: 0 }],
-            target: { type: "existing", numId: document.package.numbering.nums[0]!.numId },
+            target: {
+              type: "existing",
+              numId: document.package.numbering.nums[0]!.numId,
+            },
           });
         }
         const nextInList = paragraphs.find(
           ({ list, index }) =>
-            first !== undefined && sameBlockList(first.list, list) && index > first.index,
+            first !== undefined &&
+            sameBlockList(first.list, list) &&
+            index > first.index,
         );
         if (nextInList?.paragraph.paraId !== undefined) {
           const next = nextInList.paragraph;
@@ -2541,7 +3038,9 @@ describe("document operations", () => {
         }
         const adjacent = paragraphs.find(
           ({ list, index }) =>
-            first !== undefined && sameBlockList(first.list, list) && index === first.index + 1,
+            first !== undefined &&
+            sameBlockList(first.list, list) &&
+            index === first.index + 1,
         );
         if (adjacent?.paragraph.paraId !== undefined) {
           intents.push({
@@ -2572,7 +3071,10 @@ describe("document operations", () => {
           attemptedPlans += 2;
           for (const result of [direct, tracked]) {
             if (result.isErr())
-              refusals.set(result.error.reason, (refusals.get(result.error.reason) ?? 0) + 1);
+              refusals.set(
+                result.error.reason,
+                (refusals.get(result.error.reason) ?? 0) + 1,
+              );
           }
           if (direct.isErr() || tracked.isErr()) continue;
           const directEdit = applyDocumentOps(document, direct.value.ops);
@@ -2593,30 +3095,44 @@ describe("document operations", () => {
               to: intent.to,
             });
           }
-          const originalChanges = storyParagraphs(document.package.document).flatMap(
-            ({ paragraph: sourceParagraph }) => sourceParagraph.propertyChanges ?? [],
+          const originalChanges = storyParagraphs(
+            document.package.document,
+          ).flatMap(
+            ({ paragraph: sourceParagraph }) =>
+              sourceParagraph.propertyChanges ?? [],
           );
-          const foldedIds = storyParagraphs(trackedEdit.value.document.package.document).flatMap(
-            ({ paragraph: editedParagraph }) =>
-              (editedParagraph.propertyChanges ?? []).flatMap((change) => {
-                const previous = originalChanges.find(({ info }) => info.id === change.info.id);
-                if (previous === undefined || change.info.author !== "Property") return [];
-                expect(["joinParagraphs", "formatParagraph", "setList"]).toContain(intent.type);
-                expect(change.previousFormatting).toStrictEqual(previous.previousFormatting);
-                expect(change.info).toStrictEqual({
-                  ...previous.info,
-                  author: "Property",
-                  date: "2026-10-02T00:00:00Z",
-                });
-                expect(trackedEdit.value.revisions).not.toContain(change.info.id);
-                return [change.info.id];
-              }),
+          const foldedIds = storyParagraphs(
+            trackedEdit.value.document.package.document,
+          ).flatMap(({ paragraph: editedParagraph }) =>
+            (editedParagraph.propertyChanges ?? []).flatMap((change) => {
+              const previous = originalChanges.find(
+                ({ info }) => info.id === change.info.id,
+              );
+              if (previous === undefined || change.info.author !== "Property")
+                return [];
+              expect([
+                "joinParagraphs",
+                "formatParagraph",
+                "setList",
+              ]).toContain(intent.type);
+              expect(change.previousFormatting).toStrictEqual(
+                previous.previousFormatting,
+              );
+              expect(change.info).toStrictEqual({
+                ...previous.info,
+                author: "Property",
+                date: "2026-10-02T00:00:00Z",
+              });
+              expect(trackedEdit.value.revisions).not.toContain(change.info.id);
+              return [change.info.id];
+            }),
           );
           const resolveFolded = (
             source: Document,
             decision: (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS],
           ) => {
-            if (intent.type === "formatRun") return resolvePendingRunFormatting(source, decision);
+            if (intent.type === "formatRun")
+              return resolvePendingRunFormatting(source, decision);
             if (foldedIds.length === 0) return source;
             return applyDocumentOp(source, {
               type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -2649,33 +3165,42 @@ describe("document operations", () => {
                 ),
               );
               const baselinePackage = Object.fromEntries(
-                Object.entries(resolveFolded(document, REVISION_DECISIONS.REJECT).package).filter(
-                  ([key]) => key !== "numbering",
-                ),
+                Object.entries(
+                  resolveFolded(document, REVISION_DECISIONS.REJECT).package,
+                ).filter(([key]) => key !== "numbering"),
               );
               assertExactModel(rejectedPackage, baselinePackage);
-              expect(rejected.value.document.package.numbering?.nums).toContainEqual(
-                intent.target.num,
-              );
+              expect(
+                rejected.value.document.package.numbering?.nums,
+              ).toContainEqual(intent.target.num);
               if (intent.target.abstractNum !== undefined) {
-                expect(rejected.value.document.package.numbering?.abstractNums).toContainEqual(
-                  intent.target.abstractNum,
-                );
+                expect(
+                  rejected.value.document.package.numbering?.abstractNums,
+                ).toContainEqual(intent.target.abstractNum);
               }
             } else {
               assertExactModel(
-                resolveFolded(rejected.value.document, REVISION_DECISIONS.REJECT),
+                resolveFolded(
+                  rejected.value.document,
+                  REVISION_DECISIONS.REJECT,
+                ),
                 resolveFolded(document, REVISION_DECISIONS.REJECT),
               );
             }
           }
           assertFreshIdentityEquivalent({
             actual: resolveFolded(acceptedDocument, REVISION_DECISIONS.ACCEPT),
-            expected: resolveFolded(directEdit.value.document, REVISION_DECISIONS.ACCEPT),
+            expected: resolveFolded(
+              directEdit.value.document,
+              REVISION_DECISIONS.ACCEPT,
+            ),
             original: document,
             allocated: allocation.newIds,
           });
-          const directUndo = applyDocumentOps(directEdit.value.document, directEdit.value.inverse);
+          const directUndo = applyDocumentOps(
+            directEdit.value.document,
+            directEdit.value.inverse,
+          );
           const trackedUndo = applyDocumentOps(
             trackedEdit.value.document,
             trackedEdit.value.inverse,
@@ -2684,17 +3209,29 @@ describe("document operations", () => {
           if (trackedUndo.isErr()) throw trackedUndo.error;
           assertExactModel(directUndo.value.document, document);
           assertExactModel(trackedUndo.value.document, document);
-          const directRedo = applyDocumentOps(directUndo.value.document, directUndo.value.inverse);
+          const directRedo = applyDocumentOps(
+            directUndo.value.document,
+            directUndo.value.inverse,
+          );
           const trackedRedo = applyDocumentOps(
             trackedUndo.value.document,
             trackedUndo.value.inverse,
           );
           if (directRedo.isErr()) throw directRedo.error;
           if (trackedRedo.isErr()) throw trackedRedo.error;
-          assertExactModel(directRedo.value.document, directEdit.value.document);
-          assertExactModel(trackedRedo.value.document, trackedEdit.value.document);
+          assertExactModel(
+            directRedo.value.document,
+            directEdit.value.document,
+          );
+          assertExactModel(
+            trackedRedo.value.document,
+            trackedEdit.value.document,
+          );
           tallies.set(intent.type, (tallies.get(intent.type) ?? 0) + 1);
-          if (intent.type === "formatRun" && intent.from.blockId !== intent.to.blockId) {
+          if (
+            intent.type === "formatRun" &&
+            intent.from.blockId !== intent.to.blockId
+          ) {
             appliedMultiParagraphFormatting += 1;
           }
         }
@@ -2724,9 +3261,13 @@ describe("document operations", () => {
       DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
     ];
-    for (const reason of refusals.keys()) expect(expectedRefusals).toContain(reason);
+    for (const reason of refusals.keys())
+      expect(expectedRefusals).toContain(reason);
     expect(
-      [...refusals.values()].reduce((total, refusalCount) => total + refusalCount, 0),
+      [...refusals.values()].reduce(
+        (total, refusalCount) => total + refusalCount,
+        0,
+      ),
     ).toBeLessThan(attemptedPlans / 2);
   });
 
@@ -2739,12 +3280,19 @@ describe("document operations", () => {
         // SAFETY: the operation is plain data; this is the journal's round-trip.
         const replayed = JSON.parse(JSON.stringify(op)) as DocumentOp;
         const first = outcome(applyDocumentOp(structuredClone(document), op));
-        expect(outcome(applyDocumentOp(structuredClone(document), replayed))).toStrictEqual(first);
+        expect(
+          outcome(applyDocumentOp(structuredClone(document), replayed)),
+        ).toStrictEqual(first);
         expect(outcome(applyDocumentOp(document, op))).toStrictEqual(first);
         // Rebuilt record by record, sharing nothing: the result must not depend on sharing.
-        expect(outcome(applyDocumentOp(independentCopy(document), replayed))).toStrictEqual(first);
+        expect(
+          outcome(applyDocumentOp(independentCopy(document), replayed)),
+        ).toStrictEqual(first);
       }),
-      { numRuns: NUM_RUNS, id: "the same operation on equal documents gives equal results" },
+      {
+        numRuns: NUM_RUNS,
+        id: "the same operation on equal documents gives equal results",
+      },
     );
   });
 
@@ -2754,10 +3302,12 @@ describe("document operations", () => {
         const copy = independentCopy(document);
         expect(copy).toStrictEqual(document);
         expect(copy).not.toBe(document);
-        expect(copy.package.document.content).not.toBe(document.package.document.content);
-        expect(document.package.document.sections?.flatMap(({ content }) => content)).toStrictEqual(
+        expect(copy.package.document.content).not.toBe(
           document.package.document.content,
         );
+        expect(
+          document.package.document.sections?.flatMap(({ content }) => content),
+        ).toStrictEqual(document.package.document.content);
         expect(contractViolation(document)).toBeUndefined();
         expect(contractViolation(copy)).toBeUndefined();
       }),
@@ -2779,6 +3329,14 @@ describe("document operations", () => {
         const next = applied.value.document;
         const touched = touchedIds(applied.value);
         const named = namedIds(op);
+        const touchedNotes = removedNoteStories(document, next);
+        for (const story of touchedNotes) {
+          for (const { paragraph } of storyParagraphs(
+            findStoryBody(document, story),
+          )) {
+            if (paragraph.paraId !== undefined) named.add(paragraph.paraId);
+          }
+        }
         for (const id of touched) {
           expect(named.has(id)).toBe(true);
         }
@@ -2806,11 +3364,16 @@ describe("document operations", () => {
         for (const id of applied.value.touched.removed) {
           expect(after.has(id)).toBe(false);
         }
-        const untouchedOrder = (ids: string[]) => ids.filter((id) => !touched.has(id));
-        expect(untouchedOrder(orderedIds(next))).toEqual(untouchedOrder(orderedIds(document)));
+        const untouchedOrder = (ids: string[]) =>
+          ids.filter((id) => !touched.has(id));
+        expect(untouchedOrder(orderedIds(next))).toEqual(
+          untouchedOrder(orderedIds(document)),
+        );
 
         const untouchedBlocks = (target: Document) =>
-          target.package.document.content.filter((block) => !blockHolds(block, touched));
+          target.package.document.content.filter(
+            (block) => !blockHolds(block, touched),
+          );
         const beforeBlocks = untouchedBlocks(document);
         const afterBlocks = untouchedBlocks(next);
         expect(afterBlocks.length).toBe(beforeBlocks.length);
@@ -2836,21 +3399,32 @@ describe("document operations", () => {
           }
         }
         for (const [index, section] of (body.sections ?? []).entries()) {
-          if (shared && !section.content.some((block) => blockHolds(block, touched))) {
+          if (
+            shared &&
+            !section.content.some((block) => blockHolds(block, touched))
+          ) {
             expect(section).toBe(beforeSections[index]!);
           }
         }
 
         for (const key of Object.keys(document.package)) {
-          if (key !== "document") {
-            expect(Reflect.get(next.package, key)).toBe(Reflect.get(document.package, key));
+          const ownsNotes = touchedNotes.some(({ kind }) => `${kind}s` === key);
+          if (key !== "document" && !ownsNotes) {
+            expect(Reflect.get(next.package, key)).toBe(
+              Reflect.get(document.package, key),
+            );
           }
         }
-        expect(body.finalSectionProperties).toBe(document.package.document.finalSectionProperties!);
+        expect(body.finalSectionProperties).toBe(
+          document.package.document.finalSectionProperties!,
+        );
         expect(body.comments).toBe(document.package.document.comments!);
         expect(next.warnings).toBe(document.warnings!);
       }),
-      { numRuns: NUM_RUNS, id: "blocks an operation does not touch are the same objects" },
+      {
+        numRuns: NUM_RUNS,
+        id: "blocks an operation does not touch are the same objects",
+      },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });
@@ -2865,18 +3439,25 @@ describe("document operations", () => {
         }
         const before = paragraphsById(document);
         const after = paragraphsById(applied.value.document);
-        const paragraphOf = (paragraphs: Map<string, Paragraph>, id: string): Paragraph => {
+        const paragraphOf = (
+          paragraphs: Map<string, Paragraph>,
+          id: string,
+        ): Paragraph => {
           const paragraph = paragraphs.get(id);
           if (paragraph === undefined) throw new Error(`${id} is missing`);
           return paragraph;
         };
-        const textOf = (paragraphs: Map<string, Paragraph>, id: string): string =>
-          paragraphLogicalText(paragraphOf(paragraphs, id));
+        const textOf = (
+          paragraphs: Map<string, Paragraph>,
+          id: string,
+        ): string => paragraphLogicalText(paragraphOf(paragraphs, id));
         switch (op.type) {
           case DOCUMENT_OP_TYPES.INSERT_TEXT: {
             const { blockId, offset } = op.at;
             const old = textOf(before, blockId);
-            expect(textOf(after, blockId)).toBe(old.slice(0, offset) + op.text + old.slice(offset));
+            expect(textOf(after, blockId)).toBe(
+              old.slice(0, offset) + op.text + old.slice(offset),
+            );
             const inserted = unitsOf(paragraphOf(after, blockId)).slice(
               offset,
               offset + op.text.length,
@@ -2885,7 +3466,9 @@ describe("document operations", () => {
               expect(unit.inRun).toBe(true);
               expect(unit.removed).toBe(false);
               if (op.runProps !== INHERIT_RUN_PROPS) {
-                expect(sameRunFormatting(unit.formatting, op.runProps)).toBe(true);
+                expect(sameRunFormatting(unit.formatting, op.runProps)).toBe(
+                  true,
+                );
               }
             }
             break;
@@ -2897,7 +3480,9 @@ describe("document operations", () => {
               type: "paragraph",
               content: [...op.slice.content],
             });
-            expect(textOf(after, blockId)).toBe(old.slice(0, offset) + added + old.slice(offset));
+            expect(textOf(after, blockId)).toBe(
+              old.slice(0, offset) + added + old.slice(offset),
+            );
             break;
           }
           case DOCUMENT_OP_TYPES.DELETE_RANGE: {
@@ -2934,7 +3519,9 @@ describe("document operations", () => {
             break;
           }
           case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS: {
-            expect(after.get(op.blockId)?.content).toBe(paragraphOf(before, op.blockId).content);
+            expect(after.get(op.blockId)?.content).toBe(
+              paragraphOf(before, op.blockId).content,
+            );
             break;
           }
           case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
@@ -2942,15 +3529,21 @@ describe("document operations", () => {
             const old = textOf(before, blockId);
             // By default the new paragraph follows at the end, and takes the text before otherwise.
             const newHalf =
-              op.newHalf ?? (offset === old.length ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST);
+              op.newHalf ??
+              (offset === old.length
+                ? SPLIT_HALVES.SECOND
+                : SPLIT_HALVES.FIRST);
             const [firstId, secondId] =
-              newHalf === SPLIT_HALVES.FIRST ? [op.newBlockId, blockId] : [blockId, op.newBlockId];
+              newHalf === SPLIT_HALVES.FIRST
+                ? [op.newBlockId, blockId]
+                : [blockId, op.newBlockId];
             expect(textOf(after, firstId)).toBe(old.slice(0, offset));
             expect(textOf(after, secondId)).toBe(old.slice(offset));
             break;
           }
           case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
-            const survivor = op.survivor === SPLIT_HALVES.FIRST ? op.blockId : op.nextBlockId;
+            const survivor =
+              op.survivor === SPLIT_HALVES.FIRST ? op.blockId : op.nextBlockId;
             expect(textOf(after, survivor)).toBe(
               textOf(before, op.blockId) + textOf(before, op.nextBlockId),
             );

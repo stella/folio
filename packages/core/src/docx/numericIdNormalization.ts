@@ -2,21 +2,23 @@
 // content; integer definitions and references are remapped together before
 // parsing. Malformed lexical identities retain the parser's drop-and-warn path.
 
-import {
-  isValidOoxmlNumericId,
-  ooxmlNumericIdDomain,
-  assertValidOoxmlNumericId,
-  mayContainOoxmlNumericIds,
-  mayContainInvalidOoxmlNumericIds,
-  isOoxmlNumericIdAttributeName,
-} from "@stll/docx-core";
 import { panic } from "better-result";
+
+import {
+  assertValidOoxmlNumericId,
+  isOoxmlNumericIdAttributeName,
+  isValidOoxmlNumericId,
+  mayContainInvalidOoxmlNumericIds,
+  mayContainOoxmlNumericIds,
+  ooxmlNumericIdDomain,
+} from "@stll/docx-core";
 
 import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
 import {
-  scanStreamingXmlNumericIdAttributes,
   parseStreamingXmlWithIdentityVisitor,
+  scanStreamingXmlNumericIdAttributes,
 } from "./streamingXmlParser";
+import { type RawDocxContent, replaceRawDocxXmlParts } from "./unzip";
 import {
   getLocalName,
   getNamespaceUri,
@@ -24,13 +26,14 @@ import {
   type XmlElement,
 } from "./xmlParser";
 import { XmlResourceLimitError } from "./xmlResourceLimits";
-import { replaceRawDocxXmlParts, type RawDocxContent } from "./unzip";
 
 const identityKey = (value: string | number): string => {
   const spelling = String(value).trim();
   if (!/^[+-]?\d+$/u.test(spelling)) return spelling;
   const digits = spelling.replace(/^[+-]?0*/u, "");
-  return digits === "" ? "0" : `${spelling.startsWith("-") ? "-" : ""}${digits}`;
+  return digits === ""
+    ? "0"
+    : `${spelling.startsWith("-") ? "-" : ""}${digits}`;
 };
 
 /** Numeric schemas share a range, but note and numbering identities have separate namespaces. */
@@ -40,7 +43,11 @@ type IdentitySpaceOptions = {
   domain: NonNullable<ReturnType<typeof ooxmlNumericIdDomain>>;
 };
 
-const identitySpace = ({ elementName, attributeName, domain }: IdentitySpaceOptions): string => {
+const identitySpace = ({
+  elementName,
+  attributeName,
+  domain,
+}: IdentitySpaceOptions): string => {
   if (domain === "unsigned32") return "drawing";
   const element = getLocalName(elementName);
   const attribute = getLocalName(attributeName);
@@ -72,9 +79,15 @@ const identitySpace = ({ elementName, attributeName, domain }: IdentitySpaceOpti
 const identifiedAttributes = (element: XmlElement) => {
   const attributes = [];
   for (const [name, value] of Object.entries(element.attributes ?? {})) {
-    if (!isOoxmlNumericIdAttributeName({ elementName: element.name ?? "", attributeName: name }))
+    if (
+      !isOoxmlNumericIdAttributeName({
+        elementName: element.name ?? "",
+        attributeName: name,
+      })
+    )
       continue;
-    if (value === undefined || !/^[+-]?\d+$/u.test(String(value).trim())) continue;
+    if (value === undefined || !/^[+-]?\d+$/u.test(String(value).trim()))
+      continue;
     const domain = ooxmlNumericIdDomain({
       elementName: element.name ?? "",
       elementNamespace: getNamespaceUri(element),
@@ -86,13 +99,21 @@ const identifiedAttributes = (element: XmlElement) => {
       name,
       value,
       domain,
-      space: identitySpace({ elementName: element.name ?? "", attributeName: name, domain }),
+      space: identitySpace({
+        elementName: element.name ?? "",
+        attributeName: name,
+        domain,
+      }),
     });
   }
   return attributes;
 };
 
-type IdentitySpace = { reserved: Set<number>; replacements: Map<string, string>; next: number };
+type IdentitySpace = {
+  reserved: Set<number>;
+  replacements: Map<string, string>;
+  next: number;
+};
 type ImportedIdentitySpan = {
   start: number;
   end: number;
@@ -102,7 +123,9 @@ type ImportedIdentitySpan = {
   attributeName: string;
 };
 
-type NumericIdNormalizationOptions = { onParsedDocument?: (document: XmlElement) => void };
+type NumericIdNormalizationOptions = {
+  onParsedDocument?: (document: XmlElement) => void;
+};
 
 /**
  * Repair out-of-range imported integers before any model or opaque XML is captured.
@@ -113,7 +136,11 @@ export const normalizeImportedNumericIds = (
   parts: ReadonlyMap<string, string>,
   options: NumericIdNormalizationOptions = {},
 ): ReadonlyMap<string, string> => {
-  if (![...parts.values()].some((xml) => mayContainInvalidOoxmlNumericIds(xml, "range")))
+  if (
+    ![...parts.values()].some((xml) =>
+      mayContainInvalidOoxmlNumericIds(xml, "range"),
+    )
+  )
     return parts;
   const normalized = new Map(parts);
   const candidates = [...parts]
@@ -130,7 +157,8 @@ export const normalizeImportedNumericIds = (
   };
   const scan = ({ path, xml, visitor }: ScanOptions): void => {
     const scanned =
-      path.toLowerCase() === "word/document.xml" && options.onParsedDocument !== undefined
+      path.toLowerCase() === "word/document.xml" &&
+      options.onParsedDocument !== undefined
         ? parseStreamingXmlWithIdentityVisitor(xml, visitor)
         : scanStreamingXmlNumericIdAttributes(xml, visitor);
     if (scanned.status === "unsupported") {
@@ -169,7 +197,8 @@ export const normalizeImportedNumericIds = (
           const key = identityKey(attribute.value);
           space.replacements.set(key, "");
           const span = attributeValueSpans.get(attribute.name);
-          if (span === undefined) panic("Missing imported numeric identity source span");
+          if (span === undefined)
+            panic("Missing imported numeric identity source span");
           let spans = changedSpans.get(path);
           if (spans === undefined) {
             spans = [];
@@ -205,12 +234,15 @@ export const normalizeImportedNumericIds = (
   }
   for (const [path, spans] of changedSpans) {
     const xml = parts.get(path);
-    if (xml === undefined) panic(`Missing imported numeric identity part: ${path}`);
+    if (xml === undefined)
+      panic(`Missing imported numeric identity part: ${path}`);
     const chunks: string[] = [];
     let cursor = 0;
     // The reservation walk already resolved namespaces and decoded integer aliases.
     // Reuse its source spans rather than parsing changed parts a second time.
-    for (const span of spans.toSorted((left, right) => left.start - right.start)) {
+    for (const span of spans.toSorted(
+      (left, right) => left.start - right.start,
+    )) {
       const replacement = spaces.get(span.space)?.replacements.get(span.key);
       if (replacement === undefined || replacement === "")
         panic("Missing imported numeric identity replacement");

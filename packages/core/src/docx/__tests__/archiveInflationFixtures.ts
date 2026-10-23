@@ -22,16 +22,23 @@ export const compressibleArchive = async ({
   zip.file("_rels/.rels", "<Relationships/>");
   zip.file("word/document.xml", "<w:document/>");
   zip.file(entryPath, "x".repeat(inflatedMebibytes * MEBIBYTE));
-  return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  return await zip.generateAsync({
+    type: "uint8array",
+    compression: "DEFLATE",
+  });
 };
 
 /** A small archive holding `entryCount` tiny entries. */
-export const manyEntryArchive = async (entryCount: number): Promise<Uint8Array> => {
+export const manyEntryArchive = async (
+  entryCount: number,
+): Promise<Uint8Array> => {
   const zip = new JSZip();
   zip.file("[Content_Types].xml", "<Types/>");
   zip.file("word/document.xml", "<w:document/>");
   for (let index = 0; index < entryCount; index += 1) {
-    zip.file(`customXml/item${String(index)}.xml`, "<a/>", { createFolders: false });
+    zip.file(`customXml/item${String(index)}.xml`, "<a/>", {
+      createFolders: false,
+    });
   }
   return await zip.generateAsync({ type: "uint8array" });
 };
@@ -88,7 +95,9 @@ export const withEntryHeaders = (
     }
   }
   if (patched !== 2) {
-    throw new Error(`Expected one local and one central record for ${entryPath}`);
+    throw new Error(
+      `Expected one local and one central record for ${entryPath}`,
+    );
   }
   return bytes;
 };
@@ -104,8 +113,14 @@ export const withDeclaredSize = (
  * An archive whose `entryPath` inflates to several mebibytes while declaring
  * 64 bytes: under every size and ratio bound until it is actually inflated.
  */
-export const understatedEntryArchive = async (entryPath: string): Promise<Uint8Array> =>
-  withDeclaredSize(await compressibleArchive({ entryPath, inflatedMebibytes: 3 }), entryPath, 64);
+export const understatedEntryArchive = async (
+  entryPath: string,
+): Promise<Uint8Array> =>
+  withDeclaredSize(
+    await compressibleArchive({ entryPath, inflatedMebibytes: 3 }),
+    entryPath,
+    64,
+  );
 
 /** Writes bits least-significant first, the order DEFLATE packs them in. */
 class BitWriter {
@@ -140,7 +155,9 @@ class BitWriter {
   }
 }
 
-const CODE_LENGTH_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+const CODE_LENGTH_ORDER = [
+  16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+];
 
 /**
  * One non-final dynamic-Huffman block: a zero byte, then `matches` copies of
@@ -227,5 +244,8 @@ export const archiveWithRawDeflate = async ({
   zip.file("word/document.xml", "<w:document/>");
   zip.file(entryPath, deflated, { binary: true, compression: "STORE" });
   const stored = await zip.generateAsync({ type: "uint8array" });
-  return withEntryHeaders(stored, entryPath, { declaredBytes, method: DEFLATE_METHOD });
+  return withEntryHeaders(stored, entryPath, {
+    declaredBytes,
+    method: DEFLATE_METHOD,
+  });
 };

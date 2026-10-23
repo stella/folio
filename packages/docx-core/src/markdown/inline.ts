@@ -70,8 +70,10 @@ const PLACEHOLDER_PATTERN = /\[\[(?<inner>[^\][]+?)\]\]/gu;
  * Literal text (no markdown reading) with `[[…]]` placeholders highlighted:
  * for fields that are data rather than prose, such as signature parties.
  */
-export const plainTextRuns = (text: string, format: InlineRunFormat = {}): Run[] =>
-  placeholderRuns(text, format);
+export const plainTextRuns = (
+  text: string,
+  format: InlineRunFormat = {},
+): Run[] => placeholderRuns(text, format);
 
 const placeholderRuns = (text: string, format: InlineRunFormat): Run[] => {
   if (!text.includes("[[")) {
@@ -84,7 +86,12 @@ const placeholderRuns = (text: string, format: InlineRunFormat): Run[] => {
     if (start > cursor) {
       runs.push(textRun(text.slice(cursor, start), format));
     }
-    runs.push(textRun(match.groups?.["inner"] ?? "", { ...format, highlight: "yellow" }));
+    runs.push(
+      textRun(match.groups?.["inner"] ?? "", {
+        ...format,
+        highlight: "yellow",
+      }),
+    );
     cursor = start + match[0].length;
   }
   if (cursor < text.length) {
@@ -93,7 +100,11 @@ const placeholderRuns = (text: string, format: InlineRunFormat): Run[] => {
   return runs.length > 0 ? runs : [textRun(text, format)];
 };
 
-const plainRuns = (text: string, format: InlineRunFormat, placeholders: boolean): Run[] =>
+const plainRuns = (
+  text: string,
+  format: InlineRunFormat,
+  placeholders: boolean,
+): Run[] =>
   placeholders ? placeholderRuns(text, format) : [textRun(text, format)];
 
 type InlineContext = {
@@ -112,15 +123,38 @@ const tokensToRuns = (
   const runs: ParagraphContent[] = [];
   for (const token of tokens) {
     if (isTokenType(token, "strong")) {
-      runs.push(...tokensToRuns(token.tokens, token.text, { ...format, bold: true }, context));
+      runs.push(
+        ...tokensToRuns(
+          token.tokens,
+          token.text,
+          { ...format, bold: true },
+          context,
+        ),
+      );
     } else if (isTokenType(token, "em")) {
-      runs.push(...tokensToRuns(token.tokens, token.text, { ...format, italic: true }, context));
+      runs.push(
+        ...tokensToRuns(
+          token.tokens,
+          token.text,
+          { ...format, italic: true },
+          context,
+        ),
+      );
     } else if (isTokenType(token, "del")) {
-      runs.push(...tokensToRuns(token.tokens, token.text, { ...format, strike: true }, context));
+      runs.push(
+        ...tokensToRuns(
+          token.tokens,
+          token.text,
+          { ...format, strike: true },
+          context,
+        ),
+      );
     } else if (isTokenType(token, "codespan")) {
       runs.push(textRun(token.text, { ...format, mono: true }));
     } else if (isTokenType(token, "link")) {
-      runs.push(...linkRuns(token.tokens, token.text, token.href, format, context));
+      runs.push(
+        ...linkRuns(token.tokens, token.text, token.href, format, context),
+      );
     } else if (isTokenType(token, "paragraph")) {
       runs.push(...tokensToRuns(token.tokens, token.text, format, context));
     } else if (token.type === "br") {
@@ -140,7 +174,9 @@ const tokensToRuns = (
       runs.push(...plainRuns(token.text, format, context.placeholders));
     }
   }
-  return runs.length > 0 ? runs : plainRuns(fallback, format, context.placeholders);
+  return runs.length > 0
+    ? runs
+    : plainRuns(fallback, format, context.placeholders);
 };
 
 const linkRuns = (
@@ -183,4 +219,5 @@ export const inlineTokensToRuns = (
 export const inlineMarkdownToRuns = (
   text: string,
   options: InlineMarkdownOptions = {},
-): ParagraphContent[] => inlineTokensToRuns(lexInlineMarkdown(text), text, options);
+): ParagraphContent[] =>
+  inlineTokensToRuns(lexInlineMarkdown(text), text, options);

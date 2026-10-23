@@ -16,10 +16,9 @@
  * schema graph rather than restated here.
  */
 
-import { readFileSync } from "node:fs";
-
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import { readFileSync } from "node:fs";
 
 import {
   PARSE_WARNING_CODES,
@@ -27,13 +26,16 @@ import {
   presetLineDashToken,
 } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   CSS_BORDER_STROKE_PATTERNS,
   PRESET_DASH_STROKE_PATTERNS,
   UNDERLINE_STROKES,
 } from "../display-list/build/strokes";
+import type { Shape } from "../types/document";
 import { UNDERLINE_STYLE_VALUES } from "../types/documentEnumValues";
 import { CSS_BORDER_STYLE_VALUES } from "../utils/borderCss";
 import { parseDocumentBody } from "./documentParser";
@@ -42,7 +44,6 @@ import { serializeRun } from "./serializer/runSerializer";
 import { parseShapeFromDrawing } from "./shapeParser";
 import { parseTextBox } from "./textBoxParser";
 import { findDeep, parseXmlDocument } from "./xmlParser";
-import type { Shape } from "../types/document";
 
 const schemaEnum = (namespace: string, name: string): readonly string[] => {
   const graph = JSON.parse(
@@ -54,7 +55,9 @@ const schemaEnum = (namespace: string, name: string): readonly string[] => {
       "utf8",
     ),
   ) as { symbols: { id?: string; enumValues?: string[] }[] };
-  const symbol = graph.symbols.find(({ id }) => id === `simpleType:{${namespace}}${name}`);
+  const symbol = graph.symbols.find(
+    ({ id }) => id === `simpleType:{${namespace}}${name}`,
+  );
   if (!symbol?.enumValues) {
     throw new Error(`${name} is missing from the schema graph`);
   }
@@ -62,7 +65,8 @@ const schemaEnum = (namespace: string, name: string): readonly string[] => {
 };
 
 const DRAWINGML = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const WORDPROCESSINGML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WORDPROCESSINGML =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const ST_PRESET_LINE_DASH_VALS = schemaEnum(DRAWINGML, "ST_PresetLineDashVal");
 const ST_UNDERLINE = schemaEnum(WORDPROCESSINGML, "ST_Underline");
@@ -143,7 +147,12 @@ const shapeDashRoundTrip = (dash: string) => {
   }
   const saved = serializeRun({
     type: "run",
-    content: [{ type: "shape", shape: { ...parsed, outline: rebuiltOutline(parsed.outline) } }],
+    content: [
+      {
+        type: "shape",
+        shape: { ...parsed, outline: rebuiltOutline(parsed.outline) },
+      },
+    ],
   });
   return {
     parsed: parsed.outline.dash,
@@ -189,7 +198,10 @@ describe("a preset line dash is read, painted and written in its own vocabulary"
     () => {
       fc.assert(
         fc.property(fc.constantFrom(...ST_PRESET_LINE_DASH_VALS), (dash) => {
-          expect(shapeDashRoundTrip(dash)).toEqual({ parsed: dash, reopened: dash });
+          expect(shapeDashRoundTrip(dash)).toEqual({
+            parsed: dash,
+            reopened: dash,
+          });
         }),
         propertyConfig(),
       );
@@ -202,7 +214,10 @@ describe("a preset line dash is read, painted and written in its own vocabulary"
     () => {
       fc.assert(
         fc.property(fc.constantFrom(...ST_PRESET_LINE_DASH_VALS), (dash) => {
-          expect(textBoxDashRoundTrip(dash)).toEqual({ parsed: dash, reopened: dash });
+          expect(textBoxDashRoundTrip(dash)).toEqual({
+            parsed: dash,
+            reopened: dash,
+          });
         }),
         propertyConfig(),
       );
@@ -255,9 +270,9 @@ describe("a preset line dash is read, painted and written in its own vocabulary"
     const body = `<w:document ${NS}><w:body><w:p><w:r>${textBoxDrawing("notADash").replace(`<w:drawing ${NS}>`, "<w:drawing>")}</w:r></w:p></w:body></w:document>`;
     parseDocumentBody(body, null, null, null, null, null, collector.context);
 
-    expect(collector.warnings().map(({ code, value }) => [code, value])).toEqual([
-      [PARSE_WARNING_CODES.outlineDashOutsideEnum, "notADash"],
-    ]);
+    expect(
+      collector.warnings().map(({ code, value }) => [code, value]),
+    ).toEqual([[PARSE_WARNING_CODES.outlineDashOutsideEnum, "notADash"]]);
   });
 });
 
@@ -275,9 +290,13 @@ describe("each stroke table's domain is exactly its own vocabulary", () => {
   });
 
   test("the underline table covers ST_Underline and nothing else", () => {
-    expect(Object.keys(UNDERLINE_STROKES).toSorted()).toEqual([...ST_UNDERLINE].toSorted());
+    expect(Object.keys(UNDERLINE_STROKES).toSorted()).toEqual(
+      [...ST_UNDERLINE].toSorted(),
+    );
     // The model's union is the same enumeration, so the table covers both.
-    expect([...UNDERLINE_STYLE_VALUES].toSorted()).toEqual([...ST_UNDERLINE].toSorted());
+    expect([...UNDERLINE_STYLE_VALUES].toSorted()).toEqual(
+      [...ST_UNDERLINE].toSorted(),
+    );
   });
 
   test("no vocabulary's member resolves through another's table", () => {

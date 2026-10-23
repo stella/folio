@@ -1,14 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import { EditorState } from "prosemirror-state";
+
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 
 import { expectImageAttrs, mergeImageAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, DrawingContent, MediaFile, RelationshipMap } from "../types/document";
+import type {
+  Document,
+  DrawingContent,
+  MediaFile,
+  RelationshipMap,
+} from "../types/document";
 import { parseDocumentBody } from "./documentParser";
 import { parseGroupDrawing } from "./groupDrawingParser";
-import { canReplayEditableImageRawXml, classifyDrawingSafety } from "./imageRawXml";
+import {
+  canReplayEditableImageRawXml,
+  classifyDrawingSafety,
+} from "./imageRawXml";
 import { standalonePreviewLedger } from "./previewBudget";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -58,7 +67,9 @@ describe("parseGroupDrawing", () => {
     expect(svg).toContain('stroke="#123456" stroke-width="9525"');
     expect(svg).toContain("A &amp; B");
     expect(svg).not.toContain("A & B");
-    expect(svg).not.toContain('<rect width="2000000" height="1000000" fill="#FFFFFF"');
+    expect(svg).not.toContain(
+      '<rect width="2000000" height="1000000" fill="#FFFFFF"',
+    );
   });
 
   test("uses grouped shape style outline colour when geometry omits a direct colour", () => {
@@ -169,7 +180,12 @@ describe("parseGroupDrawing", () => {
       ],
     ]);
 
-    const image = parseGroupDrawing(drawing, standalonePreviewLedger(), rels, media);
+    const image = parseGroupDrawing(
+      drawing,
+      standalonePreviewLedger(),
+      rels,
+      media,
+    );
     expect(image?.size).toEqual({ width: 2_000_000, height: 1_000_000 });
     const svg = decodeURIComponent(image?.src?.split(",").at(1) ?? "");
     expect(svg).toContain('viewBox="0 0 2000000 1000000"');
@@ -215,10 +231,14 @@ describe("parseGroupDrawing", () => {
 
     expect(svg).toContain('viewBox="0 0 1000 800"');
     expect(svg).toContain("rotate(90 500 350)");
-    expect(svg).toContain("translate(500 350) scale(-1 1) translate(-500 -350)");
+    expect(svg).toContain(
+      "translate(500 350) scale(-1 1) translate(-500 -350)",
+    );
     expect(svg).toContain("translate(100 50) scale(2 2) translate(-10 -20)");
     expect(svg).toContain("translate(60 70) scale(2 2) translate(-5 -10)");
-    expect(svg).toContain("translate(160 130) scale(1 -1) translate(-160 -130)");
+    expect(svg).toContain(
+      "translate(160 130) scale(1 -1) translate(-160 -130)",
+    );
     expect(svg).toContain('<rect x="15" y="20" width="30" height="40"');
   });
 
@@ -272,7 +292,8 @@ describe("parseGroupDrawing", () => {
   });
 });
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /** A body holding one bare `wpg:wgp` group the rasterizer can render. */
 const GROUPED_BODY_XML = `${XML_DECLARATION}
@@ -310,7 +331,9 @@ const firstDrawingOf = (document: Document): DrawingContent => {
 
 /** Parse {@link GROUPED_BODY_XML} and return its single drawing. */
 const parseGroupedDrawing = (): DrawingContent =>
-  firstDrawingOf({ package: { document: parseDocumentBody(GROUPED_BODY_XML) } });
+  firstDrawingOf({
+    package: { document: parseDocumentBody(GROUPED_BODY_XML) },
+  });
 
 describe("grouped drawings in the run parser", () => {
   test("classifies a rasterized group as a preview of its raw XML", () => {
@@ -318,7 +341,9 @@ describe("grouped drawings in the run parser", () => {
 
     expect(drawing.image.src).toStartWith("data:image/svg+xml");
     if (drawing.rawXmlMode !== DRAWING_RAW_XML_MODES.PREVIEW_ONLY) {
-      throw new Error("Expected the rasterized group to parse as a preview-only drawing");
+      throw new Error(
+        "Expected the rasterized group to parse as a preview-only drawing",
+      );
     }
     expect(drawing.rawXml).toContain("wpg:wgp");
     // Required on the preview-only branch: it is what goes stale on an edit.
@@ -329,10 +354,14 @@ describe("grouped drawings in the run parser", () => {
   });
 
   test("keeps a group replayable across an editor round-trip that changes nothing", () => {
-    const document: Document = { package: { document: parseDocumentBody(GROUPED_BODY_XML) } };
+    const document: Document = {
+      package: { document: parseDocumentBody(GROUPED_BODY_XML) },
+    };
 
     const roundTripped = firstDrawingOf(
-      fromProseDoc(toProseDoc(document), document, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(toProseDoc(document), document, {
+        stylesheetSource: { type: "package" },
+      }),
     );
 
     expect(roundTripped.rawXmlMode).toBe(DRAWING_RAW_XML_MODES.PREVIEW_ONLY);
@@ -340,7 +369,9 @@ describe("grouped drawings in the run parser", () => {
   });
 
   test("blocks the save once an editor edit reaches a grouped preview", () => {
-    const document: Document = { package: { document: parseDocumentBody(GROUPED_BODY_XML) } };
+    const document: Document = {
+      package: { document: parseDocumentBody(GROUPED_BODY_XML) },
+    };
     const pmDocument = toProseDoc(document);
 
     let imagePosition: number | undefined;
@@ -350,7 +381,9 @@ describe("grouped drawings in the run parser", () => {
       }
     });
     if (imagePosition === undefined) {
-      throw new Error("Expected the grouped fixture to project an editor image node");
+      throw new Error(
+        "Expected the grouped fixture to project an editor image node",
+      );
     }
 
     const state = EditorState.create({ doc: pmDocument });
@@ -368,7 +401,9 @@ describe("grouped drawings in the run parser", () => {
     ).doc;
 
     const edited = firstDrawingOf(
-      fromProseDoc(resized, document, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(resized, document, {
+        stylesheetSource: { type: "package" },
+      }),
     );
 
     // The group is the content and the image is only a render of it, so the

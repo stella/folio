@@ -1,7 +1,4 @@
-import {
-  isEmptyRowPropertiesAttribute,
-  retainsEmptyRowProperties,
-} from "./tableRowPropertyPresence";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 /**
  * Table Parser - Parse tables with full OOXML structure
  *
@@ -25,46 +22,48 @@ import {
  */
 
 import type {
-  Table,
-  TablePreservedMarkup,
-  TableCustomXmlWrapper,
-  TableContentCarrier,
-  TableRow,
-  TableCell,
-  TableFormatting,
-  TablePropertyExceptionFormatting,
-  TableGridChange,
-  TableRowFormatting,
-  TableCellFormatting,
-  TablePropertyChange,
-  TablePropertyExceptionChange,
-  TableRowPropertyChange,
-  TableCellPropertyChange,
-  TableStructuralChangeInfo,
-  TableMeasurement,
-  TableWidthType,
-  TableBorders,
-  TableCellBorders,
-  TableLook,
+  BlockCustomXml,
   CellMargins,
-  FloatingTableProperties,
   ConditionalFormatStyle,
+  FloatingTableProperties,
+  MediaFile,
   Paragraph,
   PositionedBookmarkMarker,
-  TableCellBlock,
-  BlockCustomXml,
   PreservedBlock,
   PreservedChild,
-  SdtProperties,
-  Theme,
   RelationshipMap,
-  MediaFile,
+  SdtProperties,
+  Table,
+  TableBorders,
+  TableCell,
+  TableCellBlock,
+  TableCellBorders,
+  TableCellFormatting,
+  TableCellPropertyChange,
+  TableContentCarrier,
+  TableCustomXmlWrapper,
+  TableFormatting,
+  TableGridChange,
+  TableLook,
+  TableMeasurement,
+  TablePreservedMarkup,
+  TablePropertyChange,
+  TablePropertyExceptionChange,
+  TablePropertyExceptionFormatting,
+  TableRow,
+  TableRowFormatting,
+  TableRowPropertyChange,
+  TableStructuralChangeInfo,
+  TableWidthType,
+  Theme,
 } from "../types/document";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import {
+  attributeRemainder,
+  NO_MODELLED_ATTRIBUTES,
+} from "./attributeRemainder";
 import { blockCustomXmlShell } from "./blockCustomXmlShell";
-import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
-import { TABLE_LOOK_FLAGS } from "./tableLook";
+import { parseBorderSpec } from "./borderParser";
 import {
   CAPTURE,
   type ChildHandlers,
@@ -77,21 +76,34 @@ import {
 } from "./containerChildren";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
-import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
-import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
+import type { ParseContext } from "./parseContext";
 import {
   FloatingTableXSpecSchema,
   FloatingTableYSpecSchema,
+  narrowEnum,
   TableAlignmentSchema,
   TextDirectionSchema,
-  narrowEnum,
 } from "./parserEnums";
-import type { StyleMap } from "./styleParser";
-import type { ParseContext } from "./parseContext";
-import { captureVerbatimXml } from "./verbatimCapture";
-import { parseBorderSpec } from "./borderParser";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
+import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseShading } from "./shadingParser";
+import { findChildAnySpelling } from "./strictNames";
+import type { StyleMap } from "./styleParser";
+import { TABLE_LOOK_FLAGS } from "./tableLook";
+import {
+  isEmptyRowPropertiesAttribute,
+  retainsEmptyRowProperties,
+} from "./tableRowPropertyPresence";
+import {
+  parsePropertyChangeInfo,
+  parseTrackedChangeInfo,
+} from "./trackedChangeInfo";
+import {
+  percentageSpelling,
+  transitionalSlotEncoding,
+} from "./transitionalSpelling";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   cloneElement,
   findChild,
@@ -102,17 +114,14 @@ import {
   getChildElements,
   getLocalName,
   mergeXmlnsDeclarations,
-  parseNumericAttribute,
-  parseTableMeasurementValue,
   parseBooleanElement,
-  selectAlternateContentBranch,
+  parseNumericAttribute,
   parseOnOffAttribute,
+  parseTableMeasurementValue,
+  selectAlternateContentBranch,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
-import { findChildAnySpelling } from "./strictNames";
-import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
-import { percentageSpelling, transitionalSlotEncoding } from "./transitionalSpelling";
 
 /**
  * Sanity cap on `w:gridSpan` (and the derived table column count). Word's
@@ -132,14 +141,19 @@ export const MAX_TABLE_COLUMNS = 63;
  * @param element - Element with w:w and w:type attributes
  * @returns Parsed measurement or undefined
  */
-export function parseTableMeasurement(element: XmlElement | null): TableMeasurement | undefined {
+export function parseTableMeasurement(
+  element: XmlElement | null,
+): TableMeasurement | undefined {
   if (!element) {
     return undefined;
   }
 
   const declared = getAttribute(element, "w", "type");
   const declaredType: TableWidthType | undefined =
-    declared === "auto" || declared === "dxa" || declared === "nil" || declared === "pct"
+    declared === "auto" ||
+    declared === "dxa" ||
+    declared === "nil" ||
+    declared === "pct"
       ? declared
       : undefined;
 
@@ -166,10 +180,14 @@ const tableWidthType = (
     return declared;
   }
   const raw = getAttribute(element, "w", "w");
-  const spelledAsPercent = raw !== null && percentageSpelling(raw) !== undefined;
+  const spelledAsPercent =
+    raw !== null && percentageSpelling(raw) !== undefined;
   const slotTakesPercent =
-    transitionalSlotEncoding(element.namespaceUri, getLocalName(element.name), "w")?.percent !==
-    undefined;
+    transitionalSlotEncoding(
+      element.namespaceUri,
+      getLocalName(element.name),
+      "w",
+    )?.percent !== undefined;
   if (spelledAsPercent && slotTakesPercent) {
     return "pct";
   }
@@ -200,7 +218,9 @@ function parseWidth(element: XmlElement | null): TableMeasurement | undefined {
  * @param bordersElement - The borders container element
  * @returns Parsed borders or undefined
  */
-export function parseTableBorders(bordersElement: XmlElement | null): TableBorders | undefined {
+export function parseTableBorders(
+  bordersElement: XmlElement | null,
+): TableBorders | undefined {
   if (!bordersElement) {
     return undefined;
   }
@@ -217,12 +237,16 @@ export function parseTableBorders(bordersElement: XmlElement | null): TableBorde
     borders.bottom = bottom;
   }
 
-  const left = parseBorderSpec(findChildAnySpelling(bordersElement, "CT_Border left"));
+  const left = parseBorderSpec(
+    findChildAnySpelling(bordersElement, "CT_Border left"),
+  );
   if (left) {
     borders.left = left;
   }
 
-  const right = parseBorderSpec(findChildAnySpelling(bordersElement, "CT_Border right"));
+  const right = parseBorderSpec(
+    findChildAnySpelling(bordersElement, "CT_Border right"),
+  );
   if (right) {
     borders.right = right;
   }
@@ -246,18 +270,24 @@ export function parseTableBorders(bordersElement: XmlElement | null): TableBorde
 }
 
 /** Parse cell-only diagonal borders in addition to the shared table sides. */
-function parseTableCellBorders(bordersElement: XmlElement | null): TableCellBorders | undefined {
+function parseTableCellBorders(
+  bordersElement: XmlElement | null,
+): TableCellBorders | undefined {
   if (!bordersElement) {
     return undefined;
   }
 
   const borders: TableCellBorders = { ...parseTableBorders(bordersElement) };
-  const topLeftToBottomRight = parseBorderSpec(findChild(bordersElement, "w", "tl2br"));
+  const topLeftToBottomRight = parseBorderSpec(
+    findChild(bordersElement, "w", "tl2br"),
+  );
   if (topLeftToBottomRight) {
     borders.topLeftToBottomRight = topLeftToBottomRight;
   }
 
-  const topRightToBottomLeft = parseBorderSpec(findChild(bordersElement, "w", "tr2bl"));
+  const topRightToBottomLeft = parseBorderSpec(
+    findChild(bordersElement, "w", "tr2bl"),
+  );
   if (topRightToBottomLeft) {
     borders.topRightToBottomLeft = topRightToBottomLeft;
   }
@@ -275,7 +305,9 @@ function parseTableCellBorders(bordersElement: XmlElement | null): TableCellBord
  * @param marginsElement - The margins container element
  * @returns Parsed margins or undefined
  */
-export function parseCellMargins(marginsElement: XmlElement | null): CellMargins | undefined {
+export function parseCellMargins(
+  marginsElement: XmlElement | null,
+): CellMargins | undefined {
   if (!marginsElement) {
     return undefined;
   }
@@ -292,12 +324,16 @@ export function parseCellMargins(marginsElement: XmlElement | null): CellMargins
     margins.bottom = bottom;
   }
 
-  const left = parseWidth(findChildAnySpelling(marginsElement, "CT_TblWidth left"));
+  const left = parseWidth(
+    findChildAnySpelling(marginsElement, "CT_TblWidth left"),
+  );
   if (left) {
     margins.left = left;
   }
 
-  const right = parseWidth(findChildAnySpelling(marginsElement, "CT_TblWidth right"));
+  const right = parseWidth(
+    findChildAnySpelling(marginsElement, "CT_TblWidth right"),
+  );
   if (right) {
     margins.right = right;
   }
@@ -329,7 +365,9 @@ export function parseCellMargins(marginsElement: XmlElement | null): CellMargins
  * @param lookElement - The w:tblLook element
  * @returns Parsed table look or undefined
  */
-export function parseTableLook(lookElement: XmlElement | null): TableLook | undefined {
+export function parseTableLook(
+  lookElement: XmlElement | null,
+): TableLook | undefined {
   if (!lookElement) {
     return undefined;
   }
@@ -376,13 +414,21 @@ export function parseFloatingTableProperties(
 
   // Horizontal anchor
   const horzAnchor = getAttribute(tblpPrElement, "w", "horzAnchor");
-  if (horzAnchor === "margin" || horzAnchor === "page" || horzAnchor === "text") {
+  if (
+    horzAnchor === "margin" ||
+    horzAnchor === "page" ||
+    horzAnchor === "text"
+  ) {
     floating.horzAnchor = horzAnchor;
   }
 
   // Vertical anchor
   const vertAnchor = getAttribute(tblpPrElement, "w", "vertAnchor");
-  if (vertAnchor === "margin" || vertAnchor === "page" || vertAnchor === "text") {
+  if (
+    vertAnchor === "margin" ||
+    vertAnchor === "page" ||
+    vertAnchor === "text"
+  ) {
     floating.vertAnchor = vertAnchor;
   }
 
@@ -420,17 +466,29 @@ export function parseFloatingTableProperties(
     floating.topFromText = topFromText;
   }
 
-  const bottomFromText = parseNumericAttribute(tblpPrElement, "w", "bottomFromText");
+  const bottomFromText = parseNumericAttribute(
+    tblpPrElement,
+    "w",
+    "bottomFromText",
+  );
   if (bottomFromText !== undefined) {
     floating.bottomFromText = bottomFromText;
   }
 
-  const leftFromText = parseNumericAttribute(tblpPrElement, "w", "leftFromText");
+  const leftFromText = parseNumericAttribute(
+    tblpPrElement,
+    "w",
+    "leftFromText",
+  );
   if (leftFromText !== undefined) {
     floating.leftFromText = leftFromText;
   }
 
-  const rightFromText = parseNumericAttribute(tblpPrElement, "w", "rightFromText");
+  const rightFromText = parseNumericAttribute(
+    tblpPrElement,
+    "w",
+    "rightFromText",
+  );
   if (rightFromText !== undefined) {
     floating.rightFromText = rightFromText;
   }
@@ -506,7 +564,10 @@ const SHARED_TABLE_PROPERTY_HANDLERS = {
     return keptUnless(width !== undefined);
   },
   jc: (child, formatting) => {
-    const justification = narrowEnum(getAttribute(child, "w", "val"), TableAlignmentSchema);
+    const justification = narrowEnum(
+      getAttribute(child, "w", "val"),
+      TableAlignmentSchema,
+    );
     if (justification !== undefined) {
       formatting.justification = justification;
     }
@@ -733,7 +794,9 @@ const TABLE_PROPERTY_HANDLERS = {
   tblPrChange: TABLE_PROPERTY_CHANGE_OWNER,
 } as const satisfies ChildHandlers<"table-properties", TableFormatting>;
 
-export function parseTableProperties(tblPrElement: XmlElement | null): TableFormatting | undefined {
+export function parseTableProperties(
+  tblPrElement: XmlElement | null,
+): TableFormatting | undefined {
   if (!tblPrElement) {
     return undefined;
   }
@@ -800,7 +863,10 @@ function parseTablePropertyChanges(
 const TABLE_PROPERTY_EXCEPTION_HANDLERS = {
   ...SHARED_TABLE_PROPERTY_HANDLERS,
   tblPrExChange: TABLE_PROPERTY_EXCEPTION_CHANGE_OWNER,
-} as const satisfies ChildHandlers<"table-property-exceptions", TablePropertyExceptionFormatting>;
+} as const satisfies ChildHandlers<
+  "table-property-exceptions",
+  TablePropertyExceptionFormatting
+>;
 
 /**
  * Parse a row's table property exceptions (`w:tblPrEx`).
@@ -823,7 +889,10 @@ export function parseTablePropertyExceptions(
     element: tblPrExElement,
     container: "table-property-exceptions",
     handlers: TABLE_PROPERTY_EXCEPTION_HANDLERS,
-    capturePosition: sequencePositions("table-property-exceptions", tblPrExElement),
+    capturePosition: sequencePositions(
+      "table-property-exceptions",
+      tblPrExElement,
+    ),
     context: formatting,
   });
   if (preserved) {
@@ -854,7 +923,9 @@ function parseTablePropertyExceptionChanges(
         type: "tablePropertyExceptionChange",
         info: parsePropertyChangeInfo(changeElement),
       };
-      const prev = parseTablePropertyExceptions(findChild(changeElement, "w", "tblPrEx"));
+      const prev = parseTablePropertyExceptions(
+        findChild(changeElement, "w", "tblPrEx"),
+      );
       if (prev !== undefined) {
         change.previousFormatting = prev;
       }
@@ -918,7 +989,8 @@ function parseTableCellPropertyChanges(
       }
       // `CT_TcPrInner` declares the cell's structural revision, so a snapshot
       // may state one; it belongs to the snapshot rather than to the cell.
-      const previousStructuralChange = parseTableCellStructuralChange(previousTcPr);
+      const previousStructuralChange =
+        parseTableCellStructuralChange(previousTcPr);
       if (previousStructuralChange !== undefined) {
         change.previousStructuralChange = previousStructuralChange;
       }
@@ -1012,7 +1084,9 @@ function parseTableCellVerticalMergeRevisionValue(
   return undefined;
 }
 
-export function isTableCellMergeRevisionValue(value: unknown): value is "continue" | "rest" {
+export function isTableCellMergeRevisionValue(
+  value: unknown,
+): value is "continue" | "rest" {
   return value === "continue" || value === "rest";
 }
 
@@ -1093,7 +1167,10 @@ const ROW_PROPERTY_HANDLERS = {
   // travels as markup rather than being read into a shape nothing writes.
   tblCellSpacing: CAPTURE,
   jc: (child, formatting) => {
-    const justification = narrowEnum(getAttribute(child, "w", "val"), TableAlignmentSchema);
+    const justification = narrowEnum(
+      getAttribute(child, "w", "val"),
+      TableAlignmentSchema,
+    );
     if (justification !== undefined) {
       formatting.justification = justification;
     }
@@ -1299,7 +1376,8 @@ const CELL_PROPERTY_HANDLERS = {
   hMerge: CAPTURE,
   vMerge: (child, formatting) => {
     // No `w:val`, or `w:val="continue"`, is a continuation.
-    formatting.vMerge = getAttribute(child, "w", "val") === "restart" ? "restart" : "continue";
+    formatting.vMerge =
+      getAttribute(child, "w", "val") === "restart" ? "restart" : "continue";
   },
   tcBorders: (child, formatting) => {
     const borders = parseTableCellBorders(child);
@@ -1328,7 +1406,10 @@ const CELL_PROPERTY_HANDLERS = {
     return keptUnless(margins !== undefined);
   },
   textDirection: (child, formatting) => {
-    const textDir = narrowEnum(getAttribute(child, "w", "val"), TextDirectionSchema);
+    const textDir = narrowEnum(
+      getAttribute(child, "w", "val"),
+      TextDirectionSchema,
+    );
     if (textDir) {
       formatting.textDirection = textDir;
     }
@@ -1411,7 +1492,9 @@ export function parseTableCellProperties(
  * repeating section — comes back nested the way it was written. The
  * recursion reads the inner one first, so the outer prepends.
  */
-type TablePreservedChild = NonNullable<TablePreservedMarkup["children"]>[number];
+type TablePreservedChild = NonNullable<
+  TablePreservedMarkup["children"]
+>[number];
 
 const createCustomXmlWrapper = (
   element: XmlElement,
@@ -1421,12 +1504,17 @@ const createCustomXmlWrapper = (
   ...blockCustomXmlShell(element),
 });
 
-const recordCustomXmlWrapper = <Wrapped extends { carrierStack?: TableContentCarrier[] }>(
+const recordCustomXmlWrapper = <
+  Wrapped extends { carrierStack?: TableContentCarrier[] },
+>(
   wrapped: readonly Wrapped[],
   wrapper: TableCustomXmlWrapper,
 ): void => {
   for (const item of wrapped) {
-    item.carrierStack = [{ type: "customXml", wrapper }, ...(item.carrierStack ?? [])];
+    item.carrierStack = [
+      { type: "customXml", wrapper },
+      ...(item.carrierStack ?? []),
+    ];
   }
 };
 
@@ -1457,11 +1545,17 @@ const recordContentControl = <
   }
   for (const item of wrapped) {
     item.contentControls = [properties, ...(item.contentControls ?? [])];
-    item.carrierStack = [{ type: "sdt", properties }, ...(item.carrierStack ?? [])];
+    item.carrierStack = [
+      { type: "sdt", properties },
+      ...(item.carrierStack ?? []),
+    ];
   }
   for (const item of carriers) {
     item.contentControls = [properties, ...(item.contentControls ?? [])];
-    item.carrierStack = [{ type: "sdt", properties }, ...(item.carrierStack ?? [])];
+    item.carrierStack = [
+      { type: "sdt", properties },
+      ...(item.carrierStack ?? []),
+    ];
   }
 };
 
@@ -1524,7 +1618,9 @@ type CellChildrenWalk = {
   captured: PreservedChild[];
 };
 
-const findLastFlowBlock = (blocks: readonly TableCellBlock[]): Paragraph | Table | undefined => {
+const findLastFlowBlock = (
+  blocks: readonly TableCellBlock[],
+): Paragraph | Table | undefined => {
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
     const block = blocks[index];
     if (block?.type === "paragraph" || block?.type === "table") {
@@ -1548,13 +1644,19 @@ const CELL_CONTENT_UNDECLARED = {
     }
     dispatchCellChildren(selectedBranch, {
       ...walk,
-      options: withContainerXmlns(withContainerXmlns(walk.options, child), selectedBranch),
+      options: withContainerXmlns(
+        withContainerXmlns(walk.options, child),
+        selectedBranch,
+      ),
     });
   },
 } as const satisfies Record<string, ChildReader<CellChildrenWalk>>;
 
 export const CELL_CONTENT_HANDLERS = {
-  p: (child, { resources: { styles, theme, numbering, rels, media }, options, modelled }) => {
+  p: (
+    child,
+    { resources: { styles, theme, numbering, rels, media }, options, modelled },
+  ) => {
     const para = parseParagraph(child, styles, theme, numbering, rels, media, {
       ...options,
       runConsolidation: "deferred",
@@ -1572,8 +1674,19 @@ export const CELL_CONTENT_HANDLERS = {
     );
     modelled.push(para);
   },
-  tbl: (child, { resources: { styles, theme, numbering, rels, media }, options, modelled }) => {
-    const table = parseTable(child, styles, theme, numbering, rels, media, options);
+  tbl: (
+    child,
+    { resources: { styles, theme, numbering, rels, media }, options, modelled },
+  ) => {
+    const table = parseTable(
+      child,
+      styles,
+      theme,
+      numbering,
+      rels,
+      media,
+      options,
+    );
     if (!table) {
       return;
     }
@@ -1601,7 +1714,10 @@ export const CELL_CONTENT_HANDLERS = {
       content: parseCellChildren({
         element: sdtContent,
         resources,
-        options: withContainerXmlns(withContainerXmlns(options, child), sdtContent),
+        options: withContainerXmlns(
+          withContainerXmlns(options, child),
+          sdtContent,
+        ),
         requireTrailingParagraph: false,
       }),
     });
@@ -1661,7 +1777,10 @@ export const CELL_CONTENT_HANDLERS = {
  * not: it owns a nested block sequence whose preservation positions must be
  * counted independently from the surrounding cell.
  */
-const dispatchCellChildren = (childContainer: XmlElement, walk: CellChildrenWalk): void => {
+const dispatchCellChildren = (
+  childContainer: XmlElement,
+  walk: CellChildrenWalk,
+): void => {
   const preserved = dispatchChildrenWithContext({
     element: childContainer,
     container: "block-content",
@@ -1688,7 +1807,12 @@ const parseCellChildren = ({
   options,
   requireTrailingParagraph,
 }: ParseCellChildrenOptions): TableCellBlock[] => {
-  const walk: CellChildrenWalk = { resources, options, modelled: [], captured: [] };
+  const walk: CellChildrenWalk = {
+    resources,
+    options,
+    modelled: [],
+    captured: [],
+  };
   dispatchCellChildren(element, walk);
   const { modelled, captured } = walk;
 
@@ -1707,10 +1831,14 @@ const parseCellChildren = ({
     }
   }
 
-  return withPreservedChildren(modelled, { children: captured }, (xml): PreservedBlock => ({
-    type: "preservedBlock",
-    xml,
-  }));
+  return withPreservedChildren(
+    modelled,
+    { children: captured },
+    (xml): PreservedBlock => ({
+      type: "preservedBlock",
+      xml,
+    }),
+  );
 };
 
 function parseCellContent(
@@ -1758,7 +1886,11 @@ export function parseTableCell(
     type: "tableCell",
     content: [],
   };
-  const id = getAttributeByNamespaceUri(tcElement, WORDPROCESSINGML_NAMESPACE_URIS, "id");
+  const id = getAttributeByNamespaceUri(
+    tcElement,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "id",
+  );
   if (id !== null) {
     cell.id = id;
   }
@@ -1769,7 +1901,10 @@ export function parseTableCell(
   if (formatting) {
     cell.formatting = formatting;
   }
-  const cellPropChanges = parseTableCellPropertyChanges(tcPrElement, formatting);
+  const cellPropChanges = parseTableCellPropertyChanges(
+    tcPrElement,
+    formatting,
+  );
   if (cellPropChanges !== undefined) {
     cell.propertyChanges = cellPropChanges;
   }
@@ -1807,8 +1942,13 @@ type RowChildrenWalk = {
 };
 
 export const ROW_CONTENT_HANDLERS = {
-  tc: (child, { resources: { styles, theme, numbering, rels, media }, options, row }) => {
-    row.cells.push(parseTableCell(child, styles, theme, numbering, rels, media, options));
+  tc: (
+    child,
+    { resources: { styles, theme, numbering, rels, media }, options, row },
+  ) => {
+    row.cells.push(
+      parseTableCell(child, styles, theme, numbering, rels, media, options),
+    );
   },
 
   sdt: (child, walk) => {
@@ -1833,7 +1973,10 @@ export const ROW_CONTENT_HANDLERS = {
     }
     recordContentControl(
       wrapped,
-      [...preservedChildren.slice(firstCaptured), ...bookmarks.slice(firstBookmark)],
+      [
+        ...preservedChildren.slice(firstCaptured),
+        ...bookmarks.slice(firstBookmark),
+      ],
       child,
     );
     return undefined;
@@ -1851,7 +1994,10 @@ export const ROW_CONTENT_HANDLERS = {
     }
     const wrapper = createCustomXmlWrapper(child, walk.customXmlIdentity);
     recordCustomXmlWrapper(walk.row.cells.slice(firstWrapped), wrapper);
-    recordCustomXmlWrapper(walk.preservedChildren.slice(firstCaptured), wrapper);
+    recordCustomXmlWrapper(
+      walk.preservedChildren.slice(firstCaptured),
+      wrapper,
+    );
     recordCustomXmlWrapper(walk.bookmarks.slice(firstBookmark), wrapper);
     return undefined;
   },
@@ -1863,10 +2009,16 @@ export const ROW_CONTENT_HANDLERS = {
   // a bookmark the model cannot see is a bookmark whose partner the
   // editor deletes.
   bookmarkStart: (child, { row, bookmarks }) => {
-    bookmarks.push({ index: row.cells.length, marker: parseBookmarkStart(child) });
+    bookmarks.push({
+      index: row.cells.length,
+      marker: parseBookmarkStart(child),
+    });
   },
   bookmarkEnd: (child, { row, bookmarks }) => {
-    bookmarks.push({ index: row.cells.length, marker: parseBookmarkEnd(child) });
+    bookmarks.push({
+      index: row.cells.length,
+      marker: parseBookmarkEnd(child),
+    });
   },
 
   ...ROW_CHILD_OWNERS,
@@ -1913,7 +2065,10 @@ export const ROW_CONTENT_HANDLERS = {
  * with the same map; the sink is the row's either way, because the control
  * holds no capture of its own.
  */
-const dispatchRowChildren = (element: XmlElement, walk: RowChildrenWalk): void => {
+const dispatchRowChildren = (
+  element: XmlElement,
+  walk: RowChildrenWalk,
+): void => {
   const captured = dispatchChildrenWithContext({
     element,
     container: "row-content",
@@ -1959,7 +2114,10 @@ export function parseTableRow(
   if (exceptions) {
     row.tablePropertyExceptions = exceptions;
   }
-  const exceptionChanges = parseTablePropertyExceptionChanges(tblPrExElement, exceptions);
+  const exceptionChanges = parseTablePropertyExceptionChanges(
+    tblPrExElement,
+    exceptions,
+  );
   if (exceptionChanges !== undefined) {
     row.tablePropertyExceptionChanges = exceptionChanges;
   }
@@ -2025,7 +2183,9 @@ export function parseTableRow(
  * @param tblGridElement - The w:tblGrid element
  * @returns Array of column widths in twips
  */
-export function parseTableGrid(tblGridElement: XmlElement | null): number[] | undefined {
+export function parseTableGrid(
+  tblGridElement: XmlElement | null,
+): number[] | undefined {
   if (!tblGridElement) {
     return undefined;
   }
@@ -2043,7 +2203,11 @@ export function parseTableGrid(tblGridElement: XmlElement | null): number[] | un
 
   // An omitted width and an explicit zero both feed zero into the layout
   // fallback, but only the latter is authored data the editor must retain.
-  if (widths.length > 0 && widths.every((width) => width <= 0) && !hasExplicitZero) {
+  if (
+    widths.length > 0 &&
+    widths.every((width) => width <= 0) &&
+    !hasExplicitZero
+  ) {
     return undefined;
   }
 
@@ -2059,7 +2223,9 @@ export function parseTableGrid(tblGridElement: XmlElement | null): number[] | un
  * survives whether or not it stated a width, and `undefined` is what says the
  * column stated none.
  */
-function parseTableGridChange(gridElement: XmlElement): TableGridChange | undefined {
+function parseTableGridChange(
+  gridElement: XmlElement,
+): TableGridChange | undefined {
   const changeElement = findChild(gridElement, "w", "tblGridChange");
   if (!changeElement) {
     return undefined;
@@ -2067,9 +2233,10 @@ function parseTableGridChange(gridElement: XmlElement): TableGridChange | undefi
   const snapshot = findChild(changeElement, "w", "tblGrid");
   return {
     id: parseTrackedChangeInfo(changeElement).id,
-    columnWidths: (snapshot === null ? [] : findChildren(snapshot, "w", "gridCol")).map((column) =>
-      parseNumericAttribute(column, "w", "w"),
-    ),
+    columnWidths: (snapshot === null
+      ? []
+      : findChildren(snapshot, "w", "gridCol")
+    ).map((column) => parseNumericAttribute(column, "w", "w")),
   };
 }
 
@@ -2080,9 +2247,17 @@ function hasRowGridOffsets(rowElement: XmlElement): boolean {
   }
 
   const gridBefore =
-    parseNumericAttribute(findChild(trPrElement, "w", "gridBefore"), "w", "val") ?? 0;
+    parseNumericAttribute(
+      findChild(trPrElement, "w", "gridBefore"),
+      "w",
+      "val",
+    ) ?? 0;
   const gridAfter =
-    parseNumericAttribute(findChild(trPrElement, "w", "gridAfter"), "w", "val") ?? 0;
+    parseNumericAttribute(
+      findChild(trPrElement, "w", "gridAfter"),
+      "w",
+      "val",
+    ) ?? 0;
 
   return gridBefore > 0 || gridAfter > 0;
 }
@@ -2095,7 +2270,10 @@ function getTableGridWidth(table: Table): number | null {
   return totalWidth;
 }
 
-function cellWidthCoversTableGrid(cell: TableCell, tableGridWidth: number | null): boolean {
+function cellWidthCoversTableGrid(
+  cell: TableCell,
+  tableGridWidth: number | null,
+): boolean {
   const width = cell.formatting?.width;
   if (!width || width.type !== "dxa" || tableGridWidth === null) {
     return false;
@@ -2103,7 +2281,10 @@ function cellWidthCoversTableGrid(cell: TableCell, tableGridWidth: number | null
   return width.value >= tableGridWidth;
 }
 
-function inferImplicitSingleCellRowSpans(table: Table, rowsWithGridOffsets: Set<number>): void {
+function inferImplicitSingleCellRowSpans(
+  table: Table,
+  rowsWithGridOffsets: Set<number>,
+): void {
   const gridColumnCount = table.columnWidths?.length ?? 0;
   if (gridColumnCount <= 1) {
     return;
@@ -2167,10 +2348,17 @@ type TableChildrenWalk = {
 export const TABLE_CONTENT_HANDLERS = {
   tr: (
     child,
-    { resources: { styles, theme, numbering, rels, media }, options, table, rowsWithGridOffsets },
+    {
+      resources: { styles, theme, numbering, rels, media },
+      options,
+      table,
+      rowsWithGridOffsets,
+    },
   ) => {
     const rowIndex = table.rows.length;
-    table.rows.push(parseTableRow(child, styles, theme, numbering, rels, media, options));
+    table.rows.push(
+      parseTableRow(child, styles, theme, numbering, rels, media, options),
+    );
     if (hasRowGridOffsets(child)) {
       rowsWithGridOffsets.add(rowIndex);
     }
@@ -2198,7 +2386,10 @@ export const TABLE_CONTENT_HANDLERS = {
     }
     recordContentControl(
       wrapped,
-      [...preservedChildren.slice(firstCaptured), ...bookmarks.slice(firstBookmark)],
+      [
+        ...preservedChildren.slice(firstCaptured),
+        ...bookmarks.slice(firstBookmark),
+      ],
       child,
     );
     return undefined;
@@ -2216,7 +2407,10 @@ export const TABLE_CONTENT_HANDLERS = {
     }
     const wrapper = createCustomXmlWrapper(child, walk.customXmlIdentity);
     recordCustomXmlWrapper(walk.table.rows.slice(firstWrapped), wrapper);
-    recordCustomXmlWrapper(walk.preservedChildren.slice(firstCaptured), wrapper);
+    recordCustomXmlWrapper(
+      walk.preservedChildren.slice(firstCaptured),
+      wrapper,
+    );
     recordCustomXmlWrapper(walk.bookmarks.slice(firstBookmark), wrapper);
     return undefined;
   },
@@ -2228,10 +2422,16 @@ export const TABLE_CONTENT_HANDLERS = {
   // pairs it with a `w:bookmarkStart` inside a cell, so it is typed and
   // positioned by the rows that preceded it.
   bookmarkStart: (child, { table, bookmarks }) => {
-    bookmarks.push({ index: table.rows.length, marker: parseBookmarkStart(child) });
+    bookmarks.push({
+      index: table.rows.length,
+      marker: parseBookmarkStart(child),
+    });
   },
   bookmarkEnd: (child, { table, bookmarks }) => {
-    bookmarks.push({ index: table.rows.length, marker: parseBookmarkEnd(child) });
+    bookmarks.push({
+      index: table.rows.length,
+      marker: parseBookmarkEnd(child),
+    });
   },
   commentRangeEnd: CAPTURE,
   commentRangeStart: CAPTURE,
@@ -2267,7 +2467,10 @@ export const TABLE_CONTENT_HANDLERS = {
  * with the same map; the sink is the table's either way, because the
  * control holds no capture of its own.
  */
-const dispatchTableChildren = (element: XmlElement, walk: TableChildrenWalk): void => {
+const dispatchTableChildren = (
+  element: XmlElement,
+  walk: TableChildrenWalk,
+): void => {
   const captured = dispatchChildrenWithContext({
     element,
     container: "table-content",
@@ -2397,7 +2600,10 @@ export function getTableColumnCount(table: Table): number {
 
   // SAFETY: rows.length > 0 verified above
   // Count cells in first row, accounting for grid span
-  return table.rows[0]!.cells.reduce((count, cell) => count + (cell.formatting?.gridSpan ?? 1), 0);
+  return table.rows[0]!.cells.reduce(
+    (count, cell) => count + (cell.formatting?.gridSpan ?? 1),
+    0,
+  );
 }
 
 /**

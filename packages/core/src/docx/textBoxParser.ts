@@ -26,25 +26,28 @@
  */
 
 import type {
-  TextBox,
-  Paragraph,
-  Table,
-  ImageSize,
   ImagePosition,
+  ImageSize,
   ImageWrap,
-  ShapeTextBody,
-  Theme,
-  RelationshipMap,
   MediaFile,
+  Paragraph,
+  RelationshipMap,
+  ShapeTextBody,
+  Table,
+  TextBox,
+  Theme,
 } from "../types/document";
 import { emuToPixels } from "../utils/units";
-import { parseDrawingAnchor, WORDPROCESSING_DRAWING_NAMESPACE_URIS } from "./drawingAnchor";
 import {
-  parseFill,
-  parseOutline,
+  parseDrawingAnchor,
+  WORDPROCESSING_DRAWING_NAMESPACE_URIS,
+} from "./drawingAnchor";
+import {
   parseAnchorPosition,
   parseAnchorWrap,
+  parseFill,
   parseInlineWrap,
+  parseOutline,
   resolveColorValueToHex,
 } from "./drawingUtils";
 import { parseNonVisualDrawingNames } from "./nonVisualDrawingProps";
@@ -53,16 +56,16 @@ import type { ParseContext } from "./parseContext";
 import type { PreviewLedger } from "./previewBudget";
 import type { StyleMap } from "./styleParser";
 import {
-  getChildElements,
-  getAttribute,
-  parseNumericAttribute,
   findByFullName,
   findChildByLocalName,
   findChildByNamespaceUri,
-  findChildrenByNamespaceUri,
   findChildrenByLocalName,
+  findChildrenByNamespaceUri,
   findDeep,
+  getAttribute,
+  getChildElements,
   getLocalName,
+  parseNumericAttribute,
   parseOnOffAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -82,7 +85,9 @@ const WORDPROCESSING_SHAPE_NAMESPACE_URIS = new Set([
 /** Default text box margins in EMUs (0.1 inch) */
 const DEFAULT_MARGIN_EMU = 91_440;
 
-const parseTextBoxVerticalAlign = (value: string | null): ShapeTextBody["anchor"] | undefined => {
+const parseTextBoxVerticalAlign = (
+  value: string | null,
+): ShapeTextBody["anchor"] | undefined => {
   switch (value) {
     case "t":
       return "top";
@@ -139,13 +144,19 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
     result.autoFit = "none";
   }
 
-  const verticalAlign = parseTextBoxVerticalAlign(getAttribute(bodyPr, null, "anchor"));
+  const verticalAlign = parseTextBoxVerticalAlign(
+    getAttribute(bodyPr, null, "anchor"),
+  );
   if (verticalAlign) {
     result.verticalAlign = verticalAlign;
   }
 
   const fromWordArt = parseOnOffAttribute(bodyPr, null, "fromWordArt");
-  const warp = findChildByNamespaceUri(bodyPr, DRAWINGML_MAIN_NAMESPACE_URIS, "prstTxWarp");
+  const warp = findChildByNamespaceUri(
+    bodyPr,
+    DRAWINGML_MAIN_NAMESPACE_URIS,
+    "prstTxWarp",
+  );
   if (fromWordArt !== undefined || warp) {
     const adjustments = warp
       ? findChildrenByNamespaceUri(
@@ -156,7 +167,9 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
           .map((adjustment) => {
             const name = getAttribute(adjustment, null, "name");
             const formula = getAttribute(adjustment, null, "fmla");
-            return name !== null && formula !== null ? { name, formula } : undefined;
+            return name !== null && formula !== null
+              ? { name, formula }
+              : undefined;
           })
           .filter(
             (adjustment): adjustment is { name: string; formula: string } =>
@@ -177,7 +190,12 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
   const tIns = parseNumericAttribute(bodyPr, null, "tIns");
   const bIns = parseNumericAttribute(bodyPr, null, "bIns");
 
-  if (lIns !== undefined || rIns !== undefined || tIns !== undefined || bIns !== undefined) {
+  if (
+    lIns !== undefined ||
+    rIns !== undefined ||
+    tIns !== undefined ||
+    bIns !== undefined
+  ) {
     result.margins = {
       ...(lIns !== undefined ? { left: lIns } : {}),
       ...(rIns !== undefined ? { right: rIns } : {}),
@@ -266,10 +284,20 @@ export function parseTextBoxContent(
 
     if (localName === "p") {
       // Parse paragraph
-      const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, { previews });
+      const paragraph = parseParagraph(
+        child,
+        styles,
+        theme,
+        numbering,
+        rels,
+        media,
+        { previews },
+      );
       blocks.push(paragraph);
     } else if (localName === "tbl" && parseTable) {
-      const table = parseTable(child, styles, theme, numbering, rels, media, { previews });
+      const table = parseTable(child, styles, theme, numbering, rels, media, {
+        previews,
+      });
       if (table) {
         blocks.push(table);
       }
@@ -289,8 +317,16 @@ export function parseTextBoxContent(
  * namespace elsewhere writes the same text box.
  */
 const findDrawingContainer = (drawingEl: XmlElement): XmlElement | null =>
-  findChildByNamespaceUri(drawingEl, WORDPROCESSING_DRAWING_NAMESPACE_URIS, "inline") ??
-  findChildByNamespaceUri(drawingEl, WORDPROCESSING_DRAWING_NAMESPACE_URIS, "anchor");
+  findChildByNamespaceUri(
+    drawingEl,
+    WORDPROCESSING_DRAWING_NAMESPACE_URIS,
+    "inline",
+  ) ??
+  findChildByNamespaceUri(
+    drawingEl,
+    WORDPROCESSING_DRAWING_NAMESPACE_URIS,
+    "anchor",
+  );
 
 /**
  * Check if a drawing element contains a text box
@@ -348,7 +384,10 @@ export function isShapeTextBox(wsp: XmlElement): boolean {
  * @param context - Where an outline dash outside `ST_PresetLineDashVal` is reported
  * @returns TextBox object with placeholder content, or null if not a text box
  */
-export function parseTextBox(drawingEl: XmlElement, context?: ParseContext): TextBox | null {
+export function parseTextBox(
+  drawingEl: XmlElement,
+  context?: ParseContext,
+): TextBox | null {
   const container = findDrawingContainer(drawingEl);
 
   if (!container) {
@@ -386,7 +425,11 @@ export function parseTextBox(drawingEl: XmlElement, context?: ParseContext): Tex
   const spPr = wspChildren.find((el) => el.name === "wps:spPr");
 
   // Get body properties
-  const bodyPr = findChildByNamespaceUri(wsp, WORDPROCESSING_SHAPE_NAMESPACE_URIS, "bodyPr");
+  const bodyPr = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "bodyPr",
+  );
 
   // Parse size from extent
   const extent = findByFullName(container, "wp:extent");
@@ -500,7 +543,11 @@ export function parseTextBoxFromShape(
   const spPr = wspChildren.find((el) => el.name === "wps:spPr");
 
   // Get body properties
-  const bodyPr = findChildByNamespaceUri(wsp, WORDPROCESSING_SHAPE_NAMESPACE_URIS, "bodyPr");
+  const bodyPr = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "bodyPr",
+  );
 
   // Get non-visual properties for ID
   const cNvPr = wspChildren.find((el) => el.name === "wps:cNvPr");
@@ -645,7 +692,9 @@ export function resolveTextBoxFillColor(textBox: TextBox): string | undefined {
 /**
  * Resolve outline color to CSS color string
  */
-export function resolveTextBoxOutlineColor(textBox: TextBox): string | undefined {
+export function resolveTextBoxOutlineColor(
+  textBox: TextBox,
+): string | undefined {
   if (!textBox.outline?.color) {
     return undefined;
   }
@@ -738,8 +787,12 @@ export const scanRunForTextBoxDrawings = ({
     }
     if (name === "AlternateContent") {
       const branches = getChildElements(el);
-      const choice = branches.find((branch) => getLocalName(branch.name ?? "") === "Choice");
-      const fallback = branches.find((branch) => getLocalName(branch.name ?? "") === "Fallback");
+      const choice = branches.find(
+        (branch) => getLocalName(branch.name ?? "") === "Choice",
+      );
+      const fallback = branches.find(
+        (branch) => getLocalName(branch.name ?? "") === "Fallback",
+      );
       const tryBranch = (branch: XmlElement | undefined): boolean => {
         if (!branch) {
           return false;

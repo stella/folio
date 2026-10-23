@@ -1,11 +1,16 @@
 import type { Paragraph } from "../model/document";
+import { defaultInsertionGap, type Gap, zeroWidthLeavesAt } from "./leaves";
 import { paragraphLogicalText } from "./offsets";
-import { defaultInsertionGap, zeroWidthLeavesAt, type Gap } from "./leaves";
-import { DOCUMENT_OP_REFUSAL_REASONS, type DocumentOpRefusalReason } from "./refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  type DocumentOpRefusalReason,
+} from "./refusal";
 import type { TextPosition } from "./types";
 
-const isHighSurrogate = (code: number): boolean => code >= 0xd8_00 && code <= 0xdb_ff;
-const isLowSurrogate = (code: number): boolean => code >= 0xdc_00 && code <= 0xdf_ff;
+const isHighSurrogate = (code: number): boolean =>
+  code >= 0xd8_00 && code <= 0xdb_ff;
+const isLowSurrogate = (code: number): boolean =>
+  code >= 0xdc_00 && code <= 0xdf_ff;
 
 /** What a position that states no `zeroWidthBefore` assumes. */
 export type ZeroWidthDefault = "afterAll" | "beforeAll" | "insertion";
@@ -36,7 +41,9 @@ export const resolveGap = ({
   }
   const available = zeroWidthLeavesAt(paragraph.content, offset).length;
   if (zeroWidthBefore !== undefined) {
-    return Number.isInteger(zeroWidthBefore) && zeroWidthBefore >= 0 && zeroWidthBefore <= available
+    return Number.isInteger(zeroWidthBefore) &&
+      zeroWidthBefore >= 0 &&
+      zeroWidthBefore <= available
       ? { offset, zeroWidthBefore }
       : DOCUMENT_OP_REFUSAL_REASONS.INVALID_OFFSET;
   }

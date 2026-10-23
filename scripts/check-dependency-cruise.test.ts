@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
-
 import {
   dependencyCruiseCoverageIssue,
   dependencyCruiseOutputIssue,
@@ -28,7 +27,9 @@ describe("dependency-cruiser coverage", () => {
           count >= MINIMUM_CRUISED_MODULES,
         );
       }),
-      { id: "rejects every count below the floor and accepts every count at or above it" },
+      {
+        id: "rejects every count below the floor and accepts every count at or above it",
+      },
     );
   });
 

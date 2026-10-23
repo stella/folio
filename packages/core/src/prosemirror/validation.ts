@@ -1,15 +1,11 @@
-import { fieldRequiresStructuredContent } from "./fieldRepresentation";
-import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
+import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
 import type { PositionedBookmarkMarker } from "../types/document";
-
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
-import { readBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
-import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
-import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
-import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
 import {
+  readBlockCustomXmlAttrs,
+  readBlockSdtAttrs,
   readCharacterSpacingMarkAttrs,
   readCharacterStyleMarkAttrs,
   readCommentMarkAttrs,
@@ -19,25 +15,23 @@ import {
   readFontSizeMarkAttrs,
   readFootnoteRefMarkAttrs,
   readHardBreakAttrs,
-  readPageBreakRunAttrs,
-  readRunIdentityMarkAttrs,
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
-  readInlineWrapperMarkAttrs,
   readImageAttrs,
+  readInlineWrapperMarkAttrs,
   readLanguageMarkAttrs,
   readMathAttrs,
-  readBlockSdtAttrs,
-  readBlockCustomXmlAttrs,
+  readPageBreakRunAttrs,
   readParagraphAttrs,
+  readPreservedBlockAttrs,
+  readPreservedXmlAttrs,
   readRunFormattingOverrideMarkAttrs,
+  readRunIdentityMarkAttrs,
   readRunPropertyChangeMarkAttrs,
   readRunShadingMarkAttrs,
   readSdtAttrs,
   readShapeAttrs,
   readStrikeMarkAttrs,
-  readPreservedBlockAttrs,
-  readPreservedXmlAttrs,
   readSymbolAttrs,
   readTabAttrs,
   readTableAttrs,
@@ -49,6 +43,11 @@ import {
   readTrackedChangeMarkAttrs,
   readUnderlineMarkAttrs,
 } from "./attrs";
+import { readBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
+import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
+import { fieldRequiresStructuredContent } from "./fieldRepresentation";
+import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
+import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import type { ParagraphAttrs } from "./schema/nodes";
 import { readTextBoxAnchorAttrs } from "./textBoxAnchorAttrs";
 
@@ -75,7 +74,9 @@ export class ProseMirrorDocumentValidationError extends Error {
 const validDocumentCache = new WeakSet<PMNode>();
 const validNodeCache = new WeakSet<PMNode>();
 
-export const validateProseMirrorDocument = (doc: PMNode): ValidateProseMirrorDocumentResult => {
+export const validateProseMirrorDocument = (
+  doc: PMNode,
+): ValidateProseMirrorDocumentResult => {
   const issues: ProseMirrorDocumentValidationIssue[] = [];
 
   if (doc.type.name !== "doc") {
@@ -127,11 +128,15 @@ const describeParagraph = (
   path: string,
 ): string => {
   const paraId = attrs?.ok === true ? attrs.value.paraId : undefined;
-  return paraId !== undefined && paraId.length > 0 ? `paragraph ${paraId}` : `paragraph at ${path}`;
+  return paraId !== undefined && paraId.length > 0
+    ? `paragraph ${paraId}`
+    : `paragraph at ${path}`;
 };
 
 const describeBookmark = (id: number, name: string | null): string =>
-  name === null || name.length === 0 ? `Bookmark id ${id}` : `Bookmark "${name}" (id ${id})`;
+  name === null || name.length === 0
+    ? `Bookmark id ${id}`
+    : `Bookmark "${name}" (id ${id})`;
 
 const validateBookmarkBoundaryStructure = (
   doc: PMNode,
@@ -187,16 +192,21 @@ const validateBookmarkBoundaryStructure = (
   };
 
   const visit = (node: PMNode, path: string, paragraph: string): void => {
-    const paragraphAttrs = node.type.name === "paragraph" ? readParagraphAttrs(node) : null;
+    const paragraphAttrs =
+      node.type.name === "paragraph" ? readParagraphAttrs(node) : null;
     const enclosingParagraph =
-      node.type.name === "paragraph" ? describeParagraph(paragraphAttrs, path) : paragraph;
+      node.type.name === "paragraph"
+        ? describeParagraph(paragraphAttrs, path)
+        : paragraph;
 
     // Only the attr bookmarks that actually opened are closed after the
     // children. A tolerated duplicate never opened, so registering its end
     // would report an unmatched end that is not there.
     const openedAttrBookmarks: { id: number; path: string }[] = [];
     if (paragraphAttrs?.ok) {
-      for (const [index, bookmark] of (paragraphAttrs.value.bookmarks ?? []).entries()) {
+      for (const [index, bookmark] of (
+        paragraphAttrs.value.bookmarks ?? []
+      ).entries()) {
         const bookmarkPath = `${path}.paragraph.attrs.bookmarks[${index}]`;
         const opened = registerStart({
           id: bookmark.id,
@@ -211,12 +221,16 @@ const validateBookmarkBoundaryStructure = (
       }
     }
 
-    if (node.type.name === "bookmarkBoundary" || node.type.name === "blockBookmarkBoundary") {
+    if (
+      node.type.name === "bookmarkBoundary" ||
+      node.type.name === "blockBookmarkBoundary"
+    ) {
       const result = readBookmarkBoundaryAttrs(node);
       if (result.ok) {
         const attrs = result.value;
         const trackedChanges = node.marks.filter(
-          (mark) => mark.type.name === "insertion" || mark.type.name === "deletion",
+          (mark) =>
+            mark.type.name === "insertion" || mark.type.name === "deletion",
         );
         if (trackedChanges.length > 1) {
           issues.push({
@@ -275,8 +289,10 @@ const validateBookmarkBoundaryStructure = (
       }
     }
     const visitPositionedBookmarks = (childIndex: number): void => {
-      for (const { marker, path: markerPath } of positionedBookmarksByChildIndex.get(childIndex) ??
-        []) {
+      for (const {
+        marker,
+        path: markerPath,
+      } of positionedBookmarksByChildIndex.get(childIndex) ?? []) {
         if (marker.type === "bookmarkStart") {
           registerStart({
             id: marker.id,
@@ -318,7 +334,10 @@ const validateBookmarkBoundaryStructure = (
   }
 };
 
-export const assertValidProseMirrorDocument = (doc: PMNode, context: string): void => {
+export const assertValidProseMirrorDocument = (
+  doc: PMNode,
+  context: string,
+): void => {
   if (validDocumentCache.has(doc)) {
     return;
   }
@@ -335,7 +354,9 @@ export const assertValidProseMirrorDocument = (doc: PMNode, context: string): vo
 export const formatProseMirrorDocumentIssues = (
   issues: ProseMirrorDocumentValidationIssue[],
 ): string[] =>
-  issues.map((issue) => `ProseMirror document error at ${issue.path}: ${issue.message}`);
+  issues.map(
+    (issue) => `ProseMirror document error at ${issue.path}: ${issue.message}`,
+  );
 
 const validateNode = (
   node: PMNode,
@@ -462,15 +483,23 @@ const validateNodeAttrs = (
           const hasPageBreakCarrier = node.content.content.some(
             (child) => child.type.name === "pageBreakRun",
           );
-          if (fieldAttrs.value.fieldKind === "complex" && !hasPageBreakCarrier) {
+          if (
+            fieldAttrs.value.fieldKind === "complex" &&
+            !hasPageBreakCarrier
+          ) {
             issues.push({
               path: `${path}.content`,
-              message: "Complex fields cannot contain structured result children.",
+              message:
+                "Complex fields cannot contain structured result children.",
             });
-          } else if (fieldAttrs.value.fieldKind === "complex" && hasStructuredHyperlink) {
+          } else if (
+            fieldAttrs.value.fieldKind === "complex" &&
+            hasStructuredHyperlink
+          ) {
             issues.push({
               path: `${path}.content`,
-              message: "Complex field results cannot contain hyperlink content.",
+              message:
+                "Complex field results cannot contain hyperlink content.",
             });
           } else if (!fieldRequiresStructuredContent(node.content.content)) {
             issues.push({
@@ -482,11 +511,17 @@ const validateNodeAttrs = (
           // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
           node.forEach((child, _offset, index) => {
             const childPath = `${path}.content[${index}]`;
-            const hasHyperlink = child.marks.some((mark) => mark.type.name === "hyperlink");
-            if (fieldAttrs.value.fieldKind === "complex" && child.type.name === "textBoxAnchor") {
+            const hasHyperlink = child.marks.some(
+              (mark) => mark.type.name === "hyperlink",
+            );
+            if (
+              fieldAttrs.value.fieldKind === "complex" &&
+              child.type.name === "textBoxAnchor"
+            ) {
               issues.push({
                 path: childPath,
-                message: "Complex field results cannot contain text-box anchors.",
+                message:
+                  "Complex field results cannot contain text-box anchors.",
               });
             } else if (
               fieldAttrs.value.fieldKind === "complex" &&
@@ -494,12 +529,17 @@ const validateNodeAttrs = (
             ) {
               issues.push({
                 path: childPath,
-                message: "Complex field results cannot contain bookmark boundaries.",
+                message:
+                  "Complex field results cannot contain bookmark boundaries.",
               });
-            } else if (child.type.name === "bookmarkBoundary" && !hasHyperlink) {
+            } else if (
+              child.type.name === "bookmarkBoundary" &&
+              !hasHyperlink
+            ) {
               issues.push({
                 path: childPath,
-                message: "Bookmark boundaries inside fields require a hyperlink parent.",
+                message:
+                  "Bookmark boundaries inside fields require a hyperlink parent.",
               });
             }
           });
@@ -666,7 +706,11 @@ const validateMark = (
       return;
 
     case "runFormattingOverride":
-      appendAttrIssues(markPath, readRunFormattingOverrideMarkAttrs(mark), issues);
+      appendAttrIssues(
+        markPath,
+        readRunFormattingOverrideMarkAttrs(mark),
+        issues,
+      );
       return;
 
     case "hyperlink":

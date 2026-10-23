@@ -11,25 +11,26 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import type { RunPropertyChange } from "../types/document";
 import {
   expectRunPropertyChangeMarkAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../prosemirror/attrs";
 import {
+  type FolioNodeRevisionKind,
+  getFolioNodeRevisionCarriers,
+} from "../prosemirror/revisionCarriers";
+import {
   expandRunFormattingCarrier,
   runFormattingCarrierReviewText,
   runFormattingInlineAtomDisposition,
 } from "../prosemirror/runFormattingInlineCarriers";
-import {
-  getFolioNodeRevisionCarriers,
-  type FolioNodeRevisionKind,
-} from "../prosemirror/revisionCarriers";
+import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
 import {
   enclosingInsertionAncestors,
   trackedRevisionLayerOf,
 } from "../prosemirror/trackedRevisionPath";
-import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
+import type { RunPropertyChange } from "../types/document";
+import { commentAnchorIdsForNode } from "./comment-lifecycle";
 import { readerTextOf } from "./note-references";
 import {
   collectNoteReferenceLabels,
@@ -113,7 +114,9 @@ const blockStartIdsFromDoc = (doc: PMNode): Map<number, string> => {
 };
 
 /** Map an existing snapshot's block starts without projecting its document again. */
-const blockStartIdsFromSnapshot = (snapshot: FolioAIEditSnapshot): Map<number, string> => {
+const blockStartIdsFromSnapshot = (
+  snapshot: FolioAIEditSnapshot,
+): Map<number, string> => {
   const starts = new Map<number, string>();
   for (const anchor of Object.values(snapshot.anchors)) {
     starts.set(anchor.from, anchor.id);
@@ -183,9 +186,13 @@ type InlineChangeRange = {
 
 type TrackedChangeGroup = { change: FolioReviewChange; ids: number[] };
 
-const belongsToRowRevision = (scope: RowRevisionScope, revision: RevisionInfo): boolean =>
+const belongsToRowRevision = (
+  scope: RowRevisionScope,
+  revision: RevisionInfo,
+): boolean =>
   revision.id === scope.change.id ||
-  (revision.author === scope.change.author && revision.date === scope.change.date);
+  (revision.author === scope.change.author &&
+    revision.date === scope.change.date);
 
 /** Shared revision interpreter; a null block map omits unrelated block-id projection. */
 const getTrackedChangeGroupsFromProjectedDoc = (
@@ -280,7 +287,9 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         typeof marker === "object" &&
         marker !== null &&
         "kind" in marker &&
-        (marker.kind === "ins" || marker.kind === "del" || marker.kind === "merge") &&
+        (marker.kind === "ins" ||
+          marker.kind === "del" ||
+          marker.kind === "merge") &&
         "info" in marker &&
         typeof marker.info === "object" &&
         marker.info !== null &&
@@ -300,8 +309,10 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         const text = node.textContent;
         const blockId = firstBlockIdWithin({ node, nodePos: pos, blockStarts });
         const existing = grouped.get(key);
-        const cellPositions = structuralChangeCellPositions.get(key) ?? new Set<number>();
-        const shouldAppendText = existing !== undefined && !cellPositions.has(pos);
+        const cellPositions =
+          structuralChangeCellPositions.get(key) ?? new Set<number>();
+        const shouldAppendText =
+          existing !== undefined && !cellPositions.has(pos);
         grouped.set(key, {
           id: revisionId,
           type: kind,
@@ -327,8 +338,10 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           const key = `cell:cellMerged:${revisionId}`;
           const existing = grouped.get(key);
           const text = node.textContent;
-          const cellPositions = structuralChangeCellPositions.get(key) ?? new Set<number>();
-          const shouldAppendText = existing !== undefined && !cellPositions.has(pos);
+          const cellPositions =
+            structuralChangeCellPositions.get(key) ?? new Set<number>();
+          const shouldAppendText =
+            existing !== undefined && !cellPositions.has(pos);
           grouped.set(key, {
             id: revisionId,
             type: "cellMerged",
@@ -338,7 +351,9 @@ const getTrackedChangeGroupsFromProjectedDoc = (
               shouldAppendText && existing.text.length > 0 && text.length > 0
                 ? `${existing.text}\n${text}`
                 : existing?.text || text,
-            blockId: existing?.blockId ?? firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
+            blockId:
+              existing?.blockId ??
+              firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
           });
           cellPositions.add(pos);
           structuralChangeCellPositions.set(key, cellPositions);
@@ -365,7 +380,9 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         let changesById: Map<number, RunPropertyChange> | undefined;
         for (const representation of formattingCarrier.representations) {
           if (representation.role === "serialized-result") {
-            derivedFormattingRepresentationPositions.add(representation.position);
+            derivedFormattingRepresentationPositions.add(
+              representation.position,
+            );
           }
           const changeMark = representation.node.marks.find(
             (mark) => mark.type.name === "runPropertyChange",
@@ -373,7 +390,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           if (!changeMark) {
             continue;
           }
-          for (const change of expectRunPropertyChangeMarkAttrs(changeMark).changes) {
+          for (const change of expectRunPropertyChangeMarkAttrs(changeMark)
+            .changes) {
             changesById ??= new Map();
             if (!changesById.has(change.info.id)) {
               changesById.set(change.info.id, change);
@@ -403,7 +421,9 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     }
 
     const text = readerTextOf(node, noteReferences);
-    const insertionMark = node.marks.find((mark) => mark.type === insertionType);
+    const insertionMark = node.marks.find(
+      (mark) => mark.type === insertionType,
+    );
     const deletionMark = node.marks.find((mark) => mark.type === deletionType);
     const mark = deletionMark ?? insertionMark;
     if (!mark || typeof mark.attrs["revisionId"] !== "number") {
@@ -425,27 +445,43 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         layer.type === "insertion" || layer.type === "moveTo"
           ? ("insertion" as const)
           : ("deletion" as const),
-      revision: { id: layer.revisionId, author: layer.author, date: layer.date ?? null },
+      revision: {
+        id: layer.revisionId,
+        author: layer.author,
+        date: layer.date ?? null,
+      },
     }));
-    for (const [layerIndex, { kind: layerKind, revision }] of layers.entries()) {
+    for (const [
+      layerIndex,
+      { kind: layerKind, revision },
+    ] of layers.entries()) {
       const rowScope = rowRevisionScopes.at(-1);
-      if (rowScope?.kind === layerKind && belongsToRowRevision(rowScope, revision)) {
+      if (
+        rowScope?.kind === layerKind &&
+        belongsToRowRevision(rowScope, revision)
+      ) {
         continue;
       }
       const path = `${currentBlockId ?? ""}:${JSON.stringify(pathLayers.slice(0, layerIndex + 1))}`;
       const previousKey = lastInlineGroupByPath.get(path);
-      const previousRange = previousKey === undefined ? undefined : inlineRanges.get(previousKey);
+      const previousRange =
+        previousKey === undefined ? undefined : inlineRanges.get(previousKey);
       // A wrapper closes when its ancestor path changes or unmarked text
       // intervenes. Reusing its logical id later does not reopen that wrapper.
       const key =
-        previousKey !== undefined && previousRange && transparentGap(previousRange.end, pos)
+        previousKey !== undefined &&
+        previousRange &&
+        transparentGap(previousRange.end, pos)
           ? previousKey
           : `${path}:${pos}`;
       lastInlineGroupByPath.set(path, key);
-      const hyperlink = node.marks.find((candidate) => candidate.type.name === "hyperlink");
+      const hyperlink = node.marks.find(
+        (candidate) => candidate.type.name === "hyperlink",
+      );
       const commentIds = node.marks.flatMap((candidate) => {
         const commentId = candidate.attrs["commentId"];
-        return candidate.type.name === "comment" && typeof commentId === "number"
+        return candidate.type.name === "comment" &&
+          typeof commentId === "number"
           ? [commentId]
           : [];
       });
@@ -471,7 +507,12 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         existing.text += text;
         continue;
       }
-      grouped.set(key, { ...revision, type: layerKind, text, blockId: currentBlockId });
+      grouped.set(key, {
+        ...revision,
+        type: layerKind,
+        text,
+        blockId: currentBlockId,
+      });
     }
     return undefined;
   });
@@ -487,14 +528,17 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     // contiguous inline wrapper whose run carries the property revision.
     const previous = previousInline?.group;
     const previousRange =
-      previousInline === null ? undefined : inlineRanges.get(previousInline.key);
+      previousInline === null
+        ? undefined
+        : inlineRanges.get(previousInline.key);
     if (
       previous &&
       range &&
       previousRange &&
       previousRange.end <= range.start &&
       transparentGap(previousRange.end, range.start) &&
-      previousRange.lastBoundary.revisionParents === range.firstBoundary.revisionParents &&
+      previousRange.lastBoundary.revisionParents ===
+        range.firstBoundary.revisionParents &&
       (previousRange.lastBoundary.hyperlink !== range.firstBoundary.hyperlink ||
         previousRange.lastBoundary.comments !== range.firstBoundary.comments ||
         previousRange.end !== range.start) &&
@@ -523,10 +567,14 @@ const getTrackedChangesFromProjectedDoc = (
   doc: PMNode,
   blockStarts: ReadonlyMap<number, string> | null,
 ): FolioReviewChange[] =>
-  getTrackedChangeGroupsFromProjectedDoc(doc, blockStarts).map(({ change }) => change);
+  getTrackedChangeGroupsFromProjectedDoc(doc, blockStarts).map(
+    ({ change }) => change,
+  );
 
 /** Read revisions from the exact immutable document that produced a snapshot. */
-export const getTrackedChangesFromSnapshot = (snapshot: FolioAIEditSnapshot): FolioReviewChange[] =>
+export const getTrackedChangesFromSnapshot = (
+  snapshot: FolioAIEditSnapshot,
+): FolioReviewChange[] =>
   getTrackedChangesFromProjectedDoc(
     sourceDocumentOf(snapshot),
     blockStartIdsFromSnapshot(snapshot),
@@ -545,9 +593,12 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] =>
   getTrackedChangesFromProjectedDoc(doc, blockStartIdsFromDoc(doc));
 
 /** Physical revision ids behind an inline change split by markup. */
-export const getTrackedChangeGroupIdsFromDoc = (doc: PMNode, id: number): number[] =>
-  getTrackedChangeGroupsFromProjectedDoc(doc, blockStartIdsFromDoc(doc)).find(({ ids }) =>
-    ids.includes(id),
+export const getTrackedChangeGroupIdsFromDoc = (
+  doc: PMNode,
+  id: number,
+): number[] =>
+  getTrackedChangeGroupsFromProjectedDoc(doc, blockStartIdsFromDoc(doc)).find(
+    ({ ids }) => ids.includes(id),
   )?.ids ?? [id];
 
 /** @internal Read revision statistics without paying for an unrelated block projection. */
@@ -577,7 +628,10 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
     return [];
   }
   const blockStarts = blockStartIdsFromDoc(doc);
-  const ranges = new Map<number, { blockId: string | null; start: number; end: number }>();
+  const ranges = new Map<
+    number,
+    { blockId: string | null; start: number; end: number }
+  >();
   const noteReferences = collectNoteReferenceLabels(doc);
   let currentBlockId: string | null = null;
   let bodyText = "";
@@ -589,13 +643,25 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
       currentBlockId = blockStarts.get(pos) ?? null;
       return true;
     }
+    for (const commentId of commentAnchorIdsForNode(node)) {
+      if (!ranges.has(commentId)) {
+        ranges.set(commentId, {
+          blockId: currentBlockId,
+          start: bodyText.length,
+          end: bodyText.length,
+        });
+      }
+    }
     if (!node.isInline || node.text === undefined) {
       return undefined;
     }
     const text = readerTextOf(node, noteReferences);
     const end = bodyText.length + text.length;
     for (const mark of node.marks) {
-      if (mark.type !== commentType || typeof mark.attrs["commentId"] !== "number") {
+      if (
+        mark.type !== commentType ||
+        typeof mark.attrs["commentId"] !== "number"
+      ) {
         continue;
       }
       const commentId = mark.attrs["commentId"];
@@ -604,7 +670,11 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
         range.end = end;
         range.blockId ??= currentBlockId;
       } else {
-        ranges.set(commentId, { blockId: currentBlockId, start: bodyText.length, end });
+        ranges.set(commentId, {
+          blockId: currentBlockId,
+          start: bodyText.length,
+          end,
+        });
       }
     }
     bodyText += text;

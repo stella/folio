@@ -1,17 +1,19 @@
-import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { expect, type Page } from "@playwright/test";
-import { test } from "../parity/canonicalTest";
+
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import type { CanonicalHyperlinkAction } from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { test } from "../parity/canonicalTest";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
 const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
 
-const snapshot = (page: Page) => page.evaluate(() => globalThis.__folioCanonical?.snapshot());
+const snapshot = (page: Page) =>
+  page.evaluate(() => globalThis.__folioCanonical?.snapshot());
 
 const waitForProjection = async (page: Page) => {
   await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
@@ -19,7 +21,8 @@ const waitForProjection = async (page: Page) => {
   expect(current?.active).toBe(true);
   expect(current?.projectionMatchesCanonical).toBe(true);
   expect(current?.projectionJSON).toEqual(current?.canonicalProjectionJSON);
-  if (!current?.document) throw new TypeError("Canonical document unavailable.");
+  if (!current?.document)
+    throw new TypeError("Canonical document unavailable.");
   return { ...current, document: current.document };
 };
 
@@ -27,15 +30,21 @@ type SelectOptions = Readonly<{ page: Page; from: number; to: number }>;
 
 const select = async ({ page, from, to }: SelectOptions) => {
   expect(
-    await page.evaluate(({ start, end }) => globalThis.__folioCanonical?.select(start, end), {
-      start: from,
-      end: to,
-    }),
+    await page.evaluate(
+      ({ start, end }) => globalThis.__folioCanonical?.select(start, end),
+      {
+        start: from,
+        end: to,
+      },
+    ),
   ).toBe(true);
 };
 
 const execute = (page: Page, action: CanonicalHyperlinkAction) =>
-  page.evaluate((value) => globalThis.__folioCanonical?.executeHyperlink(value) ?? false, action);
+  page.evaluate(
+    (value) => globalThis.__folioCanonical?.executeHyperlink(value) ?? false,
+    action,
+  );
 
 type ExpectCommandUndoRedoOptions = Readonly<{
   page: Page;
@@ -43,7 +52,11 @@ type ExpectCommandUndoRedoOptions = Readonly<{
   before: Awaited<ReturnType<typeof waitForProjection>>;
 }>;
 
-const expectCommandUndoRedo = async ({ page, action, before }: ExpectCommandUndoRedoOptions) => {
+const expectCommandUndoRedo = async ({
+  page,
+  action,
+  before,
+}: ExpectCommandUndoRedoOptions) => {
   expect(await execute(page, action)).toBe(true);
   const after = await waitForProjection(page);
   await page.keyboard.press(`${MODIFIER}+z`);
@@ -62,7 +75,9 @@ for (const { adapter, port } of [
   { adapter: "React", port: reactPort },
   { adapter: "Vue", port: vuePort },
 ]) {
-  test(`canonical hyperlink commands use public dispatch in ${adapter}`, async ({ page }) => {
+  test(`canonical hyperlink commands use public dispatch in ${adapter}`, async ({
+    page,
+  }) => {
     test.setTimeout(90_000);
     const sourceDocument = createEmptyDocument({ initialText: "Alpha😀Beta" });
     const paragraph = sourceDocument.package.document.content.at(0);
@@ -71,7 +86,9 @@ for (const { adapter, port } of [
     }
     paragraph.paraId = "12345678";
     const source = await createDocx(sourceDocument);
-    await page.goto(`http://localhost:${port}/?session=canonical`, { waitUntil: "networkidle" });
+    await page.goto(`http://localhost:${port}/?session=canonical`, {
+      waitUntil: "networkidle",
+    });
     // Boot exposes the bridge before the initial document has canonical paragraph identities.
     // Loading the supported fixture establishes the owner; snapshot readiness follows load.
     await page.waitForSelector(".layout-page");
@@ -79,7 +96,9 @@ for (const { adapter, port } of [
     await page.evaluate(() => {
       globalThis.__folioCanonicalFuzzErrors = [];
     });
-    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(true);
+    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(
+      true,
+    );
     await page.waitForFunction(() => {
       const current = globalThis.__folioCanonical?.snapshot();
       return (
@@ -89,7 +108,11 @@ for (const { adapter, port } of [
         current.text === "Alpha😀Beta"
       );
     });
-    expect(await page.evaluate(() => globalThis.__folioCanonical?.setMode("editing"))).toBe(true);
+    expect(
+      await page.evaluate(() =>
+        globalThis.__folioCanonical?.setMode("editing"),
+      ),
+    ).toBe(true);
 
     await select({ page, from: 1, to: 6 });
     const beforeSet = await waitForProjection(page);
@@ -116,18 +139,27 @@ for (const { adapter, port } of [
       }),
     );
 
-    const firstSave = await page.evaluate(() => globalThis.__folioCanonical?.save());
-    if (!firstSave) throw new TypeError("Expected the set-link document to save.");
+    const firstSave = await page.evaluate(() =>
+      globalThis.__folioCanonical?.save(),
+    );
+    if (!firstSave)
+      throw new TypeError("Expected the set-link document to save.");
     const firstReopen = await parseDocx(new Uint8Array(firstSave), {
       preloadFonts: false,
       detectVariables: false,
     });
     const firstReopenedParagraph = firstReopen.package.document.content.at(0);
-    if (!firstReopenedParagraph || firstReopenedParagraph.type !== "paragraph") {
+    if (
+      !firstReopenedParagraph ||
+      firstReopenedParagraph.type !== "paragraph"
+    ) {
       throw new TypeError("Expected a reopened paragraph.");
     }
     expect(firstReopenedParagraph.content).toContainEqual(
-      expect.objectContaining({ type: "hyperlink", href: "https://set.example/path" }),
+      expect.objectContaining({
+        type: "hyperlink",
+        href: "https://set.example/path",
+      }),
     );
 
     await select({ page, from: 1, to: 6 });
@@ -137,12 +169,16 @@ for (const { adapter, port } of [
       action: { type: "removeHyperlink", from: 1, to: 6 },
       before: beforeRemove,
     });
-    const unlinkedParagraph = afterRemove.document.package.document.content.at(0);
+    const unlinkedParagraph =
+      afterRemove.document.package.document.content.at(0);
     if (!unlinkedParagraph || unlinkedParagraph.type !== "paragraph") {
       throw new TypeError("Expected the unlinked paragraph.");
     }
     expect(unlinkedParagraph.content).not.toContainEqual(
-      expect.objectContaining({ type: "hyperlink", href: "https://set.example/path" }),
+      expect.objectContaining({
+        type: "hyperlink",
+        href: "https://set.example/path",
+      }),
     );
 
     await select({ page, from: 6, to: 8 });
@@ -161,8 +197,11 @@ for (const { adapter, port } of [
     });
     expect(afterInsert.text).toBe("AlphaLinkBeta");
 
-    const finalSave = await page.evaluate(() => globalThis.__folioCanonical?.save());
-    if (!finalSave) throw new TypeError("Expected the inserted-link document to save.");
+    const finalSave = await page.evaluate(() =>
+      globalThis.__folioCanonical?.save(),
+    );
+    if (!finalSave)
+      throw new TypeError("Expected the inserted-link document to save.");
     const finalReopen = await parseDocx(new Uint8Array(finalSave), {
       preloadFonts: false,
       detectVariables: false,
@@ -179,9 +218,11 @@ for (const { adapter, port } of [
       }),
     );
 
-    expect(await page.evaluate(() => globalThis.__folioCanonical?.setMode("suggesting"))).toBe(
-      true,
-    );
+    expect(
+      await page.evaluate(() =>
+        globalThis.__folioCanonical?.setMode("suggesting"),
+      ),
+    ).toBe(true);
     const refusalActions = [
       {
         type: "setHyperlink",
@@ -212,14 +253,16 @@ for (const { adapter, port } of [
       expect(refused.canUndo).toBe(beforeRefusal.canUndo);
       expect(refused.canRedo).toBe(beforeRefusal.canRedo);
       if (adapter === "React") {
-        expect(await page.evaluate(() => globalThis.__folioCanonicalFuzzErrors?.splice(0))).toEqual(
-          [
-            expect.objectContaining({
-              type: "CanonicalSessionRefusalError",
-              gap: "tracked-hyperlink-resolution",
-            }),
-          ],
-        );
+        expect(
+          await page.evaluate(() =>
+            globalThis.__folioCanonicalFuzzErrors?.splice(0),
+          ),
+        ).toEqual([
+          expect.objectContaining({
+            type: "CanonicalSessionRefusalError",
+            gap: "tracked-hyperlink-resolution",
+          }),
+        ]);
       }
     }
   });

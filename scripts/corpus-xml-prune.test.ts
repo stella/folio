@@ -32,7 +32,9 @@ describe("prepareXmlPruning", () => {
     const prunable = prepareXmlPruning(DOCUMENT);
     const firstParagraph = 2;
     const rendered = prunable.render(
-      new Set(prunable.addresses.filter((address) => address !== firstParagraph)),
+      new Set(
+        prunable.addresses.filter((address) => address !== firstParagraph),
+      ),
     );
     expect(rendered).not.toContain("first");
     expect(rendered).toContain("second");
@@ -45,7 +47,11 @@ describe("prepareXmlPruning", () => {
       new Set(prunable.addresses.filter((address) => address !== 3)),
     );
     const withoutBoth = prunable.render(
-      new Set(prunable.addresses.filter((address) => address !== 3 && address !== secondParagraph)),
+      new Set(
+        prunable.addresses.filter(
+          (address) => address !== 3 && address !== secondParagraph,
+        ),
+      ),
     );
     expect(withoutFirstRun).toContain("second");
     expect(withoutBoth).not.toContain("second");

@@ -5,8 +5,8 @@ import {
   PRESET_LINE_DASH_VALS,
   type PresetLineDashVal,
   type PresetLineDashValue,
-  TABLE_ALIGNMENTS,
   TAB_STOP_ALIGNMENTS,
+  TABLE_ALIGNMENTS,
   TEXT_DIRECTIONS,
 } from "@stll/docx-core/model";
 
@@ -27,10 +27,10 @@ import type {
   ShapeType,
   Style,
   StyleType,
+  TabLeader,
   TableCellFormatting,
   TableRowFormatting,
   TableWidthType,
-  TabLeader,
   TextEffect,
   TextFormatting,
   UnderlineStyle,
@@ -44,7 +44,9 @@ export const SHAPE_TEXT_ANCHOR_VALUES = [
   "justified",
 ] as const satisfies readonly NonNullable<ShapeTextBody["anchor"]>[];
 
-export const normalizeShapeTextAnchor = (value: unknown): ShapeTextBody["anchor"] | undefined => {
+export const normalizeShapeTextAnchor = (
+  value: unknown,
+): ShapeTextBody["anchor"] | undefined => {
   if (value === "center") {
     return "middle";
   }
@@ -115,7 +117,9 @@ export const EMPHASIS_MARK_VALUES = [
   "underDot",
 ] as const satisfies readonly EmphasisMark[];
 
-type FontTheme = NonNullable<NonNullable<TextFormatting["fontFamily"]>["asciiTheme"]>;
+type FontTheme = NonNullable<
+  NonNullable<TextFormatting["fontFamily"]>["asciiTheme"]
+>;
 type FontHint = NonNullable<NonNullable<TextFormatting["fontFamily"]>["hint"]>;
 
 export const FONT_THEME_VALUES = [
@@ -332,7 +336,9 @@ export const TABLE_CELL_VERTICAL_ALIGNMENT_VALUES = [
   "top",
   "center",
   "bottom",
-] as const satisfies readonly NonNullable<TableCellFormatting["verticalAlign"]>[];
+] as const satisfies readonly NonNullable<
+  TableCellFormatting["verticalAlign"]
+>[];
 
 /**
  * `ST_TextDirection`, from the schema: the hand-written list omitted `lrTb`,
@@ -388,7 +394,9 @@ export const FLOATING_TABLE_X_SPEC_VALUES = [
   "right",
   "inside",
   "outside",
-] as const satisfies readonly NonNullable<FloatingTableProperties["tblpXSpec"]>[];
+] as const satisfies readonly NonNullable<
+  FloatingTableProperties["tblpXSpec"]
+>[];
 
 export const FLOATING_TABLE_Y_SPEC_VALUES = [
   "top",
@@ -397,7 +405,9 @@ export const FLOATING_TABLE_Y_SPEC_VALUES = [
   "inside",
   "outside",
   "inline",
-] as const satisfies readonly NonNullable<FloatingTableProperties["tblpYSpec"]>[];
+] as const satisfies readonly NonNullable<
+  FloatingTableProperties["tblpYSpec"]
+>[];
 
 export const IMAGE_WRAP_TYPE_VALUES = [
   "inline",
@@ -426,7 +436,9 @@ export const IMAGE_HORIZONTAL_ALIGNMENT_VALUES = [
   "center",
   "inside",
   "outside",
-] as const satisfies readonly NonNullable<ImagePosition["horizontal"]["alignment"]>[];
+] as const satisfies readonly NonNullable<
+  ImagePosition["horizontal"]["alignment"]
+>[];
 
 export const IMAGE_VERTICAL_RELATIVE_TO_VALUES = [
   "insideMargin",
@@ -445,7 +457,9 @@ export const IMAGE_VERTICAL_ALIGNMENT_VALUES = [
   "center",
   "inside",
   "outside",
-] as const satisfies readonly NonNullable<ImagePosition["vertical"]["alignment"]>[];
+] as const satisfies readonly NonNullable<
+  ImagePosition["vertical"]["alignment"]
+>[];
 
 export const IMAGE_WRAP_TEXT_VALUES = [
   "bothSides",
@@ -651,7 +665,8 @@ export const SHAPE_TYPE_VALUES = [
  */
 export const OUTLINE_STYLE_CSS_ALIAS_VALUES = ["dashed", "dotted"] as const;
 
-export type OutlineStyleCssAlias = (typeof OUTLINE_STYLE_CSS_ALIAS_VALUES)[number];
+export type OutlineStyleCssAlias =
+  (typeof OUTLINE_STYLE_CSS_ALIAS_VALUES)[number];
 
 /**
  * Allowed `outlineStyle` values for the shape / text-box ProseMirror attribute:
@@ -703,9 +718,10 @@ const OUTLINE_ATTR_PRESET_DASHES = {
   none: "none",
 } as const satisfies Record<OutlineStyleAttr, PresetLineDashVal | "none">;
 
-const OUTLINE_ATTR_DASHES_BY_VALUE: ReadonlyMap<string, PresetLineDashVal | "none"> = new Map(
-  Object.entries(OUTLINE_ATTR_PRESET_DASHES),
-);
+const OUTLINE_ATTR_DASHES_BY_VALUE: ReadonlyMap<
+  string,
+  PresetLineDashVal | "none"
+> = new Map(Object.entries(OUTLINE_ATTR_PRESET_DASHES));
 
 /**
  * The dash an `outlineStyle` attribute names, `"none"` for the sentinel, or

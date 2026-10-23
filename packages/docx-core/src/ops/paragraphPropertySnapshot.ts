@@ -3,7 +3,10 @@ import { structurallyEqual } from "./equality";
 
 const snapshots = new WeakMap<
   object,
-  { effective: ParagraphFormatting | undefined; snapshot: ParagraphFormatting | undefined }
+  {
+    effective: ParagraphFormatting | undefined;
+    snapshot: ParagraphFormatting | undefined;
+  }
 >();
 
 type RegisterParagraphPropertySnapshotOptions = {
@@ -26,7 +29,10 @@ export const registerParagraphPropertySnapshot = ({
   snapshots.set(paragraph, { effective: paragraph.formatting, snapshot });
 };
 
-type TransferParagraphPropertySnapshotOptions = { source: object; target: object };
+type TransferParagraphPropertySnapshotOptions = {
+  source: object;
+  target: object;
+};
 
 /** Retain paragraph-owned snapshot bindings through sanctioned model copies. */
 export const transferParagraphPropertySnapshot = ({
@@ -42,7 +48,8 @@ export const getParagraphPropertySnapshot = (
   paragraph: Paragraph,
 ): ParagraphFormatting | undefined => {
   const registered = snapshots.get(paragraph);
-  return registered !== undefined && structurallyEqual(paragraph.formatting, registered.effective)
+  return registered !== undefined &&
+    structurallyEqual(paragraph.formatting, registered.effective)
     ? registered.snapshot
     : paragraph.formatting;
 };

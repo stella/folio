@@ -12,14 +12,17 @@ import JSZip from "jszip";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { FolioDocxReviewer } from "./headless";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /** A complex field with the cached result Word writes between separate and end. */
 const complexField = (instruction: string, result: string) =>
   `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
   `<w:r><w:instrText xml:space="preserve"> ${instruction} </w:instrText></w:r>` +
   `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
-  (result === "" ? "" : `<w:r><w:t xml:space="preserve">${result}</w:t></w:r>`) +
+  (result === ""
+    ? ""
+    : `<w:r><w:t xml:space="preserve">${result}</w:t></w:r>`) +
   `<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
 
 const footnote = (id: number, content: string) =>
@@ -152,7 +155,9 @@ const createNoteFieldDocx = async (): Promise<ArrayBuffer> => {
  * an untouched one is read straight off the parsed package. Load every header,
  * footer and note so the assertions cover the editor-document path.
  */
-const openWithLoadedStories = async (buffer: ArrayBuffer): Promise<FolioDocxReviewer> => {
+const openWithLoadedStories = async (
+  buffer: ArrayBuffer,
+): Promise<FolioDocxReviewer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
   for (const { handle } of reviewer.listStories()) {
     if (handle.type !== "main") {
@@ -177,7 +182,9 @@ describe("field results in header, footer, and note text", () => {
     const reviewer = await openWithLoadedStories(await createNoteFieldDocx());
     const lines = linesFor(reviewer, "footnote");
 
-    expect(lines).toContain(`[footnote #${NOTE_WITH_RESULTS_ID}] page 7 dated 1 January 2020`);
+    expect(lines).toContain(
+      `[footnote #${NOTE_WITH_RESULTS_ID}] page 7 dated 1 January 2020`,
+    );
     for (const line of lines) {
       expect(line).not.toContain("{page}");
       expect(line).not.toContain(new Date().toLocaleDateString());
@@ -193,14 +200,18 @@ describe("field results in header, footer, and note text", () => {
     expect(reopened.getNotesAsText()).toBe(reviewer.getNotesAsText());
     // Nothing that could have been synthesized from a clock: no d/m/y token in
     // any separator style, in any order.
-    expect(reviewer.getNotesAsText()).not.toMatch(/\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}/u);
+    expect(reviewer.getNotesAsText()).not.toMatch(
+      /\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}/u,
+    );
   });
 
   test("adds nothing for a note field with no stored result", async () => {
     const reviewer = await openWithLoadedStories(await createNoteFieldDocx());
     const lines = linesFor(reviewer, "footnote");
 
-    expect(lines).toContain(`[footnote #${NOTE_WITHOUT_RESULT_ID}] page dated end`);
+    expect(lines).toContain(
+      `[footnote #${NOTE_WITHOUT_RESULT_ID}] page dated end`,
+    );
     for (const line of lines) {
       expect(line).not.toContain("{PAGE}");
       expect(line).not.toContain("{page}");
@@ -238,10 +249,17 @@ describe("field results in header, footer, and note text", () => {
    */
   test("reads a header's and a footer's fields as their stored results", async () => {
     const reviewer = await openWithLoadedStories(await createNoteFieldDocx());
-    const lines = [...linesFor(reviewer, "header"), ...linesFor(reviewer, "footer")];
+    const lines = [
+      ...linesFor(reviewer, "header"),
+      ...linesFor(reviewer, "footer"),
+    ];
 
-    expect(lines).toContain("[header default] header page 7 dated 1 January 2020 of end");
-    expect(lines).toContain("[footer default] footer page 7 dated 1 January 2020 of end");
+    expect(lines).toContain(
+      "[header default] header page 7 dated 1 January 2020 of end",
+    );
+    expect(lines).toContain(
+      "[footer default] footer page 7 dated 1 January 2020 of end",
+    );
     for (const line of lines) {
       expect(line).not.toContain("{page}");
       expect(line).not.toContain(new Date().toLocaleDateString());

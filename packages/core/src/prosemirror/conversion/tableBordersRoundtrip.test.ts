@@ -11,8 +11,8 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
-import { serializeTable } from "../../docx/serializer/tableSerializer";
 import { serializeParagraph } from "../../docx/serializer/paragraphSerializer";
+import { serializeTable } from "../../docx/serializer/tableSerializer";
 import type { Document, Table, TableBorders } from "../../types/document";
 import { schema, singletonManager } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
@@ -40,7 +40,9 @@ const makeDocumentWithTableBorders = (borders: TableBorders): Document => ({
                   content: [
                     {
                       type: "paragraph",
-                      content: [{ type: "run", content: [{ type: "text", text: "A" }] }],
+                      content: [
+                        { type: "run", content: [{ type: "text", text: "A" }] },
+                      ],
                     },
                   ],
                 },
@@ -49,7 +51,9 @@ const makeDocumentWithTableBorders = (borders: TableBorders): Document => ({
                   content: [
                     {
                       type: "paragraph",
-                      content: [{ type: "run", content: [{ type: "text", text: "B" }] }],
+                      content: [
+                        { type: "run", content: [{ type: "text", text: "B" }] },
+                      ],
                     },
                   ],
                 },
@@ -92,7 +96,10 @@ const stateWithCursorInFirstCell = (pmDoc: PMNode): EditorState => {
   });
 };
 
-const applyTableBorderPreset = (state: EditorState, preset: "all" | "none"): EditorState => {
+const applyTableBorderPreset = (
+  state: EditorState,
+  preset: "all" | "none",
+): EditorState => {
   const commandFactory = singletonManager.getCommand("setTableBorderPreset");
   if (!commandFactory) {
     throw new Error("Missing command: setTableBorderPreset");
@@ -135,7 +142,9 @@ describe("w:tblBorders round-trip", () => {
     const cell = table.rows[0]?.cells[0];
     expect(cell).toBeDefined();
     if (cell) {
-      cell.formatting = { borders: { top: singleBorder, bottom: singleBorder } };
+      cell.formatting = {
+        borders: { top: singleBorder, bottom: singleBorder },
+      };
     }
 
     const roundTripped = fromProseDoc(toProseDoc(document), document, {
@@ -159,7 +168,10 @@ describe("w:tblBorders round-trip", () => {
       stylesheetSource: { type: "package" },
     });
 
-    const xml = serializeTable(expectFirstTable(roundTripped), serializeParagraph);
+    const xml = serializeTable(
+      expectFirstTable(roundTripped),
+      serializeParagraph,
+    );
     expect(xml).toContain(
       '<w:tblBorders><w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/><w:insideH w:val="none"/><w:insideV w:val="none"/></w:tblBorders>',
     );
@@ -171,7 +183,10 @@ describe("w:tblBorders round-trip", () => {
       bottom: { style: "none" },
     });
     const pmDoc = toProseDoc(document);
-    const state = applyTableBorderPreset(stateWithCursorInFirstCell(pmDoc), "all");
+    const state = applyTableBorderPreset(
+      stateWithCursorInFirstCell(pmDoc),
+      "all",
+    );
 
     const roundTripped = fromProseDoc(state.doc, document, {
       stylesheetSource: { type: "package" },
@@ -212,7 +227,10 @@ describe("w:tblBorders round-trip", () => {
       insideV: singleBorder,
     });
     const pmDoc = toProseDoc(document);
-    const state = applyTableBorderPreset(stateWithCursorInFirstCell(pmDoc), "none");
+    const state = applyTableBorderPreset(
+      stateWithCursorInFirstCell(pmDoc),
+      "none",
+    );
 
     const roundTripped = fromProseDoc(state.doc, document, {
       stylesheetSource: { type: "package" },
@@ -243,11 +261,22 @@ describe("w:tblBorders round-trip", () => {
 
 test("inherited cell borders and margins do not become direct formatting", () => {
   for (const baseline of [undefined, {}]) {
-    for (const side of ["top", "bottom", "left", "right", "insideH", "insideV"] as const) {
+    for (const side of [
+      "top",
+      "bottom",
+      "left",
+      "right",
+      "insideH",
+      "insideV",
+    ] as const) {
       const document = makeDocumentWithTableBorders({ [side]: singleBorder });
       const table = expectFirstTable(document);
-      table.formatting = { ...table.formatting, cellMargins: { top: { value: 80, type: "dxa" } } };
-      for (const row of table.rows) for (const cell of row.cells) cell.formatting = baseline;
+      table.formatting = {
+        ...table.formatting,
+        cellMargins: { top: { value: 80, type: "dxa" } },
+      };
+      for (const row of table.rows)
+        for (const cell of row.cells) cell.formatting = baseline;
       const projected = toProseDoc(document);
       const roundTripped = fromProseDoc(projected, document, {
         stylesheetSource: { type: "package" },

@@ -2,7 +2,9 @@
 const fingerprints = new WeakMap<ReadonlyMap<string, string>, string>();
 
 /** Callers replace owned maps on font changes; mutating a published map is unsupported. */
-export const embeddedFontFingerprint = (families: ReadonlyMap<string, string>): string => {
+export const embeddedFontFingerprint = (
+  families: ReadonlyMap<string, string>,
+): string => {
   const cached = fingerprints.get(families);
   if (cached !== undefined) return cached;
 

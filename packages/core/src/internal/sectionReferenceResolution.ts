@@ -1,8 +1,8 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
-import type { Document, SectionProperties } from "../types/document";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
+import type { Document, SectionProperties } from "../types/document";
 import type { RemovedSectionReference } from "./sectionEndpointResolution";
 
 export type SectionReferenceInventory = {
@@ -10,8 +10,10 @@ export type SectionReferenceInventory = {
   revisionRelationships: ReadonlySet<string>;
 };
 
-const relationshipKey = ({ part, relationshipId }: RemovedSectionReference): string =>
-  `${part}:${relationshipId}`;
+const relationshipKey = ({
+  part,
+  relationshipId,
+}: RemovedSectionReference): string => `${part}:${relationshipId}`;
 const referenceKey = (reference: RemovedSectionReference): string =>
   `${relationshipKey(reference)}:${reference.type}`;
 
@@ -25,7 +27,10 @@ export const captureSectionReferenceInventory = (
     if (!properties) return;
     const start = references.length;
     const append = (
-      selection: Pick<SectionProperties, "headerReferences" | "footerReferences">,
+      selection: Pick<
+        SectionProperties,
+        "headerReferences" | "footerReferences"
+      >,
     ): void => {
       for (const { type, rId } of selection.headerReferences ?? [])
         references.push({ part: "header", type, relationshipId: rId });
@@ -37,14 +42,16 @@ export const captureSectionReferenceInventory = (
       properties.propertyChanges?.filter(
         ({ previousReferences }) => previousReferences !== undefined,
       ) ?? [];
-    for (const change of history) if (change.previousReferences) append(change.previousReferences);
+    for (const change of history)
+      if (change.previousReferences) append(change.previousReferences);
     if (history.length > 0) {
       for (const reference of references.slice(start))
         revisionRelationships.add(relationshipKey(reference));
     }
   };
   document.descendants((node) => {
-    if (node.type.name === "paragraph") collect(expectParagraphAttrs(node)._sectionProperties);
+    if (node.type.name === "paragraph")
+      collect(expectParagraphAttrs(node)._sectionProperties);
   });
   collect(finalProperties);
   return { references, revisionRelationships };
@@ -73,7 +80,10 @@ export const resolvedSectionReferenceLosses = ({
   return removed;
 };
 
-const activeResolutions = new WeakMap<Document, readonly RemovedSectionReference[]>();
+const activeResolutions = new WeakMap<
+  Document,
+  readonly RemovedSectionReference[]
+>();
 
 export const withSectionReferenceResolution = async <T>({
   document,
@@ -84,7 +94,8 @@ export const withSectionReferenceResolution = async <T>({
   removedReferences: readonly RemovedSectionReference[];
   repack: () => Promise<T>;
 }): Promise<T> => {
-  if (activeResolutions.has(document)) panic("A section reference repack is already active");
+  if (activeResolutions.has(document))
+    panic("A section reference repack is already active");
   activeResolutions.set(
     document,
     removedReferences.map((reference) => ({ ...reference })),

@@ -8,13 +8,13 @@
 import { Priority } from "./types";
 import type {
   Extension,
-  NodeExtension,
-  MarkExtension,
-  ExtensionDefinition,
-  NodeExtensionDefinition,
-  MarkExtensionDefinition,
   ExtensionContext,
+  ExtensionDefinition,
   ExtensionRuntime,
+  MarkExtension,
+  MarkExtensionDefinition,
+  NodeExtension,
+  NodeExtensionDefinition,
 } from "./types";
 
 const copyOptions = (options: object): Record<string, unknown> => ({
@@ -31,23 +31,35 @@ const mergeDefaultOptions = <TOptions extends Record<string, unknown>>(
 
 const extensionHasDefaultOptions = <TOptions extends Record<string, unknown>>(
   def: ExtensionDefinition<TOptions>,
-): def is Extract<ExtensionDefinition<TOptions>, { defaultOptions: TOptions }> =>
-  def.defaultOptions !== undefined;
+): def is Extract<
+  ExtensionDefinition<TOptions>,
+  { defaultOptions: TOptions }
+> => def.defaultOptions !== undefined;
 
-const nodeExtensionHasDefaultOptions = <TOptions extends Record<string, unknown>>(
+const nodeExtensionHasDefaultOptions = <
+  TOptions extends Record<string, unknown>,
+>(
   def: NodeExtensionDefinition<TOptions>,
-): def is Extract<NodeExtensionDefinition<TOptions>, { defaultOptions: TOptions }> =>
-  def.defaultOptions !== undefined;
+): def is Extract<
+  NodeExtensionDefinition<TOptions>,
+  { defaultOptions: TOptions }
+> => def.defaultOptions !== undefined;
 
-const markExtensionHasDefaultOptions = <TOptions extends Record<string, unknown>>(
+const markExtensionHasDefaultOptions = <
+  TOptions extends Record<string, unknown>,
+>(
   def: MarkExtensionDefinition<TOptions>,
-): def is Extract<MarkExtensionDefinition<TOptions>, { defaultOptions: TOptions }> =>
-  def.defaultOptions !== undefined;
+): def is Extract<
+  MarkExtensionDefinition<TOptions>,
+  { defaultOptions: TOptions }
+> => def.defaultOptions !== undefined;
 
 /**
  * Create a generic extension (plugins, commands, keymaps — no schema contribution)
  */
-export function createExtension<TOptions extends Record<string, unknown> = Record<string, unknown>>(
+export function createExtension<
+  TOptions extends Record<string, unknown> = Record<string, unknown>,
+>(
   def: ExtensionDefinition<TOptions>,
 ): (options?: Partial<TOptions>) => Extension {
   return (options?: Partial<TOptions>): Extension => {
@@ -87,12 +99,16 @@ export function createExtension<TOptions extends Record<string, unknown> = Recor
  */
 export function createNodeExtension<
   TOptions extends Record<string, unknown> = Record<string, unknown>,
->(def: NodeExtensionDefinition<TOptions>): (options?: Partial<TOptions>) => NodeExtension {
+>(
+  def: NodeExtensionDefinition<TOptions>,
+): (options?: Partial<TOptions>) => NodeExtension {
   return (options?: Partial<TOptions>): NodeExtension => {
     if (nodeExtensionHasDefaultOptions(def)) {
       const mergedOptions = mergeDefaultOptions(def.defaultOptions, options);
       const nodeSpec =
-        typeof def.nodeSpec === "function" ? def.nodeSpec(mergedOptions) : def.nodeSpec;
+        typeof def.nodeSpec === "function"
+          ? def.nodeSpec(mergedOptions)
+          : def.nodeSpec;
 
       return {
         type: "node",
@@ -111,7 +127,9 @@ export function createNodeExtension<
 
     const mergedOptions = options ?? {};
     const nodeSpec =
-      typeof def.nodeSpec === "function" ? def.nodeSpec(mergedOptions) : def.nodeSpec;
+      typeof def.nodeSpec === "function"
+        ? def.nodeSpec(mergedOptions)
+        : def.nodeSpec;
 
     return {
       type: "node",
@@ -134,12 +152,16 @@ export function createNodeExtension<
  */
 export function createMarkExtension<
   TOptions extends Record<string, unknown> = Record<string, unknown>,
->(def: MarkExtensionDefinition<TOptions>): (options?: Partial<TOptions>) => MarkExtension {
+>(
+  def: MarkExtensionDefinition<TOptions>,
+): (options?: Partial<TOptions>) => MarkExtension {
   return (options?: Partial<TOptions>): MarkExtension => {
     if (markExtensionHasDefaultOptions(def)) {
       const mergedOptions = mergeDefaultOptions(def.defaultOptions, options);
       const markSpec =
-        typeof def.markSpec === "function" ? def.markSpec(mergedOptions) : def.markSpec;
+        typeof def.markSpec === "function"
+          ? def.markSpec(mergedOptions)
+          : def.markSpec;
 
       return {
         type: "mark",
@@ -158,7 +180,9 @@ export function createMarkExtension<
 
     const mergedOptions = options ?? {};
     const markSpec =
-      typeof def.markSpec === "function" ? def.markSpec(mergedOptions) : def.markSpec;
+      typeof def.markSpec === "function"
+        ? def.markSpec(mergedOptions)
+        : def.markSpec;
 
     return {
       type: "mark",

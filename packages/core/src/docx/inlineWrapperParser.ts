@@ -13,17 +13,21 @@
  * and hands the result in; this module never recurses.
  */
 
-import type { InlineWrapper, ParagraphContent } from "../types/document";
-
 import { BIDI_CONTROLS } from "@stll/docx-core/model";
 import type { BidiControl } from "@stll/docx-core/model";
 
+import type { InlineWrapper, ParagraphContent } from "../types/document";
 import { captureVerbatimXml } from "./verbatimCapture";
 import { findChild, getAttribute } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 /** The elements that spell a transparent inline wrapper. */
-export const INLINE_WRAPPER_ELEMENTS = ["bdo", "dir", "smartTag", "customXml"] as const;
+export const INLINE_WRAPPER_ELEMENTS = [
+  "bdo",
+  "dir",
+  "smartTag",
+  "customXml",
+] as const;
 
 /** One of them, as the child dispatcher names it. */
 export type InlineWrapperElement = (typeof INLINE_WRAPPER_ELEMENTS)[number];
@@ -77,7 +81,11 @@ const taggedWrapper = (
   if (uri !== null) {
     wrapper.uri = uri;
   }
-  const properties = findChild(node, "w", kind === "smartTag" ? "smartTagPr" : "customXmlPr");
+  const properties = findChild(
+    node,
+    "w",
+    kind === "smartTag" ? "smartTagPr" : "customXmlPr",
+  );
   if (properties) {
     wrapper.propertiesXml = captureVerbatimXml(properties);
   }

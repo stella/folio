@@ -1,8 +1,11 @@
+import { assertValidOoxmlNumericId, escapeXmlAttribute } from "@stll/docx-core";
 import { normalizeRevisionId } from "@stll/docx-core/model";
 
-import type { PropertyChangeInfo, TrackedChangeInfo } from "../../types/document";
+import type {
+  PropertyChangeInfo,
+  TrackedChangeInfo,
+} from "../../types/document";
 import { DATE_UTC_ATTRIBUTE } from "../trackedChangeInfo";
-import { assertValidOoxmlNumericId, escapeXmlAttribute } from "@stll/docx-core";
 
 type SerializableTrackedChangeInfo = TrackedChangeInfo | PropertyChangeInfo;
 
@@ -26,7 +29,8 @@ export const trackedChangeAttributeEntries = (
     typeof rawUtcDate.value === "string"
       ? rawUtcDate.value.trim()
       : "";
-  const rsid = "rsid" in info && typeof info.rsid === "string" ? info.rsid.trim() : "";
+  const rsid =
+    "rsid" in info && typeof info.rsid === "string" ? info.rsid.trim() : "";
   const entries: [string, string][] = [
     ["w:id", String(normalizeRevisionId(info.id))],
     ["w:author", author.length > 0 ? author : "Unknown"],
@@ -47,9 +51,12 @@ export const trackedChangeAttributeEntries = (
 
 export const trackedChangeAttributeRecord = (
   info: SerializableTrackedChangeInfo,
-): Record<string, string> => Object.fromEntries(trackedChangeAttributeEntries(info));
+): Record<string, string> =>
+  Object.fromEntries(trackedChangeAttributeEntries(info));
 
-export const serializeTrackedChangeAttributes = (info: SerializableTrackedChangeInfo): string =>
+export const serializeTrackedChangeAttributes = (
+  info: SerializableTrackedChangeInfo,
+): string =>
   trackedChangeAttributeEntries(info)
     .map(([name, value]) => `${name}="${escapeXmlAttribute(value)}"`)
     .join(" ");

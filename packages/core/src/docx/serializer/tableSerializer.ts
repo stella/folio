@@ -1,4 +1,4 @@
-import { serializeEmptyRowProperties } from "../tableRowPropertyPresence";
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 /**
  * Table Serializer - Serialize tables to OOXML XML
  *
@@ -14,41 +14,45 @@ import { serializeEmptyRowProperties } from "../tableRowPropertyPresence";
  * - Table cell: w:tc
  * - Cell properties: w:tcPr
  */
+import { themeColorToken } from "@stll/docx-core/model";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
 import type {
-  Table,
-  TableRow,
-  TableCell,
-  TableFormatting,
-  TablePropertyExceptionFormatting,
-  TableGridChange,
-  TableRowFormatting,
-  TableCellFormatting,
-  TablePropertyChange,
-  TablePropertyExceptionChange,
-  TableRowPropertyChange,
-  TableCellPropertyChange,
-  TableStructuralChangeInfo,
-  TableMeasurement,
-  TableBorders,
-  TableCellBorders,
   BorderSpec,
-  TableLook,
   CellMargins,
-  FloatingTableProperties,
   ConditionalFormatStyle,
-  ShadingProperties,
+  FloatingTableProperties,
   Paragraph,
   PositionedBookmarkMarker,
   SdtProperties,
+  ShadingProperties,
+  Table,
+  TableBorders,
+  TableCell,
   TableCellBlock,
-  TablePreservedMarkup,
+  TableCellBorders,
+  TableCellFormatting,
+  TableCellPropertyChange,
   TableContentCarrier,
+  TableFormatting,
+  TableGridChange,
+  TableLook,
+  TableMeasurement,
+  TablePreservedMarkup,
+  TablePropertyChange,
+  TablePropertyExceptionChange,
+  TablePropertyExceptionFormatting,
+  TableRow,
+  TableRowFormatting,
+  TableRowPropertyChange,
+  TableStructuralChangeInfo,
 } from "../../types/document";
-import { serializeBlockSdt } from "./blockSdtSerializer";
-import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { isValidHexColor } from "../../utils/colorResolver";
+import { serializePreservedAttributes } from "../attributeRemainder";
+import { withPreservedChildren } from "../containerChildren";
+import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../strictNames.gen";
+import { TABLE_LOOK_FLAGS } from "../tableLook";
 import {
   parseTableCellProperties,
   parseTableGrid,
@@ -56,19 +60,15 @@ import {
   parseTablePropertyExceptions,
   parseTableRowProperties,
 } from "../tableParser";
-import { serializePreservedAttributes } from "../attributeRemainder";
-import { withPreservedChildren } from "../containerChildren";
-import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../strictNames.gen";
-import { serializeSdtWrapper } from "./sdtPropertiesSerializer";
-import { TABLE_LOOK_FLAGS } from "../tableLook";
+import { serializeEmptyRowProperties } from "../tableRowPropertyPresence";
 import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
+import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
+import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBorder } from "./borderSerializer";
-import { serializeSequenceChildren } from "@stll/docx-core/schema";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
+import { serializeSdtWrapper } from "./sdtPropertiesSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
-import { themeColorToken } from "@stll/docx-core/model";
 
 type ParagraphSerializer = (paragraph: Paragraph) => string;
 
@@ -79,13 +79,17 @@ type ParagraphSerializer = (paragraph: Paragraph) => string;
  * marked inserted, a `w:tcPrChange` — is appended here rather than forcing the
  * whole element to be rebuilt and losing everything the model does not cover.
  */
-const withRevisionChildren = (sourceXml: string, revisions: readonly string[]): string => {
+const withRevisionChildren = (
+  sourceXml: string,
+  revisions: readonly string[],
+): string => {
   const written = revisions.join("");
   if (written.length === 0) {
     return sourceXml;
   }
   if (sourceXml.endsWith("/>")) {
-    const name = sourceXml.slice(1, sourceXml.length - 2).split(/[\s/]/u)[0] ?? "";
+    const name =
+      sourceXml.slice(1, sourceXml.length - 2).split(/[\s/]/u)[0] ?? "";
     return `${sourceXml.slice(0, -2)}>${written}</${name}>`;
   }
   const close = sourceXml.lastIndexOf("</");
@@ -101,17 +105,24 @@ const withRevisionChildren = (sourceXml: string, revisions: readonly string[]): 
  * restates: the property set is written by declared-child name, and a
  * `<w:del/>` filed under `ins` would land at the wrong ordinal.
  */
-type StructuralChangeXml<Name extends string> = { name: Name; xml: string } | undefined;
+type StructuralChangeXml<Name extends string> =
+  { name: Name; xml: string } | undefined;
 
 /** `w:trPr/w:ins` | `w:trPr/w:del`, the row's own structural revision. */
 const rowStructuralChangeXml = (
   change: TableStructuralChangeInfo | undefined,
 ): StructuralChangeXml<"ins" | "del"> => {
   if (change?.type === "tableRowInsertion") {
-    return { name: "ins", xml: `<w:ins ${serializeTrackedChangeAttributes(change.info)}/>` };
+    return {
+      name: "ins",
+      xml: `<w:ins ${serializeTrackedChangeAttributes(change.info)}/>`,
+    };
   }
   if (change?.type === "tableRowDeletion") {
-    return { name: "del", xml: `<w:del ${serializeTrackedChangeAttributes(change.info)}/>` };
+    return {
+      name: "del",
+      xml: `<w:del ${serializeTrackedChangeAttributes(change.info)}/>`,
+    };
   }
   return undefined;
 };
@@ -137,10 +148,14 @@ const cellStructuralChangeXml = (
   }
   const attrs = [serializeTrackedChangeAttributes(change.info)];
   if (change.verticalMerge) {
-    attrs.push(`w:vMerge="${change.verticalMerge === "continue" ? "cont" : "rest"}"`);
+    attrs.push(
+      `w:vMerge="${change.verticalMerge === "continue" ? "cont" : "rest"}"`,
+    );
   }
   if (change.verticalMergeOriginal) {
-    attrs.push(`w:vMergeOrig="${change.verticalMergeOriginal === "continue" ? "cont" : "rest"}"`);
+    attrs.push(
+      `w:vMergeOrig="${change.verticalMergeOriginal === "continue" ? "cont" : "rest"}"`,
+    );
   }
   return { name: "cellMerge", xml: `<w:cellMerge ${attrs.join(" ")}/>` };
 };
@@ -149,7 +164,10 @@ const cellStructuralChangeXml = (
 const structuralChangeEntry = <Name extends string>(
   name: Name,
   change: StructuralChangeXml<Name>,
-): readonly [name: Name, xml: string] => [name, change?.name === name ? change.xml : ""];
+): readonly [name: Name, xml: string] => [
+  name,
+  change?.name === name ? change.xml : "",
+];
 
 /**
  * A property set without the elements kept beside it. Only the typed values
@@ -159,7 +177,11 @@ const structuralChangeEntry = <Name extends string>(
 const withoutCaptures = (
   formatting: { sourceXml?: string; gridSourceXml?: string } | undefined,
 ): Record<string, unknown> => {
-  const { sourceXml: _source, gridSourceXml: _grid, ...rest } = formatting ?? {};
+  const {
+    sourceXml: _source,
+    gridSourceXml: _grid,
+    ...rest
+  } = formatting ?? {};
   return rest;
 };
 
@@ -186,8 +208,11 @@ const verifiedSourceXml = <TFormatting extends { sourceXml?: string }>(
     return null;
   }
   const { sourceXml } = formatting;
-  const reparsed = parse(parseXml(sourceXml, OOXML_NAMESPACE_SCOPE).elements?.[0] ?? null);
-  return canonicalJson(withoutCaptures(reparsed)) === canonicalJson(withoutCaptures(formatting))
+  const reparsed = parse(
+    parseXml(sourceXml, OOXML_NAMESPACE_SCOPE).elements?.[0] ?? null,
+  );
+  return canonicalJson(withoutCaptures(reparsed)) ===
+    canonicalJson(withoutCaptures(formatting))
     ? sourceXml
     : null;
 };
@@ -207,7 +232,10 @@ function serializeMeasurement(
     return "";
   }
 
-  const attrs: string[] = [`w:w="${intAttr(measurement.value)}"`, `w:type="${measurement.type}"`];
+  const attrs: string[] = [
+    `w:w="${intAttr(measurement.value)}"`,
+    `w:type="${measurement.type}"`,
+  ];
 
   return `<w:${elementName} ${attrs.join(" ")}/>`;
 }
@@ -250,7 +278,10 @@ function serializeTableBorderParts(borders: TableBorders): string[] {
   return parts;
 }
 
-function serializeTableBorders(borders: TableBorders | undefined, elementName: string): string {
+function serializeTableBorders(
+  borders: TableBorders | undefined,
+  elementName: string,
+): string {
   if (!borders) {
     return "";
   }
@@ -264,17 +295,25 @@ function serializeTableBorders(borders: TableBorders | undefined, elementName: s
   return `<w:${elementName}>${parts.join("")}</w:${elementName}>`;
 }
 
-function serializeTableCellBorders(borders: TableCellBorders | undefined): string {
+function serializeTableCellBorders(
+  borders: TableCellBorders | undefined,
+): string {
   if (!borders) {
     return "";
   }
 
   const parts = serializeTableBorderParts(borders);
-  const topLeftToBottomRight = serializeBorder(borders.topLeftToBottomRight, "tl2br");
+  const topLeftToBottomRight = serializeBorder(
+    borders.topLeftToBottomRight,
+    "tl2br",
+  );
   if (topLeftToBottomRight) {
     parts.push(topLeftToBottomRight);
   }
-  const topRightToBottomLeft = serializeBorder(borders.topRightToBottomLeft, "tr2bl");
+  const topRightToBottomLeft = serializeBorder(
+    borders.topRightToBottomLeft,
+    "tr2bl",
+  );
   if (topRightToBottomLeft) {
     parts.push(topRightToBottomLeft);
   }
@@ -293,7 +332,10 @@ const MARGIN_RIGHT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_TblWidth end"];
 /**
  * Serialize cell margins (w:tblCellMar or w:tcMar)
  */
-function serializeCellMargins(margins: CellMargins | undefined, elementName: string): string {
+function serializeCellMargins(
+  margins: CellMargins | undefined,
+  elementName: string,
+): string {
   if (!margins) {
     return "";
   }
@@ -353,7 +395,9 @@ function serializeShading(shading: ShadingProperties | undefined): string {
 
   // Theme pattern color
   if (shading.color?.themeColor) {
-    attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(shading.color.themeColor))}"`);
+    attrs.push(
+      `w:themeColor="${escapeXmlAttribute(themeColorToken(shading.color.themeColor))}"`,
+    );
   }
 
   if (shading.color?.themeTint) {
@@ -361,7 +405,9 @@ function serializeShading(shading: ShadingProperties | undefined): string {
   }
 
   if (shading.color?.themeShade) {
-    attrs.push(`w:themeShade="${escapeXmlAttribute(shading.color.themeShade)}"`);
+    attrs.push(
+      `w:themeShade="${escapeXmlAttribute(shading.color.themeShade)}"`,
+    );
   }
 
   // Fill (background color)
@@ -373,15 +419,21 @@ function serializeShading(shading: ShadingProperties | undefined): string {
 
   // Theme fill
   if (shading.fill?.themeColor) {
-    attrs.push(`w:themeFill="${escapeXmlAttribute(themeColorToken(shading.fill.themeColor))}"`);
+    attrs.push(
+      `w:themeFill="${escapeXmlAttribute(themeColorToken(shading.fill.themeColor))}"`,
+    );
   }
 
   if (shading.fill?.themeTint) {
-    attrs.push(`w:themeFillTint="${escapeXmlAttribute(shading.fill.themeTint)}"`);
+    attrs.push(
+      `w:themeFillTint="${escapeXmlAttribute(shading.fill.themeTint)}"`,
+    );
   }
 
   if (shading.fill?.themeShade) {
-    attrs.push(`w:themeFillShade="${escapeXmlAttribute(shading.fill.themeShade)}"`);
+    attrs.push(
+      `w:themeFillShade="${escapeXmlAttribute(shading.fill.themeShade)}"`,
+    );
   }
 
   if (attrs.length === 0) {
@@ -436,7 +488,9 @@ function serializeTableLook(look: TableLook | undefined): string {
 /**
  * Serialize floating table properties (w:tblpPr)
  */
-function serializeFloatingTableProperties(floating: FloatingTableProperties | undefined): string {
+function serializeFloatingTableProperties(
+  floating: FloatingTableProperties | undefined,
+): string {
   if (!floating) {
     return "";
   }
@@ -496,7 +550,9 @@ function serializeFloatingTableProperties(floating: FloatingTableProperties | un
 
 /** `<w:name w:val="…"/>`, or nothing when the model holds no value. */
 const tagWithVal = (name: string, value: string | undefined): string =>
-  value === undefined ? "" : `<w:${name} w:val="${escapeXmlAttribute(value)}"/>`;
+  value === undefined
+    ? ""
+    : `<w:${name} w:val="${escapeXmlAttribute(value)}"/>`;
 
 const numberTag = (name: string, value: number | undefined): string =>
   value === undefined ? "" : `<w:${name} w:val="${intAttr(value)}"/>`;
@@ -515,7 +571,9 @@ export function serializeTableFormatting(
   if (tableSource !== null) {
     return withRevisionChildren(
       tableSource,
-      (propertyChanges ?? []).map((change) => serializeTablePropertyChange(change)),
+      (propertyChanges ?? []).map((change) =>
+        serializeTablePropertyChange(change),
+      ),
     );
   }
 
@@ -526,26 +584,58 @@ export function serializeTableFormatting(
   const parts = serializeSequenceChildren({
     container: "table-properties",
     modelled: [
-      ["tblStyle", formatting?.styleId ? tagWithVal("tblStyle", formatting.styleId) : ""],
+      [
+        "tblStyle",
+        formatting?.styleId ? tagWithVal("tblStyle", formatting.styleId) : "",
+      ],
       ["tblpPr", serializeFloatingTableProperties(formatting?.floating)],
-      ["tblOverlap", formatting?.overlap ? `<w:tblOverlap w:val="${formatting.overlap}"/>` : ""],
+      [
+        "tblOverlap",
+        formatting?.overlap
+          ? `<w:tblOverlap w:val="${formatting.overlap}"/>`
+          : "",
+      ],
       ["bidiVisual", serializeOnOffElement(formatting?.bidi, "bidiVisual")],
-      ["tblStyleRowBandSize", numberTag("tblStyleRowBandSize", formatting?.rowBandSize)],
-      ["tblStyleColBandSize", numberTag("tblStyleColBandSize", formatting?.columnBandSize)],
+      [
+        "tblStyleRowBandSize",
+        numberTag("tblStyleRowBandSize", formatting?.rowBandSize),
+      ],
+      [
+        "tblStyleColBandSize",
+        numberTag("tblStyleColBandSize", formatting?.columnBandSize),
+      ],
       ["tblW", serializeMeasurement(formatting?.width, "tblW")],
-      ["jc", formatting?.justification ? `<w:jc w:val="${formatting.justification}"/>` : ""],
-      ["tblCellSpacing", serializeMeasurement(formatting?.cellSpacing, "tblCellSpacing")],
+      [
+        "jc",
+        formatting?.justification
+          ? `<w:jc w:val="${formatting.justification}"/>`
+          : "",
+      ],
+      [
+        "tblCellSpacing",
+        serializeMeasurement(formatting?.cellSpacing, "tblCellSpacing"),
+      ],
       ["tblInd", serializeMeasurement(formatting?.indent, "tblInd")],
       ["tblBorders", serializeTableBorders(formatting?.borders, "tblBorders")],
       ["shd", serializeShading(formatting?.shading)],
-      ["tblLayout", formatting?.layout ? `<w:tblLayout w:type="${formatting.layout}"/>` : ""],
-      ["tblCellMar", serializeCellMargins(formatting?.cellMargins, "tblCellMar")],
+      [
+        "tblLayout",
+        formatting?.layout
+          ? `<w:tblLayout w:type="${formatting.layout}"/>`
+          : "",
+      ],
+      [
+        "tblCellMar",
+        serializeCellMargins(formatting?.cellMargins, "tblCellMar"),
+      ],
       ["tblLook", serializeTableLook(formatting?.look)],
       ["tblCaption", tagWithVal("tblCaption", formatting?.caption)],
       ["tblDescription", tagWithVal("tblDescription", formatting?.description)],
       [
         "tblPrChange",
-        (propertyChanges ?? []).map((change) => serializeTablePropertyChange(change)).join(""),
+        (propertyChanges ?? [])
+          .map((change) => serializeTablePropertyChange(change))
+          .join(""),
       ],
     ],
     preserved: formatting?.preserved,
@@ -567,10 +657,13 @@ function extractTblPrInner(tblPrXml: string): string {
 
 function serializeTablePropertyChange(change: TablePropertyChange): string {
   const attrs = serializeTrackedChangeAttributes(change.info);
-  const previousTblPrXml = serializeTableFormatting(change.previousFormatting) || "<w:tblPr/>";
+  const previousTblPrXml =
+    serializeTableFormatting(change.previousFormatting) || "<w:tblPr/>";
   const previousTblPrInner = extractTblPrInner(previousTblPrXml);
   const normalizedPreviousTblPr =
-    previousTblPrInner.length > 0 ? `<w:tblPr>${previousTblPrInner}</w:tblPr>` : "<w:tblPr/>";
+    previousTblPrInner.length > 0
+      ? `<w:tblPr>${previousTblPrInner}</w:tblPr>`
+      : "<w:tblPr/>";
 
   return `<w:tblPrChange ${attrs}>${normalizedPreviousTblPr}</w:tblPrChange>`;
 }
@@ -598,11 +691,16 @@ function serializeTablePropertyExceptions(
 
   // See `serializeTableFormatting`: the source element is written back while
   // the model holds what it was parsed into, with the revisions spliced in.
-  const exceptionSource = verifiedSourceXml(exceptions, parseTablePropertyExceptions);
+  const exceptionSource = verifiedSourceXml(
+    exceptions,
+    parseTablePropertyExceptions,
+  );
   if (exceptionSource !== null) {
     return withRevisionChildren(
       exceptionSource,
-      (propertyChanges ?? []).map((change) => serializeTablePropertyExceptionChange(change)),
+      (propertyChanges ?? []).map((change) =>
+        serializeTablePropertyExceptionChange(change),
+      ),
     );
   }
 
@@ -610,13 +708,29 @@ function serializeTablePropertyExceptions(
     container: "table-property-exceptions",
     modelled: [
       ["tblW", serializeMeasurement(exceptions?.width, "tblW")],
-      ["jc", exceptions?.justification ? `<w:jc w:val="${exceptions.justification}"/>` : ""],
-      ["tblCellSpacing", serializeMeasurement(exceptions?.cellSpacing, "tblCellSpacing")],
+      [
+        "jc",
+        exceptions?.justification
+          ? `<w:jc w:val="${exceptions.justification}"/>`
+          : "",
+      ],
+      [
+        "tblCellSpacing",
+        serializeMeasurement(exceptions?.cellSpacing, "tblCellSpacing"),
+      ],
       ["tblInd", serializeMeasurement(exceptions?.indent, "tblInd")],
       ["tblBorders", serializeTableBorders(exceptions?.borders, "tblBorders")],
       ["shd", serializeShading(exceptions?.shading)],
-      ["tblLayout", exceptions?.layout ? `<w:tblLayout w:type="${exceptions.layout}"/>` : ""],
-      ["tblCellMar", serializeCellMargins(exceptions?.cellMargins, "tblCellMar")],
+      [
+        "tblLayout",
+        exceptions?.layout
+          ? `<w:tblLayout w:type="${exceptions.layout}"/>`
+          : "",
+      ],
+      [
+        "tblCellMar",
+        serializeCellMargins(exceptions?.cellMargins, "tblCellMar"),
+      ],
       ["tblLook", serializeTableLook(exceptions?.look)],
       [
         "tblPrExChange",
@@ -630,12 +744,18 @@ function serializeTablePropertyExceptions(
 
   // `<w:tblPrEx/>` rather than nothing: the element is optional, so the row
   // that wrote an empty one said something the absent element does not.
-  return parts.length === 0 ? "<w:tblPrEx/>" : `<w:tblPrEx>${parts.join("")}</w:tblPrEx>`;
+  return parts.length === 0
+    ? "<w:tblPrEx/>"
+    : `<w:tblPrEx>${parts.join("")}</w:tblPrEx>`;
 }
 
-function serializeTablePropertyExceptionChange(change: TablePropertyExceptionChange): string {
+function serializeTablePropertyExceptionChange(
+  change: TablePropertyExceptionChange,
+): string {
   const attrs = serializeTrackedChangeAttributes(change.info);
-  const previous = serializeTablePropertyExceptions(change.previousFormatting) || "<w:tblPrEx/>";
+  const previous =
+    serializeTablePropertyExceptions(change.previousFormatting) ||
+    "<w:tblPrEx/>";
   return `<w:tblPrExChange ${attrs}>${previous}</w:tblPrExChange>`;
 }
 
@@ -644,7 +764,9 @@ function serializeTablePropertyExceptionChange(change: TablePropertyExceptionCha
 // ============================================================================
 
 /** `w:trHeight`, whose value rides `w:val` rather than `w:w`. */
-const serializeRowHeight = (formatting: TableRowFormatting | undefined): string => {
+const serializeRowHeight = (
+  formatting: TableRowFormatting | undefined,
+): string => {
   if (!formatting?.height) {
     return "";
   }
@@ -671,7 +793,9 @@ export function serializeTableRowFormatting(
   if (rowSource !== null) {
     return withRevisionChildren(rowSource, [
       ...(rowStructuralChange ? [rowStructuralChange.xml] : []),
-      ...(propertyChanges ?? []).map((change) => serializeTableRowPropertyChange(change)),
+      ...(propertyChanges ?? []).map((change) =>
+        serializeTableRowPropertyChange(change),
+      ),
     ]);
   }
 
@@ -683,27 +807,41 @@ export function serializeTableRowFormatting(
   const parts = serializeSequenceChildren({
     container: "row-properties",
     modelled: [
-      ["cnfStyle", serializeConditionalFormatStyle(formatting?.conditionalFormat)],
+      [
+        "cnfStyle",
+        serializeConditionalFormatStyle(formatting?.conditionalFormat),
+      ],
       [
         "gridBefore",
-        formatting?.gridBefore ? `<w:gridBefore w:val="${intAttr(formatting.gridBefore)}"/>` : "",
+        formatting?.gridBefore
+          ? `<w:gridBefore w:val="${intAttr(formatting.gridBefore)}"/>`
+          : "",
       ],
       [
         "gridAfter",
-        formatting?.gridAfter ? `<w:gridAfter w:val="${intAttr(formatting.gridAfter)}"/>` : "",
+        formatting?.gridAfter
+          ? `<w:gridAfter w:val="${intAttr(formatting.gridAfter)}"/>`
+          : "",
       ],
       ["wBefore", serializeMeasurement(formatting?.widthBefore, "wBefore")],
       ["wAfter", serializeMeasurement(formatting?.widthAfter, "wAfter")],
       ["cantSplit", serializeOnOffElement(formatting?.cantSplit, "cantSplit")],
       ["trHeight", serializeRowHeight(formatting)],
       ["tblHeader", serializeOnOffElement(formatting?.header, "tblHeader")],
-      ["jc", formatting?.justification ? `<w:jc w:val="${formatting.justification}"/>` : ""],
+      [
+        "jc",
+        formatting?.justification
+          ? `<w:jc w:val="${formatting.justification}"/>`
+          : "",
+      ],
       ["hidden", serializeOnOffElement(formatting?.hidden, "hidden")],
       structuralChangeEntry("ins", rowStructuralChange),
       structuralChangeEntry("del", rowStructuralChange),
       [
         "trPrChange",
-        (propertyChanges ?? []).map((change) => serializeTableRowPropertyChange(change)).join(""),
+        (propertyChanges ?? [])
+          .map((change) => serializeTableRowPropertyChange(change))
+          .join(""),
       ],
     ],
     preserved: formatting?.preserved,
@@ -727,12 +865,17 @@ function extractTrPrInner(trPrXml: string): string {
   return trPrXml.slice("<w:trPr>".length, -"</w:trPr>".length);
 }
 
-function serializeTableRowPropertyChange(change: TableRowPropertyChange): string {
+function serializeTableRowPropertyChange(
+  change: TableRowPropertyChange,
+): string {
   const attrs = serializeTrackedChangeAttributes(change.info);
-  const previousTrPrXml = serializeTableRowFormatting(change.previousFormatting) || "<w:trPr/>";
+  const previousTrPrXml =
+    serializeTableRowFormatting(change.previousFormatting) || "<w:trPr/>";
   const previousTrPrInner = extractTrPrInner(previousTrPrXml);
   const normalizedPreviousTrPr =
-    previousTrPrInner.length > 0 ? `<w:trPr>${previousTrPrInner}</w:trPr>` : "<w:trPr/>";
+    previousTrPrInner.length > 0
+      ? `<w:trPr>${previousTrPrInner}</w:trPr>`
+      : "<w:trPr/>";
 
   return `<w:trPrChange ${attrs}>${normalizedPreviousTrPr}</w:trPrChange>`;
 }
@@ -744,7 +887,9 @@ function serializeTableRowPropertyChange(change: TableRowPropertyChange): string
 /**
  * Serialize conditional format style (w:cnfStyle)
  */
-function serializeConditionalFormatStyle(style: ConditionalFormatStyle | undefined): string {
+function serializeConditionalFormatStyle(
+  style: ConditionalFormatStyle | undefined,
+): string {
   if (!style) {
     return "";
   }
@@ -780,7 +925,9 @@ function serializeConditionalFormatStyle(style: ConditionalFormatStyle | undefin
 // ============================================================================
 
 /** `w:vMerge`: no `w:val` is the continuation, so only a restart states one. */
-const serializeVerticalMerge = (vMerge: TableCellFormatting["vMerge"]): string => {
+const serializeVerticalMerge = (
+  vMerge: TableCellFormatting["vMerge"],
+): string => {
   if (vMerge === undefined) {
     return "";
   }
@@ -803,7 +950,9 @@ export function serializeTableCellFormatting(
   if (cellSource !== null) {
     return withRevisionChildren(cellSource, [
       ...(cellStructuralChange ? [cellStructuralChange.xml] : []),
-      ...(propertyChanges ?? []).map((change) => serializeTableCellPropertyChange(change)),
+      ...(propertyChanges ?? []).map((change) =>
+        serializeTableCellPropertyChange(change),
+      ),
     ]);
   }
 
@@ -814,7 +963,10 @@ export function serializeTableCellFormatting(
   const parts = serializeSequenceChildren({
     container: "cell-properties",
     modelled: [
-      ["cnfStyle", serializeConditionalFormatStyle(formatting?.conditionalFormat)],
+      [
+        "cnfStyle",
+        serializeConditionalFormatStyle(formatting?.conditionalFormat),
+      ],
       ["tcW", serializeMeasurement(formatting?.width, "tcW")],
       [
         "gridSpan",
@@ -829,12 +981,16 @@ export function serializeTableCellFormatting(
       ["tcMar", serializeCellMargins(formatting?.margins, "tcMar")],
       [
         "textDirection",
-        formatting?.textDirection ? `<w:textDirection w:val="${formatting.textDirection}"/>` : "",
+        formatting?.textDirection
+          ? `<w:textDirection w:val="${formatting.textDirection}"/>`
+          : "",
       ],
       ["tcFitText", serializeOnOffElement(formatting?.fitText, "tcFitText")],
       [
         "vAlign",
-        formatting?.verticalAlign ? `<w:vAlign w:val="${formatting.verticalAlign}"/>` : "",
+        formatting?.verticalAlign
+          ? `<w:vAlign w:val="${formatting.verticalAlign}"/>`
+          : "",
       ],
       ["hideMark", serializeOnOffElement(formatting?.hideMark, "hideMark")],
       structuralChangeEntry("cellIns", cellStructuralChange),
@@ -842,7 +998,9 @@ export function serializeTableCellFormatting(
       structuralChangeEntry("cellMerge", cellStructuralChange),
       [
         "tcPrChange",
-        (propertyChanges ?? []).map((change) => serializeTableCellPropertyChange(change)).join(""),
+        (propertyChanges ?? [])
+          .map((change) => serializeTableCellPropertyChange(change))
+          .join(""),
       ],
     ],
     preserved: formatting?.preserved,
@@ -863,7 +1021,9 @@ function extractTcPrInner(tcPrXml: string): string {
   return tcPrXml.slice("<w:tcPr>".length, -"</w:tcPr>".length);
 }
 
-function serializeTableCellPropertyChange(change: TableCellPropertyChange): string {
+function serializeTableCellPropertyChange(
+  change: TableCellPropertyChange,
+): string {
   const attrs = serializeTrackedChangeAttributes(change.info);
   const previousTcPrXml =
     serializeTableCellFormatting(
@@ -873,7 +1033,9 @@ function serializeTableCellPropertyChange(change: TableCellPropertyChange): stri
     ) || "<w:tcPr/>";
   const previousTcPrInner = extractTcPrInner(previousTcPrXml);
   const normalizedPreviousTcPr =
-    previousTcPrInner.length > 0 ? `<w:tcPr>${previousTcPrInner}</w:tcPr>` : "<w:tcPr/>";
+    previousTcPrInner.length > 0
+      ? `<w:tcPr>${previousTcPrInner}</w:tcPr>`
+      : "<w:tcPr/>";
 
   return `<w:tcPrChange ${attrs}>${normalizedPreviousTcPr}</w:tcPrChange>`;
 }
@@ -922,9 +1084,12 @@ function serializeTableGrid(table: Table): string {
   // accepts the reviewer's change without saying so. The schema declares it
   // after every `w:gridCol`, so it is appended.
   const change = table.formatting?.gridChange;
-  const gridChange = change === undefined ? "" : serializeTableGridChange(change);
+  const gridChange =
+    change === undefined ? "" : serializeTableGridChange(change);
   if (columnWidths && columnWidths.length > 0) {
-    const columns = columnWidths.map((w) => `<w:gridCol w:w="${intAttr(w)}"/>`).join("");
+    const columns = columnWidths
+      .map((w) => `<w:gridCol w:w="${intAttr(w)}"/>`)
+      .join("");
     return `<w:tblGrid>${columns}${gridChange}</w:tblGrid>`;
   }
 
@@ -942,9 +1107,16 @@ function serializeTableGrid(table: Table): string {
  * measure for is written back without one; spelling it as a zero would claim a
  * width the source never stated.
  */
-const serializeTableGridChange = ({ id, columnWidths }: TableGridChange): string => {
+const serializeTableGridChange = ({
+  id,
+  columnWidths,
+}: TableGridChange): string => {
   const columns = columnWidths
-    .map((width) => (width === undefined ? "<w:gridCol/>" : `<w:gridCol w:w="${intAttr(width)}"/>`))
+    .map((width) =>
+      width === undefined
+        ? "<w:gridCol/>"
+        : `<w:gridCol w:w="${intAttr(width)}"/>`,
+    )
     .join("");
   return `<w:tblGridChange w:id="${intAttr(id)}"><w:tblGrid>${columns}</w:tblGrid></w:tblGridChange>`;
 };
@@ -971,7 +1143,10 @@ const tableCarrierKey = (carrier: TableContentCarrier): string =>
     ? `customXml:${String(carrier.wrapper.id)}`
     : `sdt:${canonicalJson(carrier.properties)}`;
 
-const serializeTableCarriers = (children: readonly ControlledChild[], depth = 0): string => {
+const serializeTableCarriers = (
+  children: readonly ControlledChild[],
+  depth = 0,
+): string => {
   const parts: string[] = [];
   let index = 0;
   while (index < children.length) {
@@ -993,7 +1168,9 @@ const serializeTableCarriers = (children: readonly ControlledChild[], depth = 0)
     }
     const inner = serializeTableCarriers(children.slice(index, end), depth + 1);
     if (carrier.type === "customXml") {
-      parts.push(`${carrier.wrapper.openingXml}${inner}${carrier.wrapper.closingXml}`);
+      parts.push(
+        `${carrier.wrapper.openingXml}${inner}${carrier.wrapper.closingXml}`,
+      );
     } else {
       parts.push(serializeSdtWrapper(carrier.properties, inner));
     }
@@ -1002,18 +1179,26 @@ const serializeTableCarriers = (children: readonly ControlledChild[], depth = 0)
   return parts.join("");
 };
 
-type TablePreservedChild = NonNullable<TablePreservedMarkup["children"]>[number];
+type TablePreservedChild = NonNullable<
+  TablePreservedMarkup["children"]
+>[number];
 
 const carriersFor = (value: {
   carrierStack?: TableContentCarrier[];
   contentControls?: SdtProperties[];
 }): TableContentCarrier[] =>
   value.carrierStack ?? [
-    ...(value.contentControls ?? []).map((properties) => ({ type: "sdt" as const, properties })),
+    ...(value.contentControls ?? []).map((properties) => ({
+      type: "sdt" as const,
+      properties,
+    })),
   ];
 
 /** A capture from the sink, with the controls it sat inside when parsed. */
-const preservedChild = (xml: string, child: TablePreservedChild): ControlledChild => ({
+const preservedChild = (
+  xml: string,
+  child: TablePreservedChild,
+): ControlledChild => ({
   carriers: carriersFor(child),
   xml,
 });
@@ -1074,7 +1259,8 @@ export function serializeTableCell(
   serializeParagraph: ParagraphSerializer,
 ): string {
   const parts: string[] = [];
-  const id = cell.id === undefined ? "" : ` w:id="${escapeXmlAttribute(cell.id)}"`;
+  const id =
+    cell.id === undefined ? "" : ` w:id="${escapeXmlAttribute(cell.id)}"`;
 
   // Cell properties
   const tcPrXml = serializeTableCellFormatting(
@@ -1128,7 +1314,10 @@ const positionedChildren = (
 /**
  * Serialize a table row (w:tr)
  */
-export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSerializer): string {
+export function serializeTableRow(
+  row: TableRow,
+  serializeParagraph: ParagraphSerializer,
+): string {
   const parts: string[] = [];
 
   // `CT_Row` opens with `w:tblPrEx` and only then `w:trPr`, so the exceptions
@@ -1189,14 +1378,18 @@ export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSe
  * @param table - The table to serialize
  * @returns XML string for the table
  */
-export function serializeTable(table: Table, serializeParagraph: ParagraphSerializer): string {
+export function serializeTable(
+  table: Table,
+  serializeParagraph: ParagraphSerializer,
+): string {
   // `w:tbl` is `w:tblPr, w:tblGrid, (rows)*`: both properties and grid are
   // required and precede every row. Emitting them only when the model carried
   // something to put in them made a table with neither — the shape a tracked
   // table insertion produces — open with a `w:tr` the content model has no
   // place for. Empty elements are the valid way to say "nothing here".
   const tblPrXml =
-    serializeTableFormatting(table.formatting, table.propertyChanges) || "<w:tblPr/>";
+    serializeTableFormatting(table.formatting, table.propertyChanges) ||
+    "<w:tblPr/>";
   // Rows, with preserved markup and bookmark markers put back between the
   // same two rows, and each row-level content control re-opened around the
   // rows that named it. `w:tblPr` and `w:tblGrid` precede every row, so the
@@ -1226,8 +1419,13 @@ export function serializeTable(table: Table, serializeParagraph: ParagraphSerial
  * @param tables - The tables to serialize
  * @returns XML string for all tables
  */
-export function serializeTables(tables: Table[], serializeParagraph: ParagraphSerializer): string {
-  return tables.map((table) => serializeTable(table, serializeParagraph)).join("");
+export function serializeTables(
+  tables: Table[],
+  serializeParagraph: ParagraphSerializer,
+): string {
+  return tables
+    .map((table) => serializeTable(table, serializeParagraph))
+    .join("");
 }
 
 // ============================================================================
@@ -1245,7 +1443,9 @@ export function hasTableRows(table: Table): boolean {
  * Check if a table has formatting
  */
 export function hasTableFormatting(table: Table): boolean {
-  return table.formatting !== undefined && Object.keys(table.formatting).length > 0;
+  return (
+    table.formatting !== undefined && Object.keys(table.formatting).length > 0
+  );
 }
 
 /**
@@ -1273,7 +1473,9 @@ export function hasCellContent(cell: TableCell): boolean {
  * Check if a cell has formatting
  */
 export function hasCellFormatting(cell: TableCell): boolean {
-  return cell.formatting !== undefined && Object.keys(cell.formatting).length > 0;
+  return (
+    cell.formatting !== undefined && Object.keys(cell.formatting).length > 0
+  );
 }
 
 /**
@@ -1290,7 +1492,10 @@ export function getTableColumnCount(table: Table): number {
 
   // Count cells in first row, accounting for grid span
   // SAFETY: rows.length > 0 verified above
-  return table.rows[0]!.cells.reduce((count, cell) => count + (cell.formatting?.gridSpan ?? 1), 0);
+  return table.rows[0]!.cells.reduce(
+    (count, cell) => count + (cell.formatting?.gridSpan ?? 1),
+    0,
+  );
 }
 
 /**
@@ -1329,7 +1534,10 @@ export function createEmptyTable(rows: number = 1, cols: number = 1): Table {
 /**
  * Create a table cell with text content
  */
-export function createTextCell(text: string, formatting?: TableCellFormatting): TableCell {
+export function createTextCell(
+  text: string,
+  formatting?: TableCellFormatting,
+): TableCell {
   return {
     type: "tableCell",
     ...(formatting !== undefined ? { formatting } : {}),

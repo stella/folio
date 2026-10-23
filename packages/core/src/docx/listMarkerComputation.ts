@@ -1,9 +1,9 @@
 /** Marker counters shared by parsing and canonical model normalization. */
 import type { Paragraph } from "../types/document";
-import type { NumberingMap } from "./numberingParser";
-import { isNumberingReference } from "./numberingReference";
 import { bulletMarkerFontName, convertBulletToUnicode } from "./bulletMarkers";
 import { resolveListTemplate } from "./listTemplate";
+import type { NumberingMap } from "./numberingParser";
+import { isNumberingReference } from "./numberingReference";
 
 export type PreviousListState = {
   abstractNumId: number | null;
@@ -128,7 +128,9 @@ export const computeListMarker = (
   if (childAdvances > 0 && level + 1 < counters.length) {
     const childCounter = counters[level + 1];
     counters[level + 1] =
-      (childCounter === undefined || Number.isNaN(childCounter) ? 0 : childCounter) + childAdvances;
+      (childCounter === undefined || Number.isNaN(childCounter)
+        ? 0
+        : childCounter) + childAdvances;
   }
 
   if (abstractNumId !== null) {
@@ -158,6 +160,7 @@ export const computeListMarker = (
     levelFormats:
       listRendering.levelNumFmts ??
       counters.map((_counter, ilvl) => numbering.getLevel(numId, ilvl)?.numFmt),
-    forceDecimal: currentLevelInfo?.isLgl === true || listRendering.isLegal === true,
+    forceDecimal:
+      currentLevelInfo?.isLgl === true || listRendering.isLegal === true,
   });
 };

@@ -18,7 +18,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Document } from "../types/document";
@@ -28,7 +31,8 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /** A run child, the visible text it contributes, and what it is called. */
 type RunChild = { xml: string; text: string };
@@ -43,7 +47,14 @@ const textChild = (raw: string, preserve: boolean): RunChild => ({
  * or trailing space and collapses an inner run of them unless the attribute
  * says otherwise, so folio has to write the attribute back whenever it matters.
  */
-const TEXT_PAYLOADS = ["plain", " leading", "trailing ", "  ", "", "two  spaces"] as const;
+const TEXT_PAYLOADS = [
+  "plain",
+  " leading",
+  "trailing ",
+  "  ",
+  "",
+  "two  spaces",
+] as const;
 
 const ATOM_CHILDREN = {
   tab: { xml: "<w:tab/>", text: "\t" },
@@ -126,16 +137,26 @@ const childArbitrary: fc.Arbitrary<ChildSpec> = fc.oneof(
   }),
   fc.record({
     kind: fc.constant<"atom">("atom"),
-    name: fc.constantFrom(...(Object.keys(ATOM_CHILDREN) as (keyof typeof ATOM_CHILDREN)[])),
+    name: fc.constantFrom(
+      ...(Object.keys(ATOM_CHILDREN) as (keyof typeof ATOM_CHILDREN)[]),
+    ),
   }),
-  fc.record({ kind: fc.constant<"vmlGroup">("vmlGroup"), boxes: fc.integer({ min: 1, max: 3 }) }),
+  fc.record({
+    kind: fc.constant<"vmlGroup">("vmlGroup"),
+    boxes: fc.integer({ min: 1, max: 3 }),
+  }),
   fc.record({ kind: fc.constant<"vmlShape">("vmlShape") }),
   fc.record({ kind: fc.constant<"pageField">("pageField") }),
 );
 
-const paragraphArbitrary = fc.array(childArbitrary, { minLength: 1, maxLength: 5 });
+const paragraphArbitrary = fc.array(childArbitrary, {
+  minLength: 1,
+  maxLength: 5,
+});
 
-const documentXml = (children: readonly RunChild[]): string => `${XML_DECLARATION}
+const documentXml = (
+  children: readonly RunChild[],
+): string => `${XML_DECLARATION}
 <w:document
   xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -148,7 +169,9 @@ const documentXml = (children: readonly RunChild[]): string => `${XML_DECLARATIO
   <w:body><w:p>${children.map(({ xml }) => `<w:r>${xml}</w:r>`).join("")}</w:p><w:sectPr/></w:body>
 </w:document>`;
 
-const buildPackage = async (children: readonly RunChild[]): Promise<ArrayBuffer> => {
+const buildPackage = async (
+  children: readonly RunChild[],
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file("word/document.xml", documentXml(children));
   return zip.generateAsync({ type: "arraybuffer" });
@@ -180,7 +203,8 @@ const bodyText = (blocks: readonly BlockContent[]): string => {
     }
     if (block.type === "table") {
       for (const row of block.rows) {
-        for (const cell of row.cells) for (const child of cell.content) visit(child);
+        for (const cell of row.cells)
+          for (const child of cell.content) visit(child);
       }
       return;
     }
@@ -199,7 +223,9 @@ const bodyText = (blocks: readonly BlockContent[]): string => {
  * model walk cannot see a captured group at all: it would be blind both to the
  * group written twice and to the group dropped.
  */
-const statedSourceText = (children: readonly ChildSpec[]): string | undefined => {
+const statedSourceText = (
+  children: readonly ChildSpec[],
+): string | undefined => {
   if (children.some((spec) => spec.kind === "vmlGroup")) {
     return undefined;
   }
@@ -265,9 +291,12 @@ describe("a saved package says what the source said", () => {
   test("a plain repack preserves the paragraph's text", async () => {
     await assertProperty(
       fc.asyncProperty(paragraphArbitrary, async (specs) => {
-        const parsed = await parseDocx(await buildPackage(specs.map(childFor)), {
-          preloadFonts: false,
-        });
+        const parsed = await parseDocx(
+          await buildPackage(specs.map(childFor)),
+          {
+            preloadFonts: false,
+          },
+        );
         const read = bodyText(parsed.package.document.content);
         const stated = statedSourceText(specs);
         if (stated !== undefined) {
@@ -286,9 +315,12 @@ describe("a saved package says what the source said", () => {
   test("the editor round trip preserves the paragraph's text", async () => {
     await assertProperty(
       fc.asyncProperty(paragraphArbitrary, async (specs) => {
-        const parsed = await parseDocx(await buildPackage(specs.map(childFor)), {
-          preloadFonts: false,
-        });
+        const parsed = await parseDocx(
+          await buildPackage(specs.map(childFor)),
+          {
+            preloadFonts: false,
+          },
+        );
         const read = bodyText(parsed.package.document.content);
         const stated = statedSourceText(specs);
         if (stated !== undefined) {
@@ -303,7 +335,10 @@ describe("a saved package says what the source said", () => {
         const saved = await parseDocx(savedPackage, { preloadFonts: false });
         expect(bodyText(saved.package.document.content)).toBe(read);
       }),
-      { numRuns: 120, id: "the editor round trip preserves the paragraph's text" },
+      {
+        numRuns: 120,
+        id: "the editor round trip preserves the paragraph's text",
+      },
     );
   });
 });

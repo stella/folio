@@ -11,6 +11,7 @@
 
 import { Selection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+
 import { PENDING_COMMENT_ID } from "@stll/folio-core/prosemirror/commentIdAllocator";
 
 export type CommentMarkRange = {
@@ -85,7 +86,11 @@ export function applyCommentMarkRange(
       commentMark.create({ commentId: PENDING_COMMENT_ID }),
     );
   }
-  tr = tr.addMark(safeRange.from, safeRange.to, commentMark.create({ commentId }));
+  tr = tr.addMark(
+    safeRange.from,
+    safeRange.to,
+    commentMark.create({ commentId }),
+  );
 
   if (options?.selectEnd) {
     tr = tr.setSelection(Selection.near(tr.doc.resolve(safeRange.to), -1));
@@ -96,7 +101,10 @@ export function applyCommentMarkRange(
 }
 
 /** Strip the pending placeholder comment mark from `range` (cancel add-comment). */
-export function removePendingCommentMarkRange(view: EditorView, range: CommentMarkRange): void {
+export function removePendingCommentMarkRange(
+  view: EditorView,
+  range: CommentMarkRange,
+): void {
   const commentMark = view.state.schema.marks["comment"];
   const safeRange = clampCommentMarkRange(view.state.doc.content.size, range);
   if (!commentMark || !safeRange) return;

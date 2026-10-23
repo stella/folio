@@ -26,17 +26,16 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-
-import { ensureParaIds } from "../docx/ensureParaIds";
-import { createDocx } from "../docx/rezip";
-import { paragraph, table } from "../docx/server/build";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   isFolioDocumentOperationModeSupported,
 } from "../document-operations";
+import { ensureParaIds } from "../docx/ensureParaIds";
+import { createDocx } from "../docx/rezip";
+import { paragraph, table } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import { createFolioAITextRangeHandle } from "./snapshot";
 import { FolioDocxReviewer } from "./headless";
+import { createFolioAITextRangeHandle } from "./snapshot";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
@@ -60,7 +59,12 @@ const KINDS = [
 ] as const;
 type Kind = (typeof KINDS)[number];
 
-const SENTENCES = ["Inserted clause.", "Payment is due.", "New term here.", "Short."] as const;
+const SENTENCES = [
+  "Inserted clause.",
+  "Payment is due.",
+  "New term here.",
+  "Short.",
+] as const;
 
 let base: ArrayBuffer | null = null;
 const baseDocument = async (): Promise<ArrayBuffer> => {
@@ -82,13 +86,20 @@ const baseDocument = async (): Promise<ArrayBuffer> => {
     table({ header: ["Item", "Price"], rows: [["Widget", "10"]] }),
     paragraph("Prices exclude taxes."),
   );
-  const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
-  base = docx.buffer.slice(docx.byteOffset, docx.byteOffset + docx.byteLength) as ArrayBuffer;
+  const { docx } = await ensureParaIds(
+    new Uint8Array(await createDocx(document)),
+  );
+  base = docx.buffer.slice(
+    docx.byteOffset,
+    docx.byteOffset + docx.byteLength,
+  ) as ArrayBuffer;
   return base;
 };
 
 const open = async (bytes?: ArrayBuffer): Promise<FolioDocxReviewer> =>
-  FolioDocxReviewer.fromBuffer(bytes ?? (await baseDocument()), { author: "Reviewer" });
+  FolioDocxReviewer.fromBuffer(bytes ?? (await baseDocument()), {
+    author: "Reviewer",
+  });
 
 type Block = ReturnType<FolioDocxReviewer["getContent"]>[number];
 
@@ -99,11 +110,15 @@ const read = (reviewer: FolioDocxReviewer): string[] =>
 const anchors = (reviewer: FolioDocxReviewer): string[] =>
   reviewer.getComments().map((comment) => comment.anchoredText);
 
-const reopen = async (reviewer: FolioDocxReviewer): Promise<FolioDocxReviewer> =>
-  open(await reviewer.toBuffer());
+const reopen = async (
+  reviewer: FolioDocxReviewer,
+): Promise<FolioDocxReviewer> => open(await reviewer.toBuffer());
 
 const words = (text: string) =>
-  [...text.matchAll(/[A-Za-z]{3,}/gu)].map((match) => ({ word: match[0], start: match.index }));
+  [...text.matchAll(/[A-Za-z]{3,}/gu)].map((match) => ({
+    word: match[0],
+    start: match.index,
+  }));
 
 /**
  * `follow` aims at the neighbourhood of the previous step (`pick` says which
@@ -124,8 +139,9 @@ const operationFor = (
   const cells = blocks.filter((block) => block.table !== undefined);
   const worded = body.filter((block) => words(block.text).length > 0);
   const choose = (from: readonly Block[]): Block | undefined =>
-    (follow ? from.find(({ id }) => id === focus[pick % Math.max(focus.length, 1)]) : undefined) ??
-    from[pick % Math.max(from.length, 1)];
+    (follow
+      ? from.find(({ id }) => id === focus[pick % Math.max(focus.length, 1)])
+      : undefined) ?? from[pick % Math.max(from.length, 1)];
   const sentence = SENTENCES[detail % SENTENCES.length];
   switch (kind) {
     case "insertAfterBlock":
@@ -135,7 +151,9 @@ const operationFor = (
     }
     case "deleteBlock": {
       const block = choose(body);
-      return body.length > 2 && block ? { type: kind, blockId: block.id } : undefined;
+      return body.length > 2 && block
+        ? { type: kind, blockId: block.id }
+        : undefined;
     }
     case "replaceBlock": {
       const block = choose(body);
@@ -143,14 +161,25 @@ const operationFor = (
     }
     case "replaceInBlock": {
       const block = choose(worded);
-      const found = block && words(block.text)[detail % words(block.text).length];
+      const found =
+        block && words(block.text)[detail % words(block.text).length];
       return (
-        block && found && { type: kind, blockId: block.id, find: found.word, replace: sentence }
+        block &&
+        found && {
+          type: kind,
+          blockId: block.id,
+          find: found.word,
+          replace: sentence,
+        }
       );
     }
     case "splitBlock": {
-      const block = choose(worded.filter((candidate) => words(candidate.text).length > 1));
-      const at = block && words(block.text).slice(1)[detail % (words(block.text).length - 1)];
+      const block = choose(
+        worded.filter((candidate) => words(candidate.text).length > 1),
+      );
+      const at =
+        block &&
+        words(block.text).slice(1)[detail % (words(block.text).length - 1)];
       return block && at && { type: kind, blockId: block.id, offset: at.start };
     }
     case "mergeBlockWithNext": {
@@ -163,7 +192,9 @@ const operationFor = (
     }
     case "insertTable": {
       const block = choose(body);
-      return block && { type: kind, blockId: block.id, rows: [["Term", "Value"]] };
+      return (
+        block && { type: kind, blockId: block.id, rows: [["Term", "Value"]] }
+      );
     }
     case "deleteTable":
     case "deleteTableRow": {
@@ -177,7 +208,8 @@ const operationFor = (
     case "commentOnBlock": {
       // A quoted word, or the whole paragraph.
       const block = choose(worded);
-      const quote = block && words(block.text)[detail % words(block.text).length];
+      const quote =
+        block && words(block.text)[detail % words(block.text).length];
       return (
         block &&
         quote && {
@@ -190,7 +222,8 @@ const operationFor = (
     }
     case "commentOnRange": {
       const block = choose(worded);
-      const found = block && words(block.text)[detail % words(block.text).length];
+      const found =
+        block && words(block.text)[detail % words(block.text).length];
       const range =
         block &&
         found &&
@@ -200,14 +233,20 @@ const operationFor = (
           startOffset: found.start,
           endOffset: found.start + found.word.length,
         });
-      return range ? { type: kind, range, comment: { text: "Why?" } } : undefined;
+      return range
+        ? { type: kind, range, comment: { text: "Why?" } }
+        : undefined;
     }
   }
 };
 
 type Operation = NonNullable<ReturnType<typeof operationFor>>;
 
-const apply = (reviewer: FolioDocxReviewer, mode: Mode, operation: Operation): boolean =>
+const apply = (
+  reviewer: FolioDocxReviewer,
+  mode: Mode,
+  operation: Operation,
+): boolean =>
   reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -224,13 +263,22 @@ const idsOf = (reviewer: FolioDocxReviewer): string[] =>
  * An applied operation, the text its target read, whether a table followed
  * the target, and the blocks it added.
  */
-type Step = { operation: Operation; targetText: string; beforeTable: boolean; added: string[] };
+type Step = {
+  operation: Operation;
+  targetText: string;
+  beforeTable: boolean;
+  added: string[];
+};
 
 const targetOf = (operation: Operation): string =>
   "blockId" in operation ? operation.blockId : operation.range.blockId;
 
 /** Apply each intent the mode supports; what each applied step added. */
-const run = (reviewer: FolioDocxReviewer, mode: Mode, intents: readonly Intent[]): Step[] => {
+const run = (
+  reviewer: FolioDocxReviewer,
+  mode: Mode,
+  intents: readonly Intent[],
+): Step[] => {
   const steps: Step[] = [];
   let focus: string[] = reviewer
     .getContent()
@@ -243,10 +291,16 @@ const run = (reviewer: FolioDocxReviewer, mode: Mode, intents: readonly Intent[]
     const before = new Set(idsOf(reviewer));
     const blocks = reviewer.getContent();
     const operation = operationFor(blocks, intent, focus);
-    const index = operation ? blocks.findIndex(({ id }) => id === targetOf(operation)) : -1;
+    const index = operation
+      ? blocks.findIndex(({ id }) => id === targetOf(operation))
+      : -1;
     const targetText = blocks[index]?.text;
     const beforeTable = blocks[index + 1]?.table !== undefined;
-    if (operation && targetText !== undefined && apply(reviewer, mode, operation)) {
+    if (
+      operation &&
+      targetText !== undefined &&
+      apply(reviewer, mode, operation)
+    ) {
       const added = idsOf(reviewer).filter((id) => !before.has(id));
       steps.push({ operation, targetText, beforeTable, added });
       const after = reviewer.getContent();
@@ -269,7 +323,9 @@ const run = (reviewer: FolioDocxReviewer, mode: Mode, intents: readonly Intent[]
  * direct mode refuses it. New block ids are random, so the blocks each step
  * adds are paired in order.
  */
-const runDirectly = async (steps: readonly Step[]): Promise<FolioDocxReviewer | null> => {
+const runDirectly = async (
+  steps: readonly Step[],
+): Promise<FolioDocxReviewer | null> => {
   const direct = await open();
   const ids = new Map(idsOf(direct).map((id) => [id, id]));
   for (const { operation, targetText, beforeTable, added } of steps) {
@@ -340,14 +396,27 @@ test("reject restores heading properties when an insertion interrupts a pending 
   const reviewer = await open();
   const heading = reviewer.getContent().at(0);
   const following = reviewer.getContent().at(1);
-  if (!heading || !following) throw new Error("Missing heading and following paragraph");
+  if (!heading || !following)
+    throw new Error("Missing heading and following paragraph");
   const edit = (operation: Operation) =>
     expect(apply(reviewer, "tracked-changes", operation)).toBe(true);
-  edit({ type: "insertAfterBlock", blockId: following.id, text: "Inserted clause." });
+  edit({
+    type: "insertAfterBlock",
+    blockId: following.id,
+    text: "Inserted clause.",
+  });
   edit({ type: "deleteBlock", blockId: following.id });
-  edit({ type: "insertAfterBlock", blockId: following.id, text: "Inserted clause." });
+  edit({
+    type: "insertAfterBlock",
+    blockId: following.id,
+    text: "Inserted clause.",
+  });
   edit({ type: "mergeBlockWithNext", blockId: heading.id, separator: " " });
-  edit({ type: "insertBeforeBlock", blockId: following.id, text: "Inserted clause." });
+  edit({
+    type: "insertBeforeBlock",
+    blockId: following.id,
+    text: "Inserted clause.",
+  });
   const saved = await reopen(reviewer);
   reviewer.rejectAll();
   expect(read(reviewer)).toEqual(original);
@@ -356,19 +425,85 @@ test("reject restores heading properties when an insertion interrupts a pending 
   expect(read(saved)).toEqual(original);
 });
 
+test("a run inserted after a pending merge resolves both ways without moving properties", async () => {
+  const original = read(await open());
+  const edited = async () => {
+    const reviewer = await open();
+    const anchor = reviewer.getContent().at(1);
+    if (!anchor) throw new Error("Missing merge anchor");
+    expect(
+      apply(reviewer, "tracked-changes", {
+        type: "mergeBlockWithNext",
+        blockId: anchor.id,
+        separator: " ",
+      }),
+    ).toBe(true);
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "heading",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: "A second-level heading.",
+            styleId: "Heading2",
+          },
+          {
+            id: "bullet",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: "A new bullet.",
+            numbering: { kind: "newList", format: "bullet" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.applied).toHaveLength(2);
+    return reviewer;
+  };
+
+  const rejecting = await edited();
+  rejecting.rejectAll();
+  expect(read(rejecting)).toEqual(original);
+  expect(read(await reopen(rejecting))).toEqual(original);
+
+  const accepting = await edited();
+  accepting.acceptAll();
+  const accepted = accepting.getContent();
+  expect(
+    accepted.find(({ text }) => text === "A second-level heading.")?.kind,
+  ).toBe("heading");
+  expect(
+    accepted
+      .find(({ text }) => text.startsWith("A new bullet."))
+      ?.text.startsWith("A new bullet."),
+  ).toBe(true);
+  expect(read(await reopen(accepting))).toEqual(read(accepting));
+});
+
 for (const tableDeletion of ["deleteTable", "deleteTableRow"] as const) {
   test(`terminal paragraph deletions resolve like direct after ${tableDeletion}`, async () => {
     const original = read(await open());
     const edited = async (mode: Mode) => {
       const reviewer = await open();
       const blocks = reviewer.getContent();
-      const cell = blocks.find(({ table: cellTable }) => cellTable !== undefined);
+      const cell = blocks.find(
+        ({ table: cellTable }) => cellTable !== undefined,
+      );
       if (!cell) throw new Error("Missing table deletion target");
-      expect(apply(reviewer, mode, { type: tableDeletion, blockId: cell.id })).toBe(true);
+      expect(
+        apply(reviewer, mode, { type: tableDeletion, blockId: cell.id }),
+      ).toBe(true);
       for (const prefix of ["Prices exclude", "Signed", "The Buyer"]) {
         const block = blocks.find(({ text }) => text.startsWith(prefix));
-        if (!block) throw new Error("Missing terminal paragraph deletion target");
-        expect(apply(reviewer, mode, { type: "deleteBlock", blockId: block.id })).toBe(true);
+        if (!block)
+          throw new Error("Missing terminal paragraph deletion target");
+        expect(
+          apply(reviewer, mode, { type: "deleteBlock", blockId: block.id }),
+        ).toBe(true);
       }
       return reviewer;
     };
@@ -389,60 +524,63 @@ for (const tableDeletion of ["deleteTable", "deleteTableRow"] as const) {
 describe("resolving random tracked work", () => {
   test("reject restores, accept equals direct, and both survive a save", async () => {
     const original = read(await open());
-    const resolutionProperty = fc.asyncProperty(caseArbitrary, async ({ mode, intents }) => {
-      const reviewer = await open();
-      const steps = run(reviewer, mode, intents);
-      const pending = read(reviewer);
+    const resolutionProperty = fc.asyncProperty(
+      caseArbitrary,
+      async ({ mode, intents }) => {
+        const reviewer = await open();
+        const steps = run(reviewer, mode, intents);
+        const pending = read(reviewer);
 
-      // A pending tracked document survives its own save; a suggested one
-      // saves without its suggestions, so it is only resolved live.
-      let reopened: FolioDocxReviewer | null = null;
-      if (mode === "tracked-changes") {
-        const before = anchors(reviewer);
-        reopened = await reopen(reviewer);
-        expect(read(reopened)).toEqual(pending);
-        expect(anchors(reopened)).toEqual(before);
-      }
+        // A pending tracked document survives its own save; a suggested one
+        // saves without its suggestions, so it is only resolved live.
+        let reopened: FolioDocxReviewer | null = null;
+        if (mode === "tracked-changes") {
+          const before = anchors(reviewer);
+          reopened = await reopen(reviewer);
+          expect(read(reopened)).toEqual(pending);
+          expect(anchors(reopened)).toEqual(before);
+        }
 
-      // Rejecting: on a replay of the same intents, and on the reopened save.
-      const replay = await open();
-      run(replay, mode, intents);
-      expect(read(replay)).toEqual(pending);
-      replay.rejectAll();
-      expect(read(replay)).toEqual(original);
-      const savedRejected = await reopen(replay);
-      expect(read(savedRejected)).toEqual(original);
-      expect(anchors(savedRejected)).toEqual(anchors(replay));
-      if (mode === "tracked-changes") {
-        const rejecting = await reopen(reviewer);
-        rejecting.rejectAll();
-        expect(read(rejecting)).toEqual(original);
-      }
+        // Rejecting: on a replay of the same intents, and on the reopened save.
+        const replay = await open();
+        run(replay, mode, intents);
+        expect(read(replay)).toEqual(pending);
+        replay.rejectAll();
+        expect(read(replay)).toEqual(original);
+        const savedRejected = await reopen(replay);
+        expect(read(savedRejected)).toEqual(original);
+        expect(anchors(savedRejected)).toEqual(anchors(replay));
+        if (mode === "tracked-changes") {
+          const rejecting = await reopen(reviewer);
+          rejecting.rejectAll();
+          expect(read(rejecting)).toEqual(original);
+        }
 
-      if (mode === "suggested") {
-        expect(reviewer.acceptAll()).toBe(0);
-        expect(read(reviewer)).toEqual(pending);
-        expect(read(await reopen(reviewer))).toEqual(original);
-        return;
-      }
+        if (mode === "suggested") {
+          expect(reviewer.acceptAll()).toBe(0);
+          expect(read(reviewer)).toEqual(pending);
+          expect(read(await reopen(reviewer))).toEqual(original);
+          return;
+        }
 
-      // Accepting: equal to the direct run, and the same after a save.
-      const direct = await runDirectly(steps);
-      reviewer.acceptAll();
-      const accepted = read(reviewer);
-      const acceptedAnchors = anchors(reviewer);
-      const savedAccepted = await reopen(reviewer);
-      expect(read(savedAccepted)).toEqual(accepted);
-      expect(anchors(savedAccepted)).toEqual(acceptedAnchors);
-      if (direct) {
-        comparedWithDirect++;
-        expect(accepted).toEqual(read(direct));
-      }
-      if (reopened) {
-        reopened.acceptAll();
-        expect(read(reopened)).toEqual(accepted);
-      }
-    });
+        // Accepting: equal to the direct run, and the same after a save.
+        const direct = await runDirectly(steps);
+        reviewer.acceptAll();
+        const accepted = read(reviewer);
+        const acceptedAnchors = anchors(reviewer);
+        const savedAccepted = await reopen(reviewer);
+        expect(read(savedAccepted)).toEqual(accepted);
+        expect(anchors(savedAccepted)).toEqual(acceptedAnchors);
+        if (direct) {
+          comparedWithDirect++;
+          expect(accepted).toEqual(read(direct));
+        }
+        if (reopened) {
+          reopened.acceptAll();
+          expect(read(reopened)).toEqual(accepted);
+        }
+      },
+    );
     // The seeds this property once failed on replay first, from
     // test/property-seeds/.
     await assertProperty(resolutionProperty, {
@@ -463,13 +601,16 @@ describe("resolving random tracked work", () => {
           run(reviewer, "tracked-changes", [
             {
               ...comment,
-              kind: comment.pick % 2 === 0 ? "commentOnRange" : "commentOnBlock",
+              kind:
+                comment.pick % 2 === 0 ? "commentOnRange" : "commentOnBlock",
               follow: false,
             },
             // Every edit aims at the commented paragraph or what it became.
             ...edits.map((edit) => ({ ...edit, follow: true })),
           ]);
-          const survivesASave = async (state: FolioDocxReviewer): Promise<void> => {
+          const survivesASave = async (
+            state: FolioDocxReviewer,
+          ): Promise<void> => {
             expect(anchors(await reopen(state))).toEqual(anchors(state));
           };
           await survivesASave(reviewer);

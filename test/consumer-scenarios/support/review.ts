@@ -26,5 +26,7 @@ export const resolvedText = async (
     reviewer.rejectAll();
   }
   // Resolve, save and reopen, so the answer is what the package says.
-  return settledText(await openReviewer(new Uint8Array(await reviewer.toBuffer())));
+  return settledText(
+    await openReviewer(new Uint8Array(await reviewer.toBuffer())),
+  );
 };

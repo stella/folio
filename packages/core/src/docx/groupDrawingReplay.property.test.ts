@@ -22,8 +22,10 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
@@ -32,7 +34,8 @@ import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const NS = [
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
@@ -64,11 +67,17 @@ const PART_PLACEMENTS = {
 type PartPlacement = keyof typeof PART_PLACEMENTS;
 
 /** How the model looks by the time the save runs. */
-const MODEL_STATES = ["as-parsed", "fingerprint-poisoned", "editor-round-trip"] as const;
+const MODEL_STATES = [
+  "as-parsed",
+  "fingerprint-poisoned",
+  "editor-round-trip",
+] as const;
 type ModelState = (typeof MODEL_STATES)[number];
 
 const placementCase = fc.record({
-  placement: fc.constantFrom(...(Object.keys(PART_PLACEMENTS) as PartPlacement[])),
+  placement: fc.constantFrom(
+    ...(Object.keys(PART_PLACEMENTS) as PartPlacement[]),
+  ),
   state: fc.constantFrom(...MODEL_STATES),
 });
 
@@ -81,7 +90,11 @@ const PNG_1X1_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 /** Only the part carrying the group needs the image relationship. */
-const partRels = (placement: PartPlacement, part: PartPlacement, extra = ""): string =>
+const partRels = (
+  placement: PartPlacement,
+  part: PartPlacement,
+  extra = "",
+): string =>
   `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${extra}${
     placement === part
       ? `<Relationship Id="${IMAGE_RELATIONSHIP_ID}" Type="${RELATIONSHIP_TYPES.image}" Target="${IMAGE_TARGET}"/>`
@@ -138,7 +151,10 @@ const docxFor = (placement: PartPlacement): Promise<ArrayBuffer> => {
     endnotes: "endnote",
   } as const satisfies Record<string, PartPlacement>;
   for (const [part, placementForPart] of Object.entries(SIDECAR_PARTS)) {
-    zip.file(`word/_rels/${part}.xml.rels`, partRels(placement, placementForPart));
+    zip.file(
+      `word/_rels/${part}.xml.rels`,
+      partRels(placement, placementForPart),
+    );
   }
   zip.file("word/media/group-child.png", PNG_1X1_BASE64, { base64: true });
   return zip.generateAsync({ type: "arraybuffer" });
@@ -204,7 +220,10 @@ describe("a group drawing is replayed, never rebuilt", () => {
       await fc.assert(
         fc.asyncProperty(placementCase, async ({ placement, state }) => {
           const source = await docxFor(placement);
-          const parsed = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+          const parsed = await parseDocx(source, {
+            detectVariables: false,
+            preloadFonts: false,
+          });
           const saved = await repackDocx(applyState(parsed, state), {
             updateModifiedDate: false,
           });
@@ -229,10 +248,13 @@ describe("a group drawing is replayed, never rebuilt", () => {
       preloadFonts: false,
     });
     poisonPreviewFingerprints(parsed.package);
-    const reopened = await parseDocx(await repackDocx(parsed, { updateModifiedDate: false }), {
-      detectVariables: false,
-      preloadFonts: false,
-    });
+    const reopened = await parseDocx(
+      await repackDocx(parsed, { updateModifiedDate: false }),
+      {
+        detectVariables: false,
+        preloadFonts: false,
+      },
+    );
 
     const block = reopened.package.document.content.at(0);
     const run = block?.type === "paragraph" ? block.content.at(0) : undefined;

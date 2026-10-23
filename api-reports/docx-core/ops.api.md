@@ -12,6 +12,8 @@ export type AddNoteOp = {
     type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
     at: TextPosition;
     note: Footnote | Endnote;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public
@@ -766,10 +768,37 @@ export const packageResourcesOpOf: (input: PackageResourcesOpOptions) => SetPack
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
 
 // @public
+export const paragraphIdsIn: (value: unknown) => string[];
+
+// @public
 export const paragraphLength: (paragraph: Paragraph) => number;
 
 // @public
 export const paragraphLogicalText: (paragraph: Paragraph) => string;
+
+// @public
+export const paragraphMarkOutcome: (input: {
+    follows: "paragraph" | "table" | "nothing";
+    holdsContent: boolean;
+    markWasAdded: boolean;
+    containerStillEndsWithParagraph: boolean;
+    followingTableCanReceiveRunIn: boolean;
+    tableRemovalIsTrackable?: boolean;
+    removedSectionProperties?: boolean;
+    precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
+    followingHasSectionProperties?: boolean;
+}) => ({
+    kind: "join";
+} & SectionTransfer) | ({
+    kind: "remove";
+} & SectionTransfer) | ({
+    kind: "run-in";
+} & SectionTransfer) | ({
+    kind: "keep";
+} & SectionTransfer) | ({
+    kind: "refuse";
+    reason: "untrackable";
+} & SectionTransfer);
 
 // @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
@@ -843,6 +872,8 @@ export type RemoveNoteOp = {
     type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
     at: TextPosition;
     story: NoteStory;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public

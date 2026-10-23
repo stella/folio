@@ -1,4 +1,4 @@
-import { bytesToHex, decodeText, encodeUtf16BE, encodeUtf8 } from "../utils/textEncoding";
+import { panic, Result, TaggedError } from "better-result";
 /**
  * Font embedding.
  *
@@ -19,24 +19,29 @@ import { bytesToHex, decodeText, encodeUtf16BE, encodeUtf8 } from "../utils/text
  * whose cmap covers it.
  */
 
-import { panic, Result, TaggedError } from "better-result";
 import type { DisplayFontFace } from "../display-list/types";
-import { needsShaping, placeRun, type PlacedGlyph } from "../shaping/placeRun";
-import type { Shaper, ShapingDirection } from "../shaping/shaper";
 import { parseSfnt, type SfntFont } from "../fonts/sfnt/parse";
 import { subsetTrueType } from "../fonts/sfnt/subset";
 import { toSfntBytes } from "../fonts/sfnt/woff";
+import { needsShaping, type PlacedGlyph, placeRun } from "../shaping/placeRun";
+import type { Shaper, ShapingDirection } from "../shaping/shaper";
 import {
-  type PdfDocument,
-  type PdfRef,
-  type PdfValue,
+  bytesToHex,
+  decodeText,
+  encodeUtf8,
+  encodeUtf16BE,
+} from "../utils/textEncoding";
+import {
   pdfArray,
   pdfAsciiString,
   pdfDict,
+  type PdfDocument,
   pdfFlateStream,
   pdfName,
   pdfNumber,
   pdfNumberArray,
+  type PdfRef,
+  type PdfValue,
 } from "./objects";
 import type { PdfUnencodable } from "./writePdf";
 
@@ -97,7 +102,9 @@ export type EmbeddedPdfFont = {
    * run was not shaped: no shaper was resolved, or the run is in a script where
    * a code point selects its own glyph.
    */
-  readonly placeShapedRun: (request: ShapedRunRequest) => readonly PlacedPdfGlyph[] | null;
+  readonly placeShapedRun: (
+    request: ShapedRunRequest,
+  ) => readonly PlacedPdfGlyph[] | null;
 };
 
 /** A base-14 stand-in for a face that could not be embedded. */
@@ -139,9 +146,12 @@ const UPPERCASE_A = 65;
 const WOFF_SIGNATURES = ["wOFF", "wOF2"] as const;
 
 const readTag = (bytes: Uint8Array): string =>
-  decodeText(Uint8Array.of(bytes[0] ?? 0, bytes[1] ?? 0, bytes[2] ?? 0, bytes[3] ?? 0), {
-    encoding: "binary",
-  });
+  decodeText(
+    Uint8Array.of(bytes[0] ?? 0, bytes[1] ?? 0, bytes[2] ?? 0, bytes[3] ?? 0),
+    {
+      encoding: "binary",
+    },
+  );
 
 /**
  * Six uppercase letters derived from the face and the exact glyph set, so the
@@ -255,7 +265,11 @@ const buildWinAnsiTable = (): ReadonlyMap<number, number> => {
   const PRINTABLE_ASCII_END = 0x7e;
   const LATIN1_HIGH_START = 0xa0;
   const LATIN1_HIGH_END = 0xff;
-  for (let code = PRINTABLE_ASCII_START; code <= PRINTABLE_ASCII_END; code += 1) {
+  for (
+    let code = PRINTABLE_ASCII_START;
+    code <= PRINTABLE_ASCII_END;
+    code += 1
+  ) {
     table.set(code, code);
   }
   for (let code = LATIN1_HIGH_START; code <= LATIN1_HIGH_END; code += 1) {
@@ -269,15 +283,19 @@ const buildWinAnsiTable = (): ReadonlyMap<number, number> => {
 
 const WIN_ANSI_BY_CODE_POINT = buildWinAnsiTable();
 
-const utf16BeHexOf = (text: string): string => bytesToHex(encodeUtf16BE(text)).toUpperCase();
+const utf16BeHexOf = (text: string): string =>
+  bytesToHex(encodeUtf16BE(text)).toUpperCase();
 
-const utf16BeHex = (codePoint: number): string => utf16BeHexOf(String.fromCodePoint(codePoint));
+const utf16BeHex = (codePoint: number): string =>
+  utf16BeHexOf(String.fromCodePoint(codePoint));
 
 /** Entries per `beginbfchar` block; the CMap syntax caps this at 100. */
 const BFCHAR_BLOCK_SIZE = 100;
 
 const toUnicodeCMap = (glyphToText: ReadonlyMap<number, string>): string => {
-  const entries = [...glyphToText.entries()].sort(([left], [right]) => left - right);
+  const entries = [...glyphToText.entries()].sort(
+    ([left], [right]) => left - right,
+  );
   let body = "";
   for (let start = 0; start < entries.length; start += BFCHAR_BLOCK_SIZE) {
     const block = entries.slice(start, start + BFCHAR_BLOCK_SIZE);
@@ -317,7 +335,9 @@ const widthsArray = (widths: ReadonlyMap<number, number>): PdfValue => {
       items.push(pdfNumber(runStart), pdfNumberArray(run));
     }
   };
-  for (const glyphId of [...widths.keys()].sort((left, right) => left - right)) {
+  for (const glyphId of [...widths.keys()].sort(
+    (left, right) => left - right,
+  )) {
     if (runStart === null || glyphId !== expected) {
       flush();
       runStart = glyphId;
@@ -330,7 +350,8 @@ const widthsArray = (widths: ReadonlyMap<number, number>): PdfValue => {
   return pdfArray(items);
 };
 
-const asciiOnly = (value: string): string => value.replace(/[^\x20-\x7e]/gu, "");
+const asciiOnly = (value: string): string =>
+  value.replace(/[^\x20-\x7e]/gu, "");
 
 type DescriptorOptions = {
   readonly font: SfntFont;
@@ -365,7 +386,12 @@ const fontDescriptor = ({
     ["Ascent", pdfNumber(font.ascender * scale)],
     ["Descent", pdfNumber(font.descender * scale)],
     ["CapHeight", pdfNumber(font.capHeight * scale)],
-    ["StemV", pdfNumber(face.weight >= BOLD_WEIGHT_THRESHOLD ? STEM_V_BOLD : STEM_V_REGULAR)],
+    [
+      "StemV",
+      pdfNumber(
+        face.weight >= BOLD_WEIGHT_THRESHOLD ? STEM_V_BOLD : STEM_V_REGULAR,
+      ),
+    ],
     [fontFileKey, fontFileRef],
   ]);
 };
@@ -429,13 +455,17 @@ const planFont = ({
   let glyphIdMap: ReadonlyMap<number, number>;
   let programBytes: Uint8Array;
   if (font.isCff) {
-    glyphIdMap = new Map([...sourceGlyphIds].map((glyphId) => [glyphId, glyphId]));
+    glyphIdMap = new Map(
+      [...sourceGlyphIds].map((glyphId) => [glyphId, glyphId]),
+    );
     programBytes = font.bytes;
   } else {
     const subset = subsetTrueType(font, sourceGlyphIds);
     if (subset.isErr()) {
       return Result.err(
-        new PdfFontError({ message: `subsetting failed: ${subset.error.message}` }),
+        new PdfFontError({
+          message: `subsetting failed: ${subset.error.message}`,
+        }),
       );
     }
     glyphIdMap = subset.value.glyphIdMap;
@@ -446,19 +476,28 @@ const planFont = ({
   const glyphIdByCodePoint = new Map<number, number>();
   const widthByGlyphId = new Map<number, number>();
   const glyphToText = new Map<number, string>();
-  for (const sourceGlyphId of [...sourceGlyphIds].sort((left, right) => left - right)) {
+  for (const sourceGlyphId of [...sourceGlyphIds].sort(
+    (left, right) => left - right,
+  )) {
     const targetGlyphId = glyphIdMap.get(sourceGlyphId);
     if (targetGlyphId === undefined) {
       return Result.err(
-        new PdfFontError({ message: `subset dropped glyph ${String(sourceGlyphId)}` }),
+        new PdfFontError({
+          message: `subset dropped glyph ${String(sourceGlyphId)}`,
+        }),
       );
     }
     // Rounded here and nowhere else: the painter corrects against the width
     // this file declares, not against the font's own, so the rounding is
     // absorbed rather than accumulated.
-    widthByGlyphId.set(targetGlyphId, Math.round(font.advanceWidthFor(sourceGlyphId) * scale));
+    widthByGlyphId.set(
+      targetGlyphId,
+      Math.round(font.advanceWidthFor(sourceGlyphId) * scale),
+    );
   }
-  for (const codePoint of [...sourceGlyphByCodePoint.keys()].sort((left, right) => left - right)) {
+  for (const codePoint of [...sourceGlyphByCodePoint.keys()].sort(
+    (left, right) => left - right,
+  )) {
     const sourceGlyphId = sourceGlyphByCodePoint.get(codePoint) ?? NOTDEF_GLYPH;
     const targetGlyphId = glyphIdMap.get(sourceGlyphId) ?? NOTDEF_GLYPH;
     glyphIdByCodePoint.set(codePoint, targetGlyphId);
@@ -475,7 +514,8 @@ const planFont = ({
     }
   }
 
-  const baseName = asciiOnly(font.postScriptName) || asciiOnly(face.family) || "Unknown";
+  const baseName =
+    asciiOnly(font.postScriptName) || asciiOnly(face.family) || "Unknown";
   const fontName = `${subsetTag(`${baseName}:${[...sourceGlyphIds].sort((left, right) => left - right).join(",")}`)}+${baseName}`;
 
   return Result.ok({
@@ -495,7 +535,10 @@ const emitFont = (document: PdfDocument, plan: FontPlan): PdfRef => {
   const fontFileRef = document.add(
     font.isCff
       ? pdfFlateStream([["Subtype", pdfName("OpenType")]], programBytes)
-      : pdfFlateStream([["Length1", pdfNumber(programBytes.length)]], programBytes),
+      : pdfFlateStream(
+          [["Length1", pdfNumber(programBytes.length)]],
+          programBytes,
+        ),
   );
   const descriptorRef = document.add(
     fontDescriptor({
@@ -561,13 +604,20 @@ type ParsedFace =
 
 const parseFace = (binaries: readonly Uint8Array[]): ParsedFace => {
   if (binaries.length === 0) {
-    return { kind: "unusable", reason: "the font source supplied no bytes for this face" };
+    return {
+      kind: "unusable",
+      reason: "the font source supplied no bytes for this face",
+    };
   }
   const fonts: SfntFont[] = [];
   let reason = "";
   for (const bytes of binaries) {
     let sfntBytes = bytes;
-    if (WOFF_SIGNATURES.includes(readTag(bytes) as (typeof WOFF_SIGNATURES)[number])) {
+    if (
+      WOFF_SIGNATURES.includes(
+        readTag(bytes) as (typeof WOFF_SIGNATURES)[number],
+      )
+    ) {
       const decoded = toSfntBytes(bytes);
       if (decoded.isErr()) {
         reason = `WOFF decoding failed: ${decoded.error.message}`;
@@ -589,7 +639,9 @@ const parseFace = (binaries: readonly Uint8Array[]): ParsedFace => {
   // One unusable binary of several is not a substitution: the face still
   // paints from the rest, and the code points it carried are reported as
   // unencodable like any other gap in the face's coverage.
-  return fonts.length === 0 ? { kind: "unusable", reason } : { kind: "usable", fonts };
+  return fonts.length === 0
+    ? { kind: "unusable", reason }
+    : { kind: "usable", fonts };
 };
 
 /**
@@ -610,7 +662,10 @@ const FALLBACK_BINARY = 0;
  * binary a character belongs to, or a run is shaped against one face and
  * painted from another's glyph space.
  */
-const binaryIndexFor = (fonts: readonly SfntFont[], codePoint: number): number =>
+const binaryIndexFor = (
+  fonts: readonly SfntFont[],
+  codePoint: number,
+): number =>
   fonts.findIndex((font) => font.glyphIdFor(codePoint) !== NOTDEF_GLYPH);
 
 const resolveCoverage = (
@@ -640,9 +695,14 @@ type RunSegment = {
   readonly text: string;
 };
 
-const segmentRun = (fonts: readonly SfntFont[], text: string): readonly RunSegment[] => {
-  const segments: { binaryIndex: number; startIndex: number; text: string }[] = [];
-  let open: { binaryIndex: number; startIndex: number; text: string } | null = null;
+const segmentRun = (
+  fonts: readonly SfntFont[],
+  text: string,
+): readonly RunSegment[] => {
+  const segments: { binaryIndex: number; startIndex: number; text: string }[] =
+    [];
+  let open: { binaryIndex: number; startIndex: number; text: string } | null =
+    null;
   let index = 0;
   for (const character of text) {
     const found = binaryIndexFor(fonts, character.codePointAt(0) ?? 0);
@@ -675,7 +735,10 @@ type PlacedSegment = {
  */
 type FaceShaping = {
   readonly glyphIdsByBinary: ReadonlyMap<number, ReadonlySet<number>>;
-  readonly textByGlyphByBinary: ReadonlyMap<number, ReadonlyMap<number, string>>;
+  readonly textByGlyphByBinary: ReadonlyMap<
+    number,
+    ReadonlyMap<number, string>
+  >;
   readonly placementsByRun: ReadonlyMap<string, readonly PlacedSegment[]>;
 };
 
@@ -702,14 +765,17 @@ const clusterText = (
   if (glyph === undefined) {
     return "";
   }
-  const first = glyphs.find((other) => other.clusterIndex === glyph.clusterIndex);
+  const first = glyphs.find(
+    (other) => other.clusterIndex === glyph.clusterIndex,
+  );
   if (first !== glyph) {
     return "";
   }
   const starts = [...new Set(glyphs.map((other) => other.clusterIndex))].sort(
     (left, right) => left - right,
   );
-  const next = starts.find((start) => start > glyph.clusterIndex) ?? characters.length;
+  const next =
+    starts.find((start) => start > glyph.clusterIndex) ?? characters.length;
   return characters.slice(glyph.clusterIndex, next).join("");
 };
 
@@ -740,10 +806,17 @@ const shapeFace = (
         fontSizePx: run.fontSizePx,
         direction: run.direction,
       });
-      placed.push({ binaryIndex: segment.binaryIndex, startIndex: segment.startIndex, glyphs });
+      placed.push({
+        binaryIndex: segment.binaryIndex,
+        startIndex: segment.startIndex,
+        glyphs,
+      });
 
-      const ids = glyphIdsByBinary.get(segment.binaryIndex) ?? new Set<number>();
-      const texts = textByGlyphByBinary.get(segment.binaryIndex) ?? new Map<number, string>();
+      const ids =
+        glyphIdsByBinary.get(segment.binaryIndex) ?? new Set<number>();
+      const texts =
+        textByGlyphByBinary.get(segment.binaryIndex) ??
+        new Map<number, string>();
       const characters = [...segment.text];
       for (const [position, glyph] of glyphs.entries()) {
         ids.add(glyph.glyphId);
@@ -857,7 +930,8 @@ export const prepareFonts = ({
     byFontIndex.set(fontIndex, {
       kind: "standard",
       resourceIndex: claimResource(standardFont(document, face)),
-      byteFor: (codePoint) => WIN_ANSI_BY_CODE_POINT.get(codePoint) ?? WIN_ANSI_QUESTION_MARK,
+      byteFor: (codePoint) =>
+        WIN_ANSI_BY_CODE_POINT.get(codePoint) ?? WIN_ANSI_QUESTION_MARK,
     });
   };
 
@@ -869,7 +943,8 @@ export const prepareFonts = ({
     const codePoints = [...used].sort((left, right) => left - right);
     // A face embedded in the source package wins over anything the host can
     // supply: its bytes are the ones the measurer took its advances from.
-    const binaries = face.embedded === undefined ? source.load(face) : [face.embedded.bytes];
+    const binaries =
+      face.embedded === undefined ? source.load(face) : [face.embedded.bytes];
     const parsed = parseFace(binaries);
     if (parsed.kind === "unusable") {
       substitute(fontIndex, face, codePoints, parsed.reason);
@@ -885,13 +960,18 @@ export const prepareFonts = ({
 
     const coverage = resolveCoverage(parsed.fonts, codePoints);
     const binaryIndices = [
-      ...new Set([...coverage.codePointsByBinary.keys(), ...shaping.glyphIdsByBinary.keys()]),
+      ...new Set([
+        ...coverage.codePointsByBinary.keys(),
+        ...shaping.glyphIdsByBinary.keys(),
+      ]),
     ].sort((left, right) => left - right);
     const plans: FontPlan[] = [];
     let failure: PdfFontError | null = null;
     for (const binaryIndex of binaryIndices) {
       const plan = planFont({
-        font: parsed.fonts[binaryIndex] ?? panic(`face lost binary ${String(binaryIndex)}`),
+        font:
+          parsed.fonts[binaryIndex] ??
+          panic(`face lost binary ${String(binaryIndex)}`),
         face,
         codePoints: coverage.codePointsByBinary.get(binaryIndex) ?? [],
         shapedGlyphIds: shaping.glyphIdsByBinary.get(binaryIndex),
@@ -909,16 +989,23 @@ export const prepareFonts = ({
     }
 
     const glyphByCodePoint = new Map<number, PdfGlyph>();
-    const emitted = new Map<number, { plan: FontPlan; resourceIndex: number }>();
+    const emitted = new Map<
+      number,
+      { plan: FontPlan; resourceIndex: number }
+    >();
     for (const [position, plan] of plans.entries()) {
       const resourceIndex = claimResource(emitFont(document, plan));
-      emitted.set(binaryIndices[position] ?? FALLBACK_BINARY, { plan, resourceIndex });
+      emitted.set(binaryIndices[position] ?? FALLBACK_BINARY, {
+        plan,
+        resourceIndex,
+      });
       for (const [codePoint, glyphId] of plan.glyphIdByCodePoint) {
         glyphByCodePoint.set(codePoint, {
           resourceIndex,
           glyphId,
           widthUnits:
-            plan.widthByGlyphId.get(glyphId) ?? panic(`no width for glyph ${String(glyphId)}`),
+            plan.widthByGlyphId.get(glyphId) ??
+            panic(`no width for glyph ${String(glyphId)}`),
         });
       }
     }
@@ -930,7 +1017,9 @@ export const prepareFonts = ({
       // missing glyph.
       glyphFor: (codePoint) =>
         glyphByCodePoint.get(codePoint) ??
-        panic(`code point ${String(codePoint)} was painted but never collected`),
+        panic(
+          `code point ${String(codePoint)} was painted but never collected`,
+        ),
       placeShapedRun: (request) => {
         const segments = shaping.placementsByRun.get(runKeyOf(request));
         if (segments === undefined || segments.length === 0) {
@@ -939,23 +1028,27 @@ export const prepareFonts = ({
         return segments.flatMap(({ binaryIndex, startIndex, glyphs }) => {
           const target =
             emitted.get(binaryIndex) ??
-            panic(`shaped run used binary ${String(binaryIndex)}, which was never emitted`);
-          return glyphs.map(({ glyphId, clusterIndex, xAdvancePx, xOffsetPx, yOffsetPx }) => {
-            const subsetGlyphId =
-              target.plan.glyphIdMap.get(glyphId) ??
-              panic(`subset dropped shaped glyph ${String(glyphId)}`);
-            return {
-              resourceIndex: target.resourceIndex,
-              glyphId: subsetGlyphId,
-              widthUnits:
-                target.plan.widthByGlyphId.get(subsetGlyphId) ??
-                panic(`no width for glyph ${String(subsetGlyphId)}`),
-              clusterIndex: startIndex + clusterIndex,
-              xAdvancePx,
-              xOffsetPx,
-              yOffsetPx,
-            };
-          });
+            panic(
+              `shaped run used binary ${String(binaryIndex)}, which was never emitted`,
+            );
+          return glyphs.map(
+            ({ glyphId, clusterIndex, xAdvancePx, xOffsetPx, yOffsetPx }) => {
+              const subsetGlyphId =
+                target.plan.glyphIdMap.get(glyphId) ??
+                panic(`subset dropped shaped glyph ${String(glyphId)}`);
+              return {
+                resourceIndex: target.resourceIndex,
+                glyphId: subsetGlyphId,
+                widthUnits:
+                  target.plan.widthByGlyphId.get(subsetGlyphId) ??
+                  panic(`no width for glyph ${String(subsetGlyphId)}`),
+                clusterIndex: startIndex + clusterIndex,
+                xAdvancePx,
+                xOffsetPx,
+                yOffsetPx,
+              };
+            },
+          );
         });
       },
     });

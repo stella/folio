@@ -24,7 +24,8 @@ import { RunIdentityExtension } from "./marks/RunIdentityExtension";
 const PARAGRAPHS = 600;
 const EDITED = 200;
 
-const pluginsOf = (runtime: { plugins?: Plugin[] }): Plugin[] => runtime.plugins ?? [];
+const pluginsOf = (runtime: { plugins?: Plugin[] }): Plugin[] =>
+  runtime.plugins ?? [];
 
 const PLUGINS = {
   "paragraph change tracker": pluginsOf(
@@ -36,7 +37,9 @@ const PLUGINS = {
   "base-direction detection": pluginsOf(
     AutoBidiDetectionExtension().onSchemaReady({ schema: randomSchema }),
   ),
-  "run identity": pluginsOf(RunIdentityExtension().onSchemaReady({ schema: randomSchema })),
+  "run identity": pluginsOf(
+    RunIdentityExtension().onSchemaReady({ schema: randomSchema }),
+  ),
 };
 
 const largeDocument = () =>
@@ -44,9 +47,11 @@ const largeDocument = () =>
     "doc",
     null,
     Array.from({ length: PARAGRAPHS }, (_, index) =>
-      randomSchema.node("paragraph", { paraId: (index + 1).toString(16).padStart(8, "0") }, [
-        randomSchema.text(`Paragraph ${String(index)} of a long contract.`),
-      ]),
+      randomSchema.node(
+        "paragraph",
+        { paraId: (index + 1).toString(16).padStart(8, "0") },
+        [randomSchema.text(`Paragraph ${String(index)} of a long contract.`)],
+      ),
     ),
   );
 
@@ -73,21 +78,33 @@ const manyStepTransaction = (state: EditorState) => {
 };
 
 /** Every question asked of any step map while `plugins` handle one transaction. */
-const stepMapCalls = (plugins: readonly Plugin[]): { calls: number; steps: number } => {
-  const state = EditorState.create({ doc: largeDocument(), plugins: [...plugins] });
+const stepMapCalls = (
+  plugins: readonly Plugin[],
+): { calls: number; steps: number } => {
+  const state = EditorState.create({
+    doc: largeDocument(),
+    plugins: [...plugins],
+  });
   const tr = manyStepTransaction(state);
   const map = spyOn(StepMap.prototype, "map");
   const mapResult = spyOn(StepMap.prototype, "mapResult");
   state.applyTransaction(tr);
-  return { calls: map.mock.calls.length + mapResult.mock.calls.length, steps: tr.steps.length };
+  return {
+    calls: map.mock.calls.length + mapResult.mock.calls.length,
+    steps: tr.steps.length,
+  };
 };
 
 afterEach(() => {
   // `spyOn` wraps the shared prototype; restore it for the next case.
   // oxlint-disable-next-line typescript/unbound-method -- restoring the spied prototype methods
-  (StepMap.prototype.map as unknown as { mockRestore?: () => void }).mockRestore?.();
+  (
+    StepMap.prototype.map as unknown as { mockRestore?: () => void }
+  ).mockRestore?.();
   // oxlint-disable-next-line typescript/unbound-method -- restoring the spied prototype methods
-  (StepMap.prototype.mapResult as unknown as { mockRestore?: () => void }).mockRestore?.();
+  (
+    StepMap.prototype.mapResult as unknown as { mockRestore?: () => void }
+  ).mockRestore?.();
 });
 
 describe("a many-step transaction", () => {

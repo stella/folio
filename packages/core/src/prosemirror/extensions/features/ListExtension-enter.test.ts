@@ -1,11 +1,14 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
-import { computeListRendering, parseNumbering } from "../../../docx/numberingParser";
 import { applyFolioAIEditOperations } from "../../../ai-edits/apply";
 import { createFolioAIEditSnapshot } from "../../../ai-edits/snapshot";
+import {
+  computeListRendering,
+  parseNumbering,
+} from "../../../docx/numberingParser";
 import { toFlowBlocks } from "../../../layout-bridge/convert/toFlowBlocks";
 import type { Document } from "../../../types/document";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
@@ -13,7 +16,11 @@ import { toProseDoc } from "../../conversion/toProseDoc";
 import { LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
 import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
 import { schema } from "../../schema";
-import { ListExtension, toggleBulletList, toggleNumberedList } from "./ListExtension";
+import {
+  ListExtension,
+  toggleBulletList,
+  toggleNumberedList,
+} from "./ListExtension";
 
 const syntheticNumberedDocument = (): Document => ({
   package: {
@@ -45,7 +52,8 @@ const syntheticNumberedDocument = (): Document => ({
   },
 });
 
-const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 const MULTILEVEL_NUMBERING = parseNumbering(`
   <w:numbering ${W}>
     <w:abstractNum w:abstractNumId="41">
@@ -80,9 +88,14 @@ const SWAPPED_TOOLBAR_NUMBERING = parseNumbering(`
 `);
 
 const swappedToolbarState = (numId: number): EditorState => {
-  const listRendering = computeListRendering({ numId, ilvl: 0 }, SWAPPED_TOOLBAR_NUMBERING);
+  const listRendering = computeListRendering(
+    { numId, ilvl: 0 },
+    SWAPPED_TOOLBAR_NUMBERING,
+  );
   if (!listRendering) {
-    return panic("Synthetic toolbar numbering did not contain its target level");
+    return panic(
+      "Synthetic toolbar numbering did not contain its target level",
+    );
   }
   const document: Document = {
     package: {
@@ -93,7 +106,12 @@ const swappedToolbarState = (numId: number): EditorState => {
             type: "paragraph",
             formatting: { numPr: { kind: "reference", numId, ilvl: 0 } },
             listRendering,
-            content: [{ type: "run", content: [{ type: "text", text: "Imported list" }] }],
+            content: [
+              {
+                type: "run",
+                content: [{ type: "text", text: "Imported list" }],
+              },
+            ],
           },
         ],
       },
@@ -101,12 +119,17 @@ const swappedToolbarState = (numId: number): EditorState => {
   };
   return EditorState.create({
     doc: toProseDoc(document),
-    plugins: [createDocumentNumberingPlugin(SWAPPED_TOOLBAR_NUMBERING.definitions)],
+    plugins: [
+      createDocumentNumberingPlugin(SWAPPED_TOOLBAR_NUMBERING.definitions),
+    ],
   });
 };
 
 const multilevelDocument = (level: number): Document => {
-  const listRendering = computeListRendering({ numId: 23, ilvl: level }, MULTILEVEL_NUMBERING);
+  const listRendering = computeListRendering(
+    { numId: 23, ilvl: level },
+    MULTILEVEL_NUMBERING,
+  );
   if (!listRendering) {
     return panic("Synthetic numbering did not contain its target level");
   }
@@ -117,7 +140,9 @@ const multilevelDocument = (level: number): Document => {
         content: [
           {
             type: "paragraph",
-            formatting: { numPr: { kind: "reference", numId: 23, ilvl: level } },
+            formatting: {
+              numPr: { kind: "reference", numId: 23, ilvl: level },
+            },
             content: [
               {
                 type: "run",
@@ -169,7 +194,9 @@ const styleNumberedDocument = (): Document => ({
 
 const listMarkers = (state: EditorState): string[] =>
   toFlowBlocks(state.doc).flatMap((block) =>
-    block.kind === "paragraph" && block.attrs?.listMarker ? [block.attrs.listMarker] : [],
+    block.kind === "paragraph" && block.attrs?.listMarker
+      ? [block.attrs.listMarker]
+      : [],
   );
 
 describe("ListExtension Enter numbering", () => {
@@ -212,16 +239,22 @@ describe("ListExtension Enter numbering", () => {
   });
 
   test("advances an imported marker from its source template", () => {
-    let state = EditorState.create({ doc: toProseDoc(syntheticNumberedDocument()) });
+    let state = EditorState.create({
+      doc: toProseDoc(syntheticNumberedDocument()),
+    });
     const paragraph = state.doc.firstChild;
     if (!paragraph) {
       panic("Synthetic document did not contain its paragraph");
     }
     state = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, paragraph.nodeSize - 1)),
+      state.tr.setSelection(
+        TextSelection.create(state.doc, paragraph.nodeSize - 1),
+      ),
     );
 
-    const enter = ListExtension().onSchemaReady({ schema }).keyboardShortcuts?.["Enter"];
+    const enter = ListExtension().onSchemaReady({ schema }).keyboardShortcuts?.[
+      "Enter"
+    ];
     expect(enter).toBeDefined();
     if (!enter) {
       panic("List extension did not register Enter");
@@ -241,7 +274,9 @@ describe("ListExtension Enter numbering", () => {
     const document = styleNumberedDocument();
     let state = EditorState.create({
       doc: toProseDoc(document, { styles: document.package.styles }),
-      plugins: [createDocumentNumberingPlugin(MULTILEVEL_NUMBERING.definitions)],
+      plugins: [
+        createDocumentNumberingPlugin(MULTILEVEL_NUMBERING.definitions),
+      ],
     });
     const runtime = ListExtension().onSchemaReady({ schema });
     const enter = runtime.keyboardShortcuts?.["Enter"];
@@ -253,7 +288,11 @@ describe("ListExtension Enter numbering", () => {
     if (!first) {
       return panic("Synthetic document did not contain its paragraph");
     }
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, first.nodeSize - 1)));
+    state = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, first.nodeSize - 1),
+      ),
+    );
     enter(state, (transaction) => {
       state = state.apply(transaction);
     });
@@ -265,14 +304,20 @@ describe("ListExtension Enter numbering", () => {
       stylesheetSource: { type: "package" },
     });
     let refreshedState = EditorState.create({
-      doc: toProseDoc(refreshedDocument, { styles: refreshedDocument.package.styles }),
-      plugins: [createDocumentNumberingPlugin(MULTILEVEL_NUMBERING.definitions)],
+      doc: toProseDoc(refreshedDocument, {
+        styles: refreshedDocument.package.styles,
+      }),
+      plugins: [
+        createDocumentNumberingPlugin(MULTILEVEL_NUMBERING.definitions),
+      ],
     });
 
     expect(listMarkers(refreshedState)).toHaveLength(1);
     // A cancellation states no level: `w:numId 0` names no definition to be at
     // a level of, and the union has no field to keep one in.
-    expect(refreshedState.doc.lastChild?.attrs["numPr"]).toEqual({ kind: "none" });
+    expect(refreshedState.doc.lastChild?.attrs["numPr"]).toEqual({
+      kind: "none",
+    });
     const lastParagraphStart = refreshedState.doc.firstChild?.nodeSize;
     if (lastParagraphStart === undefined) {
       return panic("Synthetic document lost its first paragraph");
@@ -290,7 +335,9 @@ describe("ListExtension Enter numbering", () => {
   });
 
   test("does not retain an imported template after replacing the list", () => {
-    let state = EditorState.create({ doc: toProseDoc(syntheticNumberedDocument()) });
+    let state = EditorState.create({
+      doc: toProseDoc(syntheticNumberedDocument()),
+    });
     const runtime = ListExtension().onSchemaReady({ schema });
     const removeList = runtime.commands?.removeList?.();
     if (!removeList) {
@@ -322,7 +369,9 @@ describe("ListExtension Enter numbering", () => {
       panic("Synthetic document did not contain its paragraph");
     }
     state = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, paragraph.nodeSize - 1)),
+      state.tr.setSelection(
+        TextSelection.create(state.doc, paragraph.nodeSize - 1),
+      ),
     );
 
     const enter = runtime.keyboardShortcuts?.["Enter"];
@@ -347,7 +396,9 @@ describe("ListExtension Enter numbering", () => {
             content: [
               {
                 ...syntheticNumberedDocument().package.document.content[0],
-                formatting: { numPr: { kind: "reference", numId: 23, ilvl: 0 } },
+                formatting: {
+                  numPr: { kind: "reference", numId: 23, ilvl: 0 },
+                },
               },
             ],
           },
@@ -381,53 +432,60 @@ describe("ListExtension Enter numbering", () => {
     ["Tab shortcut", 0, 1, "Tab"],
     ["decreaseListLevel command", 1, 0, "decreaseListLevel"],
     ["Shift-Tab shortcut", 1, 0, "Shift-Tab"],
-  ] as const)("recomputes target-level attrs through the %s", (_name, source, target, action) => {
-    let state = multilevelState(source);
-    const runtime = ListExtension().onSchemaReady({ schema });
-    const command =
-      action === "Tab" || action === "Shift-Tab"
-        ? runtime.keyboardShortcuts?.[action]
-        : runtime.commands?.[action]?.();
-    if (!command) {
-      return panic("List extension did not register its level transition");
-    }
+  ] as const)(
+    "recomputes target-level attrs through the %s",
+    (_name, source, target, action) => {
+      let state = multilevelState(source);
+      const runtime = ListExtension().onSchemaReady({ schema });
+      const command =
+        action === "Tab" || action === "Shift-Tab"
+          ? runtime.keyboardShortcuts?.[action]
+          : runtime.commands?.[action]?.();
+      if (!command) {
+        return panic("List extension did not register its level transition");
+      }
 
-    expect(
-      command(state, (transaction) => {
-        state = state.apply(transaction);
-      }),
-    ).toBe(true);
+      expect(
+        command(state, (transaction) => {
+          state = state.apply(transaction);
+        }),
+      ).toBe(true);
 
-    const attrs = state.doc.firstChild?.attrs;
-    if (!attrs) {
-      return panic("Synthetic document did not contain its paragraph");
-    }
-    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 23, ilvl: target });
-    if (target === 1) {
-      expect(attrs).toMatchObject({
-        listMarkerTemplate: "(%2)",
-        listNumFmt: "lowerLetter",
-        listMarkerAlignment: "right",
-        listMarkerSuffix: "space",
-        listMarkerFormatting: { italic: true },
-        listStartOverride: 3,
-        indentLeft: 1440,
-        indentFirstLine: -360,
-        hangingIndent: true,
+      const attrs = state.doc.firstChild?.attrs;
+      if (!attrs) {
+        return panic("Synthetic document did not contain its paragraph");
+      }
+      expect(attrs["numPr"]).toEqual({
+        kind: "reference",
+        numId: 23,
+        ilvl: target,
       });
-    } else {
-      expect(attrs).toMatchObject({
-        listMarkerTemplate: "%1.",
-        listNumFmt: "decimal",
-        listMarkerAlignment: "left",
-        listMarkerSuffix: null,
-        listStartOverride: null,
-        indentLeft: 720,
-        indentFirstLine: -360,
-        hangingIndent: true,
-      });
-    }
-  });
+      if (target === 1) {
+        expect(attrs).toMatchObject({
+          listMarkerTemplate: "(%2)",
+          listNumFmt: "lowerLetter",
+          listMarkerAlignment: "right",
+          listMarkerSuffix: "space",
+          listMarkerFormatting: { italic: true },
+          listStartOverride: 3,
+          indentLeft: 1440,
+          indentFirstLine: -360,
+          hangingIndent: true,
+        });
+      } else {
+        expect(attrs).toMatchObject({
+          listMarkerTemplate: "%1.",
+          listNumFmt: "decimal",
+          listMarkerAlignment: "left",
+          listMarkerSuffix: null,
+          listStartOverride: null,
+          indentLeft: 720,
+          indentFirstLine: -360,
+          hangingIndent: true,
+        });
+      }
+    },
+  );
 
   test("Enter continues the recomputed target-level pattern after Tab", () => {
     let state = multilevelState(0);
@@ -448,7 +506,9 @@ describe("ListExtension Enter numbering", () => {
       return panic("Synthetic document did not contain its paragraph");
     }
     state = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, paragraph.nodeSize - 1)),
+      state.tr.setSelection(
+        TextSelection.create(state.doc, paragraph.nodeSize - 1),
+      ),
     );
     expect(
       enter(state, (transaction) => {

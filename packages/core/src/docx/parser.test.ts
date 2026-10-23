@@ -109,5 +109,8 @@ describe("parseDocx — w:themeFontLang resolves empty EastAsian theme slots", (
 test("summary and variable readers retain their document-body parser", async () => {
   const buffer = await createEmptyEaThemeFixture();
   expect(await getDocxVariables(buffer)).toEqual([]);
-  expect(await getDocxSummary(buffer)).toMatchObject({ hasDocument: true, variableCount: 0 });
+  expect(await getDocxSummary(buffer)).toMatchObject({
+    hasDocument: true,
+    variableCount: 0,
+  });
 });

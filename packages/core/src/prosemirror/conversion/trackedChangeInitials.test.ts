@@ -21,7 +21,9 @@ import { toProseDoc } from "./toProseDoc";
 const DATE = "2026-07-17T00:00:00.000Z";
 
 const paragraphOf = (nodes: PMNode[]): PMNode =>
-  schema.nodes["doc"]!.create({}, [schema.nodes["paragraph"]!.create({}, nodes)]);
+  schema.nodes["doc"]!.create({}, [
+    schema.nodes["paragraph"]!.create({}, nodes),
+  ]);
 
 const firstParagraph = (model: Document): Paragraph => {
   const block = model.package.document.content.at(0);
@@ -63,7 +65,9 @@ describe("tracked-change w:initials", () => {
                 {
                   type: "insertion",
                   info: { id: 7, author: "Ann", date: DATE, initials: "AA" },
-                  content: [{ type: "run", content: [{ type: "text", text: "added" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "added" }] },
+                  ],
                 },
               ],
             },
@@ -88,8 +92,12 @@ describe("tracked-change w:initials", () => {
     const roundTripped = firstParagraph(
       fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
     );
-    const insertion = roundTripped.content.find((item) => item.type === "insertion");
-    expect(insertion?.type === "insertion" ? insertion.info.initials : undefined).toBe("AA");
+    const insertion = roundTripped.content.find(
+      (item) => item.type === "insertion",
+    );
+    expect(
+      insertion?.type === "insertion" ? insertion.info.initials : undefined,
+    ).toBe("AA");
     expect(serializeParagraph(roundTripped)).not.toContain("w:initials");
   });
 });

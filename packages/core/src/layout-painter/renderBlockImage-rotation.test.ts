@@ -13,7 +13,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { ImageRun, MeasuredLine, ParagraphBlock } from "../layout-engine/types";
+import type {
+  ImageRun,
+  MeasuredLine,
+  ParagraphBlock,
+} from "../layout-engine/types";
 import { renderLine } from "./renderParagraph";
 
 class FakeElement {
@@ -121,8 +125,12 @@ describe("block image rotation bbox container", () => {
     expect(imgEl.style["transformOrigin"]).toBe("center center");
     expect(imgEl.style["position"]).toBe("absolute");
     // Centred inside the bbox: (bboxW - w) / 2, (bboxH - h) / 2.
-    expect(imgEl.style["left"]).toBe(`${(imageRun.height - imageRun.width) / 2}px`);
-    expect(imgEl.style["top"]).toBe(`${(imageRun.width - imageRun.height) / 2}px`);
+    expect(imgEl.style["left"]).toBe(
+      `${(imageRun.height - imageRun.width) / 2}px`,
+    );
+    expect(imgEl.style["top"]).toBe(
+      `${(imageRun.width - imageRun.height) / 2}px`,
+    );
     // Tailwind preflight needs explicit dims on an absolute <img>.
     expect(imgEl.style["width"]).toBe(`${imageRun.width}px`);
     expect(imgEl.style["height"]).toBe(`${imageRun.height}px`);

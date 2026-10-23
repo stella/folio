@@ -1,28 +1,43 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
-import fc from "fast-check";
 import { panic } from "better-result";
-import type { Document, Paragraph, ParagraphContent, Run } from "../../model/document";
-import { setDocumentBodyComments } from "../../model/canonical";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import { expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { RANGE_ANCHOR_FIXTURE_FACTORIES } from "../../../typecheck/range-anchor-fixtures.typecheck";
+import { setDocumentBodyComments } from "../../model/canonical";
+import type {
+  Document,
+  Paragraph,
+  ParagraphContent,
+  Run,
+} from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import {
   allocateEditorIntentIds,
   compileEditorIntent,
-  paragraphVisibleText,
   type EditorIntent,
+  paragraphVisibleText,
 } from "../editorIntent";
-import { leafSpans, isParagraphContent } from "../leaves";
+import { isParagraphContent, leafSpans } from "../leaves";
 import { isRangeBoundary, paragraphLogicalText } from "../offsets";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
-const run = (text: string) => ({ type: "run", content: [{ type: "text", text }] }) satisfies Run;
+const run = (text: string) =>
+  ({ type: "run", content: [{ type: "text", text }] }) satisfies Run;
 
 test("moving a selected bookmark transfers its pair once and restores exactly on undo", () => {
   const selected = [
-    { type: "bookmarkStart", id: 11, name: "target", displacedByCustomXml: "next" },
+    {
+      type: "bookmarkStart",
+      id: 11,
+      name: "target",
+      displacedByCustomXml: "next",
+    },
     run("x"),
     { type: "bookmarkEnd", id: 11, displacedByCustomXml: "prev" },
   ] as const;
@@ -31,7 +46,9 @@ test("moving a selected bookmark transfers its pair once and restores exactly on
     paraId: "12345678",
     content: [run("L"), ...selected, run("R")],
   } satisfies Paragraph;
-  const document = { package: { document: { content: [paragraph] } } } satisfies Document;
+  const document = {
+    package: { document: { content: [paragraph] } },
+  } satisfies Document;
   const at = { story: OP_STORIES.MAIN, blockId: paragraph.paraId } as const;
   const intent = {
     type: "moveFragment",
@@ -53,7 +70,8 @@ test("moving a selected bookmark transfers its pair once and restores exactly on
   expect(paragraphVisibleText(moved)).toBe("LRx");
   const markers = leafSpans(moved.content).filter(
     ({ node }) =>
-      isParagraphContent(node) && (node.type === "bookmarkStart" || node.type === "bookmarkEnd"),
+      isParagraphContent(node) &&
+      (node.type === "bookmarkStart" || node.type === "bookmarkEnd"),
   );
   expect(markers).toHaveLength(2);
   expect(markers.map(({ before }) => before.offset)).toEqual([2, 3]);
@@ -65,9 +83,9 @@ test("moving a selected bookmark transfers its pair once and restores exactly on
   if (end?.type !== "bookmarkEnd") panic("Move lost its closing bookmark.");
   expect(end.displacedByCustomXml).toBe("prev");
   expect(end.id).toBe(start.id);
-  expect(applyDocumentOps(applied.document, applied.inverse).unwrap().document).toStrictEqual(
-    document,
-  );
+  expect(
+    applyDocumentOps(applied.document, applied.inverse).unwrap().document,
+  ).toStrictEqual(document);
 });
 
 type RangeFactory =
@@ -83,7 +101,9 @@ const independentVisibleText = (items: readonly ParagraphContent[]): string =>
     .map((item) => {
       switch (item.type) {
         case "run":
-          return item.content.map((child) => (child.type === "text" ? child.text : "")).join("");
+          return item.content
+            .map((child) => (child.type === "text" ? child.text : ""))
+            .join("");
         case "insertion":
         case "moveTo":
         case "inlineWrapper":
@@ -98,7 +118,8 @@ const independentVisibleText = (items: readonly ParagraphContent[]): string =>
 
 const paragraphOf = (document: Document) => {
   const paragraph = document.package.document.content.at(0);
-  if (paragraph?.type !== "paragraph") panic("Range transfer lost its paragraph.");
+  if (paragraph?.type !== "paragraph")
+    panic("Range transfer lost its paragraph.");
   return paragraph;
 };
 const markersOf = (document: Document) =>
@@ -142,12 +163,32 @@ test("generated mixed range transfers retain one original pair through suggested
     const at = { story: OP_STORIES.MAIN, blockId: paragraph.paraId } as const;
     const insideOffset = 1 + Math.floor(text.length / 2);
     const policies = {
-      before: { offset: 0, text: `${text}LR`, movedOffset: 0, sourceOffset: 1 + text.length },
-      after: { offset: 2 + text.length, text: `LR${text}`, movedOffset: 2, sourceOffset: 1 },
-      inside: { offset: insideOffset, text: `L${text}R`, movedOffset: 1, sourceOffset: 1 },
+      before: {
+        offset: 0,
+        text: `${text}LR`,
+        movedOffset: 0,
+        sourceOffset: 1 + text.length,
+      },
+      after: {
+        offset: 2 + text.length,
+        text: `LR${text}`,
+        movedOffset: 2,
+        sourceOffset: 1,
+      },
+      inside: {
+        offset: insideOffset,
+        text: `L${text}R`,
+        movedOffset: 1,
+        sourceOffset: 1,
+      },
     } satisfies Record<
       TransferArgs["target"],
-      { offset: number; text: string; movedOffset: number; sourceOffset: number }
+      {
+        offset: number;
+        text: string;
+        movedOffset: number;
+        sourceOffset: number;
+      }
     >;
     const destination = policies[target];
     const intent = {
@@ -161,7 +202,8 @@ test("generated mixed range transfers retain one original pair through suggested
       target: {
         ...at,
         offset: destination.offset,
-        zeroWidthBefore: target === "inside" && insideOffset === 1 ? pairs.length : 0,
+        zeroWidthBefore:
+          target === "inside" && insideOffset === 1 ? pairs.length : 0,
       },
       paragraphs: [{ type: "paragraph", content: selected }],
       openStart: 1,
@@ -183,13 +225,19 @@ test("generated mixed range transfers retain one original pair through suggested
       const moved = paragraphOf(applied.document);
       expect(independentVisibleText(moved.content)).toBe(destination.text);
       expect(paragraphVisibleText(moved)).toBe(destination.text);
-      if (mode.type === "editing") expect(paragraphLogicalText(moved)).toBe(destination.text);
-      const assertMarkers = (current: Document, startOffset: number, endOffset: number) => {
+      if (mode.type === "editing")
+        expect(paragraphLogicalText(moved)).toBe(destination.text);
+      const assertMarkers = (
+        current: Document,
+        startOffset: number,
+        endOffset: number,
+      ) => {
         const markers = markersOf(current);
         expect(markers).toHaveLength(sourceMarkers.length);
         for (const [index, marker] of markers.entries()) {
           const expected = sourceMarkers.at(index);
-          if (!expected || !("id" in marker.node)) panic("Range transfer lost a paired identity.");
+          if (!expected || !("id" in marker.node))
+            panic("Range transfer lost a paired identity.");
           expect({ ...marker.node, id: expected.id }).toEqual(expected);
           if (
             mode.type === "suggesting" ||
@@ -202,17 +250,27 @@ test("generated mixed range transfers retain one original pair through suggested
           if (!partner || !("id" in partner.node))
             panic("Range transfer lost its matching endpoint.");
           expect(marker.node.id).toBe(partner.node.id);
-          expect(marker.before.offset).toBe(index < pairs.length ? startOffset : endOffset);
-          const ordinal = text === "" || startOffset === endOffset ? index : index % pairs.length;
+          expect(marker.before.offset).toBe(
+            index < pairs.length ? startOffset : endOffset,
+          );
+          const ordinal =
+            text === "" || startOffset === endOffset
+              ? index
+              : index % pairs.length;
           expect(marker.before.zeroWidthBefore).toBe(ordinal);
           expect(marker.after.zeroWidthBefore).toBe(ordinal + 1);
         }
       };
       const startOffset =
-        mode.type === "editing" ? destination.movedOffset : destination.sourceOffset;
+        mode.type === "editing"
+          ? destination.movedOffset
+          : destination.sourceOffset;
       assertMarkers(applied.document, startOffset, startOffset + text.length);
       if (mode.type === "suggesting")
-        for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
+        for (const decision of [
+          REVISION_DECISIONS.ACCEPT,
+          REVISION_DECISIONS.REJECT,
+        ]) {
           const reviewed =
             applied.revisions.length === 0
               ? applied.document
@@ -224,20 +282,31 @@ test("generated mixed range transfers retain one original pair through suggested
                     decision,
                   },
                 ]).unwrap().document;
-          const originalText = decision === REVISION_DECISIONS.REJECT || target === "inside";
+          const originalText =
+            decision === REVISION_DECISIONS.REJECT || target === "inside";
           const expectedText = originalText ? `L${text}R` : destination.text;
-          expect(independentVisibleText(paragraphOf(reviewed).content)).toBe(expectedText);
-          expect(paragraphVisibleText(paragraphOf(reviewed))).toBe(expectedText);
-          expect(paragraphLogicalText(paragraphOf(reviewed))).toBe(expectedText);
+          expect(independentVisibleText(paragraphOf(reviewed).content)).toBe(
+            expectedText,
+          );
+          expect(paragraphVisibleText(paragraphOf(reviewed))).toBe(
+            expectedText,
+          );
+          expect(paragraphLogicalText(paragraphOf(reviewed))).toBe(
+            expectedText,
+          );
           const sourceOffset = originalText ? 1 : destination.sourceOffset;
-          assertMarkers(reviewed, sourceOffset, sourceOffset + (originalText ? text.length : 0));
+          assertMarkers(
+            reviewed,
+            sourceOffset,
+            sourceOffset + (originalText ? text.length : 0),
+          );
         }
       if (target === "inside") expect(applied.document).toStrictEqual(original);
       const undo = applyDocumentOps(applied.document, applied.inverse).unwrap();
       expect(undo.document).toStrictEqual(original);
-      expect(applyDocumentOps(undo.document, undo.inverse).unwrap().document).toStrictEqual(
-        applied.document,
-      );
+      expect(
+        applyDocumentOps(undo.document, undo.inverse).unwrap().document,
+      ).toStrictEqual(applied.document);
     }
   };
   const factories = Object.values(RANGE_ANCHOR_FIXTURE_FACTORIES);

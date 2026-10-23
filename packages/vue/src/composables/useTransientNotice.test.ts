@@ -1,6 +1,7 @@
-import { expect, test } from "bun:test";
 import { panic } from "better-result";
+import { expect, test } from "bun:test";
 import { effectScope } from "vue";
+
 import { useTransientNotice } from "./useTransientNotice";
 
 const createClock = () => {
@@ -31,7 +32,9 @@ const createClock = () => {
 test("notices expire, replacement gets its full lifetime, and disposal cancels pending work", () => {
   const clock = createClock();
   const scope = effectScope();
-  const notice = scope.run(() => useTransientNotice(clock)) ?? panic("Expected notice scope");
+  const notice =
+    scope.run(() => useTransientNotice(clock)) ??
+    panic("Expected notice scope");
   try {
     notice.show("First refusal");
     clock.advance(2_000);

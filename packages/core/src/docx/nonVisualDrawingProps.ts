@@ -6,6 +6,7 @@
  */
 
 import { escapeXmlAttribute } from "@stll/docx-core";
+
 import type { NonVisualDrawingNames } from "../types/document";
 import type { XmlElement } from "./xmlParser";
 import { getAttribute } from "./xmlParser";
@@ -47,8 +48,14 @@ export const parseNonVisualDrawingNames = (
  * "Shape 3" would overwrite the author's own name for every drawing whose
  * name did not survive the model, and read back as authored content.
  */
-export const serializeNonVisualDrawingNames = (names: NonVisualDrawingNames): string => {
-  const descr = names.alt === undefined ? "" : ` descr="${escapeXmlAttribute(names.alt)}"`;
-  const title = names.title === undefined ? "" : ` title="${escapeXmlAttribute(names.title)}"`;
+export const serializeNonVisualDrawingNames = (
+  names: NonVisualDrawingNames,
+): string => {
+  const descr =
+    names.alt === undefined ? "" : ` descr="${escapeXmlAttribute(names.alt)}"`;
+  const title =
+    names.title === undefined
+      ? ""
+      : ` title="${escapeXmlAttribute(names.title)}"`;
   return ` name="${escapeXmlAttribute(names.name ?? "")}"${descr}${title}`;
 };

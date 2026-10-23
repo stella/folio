@@ -17,16 +17,16 @@
  * `packages/core/scripts/differential/README.md`.
  */
 
-import { describe, expect, test } from "bun:test";
 import { Glob } from "bun";
+import { describe, expect, test } from "bun:test";
 import path from "node:path";
 
 import {
   DIFFERENTIAL_REFERENCES,
+  type DifferentialReference,
   isOpenXmlSdkAvailable,
   isPythonDocxAvailable,
   runDifferential,
-  type DifferentialReference,
 } from "../../../scripts/differential/diff";
 
 const REQUIRED = process.env.DIFFERENTIAL_REQUIRED === "1";
@@ -50,13 +50,16 @@ const referenceAvailability: Record<DifferentialReference, () => boolean> = {
 
 const referenceSetupHints: Record<DifferentialReference, string> = {
   "python-docx": "pip install python-docx",
-  "open-xml-sdk": "dotnet build packages/core/scripts/differential/dotnet -c Release",
+  "open-xml-sdk":
+    "dotnet build packages/core/scripts/differential/dotnet -c Release",
 };
 
 for (const reference of DIFFERENTIAL_REFERENCES) {
   const isAvailable = referenceAvailability[reference];
   const fixtureTimeoutMs =
-    reference === "open-xml-sdk" ? OPEN_XML_SDK_TIMEOUT_MS : PYTHON_DOCX_TIMEOUT_MS;
+    reference === "open-xml-sdk"
+      ? OPEN_XML_SDK_TIMEOUT_MS
+      : PYTHON_DOCX_TIMEOUT_MS;
 
   describe(`differential parser harness (folio vs ${reference})`, () => {
     if (!isAvailable()) {
@@ -83,7 +86,9 @@ for (const reference of DIFFERENTIAL_REFERENCES) {
           const result = await runDifferential(fixture, { reference });
           if (!result.ok) {
             if (result.reason === "infra") {
-              throw new Error(`harness infrastructure failure: ${result.message}`);
+              throw new Error(
+                `harness infrastructure failure: ${result.message}`,
+              );
             }
             throw new Error(
               `unexpected divergence on ${name} (${reference}):\n${JSON.stringify(result.divergences, null, 2)}\n\nfolio: ${JSON.stringify(result.folio, null, 2)}\nreference: ${JSON.stringify(result.reference, null, 2)}`,

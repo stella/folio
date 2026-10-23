@@ -44,7 +44,10 @@
                 <MaterialSymbol name="keyboard_arrow_right" :size="16" />
               </span>
             </button>
-            <div v-if="item.submenu && openSubmenu === i" class="docx-menu-dropdown__submenu">
+            <div
+              v-if="item.submenu && openSubmenu === i"
+              class="docx-menu-dropdown__submenu"
+            >
               <slot name="submenu" :item="item" :close-menu="closeMenu" />
             </div>
           </div>
@@ -56,6 +59,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
+
 import MaterialSymbol from "./MaterialSymbol.vue";
 import Popover from "./Popover.vue";
 

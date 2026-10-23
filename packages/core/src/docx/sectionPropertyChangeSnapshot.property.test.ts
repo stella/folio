@@ -14,20 +14,22 @@
  * this file until somebody says what the snapshot does with it.
  */
 
-import { readFileSync } from "node:fs";
-
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { readFileSync } from "node:fs";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WORD_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 type SchemaChild = {
   kind?: string;
@@ -66,9 +68,14 @@ const DECLARED_SNAPSHOT_CHILDREN: readonly string[] = (() => {
         return child.name === undefined ? [] : [child.name];
       }
       const group = child.ref === undefined ? undefined : `group:${child.ref}`;
-      return group === undefined || seen.has(group) ? [] : walk(group, new Set([...seen, group]));
+      return group === undefined || seen.has(group)
+        ? []
+        : walk(group, new Set([...seen, group]));
     });
-  const declared = walk(`complexType:{${WORD_NAMESPACE}}CT_SectPrBase`, new Set());
+  const declared = walk(
+    `complexType:{${WORD_NAMESPACE}}CT_SectPrBase`,
+    new Set(),
+  );
   if (declared.length === 0) {
     throw new Error("CT_SectPrBase is missing from the schema graph");
   }
@@ -109,8 +116,10 @@ type DeclaredChild = keyof typeof AUTHORED_CHILD;
 
 const DECLARED_CHILDREN = Object.keys(AUTHORED_CHILD) as DeclaredChild[];
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const R_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const R_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 const documentWith = (snapshotChildren: string): string =>
   `${XML_DECLARATION}<w:document xmlns:w="${WORD_NAMESPACE}" xmlns:r="${R_NAMESPACE}"><w:body>` +
@@ -124,12 +133,19 @@ const documentWith = (snapshotChildren: string): string =>
 const savedSnapshot = async (snapshotChildren: string): Promise<string> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file("word/document.xml", documentWith(snapshotChildren));
-  const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-    preloadFonts: false,
-  });
+  const parsed = await parseDocx(
+    await zip.generateAsync({ type: "arraybuffer" }),
+    {
+      preloadFonts: false,
+    },
+  );
   const saved = await repackDocx(parsed, { updateModifiedDate: false });
   const part =
-    (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+    (await (
+      await JSZip.loadAsync(saved)
+    )
+      .file("word/document.xml")
+      ?.async("text")) ?? "";
   // The snapshot only, because a live section carrying the same child would
   // answer the question the fixture did not ask.
   return /<w:sectPrChange\b.*?<\/w:sectPrChange>/su.exec(part)?.[0] ?? "";
@@ -137,14 +153,19 @@ const savedSnapshot = async (snapshotChildren: string): Promise<string> => {
 
 describe("a w:sectPrChange keeps the section it holds", () => {
   test("the authored spellings cover every child CT_SectPrBase declares", () => {
-    expect([...DECLARED_CHILDREN].sort()).toEqual([...DECLARED_SNAPSHOT_CHILDREN].sort());
+    expect([...DECLARED_CHILDREN].sort()).toEqual(
+      [...DECLARED_SNAPSHOT_CHILDREN].sort(),
+    );
   });
 
   test("every declared child comes back inside the snapshot", async () => {
     await fc.assert(
       fc.asyncProperty(fc.constantFrom(...DECLARED_CHILDREN), async (name) => {
         const snapshot = await savedSnapshot(AUTHORED_CHILD[name]);
-        expect({ name, kept: snapshot.includes(`<w:${name}`) }).toEqual({ name, kept: true });
+        expect({ name, kept: snapshot.includes(`<w:${name}`) }).toEqual({
+          name,
+          kept: true,
+        });
       }),
       propertyConfig({ numRuns: DECLARED_CHILDREN.length }),
     );
@@ -159,10 +180,16 @@ describe("a w:sectPrChange keeps the section it holds", () => {
    */
   test("an element that states nothing is still an element the source had", async () => {
     await fc.assert(
-      fc.asyncProperty(fc.constantFrom("lnNumType", "pgBorders"), async (name) => {
-        const snapshot = await savedSnapshot(`<w:${name}/>`);
-        expect({ name, kept: snapshot.includes(`<w:${name}`) }).toEqual({ name, kept: true });
-      }),
+      fc.asyncProperty(
+        fc.constantFrom("lnNumType", "pgBorders"),
+        async (name) => {
+          const snapshot = await savedSnapshot(`<w:${name}/>`);
+          expect({ name, kept: snapshot.includes(`<w:${name}`) }).toEqual({
+            name,
+            kept: true,
+          });
+        },
+      ),
       propertyConfig({ numRuns: 2 }),
     );
   });

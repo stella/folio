@@ -1,4 +1,4 @@
-import { onScopeDispose, watch, type Ref } from "vue";
+import { onScopeDispose, type Ref, watch } from "vue";
 
 import type { HiddenProseMirrorRemoteSelection } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
@@ -13,7 +13,9 @@ export type UseRemoteSelectionSyncOptions = {
   zoom: Ref<number>;
 };
 
-export const useRemoteSelectionSync = (options: UseRemoteSelectionSyncOptions): void => {
+export const useRemoteSelectionSync = (
+  options: UseRemoteSelectionSyncOptions,
+): void => {
   const overlay = new RemoteSelectionOverlay();
   let animationFrame: number | null = null;
 
@@ -51,7 +53,9 @@ export const useRemoteSelectionSync = (options: UseRemoteSelectionSyncOptions): 
   };
 
   const unsubscribeRender = options.syncCoordinator.onRender(sync);
-  watch([options.pagesRef, options.remoteSelections, options.zoom], sync, { flush: "post" });
+  watch([options.pagesRef, options.remoteSelections, options.zoom], sync, {
+    flush: "post",
+  });
   onScopeDispose(() => {
     unsubscribeRender();
     clear();

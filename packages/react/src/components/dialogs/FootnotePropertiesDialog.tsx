@@ -5,16 +5,18 @@
  */
 
 import { useId, useState } from "react";
+
 import { useTranslations } from "use-intl";
 
 import type {
-  FootnoteProperties,
+  EndnotePosition,
   EndnoteProperties,
   FootnotePosition,
-  EndnotePosition,
+  FootnoteProperties,
   NoteNumberRestart,
   NumberFormat,
 } from "@stll/folio-core/types/document";
+
 import { useFolioUI } from "../../ui/folio-ui";
 import { useCloseOnDialogOpenChange } from "./dialogChrome";
 
@@ -25,7 +27,10 @@ import { useCloseOnDialogOpenChange } from "./dialogChrome";
 export type FootnotePropertiesDialogProps = {
   isOpen: boolean;
   onClose: () => void;
-  onApply: (footnoteProps: FootnoteProperties, endnoteProps: EndnoteProperties) => void;
+  onApply: (
+    footnoteProps: FootnoteProperties,
+    endnoteProps: EndnoteProperties,
+  ) => void;
   footnotePr?: FootnoteProperties;
   endnotePr?: EndnoteProperties;
 };
@@ -43,12 +48,27 @@ type NumberFormatLabelKey =
   | "dialogs.footnoteProperties.formats.upperAlpha"
   | "dialogs.footnoteProperties.formats.symbols";
 
-const numberFormatOptions: { value: NumberFormat; labelKey: NumberFormatLabelKey }[] = [
+const numberFormatOptions: {
+  value: NumberFormat;
+  labelKey: NumberFormatLabelKey;
+}[] = [
   { value: "decimal", labelKey: "dialogs.footnoteProperties.formats.decimal" },
-  { value: "lowerRoman", labelKey: "dialogs.footnoteProperties.formats.lowerRoman" },
-  { value: "upperRoman", labelKey: "dialogs.footnoteProperties.formats.upperRoman" },
-  { value: "lowerLetter", labelKey: "dialogs.footnoteProperties.formats.lowerAlpha" },
-  { value: "upperLetter", labelKey: "dialogs.footnoteProperties.formats.upperAlpha" },
+  {
+    value: "lowerRoman",
+    labelKey: "dialogs.footnoteProperties.formats.lowerRoman",
+  },
+  {
+    value: "upperRoman",
+    labelKey: "dialogs.footnoteProperties.formats.upperRoman",
+  },
+  {
+    value: "lowerLetter",
+    labelKey: "dialogs.footnoteProperties.formats.lowerAlpha",
+  },
+  {
+    value: "upperLetter",
+    labelKey: "dialogs.footnoteProperties.formats.upperAlpha",
+  },
   { value: "chicago", labelKey: "dialogs.footnoteProperties.formats.symbols" },
 ];
 
@@ -77,15 +97,25 @@ export function FootnotePropertiesDialog({
   const [fnPosition, setFnPosition] = useState<FootnotePosition>(
     footnotePr?.position ?? "pageBottom",
   );
-  const [fnNumFmt, setFnNumFmt] = useState<NumberFormat>(footnotePr?.numFmt ?? "decimal");
-  const [fnNumStart, setFnNumStart] = useState<number>(footnotePr?.numStart ?? 1);
+  const [fnNumFmt, setFnNumFmt] = useState<NumberFormat>(
+    footnotePr?.numFmt ?? "decimal",
+  );
+  const [fnNumStart, setFnNumStart] = useState<number>(
+    footnotePr?.numStart ?? 1,
+  );
   const [fnRestart, setFnRestart] = useState<NoteNumberRestart>(
     footnotePr?.numRestart ?? "continuous",
   );
 
-  const [enPosition, setEnPosition] = useState<EndnotePosition>(endnotePr?.position ?? "docEnd");
-  const [enNumFmt, setEnNumFmt] = useState<NumberFormat>(endnotePr?.numFmt ?? "lowerRoman");
-  const [enNumStart, setEnNumStart] = useState<number>(endnotePr?.numStart ?? 1);
+  const [enPosition, setEnPosition] = useState<EndnotePosition>(
+    endnotePr?.position ?? "docEnd",
+  );
+  const [enNumFmt, setEnNumFmt] = useState<NumberFormat>(
+    endnotePr?.numFmt ?? "lowerRoman",
+  );
+  const [enNumStart, setEnNumStart] = useState<number>(
+    endnotePr?.numStart ?? 1,
+  );
   const [enRestart, setEnRestart] = useState<NoteNumberRestart>(
     endnotePr?.numRestart ?? "continuous",
   );
@@ -148,10 +178,14 @@ export function FootnotePropertiesDialog({
                 id={fieldIds.fnPosition}
                 className={selectCls}
                 value={fnPosition}
-                onChange={(e) => setFnPosition(e.target.value as FootnotePosition)}
+                onChange={(e) =>
+                  setFnPosition(e.target.value as FootnotePosition)
+                }
               >
                 <option value="pageBottom">
-                  {t("dialogs.footnoteProperties.footnotePositions.bottomOfPage")}
+                  {t(
+                    "dialogs.footnoteProperties.footnotePositions.bottomOfPage",
+                  )}
                 </option>
                 <option value="beneathText">
                   {t("dialogs.footnoteProperties.footnotePositions.belowText")}
@@ -185,7 +219,9 @@ export function FootnotePropertiesDialog({
                     min={1}
                     className={inputCls}
                     value={fnNumStart}
-                    onChange={(e) => setFnNumStart(Number.parseInt(e.target.value, 10) || 1)}
+                    onChange={(e) =>
+                      setFnNumStart(Number.parseInt(e.target.value, 10) || 1)
+                    }
                   />
                 </div>
                 <div className="flex-1">
@@ -196,16 +232,24 @@ export function FootnotePropertiesDialog({
                     id={fieldIds.fnNumbering}
                     className={selectCls}
                     value={fnRestart}
-                    onChange={(e) => setFnRestart(e.target.value as NoteNumberRestart)}
+                    onChange={(e) =>
+                      setFnRestart(e.target.value as NoteNumberRestart)
+                    }
                   >
                     <option value="continuous">
-                      {t("dialogs.footnoteProperties.numberingOptions.continuous")}
+                      {t(
+                        "dialogs.footnoteProperties.numberingOptions.continuous",
+                      )}
                     </option>
                     <option value="eachSect">
-                      {t("dialogs.footnoteProperties.numberingOptions.restartSection")}
+                      {t(
+                        "dialogs.footnoteProperties.numberingOptions.restartSection",
+                      )}
                     </option>
                     <option value="eachPage">
-                      {t("dialogs.footnoteProperties.numberingOptions.restartPage")}
+                      {t(
+                        "dialogs.footnoteProperties.numberingOptions.restartPage",
+                      )}
                     </option>
                   </select>
                 </div>
@@ -225,13 +269,19 @@ export function FootnotePropertiesDialog({
                 id={fieldIds.enPosition}
                 className={selectCls}
                 value={enPosition}
-                onChange={(e) => setEnPosition(e.target.value as EndnotePosition)}
+                onChange={(e) =>
+                  setEnPosition(e.target.value as EndnotePosition)
+                }
               >
                 <option value="docEnd">
-                  {t("dialogs.footnoteProperties.endnotePositions.endOfDocument")}
+                  {t(
+                    "dialogs.footnoteProperties.endnotePositions.endOfDocument",
+                  )}
                 </option>
                 <option value="sectEnd">
-                  {t("dialogs.footnoteProperties.endnotePositions.endOfSection")}
+                  {t(
+                    "dialogs.footnoteProperties.endnotePositions.endOfSection",
+                  )}
                 </option>
               </select>
 
@@ -262,7 +312,9 @@ export function FootnotePropertiesDialog({
                     min={1}
                     className={inputCls}
                     value={enNumStart}
-                    onChange={(e) => setEnNumStart(Number.parseInt(e.target.value, 10) || 1)}
+                    onChange={(e) =>
+                      setEnNumStart(Number.parseInt(e.target.value, 10) || 1)
+                    }
                   />
                 </div>
                 <div className="flex-1">
@@ -273,13 +325,19 @@ export function FootnotePropertiesDialog({
                     id={fieldIds.enNumbering}
                     className={selectCls}
                     value={enRestart}
-                    onChange={(e) => setEnRestart(e.target.value as NoteNumberRestart)}
+                    onChange={(e) =>
+                      setEnRestart(e.target.value as NoteNumberRestart)
+                    }
                   >
                     <option value="continuous">
-                      {t("dialogs.footnoteProperties.numberingOptions.continuous")}
+                      {t(
+                        "dialogs.footnoteProperties.numberingOptions.continuous",
+                      )}
                     </option>
                     <option value="eachSect">
-                      {t("dialogs.footnoteProperties.numberingOptions.restartSection")}
+                      {t(
+                        "dialogs.footnoteProperties.numberingOptions.restartSection",
+                      )}
                     </option>
                   </select>
                 </div>

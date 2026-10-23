@@ -75,7 +75,9 @@ export type HistoryShortcutEvent = {
  * past an exact `=== "z"` check and never trigger redo. Ctrl/Cmd+Z is undo;
  * Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y are redo.
  */
-export const classifyHistoryShortcut = (event: HistoryShortcutEvent): HistoryShortcut | null => {
+export const classifyHistoryShortcut = (
+  event: HistoryShortcutEvent,
+): HistoryShortcut | null => {
   if (!event.ctrlKey && !event.metaKey) {
     return null;
   }
@@ -107,7 +109,13 @@ export class HistoryManager<T> extends Subscribable<HistorySnapshot<T>> {
   private readonly isEqual: (a: T, b: T) => boolean;
 
   constructor(initialState: T, options: HistoryManagerOptions<T> = {}) {
-    super({ state: initialState, canUndo: false, canRedo: false, undoCount: 0, redoCount: 0 });
+    super({
+      state: initialState,
+      canUndo: false,
+      canRedo: false,
+      undoCount: 0,
+      redoCount: 0,
+    });
     this.currentState = initialState;
     this.initialState = initialState;
     this.maxEntries = options.maxEntries ?? 100;
@@ -143,7 +151,10 @@ export class HistoryManager<T> extends Subscribable<HistorySnapshot<T>> {
     const now = Date.now();
     const timeSinceLastPush = now - this.lastPushTime;
 
-    if (timeSinceLastPush < this.groupingInterval && this.undoStack.length > 0) {
+    if (
+      timeSinceLastPush < this.groupingInterval &&
+      this.undoStack.length > 0
+    ) {
       // Fold this change into the most recent entry, keeping its stored state
       // (the state from before the grouped run) so a later undo restores to the
       // start of the group, not just one push back.
@@ -162,7 +173,9 @@ export class HistoryManager<T> extends Subscribable<HistorySnapshot<T>> {
       });
       // Limit stack size.
       if (this.undoStack.length > this.maxEntries) {
-        this.undoStack = this.undoStack.slice(this.undoStack.length - this.maxEntries);
+        this.undoStack = this.undoStack.slice(
+          this.undoStack.length - this.maxEntries,
+        );
       }
     }
 
@@ -186,7 +199,10 @@ export class HistoryManager<T> extends Subscribable<HistorySnapshot<T>> {
       return undefined;
     }
     this.undoStack = this.undoStack.slice(0, -1);
-    this.redoStack = [...this.redoStack, { state: this.currentState, timestamp: Date.now() }];
+    this.redoStack = [
+      ...this.redoStack,
+      { state: this.currentState, timestamp: Date.now() },
+    ];
     this.currentState = prevEntry.state;
     this.emit();
     return prevEntry.state;
@@ -205,7 +221,10 @@ export class HistoryManager<T> extends Subscribable<HistorySnapshot<T>> {
       return undefined;
     }
     this.redoStack = this.redoStack.slice(0, -1);
-    this.undoStack = [...this.undoStack, { state: this.currentState, timestamp: Date.now() }];
+    this.undoStack = [
+      ...this.undoStack,
+      { state: this.currentState, timestamp: Date.now() },
+    ];
     this.currentState = nextEntry.state;
     this.emit();
     return nextEntry.state;
@@ -252,8 +271,14 @@ export class HistoryManager<T> extends Subscribable<HistorySnapshot<T>> {
    */
   transformAll(fn: (state: T) => T): void {
     this.currentState = fn(this.currentState);
-    this.undoStack = this.undoStack.map((entry) => ({ ...entry, state: fn(entry.state) }));
-    this.redoStack = this.redoStack.map((entry) => ({ ...entry, state: fn(entry.state) }));
+    this.undoStack = this.undoStack.map((entry) => ({
+      ...entry,
+      state: fn(entry.state),
+    }));
+    this.redoStack = this.redoStack.map((entry) => ({
+      ...entry,
+      state: fn(entry.state),
+    }));
     this.emit();
   }
 

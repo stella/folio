@@ -58,14 +58,22 @@ const layout = (state: EditorState): string[][] => {
 
 const runAt = async (focus: string, command: string) => {
   const base = await parseShapeDocument(await documentShape("tables").build());
-  const state = placeSelection(createHarnessState(base, "editing"), focus, "caret-middle");
+  const state = placeSelection(
+    createHarnessState(base, "editing"),
+    focus,
+    "caret-middle",
+  );
   if (!state) {
     throw new Error("No caret");
   }
   const view = new HeadlessEditorView(state);
-  expect(harnessManager().requireCommand(command)()(view.state, view.dispatch, view as never)).toBe(
-    true,
-  );
+  expect(
+    harnessManager().requireCommand(command)()(
+      view.state,
+      view.dispatch,
+      view as never,
+    ),
+  ).toBe(true);
   await saveHarnessState(view.state, base);
   return view.state;
 };
@@ -76,7 +84,12 @@ describe("row and column commands beside vertical merges", () => {
       ["Merged A1@0 3×2", "Cell C1@2 1×1", "Cell D1@3 3×1"],
       ["@2 1×1"],
       ["Cell C2@2 1×1"],
-      ["Cell A3@0 2×1", "Cell B3@1 1×1", "OuterInner 1Inner 2@2 1×1", "Cell D3@3 1×1"],
+      [
+        "Cell A3@0 2×1",
+        "Cell B3@1 1×1",
+        "OuterInner 1Inner 2@2 1×1",
+        "Cell D3@3 1×1",
+      ],
       ["Cell B4@1 1×1", "Cell C4@2 1×1", "Cell D4@3 1×1"],
     ]);
   });
@@ -86,17 +99,31 @@ describe("row and column commands beside vertical merges", () => {
     expect(layout(state)).toEqual([
       ["Merged A1@0 2×2", "@2 1×1", "Cell C1@3 1×1", "Cell D1@4 2×1"],
       ["@2 1×1", "Cell C2@3 1×1"],
-      ["Cell A3@0 2×1", "Cell B3@1 1×1", "@2 1×1", "OuterInner 1Inner 2@3 1×1", "Cell D3@4 1×1"],
+      [
+        "Cell A3@0 2×1",
+        "Cell B3@1 1×1",
+        "@2 1×1",
+        "OuterInner 1Inner 2@3 1×1",
+        "Cell D3@4 1×1",
+      ],
       ["Cell B4@1 1×1", "@2 1×1", "Cell C4@3 1×1", "Cell D4@4 1×1"],
     ]);
-    expect(outerTable(state.doc).attrs["columnWidths"]).toEqual([2200, 2200, 2200, 2200, 2200]);
+    expect(outerTable(state.doc).attrs["columnWidths"]).toEqual([
+      2200, 2200, 2200, 2200, 2200,
+    ]);
   });
 
   test("adding a column right puts each row's new cell in the grid column", async () => {
     expect(layout(await runAt("Cell C2", "addColumnRight"))).toEqual([
       ["Merged A1@0 2×2", "Cell C1@2 1×1", "@3 1×1", "Cell D1@4 2×1"],
       ["Cell C2@2 1×1", "@3 1×1"],
-      ["Cell A3@0 2×1", "Cell B3@1 1×1", "OuterInner 1Inner 2@2 1×1", "@3 1×1", "Cell D3@4 1×1"],
+      [
+        "Cell A3@0 2×1",
+        "Cell B3@1 1×1",
+        "OuterInner 1Inner 2@2 1×1",
+        "@3 1×1",
+        "Cell D3@4 1×1",
+      ],
       ["Cell B4@1 1×1", "Cell C4@2 1×1", "@3 1×1", "Cell D4@4 1×1"],
     ]);
   });
@@ -109,7 +136,9 @@ describe("row and column commands beside vertical merges", () => {
       ["Cell A3@0 2×1", "Cell B3@1 1×1", "Cell D3@2 1×1"],
       ["Cell B4@1 1×1", "Cell D4@2 1×1"],
     ]);
-    expect(outerTable(state.doc).attrs["columnWidths"]).toEqual([2200, 2200, 2200]);
+    expect(outerTable(state.doc).attrs["columnWidths"]).toEqual([
+      2200, 2200, 2200,
+    ]);
   });
 
   test("a merged cell the column changes keeps a width that matches its span", async () => {

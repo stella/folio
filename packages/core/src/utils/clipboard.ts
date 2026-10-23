@@ -1,4 +1,4 @@
-import { readBlobText, encodeUtf8 } from "./textEncoding";
+import createDOMPurify from "dompurify";
 /**
  * Clipboard utilities for copy/paste with formatting
  *
@@ -9,13 +9,12 @@ import { readBlobText, encodeUtf8 } from "./textEncoding";
  * - Ctrl+C, Ctrl+V, Ctrl+X keyboard shortcuts
  */
 
-import createDOMPurify from "dompurify";
-
 import { sanitizeXmlCharacters } from "@stll/docx-core";
 
-import type { Run, TextFormatting, Paragraph } from "../types/document";
+import type { Paragraph, Run, TextFormatting } from "../types/document";
 import { htmlCommentEnd } from "./htmlComments";
 import { stripXmlDeclarations } from "./stripXmlDeclarations";
+import { encodeUtf8, readBlobText } from "./textEncoding";
 
 // DOMPurify's default export only binds `sanitize` when a `window` exists.
 let domPurify: ReturnType<typeof createDOMPurify> | undefined;
@@ -101,7 +100,9 @@ type ClipboardDataLike = {
   types?: ArrayLike<string> | undefined;
 };
 
-export function getClipboardImageFiles(clipboardData: ClipboardDataLike | null): File[] {
+export function getClipboardImageFiles(
+  clipboardData: ClipboardDataLike | null,
+): File[] {
   if (!clipboardData) {
     return [];
   }
@@ -132,7 +133,9 @@ export function getClipboardImageFiles(clipboardData: ClipboardDataLike | null):
     if (!clipboardFiles || clipboardFiles.length === 0) {
       return [];
     }
-    return Array.from(clipboardFiles).filter((file) => file.type.startsWith("image/"));
+    return Array.from(clipboardFiles).filter((file) =>
+      file.type.startsWith("image/"),
+    );
   };
 
   // Prefer items when available to avoid duplicate representations between items and files.
@@ -183,7 +186,9 @@ export function getClipboardImageFiles(clipboardData: ClipboardDataLike | null):
   const groups = new Map<string, File[]>();
   for (const file of files) {
     const rawName = file.name.trim();
-    const baseName = rawName ? rawName.replace(/\.[^/.]+$/, "").toLowerCase() : "";
+    const baseName = rawName
+      ? rawName.replace(/\.[^/.]+$/, "").toLowerCase()
+      : "";
     const key = baseName || `size:${file.size}`;
     const bucket = groups.get(key);
     if (bucket) {
@@ -207,7 +212,9 @@ const ENGINE_CLIPBOARD_TYPES = [
   CLIPBOARD_TYPES.PLAIN,
 ] as const;
 
-const hasEngineClipboardContent = (clipboardData: ClipboardDataLike): boolean => {
+const hasEngineClipboardContent = (
+  clipboardData: ClipboardDataLike,
+): boolean => {
   if (!clipboardData.types || !clipboardData.getData) {
     return false;
   }
@@ -234,7 +241,9 @@ const hasEngineClipboardContent = (clipboardData: ClipboardDataLike): boolean =>
  * Rich HTML, internal payloads, and plain text must stay on the normal paste
  * path; some applications include a rendered image beside that content.
  */
-export function getStandaloneClipboardImageFiles(clipboardData: ClipboardDataLike | null): File[] {
+export function getStandaloneClipboardImageFiles(
+  clipboardData: ClipboardDataLike | null,
+): File[] {
   const imageFiles = getClipboardImageFiles(clipboardData);
   if (imageFiles.length === 0 || !clipboardData) {
     return imageFiles;
@@ -249,7 +258,10 @@ export function getStandaloneClipboardImageFiles(clipboardData: ClipboardDataLik
 /**
  * Copy runs to clipboard with formatting
  */
-export async function copyRuns(runs: Run[], options: ClipboardOptions = {}): Promise<boolean> {
+export async function copyRuns(
+  runs: Run[],
+  options: ClipboardOptions = {},
+): Promise<boolean> {
   const { includeFormatting = true, onError } = options;
 
   try {
@@ -301,7 +313,9 @@ export function paragraphsToClipboardContent(
   includeFormatting: boolean = true,
 ): ClipboardContent {
   const plainText = paragraphs.map(getParagraphText).join("\n");
-  const html = includeFormatting ? paragraphsToHtml(paragraphs) : escapeHtml(plainText);
+  const html = includeFormatting
+    ? paragraphsToHtml(paragraphs)
+    : escapeHtml(plainText);
   const internal = JSON.stringify(paragraphs);
 
   return { plainText, html, internal };
@@ -310,7 +324,9 @@ export function paragraphsToClipboardContent(
 /**
  * Write content to clipboard
  */
-export async function writeToClipboard(content: ClipboardContent): Promise<boolean> {
+export async function writeToClipboard(
+  content: ClipboardContent,
+): Promise<boolean> {
   try {
     // Try to use the modern Clipboard API
     const items = [
@@ -452,7 +468,9 @@ export function parseClipboardHtml(
     if (internalMatch) {
       try {
         // SAFETY: `content` group always captures when this regex matches
-        const runs = JSON.parse(decodeURIComponent(internalMatch.groups!["content"]!));
+        const runs = JSON.parse(
+          decodeURIComponent(internalMatch.groups!["content"]!),
+        );
         return { runs, fromWord: false, fromEditor: true, plainText };
       } catch {
         // Fall through to HTML parsing
@@ -490,7 +508,9 @@ export function isWordHtml(html: string): boolean {
  */
 export function isEditorHtml(html: string): boolean {
   return (
-    html.includes("data-folio") || html.includes("docx-run") || html.includes("docx-paragraph")
+    html.includes("data-folio") ||
+    html.includes("docx-run") ||
+    html.includes("docx-paragraph")
   );
 }
 
@@ -532,7 +552,11 @@ function toAsciiLowerCode(code: number): number {
   return code + ASCII_LOWERCASE_OFFSET;
 }
 
-function indexOfAsciiCaseInsensitive(text: string, search: string, fromIndex: number): number {
+function indexOfAsciiCaseInsensitive(
+  text: string,
+  search: string,
+  fromIndex: number,
+): number {
   const maxStart = text.length - search.length;
 
   for (let index = fromIndex; index <= maxStart; index++) {
@@ -646,9 +670,14 @@ export function cleanWordHtml(html: string): string {
 
 function cleanWordAttributes(html: string): string {
   const sanitized = sanitizeInboundClipboardHtml(html);
-  const container = new DOMParser().parseFromString(sanitized, "text/html").body;
+  const container = new DOMParser().parseFromString(
+    sanitized,
+    "text/html",
+  ).body;
 
-  for (const element of Array.from(container.querySelectorAll<HTMLElement>("*"))) {
+  for (const element of Array.from(
+    container.querySelectorAll<HTMLElement>("*"),
+  )) {
     const filteredClasses = Array.from(element.classList).filter(
       (className) => !className.includes("Mso"),
     );
@@ -689,7 +718,10 @@ export function htmlToRuns(html: string, plainTextFallback: string): Run[] {
   }
 
   const sanitized = sanitizeInboundClipboardHtml(html);
-  const container = new DOMParser().parseFromString(sanitized, "text/html").body;
+  const container = new DOMParser().parseFromString(
+    sanitized,
+    "text/html",
+  ).body;
 
   const runs: Run[] = [];
   processNode(container, runs, {});
@@ -705,7 +737,11 @@ export function htmlToRuns(html: string, plainTextFallback: string): Run[] {
 /**
  * Process a DOM node and extract runs
  */
-function processNode(node: Node, runs: Run[], inheritedFormatting: TextFormatting): void {
+function processNode(
+  node: Node,
+  runs: Run[],
+  inheritedFormatting: TextFormatting,
+): void {
   if (node.nodeType === Node.TEXT_NODE) {
     const text = node.textContent || "";
     if (text.trim() || text.includes(" ")) {
@@ -795,7 +831,10 @@ function extractFormatting(element: HTMLElement): TextFormatting {
   const style = element.style;
 
   // Font weight (bold)
-  if (style.fontWeight === "bold" || Number.parseInt(style.fontWeight, 10) >= 700) {
+  if (
+    style.fontWeight === "bold" ||
+    Number.parseInt(style.fontWeight, 10) >= 700
+  ) {
     formatting.bold = true;
   }
 
@@ -827,7 +866,10 @@ function extractFormatting(element: HTMLElement): TextFormatting {
   // Font family
   if (style.fontFamily) {
     // SAFETY: split always returns at least one element
-    const fontFamily = style.fontFamily.replace(/["']/g, "").split(",")[0]!.trim();
+    const fontFamily = style.fontFamily
+      .replace(/["']/g, "")
+      .split(",")[0]!
+      .trim();
     if (fontFamily) {
       formatting.fontFamily = { ascii: fontFamily };
     }
@@ -896,7 +938,10 @@ function getRunText(run: Run): string {
         return "\t";
       }
       if (content.type === "break") {
-        return content.breakType === undefined || content.breakType === "textWrapping" ? "\n" : "";
+        return content.breakType === undefined ||
+          content.breakType === "textWrapping"
+          ? "\n"
+          : "";
       }
       return "";
     })
@@ -929,7 +974,10 @@ function runsToHtml(runs: Run[]): string {
  */
 function paragraphsToHtml(paragraphs: Paragraph[]): string {
   return paragraphs
-    .map((p) => `<p>${runsToHtml(p.content.filter((c): c is Run => c.type === "run"))}</p>`)
+    .map(
+      (p) =>
+        `<p>${runsToHtml(p.content.filter((c): c is Run => c.type === "run"))}</p>`,
+    )
     .join("");
 }
 
@@ -979,7 +1027,9 @@ function runToHtml(run: Run): string {
   }
 
   if (formatting.fontFamily?.ascii) {
-    styles.push(`font-family: "${escapeCssString(formatting.fontFamily.ascii)}"`);
+    styles.push(
+      `font-family: "${escapeCssString(formatting.fontFamily.ascii)}"`,
+    );
   }
 
   const textColor = formatCssRgb(formatting.color?.rgb);

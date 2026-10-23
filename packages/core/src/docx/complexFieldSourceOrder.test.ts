@@ -18,8 +18,10 @@ import JSZip from "jszip";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const run = (inner: string) => `<w:r>${inner}</w:r>`;
 const begin = run('<w:fldChar w:fldCharType="begin"/>');
@@ -38,12 +40,20 @@ const savedDocumentXml = async (body: string) => {
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-    preloadFonts: false,
-  });
-  const saved = await JSZip.loadAsync(await repackDocx(parsed, { updateModifiedDate: false }));
+  const parsed = await parseDocx(
+    await zip.generateAsync({ type: "arraybuffer" }),
+    {
+      preloadFonts: false,
+    },
+  );
+  const saved = await JSZip.loadAsync(
+    await repackDocx(parsed, { updateModifiedDate: false }),
+  );
   const xml = (await saved.file("word/document.xml")?.async("text")) ?? "";
-  return xml.slice(xml.indexOf("<w:body>") + "<w:body>".length, xml.indexOf("<w:sectPr"));
+  return xml.slice(
+    xml.indexOf("<w:body>") + "<w:body>".length,
+    xml.indexOf("<w:sectPr"),
+  );
 };
 
 describe("complex field runs keep their source order", () => {
@@ -79,9 +89,12 @@ describe("complex field runs keep their source order", () => {
       "word/document.xml",
       `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body><w:p>${PAGE_REF}</w:p><w:sectPr/></w:body></w:document>`,
     );
-    const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-      preloadFonts: false,
-    });
+    const parsed = await parseDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+      {
+        preloadFonts: false,
+      },
+    );
     const paragraph = parsed.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     const contents = paragraph?.type === "paragraph" ? paragraph.content : [];

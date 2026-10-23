@@ -44,8 +44,15 @@ describe("body-scoped PM DOM lookups", () => {
   test("finds body anchors without matching overlapping header/footer positions", () => {
     const anchors = findBodyPmAnchors(createContainer());
 
-    expect(anchors.map((anchor) => anchor.dataset["pmStart"])).toEqual(["1", "2", "7", "9"]);
-    expect(findBodyPmAnchor(createContainer(), 2).textContent.trim()).toBe("body");
+    expect(anchors.map((anchor) => anchor.dataset["pmStart"])).toEqual([
+      "1",
+      "2",
+      "7",
+      "9",
+    ]);
+    expect(findBodyPmAnchor(createContainer(), 2).textContent.trim()).toBe(
+      "body",
+    );
   });
 
   test("finds only body empty runs", () => {

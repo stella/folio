@@ -30,9 +30,8 @@
  *   bun scripts/check-strict-name-tolerance.ts
  */
 
-import path from "node:path";
-
 import { TaggedError } from "better-result";
+import path from "node:path";
 
 import {
   STRICT_NAMES_BY_TRANSITIONAL_NAME,
@@ -63,10 +62,14 @@ const partnersByName = (): ReadonlyMap<string, ReadonlySet<string>> => {
   const pair = (name: string, partner: string): void => {
     partners.set(name, (partners.get(name) ?? new Set()).add(partner));
   };
-  for (const [key, transitional] of Object.entries(TRANSITIONAL_NAME_BY_STRICT_NAME)) {
+  for (const [key, transitional] of Object.entries(
+    TRANSITIONAL_NAME_BY_STRICT_NAME,
+  )) {
     pair(localNameOf(key), transitional);
   }
-  for (const [key, spellings] of Object.entries(STRICT_NAMES_BY_TRANSITIONAL_NAME)) {
+  for (const [key, spellings] of Object.entries(
+    STRICT_NAMES_BY_TRANSITIONAL_NAME,
+  )) {
     for (const strict of spellings) {
       pair(localNameOf(key), strict);
     }
@@ -86,7 +89,10 @@ const READER_CALL =
   /\b(?:findChild|findChildren|findChildByLocalName|getAttribute|getAttributeAnyPrefix|parseNumericAttribute|parseOnOffAttribute|parseTableMeasurementValue)\(\s*([A-Za-z_$][\w$]*(?:[.?]?\.?\w+)*)\s*,\s*(?:"w"|'w'|null)\s*,\s*["']([A-Za-z0-9]+)["']/gu;
 
 /** Every place one source reads both spellings of a rename off one element. */
-export const handListedSpellings = (source: string, file = "<source>"): string[] => {
+export const handListedSpellings = (
+  source: string,
+  file = "<source>",
+): string[] => {
   const partners = partnersByName();
   const readsByReceiver = new Map<string, Map<string, number>>();
   for (const match of source.matchAll(READER_CALL)) {
@@ -117,16 +123,25 @@ export const handListedSpellings = (source: string, file = "<source>"): string[]
 };
 
 const main = async (): Promise<void> => {
-  const sources = new Bun.Glob("packages/*/src/**/*.ts").scan({ cwd: REPO_ROOT });
+  const sources = new Bun.Glob("packages/*/src/**/*.ts").scan({
+    cwd: REPO_ROOT,
+  });
   const findings: string[] = [];
   for await (const file of sources) {
     if (file.endsWith(".test.ts")) {
       continue;
     }
-    findings.push(...handListedSpellings(await Bun.file(path.join(REPO_ROOT, file)).text(), file));
+    findings.push(
+      ...handListedSpellings(
+        await Bun.file(path.join(REPO_ROOT, file)).text(),
+        file,
+      ),
+    );
   }
   if (findings.length > 0) {
-    throw new StrictNameToleranceError({ message: findings.toSorted().join("\n") });
+    throw new StrictNameToleranceError({
+      message: findings.toSorted().join("\n"),
+    });
   }
   process.stdout.write("no reader hand-lists a Strict spelling\n");
 };

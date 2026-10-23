@@ -11,7 +11,7 @@ import { constants } from "node:fs";
 import { open, realpath, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { errnoCode, NO_FOLLOW, sameFile, type FileIdentity } from "./document";
+import { errnoCode, type FileIdentity, NO_FOLLOW, sameFile } from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 
 type WriteOutputOptions = {
@@ -35,7 +35,9 @@ export const writeOutputFile = async ({
   input,
 }: WriteOutputOptions): Promise<Result<string, FolioCliError>> => {
   const absolute = path.resolve(target);
-  const directory = await Result.tryPromise(() => realpath(path.dirname(absolute)));
+  const directory = await Result.tryPromise(() =>
+    realpath(path.dirname(absolute)),
+  );
   if (directory.isErr()) {
     return Result.err(
       cliError({
@@ -65,10 +67,15 @@ export const writeOutputFile = async ({
       );
     }
   } else if (errnoCode(existing.error.cause) !== "ENOENT") {
-    return Result.err(fileSystemError(`Cannot inspect ${destination}`, existing.error.cause));
+    return Result.err(
+      fileSystemError(`Cannot inspect ${destination}`, existing.error.cause),
+    );
   }
 
-  const temporary = path.join(directory.value, `.${path.basename(absolute)}.${randomUUID()}.tmp`);
+  const temporary = path.join(
+    directory.value,
+    `.${path.basename(absolute)}.${randomUUID()}.tmp`,
+  );
   const written = await Result.tryPromise(async () => {
     const handle = await open(
       temporary,
@@ -85,7 +92,9 @@ export const writeOutputFile = async ({
   });
   if (written.isErr()) {
     await rm(temporary, { force: true });
-    return Result.err(fileSystemError(`Cannot write ${destination}`, written.error.cause));
+    return Result.err(
+      fileSystemError(`Cannot write ${destination}`, written.error.cause),
+    );
   }
   return Result.ok(destination);
 };

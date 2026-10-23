@@ -2,14 +2,22 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { BlockContent, Document, Paragraph, Table } from "../../model/document";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Table,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
 import { paragraphIdsIn } from "../ids";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp } from "../types";
+import { DOCUMENT_OP_TYPES, type DocumentOp, OP_STORIES } from "../types";
 
 const NUM_RUNS = 2_000;
 const containers = ["body", "cell", "customXml", "sdt", "wrapperCell"] as const;
@@ -51,7 +59,12 @@ type ReviewedParagraphOptions = {
   index: number;
   count: number;
 };
-const reviewedParagraph = ({ shape, value, index, count }: ReviewedParagraphOptions): Paragraph => {
+const reviewedParagraph = ({
+  shape,
+  value,
+  index,
+  count,
+}: ReviewedParagraphOptions): Paragraph => {
   const source = makeParagraph(value, shape.seed + index);
   let reviewed = source;
   switch (shape.inlineReview) {
@@ -78,7 +91,12 @@ const reviewedParagraph = ({ shape, value, index, count }: ReviewedParagraphOpti
             type: shape.inlineReview,
             info: reviewInfo(10_000 + value * 10),
             content: [
-              { type: "run", content: [{ type: "text", text: `review-${shape.seed}-${index}` }] },
+              {
+                type: "run",
+                content: [
+                  { type: "text", text: `review-${shape.seed}-${index}` },
+                ],
+              },
             ],
           },
         ],
@@ -96,7 +114,10 @@ const reviewedParagraph = ({ shape, value, index, count }: ReviewedParagraphOpti
   if (!marked) return reviewed;
   return {
     ...reviewed,
-    pPrMark: { kind: shape.seed % 2 === 0 ? "ins" : "del", info: reviewInfo(10_001 + value * 10) },
+    pPrMark: {
+      kind: shape.seed % 2 === 0 ? "ins" : "del",
+      info: reviewInfo(10_001 + value * 10),
+    },
   };
 };
 
@@ -117,21 +138,24 @@ const tableFor = (shape: Shape, review: "plain" | "existing"): Table => ({
           },
         }
       : {}),
-    cells: Array.from({ length: 1 + ((shape.cells + row) % 3) }, (_cellValue, cell) => {
-      const count =
-        review === "existing" && shape.markPlacement === "nonfinal"
-          ? 2 + ((shape.paragraphs + cell) % 2)
-          : 1 + ((shape.paragraphs + cell) % 3);
-      return {
-        type: "tableCell",
-        content: Array.from({ length: count }, (_paragraphValue, index) => {
-          const value = 0x100 + row * 27 + cell * 9 + index;
-          return review === "existing"
-            ? reviewedParagraph({ shape, value, index, count })
-            : makeParagraph(value, shape.seed + index);
-        }),
-      };
-    }),
+    cells: Array.from(
+      { length: 1 + ((shape.cells + row) % 3) },
+      (_cellValue, cell) => {
+        const count =
+          review === "existing" && shape.markPlacement === "nonfinal"
+            ? 2 + ((shape.paragraphs + cell) % 2)
+            : 1 + ((shape.paragraphs + cell) % 3);
+        return {
+          type: "tableCell",
+          content: Array.from({ length: count }, (_paragraphValue, index) => {
+            const value = 0x100 + row * 27 + cell * 9 + index;
+            return review === "existing"
+              ? reviewedParagraph({ shape, value, index, count })
+              : makeParagraph(value, shape.seed + index);
+          }),
+        };
+      },
+    ),
   })),
 });
 
@@ -199,8 +223,9 @@ const families = [
 ] as const;
 
 const fixtureFor = (shape: Shape, family: (typeof families)[number]) => {
-  const anchors = Array.from({ length: shape.anchors + 1 }, (_paragraphValue, index) =>
-    makeParagraph(index + 1, shape.seed + index),
+  const anchors = Array.from(
+    { length: shape.anchors + 1 },
+    (_paragraphValue, index) => makeParagraph(index + 1, shape.seed + index),
   );
   const table = tableFor(
     shape,
@@ -213,10 +238,12 @@ const fixtureFor = (shape: Shape, family: (typeof families)[number]) => {
   if (family === "insertTable") {
     const index = shape.seed % anchors.length;
     const anchor = anchors.at(index);
-    if (anchor?.paraId === undefined) throw new Error("Generated anchor has an id.");
+    if (anchor?.paraId === undefined)
+      throw new Error("Generated anchor has an id.");
     // After-insertion anchors exclude the last paragraph: terminal carrier creation is deferred.
     const afterAnchor = anchors.at(shape.seed % (anchors.length - 1));
-    if (afterAnchor?.paraId === undefined) throw new Error("Generated after-anchor has an id.");
+    if (afterAnchor?.paraId === undefined)
+      throw new Error("Generated after-anchor has an id.");
     return {
       document: documentOf(shape, anchors),
       op: {
@@ -277,8 +304,15 @@ const fixtureFor = (shape: Shape, family: (typeof families)[number]) => {
         rows: table.rows.map((row, index) => ({
           ...row,
           structuralChange: {
-            type: family === "acceptAllRowDeletions" ? "tableRowDeletion" : "tableRowInsertion",
-            info: { id: 1000 + index, author: "Reviewer", date: "2026-05-06T07:08:09Z" },
+            type:
+              family === "acceptAllRowDeletions"
+                ? "tableRowDeletion"
+                : "tableRowInsertion",
+            info: {
+              id: 1000 + index,
+              author: "Reviewer",
+              date: "2026-05-06T07:08:09Z",
+            },
           },
         })),
       };
@@ -288,7 +322,9 @@ const fixtureFor = (shape: Shape, family: (typeof families)[number]) => {
         op: {
           type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
           story: OP_STORIES.MAIN,
-          revisionIds: marked.rows.map((_paragraphValue, index) => 1000 + index),
+          revisionIds: marked.rows.map(
+            (_paragraphValue, index) => 1000 + index,
+          ),
           decision: family === "acceptAllRowDeletions" ? "accept" : "reject",
         } satisfies DocumentOp,
       };
@@ -310,7 +346,9 @@ describe("whole table operation properties", () => {
             shapes.map((shape) => ({
               ...shape,
               markPlacement:
-                shape.markPlacement === "final" ? ("nonfinal" as const) : shape.markPlacement,
+                shape.markPlacement === "final"
+                  ? ("nonfinal" as const)
+                  : shape.markPlacement,
             })),
             (shape) => {
               const { document, op } = fixtureFor(shape, family);
@@ -322,7 +360,10 @@ describe("whole table operation properties", () => {
               if (undone.isErr()) throw undone.error;
               expect(undone.value.document).toStrictEqual(document);
               expect(contractViolation(undone.value.document)).toBeUndefined();
-              const repeated = applied(structuredClone(document), structuredClone(op));
+              const repeated = applied(
+                structuredClone(document),
+                structuredClone(op),
+              );
               expect(repeated.document).toStrictEqual(result.document);
               expect(repeated.inverse).toStrictEqual(result.inverse);
               expect(repeated.touched).toStrictEqual(result.touched);
@@ -332,24 +373,33 @@ describe("whole table operation properties", () => {
                 ...result.touched.removed,
               ]);
               const after = new Map(
-                storyParagraphs(result.document.package.document).map(({ paragraph }) => [
-                  paragraph.paraId,
-                  paragraph,
-                ]),
+                storyParagraphs(result.document.package.document).map(
+                  ({ paragraph }) => [paragraph.paraId, paragraph],
+                ),
               );
-              for (const { paragraph } of storyParagraphs(document.package.document)) {
+              for (const { paragraph } of storyParagraphs(
+                document.package.document,
+              )) {
                 if (touched.has(paragraph.paraId ?? "")) continue;
                 expect(after.get(paragraph.paraId)).toBe(paragraph);
               }
               const beforeIds = paragraphIdsIn(document.package.document);
               const afterIds = paragraphIdsIn(result.document.package.document);
-              const removed = beforeIds.filter((value) => !afterIds.includes(value));
-              const inserted = afterIds.filter((value) => !beforeIds.includes(value));
+              const removed = beforeIds.filter(
+                (value) => !afterIds.includes(value),
+              );
+              const inserted = afterIds.filter(
+                (value) => !beforeIds.includes(value),
+              );
               expect(new Set(result.touched.removed)).toEqual(new Set(removed));
-              expect(new Set(result.touched.inserted)).toEqual(new Set(inserted));
+              expect(new Set(result.touched.inserted)).toEqual(
+                new Set(inserted),
+              );
               if (family !== "insertTable") {
                 expect(removed.length).toBeGreaterThan(0);
-                expect(afterIds).toEqual(beforeIds.filter((value) => !removed.includes(value)));
+                expect(afterIds).toEqual(
+                  beforeIds.filter((value) => !removed.includes(value)),
+                );
               }
             },
           ),
@@ -368,7 +418,11 @@ describe("whole table operation properties", () => {
     () => {
       assertProperty(
         fc.property(shapes, (shape) => {
-          const markedShape = { ...shape, rowReview: "none", markPlacement: "final" } as const;
+          const markedShape = {
+            ...shape,
+            rowReview: "none",
+            markPlacement: "final",
+          } as const;
           for (const family of [
             "insertTable",
             "deleteTable",
@@ -380,8 +434,12 @@ describe("whole table operation properties", () => {
             const snapshot = structuredClone(document);
             const result = applyDocumentOp(document, op);
             if (result.isOk())
-              throw new Error("Unowned final cell paragraph marks must be refused.");
-            expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK);
+              throw new Error(
+                "Unowned final cell paragraph marks must be refused.",
+              );
+            expect(result.error.reason).toBe(
+              DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+            );
             expect(document).toStrictEqual(snapshot);
           }
         }),
@@ -401,17 +459,28 @@ describe("whole table operation properties", () => {
         fc.property(
           shapes,
           fc.constantFrom("invalidText", "missingFinalParagraph", "emptyRow"),
-          fc.constantFrom("\u0000", "\u000B", "\uD800", "\uDC00", "\uFFFE", "\uFFFF"),
+          fc.constantFrom(
+            "\u0000",
+            "\u000B",
+            "\uD800",
+            "\uDC00",
+            "\uFFFE",
+            "\uFFFF",
+          ),
           (shape, unsupported, illegalText) => {
             // Keep a good first cell so every removal resolves the same outer table;
             // nested malformed rows also remain in the sole row deleted by deleteRow.
             const source = tableFor({ ...shape, rows: 1 }, "plain");
             const row = source.rows.at(0);
-            if (row === undefined) throw new Error("Generated table has its sole row.");
+            if (row === undefined)
+              throw new Error("Generated table has its sole row.");
             const invalidParagraph: Paragraph = {
               ...makeParagraph(0x70000, shape.seed),
               content: [
-                { type: "run", content: [{ type: "text", text: `invalid-${illegalText}` }] },
+                {
+                  type: "run",
+                  content: [{ type: "text", text: `invalid-${illegalText}` }],
+                },
               ],
             };
             let unsupportedBlocks: BlockContent[];
@@ -441,7 +510,10 @@ describe("whole table operation properties", () => {
               rows: [
                 {
                   ...row,
-                  cells: [...row.cells, { type: "tableCell", content: unsupportedBlocks }],
+                  cells: [
+                    ...row.cells,
+                    { type: "tableCell", content: unsupportedBlocks },
+                  ],
                 },
               ],
             };
@@ -451,7 +523,11 @@ describe("whole table operation properties", () => {
             const before = makeParagraph(1, shape.seed);
             const after = makeParagraph(2, shape.seed);
             const insertionDocument = documentOf(shape, [before, after]);
-            const removalDocument = documentOf(shape, [before, malformed, after]);
+            const removalDocument = documentOf(shape, [
+              before,
+              malformed,
+              after,
+            ]);
             const insertion: DocumentOp = {
               type: DOCUMENT_OP_TYPES.INSERT_TABLE,
               story: OP_STORIES.MAIN,
@@ -487,7 +563,8 @@ describe("whole table operation properties", () => {
               expect(contractViolation(document)).toBeUndefined();
               const snapshot = structuredClone(document);
               const result = applyDocumentOp(document, op);
-              if (result.isOk()) throw new Error("Unsupported table records must be refused.");
+              if (result.isOk())
+                throw new Error("Unsupported table records must be refused.");
               expect(result.error.reason).toBe(
                 unsupported === "invalidText"
                   ? DOCUMENT_OP_REFUSAL_REASONS.INVALID_TEXT

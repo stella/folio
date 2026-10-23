@@ -11,7 +11,10 @@ import path from "node:path";
 
 import { FOLIO_LOCALES } from "../packages/core/src/i18n/messages/locales";
 
-const messagesDir = path.resolve(import.meta.dir, "../packages/core/src/i18n/messages");
+const messagesDir = path.resolve(
+  import.meta.dir,
+  "../packages/core/src/i18n/messages",
+);
 const outputPath = path.join(messagesDir, "catalogs.gen.ts");
 const checkOnly = process.argv.includes("--check");
 const normalizeLineEndings = (value: string) => value.replaceAll("\r\n", "\n");
@@ -56,7 +59,10 @@ export default messages;
   );
 }
 for (const adapter of ["react", "vue"]) {
-  const adapterDir = path.resolve(import.meta.dir, `../packages/${adapter}/src/i18n/messages`);
+  const adapterDir = path.resolve(
+    import.meta.dir,
+    `../packages/${adapter}/src/i18n/messages`,
+  );
   for (const locale of FOLIO_LOCALES) {
     outputs.set(
       path.join(adapterDir, `${locale}.ts`),
@@ -77,7 +83,8 @@ let drifted = false;
 for (const [output, generated] of outputs) {
   if (checkOnly) {
     const existing = existsSync(output) ? readFileSync(output, "utf8") : "";
-    if (normalizeLineEndings(existing) === normalizeLineEndings(generated)) continue;
+    if (normalizeLineEndings(existing) === normalizeLineEndings(generated))
+      continue;
     console.error(
       `Error: ${path.relative(process.cwd(), output)} is out of sync. Run \`bun run i18n:sync\`.`,
     );
@@ -88,4 +95,6 @@ for (const [output, generated] of outputs) {
   writeFileSync(output, generated);
 }
 if (drifted) process.exit(1);
-console.log(`${checkOnly ? "Checked" : "Wrote"} ${outputs.size} generated message modules`);
+console.log(
+  `${checkOnly ? "Checked" : "Wrote"} ${outputs.size} generated message modules`,
+);

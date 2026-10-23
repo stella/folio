@@ -1,16 +1,20 @@
+import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
+
 import {
   applyDocumentOps,
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   OP_STORIES,
   REVISION_DECISIONS,
   SPLIT_HALVES,
-  type DocumentOp,
 } from "@stll/docx-core/ops";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document, Paragraph, Run } from "../types/document";
 import { parseDocumentBody } from "./documentParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
@@ -23,12 +27,15 @@ const stamp = { id: 1000, author: "Joining", date: "2026-02-03T04:05:06Z" };
 
 const BOUNDARIES = {
   plain: "",
-  bookmark: '<w:bookmarkStart w:id="20" w:name="seam"/><w:bookmarkEnd w:id="20"/>',
+  bookmark:
+    '<w:bookmarkStart w:id="20" w:name="seam"/><w:bookmarkEnd w:id="20"/>',
   comment: '<w:commentRangeStart w:id="20"/><w:commentRangeEnd w:id="20"/>',
-  field: '<w:fldSimple w:instr="DATE"><w:r><w:t>cached</w:t></w:r></w:fldSimple>',
+  field:
+    '<w:fldSimple w:instr="DATE"><w:r><w:t>cached</w:t></w:r></w:fldSimple>',
   revision:
     '<w:ins w:id="20" w:author="Earlier" w:date="2026-01-01T00:00:00Z"><w:r><w:t>pending</w:t></w:r></w:ins>',
-  control: '<w:sdt><w:sdtPr><w:id w:val="20"/><w:richText/></w:sdtPr><w:sdtContent/></w:sdt>',
+  control:
+    '<w:sdt><w:sdtPr><w:id w:val="20"/><w:richText/></w:sdtPr><w:sdtContent/></w:sdt>',
   tab: "<w:r><w:tab/></w:r>",
   break: "<w:r><w:br/></w:r>",
   propertyRevision:
@@ -40,11 +47,13 @@ const wrapBody = (paragraphs: string) =>
 
 const paragraphsOf = (document: Document): Paragraph[] =>
   document.package.document.content.map((block) => {
-    if (block.type !== "paragraph") panic("The generated body contains only paragraphs");
+    if (block.type !== "paragraph")
+      panic("The generated body contains only paragraphs");
     return block;
   });
 
-const serialize = (document: Document) => paragraphsOf(document).map(serializeParagraph).join("");
+const serialize = (document: Document) =>
+  paragraphsOf(document).map(serializeParagraph).join("");
 
 const apply = (document: Document, ops: readonly DocumentOp[]) => {
   const result = applyDocumentOps(document, ops);
@@ -62,7 +71,9 @@ const assertJoinLaws = (document: Document) => {
     depth: 0,
   } as const satisfies DocumentOp;
   const direct = apply(document, [join]);
-  const tracked = apply(document, [{ ...join, revision: stamp, newIds: { revision: [1001] } }]);
+  const tracked = apply(document, [
+    { ...join, revision: stamp, newIds: { revision: [1001] } },
+  ]);
   const accepted = apply(tracked.document, [
     {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -72,24 +83,37 @@ const assertJoinLaws = (document: Document) => {
     },
   ]);
   expect(accepted.document).toStrictEqual(direct.document);
-  expect(apply(direct.document, direct.inverse).document).toStrictEqual(document);
-  expect(apply(tracked.document, tracked.inverse).document).toStrictEqual(document);
-  expect(apply(accepted.document, accepted.inverse).document).toStrictEqual(tracked.document);
+  expect(apply(direct.document, direct.inverse).document).toStrictEqual(
+    document,
+  );
+  expect(apply(tracked.document, tracked.inverse).document).toStrictEqual(
+    document,
+  );
+  expect(apply(accepted.document, accepted.inverse).document).toStrictEqual(
+    tracked.document,
+  );
   return direct.document;
 };
 
 const assertSavedJoinLaws = (document: Document) => {
   const joined = assertJoinLaws(document);
   const saved = serialize(joined);
-  const reopened = { package: { document: parseDocumentBody(wrapBody(saved)) } };
+  const reopened = {
+    package: { document: parseDocumentBody(wrapBody(saved)) },
+  };
   expect(serialize(reopened)).toBe(saved);
   expect(paragraphsOf(reopened)).toStrictEqual(paragraphsOf(joined));
-  expect(paragraphsOf(reopened).map(({ paraId }) => paraId)).toStrictEqual(["00000002"]);
+  expect(paragraphsOf(reopened).map(({ paraId }) => paraId)).toStrictEqual([
+    "00000002",
+  ]);
   return joined;
 };
 
 const text = fc
-  .array(fc.constantFrom("a", "b", "é", "😀", " "), { minLength: 1, maxLength: 8 })
+  .array(fc.constantFrom("a", "b", "é", "😀", " "), {
+    minLength: 1,
+    maxLength: 8,
+  })
   .map((letters) => letters.join(""));
 
 test("joined seams reach the parser's fixed point without crossing authored boundaries", () => {
@@ -111,7 +135,8 @@ test("joined seams reach the parser's fixed point without crossing authored boun
             },
           };
           const joined = paragraphsOf(assertSavedJoinLaws(document)).at(0);
-          if (joined === undefined) panic("A join leaves its surviving paragraph");
+          if (joined === undefined)
+            panic("A join leaves its surviving paragraph");
           if (boundary === "plain") {
             expect(joined.content).toHaveLength(1);
             expect(joined.content.at(0)?.type).toBe("run");
@@ -150,27 +175,34 @@ test("different run records keep both sides of a joined seam", () => {
           },
         };
         const joined = paragraphsOf(assertSavedJoinLaws(document)).at(0);
-        if (joined === undefined) panic("A join leaves its surviving paragraph");
+        if (joined === undefined)
+          panic("A join leaves its surviving paragraph");
         expect(joined.content).toStrictEqual(
           paragraphsOf(document).flatMap(({ content }) => content),
         );
       }
     }),
-    { numRuns: 25, id: "different run records keep both sides of a joined seam" },
+    {
+      numRuns: 25,
+      id: "different run records keep both sides of a joined seam",
+    },
   );
 });
 
 test("alike authored containers on opposite sides of a join retain their identities", () => {
   assertProperty(
     fc.property(text, text, (left, right) => {
-      const run = (value: string) => `<w:r><w:t xml:space="preserve">${value}</w:t></w:r>`;
+      const run = (value: string) =>
+        `<w:r><w:t xml:space="preserve">${value}</w:t></w:r>`;
       const containers = {
         revision: (value: string, id: number) =>
           `<w:ins w:id="${id}" w:author="Earlier" w:date="2026-01-01T00:00:00Z">${run(value)}</w:ins>`,
         control: (value: string, id: number) =>
           `<w:sdt><w:sdtPr><w:id w:val="${id}"/><w:richText/></w:sdtPr><w:sdtContent>${run(value)}</w:sdtContent></w:sdt>`,
-        hyperlink: (value: string) => `<w:hyperlink w:anchor="seam">${run(value)}</w:hyperlink>`,
-        field: (value: string) => `<w:fldSimple w:instr="DATE">${run(value)}</w:fldSimple>`,
+        hyperlink: (value: string) =>
+          `<w:hyperlink w:anchor="seam">${run(value)}</w:hyperlink>`,
+        field: (value: string) =>
+          `<w:fldSimple w:instr="DATE">${run(value)}</w:fldSimple>`,
       };
       for (const container of Object.values(containers)) {
         const document = {
@@ -184,7 +216,8 @@ test("alike authored containers on opposite sides of a join retain their identit
           },
         };
         const joined = paragraphsOf(assertSavedJoinLaws(document)).at(0);
-        if (joined === undefined) panic("A join leaves its surviving paragraph");
+        if (joined === undefined)
+          panic("A join leaves its surviving paragraph");
         expect(joined.content).toStrictEqual(
           paragraphsOf(document).flatMap(({ content }) => content),
         );
@@ -201,7 +234,10 @@ test("a join changes only its seam even when other authored runs could merge", (
   assertProperty(
     fc.property(text, text, (left, right) => {
       const run = (value: string) =>
-        ({ type: "run", content: [{ type: "text", text: value }] }) satisfies Run;
+        ({
+          type: "run",
+          content: [{ type: "text", text: value }],
+        }) satisfies Run;
       const document = {
         package: {
           document: {
@@ -230,7 +266,10 @@ test("a join changes only its seam even when other authored runs could merge", (
         run("suffix"),
       ]);
     }),
-    { numRuns: 25, id: "a join changes only its seam even when other authored runs could merge" },
+    {
+      numRuns: 25,
+      id: "a join changes only its seam even when other authored runs could merge",
+    },
   );
 });
 
@@ -272,7 +311,11 @@ test("equivalent nested formatting spellings merge and undo restores their exact
         {
           type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
           from: { story: OP_STORIES.MAIN, blockId: "00000002", offset: 0 },
-          to: { story: OP_STORIES.MAIN, blockId: "00000002", offset: right.length },
+          to: {
+            story: OP_STORIES.MAIN,
+            blockId: "00000002",
+            offset: right.length,
+          },
           patch: { language: {} },
         },
       ]).document;
@@ -291,11 +334,20 @@ test("splitting authored alike runs restores their segmentation and identities e
   assertProperty(
     fc.property(text, text, (left, right) => {
       const run = (value: string) =>
-        ({ type: "run", content: [{ type: "text", text: value }] }) satisfies Run;
+        ({
+          type: "run",
+          content: [{ type: "text", text: value }],
+        }) satisfies Run;
       const document = {
         package: {
           document: {
-            content: [{ type: "paragraph", paraId: "00000001", content: [run(left), run(right)] }],
+            content: [
+              {
+                type: "paragraph",
+                paraId: "00000001",
+                content: [run(left), run(right)],
+              },
+            ],
           },
         },
       } as const satisfies Document;
@@ -309,7 +361,9 @@ test("splitting authored alike runs restores their segmentation and identities e
               newHalf,
             },
           ]);
-          expect(apply(split.document, split.inverse).document).toStrictEqual(document);
+          expect(apply(split.document, split.inverse).document).toStrictEqual(
+            document,
+          );
         }
       }
     }),

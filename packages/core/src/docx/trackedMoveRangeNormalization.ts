@@ -8,10 +8,14 @@ import type {
   ParagraphContent,
 } from "../types/document";
 import { InlineContentRemovals } from "./inlineContentRemovals";
-import { visitDocxParagraphs, visitInlineContentSlots } from "./paragraphTraversal";
+import {
+  visitDocxParagraphs,
+  visitInlineContentSlots,
+} from "./paragraphTraversal";
 
 /** The code this normalisation is reported under, owned here, not at the caller. */
-export const UNBALANCED_MOVE_RANGE_WARNING = PARSE_WARNING_CODES.unbalancedMoveRange;
+export const UNBALANCED_MOVE_RANGE_WARNING =
+  PARSE_WARNING_CODES.unbalancedMoveRange;
 
 type NormalizeTrackedMoveRangesInput = {
   documentBody: DocumentBody;
@@ -42,21 +46,27 @@ export const normalizeTrackedMoveRanges = ({
 }: NormalizeTrackedMoveRangesInput): NormalizeTrackedMoveRangesResult => {
   const rangeMarkers: MoveRangeMarkerRef[] = [];
 
-  visitDocxParagraphs({ documentBody, headers, footers, footnotes, endnotes }, (paragraph) => {
-    visitInlineContentSlots(paragraph, ({ content, index, item }) => {
-      const marker = toMoveRangeMarkerRef(content, index, item);
-      if (marker) {
-        rangeMarkers.push(marker);
-      }
-    });
-  });
+  visitDocxParagraphs(
+    { documentBody, headers, footers, footnotes, endnotes },
+    (paragraph) => {
+      visitInlineContentSlots(paragraph, ({ content, index, item }) => {
+        const marker = toMoveRangeMarkerRef(content, index, item);
+        if (marker) {
+          rangeMarkers.push(marker);
+        }
+      });
+    },
+  );
 
   return {
-    removedUnbalancedMoveRangeMarkers: removeUnbalancedMoveRangeMarkers(rangeMarkers),
+    removedUnbalancedMoveRangeMarkers:
+      removeUnbalancedMoveRangeMarkers(rangeMarkers),
   };
 };
 
-const removeUnbalancedMoveRangeMarkers = (rangeMarkers: readonly MoveRangeMarkerRef[]): number => {
+const removeUnbalancedMoveRangeMarkers = (
+  rangeMarkers: readonly MoveRangeMarkerRef[],
+): number => {
   const byRange = new Map<string, MoveRangeMarkerRef[]>();
   for (const marker of rangeMarkers) {
     const key = `${marker.kind}:${marker.id}`;

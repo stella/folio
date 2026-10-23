@@ -60,7 +60,9 @@ export const STYLE_DEFAULT_BOLD: ReadonlySet<string> = new Set([
 ]);
 
 /** Default preview text color (hex, no `#`) for styles that don't set one. @public */
-export const STYLE_DEFAULT_COLOR: Record<string, string> = { Subtitle: "666666" };
+export const STYLE_DEFAULT_COLOR: Record<string, string> = {
+  Subtitle: "666666",
+};
 
 /** Google-Docs heading preview color. @public */
 export const HEADING_COLOR = "#4a6c8c";
@@ -82,7 +84,8 @@ export function getStylePreviewProps(input: {
     ? `${known}px`
     : `${Math.min(Math.max(input.fontSize ? input.fontSize / 2 : 11, 11), 20)}px`;
   const props: StylePreviewProps = { fontSize, lineHeight: "1.3" };
-  if (input.bold ?? STYLE_DEFAULT_BOLD.has(input.styleId)) props.fontWeight = "bold";
+  if (input.bold ?? STYLE_DEFAULT_BOLD.has(input.styleId))
+    props.fontWeight = "bold";
   if (input.italic) props.fontStyle = "italic";
   const color = input.color ?? STYLE_DEFAULT_COLOR[input.styleId];
   if (color) props.color = `#${color}`;
@@ -96,7 +99,9 @@ export function getStylePreviewProps(input: {
  * shows. Returns `[]` when there are no styles (adapters fall back to presets).
  * @public
  */
-export function resolveParagraphStyleOptions(styles: Style[] | undefined): ResolvedStyleOption[] {
+export function resolveParagraphStyleOptions(
+  styles: Style[] | undefined,
+): ResolvedStyleOption[] {
   if (!styles || styles.length === 0) return [];
   return styles
     .filter((s) => s.type === "paragraph")

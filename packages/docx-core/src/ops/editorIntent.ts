@@ -1,88 +1,102 @@
-/** One editor intent, compiled to direct or tracked document operations. */
-import { compileHyperlinkIntent, type HyperlinkEditorIntent } from "./hyperlinkIntent";
-import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
-import { cloneModel } from "./modelClone";
+import { panic, Result } from "better-result";
+
 import { INSERTION_SEAM_POLICIES } from "../model/content";
-import { Result, panic } from "better-result";
-import { applyDocumentOp, applyDocumentOps } from "./apply";
-import { captureDocumentOp } from "./wire";
-import { applyFormattingPatch } from "./patch";
+import {
+  type AbstractNumbering,
+  type BreakContent,
+  type Document,
+  MAX_REVISION_ID,
+  type NumberingInstance,
+  type Paragraph,
+  type ParagraphContent,
+  type TabContent,
+  type TextFormatting,
+} from "../model/document";
 import { isNumberingLevel } from "../model/numberingLevel";
 import {
   isNumberingReference,
   NO_NUMBERING_NUM_ID,
   paragraphNumberingReference,
 } from "../model/paragraphNumbering";
-
-import {
-  MAX_REVISION_ID,
-  type Document,
-  type Paragraph,
-  type ParagraphContent,
-  type TextFormatting,
-  type TabContent,
-  type BreakContent,
-  type NumberingInstance,
-  type AbstractNumbering,
-} from "../model/document";
+import { applyDocumentOp, applyDocumentOps } from "./apply";
 import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
+import { createCensusReader } from "./editorIntentCensus";
+import { structurallyEqual } from "./equality";
+/** One editor intent, compiled to direct or tracked document operations. */
+import {
+  compileHyperlinkIntent,
+  type HyperlinkEditorIntent,
+} from "./hyperlinkIntent";
 import {
   IDENTITY_SPACES,
   idKey,
   packageIdentityKeys,
-  reservedIdentityKeysIn,
   packageParagraphIds,
+  reservedIdentityKeysIn,
 } from "./ids";
+import { deleteBetween, gapAfterInserted } from "./inline";
 import {
+  alikeDepth,
+  asParagraphContent,
+  childNodes,
   compareGaps,
   defaultInsertionGap,
-  isCommentAnchor,
-  isParagraphContent,
-  childNodes,
-  rebuildNode,
-  asParagraphContent,
-  isEmptyRecord,
   type InlineNode,
+  isCommentAnchor,
+  isEmptyRecord,
+  isParagraphContent,
   leafSpans,
+  rebuildNode,
   zeroWidthLeavesAt,
 } from "./leaves";
-import { deleteBetween, gapAfterInserted } from "./inline";
-import { createCensusReader } from "./editorIntentCensus";
-import { alikeDepth } from "./leaves";
-import { isRangeBoundary, paragraphLength, paragraphLogicalText } from "./offsets";
+import { cloneModel } from "./modelClone";
+import {
+  isRangeBoundary,
+  paragraphLength,
+  paragraphLogicalText,
+} from "./offsets";
+import { applyFormattingPatch } from "./patch";
 import {
   appendTrackedDeletion,
   createTrackedPlan,
-  selectedParagraphRuns,
-  replacementDeletionSegments,
   filterNewIds,
+  replacementDeletionSegments,
+  selectedParagraphRuns,
   trimAppliedNewIds,
 } from "./plan";
-import { planTrackedReplace, rangeStartAfterDeletion } from "./rangeReplacement";
-import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
-import { structurallyEqual } from "./equality";
-import { isRemovedRevisionNode, paragraphPropertiesOf, reviewFieldsOf } from "./review";
-import { runsMergeable } from "./runMerge";
-import { locateTableRow, tableRowAnchor } from "./tableLocation";
-import { tableGrid } from "./tableGrid";
-import { tableEditParagraphDemand } from "./tableEdits";
 import {
-  DOCUMENT_OP_TYPES,
-  PROPERTY_REVIEW_POLICIES,
-  SECTION_BOUNDARY_POLICIES,
-  EMPTY_PROPERTY_SETS,
-  SPLIT_HALVES,
-  type DocumentOp,
+  planTrackedReplace,
+  rangeStartAfterDeletion,
+} from "./rangeReplacement";
+import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import {
+  isRemovedRevisionNode,
+  paragraphPropertiesOf,
+  reviewFieldsOf,
+} from "./review";
+import { runsMergeable } from "./runMerge";
+import { tableEditParagraphDemand } from "./tableEdits";
+import { tableGrid } from "./tableGrid";
+import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
+import {
   type DeleteRangeOp,
-  type TableEditOp,
-  type TableIntentOperation,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  EMPTY_PROPERTY_SETS,
   type NewIds,
   type OpStory,
-  type RevisionStamp,
-  type TextPosition,
-  type RunPropsPatch,
   type ParagraphPropsPatch,
+  PROPERTY_REVIEW_POLICIES,
+  type RevisionStamp,
+  type RunPropsPatch,
+  SECTION_BOUNDARY_POLICIES,
+  SPLIT_HALVES,
+  type TableEditOp,
+  type TableIntentOperation,
+  type TextPosition,
 } from "./types";
+import { captureDocumentOp } from "./wire";
 
 type SplitParagraphIntent = {
   type: "splitParagraph";
@@ -121,14 +135,23 @@ export type EditorIntent =
       runProps?: TextFormatting;
       runPropsPatch?: RunPropsPatch;
     }
-  | { type: "formatRun"; from: TextPosition; to: TextPosition; patch: RunPropsPatch }
+  | {
+      type: "formatRun";
+      from: TextPosition;
+      to: TextPosition;
+      patch: RunPropsPatch;
+    }
   | { type: "formatParagraph"; at: TextPosition; patch: ParagraphPropsPatch }
   | {
       type: "setList";
       items: readonly { at: TextPosition; ilvl: number }[];
       target:
         | { type: "existing"; numId: number }
-        | { type: "new"; num: NumberingInstance; abstractNum?: AbstractNumbering };
+        | {
+            type: "new";
+            num: NumberingInstance;
+            abstractNum?: AbstractNumbering;
+          };
     }
   | {
       type: "insertAtom";
@@ -139,7 +162,12 @@ export type EditorIntent =
       runPropsPatch?: RunPropsPatch;
     }
   | (SplitParagraphIntent & { newBlockId: string })
-  | { type: "joinParagraphs"; story: OpStory; blockId: string; nextBlockId: string };
+  | {
+      type: "joinParagraphs";
+      story: OpStory;
+      blockId: string;
+      nextBlockId: string;
+    };
 
 /** Revision metadata and every fresh identity are supplied before compilation. */
 export type EditorIntentMode = {
@@ -205,7 +233,8 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
     case "setList": {
       const first = intent.items.at(0);
       const last = intent.items.at(-1);
-      if (first === undefined || last === undefined) panic("List allocation requires a paragraph.");
+      if (first === undefined || last === undefined)
+        panic("List allocation requires a paragraph.");
       return {
         story: first.at.story,
         fromId: first.at.blockId,
@@ -245,7 +274,8 @@ export const createEditorIntentIdAllocator = () => {
   const readCensus = createCensusReader();
   return (document: Document, intent: EditorIntentAllocation) => {
     const census = readCensus(document);
-    const { story, fromId, toId, fromOffset, toOffset } = intentEndpoints(intent);
+    const { story, fromId, toId, fromOffset, toOffset } =
+      intentEndpoints(intent);
     let locations = census.stories.get(story);
     if (locations === undefined) {
       locations = storyParagraphs(storyBody(document, story));
@@ -260,28 +290,43 @@ export const createEditorIntentIdAllocator = () => {
     // Every selected leaf may start a deletion segment; ancestors may be cut
     // at both endpoints. Each paragraph adds join/mark/property stamps.
     let demand = 1;
-    const selected = first < 0 || last < first ? [] : locations.slice(first, last + 1);
+    const selected =
+      first < 0 || last < first ? [] : locations.slice(first, last + 1);
     for (const { paragraph } of intent.type === "table" ? [] : selected) {
       demand += PARAGRAPH_REVISION_DEMAND;
       const blockId = idKey(paragraph.paraId ?? "");
       for (const span of leafSpans(paragraph.content)) {
-        if (blockId === idKey(fromId) && fromOffset !== undefined && span.after.offset < fromOffset)
+        if (
+          blockId === idKey(fromId) &&
+          fromOffset !== undefined &&
+          span.after.offset < fromOffset
+        )
           continue;
-        if (blockId === idKey(toId) && toOffset !== undefined && span.before.offset > toOffset)
+        if (
+          blockId === idKey(toId) &&
+          toOffset !== undefined &&
+          span.before.offset > toOffset
+        )
           continue;
         demand += leafRevisionDemand(span.ancestors.length);
       }
     }
     const incoming =
-      intent.type === "replaceFragment" || intent.type === "moveFragment" ? intent.paragraphs : [];
+      intent.type === "replaceFragment" || intent.type === "moveFragment"
+        ? intent.paragraphs
+        : [];
     for (const paragraph of incoming) {
       demand += 4;
-      for (const span of leafSpans(paragraph.content)) demand += 4 * (1 + span.ancestors.length);
+      for (const span of leafSpans(paragraph.content))
+        demand += 4 * (1 + span.ancestors.length);
     }
     if (incoming.length > 0) demand += 8;
     if (intent.type === "moveFragment") {
-      const target = storyParagraphs(storyBody(document, intent.target.story)).find(
-        ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(intent.target.blockId),
+      const target = storyParagraphs(
+        storyBody(document, intent.target.story),
+      ).find(
+        ({ paragraph }) =>
+          idKey(paragraph.paraId ?? "") === idKey(intent.target.blockId),
       );
       if (target !== undefined) {
         demand += 3;
@@ -309,7 +354,8 @@ export const createEditorIntentIdAllocator = () => {
             const table = located.value.table;
             demand = table.rows.length + 2;
             const grid = tableGrid(table, op.type);
-            if (op.column !== 0 || grid.isErr() || grid.value.width !== 1) break;
+            if (op.column !== 0 || grid.isErr() || grid.value.width !== 1)
+              break;
             // Removing the final column tracks the whole table, including paragraph
             // marks and every inline wrapper identity, rather than just its rows.
             for (const { paragraph } of storyParagraphs({ content: [table] })) {
@@ -324,8 +370,9 @@ export const createEditorIntentIdAllocator = () => {
             break;
           case DOCUMENT_OP_TYPES.SPLIT_CELL:
             demand =
-              located.value.table.rows.at(located.value.rowIndex)?.cells.at(located.value.cellIndex)
-                ?.formatting?.gridSpan ?? 1;
+              located.value.table.rows
+                .at(located.value.rowIndex)
+                ?.cells.at(located.value.cellIndex)?.formatting?.gridSpan ?? 1;
             break;
           case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
             demand = 2;
@@ -343,7 +390,11 @@ export const createEditorIntentIdAllocator = () => {
     }
     const revision = fresh(census.revisions, demand + 1);
     let nextParagraph = 1;
-    while (census.paragraphs.has(nextParagraph.toString(16).padStart(8, "0").toUpperCase()))
+    while (
+      census.paragraphs.has(
+        nextParagraph.toString(16).padStart(8, "0").toUpperCase(),
+      )
+    )
       nextParagraph += 1;
     return {
       revisionId: revision.at(0) ?? MAX_REVISION_ID + 1,
@@ -373,7 +424,10 @@ export const paragraphVisibleText = (paragraph: Paragraph): string => {
  * that gap, so a new insertion never lands inside a deletion wrapper.
  * Invalid offsets remain invalid for the operation boundary to diagnose.
  */
-export const physicalOffsetAtVisibleOffset = (paragraph: Paragraph, offset: number): number => {
+export const physicalOffsetAtVisibleOffset = (
+  paragraph: Paragraph,
+  offset: number,
+): number => {
   if (!Number.isInteger(offset) || offset < 0) return -1;
   let visible = 0;
   for (const span of leafSpans(paragraph.content)) {
@@ -382,12 +436,22 @@ export const physicalOffsetAtVisibleOffset = (paragraph: Paragraph, offset: numb
     if (offset < visible + width) return span.before.offset + offset - visible;
     visible += width;
   }
-  return offset === visible ? paragraphLength(paragraph) : paragraphLength(paragraph) + 1;
+  return offset === visible
+    ? paragraphLength(paragraph)
+    : paragraphLength(paragraph) + 1;
 };
 
 /** The visible offset corresponding to a physical source position. */
-const visibleOffsetAtPhysicalOffset = (paragraph: Paragraph, offset: number): number => {
-  if (!Number.isInteger(offset) || offset < 0 || offset > paragraphLength(paragraph)) return -1;
+const visibleOffsetAtPhysicalOffset = (
+  paragraph: Paragraph,
+  offset: number,
+): number => {
+  if (
+    !Number.isInteger(offset) ||
+    offset < 0 ||
+    offset > paragraphLength(paragraph)
+  )
+    return -1;
   let visible = 0;
   for (const span of leafSpans(paragraph.content)) {
     if (span.before.offset >= offset) break;
@@ -399,7 +463,8 @@ const visibleOffsetAtPhysicalOffset = (paragraph: Paragraph, offset: number): nu
 
 /** Deleted paragraph marks concatenate physical paragraphs in the editing view. */
 export const editorParagraphGroups = (document: Document, story: OpStory) => {
-  const groups: { blockId: string; paragraphs: Paragraph[]; text: string }[] = [];
+  const groups: { blockId: string; paragraphs: Paragraph[]; text: string }[] =
+    [];
   let pending: Paragraph[] = [];
   let previous: ReturnType<typeof storyParagraphs>[number] | undefined;
   for (const location of storyParagraphs(storyBody(document, story))) {
@@ -407,7 +472,8 @@ export const editorParagraphGroups = (document: Document, story: OpStory) => {
     if (
       pending.length > 0 &&
       previous &&
-      (!sameBlockList(previous.list, location.list) || location.index !== previous.index + 1)
+      (!sameBlockList(previous.list, location.list) ||
+        location.index !== previous.index + 1)
     ) {
       groups.push({
         blockId: previous.paragraph.paraId ?? "",
@@ -418,7 +484,11 @@ export const editorParagraphGroups = (document: Document, story: OpStory) => {
     }
     previous = location;
     pending.push(paragraph);
-    if (paragraph.pPrMark?.kind === "del" || paragraph.pPrMark?.kind === "moveFrom") continue;
+    if (
+      paragraph.pPrMark?.kind === "del" ||
+      paragraph.pPrMark?.kind === "moveFrom"
+    )
+      continue;
     groups.push({
       blockId: paragraph.paraId ?? "",
       paragraphs: pending,
@@ -440,15 +510,22 @@ export const editorPositionAtPhysicalPosition = (
   document: Document,
   at: TextPosition,
 ): TextPosition => {
-  const group = editorParagraphGroups(document, at.story).find(({ paragraphs }) =>
-    paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(at.blockId)),
+  const group = editorParagraphGroups(document, at.story).find(
+    ({ paragraphs }) =>
+      paragraphs.some(
+        ({ paraId }) => idKey(paraId ?? "") === idKey(at.blockId),
+      ),
   );
   if (group === undefined) return at;
   let offset = 0;
   for (const paragraph of group.paragraphs) {
     if (idKey(paragraph.paraId ?? "") === idKey(at.blockId)) {
       const local = visibleOffsetAtPhysicalOffset(paragraph, at.offset);
-      return { story: at.story, blockId: group.blockId, offset: local < 0 ? -1 : offset + local };
+      return {
+        story: at.story,
+        blockId: group.blockId,
+        offset: local < 0 ? -1 : offset + local,
+      };
     }
     offset += paragraphVisibleText(paragraph).length;
   }
@@ -503,13 +580,19 @@ const visibleFormattingSpans = (paragraph: Paragraph) =>
   );
 
 /** Capture authored formatting before deletion, using only visible runs. */
-const formattingAt = (paragraph: Paragraph, offset: number): TextFormatting | undefined => {
+const formattingAt = (
+  paragraph: Paragraph,
+  offset: number,
+): TextFormatting | undefined => {
   const spans = visibleFormattingSpans(paragraph);
   const span =
-    spans.find(({ before, after }) => before.offset <= offset && offset < after.offset) ??
+    spans.find(
+      ({ before, after }) => before.offset <= offset && offset < after.offset,
+    ) ??
     spans.findLast(({ after }) => after.offset <= offset) ??
     spans.find(({ before }) => before.offset > offset);
-  return span?.ancestors.findLast((ancestor) => ancestor.type === "run")?.formatting;
+  return span?.ancestors.findLast((ancestor) => ancestor.type === "run")
+    ?.formatting;
 };
 
 const authoredFormatting = (
@@ -519,16 +602,25 @@ const authoredFormatting = (
 ): TextFormatting | undefined => {
   const paragraph = paragraphAt(document, from);
   if (paragraph === undefined)
-    panic("A validated input paragraph must exist when reading authored formatting.");
+    panic(
+      "A validated input paragraph must exist when reading authored formatting.",
+    );
   const collapsed = from.blockId === to.blockId && from.offset === to.offset;
   if (!collapsed) return formattingAt(paragraph, from.offset);
-  const left = visibleFormattingSpans(paragraph).some(({ before }) => before.offset < from.offset);
+  const left = visibleFormattingSpans(paragraph).some(
+    ({ before }) => before.offset < from.offset,
+  );
   if (left) return formattingAt(paragraph, from.offset - 1);
-  const group = editorParagraphGroups(document, from.story).find(({ paragraphs }) =>
-    paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(from.blockId)),
+  const group = editorParagraphGroups(document, from.story).find(
+    ({ paragraphs }) =>
+      paragraphs.some(
+        ({ paraId }) => idKey(paraId ?? "") === idKey(from.blockId),
+      ),
   );
   const index =
-    group?.paragraphs.findIndex(({ paraId }) => idKey(paraId ?? "") === idKey(from.blockId)) ?? 0;
+    group?.paragraphs.findIndex(
+      ({ paraId }) => idKey(paraId ?? "") === idKey(from.blockId),
+    ) ?? 0;
   const previous = group?.paragraphs
     .slice(0, index)
     .findLast((item) => paragraphVisibleText(item) !== "");
@@ -564,8 +656,10 @@ const createParagraphMarkOwnerLookup = (document: Document) => {
       owners = new Map();
       for (const { paragraphs } of editorParagraphGroups(document, at.story)) {
         const owner = paragraphs.at(-1);
-        if (owner === undefined) panic("A logical paragraph has no property owner");
-        for (const paragraph of paragraphs) owners.set(idKey(paragraph.paraId ?? ""), owner);
+        if (owner === undefined)
+          panic("A logical paragraph has no property owner");
+        for (const paragraph of paragraphs)
+          owners.set(idKey(paragraph.paraId ?? ""), owner);
       }
       stories.set(key, owners);
     }
@@ -576,14 +670,21 @@ const createParagraphMarkOwnerLookup = (document: Document) => {
 /** A new logical paragraph inherits the surviving paragraph mark's formatting. */
 const splitParagraphFields = (document: Document, at: TextPosition) => {
   const survivor = createParagraphMarkOwnerLookup(document)(at);
-  return survivor?.formatting === undefined ? {} : { formatting: survivor.formatting };
+  return survivor?.formatting === undefined
+    ? {}
+    : { formatting: survivor.formatting };
 };
 
 /** A compound intent consumes one identity pool across its sequential plans. */
-const modeAfterOps = (document: Document, mode: EditorIntentMode): EditorIntentMode => {
+const modeAfterOps = (
+  document: Document,
+  mode: EditorIntentMode,
+): EditorIntentMode => {
   if (mode.newIds === undefined) return mode;
   const occupied = new Set(
-    packageIdentityKeys(document.package).concat(reservedIdentityKeysIn(document.package)),
+    packageIdentityKeys(document.package).concat(
+      reservedIdentityKeysIn(document.package),
+    ),
   );
   const revisionIds = mode.newIds.revision?.filter(
     (id) => !occupied.has(`${IDENTITY_SPACES.REVISION}:${id}`),
@@ -602,7 +703,10 @@ const modeAfterOps = (document: Document, mode: EditorIntentMode): EditorIntentM
   return {
     type: "suggesting",
     revision: { ...mode.revision, id },
-    newIds: { ...newIds, ...(revisionIds === undefined ? {} : { revision: revisionIds.slice(1) }) },
+    newIds: {
+      ...newIds,
+      ...(revisionIds === undefined ? {} : { revision: revisionIds.slice(1) }),
+    },
   };
 };
 
@@ -630,7 +734,9 @@ const withoutMoveAnchors = (nodes: readonly InlineNode[]): InlineNode[] => {
     if (isMoveAnchor(node)) continue;
     const children = childNodes(node);
     const retained =
-      children === undefined ? node : rebuildNode(node, withoutMoveAnchors(children));
+      children === undefined
+        ? node
+        : rebuildNode(node, withoutMoveAnchors(children));
     if (!isEmptyRecord(retained)) out.push(retained);
   }
   return out;
@@ -648,14 +754,22 @@ const identifyClipboardParagraphs = ({
   paragraphs,
   mode,
   firstBlockId,
-}: IdentifyClipboardParagraphsOptions): Result<Paragraph[], DocumentOpRefusal> => {
+}: IdentifyClipboardParagraphsOptions): Result<
+  Paragraph[],
+  DocumentOpRefusal
+> => {
   const copy = cloneModel([...paragraphs]);
   const occupied = new Set(
-    packageIdentityKeys(document.package).concat(reservedIdentityKeysIn(document.package)),
+    packageIdentityKeys(document.package).concat(
+      reservedIdentityKeysIn(document.package),
+    ),
   );
-  for (const id of mode.newIds?.revision ?? []) occupied.add(`${IDENTITY_SPACES.REVISION}:${id}`);
-  for (const id of mode.newIds?.control ?? []) occupied.add(`${IDENTITY_SPACES.CONTROL}:${id}`);
-  if (mode.type === "suggesting") occupied.add(`${IDENTITY_SPACES.REVISION}:${mode.revision.id}`);
+  for (const id of mode.newIds?.revision ?? [])
+    occupied.add(`${IDENTITY_SPACES.REVISION}:${id}`);
+  for (const id of mode.newIds?.control ?? [])
+    occupied.add(`${IDENTITY_SPACES.CONTROL}:${id}`);
+  if (mode.type === "suggesting")
+    occupied.add(`${IDENTITY_SPACES.REVISION}:${mode.revision.id}`);
   const blockIds = new Set(packageParagraphIds(document.package).map(idKey));
   const markers = new Set<number>();
   const names = new Set<string>();
@@ -677,11 +791,20 @@ const identifyClipboardParagraphs = ({
       isCopiedRangeMarker(value)
     )
       markers.add(value.id);
-    if (isCopiedRangeStart(value) && "name" in value && typeof value.name === "string")
+    if (
+      isCopiedRangeStart(value) &&
+      "name" in value &&
+      typeof value.name === "string"
+    )
       names.add(value.name);
   });
   visit(copy, (value) => {
-    if (!isCopiedRangeStart(value) || !("name" in value) || typeof value.name !== "string") return;
+    if (
+      !isCopiedRangeStart(value) ||
+      !("name" in value) ||
+      typeof value.name !== "string"
+    )
+      return;
     const original = value.name;
     const renamed = renamedBookmarks.get(original);
     if (renamed !== undefined) {
@@ -718,7 +841,10 @@ const identifyClipboardParagraphs = ({
     const existing = remapped.get(key);
     if (existing !== undefined) return existing;
     let id = nextInSpace.get(space) ?? 1;
-    while (space === "bookmark" ? markers.has(id) : occupied.has(`${space}:${id}`)) id += 1;
+    while (
+      space === "bookmark" ? markers.has(id) : occupied.has(`${space}:${id}`)
+    )
+      id += 1;
     if (space === "bookmark") markers.add(id);
     else occupied.add(`${space}:${id}`);
     remapped.set(key, id);
@@ -736,7 +862,10 @@ const identifyClipboardParagraphs = ({
       "id" in value.properties &&
       typeof value.properties.id === "number"
     ) {
-      value.properties.id = freshId(IDENTITY_SPACES.CONTROL, value.properties.id);
+      value.properties.id = freshId(
+        IDENTITY_SPACES.CONTROL,
+        value.properties.id,
+      );
       remintedControls.add(value.properties);
     }
     if (
@@ -746,17 +875,24 @@ const identifyClipboardParagraphs = ({
       typeof value.anchor === "string"
     )
       value.anchor = renamedBookmarks.get(value.anchor) ?? value.anchor;
-    if ("id" in value && typeof value.id === "number" && !remintedControls.has(value)) {
+    if (
+      "id" in value &&
+      typeof value.id === "number" &&
+      !remintedControls.has(value)
+    ) {
       if (
         "space" in value &&
-        (value.space === IDENTITY_SPACES.REVISION || value.space === IDENTITY_SPACES.CONTROL)
+        (value.space === IDENTITY_SPACES.REVISION ||
+          value.space === IDENTITY_SPACES.CONTROL)
       ) {
         // Cut provenance names the same copied records as info/properties IDs.
         value.id = freshId(value.space, value.id);
-      } else if ("sdtType" in value) value.id = freshId(IDENTITY_SPACES.CONTROL, value.id);
+      } else if ("sdtType" in value)
+        value.id = freshId(IDENTITY_SPACES.CONTROL, value.id);
       else if ("author" in value && !("type" in value))
         value.id = freshId(IDENTITY_SPACES.REVISION, value.id);
-      else if (isCopiedRangeMarker(value)) value.id = freshId("bookmark", value.id);
+      else if (isCopiedRangeMarker(value))
+        value.id = freshId("bookmark", value.id);
     }
   });
   // Only split-off paragraphs need new IDs; the inline tail keeps its
@@ -795,21 +931,28 @@ const joinParagraphPropertyAlignment = ({
 }: JoinParagraphPropertyAlignmentOptions) => {
   const groups = editorParagraphGroups(document, intent.story);
   const firstGroup = groups.find(({ paragraphs }) =>
-    paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(intent.blockId)),
+    paragraphs.some(
+      ({ paraId }) => idKey(paraId ?? "") === idKey(intent.blockId),
+    ),
   );
   const followingGroup = groups.find(({ paragraphs }) =>
-    paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(intent.nextBlockId)),
+    paragraphs.some(
+      ({ paraId }) => idKey(paraId ?? "") === idKey(intent.nextBlockId),
+    ),
   );
   if (!firstGroup || !followingGroup)
     panic("A valid canonical join must belong to paragraph groups.");
   const source =
-    firstGroup.text.length === 0 ? followingGroup.paragraphs.at(-1) : firstGroup.paragraphs.at(-1);
+    firstGroup.text.length === 0
+      ? followingGroup.paragraphs.at(-1)
+      : firstGroup.paragraphs.at(-1);
   const survivor = paragraphAt(current, {
     story: intent.story,
     blockId: followingGroup.blockId,
     offset: 0,
   });
-  if (!survivor) panic("A valid canonical join must retain its following group survivor.");
+  if (!survivor)
+    panic("A valid canonical join must retain its following group survivor.");
   const desired = paragraphPropertiesOf(source?.formatting);
   const existing = paragraphPropertiesOf(survivor.formatting);
   if (structurallyEqual(existing, desired)) return undefined;
@@ -822,7 +965,9 @@ const joinParagraphPropertyAlignment = ({
       ...Object.entries(desired ?? {}),
     ]),
     whenEmpty:
-      source?.formatting === undefined ? EMPTY_PROPERTY_SETS.OMIT : EMPTY_PROPERTY_SETS.KEEP,
+      source?.formatting === undefined
+        ? EMPTY_PROPERTY_SETS.OMIT
+        : EMPTY_PROPERTY_SETS.KEEP,
     ...(revision === undefined ? {} : { revision }),
   } as const;
 };
@@ -850,7 +995,9 @@ const textSeamDepth = (paragraph: Paragraph, offset: number): number => {
       left.ancestors.length !== right.ancestors.length ||
       !left.ancestors
         .slice(0, -1)
-        .every((parent, parentIndex) => parent === right.ancestors[parentIndex]) ||
+        .every(
+          (parent, parentIndex) => parent === right.ancestors[parentIndex],
+        ) ||
       !runsMergeable(leftRun, rightRun)
     )
       continue;
@@ -866,7 +1013,9 @@ export const compileEditorIntent = (
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   if (
     firstBlockId !== undefined &&
-    (!Number.isInteger(firstBlockId) || firstBlockId < 1 || firstBlockId > 0x80000000)
+    (!Number.isInteger(firstBlockId) ||
+      firstBlockId < 1 ||
+      firstBlockId > 0x80000000)
   ) {
     return Result.err(
       new DocumentOpRefusal({
@@ -876,7 +1025,8 @@ export const compileEditorIntent = (
       }),
     );
   }
-  const allocationFields = mode.newIds === undefined ? {} : { newIds: mode.newIds };
+  const allocationFields =
+    mode.newIds === undefined ? {} : { newIds: mode.newIds };
   const tracked =
     mode.type === "suggesting"
       ? { revision: mode.revision, newIds: mode.newIds }
@@ -907,7 +1057,12 @@ export const compileEditorIntent = (
     case "replaceFragment": {
       if (intent.paragraphs.length === 0)
         return compileEditorIntent(document, {
-          intent: { type: "replaceText", from: intent.from, to: intent.to, text: "" },
+          intent: {
+            type: "replaceText",
+            from: intent.from,
+            to: intent.to,
+            text: "",
+          },
           mode,
         });
       const destination = paragraphAt(document, intent.from);
@@ -920,8 +1075,14 @@ export const compileEditorIntent = (
           }),
         );
       const endpoint = paragraphAt(document, intent.to);
-      const destinationFormatting = splitParagraphFields(document, intent.from).formatting;
-      const endpointFormatting = splitParagraphFields(document, intent.to).formatting;
+      const destinationFormatting = splitParagraphFields(
+        document,
+        intent.from,
+      ).formatting;
+      const endpointFormatting = splitParagraphFields(
+        document,
+        intent.to,
+      ).formatting;
       const prefixBoundary = intent.openStart === 0 && intent.from.offset > 0;
       const suffixBoundary =
         intent.openEnd === 0 &&
@@ -945,7 +1106,9 @@ export const compileEditorIntent = (
               {
                 type: "paragraph",
                 content: [],
-                ...(endpointFormatting === undefined ? {} : { formatting: endpointFormatting }),
+                ...(endpointFormatting === undefined
+                  ? {}
+                  : { formatting: endpointFormatting }),
               } satisfies Paragraph,
             ]
           : []),
@@ -969,14 +1132,19 @@ export const compileEditorIntent = (
         delete paragraph.reviewCarrier;
         delete paragraph.sectionProperties;
         delete paragraph.formatting;
-        const inherited = openStart ? destinationFormatting : endpointFormatting;
+        const inherited = openStart
+          ? destinationFormatting
+          : endpointFormatting;
         if (inherited !== undefined) paragraph.formatting = inherited;
       }
-      if (paragraphs.some((paragraph) => paragraph.reviewCarrier !== undefined)) {
+      if (
+        paragraphs.some((paragraph) => paragraph.reviewCarrier !== undefined)
+      ) {
         return Result.err(
           new DocumentOpRefusal({
             reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            message: "A clipboard paragraph cannot import a private review-resolution carrier.",
+            message:
+              "A clipboard paragraph cannot import a private review-resolution carrier.",
             opType: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           }),
         );
@@ -1037,7 +1205,9 @@ export const compileEditorIntent = (
           newIds: mode.newIds,
           seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
           replacement: {
-            paragraphs: leading.map(({ sectionProperties: _section, ...paragraph }) => paragraph),
+            paragraphs: leading.map(
+              ({ sectionProperties: _section, ...paragraph }) => paragraph,
+            ),
             tail: { openStart: 0, openEnd: 0, content: tail?.content ?? [] },
           },
         });
@@ -1051,7 +1221,8 @@ export const compileEditorIntent = (
           from: intent.from,
           to: intent.to,
         });
-        const insertionAt = leading.length > 0 ? { ...at, offset: 0, zeroWidthBefore: 0 } : at;
+        const insertionAt =
+          leading.length > 0 ? { ...at, offset: 0, zeroWidthBefore: 0 } : at;
         const insertionParagraph = paragraphAt(document, insertionAt);
         selection = {
           ...insertionAt,
@@ -1062,15 +1233,22 @@ export const compileEditorIntent = (
                 insertionAt.zeroWidthBefore ??
                 (insertionParagraph === undefined
                   ? 0
-                  : defaultInsertionGap(insertionParagraph.content, insertionAt.offset)
-                      .zeroWidthBefore),
+                  : defaultInsertionGap(
+                      insertionParagraph.content,
+                      insertionAt.offset,
+                    ).zeroWidthBefore),
             },
             tail?.content ?? [],
           ),
         };
       } else {
         const deleted = compileEditorIntent(document, {
-          intent: { type: "replaceText", from: intent.from, to: intent.to, text: "" },
+          intent: {
+            type: "replaceText",
+            from: intent.from,
+            to: intent.to,
+            text: "",
+          },
           mode,
         });
         if (deleted.isErr()) return deleted;
@@ -1079,7 +1257,8 @@ export const compileEditorIntent = (
           ...deleted.value.selection,
           zeroWidthBefore:
             deleted.value.selection.zeroWidthBefore ??
-            defaultInsertionGap(destination.content, intent.from.offset).zeroWidthBefore,
+            defaultInsertionGap(destination.content, intent.from.offset)
+              .zeroWidthBefore,
         };
         for (const paragraph of leading) {
           if (paragraph.content.length > 0)
@@ -1112,7 +1291,12 @@ export const compileEditorIntent = (
             newParagraph,
             ...allocationFields,
           });
-          at = { story: at.story, blockId: at.blockId, offset: 0, zeroWidthBefore: 0 };
+          at = {
+            story: at.story,
+            blockId: at.blockId,
+            offset: 0,
+            zeroWidthBefore: 0,
+          };
         }
         if (tail !== undefined && tail.content.length > 0)
           ops.push({
@@ -1129,7 +1313,11 @@ export const compileEditorIntent = (
           ),
         };
       }
-      if (mode.type === "editing" && intent.openStart === 1 && leading.length > 0) {
+      if (
+        mode.type === "editing" &&
+        intent.openStart === 1 &&
+        leading.length > 0
+      ) {
         const first = leading.at(0);
         if (first?.paraId === undefined)
           panic("An identified leading clipboard paragraph must have an id.");
@@ -1145,9 +1333,14 @@ export const compileEditorIntent = (
       if (tail !== undefined) {
         const applied = applyDocumentOps(document, ops);
         if (applied.isErr()) return Result.err(applied.error);
-        const trailing = editorParagraphGroups(applied.value.document, selection.story)
+        const trailing = editorParagraphGroups(
+          applied.value.document,
+          selection.story,
+        )
           .find(({ paragraphs: group }) =>
-            group.some(({ paraId }) => idKey(paraId ?? "") === idKey(selection.blockId)),
+            group.some(
+              ({ paraId }) => idKey(paraId ?? "") === idKey(selection.blockId),
+            ),
           )
           ?.paragraphs.at(-1);
         const trailingMarkAt =
@@ -1176,7 +1369,9 @@ export const compileEditorIntent = (
         )
           continue;
         const blockId =
-          index === paragraphs.length - 1 ? selection.blockId : (paragraph.paraId ?? "");
+          index === paragraphs.length - 1
+            ? selection.blockId
+            : (paragraph.paraId ?? "");
         const applied = applyDocumentOps(document, ops);
         if (applied.isErr()) return Result.err(applied.error);
         const current = paragraphAt(applied.value.document, {
@@ -1184,7 +1379,8 @@ export const compileEditorIntent = (
           blockId,
           offset: 0,
         });
-        if (current === undefined) panic("An allocated clipboard paragraph must remain present.");
+        if (current === undefined)
+          panic("An allocated clipboard paragraph must remain present.");
         if (paragraph.pPrMark !== undefined && current.pPrMark !== undefined) {
           return Result.err(
             new DocumentOpRefusal({
@@ -1208,15 +1404,19 @@ export const compileEditorIntent = (
           return Result.err(
             new DocumentOpRefusal({
               reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-              message: "Copied paragraph review cannot replace a pre-existing destination review.",
+              message:
+                "Copied paragraph review cannot replace a pre-existing destination review.",
               opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
             }),
           );
-        const changes = [...(paragraph.propertyChanges ?? current.propertyChanges ?? [])];
+        const changes = [
+          ...(paragraph.propertyChanges ?? current.propertyChanges ?? []),
+        ];
         if (paragraph.pPrMark !== undefined || copiedChange !== undefined) {
           const review = reviewFieldsOf(current);
           if (changes.length > 0) review.propertyChanges = changes;
-          if (paragraph.pPrMark !== undefined) review.pPrMark = paragraph.pPrMark;
+          if (paragraph.pPrMark !== undefined)
+            review.pPrMark = paragraph.pPrMark;
           ops.push({
             type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
             story: selection.story,
@@ -1231,7 +1431,11 @@ export const compileEditorIntent = (
             endpoint: { type: "paragraph", blockId },
             expected:
               current.sectionProperties === undefined
-                ? { type: Object.hasOwn(current, "sectionProperties") ? "undefined" : "omitted" }
+                ? {
+                    type: Object.hasOwn(current, "sectionProperties")
+                      ? "undefined"
+                      : "omitted",
+                  }
                 : { type: "present", value: current.sectionProperties },
             properties: { type: "present", value: paragraph.sectionProperties },
           });
@@ -1240,7 +1444,10 @@ export const compileEditorIntent = (
       if (mode.type === "editing" && tail !== undefined) {
         const width = paragraphLength(tail);
         if (width > 0)
-          for (const offset of new Set([selection.offset, selection.offset - width]))
+          for (const offset of new Set([
+            selection.offset,
+            selection.offset - width,
+          ]))
             if (offset >= 0) editedSeams.push({ ...selection, offset });
       }
       // A closed paragraph payload ends outside that paragraph. Match the
@@ -1252,9 +1459,12 @@ export const compileEditorIntent = (
         endpoint !== undefined &&
         intent.to.offset === paragraphLength(endpoint)
       ) {
-        const bodyParagraphs = storyParagraphs(storyBody(document, intent.to.story));
+        const bodyParagraphs = storyParagraphs(
+          storyBody(document, intent.to.story),
+        );
         const endLocation = bodyParagraphs.find(
-          ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(intent.to.blockId),
+          ({ paragraph }) =>
+            idKey(paragraph.paraId ?? "") === idKey(intent.to.blockId),
         );
         const following = bodyParagraphs.find(
           (location) =>
@@ -1280,7 +1490,8 @@ export const compileEditorIntent = (
         intent.from.zeroWidthBefore ??
         (sourceParagraph === undefined
           ? 0
-          : zeroWidthLeavesAt(sourceParagraph.content, intent.from.offset).length);
+          : zeroWidthLeavesAt(sourceParagraph.content, intent.from.offset)
+              .length);
       const toGap = intent.to.zeroWidthBefore ?? 0;
       if (
         idKey(intent.from.blockId) === idKey(intent.to.blockId) &&
@@ -1289,7 +1500,8 @@ export const compileEditorIntent = (
       ) {
         if (
           fromGap > toGap &&
-          (intent.from.zeroWidthBefore !== undefined || intent.to.zeroWidthBefore !== undefined)
+          (intent.from.zeroWidthBefore !== undefined ||
+            intent.to.zeroWidthBefore !== undefined)
         ) {
           return Result.err(
             new DocumentOpRefusal({
@@ -1303,7 +1515,10 @@ export const compileEditorIntent = (
       }
       const locations = storyParagraphs(storyBody(document, intent.from.story));
       const indexOf = (at: TextPosition) =>
-        locations.findIndex(({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(at.blockId));
+        locations.findIndex(
+          ({ paragraph }) =>
+            idKey(paragraph.paraId ?? "") === idKey(at.blockId),
+        );
       const first = indexOf(intent.from);
       const last = indexOf(intent.to);
       const targetIndex = indexOf(intent.target);
@@ -1313,16 +1528,24 @@ export const compileEditorIntent = (
           paragraphAt(document, intent.target)?.content ?? [],
           intent.target.offset,
         ).zeroWidthBefore;
-      const targetPosition = { offset: intent.target.offset, zeroWidthBefore: targetGap };
+      const targetPosition = {
+        offset: intent.target.offset,
+        zeroWidthBefore: targetGap,
+      };
       if (
         intent.target.story === intent.from.story &&
         targetIndex >= first &&
         targetIndex <= last &&
         (targetIndex !== first ||
-          compareGaps(targetPosition, { offset: intent.from.offset, zeroWidthBefore: fromGap }) >=
-            0) &&
+          compareGaps(targetPosition, {
+            offset: intent.from.offset,
+            zeroWidthBefore: fromGap,
+          }) >= 0) &&
         (targetIndex !== last ||
-          compareGaps(targetPosition, { offset: intent.to.offset, zeroWidthBefore: toGap }) <= 0)
+          compareGaps(targetPosition, {
+            offset: intent.to.offset,
+            zeroWidthBefore: toGap,
+          }) <= 0)
       ) {
         // Moving into the selected range is an explicit no-op, including its edges.
         return Result.ok({ ops: [], selection: intent.target });
@@ -1340,8 +1563,10 @@ export const compileEditorIntent = (
             ? { offset: intent.to.offset, zeroWidthBefore: toGap }
             : {
                 offset: paragraphLength(paragraph),
-                zeroWidthBefore: zeroWidthLeavesAt(paragraph.content, paragraphLength(paragraph))
-                  .length,
+                zeroWidthBefore: zeroWidthLeavesAt(
+                  paragraph.content,
+                  paragraphLength(paragraph),
+                ).length,
               };
         for (const span of leafSpans(paragraph.content)) {
           if (
@@ -1359,7 +1584,12 @@ export const compileEditorIntent = (
         }
       }
       const deleted = compileEditorIntent(document, {
-        intent: { type: "replaceText", from: intent.from, to: intent.to, text: "" },
+        intent: {
+          type: "replaceText",
+          from: intent.from,
+          to: intent.to,
+          text: "",
+        },
         mode,
       });
       if (deleted.isErr()) return deleted;
@@ -1378,19 +1608,29 @@ export const compileEditorIntent = (
                         offset: right.from.offset,
                         zeroWidthBefore: right.from.zeroWidthBefore ?? 0,
                       },
-                      { offset: left.from.offset, zeroWidthBefore: left.from.zeroWidthBefore ?? 0 },
+                      {
+                        offset: left.from.offset,
+                        zeroWidthBefore: left.from.zeroWidthBefore ?? 0,
+                      },
                     ),
                 ),
-              ...deleted.value.ops.filter((op) => op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE),
+              ...deleted.value.ops.filter(
+                (op) => op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE,
+              ),
             ];
       const anchors = new Set(anchorDeletions);
       const deletionOps: DocumentOp[] = [];
+      const movedNoteBodies: DocumentOp[] = [];
       let afterDeletion = document;
       for (const planned of logicalDeletions) {
         let op = planned;
-        if (planned.type === DOCUMENT_OP_TYPES.DELETE_RANGE && anchors.has(planned)) {
+        if (
+          planned.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+          anchors.has(planned)
+        ) {
           const paragraph = paragraphAt(afterDeletion, planned.from);
-          if (paragraph === undefined) panic("A move anchor lost its selected paragraph.");
+          if (paragraph === undefined)
+            panic("A move anchor lost its selected paragraph.");
           op = {
             type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
             story: planned.from.story,
@@ -1398,8 +1638,14 @@ export const compileEditorIntent = (
             expected: paragraph.content,
             content: deleteBetween(
               paragraph.content,
-              { offset: planned.from.offset, zeroWidthBefore: planned.from.zeroWidthBefore ?? 0 },
-              { offset: planned.to.offset, zeroWidthBefore: planned.to.zeroWidthBefore ?? 0 },
+              {
+                offset: planned.from.offset,
+                zeroWidthBefore: planned.from.zeroWidthBefore ?? 0,
+              },
+              {
+                offset: planned.to.offset,
+                zeroWidthBefore: planned.to.zeroWidthBefore ?? 0,
+              },
             ).content,
           };
         }
@@ -1407,6 +1653,41 @@ export const compileEditorIntent = (
         if (applied.isErr()) return Result.err(applied.error);
         afterDeletion = applied.value.document;
         deletionOps.push(op);
+        for (const inverse of applied.value.inverse) {
+          if (
+            inverse.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
+            (inverse.parts.footnotes !== undefined ||
+              inverse.parts.endnotes !== undefined)
+          )
+            movedNoteBodies.push({
+              type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+              expected: {
+                ...(inverse.expected.footnotes === undefined
+                  ? {}
+                  : { footnotes: inverse.expected.footnotes }),
+                ...(inverse.expected.endnotes === undefined
+                  ? {}
+                  : { endnotes: inverse.expected.endnotes }),
+              },
+              parts: {
+                ...(inverse.parts.footnotes === undefined
+                  ? {}
+                  : { footnotes: inverse.parts.footnotes }),
+                ...(inverse.parts.endnotes === undefined
+                  ? {}
+                  : { endnotes: inverse.parts.endnotes }),
+              },
+            });
+        }
+      }
+      if (movedNoteBodies.length > 0) {
+        // Each restoration expects the note parts its own deletion left, so
+        // they undo the deletions newest first.
+        const restorations = movedNoteBodies.toReversed();
+        const restored = applyDocumentOps(afterDeletion, restorations);
+        if (restored.isErr()) return Result.err(restored.error);
+        afterDeletion = restored.value.document;
+        deletionOps.push(...restorations);
       }
       let target = intent.target;
       for (const op of logicalDeletions) {
@@ -1424,12 +1705,14 @@ export const compileEditorIntent = (
           const deletionToGap = op.to.zeroWidthBefore ?? 0;
           const deletionTargetGap =
             target.zeroWidthBefore ??
-            defaultInsertionGap(source?.content ?? [], target.offset).zeroWidthBefore;
+            defaultInsertionGap(source?.content ?? [], target.offset)
+              .zeroWidthBefore;
           const rebased = Object.assign({}, target, {
             offset: target.offset - (op.to.offset - op.from.offset),
           });
           if (target.offset === op.to.offset)
-            rebased.zeroWidthBefore = deletionFromGap + deletionTargetGap - deletionToGap;
+            rebased.zeroWidthBefore =
+              deletionFromGap + deletionTargetGap - deletionToGap;
           target = rebased;
         }
         if (
@@ -1445,12 +1728,23 @@ export const compileEditorIntent = (
           idKey(target.blockId) === idKey(op.nextBlockId) &&
           target.story === op.story
         ) {
-          const prefix = paragraphAt(document, { story: op.story, blockId: op.blockId, offset: 0 });
+          const prefix = paragraphAt(document, {
+            story: op.story,
+            blockId: op.blockId,
+            offset: 0,
+          });
           const remaining =
-            idKey(op.blockId) === idKey(intent.from.blockId) ? intent.from.offset : 0;
+            idKey(op.blockId) === idKey(intent.from.blockId)
+              ? intent.from.offset
+              : 0;
           if (prefix !== undefined) {
-            const rebased = Object.assign({}, target, { offset: target.offset + remaining });
-            if (target.offset === 0 && idKey(op.blockId) === idKey(intent.from.blockId))
+            const rebased = Object.assign({}, target, {
+              offset: target.offset + remaining,
+            });
+            if (
+              target.offset === 0 &&
+              idKey(op.blockId) === idKey(intent.from.blockId)
+            )
               rebased.zeroWidthBefore = fromGap + (target.zeroWidthBefore ?? 0);
             target = rebased;
           }
@@ -1460,7 +1754,9 @@ export const compileEditorIntent = (
         mode.type === "suggesting"
           ? intent.paragraphs.map((paragraph) =>
               Object.assign({}, paragraph, {
-                content: asParagraphContent(withoutMoveAnchors(paragraph.content)),
+                content: asParagraphContent(
+                  withoutMoveAnchors(paragraph.content),
+                ),
               }),
             )
           : intent.paragraphs;
@@ -1488,7 +1784,10 @@ export const compileEditorIntent = (
       const demand = tableEditParagraphDemand(located.value, operation);
       if (demand.isErr()) return Result.err(demand.error);
       const occupied = new Set(
-        [...packageParagraphIds(document.package), ...(mode.reservedBlockIds ?? [])].map(idKey),
+        [
+          ...packageParagraphIds(document.package),
+          ...(mode.reservedBlockIds ?? []),
+        ].map(idKey),
       );
       const newBlockIds: string[] = [];
       for (let nextId = 1; newBlockIds.length < demand.value; nextId += 1) {
@@ -1520,10 +1819,14 @@ export const compileEditorIntent = (
         const rows = located.value.table.rows.map((row, index) => ({
           ...row,
           cells: row.cells.filter((_cell, cellIndex) => {
-            const entry = grid.value.rows[index]?.find((cell) => cell.index === cellIndex);
+            const entry = grid.value.rows[index]?.find(
+              (cell) => cell.index === cellIndex,
+            );
             return (
               entry !== undefined &&
-              (entry.start > op.column || entry.end <= op.column || entry.end - entry.start > 1)
+              (entry.start > op.column ||
+                entry.end <= op.column ||
+                entry.end - entry.start > 1)
             );
           }),
         }));
@@ -1544,7 +1847,14 @@ export const compileEditorIntent = (
       }
       const applied = applyDocumentOp(document, op);
       if (applied.isErr()) return Result.err(applied.error);
-      ops = [trimAppliedNewIds({ before: document, op, applied: applied.value, story: op.story })];
+      ops = [
+        trimAppliedNewIds({
+          before: document,
+          op,
+          applied: applied.value,
+          story: op.story,
+        }),
+      ];
       selection = { story: op.story, blockId, offset: 0 };
       break;
     }
@@ -1559,7 +1869,9 @@ export const compileEditorIntent = (
           }),
         );
       const numId =
-        intent.target.type === "existing" ? intent.target.numId : intent.target.num.numId;
+        intent.target.type === "existing"
+          ? intent.target.numId
+          : intent.target.num.numId;
       if (
         !Number.isInteger(numId) ||
         !isNumberingReference(numId) ||
@@ -1634,7 +1946,9 @@ export const compileEditorIntent = (
         {
           type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
           story: intent.at.story,
-          blockId: createParagraphMarkOwnerLookup(document)(intent.at)?.paraId ?? intent.at.blockId,
+          blockId:
+            createParagraphMarkOwnerLookup(document)(intent.at)?.paraId ??
+            intent.at.blockId,
           patch: intent.patch,
           ...(mode.type === "suggesting"
             ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }
@@ -1643,10 +1957,16 @@ export const compileEditorIntent = (
         },
       ];
       if (mode.type === "suggesting") {
-        const plan = createTrackedPlan({ document, revision: mode.revision, newIds: mode.newIds });
+        const plan = createTrackedPlan({
+          document,
+          revision: mode.revision,
+          newIds: mode.newIds,
+        });
         for (const op of ops) {
           if (op.type !== DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS)
-            panic("A paragraph-format intent compiled to a different operation.");
+            panic(
+              "A paragraph-format intent compiled to a different operation.",
+            );
           const appended = plan.append(op);
           if (appended.isErr()) return Result.err(appended.error);
         }
@@ -1656,7 +1976,11 @@ export const compileEditorIntent = (
       break;
     }
     case "formatRun": {
-      const partitioned = selectedParagraphRuns(document, intent.from, intent.to);
+      const partitioned = selectedParagraphRuns(
+        document,
+        intent.from,
+        intent.to,
+      );
       if (partitioned.isErr()) return Result.err(partitioned.error);
       ops = partitioned.value.flatMap((run) =>
         run.map(({ paragraph }) => {
@@ -1670,7 +1994,11 @@ export const compileEditorIntent = (
             to:
               idKey(blockId) === idKey(intent.to.blockId)
                 ? intent.to
-                : { story: intent.to.story, blockId, offset: paragraphLength(paragraph) },
+                : {
+                    story: intent.to.story,
+                    blockId,
+                    offset: paragraphLength(paragraph),
+                  },
             patch: intent.patch,
             ...(mode.type === "suggesting"
               ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }
@@ -1681,7 +2009,11 @@ export const compileEditorIntent = (
         }),
       );
       if (mode.type === "suggesting") {
-        const plan = createTrackedPlan({ document, revision: mode.revision, newIds: mode.newIds });
+        const plan = createTrackedPlan({
+          document,
+          revision: mode.revision,
+          newIds: mode.newIds,
+        });
         for (const op of ops) {
           if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS)
             panic("A run-format intent compiled to a different operation.");
@@ -1719,7 +2051,9 @@ export const compileEditorIntent = (
         });
         if (planned.isErr()) return Result.err(planned.error);
         ops = planned.value;
-        const insertion = ops.findLast((op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT);
+        const insertion = ops.findLast(
+          (op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT,
+        );
         selection =
           insertion?.type === DOCUMENT_OP_TYPES.INSERT_CONTENT
             ? { ...insertion.at, offset: insertion.at.offset + 1 }
@@ -1727,7 +2061,12 @@ export const compileEditorIntent = (
         break;
       }
       const deletion = compileEditorIntent(document, {
-        intent: { type: "replaceText", from: intent.from, to: intent.to, text: "" },
+        intent: {
+          type: "replaceText",
+          from: intent.from,
+          to: intent.to,
+          text: "",
+        },
         mode,
       });
       if (deletion.isErr()) return deletion;
@@ -1754,7 +2093,8 @@ export const compileEditorIntent = (
       break;
     }
     case "replaceText": {
-      const { from, to, text } = intent;
+      const { text } = intent;
+      let { from, to } = intent;
       const paragraph = paragraphAt(document, from);
       if (paragraph === undefined) {
         return Result.err(
@@ -1764,6 +2104,46 @@ export const compileEditorIntent = (
             opType: DOCUMENT_OP_TYPES.INSERT_TEXT,
           }),
         );
+      }
+      if (idKey(from.blockId) === idKey(to.blockId)) {
+        const fromGap = {
+          offset: from.offset,
+          zeroWidthBefore:
+            from.zeroWidthBefore ??
+            zeroWidthLeavesAt(paragraph.content, from.offset).length,
+        };
+        const toGap = {
+          offset: to.offset,
+          zeroWidthBefore: to.zeroWidthBefore ?? 0,
+        };
+        // Every leaf the selection touches, including a partly selected text leaf.
+        const selected = leafSpans(paragraph.content).filter(
+          ({ before, after }) =>
+            compareGaps(before, toGap) < 0 && compareGaps(fromGap, after) < 0,
+        );
+        const marker = selected.find(({ node }) => node.type === "noteMarker");
+        if (
+          marker !== undefined &&
+          selected.every(
+            ({ node, ancestors }) =>
+              node.type === "noteMarker" ||
+              ancestors.some(isRemovedRevisionNode),
+          )
+        ) {
+          // Only an empty replacement is a no-op: typed text over the protected marker
+          // is an insertion right after it, in both modes.
+          if (text.length === 0)
+            return Result.err(
+              new DocumentOpRefusal({
+                reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+                message:
+                  "The range contains only the note story's automatic marker.",
+                opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+              }),
+            );
+          from = { ...from, ...marker.after };
+          to = from;
+        }
       }
       const runProps = intentRunFormatting(document, intent);
       // Both modes insert the same authored run; source XML attributes belong
@@ -1819,7 +2199,8 @@ export const compileEditorIntent = (
         text.length > 0 &&
         (from.zeroWidthBefore ?? 0) > 0 &&
         !(document.package.document.comments ?? []).some(
-          ({ parentId, anchorKind }) => parentId === undefined && anchorKind !== "range",
+          ({ parentId, anchorKind }) =>
+            parentId === undefined && anchorKind !== "range",
         );
       if (replacesWholeParagraph) {
         ops = [
@@ -1834,7 +2215,8 @@ export const compileEditorIntent = (
               ),
               ...content,
               ...paragraph.content.filter(
-                (node) => isParagraphContent(node) && node.type === "commentReference",
+                (node) =>
+                  isParagraphContent(node) && node.type === "commentReference",
               ),
             ],
           },
@@ -1851,10 +2233,12 @@ export const compileEditorIntent = (
       ) {
         const partitioned = selectedParagraphRuns(document, from, to);
         if (partitioned.isErr()) return Result.err(partitioned.error);
-        survivorId = partitioned.value.at(0)?.at(-1)?.paragraph.paraId ?? from.blockId;
+        survivorId =
+          partitioned.value.at(0)?.at(-1)?.paragraph.paraId ?? from.blockId;
         for (const run of partitioned.value.toReversed()) {
           const last = run.at(-1)?.paragraph;
-          if (!last) panic("A selected paragraph run must contain its survivor.");
+          if (!last)
+            panic("A selected paragraph run must contain its survivor.");
           for (const { paragraph: item } of run.toReversed()) {
             const blockId = item.paraId ?? "";
             const start =
@@ -1868,16 +2252,23 @@ export const compileEditorIntent = (
                     story: from.story,
                     blockId,
                     offset: paragraphLength(item),
-                    zeroWidthBefore: zeroWidthLeavesAt(item.content, paragraphLength(item)).length,
+                    zeroWidthBefore: zeroWidthLeavesAt(
+                      item.content,
+                      paragraphLength(item),
+                    ).length,
                   };
             const segments = replacementDeletionSegments({
               spans: leafSpans(item.content),
               from: {
                 offset: start.offset,
                 zeroWidthBefore:
-                  start.zeroWidthBefore ?? zeroWidthLeavesAt(item.content, start.offset).length,
+                  start.zeroWidthBefore ??
+                  zeroWidthLeavesAt(item.content, start.offset).length,
               },
-              to: { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
+              to: {
+                offset: end.offset,
+                zeroWidthBefore: end.zeroWidthBefore ?? 0,
+              },
               mode: { type: "editing" },
             });
             for (const segment of segments.toReversed()) {
@@ -1943,10 +2334,19 @@ export const compileEditorIntent = (
         break;
       }
       if (mode.type === "suggesting") {
-        const plan = createTrackedPlan({ document, revision: mode.revision, newIds: mode.newIds });
+        const plan = createTrackedPlan({
+          document,
+          revision: mode.revision,
+          newIds: mode.newIds,
+        });
         const deletion = appendTrackedDeletion({
           document,
-          options: { from: intent.at, to: intent.to, revision: mode.revision, newIds: mode.newIds },
+          options: {
+            from: intent.at,
+            to: intent.to,
+            revision: mode.revision,
+            newIds: mode.newIds,
+          },
           plan,
         });
         if (deletion.isErr()) return Result.err(deletion.error);
@@ -1971,7 +2371,12 @@ export const compileEditorIntent = (
         break;
       }
       const deletion = compileEditorIntent(document, {
-        intent: { type: "replaceText", from: intent.at, to: intent.to, text: "" },
+        intent: {
+          type: "replaceText",
+          from: intent.at,
+          to: intent.to,
+          text: "",
+        },
         mode,
       });
       if (deletion.isErr()) return deletion;
@@ -1984,11 +2389,18 @@ export const compileEditorIntent = (
           at: deletion.value.selection,
           newBlockId: intent.newBlockId,
           newHalf: SPLIT_HALVES.FIRST,
-          newParagraph: splitParagraphFields(deleted.value.document, deletion.value.selection),
+          newParagraph: splitParagraphFields(
+            deleted.value.document,
+            deletion.value.selection,
+          ),
           ...allocationFields,
         },
       ];
-      selection = { ...deletion.value.selection, offset: 0, zeroWidthBefore: 0 };
+      selection = {
+        ...deletion.value.selection,
+        offset: 0,
+        zeroWidthBefore: 0,
+      };
       break;
     }
     case "joinParagraphs": {
@@ -1996,7 +2408,8 @@ export const compileEditorIntent = (
       const paragraph = paragraphAt(document, at);
       const ownInsertedMark =
         mode.type === "suggesting" &&
-        (paragraph?.pPrMark?.kind === "ins" || paragraph?.pPrMark?.kind === "moveTo") &&
+        (paragraph?.pPrMark?.kind === "ins" ||
+          paragraph?.pPrMark?.kind === "moveTo") &&
         paragraph.pPrMark.info.author === mode.revision.author;
       const join = {
         type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
@@ -2007,7 +2420,11 @@ export const compileEditorIntent = (
         ...(ownInsertedMark ? {} : tracked),
       } as const;
       if (mode.type === "suggesting") {
-        const plan = createTrackedPlan({ document, revision: mode.revision, newIds: mode.newIds });
+        const plan = createTrackedPlan({
+          document,
+          revision: mode.revision,
+          newIds: mode.newIds,
+        });
         const joined = plan.append(join);
         if (joined.isErr()) return Result.err(joined.error);
         if (ownInsertedMark) {
@@ -2023,7 +2440,8 @@ export const compileEditorIntent = (
             blockId: intent.nextBlockId,
             offset: 0,
           });
-          if (!before || !after) panic("An own-mark join lost its trailing paragraph.");
+          if (!before || !after)
+            panic("An own-mark join lost its trailing paragraph.");
           const restored = plan.append({
             type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
             story: intent.story,
@@ -2033,7 +2451,9 @@ export const compileEditorIntent = (
               ...Object.entries(before.formatting ?? {}),
             ]),
             whenEmpty:
-              before.formatting === undefined ? EMPTY_PROPERTY_SETS.OMIT : EMPTY_PROPERTY_SETS.KEEP,
+              before.formatting === undefined
+                ? EMPTY_PROPERTY_SETS.OMIT
+                : EMPTY_PROPERTY_SETS.KEEP,
           });
           if (restored.isErr()) return Result.err(restored.error);
         }
@@ -2052,7 +2472,10 @@ export const compileEditorIntent = (
         ops = [join];
       }
       let offset = 0;
-      if ((mode.type === "editing" || ownInsertedMark) && paragraph !== undefined) {
+      if (
+        (mode.type === "editing" || ownInsertedMark) &&
+        paragraph !== undefined
+      ) {
         offset = paragraphLength(paragraph);
       }
       selection = { story: intent.story, blockId: intent.nextBlockId, offset };
@@ -2074,11 +2497,19 @@ export const compileEditorIntent = (
     for (const input of ops) {
       const op = filterNewIds(
         input,
-        (space, id) => !(space === IDENTITY_SPACES.REVISION ? takenRevision : takenControl).has(id),
+        (space, id) =>
+          !(
+            space === IDENTITY_SPACES.REVISION ? takenRevision : takenControl
+          ).has(id),
       );
       const applied = applyDocumentOp(current, op);
       if (applied.isErr()) return Result.err(applied.error);
-      const trimmed = trimAppliedNewIds({ before: current, op, applied: applied.value, story });
+      const trimmed = trimAppliedNewIds({
+        before: current,
+        op,
+        applied: applied.value,
+        story,
+      });
       if ("newIds" in trimmed) {
         for (const id of trimmed.newIds?.revision ?? []) takenRevision.add(id);
         for (const id of trimmed.newIds?.control ?? []) takenControl.add(id);
@@ -2087,7 +2518,11 @@ export const compileEditorIntent = (
       current = applied.value.document;
     }
     if (intent.type === "joinParagraphs") {
-      const alignment = joinParagraphPropertyAlignment({ document, current, intent });
+      const alignment = joinParagraphPropertyAlignment({
+        document,
+        current,
+        intent,
+      });
       if (alignment !== undefined) {
         const aligned = applyDocumentOp(current, alignment);
         if (aligned.isErr()) return Result.err(aligned.error);
@@ -2095,15 +2530,20 @@ export const compileEditorIntent = (
         current = aligned.value.document;
       }
     }
-    const insertedWidth = intent.type === "replaceText" ? intent.text.length : 0;
+    const insertedWidth =
+      intent.type === "replaceText" ? intent.text.length : 0;
     if (insertedWidth > 0) {
-      for (const offset of new Set([selection.offset, selection.offset - insertedWidth]))
+      for (const offset of new Set([
+        selection.offset,
+        selection.offset - insertedWidth,
+      ]))
         if (offset >= 0) editedSeams.push({ ...selection, offset });
     }
     // Merge only the edited seams, keeping every authored interior run boundary.
     for (const at of editedSeams) {
       const paragraph = paragraphAt(current, at);
-      if (paragraph === undefined) panic("An edited paragraph must exist at its seam.");
+      if (paragraph === undefined)
+        panic("An edited paragraph must exist at its seam.");
       const depth = textSeamDepth(paragraph, at.offset);
       if (depth === 0) continue;
       const join = { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth } as const;

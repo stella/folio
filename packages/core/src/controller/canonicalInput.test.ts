@@ -1,3 +1,4 @@
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import {
   afterAll,
   afterEach,
@@ -8,14 +9,15 @@ import {
   test,
 } from "bun:test";
 import fc from "fast-check";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { Fragment, Schema, Slice } from "prosemirror-model";
-import { ReplaceStep } from "prosemirror-transform";
 import { EditorState, TextSelection } from "prosemirror-state";
+import { ReplaceStep } from "prosemirror-transform";
 import { EditorView } from "prosemirror-view";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createCanonicalInputBoundary } from "./canonicalInput";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -68,18 +70,24 @@ const createRig = (from = 2, to = from) => {
       return true;
     },
   });
-  const doc = schema.node("doc", null, [schema.node("paragraph", null, schema.text("A😀B"))]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, schema.text("A😀B")),
+  ]);
   const mount = document.createElement("div");
   document.body.append(mount);
   const view = new EditorView(mount, {
-    state: EditorState.create({ doc, selection: TextSelection.create(doc, from, to) }),
+    state: EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, from, to),
+    }),
     handleTextInput: boundary.handleTextInput,
     handleKeyDown: boundary.handleKeyDown,
     handleDOMEvents: boundary.handleDOMEvents,
     dispatchTransaction(transaction) {
       if (boundary.acceptComposition(view, transaction)) return;
       if (transaction.docChanged) {
-        if (!boundary.commitNativeProposal(view, transaction)) boundary.refuseNativeMutation(view);
+        if (!boundary.commitNativeProposal(view, transaction))
+          boundary.refuseNativeMutation(view);
         view.updateState(view.state);
         return;
       }
@@ -87,7 +95,15 @@ const createRig = (from = 2, to = from) => {
     },
   });
   views.push(view);
-  return { boundary, view, inputs, refusals, history, compositionTransitions, groupBoundaries };
+  return {
+    boundary,
+    view,
+    inputs,
+    refusals,
+    history,
+    compositionTransitions,
+    groupBoundaries,
+  };
 };
 
 beforeAll(() => GlobalRegistrator.register());
@@ -129,8 +145,15 @@ describe("canonical input boundary", () => {
       expect(boundary.handleKeyDown(view, event)).toBe(true);
       expect(event.defaultPrevented).toBe(true);
     }
-    for (const inputType of ["insertParagraph", "insertLineBreak", "deleteContentBackward"]) {
-      const event = new InputEvent("beforeinput", { inputType, cancelable: true });
+    for (const inputType of [
+      "insertParagraph",
+      "insertLineBreak",
+      "deleteContentBackward",
+    ]) {
+      const event = new InputEvent("beforeinput", {
+        inputType,
+        cancelable: true,
+      });
       expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
       expect(event.defaultPrevented).toBe(true);
     }
@@ -147,7 +170,10 @@ describe("canonical input boundary", () => {
     expect(commands).toEqual(["toggleBold"]);
     expect(inputs).toEqual([]);
     expect(
-      boundary.takeNativeProposal(view.state, view.state.tr.insertText("foreign", 1)),
+      boundary.takeNativeProposal(
+        view.state,
+        view.state.tr.insertText("foreign", 1),
+      ),
     ).toBeNull();
   });
 
@@ -166,7 +192,10 @@ describe("canonical input boundary", () => {
         (modifiers) => {
           const { view } = createRig();
           // PM's public native composition state can precede our compositionstart lifecycle.
-          Object.defineProperty(view, "composing", { value: true, configurable: true });
+          Object.defineProperty(view, "composing", {
+            value: true,
+            configurable: true,
+          });
           const before = view.state;
           const structures: string[] = [];
           const commands: string[] = [];
@@ -184,7 +213,8 @@ describe("canonical input boundary", () => {
               return true;
             },
             endComposition: () => transitions.push("end"),
-            refuse: (reason) => refusalCounts.set(reason, (refusalCounts.get(reason) ?? 0) + 1),
+            refuse: (reason) =>
+              refusalCounts.set(reason, (refusalCounts.get(reason) ?? 0) + 1),
             undo: () => {
               history.push("undo");
               return true;
@@ -212,7 +242,10 @@ describe("canonical input boundary", () => {
             expect(transitions).toEqual([]);
             expect(history).toEqual([]);
             expect([...refusalCounts]).toEqual([
-              ["Paragraph structure edits are unavailable during composition.", index + 1],
+              [
+                "Paragraph structure edits are unavailable during composition.",
+                index + 1,
+              ],
             ]);
           }
           expect(prevented).toBe(modifiers.length);
@@ -226,7 +259,15 @@ describe("canonical input boundary", () => {
     );
   });
 
-  test.each(["keydown", "mousedown", "blur", "paste", "cut", "drop", "compositionstart"] as const)(
+  test.each([
+    "keydown",
+    "mousedown",
+    "blur",
+    "paste",
+    "cut",
+    "drop",
+    "compositionstart",
+  ] as const)(
     "%s expires the preceding gesture's native proposal",
     (gesture) => {
       const { boundary, view, inputs } = createRig();
@@ -239,9 +280,15 @@ describe("canonical input boundary", () => {
       );
       const proposed = view.state.tr.insertText("x", 2);
       if (gesture === "keydown")
-        boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+        boundary.handleKeyDown(
+          view,
+          new KeyboardEvent("keydown", { key: "ArrowLeft" }),
+        );
       else if (gesture === "paste" || gesture === "cut" || gesture === "drop")
-        boundary.handleDOMEvents[gesture](view, new Event(gesture, { cancelable: true }));
+        boundary.handleDOMEvents[gesture](
+          view,
+          new Event(gesture, { cancelable: true }),
+        );
       else boundary.handleDOMEvents[gesture](view);
       expect(boundary.takeNativeProposal(view.state, proposed)).toBeNull();
       expect(inputs).toEqual([]);
@@ -264,7 +311,11 @@ describe("canonical input boundary", () => {
       },
     });
     const before = view.state;
-    const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true });
+    const event = new KeyboardEvent("keydown", {
+      key: "Tab",
+      shiftKey: true,
+      cancelable: true,
+    });
     expect(boundary.handleKeyDown(view, event)).toBe(true);
     expect(event.defaultPrevented).toBe(true);
     expect(structures).toEqual([]);
@@ -293,9 +344,15 @@ describe("canonical input boundary", () => {
       boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key }));
     }
     expect(groupBoundaries).toHaveLength(3);
-    boundary.handleDOMEvents.paste(view, new Event("paste", { cancelable: true }));
+    boundary.handleDOMEvents.paste(
+      view,
+      new Event("paste", { cancelable: true }),
+    );
     boundary.handleDOMEvents.cut(view, new Event("cut", { cancelable: true }));
-    boundary.handleDOMEvents.drop(view, new Event("drop", { cancelable: true }));
+    boundary.handleDOMEvents.drop(
+      view,
+      new Event("drop", { cancelable: true }),
+    );
     expect(groupBoundaries).toHaveLength(6);
   });
 
@@ -309,7 +366,10 @@ describe("canonical input boundary", () => {
       { key: "Delete", altKey: true },
     ];
     for (const [index, gesture] of gestures.entries()) {
-      const event = new KeyboardEvent("keydown", { ...gesture, cancelable: true });
+      const event = new KeyboardEvent("keydown", {
+        ...gesture,
+        cancelable: true,
+      });
       expect(boundary.handleKeyDown(view, event)).toBe(true);
       expect(event.defaultPrevented).toBe(true);
       expect(groupBoundaries).toHaveLength(index + 1);
@@ -335,7 +395,11 @@ describe("canonical input boundary", () => {
     const { boundary, view, inputs, refusals } = createRig();
     boundary.handleDOMEvents.beforeinput(
       view,
-      new InputEvent("beforeinput", { inputType: "insertText", data: "a", cancelable: true }),
+      new InputEvent("beforeinput", {
+        inputType: "insertText",
+        data: "a",
+        cancelable: true,
+      }),
     );
     boundary.handleTextInput(view, 2, 2, "b");
     expect(inputs).toEqual([{ from: 2, to: 2, text: "a", semantic: "typing" }]);
@@ -360,27 +424,35 @@ describe("canonical input boundary", () => {
     { key: "Backspace", from: 4, to: 4 },
     { key: "Delete", from: 2, to: 2 },
     { key: "Delete", from: 2, to: 4 },
-  ])("$key deletes complete code points or the selection", ({ key, from, to }) => {
-    const { boundary, view, inputs } = createRig(from, to);
-    const event = new KeyboardEvent("keydown", { key, cancelable: true });
-    expect(boundary.handleKeyDown(view, event)).toBe(true);
-    expect(event.defaultPrevented).toBe(true);
-    expect(inputs).toEqual([
-      {
-        from: 2,
-        to: 4,
-        text: "",
-        semantic: key === "Backspace" ? "deleteBackward" : "deleteForward",
-      },
-    ]);
-    expect(view.state.doc.textContent).toBe("A😀B");
-  });
+  ])(
+    "$key deletes complete code points or the selection",
+    ({ key, from, to }) => {
+      const { boundary, view, inputs } = createRig(from, to);
+      const event = new KeyboardEvent("keydown", { key, cancelable: true });
+      expect(boundary.handleKeyDown(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+      expect(inputs).toEqual([
+        {
+          from: 2,
+          to: 4,
+          text: "",
+          semantic: key === "Backspace" ? "deleteBackward" : "deleteForward",
+        },
+      ]);
+      expect(view.state.doc.textContent).toBe("A😀B");
+    },
+  );
 
   test.each(["deleteContentBackward", "deleteContentForward"])(
     "%s beforeinput emits one complete-character deletion",
     (inputType) => {
-      const { boundary, view, inputs } = createRig(inputType.endsWith("Backward") ? 4 : 2);
-      const event = new InputEvent("beforeinput", { inputType, cancelable: true });
+      const { boundary, view, inputs } = createRig(
+        inputType.endsWith("Backward") ? 4 : 2,
+      );
+      const event = new InputEvent("beforeinput", {
+        inputType,
+        cancelable: true,
+      });
       expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
       expect(event.defaultPrevented).toBe(true);
       expect(inputs).toEqual([
@@ -388,7 +460,9 @@ describe("canonical input boundary", () => {
           from: 2,
           to: 4,
           text: "",
-          semantic: inputType.endsWith("Backward") ? "deleteBackward" : "deleteForward",
+          semantic: inputType.endsWith("Backward")
+            ? "deleteBackward"
+            : "deleteForward",
         },
       ]);
     },
@@ -418,50 +492,66 @@ describe("canonical input boundary", () => {
     propose();
     const previous = view.state;
     view.updateState(
-      view.state.apply(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1))),
+      view.state.apply(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)),
+      ),
     );
-    expect(boundary.takeNativeProposal(view.state, previous.tr.insertText("x", 2, 4))).toBeNull();
+    expect(
+      boundary.takeNativeProposal(
+        view.state,
+        previous.tr.insertText("x", 2, 4),
+      ),
+    ).toBeNull();
   });
 
-  test.each(["text", "range", "mark", "extraStep", "structure", "structureFlag"])(
-    "a classified native insertion rejects a forged %s proposal",
-    (change) => {
-      const { boundary, view } = createRig(2, change === "structureFlag" ? 2 : 4);
-      boundary.handleDOMEvents.beforeinput(
-        view,
-        new InputEvent("beforeinput", {
-          inputType: "insertText",
-          data: "x",
-          cancelable: false,
-        }),
-      );
-      const transaction = view.state.tr;
-      switch (change) {
-        case "text":
-          transaction.insertText("y", 2, 4);
-          break;
-        case "range":
-          transaction.insertText("x", 1, 4);
-          break;
-        case "mark":
-          transaction.addStoredMark(schema.mark("strong")).insertText("x", 2, 4);
-          break;
-        case "extraStep":
-          transaction.insertText("x", 2, 4).insertText("z", 1);
-          break;
-        case "structure":
-          transaction.replaceWith(2, 4, schema.node("paragraph"));
-          break;
-        case "structureFlag":
-          transaction.step(
-            new ReplaceStep(2, 2, new Slice(Fragment.from(schema.text("x")), 0, 0), true),
-          );
-          break;
-      }
-      expect(boundary.takeNativeProposal(view.state, transaction)).toBeNull();
-      expect(view.state.doc.textContent).toBe("A😀B");
-    },
-  );
+  test.each([
+    "text",
+    "range",
+    "mark",
+    "extraStep",
+    "structure",
+    "structureFlag",
+  ])("a classified native insertion rejects a forged %s proposal", (change) => {
+    const { boundary, view } = createRig(2, change === "structureFlag" ? 2 : 4);
+    boundary.handleDOMEvents.beforeinput(
+      view,
+      new InputEvent("beforeinput", {
+        inputType: "insertText",
+        data: "x",
+        cancelable: false,
+      }),
+    );
+    const transaction = view.state.tr;
+    switch (change) {
+      case "text":
+        transaction.insertText("y", 2, 4);
+        break;
+      case "range":
+        transaction.insertText("x", 1, 4);
+        break;
+      case "mark":
+        transaction.addStoredMark(schema.mark("strong")).insertText("x", 2, 4);
+        break;
+      case "extraStep":
+        transaction.insertText("x", 2, 4).insertText("z", 1);
+        break;
+      case "structure":
+        transaction.replaceWith(2, 4, schema.node("paragraph"));
+        break;
+      case "structureFlag":
+        transaction.step(
+          new ReplaceStep(
+            2,
+            2,
+            new Slice(Fragment.from(schema.text("x")), 0, 0),
+            true,
+          ),
+        );
+        break;
+    }
+    expect(boundary.takeNativeProposal(view.state, transaction)).toBeNull();
+    expect(view.state.doc.textContent).toBe("A😀B");
+  });
 
   test("input flush expires an unused native proposal", async () => {
     const { boundary, view } = createRig();
@@ -475,7 +565,9 @@ describe("canonical input boundary", () => {
     );
     boundary.handleDOMEvents.input(view);
     await Promise.resolve();
-    expect(boundary.takeNativeProposal(view.state, view.state.tr.insertText("x", 2))).toBeNull();
+    expect(
+      boundary.takeNativeProposal(view.state, view.state.tr.insertText("x", 2)),
+    ).toBeNull();
   });
 
   test.each([
@@ -484,7 +576,8 @@ describe("canonical input boundary", () => {
   ])(
     "CJK composition at $from..$to lowers one net replacement",
     async ({ from, to, final, expectedTo }) => {
-      const { boundary, view, inputs, refusals, compositionTransitions } = createRig(from, to);
+      const { boundary, view, inputs, refusals, compositionTransitions } =
+        createRig(from, to);
       const baseline = view.state;
       expect(boundary.handleDOMEvents.compositionstart(view)).toBe(false);
       expect(boundary.isComposing).toBe(true);
@@ -495,17 +588,32 @@ describe("canonical input boundary", () => {
         cancelable: true,
         isComposing: true,
       });
-      expect(boundary.handleDOMEvents.beforeinput(view, provisional)).toBe(false);
-      expect(provisional.defaultPrevented).toBe(false);
-      view.dispatch(view.state.tr.insertText("契", from, to).setMeta("composition", 1));
-      view.dispatch(view.state.tr.insertText(final, from, from + 1).setMeta("composition", 1));
-      expect(view.state.doc.textContent).toBe(from === to ? "A契約😀B" : "A契約B");
-      expect(inputs).toEqual([]);
-      expect(boundary.handleDOMEvents.compositionend(view, new Event("compositionend"))).toBe(
+      expect(boundary.handleDOMEvents.beforeinput(view, provisional)).toBe(
         false,
       );
+      expect(provisional.defaultPrevented).toBe(false);
+      view.dispatch(
+        view.state.tr.insertText("契", from, to).setMeta("composition", 1),
+      );
+      view.dispatch(
+        view.state.tr
+          .insertText(final, from, from + 1)
+          .setMeta("composition", 1),
+      );
+      expect(view.state.doc.textContent).toBe(
+        from === to ? "A契約😀B" : "A契約B",
+      );
+      expect(inputs).toEqual([]);
+      expect(
+        boundary.handleDOMEvents.compositionend(
+          view,
+          new Event("compositionend"),
+        ),
+      ).toBe(false);
       await new Promise<void>((resolve) => setTimeout(resolve, 40));
-      expect(inputs).toEqual([{ from, to: expectedTo, text: final, semantic: "composition" }]);
+      expect(inputs).toEqual([
+        { from, to: expectedTo, text: final, semantic: "composition" },
+      ]);
       expect(view.state).toBe(baseline);
       expect(boundary.isComposing).toBe(false);
       expect(compositionTransitions).toEqual(["begin", "end"]);
@@ -514,10 +622,13 @@ describe("canonical input boundary", () => {
   );
 
   test("late final flush after the end microtask and duplicate events commit once", async () => {
-    const { boundary, view, inputs, refusals, compositionTransitions } = createRig(2, 4);
+    const { boundary, view, inputs, refusals, compositionTransitions } =
+      createRig(2, 4);
     boundary.handleDOMEvents.compositionstart(view);
     boundary.handleDOMEvents.compositionstart(view);
-    view.dispatch(view.state.tr.insertText("契", 2, 4).setMeta("composition", 1));
+    view.dispatch(
+      view.state.tr.insertText("契", 2, 4).setMeta("composition", 1),
+    );
     boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
     boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
     await Promise.resolve();
@@ -531,11 +642,15 @@ describe("canonical input boundary", () => {
     expect(boundary.handleDOMEvents.beforeinput(view, final)).toBe(false);
     expect(final.defaultPrevented).toBe(false);
     expect(boundary.handleTextInput(view, 2, 3, "契約")).toBe(false);
-    view.dispatch(view.state.tr.insertText("契約", 2, 3).setMeta("composition", 1));
+    view.dispatch(
+      view.state.tr.insertText("契約", 2, 3).setMeta("composition", 1),
+    );
     boundary.handleDOMEvents.input(view);
     boundary.handleDOMEvents.input(view);
     await new Promise<void>((resolve) => setTimeout(resolve, 40));
-    expect(inputs).toEqual([{ from: 2, to: 4, text: "契約", semantic: "composition" }]);
+    expect(inputs).toEqual([
+      { from: 2, to: 4, text: "契約", semantic: "composition" },
+    ]);
     expect(compositionTransitions).toEqual(["begin", "end"]);
     expect(refusals).toEqual([]);
   });
@@ -543,7 +658,9 @@ describe("canonical input boundary", () => {
   test("classified late final input authorizes one flush after PM clears its composition metadata", async () => {
     const { boundary, view, inputs, refusals } = createRig(2, 4);
     boundary.handleDOMEvents.compositionstart(view);
-    view.dispatch(view.state.tr.insertText("契", 2, 4).setMeta("composition", 1));
+    view.dispatch(
+      view.state.tr.insertText("契", 2, 4).setMeta("composition", 1),
+    );
     boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     const final = new InputEvent("beforeinput", {
@@ -560,16 +677,24 @@ describe("canonical input boundary", () => {
     expect(refusals).toHaveLength(1);
     boundary.handleDOMEvents.input(view);
     await new Promise<void>((resolve) => setTimeout(resolve, 40));
-    expect(inputs).toEqual([{ from: 2, to: 4, text: "契約", semantic: "composition" }]);
+    expect(inputs).toEqual([
+      { from: 2, to: 4, text: "契約", semantic: "composition" },
+    ]);
   });
 
   test("Escape cancels provisional composition and restores its exact baseline", async () => {
-    const { boundary, view, inputs, refusals, compositionTransitions } = createRig(2, 4);
+    const { boundary, view, inputs, refusals, compositionTransitions } =
+      createRig(2, 4);
     const baseline = view.state;
     boundary.handleDOMEvents.compositionstart(view);
-    view.dispatch(view.state.tr.insertText("契約", 2, 4).setMeta("composition", 1));
+    view.dispatch(
+      view.state.tr.insertText("契約", 2, 4).setMeta("composition", 1),
+    );
     boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
-    const escape = new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      cancelable: true,
+    });
     expect(boundary.handleKeyDown(view, escape)).toBe(true);
     expect(escape.defaultPrevented).toBe(true);
     await new Promise<void>((resolve) => setTimeout(resolve, 40));
@@ -582,26 +707,39 @@ describe("canonical input boundary", () => {
   test("other transactions and history shortcuts wait for composition", () => {
     const { boundary, view, inputs, refusals, history } = createRig(2, 4);
     boundary.handleDOMEvents.compositionstart(view);
-    view.dispatch(view.state.tr.insertText("契", 2, 4).setMeta("composition", 1));
+    view.dispatch(
+      view.state.tr.insertText("契", 2, 4).setMeta("composition", 1),
+    );
     const provisional = view.state;
     view.dispatch(view.state.tr.insertText("foreign", 1));
     expect(view.state).toBe(provisional);
     expect(boundary.isComposing).toBe(true);
     expect(refusals).toHaveLength(1);
-    const undo = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true });
+    const undo = new KeyboardEvent("keydown", {
+      key: "z",
+      ctrlKey: true,
+      cancelable: true,
+    });
     expect(boundary.handleKeyDown(view, undo)).toBe(true);
     expect(undo.defaultPrevented).toBe(true);
     expect(history).toEqual([]);
     expect(inputs).toEqual([]);
-    boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "Escape" }));
+    boundary.handleKeyDown(
+      view,
+      new KeyboardEvent("keydown", { key: "Escape" }),
+    );
   });
 
   test("composition without any net change leaves the journal empty", async () => {
     const { boundary, view, inputs } = createRig(2, 4);
     const baseline = view.state;
     boundary.handleDOMEvents.compositionstart(view);
-    view.dispatch(view.state.tr.insertText("契", 2, 4).setMeta("composition", 1));
-    view.dispatch(view.state.tr.insertText("😀", 2, 3).setMeta("composition", 1));
+    view.dispatch(
+      view.state.tr.insertText("契", 2, 4).setMeta("composition", 1),
+    );
+    view.dispatch(
+      view.state.tr.insertText("😀", 2, 3).setMeta("composition", 1),
+    );
     boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
     await new Promise<void>((resolve) => setTimeout(resolve, 40));
     expect(inputs).toEqual([]);
@@ -617,7 +755,8 @@ describe("canonical input boundary", () => {
       const transaction = view.state.tr;
       if (change === "mark")
         transaction.addStoredMark(schema.mark("strong")).insertText("契", 2, 4);
-      else if (change === "structure") transaction.replaceWith(2, 4, schema.node("paragraph"));
+      else if (change === "structure")
+        transaction.replaceWith(2, 4, schema.node("paragraph"));
       else
         transaction.insert(
           transaction.doc.content.size,
@@ -629,67 +768,93 @@ describe("canonical input boundary", () => {
       expect(refusals).toHaveLength(1);
       expect(boundary.isComposing).toBe(true);
       // A later native flush of the refused gesture must not become a new edit.
-      view.dispatch(view.state.tr.insertText("late", 2, 4).setMeta("composition", 1));
+      view.dispatch(
+        view.state.tr.insertText("late", 2, 4).setMeta("composition", 1),
+      );
       expect(view.state).toBe(baseline);
       expect(inputs).toEqual([]);
       expect(refusals).toHaveLength(1);
-      boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "Escape" }));
+      boundary.handleKeyDown(
+        view,
+        new KeyboardEvent("keydown", { key: "Escape" }),
+      );
       expect(boundary.isComposing).toBe(false);
     },
   );
 
   test("generated text compositions preserve adjacent pictures and refuse picture mutations", async () => {
     await assertProperty(
-      fc.asyncProperty(fc.constantFrom("契", "契約", "😀", "alpha"), async (text) => {
-        for (const placement of ["before", "middle", "after"] as const) {
-          for (const change of ["text", "remove", "rebind"] as const) {
-            const { boundary, view, inputs, refusals } = createRig();
-            const image = schema.node("image", { rId: "rIdPicture" });
-            const content = {
-              before: [image, schema.text("ABCDEF")],
-              middle: [schema.text("ABC"), image, schema.text("DEF")],
-              after: [schema.text("ABCDEF"), image],
-            };
-            const doc = schema.node(
-              "doc",
-              null,
-              schema.node("paragraph", null, content[placement]),
-            );
-            const from = placement === "before" ? 2 : 1;
-            const to = from + 2;
-            const imagePosition = { before: 1, middle: 4, after: 7 }[placement];
-            view.updateState(
-              EditorState.create({ doc, selection: TextSelection.create(doc, from, to) }),
-            );
-            const baseline = view.state;
-            boundary.handleDOMEvents.compositionstart(view);
-            const transaction = view.state.tr;
-            if (change === "remove") transaction.delete(imagePosition, imagePosition + 1);
-            else if (change === "rebind")
-              transaction.setNodeMarkup(imagePosition, undefined, { rId: "rIdOtherPicture" });
-            else transaction.insertText(text, from, to);
-            view.dispatch(transaction.setMeta("composition", 1));
-            if (change === "text") {
-              expect(view.state.doc.eq(baseline.tr.insertText(text, from, to).doc)).toBe(true);
-              boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
-              await new Promise<void>((resolve) => setTimeout(resolve, 40));
-              expect(inputs).toEqual([{ from, to, text, semantic: "composition" }]);
-              expect(refusals).toEqual([]);
-            } else {
-              expect(inputs).toEqual([]);
-              expect(refusals).toEqual([
-                "Composition changed unsupported content; the canonical document was restored.",
-              ]);
-              boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "Escape" }));
+      fc.asyncProperty(
+        fc.constantFrom("契", "契約", "😀", "alpha"),
+        async (text) => {
+          for (const placement of ["before", "middle", "after"] as const) {
+            for (const change of ["text", "remove", "rebind"] as const) {
+              const { boundary, view, inputs, refusals } = createRig();
+              const image = schema.node("image", { rId: "rIdPicture" });
+              const content = {
+                before: [image, schema.text("ABCDEF")],
+                middle: [schema.text("ABC"), image, schema.text("DEF")],
+                after: [schema.text("ABCDEF"), image],
+              };
+              const doc = schema.node(
+                "doc",
+                null,
+                schema.node("paragraph", null, content[placement]),
+              );
+              const from = placement === "before" ? 2 : 1;
+              const to = from + 2;
+              const imagePosition = { before: 1, middle: 4, after: 7 }[
+                placement
+              ];
+              view.updateState(
+                EditorState.create({
+                  doc,
+                  selection: TextSelection.create(doc, from, to),
+                }),
+              );
+              const baseline = view.state;
+              boundary.handleDOMEvents.compositionstart(view);
+              const transaction = view.state.tr;
+              if (change === "remove")
+                transaction.delete(imagePosition, imagePosition + 1);
+              else if (change === "rebind")
+                transaction.setNodeMarkup(imagePosition, undefined, {
+                  rId: "rIdOtherPicture",
+                });
+              else transaction.insertText(text, from, to);
+              view.dispatch(transaction.setMeta("composition", 1));
+              if (change === "text") {
+                expect(
+                  view.state.doc.eq(baseline.tr.insertText(text, from, to).doc),
+                ).toBe(true);
+                boundary.handleDOMEvents.compositionend(
+                  view,
+                  new Event("compositionend"),
+                );
+                await new Promise<void>((resolve) => setTimeout(resolve, 40));
+                expect(inputs).toEqual([
+                  { from, to, text, semantic: "composition" },
+                ]);
+                expect(refusals).toEqual([]);
+              } else {
+                expect(inputs).toEqual([]);
+                expect(refusals).toEqual([
+                  "Composition changed unsupported content; the canonical document was restored.",
+                ]);
+                boundary.handleKeyDown(
+                  view,
+                  new KeyboardEvent("keydown", { key: "Escape" }),
+                );
+              }
+              expect(view.state).toBe(baseline);
+              expect(boundary.isComposing).toBe(false);
+              view.destroy();
+              views.splice(views.indexOf(view), 1);
+              view.dom.parentElement?.remove();
             }
-            expect(view.state).toBe(baseline);
-            expect(boundary.isComposing).toBe(false);
-            view.destroy();
-            views.splice(views.indexOf(view), 1);
-            view.dom.parentElement?.remove();
           }
-        }
-      }),
+        },
+      ),
       {
         seed: 20261020,
         numRuns: 16,
@@ -703,10 +868,14 @@ describe("canonical input boundary", () => {
       fc.asyncProperty(
         fc.integer({ min: 0, max: 4 }),
         fc.integer({ min: 1, max: 4 }),
-        fc.array(fc.constantFrom("契", "約", "😀", "alpha"), { minLength: 1, maxLength: 4 }),
+        fc.array(fc.constantFrom("契", "約", "😀", "alpha"), {
+          minLength: 1,
+          maxLength: 4,
+        }),
         fc.boolean(),
         async (start, end, updates, cancel) => {
-          const { boundary, view, inputs, refusals, compositionTransitions } = createRig();
+          const { boundary, view, inputs, refusals, compositionTransitions } =
+            createRig();
           const doc = schema.node("doc", null, [
             schema.node("paragraph", null, schema.text("Alpha")),
             schema.node("paragraph", null, schema.text("Beta")),
@@ -714,22 +883,37 @@ describe("canonical input boundary", () => {
           const from = 1 + start;
           const to = 8 + end;
           view.updateState(
-            EditorState.create({ doc, selection: TextSelection.create(doc, from, to) }),
+            EditorState.create({
+              doc,
+              selection: TextSelection.create(doc, from, to),
+            }),
           );
           const baseline = view.state;
           boundary.handleDOMEvents.compositionstart(view);
           let width = to - from;
           for (const text of updates) {
             view.dispatch(
-              view.state.tr.insertText(text, from, from + width).setMeta("composition", 1),
+              view.state.tr
+                .insertText(text, from, from + width)
+                .setMeta("composition", 1),
             );
             width = text.length;
           }
-          if (cancel) boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "Escape" }));
-          else boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
+          if (cancel)
+            boundary.handleKeyDown(
+              view,
+              new KeyboardEvent("keydown", { key: "Escape" }),
+            );
+          else
+            boundary.handleDOMEvents.compositionend(
+              view,
+              new Event("compositionend"),
+            );
           await new Promise<void>((resolve) => setTimeout(resolve, 40));
           expect(inputs).toEqual(
-            cancel ? [] : [{ from, to, text: updates.at(-1), semantic: "composition" }],
+            cancel
+              ? []
+              : [{ from, to, text: updates.at(-1), semantic: "composition" }],
           );
           expect(view.state).toBe(baseline);
           expect(refusals).toEqual([]);
@@ -755,21 +939,33 @@ describe("canonical input boundary", () => {
             minLength: 1,
             maxLength: 5,
           }),
-          final: fc.array(fc.constantFrom("契", "約", "文", "書"), { minLength: 1, maxLength: 5 }),
+          final: fc.array(fc.constantFrom("契", "約", "文", "書"), {
+            minLength: 1,
+            maxLength: 5,
+          }),
           duplicates: fc.integer({ min: 0, max: 3 }),
           finalOrder: fc.constantFrom("beforeEnd", "microtask", "nextTask"),
           completion: fc.constantFrom("commit", "cancel", "blur", "nextInput"),
         }),
-        async ({ replacement, provisional, final, duplicates, finalOrder, completion }) => {
-          const { boundary, view, inputs, refusals, compositionTransitions } = createRig(
-            2,
-            replacement ? 4 : 2,
-          );
+        async ({
+          replacement,
+          provisional,
+          final,
+          duplicates,
+          finalOrder,
+          completion,
+        }) => {
+          const { boundary, view, inputs, refusals, compositionTransitions } =
+            createRig(2, replacement ? 4 : 2);
           const baseline = view.state;
           boundary.handleDOMEvents.compositionstart(view);
           let width = replacement ? 2 : 0;
           for (const text of provisional) {
-            view.dispatch(view.state.tr.insertText(text, 2, 2 + width).setMeta("composition", 1));
+            view.dispatch(
+              view.state.tr
+                .insertText(text, 2, 2 + width)
+                .setMeta("composition", 1),
+            );
             width = text.length;
           }
           const text = final.join("");
@@ -779,13 +975,22 @@ describe("canonical input boundary", () => {
               data: text,
               cancelable: true,
             });
-            expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(false);
+            expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(
+              false,
+            );
             expect(event.defaultPrevented).toBe(false);
-            view.dispatch(view.state.tr.insertText(text, 2, 2 + width).setMeta("composition", 1));
+            view.dispatch(
+              view.state.tr
+                .insertText(text, 2, 2 + width)
+                .setMeta("composition", 1),
+            );
             boundary.handleDOMEvents.input(view);
           };
           if (finalOrder === "beforeEnd") flushFinal();
-          boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
+          boundary.handleDOMEvents.compositionend(
+            view,
+            new Event("compositionend"),
+          );
           if (finalOrder === "microtask") {
             await Promise.resolve();
             flushFinal();
@@ -795,12 +1000,18 @@ describe("canonical input boundary", () => {
             flushFinal();
           }
           for (let index = 0; index < duplicates; index++) {
-            boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
+            boundary.handleDOMEvents.compositionend(
+              view,
+              new Event("compositionend"),
+            );
             boundary.handleDOMEvents.input(view);
           }
           expect(inputs).toEqual([]);
           if (completion === "cancel") {
-            boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "Escape" }));
+            boundary.handleKeyDown(
+              view,
+              new KeyboardEvent("keydown", { key: "Escape" }),
+            );
           } else if (completion === "blur") boundary.handleDOMEvents.blur(view);
           else if (completion === "nextInput")
             boundary.handleDOMEvents.beforeinput(
@@ -815,9 +1026,21 @@ describe("canonical input boundary", () => {
           const expected: CanonicalReplacement[] =
             completion === "cancel"
               ? []
-              : [{ from: 2, to: replacement ? 4 : 2, text, semantic: "composition" }];
+              : [
+                  {
+                    from: 2,
+                    to: replacement ? 4 : 2,
+                    text,
+                    semantic: "composition",
+                  },
+                ];
           if (completion === "nextInput")
-            expected.push({ from: 2, to: replacement ? 4 : 2, text: "a", semantic: "typing" });
+            expected.push({
+              from: 2,
+              to: replacement ? 4 : 2,
+              text: "a",
+              semantic: "typing",
+            });
           expect(inputs).toEqual(expected);
           expect(view.state).toBe(baseline);
           expect(boundary.isComposing).toBe(false);
@@ -842,7 +1065,10 @@ describe("canonical input boundary", () => {
       const original = view.state;
       if (kind !== "foreign") {
         const event = new InputEvent("beforeinput", {
-          inputType: kind === "composition" ? "insertFromComposition" : "insertReplacementText",
+          inputType:
+            kind === "composition"
+              ? "insertFromComposition"
+              : "insertReplacementText",
           data: "x",
           cancelable: false,
         });
@@ -853,7 +1079,9 @@ describe("canonical input boundary", () => {
       expect(textNode).toBeDefined();
       if (textNode) textNode.textContent = "Ax😀B";
       expect(boundary.handleTextInput(view, 2, 2, "x")).toBe(true);
-      expect(boundary.commitNativeProposal(view, original.tr.insertText("x", 2))).toBe(false);
+      expect(
+        boundary.commitNativeProposal(view, original.tr.insertText("x", 2)),
+      ).toBe(false);
       boundary.handleDOMEvents.input(view);
       await Promise.resolve();
       // The observer can flush again after the input microtask; it still lacks authorization.
@@ -874,7 +1102,9 @@ describe("canonical input boundary", () => {
       );
       if (change === "state") {
         view.updateState(
-          view.state.apply(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1))),
+          view.state.apply(
+            view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)),
+          ),
         );
       }
       boundary.handleTextInput(
@@ -884,7 +1114,9 @@ describe("canonical input boundary", () => {
         change === "text" ? "y" : "x",
       );
       expect(inputs).toEqual(
-        change === "match" ? [{ from: 2, to: 4, text: "x", semantic: "typing" }] : [],
+        change === "match"
+          ? [{ from: 2, to: 4, text: "x", semantic: "typing" }]
+          : [],
       );
       boundary.handleTextInput(view, 2, 4, "x");
       expect(inputs).toHaveLength(change === "match" ? 1 : 0);
@@ -906,22 +1138,33 @@ describe("canonical input boundary", () => {
   test.each(["blur", "beforeinput"])(
     "a missing compositionend commits its net replacement on %s",
     (recovery) => {
-      const { boundary, view, inputs, refusals, compositionTransitions } = createRig(2, 4);
+      const { boundary, view, inputs, refusals, compositionTransitions } =
+        createRig(2, 4);
       const baseline = view.state;
       view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
       expect(view.composing).toBe(true);
-      view.dispatch(view.state.tr.insertText("契", 2, 4).setMeta("composition", 1));
-      view.dispatch(view.state.tr.insertText("契約", 2, 3).setMeta("composition", 1));
+      view.dispatch(
+        view.state.tr.insertText("契", 2, 4).setMeta("composition", 1),
+      );
+      view.dispatch(
+        view.state.tr.insertText("契約", 2, 3).setMeta("composition", 1),
+      );
       expect(inputs).toEqual([]);
       if (recovery === "blur") boundary.handleDOMEvents.blur(view);
       else
         boundary.handleDOMEvents.beforeinput(
           view,
-          new InputEvent("beforeinput", { inputType: "insertText", data: "a", cancelable: true }),
+          new InputEvent("beforeinput", {
+            inputType: "insertText",
+            data: "a",
+            cancelable: true,
+          }),
         );
       expect(inputs).toEqual([
         { from: 2, to: 4, text: "契約", semantic: "composition" },
-        ...(recovery === "beforeinput" ? [{ from: 2, to: 4, text: "a", semantic: "typing" }] : []),
+        ...(recovery === "beforeinput"
+          ? [{ from: 2, to: 4, text: "a", semantic: "typing" }]
+          : []),
       ]);
       expect(view.state).toBe(baseline);
       expect(boundary.isComposing).toBe(false);
@@ -930,17 +1173,22 @@ describe("canonical input boundary", () => {
     },
   );
 
-  test.each(["insertParagraph", "insertFromPaste", "deleteByCut", "insertFromDrop"])(
-    "%s is refused without an intent",
-    (inputType) => {
-      const { boundary, view, inputs, refusals } = createRig();
-      const event = new InputEvent("beforeinput", { inputType, cancelable: true });
-      expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
-      expect(event.defaultPrevented).toBe(true);
-      expect(inputs).toEqual([]);
-      expect(refusals).toHaveLength(1);
-    },
-  );
+  test.each([
+    "insertParagraph",
+    "insertFromPaste",
+    "deleteByCut",
+    "insertFromDrop",
+  ])("%s is refused without an intent", (inputType) => {
+    const { boundary, view, inputs, refusals } = createRig();
+    const event = new InputEvent("beforeinput", {
+      inputType,
+      cancelable: true,
+    });
+    expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(inputs).toEqual([]);
+    expect(refusals).toHaveLength(1);
+  });
 
   test.each(["paste", "drop"] as const)(
     "%s DOM gestures delegate without changing authority",
@@ -971,7 +1219,10 @@ describe("canonical input boundary", () => {
     "composition blocks the %s DOM gesture atomically",
     (kind) => {
       const { boundary, view, inputs, refusals } = createRig();
-      boundary.handleDOMEvents.compositionstart(view, new CompositionEvent("compositionstart"));
+      boundary.handleDOMEvents.compositionstart(
+        view,
+        new CompositionEvent("compositionstart"),
+      );
       const before = view.state;
       const event = new ClipboardEvent(kind, { cancelable: true });
       expect(boundary.handleDOMEvents[kind](view, event)).toBe(true);
@@ -986,10 +1237,17 @@ describe("canonical input boundary", () => {
   test("generated clipboard gesture sequences report refusals without ending composition", async () => {
     await assertProperty(
       fc.property(
-        fc.array(fc.constantFrom("paste", "cut", "drop"), { minLength: 8, maxLength: 16 }),
+        fc.array(fc.constantFrom("paste", "cut", "drop"), {
+          minLength: 8,
+          maxLength: 16,
+        }),
         (gestures) => {
-          const { boundary, view, inputs, refusals, compositionTransitions } = createRig();
-          boundary.handleDOMEvents.compositionstart(view, new CompositionEvent("compositionstart"));
+          const { boundary, view, inputs, refusals, compositionTransitions } =
+            createRig();
+          boundary.handleDOMEvents.compositionstart(
+            view,
+            new CompositionEvent("compositionstart"),
+          );
           const before = view.state;
           const expectedReasons = {
             paste: "Composition must finish before pasting.",
@@ -1032,15 +1290,22 @@ describe("canonical input boundary", () => {
     { key: "Delete", from: 5, ctrlKey: false },
     { key: "Backspace", from: 3, ctrlKey: false },
     { key: "Backspace", from: 4, ctrlKey: true },
-  ])("unsafe deletion at $from is refused without an intent", ({ key, from, ctrlKey }) => {
-    const { boundary, view, inputs, refusals } = createRig(from);
-    const event = new KeyboardEvent("keydown", { key, ctrlKey, cancelable: true });
-    expect(boundary.handleKeyDown(view, event)).toBe(true);
-    expect(event.defaultPrevented).toBe(true);
-    expect(inputs).toEqual([]);
-    expect(refusals).toHaveLength(1);
-    expect(view.state.doc.textContent).toBe("A😀B");
-  });
+  ])(
+    "unsafe deletion at $from is refused without an intent",
+    ({ key, from, ctrlKey }) => {
+      const { boundary, view, inputs, refusals } = createRig(from);
+      const event = new KeyboardEvent("keydown", {
+        key,
+        ctrlKey,
+        cancelable: true,
+      });
+      expect(boundary.handleKeyDown(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+      expect(inputs).toEqual([]);
+      expect(refusals).toHaveLength(1);
+      expect(view.state.doc.textContent).toBe("A😀B");
+    },
+  );
 
   test("keyboard and beforeinput history routes share the semantic journal", () => {
     const { boundary, view, history, inputs } = createRig();
@@ -1049,12 +1314,18 @@ describe("canonical input boundary", () => {
       { key: "z", metaKey: true, shiftKey: true },
       { key: "y", ctrlKey: true },
     ]) {
-      const event = new KeyboardEvent("keydown", { ...options, cancelable: true });
+      const event = new KeyboardEvent("keydown", {
+        ...options,
+        cancelable: true,
+      });
       expect(boundary.handleKeyDown(view, event)).toBe(true);
       expect(event.defaultPrevented).toBe(true);
     }
     for (const inputType of ["historyUndo", "historyRedo"]) {
-      const event = new InputEvent("beforeinput", { inputType, cancelable: true });
+      const event = new InputEvent("beforeinput", {
+        inputType,
+        cancelable: true,
+      });
       expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
       expect(event.defaultPrevented).toBe(true);
     }

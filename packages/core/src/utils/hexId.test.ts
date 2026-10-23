@@ -1,6 +1,11 @@
 import { describe, expect, spyOn, test } from "bun:test";
 
-import { deterministicHexId, generateHexId, isValidHexId, MAX_HEX_ID_EXCLUSIVE } from "./hexId";
+import {
+  deterministicHexId,
+  generateHexId,
+  isValidHexId,
+  MAX_HEX_ID_EXCLUSIVE,
+} from "./hexId";
 
 describe("generateHexId", () => {
   test("returns an 8-character uppercase hex string", () => {
@@ -24,7 +29,9 @@ describe("generateHexId", () => {
       expect(generateHexId()).toBe("00000001");
       // Largest possible Math.random() output still stays below the bound.
       random.mockReturnValue(1 - Number.EPSILON);
-      expect(Number.parseInt(generateHexId(), 16)).toBeLessThan(MAX_HEX_ID_EXCLUSIVE);
+      expect(Number.parseInt(generateHexId(), 16)).toBeLessThan(
+        MAX_HEX_ID_EXCLUSIVE,
+      );
     } finally {
       random.mockRestore();
     }

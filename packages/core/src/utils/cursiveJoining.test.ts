@@ -71,7 +71,11 @@ describe("generated joining tables", () => {
 
   test("a code point is never both a cursive letter and transparent", () => {
     for (let i = 0; i < JOINING_LETTER_RANGES.length; i += 2) {
-      for (let cp = JOINING_LETTER_RANGES[i]!; cp <= JOINING_LETTER_RANGES[i + 1]!; cp++) {
+      for (
+        let cp = JOINING_LETTER_RANGES[i]!;
+        cp <= JOINING_LETTER_RANGES[i + 1]!;
+        cp++
+      ) {
         expect(isJoiningTransparent(cp)).toBe(false);
       }
     }
@@ -134,9 +138,12 @@ describe("joining classes", () => {
 describe("joinsAcrossBoundary", () => {
   test("every internal split of a fully connected word joins", () => {
     for (let cut = 1; cut < CONNECTED_WORD.length; cut++) {
-      expect(joinsAcrossBoundary(CONNECTED_WORD.slice(0, cut), CONNECTED_WORD.slice(cut))).toBe(
-        true,
-      );
+      expect(
+        joinsAcrossBoundary(
+          CONNECTED_WORD.slice(0, cut),
+          CONNECTED_WORD.slice(cut),
+        ),
+      ).toBe(true);
     }
   });
 
@@ -150,8 +157,12 @@ describe("joinsAcrossBoundary", () => {
   });
 
   test("word boundaries and non-joining scripts never join", () => {
-    expect(joinsAcrossBoundary(CONNECTED_WORD, " " + CONNECTED_WORD)).toBe(false);
-    expect(joinsAcrossBoundary(CONNECTED_WORD + " ", CONNECTED_WORD)).toBe(false);
+    expect(joinsAcrossBoundary(CONNECTED_WORD, " " + CONNECTED_WORD)).toBe(
+      false,
+    );
+    expect(joinsAcrossBoundary(CONNECTED_WORD + " ", CONNECTED_WORD)).toBe(
+      false,
+    );
     expect(joinsAcrossBoundary("bo", "ld")).toBe(false);
     expect(joinsAcrossBoundary("日", "本")).toBe(false);
     expect(joinsAcrossBoundary(CONNECTED_WORD, "1")).toBe(false);
@@ -180,7 +191,9 @@ describe("joinsAcrossBoundary", () => {
         const padding = marks.slice(0, count).join("");
         expect(joinsAcrossBoundary(before + padding, after)).toBe(joined);
         expect(joinsAcrossBoundary(before, padding + after)).toBe(joined);
-        expect(joinsAcrossBoundary(before + padding, padding + after)).toBe(joined);
+        expect(joinsAcrossBoundary(before + padding, padding + after)).toBe(
+          joined,
+        );
       }
     }
   });

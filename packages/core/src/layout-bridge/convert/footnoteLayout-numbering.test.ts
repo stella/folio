@@ -27,7 +27,12 @@ const normalFootnote = (id: number, text: string): Footnote => ({
   type: "footnote",
   id,
   noteType: "normal",
-  content: [{ type: "paragraph", content: [{ type: "run", content: [{ type: "text", text }] }] }],
+  content: [
+    {
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    },
+  ],
 });
 
 const continuationNotice = (id: number): Footnote => ({
@@ -37,7 +42,11 @@ const continuationNotice = (id: number): Footnote => ({
   content: [{ type: "paragraph", content: [] }],
 });
 
-function paragraphWithFootnoteRef(id: string, footnoteId: number, pmStart: number): ParagraphBlock {
+function paragraphWithFootnoteRef(
+  id: string,
+  footnoteId: number,
+  pmStart: number,
+): ParagraphBlock {
   return {
     kind: "paragraph",
     id,
@@ -55,7 +64,11 @@ function paragraphWithFootnoteRef(id: string, footnoteId: number, pmStart: numbe
 
 describe("computeNoteDisplayNumbers", () => {
   test("numbers non-contiguous out-of-order ids by reference order", () => {
-    const notes = [normalFootnote(2, "two"), normalFootnote(5, "five"), normalFootnote(9, "nine")];
+    const notes = [
+      normalFootnote(2, "two"),
+      normalFootnote(5, "five"),
+      normalFootnote(9, "nine"),
+    ];
 
     const numbers = computeNoteDisplayNumbers(notes, [5, 2, 9]);
 
@@ -65,7 +78,11 @@ describe("computeNoteDisplayNumbers", () => {
   });
 
   test("repeated references keep the first number and consume no new one", () => {
-    const notes = [normalFootnote(2, "two"), normalFootnote(5, "five"), normalFootnote(9, "nine")];
+    const notes = [
+      normalFootnote(2, "two"),
+      normalFootnote(5, "five"),
+      normalFootnote(9, "nine"),
+    ];
 
     const numbers = computeNoteDisplayNumbers(notes, [5, 2, 5, 9]);
 
@@ -75,7 +92,11 @@ describe("computeNoteDisplayNumbers", () => {
   });
 
   test("positive-id continuation notices and unknown ids do not shift numbering", () => {
-    const notes = [continuationNotice(1), normalFootnote(5, "five"), normalFootnote(2, "two")];
+    const notes = [
+      continuationNotice(1),
+      normalFootnote(5, "five"),
+      normalFootnote(2, "two"),
+    ];
 
     const numbers = computeNoteDisplayNumbers(notes, [1, 5, 7, 2]);
 
@@ -104,9 +125,24 @@ describe("remapNoteMarkerText", () => {
     const texts = remapped.map((block) =>
       block.kind === "paragraph" ? block.runs.at(0) : undefined,
     );
-    expect(texts.at(0)).toMatchObject({ text: "1", footnoteRefId: 5, pmStart: 10, pmEnd: 11 });
-    expect(texts.at(1)).toMatchObject({ text: "2", footnoteRefId: 2, pmStart: 20, pmEnd: 21 });
-    expect(texts.at(2)).toMatchObject({ text: "3", footnoteRefId: 9, pmStart: 30, pmEnd: 31 });
+    expect(texts.at(0)).toMatchObject({
+      text: "1",
+      footnoteRefId: 5,
+      pmStart: 10,
+      pmEnd: 11,
+    });
+    expect(texts.at(1)).toMatchObject({
+      text: "2",
+      footnoteRefId: 2,
+      pmStart: 20,
+      pmEnd: 21,
+    });
+    expect(texts.at(2)).toMatchObject({
+      text: "3",
+      footnoteRefId: 9,
+      pmStart: 30,
+      pmEnd: 31,
+    });
   });
 
   test("returns untouched blocks and runs by reference", () => {
@@ -118,7 +154,9 @@ describe("remapNoteMarkerText", () => {
     const marker = paragraphWithFootnoteRef("marker", 5, 10);
     const blocks: FlowBlock[] = [plain, marker];
 
-    const remapped = remapNoteMarkerText(blocks, { footnoteNumbers: new Map([[5, 1]]) });
+    const remapped = remapNoteMarkerText(blocks, {
+      footnoteNumbers: new Map([[5, 1]]),
+    });
 
     expect(remapped.at(0)).toBe(plain);
     expect(remapped.at(1)).not.toBe(marker);
@@ -128,13 +166,17 @@ describe("remapNoteMarkerText", () => {
     const blocks: FlowBlock[] = [paragraphWithFootnoteRef("p1", 5, 10)];
 
     expect(remapNoteMarkerText(blocks, {})).toBe(blocks);
-    expect(remapNoteMarkerText(blocks, { footnoteNumbers: new Map() })).toBe(blocks);
+    expect(remapNoteMarkerText(blocks, { footnoteNumbers: new Map() })).toBe(
+      blocks,
+    );
   });
 
   test("leaves markers without a display number unchanged", () => {
     const blocks: FlowBlock[] = [paragraphWithFootnoteRef("p1", 7, 10)];
 
-    const remapped = remapNoteMarkerText(blocks, { footnoteNumbers: new Map([[5, 1]]) });
+    const remapped = remapNoteMarkerText(blocks, {
+      footnoteNumbers: new Map([[5, 1]]),
+    });
 
     expect(remapped.at(0)).toBe(blocks[0]);
   });
@@ -146,7 +188,9 @@ describe("remapNoteMarkerText", () => {
       rows: [
         {
           id: "r1",
-          cells: [{ id: "c1", blocks: [paragraphWithFootnoteRef("cell-p", 5, 100)] }],
+          cells: [
+            { id: "c1", blocks: [paragraphWithFootnoteRef("cell-p", 5, 100)] },
+          ],
         },
       ],
     };
@@ -171,7 +215,10 @@ describe("remapNoteMarkerText", () => {
     if (cellParagraph?.kind !== "paragraph") {
       throw new Error("Expected a paragraph in the table cell");
     }
-    expect(cellParagraph.runs.at(0)).toMatchObject({ text: "1", footnoteRefId: 5 });
+    expect(cellParagraph.runs.at(0)).toMatchObject({
+      text: "1",
+      footnoteRefId: 5,
+    });
 
     const remappedBox = remapped.at(1);
     if (remappedBox?.kind !== "textBox") {
@@ -181,7 +228,10 @@ describe("remapNoteMarkerText", () => {
     if (boxParagraph?.kind !== "paragraph") {
       throw new Error("Expected a paragraph in the text box");
     }
-    expect(boxParagraph.runs.at(0)).toMatchObject({ text: "2", footnoteRefId: 9 });
+    expect(boxParagraph.runs.at(0)).toMatchObject({
+      text: "2",
+      footnoteRefId: 9,
+    });
   });
 
   test("remaps endnote markers independently of footnote markers", () => {
@@ -190,7 +240,9 @@ describe("remapNoteMarkerText", () => {
       {
         kind: "paragraph",
         id: "en",
-        runs: [{ kind: "text", text: "8", endnoteRefId: 8, pmStart: 20, pmEnd: 21 }],
+        runs: [
+          { kind: "text", text: "8", endnoteRefId: 8, pmStart: 20, pmEnd: 21 },
+        ],
       },
     ];
 
@@ -201,11 +253,20 @@ describe("remapNoteMarkerText", () => {
 
     const footnoteParagraph = remapped.at(0);
     const endnoteParagraph = remapped.at(1);
-    if (footnoteParagraph?.kind !== "paragraph" || endnoteParagraph?.kind !== "paragraph") {
+    if (
+      footnoteParagraph?.kind !== "paragraph" ||
+      endnoteParagraph?.kind !== "paragraph"
+    ) {
       throw new Error("Expected paragraph blocks");
     }
-    expect(footnoteParagraph.runs.at(0)).toMatchObject({ text: "1", footnoteRefId: 5 });
-    expect(endnoteParagraph.runs.at(0)).toMatchObject({ text: "i", endnoteRefId: 8 });
+    expect(footnoteParagraph.runs.at(0)).toMatchObject({
+      text: "1",
+      footnoteRefId: 5,
+    });
+    expect(endnoteParagraph.runs.at(0)).toMatchObject({
+      text: "i",
+      endnoteRefId: 8,
+    });
   });
 
   test("uses preformatted endnote display text", () => {
@@ -225,13 +286,20 @@ describe("remapNoteMarkerText", () => {
     if (endnoteParagraph?.kind !== "paragraph") {
       throw new Error("Expected a paragraph block");
     }
-    expect(endnoteParagraph.runs.at(0)).toMatchObject({ text: "C", endnoteRefId: 8 });
+    expect(endnoteParagraph.runs.at(0)).toMatchObject({
+      text: "C",
+      endnoteRefId: 8,
+    });
   });
 });
 
 describe("buildFootnoteContentMap", () => {
   const measureBlocks = (blocks: FlowBlock[]) =>
-    blocks.map(() => ({ kind: "paragraph" as const, lines: [], totalHeight: 12 }));
+    blocks.map(() => ({
+      kind: "paragraph" as const,
+      lines: [],
+      totalHeight: 12,
+    }));
 
   test("assigns area display numbers by reference order, not id order", () => {
     const footnotes = [
@@ -242,7 +310,9 @@ describe("buildFootnoteContentMap", () => {
     ];
     const refs = [{ footnoteId: 5 }, { footnoteId: 2 }, { footnoteId: 9 }];
 
-    const contentMap = buildFootnoteContentMap(footnotes, refs, 400, { measureBlocks });
+    const contentMap = buildFootnoteContentMap(footnotes, refs, 400, {
+      measureBlocks,
+    });
 
     expect(contentMap.get(5)?.displayNumber).toBe(1);
     expect(contentMap.get(2)?.displayNumber).toBe(2);
@@ -251,7 +321,9 @@ describe("buildFootnoteContentMap", () => {
 
     const firstBlock = contentMap.get(5)?.blocks.at(0);
     if (firstBlock?.kind !== "paragraph") {
-      throw new Error("Expected the footnote content to start with a paragraph");
+      throw new Error(
+        "Expected the footnote content to start with a paragraph",
+      );
     }
     expect(firstBlock.runs.at(0)).toMatchObject({ kind: "text", text: "1 " });
   });

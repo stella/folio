@@ -2,7 +2,12 @@ import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import { applyDocumentOps, paragraphLogicalText, type DocumentOp } from "@stll/docx-core/ops";
+import {
+  applyDocumentOps,
+  type DocumentOp,
+  paragraphLogicalText,
+} from "@stll/docx-core/ops";
+
 import type { Paragraph } from "../types/document";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 import { parseDocx } from "./parser";
@@ -11,13 +16,18 @@ import { createDocx, repackDocx as repack } from "./rezip";
 const repackDocx = (
   document: Parameters<typeof repack>[0],
   options: Parameters<typeof repack>[1] = {},
-) => repack(document, { ...options, onDiagnostic: ({ type, part }) => panic(`${type}: ${part}`) });
+) =>
+  repack(document, {
+    ...options,
+    onDiagnostic: ({ type, part }) => panic(`${type}: ${part}`),
+  });
 
 const PROFILES = [
   {
     name: "transitional",
     word: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-    relationships: "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    relationships:
+      "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
   },
   {
     name: "strict",
@@ -29,18 +39,33 @@ const PROFILES = [
 const CASES = PROFILES.flatMap((profile) =>
   (["header", "footer"] as const).flatMap((story) =>
     (["joinBlocks", "setParagraphProps"] as const).flatMap((operation) =>
-      (["w", "alt"] as const).map((prefix) => ({ profile, story, operation, prefix })),
+      (["w", "alt"] as const).map((prefix) => ({
+        profile,
+        story,
+        operation,
+        prefix,
+      })),
     ),
   ),
 );
 
-const NESTED_CASES = CASES.filter(({ operation }) => operation === "setParagraphProps").flatMap(
-  (options) =>
-    (["control", "table"] as const).map((target) => Object.assign({}, options, { target })),
+const NESTED_CASES = CASES.filter(
+  ({ operation }) => operation === "setParagraphProps",
+).flatMap((options) =>
+  (["control", "table"] as const).map((target) =>
+    Object.assign({}, options, { target }),
+  ),
 );
 
-type StoryFixtureOptions = Pick<(typeof CASES)[number], "profile" | "story" | "prefix">;
-const storyFixture = async ({ profile, story, prefix: p }: StoryFixtureOptions) => {
+type StoryFixtureOptions = Pick<
+  (typeof CASES)[number],
+  "profile" | "story" | "prefix"
+>;
+const storyFixture = async ({
+  profile,
+  story,
+  prefix: p,
+}: StoryFixtureOptions) => {
   const root = story === "header" ? "hdr" : "ftr";
   const partPath = `word/${story}1.xml`;
   const paragraph = (id: string, text: string) =>
@@ -76,8 +101,16 @@ const storyFixture = async ({ profile, story, prefix: p }: StoryFixtureOptions) 
     untouched: [untouchedParagraph, untouchedControl, untouchedTable],
     untouchedParagraph,
     nested: {
-      control: { blockId: "44444444", sibling: controlSibling, otherContainer: untouchedTable },
-      table: { blockId: "55555555", sibling: tableSibling, otherContainer: untouchedControl },
+      control: {
+        blockId: "44444444",
+        sibling: controlSibling,
+        otherContainer: untouchedTable,
+      },
+      table: {
+        blockId: "55555555",
+        sibling: tableSibling,
+        otherContainer: untouchedControl,
+      },
     },
   };
 };
@@ -104,20 +137,27 @@ test.each(CASES)(
           }
     ) satisfies DocumentOp;
     const edited = applyDocumentOps(document, [op]).unwrap();
-    const forward = await repackDocx(edited.document, { updateModifiedDate: false });
+    const forward = await repackDocx(edited.document, {
+      updateModifiedDate: false,
+    });
     const forwardZip = await JSZip.loadAsync(forward);
     const forwardXml = await forwardZip.file(source.partPath)?.async("text");
-    for (const untouched of source.untouched) expect(forwardXml).toContain(untouched);
+    for (const untouched of source.untouched)
+      expect(forwardXml).toContain(untouched);
 
     const reopened = await parseDocx(forward, { preloadFonts: false });
-    const parts = story === "header" ? reopened.package.headers : reopened.package.footers;
+    const parts =
+      story === "header" ? reopened.package.headers : reopened.package.footers;
     const first = parts?.get("rIdStory")?.content.at(0);
     expect(first?.type).toBe("paragraph");
-    if (first?.type !== "paragraph") throw new Error("Story fixture lost its edited paragraph");
-    if (operation === "joinBlocks") expect(paragraphLogicalText(first)).toBe("TargetFollower");
+    if (first?.type !== "paragraph")
+      throw new Error("Story fixture lost its edited paragraph");
+    if (operation === "joinBlocks")
+      expect(paragraphLogicalText(first)).toBe("TargetFollower");
     else expect(first.formatting?.keepNext).toBe(false);
 
-    const restored = applyDocumentOps(edited.document, edited.inverse).unwrap().document;
+    const restored = applyDocumentOps(edited.document, edited.inverse).unwrap()
+      .document;
     const inverseZip = await JSZip.loadAsync(
       await repackDocx(restored, { updateModifiedDate: false }),
     );
@@ -140,10 +180,16 @@ test.each(NESTED_CASES)(
       patch: { keepNext: false },
     } satisfies DocumentOp;
     const edited = applyDocumentOps(document, [op]).unwrap();
-    const forward = await repackDocx(edited.document, { updateModifiedDate: false });
+    const forward = await repackDocx(edited.document, {
+      updateModifiedDate: false,
+    });
     const forwardZip = await JSZip.loadAsync(forward);
     const forwardXml = await forwardZip.file(source.partPath)?.async("text");
-    for (const untouched of [source.untouchedParagraph, nested.otherContainer, nested.sibling])
+    for (const untouched of [
+      source.untouchedParagraph,
+      nested.otherContainer,
+      nested.sibling,
+    ])
       expect(forwardXml).toContain(untouched);
 
     const reopened = await parseDocx(forward, { preloadFonts: false });
@@ -151,8 +197,12 @@ test.each(NESTED_CASES)(
     visitDocxParagraphs(
       {
         documentBody: reopened.package.document,
-        ...(reopened.package.headers !== undefined ? { headers: reopened.package.headers } : {}),
-        ...(reopened.package.footers !== undefined ? { footers: reopened.package.footers } : {}),
+        ...(reopened.package.headers !== undefined
+          ? { headers: reopened.package.headers }
+          : {}),
+        ...(reopened.package.footers !== undefined
+          ? { footers: reopened.package.footers }
+          : {}),
       },
       (paragraph) => {
         if (paragraph.paraId === nested.blockId) matches.push(paragraph);
@@ -161,7 +211,8 @@ test.each(NESTED_CASES)(
     expect(matches).toHaveLength(1);
     expect(matches.at(0)?.formatting?.keepNext).toBe(false);
 
-    const restored = applyDocumentOps(edited.document, edited.inverse).unwrap().document;
+    const restored = applyDocumentOps(edited.document, edited.inverse).unwrap()
+      .document;
     const inverseZip = await JSZip.loadAsync(
       await repackDocx(restored, { updateModifiedDate: false }),
     );
@@ -172,7 +223,11 @@ test.each(NESTED_CASES)(
 );
 
 test("save paths forward source mismatch diagnostics with the resolved part path", async () => {
-  const source = await storyFixture({ profile: PROFILES[0], story: "header", prefix: "w" });
+  const source = await storyFixture({
+    profile: PROFILES[0],
+    story: "header",
+    prefix: "w",
+  });
   const document = await parseDocx(source.bytes, { preloadFonts: false });
   const header = document.package.headers?.get("rIdStory");
   if (!header) throw new Error("Missing header");
@@ -184,12 +239,19 @@ test("save paths forward source mismatch diagnostics with the resolved part path
         updateModifiedDate: false,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
       }),
-    () => createDocx(document, { onDiagnostic: (diagnostic) => diagnostics.push(diagnostic) }),
+    () =>
+      createDocx(document, {
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      }),
   ]) {
     diagnostics.length = 0;
     const saved = await save();
-    expect(diagnostics).toEqual([{ type: "sourceReplayMismatch", part: source.partPath }]);
+    expect(diagnostics).toEqual([
+      { type: "sourceReplayMismatch", part: source.partPath },
+    ]);
     const reopened = await parseDocx(saved, { preloadFonts: false });
-    expect(reopened.package.headers?.get("rIdStory")?.content).toEqual(header.content);
+    expect(reopened.package.headers?.get("rIdStory")?.content).toEqual(
+      header.content,
+    );
   }
 });

@@ -16,10 +16,10 @@ import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   createDocx,
   FOLIO_DOCUMENT_OPERATION_TYPES,
+  type FolioDocumentOperationType,
   FolioDocxReviewer,
   getFolioDocumentOperationReceipts,
   isFolioDocumentOperationModeSupported,
-  type FolioDocumentOperationType,
 } from "@stll/folio-core/server";
 
 import type { FolioAgentBridge } from "./bridge";
@@ -57,30 +57,65 @@ type ReplayCase = {
 
 const REPLAY_CASES = {
   replaceInBlock: {
-    operation: ({ first }) => ({ blockId: first, find: "supplier", replace: "vendor" }),
+    operation: ({ first }) => ({
+      blockId: first,
+      find: "supplier",
+      replace: "vendor",
+    }),
   },
   replaceRange: { operation: ({ range }) => ({ range, replace: "A" }) },
-  commentOnRange: { operation: ({ range }) => ({ range, comment: "Which article?" }) },
-  formatRange: { operation: ({ range }) => ({ range, formatting: { bold: true } }) },
-  insertAfterBlock: { operation: ({ first }) => ({ blockId: first, text: "Added after." }) },
-  insertBeforeBlock: { operation: ({ first }) => ({ blockId: first, text: "Added before." }) },
-  replaceBlock: { operation: ({ second }) => ({ blockId: second, text: "Rewritten." }) },
+  commentOnRange: {
+    operation: ({ range }) => ({ range, comment: "Which article?" }),
+  },
+  formatRange: {
+    operation: ({ range }) => ({ range, formatting: { bold: true } }),
+  },
+  insertAfterBlock: {
+    operation: ({ first }) => ({ blockId: first, text: "Added after." }),
+  },
+  insertBeforeBlock: {
+    operation: ({ first }) => ({ blockId: first, text: "Added before." }),
+  },
+  replaceBlock: {
+    operation: ({ second }) => ({ blockId: second, text: "Rewritten." }),
+  },
   deleteBlock: { operation: ({ third }) => ({ blockId: third }) },
-  splitBlock: { operation: ({ first }) => ({ blockId: first, offset: 12, separator: " " }) },
-  mergeBlockWithNext: { operation: ({ first }) => ({ blockId: first, separator: " " }) },
+  splitBlock: {
+    operation: ({ first }) => ({ blockId: first, offset: 12, separator: " " }),
+  },
+  mergeBlockWithNext: {
+    operation: ({ first }) => ({ blockId: first, separator: " " }),
+  },
   setBlockParagraphProperties: {
-    operation: ({ first }) => ({ blockId: first, properties: { alignment: "center" } }),
+    operation: ({ first }) => ({
+      blockId: first,
+      properties: { alignment: "center" },
+    }),
   },
   insertTable: {
-    operation: ({ first }) => ({ blockId: first, position: "after", rows: [["A", "B"]] }),
+    operation: ({ first }) => ({
+      blockId: first,
+      position: "after",
+      rows: [["A", "B"]],
+    }),
   },
   deleteTable: { operation: ({ cell }) => ({ blockId: cell(1, 0) }) },
-  commentOnBlock: { operation: ({ first }) => ({ blockId: first, comment: "Check." }) },
+  commentOnBlock: {
+    operation: ({ first }) => ({ blockId: first, comment: "Check." }),
+  },
   insertSignatureTable: {
-    operation: ({ third }) => ({ blockId: third, position: "after", parties: [{ name: "Acme" }] }),
+    operation: ({ third }) => ({
+      blockId: third,
+      position: "after",
+      parties: [{ name: "Acme" }],
+    }),
   },
   insertTableRow: {
-    operation: ({ cell }) => ({ blockId: cell(1, 0), position: "after", cellTexts: ["x", "y"] }),
+    operation: ({ cell }) => ({
+      blockId: cell(1, 0),
+      position: "after",
+      cellTexts: ["x", "y"],
+    }),
   },
   deleteTableRow: { operation: ({ cell }) => ({ blockId: cell(2, 0) }) },
   insertTableColumn: {
@@ -95,14 +130,20 @@ const REPLAY_CASES = {
     operation: ({ cell }) => ({ blockId: cell(1, 0), endBlockId: cell(2, 0) }),
   },
   splitTableCell: {
-    setup: ({ cell }) => ({ type: "mergeTableCells", blockId: cell(1, 0), endBlockId: cell(2, 0) }),
+    setup: ({ cell }) => ({
+      type: "mergeTableCells",
+      blockId: cell(1, 0),
+      endBlockId: cell(2, 0),
+    }),
     operation: ({ cell }) => ({ blockId: cell(1, 0) }),
   },
 } as const satisfies Record<FolioDocumentOperationType, ReplayCase>;
 
 const REPLAY_MODES = ["tracked-changes", "direct"] as const;
 
-const ALL_TYPES = { suggestChanges: { operationTypes: FOLIO_DOCUMENT_OPERATION_TYPES } };
+const ALL_TYPES = {
+  suggestChanges: { operationTypes: FOLIO_DOCUMENT_OPERATION_TYPES },
+};
 
 const summaryOf = (outcome: ReturnType<typeof executeFolioToolCallUntyped>) => {
   if (!outcome.ok) throw new Error(outcome.error);
@@ -110,15 +151,31 @@ const summaryOf = (outcome: ReturnType<typeof executeFolioToolCallUntyped>) => {
   return outcome.result as FolioAgentApplyOperationsSummary;
 };
 
-const suggest = (bridge: FolioAgentBridge, operations: readonly Record<string, unknown>[]) =>
-  executeFolioToolCallUntyped("suggest_changes", { operations }, bridge, ALL_TYPES);
+const suggest = (
+  bridge: FolioAgentBridge,
+  operations: readonly Record<string, unknown>[],
+) =>
+  executeFolioToolCallUntyped(
+    "suggest_changes",
+    { operations },
+    bridge,
+    ALL_TYPES,
+  );
 
-const blocksOf = (reviewer: FolioDocxReviewer, bridge: FolioAgentBridge): Blocks => {
+const blocksOf = (
+  reviewer: FolioDocxReviewer,
+  bridge: FolioAgentBridge,
+): Blocks => {
   const content = reviewer.getContent();
   const byText = (text: string) =>
-    content.find((block) => block.text === text)?.id ?? panic(`no block "${text}"`);
+    content.find((block) => block.text === text)?.id ??
+    panic(`no block "${text}"`);
   const cells = content.filter((block) => block.table !== undefined);
-  const found = executeFolioToolCallUntyped("find_text", { query: "The supplier" }, bridge);
+  const found = executeFolioToolCallUntyped(
+    "find_text",
+    { query: "The supplier" },
+    bridge,
+  );
   if (!found.ok) throw new Error(found.error);
   // SAFETY: find_text resolves to its match list whenever it succeeds.
   const [match] = (found.result as { matches: { range: unknown }[] }).matches;
@@ -128,8 +185,9 @@ const blocksOf = (reviewer: FolioDocxReviewer, bridge: FolioAgentBridge): Blocks
     second: byText("The buyer pays within thirty days."),
     third: byText("Either party may terminate on notice."),
     cell: (row, column) =>
-      cells.find(({ table }) => table?.rowIndex === row && table.cellIndex === column)?.id ??
-      panic(`no cell ${String(row)}:${String(column)}`),
+      cells.find(
+        ({ table }) => table?.rowIndex === row && table.cellIndex === column,
+      )?.id ?? panic(`no cell ${String(row)}:${String(column)}`),
     range: match?.range ?? panic("find_text found no range"),
   };
 };
@@ -139,15 +197,20 @@ const panic = (message: string): never => {
 };
 
 const openSession = async (mode: (typeof REPLAY_MODES)[number]) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(fromMarkdown(MARKDOWN)), {
-    author: "Agent",
-  });
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await createDocx(fromMarkdown(MARKDOWN)),
+    {
+      author: "Agent",
+    },
+  );
   return { reviewer, bridge: createReviewerBridge(reviewer, { mode }) };
 };
 
 /** Everything a replay could change: the blocks, the pending changes, the comments. */
 const stateOf = (reviewer: FolioDocxReviewer) => ({
-  blocks: reviewer.getContent().map(({ id, kind, text }) => ({ id, kind, text })),
+  blocks: reviewer
+    .getContent()
+    .map(({ id, kind, text }) => ({ id, kind, text })),
   changes: reviewer.getChanges().length,
   comments: reviewer.getComments().length,
 });
@@ -164,7 +227,9 @@ const cases = Object.entries(REPLAY_CASES).flatMap(([type, replayCase]) =>
 
 describe("suggest_changes replays an operation id once", () => {
   test("every operation type has a replay case in a mode that applies it", () => {
-    expect(new Set(cases.map(({ type }) => type))).toEqual(new Set(FOLIO_DOCUMENT_OPERATION_TYPES));
+    expect(new Set(cases.map(({ type }) => type))).toEqual(
+      new Set(FOLIO_DOCUMENT_OPERATION_TYPES),
+    );
   });
 
   test.each(cases)("$type, $mode", async ({ type, mode, replayCase }) => {
@@ -173,11 +238,17 @@ describe("suggest_changes replays an operation id once", () => {
     if (setup !== undefined) {
       const direct = createReviewerBridge(reviewer, { mode: "direct" });
       const prepared = summaryOf(
-        suggest(direct, [{ id: "setup", ...setup(blocksOf(reviewer, direct)) }]),
+        suggest(direct, [
+          { id: "setup", ...setup(blocksOf(reviewer, direct)) },
+        ]),
       );
       expect(prepared.skipped).toEqual([]);
     }
-    const operation = { id: "retry-1", type, ...replayCase.operation(blocksOf(reviewer, bridge)) };
+    const operation = {
+      id: "retry-1",
+      type,
+      ...replayCase.operation(blocksOf(reviewer, bridge)),
+    };
 
     const first = summaryOf(suggest(bridge, [operation]));
     expect(first.skipped).toEqual([]);
@@ -200,7 +271,9 @@ describe("an operation id reused for a different operation", () => {
     const { reviewer, bridge } = await openSession("tracked-changes");
     const { first } = blocksOf(reviewer, bridge);
     summaryOf(
-      suggest(bridge, [{ id: "op-1", type: "insertAfterBlock", blockId: first, text: "A." }]),
+      suggest(bridge, [
+        { id: "op-1", type: "insertAfterBlock", blockId: first, text: "A." },
+      ]),
     );
     const before = stateOf(reviewer);
 
@@ -218,7 +291,12 @@ describe("a replay beside new operations", () => {
   test("applies only the new ones and keeps receipts in input order", async () => {
     const { reviewer, bridge } = await openSession("tracked-changes");
     const { first, second } = blocksOf(reviewer, bridge);
-    const once = { id: "once", type: "insertAfterBlock", blockId: first, text: "Once." };
+    const once = {
+      id: "once",
+      type: "insertAfterBlock",
+      blockId: first,
+      text: "Once.",
+    };
     const original = summaryOf(suggest(bridge, [once]));
 
     const next = summaryOf(
@@ -231,13 +309,20 @@ describe("a replay beside new operations", () => {
     expect(next.applied).toEqual([{ id: "new" }]);
     expect(next.replayed).toEqual([{ id: "once" }]);
     expect(
-      next.receipts.map(({ operationId, operationIndex }) => [operationId, operationIndex]),
+      next.receipts.map(({ operationId, operationIndex }) => [
+        operationId,
+        operationIndex,
+      ]),
     ).toEqual([
       ["new", 0],
       ["once", 1],
     ]);
-    expect(next.receipts.at(1)?.affected).toEqual(original.receipts.at(0)?.affected);
-    expect(reviewer.getContent().filter(({ text }) => text === "Once.")).toHaveLength(1);
+    expect(next.receipts.at(1)?.affected).toEqual(
+      original.receipts.at(0)?.affected,
+    );
+    expect(
+      reviewer.getContent().filter(({ text }) => text === "Once."),
+    ).toHaveLength(1);
   });
 
   test("a skipped operation is not recorded, so resending it tries again", async () => {
@@ -250,7 +335,9 @@ describe("a replay beside new operations", () => {
       text: "Later.",
       precondition: { blockTextHash: "h0" },
     };
-    expect(summaryOf(suggest(bridge, [stale])).skipped.map(({ id }) => id)).toEqual(["stale"]);
+    expect(
+      summaryOf(suggest(bridge, [stale])).skipped.map(({ id }) => id),
+    ).toEqual(["stale"]);
 
     const retried = summaryOf(suggest(bridge, [stale]));
 
@@ -261,13 +348,22 @@ describe("a replay beside new operations", () => {
   test("the session is the document, not the bridge object", async () => {
     const { reviewer, bridge } = await openSession("tracked-changes");
     const { first } = blocksOf(reviewer, bridge);
-    const operation = { id: "shared", type: "insertAfterBlock", blockId: first, text: "One." };
+    const operation = {
+      id: "shared",
+      type: "insertAfterBlock",
+      blockId: first,
+      text: "One.",
+    };
     summaryOf(suggest(bridge, [operation]));
 
-    const replay = summaryOf(suggest(createReviewerBridge(reviewer), [operation]));
+    const replay = summaryOf(
+      suggest(createReviewerBridge(reviewer), [operation]),
+    );
 
     expect(replay.replayed).toEqual([{ id: "shared" }]);
-    expect(reviewer.getContent().filter(({ text }) => text === "One.")).toHaveLength(1);
+    expect(
+      reviewer.getContent().filter(({ text }) => text === "One."),
+    ).toHaveLength(1);
   });
 
   test("a host queue receives a queued operation once", async () => {
@@ -297,7 +393,12 @@ describe("a replay beside new operations", () => {
       resolveComment: () => false,
     };
     const { first } = blocksOf(reviewer, createReviewerBridge(reviewer));
-    const operation = { id: "queued", type: "insertAfterBlock", blockId: first, text: "Later." };
+    const operation = {
+      id: "queued",
+      type: "insertAfterBlock",
+      blockId: first,
+      text: "Later.",
+    };
 
     const once = summaryOf(suggest(queue, [operation]));
     const again = summaryOf(suggest(queue, [operation]));

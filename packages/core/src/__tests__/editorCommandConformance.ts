@@ -22,29 +22,44 @@
 
 import { panic } from "better-result";
 import { isDeepStrictEqual } from "node:util";
+import { redo, undo } from "prosemirror-history";
+import { Fragment, Slice } from "prosemirror-model";
+import type { Node as PMNode } from "prosemirror-model";
+import type { EditorState } from "prosemirror-state";
+import { EditorState as PMEditorState, TextSelection } from "prosemirror-state";
+import { CellSelection, TableMap } from "prosemirror-tables";
+
+import { canonicalRefusalCaseId } from "../../../../test/canonical-conformance-refusals";
 import {
-  harnessRefusalProblems,
   type HarnessRefusal,
+  harnessRefusalProblems,
   type HarnessRefusalRow,
 } from "../../../../test/canonical-refusal-rows";
-import { canonicalRefusalCaseId } from "../../../../test/canonical-conformance-refusals";
-import { assertExactModel } from "../../../../test/exactModel";
 import {
+  type CanonicalEditorHarness,
   createCanonicalHarnessCase,
   resolveCanonicalHarnessDocument,
   saveCanonicalHarnessDocument,
-  type CanonicalEditorHarness,
 } from "../../../../test/canonicalEditorHarness";
+import { assertExactModel } from "../../../../test/exactModel";
 import { assertValidFolioDocumentModel } from "../docx/modelValidation";
-
-import { Fragment, Slice } from "prosemirror-model";
-import type { Node as PMNode } from "prosemirror-model";
-import { redo, undo } from "prosemirror-history";
-import type { EditorState } from "prosemirror-state";
-import { EditorState as PMEditorState, TextSelection } from "prosemirror-state";
+import { createNote } from "../docx/noteReferenceMark";
+import { getCachedNumberingMap } from "../docx/numberingParser";
+import {
+  acceptAllChanges,
+  acceptChange,
+  addCommentMark,
+  rejectAllChanges,
+  rejectChange,
+} from "../prosemirror/commands/comments";
+import { clearFormatting } from "../prosemirror/commands/formatting";
+import { insertPageBreak } from "../prosemirror/commands/pageBreak";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { CellSelection, TableMap } from "prosemirror-tables";
-
+import type { ResolvedStyleAttrs } from "../prosemirror/extensions/core/ParagraphExtension";
+import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import type { BlockContent, Comment, Document } from "../types/document";
 import type { DocumentShape } from "./documentShapes";
 import {
   createHarnessState,
@@ -61,23 +76,11 @@ import {
   summarizeState,
   textblocks,
 } from "./editorHarness";
-import type { ContentSummary, EditorMode, SelectionPlacement } from "./editorHarness";
-import { getCachedNumberingMap } from "../docx/numberingParser";
-import {
-  acceptAllChanges,
-  acceptChange,
-  addCommentMark,
-  rejectAllChanges,
-  rejectChange,
-} from "../prosemirror/commands/comments";
-import { clearFormatting } from "../prosemirror/commands/formatting";
-import { insertPageBreak } from "../prosemirror/commands/pageBreak";
-import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
-import type { ResolvedStyleAttrs } from "../prosemirror/extensions/core/ParagraphExtension";
-import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import { createNote } from "../docx/noteReferenceMark";
-import type { BlockContent, Comment, Document } from "../types/document";
+import type {
+  ContentSummary,
+  EditorMode,
+  SelectionPlacement,
+} from "./editorHarness";
 
 // ============================================================================
 // OPERATIONS
@@ -110,11 +113,17 @@ export type ConformanceOperation = {
 };
 
 const commandManager = (view: OperationContext["view"]) =>
-  view.authority === "canonical" ? view.commandManager : harnessRuntimeManager(view.state);
+  view.authority === "canonical"
+    ? view.commandManager
+    : harnessRuntimeManager(view.state);
 
 const CARET: readonly SelectionPlacement[] = ["caret-middle"];
 const RANGE: readonly SelectionPlacement[] = ["word"];
-const RUN_FORMATTING: readonly SelectionPlacement[] = ["caret-middle", "word", "cross-paragraph"];
+const RUN_FORMATTING: readonly SelectionPlacement[] = [
+  "caret-middle",
+  "word",
+  "cross-paragraph",
+];
 
 // Toggling a text mark over selected text must change the document. This
 // applicability contract reads the input, never a command/planner verdict.
@@ -127,8 +136,12 @@ export const CANONICAL_TEXT_TOGGLE_OPERATIONS = [
   "command:toggleSubscript",
 ] as const;
 
-const expectsCanonicalDocumentChange = (operation: ConformanceOperation, before: EditorState) => {
-  if (!CANONICAL_TEXT_TOGGLE_OPERATIONS.some((id) => id === operation.id)) return false;
+const expectsCanonicalDocumentChange = (
+  operation: ConformanceOperation,
+  before: EditorState,
+) => {
+  if (!CANONICAL_TEXT_TOGGLE_OPERATIONS.some((id) => id === operation.id))
+    return false;
   if (!(before.selection instanceof TextSelection)) return false;
   const { from, to, empty } = before.selection;
   if (empty) return false;
@@ -149,35 +162,48 @@ const registryCommand = (
 ): ConformanceOperation => ({
   id: variant === undefined ? `command:${name}` : `command:${name}(${variant})`,
   placements,
-  run: ({ view }) => view.execute(commandManager(view).requireCommand(name)(...args)),
+  run: ({ view }) =>
+    view.execute(commandManager(view).requireCommand(name)(...args)),
 });
 
 /**
  * Insert a note reference the way a host does: the note itself goes into the
  * package the document saves against, and the command marks its reference.
  */
-const insertNoteLikeHost = (kind: "footnote" | "endnote"): ConformanceOperation => {
+const insertNoteLikeHost = (
+  kind: "footnote" | "endnote",
+): ConformanceOperation => {
   const name = kind === "footnote" ? "insertFootnote" : "insertEndnote";
   return {
     id: `command:${name}`,
-    placements: CARET,
+    placements: ["caret-middle", "word"],
     run: ({ view, base }) => {
       const footnotes = base.package.footnotes ?? [];
       const endnotes = base.package.endnotes ?? [];
       const existing = kind === "footnote" ? footnotes : endnotes;
       const id = Math.max(0, ...existing.map((note) => note.id)) + 1;
-      const applied = view.execute(commandManager(view).requireCommand(name)(id));
-      if (applied) {
-        const content: BlockContent[] = [
-          {
-            type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
-          },
-        ];
+      const content: BlockContent[] = [
+        {
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: "A note." }] },
+          ],
+        },
+      ];
+      const applied = view.execute(
+        commandManager(view).requireCommand(name)(id, content),
+      );
+      if (applied && view.authority !== "canonical") {
         if (kind === "footnote") {
-          base.package.footnotes = [...footnotes, createNote("footnote", id, content)];
+          base.package.footnotes = [
+            ...footnotes,
+            createNote("footnote", id, content),
+          ];
         } else {
-          base.package.endnotes = [...endnotes, createNote("endnote", id, content)];
+          base.package.endnotes = [
+            ...endnotes,
+            createNote("endnote", id, content),
+          ];
         }
       }
       return applied;
@@ -198,7 +224,9 @@ const applyStyleLikeHost = (styleId: string): ConformanceOperation => ({
     const resolver = createStyleResolver(styles);
     const resolved = resolver.resolveParagraphStyle(styleId);
     const attrs: ResolvedStyleAttrs = {
-      numbering: base.package.numbering ? getCachedNumberingMap(base.package.numbering) : null,
+      numbering: base.package.numbering
+        ? getCachedNumberingMap(base.package.numbering)
+        : null,
     };
     if (resolved.paragraphFormatting) {
       attrs.paragraphFormatting = resolved.paragraphFormatting;
@@ -228,46 +256,86 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   // Marks
   toggleBold: [registryCommand("toggleBold", [], { placements: RANGE })],
   toggleItalic: [registryCommand("toggleItalic", [], { placements: RANGE })],
-  toggleUnderline: [registryCommand("toggleUnderline", [], { placements: RANGE })],
-  toggleStrike: [registryCommand("toggleStrike", [], { placements: RUN_FORMATTING })],
-  toggleSuperscript: [registryCommand("toggleSuperscript", [], { placements: RUN_FORMATTING })],
-  toggleSubscript: [registryCommand("toggleSubscript", [], { placements: RUN_FORMATTING })],
-  setTextColor: [
-    registryCommand("setTextColor", [{ rgb: "C00000" }], { placements: RUN_FORMATTING }),
+  toggleUnderline: [
+    registryCommand("toggleUnderline", [], { placements: RANGE }),
   ],
-  clearTextColor: [registryCommand("clearTextColor", [], { placements: RANGE })],
-  setHighlight: [registryCommand("setHighlight", ["yellow"], { placements: RUN_FORMATTING })],
-  clearHighlight: [registryCommand("clearHighlight", [], { placements: RUN_FORMATTING })],
+  toggleStrike: [
+    registryCommand("toggleStrike", [], { placements: RUN_FORMATTING }),
+  ],
+  toggleSuperscript: [
+    registryCommand("toggleSuperscript", [], { placements: RUN_FORMATTING }),
+  ],
+  toggleSubscript: [
+    registryCommand("toggleSubscript", [], { placements: RUN_FORMATTING }),
+  ],
+  setTextColor: [
+    registryCommand("setTextColor", [{ rgb: "C00000" }], {
+      placements: RUN_FORMATTING,
+    }),
+  ],
+  clearTextColor: [
+    registryCommand("clearTextColor", [], { placements: RANGE }),
+  ],
+  setHighlight: [
+    registryCommand("setHighlight", ["yellow"], { placements: RUN_FORMATTING }),
+  ],
+  clearHighlight: [
+    registryCommand("clearHighlight", [], { placements: RUN_FORMATTING }),
+  ],
   setFontSize: [registryCommand("setFontSize", [28], { placements: RANGE })],
   clearFontSize: [registryCommand("clearFontSize", [], { placements: RANGE })],
-  setFontFamily: [registryCommand("setFontFamily", ["Arial"], { placements: RUN_FORMATTING })],
-  clearFontFamily: [registryCommand("clearFontFamily", [], { placements: RUN_FORMATTING })],
-  setUnderlineStyle: [
-    registryCommand("setUnderlineStyle", ["double"], { placements: RUN_FORMATTING }),
+  setFontFamily: [
+    registryCommand("setFontFamily", ["Arial"], { placements: RUN_FORMATTING }),
   ],
-  setHyperlink: [registryCommand("setHyperlink", ["https://example.org/"], { placements: RANGE })],
-  removeHyperlink: [registryCommand("removeHyperlink", [], { placements: RANGE })],
-  insertHyperlink: [registryCommand("insertHyperlink", ["a link", "https://example.org/"])],
+  clearFontFamily: [
+    registryCommand("clearFontFamily", [], { placements: RUN_FORMATTING }),
+  ],
+  setUnderlineStyle: [
+    registryCommand("setUnderlineStyle", ["double"], {
+      placements: RUN_FORMATTING,
+    }),
+  ],
+  setHyperlink: [
+    registryCommand("setHyperlink", ["https://example.org/"], {
+      placements: RANGE,
+    }),
+  ],
+  removeHyperlink: [
+    registryCommand("removeHyperlink", [], { placements: RANGE }),
+  ],
+  insertHyperlink: [
+    registryCommand("insertHyperlink", ["a link", "https://example.org/"]),
+  ],
   insertFootnote: [insertNoteLikeHost("footnote")],
   insertEndnote: [insertNoteLikeHost("endnote")],
-  deleteNoteRef: [registryCommand("deleteNoteRef", [], { placements: ["paragraph"] })],
+  deleteNoteRef: [
+    registryCommand("deleteNoteRef", [], { placements: ["paragraph"] }),
+  ],
 
   // Paragraph
-  setAlignment: [registryCommand("setAlignment", ["center"], { variant: "center" })],
+  setAlignment: [
+    registryCommand("setAlignment", ["center"], { variant: "center" }),
+  ],
   alignLeft: [registryCommand("alignLeft")],
   alignCenter: [registryCommand("alignCenter")],
   alignRight: [registryCommand("alignRight")],
   alignJustify: [registryCommand("alignJustify")],
-  setLineSpacing: [registryCommand("setLineSpacing", [360, "auto"], { variant: "360" })],
+  setLineSpacing: [
+    registryCommand("setLineSpacing", [360, "auto"], { variant: "360" }),
+  ],
   singleSpacing: [registryCommand("singleSpacing")],
   oneAndHalfSpacing: [registryCommand("oneAndHalfSpacing")],
   doubleSpacing: [registryCommand("doubleSpacing")],
-  setSpaceBefore: [registryCommand("setSpaceBefore", [240], { variant: "240" })],
+  setSpaceBefore: [
+    registryCommand("setSpaceBefore", [240], { variant: "240" }),
+  ],
   setSpaceAfter: [registryCommand("setSpaceAfter", [240], { variant: "240" })],
   increaseIndent: [registryCommand("increaseIndent")],
   decreaseIndent: [registryCommand("decreaseIndent")],
   setIndentLeft: [registryCommand("setIndentLeft", [720], { variant: "720" })],
-  setIndentRight: [registryCommand("setIndentRight", [720], { variant: "720" })],
+  setIndentRight: [
+    registryCommand("setIndentRight", [720], { variant: "720" }),
+  ],
   setIndentFirstLine: [
     registryCommand("setIndentFirstLine", [360], { variant: "360" }),
     registryCommand("setIndentFirstLine", [360, true], { variant: "hanging" }),
@@ -275,15 +343,21 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   applyStyle: [applyStyleLikeHost("Heading1"), applyStyleLikeHost("Heading2")],
   clearStyle: [registryCommand("clearStyle")],
   insertSectionBreak: [
-    registryCommand("insertSectionBreak", ["nextPage"], { variant: "nextPage" }),
-    registryCommand("insertSectionBreak", ["continuous"], { variant: "continuous" }),
+    registryCommand("insertSectionBreak", ["nextPage"], {
+      variant: "nextPage",
+    }),
+    registryCommand("insertSectionBreak", ["continuous"], {
+      variant: "continuous",
+    }),
   ],
   removeSectionBreak: [registryCommand("removeSectionBreak")],
   generateTOC: [registryCommand("generateTOC", [{ title: "Contents" }])],
   toggleBidi: [registryCommand("toggleBidi")],
   setRtl: [registryCommand("setRtl")],
   setLtr: [registryCommand("setLtr")],
-  setTabs: [registryCommand("setTabs", [[{ position: 2880, alignment: "right" }]])],
+  setTabs: [
+    registryCommand("setTabs", [[{ position: 2880, alignment: "right" }]]),
+  ],
   addTabStop: [registryCommand("addTabStop", [1440, "left", "dot"])],
   removeTabStop: [registryCommand("removeTabStop", [1440])],
 
@@ -295,7 +369,9 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   removeList: [registryCommand("removeList")],
   restartNumbering: [registryCommand("restartNumbering")],
   continueNumbering: [registryCommand("continueNumbering")],
-  setNumberingValue: [registryCommand("setNumberingValue", [3], { variant: "3" })],
+  setNumberingValue: [
+    registryCommand("setNumberingValue", [3], { variant: "3" }),
+  ],
 
   // Tables
   insertTable: [registryCommand("insertTable", [2, 3])],
@@ -309,7 +385,9 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   selectTable: [registryCommand("selectTable")],
   selectRow: [registryCommand("selectRow")],
   selectColumn: [registryCommand("selectColumn")],
-  mergeCells: [registryCommand("mergeCells", [], { placements: ["cross-paragraph"] })],
+  mergeCells: [
+    registryCommand("mergeCells", [], { placements: ["cross-paragraph"] }),
+  ],
   splitCell: [registryCommand("splitCell")],
   setCellBorder: [registryCommand("setCellBorder", ["all", BORDER])],
   setTableBorderPreset: [registryCommand("setTableBorderPreset", ["none"])],
@@ -319,7 +397,9 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   setOutsideTableBorders: [registryCommand("setOutsideTableBorders", [BORDER])],
   setInsideTableBorders: [registryCommand("setInsideTableBorders", [BORDER])],
   setCellVerticalAlign: [registryCommand("setCellVerticalAlign", ["center"])],
-  setCellMargins: [registryCommand("setCellMargins", [{ top: 120, left: 240 }])],
+  setCellMargins: [
+    registryCommand("setCellMargins", [{ top: 120, left: 240 }]),
+  ],
   setCellTextDirection: [registryCommand("setCellTextDirection", ["btLr"])],
   toggleNoWrap: [registryCommand("toggleNoWrap")],
   setRowHeight: [registryCommand("setRowHeight", [600, "atLeast"])],
@@ -331,7 +411,9 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
       { width: 5000, widthType: "pct", justification: "center" },
     ]),
   ],
-  applyTableStyle: [registryCommand("applyTableStyle", [{ styleId: "TableGrid" }])],
+  applyTableStyle: [
+    registryCommand("applyTableStyle", [{ styleId: "TableGrid" }]),
+  ],
   setCellFillColor: [registryCommand("setCellFillColor", ["FFFF00"])],
   setTableBorderColor: [registryCommand("setTableBorderColor", ["00B050"])],
   setTableBorderWidth: [registryCommand("setTableBorderWidth", [12])],
@@ -339,9 +421,6 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   // Not driven directly
   undo: { excluded: "Exercised by every case's undo check (d)." },
   redo: { excluded: "Exercised by every case's redo check (d)." },
-  extractSelectionContext: {
-    excluded: "Reads the selection for a host callback; it never edits the document.",
-  },
 };
 
 /** Two plain paragraphs, open at both ends, as a clipboard delivers them. */
@@ -360,7 +439,9 @@ const PASTED_PARAGRAPHS = (schemaDoc: PMNode) => {
 export const PASTED_TABLE = (schemaDoc: PMNode) => {
   const { schema } = schemaDoc.type;
   const cell = (text: string) =>
-    schema.node("tableCell", null, [schema.node("paragraph", null, schema.text(text))]);
+    schema.node("tableCell", null, [
+      schema.node("paragraph", null, schema.text(text)),
+    ]);
   const row = (left: string, right: string) =>
     schema.node("tableRow", null, [cell(left), cell(right)]);
   return new Slice(
@@ -384,7 +465,11 @@ export const PASTED_LIST = (schemaDoc: PMNode) => {
       schema.text(text),
     );
   return new Slice(
-    Fragment.from([item("First bullet", 0), item("Second bullet", 0), item("Nested bullet", 1)]),
+    Fragment.from([
+      item("First bullet", 0),
+      item("Second bullet", 0),
+      item("Nested bullet", 1),
+    ]),
     1,
     1,
   );
@@ -405,12 +490,17 @@ const keyOperation = (
  * an entry here fails the coverage check.
  */
 export const KEY_BINDING_OPERATIONS: Readonly<
-  Record<string, readonly ConformanceOperation[] | { excluded: string; macOSOnly?: true }>
+  Record<
+    string,
+    readonly ConformanceOperation[] | { excluded: string; macOSOnly?: true }
+  >
 > = {
   Enter: [keyOperation("Enter", ["caret-middle", "caret-end", "paragraph"])],
   "Shift-Enter": [keyOperation("Shift-Enter")],
   "Mod-Enter": [keyOperation("Mod-Enter")],
-  Backspace: [keyOperation("Backspace", ["caret-start", "caret-middle", "word"])],
+  Backspace: [
+    keyOperation("Backspace", ["caret-start", "caret-middle", "word"]),
+  ],
   Delete: [keyOperation("Delete", ["caret-end", "cross-paragraph"])],
   "Mod-Backspace": [keyOperation("Mod-Backspace", ["caret-start"])],
   "Mod-Delete": [keyOperation("Mod-Delete", ["caret-end"])],
@@ -422,24 +512,50 @@ export const KEY_BINDING_OPERATIONS: Readonly<
   "Mod-u": [keyOperation("Mod-u", RANGE)],
   "Mod-z": { excluded: "Undo; exercised by every case's undo check (d)." },
   "Mod-y": { excluded: "Redo; exercised by every case's redo check (d)." },
-  "Mod-Shift-z": { excluded: "Redo; exercised by every case's redo check (d)." },
+  "Mod-Shift-z": {
+    excluded: "Redo; exercised by every case's redo check (d).",
+  },
   "Mod-Alt-v": {
     excluded:
       "Paste without formatting reads the system clipboard; paste is driven by the paste operations.",
   },
-  "Mod-a": { excluded: "Select all; moves the selection only (the `document` placement)." },
+  "Mod-a": {
+    excluded:
+      "Select all; moves the selection only (the `document` placement).",
+  },
   Escape: { excluded: "Selects the parent node; moves the selection only." },
-  "Ctrl-a": { excluded: "macOS line-start motion; moves the selection only.", macOSOnly: true },
-  "Ctrl-e": { excluded: "macOS line-end motion; moves the selection only.", macOSOnly: true },
-  "Ctrl-h": { excluded: "macOS alias of Backspace, which is driven.", macOSOnly: true },
-  "Ctrl-d": { excluded: "macOS alias of Delete, which is driven.", macOSOnly: true },
-  "Alt-Backspace": { excluded: "macOS alias of Mod-Backspace, which is driven.", macOSOnly: true },
+  "Ctrl-a": {
+    excluded: "macOS line-start motion; moves the selection only.",
+    macOSOnly: true,
+  },
+  "Ctrl-e": {
+    excluded: "macOS line-end motion; moves the selection only.",
+    macOSOnly: true,
+  },
+  "Ctrl-h": {
+    excluded: "macOS alias of Backspace, which is driven.",
+    macOSOnly: true,
+  },
+  "Ctrl-d": {
+    excluded: "macOS alias of Delete, which is driven.",
+    macOSOnly: true,
+  },
+  "Alt-Backspace": {
+    excluded: "macOS alias of Mod-Backspace, which is driven.",
+    macOSOnly: true,
+  },
   "Ctrl-Alt-Backspace": {
     excluded: "macOS alias of Mod-Delete, which is driven.",
     macOSOnly: true,
   },
-  "Alt-Delete": { excluded: "macOS alias of Mod-Delete, which is driven.", macOSOnly: true },
-  "Alt-d": { excluded: "macOS alias of Mod-Delete, which is driven.", macOSOnly: true },
+  "Alt-Delete": {
+    excluded: "macOS alias of Mod-Delete, which is driven.",
+    macOSOnly: true,
+  },
+  "Alt-d": {
+    excluded: "macOS alias of Mod-Delete, which is driven.",
+    macOSOnly: true,
+  },
 };
 
 const typing = (text: string, label: string): ConformanceOperation => ({
@@ -483,7 +599,9 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
     id: "paste:plain",
     placements: ["caret-middle", "word"],
     run: ({ view }) => {
-      view.paste(new Slice(Fragment.from(view.state.schema.text("Inline paste")), 0, 0));
+      view.paste(
+        new Slice(Fragment.from(view.state.schema.text("Inline paste")), 0, 0),
+      );
       return undefined;
     },
   },
@@ -518,13 +636,20 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
     placements: ["caret-end"],
     run: ({ view, focus }) => {
       const blocks = textblocks(view.state.doc);
-      const index = blocks.findIndex(({ node }) => node.textContent.includes(focus));
+      const index = blocks.findIndex(({ node }) =>
+        node.textContent.includes(focus),
+      );
       const first = blocks[index];
       const second = blocks[index + 1];
       if (!first || !second) {
         return false;
       }
-      view.paste(view.state.doc.slice(first.pos + 1, second.pos + 1 + second.node.content.size));
+      view.paste(
+        view.state.doc.slice(
+          first.pos + 1,
+          second.pos + 1 + second.node.content.size,
+        ),
+      );
       return undefined;
     },
   },
@@ -557,11 +682,16 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
           content: [
             {
               type: "paragraph",
-              content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
+              content: [
+                { type: "run", content: [{ type: "text", text: "A note." }] },
+              ],
             },
           ],
         };
-        base.package.document.comments = [...(base.package.document.comments ?? []), comment];
+        base.package.document.comments = [
+          ...(base.package.document.comments ?? []),
+          comment,
+        ];
       }
       return applied;
     },
@@ -571,28 +701,36 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
     suggesting: "direct",
     placements: ["paragraph"],
     run: ({ view }) =>
-      view.execute(acceptChange(view.state.selection.from, view.state.selection.to)),
+      view.execute(
+        acceptChange(view.state.selection.from, view.state.selection.to),
+      ),
   },
   {
     id: "host:rejectChange",
     suggesting: "direct",
     placements: ["paragraph"],
     run: ({ view }) =>
-      view.execute(rejectChange(view.state.selection.from, view.state.selection.to)),
+      view.execute(
+        rejectChange(view.state.selection.from, view.state.selection.to),
+      ),
   },
   {
     id: "host:acceptAllChanges",
     suggesting: "direct",
     placements: CARET,
     run: ({ view }) =>
-      view.authority === "canonical" ? view.resolve("accept") : view.execute(acceptAllChanges()),
+      view.authority === "canonical"
+        ? view.resolve("accept")
+        : view.execute(acceptAllChanges()),
   },
   {
     id: "host:rejectAllChanges",
     suggesting: "direct",
     placements: CARET,
     run: ({ view }) =>
-      view.authority === "canonical" ? view.resolve("reject") : view.execute(rejectAllChanges()),
+      view.authority === "canonical"
+        ? view.resolve("reject")
+        : view.execute(rejectAllChanges()),
   },
   {
     id: "host:insertPageBreak",
@@ -610,7 +748,9 @@ export const CONFORMANCE_OPERATIONS: readonly ConformanceOperation[] = [
   ...Object.values(REGISTRY_COMMAND_OPERATIONS).flatMap((entry) =>
     Array.isArray(entry) ? entry : [],
   ),
-  ...Object.values(KEY_BINDING_OPERATIONS).flatMap((entry) => (Array.isArray(entry) ? entry : [])),
+  ...Object.values(KEY_BINDING_OPERATIONS).flatMap((entry) =>
+    Array.isArray(entry) ? entry : [],
+  ),
   ...EXTRA_OPERATIONS,
 ];
 
@@ -662,7 +802,9 @@ const caseBase = (base: Document): Document => ({
     ...base.package,
     document: {
       ...base.package.document,
-      ...(base.package.document.comments ? { comments: [...base.package.document.comments] } : {}),
+      ...(base.package.document.comments
+        ? { comments: [...base.package.document.comments] }
+        : {}),
     },
   },
 });
@@ -682,11 +824,15 @@ type ModeRun = {
   error?: unknown;
 };
 
-type RefusalCaseObservation = "executed" | "activationRefused" | "selectionUnavailable";
+type RefusalCaseObservation =
+  "executed" | "activationRefused" | "selectionUnavailable";
 type CanonicalCaseContract = {
   authority: "canonical";
   refusalCases: ReadonlyMap<string, readonly HarnessRefusalRow[]>;
-  observeRefusalCase?: (id: string, observation: RefusalCaseObservation) => void;
+  observeRefusalCase?: (
+    id: string,
+    observation: RefusalCaseObservation,
+  ) => void;
 };
 type CaseAuthority = CanonicalCaseContract | { authority: "prosemirror" };
 type RunModeOptions = {
@@ -699,7 +845,11 @@ type RunModeOptions = {
 const runMode = (options: RunModeOptions): ModeRun | null => {
   if (options.authority === "canonical") return runCanonicalMode(options);
   const { loaded, shape, operation, placement, mode, authority } = options;
-  const before = placeSelection(createHarnessState(loaded.base, mode), shape.focus, placement);
+  const before = placeSelection(
+    createHarnessState(loaded.base, mode),
+    shape.focus,
+    placement,
+  );
   if (!before) {
     return null;
   }
@@ -755,7 +905,10 @@ type RunCanonicalModeOptions = {
   placement: SelectionPlacement;
   mode: EditorMode;
   refusalCases: ReadonlyMap<string, readonly HarnessRefusalRow[]>;
-  observeRefusalCase?: (id: string, observation: RefusalCaseObservation) => void;
+  observeRefusalCase?: (
+    id: string,
+    observation: RefusalCaseObservation,
+  ) => void;
 };
 const runCanonicalMode = ({
   loaded,
@@ -773,12 +926,14 @@ const runCanonicalMode = ({
     mode,
   });
   const expectedRows =
-    refusalCases.get(refusalId) ?? panic(`Undeclared canonical refusal case: ${refusalId}`);
+    refusalCases.get(refusalId) ??
+    panic(`Undeclared canonical refusal case: ${refusalId}`);
   const created = createCanonicalHarnessCase(caseBase(loaded.base), mode);
   if (created.type === "activationRefused") {
     if (
       !expectedRows.some(
-        ({ gap, message }) => gap === created.refusal.gap && message === created.refusal.message,
+        ({ gap, message }) =>
+          gap === created.refusal.gap && message === created.refusal.message,
       )
     )
       panic(`Undeclared activation refusal: ${refusalId}`);
@@ -812,7 +967,11 @@ const runCanonicalMode = ({
     let verdict: boolean | undefined;
     try {
       observeRefusalCase?.(refusalId, "executed");
-      verdict = operation.run({ view: driver, base: caseBase(beforeModel), focus: shape.focus });
+      verdict = operation.run({
+        view: driver,
+        base: caseBase(beforeModel),
+        focus: shape.focus,
+      });
     } catch (error) {
       return {
         authority: "canonical",
@@ -829,7 +988,8 @@ const runCanonicalMode = ({
     }
     const after = driver.state;
     const base = driver.snapshot();
-    const changed = !after.doc.eq(before.doc) || !isDeepStrictEqual(base, beforeModel);
+    const changed =
+      !after.doc.eq(before.doc) || !isDeepStrictEqual(base, beforeModel);
     if (
       expectedChange &&
       !changed &&
@@ -838,7 +998,8 @@ const runCanonicalMode = ({
       historyViolations.push({
         kind: "silent-refusal",
         mode,
-        detail: "A text mark toggle over selected text changed nothing without a declared refusal.",
+        detail:
+          "A text mark toggle over selected text changed nothing without a declared refusal.",
       });
     const refusalProblems = harnessRefusalProblems({
       rows: driver.refusalRows,
@@ -866,7 +1027,10 @@ const runCanonicalMode = ({
             panic("Canonical conformance history refused an available entry.");
         }
         assertExactModel(driver.snapshot(), beforeModel);
-        if (!driver.state.doc.eq(before.doc) || !driver.state.selection.eq(before.selection))
+        if (
+          !driver.state.doc.eq(before.doc) ||
+          !driver.state.selection.eq(before.selection)
+        )
           historyViolations.push({
             kind: "undo",
             mode,
@@ -877,19 +1041,27 @@ const runCanonicalMode = ({
             panic("Canonical conformance history refused an available entry.");
         }
         assertExactModel(driver.snapshot(), base);
-        if (!driver.state.doc.eq(after.doc) || !driver.state.selection.eq(after.selection))
+        if (
+          !driver.state.doc.eq(after.doc) ||
+          !driver.state.selection.eq(after.selection)
+        )
           historyViolations.push({
             kind: "redo",
             mode,
             detail: "Canonical redo lost the authored projection or selection.",
           });
       } catch (error) {
-        historyViolations.push({ kind: "undo", mode, detail: errorText(error) });
+        historyViolations.push({
+          kind: "undo",
+          mode,
+          detail: errorText(error),
+        });
       }
     }
     let status: ModeRun["status"] = "unchanged";
     if (changed) status = "changed";
-    else if (verdict === false || driver.refusals.length > 0) status = "refused";
+    else if (verdict === false || driver.refusals.length > 0)
+      status = "refused";
     return {
       authority: "canonical",
       beforeModel,
@@ -922,7 +1094,10 @@ const blockLabel = (block: Record<string, unknown> | undefined): string =>
   JSON.stringify(String(block?.["text"] ?? "").slice(0, 32));
 
 /** The first block that differs, and the fields it differs in. */
-const compareSummaries = (expected: ContentSummary, actual: ContentSummary): string | null => {
+const compareSummaries = (
+  expected: ContentSummary,
+  actual: ContentSummary,
+): string | null => {
   if (JSON.stringify(expected) === JSON.stringify(actual)) {
     return null;
   }
@@ -937,7 +1112,9 @@ const compareSummaries = (expected: ContentSummary, actual: ContentSummary): str
       return `block count ${expected.length} ≠ ${actual.length} (first unmatched ${blockLabel(left ?? right)})`;
     }
     const fields = [...new Set([...Object.keys(left), ...Object.keys(right)])]
-      .filter((field) => JSON.stringify(left[field]) !== JSON.stringify(right[field]))
+      .filter(
+        (field) => JSON.stringify(left[field]) !== JSON.stringify(right[field]),
+      )
       .map(
         (field) =>
           `${field}: ${JSON.stringify(left[field]) ?? "∅"} ≠ ${JSON.stringify(right[field]) ?? "∅"}`,
@@ -964,7 +1141,9 @@ const normalizeMarkdown = (markdown: string): string =>
 const compareText = (expected: string, actual: string): string | null => {
   const left = normalizeMarkdown(expected);
   const right = normalizeMarkdown(actual);
-  return left === right ? null : firstDifference(JSON.stringify(left), JSON.stringify(right));
+  return left === right
+    ? null
+    : firstDifference(JSON.stringify(left), JSON.stringify(right));
 };
 
 /** Where two documents first differ, named by node type and the attributes or marks that differ. */
@@ -980,15 +1159,27 @@ const describeDocDifference = (expected: PMNode, actual: PMNode): string => {
   if (leftNode.type !== rightNode.type) {
     return `at ${position}: ${leftNode.type.name} ≠ ${rightNode.type.name}`;
   }
-  const attrs = [...new Set([...Object.keys(leftNode.attrs), ...Object.keys(rightNode.attrs)])]
-    .filter((key) => JSON.stringify(leftNode.attrs[key]) !== JSON.stringify(rightNode.attrs[key]))
+  const attrs = [
+    ...new Set([
+      ...Object.keys(leftNode.attrs),
+      ...Object.keys(rightNode.attrs),
+    ]),
+  ]
+    .filter(
+      (key) =>
+        JSON.stringify(leftNode.attrs[key]) !==
+        JSON.stringify(rightNode.attrs[key]),
+    )
     .map(
       (key) =>
         `${key}: ${JSON.stringify(leftNode.attrs[key])?.slice(0, 120)} ≠ ${JSON.stringify(rightNode.attrs[key])?.slice(0, 120)}`,
     );
-  const marks = (node: PMNode) => node.marks.map((mark) => mark.type.name).join(",");
+  const marks = (node: PMNode) =>
+    node.marks.map((mark) => mark.type.name).join(",");
   const markDifference =
-    marks(leftNode) === marks(rightNode) ? [] : [`marks: ${marks(leftNode)} ≠ ${marks(rightNode)}`];
+    marks(leftNode) === marks(rightNode)
+      ? []
+      : [`marks: ${marks(leftNode)} ≠ ${marks(rightNode)}`];
   const text =
     leftNode.textContent === rightNode.textContent
       ? []
@@ -999,7 +1190,10 @@ const describeDocDifference = (expected: PMNode, actual: PMNode): string => {
 };
 
 /** One step of `command` (undo or redo), or null when it has nothing to do. */
-const historyStep = (state: EditorState, command: typeof undo): EditorState | null => {
+const historyStep = (
+  state: EditorState,
+  command: typeof undo,
+): EditorState | null => {
   let next: EditorState | null = null;
   command(state, (tr) => {
     next = state.apply(tr);
@@ -1008,7 +1202,10 @@ const historyStep = (state: EditorState, command: typeof undo): EditorState | nu
 };
 
 /** Apply `command` (undo or redo) until it has nothing left to do. */
-const exhaustHistory = (state: EditorState, command: typeof undo): EditorState => {
+const exhaustHistory = (
+  state: EditorState,
+  command: typeof undo,
+): EditorState => {
   let current = state;
   for (let step = 0; step < 50; step += 1) {
     const next = historyStep(current, command);
@@ -1027,11 +1224,19 @@ type ResolvedSnapshotOptions = {
   phase: "before" | "after";
   decision: "accept" | "reject";
 };
-const resolvedSnapshot = ({ run, phase, decision }: ResolvedSnapshotOptions) => {
+const resolvedSnapshot = ({
+  run,
+  phase,
+  decision,
+}: ResolvedSnapshotOptions) => {
   const state = phase === "before" ? run.before : run.after;
   const model = phase === "before" ? run.beforeModel : run.base;
   if (run.authority === "prosemirror")
-    return [resolveAllChanges(state, decision), run.base, run.authority] as const;
+    return [
+      resolveAllChanges(state, decision),
+      run.base,
+      run.authority,
+    ] as const;
   const resolved = resolveCanonicalHarnessDocument(model, decision);
   return [resolved.state, resolved.model, run.authority] as const;
 };
@@ -1045,13 +1250,22 @@ const observe = (
   markdown: modelMarkdown(
     authority === "canonical"
       ? base
-      : fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
+      : fromProseDoc(state.doc, base, {
+          stylesheetSource: { type: "package" },
+        }),
   ),
 });
 
-const saveRunState = (state: EditorState, base: Document, authority: HarnessAuthority) => {
+const saveRunState = (
+  state: EditorState,
+  base: Document,
+  authority: HarnessAuthority,
+) => {
   if (authority === "prosemirror") return saveHarnessState(state, base);
-  assertValidFolioDocumentModel(base, "Canonical conformance snapshot is invalid");
+  assertValidFolioDocumentModel(
+    base,
+    "Canonical conformance snapshot is invalid",
+  );
   return saveCanonicalHarnessDocument(base);
 };
 
@@ -1065,7 +1279,10 @@ const observeReopened = async (
   return { summary: reopened.summary, markdown: reopened.markdown };
 };
 
-const compareObservations = (expected: Observation, actual: Observation): string | null =>
+const compareObservations = (
+  expected: Observation,
+  actual: Observation,
+): string | null =>
   compareSummaries(expected.summary, actual.summary) ??
   compareText(expected.markdown, actual.markdown);
 
@@ -1084,7 +1301,10 @@ const tableGridIssues = (doc: PMNode): string[] => {
     const columnWidths: unknown = node.attrs["columnWidths"];
     if (map.problems && map.problems.length > 0) {
       issues.push(`table at ${pos}: ${JSON.stringify(map.problems)}`);
-    } else if (Array.isArray(columnWidths) && columnWidths.length !== map.width) {
+    } else if (
+      Array.isArray(columnWidths) &&
+      columnWidths.length !== map.width
+    ) {
       issues.push(
         `table at ${pos}: ${map.width} cell columns over a ${columnWidths.length}-column grid`,
       );
@@ -1095,11 +1315,18 @@ const tableGridIssues = (doc: PMNode): string[] => {
 };
 
 /** Checks (a)–(d) for one mode's changed state. */
-const checkChangedState = async (run: ModeRun, violations: Violation[]): Promise<void> => {
+const checkChangedState = async (
+  run: ModeRun,
+  violations: Violation[],
+): Promise<void> => {
   const { mode, after, before, base } = run;
   const gridIssues = tableGridIssues(after.doc);
   if (gridIssues.length > 0 && tableGridIssues(before.doc).length === 0) {
-    violations.push({ kind: "table-grid", mode, detail: gridIssues.join("; ") });
+    violations.push({
+      kind: "table-grid",
+      mode,
+      detail: gridIssues.join("; "),
+    });
   }
   let saved: Awaited<ReturnType<typeof saveHarnessState>> | null = null;
   try {
@@ -1114,7 +1341,10 @@ const checkChangedState = async (run: ModeRun, violations: Violation[]): Promise
       if (blocks) {
         violations.push({ kind: "readback-blocks", mode, detail: blocks });
       }
-      const painted = compareSummaries(summarizeEffectiveParagraphs(after), back.effective);
+      const painted = compareSummaries(
+        summarizeEffectiveParagraphs(after),
+        back.effective,
+      );
       if (painted) {
         violations.push({ kind: "readback-painted", mode, detail: painted });
       }
@@ -1155,7 +1385,11 @@ const checkChangedState = async (run: ModeRun, violations: Violation[]): Promise
       }
     }
   } catch (error) {
-    violations.push({ kind: "undo", mode, detail: `undo threw ${errorText(error)}` });
+    violations.push({
+      kind: "undo",
+      mode,
+      detail: `undo threw ${errorText(error)}`,
+    });
   }
 };
 
@@ -1195,7 +1429,9 @@ const runCaseWithAuthority = async (
     if (!run) continue;
     runs[mode] = run;
   }
-  const violations: Violation[] = Object.values(runs).flatMap((run) => run.historyViolations);
+  const violations: Violation[] = Object.values(runs).flatMap(
+    (run) => run.historyViolations,
+  );
   const editing = runs.editing;
   const suggesting = runs.suggesting;
   if (!editing || !suggesting) {
@@ -1205,7 +1441,11 @@ const runCaseWithAuthority = async (
 
   for (const run of [editing, suggesting]) {
     if (run.status === "threw") {
-      violations.push({ kind: "threw", mode: run.mode, detail: errorText(run.error) });
+      violations.push({
+        kind: "threw",
+        mode: run.mode,
+        detail: errorText(run.error),
+      });
     } else if (run.status === "changed") {
       // oxlint-disable-next-line no-await-in-loop -- modes are checked one after the other
       await checkChangedState(run, violations);
@@ -1229,21 +1469,41 @@ const runCaseWithAuthority = async (
   if (suggesting.status === "changed") {
     try {
       const rejectedOriginal = observe(
-        ...resolvedSnapshot({ run: suggesting, phase: "before", decision: "reject" }),
+        ...resolvedSnapshot({
+          run: suggesting,
+          phase: "before",
+          decision: "reject",
+        }),
       );
       const rejected = observe(
-        ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "reject" }),
+        ...resolvedSnapshot({
+          run: suggesting,
+          phase: "after",
+          decision: "reject",
+        }),
       );
       const rejectDifference = compareObservations(rejectedOriginal, rejected);
       if (rejectDifference && operation.suggesting !== "direct") {
-        violations.push({ kind: "reject-mismatch", mode: "suggesting", detail: rejectDifference });
+        violations.push({
+          kind: "reject-mismatch",
+          mode: "suggesting",
+          detail: rejectDifference,
+        });
       }
       if (editing.status === "changed") {
         const acceptedEditing = observe(
-          ...resolvedSnapshot({ run: editing, phase: "after", decision: "accept" }),
+          ...resolvedSnapshot({
+            run: editing,
+            phase: "after",
+            decision: "accept",
+          }),
         );
         const accepted = observe(
-          ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "accept" }),
+          ...resolvedSnapshot({
+            run: suggesting,
+            phase: "after",
+            decision: "accept",
+          }),
         );
         const acceptDifference = compareObservations(acceptedEditing, accepted);
         if (acceptDifference) {
@@ -1256,12 +1516,23 @@ const runCaseWithAuthority = async (
       }
       if (operation.suggesting !== "direct") {
         const reopenedOriginal = await observeReopened(
-          ...resolvedSnapshot({ run: suggesting, phase: "before", decision: "reject" }),
+          ...resolvedSnapshot({
+            run: suggesting,
+            phase: "before",
+            decision: "reject",
+          }),
         );
         const reopenedRejected = await observeReopened(
-          ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "reject" }),
+          ...resolvedSnapshot({
+            run: suggesting,
+            phase: "after",
+            decision: "reject",
+          }),
         );
-        const reopenedRejectDifference = compareObservations(reopenedOriginal, reopenedRejected);
+        const reopenedRejectDifference = compareObservations(
+          reopenedOriginal,
+          reopenedRejected,
+        );
         if (reopenedRejectDifference && !rejectDifference) {
           violations.push({
             kind: "reject-mismatch",
@@ -1271,12 +1542,23 @@ const runCaseWithAuthority = async (
         }
         if (editing.status === "changed") {
           const reopenedEditing = await observeReopened(
-            ...resolvedSnapshot({ run: editing, phase: "after", decision: "accept" }),
+            ...resolvedSnapshot({
+              run: editing,
+              phase: "after",
+              decision: "accept",
+            }),
           );
           const reopenedAccepted = await observeReopened(
-            ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "accept" }),
+            ...resolvedSnapshot({
+              run: suggesting,
+              phase: "after",
+              decision: "accept",
+            }),
           );
-          const reopenedAcceptDifference = compareObservations(reopenedEditing, reopenedAccepted);
+          const reopenedAcceptDifference = compareObservations(
+            reopenedEditing,
+            reopenedAccepted,
+          );
           if (reopenedAcceptDifference) {
             violations.push({
               kind: "accept-mismatch",

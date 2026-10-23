@@ -1,35 +1,38 @@
-import { acquireHarnessDom } from "./harnessDom";
 import { panic, Result } from "better-result";
 import type { Slice } from "prosemirror-model";
 import type { Command, Transaction } from "prosemirror-state";
+import { EditorState as PMEditorState } from "prosemirror-state";
 
 import {
-  canonicalActivationRefusalRow,
-  validateHarnessRefusalRows,
-  type HarnessRefusal,
-  type HarnessRefusalRow,
-} from "./canonical-refusal-rows";
-import { storyRevisionIds } from "./reviewProjection";
-import { assertExactModel } from "./exactModel";
-import { cloneDocumentWithParagraphPropertySources } from "../packages/core/src/docx/paragraphPropertySource";
-import {
-  createHiddenEditorManager,
-  CanonicalSessionRefusalError,
-} from "../packages/core/src/controller/hiddenEditorManager";
+  type EditorMode,
+  HARNESS_AUTHOR,
+  keyboardEventFor,
+} from "../packages/core/src/__tests__/editorHarness";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../packages/core/src/controller/canonicalSession";
-import { EditorState as PMEditorState } from "prosemirror-state";
-import { expectRangeAnchorAttrs } from "../packages/core/src/prosemirror/rangeAnchorAttrs";
-import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
-import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
+import {
+  CanonicalSessionRefusalError,
+  createHiddenEditorManager,
+} from "../packages/core/src/controller/hiddenEditorManager";
 import { serializeCanonicalSave } from "../packages/core/src/docx/canonicalSave";
+import { cloneDocumentWithParagraphPropertySources } from "../packages/core/src/docx/paragraphPropertySource";
+import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
+import { expectRangeAnchorAttrs } from "../packages/core/src/prosemirror/rangeAnchorAttrs";
+import { singletonManager } from "../packages/core/src/prosemirror/schema";
+import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../packages/core/src/types/canonicalSave";
 import type { Document } from "../packages/core/src/types/document";
-import { keyboardEventFor, type EditorMode } from "../packages/core/src/__tests__/editorHarness";
-import { HARNESS_AUTHOR } from "../packages/core/src/__tests__/editorHarness";
-import { singletonManager } from "../packages/core/src/prosemirror/schema";
+import {
+  canonicalActivationRefusalRow,
+  type HarnessRefusal,
+  type HarnessRefusalRow,
+  validateHarnessRefusalRows,
+} from "./canonical-refusal-rows";
+import { assertExactModel } from "./exactModel";
+import { acquireHarnessDom } from "./harnessDom";
+import { storyRevisionIds } from "./reviewProjection";
 
 const canonicalSaveSnapshots = new WeakMap<Document, CanonicalSaveSnapshot>();
 
@@ -43,12 +46,18 @@ export const saveCanonicalHarnessDocument = async (source: Document) => {
   const snapshot =
     canonicalSaveSnapshots.get(source) ??
     createCanonicalSession(source).unwrap().captureSaveSnapshot();
-  const saved = await serializeCanonicalSave({ snapshot, options: { mode: "full" } });
+  const saved = await serializeCanonicalSave({
+    snapshot,
+    options: { mode: "full" },
+  });
   return { model: saved.document, bytes: new Uint8Array(saved.buffer) };
 };
 
 /** A disposable driver over the production controller, with no PM mutation fallback. */
-export const createCanonicalEditorHarness = (source: Document, mode: EditorMode) => {
+export const createCanonicalEditorHarness = (
+  source: Document,
+  mode: EditorMode,
+) => {
   let caseRefusalRows: readonly HarnessRefusalRow[] = [];
   const releaseDom = acquireHarnessDom();
   const host = document.createElement("div");
@@ -60,7 +69,10 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
   const activationRow = canonicalActivationRefusalRow(source);
   const activationSource = cloneDocumentWithParagraphPropertySources(source);
   if (activationRow) validateHarnessRefusalRows([activationRow]);
-  const withRefusalRows = <T>(rows: readonly HarnessRefusalRow[], action: () => T) => {
+  const withRefusalRows = <T>(
+    rows: readonly HarnessRefusalRow[],
+    action: () => T,
+  ) => {
     expectedRows = rows;
     validateHarnessRefusalRows(rows);
     refusalRows.push(...rows);
@@ -79,7 +91,9 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         rows.some(({ id }) => id !== CANONICAL_GAP.commands) &&
         refusals.length === before.refusals
       )
-        panic(`Canonical refusal rows must become strict: ${rows.map(({ id }) => id).join(", ")}`);
+        panic(
+          `Canonical refusal rows must become strict: ${rows.map(({ id }) => id).join(", ")}`,
+        );
       if (rows.length > 0 && refusals.length === before.refusals) {
         // Explicit descriptor-gap cases may be inapplicable, but gaining
         // mutation support retires their refusal contract.
@@ -88,25 +102,30 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
             `Canonical refusal rows must become strict: ${rows.map(({ id }) => id).join(", ")}`,
           );
         const after = manager.api.getCanonicalDocument();
-        if (!after || !before.document) panic("Refusal contract lost canonical authority");
+        if (!after || !before.document)
+          panic("Refusal contract lost canonical authority");
         assertExactModel(after, before.document);
       }
       if (refusals.length > before.refusals) {
         const after = manager.api.getCanonicalDocument();
-        if (!after || !before.document) panic("Refusal lost canonical authority");
+        if (!after || !before.document)
+          panic("Refusal lost canonical authority");
         assertExactModel(after, before.document);
         const saved = manager.api.captureCanonicalSave();
         if (
           saved?.version !== before.save?.version ||
           saved?.structure !== before.save?.structure ||
-          JSON.stringify(saved?.changedBlockIds) !== JSON.stringify(before.save?.changedBlockIds) ||
+          JSON.stringify(saved?.changedBlockIds) !==
+            JSON.stringify(before.save?.changedBlockIds) ||
           !editorView.state.doc.eq(before.state.doc) ||
           !editorView.state.selection.eq(before.state.selection) ||
           manager.api.canUndo() !== before.canUndo ||
           manager.api.canRedo() !== before.canRedo ||
           acceptedTransactions !== before.acceptedTransactions
         )
-          panic("Canonical refusal changed projection, selection or journal availability");
+          panic(
+            "Canonical refusal changed projection, selection or journal availability",
+          );
       }
       return result;
     } finally {
@@ -144,7 +163,10 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
       refusals.push({
         gap,
         message,
-        expectation: row && gap === row.gap && message === row.message ? "declared" : "unexpected",
+        expectation:
+          row && gap === row.gap && message === row.message
+            ? "declared"
+            : "unexpected",
         ...(row ? { row: row.id } : {}),
       });
     },
@@ -174,7 +196,9 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         refusal.message !== activationRow.message
       ) {
         dispose();
-        panic("Canonical activation refusal changed authority or lost its ledger contract");
+        panic(
+          "Canonical activation refusal changed authority or lost its ledger contract",
+        );
       }
     }
     dispose();
@@ -187,7 +211,8 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
   }
   const snapshot = () =>
     rememberCanonicalSave(
-      manager.api.captureCanonicalSave() ?? panic("Canonical save snapshot unavailable."),
+      manager.api.captureCanonicalSave() ??
+        panic("Canonical save snapshot unavailable."),
     );
   const execute = (command: Command) => {
     const count = refusals.length;
@@ -198,7 +223,9 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
   };
   const resolve = (decision: "accept" | "reject") => {
     const ids = storyRevisionIds(snapshot());
-    return ids.length > 0 && manager.api.resolveCanonicalRevisions(ids, decision);
+    return (
+      ids.length > 0 && manager.api.resolveCanonicalRevisions(ids, decision)
+    );
   };
   return {
     authority: "canonical" as const,
@@ -220,14 +247,19 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     resolve,
     pressKey: (binding: string) => {
       const fields = keyboardEventFor(binding);
-      const event = new KeyboardEvent("keydown", { ...fields, bubbles: true, cancelable: true });
+      const event = new KeyboardEvent("keydown", {
+        ...fields,
+        bubbles: true,
+        cancelable: true,
+      });
       const row =
         (fields.key === "Backspace" || fields.key === "Delete") &&
         (fields.ctrlKey || fields.metaKey || fields.altKey)
           ? {
               id: "modified-deletion",
               gap: CANONICAL_GAP.dispatch,
-              message: "Only plain character deletion is available in this session.",
+              message:
+                "Only plain character deletion is available in this session.",
             }
           : undefined;
       const rows = row ? [row] : caseRefusalRows;
@@ -246,7 +278,10 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         );
     },
     paste: (slice: Slice) => {
-      const event = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+      const event = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+      });
       let paragraphsOnly = true;
       let inlineOnly = true;
       slice.content.forEach((node) => {
@@ -258,13 +293,15 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         row = {
           id: "clipboard-nested-blocks",
           gap: CANONICAL_GAP.dispatch,
-          message: "Clipboard tables and nested block containers require canonical table editing.",
+          message:
+            "Clipboard tables and nested block containers require canonical table editing.",
         };
       else if (!paragraphsOnly && !inlineOnly)
         row = {
           id: "clipboard-table",
           gap: CANONICAL_GAP.dispatch,
-          message: "Clipboard tables and embedded blocks require canonical table editing.",
+          message:
+            "Clipboard tables and embedded blocks require canonical table editing.",
         };
       if (row === undefined) {
         // Read clipboard carriers independently of the production preflight.
@@ -273,9 +310,13 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         slice.content.descendants((node) => {
           if (
             (node.type.name === "rangeAnchor" &&
-              expectRangeAnchorAttrs(node).start.type === "commentRangeStart") ||
+              expectRangeAnchorAttrs(node).start.type ===
+                "commentRangeStart") ||
             node.type.name === "commentReference" ||
-            node.marks.some(({ type }) => type.name === "comment" || type.name === "footnoteRef")
+            node.marks.some(
+              ({ type }) =>
+                type.name === "comment" || type.name === "footnoteRef",
+            )
           )
             importsStoryParts = true;
         });
@@ -289,7 +330,9 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
       }
       const rows = row ? [row] : caseRefusalRows;
       withRefusalRows(rows, () =>
-        editorView.someProp("handlePaste", (handler) => handler(editorView, event, slice)),
+        editorView.someProp("handlePaste", (handler) =>
+          handler(editorView, event, slice),
+        ),
       );
     },
     cut: () => {
@@ -298,16 +341,23 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         cancelable: true,
         clipboardData: new DataTransfer(),
       });
-      withRefusalRows(caseRefusalRows, () => editorView.dom.dispatchEvent(event));
+      withRefusalRows(caseRefusalRows, () =>
+        editorView.dom.dispatchEvent(event),
+      );
       return event.defaultPrevented;
     },
   };
 };
 
-export type CanonicalEditorHarness = ReturnType<typeof createCanonicalEditorHarness>;
+export type CanonicalEditorHarness = ReturnType<
+  typeof createCanonicalEditorHarness
+>;
 
 /** Unsupported activation is a counted precondition; every other initialization failure is strict. */
-export const createCanonicalHarnessCase = (source: Document, mode: EditorMode) => {
+export const createCanonicalHarnessCase = (
+  source: Document,
+  mode: EditorMode,
+) => {
   const created = Result.try({
     try: () => createCanonicalEditorHarness(source, mode),
     catch: (error) => error,
@@ -322,7 +372,12 @@ export const createCanonicalHarnessCase = (source: Document, mode: EditorMode) =
   )
     return {
       type: "activationRefused",
-      refusal: { gap: row.gap, message: row.message, expectation: "declared", row: row.id },
+      refusal: {
+        gap: row.gap,
+        message: row.message,
+        expectation: "declared",
+        row: row.id,
+      },
     } as const;
   throw created.error;
 };
@@ -336,8 +391,20 @@ export const resolveCanonicalHarnessDocument = (
   const state = PMEditorState.create({ doc: session.projection.doc });
   const ids = storyRevisionIds(session.document);
   if (ids.length === 0)
-    return { model: rememberCanonicalSave(session.captureSaveSnapshot()), state };
-  const commit = session.prepareResolve(state, { revisionIds: ids, resolution: decision }).unwrap();
-  const published = publishCanonicalProjection({ state, session, commit }).unwrap();
-  return { model: rememberCanonicalSave(session.captureSaveSnapshot()), state: published.state };
+    return {
+      model: rememberCanonicalSave(session.captureSaveSnapshot()),
+      state,
+    };
+  const commit = session
+    .prepareResolve(state, { revisionIds: ids, resolution: decision })
+    .unwrap();
+  const published = publishCanonicalProjection({
+    state,
+    session,
+    commit,
+  }).unwrap();
+  return {
+    model: rememberCanonicalSave(session.captureSaveSnapshot()),
+    state: published.state,
+  };
 };

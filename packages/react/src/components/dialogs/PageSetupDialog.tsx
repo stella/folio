@@ -8,10 +8,12 @@
  */
 
 import { useId, useState } from "react";
+
 import { useTranslations } from "use-intl";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
 import { TWIPS_PER_INCH } from "@stll/folio-core/utils/units";
+
 import { useFolioUI } from "../../ui/folio-ui";
 import { useCloseOnDialogOpenChange } from "./dialogChrome";
 
@@ -54,7 +56,9 @@ function findPageSizeIndex(w: number, h: number): number {
   // Normalize to portrait (smaller dimension = width)
   const pw = Math.min(w, h);
   const ph = Math.max(w, h);
-  return PAGE_SIZES.findIndex((s) => Math.abs(s.width - pw) < 20 && Math.abs(s.height - ph) < 20);
+  return PAGE_SIZES.findIndex(
+    (s) => Math.abs(s.width - pw) < 20 && Math.abs(s.height - ph) < 20,
+  );
 }
 
 // ============================================================================
@@ -70,10 +74,17 @@ export function PageSetupDialog(props: PageSetupDialogProps) {
   if (!props.isOpen) {
     return null;
   }
-  return <PageSetupDialogForm key={JSON.stringify(props.currentProps)} {...props} />;
+  return (
+    <PageSetupDialogForm key={JSON.stringify(props.currentProps)} {...props} />
+  );
 }
 
-function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSetupDialogProps) {
+function PageSetupDialogForm({
+  isOpen,
+  onClose,
+  onApply,
+  currentProps,
+}: PageSetupDialogProps) {
   const {
     Root: Dialog,
     Portal: DialogPortal,
@@ -85,15 +96,28 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const t = useTranslations("folio");
   const id = useId();
-  const [pageWidth, setPageWidth] = useState(currentProps?.pageWidth || DEFAULT_WIDTH);
-  const [pageHeight, setPageHeight] = useState(currentProps?.pageHeight || DEFAULT_HEIGHT);
-  const [orientation, setOrientation] = useState<"portrait" | "landscape">(
-    currentProps?.orientation || (pageWidth > pageHeight ? "landscape" : "portrait"),
+  const [pageWidth, setPageWidth] = useState(
+    currentProps?.pageWidth || DEFAULT_WIDTH,
   );
-  const [marginTop, setMarginTop] = useState(currentProps?.marginTop ?? DEFAULT_MARGIN);
-  const [marginBottom, setMarginBottom] = useState(currentProps?.marginBottom ?? DEFAULT_MARGIN);
-  const [marginLeft, setMarginLeft] = useState(currentProps?.marginLeft ?? DEFAULT_MARGIN);
-  const [marginRight, setMarginRight] = useState(currentProps?.marginRight ?? DEFAULT_MARGIN);
+  const [pageHeight, setPageHeight] = useState(
+    currentProps?.pageHeight || DEFAULT_HEIGHT,
+  );
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">(
+    currentProps?.orientation ||
+      (pageWidth > pageHeight ? "landscape" : "portrait"),
+  );
+  const [marginTop, setMarginTop] = useState(
+    currentProps?.marginTop ?? DEFAULT_MARGIN,
+  );
+  const [marginBottom, setMarginBottom] = useState(
+    currentProps?.marginBottom ?? DEFAULT_MARGIN,
+  );
+  const [marginLeft, setMarginLeft] = useState(
+    currentProps?.marginLeft ?? DEFAULT_MARGIN,
+  );
+  const [marginRight, setMarginRight] = useState(
+    currentProps?.marginRight ?? DEFAULT_MARGIN,
+  );
 
   const handlePageSizeChange = (index: number) => {
     if (index < 0) {
@@ -112,7 +136,9 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
     }
   };
 
-  const handleOrientationChange = (newOrientation: "portrait" | "landscape") => {
+  const handleOrientationChange = (
+    newOrientation: "portrait" | "landscape",
+  ) => {
     if (newOrientation === orientation) {
       return;
     }
@@ -140,7 +166,8 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
   const labelCls = "w-20 text-muted-foreground text-[13px]";
   const inputCls =
     "border-input bg-background text-foreground flex-1 rounded border px-2 py-1.5 text-[13px] outline-none";
-  const sectionLabelCls = "text-muted-foreground text-xs font-semibold uppercase tracking-wide";
+  const sectionLabelCls =
+    "text-muted-foreground text-xs font-semibold uppercase tracking-wide";
   const fieldIds = {
     size: `${id}-ps-size`,
     orientation: `${id}-ps-orientation`,
@@ -161,7 +188,9 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
 
           <div className="flex flex-col gap-3.5 px-5 py-4">
             {/* Page size section */}
-            <div className={sectionLabelCls}>{t("dialogs.pageSetup.pageSize")}</div>
+            <div className={sectionLabelCls}>
+              {t("dialogs.pageSetup.pageSize")}
+            </div>
 
             <div className="flex items-center gap-3">
               <label htmlFor={fieldIds.size} className={labelCls}>
@@ -178,7 +207,9 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
                     {size.label}
                   </option>
                 ))}
-                {sizeIndex < 0 && <option value={-1}>{t("dialogs.pageSetup.custom")}</option>}
+                {sizeIndex < 0 && (
+                  <option value={-1}>{t("dialogs.pageSetup.custom")}</option>
+                )}
               </select>
             </div>
 
@@ -191,16 +222,24 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
                 className={inputCls}
                 value={orientation}
                 onChange={(e) =>
-                  handleOrientationChange(e.target.value as "portrait" | "landscape")
+                  handleOrientationChange(
+                    e.target.value as "portrait" | "landscape",
+                  )
                 }
               >
-                <option value="portrait">{t("dialogs.pageSetup.portrait")}</option>
-                <option value="landscape">{t("dialogs.pageSetup.landscape")}</option>
+                <option value="portrait">
+                  {t("dialogs.pageSetup.portrait")}
+                </option>
+                <option value="landscape">
+                  {t("dialogs.pageSetup.landscape")}
+                </option>
               </select>
             </div>
 
             {/* Margins section */}
-            <div className={`${sectionLabelCls} mt-1`}>{t("dialogs.pageSetup.margins")}</div>
+            <div className={`${sectionLabelCls} mt-1`}>
+              {t("dialogs.pageSetup.margins")}
+            </div>
 
             <div className="flex items-center gap-3">
               <label htmlFor={fieldIds.marginTop} className={labelCls}>
@@ -214,7 +253,9 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
                 max={10}
                 step={0.1}
                 value={twipsToInches(marginTop)}
-                onChange={(e) => setMarginTop(inchesToTwips(Number(e.target.value) || 0))}
+                onChange={(e) =>
+                  setMarginTop(inchesToTwips(Number(e.target.value) || 0))
+                }
               />
               <span className="text-muted-foreground w-4 text-[11px]">
                 {t("dialogs.pageSetup.unitInches")}
@@ -233,7 +274,9 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
                 max={10}
                 step={0.1}
                 value={twipsToInches(marginBottom)}
-                onChange={(e) => setMarginBottom(inchesToTwips(Number(e.target.value) || 0))}
+                onChange={(e) =>
+                  setMarginBottom(inchesToTwips(Number(e.target.value) || 0))
+                }
               />
               <span className="text-muted-foreground w-4 text-[11px]">
                 {t("dialogs.pageSetup.unitInches")}
@@ -252,7 +295,9 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
                 max={10}
                 step={0.1}
                 value={twipsToInches(marginLeft)}
-                onChange={(e) => setMarginLeft(inchesToTwips(Number(e.target.value) || 0))}
+                onChange={(e) =>
+                  setMarginLeft(inchesToTwips(Number(e.target.value) || 0))
+                }
               />
               <span className="text-muted-foreground w-4 text-[11px]">
                 {t("dialogs.pageSetup.unitInches")}
@@ -271,7 +316,9 @@ function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSet
                 max={10}
                 step={0.1}
                 value={twipsToInches(marginRight)}
-                onChange={(e) => setMarginRight(inchesToTwips(Number(e.target.value) || 0))}
+                onChange={(e) =>
+                  setMarginRight(inchesToTwips(Number(e.target.value) || 0))
+                }
               />
               <span className="text-muted-foreground w-4 text-[11px]">
                 {t("dialogs.pageSetup.unitInches")}

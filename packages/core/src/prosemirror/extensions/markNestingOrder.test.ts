@@ -43,9 +43,15 @@ const serializer = DOMSerializer.fromSchema(schema);
 /** The elements a leaf's marks wrap it in, outermost first. */
 const domElements = (marks: readonly Mark[]): Element[] => {
   const host = document.createElement("div");
-  host.append(serializer.serializeFragment(paragraphWith(marks).content, { document }));
+  host.append(
+    serializer.serializeFragment(paragraphWith(marks).content, { document }),
+  );
   const chain: Element[] = [];
-  for (let element = host.firstElementChild; element; element = element.firstElementChild) {
+  for (
+    let element = host.firstElementChild;
+    element;
+    element = element.firstElementChild
+  ) {
     chain.push(element);
   }
   return chain;
@@ -115,7 +121,9 @@ const containerMark = (item: ParagraphContent): SchemaMarkName | undefined =>
   CONTAINER_MARK[item.type] ?? undefined;
 
 /** What this element holds, or `undefined` when it holds no inline list. */
-const childrenOf = (item: ParagraphContent): readonly ParagraphContent[] | undefined => {
+const childrenOf = (
+  item: ParagraphContent,
+): readonly ParagraphContent[] | undefined => {
   switch (item.type) {
     case "hyperlink":
       return item.children;
@@ -195,7 +203,9 @@ const rangeEnclosesRun = (items: readonly ParagraphContent[]): boolean => {
 
 /** The mark elements the save leg puts around the leaf's run, outermost first. */
 const saveChain = (marks: readonly Mark[]): FoundRun => {
-  const [block] = proseDocToBlocks(schema.node("doc", undefined, [paragraphWith(marks)]));
+  const [block] = proseDocToBlocks(
+    schema.node("doc", undefined, [paragraphWith(marks)]),
+  );
   if (block?.type !== "paragraph") {
     throw new Error("the leaf did not save as one paragraph");
   }
@@ -212,7 +222,9 @@ const saveChain = (marks: readonly Mark[]): FoundRun => {
 
 const COMMENT = schema.mark("comment", { commentId: 7 });
 const WRAPPER = schema.mark("inlineWrapper", {
-  stack: [inlineWrapperLayer({ kind: "bidi", control: "override", direction: "rtl" })],
+  stack: [
+    inlineWrapperLayer({ kind: "bidi", control: "override", direction: "rtl" }),
+  ],
 });
 const HYPERLINK = schema.mark("hyperlink", { href: "https://example.com/" });
 const BOLD = schema.mark("bold");
@@ -236,20 +248,29 @@ describe("a leaf under a comment, a revision, a wrapper, a link and bold", () =>
         revision.type.name,
         "hyperlink",
       ] as SchemaMarkName[]);
-      expect(domChain(marks).filter((name) => ranked.has(name))).toEqual(containers);
+      expect(domChain(marks).filter((name) => ranked.has(name))).toEqual(
+        containers,
+      );
     });
 
     test(`spells the change inside the wrapper's <bdo> (${revision.type.name})`, () => {
-      const wrapper = domElements(marks).at(domChain(marks).indexOf("inlineWrapper"));
+      const wrapper = domElements(marks).at(
+        domChain(marks).indexOf("inlineWrapper"),
+      );
 
       expect(wrapper?.tagName.toLowerCase()).toBe("bdo");
-      expect(wrapper?.firstElementChild?.getAttribute("class")).toBe(`docx-${revision.type.name}`);
-      expect(wrapper?.firstElementChild?.firstElementChild?.tagName.toLowerCase()).toBe("a");
+      expect(wrapper?.firstElementChild?.getAttribute("class")).toBe(
+        `docx-${revision.type.name}`,
+      );
+      expect(
+        wrapper?.firstElementChild?.firstElementChild?.tagName.toLowerCase(),
+      ).toBe("a");
     });
 
     test(`ranks the run's own mark inside every container (${revision.type.name})`, () => {
       const { containers } = saveChain(marks);
-      const rank = (name: SchemaMarkName): number => MARK_NESTING_ORDER.indexOf(name);
+      const rank = (name: SchemaMarkName): number =>
+        MARK_NESTING_ORDER.indexOf(name);
 
       for (const container of containers) {
         expect(rank(container)).toBeLessThan(rank(CONTAINER_MARK.run));

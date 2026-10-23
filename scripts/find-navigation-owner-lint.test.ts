@@ -5,7 +5,8 @@ import { z } from "zod";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_ID = "folio-find-navigation(navigation-owner)";
-const IMPORT = 'import { createFindMatchView } from "@stll/folio-core/utils/findMatchView";';
+const IMPORT =
+  'import { createFindMatchView } from "@stll/folio-core/utils/findMatchView";';
 const CASES = {
   vue: {
     source: `${IMPORT}
@@ -73,7 +74,9 @@ const CASES = {
 };
 
 const lintFixture = (source: string): string[] => {
-  const directory = mkdtempSync(path.join(REPO_ROOT, "test", "__fixtures__", "find-navigation-"));
+  const directory = mkdtempSync(
+    path.join(REPO_ROOT, "test", "__fixtures__", "find-navigation-"),
+  );
   try {
     const fixture = path.join(directory, "fixture.ts");
     writeFileSync(fixture, source);
@@ -94,7 +97,9 @@ const lintFixture = (source: string): string[] => {
     const { diagnostics } = z
       .object({ diagnostics: z.array(z.object({ code: z.string() })) })
       .parse(JSON.parse(result.stdout.toString()));
-    return diagnostics.map(({ code }) => code).filter((code) => code === RULE_ID);
+    return diagnostics
+      .map(({ code }) => code)
+      .filter((code) => code === RULE_ID);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -104,7 +109,10 @@ describe("find navigation ownership", () => {
   for (const [name, { source, count }] of Object.entries(CASES))
     test(
       name,
-      () => expect(lintFixture(source)).toEqual(Array.from({ length: count }, () => RULE_ID)),
+      () =>
+        expect(lintFixture(source)).toEqual(
+          Array.from({ length: count }, () => RULE_ID),
+        ),
       30_000,
     );
 });

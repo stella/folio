@@ -10,8 +10,16 @@
  * error rather than a lookup that silently finds nothing.
  */
 
-import { type RenamedSlot, STRICT_NAMES_BY_TRANSITIONAL_NAME } from "./strictNames.gen";
-import { findChild, getAttribute, parseNumericAttribute, type XmlElement } from "./xmlParser";
+import {
+  type RenamedSlot,
+  STRICT_NAMES_BY_TRANSITIONAL_NAME,
+} from "./strictNames.gen";
+import {
+  findChild,
+  getAttribute,
+  parseNumericAttribute,
+  type XmlElement,
+} from "./xmlParser";
 
 /**
  * The spellings a document may have used for a slot, folio's own first.
@@ -57,4 +65,7 @@ export const numericAttributeAnySpelling = (
 export const hasAttributeAnySpelling = (
   element: XmlElement | null | undefined,
   slot: RenamedSlot,
-): boolean => spellingsOf(slot).some((spelling) => getAttribute(element, "w", spelling) !== null);
+): boolean =>
+  spellingsOf(slot).some(
+    (spelling) => getAttribute(element, "w", spelling) !== null,
+  );

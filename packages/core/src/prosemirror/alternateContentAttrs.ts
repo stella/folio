@@ -20,11 +20,17 @@ const nodeFingerprint = (node: PMNode): string => {
 };
 
 /** Attach a captured `mc:AlternateContent` to a freshly projected node. */
-export const withAlternateContent = (node: PMNode, xml: string | undefined): PMNode => {
+export const withAlternateContent = (
+  node: PMNode,
+  xml: string | undefined,
+): PMNode => {
   if (xml === undefined) {
     return node;
   }
-  const alternateContent: AlternateContentAttrs = { xml, fingerprint: nodeFingerprint(node) };
+  const alternateContent: AlternateContentAttrs = {
+    xml,
+    fingerprint: nodeFingerprint(node),
+  };
   return node.type.create(
     { ...node.attrs, [ALTERNATE_CONTENT_ATTR]: alternateContent },
     node.content,

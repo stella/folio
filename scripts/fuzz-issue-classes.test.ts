@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+
 import {
   failureMarker,
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
-import { failureClass, normalizeFailureMessage } from "./fuzz-failure-class";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+import { failureClass, upgradeClassKey } from "./fuzz-failure-class";
 import { type Context, type Finding, RUN_TRIGGER } from "./fuzz-failure-issues";
 import {
   type ClosedIssue,
@@ -28,7 +29,10 @@ const context = {
   trigger: RUN_TRIGGER.scheduled,
 } satisfies Context;
 
-const finding = (seed: number, message = "listLevel is 3, expected 2"): Finding => {
+const finding = (
+  seed: number,
+  message = "listLevel is 3, expected 2",
+): Finding => {
   const error = new Error(message);
   const marker = failureMarker({
     test: "consumer flow lists / direct",
@@ -56,7 +60,13 @@ const fakeStore = (initial: Issue[] = []) => {
     list: async () => issues.map((issue) => ({ ...issue })),
     create: async (title: string, body: string) => {
       const number = Math.max(0, ...issues.map((issue) => issue.number)) + 1;
-      const issue = { number, title, body, state: "open", closedAt: null } satisfies Issue;
+      const issue = {
+        number,
+        title,
+        body,
+        state: "open",
+        closedAt: null,
+      } satisfies Issue;
       issues.push(issue);
       created.push(number);
       return { ...issue };
@@ -68,7 +78,13 @@ const fakeStore = (initial: Issue[] = []) => {
     reopen: async (number: number, comment: string) => {
       const issue = requireIssue(number);
       const { title, body } = issue;
-      issues[issues.indexOf(issue)] = { number, title, body, state: "open", closedAt: null };
+      issues[issues.indexOf(issue)] = {
+        number,
+        title,
+        body,
+        state: "open",
+        closedAt: null,
+      };
       reopens.push(number);
       comments.push({ number, comment });
     },
@@ -77,10 +93,21 @@ const fakeStore = (initial: Issue[] = []) => {
 };
 
 const FIXED = { type: "fixed" } as const satisfies ClosedIssueDisposition;
-const SUPERSEDED = { type: "superseded" } as const satisfies ClosedIssueDisposition;
+const SUPERSEDED = {
+  type: "superseded",
+} as const satisfies ClosedIssueDisposition;
 
-const report = (fake: ReturnType<typeof fakeStore>, findings: Finding[], runContext = context) =>
-  fileClasses({ findings, context: runContext, store: fake.store, known: new Map() });
+const report = (
+  fake: ReturnType<typeof fakeStore>,
+  findings: Finding[],
+  runContext = context,
+) =>
+  fileClasses({
+    findings,
+    context: runContext,
+    store: fake.store,
+    known: new Map(),
+  });
 
 const legacy = (closedAt: string | null = null): Issue => {
   const fields = {
@@ -95,6 +122,19 @@ const legacy = (closedAt: string | null = null): Issue => {
 };
 
 describe("class issue filing", () => {
+  test("renamed legacy class keys upgrade through the migration table", () => {
+    expect(upgradeClassKey(["consumer-flow", "listLevel mismatch"])).toBe(
+      '["consumer-invariant","numberingLevel"]',
+    );
+    expect(
+      upgradeClassKey([
+        "consumer-flow",
+        "lists",
+        "tracked-changes",
+        "Missing numbering format for displayed label",
+      ]),
+    ).toBe('["consumer-invariant","numberingLabel"]');
+  });
   test("same class retains every seed/path/replay and counts distinct runs", async () => {
     const fake = fakeStore();
     const first = finding(1);
@@ -104,7 +144,9 @@ describe("class issue filing", () => {
       flow: "insertText → save",
       failure: new Error("listLevel is 7, expected 4"),
     });
-    expect(second.record.marker.fingerprint).not.toBe(first.record.marker.fingerprint);
+    expect(second.record.marker.fingerprint).not.toBe(
+      first.record.marker.fingerprint,
+    );
     second.record.replays.push("PROPERTY_TEST_SEED=2 bun scripts/replay.ts");
     await report(fake, [first, second]);
     expect(fake.created).toEqual([1]);
@@ -131,12 +173,15 @@ describe("class issue filing", () => {
   test("different classes create separate issues", async () => {
     const fake = fakeStore();
     await report(fake, [finding(1)]);
-    const result = await report(fake, [finding(2), finding(3, "unrelated failure")]);
+    const result = await report(fake, [
+      finding(2),
+      finding(3, "unrelated failure"),
+    ]);
     expect(fake.created).toEqual([1, 2]);
     expect(fake.edits).toEqual([1]);
     expect(result.map(({ issue }) => issue)).toEqual(["#1", "#2"]);
     expect(fake.issues.map(({ title }) => title)).toEqual([
-      "List numbering: listLevel mismatch",
+      "Consumer invariant: Numbering level is preserved",
       "Consumer flow: unrelated failure",
     ]);
   });
@@ -171,7 +216,10 @@ describe("class issue filing", () => {
   }
 
   test("any open legacy issue beats a closed marker issue; lowest open wins", async () => {
-    const signature = failureClass("consumer flow lists / direct", "listLevel is 3, expected 2");
+    const signature = failureClass(
+      "consumer flow lists / direct",
+      "listLevel is 3, expected 2",
+    );
     const marker = `<!-- fuzz-class: ${signature.key} -->`;
     const fake = fakeStore([
       { ...legacy(context.date), number: 19, body: marker },
@@ -221,7 +269,8 @@ describe("class issue filing", () => {
     const first = finding(1, "expect(received).toEqual(expected)");
     const human = {
       ...legacy(),
-      title: "Revision acceptance: accepted tracked batches differ from direct batches",
+      title:
+        "Revision acceptance: accepted tracked batches differ from direct batches",
       body: `Historical trace\n<!-- fuzz-failure-state ${JSON.stringify({ fingerprint: first.record.marker.fingerprint, primary: "0123456789abcdef" })} -->`,
     };
     const fake = fakeStore([human]);
@@ -241,11 +290,14 @@ describe("class issue filing", () => {
     for (const reverse of [false, true]) {
       const first = finding(1, "expect(received).toEqual(expected)");
       const second = finding(2, "expect(received).toEqual(expected)");
-      expect(second.record.marker.fingerprint).toBe(first.record.marker.fingerprint);
+      expect(second.record.marker.fingerprint).toBe(
+        first.record.marker.fingerprint,
+      );
       first.record.marker.primary = "0123456789abcdef";
       const human = {
         ...legacy(),
-        title: "Revision acceptance: accepted tracked batches differ from direct batches",
+        title:
+          "Revision acceptance: accepted tracked batches differ from direct batches",
         body: '<!-- fuzz-failure-state {"fingerprint":"0123456789abcdef"} -->',
       };
       const fake = fakeStore([human]);
@@ -256,7 +308,9 @@ describe("class issue filing", () => {
         records: reverse ? records.toReversed() : records,
       } satisfies Finding;
       const result = await report(fake, [combined]);
-      expect(result).toEqual([{ fingerprint: first.record.marker.fingerprint, issue: "#20" }]);
+      expect(result).toEqual([
+        { fingerprint: first.record.marker.fingerprint, issue: "#20" },
+      ]);
       expect(fake.created).toEqual([]);
       expect(fake.edits).toEqual([20]);
       expect(fake.issues.at(0)?.body).toContain("2 replay rows");
@@ -265,7 +319,10 @@ describe("class issue filing", () => {
 
   test("a legacy fingerprint never pulls an issue away from the class it is marked with", async () => {
     const item = finding(1, "unrelated failure");
-    const other = failureClass("consumer flow lists / direct", "listLevel is 3, expected 2");
+    const other = failureClass(
+      "consumer flow lists / direct",
+      "listLevel is 3, expected 2",
+    );
     const marked = {
       ...legacy(),
       body: `<!-- fuzz-class: ${other.key} -->\n<!-- fuzz-failure-state ${JSON.stringify({ fingerprint: item.record.marker.fingerprint })} -->`,
@@ -289,7 +346,10 @@ describe("class issue filing", () => {
   });
 
   test("malformed structured state preserves original evidence while rebuilding state", async () => {
-    const signature = failureClass("consumer flow lists / direct", "listLevel is 3, expected 2");
+    const signature = failureClass(
+      "consumer flow lists / direct",
+      "listLevel is 3, expected 2",
+    );
     const evidence = `<!-- fuzz-class: ${signature.key} -->\n<!-- fuzz-class-state {"key":${JSON.stringify(signature.key)},"runs":[],"seeds":[{"seed":"bad"}]} -->`;
     const fake = fakeStore([{ ...legacy(), body: evidence }]);
     await report(fake, [finding(1)]);
@@ -298,7 +358,10 @@ describe("class issue filing", () => {
   });
 });
 
-const failing = (failure: { test: string; message: string }, seed: number): Finding => {
+const failing = (
+  failure: { test: string; message: string },
+  seed: number,
+): Finding => {
   const error = new Error(failure.message);
   const marker = failureMarker({
     test: failure.test,
@@ -320,7 +383,11 @@ const escaped = (json: string): string =>
 const oldMarker = (signature: readonly string[]): string =>
   `<!-- fuzz-class: ${escaped(JSON.stringify(signature))} -->`;
 
-const openIssue = (number: number, title: string, body = "Legacy failure details"): Issue => ({
+const openIssue = (
+  number: number,
+  title: string,
+  body = "Legacy failure details",
+): Issue => ({
   number,
   title,
   body,
@@ -340,37 +407,37 @@ const bodyOf = (fake: ReturnType<typeof fakeStore>, number: number): string =>
 const rowCount = (body: string): number =>
   body.split("\n").filter((line) => /^\| [0-9a-f]{16} \|/u.test(line)).length;
 
-const snapshot = (fake: ReturnType<typeof fakeStore>): string => JSON.stringify(fake.issues);
+const snapshot = (fake: ReturnType<typeof fakeStore>): string =>
+  JSON.stringify(fake.issues);
 
 const NUMBERING = "Consumer flow: Numbering provenance missing for <id>";
 const REPACK = "Consumer flow: Cannot repack invalid DOCX document model";
 const EQUALITY = "expect(received).toEqual(expected)";
 
 describe("a failure seen across fixtures and modes", () => {
-  test("the recorded run is eighteen findings that were filed as eighteen classes", () => {
+  test("the recorded signatures collapse into invariant classes", () => {
     const findings = floodFindings();
     expect(findings).toHaveLength(18);
-    expect(new Set(findings.map(({ record }) => record.marker.fingerprint)).size).toBe(18);
-    // What each finding was keyed by when the key held the fixture and the mode.
-    const filedAs = findings.map(({ record: { marker } }) => {
-      const signature = failureClass(marker.test, marker.assertion);
-      return JSON.stringify(
-        signature.fixture === ""
-          ? [normalizeFailureMessage(marker.test), marker.test, "all", signature.message]
-          : ["consumer-flow", signature.fixture, signature.mode, signature.message],
-      );
-    });
-    expect(new Set(filedAs)).toEqual(
-      new Set(flood.filed.map(({ signature }) => JSON.stringify(signature))),
+    expect(
+      new Set(findings.map(({ record }) => record.marker.fingerprint)).size,
+    ).toBe(18);
+    const classes = new Set(
+      findings.map(
+        ({ record: { marker } }) =>
+          failureClass(marker.test, marker.assertion).key,
+      ),
     );
-    expect(new Set(filedAs).size).toBe(18);
+    expect(classes.size).toBeLessThan(18);
+    expect(classes).toContain('["consumer-invariant","numberingKind"]');
   });
 
   test("files one issue per failure and adds rows to the open issues it already has", async () => {
     const fake = fakeStore(standingIssues());
     const result = await report(fake, floodFindings());
 
-    const opened = fake.issues.filter(({ number }) => fake.created.includes(number));
+    const opened = fake.issues.filter(({ number }) =>
+      fake.created.includes(number),
+    );
     expect(opened.map(({ title }) => title).toSorted()).toEqual([
       REPACK,
       NUMBERING,
@@ -391,7 +458,8 @@ describe("a failure seen across fixtures and modes", () => {
     }
     expect(bodyOf(fake, 1389)).toContain("| lists |  | suggested |");
     expect(bodyOf(fake, 1389)).toContain("| styleNumbered |  | direct |");
-    const numbering = opened.find(({ title }) => title === NUMBERING)?.body ?? "";
+    const numbering =
+      opened.find(({ title }) => title === NUMBERING)?.body ?? "";
     expect(rowCount(numbering)).toBe(5);
     for (const cells of [
       "| comments |  | tracked-changes |",
@@ -452,7 +520,9 @@ describe("a failure seen across fixtures and modes", () => {
         ),
       ),
     ]);
-    const before = new Map(fake.issues.map(({ number, body }) => [number, body]));
+    const before = new Map(
+      fake.issues.map(({ number, body }) => [number, body]),
+    );
     const result = await report(fake, floodFindings());
 
     expect(fake.created).toEqual([]);
@@ -472,7 +542,9 @@ describe("a failure seen across fixtures and modes", () => {
     );
     expect(rowCount(bodyOf(fake, 1384))).toBe(6);
     // Rows an issue already had under the earlier key are kept, not set aside.
-    expect(bodyOf(fake, 1453)).toContain("Seen in 2 distinct runs; 6 replay rows.");
+    expect(bodyOf(fake, 1453)).toContain(
+      "Seen in 2 distinct runs; 6 replay rows.",
+    );
     expect(bodyOf(fake, 1453)).toContain("| a1904c0b553b8545 |");
     expect(bodyOf(fake, 1453)).not.toContain("Legacy report");
 
@@ -528,7 +600,11 @@ describe("a class issue closed as a duplicate", () => {
       target(),
       duplicate(),
       duplicate({ number: 1457, duplicateOf: 1454 }),
-      duplicate({ number: 1461, duplicateOf: 1457, disposition: { type: "duplicate" } }),
+      duplicate({
+        number: 1461,
+        duplicateOf: 1457,
+        disposition: { type: "duplicate" },
+      }),
     ]);
     await report(chain, [numberingFinding()]);
     expect(chain.edits).toEqual([1300]);
@@ -549,13 +625,18 @@ describe("a class issue closed as a duplicate", () => {
     const dispositions = [SUPERSEDED, { type: "duplicate" }] as const;
     for (const disposition of dispositions) {
       for (const closedAt of ["2026-10-02T09:00:00Z", "2026-01-01T00:00:00Z"]) {
-        const fake = fakeStore([target(), duplicate({ duplicateOf: null, disposition, closedAt })]);
+        const fake = fakeStore([
+          target(),
+          duplicate({ duplicateOf: null, disposition, closedAt }),
+        ]);
         const result = await report(fake, [numberingFinding()]);
         expect(result.map(({ issue }) => issue)).toEqual(["#1454"]);
         expect(fake.reopens).toEqual([]);
         expect(fake.created).toEqual([]);
         expect(fake.edits).toEqual([1454]);
-        expect(fake.issues.find(({ number }) => number === 1454)?.state).toBe("closed");
+        expect(fake.issues.find(({ number }) => number === 1454)?.state).toBe(
+          "closed",
+        );
         expect(rowCount(bodyOf(fake, 1454))).toBe(1);
         expect(bodyOf(fake, 1454)).toContain("do not reopen it");
         expect(bodyOf(fake, 1300)).toBe("Human notes");
@@ -587,7 +668,12 @@ describe("a class issue closed as a duplicate", () => {
 
   test("a target closed long ago gets a linked new issue; the duplicate stays closed", async () => {
     const fake = fakeStore([
-      { ...target(), state: "closed", closedAt: "2026-08-01T00:00:00Z", disposition: FIXED },
+      {
+        ...target(),
+        state: "closed",
+        closedAt: "2026-08-01T00:00:00Z",
+        disposition: FIXED,
+      },
       duplicate(),
     ]);
     await report(fake, [numberingFinding()]);
@@ -600,9 +686,15 @@ describe("a class issue closed as a duplicate", () => {
   test("the target is the issue the last duplicate comment names", () => {
     expect(duplicateTarget(["Duplicate of #1453"])).toBe(1453);
     expect(
-      duplicateTarget(["Thanks.", "Duplicate of #12", "Also seen.\nduplicate of #34, see there"]),
+      duplicateTarget([
+        "Thanks.",
+        "Duplicate of #12",
+        "Also seen.\nduplicate of #34, see there",
+      ]),
     ).toBe(34);
-    expect(duplicateTarget(["This is not a duplicate of #5", "See #7"])).toBeNull();
+    expect(
+      duplicateTarget(["This is not a duplicate of #5", "See #7"]),
+    ).toBeNull();
     expect(duplicateTarget([])).toBeNull();
   });
 });
@@ -610,29 +702,41 @@ describe("a class issue closed as a duplicate", () => {
 describe("the cap on new issues", () => {
   const names = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"];
   const fresh = (count: number): Finding[] =>
-    names
-      .slice(0, count)
-      .map((name, index) =>
-        failing(
-          { test: `consumer flow plain / direct`, message: `unexpected ${name} state` },
-          index,
-        ),
-      );
-  const standing = (): Issue[] => standingIssues().filter(({ number }) => number === 1389);
+    names.slice(0, count).map((name, index) =>
+      failing(
+        {
+          test: `consumer flow plain / direct`,
+          message: `unexpected ${name} state`,
+        },
+        index,
+      ),
+    );
+  const standing = (): Issue[] =>
+    standingIssues().filter(({ number }) => number === 1389);
   const comment = (): Finding =>
-    failing({ test: "consumer flow tables / direct", message: "no comment" }, 99);
+    failing(
+      { test: "consumer flow tables / direct", message: "no comment" },
+      99,
+    );
 
   test("six new classes open nothing and fail; rows for known classes are still added", async () => {
     expect(MAX_NEW_ISSUES).toBe(5);
     const fake = fakeStore(standing());
-    const error: unknown = await report(fake, [...fresh(3), comment(), ...fresh(6).slice(3)]).then(
+    const error: unknown = await report(fake, [
+      ...fresh(3),
+      comment(),
+      ...fresh(6).slice(3),
+    ]).then(
       () => null,
       (reason: unknown) => reason,
     );
     expect(error).toBeInstanceOf(NewIssueCapError);
     const message = error instanceof Error ? error.message : "";
-    expect(message).toContain("Refusing to open 6 fuzz failure issues in one run (limit 5)");
-    for (const name of names) expect(message).toContain(`Consumer flow: unexpected ${name} state`);
+    expect(message).toContain(
+      "Refusing to open 6 fuzz failure issues in one run (limit 5)",
+    );
+    for (const name of names)
+      expect(message).toContain(`Consumer flow: unexpected ${name} state`);
     expect(fake.created).toEqual([]);
     expect(fake.issues).toHaveLength(1);
     expect(fake.edits).toEqual([1389]);
@@ -714,16 +818,21 @@ describe("close reasons decide what a recurring class does", () => {
           fc.uniqueArray(findingArbitrary, {
             minLength: 1,
             maxLength: 8,
-            selector: ({ message, fixture, mode }) => `${message}\0${fixture}\0${mode}`,
+            selector: ({ message, fixture, mode }) =>
+              `${message}\0${fixture}\0${mode}`,
           }),
           fc.tuple(issueArbitrary, issueArbitrary, issueArbitrary),
           async (generated, issueShapes) => {
             const findings = generated.map(({ message, fixture, mode, seed }) =>
-              failing({ test: `consumer flow ${fixture} / ${mode}`, message }, seed),
+              failing(
+                { test: `consumer flow ${fixture} / ${mode}`, message },
+                seed,
+              ),
             );
             const known = new Map(
               generated.flatMap(({ registered }, index) => {
-                const fingerprint = findings.at(index)?.record.marker.fingerprint;
+                const fingerprint =
+                  findings.at(index)?.record.marker.fingerprint;
                 return registered && fingerprint !== undefined
                   ? [[fingerprint, `#${1500 + index}`] as const]
                   : [];
@@ -738,16 +847,23 @@ describe("close reasons decide what a recurring class does", () => {
             const issues = issueShapes.flatMap((shape, index): Issue[] => {
               if (shape === null) return [];
               const message = MESSAGES[index] ?? MESSAGES[0];
-              const sample = failing({ test: "consumer flow lists / direct", message }, 1);
+              const sample = failing(
+                { test: "consumer flow lists / direct", message },
+                1,
+              );
               const { marker } = sample.record;
-              const key = escaped(failureClass(marker.test, marker.assertion).key);
+              const key = escaped(
+                failureClass(marker.test, marker.assertion).key,
+              );
               const fields = {
                 number: CLASS_ISSUES[index] ?? CLASS_ISSUES[0],
                 title: `Consumer flow: ${message}`,
                 body: `Owner notes\n<!-- fuzz-class: ${key} -->`,
               };
-              if (shape.state === "open") return [{ ...fields, state: "open", closedAt: null }];
-              const closedAt = Date.parse(runContext.date) - shape.ageHours * HOUR_MS;
+              if (shape.state === "open")
+                return [{ ...fields, state: "open", closedAt: null }];
+              const closedAt =
+                Date.parse(runContext.date) - shape.ageHours * HOUR_MS;
               return [
                 {
                   ...fields,
@@ -760,24 +876,37 @@ describe("close reasons decide what a recurring class does", () => {
             });
 
             const full = fakeStore(issues);
-            await fileClasses({ findings, context: runContext, store: full.store, known });
+            await fileClasses({
+              findings,
+              context: runContext,
+              store: full.store,
+              known,
+            });
 
             // (1) A class closed without a fix is never reopened.
             for (const issue of issues) {
-              if (issue.state === "open" || issue.disposition.type === "fixed") continue;
+              if (issue.state === "open" || issue.disposition.type === "fixed")
+                continue;
               expect(full.reopens).not.toContain(issue.number);
-              expect(full.issues.find(({ number }) => number === issue.number)?.state).toBe(
-                "closed",
-              );
+              expect(
+                full.issues.find(({ number }) => number === issue.number)
+                  ?.state,
+              ).toBe("closed");
             }
             // (2) Every reopen comments with the run and unregistered fingerprints.
-            expect(full.comments.map(({ number }) => number)).toEqual(full.reopens);
+            expect(full.comments.map(({ number }) => number)).toEqual(
+              full.reopens,
+            );
             for (const { comment } of full.comments) {
               expect(comment).toContain(runContext.runUrl);
-              const named = [...comment.matchAll(/`([0-9a-f]{16})`/gu)].map((match) => match[1]);
+              const named = [...comment.matchAll(/`([0-9a-f]{16})`/gu)].map(
+                (match) => match[1],
+              );
               expect(named.length).toBeGreaterThan(0);
               for (const fingerprint of named) {
-                expect(unregisteredFingerprints.has(fingerprint ?? "")).toBe(true);
+                expect(unregisteredFingerprints.has(fingerprint ?? "")).toBe(
+                  true,
+                );
               }
             }
             // (3) Registered fingerprints change nothing: filing only the

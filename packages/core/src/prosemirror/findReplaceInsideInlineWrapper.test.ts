@@ -17,9 +17,14 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
-import { createDefaultFindOptions, findInDocument } from "../utils/findReplace";
+import type {
+  Document,
+  InlineWrapper,
+  Paragraph,
+  ParagraphContent,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import type { Document, InlineWrapper, Paragraph, ParagraphContent } from "../types/document";
+import { createDefaultFindOptions, findInDocument } from "../utils/findReplace";
 import { fromProseDoc } from "./conversion/fromProseDoc";
 import { toProseDoc } from "./conversion/toProseDoc";
 import { resolveFindMatchRange } from "./findReplaceSelection";
@@ -187,7 +192,11 @@ describe("the offsets the model projection produces", () => {
       },
       run("the stock price"),
     ]);
-    const match = findInDocument(source, "stock", createDefaultFindOptions()).at(0);
+    const match = findInDocument(
+      source,
+      "stock",
+      createDefaultFindOptions(),
+    ).at(0);
     if (match === undefined) {
       throw new Error("The phrase was not found");
     }
@@ -206,14 +215,24 @@ describe("a phrase inside a transparent inline wrapper", () => {
       const source = documentWith([run(BEFORE), wrapper, run(AFTER)]);
       expect(
         findInDocument(source, "stock", createDefaultFindOptions()).map(
-          ({ startOffset, endOffset, text }) => ({ startOffset, endOffset, text }),
+          ({ startOffset, endOffset, text }) => ({
+            startOffset,
+            endOffset,
+            text,
+          }),
         ),
-      ).toEqual([{ startOffset: MATCH_START, endOffset: MATCH_START + 5, text: "stock" }]);
+      ).toEqual([
+        { startOffset: MATCH_START, endOffset: MATCH_START + 5, text: "stock" },
+      ]);
     });
 
     test(`is replaced inside ${name}, and the wrapper survives`, () => {
       const source = documentWith([run(BEFORE), wrapper, run(AFTER)]);
-      const match = findInDocument(source, "stock", createDefaultFindOptions()).at(0);
+      const match = findInDocument(
+        source,
+        "stock",
+        createDefaultFindOptions(),
+      ).at(0);
       if (match === undefined) {
         throw new Error("The phrase was not found");
       }
@@ -222,7 +241,9 @@ describe("a phrase inside a transparent inline wrapper", () => {
       if (range === null) {
         throw new Error("The editor could not resolve the match");
       }
-      const replaced = state.apply(state.tr.insertText("shares", range.from, range.to));
+      const replaced = state.apply(
+        state.tr.insertText("shares", range.from, range.to),
+      );
       const block = fromProseDoc(replaced.doc, source, {
         stylesheetSource: { type: "package" },
       }).package.document.content.at(0);

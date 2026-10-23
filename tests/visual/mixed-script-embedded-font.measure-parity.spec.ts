@@ -9,21 +9,32 @@ const EDITOR_HOSTS = [
 ] as const;
 
 for (const host of EDITOR_HOSTS) {
-  test(`${host.name} measures mixed-script text with its loaded fonts`, async ({ page }) => {
+  test(`${host.name} measures mixed-script text with its loaded fonts`, async ({
+    page,
+  }) => {
     const failedFontRequests: string[] = [];
     page.on("response", (response) => {
-      if (/\.woff2?(?:\?|$)/u.test(response.url()) && response.status() >= 400) {
+      if (
+        /\.woff2?(?:\?|$)/u.test(response.url()) &&
+        response.status() >= 400
+      ) {
         failedFontRequests.push(`${response.status()} ${response.url()}`);
       }
     });
     await page.goto(`${host.url}/?file=${FIXTURE}`);
-    await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
+    await page.waitForSelector(".layout-page .layout-line", {
+      timeout: 30_000,
+    });
     await page.evaluate(() => document.fonts.ready);
     expect(failedFontRequests).toEqual([]);
     const loadedFamilies = await page.evaluate(() =>
-      [...document.fonts].filter((face) => face.status === "loaded").map((face) => face.family),
+      [...document.fonts]
+        .filter((face) => face.status === "loaded")
+        .map((face) => face.family),
     );
-    expect(loadedFamilies.some((family) => family.includes("Arimo Embedded"))).toBe(true);
+    expect(
+      loadedFamilies.some((family) => family.includes("Arimo Embedded")),
+    ).toBe(true);
     expect(loadedFamilies).toContain("Noto Sans Arabic");
 
     const lines = await collectLineParity(page);
@@ -33,7 +44,9 @@ for (const host of EDITOR_HOSTS) {
     expect(lines.some((line) => /[\u3400-\u9fff]/u.test(line.text))).toBe(true);
     expect(
       lines
-        .filter((line) => Math.abs(line.delta) > PER_RUN_TOLERANCE_PX * line.runCount)
+        .filter(
+          (line) => Math.abs(line.delta) > PER_RUN_TOLERANCE_PX * line.runCount,
+        )
         .map(
           (line) =>
             `line ${line.index} "${line.text}": measured ${line.measured.toFixed(2)}px, painted ${line.painted.toFixed(2)}px`,

@@ -22,13 +22,20 @@ import type {
 } from "../../types/document";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
-import { createDocumentStylesPlugin, getDocumentStyleResolver } from "../plugins/documentStyles";
+import {
+  createDocumentStylesPlugin,
+  getDocumentStyleResolver,
+} from "../plugins/documentStyles";
 import { readAuthoredRunFormatting } from "../runFormattingReconciliation";
 import { paragraphRunStyleContext } from "../runStyleFormatting";
 import { sectionBreakTypeOf } from "../sectionCarrier";
 import { acceptChange, rejectAIEditRevision, rejectChange } from "./comments";
 
-const CHANGE_INFO = { id: 42, author: "Reviewer", date: "2026-05-15T12:00:00Z" };
+const CHANGE_INFO = {
+  id: 42,
+  author: "Reviewer",
+  date: "2026-05-15T12:00:00Z",
+};
 
 const makeDocument = (content: (Paragraph | Table)[]): Document =>
   ({
@@ -43,7 +50,10 @@ const makeDocument = (content: (Paragraph | Table)[]): Document =>
 const makeState = (content: (Paragraph | Table)[]): EditorState =>
   EditorState.create({ doc: toProseDoc(makeDocument(content)) });
 
-const makeStyledState = (paragraph: Paragraph, styles: StyleDefinitions): EditorState => {
+const makeStyledState = (
+  paragraph: Paragraph,
+  styles: StyleDefinitions,
+): EditorState => {
   const document = makeDocument([paragraph]);
   document.package.styles = styles;
   return EditorState.create({
@@ -85,7 +95,9 @@ describe("pPrChange accept/reject (real schema)", () => {
   test("reject restores the old pPr wholesale and the save path drops the pPrChange", () => {
     const view = dispatcher(makeState([makeParagraph()]));
 
-    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const attrs = view.state.doc.child(0).attrs;
     // Changed key: restored to the stored old value.
@@ -105,7 +117,9 @@ describe("pPrChange accept/reject (real schema)", () => {
   test("accept keeps the live pPr and only clears the record", () => {
     const view = dispatcher(makeState([makeParagraph()]));
 
-    expect(acceptChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      acceptChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const attrs = view.state.doc.child(0).attrs;
     expect(attrs["alignment"]).toBe("center");
@@ -129,7 +143,9 @@ describe("pPrChange accept/reject (real schema)", () => {
     const view = dispatcher(makeState([plain]));
     const before = view.state.doc;
 
-    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     expect(view.state.doc.eq(before)).toBe(true);
   });
@@ -158,11 +174,15 @@ describe("pPrChange accept/reject (real schema)", () => {
         styles,
       ),
     );
-    expect(view.state.doc.child(0).attrs["defaultTextFormatting"]).toMatchObject({
+    expect(
+      view.state.doc.child(0).attrs["defaultTextFormatting"],
+    ).toMatchObject({
       italic: true,
     });
 
-    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const attrs = view.state.doc.child(0).attrs;
     expect(attrs["styleId"]).toBe("Source");
@@ -224,7 +244,10 @@ describe("pPrChange accept/reject (real schema)", () => {
     const before: { name: string; marks: string[] }[] = [];
     view.state.doc.descendants((node) => {
       if (node.isInline) {
-        before.push({ name: node.type.name, marks: node.marks.map(({ type }) => type.name) });
+        before.push({
+          name: node.type.name,
+          marks: node.marks.map(({ type }) => type.name),
+        });
       }
       return true;
     });
@@ -236,12 +259,17 @@ describe("pPrChange accept/reject (real schema)", () => {
       { name: "text", marks: expect.arrayContaining(["italic", "underline"]) },
     ]);
 
-    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const after: { name: string; marks: string[] }[] = [];
     view.state.doc.descendants((node) => {
       if (node.isInline) {
-        after.push({ name: node.type.name, marks: node.marks.map(({ type }) => type.name) });
+        after.push({
+          name: node.type.name,
+          marks: node.marks.map(({ type }) => type.name),
+        });
       }
       return true;
     });
@@ -307,10 +335,16 @@ describe("pPrChange accept/reject (real schema)", () => {
     };
     const tr = view.state.tr
       .setNodeMarkup(0, undefined, targetAttrs)
-      .addMark(1, paragraph.nodeSize - 1, deletion.create({ ...CHANGE_INFO, revisionId: 73 }));
+      .addMark(
+        1,
+        paragraph.nodeSize - 1,
+        deletion.create({ ...CHANGE_INFO, revisionId: 73 }),
+      );
     view.dispatch(tr);
 
-    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const restored = view.state.doc.child(0);
     const run = restored.firstChild;
@@ -322,7 +356,10 @@ describe("pPrChange accept/reject (real schema)", () => {
         marks: run.marks,
         styleResolver,
       }),
-    ).toEqual({ bold: true, fontFamily: { ascii: "Calibri", hAnsi: "Calibri" } });
+    ).toEqual({
+      bold: true,
+      fontFamily: { ascii: "Calibri", hAnsi: "Calibri" },
+    });
   });
 
   const REJECTION_ORDERS = [
@@ -362,7 +399,9 @@ describe("pPrChange accept/reject (real schema)", () => {
       const view = dispatcher(makeState([makeChainedParagraph()]));
 
       for (const revisionId of order) {
-        expect(rejectAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
+        expect(
+          rejectAIEditRevision(revisionId)(view.state, view.dispatch),
+        ).toBe(true);
       }
 
       expect(view.state.doc.child(0).attrs["alignment"]).toBe("left");
@@ -378,7 +417,9 @@ describe("pPrChange accept/reject (real schema)", () => {
   test("targeted rejection rebases an interleaved retained property change", () => {
     const view = dispatcher(makeState([makeChainedParagraph()]));
 
-    expect(rejectAIEditRevision([101, 103])(view.state, view.dispatch)).toBe(true);
+    expect(rejectAIEditRevision([101, 103])(view.state, view.dispatch)).toBe(
+      true,
+    );
 
     expect(view.state.doc.child(0).attrs["alignment"]).toBe("right");
     const roundtripped = fromProseDoc(view.state.doc, undefined, {
@@ -396,8 +437,9 @@ describe("pPrChange accept/reject (real schema)", () => {
     expect(view.state.doc.child(0).attrs["alignment"]).toBe("left");
     expect(
       (
-        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }).package
-          .document.content[0] as Paragraph
+        fromProseDoc(view.state.doc, undefined, {
+          stylesheetSource: { type: "package" },
+        }).package.document.content[0] as Paragraph
       ).propertyChanges,
     ).toBeUndefined();
   });
@@ -430,7 +472,9 @@ describe("sectPrChange accept/reject (real schema)", () => {
   test("reject restores the old sectPr, its header references and the break type a reader derives", () => {
     const view = dispatcher(makeState([makeSectionParagraph()]));
 
-    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const attrs = view.state.doc.child(0).attrs;
     expect(attrs["_sectionProperties"]).toEqual({
@@ -454,7 +498,9 @@ describe("sectPrChange accept/reject (real schema)", () => {
   test("accept keeps the live sectPr and clears the record", () => {
     const view = dispatcher(makeState([makeSectionParagraph()]));
 
-    expect(acceptChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      acceptChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const attrs = view.state.doc.child(0).attrs;
     expect(attrs["_sectionProperties"]).toEqual({
@@ -485,7 +531,10 @@ describe("table property-change accept/reject (real schema)", () => {
   const trChange: TableRowPropertyChange = {
     type: "tableRowPropertyChange",
     info: CHANGE_INFO,
-    previousFormatting: { height: { value: 300, type: "dxa" }, heightRule: "atLeast" },
+    previousFormatting: {
+      height: { value: 300, type: "dxa" },
+      heightRule: "atLeast",
+    },
   };
   // `w:tblPrEx` sits on the same row as `w:trPr`, so the row carries two
   // property revisions and one sweep has to resolve both.
@@ -505,13 +554,19 @@ describe("table property-change accept/reject (real schema)", () => {
 
   const makeTable = (): Table => ({
     type: "table",
-    formatting: { width: { value: 5000, type: "pct" }, justification: "center" },
+    formatting: {
+      width: { value: 5000, type: "pct" },
+      justification: "center",
+    },
     propertyChanges: [tblChange],
     columnWidths: [4680],
     rows: [
       {
         type: "tableRow",
-        formatting: { height: { value: 500, type: "dxa" }, heightRule: "exact" },
+        formatting: {
+          height: { value: 500, type: "dxa" },
+          heightRule: "exact",
+        },
         tablePropertyExceptions: { justification: "center" },
         tablePropertyExceptionChanges: [tblPrExChange],
         propertyChanges: [trChange],
@@ -538,14 +593,18 @@ describe("table property-change accept/reject (real schema)", () => {
 
     expect(roundtripped.propertyChanges).toEqual([tblChange]);
     expect(roundtripped.rows[0]?.propertyChanges).toEqual([trChange]);
-    expect(roundtripped.rows[0]?.tablePropertyExceptionChanges).toEqual([tblPrExChange]);
+    expect(roundtripped.rows[0]?.tablePropertyExceptionChanges).toEqual([
+      tblPrExChange,
+    ]);
     expect(roundtripped.rows[0]?.cells[0]?.propertyChanges).toEqual([tcChange]);
   });
 
   test("reject restores previous table/row/cell formatting and drops the records", () => {
     const view = dispatcher(makeState([makeTable()]));
 
-    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const table = view.state.doc.child(0);
     expect(table.attrs["width"]).toBe(4000);
@@ -559,7 +618,9 @@ describe("table property-change accept/reject (real schema)", () => {
     expect(row.attrs["heightRule"]).toBe("atLeast");
     expect(row.attrs["trPrChange"]).toBeNull();
     // Both of the row's revisions resolve; neither patch clobbers the other.
-    expect(row.attrs["_tablePropertyExceptions"]).toEqual({ justification: "start" });
+    expect(row.attrs["_tablePropertyExceptions"]).toEqual({
+      justification: "start",
+    });
     expect(row.attrs["tblPrExChange"]).toBeNull();
 
     const cell = row.child(0);
@@ -571,12 +632,20 @@ describe("table property-change accept/reject (real schema)", () => {
       stylesheetSource: { type: "package" },
     }).package.document.content[0] as Table;
     expect(roundtripped.propertyChanges).toBeUndefined();
-    expect(roundtripped.formatting?.width).toEqual({ value: 4000, type: "pct" });
+    expect(roundtripped.formatting?.width).toEqual({
+      value: 4000,
+      type: "pct",
+    });
     expect(roundtripped.formatting?.justification).toBeUndefined();
     expect(roundtripped.rows[0]?.propertyChanges).toBeUndefined();
-    expect(roundtripped.rows[0]?.formatting?.height).toEqual({ value: 300, type: "dxa" });
+    expect(roundtripped.rows[0]?.formatting?.height).toEqual({
+      value: 300,
+      type: "dxa",
+    });
     expect(roundtripped.rows[0]?.tablePropertyExceptionChanges).toBeUndefined();
-    expect(roundtripped.rows[0]?.tablePropertyExceptions).toEqual({ justification: "start" });
+    expect(roundtripped.rows[0]?.tablePropertyExceptions).toEqual({
+      justification: "start",
+    });
     expect(roundtripped.rows[0]?.cells[0]?.propertyChanges).toBeUndefined();
     expect(roundtripped.rows[0]?.cells[0]?.formatting?.width).toEqual({
       value: 2400,
@@ -590,7 +659,9 @@ describe("table property-change accept/reject (real schema)", () => {
   test("accept keeps current table/row/cell formatting and drops the records", () => {
     const view = dispatcher(makeState([makeTable()]));
 
-    expect(acceptChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+    expect(
+      acceptChange(0, view.state.doc.content.size)(view.state, view.dispatch),
+    ).toBe(true);
 
     const table = view.state.doc.child(0);
     expect(table.attrs["width"]).toBe(5000);
@@ -601,7 +672,9 @@ describe("table property-change accept/reject (real schema)", () => {
     expect(row.attrs["height"]).toBe(500);
     expect(row.attrs["heightRule"]).toBe("exact");
     expect(row.attrs["trPrChange"]).toBeNull();
-    expect(row.attrs["_tablePropertyExceptions"]).toEqual({ justification: "center" });
+    expect(row.attrs["_tablePropertyExceptions"]).toEqual({
+      justification: "center",
+    });
     expect(row.attrs["tblPrExChange"]).toBeNull();
 
     const cell = row.child(0);
@@ -615,7 +688,9 @@ describe("table property-change accept/reject (real schema)", () => {
     expect(roundtripped.formatting?.justification).toBe("center");
     expect(roundtripped.rows[0]?.propertyChanges).toBeUndefined();
     expect(roundtripped.rows[0]?.tablePropertyExceptionChanges).toBeUndefined();
-    expect(roundtripped.rows[0]?.tablePropertyExceptions).toEqual({ justification: "center" });
+    expect(roundtripped.rows[0]?.tablePropertyExceptions).toEqual({
+      justification: "center",
+    });
     expect(roundtripped.rows[0]?.cells[0]?.propertyChanges).toBeUndefined();
   });
 });

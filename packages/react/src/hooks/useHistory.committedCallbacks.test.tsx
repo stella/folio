@@ -2,13 +2,22 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, mock, test } from "bun:test";
-import { panic } from "better-result";
 import { act, createRef, Suspense, useImperativeHandle } from "react";
 import { createRoot } from "react-dom/client";
-import { useHistory, type UseHistoryReturn, type UseHistoryOptions } from "./useHistory";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+import { panic } from "better-result";
+import { afterAll, expect, mock, test } from "bun:test";
+
+import {
+  useHistory,
+  type UseHistoryOptions,
+  type UseHistoryReturn,
+} from "./useHistory";
+
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);

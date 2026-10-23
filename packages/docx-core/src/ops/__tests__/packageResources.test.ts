@@ -2,20 +2,32 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 import fc from "fast-check";
-import { assertExactModel } from "../../../../../test/exactModel";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
+import { assertExactModel } from "../../../../../test/exactModel";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document } from "../../model/document";
 import type { MediaFile } from "../../model/styles";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { packageResourcesOf, packageResourcesOpOf } from "../packageResources";
-import { DOCUMENT_OP_TYPES, type DocumentOp, type SetPackageResourcesOp } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  type SetPackageResourcesOp,
+} from "../types";
 import { captureDocumentOp } from "../wire";
 
-const jsonTransport = <Value>(value: Value): Value => JSON.parse(JSON.stringify(value));
+const jsonTransport = <Value>(value: Value): Value =>
+  JSON.parse(JSON.stringify(value));
 
 const document: Document = {
-  package: { document: { content: [{ type: "paragraph", paraId: "00000001", content: [] }] } },
+  package: {
+    document: {
+      content: [{ type: "paragraph", paraId: "00000001", content: [] }],
+    },
+  },
 };
 
 const CLIPBOARD_MEDIA = "word/media/clipboard.png";
@@ -28,19 +40,29 @@ const withImage = (input: Document, bytes: readonly number[]): Document => ({
     ...input.package,
     relationships: new Map([
       ...(input.package.relationships ?? []),
-      ["rId1", { id: "rId1", type: IMAGE_RELATIONSHIP, target: "media/clipboard.png" }],
+      [
+        "rId1",
+        { id: "rId1", type: IMAGE_RELATIONSHIP, target: "media/clipboard.png" },
+      ],
     ]),
     media: new Map([
       ...(input.package.media ?? []),
       [
         CLIPBOARD_MEDIA,
-        { path: CLIPBOARD_MEDIA, mimeType: "image/png", data: Uint8Array.from(bytes).buffer },
+        {
+          path: CLIPBOARD_MEDIA,
+          mimeType: "image/png",
+          data: Uint8Array.from(bytes).buffer,
+        },
       ],
     ]),
   },
 });
 
-const imageOp = (input: Document, bytes: readonly number[]): SetPackageResourcesOp =>
+const imageOp = (
+  input: Document,
+  bytes: readonly number[],
+): SetPackageResourcesOp =>
   packageResourcesOpOf({ before: input, after: withImage(input, bytes) });
 
 const unchangedOp = (input: Document): SetPackageResourcesOp =>
@@ -58,7 +80,10 @@ const withParsedImage = (input: Document): Document => ({
   package: {
     ...input.package,
     relationships: new Map([
-      ["rId7", { id: "rId7", type: IMAGE_RELATIONSHIP, target: "media/image1.png" }],
+      [
+        "rId7",
+        { id: "rId7", type: IMAGE_RELATIONSHIP, target: "media/image1.png" },
+      ],
     ]),
     media: new Map([
       [parsedImage.path, parsedImage],
@@ -70,7 +95,10 @@ const withParsedImage = (input: Document): Document => ({
 test("binary resource operations survive JSON and undo restores exact package field presence", () => {
   assertProperty(
     fc.property(
-      fc.array(fc.uint8Array({ maxLength: 128 }), { minLength: 8, maxLength: 16 }),
+      fc.array(fc.uint8Array({ maxLength: 128 }), {
+        minLength: 8,
+        maxLength: 16,
+      }),
       fc.boolean(),
       fc.boolean(),
       fc.boolean(),
@@ -93,7 +121,10 @@ test("binary resource operations survive JSON and undo restores exact package fi
               ...seeded,
               package: {
                 ...seeded.package,
-                styles: { styles: [], docDefaults: { rPr: { bold: undefined } } },
+                styles: {
+                  styles: [],
+                  docDefaults: { rPr: { bold: undefined } },
+                },
               },
             }
           : seeded;
@@ -108,12 +139,18 @@ test("binary resource operations survive JSON and undo restores exact package fi
         for (const bytes of steps) {
           const before = current;
           const snapshot = structuredClone(before);
-          const op = jsonTransport(captureDocumentOp(imageOp(before, [...bytes])));
+          const op = jsonTransport(
+            captureDocumentOp(imageOp(before, [...bytes])),
+          );
           if (op.type !== DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES)
             throw new TypeError("Capture changed the resource operation type.");
           // Untouched package entries, including parser aliases, never travel with an import.
-          expect(op.media.entries.every(({ key }) => key === CLIPBOARD_MEDIA)).toBe(true);
-          expect(op.relationships.entries.every(({ key }) => key === "rId1")).toBe(true);
+          expect(
+            op.media.entries.every(({ key }) => key === CLIPBOARD_MEDIA),
+          ).toBe(true);
+          expect(
+            op.relationships.entries.every(({ key }) => key === "rId1"),
+          ).toBe(true);
           const forward = applyDocumentOp(before, op).unwrap();
           assertExactModel(before, snapshot);
           const media = forward.document.package.media?.get(CLIPBOARD_MEDIA);
@@ -153,7 +190,10 @@ test("binary resource operations survive JSON and undo restores exact package fi
 });
 
 test("byte mutations make a package resource inverse stale", () => {
-  const forward = applyDocumentOp(document, imageOp(document, [1, 2, 3])).unwrap();
+  const forward = applyDocumentOp(
+    document,
+    imageOp(document, [1, 2, 3]),
+  ).unwrap();
   const media = forward.document.package.media?.get(CLIPBOARD_MEDIA);
   if (media === undefined) throw new Error("Missing test media");
   new Uint8Array(media.data)[1] = 99;
@@ -165,7 +205,8 @@ test("byte mutations make a package resource inverse stale", () => {
 test("invalid or duplicate resource imports and a later content refusal are atomic", () => {
   const valid = imageOp(document, [1]);
   const entry = valid.media.entries.at(0);
-  if (entry?.next.type !== "present") throw new Error("Missing test media change");
+  if (entry?.next.type !== "present")
+    throw new Error("Missing test media change");
   const bad: SetPackageResourcesOp[] = [
     { ...valid, media: { ...valid.media, entries: [entry, entry] } },
     {
@@ -173,7 +214,13 @@ test("invalid or duplicate resource imports and a later content refusal are atom
       media: {
         ...valid.media,
         entries: [
-          { ...entry, next: { type: "present", value: { ...entry.next.value, data: [-1] } } },
+          {
+            ...entry,
+            next: {
+              type: "present",
+              value: { ...entry.next.value, data: [-1] },
+            },
+          },
         ],
       },
     },
@@ -192,7 +239,8 @@ test("invalid or duplicate resource imports and a later content refusal are atom
       },
     },
   ];
-  for (const op of bad) expect(applyDocumentOp(document, op).isErr()).toBe(true);
+  for (const op of bad)
+    expect(applyDocumentOp(document, op).isErr()).toBe(true);
   expect(
     applyDocumentOps(document, [
       valid,
@@ -232,18 +280,27 @@ test("resource undo refuses to strand references introduced by later content edi
 
 test("resource removal checks every typed style-link alias in retained definitions", () => {
   for (const key of ["basedOn", "next", "link"] as const) {
-    const retained = { styleId: "Consumer", type: "paragraph" as const, [key]: "Target" };
+    const retained = {
+      styleId: "Consumer",
+      type: "paragraph" as const,
+      [key]: "Target",
+    };
     const input: Document = {
       ...document,
       package: {
         ...document.package,
-        styles: { styles: [{ styleId: "Target", type: "paragraph" }, retained] },
+        styles: {
+          styles: [{ styleId: "Target", type: "paragraph" }, retained],
+        },
       },
     };
     const expected = packageResourcesOf(input);
     const removed = applyDocumentOp(input, {
       ...unchangedOp(input),
-      resources: { ...expected, styles: { type: "present", value: { styles: [retained] } } },
+      resources: {
+        ...expected,
+        styles: { type: "present", value: { styles: [retained] } },
+      },
     });
     expect(removed.isErr()).toBe(true);
     if (removed.isErr()) expect(removed.error.reason).toBe("stale");
@@ -266,7 +323,10 @@ test("resource removal checks every typed style-link alias in retained definitio
       package: {
         ...document.package,
         styles: { styles: [{ styleId: "Target", type: "paragraph" }] },
-        numbering: { abstractNums: [abstract], nums: [{ numId: 1, abstractNumId: 1 }] },
+        numbering: {
+          abstractNums: [abstract],
+          nums: [{ numId: 1, abstractNumId: 1 }],
+        },
       },
     };
     const expected = packageResourcesOf(input);
@@ -346,7 +406,11 @@ test("new style and numbering imports refuse missing dependencies without import
         ...expected,
         styles: {
           type: "present",
-          value: { styles: [{ styleId: "Consumer", type: "paragraph", [key]: "Missing" }] },
+          value: {
+            styles: [
+              { styleId: "Consumer", type: "paragraph", [key]: "Missing" },
+            ],
+          },
         },
       },
     });
@@ -362,7 +426,9 @@ test("new style and numbering imports refuse missing dependencies without import
       numbering: {
         type: "present",
         value: {
-          abstractNums: [{ abstractNumId: 1, styleLink: "Missing", levels: [] }],
+          abstractNums: [
+            { abstractNumId: 1, styleLink: "Missing", levels: [] },
+          ],
           nums: [{ numId: 1, abstractNumId: 1 }],
         },
       },

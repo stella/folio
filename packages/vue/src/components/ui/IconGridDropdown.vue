@@ -5,7 +5,11 @@
   through the shared Popover (Escape + scroll handled centrally).
 -->
 <template>
-  <Popover :open="isOpen" @update:open="(v: boolean) => (isOpen = v)" @close="isOpen = false">
+  <Popover
+    :open="isOpen"
+    @update:open="(v: boolean) => (isOpen = v)"
+    @close="isOpen = false"
+  >
     <template #trigger="{ toggle }">
       <button
         type="button"
@@ -42,8 +46,9 @@
 
 <script setup lang="ts" generic="T extends string">
 import { ref } from "vue";
-import MaterialSymbol from "./MaterialSymbol.vue";
+
 import { useFolioUI } from "../../ui/folio-ui";
+import MaterialSymbol from "./MaterialSymbol.vue";
 
 export type IconGridOption<V extends string = string> = {
   value: V;

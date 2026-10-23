@@ -26,8 +26,10 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordml";
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
@@ -40,12 +42,22 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
 };
 
 const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(saved)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 /** The part a plain save writes, and the part the editor round trip writes. */
-const savedAndProjected = async (body: string): Promise<{ saved: string; projected: string }> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
-  const saved = await documentXmlOf(await repackDocx(parsed, { updateModifiedDate: false }));
+const savedAndProjected = async (
+  body: string,
+): Promise<{ saved: string; projected: string }> => {
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
+  const saved = await documentXmlOf(
+    await repackDocx(parsed, { updateModifiedDate: false }),
+  );
   const roundTripped = fromProseDoc(toProseDoc(parsed), parsed, {
     stylesheetSource: { type: "package" },
   });
@@ -61,30 +73,40 @@ describe("a resultless FORMCHECKBOX keeps no result on save", () => {
   test.each([
     { name: "unchecked", checked: "0", glyph: "☐" },
     { name: "checked", checked: "1", glyph: "☒" },
-  ])("$name field data and display survive both save paths", async ({ checked, glyph }) => {
-    const body = `<w:p><w:r><w:fldChar w:fldCharType="begin"><w:ffData><w:name w:val="Choice"/><w:helpText w:type="text" w:val="Select one"/><w:checkBox><w:default w:val="0"/><w:checked w:val="${checked}"/></w:checkBox></w:ffData></w:fldChar></w:r><w:r><w:instrText xml:space="preserve"> FORMCHECKBOX </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
-    const original = await parseDocx(await buildDocx(body), { preloadFonts: false });
-    const documents = [
-      original,
-      fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } }),
-    ];
-    for (const document of documents) {
-      const saved = await repackDocx(document, { updateModifiedDate: false });
-      const xml = await documentXmlOf(saved);
-      expect(xml).toMatch(/<w:ffData\b/u);
-      expect(xml).toContain('<w:name w:val="Choice"/>');
-      expect(xml).toContain('<w:helpText w:type="text" w:val="Select one"/>');
-      expect(xml).toContain(`<w:checked w:val="${checked}"/>`);
-      expect(xml).not.toContain(`<w:t>${glyph}</w:t>`);
-
-      const reopened = toProseDoc(await parseDocx(saved, { preloadFonts: false }));
-      const displays: string[] = [];
-      reopened.descendants((node) => {
-        if (node.type.name === "field") displays.push(node.attrs["displayText"]);
+  ])(
+    "$name field data and display survive both save paths",
+    async ({ checked, glyph }) => {
+      const body = `<w:p><w:r><w:fldChar w:fldCharType="begin"><w:ffData><w:name w:val="Choice"/><w:helpText w:type="text" w:val="Select one"/><w:checkBox><w:default w:val="0"/><w:checked w:val="${checked}"/></w:checkBox></w:ffData></w:fldChar></w:r><w:r><w:instrText xml:space="preserve"> FORMCHECKBOX </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
+      const original = await parseDocx(await buildDocx(body), {
+        preloadFonts: false,
       });
-      expect(displays).toContain(glyph);
-    }
-  });
+      const documents = [
+        original,
+        fromProseDoc(toProseDoc(original), original, {
+          stylesheetSource: { type: "package" },
+        }),
+      ];
+      for (const document of documents) {
+        const saved = await repackDocx(document, { updateModifiedDate: false });
+        const xml = await documentXmlOf(saved);
+        expect(xml).toMatch(/<w:ffData\b/u);
+        expect(xml).toContain('<w:name w:val="Choice"/>');
+        expect(xml).toContain('<w:helpText w:type="text" w:val="Select one"/>');
+        expect(xml).toContain(`<w:checked w:val="${checked}"/>`);
+        expect(xml).not.toContain(`<w:t>${glyph}</w:t>`);
+
+        const reopened = toProseDoc(
+          await parseDocx(saved, { preloadFonts: false }),
+        );
+        const displays: string[] = [];
+        reopened.descendants((node) => {
+          if (node.type.name === "field")
+            displays.push(node.attrs["displayText"]);
+        });
+        expect(displays).toContain(glyph);
+      }
+    },
+  );
 
   test("no glyph run appears between separate and end", async () => {
     const { saved, projected } = await savedAndProjected(uncheckedNoRpr);

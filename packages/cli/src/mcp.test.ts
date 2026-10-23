@@ -5,16 +5,23 @@
  * and for a stale fileVersion.
  */
 
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-
-import { buildDocx, CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
+import {
+  buildDocx,
+  CONTRACT_PARAGRAPHS,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
 import { ISOLATED_GIT_ENV } from "./__tests__/io";
-import { MALFORMED_PACKAGES, TOOL_ARGUMENTS } from "./__tests__/malformed-packages";
+import {
+  MALFORMED_PACKAGES,
+  TOOL_ARGUMENTS,
+} from "./__tests__/malformed-packages";
 import { fileVersionOf } from "./document";
 import { listMcpTools } from "./mcp";
 import { FOLIO_FILE_TOOLS, toolAccess } from "./registry";
@@ -57,9 +64,16 @@ const panicMissing = (message: string): never => {
   throw new Error(message);
 };
 
-type Envelope = { ok: boolean; data?: Record<string, unknown>; error?: Record<string, unknown> };
+type Envelope = {
+  ok: boolean;
+  data?: Record<string, unknown>;
+  error?: Record<string, unknown>;
+};
 
-const call = async (name: string, args: Record<string, unknown>): Promise<Envelope> => {
+const call = async (
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Envelope> => {
   const result = await client.callTool({ name, arguments: args });
   const content = Array.isArray(result.content) ? result.content : [];
   const first: unknown = content.at(0);
@@ -73,7 +87,10 @@ const call = async (name: string, args: Record<string, unknown>): Promise<Envelo
   const failed = result.isError === true;
   expect("error" in payload).toBe(failed);
   return failed
-    ? { ok: false, error: (payload as { error: Record<string, unknown> }).error }
+    ? {
+        ok: false,
+        error: (payload as { error: Record<string, unknown> }).error,
+      }
     : { ok: true, data: payload as Record<string, unknown> };
 };
 
@@ -102,7 +119,11 @@ describe("folio mcp", () => {
       expect(Buffer.byteLength(JSON.stringify(tools))).toBeLessThan(8 * 1024);
       expect(JSON.stringify(tools)).not.toContain("destination");
       const suggest = tools.find(({ name }) => name === "suggest_changes");
-      expect(suggest?.inputSchema.required).toEqual(["path", "fileVersion", "operations"]);
+      expect(suggest?.inputSchema.required).toEqual([
+        "path",
+        "fileVersion",
+        "operations",
+      ]);
       expect(suggest?.annotations?.destructiveHint).toBe(true);
       const read = tools.find(({ name }) => name === "read_document");
       expect(read?.annotations?.readOnlyHint).toBe(true);
@@ -112,16 +133,25 @@ describe("folio mcp", () => {
       const items = (listed.data?.["items"] ?? []) as { id: string }[];
       const ids = items.map(({ id }) => id);
       expect([...LISTED, ...ids].toSorted()).toEqual(
-        [...FOLIO_FILE_TOOLS.map(({ name }) => name), ...LISTED.slice(-3)].toSorted(),
+        [
+          ...FOLIO_FILE_TOOLS.map(({ name }) => name),
+          ...LISTED.slice(-3),
+        ].toSorted(),
       );
-      const outlined = await call("describe_capability", { capability: "suggest_changes" });
-      expect(outlined.data?.["parameters"]).toMatchObject({ destination: "string" });
+      const outlined = await call("describe_capability", {
+        capability: "suggest_changes",
+      });
+      expect(outlined.data?.["parameters"]).toMatchObject({
+        destination: "string",
+      });
       expect(outlined.data?.["description"]).toContain("replaceAll");
       const described = await call("describe_capability", {
         capability: "suggest_changes",
         detail: "full",
       });
-      const schema = described.data?.["inputSchema"] as { properties: Record<string, unknown> };
+      const schema = described.data?.["inputSchema"] as {
+        properties: Record<string, unknown>;
+      };
       expect(Object.keys(schema.properties)).toContain("destination");
       expect(described.data?.["description"]).toContain("replaceInBlock");
       expect(listMcpTools()).toEqual(tools);
@@ -143,10 +173,18 @@ describe("folio mcp", () => {
       const [first, second] = lines.map(
         (line) => /^\[(?<id>[0-9A-F]{8})\] /u.exec(line)?.groups?.["id"],
       );
-      expect(lines[1]).toBe(`[${String(second)}] The Supplier is liable up to $50.`);
+      expect(lines[1]).toBe(
+        `[${String(second)}] The Supplier is liable up to $50.`,
+      );
 
-      const found = await call("find_text", { path: file, query: "Supplier", matchCase: "true" });
-      const matches = found.data?.["matches"] as { range: Record<string, unknown> }[];
+      const found = await call("find_text", {
+        path: file,
+        query: "Supplier",
+        matchCase: "true",
+      });
+      const matches = found.data?.["matches"] as {
+        range: Record<string, unknown>;
+      }[];
       expect(matches).toHaveLength(2);
       expect(matches[0]?.range).not.toHaveProperty("type");
 
@@ -154,8 +192,17 @@ describe("folio mcp", () => {
         path: file,
         fileVersion: read.data?.["fileVersion"],
         operations: [
-          { type: "replaceInBlock", blockId: first, find: "Supplier", replace: "Provider" },
-          { type: "replaceRange", range: matches[1]?.range, replace: "Provider" },
+          {
+            type: "replaceInBlock",
+            blockId: first,
+            find: "Supplier",
+            replace: "Provider",
+          },
+          {
+            type: "replaceRange",
+            range: matches[1]?.range,
+            replace: "Provider",
+          },
         ],
       });
       expect(suggested.data).toEqual({
@@ -186,19 +233,36 @@ describe("folio mcp", () => {
       await call("suggest_changes", {
         path: file,
         fileVersion: await versionOf(file),
-        operations: [{ type: "replaceInBlock", blockId: "10000002", find: "$50", replace: "$5" }],
+        operations: [
+          {
+            type: "replaceInBlock",
+            blockId: "10000002",
+            find: "$50",
+            replace: "$5",
+          },
+        ],
       });
       const current = await versionOf(file);
 
       const checked = await call("invoke_capability", {
         capability: "resolve_changes",
-        input: { path: file, fileVersion: current, action: "accept", all: true },
+        input: {
+          path: file,
+          fileVersion: current,
+          action: "accept",
+          all: true,
+        },
         validate_only: true,
       });
       const unchanged = await versionOf(file);
       const accepted = await call("invoke_capability", {
         capability: "resolve_changes",
-        input: { path: file, fileVersion: current, action: "Accept", all: "yes" },
+        input: {
+          path: file,
+          fileVersion: current,
+          action: "Accept",
+          all: "yes",
+        },
       });
 
       expect(checked.data?.["valid"]).toBe(true);
@@ -213,7 +277,10 @@ describe("folio mcp", () => {
     async () => {
       const file = await writeDocx(root, "contract.docx", CONTRACT_PARAGRAPHS);
 
-      const read = await call("read_document", { path: "contract.docx", maxBlocks: "2" });
+      const read = await call("read_document", {
+        path: "contract.docx",
+        maxBlocks: "2",
+      });
       expect(read.ok).toBe(true);
       const fileVersion = read.data?.["fileVersion"];
       expect(fileVersion).toBe(await versionOf(file));
@@ -225,7 +292,14 @@ describe("folio mcp", () => {
       const suggested = await call("suggest_changes", {
         path: file,
         fileVersion,
-        operations: [{ type: "replaceInBlock", blockId: "10000002", find: "$50", replace: "$500" }],
+        operations: [
+          {
+            type: "replaceInBlock",
+            blockId: "10000002",
+            find: "$50",
+            replace: "$500",
+          },
+        ],
       });
       expect(suggested.ok).toBe(true);
       expect(suggested.data?.["applied"]).toBe(1);
@@ -235,14 +309,19 @@ describe("folio mcp", () => {
         fileVersion,
         operations: [{ type: "deleteBlock", blockId: "10000004" }],
       });
-      expect(stale.error).toMatchObject({ code: "stale_version", retryable: true });
+      expect(stale.error).toMatchObject({
+        code: "stale_version",
+        retryable: true,
+      });
 
       const changes = await call("read_changes", { path: file });
       const lines = String(changes.data?.["changes"]).split("\n");
       expect(lines).toHaveLength(2);
       expect(
         lines.every(
-          (line) => line.endsWith('"$50" MCP Reviewer') || line.endsWith('"$500" MCP Reviewer'),
+          (line) =>
+            line.endsWith('"$50" MCP Reviewer') ||
+            line.endsWith('"$500" MCP Reviewer'),
         ),
       ).toBe(true);
     },
@@ -253,11 +332,20 @@ describe("folio mcp", () => {
     "replaces an existing destination only with overwrite and its version, keeping a backup",
     async () => {
       const source = await writeDocx(root, "draft.docx", CONTRACT_PARAGRAPHS);
-      const target = await writeDocx(root, "target.docx", [{ text: "Keep.", paraId: "20000001" }]);
+      const target = await writeDocx(root, "target.docx", [
+        { text: "Keep.", paraId: "20000001" },
+      ]);
       await writeFile(path.join(root, "package.json"), "{}");
       const fileVersion = fileVersionOf(new Uint8Array(await readFile(source)));
-      const targetVersion = fileVersionOf(new Uint8Array(await readFile(target)));
-      const comment = { path: source, fileVersion, blockId: "10000002", text: "?" };
+      const targetVersion = fileVersionOf(
+        new Uint8Array(await readFile(target)),
+      );
+      const comment = {
+        path: source,
+        fileVersion,
+        blockId: "10000002",
+        text: "?",
+      };
 
       const refused = await call("add_comment", {
         ...comment,
@@ -277,8 +365,12 @@ describe("folio mcp", () => {
       expect(refused.error?.["code"]).toBe("invalid_input");
       expect(notDocx.error?.["code"]).toBe("invalid_destination");
       expect(compareUnversioned.error?.["code"]).toBe("invalid_input");
-      expect(fileVersionOf(new Uint8Array(await readFile(target)))).toBe(targetVersion);
-      expect(await readFile(path.join(root, "package.json"), "utf8")).toBe("{}");
+      expect(fileVersionOf(new Uint8Array(await readFile(target)))).toBe(
+        targetVersion,
+      );
+      expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+        "{}",
+      );
 
       const replaced = await call("add_comment", {
         ...comment,
@@ -288,7 +380,13 @@ describe("folio mcp", () => {
       });
       expect(replaced.ok).toBe(true);
       expect(replaced.data?.["path"]).toBe(target);
-      const backup = path.join(root, ".folio", "backups", "target.docx", `${targetVersion}.docx`);
+      const backup = path.join(
+        root,
+        ".folio",
+        "backups",
+        "target.docx",
+        `${targetVersion}.docx`,
+      );
       expect((await stat(backup)).isFile()).toBe(true);
     },
     PROCESS_TEST_TIMEOUT_MS,
@@ -348,7 +446,10 @@ describe("folio mcp", () => {
                       path: file,
                       fileVersion,
                       revisedPath: other,
-                      destination: path.join(root, `malformed-${String(index)}-redline.docx`),
+                      destination: path.join(
+                        root,
+                        `malformed-${String(index)}-redline.docx`,
+                      ),
                     },
                   ],
                 ]
@@ -360,7 +461,9 @@ describe("folio mcp", () => {
                       fileVersion,
                       ...(TOOL_ARGUMENTS[tool.name] ??
                         panicMissing(`no arguments for ${tool.name}`)),
-                      ...(tool.type === "resolveChanges" && { action: "accept" }),
+                      ...(tool.type === "resolveChanges" && {
+                        action: "accept",
+                      }),
                     },
                   ],
                 ];
@@ -383,14 +486,18 @@ describe("folio mcp", () => {
     "serves the operation schema and the about page as resources",
     async () => {
       const { resources } = await client.listResources();
-      const schema = await client.readResource({ uri: "folio://schema/operations" });
+      const schema = await client.readResource({
+        uri: "folio://schema/operations",
+      });
 
       expect(resources.map(({ uri }) => uri)).toEqual([
         "folio://about",
         "folio://schema/operations",
       ]);
       const first = schema.contents.at(0);
-      expect(first !== undefined && "text" in first && first.text).toContain('"operations"');
+      expect(first !== undefined && "text" in first && first.text).toContain(
+        '"operations"',
+      );
     },
     PROCESS_TEST_TIMEOUT_MS,
   );

@@ -5,19 +5,22 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+
+import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import type {
+  CellBorders,
+  FloatingTablePosition,
   FlowBlock,
   ParagraphBlock,
   TableBlock,
-  TableRow,
   TableCell,
-  CellBorders,
+  TableRow,
   TextBoxBlock,
-  FloatingTablePosition,
 } from "../../layout-engine/types";
-import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
-import { DEFAULT_TEXTBOX_MARGINS, DEFAULT_TEXTBOX_WIDTH } from "../../layout-engine/types";
-import { resolveParagraphMarkFormatting } from "./paragraphMarkFormatting";
+import {
+  DEFAULT_TEXTBOX_MARGINS,
+  DEFAULT_TEXTBOX_WIDTH,
+} from "../../layout-engine/types";
 import {
   expectParagraphAttrs,
   expectTableAttrs,
@@ -25,21 +28,25 @@ import {
   expectTableRowAttrs,
   expectTextBoxAttrs,
 } from "../../prosemirror/attrs";
-import { textBoxHostParagraph } from "../../prosemirror/textBoxHostParagraph";
 import type { TableAttrs } from "../../prosemirror/schema/nodes";
+import { textBoxHostParagraph } from "../../prosemirror/textBoxHostParagraph";
 import type { Theme } from "../../types/document";
 import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
-import { groupParagraphFrames } from "./paragraphFrames";
-import { twipsToPixels, nextBlockId } from "./flowConversionShared";
-import type { FlowConversionOptions } from "./flowConversionShared";
-import type { PageBreakRunProjection } from "./paragraphRuns";
+import { fixedTableColumnWidths } from "./fixedTableColumnWidths";
 import { convertBorderSpecToLayout } from "./flowBorders";
 import type { ConvertibleBorder } from "./flowBorders";
+import { nextBlockId, twipsToPixels } from "./flowConversionShared";
+import type { FlowConversionOptions } from "./flowConversionShared";
+import {
+  countPageBreakRuns,
+  hasSingleLeadingProjectedPageBreak,
+} from "./pageBreakSplitting";
 import { convertParagraphAttrs } from "./paragraphAttrs";
 import { convertParagraph } from "./paragraphConversion";
-import { countPageBreakRuns, hasSingleLeadingProjectedPageBreak } from "./pageBreakSplitting";
+import { groupParagraphFrames } from "./paragraphFrames";
+import { resolveParagraphMarkFormatting } from "./paragraphMarkFormatting";
+import type { PageBreakRunProjection } from "./paragraphRuns";
 import { inlineEffectExtentPx, resolveLinearGradientFill } from "./textBoxFill";
-import { fixedTableColumnWidths } from "./fixedTableColumnWidths";
 
 const TEXT_BOX_ANCHOR_BLOCK_ID = Symbol.for("stll.textBoxAnchorBlockId");
 const DEFAULT_TABLE_CELL_MARGIN_TWIPS = {
@@ -67,7 +74,9 @@ function extractCellBorders(
 
   for (const side of sides) {
     const border = borders[side];
-    const converted = border ? convertBorderSpecToLayout(border, theme) : undefined;
+    const converted = border
+      ? convertBorderSpecToLayout(border, theme)
+      : undefined;
     if (!converted) {
       result[side] = { width: 0, style: "none" };
       continue;
@@ -76,10 +85,15 @@ function extractCellBorders(
     result[side] = border?.size === 0 ? { ...converted, width: 0 } : converted;
   }
 
-  const diagonalSides = ["topLeftToBottomRight", "topRightToBottomLeft"] as const;
+  const diagonalSides = [
+    "topLeftToBottomRight",
+    "topRightToBottomLeft",
+  ] as const;
   for (const side of diagonalSides) {
     const border = borders[side];
-    const converted = border ? convertBorderSpecToLayout(border, theme) : undefined;
+    const converted = border
+      ? convertBorderSpecToLayout(border, theme)
+      : undefined;
     if (converted) {
       result[side] = converted;
     }
@@ -119,7 +133,8 @@ function convertTableCell(
   const leadingParagraph =
     node.firstChild?.type.name === "paragraph" &&
     countPageBreakRuns(node) === 1 &&
-    options.firstPageBreakRunPosition(node.firstChild) === authoredPageBreakPosition
+    options.firstPageBreakRunPosition(node.firstChild) ===
+      authoredPageBreakPosition
       ? node.firstChild
       : undefined;
   const pageBreaks: PageBreakRunProjection[] = [];
@@ -137,7 +152,10 @@ function convertTableCell(
       blocks.push(convertTable(child, childStart, options));
     } else if (child.type.name === "textBox") {
       blocks.push(convertTextBoxNode(child, childStart, options));
-    } else if (child.type.name === "blockSdt" || child.type.name === "blockCustomXml") {
+    } else if (
+      child.type.name === "blockSdt" ||
+      child.type.name === "blockCustomXml"
+    ) {
       // A `w:sdt` among a cell's block content wraps blocks of that cell:
       // what its `w:sdtContent` holds lays out as the cell's own blocks.
       let sdtChildStart = childStart + 1;
@@ -163,18 +181,28 @@ function convertTableCell(
   if (
     precedingBlock?.kind === "table" &&
     trailingBlock?.kind === "paragraph" &&
-    trailingBlock.runs.every((run) => run.kind === "text" && run.text.length === 0)
+    trailingBlock.runs.every(
+      (run) => run.kind === "text" && run.text.length === 0,
+    )
   ) {
-    trailingBlock.attrs = { ...trailingBlock.attrs, suppressEmptyParagraphHeight: true };
+    trailingBlock.attrs = {
+      ...trailingBlock.attrs,
+      suppressEmptyParagraphHeight: true,
+    };
   }
 
   const attrs = expectTableCellAttrs(node);
   if (
     attrs.hideMark &&
     trailingBlock?.kind === "paragraph" &&
-    trailingBlock.runs.every((run) => run.kind === "text" && run.text.length === 0)
+    trailingBlock.runs.every(
+      (run) => run.kind === "text" && run.text.length === 0,
+    )
   ) {
-    trailingBlock.attrs = { ...trailingBlock.attrs, suppressEmptyParagraphHeight: true };
+    trailingBlock.attrs = {
+      ...trailingBlock.attrs,
+      suppressEmptyParagraphHeight: true,
+    };
   }
 
   // Convert cell margins (twips) to pixel padding
@@ -196,7 +224,11 @@ function convertTableCell(
   const padding = {
     top: resolvePaddingSide("top", margins?.top, tableCellMargins?.top),
     right: resolvePaddingSide("right", margins?.right, tableCellMargins?.right),
-    bottom: resolvePaddingSide("bottom", margins?.bottom, tableCellMargins?.bottom),
+    bottom: resolvePaddingSide(
+      "bottom",
+      margins?.bottom,
+      tableCellMargins?.bottom,
+    ),
     left: resolvePaddingSide("left", margins?.left, tableCellMargins?.left),
   };
 
@@ -353,9 +385,12 @@ export function convertTable(
   const rows: TableRow[] = [];
   let offset = startPos + 1; // +1 for opening tag
   const attrs = expectTableAttrs(node);
-  const rightToLeft = (attrs._resolvedBidi ?? attrs._originalFormatting?.bidi) === true;
+  const rightToLeft =
+    (attrs._resolvedBidi ?? attrs._originalFormatting?.bidi) === true;
   const rowContext: TableRowConversionContext = {
-    ...(attrs.cellMargins === undefined ? {} : { cellMargins: attrs.cellMargins }),
+    ...(attrs.cellMargins === undefined
+      ? {}
+      : { cellMargins: attrs.cellMargins }),
   };
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
@@ -369,9 +404,12 @@ export function convertTable(
   // Extract columnWidths from node attributes and convert from twips to pixels
   const columnWidthsTwips = attrs.columnWidths;
   const hasTableWidth =
-    (attrs.widthType === "dxa" || attrs.widthType === "pct") && (attrs.width ?? 0) > 0;
+    (attrs.widthType === "dxa" || attrs.widthType === "pct") &&
+    (attrs.width ?? 0) > 0;
   const effectiveColumns =
-    columnWidthsTwips && attrs._originalFormatting?.layout === "fixed" && !hasTableWidth
+    columnWidthsTwips &&
+    attrs._originalFormatting?.layout === "fixed" &&
+    !hasTableWidth
       ? fixedTableColumnWidths(node, columnWidthsTwips)
       : columnWidthsTwips;
   let columnWidths = effectiveColumns?.map(twipsToPixels);
@@ -392,9 +430,12 @@ export function convertTable(
 
   // Keep authored justification separate in ProseMirror so style-derived
   // placement never becomes direct formatting on save.
-  const authoredJustification = attrs.justification ?? attrs._resolvedJustification;
+  const authoredJustification =
+    attrs.justification ?? attrs._resolvedJustification;
   const justification =
-    authoredJustification === undefined ? undefined : resolveTablePlacement(authoredJustification);
+    authoredJustification === undefined
+      ? undefined
+      : resolveTablePlacement(authoredJustification);
 
   // Extract table indent + RTL column order from _originalFormatting
   // (w:tblInd, w:bidiVisual). bidiVisual is import-only — folio has no UI to
@@ -410,7 +451,8 @@ export function convertTable(
   // An indent measurement folio cannot apply must not half-apply: pairing the
   // text-edge compensation with a dropped `w:tblInd` would shift the table by
   // the leading cell margin alone, which no indent asked for.
-  const dropsAuthoredIndent = effectiveIndent?.value !== undefined && indentPx === undefined;
+  const dropsAuthoredIndent =
+    effectiveIndent?.value !== undefined && indentPx === undefined;
 
   const floating = attrs.floating as
     | {
@@ -419,7 +461,8 @@ export function convertTable(
         tblpX?: number;
         tblpXSpec?: "left" | "center" | "right" | "inside" | "outside";
         tblpY?: number;
-        tblpYSpec?: "top" | "center" | "bottom" | "inside" | "outside" | "inline";
+        tblpYSpec?:
+          "top" | "center" | "bottom" | "inside" | "outside" | "inline";
         topFromText?: number;
         bottomFromText?: number;
         leftFromText?: number;
@@ -561,7 +604,10 @@ export function convertTextBoxNode(
   if (attrs.fillColor !== undefined) {
     textBox.fillColor = attrs.fillColor;
   } else {
-    const fillGradient = resolveLinearGradientFill(attrs.gradientFill, opts.theme);
+    const fillGradient = resolveLinearGradientFill(
+      attrs.gradientFill,
+      opts.theme,
+    );
     if (fillGradient !== undefined) {
       textBox.fillGradient = fillGradient;
     }
@@ -607,19 +653,27 @@ export function convertTextBoxNode(
   if (attrs.position !== undefined) {
     textBox.position = attrs.position;
   }
-  const effectExtent = inlineEffectExtentPx(attrs.wrapType, attrs.wrapEffectExtentSlots?.drawing);
+  const effectExtent = inlineEffectExtentPx(
+    attrs.wrapType,
+    attrs.wrapEffectExtentSlots?.drawing,
+  );
   if (effectExtent !== undefined) {
     textBox.effectExtent = effectExtent;
   }
   const host = textBoxHostParagraph(node);
-  if (host && attrs.position === undefined && (attrs.wrapType ?? "inline") === "inline") {
+  if (
+    host &&
+    attrs.position === undefined &&
+    (attrs.wrapType ?? "inline") === "inline"
+  ) {
     const hostAttrs = expectParagraphAttrs(host);
     textBox.hostParagraph = convertParagraphAttrs(hostAttrs, {
       theme: opts.theme,
       fontAlternates: opts.fontAlternates,
       listCounterStreams: opts.listCounterStreams,
       defaultTabStopTwips: opts.defaultTabStopTwips,
-      paragraphMarkFormatting: () => resolveParagraphMarkFormatting(hostAttrs, opts.styleResolver),
+      paragraphMarkFormatting: () =>
+        resolveParagraphMarkFormatting(hostAttrs, opts.styleResolver),
     });
   }
   if (attrs._docxGroupId !== undefined) {

@@ -1,9 +1,6 @@
-import { getFindParagraphText } from "../../utils/findReplace";
-import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumbering,
-} from "../numberingAttr";
-import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
+import { panic, TaggedError } from "better-result";
+import type { Mark, Node as PMNode } from "prosemirror-model";
+import { Fragment } from "prosemirror-model";
 /**
  * ProseMirror to Document Conversion
  *
@@ -16,60 +13,58 @@ import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
  * - Handle marks -> TextFormatting conversion
  */
 
-import { panic, TaggedError } from "better-result";
 import {
   DRAWING_RAW_XML_MODES,
   finalizeParagraphFormatting,
   relationshipIdOf,
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
+import { survivingComments } from "@stll/docx-core/ops";
+
+import { removeCommentMarkers } from "../../docx/commentAnchorIndex";
+import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
+import { getFindParagraphText } from "../../utils/findReplace";
 import {
   assertNoteReferenceOccurrences,
   coalesceNoteReferenceOccurrences,
 } from "../noteReferenceOccurrences";
-
-import type { Node as PMNode, Mark } from "prosemirror-model";
-import { Fragment } from "prosemirror-model";
+import {
+  effectiveParagraphNumbering,
+  paragraphNumberingSourcesFromBoundary,
+} from "../numberingAttr";
 import {
   marksToTextFormatting,
-  sameFormattingValue,
   type MarksToTextFormattingOptions,
+  sameFormattingValue,
 } from "../runFormattingFromMarks";
 
 export { marksToTextFormatting } from "../runFormattingFromMarks";
 
-import {
-  isStyleSourcedParagraphNumbering,
-  modelParagraphFormattingEmission,
-} from "../../internal/paragraphFormattingSerialization";
-import { buildSections } from "../../docx/documentParser";
-import { getDocumentSourceStyles } from "../../docx/headerFooterVerbatim";
+import type { PresetLineDashVal } from "@stll/docx-core/model";
+
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
+import { buildSections } from "../../docx/documentParser";
 import { normalizeFoldedListNumbers } from "../../docx/foldedListNumberFields";
-import { isInlineSdtContent, isSimpleFieldContent } from "../../docx/inlineWrapperContent";
+import { getDocumentSourceStyles } from "../../docx/headerFooterVerbatim";
 import {
-  BLOCK_TREE_DESCENT,
-  visitBlockTreeRecords,
-  visitDocxParagraphs,
-} from "../../docx/paragraphTraversal";
+  EDITED_PREVIEW_FINGERPRINT,
+  imageRawXmlFingerprint,
+} from "../../docx/imageRawXml";
+import {
+  isInlineSdtContent,
+  isSimpleFieldContent,
+} from "../../docx/inlineWrapperContent";
 import {
   paragraphNumberingReferenceId,
   sameStatedParagraphNumbering,
 } from "../../docx/numberingReference";
-import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
-import { createStyleEngine, type StyleEngine } from "../../style-engine";
 import {
-  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
-  ParagraphPropertySourceValidationError,
-  type ParagraphPropertySourceValidationCode,
-  type TableCellParagraphPropertySourceBinding,
+  assignParagraphIndentationProjection,
   copyDocumentParagraphPropertySourceContract,
   copyDocumentParagraphPropertySources,
   copyParagraphPropertyCapture,
   copyParagraphPropertySource,
-  paragraphFormattingWithAuthoredIndentation,
-  assignParagraphIndentationProjection,
   decodeTableCellParagraphSourcePayload,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
@@ -78,112 +73,119 @@ import {
   getParagraphPropertySourceTransferId,
   getProseDocumentParagraphPropertySourceContract,
   getProseParagraphPropertySourceToken,
+  inspectParagraphSourceIdentity,
   isParagraphPropertySourceToken,
   linkParagraphPropertySourceCandidate,
+  paragraphFormattingWithAuthoredIndentation,
   paragraphPropertySourceTokenMatchesContract,
-  inspectParagraphSourceIdentity,
+  type ParagraphPropertySourceValidationCode,
+  ParagraphPropertySourceValidationError,
+  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   recreateProseNodeWithParagraphPropertySource,
   restoreTableCellsWithParagraphPropertySources,
+  type TableCellParagraphPropertySourceBinding,
   visitDocumentStoryParagraphs,
   visitTableCellParagraphPropertySourceBindings,
 } from "../../docx/paragraphPropertySource";
-import { canonicalJson } from "../../utils/canonicalJson";
-import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
-import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/imageRawXml";
+import {
+  BLOCK_TREE_DESCENT,
+  visitBlockTreeRecords,
+  visitDocxParagraphs,
+} from "../../docx/paragraphTraversal";
 import { refingerprintShapeAlternateContent } from "../../docx/shapeAlternateContent";
-import { unchangedAlternateContentXml } from "../alternateContentAttrs";
-
-import { readAuthoredTransform } from "../authoredTransformAttrs";
-import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
+import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
 import { copiedWrapPolygon } from "../../docx/wrapPolygon";
-import type { PresetLineDashVal } from "@stll/docx-core/model";
-
+import {
+  isStyleSourcedParagraphNumbering,
+  modelParagraphFormattingEmission,
+} from "../../internal/paragraphFormattingSerialization";
+import { createStyleEngine, type StyleEngine } from "../../style-engine";
 import type {
+  EffectExtentSlots,
+  ImagePosition,
   ImageWrap,
   ImageWrapPolygon,
-  EffectExtentSlots,
-  WrapDistanceSlots,
-  ImagePosition,
-  ShapeFill,
-  ShapeOutline,
   PositionedBookmarkMarker,
   PreservedAttribute,
   SectionProperties,
+  ShapeFill,
+  ShapeOutline,
+  WrapDistanceSlots,
 } from "../../types/content";
 import type {
   BlockContent,
-  TableCellBlock,
-  BlockSdt,
   BlockCustomXml,
+  BlockSdt,
   BookmarkEnd,
   BookmarkStart,
+  BreakContent,
+  CellMargins,
+  ComplexField,
   Document,
   DocumentBody,
-  StyleDefinitions,
+  DrawingAnchor,
+  DrawingContent,
+  Hyperlink,
+  Image,
+  InlineSdt,
+  InlineWrapper,
+  MathEquation,
+  NoteReferenceContent,
   Paragraph,
+  ParagraphContent,
+  ParagraphFormatting,
   ParagraphPropertyChange,
   PreservedInline,
   PreservedMarkup,
   Run,
-  TextFormatting,
-  ParagraphFormatting,
-  TextContent,
-  BreakContent,
-  TabContent,
-  DrawingAnchor,
-  DrawingContent,
-  Image,
-  Hyperlink,
-  InlineWrapper,
-  ParagraphContent,
-  Table,
-  TableRow,
-  TableCell,
-  TableFormatting,
-  TableRowFormatting,
-  TableCellFormatting,
-  TableBorders,
-  ShapeContent,
-  Shape,
-  SymbolContent,
-  NoteReferenceContent,
-  SimpleField,
-  ComplexField,
-  InlineSdt,
   SdtProperties,
+  Shape,
+  ShapeContent,
+  SimpleField,
+  StyleDefinitions,
+  SymbolContent,
+  TabContent,
+  Table,
+  TableBorders,
+  TableCell,
+  TableCellBlock,
+  TableCellFormatting,
+  TableFormatting,
+  TableRow,
+  TableRowFormatting,
+  TextContent,
+  TextFormatting,
   TrackedChangeInfo,
-  MathEquation,
-  CellMargins,
 } from "../../types/document";
-import { normalizeShapeTextAnchor, presetDashForOutlineAttr } from "../../types/documentEnumValues";
-import { presetDashForCssBorderStyle } from "../../utils/borderCss";
-import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
-import { bookmarkMarkerFromAttrs, expectBookmarkBoundaryAttrs } from "../bookmarkBoundaryAttrs";
-import { expectCommentReferenceAttrs } from "../commentReferenceAttrs";
-import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
-import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
-import { expectMoveRangeBoundaryAttrs } from "../moveRangeBoundaryAttrs";
-import { expectRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import {
+  normalizeShapeTextAnchor,
+  presetDashForOutlineAttr,
+} from "../../types/documentEnumValues";
+import { presetDashForCssBorderStyle } from "../../utils/borderCss";
+import { canonicalJson } from "../../utils/canonicalJson";
+import { mergeTextFormatting } from "../../utils/textFormattingMerge";
+import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
+import { unchangedAlternateContentXml } from "../alternateContentAttrs";
+import {
+  expectBlockCustomXmlAttrs,
+  expectBlockSdtAttrs,
   expectCharacterStyleMarkAttrs,
   expectCommentMarkAttrs,
-  expectInlineWrapperMarkAttrs,
   expectFieldAttrs,
   expectFootnoteRefMarkAttrs,
   expectHardBreakAttrs,
   expectHyperlinkMarkAttrs,
   expectImageAttrs,
+  expectInlineWrapperMarkAttrs,
   expectMathAttrs,
   expectPageBreakRunAttrs,
-  expectRunIdentityMarkAttrs,
   expectParagraphAttrs,
-  expectRunPropertyChangeMarkAttrs,
-  expectBlockSdtAttrs,
-  expectBlockCustomXmlAttrs,
-  expectSdtAttrs,
-  expectShapeAttrs,
   expectPreservedBlockAttrs,
   expectPreservedXmlAttrs,
+  expectRunIdentityMarkAttrs,
+  expectRunPropertyChangeMarkAttrs,
+  expectSdtAttrs,
+  expectShapeAttrs,
   expectSymbolAttrs,
   expectTabAttrs,
   expectTableAttrs,
@@ -192,60 +194,24 @@ import {
   expectTextBoxAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../attrs";
-import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
-import { directionToAuthoredBidi } from "../paragraphDirection";
-import { directParagraphAlignment } from "../paragraphAlignment";
-import type { StyleResolvedParagraphField } from "../paragraphFormattingProvenance";
-import { directParagraphSpacing } from "../paragraphSpacing";
+import { readAuthoredTransform } from "../authoredTransformAttrs";
+import {
+  autospacingMatchesBase,
+  hasAutospacingBaseSide,
+} from "../autospacingBase";
+import {
+  bookmarkMarkerFromAttrs,
+  expectBookmarkBoundaryAttrs,
+} from "../bookmarkBoundaryAttrs";
 import {
   paragraphRejectAttrPatch,
   paragraphRejectOriginalFormatting,
   removeParagraphPropertyChanges,
 } from "../commands/propertyChangeScope";
-import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-
-import {
-  paragraphFormattingForRun,
-  paragraphRunStyleContext,
-  resolveParagraphInheritedRunFormatting,
-  resolveEffectiveRunStyleFormatting,
-  type RunStyleResolver,
-} from "../runStyleFormatting";
-
-import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
+import { trackedCommentBoundaryOwner } from "../commentBoundaryOwnership";
+import { expectCommentReferenceAttrs } from "../commentReferenceAttrs";
 import { enclosingRevisionIds } from "../contentControlRevisions";
-import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
-import { enclosingInsertionAncestors, inlineWrapperStackOf } from "../trackedRevisionPath";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
-import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
-import { PRESERVED_XML_LEVELS } from "../schema/nodes";
-import type {
-  AlternateContentAttrs,
-  HardBreakAttrs,
-  ParagraphAttrs,
-  ParagraphPropertyChangeAttrs,
-  TableAttrs,
-  TableRowAttrs,
-  TableCellAttrs,
-  AuthoredEmuAttrs,
-  ImageAttrs,
-  ImagePositionAttrs,
-  TextBoxAttrs,
-} from "../schema/nodes";
-import { assertValidProseMirrorDocument } from "../validation";
-import { completeNumberingForDoc } from "../listInstanceReferences";
-import {
-  LIST_RENDERING_ATTR_KEYS,
-  hasListRendering,
-  listRenderingFromAttrs as listRenderingFieldsFromAttrs,
-} from "../listRenderingAttrs";
-import { resolveNumberedRefFields } from "../numberedRefFields";
-import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
-import { textBoxHostParagraph } from "../textBoxHostParagraph";
-
-import { mergeTextFormatting } from "../../utils/textFormattingMerge";
-import { decodeSdtListItems, sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
-import { hasSinkChildren } from "./preservedSinkCarriers";
 // `fromProseDoc` and `toProseDoc` are the two halves of one round-trip and
 // already reference each other (`toProseDoc` imports `marksToTextFormatting`
 // from here). Reusing the inverse converter to revert a stripped suggested
@@ -253,6 +219,68 @@ import { hasSinkChildren } from "./preservedSinkCarriers";
 // references, so there is no initialization-order hazard.
 // oxlint-disable-next-line import/no-cycle
 import { textFormattingToMarks } from "../extensions/marks/markUtils";
+import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
+import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
+import {
+  inlineWrapperMember,
+  inlineWrapperStackKey,
+} from "../inlineWrapperStack";
+import { completeNumberingForDoc } from "../listInstanceReferences";
+import {
+  hasListRendering,
+  LIST_RENDERING_ATTR_KEYS,
+  listRenderingFromAttrs as listRenderingFieldsFromAttrs,
+} from "../listRenderingAttrs";
+import { expectMoveRangeBoundaryAttrs } from "../moveRangeBoundaryAttrs";
+import { resolveNumberedRefFields } from "../numberedRefFields";
+import { directParagraphAlignment } from "../paragraphAlignment";
+import { directionToAuthoredBidi } from "../paragraphDirection";
+import type { StyleResolvedParagraphField } from "../paragraphFormattingProvenance";
+import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
+import { directParagraphSpacing } from "../paragraphSpacing";
+import { expectRangeAnchorAttrs } from "../rangeAnchorAttrs";
+import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
+import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
+import {
+  paragraphFormattingForRun,
+  paragraphRunStyleContext,
+  resolveEffectiveRunStyleFormatting,
+  resolveParagraphInheritedRunFormatting,
+  type RunStyleResolver,
+} from "../runStyleFormatting";
+import type {
+  InlineWrapperLayer,
+  TrackedChangeMarkAttrs,
+  TrackedRevisionAncestor,
+} from "../schema/marks";
+import { PRESERVED_XML_LEVELS } from "../schema/nodes";
+import type {
+  AlternateContentAttrs,
+  AuthoredEmuAttrs,
+  HardBreakAttrs,
+  ImageAttrs,
+  ImagePositionAttrs,
+  ParagraphAttrs,
+  ParagraphPropertyChangeAttrs,
+  TableAttrs,
+  TableCellAttrs,
+  TableRowAttrs,
+  TextBoxAttrs,
+} from "../schema/nodes";
+import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
+import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
+import { textBoxHostParagraph } from "../textBoxHostParagraph";
+import {
+  enclosingInsertionAncestors,
+  inlineWrapperStackOf,
+} from "../trackedRevisionPath";
+import { assertValidProseMirrorDocument } from "../validation";
+import { hasSinkChildren } from "./preservedSinkCarriers";
+import {
+  decodeSdtListItems,
+  sdtPropertiesFromAttrs,
+  sdtPropertiesMatchAttrs,
+} from "./sdtAttrs";
 
 /**
  * The dash an `outlineStyle` attribute names.
@@ -261,12 +289,16 @@ import { textFormattingToMarks } from "../extensions/marks/markUtils";
  * returns undefined here: the serializer's no-outline guard drops the `<a:ln>`
  * before this is called.
  */
-function normalizeShapeOutlineDash(style: string | undefined): PresetLineDashVal | undefined {
+function normalizeShapeOutlineDash(
+  style: string | undefined,
+): PresetLineDashVal | undefined {
   const dash = presetDashForOutlineAttr(style);
   return dash === undefined || dash === "none" ? undefined : dash;
 }
 
-function imagePositionFromAttrs(attrs: ImagePositionAttrs | undefined): ImagePosition | undefined {
+function imagePositionFromAttrs(
+  attrs: ImagePositionAttrs | undefined,
+): ImagePosition | undefined {
   const horizontalPosition = attrs?.horizontal;
   const verticalPosition = attrs?.vertical;
   if (!horizontalPosition || !verticalPosition) {
@@ -324,7 +356,9 @@ type WrapDistanceSource = {
   wrapDistanceSlots?: WrapDistanceSlots;
   wrapEffectExtentSlots?: EffectExtentSlots;
   wrapPolygon?: ImageWrapPolygon;
-  _docxAuthoredEmu?: AuthoredEmuAttrs<"distTop" | "distBottom" | "distLeft" | "distRight">;
+  _docxAuthoredEmu?: AuthoredEmuAttrs<
+    "distTop" | "distBottom" | "distLeft" | "distRight"
+  >;
 };
 
 /**
@@ -332,19 +366,37 @@ type WrapDistanceSource = {
  * onto a wrap. Shared by the image, shape and text-box paths so one rule
  * decides when an inset keeps its authored EMU.
  */
-const assignWrapDistances = (wrap: ImageWrap, attrs: WrapDistanceSource): void => {
+const assignWrapDistances = (
+  wrap: ImageWrap,
+  attrs: WrapDistanceSource,
+): void => {
   const authored = attrs._docxAuthoredEmu;
   if (attrs.distTop !== undefined) {
     wrap.distT = emuFromPixels(attrs.distTop, "distTop", authored, emuToPixels);
   }
   if (attrs.distBottom !== undefined) {
-    wrap.distB = emuFromPixels(attrs.distBottom, "distBottom", authored, emuToPixels);
+    wrap.distB = emuFromPixels(
+      attrs.distBottom,
+      "distBottom",
+      authored,
+      emuToPixels,
+    );
   }
   if (attrs.distLeft !== undefined) {
-    wrap.distL = emuFromPixels(attrs.distLeft, "distLeft", authored, emuToPixels);
+    wrap.distL = emuFromPixels(
+      attrs.distLeft,
+      "distLeft",
+      authored,
+      emuToPixels,
+    );
   }
   if (attrs.distRight !== undefined) {
-    wrap.distR = emuFromPixels(attrs.distRight, "distRight", authored, emuToPixels);
+    wrap.distR = emuFromPixels(
+      attrs.distRight,
+      "distRight",
+      authored,
+      emuToPixels,
+    );
   }
   const slots = copiedWrapDistanceSlots(attrs.wrapDistanceSlots);
   if (slots !== undefined) {
@@ -367,8 +419,12 @@ const copiedWrapDistanceSlots = (
   slots === undefined
     ? undefined
     : {
-        ...(slots.drawing === undefined ? {} : { drawing: { ...slots.drawing } }),
-        ...(slots.wrapChild === undefined ? {} : { wrapChild: { ...slots.wrapChild } }),
+        ...(slots.drawing === undefined
+          ? {}
+          : { drawing: { ...slots.drawing } }),
+        ...(slots.wrapChild === undefined
+          ? {}
+          : { wrapChild: { ...slots.wrapChild } }),
       };
 
 /** The same copy, one carrier over. */
@@ -378,8 +434,12 @@ const copiedEffectExtentSlots = (
   slots === undefined
     ? undefined
     : {
-        ...(slots.drawing === undefined ? {} : { drawing: { ...slots.drawing } }),
-        ...(slots.wrapChild === undefined ? {} : { wrapChild: { ...slots.wrapChild } }),
+        ...(slots.drawing === undefined
+          ? {}
+          : { drawing: { ...slots.drawing } }),
+        ...(slots.wrapChild === undefined
+          ? {}
+          : { wrapChild: { ...slots.wrapChild } }),
       };
 
 function textBoxWrapFromAttrs(attrs: TextBoxAttrs): ImageWrap | undefined {
@@ -435,7 +495,10 @@ const uniqueParagraphsById = (
   return paragraphs;
 };
 
-const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Paragraph): void => {
+const restoreParagraphPropertySource = (
+  paragraph: Paragraph,
+  baseParagraph: Paragraph,
+): void => {
   copyParagraphPropertySource(paragraph, baseParagraph);
 
   const baseFormatting = baseParagraph.formatting;
@@ -521,47 +584,53 @@ const validateParagraphPropertySourceTokens = (
     panic("A paragraph-property source contract lost its source registry");
   }
   const currentTokens = new Set<string>();
-  visitDocumentStoryParagraphs(baseDocument.package.document.content, (paragraph) => {
-    const identity = inspectParagraphSourceIdentity(paragraph, baseDocument);
-    switch (identity.type) {
-      case "authored":
-      case "capture-only":
-        return;
-      case "missing-token":
+  visitDocumentStoryParagraphs(
+    baseDocument.package.document.content,
+    (paragraph) => {
+      const identity = inspectParagraphSourceIdentity(paragraph, baseDocument);
+      switch (identity.type) {
+        case "authored":
+        case "capture-only":
+          return;
+        case "missing-token":
+          throw sourceValidationError(
+            "invalid_token",
+            "A source-bound paragraph is missing its paragraph-property token.",
+          );
+        case "invalid":
+          throw sourceValidationError(
+            "invalid_token",
+            "The source paragraph identity is invalid.",
+          );
+        case "durable":
+          break;
+        default: {
+          const unhandled: never = identity;
+          panic(`Unhandled paragraph source identity: ${String(unhandled)}`);
+        }
+      }
+      const { token } = identity;
+      if (!paragraphPropertySourceTokenMatchesContract(token, contract)) {
         throw sourceValidationError(
           "invalid_token",
-          "A source-bound paragraph is missing its paragraph-property token.",
+          "The source document contains an invalid paragraph-property token.",
         );
-      case "invalid":
-        throw sourceValidationError("invalid_token", "The source paragraph identity is invalid.");
-      case "durable":
-        break;
-      default: {
-        const unhandled: never = identity;
-        panic(`Unhandled paragraph source identity: ${String(unhandled)}`);
       }
-    }
-    const { token } = identity;
-    if (!paragraphPropertySourceTokenMatchesContract(token, contract)) {
-      throw sourceValidationError(
-        "invalid_token",
-        "The source document contains an invalid paragraph-property token.",
-      );
-    }
-    if (!sourceParagraphs.has(token)) {
-      throw sourceValidationError(
-        "unknown_token",
-        "The source document contains an unknown paragraph-property token.",
-      );
-    }
-    if (currentTokens.has(token)) {
-      throw sourceValidationError(
-        "duplicate_token",
-        "The source document contains a duplicate paragraph-property token.",
-      );
-    }
-    currentTokens.add(token);
-  });
+      if (!sourceParagraphs.has(token)) {
+        throw sourceValidationError(
+          "unknown_token",
+          "The source document contains an unknown paragraph-property token.",
+        );
+      }
+      if (currentTokens.has(token)) {
+        throw sourceValidationError(
+          "duplicate_token",
+          "The source document contains a duplicate paragraph-property token.",
+        );
+      }
+      currentTokens.add(token);
+    },
+  );
 
   const seen = new Set<string>();
   const validateToken = (token: unknown): void => {
@@ -594,7 +663,9 @@ const validateParagraphPropertySourceTokens = (
     }
     seen.add(token);
   };
-  const validateTableCellBinding = (binding: TableCellParagraphPropertySourceBinding): void => {
+  const validateTableCellBinding = (
+    binding: TableCellParagraphPropertySourceBinding,
+  ): void => {
     switch (binding.type) {
       case "authored":
         return;
@@ -609,7 +680,8 @@ const validateParagraphPropertySourceTokens = (
   };
   pmDoc.descendants((node) => {
     if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
-      const continuationCells = expectTableCellAttrs(node)._docxVMergeContinuationCells;
+      const continuationCells =
+        expectTableCellAttrs(node)._docxVMergeContinuationCells;
       if (continuationCells !== undefined && continuationCells !== null) {
         visitTableCellParagraphPropertySourceBindings(
           decodeTableCellParagraphSourcePayload(continuationCells),
@@ -701,7 +773,8 @@ export type FromProseDocOptions = {
    * and document defaults. Clone frozen definitions once when authoring a mutable copy.
    * If the parsed package had no styles part, all live definitions are additions.
    */
-  stylesheetSource: { type: "package" } | { type: "supplied"; styles: StyleDefinitions };
+  stylesheetSource:
+    { type: "package" } | { type: "supplied"; styles: StyleDefinitions };
   /** Defaults to `"none"`, the only value implemented. */
   reuse?: ProjectionReuse;
 };
@@ -711,16 +784,22 @@ type SaveStylesheetDivergence =
   | { type: "docDefaults" }
   | { type: "sourceUnavailable" };
 
-class SaveStylesheetSourceMismatch extends TaggedError("SaveStylesheetSourceMismatch")<{
+class SaveStylesheetSourceMismatch extends TaggedError(
+  "SaveStylesheetSourceMismatch",
+)<{
   message: string;
   divergences: readonly SaveStylesheetDivergence[];
 }> {}
 
-const parsedPackageStyles = (document: Document, liveStyles?: StyleDefinitions) => {
+const parsedPackageStyles = (
+  document: Document,
+  liveStyles?: StyleDefinitions,
+) => {
   const source = getDocumentSourceStyles(document, liveStyles);
   switch (source.type) {
     case "captured": {
-      if (source.styles !== undefined && source.additions.length === 0) return source.styles;
+      if (source.styles !== undefined && source.additions.length === 0)
+        return source.styles;
       const addedIds = new Set<string>();
       for (const addition of source.additions) {
         if (addedIds.has(addition.styleId)) {
@@ -732,7 +811,9 @@ const parsedPackageStyles = (document: Document, liveStyles?: StyleDefinitions) 
         addedIds.add(addition.styleId);
       }
       if (source.styles === undefined)
-        return liveStyles === undefined ? undefined : structuredClone(liveStyles);
+        return liveStyles === undefined
+          ? undefined
+          : structuredClone(liveStyles);
       return {
         ...source.styles,
         styles: [...source.styles.styles, ...structuredClone(source.additions)],
@@ -746,7 +827,9 @@ const parsedPackageStyles = (document: Document, liveStyles?: StyleDefinitions) 
       });
     default: {
       const unreachable: never = source;
-      return panic(`Unexpected stylesheet source capture: ${JSON.stringify(unreachable)}`);
+      return panic(
+        `Unexpected stylesheet source capture: ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
@@ -759,8 +842,12 @@ const assertSuppliedStylesMatchSource = (
   const sourceStyles = parsedPackageStyles(baseDocument);
   // Without a source styles part the saver materializes the full supplied stylesheet.
   if (!sourceStyles) return;
-  const suppliedById = new Map(styles.styles.map((style) => [style.styleId, style]));
-  const sourceById = new Map(sourceStyles.styles.map((style) => [style.styleId, style]));
+  const suppliedById = new Map(
+    styles.styles.map((style) => [style.styleId, style]),
+  );
+  const sourceById = new Map(
+    sourceStyles.styles.map((style) => [style.styleId, style]),
+  );
   const divergentIds = new Set<string>();
   for (const style of sourceStyles.styles) {
     if (canonicalJson(style) !== canonicalJson(suppliedById.get(style.styleId)))
@@ -782,23 +869,38 @@ const assertSuppliedStylesMatchSource = (
   const suppliedResolver = createStyleEngine(styles);
   const persistedResolver = createStyleEngine(persistedStyles);
   for (const [supplied, persisted] of [
-    [suppliedResolver.getDefaultParagraphStyle(), persistedResolver.getDefaultParagraphStyle()],
-    [suppliedResolver.getDefaultCharacterStyle(), persistedResolver.getDefaultCharacterStyle()],
-    [suppliedResolver.getDefaultTableStyle(), persistedResolver.getDefaultTableStyle()],
+    [
+      suppliedResolver.getDefaultParagraphStyle(),
+      persistedResolver.getDefaultParagraphStyle(),
+    ],
+    [
+      suppliedResolver.getDefaultCharacterStyle(),
+      persistedResolver.getDefaultCharacterStyle(),
+    ],
+    [
+      suppliedResolver.getDefaultTableStyle(),
+      persistedResolver.getDefaultTableStyle(),
+    ],
   ]) {
     if (supplied?.styleId === persisted?.styleId) continue;
     if (supplied) divergentIds.add(supplied.styleId);
     if (persisted) divergentIds.add(persisted.styleId);
   }
   const divergences: SaveStylesheetDivergence[] = [];
-  for (const styleId of divergentIds) divergences.push({ type: "style", styleId });
-  if (canonicalJson(styles.docDefaults) !== canonicalJson(sourceStyles.docDefaults))
+  for (const styleId of divergentIds)
+    divergences.push({ type: "style", styleId });
+  if (
+    canonicalJson(styles.docDefaults) !==
+    canonicalJson(sourceStyles.docDefaults)
+  )
     divergences.push({ type: "docDefaults" });
   if (divergences.length === 0) return;
   throw new SaveStylesheetSourceMismatch({
     message: `Supplied stylesheet differs from the parsed package: ${[
       ...divergentIds,
-      ...(divergences.some(({ type }) => type === "docDefaults") ? ["docDefaults"] : []),
+      ...(divergences.some(({ type }) => type === "docDefaults")
+        ? ["docDefaults"]
+        : []),
     ].join(", ")}.`,
     divergences,
   });
@@ -818,7 +920,9 @@ const saveStylesheet = (
       return source.styles;
     default: {
       const unreachable: never = source;
-      return panic(`Unexpected stylesheet source: ${JSON.stringify(unreachable)}`);
+      return panic(
+        `Unexpected stylesheet source: ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 };
@@ -849,7 +953,9 @@ const assertSaveStylesheetAvailable = ({
       switch (node.type.name) {
         case "paragraph": {
           const attrs = expectParagraphAttrs(node);
-          return attrs.styleId ?? attrs._originalFormatting?.runProperties?.styleId;
+          return (
+            attrs.styleId ?? attrs._originalFormatting?.runProperties?.styleId
+          );
         }
         case "table":
           return expectTableAttrs(node).styleId;
@@ -857,9 +963,13 @@ const assertSaveStylesheetAvailable = ({
           return undefined;
       }
     })();
-    if (referencedStyle != null || node.marks.some(({ type }) => type.name === "characterStyle"))
+    if (
+      referencedStyle != null ||
+      node.marks.some(({ type }) => type.name === "characterStyle")
+    )
       throw new MissingSaveStylesheet({
-        message: "Saving style-dependent content requires its authoritative stylesheet.",
+        message:
+          "Saving style-dependent content requires its authoritative stylesheet.",
       });
   });
 };
@@ -892,7 +1002,8 @@ export function fromProseDoc(
   const baseContract = baseDocument
     ? getDocumentParagraphPropertySourceContract(baseDocument)
     : undefined;
-  const proseContractAttribute = pmDoc.attrs[PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR];
+  const proseContractAttribute =
+    pmDoc.attrs[PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR];
   const proseContract = getProseDocumentParagraphPropertySourceContract(pmDoc);
   const proseCarriesInvalidContract =
     proseContractAttribute !== null &&
@@ -910,7 +1021,12 @@ export function fromProseDoc(
       : null;
 
   const styles = saveStylesheet(stylesheetSource, baseDocument);
-  assertSaveStylesheetAvailable({ pmDoc, styles, baseDocument, stylesheetSource });
+  assertSaveStylesheetAvailable({
+    pmDoc,
+    styles,
+    baseDocument,
+    stylesheetSource,
+  });
 
   // Match the reader's empty-styles resolver when the source has no styles part.
   const blocks = extractBlocks(pmDoc, "resolve", createStyleEngine(styles));
@@ -939,18 +1055,28 @@ export function fromProseDoc(
     documentBody.background = baseDocument.package.document.background;
   }
   if (baseDocument?.package.document.finalSectionProperties) {
-    documentBody.finalSectionProperties = baseDocument.package.document.finalSectionProperties;
+    documentBody.finalSectionProperties =
+      baseDocument.package.document.finalSectionProperties;
   }
   if (baseDocument?.package.document.sections) {
-    documentBody.sections = buildSections(blocks, documentBody.finalSectionProperties);
+    documentBody.sections = buildSections(
+      blocks,
+      documentBody.finalSectionProperties,
+    );
   }
   if (baseDocument?.package.document.comments) {
-    setDocumentBodyComments(documentBody, baseDocument.package.document.comments);
+    setDocumentBodyComments(
+      documentBody,
+      baseDocument.package.document.comments,
+    );
   }
 
   // A list command that found no instance of its kind defined one on the
   // paragraphs it numbered; the package's numbering part has to hold it.
-  const numbering = completeNumberingForDoc(baseDocument?.package.numbering, pmDoc);
+  const numbering = completeNumberingForDoc(
+    baseDocument?.package.numbering,
+    pmDoc,
+  );
 
   // If we have a base document, preserve its package structure
   if (baseDocument) {
@@ -963,6 +1089,30 @@ export function fromProseDoc(
         ...(numbering ? { numbering } : {}),
       },
     };
+    const projectedCommentIds = new Set<number>();
+    pmDoc.descendants((node) => {
+      for (const commentId of getCommentMarkIds(node.marks))
+        projectedCommentIds.add(commentId);
+    });
+    const survivingCommentIds = new Set(
+      survivingComments(updatedDocument).map(({ id }) => id),
+    );
+    const comments = (updatedDocument.package.document.comments ?? []).filter(
+      ({ id }) => survivingCommentIds.has(id) || projectedCommentIds.has(id),
+    );
+    const keptIds = new Set(comments.map(({ id }) => id));
+    const retiredIds = new Set(
+      (updatedDocument.package.document.comments ?? [])
+        .filter(({ id }) => !keptIds.has(id))
+        .map(({ id }) => id),
+    );
+    if (retiredIds.size > 0) {
+      updatedDocument.package.document.content = removeCommentMarkers(
+        updatedDocument.package.document.content,
+        retiredIds,
+      );
+      setDocumentBodyComments(updatedDocument.package.document, comments);
+    }
     copyDocumentParagraphPropertySourceContract(updatedDocument, baseDocument);
     return updatedDocument;
   }
@@ -977,7 +1127,8 @@ export function fromProseDoc(
   };
 }
 
-const isSuggestedMark = (mark: Mark): boolean => mark.attrs["provenance"] === "suggested";
+const isSuggestedMark = (mark: Mark): boolean =>
+  mark.attrs["provenance"] === "suggested";
 
 const hasSuggestedInsertion = (marks: readonly Mark[]): boolean =>
   marks.some((mark) => mark.type.name === "insertion" && isSuggestedMark(mark));
@@ -1008,7 +1159,8 @@ function stripSuggestedInlineMarks(
   let next: readonly Mark[] = marks.filter(
     (mark) =>
       !(
-        (mark.type.name === "deletion" || mark.type.name === "runPropertyChange") &&
+        (mark.type.name === "deletion" ||
+          mark.type.name === "runPropertyChange") &&
         isSuggestedMark(mark)
       ),
   );
@@ -1024,7 +1176,9 @@ function stripSuggestedInlineMarks(
     const previousFormatting = expectRunPropertyChangeMarkAttrs(
       suggestedRunPropertyChange,
     ).changes.at(0)?.previousFormatting;
-    const characterStyleMark = marks.find(({ type }) => type.name === "characterStyle");
+    const characterStyleMark = marks.find(
+      ({ type }) => type.name === "characterStyle",
+    );
     const characterStyleAttrs = characterStyleMark
       ? expectCharacterStyleMarkAttrs(characterStyleMark)
       : undefined;
@@ -1041,7 +1195,9 @@ function stripSuggestedInlineMarks(
         paragraphMarkFormatting,
         paragraphMarkPrecedesStyle,
       },
-      ...(previousFormatting !== undefined ? { directFormatting: previousFormatting } : {}),
+      ...(previousFormatting !== undefined
+        ? { directFormatting: previousFormatting }
+        : {}),
     });
     const styleFormatting = preservedCharacterStyleAttrs
       ? resolveEffectiveRunStyleFormatting({
@@ -1050,8 +1206,13 @@ function stripSuggestedInlineMarks(
           styleResolver,
         })
       : paragraphFormatting;
-    const effectivePreviousFormatting = mergeTextFormatting(styleFormatting, previousFormatting);
-    next = next.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
+    const effectivePreviousFormatting = mergeTextFormatting(
+      styleFormatting,
+      previousFormatting,
+    );
+    next = next.filter(
+      (mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name),
+    );
     for (const restored of textFormattingToMarks(
       effectivePreviousFormatting,
       suggestedRunPropertyChange.type.schema,
@@ -1063,10 +1224,15 @@ function stripSuggestedInlineMarks(
       next = restored.addToSet(next);
     }
     if (previousFormatting?.styleId) {
-      const characterStyle = suggestedRunPropertyChange.type.schema.marks["characterStyle"];
+      const characterStyle =
+        suggestedRunPropertyChange.type.schema.marks["characterStyle"];
       if (characterStyle) {
         next = characterStyle
-          .create(preservedCharacterStyleAttrs ?? { styleId: previousFormatting.styleId })
+          .create(
+            preservedCharacterStyleAttrs ?? {
+              styleId: previousFormatting.styleId,
+            },
+          )
           .addToSet(next);
       }
     }
@@ -1076,7 +1242,9 @@ function stripSuggestedInlineMarks(
 }
 
 /** A paragraph's attrs without its suggested property changes, or `null` when it has none. */
-function stripSuggestedParagraphPropertyChanges(node: PMNode): Record<string, unknown> | null {
+function stripSuggestedParagraphPropertyChanges(
+  node: PMNode,
+): Record<string, unknown> | null {
   const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
   if (!Array.isArray(propertyChanges)) {
     return null;
@@ -1100,7 +1268,10 @@ function stripSuggestedParagraphPropertyChanges(node: PMNode): Record<string, un
   // previous snapshot above, so removing the proposal cannot overwrite the
   // later authored state.
   if (removal.type === "restore-previous") {
-    Object.assign(nextAttrs, paragraphRejectAttrPatch(removal.previousFormatting));
+    Object.assign(
+      nextAttrs,
+      paragraphRejectAttrPatch(removal.previousFormatting),
+    );
     nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
       removal.previousFormatting,
       nextAttrs["_originalFormatting"],
@@ -1152,7 +1323,11 @@ function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
   if (name === "tableCell" || name === "tableHeader") {
     const cellAttrs = expectTableCellAttrs(node);
     const marker = cellAttrs.cellMarker;
-    if (marker && marker.kind !== "merge" && marker.info.provenance === "suggested") {
+    if (
+      marker &&
+      marker.kind !== "merge" &&
+      marker.info.provenance === "suggested"
+    ) {
       return { ...cellAttrs, cellMarker: null };
     }
   }
@@ -1234,12 +1409,18 @@ function mapSuggestionStrippedNode(
       ? () => {
           if (resolvedChildContext) return resolvedChildContext;
           const { styleResolver } = readFormattingContext();
-          const paragraphStyleContext = savedParagraphRunStyleContext(node, styleResolver);
+          const paragraphStyleContext = savedParagraphRunStyleContext(
+            node,
+            styleResolver,
+          );
           resolvedChildContext = {
-            baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
+            baseParagraphFormatting:
+              paragraphStyleContext.baseParagraphFormatting,
             inheritedFormatting: paragraphStyleContext.paragraphFormatting,
-            paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
-            paragraphMarkPrecedesStyle: paragraphStyleContext.paragraphMarkPrecedesStyle,
+            paragraphMarkFormatting:
+              paragraphStyleContext.paragraphMarkFormatting,
+            paragraphMarkPrecedesStyle:
+              paragraphStyleContext.paragraphMarkPrecedesStyle,
             styleResolver,
           };
           return resolvedChildContext;
@@ -1272,7 +1453,10 @@ function mapSuggestionStrippedNode(
  * serializes as though the suggestion never happened. See the call site in
  * {@link extractBlocks} for why this is the sole serialization boundary.
  */
-function stripSuggestedProvenance(doc: PMNode, styleResolver: StyleEngine | null): PMNode {
+function stripSuggestedProvenance(
+  doc: PMNode,
+  styleResolver: StyleEngine | null,
+): PMNode {
   return (
     mapSuggestionStrippedNode(doc, () => ({
       baseParagraphFormatting: undefined,
@@ -1336,7 +1520,9 @@ function extractBlocks(
   // AI-proposed edit to reach OOXML output before a human accepts it.
   const strippedDoc = stripSuggestedProvenance(inputDoc, styleResolver);
   const pmDoc =
-    refResolution === "resolve" ? materializeNumberedRefValues(strippedDoc) : strippedDoc;
+    refResolution === "resolve"
+      ? materializeNumberedRefValues(strippedDoc)
+      : strippedDoc;
   const blocks: BlockContent[] = [];
   const textBoxAnchorMarkers = new Map<string, Run>();
   const documentCounts = buildDocumentTrackedChangeCounts(pmDoc);
@@ -1379,7 +1565,10 @@ function extractBlocks(
       blocks.push(paragraph);
       previousStandaloneTextBox = null;
     } else if (node.type.name === "table") {
-      if (pendingPageBreaks > 0 && !appendPendingPageBreaksToPreviousParagraph()) {
+      if (
+        pendingPageBreaks > 0 &&
+        !appendPendingPageBreaksToPreviousParagraph()
+      ) {
         flushPendingPageBreaks();
       }
       blocks.push(convertPMTable(node, documentCounts, styleResolver));
@@ -1393,7 +1582,10 @@ function extractBlocks(
       });
       pendingPageBreaks = 0;
     } else if (node.type.name === "blockSdt") {
-      if (pendingPageBreaks > 0 && !appendPendingPageBreaksToPreviousParagraph()) {
+      if (
+        pendingPageBreaks > 0 &&
+        !appendPendingPageBreaksToPreviousParagraph()
+      ) {
         flushPendingPageBreaks();
       }
       blocks.push(convertPMBlockSdt(node, styleResolver));
@@ -1452,7 +1644,9 @@ function extractBlocks(
  * one free to claim an authored revision session each. `visitBlockTreeRecords`
  * is the one traversal, and it is exhaustive over the block union.
  */
-const keepOneRecordCarriedByIdentity = (blocks: readonly BlockContent[]): void => {
+const keepOneRecordCarriedByIdentity = (
+  blocks: readonly BlockContent[],
+): void => {
   const seen = new WeakSet<object>();
 
   /** Whether this object is the authored one rather than a copy's reference. */
@@ -1554,7 +1748,10 @@ function blockBookmarkMarker(node: PMNode): BookmarkStart | BookmarkEnd {
   return bookmarkMarkerFromAttrs(expectBookmarkBoundaryAttrs(node));
 }
 
-function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): BlockSdt {
+function convertPMBlockSdt(
+  node: PMNode,
+  styleResolver: StyleEngine | null,
+): BlockSdt {
   const attrs = expectBlockSdtAttrs(node);
   const properties: SdtProperties = { sdtType: attrs.sdtType };
   if (attrs.alias) {
@@ -1627,16 +1824,24 @@ function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): Blo
   // user typed into the filler we still preserve the paragraph,
   // matching their intent.
   const wasOriginallyEmpty = attrs._originallyEmpty === true;
-  const content = wasOriginallyEmpty && isStillSyntheticFiller(extracted) ? [] : extracted;
+  const content =
+    wasOriginallyEmpty && isStillSyntheticFiller(extracted) ? [] : extracted;
 
   return { type: "blockSdt", properties, content };
 }
 
-function convertPMBlockCustomXml(node: PMNode, styleResolver: StyleEngine | null): BlockCustomXml {
-  const { openingXml, closingXml, _originallyEmpty } = expectBlockCustomXmlAttrs(node);
+function convertPMBlockCustomXml(
+  node: PMNode,
+  styleResolver: StyleEngine | null,
+): BlockCustomXml {
+  const { openingXml, closingXml, _originallyEmpty } =
+    expectBlockCustomXmlAttrs(node);
   const innerDoc = node.type.schema.node("doc", null, node.content);
   const extracted = extractBlocks(innerDoc, "inherit", styleResolver);
-  const content = _originallyEmpty === true && isStillSyntheticFiller(extracted) ? [] : extracted;
+  const content =
+    _originallyEmpty === true && isStillSyntheticFiller(extracted)
+      ? []
+      : extracted;
   return { type: "blockCustomXml", openingXml, closingXml, content };
 }
 
@@ -1676,10 +1881,15 @@ function appendTextBoxBlock(
   const attrs = expectTextBoxAttrs(node);
   let paragraph = convertPMTextBox(node, options.styleResolver);
   const previousBlock = blocks.at(-1);
-  if (attrs._docxPlacement === "inlineWithPrevious" && previousBlock?.type === "paragraph") {
+  if (
+    attrs._docxPlacement === "inlineWithPrevious" &&
+    previousBlock?.type === "paragraph"
+  ) {
     appendPageBreaks(previousBlock, options.pendingPageBreaks);
     const anchorId = attrs._docxAnchorId;
-    const anchorMarker = anchorId ? options.textBoxAnchorMarkers.get(anchorId) : undefined;
+    const anchorMarker = anchorId
+      ? options.textBoxAnchorMarkers.get(anchorId)
+      : undefined;
     const textBoxRun = findTextBoxShapeRun(paragraph.content);
     if (
       anchorId &&
@@ -1691,7 +1901,11 @@ function appendTextBoxBlock(
       return null;
     }
     if (
-      !mergeTextBoxIntoTrailingInlineSdts(previousBlock, paragraph, attrs._docxInlineSdts ?? [])
+      !mergeTextBoxIntoTrailingInlineSdts(
+        previousBlock,
+        paragraph,
+        attrs._docxInlineSdts ?? [],
+      )
     ) {
       previousBlock.content.push(...paragraph.content);
     }
@@ -1710,7 +1924,9 @@ function appendTextBoxBlock(
         attrs._docxInlineSdts ?? [],
       )
     ) {
-      options.previousStandaloneTextBox.paragraph.content.push(...paragraph.content);
+      options.previousStandaloneTextBox.paragraph.content.push(
+        ...paragraph.content,
+      );
     }
     return options.previousStandaloneTextBox;
   }
@@ -1718,13 +1934,24 @@ function appendTextBoxBlock(
   // This node stands in for the `w:p` it was lifted out of, so the host's
   // paragraph properties and attribute remainder go back on the paragraph
   // rebuilt for it.
-  const host = attrs._docxPlacement === "standalone" ? textBoxHostParagraph(node) : undefined;
+  const host =
+    attrs._docxPlacement === "standalone"
+      ? textBoxHostParagraph(node)
+      : undefined;
   if (host) {
-    const hostParagraph = convertPMParagraph(host, undefined, undefined, options.styleResolver);
+    const hostParagraph = convertPMParagraph(
+      host,
+      undefined,
+      undefined,
+      options.styleResolver,
+    );
     hostParagraph.content = paragraph.content;
     paragraph = hostParagraph;
   }
-  if (attrs._docxPlacement === "standalone" && attrs._preservedAttributes?.length) {
+  if (
+    attrs._docxPlacement === "standalone" &&
+    attrs._preservedAttributes?.length
+  ) {
     paragraph.preservedAttributes = attrs._preservedAttributes;
   }
   prependPageBreaks(paragraph, options.pendingPageBreaks);
@@ -1750,7 +1977,10 @@ function mergeTextBoxIntoTrailingInlineSdts(
   let targetSdt: InlineSdt | undefined;
   for (let index = target.content.length - 1; index >= 0; index -= 1) {
     const content = target.content[index];
-    if (content?.type === "inlineSdt" && sdtPropertiesMatchAttrs(content.properties, outerAttrs)) {
+    if (
+      content?.type === "inlineSdt" &&
+      sdtPropertiesMatchAttrs(content.properties, outerAttrs)
+    ) {
       targetSdt = content;
       break;
     }
@@ -1785,9 +2015,16 @@ function mergeInlineSdtNodes(
     return false;
   }
   let targetNested: InlineSdt | undefined;
-  for (let nestedIndex = target.content.length - 1; nestedIndex >= 0; nestedIndex -= 1) {
+  for (
+    let nestedIndex = target.content.length - 1;
+    nestedIndex >= 0;
+    nestedIndex -= 1
+  ) {
     const content = target.content[nestedIndex];
-    if (content?.type === "inlineSdt" && sdtPropertiesMatchAttrs(content.properties, nestedAttrs)) {
+    if (
+      content?.type === "inlineSdt" &&
+      sdtPropertiesMatchAttrs(content.properties, nestedAttrs)
+    ) {
       targetNested = content;
       break;
     }
@@ -1796,15 +2033,24 @@ function mergeInlineSdtNodes(
     target.content.push(incomingNested);
     return true;
   }
-  return mergeInlineSdtNodes(targetNested, incomingNested, inlineSdts, index + 1);
+  return mergeInlineSdtNodes(
+    targetNested,
+    incomingNested,
+    inlineSdts,
+    index + 1,
+  );
 }
 
-function findTextBoxShapeRun(content: readonly ParagraphContent[]): Run | undefined {
+function findTextBoxShapeRun(
+  content: readonly ParagraphContent[],
+): Run | undefined {
   for (const item of content) {
     if (item.type === "run") {
       if (
         item.content.some(
-          (runContent) => runContent.type === "shape" && runContent.shape.shapeType === "textBox",
+          (runContent) =>
+            runContent.type === "shape" &&
+            runContent.shape.shapeType === "textBox",
         )
       ) {
         return item;
@@ -1820,7 +2066,8 @@ function findTextBoxShapeRun(content: readonly ParagraphContent[]): Run | undefi
       item.type === "moveFrom" ||
       item.type === "moveTo"
     ) {
-      const nestedContent = item.type === "hyperlink" ? item.children : item.content;
+      const nestedContent =
+        item.type === "hyperlink" ? item.children : item.content;
       const run = findTextBoxShapeRun(nestedContent);
       if (run) {
         return run;
@@ -1871,7 +2118,9 @@ function replaceTextBoxAnchorInBlocks(
  * would have to pick a side. The marker stays where it is and
  * `removeUnresolvedTextBoxAnchors` leaves it, as before.
  */
-const textBoxAnchorHost = (item: ParagraphContent): ParagraphContent[] | undefined => {
+const textBoxAnchorHost = (
+  item: ParagraphContent,
+): ParagraphContent[] | undefined => {
   switch (item.type) {
     case "hyperlink":
       return item.children;
@@ -1939,7 +2188,10 @@ function removeUnresolvedTextBoxAnchors(
   }
 }
 
-function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boolean {
+function removeTextBoxAnchorFromBlocks(
+  blocks: BlockContent[],
+  marker: Run,
+): boolean {
   for (const block of blocks) {
     if (block.type === "paragraph") {
       if (editTextBoxAnchorInContent(block.content, marker)) {
@@ -1973,7 +2225,9 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
  * `paragraph.listRendering`; without this, every edited document loses its
  * list markers on the way out of the editor.
  */
-function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering"] {
+function listRenderingFromAttrs(
+  attrs: ParagraphAttrs,
+): Paragraph["listRendering"] {
   const numId = paragraphNumberingReferenceId(
     effectiveParagraphNumbering(
       paragraphNumberingSourcesFromBoundary({
@@ -2032,7 +2286,10 @@ function convertPMParagraph(
   styleResolver: StyleEngine | null = null,
 ): Paragraph {
   const attrs = expectParagraphAttrs(node);
-  const paragraphStyleContext = savedParagraphRunStyleContext(node, styleResolver);
+  const paragraphStyleContext = savedParagraphRunStyleContext(
+    node,
+    styleResolver,
+  );
   let content = extractParagraphContent(
     node,
     documentCounts,
@@ -2043,13 +2300,15 @@ function convertPMParagraph(
       baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
       inheritedFormatting: paragraphStyleContext.paragraphFormatting,
       paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle: paragraphStyleContext.paragraphMarkPrecedesStyle,
+      paragraphMarkPrecedesStyle:
+        paragraphStyleContext.paragraphMarkPrecedesStyle,
       styleResolver,
     },
   );
 
   // Emit BookmarkStart/End from bookmarks attr (for TOC anchors, cross-references)
-  const bookmarks = attrs.bookmarks as { id: number; name: string }[] | undefined;
+  const bookmarks = attrs.bookmarks as
+    { id: number; name: string }[] | undefined;
   if (bookmarks && bookmarks.length > 0) {
     const starts: ParagraphContent[] = bookmarks.map((b) => ({
       type: "bookmarkStart" as const,
@@ -2088,7 +2347,9 @@ function convertPMParagraph(
       }),
     )?.kind === "reference"
   ) {
-    const inheritedIndentation = paragraphIndentationFromFormatting(attrs._resolvedFormatting);
+    const inheritedIndentation = paragraphIndentationFromFormatting(
+      attrs._resolvedFormatting,
+    );
     if (inheritedIndentation) {
       assignParagraphIndentationProjection({
         paragraph,
@@ -2120,7 +2381,9 @@ function convertPMParagraph(
   // on. Shallow-clone the array so the rebuilt Folio document doesn't
   // share a mutable reference with PM's attrs.
   if (attrs._propertyChanges && attrs._propertyChanges.length > 0) {
-    paragraph.propertyChanges = attrs._propertyChanges.map(propertyChangeFromAttrs);
+    paragraph.propertyChanges = attrs._propertyChanges.map(
+      propertyChangeFromAttrs,
+    );
   }
 
   if (attrs.pPrMark) {
@@ -2143,7 +2406,9 @@ function convertPMParagraph(
   return paragraph;
 }
 
-const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): ParagraphPropertyChange => {
+const propertyChangeFromAttrs = (
+  change: ParagraphPropertyChangeAttrs,
+): ParagraphPropertyChange => {
   const { previousFormatting, currentFormatting, info, ...changeInfo } = change;
   const serializedInfo = { ...info };
   Reflect.deleteProperty(serializedInfo, "provenance");
@@ -2160,7 +2425,8 @@ const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): Paragrap
     numPr == null ? previousWithoutNumPr : { ...previousWithoutNumPr, numPr };
   // Clearing a rendered list is editor bookkeeping, not a DOCX formatting property.
   for (const key of LIST_RENDERING_ATTR_KEYS) {
-    if (normalizedPrevious[key] == null) Reflect.deleteProperty(normalizedPrevious, key);
+    if (normalizedPrevious[key] == null)
+      Reflect.deleteProperty(normalizedPrevious, key);
   }
   return {
     ...normalizedChangeInfo,
@@ -2286,8 +2552,15 @@ function assignParagraphIndentation(
   }
   // `hangingIndent` reads as the sign of `indentFirstLine` and means nothing
   // without it.
-  const hanging = result.indentFirstLine !== undefined && attrs.hangingIndent === true;
-  if (!changed && hanging === (orig.hangingIndent === true)) {
+  const hanging =
+    result.indentFirstLine !== undefined && attrs.hangingIndent === true;
+  // A false hanging flag is redundant beside a first-line value, and parsing
+  // the resulting w:firstLine does not recreate it.
+  if (
+    !changed &&
+    hanging === (orig.hangingIndent === true) &&
+    !(result.indentFirstLine !== undefined && orig.hangingIndent === false)
+  ) {
     return;
   }
   if (hanging) {
@@ -2297,7 +2570,9 @@ function assignParagraphIndentation(
   }
 }
 
-function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting | undefined {
+function paragraphAttrsToFormatting(
+  attrs: ParagraphAttrs,
+): ParagraphFormatting | undefined {
   const directAlignment = directParagraphAlignment(attrs);
   const directSpacing = directParagraphSpacing(attrs);
   // If we have the original inline formatting from the DOCX, use it as a base
@@ -2311,10 +2586,18 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   // via editor commands (alignment, list toggle, etc.).
   const spaceBefore = Reflect.get(attrs, "spaceBefore");
   const spaceAfter = Reflect.get(attrs, "spaceAfter");
-  const beforeHasAutospacingBase = hasAutospacingBaseSide(attrs._autospacingBase, "before");
-  const afterHasAutospacingBase = hasAutospacingBaseSide(attrs._autospacingBase, "after");
-  const beforeOriginalAutospacing = attrs._originalFormatting?.beforeAutospacing === true;
-  const afterOriginalAutospacing = attrs._originalFormatting?.afterAutospacing === true;
+  const beforeHasAutospacingBase = hasAutospacingBaseSide(
+    attrs._autospacingBase,
+    "before",
+  );
+  const afterHasAutospacingBase = hasAutospacingBaseSide(
+    attrs._autospacingBase,
+    "after",
+  );
+  const beforeOriginalAutospacing =
+    attrs._originalFormatting?.beforeAutospacing === true;
+  const afterOriginalAutospacing =
+    attrs._originalFormatting?.afterAutospacing === true;
   const beforeAutospacingEdited = beforeHasAutospacingBase
     ? !autospacingMatchesBase(attrs._autospacingBase, "before", spaceBefore)
     : beforeOriginalAutospacing && attrs._autospacingBase == null;
@@ -2404,7 +2687,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
       result.alignment = directAlignment;
     }
     const statedNumbering = attrs.numPr;
-    if (isStyleSourcedParagraphNumbering(statedNumbering, attrs.numPrFromStyle)) {
+    if (
+      isStyleSourcedParagraphNumbering(statedNumbering, attrs.numPrFromStyle)
+    ) {
       // The numbering still comes verbatim from the paragraph style — don't
       // materialize it as direct formatting (see ParagraphAttrs.numPrFromStyle).
       delete result.numPr;
@@ -2475,7 +2760,10 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   ): ParagraphFormatting[Field] | undefined =>
     authoredParagraphValue(field, value ?? undefined, undefined, resolved);
 
-  const outlineLevel = authored("outlineLevel", Reflect.get(attrs, "outlineLevel"));
+  const outlineLevel = authored(
+    "outlineLevel",
+    Reflect.get(attrs, "outlineLevel"),
+  );
   const bidi = authored("bidi", directionToAuthoredBidi(attrs.direction));
   const snapToGrid = authored("snapToGrid", attrs.snapToGrid);
   // A zero left or first-line indent is stated only where a numbering level
@@ -2493,19 +2781,30 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     value === 0 && !numbered ? undefined : value;
   const indentLeft = statedIndent(authored("indentLeft", attrs.indentLeft));
   const indentRight = authored("indentRight", attrs.indentRight);
-  const indentFirstLine = statedIndent(authored("indentFirstLine", attrs.indentFirstLine));
+  const indentFirstLine = statedIndent(
+    authored("indentFirstLine", attrs.indentFirstLine),
+  );
   const borders = authored("borders", attrs.borders);
   const shading = authored("shading", attrs.shading);
   const tabs = authored("tabs", attrs.tabs);
-  const contextualSpacing = authored("contextualSpacing", attrs.contextualSpacing);
+  const contextualSpacing = authored(
+    "contextualSpacing",
+    attrs.contextualSpacing,
+  );
   const pageBreakBefore = authored("pageBreakBefore", attrs.pageBreakBefore);
   const widowControl = authored("widowControl", attrs.widowControl);
   const keepNext = authored("keepNext", attrs.keepNext);
   const keepLines = authored("keepLines", attrs.keepLines);
   const runInWithNext = authored("runInWithNext", attrs.runInWithNext);
   const kinsoku = authored("kinsoku", attrs.kinsoku);
-  const overflowPunctuation = authored("overflowPunctuation", attrs.overflowPunctuation);
-  const suppressAutoHyphens = authored("suppressAutoHyphens", attrs.suppressAutoHyphens);
+  const overflowPunctuation = authored(
+    "overflowPunctuation",
+    attrs.overflowPunctuation,
+  );
+  const suppressAutoHyphens = authored(
+    "suppressAutoHyphens",
+    attrs.suppressAutoHyphens,
+  );
 
   const hasDirectAlignment = directAlignment !== undefined;
   const hasFormatting =
@@ -2666,7 +2965,9 @@ function createTrackedRunWrapper({
 }: CreateTrackedRunWrapperOptions): TrackedRunWrapper {
   const content = child ? [child] : [];
   const provenance =
-    resolutionJoins === undefined ? {} : { resolutionJoins: structuredClone(resolutionJoins) };
+    resolutionJoins === undefined
+      ? {}
+      : { resolutionJoins: structuredClone(resolutionJoins) };
   if (type === "insertion") {
     return { type, info, content, ...provenance };
   }
@@ -2695,7 +2996,8 @@ type RunFormattingContext = {
  * boundary written in the order the marks happened to open is a different
  * document each time the same one is saved.
  */
-const byCommentId = (ids: Iterable<number>): number[] => [...ids].toSorted((a, b) => a - b);
+const byCommentId = (ids: Iterable<number>): number[] =>
+  [...ids].toSorted((a, b) => a - b);
 
 type InlineWrapperHyperlinkOrigin = {
   hyperlinkIndex: number;
@@ -2703,8 +3005,12 @@ type InlineWrapperHyperlinkOrigin = {
 };
 
 /** The authored hyperlink that owns a suffix of the node's wrapper stack. */
-const inlineWrapperHyperlinkOriginOf = (node: PMNode): InlineWrapperHyperlinkOrigin | undefined => {
-  const mark = node.marks.find((candidate) => candidate.type.name === INLINE_WRAPPER_MARK_NAME);
+const inlineWrapperHyperlinkOriginOf = (
+  node: PMNode,
+): InlineWrapperHyperlinkOrigin | undefined => {
+  const mark = node.marks.find(
+    (candidate) => candidate.type.name === INLINE_WRAPPER_MARK_NAME,
+  );
   if (!mark) {
     return undefined;
   }
@@ -2810,13 +3116,21 @@ const nestRevisionAwareInlineWrappers = (
     nested.push(
       inlineWrapperMember(
         layer,
-        nestRevisionAwareInlineWrappers(pending, stack, revisionOuterWrapperCounts, layerIndex + 1),
+        nestRevisionAwareInlineWrappers(
+          pending,
+          stack,
+          revisionOuterWrapperCounts,
+          layerIndex + 1,
+        ),
       ),
     );
     pending = [];
   };
   for (const item of items) {
-    if (!isRevisionWrapper(item) || (revisionOuterWrapperCounts.get(item) ?? 0) > layerIndex) {
+    if (
+      !isRevisionWrapper(item) ||
+      (revisionOuterWrapperCounts.get(item) ?? 0) > layerIndex
+    ) {
       pending.push(item);
       continue;
     }
@@ -2839,23 +3153,32 @@ const sameRevisionLayer = (
   left.utcDate === right.utcDate &&
   left.initials === right.initials &&
   left.outerWrapperCount === right.outerWrapperCount &&
-  JSON.stringify(left.resolutionJoins) === JSON.stringify(right.resolutionJoins);
+  JSON.stringify(left.resolutionJoins) ===
+    JSON.stringify(right.resolutionJoins);
 
-const revisionInfoFromLayer = (layer: TrackedRevisionAncestor): TrackedChangeInfo => ({
+const revisionInfoFromLayer = (
+  layer: TrackedRevisionAncestor,
+): TrackedChangeInfo => ({
   id: layer.revisionId,
   author: layer.author,
   ...(layer.date ? { date: layer.date } : {}),
-  ...(layer.utcDate ? { utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: layer.utcDate } } : {}),
+  ...(layer.utcDate
+    ? { utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: layer.utcDate } }
+    : {}),
   ...(layer.initials ? { initials: layer.initials } : {}),
 });
 
 const nestRevisionAncestors = (
   items: readonly ParagraphContent[],
-  ancestorsByWrapper: WeakMap<TrackedRunWrapper, readonly TrackedRevisionAncestor[]>,
+  ancestorsByWrapper: WeakMap<
+    TrackedRunWrapper,
+    readonly TrackedRevisionAncestor[]
+  >,
   revisionOuterWrapperCounts: WeakMap<TrackedRunWrapper, number>,
 ): ParagraphContent[] => {
   const nested: ParagraphContent[] = [];
-  const open: { layer: TrackedRevisionAncestor; wrapper: TrackedRunWrapper }[] = [];
+  const open: { layer: TrackedRevisionAncestor; wrapper: TrackedRunWrapper }[] =
+    [];
   for (const item of items) {
     if (!isRevisionWrapper(item)) {
       open.length = 0;
@@ -2870,7 +3193,9 @@ const nestRevisionAncestors = (
       ...(item.info.utcDate ? { utcDate: item.info.utcDate.value } : {}),
       ...(item.info.initials ? { initials: item.info.initials } : {}),
       outerWrapperCount: revisionOuterWrapperCounts.get(item) ?? 0,
-      ...(item.resolutionJoins === undefined ? {} : { resolutionJoins: item.resolutionJoins }),
+      ...(item.resolutionJoins === undefined
+        ? {}
+        : { resolutionJoins: item.resolutionJoins }),
     };
     const path = [...(ancestorsByWrapper.get(item) ?? []), ownLayer];
     let shared = 0;
@@ -2911,7 +3236,10 @@ const nestInlineWrapperGroups = (
   groups: readonly InlineWrapperGroup[],
   hyperlinkIndices: WeakMap<Hyperlink, number>,
   revisionOuterWrapperCounts: WeakMap<TrackedRunWrapper, number>,
-  ancestorsByWrapper: WeakMap<TrackedRunWrapper, readonly TrackedRevisionAncestor[]>,
+  ancestorsByWrapper: WeakMap<
+    TrackedRunWrapper,
+    readonly TrackedRevisionAncestor[]
+  >,
 ): ParagraphContent[] => {
   const nested: ParagraphContent[] = [];
   for (const [index, group] of groups.entries()) {
@@ -2930,7 +3258,14 @@ const nestInlineWrapperGroups = (
       const innerStack = group.stack.slice(origin.stackStart);
       let nestedInsideOrigin = false;
       for (const item of slice) {
-        if (nestInsideHyperlink(item, innerStack, origin.hyperlinkIndex, hyperlinkIndices)) {
+        if (
+          nestInsideHyperlink(
+            item,
+            innerStack,
+            origin.hyperlinkIndex,
+            hyperlinkIndices,
+          )
+        ) {
           nestedInsideOrigin = true;
         }
       }
@@ -2942,7 +3277,13 @@ const nestInlineWrapperGroups = (
       nested.push(...slice);
       continue;
     }
-    nested.push(...nestRevisionAwareInlineWrappers(slice, outerStack, revisionOuterWrapperCounts));
+    nested.push(
+      ...nestRevisionAwareInlineWrappers(
+        slice,
+        outerStack,
+        revisionOuterWrapperCounts,
+      ),
+    );
   }
   const coalesced: ParagraphContent[] = [];
   for (const item of nested) {
@@ -2953,7 +3294,8 @@ const nestInlineWrapperGroups = (
       isRevisionWrapper(item) &&
       previous.type === item.type &&
       JSON.stringify(previous.info) === JSON.stringify(item.info) &&
-      revisionOuterWrapperCounts.get(previous) === revisionOuterWrapperCounts.get(item)
+      revisionOuterWrapperCounts.get(previous) ===
+        revisionOuterWrapperCounts.get(item)
     ) {
       previous.content.push(...item.content);
       continue;
@@ -2978,7 +3320,8 @@ function extractParagraphContent(
   const paragraph = coalesceNoteReferenceOccurrences(originalParagraph);
   const content: ParagraphContent[] = [];
   const paragraphStyleContext =
-    inheritedFormattingOverride === undefined && paragraph.type.name === "paragraph"
+    inheritedFormattingOverride === undefined &&
+    paragraph.type.name === "paragraph"
       ? savedParagraphRunStyleContext(paragraph)
       : undefined;
   const formattingContext =
@@ -2987,12 +3330,16 @@ function extractParagraphContent(
       baseParagraphFormatting: paragraphStyleContext?.baseParagraphFormatting,
       inheritedFormatting: paragraphStyleContext?.paragraphFormatting,
       paragraphMarkFormatting: paragraphStyleContext?.paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle: paragraphStyleContext?.paragraphMarkPrecedesStyle ?? false,
+      paragraphMarkPrecedesStyle:
+        paragraphStyleContext?.paragraphMarkPrecedesStyle ?? false,
       styleResolver: null,
     } satisfies RunFormattingContext);
   const sortedEmptyHyperlinks = (emptyHyperlinks ?? [])
     .map((attrs, order) => ({ attrs, order }))
-    .toSorted((left, right) => left.attrs.offset - right.attrs.offset || left.order - right.order);
+    .toSorted(
+      (left, right) =>
+        left.attrs.offset - right.attrs.offset || left.order - right.order,
+    );
   let nextEmptyHyperlink = 0;
   let leadingRenderedPageBreakPending = skipLeadingRenderedPageBreak;
 
@@ -3031,6 +3378,12 @@ function extractParagraphContent(
     readonly TrackedRevisionAncestor[]
   >();
   const openedComments = new Set<number>();
+  // A boundary has no ProseMirror node of its own. Keep the source revision's
+  // ownership record until the following node gives us its save position.
+  let precedingTrackedCommentRangeBoundaries:
+    | NonNullable<TrackedChangeMarkAttrs["_docxCommentRangeBoundaries"]>
+    | null
+    | undefined;
   const createIndexedHyperlink = (mark: Mark): Hyperlink => {
     const hyperlink = createHyperlink(mark);
     const index = expectHyperlinkMarkAttrs(mark)._docxHyperlinkIndex;
@@ -3067,7 +3420,11 @@ function extractParagraphContent(
     }
   };
 
-  const appendDirectRun = (node: PMNode, run: Run, coalescePlainText = false): void => {
+  const appendDirectRun = (
+    node: PMNode,
+    run: Run,
+    coalescePlainText = false,
+  ): void => {
     // A run outside the open hyperlink follows it: close the hyperlink first,
     // or `flushCurrentInline` writes the run ahead of the hyperlink it follows.
     if (currentHyperlink) {
@@ -3087,7 +3444,9 @@ function extractParagraphContent(
       }),
     );
     const ownerId = runIdentityId(node);
-    const currentOwnerId = currentRun ? sourceRunOwners.get(currentRun) : undefined;
+    const currentOwnerId = currentRun
+      ? sourceRunOwners.get(currentRun)
+      : undefined;
     const currentRunIsPlainText = currentRun?.content.every(
       (runContent) => runContent.type === "text",
     );
@@ -3123,8 +3482,96 @@ function extractParagraphContent(
     rememberSourceRunOwner(run, node, sourceRunOwners);
   };
 
+  const trackedBoundary = (node: PMNode) => {
+    const boundaryInsertionMark = node.marks.find(
+      (mark) => mark.type.name === "insertion",
+    );
+    const boundaryDeletionMark = node.marks.find(
+      (mark) => mark.type.name === "deletion",
+    );
+    const boundaryChangeMark = boundaryDeletionMark ?? boundaryInsertionMark;
+    if (!boundaryChangeMark) return undefined;
+
+    const changeAttrs = expectTrackedChangeMarkAttrs(boundaryChangeMark);
+    const info: TrackedChangeInfo = {
+      id: changeAttrs.revisionId,
+      author: changeAttrs.author || "Unknown",
+      ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
+      ...(changeAttrs.utcDate
+        ? {
+            utcDate: {
+              attribute: DATE_UTC_ATTRIBUTE,
+              value: changeAttrs.utcDate,
+            },
+          }
+        : {}),
+      ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
+    };
+    let type: TrackedRunWrapper["type"];
+    if (boundaryDeletionMark) {
+      type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
+    } else {
+      type = changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion";
+    }
+    const revisionAncestors = enclosingInsertionAncestors({
+      insertionMark: boundaryDeletionMark ? boundaryInsertionMark : undefined,
+      ancestors: changeAttrs._docxRevisionAncestors ?? [],
+      node,
+    });
+    const outerWrapperCount =
+      changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length;
+    const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(revisionAncestors)}:${JSON.stringify(changeAttrs._docxResolutionJoins ?? undefined)}`;
+    return {
+      changeAttrs,
+      info,
+      key: trackedChangeKey,
+      outerWrapperCount,
+      revisionAncestors,
+      type,
+    };
+  };
+
+  const establishTrackedBoundaryOwner = (node: PMNode): void => {
+    const boundary = trackedBoundary(node);
+    if (!boundary) return;
+    flushCurrentInline();
+    const {
+      changeAttrs,
+      info,
+      key,
+      outerWrapperCount,
+      revisionAncestors,
+      type,
+    } = boundary;
+    if (
+      currentTrackedChange?.type === "direct" &&
+      currentTrackedChange.key === key
+    ) {
+      return;
+    }
+    const wrapper = createTrackedRunWrapper({
+      type,
+      info,
+      resolutionJoins: changeAttrs._docxResolutionJoins ?? undefined,
+    });
+    revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
+    revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
+    content.push(wrapper);
+    currentTrackedChange = { type: "direct", key, wrapper };
+  };
+
   const syncCommentRanges = (node: PMNode, offset: number) => {
-    const nodeCommentIds = getCommentMarkIds(node.marks);
+    const ownsStructuredCommentCoverage =
+      (node.type.name === "structuredField" || node.type.name === "sdt") &&
+      node.childCount > 0;
+    const nodeCommentIds = ownsStructuredCommentCoverage
+      ? getCommentMarkIds(node.child(0).marks)
+      : getCommentMarkIds(node.marks);
+    const nodeTrackedBoundary = trackedBoundary(node);
+    const sourceCommentRangeBoundaries = precedingTrackedCommentRangeBoundaries;
+    const nodeCommentRangeBoundaries =
+      nodeTrackedBoundary?.changeAttrs._docxCommentRangeBoundaries;
+    precedingTrackedCommentRangeBoundaries = nodeCommentRangeBoundaries;
 
     // Close an open range only once this node is past the comment's last
     // occurrence; a comment that reappears later stays open so the range spans
@@ -3149,16 +3596,68 @@ function extractParagraphContent(
     }
 
     flushCurrentInline();
-    currentTrackedChange = undefined;
-
     for (const commentId of byCommentId(toClose)) {
-      content.push({ type: "commentRangeEnd", id: commentId });
+      const fallbackOwner =
+        nodeTrackedBoundary &&
+        currentTrackedChange?.type === "direct" &&
+        currentTrackedChange.key === nodeTrackedBoundary.key
+          ? "revision"
+          : "parent";
+      const sourceOwnsBoundary =
+        trackedCommentBoundaryOwner({
+          boundaries: sourceCommentRangeBoundaries,
+          type: "end",
+          commentId,
+          fallback: fallbackOwner,
+        }) === "revision";
+      const closingBoundaryOwner =
+        currentTrackedChange?.type === "direct" && sourceOwnsBoundary
+          ? currentTrackedChange.wrapper.content
+          : content;
+      closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
       openedComments.delete(commentId);
+      // A boundary written beside the active wrapper ends it: following
+      // content, even of the same revision, starts a new wrapper after the
+      // boundary instead of being appended ahead of it.
+      if (closingBoundaryOwner === content) currentTrackedChange = undefined;
+    }
+    // A hyperlink is a child of the tracked wrapper. Once a positional
+    // boundary has been written beside that child, following linked content
+    // must start a new owner rather than being appended ahead of the marker.
+    if (currentTrackedChange?.type === "hyperlink") {
+      currentTrackedChange = undefined;
     }
     for (const commentId of byCommentId(toOpen)) {
-      content.push({ type: "commentRangeStart", id: commentId });
+      // Text and inline atoms (images, breaks) read the same recorded owner.
+      const owner = trackedCommentBoundaryOwner({
+        boundaries: nodeCommentRangeBoundaries,
+        type: "start",
+        commentId,
+        fallback: nodeTrackedBoundary ? "revision" : "parent",
+      });
+      if (owner === "revision") establishTrackedBoundaryOwner(node);
+      const openingBoundaryOwner =
+        owner === "revision" && currentTrackedChange
+          ? currentTrackedChange.wrapper.content
+          : content;
+      openingBoundaryOwner.push({ type: "commentRangeStart", id: commentId });
       openedComments.add(commentId);
+      if (openingBoundaryOwner === content) currentTrackedChange = undefined;
     }
+  };
+
+  const syncStructuredCommentExit = (node: PMNode): void => {
+    if (
+      (node.type.name !== "structuredField" && node.type.name !== "sdt") ||
+      node.childCount === 0
+    ) {
+      return;
+    }
+    const finalCommentIds = getCommentMarkIds(
+      node.child(node.childCount - 1).marks,
+    );
+    openedComments.clear();
+    for (const commentId of finalCommentIds) openedComments.add(commentId);
   };
 
   const flushEmptyHyperlinksThroughOffset = (offset: number): void => {
@@ -3198,25 +3697,48 @@ function extractParagraphContent(
     flushCurrentInline();
     currentTrackedChange = undefined;
     wrapperGroupKey = key;
-    wrapperGroups.push({ start: content.length, stack, ...(origin ? { origin } : {}) });
+    wrapperGroups.push({
+      start: content.length,
+      stack,
+      ...(origin ? { origin } : {}),
+    });
   };
 
   const processInlineNode = (node: PMNode, offset: number): void => {
-    if (node.type.name === "renderedPageBreak" && leadingRenderedPageBreakPending) {
+    if (
+      node.type.name === "renderedPageBreak" &&
+      leadingRenderedPageBreakPending
+    ) {
       leadingRenderedPageBreakPending = false;
       return;
     }
     leadingRenderedPageBreakPending = false;
     enterWrapperGroup(node);
+
     syncCommentRanges(node, offset);
 
     // A comment reference is paragraph content in the model, so it never joins
     // a run, a hyperlink or a tracked wrapper: it is emitted where the editor
     // holds it, right after the range ends `syncCommentRanges` just wrote.
     if (node.type.name === "commentReference") {
+      establishTrackedBoundaryOwner(node);
       flushCurrentInline();
-      currentTrackedChange = undefined;
-      content.push({ type: "commentReference", id: expectCommentReferenceAttrs(node).commentId });
+      const reference = {
+        type: "commentReference" as const,
+        id: expectCommentReferenceAttrs(node).commentId,
+      };
+      if (
+        currentTrackedChange &&
+        node.marks.some(
+          (mark) =>
+            mark.type.name === "insertion" || mark.type.name === "deletion",
+        )
+      ) {
+        currentTrackedChange.wrapper.content.push(reference);
+      } else {
+        currentTrackedChange = undefined;
+        content.push(reference);
+      }
       return;
     }
 
@@ -3225,10 +3747,21 @@ function extractParagraphContent(
     // long as the editor state does, and the rebuilt document must not share a
     // record with it.
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+      establishTrackedBoundaryOwner(node);
       flushCurrentInline();
-      currentTrackedChange = undefined;
       const { start, end } = expectRangeAnchorAttrs(node);
-      content.push({ ...start }, { ...end });
+      if (
+        currentTrackedChange &&
+        node.marks.some(
+          (mark) =>
+            mark.type.name === "insertion" || mark.type.name === "deletion",
+        )
+      ) {
+        currentTrackedChange.wrapper.content.push({ ...start }, { ...end });
+      } else {
+        currentTrackedChange = undefined;
+        content.push({ ...start }, { ...end });
+      }
       return;
     }
 
@@ -3252,7 +3785,9 @@ function extractParagraphContent(
         return;
       }
       textBoxAnchorMarkers.set(anchorId, marker);
-      const anchoredContent: Run | Hyperlink = linkMark ? createIndexedHyperlink(linkMark) : marker;
+      const anchoredContent: Run | Hyperlink = linkMark
+        ? createIndexedHyperlink(linkMark)
+        : marker;
       if (anchoredContent.type === "hyperlink") {
         anchoredContent.children.push(marker);
       }
@@ -3267,7 +3802,12 @@ function extractParagraphContent(
         author: changeAttrs.author || "Unknown",
         ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
         ...(changeAttrs.utcDate
-          ? { utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: changeAttrs.utcDate } }
+          ? {
+              utcDate: {
+                attribute: DATE_UTC_ATTRIBUTE,
+                value: changeAttrs.utcDate,
+              },
+            }
           : {}),
         ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
       };
@@ -3287,7 +3827,10 @@ function extractParagraphContent(
         wrapper,
         changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length,
       );
-      revisionAncestorsByWrapper.set(wrapper, changeAttrs._docxRevisionAncestors ?? []);
+      revisionAncestorsByWrapper.set(
+        wrapper,
+        changeAttrs._docxRevisionAncestors ?? [],
+      );
       content.push(wrapper);
       return;
     }
@@ -3321,7 +3864,10 @@ function extractParagraphContent(
         info.date = changeAttrs.date;
       }
       if (changeAttrs.utcDate) {
-        info.utcDate = { attribute: DATE_UTC_ATTRIBUTE, value: changeAttrs.utcDate };
+        info.utcDate = {
+          attribute: DATE_UTC_ATTRIBUTE,
+          value: changeAttrs.utcDate,
+        };
       }
       if (changeAttrs.initials) {
         info.initials = changeAttrs.initials;
@@ -3387,7 +3933,9 @@ function extractParagraphContent(
         // in a tracked, linked range is accepted and rejected with both, and
         // `CT_R` admits none of the elements this level holds.
         if (isInlineLevelPreservedXml(node)) {
-          currentTrackedChange.hyperlink.children.push(createPreservedInline(node));
+          currentTrackedChange.hyperlink.children.push(
+            createPreservedInline(node),
+          );
           return;
         }
         const run = createTrackedChangeRun({
@@ -3396,7 +3944,12 @@ function extractParagraphContent(
           node,
         });
         if (run) {
-          appendRunToHyperlink(currentTrackedChange.hyperlink, run, node, sourceRunOwners);
+          appendRunToHyperlink(
+            currentTrackedChange.hyperlink,
+            run,
+            node,
+            sourceRunOwners,
+          );
         }
         return;
       }
@@ -3414,7 +3967,11 @@ function extractParagraphContent(
         revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
         revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
         content.push(wrapper);
-        currentTrackedChange = { type: "direct", key: trackedChangeKey, wrapper };
+        currentTrackedChange = {
+          type: "direct",
+          key: trackedChangeKey,
+          wrapper,
+        };
       }
       if (node.type.name === "bookmarkBoundary") {
         currentTrackedChange.wrapper.content.push(
@@ -3423,7 +3980,9 @@ function extractParagraphContent(
         return;
       }
       if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
-        currentTrackedChange.wrapper.content.push({ ...expectMoveRangeBoundaryAttrs(node) });
+        currentTrackedChange.wrapper.content.push({
+          ...expectMoveRangeBoundaryAttrs(node),
+        });
         return;
       }
       if (node.type.name === "field" || node.type.name === "structuredField") {
@@ -3452,7 +4011,12 @@ function extractParagraphContent(
         node,
       });
       if (run) {
-        appendRunToTrackedWrapper(currentTrackedChange.wrapper, run, node, sourceRunOwners);
+        appendRunToTrackedWrapper(
+          currentTrackedChange.wrapper,
+          run,
+          node,
+          sourceRunOwners,
+        );
       }
       return;
     }
@@ -3460,7 +4024,11 @@ function extractParagraphContent(
     const ownedRun =
       linkMark || runIdentityId(node) === undefined
         ? null
-        : createTrackedChangeRun({ ...formattingContext, marks: node.marks, node });
+        : createTrackedChangeRun({
+            ...formattingContext,
+            marks: node.marks,
+            node,
+          });
     if (ownedRun) {
       appendDirectRun(node, ownedRun, node.isText);
       return;
@@ -3477,7 +4045,9 @@ function extractParagraphContent(
     // the w:ins/w:del wrapper. Plain references serialize directly.
     if (noteRefMark && !linkMark) {
       flushCurrentInline();
-      content.push(createNoteReferenceRun(noteRefMark, node.marks, formattingContext));
+      content.push(
+        createNoteReferenceRun(noteRefMark, node.marks, formattingContext),
+      );
       return;
     }
 
@@ -3535,7 +4105,10 @@ function extractParagraphContent(
       );
     } else if (node.type.name === "noteMarker") {
       flushCurrentInline();
-      appendDirectRun(node, createNoteMarkerRun({ node, marks: node.marks, formattingContext }));
+      appendDirectRun(
+        node,
+        createNoteMarkerRun({ node, marks: node.marks, formattingContext }),
+      );
     } else if (node.type.name === "symbol") {
       flushCurrentInline();
       content.push(createSymbolRun(node, node.marks, formattingContext));
@@ -3549,7 +4122,13 @@ function extractParagraphContent(
     } else if (node.type.name === "hardBreak") {
       // Hard break ends current run
       flushCurrentInline();
-      content.push(createBreakRun(expectHardBreakAttrs(node), node.marks, formattingContext));
+      content.push(
+        createBreakRun(
+          expectHardBreakAttrs(node),
+          node.marks,
+          formattingContext,
+        ),
+      );
     } else if (node.type.name === "image") {
       // Image ends current run
       flushCurrentInline();
@@ -3565,7 +4144,10 @@ function extractParagraphContent(
     } else if (node.type.name === "renderedPageBreak") {
       flushCurrentInline();
       content.push(createRenderedPageBreakRun());
-    } else if (node.type.name === "field" || node.type.name === "structuredField") {
+    } else if (
+      node.type.name === "field" ||
+      node.type.name === "structuredField"
+    ) {
       // Field ends current run and emits a field content item
       flushCurrentInline();
       content.push(
@@ -3575,10 +4157,14 @@ function extractParagraphContent(
           textBoxAnchorMarkers,
         }),
       );
+      syncStructuredCommentExit(node);
     } else if (node.type.name === "sdt") {
       // SDT ends current run and emits an InlineSdt content item
       flushCurrentInline();
-      content.push(createInlineSdtFromNode(node, textBoxAnchorMarkers, formattingContext));
+      content.push(
+        createInlineSdtFromNode(node, textBoxAnchorMarkers, formattingContext),
+      );
+      syncStructuredCommentExit(node);
     } else if (node.type.name === "math") {
       // Math ends current run and emits a MathEquation content item
       flushCurrentInline();
@@ -3625,7 +4211,17 @@ function extractParagraphContent(
   // Don't forget the last run/hyperlink
   flushCurrentInline();
   for (const commentId of byCommentId(openedComments)) {
-    content.push({ type: "commentRangeEnd", id: commentId });
+    const closingBoundaryOwner =
+      currentTrackedChange?.type === "direct" &&
+      trackedCommentBoundaryOwner({
+        boundaries: precedingTrackedCommentRangeBoundaries,
+        type: "end",
+        commentId,
+        fallback: "parent",
+      }) === "revision"
+        ? currentTrackedChange.wrapper.content
+        : content;
+    closingBoundaryOwner.push({ type: "commentRangeEnd", id: commentId });
   }
 
   return nestInlineWrapperGroups(
@@ -3821,7 +4417,9 @@ function createHyperlink(linkMark: Mark): Hyperlink {
     ...(attrs.tooltip === undefined ? {} : { tooltip: attrs.tooltip }),
     ...(attrs.target === undefined ? {} : { target: attrs.target }),
     ...(attrs.history === undefined ? {} : { history: attrs.history }),
-    ...(attrs.docLocation === undefined ? {} : { docLocation: attrs.docLocation }),
+    ...(attrs.docLocation === undefined
+      ? {}
+      : { docLocation: attrs.docLocation }),
   };
   // Internal bookmark links use the anchor property in OOXML
   if (href.startsWith("#")) {
@@ -3864,7 +4462,9 @@ function addNodeToHyperlink({
   styleResolver,
 }: AddNodeToHyperlinkOptions): void {
   if (node.type.name === "bookmarkBoundary") {
-    hyperlink.children.push(bookmarkMarkerFromAttrs(expectBookmarkBoundaryAttrs(node)));
+    hyperlink.children.push(
+      bookmarkMarkerFromAttrs(expectBookmarkBoundaryAttrs(node)),
+    );
     return;
   }
   const formattingContext = {
@@ -3874,11 +4474,17 @@ function addNodeToHyperlink({
     paragraphMarkPrecedesStyle,
     styleResolver,
   };
-  const nonLinkMarks = node.marks.filter((mark) => mark.type.name !== "hyperlink");
+  const nonLinkMarks = node.marks.filter(
+    (mark) => mark.type.name !== "hyperlink",
+  );
   const ownedRun =
     runIdentityId(node) === undefined
       ? null
-      : createTrackedChangeRun({ ...formattingContext, marks: nonLinkMarks, node });
+      : createTrackedChangeRun({
+          ...formattingContext,
+          marks: nonLinkMarks,
+          node,
+        });
   if (ownedRun) {
     appendRunToHyperlink(hyperlink, ownedRun, node, sourceRunOwners);
     return;
@@ -3913,7 +4519,9 @@ function addNodeToHyperlink({
   }
 
   if (node.type.name === "noteMarker") {
-    hyperlink.children.push(createNoteMarkerRun({ node, marks: nonLinkMarks, formattingContext }));
+    hyperlink.children.push(
+      createNoteMarkerRun({ node, marks: nonLinkMarks, formattingContext }),
+    );
     return;
   }
 
@@ -3964,7 +4572,11 @@ function addNodeToHyperlink({
   if (node.type.name === "pageBreakRun") {
     const { clear } = expectPageBreakRunAttrs(node);
     hyperlink.children.push(
-      createPageBreakCarrierRun({ ...formattingContext, clear, marks: nonLinkMarks }),
+      createPageBreakCarrierRun({
+        ...formattingContext,
+        clear,
+        marks: nonLinkMarks,
+      }),
     );
     return;
   }
@@ -4007,7 +4619,10 @@ function getNoteReferenceVertAlign(
   if (marks.some((mark) => mark.type.name === "superscript")) {
     return "superscript";
   }
-  if (noteAttrs.vertAlign === "baseline" || noteAttrs.vertAlign === "superscript") {
+  if (
+    noteAttrs.vertAlign === "baseline" ||
+    noteAttrs.vertAlign === "superscript"
+  ) {
     return noteAttrs.vertAlign;
   }
   return undefined;
@@ -4019,9 +4634,12 @@ function createNoteReferenceRun(
   formattingContext?: MarksToTextFormattingOptions,
 ): Run {
   const noteAttrs = expectFootnoteRefMarkAttrs(noteRefMark);
-  const noteType = noteAttrs.noteType === "endnote" ? "endnoteRef" : "footnoteRef";
+  const noteType =
+    noteAttrs.noteType === "endnote" ? "endnoteRef" : "footnoteRef";
   const noteId =
-    typeof noteAttrs.id === "string" ? Number.parseInt(noteAttrs.id, 10) || 0 : noteAttrs.id;
+    typeof noteAttrs.id === "string"
+      ? Number.parseInt(noteAttrs.id, 10) || 0
+      : noteAttrs.id;
   const noteRef: NoteReferenceContent = {
     type: noteType,
     id: noteId,
@@ -4038,7 +4656,11 @@ function createNoteReferenceRun(
   if (formatting) {
     run.formatting = formatting;
   }
-  if (vertAlign && formatting?.vertAlign === undefined && formatting?.styleId === undefined) {
+  if (
+    vertAlign &&
+    formatting?.vertAlign === undefined &&
+    formatting?.styleId === undefined
+  ) {
     run.formatting = { ...formatting, vertAlign };
   }
   restoreRunRecord(run, marks);
@@ -4149,7 +4771,10 @@ function createPreservedXmlRun(
   formattingContext?: MarksToTextFormattingOptions,
 ): Run {
   const { xml, text } = expectPreservedXmlAttrs(node);
-  const run: Run = { type: "run", content: [{ type: "preservedXml", xml, text }] };
+  const run: Run = {
+    type: "run",
+    content: [{ type: "preservedXml", xml, text }],
+  };
   const formatting = getAtomRunFormattingFromMarks(marks, formattingContext);
   if (formatting) {
     run.formatting = formatting;
@@ -4168,7 +4793,9 @@ function createPreservedXmlRun(
  * neither remainder nor sink, which is what typed text is.
  */
 function restoreRunRecord(run: Run, marks: readonly Mark[]): void {
-  const changeMark = marks.find((mark) => mark.type.name === "runPropertyChange");
+  const changeMark = marks.find(
+    (mark) => mark.type.name === "runPropertyChange",
+  );
   if (changeMark) {
     const { changes } = expectRunPropertyChangeMarkAttrs(changeMark);
     if (changes.length > 0) {
@@ -4176,15 +4803,18 @@ function restoreRunRecord(run: Run, marks: readonly Mark[]): void {
     }
   }
 
-  const identityMark = marks.find((mark) => mark.type.name === RUN_IDENTITY_MARK_NAME);
+  const identityMark = marks.find(
+    (mark) => mark.type.name === RUN_IDENTITY_MARK_NAME,
+  );
   if (!identityMark) {
     return;
   }
   const { preservedAttributes, preserved, emptyFormatting } =
     expectRunIdentityMarkAttrs(identityMark);
   if (preservedAttributes && preservedAttributes.length > 0) {
-    run.preservedAttributes = preservedAttributes.map(({ namespace, name, value }) =>
-      namespace === undefined ? { name, value } : { namespace, name, value },
+    run.preservedAttributes = preservedAttributes.map(
+      ({ namespace, name, value }) =>
+        namespace === undefined ? { name, value } : { namespace, name, value },
     );
   }
   if (preserved && (preserved.children?.length ?? 0) > 0) {
@@ -4251,7 +4881,9 @@ function runsShareProperties(left: Run, right: Run): boolean {
  * keeps both sides' `w:rsid*` alive across a paragraph the editor rebuilt.
  */
 function runIdentityId(node: PMNode): number | undefined {
-  const mark = node.marks.find(({ type }) => type.name === RUN_IDENTITY_MARK_NAME);
+  const mark = node.marks.find(
+    ({ type }) => type.name === RUN_IDENTITY_MARK_NAME,
+  );
   return mark ? expectRunIdentityMarkAttrs(mark).id : undefined;
 }
 
@@ -4286,7 +4918,10 @@ function appendRunToTrackedWrapper(
   sourceRunOwners: WeakMap<Run, number>,
 ): void {
   const previous = wrapper.content.at(-1);
-  if (previous?.type === "run" && canJoinOwnedRuns(previous, run, node, sourceRunOwners)) {
+  if (
+    previous?.type === "run" &&
+    canJoinOwnedRuns(previous, run, node, sourceRunOwners)
+  ) {
     previous.content.push(...run.content);
     return;
   }
@@ -4301,7 +4936,10 @@ function appendRunToHyperlink(
   sourceRunOwners: WeakMap<Run, number>,
 ): void {
   const previous = hyperlink.children.at(-1);
-  if (previous?.type === "run" && canJoinOwnedRuns(previous, run, node, sourceRunOwners)) {
+  if (
+    previous?.type === "run" &&
+    canJoinOwnedRuns(previous, run, node, sourceRunOwners)
+  ) {
     previous.content.push(...run.content);
     return;
   }
@@ -4362,8 +5000,12 @@ function createBreakRun(
       ? { type: "break", sourceElement: "cr" }
       : {
           type: "break",
-          ...(attrs.sourceElement !== undefined ? { sourceElement: attrs.sourceElement } : {}),
-          ...(attrs.breakType !== undefined ? { breakType: attrs.breakType } : {}),
+          ...(attrs.sourceElement !== undefined
+            ? { sourceElement: attrs.sourceElement }
+            : {}),
+          ...(attrs.breakType !== undefined
+            ? { breakType: attrs.breakType }
+            : {}),
           ...(attrs.clear !== undefined ? { clear: attrs.clear } : {}),
         };
 
@@ -4489,10 +5131,14 @@ function createFieldFromNode(
       instruction: attrs.instruction,
       fieldType: attrs.fieldType,
       fieldCode:
-        attrs._docxFieldCode?.instruction === attrs.instruction ? attrs._docxFieldCode.runs : [],
+        attrs._docxFieldCode?.instruction === attrs.instruction
+          ? attrs._docxFieldCode.runs
+          : [],
       fieldResult:
         fieldContent.length > 0
-          ? fieldContent.filter((content): content is Run => content.type === "run")
+          ? fieldContent.filter(
+              (content): content is Run => content.type === "run",
+            )
           : fallbackFieldContent,
     };
     if (attrs.fldLock !== undefined) {
@@ -4551,9 +5197,11 @@ const reconcileEmptyFieldResultRuns = (
       const projected = projectedChanges[projectedIndex];
       return projected ? [projected] : [];
     });
-    if (index !== formattingOwner && !run.propertyChanges && index !== 0) return run;
+    if (index !== formattingOwner && !run.propertyChanges && index !== 0)
+      return run;
 
-    let formatting = index === formattingOwner ? displayRun.formatting : run.formatting;
+    let formatting =
+      index === formattingOwner ? displayRun.formatting : run.formatting;
     if (
       index === formattingOwner &&
       !formatting &&
@@ -4575,7 +5223,9 @@ const reconcileEmptyFieldResultRuns = (
     };
     return current;
   });
-  const newChanges = projectedChanges.filter((_, index) => !usedChanges.has(index));
+  const newChanges = projectedChanges.filter(
+    (_, index) => !usedChanges.has(index),
+  );
   if (newChanges.length > 0) {
     const first = reconciled[0];
     if (first) {
@@ -4597,7 +5247,10 @@ const synchronizeFieldDisplayText = (
   // A transparent wrapper is stepped through rather than stopped at: the runs
   // it holds carry the field's cached display, so a field whose result was
   // authored inside a `w:bdo` must not read as holding no text at all.
-  const visitRunsIn = (items: readonly ParagraphContent[], visit: (run: Run) => void): void => {
+  const visitRunsIn = (
+    items: readonly ParagraphContent[],
+    visit: (run: Run) => void,
+  ): void => {
     for (const child of items) {
       if (child.type === "run") {
         visit(child);
@@ -4611,7 +5264,10 @@ const synchronizeFieldDisplayText = (
         child.type === "moveFrom" ||
         child.type === "moveTo"
       ) {
-        visitRunsIn(child.type === "hyperlink" ? child.children : child.content, visit);
+        visitRunsIn(
+          child.type === "hyperlink" ? child.children : child.content,
+          visit,
+        );
       }
     }
   };
@@ -4641,8 +5297,14 @@ const synchronizeFieldDisplayText = (
     content.push(fallbackRun);
     return content;
   }
-  const firstEnd = hyperlink.children.findIndex((child) => child.type === "bookmarkEnd");
-  hyperlink.children.splice(firstEnd < 0 ? hyperlink.children.length : firstEnd, 0, fallbackRun);
+  const firstEnd = hyperlink.children.findIndex(
+    (child) => child.type === "bookmarkEnd",
+  );
+  hyperlink.children.splice(
+    firstEnd < 0 ? hyperlink.children.length : firstEnd,
+    0,
+    fallbackRun,
+  );
   return content;
 };
 
@@ -4681,7 +5343,11 @@ const hoistUniformRevision = (
   enclosingIds: readonly number[],
 ): InlineSdt | TrackedRunWrapper => {
   const only = sdt.content.length === 1 ? sdt.content.at(0) : undefined;
-  if (only === undefined || !isRevisionWrapper(only) || !enclosingIds.includes(only.info.id)) {
+  if (
+    only === undefined ||
+    !isRevisionWrapper(only) ||
+    !enclosingIds.includes(only.info.id)
+  ) {
     return sdt;
   }
   // The two wrappers decide admission separately, so a revision may hold
@@ -4749,7 +5415,9 @@ const carriedRunFormatting = (
  * The anchor record off a node's attrs, copied so the model never aliases a
  * ProseMirror attribute object.
  */
-const restoredDrawingAnchor = (anchor: DrawingAnchor | undefined): DrawingAnchor | undefined =>
+const restoredDrawingAnchor = (
+  anchor: DrawingAnchor | undefined,
+): DrawingAnchor | undefined =>
   anchor === undefined
     ? undefined
     : {
@@ -4784,7 +5452,12 @@ function createImageRun(node: PMNode): Run {
     src: attrs.src,
     size: {
       width: emuFromPixels(attrs.width || 0, "width", authoredEmu, emuToPixels),
-      height: emuFromPixels(attrs.height || 0, "height", authoredEmu, emuToPixels),
+      height: emuFromPixels(
+        attrs.height || 0,
+        "height",
+        authoredEmu,
+        emuToPixels,
+      ),
     },
     wrap,
   };
@@ -4845,7 +5518,12 @@ function createImageRun(node: PMNode): Run {
   // Round-trip border/outline
   if (attrs.borderWidth && attrs.borderWidth > 0) {
     const outline: ShapeOutline = {
-      width: emuFromPixels(attrs.borderWidth, "borderWidth", authoredEmu, emuToStrokePixels),
+      width: emuFromPixels(
+        attrs.borderWidth,
+        "borderWidth",
+        authoredEmu,
+        emuToStrokePixels,
+      ),
       dash: presetDashForCssBorderStyle(attrs.borderStyle),
     };
     if (attrs.borderColor) {
@@ -4874,11 +5552,18 @@ function createImageRun(node: PMNode): Run {
   // eigenpal #424: fold crop fractions back into Image.crop. PM defaults are
   // `null`, so `!= null` catches both null and undefined; zero sides are
   // omitted to keep the serialized <a:srcRect/> terse.
-  const cropTop = attrs.cropTop != null && attrs.cropTop > 0 ? attrs.cropTop : undefined;
-  const cropRight = attrs.cropRight != null && attrs.cropRight > 0 ? attrs.cropRight : undefined;
+  const cropTop =
+    attrs.cropTop != null && attrs.cropTop > 0 ? attrs.cropTop : undefined;
+  const cropRight =
+    attrs.cropRight != null && attrs.cropRight > 0
+      ? attrs.cropRight
+      : undefined;
   const cropBottom =
-    attrs.cropBottom != null && attrs.cropBottom > 0 ? attrs.cropBottom : undefined;
-  const cropLeft = attrs.cropLeft != null && attrs.cropLeft > 0 ? attrs.cropLeft : undefined;
+    attrs.cropBottom != null && attrs.cropBottom > 0
+      ? attrs.cropBottom
+      : undefined;
+  const cropLeft =
+    attrs.cropLeft != null && attrs.cropLeft > 0 ? attrs.cropLeft : undefined;
   if (
     cropTop !== undefined ||
     cropRight !== undefined ||
@@ -4942,7 +5627,10 @@ function createImageRun(node: PMNode): Run {
  * Each branch is listed in full rather than spread over a base object, so a
  * field from one mode cannot leak into another.
  */
-const drawingFromImageAttrs = (image: Image, attrs: ImageAttrs): DrawingContent => {
+const drawingFromImageAttrs = (
+  image: Image,
+  attrs: ImageAttrs,
+): DrawingContent => {
   const mode = attrs._docxRawXmlMode;
   switch (mode) {
     case undefined:
@@ -4950,7 +5638,9 @@ const drawingFromImageAttrs = (image: Image, attrs: ImageAttrs): DrawingContent 
         type: "drawing",
         image,
         ...(attrs._docxRawXml ? { rawXml: attrs._docxRawXml } : {}),
-        ...(attrs._docxRawXml ? { rawImageFingerprint: imageRawXmlFingerprint(image) } : {}),
+        ...(attrs._docxRawXml
+          ? { rawImageFingerprint: imageRawXmlFingerprint(image) }
+          : {}),
       };
     case DRAWING_RAW_XML_MODES.PRESERVE_ONLY:
       return {
@@ -4958,7 +5648,9 @@ const drawingFromImageAttrs = (image: Image, attrs: ImageAttrs): DrawingContent 
         image,
         rawXml:
           attrs._docxRawXml ??
-          panic("Preservation-only ProseMirror image attrs must include raw XML."),
+          panic(
+            "Preservation-only ProseMirror image attrs must include raw XML.",
+          ),
         rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
       };
     case DRAWING_RAW_XML_MODES.PREVIEW_ONLY:
@@ -4971,7 +5663,8 @@ const drawingFromImageAttrs = (image: Image, attrs: ImageAttrs): DrawingContent 
         type: "drawing",
         image,
         rawXml:
-          attrs._docxRawXml ?? panic("Preview-only ProseMirror image attrs must include raw XML."),
+          attrs._docxRawXml ??
+          panic("Preview-only ProseMirror image attrs must include raw XML."),
         rawImageFingerprint:
           attrs._docxRawImageFingerprint === undefined
             ? EDITED_PREVIEW_FINGERPRINT
@@ -5002,7 +5695,11 @@ const shapeContentFromNode = ({
   const xml = unchangedAlternateContentXml(node, captured);
   return xml === undefined
     ? { type: "shape", shape }
-    : { type: "shape", shape, alternateContent: refingerprintShapeAlternateContent(shape, xml) };
+    : {
+        type: "shape",
+        shape,
+        alternateContent: refingerprintShapeAlternateContent(shape, xml),
+      };
 };
 
 /**
@@ -5016,8 +5713,12 @@ function createShapeRun(node: PMNode): Run {
     type: "shape",
     shapeType: (attrs.shapeType || "rect") as Shape["shapeType"],
     size: {
-      width: attrs.width ? emuFromPixels(attrs.width, "width", authoredEmu, emuToPixels) : 0,
-      height: attrs.height ? emuFromPixels(attrs.height, "height", authoredEmu, emuToPixels) : 0,
+      width: attrs.width
+        ? emuFromPixels(attrs.width, "width", authoredEmu, emuToPixels)
+        : 0,
+      height: attrs.height
+        ? emuFromPixels(attrs.height, "height", authoredEmu, emuToPixels)
+        : 0,
     },
   };
   if (attrs.shapeId) {
@@ -5033,7 +5734,9 @@ function createShapeRun(node: PMNode): Run {
   if (attrs.title !== undefined) {
     shape.title = attrs.title;
   }
-  const geometryAdjustments = parseShapeGeometryAdjustments(attrs.geometryAdjustments);
+  const geometryAdjustments = parseShapeGeometryAdjustments(
+    attrs.geometryAdjustments,
+  );
   if (geometryAdjustments !== undefined) {
     shape.geometryAdjustments = geometryAdjustments;
   }
@@ -5067,7 +5770,8 @@ function createShapeRun(node: PMNode): Run {
         color: string;
       }[];
       const gradient: NonNullable<ShapeFill["gradient"]> = {
-        type: (attrs.gradientType || "linear") as "linear" | "radial" | "rectangular" | "path",
+        type: (attrs.gradientType || "linear") as
+          "linear" | "radial" | "rectangular" | "path",
         stops: parsed.map((s) => ({
           position: s.position,
           color: { rgb: s.color.replace("#", "") },
@@ -5291,7 +5995,14 @@ function convertPMTableRows(
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((rowNode) => {
     if (rowNode.type.name === "tableRow") {
-      rows.push(convertPMTableRow(rowNode, documentCounts, activeVerticalMerges, styleResolver));
+      rows.push(
+        convertPMTableRow(
+          rowNode,
+          documentCounts,
+          activeVerticalMerges,
+          styleResolver,
+        ),
+      );
     }
   });
 
@@ -5336,9 +6047,13 @@ function buildCellMarginsFromAttrs(m: {
  * from on reload. The resolved companion is what tells the two apart.
  */
 const sameResolvedValue = (live: unknown, resolved: unknown): boolean =>
-  resolved !== undefined && resolved !== null && sameFormattingValue(live, resolved);
+  resolved !== undefined &&
+  resolved !== null &&
+  sameFormattingValue(live, resolved);
 
-export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | undefined {
+export function tableAttrsToFormatting(
+  attrs: TableAttrs,
+): TableFormatting | undefined {
   // If we have the original formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like cellSpacing,
   // indent, layout, bidi, overlap, shading that aren't tracked as PM attrs.
@@ -5402,7 +6117,10 @@ export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | und
     // Only what the table states: `cellMargins` also carries what the table
     // style resolved to, and writing that into `w:tblCellMar` would turn a
     // style's default into the table's own override.
-    if (attrs.cellMargins && !sameResolvedValue(attrs.cellMargins, attrs._resolvedCellMargins)) {
+    if (
+      attrs.cellMargins &&
+      !sameResolvedValue(attrs.cellMargins, attrs._resolvedCellMargins)
+    ) {
       result.cellMargins = buildCellMarginsFromAttrs(attrs.cellMargins);
     }
 
@@ -5428,7 +6146,9 @@ export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | und
   }
 
   // Convert cellMargins back to CellMargins format (twips → TableMeasurement)
-  const cellMargins = attrs.cellMargins ? buildCellMarginsFromAttrs(attrs.cellMargins) : undefined;
+  const cellMargins = attrs.cellMargins
+    ? buildCellMarginsFromAttrs(attrs.cellMargins)
+    : undefined;
 
   // Restore width — handle width=0 with type="auto" (common OOXML pattern)
   let width: TableFormatting["width"];
@@ -5501,7 +6221,10 @@ function convertPMTableRow(
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((cellNode) => {
-    if (cellNode.type.name === "tableCell" || cellNode.type.name === "tableHeader") {
+    if (
+      cellNode.type.name === "tableCell" ||
+      cellNode.type.name === "tableHeader"
+    ) {
       const cellAttrs = expectTableCellAttrs(cellNode);
       const colspan = Math.max(cellAttrs.colspan, 1);
       if (cellAttrs._omittedGridSlot) {
@@ -5525,13 +6248,17 @@ function convertPMTableRow(
           cellAttrs._docxVMergeContinuationCells !== undefined &&
           cellAttrs._docxVMergeContinuationCells !== null
             ? restoreTableCellsWithParagraphPropertySources(
-                decodeTableCellParagraphSourcePayload(cellAttrs._docxVMergeContinuationCells),
+                decodeTableCellParagraphSourcePayload(
+                  cellAttrs._docxVMergeContinuationCells,
+                ),
               )
             : undefined;
         activeVerticalMerges?.set(gridColumn, {
           remainingRows: cellAttrs.rowspan - 1,
           colspan,
-          ...(continuationCells ? { continuationCells: [...continuationCells] } : {}),
+          ...(continuationCells
+            ? { continuationCells: [...continuationCells] }
+            : {}),
         });
       }
       gridColumn += colspan;
@@ -5577,7 +6304,10 @@ function convertPMTableRow(
         author: attrs.trIns.author,
         ...(attrs.trIns.date != null && { date: attrs.trIns.date }),
         ...(attrs.trIns.utcDate != null && {
-          utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: attrs.trIns.utcDate },
+          utcDate: {
+            attribute: DATE_UTC_ATTRIBUTE,
+            value: attrs.trIns.utcDate,
+          },
         }),
         ...(attrs.trIns.initials != null && { initials: attrs.trIns.initials }),
       },
@@ -5590,7 +6320,10 @@ function convertPMTableRow(
         author: attrs.trDel.author,
         ...(attrs.trDel.date != null && { date: attrs.trDel.date }),
         ...(attrs.trDel.utcDate != null && {
-          utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: attrs.trDel.utcDate },
+          utcDate: {
+            attribute: DATE_UTC_ATTRIBUTE,
+            value: attrs.trDel.utcDate,
+          },
         }),
         ...(attrs.trDel.initials != null && { initials: attrs.trDel.initials }),
       },
@@ -5637,7 +6370,9 @@ function createVerticalMergeContinuationCell(colspan: number): TableCell {
 /**
  * Convert ProseMirror table row attrs to TableRowFormatting
  */
-export function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatting | undefined {
+export function tableRowAttrsToFormatting(
+  attrs: TableRowAttrs,
+): TableRowFormatting | undefined {
   // If we have the original formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like cantSplit,
   // justification, hidden, conditionalFormat that aren't tracked as PM attrs.
@@ -5679,7 +6414,8 @@ export function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatt
   }
 
   // Fallback: reconstruct formatting from individual attrs
-  const hasFormatting = attrs.height || attrs.isHeader || attrs.hidden !== undefined;
+  const hasFormatting =
+    attrs.height || attrs.isHeader || attrs.hidden !== undefined;
 
   if (!hasFormatting) {
     return undefined;
@@ -5719,7 +6455,12 @@ function convertPMTableCell(
   node.forEach((contentNode) => {
     if (contentNode.type.name === "paragraph") {
       content.push(
-        convertPMParagraph(contentNode, documentCounts, textBoxAnchorMarkers, styleResolver),
+        convertPMParagraph(
+          contentNode,
+          documentCounts,
+          textBoxAnchorMarkers,
+          styleResolver,
+        ),
       );
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "table") {
@@ -5739,7 +6480,10 @@ function convertPMTableCell(
         styleResolver,
       });
     } else if (contentNode.type.name === "preservedBlock") {
-      content.push({ type: "preservedBlock", xml: expectPreservedBlockAttrs(contentNode).xml });
+      content.push({
+        type: "preservedBlock",
+        xml: expectPreservedBlockAttrs(contentNode).xml,
+      });
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "blockBookmarkBoundary") {
       content.push(blockBookmarkMarker(contentNode));
@@ -5770,11 +6514,18 @@ function convertPMTableCell(
     const info = {
       id: attrs.cellMarker.info.revisionId,
       author: attrs.cellMarker.info.author,
-      ...(attrs.cellMarker.info.date != null && { date: attrs.cellMarker.info.date }),
-      ...(attrs.cellMarker.info.utcDate != null && {
-        utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: attrs.cellMarker.info.utcDate },
+      ...(attrs.cellMarker.info.date != null && {
+        date: attrs.cellMarker.info.date,
       }),
-      ...(attrs.cellMarker.info.initials != null && { initials: attrs.cellMarker.info.initials }),
+      ...(attrs.cellMarker.info.utcDate != null && {
+        utcDate: {
+          attribute: DATE_UTC_ATTRIBUTE,
+          value: attrs.cellMarker.info.utcDate,
+        },
+      }),
+      ...(attrs.cellMarker.info.initials != null && {
+        initials: attrs.cellMarker.info.initials,
+      }),
     };
     if (attrs.cellMarker.kind === "merge") {
       cell.structuralChange = {
@@ -5789,7 +6540,10 @@ function convertPMTableCell(
       };
     } else {
       cell.structuralChange = {
-        type: attrs.cellMarker.kind === "ins" ? "tableCellInsertion" : "tableCellDeletion",
+        type:
+          attrs.cellMarker.kind === "ins"
+            ? "tableCellInsertion"
+            : "tableCellDeletion",
         info,
       };
     }
@@ -5807,10 +6561,15 @@ export const standaloneTableCellFromProseMirror = (node: PMNode): TableCell =>
 type CellShading = NonNullable<TableCellFormatting["shading"]>;
 
 const cellShadingFromAttrs = (attrs: TableCellAttrs): CellShading =>
-  attrs.backgroundColor ? { fill: { rgb: attrs.backgroundColor } } : { pattern: "nil" };
+  attrs.backgroundColor
+    ? { fill: { rgb: attrs.backgroundColor } }
+    : { pattern: "nil" };
 
-export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting | undefined {
-  const backgroundChanged = attrs.backgroundColor !== attrs._resolvedBackgroundColor;
+export function tableCellAttrsToFormatting(
+  attrs: TableCellAttrs,
+): TableCellFormatting | undefined {
+  const backgroundChanged =
+    attrs.backgroundColor !== attrs._resolvedBackgroundColor;
 
   // If we have the original formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like vMerge, fitText,
@@ -5853,10 +6612,16 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
     // Only what the cell states: both attrs also carry what the table and the
     // table style resolved to, and writing those into `w:tcPr` would turn an
     // inherited value into the cell's own override.
-    if (attrs.borders && !sameResolvedValue(attrs.borders, attrs._resolvedBorders)) {
+    if (
+      attrs.borders &&
+      !sameResolvedValue(attrs.borders, attrs._resolvedBorders)
+    ) {
       result.borders = attrs.borders;
     }
-    if (attrs.margins && !sameResolvedValue(attrs.margins, attrs._resolvedMargins)) {
+    if (
+      attrs.margins &&
+      !sameResolvedValue(attrs.margins, attrs._resolvedMargins)
+    ) {
       result.margins = buildCellMarginsFromAttrs(attrs.margins);
     }
     if (attrs.textDirection !== (orig.textDirection ?? undefined)) {
@@ -5922,14 +6687,24 @@ type TextBoxBodyContentProjection =
   | { readonly type: "source-empty" }
   | { readonly type: "authored"; readonly content: (Paragraph | Table)[] };
 
-const isUnchangedSourceEmptyPlaceholder = (blocks: readonly (Paragraph | Table)[]): boolean => {
+const isUnchangedSourceEmptyPlaceholder = (
+  blocks: readonly (Paragraph | Table)[],
+): boolean => {
   const paragraph = blocks.at(0);
-  if (blocks.length !== 1 || paragraph?.type !== "paragraph" || paragraph.content.length !== 0) {
+  if (
+    blocks.length !== 1 ||
+    paragraph?.type !== "paragraph" ||
+    paragraph.content.length !== 0
+  ) {
     return false;
   }
 
   return Object.keys(paragraph).every(
-    (key) => key === "type" || key === "content" || key === "paraId" || key === "textId",
+    (key) =>
+      key === "type" ||
+      key === "content" ||
+      key === "paraId" ||
+      key === "textId",
   );
 };
 
@@ -5955,7 +6730,10 @@ const projectTextBoxBodyContent = (
  * Convert a ProseMirror textBox node back to a Paragraph wrapping a ShapeContent run.
  * The text box content becomes a Shape with textBody.
  */
-function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null): Paragraph {
+function convertPMTextBox(
+  node: PMNode,
+  styleResolver: StyleEngine | null = null,
+): Paragraph {
   const attrs = expectTextBoxAttrs(node);
   const authoredEmu = attrs._docxAuthoredEmu;
   const verticalAlign = normalizeShapeTextAnchor(attrs.verticalAlign);
@@ -5965,23 +6743,33 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
     if (child.type.name === "paragraph") {
-      childBlocks.push(convertPMParagraph(child, undefined, undefined, styleResolver));
+      childBlocks.push(
+        convertPMParagraph(child, undefined, undefined, styleResolver),
+      );
     } else if (child.type.name === "table") {
       childBlocks.push(convertPMTable(child, undefined, styleResolver));
     }
   });
-  const textBodyContent = projectTextBoxBodyContent(attrs._docxTextBodyContentState, childBlocks);
+  const textBodyContent = projectTextBoxBodyContent(
+    attrs._docxTextBodyContentState,
+    childBlocks,
+  );
 
   // Build shape with text body
   const shape: Shape = {
     type: "shape",
     shapeType: "textBox",
     size: {
-      width: attrs.width ? emuFromPixels(attrs.width, "width", authoredEmu, emuToPixels) : 0,
-      height: attrs.height ? emuFromPixels(attrs.height, "height", authoredEmu, emuToPixels) : 0,
+      width: attrs.width
+        ? emuFromPixels(attrs.width, "width", authoredEmu, emuToPixels)
+        : 0,
+      height: attrs.height
+        ? emuFromPixels(attrs.height, "height", authoredEmu, emuToPixels)
+        : 0,
     },
     textBody: {
-      content: textBodyContent.type === "source-empty" ? [] : textBodyContent.content,
+      content:
+        textBodyContent.type === "source-empty" ? [] : textBodyContent.content,
       ...(attrs.wordArt !== undefined ? { wordArt: attrs.wordArt } : {}),
       ...(attrs.autoFit !== undefined ? { autoFit: attrs.autoFit } : {}),
       ...(attrs.textWrap !== undefined ? { textWrap: attrs.textWrap } : {}),
@@ -5994,16 +6782,36 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
           right?: number;
         } = {};
         if (typeof attrs.marginTop === "number") {
-          m.top = emuFromPixels(attrs.marginTop, "marginTop", authoredEmu, emuToPixels);
+          m.top = emuFromPixels(
+            attrs.marginTop,
+            "marginTop",
+            authoredEmu,
+            emuToPixels,
+          );
         }
         if (typeof attrs.marginBottom === "number") {
-          m.bottom = emuFromPixels(attrs.marginBottom, "marginBottom", authoredEmu, emuToPixels);
+          m.bottom = emuFromPixels(
+            attrs.marginBottom,
+            "marginBottom",
+            authoredEmu,
+            emuToPixels,
+          );
         }
         if (typeof attrs.marginLeft === "number") {
-          m.left = emuFromPixels(attrs.marginLeft, "marginLeft", authoredEmu, emuToPixels);
+          m.left = emuFromPixels(
+            attrs.marginLeft,
+            "marginLeft",
+            authoredEmu,
+            emuToPixels,
+          );
         }
         if (typeof attrs.marginRight === "number") {
-          m.right = emuFromPixels(attrs.marginRight, "marginRight", authoredEmu, emuToPixels);
+          m.right = emuFromPixels(
+            attrs.marginRight,
+            "marginRight",
+            authoredEmu,
+            emuToPixels,
+          );
         }
         return m;
       })(),
@@ -6041,9 +6849,18 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
 
   // Convert outline back. `outlineStyle === "none"` is the explicit no-outline
   // sentinel: drop the `<a:ln>` even if a width lingers, matching the shape path.
-  if (attrs.outlineStyle !== "none" && attrs.outlineWidth && attrs.outlineWidth > 0) {
+  if (
+    attrs.outlineStyle !== "none" &&
+    attrs.outlineWidth &&
+    attrs.outlineWidth > 0
+  ) {
     const tbOutline: ShapeOutline = {
-      width: emuFromPixels(attrs.outlineWidth, "outlineWidth", authoredEmu, emuToStrokePixels),
+      width: emuFromPixels(
+        attrs.outlineWidth,
+        "outlineWidth",
+        authoredEmu,
+        emuToStrokePixels,
+      ),
       dash: normalizeShapeOutlineDash(attrs.outlineStyle) ?? "solid",
     };
     if (attrs.outlineColor) {
@@ -6114,9 +6931,14 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
  * Update a Document with content from a ProseMirror document
  * Preserves all non-content parts of the original document
  */
-export function updateDocumentContent(originalDocument: Document, pmDoc: PMNode): Document {
+export function updateDocumentContent(
+  originalDocument: Document,
+  pmDoc: PMNode,
+): Document {
   // canonical-gap: pm-save-projection
-  return fromProseDoc(pmDoc, originalDocument, { stylesheetSource: { type: "package" } });
+  return fromProseDoc(pmDoc, originalDocument, {
+    stylesheetSource: { type: "package" },
+  });
 }
 
 /**
@@ -6131,7 +6953,11 @@ export function proseDocToBlocks(
   baseContent?: BlockContent[],
   styles?: NonNullable<Document["package"]>["styles"],
 ): BlockContent[] {
-  const blocks = extractBlocks(pmDoc, "resolve", styles ? createStyleEngine(styles) : null);
+  const blocks = extractBlocks(
+    pmDoc,
+    "resolve",
+    styles ? createStyleEngine(styles) : null,
+  );
   joinCommentRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);

@@ -43,7 +43,9 @@ describe("corpus source manifest", () => {
   test("rejects duplicate source ids", () => {
     const manifest = cloneManifest();
     manifest.sources.push(structuredClone(firstSource(manifest)));
-    expect(validateCorpusManifest(manifest)).toContain("manifest.sources: duplicate source ids");
+    expect(validateCorpusManifest(manifest)).toContain(
+      "manifest.sources: duplicate source ids",
+    );
   });
 
   test("rejects source order drift", () => {

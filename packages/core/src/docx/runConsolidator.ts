@@ -12,12 +12,22 @@
  * formatting into single runs, reducing fragmentation.
  */
 
-import type { Run, ParagraphContent, Paragraph, Hyperlink } from "../types/document";
 import { mergeRunContent, runsMergeable } from "@stll/docx-core/ops";
+
+import type {
+  Hyperlink,
+  Paragraph,
+  ParagraphContent,
+  Run,
+} from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { runHoldsPayload } from "./runPayload";
 
-export { formattingEquals, isTextOnlyRun, runsMergeable } from "@stll/docx-core/ops";
+export {
+  formattingEquals,
+  isTextOnlyRun,
+  runsMergeable,
+} from "@stll/docx-core/ops";
 
 /**
  * Consolidate an array of runs by merging consecutive runs with identical formatting
@@ -86,9 +96,15 @@ export function consolidateRuns(runs: Run[]): Run[] {
  * This handles the full paragraph structure, consolidating runs while
  * preserving hyperlinks, bookmarks, and fields as merge boundaries.
  */
-export function consolidateParagraphContent(content: Hyperlink["children"]): Hyperlink["children"];
-export function consolidateParagraphContent(content: ParagraphContent[]): ParagraphContent[];
-export function consolidateParagraphContent(content: ParagraphContent[]): ParagraphContent[] {
+export function consolidateParagraphContent(
+  content: Hyperlink["children"],
+): Hyperlink["children"];
+export function consolidateParagraphContent(
+  content: ParagraphContent[],
+): ParagraphContent[];
+export function consolidateParagraphContent(
+  content: ParagraphContent[],
+): ParagraphContent[] {
   const result: ParagraphContent[] = [];
   const pendingRuns: Run[] = [];
 
@@ -175,11 +191,19 @@ export function getConsolidationStats(
   consolidatedRunCount: number;
   reductionPercentage: number;
 } {
-  const originalCount = originalParagraphs.reduce((sum, p) => sum + countRuns(p), 0);
-  const consolidatedCount = consolidatedParagraphs.reduce((sum, p) => sum + countRuns(p), 0);
+  const originalCount = originalParagraphs.reduce(
+    (sum, p) => sum + countRuns(p),
+    0,
+  );
+  const consolidatedCount = consolidatedParagraphs.reduce(
+    (sum, p) => sum + countRuns(p),
+    0,
+  );
 
   const reduction =
-    originalCount > 0 ? ((originalCount - consolidatedCount) / originalCount) * 100 : 0;
+    originalCount > 0
+      ? ((originalCount - consolidatedCount) / originalCount) * 100
+      : 0;
 
   return {
     originalRunCount: originalCount,

@@ -1,6 +1,11 @@
 import { panic } from "better-result";
 import type { Node as PMNode, Schema } from "prosemirror-model";
-import { Step, StepMap, StepResult, type Mappable } from "prosemirror-transform";
+import {
+  type Mappable,
+  Step,
+  StepMap,
+  StepResult,
+} from "prosemirror-transform";
 
 import { indexedPositionMap } from "./indexedPositionMap";
 
@@ -17,7 +22,11 @@ type RevisionResolutionStepOptions = {
   deferredInverse?: DeferredInverse;
 };
 
-const mapThrough = (position: number, assoc: number, maps: readonly Mappable[]) => {
+const mapThrough = (
+  position: number,
+  assoc: number,
+  maps: readonly Mappable[],
+) => {
   let mapped = position;
   let deleted = false;
   let deletedBefore = false;
@@ -124,16 +133,23 @@ const indexedStepMapResult = (map: StepMap) => {
       else if (oldSize > 0 && position === change.oldEnd) side = 1;
       return {
         pos: side < 0 ? change.newStart : change.newEnd,
-        deleted: assoc < 0 ? position !== change.oldStart : position !== change.oldEnd,
+        deleted:
+          assoc < 0 ? position !== change.oldStart : position !== change.oldEnd,
       };
     }
     const previous = changes[low - 1];
-    return { pos: position + (previous ? previous.newEnd - previous.oldEnd : 0), deleted: false };
+    return {
+      pos: position + (previous ? previous.newEnd - previous.oldEnd : 0),
+      deleted: false,
+    };
   };
 };
 
 /** Compose by retaining precisely the source positions that survive both maps. */
-export const composeRevisionResolutionMaps = (first: StepMap, second: StepMap): StepMap => {
+export const composeRevisionResolutionMaps = (
+  first: StepMap,
+  second: StepMap,
+): StepMap => {
   const firstResult = indexedStepMapResult(first);
   const secondResult = indexedStepMapResult(second);
   const inverseFirst = indexedPositionMap(first.invert());
@@ -142,7 +158,10 @@ export const composeRevisionResolutionMaps = (first: StepMap, second: StepMap): 
   let lastSecondBoundary: number | undefined;
   const projectSecondBoundary = (position: number) => {
     if (position === lastSecondBoundary) return;
-    secondBreakpoints.push(inverseFirst(position, -1), inverseFirst(position, 1));
+    secondBreakpoints.push(
+      inverseFirst(position, -1),
+      inverseFirst(position, 1),
+    );
     lastSecondBoundary = position;
   };
   first.forEach((oldStart, oldEnd) => {
@@ -155,7 +174,10 @@ export const composeRevisionResolutionMaps = (first: StepMap, second: StepMap): 
   const breakpoints: number[] = [];
   let firstIndex = 0;
   let secondIndex = 0;
-  while (firstIndex < firstBreakpoints.length || secondIndex < secondBreakpoints.length) {
+  while (
+    firstIndex < firstBreakpoints.length ||
+    secondIndex < secondBreakpoints.length
+  ) {
     const firstPosition = firstBreakpoints[firstIndex];
     const secondPosition = secondBreakpoints[secondIndex];
     const takeFirst =
@@ -164,7 +186,8 @@ export const composeRevisionResolutionMaps = (first: StepMap, second: StepMap): 
     const position = takeFirst ? firstPosition : secondPosition;
     if (takeFirst) firstIndex++;
     else secondIndex++;
-    if (position !== undefined && breakpoints.at(-1) !== position) breakpoints.push(position);
+    if (position !== undefined && breakpoints.at(-1) !== position)
+      breakpoints.push(position);
   }
   const through = (position: number, assoc: number) => {
     const earlier = firstResult(position, assoc);
@@ -245,7 +268,9 @@ export class RevisionResolutionStep extends Step {
       inverse.push(step.invert(doc));
       const result = step.apply(doc);
       if (!result.doc) {
-        return panic(result.failed ?? "Revision resolution cannot invert a failed step");
+        return panic(
+          result.failed ?? "Revision resolution cannot invert a failed step",
+        );
       }
       doc = result.doc;
     }
@@ -280,7 +305,9 @@ export class RevisionResolutionStep extends Step {
       inverse.push(step.invert(current));
       const result = step.apply(current);
       if (!result.doc) {
-        return panic(result.failed ?? "Revision resolution cannot invert a failed step");
+        return panic(
+          result.failed ?? "Revision resolution cannot invert a failed step",
+        );
       }
       current = result.doc;
     }
@@ -298,7 +325,11 @@ export class RevisionResolutionStep extends Step {
     const inverseOriginalMaps: StepMap[] = [];
     const mappedMaps: StepMap[] = [];
     for (const step of original) {
-      const through = chainedMap([...inverseOriginalMaps.toReversed(), mapping, ...mappedMaps]);
+      const through = chainedMap([
+        ...inverseOriginalMaps.toReversed(),
+        mapping,
+        ...mappedMaps,
+      ]);
       const rebased = step.map(through);
       if (rebased) {
         mapped.push(rebased);
@@ -337,8 +368,16 @@ export class RevisionResolutionStep extends Step {
     };
   }
 
-  static override fromJSON(schema: Schema, json: unknown): RevisionResolutionStep {
-    if (typeof json !== "object" || json === null || !("steps" in json) || !("mapRanges" in json)) {
+  static override fromJSON(
+    schema: Schema,
+    json: unknown,
+  ): RevisionResolutionStep {
+    if (
+      typeof json !== "object" ||
+      json === null ||
+      !("steps" in json) ||
+      !("mapRanges" in json)
+    ) {
       throw new RangeError("Invalid revision resolution step JSON");
     }
     const { steps, mapRanges } = json;

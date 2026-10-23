@@ -8,13 +8,20 @@
  * produced, from the packed packages.
  */
 
-import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
-import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
-import { docxToMarkdown, isFolioAIContentBlock } from "@stll/folio-core/server";
-import { htmlTableViews } from "./html-table-views.ts";
 import { marked, type Token } from "marked";
 
+import {
+  createReviewerBridge,
+  executeFolioToolCallUntyped,
+} from "@stll/folio-agents";
+import type {
+  FolioAIBlock,
+  FolioAIParagraphBlock,
+} from "@stll/folio-core/ai-edits";
+import { docxToMarkdown, isFolioAIContentBlock } from "@stll/folio-core/server";
+
 import { openReviewer, toArrayBuffer } from "./documents.ts";
+import { htmlTableViews } from "./html-table-views.ts";
 import { featureIndex } from "./targets.ts";
 
 /** What one reader says about one block. */
@@ -40,7 +47,9 @@ type ContentBlock = Pick<
   | "listReference"
 >;
 
-const isParagraphBlock = (block: FolioAIBlock): block is FolioAIParagraphBlock => {
+const isParagraphBlock = (
+  block: FolioAIBlock,
+): block is FolioAIParagraphBlock => {
   switch (block.kind) {
     case "paragraph":
     case "heading":
@@ -55,8 +64,9 @@ const isParagraphBlock = (block: FolioAIBlock): block is FolioAIParagraphBlock =
   }
 };
 
-export const paragraphBlocks = (blocks: readonly FolioAIBlock[]): FolioAIParagraphBlock[] =>
-  blocks.filter(isParagraphBlock);
+export const paragraphBlocks = (
+  blocks: readonly FolioAIBlock[],
+): FolioAIParagraphBlock[] => blocks.filter(isParagraphBlock);
 
 /** A bullet reads as `-` in Markdown and as its glyph elsewhere. */
 export const BULLET = "(bullet)";
@@ -94,10 +104,15 @@ export const contentView = (
   const format =
     block.listReference === undefined
       ? undefined
-      : numberingFormats.get(`${block.listReference.numId}:${block.listReference.level}`);
-  const hasNumberLabel = block.displayLabel !== undefined && block.displayLabel !== block.styleId;
+      : numberingFormats.get(
+          `${block.listReference.numId}:${block.listReference.level}`,
+        );
+  const hasNumberLabel =
+    block.displayLabel !== undefined && block.displayLabel !== block.styleId;
   if (hasNumberLabel && format === undefined) {
-    throw new Error(`Missing numbering format for displayed label ${block.displayLabel}`);
+    throw new Error(
+      `Missing numbering format for displayed label ${block.displayLabel}`,
+    );
   }
   return view(
     // Markdown keeps no leading or trailing blanks; neither side is compared on them.
@@ -144,7 +159,9 @@ const inlineText = (tokens: readonly Token[]): string =>
     .map((token) => {
       switch (token.type) {
         case "text":
-          return token.tokens === undefined ? token.text : inlineText(token.tokens);
+          return token.tokens === undefined
+            ? token.text
+            : inlineText(token.tokens);
         case "escape":
         case "codespan":
           return token.text;
@@ -196,15 +213,30 @@ const suffixView = (
     plain.trim() === expected.number
   )
     return view("", "listItem", undefined, expected.number);
-  const suffix = expected.text.length > 0 && plain.endsWith(expected.text) ? expected.text : plain;
-  const prefix = suffix === plain ? "" : plain.slice(0, plain.length - suffix.length);
+  const suffix =
+    expected.text.length > 0 && plain.endsWith(expected.text)
+      ? expected.text
+      : plain;
+  const prefix =
+    suffix === plain ? "" : plain.slice(0, plain.length - suffix.length);
   const marker = LIST_MARKER.exec(prefix)?.groups?.["marker"];
-  if (kind === "paragraph" && expected.kind === "listItem" && marker !== undefined) {
-    return view(suffix, "listItem", undefined, expected.number === BULLET ? BULLET : marker);
+  if (
+    kind === "paragraph" &&
+    expected.kind === "listItem" &&
+    marker !== undefined
+  ) {
+    return view(
+      suffix,
+      "listItem",
+      undefined,
+      expected.number === BULLET ? BULLET : marker,
+    );
   }
   const headingMarker = kind === "heading" ? prefix.trim() : undefined;
   let number =
-    headingMarker === undefined || headingMarker.length === 0 ? undefined : headingMarker;
+    headingMarker === undefined || headingMarker.length === 0
+      ? undefined
+      : headingMarker;
   if (number !== undefined && expected.number === BULLET) number = BULLET;
   return view(suffix.trim(), kind, headingLevel, number);
 };
@@ -224,7 +256,9 @@ const withoutNoteTrailer = (markdown: string): string => {
   for (const line of trailer.split("\n")) {
     const marker = definition.exec(line)?.groups?.["marker"];
     if (marker === undefined || !references.has(marker) || seen.has(marker)) {
-      throw new Error("Markdown contains malformed or unreferenced note definitions");
+      throw new Error(
+        "Markdown contains malformed or unreferenced note definitions",
+      );
     }
     seen.add(marker);
   }
@@ -234,10 +268,14 @@ const withoutNoteTrailer = (markdown: string): string => {
   return body;
 };
 
-const isListTextToken = ({ type }: Token) => type === "text" || type === "paragraph";
+const isListTextToken = ({ type }: Token) =>
+  type === "text" || type === "paragraph";
 
 /** The exporter inserts exactly one blank line before an empty nested list item. */
-const isEmptyListItemSeparator = (tokens: readonly Token[], index: number): boolean => {
+const isEmptyListItemSeparator = (
+  tokens: readonly Token[],
+  index: number,
+): boolean => {
   const separator = tokens.at(index);
   const previous = tokens.at(index - 1);
   const next = tokens.at(index + 1);
@@ -269,7 +307,10 @@ export const markdownViews = (
   let cursor = 0;
   const nextExpected = (): BlockView => {
     const expected = expectedViews.at(cursor);
-    if (!expected) throw new Error("Markdown contains more text blocks than the source reader");
+    if (!expected)
+      throw new Error(
+        "Markdown contains more text blocks than the source reader",
+      );
     cursor += 1;
     return expected;
   };
@@ -286,10 +327,22 @@ export const markdownViews = (
     while (true) {
       const expected = nextExpected();
       let boundary: number | undefined;
-      if (expected.kind === "listItem" && expectedViews.at(cursor)?.kind === "listItem") {
-        for (const marker of remaining.matchAll(/\n(?=[ \t]*\S+?[.)](?:[ \t]+|\n|$))/gu)) {
-          const candidate = suffixView(remaining.slice(0, marker.index), expected, kind);
-          if (candidate.kind === "listItem" && candidate.text === expected.text) {
+      if (
+        expected.kind === "listItem" &&
+        expectedViews.at(cursor)?.kind === "listItem"
+      ) {
+        for (const marker of remaining.matchAll(
+          /\n(?=[ \t]*\S+?[.)](?:[ \t]+|\n|$))/gu,
+        )) {
+          const candidate = suffixView(
+            remaining.slice(0, marker.index),
+            expected,
+            kind,
+          );
+          if (
+            candidate.kind === "listItem" &&
+            candidate.text === expected.text
+          ) {
             boundary = marker.index;
             break;
           }
@@ -301,7 +354,9 @@ export const markdownViews = (
         kind,
       );
       const emitted =
-        number === undefined ? actual : view(actual.text, "listItem", undefined, number);
+        number === undefined
+          ? actual
+          : view(actual.text, "listItem", undefined, number);
       if (
         !isFolioAIContentBlock(expected) &&
         expected.kind === "listItem" &&
@@ -309,7 +364,9 @@ export const markdownViews = (
           emitted.kind !== "listItem" ||
           emitted.number !== expected.number)
       ) {
-        throw new Error("Markdown empty list marker differs from the source reader");
+        throw new Error(
+          "Markdown empty list marker differs from the source reader",
+        );
       }
       views.push(emitted);
       if (boundary === undefined) return;
@@ -325,7 +382,9 @@ export const markdownViews = (
         return;
       case "heading": {
         const expected = nextExpected();
-        views.push(suffixView(tokenText(token), expected, "heading", token.depth));
+        views.push(
+          suffixView(tokenText(token), expected, "heading", token.depth),
+        );
         return;
       }
       case "paragraph": {
@@ -334,13 +393,19 @@ export const markdownViews = (
       }
       case "list": {
         for (const item of token.items) {
-          const marker = /^\s*(?<number>\d+[.)])(?:\s+|$)/u.exec(item.raw)?.groups?.["number"];
+          const marker = /^\s*(?<number>\d+[.)])(?:\s+|$)/u.exec(item.raw)
+            ?.groups?.["number"];
           if (token.ordered && marker === undefined) {
-            throw new Error("Ordered Markdown list item has no rendered number");
+            throw new Error(
+              "Ordered Markdown list item has no rendered number",
+            );
           }
           const number = token.ordered ? marker : BULLET;
           if (!item.tokens.some(isListTextToken)) {
-            appendParagraphs("", { kind: "listItem", ...(number === undefined ? {} : { number }) });
+            appendParagraphs("", {
+              kind: "listItem",
+              ...(number === undefined ? {} : { number }),
+            });
           }
           for (const [index, child] of item.tokens.entries()) {
             if (isEmptyListItemSeparator(item.tokens, index)) continue;
@@ -349,7 +414,9 @@ export const markdownViews = (
               continue;
             }
             if (child.type !== "text" && child.type !== "paragraph") {
-              throw new Error(`Unsupported list item Markdown token: ${child.type}`);
+              throw new Error(
+                `Unsupported list item Markdown token: ${child.type}`,
+              );
             }
             const text = tokenText(child);
             appendParagraphs(text, {
@@ -366,7 +433,9 @@ export const markdownViews = (
           if (text.length === 0) continue;
           const expected = nextExpected();
           const comparableText =
-            expected.number === BULLET ? text.trim().replace(/^-\s+/u, "") : text.trim();
+            expected.number === BULLET
+              ? text.trim().replace(/^-\s+/u, "")
+              : text.trim();
           views.push(view(comparableText, "paragraph", undefined, undefined));
         }
         return;
@@ -374,7 +443,8 @@ export const markdownViews = (
       case "code": {
         const expected = nextExpected();
         views.push(view(token.text, "paragraph", undefined, undefined));
-        if (expected.text.length === 0) throw new Error("Code block has no source paragraph");
+        if (expected.text.length === 0)
+          throw new Error("Code block has no source paragraph");
         return;
       }
       case "hr":
@@ -396,7 +466,9 @@ export const markdownViews = (
   };
   tokens.forEach(walk);
   if (cursor !== expectedViews.length) {
-    throw new Error("Markdown contains fewer text blocks than the source reader");
+    throw new Error(
+      "Markdown contains fewer text blocks than the source reader",
+    );
   }
   return views;
 };
@@ -427,12 +499,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /** The label fields a block or row carries, without the absent ones. */
 export const labelFields = (source: Record<string, unknown>): LabelFields => {
   const statedNumbering = source["statedNumbering"];
-  if (!isRecord(statedNumbering) || typeof statedNumbering["kind"] !== "string") {
+  if (
+    !isRecord(statedNumbering) ||
+    typeof statedNumbering["kind"] !== "string"
+  ) {
     throw new Error("Reader block is missing statedNumbering");
   }
   const fields: LabelFields = { statedNumbering };
-  if (typeof source["displayLabel"] === "string") fields.displayLabel = source["displayLabel"];
-  if (typeof source["headingLevel"] === "number") fields.headingLevel = source["headingLevel"];
+  if (typeof source["displayLabel"] === "string")
+    fields.displayLabel = source["displayLabel"];
+  if (typeof source["headingLevel"] === "number")
+    fields.headingLevel = source["headingLevel"];
   const listReference = source["listReference"];
   if (listReference !== undefined) {
     if (
@@ -478,19 +555,28 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
   const numberingFormats = new Map(
     reviewer
       .readNumberingDefinitions()
-      .map(({ numId, level, format }) => [`${numId}:${level}`, format] as const),
+      .map(
+        ({ numId, level, format }) => [`${numId}:${level}`, format] as const,
+      ),
   );
   const bodyContent = paragraphBlocks(reviewer.getContent());
   const content = bodyContent.filter(isFolioAIContentBlock);
   const bridge = createReviewerBridge(reviewer);
-  const snapshot = paragraphBlocks(bridge.snapshot().blocks).filter(isFolioAIContentBlock);
+  const snapshot = paragraphBlocks(bridge.snapshot().blocks).filter(
+    isFolioAIContentBlock,
+  );
   const read = executeFolioToolCallUntyped("read_document", {}, bridge, {});
   if (!read.ok) {
     throw new Error(`read_document failed: ${read.error}`);
   }
   const rows = read.result as Record<string, unknown>[];
-  const markdown = await docxToMarkdown(toArrayBuffer(bytes), MARKDOWN_READ_OPTIONS);
-  const contentViews = content.map((block) => contentView(block, numberingFormats));
+  const markdown = await docxToMarkdown(
+    toArrayBuffer(bytes),
+    MARKDOWN_READ_OPTIONS,
+  );
+  const contentViews = content.map((block) =>
+    contentView(block, numberingFormats),
+  );
   // Clean Markdown shows every change accepted, structure included (a
   // deleted paragraph mark joins two paragraphs); the readers above show the
   // markup. Markdown is compared with the same package, accepted.
@@ -510,12 +596,20 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
     getContent: contentViews,
     snapshot: snapshot.map((block) => contentView(block, numberingFormats)),
     readDocument: rows.map((row) =>
-      view(String(row["text"]).trim(), asKind(String(row["kind"])), undefined, undefined),
+      view(
+        String(row["text"]).trim(),
+        asKind(String(row["kind"])),
+        undefined,
+        undefined,
+      ),
     ),
     getContentAsMarkdown: accepted
       .filter(isFolioAIContentBlock)
       .map((block) =>
-        markdownComparable(contentView(block, numberingFormats), block.table !== undefined),
+        markdownComparable(
+          contentView(block, numberingFormats),
+          block.table !== undefined,
+        ),
       ),
     markdown: markdownViews(
       markdown,
@@ -534,9 +628,15 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
     labels: content.map((block) =>
       labelFields({
         statedNumbering: block.statedNumbering,
-        ...(block.displayLabel === undefined ? {} : { displayLabel: block.displayLabel }),
-        ...(block.headingLevel === undefined ? {} : { headingLevel: block.headingLevel }),
-        ...(block.listReference === undefined ? {} : { listReference: block.listReference }),
+        ...(block.displayLabel === undefined
+          ? {}
+          : { displayLabel: block.displayLabel }),
+        ...(block.headingLevel === undefined
+          ? {}
+          : { headingLevel: block.headingLevel }),
+        ...(block.listReference === undefined
+          ? {}
+          : { listReference: block.listReference }),
       }),
     ),
   };

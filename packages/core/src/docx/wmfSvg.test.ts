@@ -1,12 +1,13 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { renderEmfSvg } from "./metafileSvg";
 import { parseDocx } from "./parser";
 import { repackDocx } from "./rezip";
@@ -39,7 +40,10 @@ const META = {
   polyPolygon: 0x0538,
 } as const;
 
-const wmfRecord = (fn: number, parameters: readonly number[] = []): Uint8Array => {
+const wmfRecord = (
+  fn: number,
+  parameters: readonly number[] = [],
+): Uint8Array => {
   const bytes = new Uint8Array(6 + parameters.length * 2);
   const view = new DataView(bytes.buffer);
   view.setUint32(0, bytes.byteLength / 2, true);
@@ -50,8 +54,14 @@ const wmfRecord = (fn: number, parameters: readonly number[] = []): Uint8Array =
   return bytes;
 };
 
-const colorWords = (color: number): [number, number] => [color & 0xffff, color >>> 16];
-const pointWords = ({ x, y }: { x: number; y: number }): [number, number] => [x, y];
+const colorWords = (color: number): [number, number] => [
+  color & 0xffff,
+  color >>> 16,
+];
+const pointWords = ({ x, y }: { x: number; y: number }): [number, number] => [
+  x,
+  y,
+];
 
 type WmfOptions = {
   placeable?: boolean;
@@ -67,7 +77,10 @@ const vectorWmf = ({
   objectCount = 8,
 }: WmfOptions = {}): Uint8Array => {
   const allRecords = [...records, wmfRecord(META.eof)];
-  const recordBytes = allRecords.reduce((sum, item) => sum + item.byteLength, 0);
+  const recordBytes = allRecords.reduce(
+    (sum, item) => sum + item.byteLength,
+    0,
+  );
   const headerOffset = placeable ? 22 : 0;
   const bytes = new Uint8Array(headerOffset + 18 + recordBytes);
   const view = new DataView(bytes.buffer);
@@ -79,7 +92,8 @@ const vectorWmf = ({
     view.setInt16(12, bounds.bottom, true);
     view.setUint16(14, 1_440, true);
     let checksum = 0;
-    for (let offset = 0; offset < 20; offset += 2) checksum ^= view.getUint16(offset, true);
+    for (let offset = 0; offset < 20; offset += 2)
+      checksum ^= view.getUint16(offset, true);
     view.setUint16(20, checksum, true);
   }
   view.setUint16(headerOffset, 1, true);
@@ -100,17 +114,26 @@ const vectorWmf = ({
   return bytes;
 };
 
-const mappingRecords = (origin = { x: 10, y: 20 }, extent = { x: 200, y: 100 }) => [
+const mappingRecords = (
+  origin = { x: 10, y: 20 },
+  extent = { x: 200, y: 100 },
+) => [
   wmfRecord(META.setMapMode, [8]),
   wmfRecord(META.setWindowOrigin, [origin.y, origin.x]),
   wmfRecord(META.setWindowExtent, [extent.y, extent.x]),
 ];
 
-const polygonRecord = (points: readonly { x: number; y: number }[]): Uint8Array =>
+const polygonRecord = (
+  points: readonly { x: number; y: number }[],
+): Uint8Array =>
   wmfRecord(META.polygon, [points.length, ...points.flatMap(pointWords)]);
 
 const minimalEmf = (): Uint8Array => {
-  const emfRecord = (type: number, size: number, write?: (view: DataView) => void) => {
+  const emfRecord = (
+    type: number,
+    size: number,
+    write?: (view: DataView) => void,
+  ) => {
     const result = new Uint8Array(size);
     const recordView = new DataView(result.buffer);
     recordView.setUint32(0, type, true);
@@ -149,7 +172,9 @@ const minimalEmf = (): Uint8Array => {
     }),
     emfRecord(14, 20),
   ];
-  const bytes = new Uint8Array(88 + records.reduce((sum, record) => sum + record.byteLength, 0));
+  const bytes = new Uint8Array(
+    88 + records.reduce((sum, record) => sum + record.byteLength, 0),
+  );
   const view = new DataView(bytes.buffer);
   view.setUint32(0, 1, true);
   view.setUint32(4, 88, true);
@@ -171,7 +196,12 @@ const minimalEmf = (): Uint8Array => {
 describe("renderWmfSvg", () => {
   test("uses the WMF stock pen, brush, and alternate polygon fill mode", () => {
     const rectangle = renderWmfSvg(
-      vectorWmf({ records: [...mappingRecords(), wmfRecord(META.rectangle, [120, 210, 20, 10])] }),
+      vectorWmf({
+        records: [
+          ...mappingRecords(),
+          wmfRecord(META.rectangle, [120, 210, 20, 10]),
+        ],
+      }),
     );
     const polygon = renderWmfSvg(
       vectorWmf({
@@ -190,7 +220,11 @@ describe("renderWmfSvg", () => {
       vectorWmf({
         records: [
           ...mappingRecords(),
-          wmfRecord(META.createBrushIndirect, [0, ...colorWords(0x0000_00ff), 0]),
+          wmfRecord(META.createBrushIndirect, [
+            0,
+            ...colorWords(0x0000_00ff),
+            0,
+          ]),
           wmfRecord(META.selectObject, [0]),
           polygonRecord([
             { x: 10, y: 20 },
@@ -201,9 +235,13 @@ describe("renderWmfSvg", () => {
       }),
     );
 
-    expect(rectangle).toContain('fill="#ffffff" stroke="#000000" stroke-width="1"');
+    expect(rectangle).toContain(
+      'fill="#ffffff" stroke="#000000" stroke-width="1"',
+    );
     expect(polygon).toContain('fill-rule="evenodd"');
-    expect(brushOnly).toContain('fill="#ff0000" stroke="#000000" stroke-width="1"');
+    expect(brushOnly).toContain(
+      'fill="#ff0000" stroke="#000000" stroke-width="1"',
+    );
   });
 
   test("keeps the output viewport fixed when the window extent changes", () => {
@@ -220,7 +258,9 @@ describe("renderWmfSvg", () => {
     );
 
     expect(svg).toContain('viewBox="0 0 200 100"');
-    expect(svg?.match(/<rect x="0" y="0" width="200" height="100"/g)).toHaveLength(2);
+    expect(
+      svg?.match(/<rect x="0" y="0" width="200" height="100"/g),
+    ).toHaveLength(2);
   });
 
   test("applies text, anisotropic, and isotropic map modes", () => {
@@ -248,8 +288,12 @@ describe("renderWmfSvg", () => {
       }),
     );
 
-    expect(anisotropicThenText).toContain('<rect x="20" y="10" width="20" height="10"');
-    expect(anisotropicThenText).toContain('<rect x="10" y="10" width="10" height="10"');
+    expect(anisotropicThenText).toContain(
+      '<rect x="20" y="10" width="20" height="10"',
+    );
+    expect(anisotropicThenText).toContain(
+      '<rect x="10" y="10" width="10" height="10"',
+    );
     expect(isotropic).toContain('<rect x="10" y="10" width="10" height="10"');
     expect(
       renderWmfSvg(
@@ -330,7 +374,11 @@ describe("renderWmfSvg", () => {
       vectorWmf({
         records: [
           ...mappingRecords(),
-          wmfRecord(META.createBrushIndirect, [0, ...colorWords(0x0000_00ff), 0]),
+          wmfRecord(META.createBrushIndirect, [
+            0,
+            ...colorWords(0x0000_00ff),
+            0,
+          ]),
           wmfRecord(META.selectObject, [0]),
           polyPolygon,
         ],
@@ -360,44 +408,73 @@ describe("renderWmfSvg", () => {
   });
 
   test("fails closed for an unsupported record", () => {
-    expect(renderWmfSvg(vectorWmf({ records: [wmfRecord(0x0626, [1])] }))).toBeNull();
+    expect(
+      renderWmfSvg(vectorWmf({ records: [wmfRecord(0x0626, [1])] })),
+    ).toBeNull();
   });
 
   test("enforces record, point, dimension, state-depth, and SVG-output caps", () => {
     expect(
       renderWmfSvg(
         vectorWmf({
-          records: Array.from({ length: 10_000 }, () => wmfRecord(META.setBackgroundMode, [1])),
+          records: Array.from({ length: 10_000 }, () =>
+            wmfRecord(META.setBackgroundMode, [1]),
+          ),
         }),
       ),
     ).toBeNull();
     expect(
       renderWmfSvg(
         vectorWmf({
-          records: [polygonRecord(Array.from({ length: 20_001 }, () => ({ x: 1, y: 1 })))],
+          records: [
+            polygonRecord(
+              Array.from({ length: 20_001 }, () => ({ x: 1, y: 1 })),
+            ),
+          ],
         }),
       ),
     ).toBeNull();
     expect(
       renderWmfSvg(
         vectorWmf({
-          bounds: { left: -32_768, top: -32_768, right: 32_767, bottom: 32_767 },
-          records: [wmfRecord(META.rectangle, [32_767, 32_767, 0x8000, 0x8000])],
+          bounds: {
+            left: -32_768,
+            top: -32_768,
+            right: 32_767,
+            bottom: 32_767,
+          },
+          records: [
+            wmfRecord(META.rectangle, [32_767, 32_767, 0x8000, 0x8000]),
+          ],
         }),
       ),
     ).toBeNull();
     expect(
       renderWmfSvg(
-        vectorWmf({ records: Array.from({ length: 257 }, () => wmfRecord(META.saveDc)) }),
+        vectorWmf({
+          records: Array.from({ length: 257 }, () => wmfRecord(META.saveDc)),
+        }),
       ),
     ).toBeNull();
     const paintedRectangles = (count: number) =>
       vectorWmf({
         bounds: { left: -16_000, top: -16_000, right: 16_000, bottom: 16_000 },
         records: [
-          ...mappingRecords({ x: -16_000, y: -16_000 }, { x: 32_000, y: 32_000 }),
-          wmfRecord(META.createPenIndirect, [0, 32_000, 0, ...colorWords(0x00ff_ffff)]),
-          wmfRecord(META.createBrushIndirect, [0, ...colorWords(0x00ff_ffff), 0]),
+          ...mappingRecords(
+            { x: -16_000, y: -16_000 },
+            { x: 32_000, y: 32_000 },
+          ),
+          wmfRecord(META.createPenIndirect, [
+            0,
+            32_000,
+            0,
+            ...colorWords(0x00ff_ffff),
+          ]),
+          wmfRecord(META.createBrushIndirect, [
+            0,
+            ...colorWords(0x00ff_ffff),
+            0,
+          ]),
           wmfRecord(META.selectObject, [0]),
           wmfRecord(META.selectObject, [1]),
           ...Array.from({ length: count }, () =>
@@ -454,14 +531,19 @@ describe("renderWmfSvg", () => {
               placeable: false,
               records: [
                 wmfRecord(META.setViewportExtent, [viewHeight, viewWidth]),
-                ...mappingRecords({ x: 0, y: 0 }, { x: windowWidth, y: windowHeight }),
+                ...mappingRecords(
+                  { x: 0, y: 0 },
+                  { x: windowWidth, y: windowHeight },
+                ),
                 wmfRecord(META.rectangle, [windowHeight, windowWidth, 0, 0]),
               ],
             }),
           );
 
           expect(svg).toContain(`viewBox="0 0 ${viewWidth} ${viewHeight}"`);
-          expect(svg).toContain(`<rect x="0" y="0" width="${viewWidth}" height="${viewHeight}"`);
+          expect(svg).toContain(
+            `<rect x="0" y="0" width="${viewWidth}" height="${viewHeight}"`,
+          );
         },
       ),
       propertyConfig({ numRuns: 200 }),
@@ -483,9 +565,17 @@ describe("renderWmfSvg", () => {
               placeable: false,
               records: [
                 wmfRecord(META.setViewportExtent, [viewHeight, viewWidth]),
-                ...mappingRecords({ x: 0, y: 0 }, { x: windowWidth, y: windowHeight }),
+                ...mappingRecords(
+                  { x: 0, y: 0 },
+                  { x: windowWidth, y: windowHeight },
+                ),
                 wmfRecord(META.setMapMode, [mode]),
-                wmfRecord(META.createPenIndirect, [0, penWidth, 0, ...colorWords(0)]),
+                wmfRecord(META.createPenIndirect, [
+                  0,
+                  penWidth,
+                  0,
+                  ...colorWords(0),
+                ]),
                 wmfRecord(META.selectObject, [0]),
                 wmfRecord(META.rectangle, [windowHeight, windowWidth, 0, 0]),
               ],
@@ -497,8 +587,9 @@ describe("renderWmfSvg", () => {
           expect(svg).not.toMatch(/(?:NaN|Infinity)/);
           const rectangle = svg?.match(/<rect [^>]+/)?.at(0);
           expect(rectangle).toBeDefined();
-          for (const value of rectangle?.matchAll(/(?:x|y|width|height|stroke-width)="([^"]+)"/g) ??
-            []) {
+          for (const value of rectangle?.matchAll(
+            /(?:x|y|width|height|stroke-width)="([^"]+)"/g,
+          ) ?? []) {
             expect(Number.isFinite(Number(value[1]))).toBeTrue();
           }
         },
@@ -528,7 +619,8 @@ describe("WMF package previews", () => {
     zip.file("word/media/image2.wmf", wmf);
     const relationshipPath = "word/_rels/document.xml.rels";
     const relationships = await zip.file(relationshipPath)?.async("string");
-    if (!relationships) throw new Error("Fixture is missing document relationships");
+    if (!relationships)
+      throw new Error("Fixture is missing document relationships");
     zip.file(
       relationshipPath,
       relationships.replace(
@@ -537,9 +629,12 @@ describe("WMF package previews", () => {
       ),
     );
 
-    const document = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
-      preloadFonts: false,
-    });
+    const document = await parseDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+      {
+        preloadFonts: false,
+      },
+    );
     const emfMedia = document.package.media?.get("word/media/image1.emf");
     const wmfMedia = document.package.media?.get("word/media/image2.wmf");
     expect(emfMedia?.dataUrl).toStartWith("data:image/svg+xml");
@@ -548,8 +643,12 @@ describe("WMF package previews", () => {
     expect(new Uint8Array(wmfMedia?.data ?? new ArrayBuffer(0))).toEqual(wmf);
 
     const output = await JSZip.loadAsync(await repackDocx(document));
-    expect(await output.file("word/media/image1.emf")?.async("uint8array")).toEqual(emf);
-    expect(await output.file("word/media/image2.wmf")?.async("uint8array")).toEqual(wmf);
+    expect(
+      await output.file("word/media/image1.emf")?.async("uint8array"),
+    ).toEqual(emf);
+    expect(
+      await output.file("word/media/image2.wmf")?.async("uint8array"),
+    ).toEqual(wmf);
     expect(renderEmfSvg(emf)).not.toBeNull();
   });
 });

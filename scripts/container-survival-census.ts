@@ -21,9 +21,8 @@
  * every pair writes and re-reads two packages, and the machine is shared).
  */
 
-import path from "node:path";
-
 import { TaggedError } from "better-result";
+import path from "node:path";
 
 import { buildFixture, type Subject } from "./lib/container-survival/fixture";
 import {
@@ -108,7 +107,10 @@ export const allSubjects = (space: ContainerSpace): Subject[] => [
  * that overrides an inherited toggle, the `auto` that defers a colour — so each
  * is measured whatever the pair did.
  */
-export const otherRepresentativesOf = (space: ContainerSpace, subject: Subject): string[] =>
+export const otherRepresentativesOf = (
+  space: ContainerSpace,
+  subject: Subject,
+): string[] =>
   subject.kind === "attribute"
     ? representativeValues(space.index, subject.slot.typeQName).filter(
         (value) => value !== subject.value,
@@ -116,18 +118,25 @@ export const otherRepresentativesOf = (space: ContainerSpace, subject: Subject):
     : [];
 
 /** The other values an attribute's simple type accepts, beyond its representatives. */
-export const otherValuesOf = (space: ContainerSpace, subject: Subject): string[] => {
+export const otherValuesOf = (
+  space: ContainerSpace,
+  subject: Subject,
+): string[] => {
   if (subject.kind !== "attribute") {
     return [];
   }
-  const representatives = new Set(representativeValues(space.index, subject.slot.typeQName));
+  const representatives = new Set(
+    representativeValues(space.index, subject.slot.typeQName),
+  );
   return valuesForType(space.index, subject.slot.typeQName).values.filter(
     (value) => !representatives.has(value),
   );
 };
 
 export const valueKey = (subject: Subject): string =>
-  subject.kind === "attribute" ? `${subjectKey(subject)}=${subject.value}` : subjectKey(subject);
+  subject.kind === "attribute"
+    ? `${subjectKey(subject)}=${subject.value}`
+    : subjectKey(subject);
 
 type Options = {
   only: string | undefined;
@@ -145,7 +154,9 @@ const readOptions = (argv: readonly string[]): Options => {
   };
   const kind = valueAfter("--kind");
   if (kind !== undefined && kind !== "child" && kind !== "attribute") {
-    throw new ContainerSurvivalError({ message: `--kind takes child or attribute, not ${kind}` });
+    throw new ContainerSurvivalError({
+      message: `--kind takes child or attribute, not ${kind}`,
+    });
   }
   const limit = valueAfter("--limit");
   return {
@@ -167,7 +178,9 @@ const select = (space: ContainerSpace, options: Options): Subject[] => {
     const only = options.only;
     subjects = subjects.filter((subject) => subjectKey(subject).includes(only));
   }
-  return options.limit === undefined ? subjects : subjects.slice(0, options.limit);
+  return options.limit === undefined
+    ? subjects
+    : subjects.slice(0, options.limit);
 };
 
 /** A bounded worker pool; the census writes two packages per pair and the machine is shared. */
@@ -215,11 +228,15 @@ const lossOf = (outcome: PairOutcome): LossMechanism | "threw" | undefined => {
   if (outcome.mechanism !== null) {
     return outcome.mechanism;
   }
-  return outcome.laws[SURVIVAL_LAWS.schema] === false ? LOSS_MECHANISMS.respelled : undefined;
+  return outcome.laws[SURVIVAL_LAWS.schema] === false
+    ? LOSS_MECHANISMS.respelled
+    : undefined;
 };
 
 const sortedEntries = <T>(record: Record<string, T>): Record<string, T> =>
-  Object.fromEntries(Object.entries(record).sort(([left], [right]) => left.localeCompare(right)));
+  Object.fromEntries(
+    Object.entries(record).sort(([left], [right]) => left.localeCompare(right)),
+  );
 
 export const censusOf = (
   outcomes: readonly PairOutcome[],
@@ -264,7 +281,9 @@ export const censusOf = (
 
 const loadBaseline = async (): Promise<SurvivalBaseline> => {
   const file = Bun.file(BASELINE_PATH);
-  return (await file.exists()) ? ((await file.json()) as SurvivalBaseline) : EMPTY_BASELINE;
+  return (await file.exists())
+    ? ((await file.json()) as SurvivalBaseline)
+    : EMPTY_BASELINE;
 };
 
 /**
@@ -291,7 +310,9 @@ export const compareToBaseline = (
         continue;
       }
       if (recorded !== mechanism) {
-        problems.push(`loss changed mechanism: ${key} (${recorded} -> ${mechanism})`);
+        problems.push(
+          `loss changed mechanism: ${key} (${recorded} -> ${mechanism})`,
+        );
       }
     }
     if (scoped) {
@@ -299,7 +320,9 @@ export const compareToBaseline = (
     }
     for (const key of Object.keys(recordedLosses)) {
       if (measuredLosses[key] === undefined) {
-        problems.push(`fixed but not locked in: ${key}; re-run with --write-baseline`);
+        problems.push(
+          `fixed but not locked in: ${key}; re-run with --write-baseline`,
+        );
       }
     }
   };
@@ -313,9 +336,10 @@ type ValueSweep = { subjects: number; representatives: number };
 
 const report = (census: Census, sweep: ValueSweep): void => {
   const { outcomes, baseline } = census;
-  const perLaw = new Map<SurvivalLaw, { held: number; broken: number; skipped: number }>(
-    LAW_ORDER.map((law) => [law, { held: 0, broken: 0, skipped: 0 }]),
-  );
+  const perLaw = new Map<
+    SurvivalLaw,
+    { held: number; broken: number; skipped: number }
+  >(LAW_ORDER.map((law) => [law, { held: 0, broken: 0, skipped: 0 }]));
   const byMechanism = new Map<string, number>();
   const byContainer = new Map<string, number>();
 
@@ -345,7 +369,10 @@ const report = (census: Census, sweep: ValueSweep): void => {
     // A pair lost because its container is says nothing about the container it
     // is declared in; charging it there would rank the wrong containers first.
     if (loss !== LOSS_MECHANISMS.containerLost) {
-      byContainer.set(outcome.container, (byContainer.get(outcome.container) ?? 0) + 1);
+      byContainer.set(
+        outcome.container,
+        (byContainer.get(outcome.container) ?? 0) + 1,
+      );
     }
   }
 
@@ -368,11 +395,15 @@ const report = (census: Census, sweep: ValueSweep): void => {
   console.log(
     `losses ${Object.keys(baseline.losses).length}, value-only losses ${Object.keys(baseline.valueLosses).length}, by mechanism:`,
   );
-  for (const [mechanism, count] of [...byMechanism].sort(([, a], [, b]) => b - a)) {
+  for (const [mechanism, count] of [...byMechanism].sort(
+    ([, a], [, b]) => b - a,
+  )) {
     console.log(`  ${count.toString().padStart(5)}  ${mechanism}`);
   }
   console.log("top containers by loss count, the container's own losses only:");
-  for (const [container, count] of [...byContainer].sort(([, a], [, b]) => b - a).slice(0, 15)) {
+  for (const [container, count] of [...byContainer]
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 15)) {
     console.log(`  ${count.toString().padStart(5)}  ${container}`);
   }
   if (unrepresentable > 0) {
@@ -419,7 +450,9 @@ const runCensus = async (options: Options): Promise<number> => {
   // measured, so they are worth writing only under a slot whose pair survived:
   // under a lost one they report the same loss once per spelling.
   const survivors = new Set(
-    outcomes.filter((outcome) => lossOf(outcome) === undefined).map(({ key }) => key),
+    outcomes
+      .filter((outcome) => lossOf(outcome) === undefined)
+      .map(({ key }) => key),
   );
   const valueSubjects: Subject[] = [];
   for (const subject of subjects) {
@@ -430,7 +463,10 @@ const runCensus = async (options: Options): Promise<number> => {
       valueSubjects.push({ kind: "attribute", slot: subject.slot, value });
     }
   }
-  const valueOutcomes = [...representativeOutcomes, ...(await runValueSubjects(valueSubjects))];
+  const valueOutcomes = [
+    ...representativeOutcomes,
+    ...(await runValueSubjects(valueSubjects)),
+  ];
 
   const census = censusOf(outcomes, valueOutcomes);
   report(census, {
@@ -439,12 +475,20 @@ const runCensus = async (options: Options): Promise<number> => {
   });
 
   if (options.writeBaseline) {
-    if (options.only !== undefined || options.limit !== undefined || options.kind !== undefined) {
+    if (
+      options.only !== undefined ||
+      options.limit !== undefined ||
+      options.kind !== undefined
+    ) {
       throw new ContainerSurvivalError({
-        message: "a baseline may only be written from a full sweep; drop --only/--limit/--kind",
+        message:
+          "a baseline may only be written from a full sweep; drop --only/--limit/--kind",
       });
     }
-    await Bun.write(BASELINE_PATH, `${JSON.stringify(census.baseline, null, 2)}\n`);
+    await Bun.write(
+      BASELINE_PATH,
+      `${JSON.stringify(census.baseline, null, 2)}\n`,
+    );
     console.log(`wrote ${path.relative(REPOSITORY_ROOT, BASELINE_PATH)}`);
     return 0;
   }
@@ -453,8 +497,14 @@ const runCensus = async (options: Options): Promise<number> => {
     return 0;
   }
   const scoped =
-    options.only !== undefined || options.limit !== undefined || options.kind !== undefined;
-  const problems = compareToBaseline(census.baseline, await loadBaseline(), scoped);
+    options.only !== undefined ||
+    options.limit !== undefined ||
+    options.kind !== undefined;
+  const problems = compareToBaseline(
+    census.baseline,
+    await loadBaseline(),
+    scoped,
+  );
   for (const problem of problems) {
     console.error(`  ${problem}`);
   }
@@ -470,7 +520,10 @@ const runCensus = async (options: Options): Promise<number> => {
  * among others — read as "survives", which is the opposite of what it means,
  * and it is the first line a reader of that class hits.
  */
-export const explainedOutcome = ({ unrepresentable, mechanism }: PairOutcome): string =>
+export const explainedOutcome = ({
+  unrepresentable,
+  mechanism,
+}: PairOutcome): string =>
   unrepresentable === null
     ? `mechanism: ${mechanism ?? "survives"}`
     : `unrepresentable: ${unrepresentable}`;
@@ -484,7 +537,10 @@ export const explainedOutcome = ({ unrepresentable, mechanism }: PairOutcome): s
  */
 const explainPairs = async (options: Options): Promise<number> => {
   const space = await loadContainerSpace();
-  for (const subject of select(space, { ...options, limit: options.limit ?? 5 })) {
+  for (const subject of select(space, {
+    ...options,
+    limit: options.limit ?? 5,
+  })) {
     const built = buildFixture(space, subject);
     console.log(`--- ${subjectKey(subject).replaceAll(/\{[^}]*\}/gu, "")}`);
     if (built.status !== "built") {
@@ -493,7 +549,12 @@ const explainPairs = async (options: Options): Promise<number> => {
     }
     const outcome = await runSurvivalLaws(space, subject);
     const forced = await forcedSavePart(built.fixture);
-    const probe = probeOf({ space, subject, fixture: built.fixture, xml: forced });
+    const probe = probeOf({
+      space,
+      subject,
+      fixture: built.fixture,
+      xml: forced,
+    });
     console.log(`    ${explainedOutcome(outcome)}`);
     console.log(`    part: ${built.fixture.part.path}`);
     // Where the law looked and how many it wanted: a pair reported lost that
@@ -511,11 +572,16 @@ const explainPairs = async (options: Options): Promise<number> => {
 
 const printFixtures = async (options: Options): Promise<number> => {
   const space = await loadContainerSpace();
-  for (const subject of select(space, { ...options, limit: options.limit ?? 3 })) {
+  for (const subject of select(space, {
+    ...options,
+    limit: options.limit ?? 3,
+  })) {
     const built = buildFixture(space, subject);
     console.log(`--- ${subjectKey(subject)}`);
     console.log(
-      built.status === "built" ? built.fixture.documentXml : `unrepresentable: ${built.reason}`,
+      built.status === "built"
+        ? built.fixture.documentXml
+        : `unrepresentable: ${built.reason}`,
     );
   }
   return 0;

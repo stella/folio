@@ -85,7 +85,9 @@ describe("parseBlockContent — block-level w:sdt preservation", () => {
     // The modelled type stays "richText" — folio does not model a repeating
     // section — and the element itself rides in the property set's sink.
     expect(sdt.properties.sdtType).toBe("richText");
-    expect(sdt.properties.preserved?.children?.[0]?.xml).toContain("repeatingSection");
+    expect(sdt.properties.preserved?.children?.[0]?.xml).toContain(
+      "repeatingSection",
+    );
   });
 
   test("captures w:sdtEndPr verbatim into rawEndPropertiesXml", () => {

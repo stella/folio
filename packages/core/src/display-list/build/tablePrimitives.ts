@@ -14,17 +14,17 @@
  */
 
 import {
-  placeTableCellBlock,
   createTableCellFlowState,
+  placeTableCellBlock,
 } from "../../layout-engine/measure/tableCellFlow";
 import {
+  buildTableCellGrid,
   buildTableCellPlacements,
   getSourceCellAt,
   getTableCellSpacingInsetsY,
-  buildTableCellGrid,
 } from "../../layout-engine/measure/tableCellGrid";
-import { resolveTableCellPadding } from "../../layout-engine/types";
 import { tableFragmentBottomBorders } from "../../layout-engine/measure/tableFragmentBorderGeometry";
+import { resolveTableCellPadding } from "../../layout-engine/types";
 import type {
   CellBorderSpec,
   FlowBlock,
@@ -39,16 +39,16 @@ import type {
   TextBoxMeasure,
 } from "../../layout-engine/types";
 import { cellTextRotationDegrees } from "../../layout-painter/renderTable";
+import { paintsCssBorder } from "../../utils/borderCss";
+import { HIT_REGION_KINDS } from "../primitives";
 import type { DisplayPrimitive, DisplayRect, DisplayStroke } from "../types";
 import type { BuildContext } from "./buildContext";
-import { HIT_REGION_KINDS } from "../primitives";
-import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { parseDisplayColor } from "./colors";
 import { paintImageFragment } from "./imagePrimitives";
 import { paintParagraphFragment } from "./paragraphPrimitives";
+import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { resolveBorderStroke } from "./strokes";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
-import { paintsCssBorder } from "../../utils/borderCss";
 
 /** A cell edge is "visible" for collapse purposes on style alone, as the painter decides it. */
 const hasVisibleBorder = (border: CellBorderSpec | undefined): boolean =>
@@ -118,7 +118,12 @@ const paintCell = ({
     if (fill) {
       primitives.push({
         kind: "rect",
-        rect: { xPx: box.xPx, yPx: box.yPx, widthPx: box.widthPx, heightPx: box.heightPx },
+        rect: {
+          xPx: box.xPx,
+          yPx: box.yPx,
+          widthPx: box.widthPx,
+          heightPx: box.heightPx,
+        },
         fill,
       });
     } else {
@@ -132,11 +137,15 @@ const paintCell = ({
 
   const borders = cell.borders;
   const strokes = {
-    top: sides.top ? strokeFor(borders?.top, context, "table cell top border") : undefined,
+    top: sides.top
+      ? strokeFor(borders?.top, context, "table cell top border")
+      : undefined,
     bottom: sides.bottom
       ? strokeFor(borders?.bottom, context, "table cell bottom border")
       : undefined,
-    left: sides.left ? strokeFor(borders?.left, context, "table cell left border") : undefined,
+    left: sides.left
+      ? strokeFor(borders?.left, context, "table cell left border")
+      : undefined,
     right: strokeFor(borders?.right, context, "table cell right border"),
   };
 
@@ -195,7 +204,10 @@ const paintCell = ({
   const contentYPx = box.yPx + widths.top + padding.top;
   // Measurement used `cellWidth - padLeft - padRight`, so paint must too:
   // subtracting the border widths as well would wrap text the engine did not.
-  const contentWidthPx = Math.max(0, cellMeasure.width - padding.left - padding.right);
+  const contentWidthPx = Math.max(
+    0,
+    cellMeasure.width - padding.left - padding.right,
+  );
 
   // Every direction the painter turns, not the two that were spelled here: a
   // vertical flow this builder paints horizontally is the same report whichever
@@ -308,21 +320,25 @@ const paintCellBlocks = ({
         fromLine: 0,
         toLine: measure.lines.length,
       } as const;
-      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.paragraph, context }), () => {
-        paintParagraphFragment({
-          composer,
-          fragment,
-          block,
-          measure,
-          context,
-          ...(previous?.kind === "paragraph" && previous.attrs?.borders !== undefined
-            ? { prevBorders: previous.attrs.borders }
-            : {}),
-          ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
-            ? { nextBorders: next.attrs.borders }
-            : {}),
-        });
-      });
+      composer.region(
+        blockRegion({ fragment, kind: HIT_REGION_KINDS.paragraph, context }),
+        () => {
+          paintParagraphFragment({
+            composer,
+            fragment,
+            block,
+            measure,
+            context,
+            ...(previous?.kind === "paragraph" &&
+            previous.attrs?.borders !== undefined
+              ? { prevBorders: previous.attrs.borders }
+              : {}),
+            ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
+              ? { nextBorders: next.attrs.borders }
+              : {}),
+          });
+        },
+      );
       continue;
     }
 
@@ -334,17 +350,20 @@ const paintCellBlocks = ({
         width: measure.totalWidth,
         height: measure.totalHeight,
       };
-      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.table, context }), () => {
-        paintTableBlock({
-          composer,
-          block,
-          measure,
-          xPx: fragment.x,
-          yPx: fragment.y,
-          context,
-          paintTextBox,
-        });
-      });
+      composer.region(
+        blockRegion({ fragment, kind: HIT_REGION_KINDS.table, context }),
+        () => {
+          paintTableBlock({
+            composer,
+            block,
+            measure,
+            xPx: fragment.x,
+            yPx: fragment.y,
+            context,
+            paintTextBox,
+          });
+        },
+      );
       continue;
     }
 
@@ -357,9 +376,12 @@ const paintCellBlocks = ({
         width: measure.width,
         height: measure.height,
       } as const;
-      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.image, context }), () => {
-        composer.push(paintImageFragment(fragment, block, context));
-      });
+      composer.region(
+        blockRegion({ fragment, kind: HIT_REGION_KINDS.image, context }),
+        () => {
+          composer.push(paintImageFragment(fragment, block, context));
+        },
+      );
       continue;
     }
 
@@ -372,9 +394,12 @@ const paintCellBlocks = ({
         width: measure.width,
         height: measure.height,
       } as const;
-      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.textBox, context }), () => {
-        paintTextBox({ composer, fragment, block, measure, context });
-      });
+      composer.region(
+        blockRegion({ fragment, kind: HIT_REGION_KINDS.textBox, context }),
+        () => {
+          paintTextBox({ composer, fragment, block, measure, context });
+        },
+      );
       continue;
     }
 
@@ -442,7 +467,10 @@ const paintTableBody = ({
         rect: {
           xPx,
           yPx: rowYPx,
-          widthPx: measure.columnWidths.reduce((total, width) => total + width, 0),
+          widthPx: measure.columnWidths.reduce(
+            (total, width) => total + width,
+            0,
+          ),
           heightPx: rowMeasure.height,
         },
         model: { rowIndex },
@@ -474,7 +502,9 @@ const paintTableBody = ({
       const spanEnd = Math.min(rowTops.length - 1, rowIndex + rowSpan);
       const slotHeightPx =
         // SAFETY: both indices are inside `rowTops`, which has rows.length + 1 entries.
-        spanEnd > rowIndex ? rowTops[spanEnd]! - rowTops[rowIndex]! : rowMeasure.height;
+        spanEnd > rowIndex
+          ? rowTops[spanEnd]! - rowTops[rowIndex]!
+          : rowMeasure.height;
       const spacing = getTableCellSpacingInsetsY(
         block.cellSpacing,
         rowIndex,
@@ -485,9 +515,14 @@ const paintTableBody = ({
 
       const atLogicalStart = placement.sourceColumn === 0;
       const atLogicalEnd =
-        placement.sourceColumn + placement.columnSpan >= measure.columnWidths.length;
+        placement.sourceColumn + placement.columnSpan >=
+        measure.columnWidths.length;
       const isFirstColumn = block.bidi === true ? atLogicalEnd : atLogicalStart;
-      const aboveCell = getSourceCellAt(grid, rowIndex - 1, placement.sourceColumn);
+      const aboveCell = getSourceCellAt(
+        grid,
+        rowIndex - 1,
+        placement.sourceColumn,
+      );
       const leftNeighborColumn =
         block.bidi === true
           ? placement.sourceColumn + placement.columnSpan
@@ -524,7 +559,9 @@ const paintTableBody = ({
                 !hasVisibleBorder(aboveCell?.borders?.bottom),
               bottom: true,
               left:
-                bordersSeparated || isFirstColumn || !hasVisibleBorder(leftCell?.borders?.right),
+                bordersSeparated ||
+                isFirstColumn ||
+                !hasVisibleBorder(leftCell?.borders?.right),
               right: true,
             },
           });
@@ -568,7 +605,8 @@ const paintFragmentBottomBorders = ({
   measure,
   context,
 }: PaintFragmentBottomBordersOptions): void => {
-  if (fragment.continuesOnNext !== true || fragment.bottomClip === undefined) return;
+  if (fragment.continuesOnNext !== true || fragment.bottomClip === undefined)
+    return;
 
   const primitives: DisplayPrimitive[] = [];
   for (const { left, width, border } of tableFragmentBottomBorders({
@@ -646,7 +684,8 @@ export const paintTableFragment = ({
   context,
   paintTextBox,
 }: TablePaintOptions): void => {
-  const headerRowCount = fragment.continuesFromPrev === true ? (fragment.headerRowCount ?? 0) : 0;
+  const headerRowCount =
+    fragment.continuesFromPrev === true ? (fragment.headerRowCount ?? 0) : 0;
   let headerHeightPx = 0;
   for (let rowIndex = 0; rowIndex < headerRowCount; rowIndex += 1) {
     headerHeightPx += measure.rows[rowIndex]?.height ?? 0;

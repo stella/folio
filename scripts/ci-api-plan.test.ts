@@ -1,8 +1,15 @@
 /** Workspace and Git fixtures enumerate the API gate's source and control boundaries. */
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
 import {
   apiRequiredForPaths,
   changedApiPaths,
@@ -12,7 +19,8 @@ import {
 
 const fixtures = new Set<string>();
 afterEach(() => {
-  for (const fixture of fixtures) rmSync(fixture, { recursive: true, force: true });
+  for (const fixture of fixtures)
+    rmSync(fixture, { recursive: true, force: true });
   fixtures.clear();
 });
 
@@ -21,7 +29,10 @@ const write = (repoRoot: string, file: string, contents: string) => {
   mkdirSync(path.dirname(destination), { recursive: true });
   writeFileSync(destination, contents);
 };
-type FixtureOptions = { workspaces: unknown; manifests: Readonly<Record<string, unknown>> };
+type FixtureOptions = {
+  workspaces: unknown;
+  manifests: Readonly<Record<string, unknown>>;
+};
 const fixture = ({ workspaces, manifests }: FixtureOptions) => {
   const repoRoot = mkdtempSync(path.join(tmpdir(), "folio-ci-api-"));
   fixtures.add(repoRoot);
@@ -52,7 +63,11 @@ const snapshot = (repoRoot: string, parent?: string) => {
   const tree = git({ repoRoot, args: ["write-tree"] });
   const parents = parent === undefined ? "" : `parent ${parent}\n`;
   const input = `tree ${tree}\n${parents}author Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\nfixture\n`;
-  return git({ repoRoot, args: ["hash-object", "-t", "commit", "-w", "--stdin"], input });
+  return git({
+    repoRoot,
+    args: ["hash-object", "-t", "commit", "-w", "--stdin"],
+    input,
+  });
 };
 const gitFixture = () => {
   const repoRoot = fixture({
@@ -63,8 +78,16 @@ const gitFixture = () => {
     },
   });
   git({ repoRoot, args: ["init", "--quiet"] });
-  write(repoRoot, "modules/public/src/original.ts", "export const original = 1;\n");
-  write(repoRoot, "modules/private/src/private.ts", "export const privateValue = 1;\n");
+  write(
+    repoRoot,
+    "modules/public/src/original.ts",
+    "export const original = 1;\n",
+  );
+  write(
+    repoRoot,
+    "modules/private/src/private.ts",
+    "export const privateValue = 1;\n",
+  );
   write(repoRoot, "docs/guide.md", "guide\n");
   return { repoRoot, base: snapshot(repoRoot) };
 };
@@ -83,7 +106,12 @@ describe("manifest-derived published API scope", () => {
   });
   test("root globs discover each non-private workspace, deduplicate overlaps and honor exclusions", () => {
     const repoRoot = fixture({
-      workspaces: ["modules/*", "modules/open", "plugins/deep/*", "!modules/excluded"],
+      workspaces: [
+        "modules/*",
+        "modules/open",
+        "plugins/deep/*",
+        "!modules/excluded",
+      ],
       manifests: {
         "modules/open": { name: "implicit-public" },
         "modules/explicit": { name: "explicit-public", private: false },
@@ -98,7 +126,11 @@ describe("manifest-derived published API scope", () => {
       "modules/open",
       "plugins/deep/adapter",
     ]);
-    write(repoRoot, "modules/new-package/package.json", JSON.stringify({ name: "new-public" }));
+    write(
+      repoRoot,
+      "modules/new-package/package.json",
+      JSON.stringify({ name: "new-public" }),
+    );
     const published = publishedPackagePaths(repoRoot);
     expect(published).toContain("modules/new-package");
     for (const directory of published)
@@ -121,7 +153,11 @@ describe("manifest-derived published API scope", () => {
       workspaces: ["modules/*"],
       manifests: { "modules/first": { name: "first" } },
     });
-    write(repoRoot, "modules/new-package/package.json", JSON.stringify({ name: "new-package" }));
+    write(
+      repoRoot,
+      "modules/new-package/package.json",
+      JSON.stringify({ name: "new-package" }),
+    );
     const published = publishedPackagePaths(repoRoot);
     expect(published).toContain("modules/new-package");
     for (const directory of published)
@@ -152,11 +188,19 @@ describe("manifest-derived published API scope", () => {
       "modules/private/tsconfig.json",
       "api-reports/README.md",
     ];
-    expect(apiRequiredForPaths({ changedPaths: [], publishedPackagePaths: published })).toBe(false);
+    expect(
+      apiRequiredForPaths({
+        changedPaths: [],
+        publishedPackagePaths: published,
+      }),
+    ).toBe(false);
     for (const file of outside)
-      expect(apiRequiredForPaths({ changedPaths: [file], publishedPackagePaths: published })).toBe(
-        false,
-      );
+      expect(
+        apiRequiredForPaths({
+          changedPaths: [file],
+          publishedPackagePaths: published,
+        }),
+      ).toBe(false);
     for (const file of [
       "package.json",
       "modules/public/package.json",
@@ -171,9 +215,12 @@ describe("manifest-derived published API scope", () => {
       "scripts/ci-api-plan.test.ts",
       "scripts/ci-run-contract.json",
     ])
-      expect(apiRequiredForPaths({ changedPaths: [file], publishedPackagePaths: published })).toBe(
-        true,
-      );
+      expect(
+        apiRequiredForPaths({
+          changedPaths: [file],
+          publishedPackagePaths: published,
+        }),
+      ).toBe(true);
   });
 
   test("malformed roots and workspace manifests cannot quietly remove a package from scope", () => {
@@ -186,10 +233,19 @@ describe("manifest-derived published API scope", () => {
       ["!modules/*"],
       ["missing/*"],
     ]) {
-      const repoRoot = fixture({ workspaces, manifests: { "modules/public": { name: "public" } } });
+      const repoRoot = fixture({
+        workspaces,
+        manifests: { "modules/public": { name: "public" } },
+      });
       expect(() => publishedPackagePaths(repoRoot)).toThrow();
     }
-    for (const manifest of [null, [], {}, { name: "" }, { name: "public", private: "true" }]) {
+    for (const manifest of [
+      null,
+      [],
+      {},
+      { name: "" },
+      { name: "public", private: "true" },
+    ]) {
       const repoRoot = fixture({
         workspaces: ["modules/*"],
         manifests: { "modules/public": manifest },
@@ -225,7 +281,10 @@ describe("manifest-derived published API scope", () => {
         }),
       ).toThrow();
     expect(() =>
-      apiRequiredForPaths({ changedPaths: [], publishedPackagePaths: ["../outside"] }),
+      apiRequiredForPaths({
+        changedPaths: [],
+        publishedPackagePaths: ["../outside"],
+      }),
     ).toThrow();
   });
 });
@@ -239,7 +298,11 @@ describe("manifest-derived packed dependency scope", () => {
         "modules/private": { name: "private", private: true },
       },
     });
-    write(repoRoot, "modules/new/package.json", JSON.stringify({ name: "new" }));
+    write(
+      repoRoot,
+      "modules/new/package.json",
+      JSON.stringify({ name: "new" }),
+    );
     const published = publishedPackagePaths(repoRoot);
     for (const file of [
       ...published.map((directory) => `${directory}/src/nested/entry.ts`),
@@ -308,7 +371,10 @@ describe("manifest-derived packed dependency scope", () => {
 describe("PR diff and fail-closed CLI", () => {
   test("renames out of published source and deletions retain their source paths", () => {
     const { repoRoot, base } = gitFixture();
-    const contents = readFileSync(path.join(repoRoot, "modules/public/src/original.ts"), "utf8");
+    const contents = readFileSync(
+      path.join(repoRoot, "modules/public/src/original.ts"),
+      "utf8",
+    );
     rmSync(path.join(repoRoot, "modules/public/src/original.ts"));
     write(repoRoot, "docs/moved.ts", contents);
     const head = snapshot(repoRoot, base);
@@ -317,7 +383,10 @@ describe("PR diff and fail-closed CLI", () => {
       new Set(["docs/moved.ts", "modules/public/src/original.ts"]),
     );
     expect(
-      apiRequiredForPaths({ changedPaths, publishedPackagePaths: publishedPackagePaths(repoRoot) }),
+      apiRequiredForPaths({
+        changedPaths,
+        publishedPackagePaths: publishedPackagePaths(repoRoot),
+      }),
     ).toBe(true);
     rmSync(path.join(repoRoot, "docs/moved.ts"));
     const deleted = snapshot(repoRoot, head);
@@ -333,16 +402,24 @@ describe("PR diff and fail-closed CLI", () => {
     rmSync(path.join(repoRoot, "modules/public/src/base-only.ts"));
     write(repoRoot, "docs/name with\na newline.md", "head branch\n");
     const head = snapshot(repoRoot, ancestor);
-    expect(changedApiPaths({ repoRoot, base, head })).toEqual(["docs/name with\na newline.md"]);
+    expect(changedApiPaths({ repoRoot, base, head })).toEqual([
+      "docs/name with\na newline.md",
+    ]);
     expect(changedApiPaths({ repoRoot, base: head, head })).toEqual([]);
     expect(() => changedApiPaths({ repoRoot, base: "HEAD", head })).toThrow();
-    expect(() => changedApiPaths({ repoRoot, base: "0".repeat(40), head })).toThrow();
+    expect(() =>
+      changedApiPaths({ repoRoot, base: "0".repeat(40), head }),
+    ).toThrow();
   });
 
   test("CLI writes true or false for real diffs, and true plus a failing exit for every boundary failure", () => {
     const { repoRoot, base } = gitFixture();
     write(repoRoot, "docs/guide.md", "updated guide\n");
-    write(repoRoot, "modules/private/src/private.ts", "updated private source\n");
+    write(
+      repoRoot,
+      "modules/private/src/private.ts",
+      "updated private source\n",
+    );
     const docsHead = snapshot(repoRoot, base);
     write(repoRoot, "modules/public/src/new.txt", "published source asset\n");
     const sourceHead = snapshot(repoRoot, docsHead);
@@ -350,7 +427,11 @@ describe("PR diff and fail-closed CLI", () => {
     const run = (args: string[]) => {
       writeFileSync(output, "previous=value\n");
       const result = Bun.spawnSync(
-        [process.execPath, path.join(import.meta.dir, "ci-api-plan.ts"), ...args],
+        [
+          process.execPath,
+          path.join(import.meta.dir, "ci-api-plan.ts"),
+          ...args,
+        ],
         {
           cwd: path.join(repoRoot, "modules/private"),
           stdout: "pipe",
@@ -366,12 +447,14 @@ describe("PR diff and fail-closed CLI", () => {
     };
     expect(run(["--base", base, "--head", docsHead])).toEqual({
       exitCode: 0,
-      output: "previous=value\napi_required=false\npackaged_consumer_required=false\n",
+      output:
+        "previous=value\napi_required=false\npackaged_consumer_required=false\n",
       stderr: "",
     });
     expect(run(["--head", sourceHead, "--base", base])).toEqual({
       exitCode: 0,
-      output: "previous=value\napi_required=true\npackaged_consumer_required=true\n",
+      output:
+        "previous=value\napi_required=true\npackaged_consumer_required=true\n",
       stderr: "",
     });
     for (const args of [

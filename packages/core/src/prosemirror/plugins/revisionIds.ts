@@ -10,8 +10,8 @@
  * without a load-order cycle.
  */
 
-import type { Node as PmNode } from "prosemirror-model";
 import { TaggedError } from "better-result";
+import type { Node as PmNode } from "prosemirror-model";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
@@ -26,7 +26,9 @@ import { MAX_REVISION_ID } from "@stll/docx-core/model";
 let counter = 1;
 const occupiedIds = new Set<number>();
 
-export class RevisionIdAllocationError extends TaggedError("RevisionIdAllocationError")<{
+export class RevisionIdAllocationError extends TaggedError(
+  "RevisionIdAllocationError",
+)<{
   message: string;
   first: number;
   next: number;
@@ -37,7 +39,9 @@ const largestFreeIntervalStart = (reservedIds: ReadonlySet<number>): number => {
   let first = 1;
   let bestFirst = 1;
   let bestSize = 0;
-  const boundaries = [...reservedIds].filter((id) => id > 0).toSorted((a, b) => a - b);
+  const boundaries = [...reservedIds]
+    .filter((id) => id > 0)
+    .toSorted((a, b) => a - b);
   boundaries.push(MAX_REVISION_ID + 1);
   for (const boundary of boundaries) {
     const size = boundary - first;
@@ -66,15 +70,19 @@ export const revisionIdSeedAbove = (existingIds: Iterable<number>): number => {
     reservedIds.add(id);
     maxId = Math.max(maxId, id);
   }
-  return maxId < MAX_REVISION_ID ? maxId + 1 : largestFreeIntervalStart(reservedIds);
+  return maxId < MAX_REVISION_ID
+    ? maxId + 1
+    : largestFreeIntervalStart(reservedIds);
 };
 
 /** The next free id, including after the signed 32-bit boundary wraps. */
 export const nextRevisionId = (): number => {
-  if (counter > MAX_REVISION_ID) counter = largestFreeIntervalStart(occupiedIds);
+  if (counter > MAX_REVISION_ID)
+    counter = largestFreeIntervalStart(occupiedIds);
   while (occupiedIds.has(counter)) {
     counter += 1;
-    if (counter > MAX_REVISION_ID) counter = largestFreeIntervalStart(occupiedIds);
+    if (counter > MAX_REVISION_ID)
+      counter = largestFreeIntervalStart(occupiedIds);
     if (occupiedIds.size >= MAX_REVISION_ID) {
       throw new RevisionIdAllocationError({
         message: "Revision id space exhausted",
@@ -158,11 +166,19 @@ const DIRECT_REVISION_ATTR_KEYS = ["trIns", "trDel"] as const;
  * Preserve the editor's conservative annotation seeding: revisions reserve
  * comment and bookmark ids too, although OOXML defines separate id spaces.
  */
-const visitAnnotationIds = (doc: PmNode, visit: (id: number) => void): number => {
+const visitAnnotationIds = (
+  doc: PmNode,
+  visit: (id: number) => void,
+): number => {
   let max = 0;
 
   const consider = (id: unknown): void => {
-    if (typeof id === "number" && Number.isInteger(id) && id >= 0 && id <= MAX_REVISION_ID) {
+    if (
+      typeof id === "number" &&
+      Number.isInteger(id) &&
+      id >= 0 &&
+      id <= MAX_REVISION_ID
+    ) {
       visit(id);
       max = Math.max(max, id);
     }
@@ -171,7 +187,8 @@ const visitAnnotationIds = (doc: PmNode, visit: (id: number) => void): number =>
   const considerMetadata = (value: unknown): void => {
     if (typeof value !== "object" || value === null) return;
     for (const [key, child] of Object.entries(value)) {
-      if (key === "id" || key === "revisionId" || key === "commentId") consider(child);
+      if (key === "id" || key === "revisionId" || key === "commentId")
+        consider(child);
       else considerMetadata(child);
     }
   };
@@ -199,7 +216,8 @@ const visitAnnotationIds = (doc: PmNode, visit: (id: number) => void): number =>
   return max;
 };
 
-export const maxAnnotationIdInDoc = (doc: PmNode): number => visitAnnotationIds(doc, () => {});
+export const maxAnnotationIdInDoc = (doc: PmNode): number =>
+  visitAnnotationIds(doc, () => {});
 
 /**
  * Raise the counter above every annotation id already present in `doc`.

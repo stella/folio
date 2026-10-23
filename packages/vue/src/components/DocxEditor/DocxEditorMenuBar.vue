@@ -26,7 +26,9 @@
         :show-help-menu="showHelpMenu"
         :show-table-insert="showTableInsert"
         @action="(action: string) => emit('menu-action', action)"
-        @insert-table="(rows: number, cols: number) => emit('insert-table', rows, cols)"
+        @insert-table="
+          (rows: number, cols: number) => emit('insert-table', rows, cols)
+        "
       />
     </div>
     <div class="docx-editor-vue__title-bar-right">

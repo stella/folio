@@ -1,4 +1,4 @@
-import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
+import { redo, undo } from "prosemirror-history";
 /**
  * Hidden-editor imperative API
  *
@@ -7,30 +7,32 @@ import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
  * destruction guard, so the same imperative handle can be driven from the
  * React component or a headless controller without depending on React.
  */
-
-import type { DocumentOp, OpStory, FormattingPatch } from "@stll/docx-core/ops";
 import type { Node as PMNode } from "prosemirror-model";
-
-import { undo, redo } from "prosemirror-history";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { NodeSelection, Selection, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 
-import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
-import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import type { Document, SectionProperties } from "../types/document";
-import type { Comment } from "../types/content";
-import type { CanonicalSectionPropertiesResult } from "../types/canonicalSections";
+import type { DocumentOp, FormattingPatch, OpStory } from "@stll/docx-core/ops";
+
 import type {
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
 } from "../document-operations";
-import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
-import type { CanonicalCommentRequest, CanonicalCommentResult } from "../types/canonicalComments";
-import type { CanonicalSessionMode } from "./canonicalSession";
+import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import type {
+  CanonicalCommentRequest,
+  CanonicalCommentResult,
+} from "../types/canonicalComments";
+import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
+import type { CanonicalSectionPropertiesResult } from "../types/canonicalSections";
+import type { Comment } from "../types/content";
+import type { Document, SectionProperties } from "../types/document";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
+import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
+import type { CanonicalSessionMode } from "./canonicalSession";
 
 type CanonicalStoryHistoryOptions = {
   view: EditorView;
@@ -40,7 +42,9 @@ type CanonicalStoryHistoryOptions = {
 type CanonicalStoryTextOptions = {
   view: EditorView;
   story: OpStory;
-  intent: Parameters<Parameters<typeof createCanonicalInputBoundary>[0]["replace"]>[0];
+  intent: Parameters<
+    Parameters<typeof createCanonicalInputBoundary>[0]["replace"]
+  >[0];
 };
 
 export type HiddenEditorApi = {
@@ -72,14 +76,20 @@ export type HiddenEditorApi = {
   updateCanonicalInputLifecycle: (
     action: "beginComposition" | "endComposition" | "breakUndoGroup",
   ) => boolean;
-  applyCanonicalStoryHistory: (options: CanonicalStoryHistoryOptions) => boolean;
+  applyCanonicalStoryHistory: (
+    options: CanonicalStoryHistoryOptions,
+  ) => boolean;
   applyCanonicalOperations: (ops: readonly DocumentOp[]) => boolean;
-  applyCanonicalComment: (request: CanonicalCommentRequest) => CanonicalCommentResult | null;
+  applyCanonicalComment: (
+    request: CanonicalCommentRequest,
+  ) => CanonicalCommentResult | null;
   /** Apply a final-section patch; null is reserved for default sessions. */
   applyCanonicalSectionProperties: (
     patch: FormattingPatch<SectionProperties>,
   ) => CanonicalSectionPropertiesResult | null;
-  getCanonicalStorySelection: (story: OpStory) => { anchor: number; head: number } | null;
+  getCanonicalStorySelection: (
+    story: OpStory,
+  ) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
   applyCanonicalDocumentOperations: (
@@ -127,7 +137,10 @@ export type HiddenEditorApiDeps = {
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
   resolveCanonicalRevisions?: HiddenEditorApi["resolveCanonicalRevisions"];
   executeCanonicalCommand?: (command: Command) => boolean | undefined;
-  getCanonicalHistory?: () => Pick<HiddenEditorApi, "undo" | "redo" | "canUndo" | "canRedo"> | null;
+  getCanonicalHistory?: () => Pick<
+    HiddenEditorApi,
+    "undo" | "redo" | "canUndo" | "canRedo"
+  > | null;
   canonicalOperations?: Pick<
     HiddenEditorApi,
     | "updateCanonicalInputLifecycle"
@@ -149,17 +162,24 @@ export type HiddenEditorApiDeps = {
 /**
  * Convert PM state to Document
  */
-const stateToDocument = (state: EditorState, originalDoc: Document | null): Document | null => {
+const stateToDocument = (
+  state: EditorState,
+  originalDoc: Document | null,
+): Document | null => {
   if (!originalDoc) {
     return null;
   }
 
   // fromProseDoc preserves the base document structure when provided
   // canonical-gap: pm-save-projection
-  return fromProseDoc(state.doc, originalDoc, { stylesheetSource: { type: "package" } });
+  return fromProseDoc(state.doc, originalDoc, {
+    stylesheetSource: { type: "package" },
+  });
 };
 
-export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorApi => {
+export const createHiddenEditorApi = (
+  deps: HiddenEditorApiDeps,
+): HiddenEditorApi => {
   // Skip dispatching while the view is being destroyed. Every dispatching
   // method routes through this so the framework-agnostic API is self-sufficient
   // rather than relying on the host view's dispatchTransaction backstop.
@@ -177,11 +197,14 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     const { state } = view;
     const docEnd = state.doc.content.size;
     const clampedAnchor = Math.max(0, Math.min(anchor, docEnd));
-    const clampedHead = head === undefined ? clampedAnchor : Math.max(0, Math.min(head, docEnd));
+    const clampedHead =
+      head === undefined ? clampedAnchor : Math.max(0, Math.min(head, docEnd));
     const $anchor = state.doc.resolve(clampedAnchor);
     const $head = state.doc.resolve(clampedHead);
     const selection =
-      head === undefined ? Selection.near($anchor) : TextSelection.between($anchor, $head);
+      head === undefined
+        ? Selection.near($anchor)
+        : TextSelection.between($anchor, $head);
     dispatchTr(view, state.tr.setSelection(selection));
   };
 
@@ -194,24 +217,31 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
 
     getView: () => deps.getView() ?? null,
 
-    setCanonicalMode: (mode) => !deps.isDestroying() && (deps.setCanonicalMode?.(mode) ?? false),
+    setCanonicalMode: (mode) =>
+      !deps.isDestroying() && (deps.setCanonicalMode?.(mode) ?? false),
 
     resolveCanonicalRevisions: (revisionIds, resolution) =>
-      !deps.isDestroying() && (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
+      !deps.isDestroying() &&
+      (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
 
     getCanonicalComments: () => deps.getCanonicalComments?.() ?? null,
-    getCanonicalCommittedVersion: () => deps.getCanonicalCommittedVersion?.() ?? null,
+    getCanonicalCommittedVersion: () =>
+      deps.getCanonicalCommittedVersion?.() ?? null,
     captureCanonicalSave: () => deps.captureCanonicalSave?.() ?? null,
-    isCanonicalSaveCurrent: (version) => deps.isCanonicalSaveCurrent?.(version) ?? false,
+    isCanonicalSaveCurrent: (version) =>
+      deps.isCanonicalSaveCurrent?.(version) ?? false,
 
     getCanonicalDocument: () => {
       const canonical = deps.getCanonicalDocument?.();
-      return canonical ? cloneDocumentWithParagraphPropertySources(canonical) : null;
+      return canonical
+        ? cloneDocumentWithParagraphPropertySources(canonical)
+        : null;
     },
 
     getDocument: () => {
       const canonical = deps.getCanonicalDocument?.();
-      if (canonical) return cloneDocumentWithParagraphPropertySources(canonical);
+      if (canonical)
+        return cloneDocumentWithParagraphPropertySources(canonical);
       const view = deps.getView();
       if (!view) {
         return null;
@@ -237,7 +267,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       deps.canonicalOperations?.replaceCanonicalStoryText(options) ?? false,
 
     applyCanonicalDocumentOperations: (options) =>
-      deps.canonicalOperations?.applyCanonicalDocumentOperations(options) ?? null,
+      deps.canonicalOperations?.applyCanonicalDocumentOperations(options) ??
+      null,
     undoCanonicalDocumentOperations: (handle) =>
       deps.canonicalOperations?.undoCanonicalDocumentOperations(handle) ?? null,
 
@@ -340,7 +371,11 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       }
       const { state } = view;
       try {
-        const cellSel = CellSelection.create(state.doc, anchorCellPos, headCellPos);
+        const cellSel = CellSelection.create(
+          state.doc,
+          anchorCellPos,
+          headCellPos,
+        );
         dispatchTr(view, state.tr.setSelection(cellSel));
       } catch {
         // Fallback to text selection if positions aren't valid for CellSelection

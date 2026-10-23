@@ -20,13 +20,14 @@ import { type RefObject, useCallback, useMemo, useRef } from "react";
 import { PanelLeftOpenIcon, XIcon } from "lucide-react";
 import { useTranslations } from "use-intl";
 
+import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
+
 import { useFolioUI } from "../ui/folio-ui";
 import type { OutlineItem } from "../ui/folio-ui";
 import { headingId } from "./hooks/useActiveHeading";
 import { useDrawerFocus } from "./panelDrawer";
-import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 
 /** Where the outline sits: a column, a tick rail, or an opened in-flow panel. */
 export type DocumentOutlineSurface = "column" | "expanded" | "rail";
@@ -110,7 +111,10 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
     const map = new Map<string, number>();
     if (docSize > 0) {
       for (const heading of headings) {
-        map.set(headingId(heading), Math.min(99, Math.max(1, (heading.pmPos / docSize) * 100)));
+        map.set(
+          headingId(heading),
+          Math.min(99, Math.max(1, (heading.pmPos / docSize) * 100)),
+        );
       }
     }
     return map;
@@ -126,7 +130,10 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
     [onClose, onJump, surface],
   );
 
-  const resolvePct = useCallback((id: string) => pctById.get(id) ?? null, [pctById]);
+  const resolvePct = useCallback(
+    (id: string) => pctById.get(id) ?? null,
+    [pctById],
+  );
 
   if (!available) {
     return null;
@@ -186,7 +193,9 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
     >
       <div className="folio-outline-header">
         <div className="folio-outline-heading-row">
-          <span className="folio-outline-title">{t("editor.outlineTitle")}</span>
+          <span className="folio-outline-title">
+            {t("editor.outlineTitle")}
+          </span>
           {surface === "expanded" && onClose && (
             <button
               aria-label={t("common.closeDialog")}

@@ -15,18 +15,18 @@ import {
 } from "../../layout-engine/measure/tableCellGrid";
 import { resolveTableCellPadding } from "../../layout-engine/types";
 import type {
-  Layout,
-  Page,
-  Fragment,
-  ParagraphFragment,
-  TableFragment,
+  BlockId,
   FlowBlock,
+  Fragment,
+  Layout,
   Measure,
+  Page,
   ParagraphBlock,
+  ParagraphFragment,
   ParagraphMeasure,
   TableBlock,
+  TableFragment,
   TableMeasure,
-  BlockId,
 } from "../../layout-engine/types";
 
 // =============================================================================
@@ -208,7 +208,11 @@ function calculateParagraphFragmentHeight(
   fragment: ParagraphFragment,
   measure: ParagraphMeasure,
 ): number {
-  return measuredLineRangeHeight(measure.lines, fragment.fromLine, fragment.toLine);
+  return measuredLineRangeHeight(
+    measure.lines,
+    fragment.fromLine,
+    fragment.toLine,
+  );
 }
 
 /**
@@ -267,8 +271,10 @@ export function hitTestFragment(
     }
 
     // Check if point is within fragment bounds
-    const withinX = pagePoint.x >= fragment.x && pagePoint.x <= fragment.x + fragment.width;
-    const withinY = pagePoint.y >= fragment.y && pagePoint.y <= fragment.y + fragmentHeight;
+    const withinX =
+      pagePoint.x >= fragment.x && pagePoint.x <= fragment.x + fragment.width;
+    const withinY =
+      pagePoint.y >= fragment.y && pagePoint.y <= fragment.y + fragmentHeight;
 
     if (withinX && withinY) {
       return {
@@ -310,8 +316,10 @@ export function hitTestImageFragment(
       continue;
     }
 
-    const withinX = pagePoint.x >= fragment.x && pagePoint.x <= fragment.x + fragment.width;
-    const withinY = pagePoint.y >= fragment.y && pagePoint.y <= fragment.y + fragment.height;
+    const withinX =
+      pagePoint.x >= fragment.x && pagePoint.x <= fragment.x + fragment.width;
+    const withinY =
+      pagePoint.y >= fragment.y && pagePoint.y <= fragment.y + fragment.height;
 
     if (withinX && withinY) {
       return {
@@ -356,9 +364,11 @@ export function hitTestTableCell(
 
     // Check if point is within table bounds
     const withinX =
-      pagePoint.x >= tableFragment.x && pagePoint.x <= tableFragment.x + tableFragment.width;
+      pagePoint.x >= tableFragment.x &&
+      pagePoint.x <= tableFragment.x + tableFragment.width;
     const withinY =
-      pagePoint.y >= tableFragment.y && pagePoint.y <= tableFragment.y + tableFragment.height;
+      pagePoint.y >= tableFragment.y &&
+      pagePoint.y <= tableFragment.y + tableFragment.height;
     if (!withinX || !withinY) {
       continue;
     }
@@ -370,7 +380,12 @@ export function hitTestTableCell(
 
     const block = blocks[blockIndex];
     const measure = measures[blockIndex];
-    if (!block || block.kind !== "table" || !measure || measure.kind !== "table") {
+    if (
+      !block ||
+      block.kind !== "table" ||
+      !measure ||
+      measure.kind !== "table"
+    ) {
       continue;
     }
 
@@ -413,7 +428,8 @@ export function hitTestTableCell(
       }
     } else {
       // Adjust localY to skip past repeated header rows
-      const adjustedLocalY = localY - headerHeight + (tableFragment.topClip ?? 0);
+      const adjustedLocalY =
+        localY - headerHeight + (tableFragment.topClip ?? 0);
       for (
         let r = tableFragment.fromRow;
         r < tableFragment.toRow && r < tableMeasure.rows.length;
@@ -421,7 +437,10 @@ export function hitTestTableCell(
       ) {
         // SAFETY: r is bounded by tableMeasure.rows.length
         const rowMeasure = tableMeasure.rows[r]!;
-        if (adjustedLocalY >= rowY && adjustedLocalY < rowY + rowMeasure.height) {
+        if (
+          adjustedLocalY >= rowY &&
+          adjustedLocalY < rowY + rowMeasure.height
+        ) {
           rowIndex = r;
           break;
         }
@@ -431,7 +450,10 @@ export function hitTestTableCell(
 
     // If no row found, use last row
     if (rowIndex === -1) {
-      rowIndex = Math.min(tableFragment.toRow - 1, tableMeasure.rows.length - 1);
+      rowIndex = Math.min(
+        tableFragment.toRow - 1,
+        tableMeasure.rows.length - 1,
+      );
       if (rowIndex < tableFragment.fromRow) {
         continue;
       }
@@ -450,7 +472,10 @@ export function hitTestTableCell(
       continue;
     }
 
-    const cellGrid = buildTableCellGrid(tableBlock.rows, tableMeasure.columnWidths.length);
+    const cellGrid = buildTableCellGrid(
+      tableBlock.rows,
+      tableMeasure.columnWidths.length,
+    );
     const cellPlacements = buildTableCellPlacements({
       grid: cellGrid,
       columnWidths: tableMeasure.columnWidths,
@@ -467,7 +492,10 @@ export function hitTestTableCell(
       if (!placement) {
         continue;
       }
-      if (localX >= placement.left && localX < placement.left + placement.width) {
+      if (
+        localX >= placement.left &&
+        localX < placement.left + placement.width
+      ) {
         colIndex = c;
         cellLeft = placement.left;
         break;
@@ -518,7 +546,10 @@ export function hitTestTableCell(
       // SAFETY: length > 0 guarantees index 0 exists
       const firstBlock = cell.blocks[0]!;
       const firstMeasure = cellMeasure.blocks[0];
-      if (firstBlock.kind === "paragraph" && firstMeasure?.kind === "paragraph") {
+      if (
+        firstBlock.kind === "paragraph" &&
+        firstMeasure?.kind === "paragraph"
+      ) {
         cellBlock = firstBlock as ParagraphBlock;
         cellBlockMeasure = firstMeasure as ParagraphMeasure;
       }
@@ -547,7 +578,9 @@ export function hitTestTableCell(
       rowIndex,
       colIndex,
       ...(cellBlock !== undefined ? { cellBlock } : {}),
-      ...(cellBlockMeasure !== undefined ? { cellMeasure: cellBlockMeasure } : {}),
+      ...(cellBlockMeasure !== undefined
+        ? { cellMeasure: cellBlockMeasure }
+        : {}),
       cellLocalX: Math.max(0, cellLocalX),
       cellContentWidth,
       cellLocalY: Math.max(0, cellLocalY),
@@ -608,11 +641,21 @@ export function hitTest(
   };
 
   // Find the fragment
-  result.fragmentHit = hitTestFragment(result.pageHit, blocks, measures, pagePoint);
+  result.fragmentHit = hitTestFragment(
+    result.pageHit,
+    blocks,
+    measures,
+    pagePoint,
+  );
 
   // If fragment is a table, find the cell
   if (result.fragmentHit?.fragment.kind === "table") {
-    result.tableCellHit = hitTestTableCell(result.pageHit, blocks, measures, pagePoint);
+    result.tableCellHit = hitTestTableCell(
+      result.pageHit,
+      blocks,
+      measures,
+      pagePoint,
+    );
   }
 
   return result;
@@ -677,7 +720,11 @@ export function getPageBounds(
 /**
  * Check if a point is within the content area of a page (inside margins).
  */
-export function isPointInContentArea(_layout: Layout, pageHit: PageHit, pagePoint: Point): boolean {
+export function isPointInContentArea(
+  _layout: Layout,
+  pageHit: PageHit,
+  pagePoint: Point,
+): boolean {
   const page = pageHit.page;
   const margins = page.margins;
 

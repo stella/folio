@@ -13,7 +13,8 @@ export const waitForCanonicalLoadOwner = async ({
   const deadline = Date.now() + 10_000;
   for (;;) {
     const owner = getOwner();
-    if (owner !== null && owner !== undefined && owner !== previousOwner) return;
+    if (owner !== null && owner !== undefined && owner !== previousOwner)
+      return;
     if (Date.now() >= deadline)
       throw new TypeError("Canonical loading did not establish a new owner");
     await waitFrame();

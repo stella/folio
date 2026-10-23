@@ -1,7 +1,12 @@
 import { useState } from "react";
+
 import { useTranslations } from "use-intl";
 
-import { SYMBOL_CATEGORIES, filterSymbols, type SymbolSearchEntry } from "@stll/folio-core/symbols";
+import {
+  filterSymbols,
+  SYMBOL_CATEGORIES,
+  type SymbolSearchEntry,
+} from "@stll/folio-core/symbols";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import {
@@ -29,7 +34,11 @@ function codePointLabel(char: string): string {
   return `U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
-export function InsertSymbolDialog({ isOpen, onClose, onInsert }: InsertSymbolDialogProps) {
+export function InsertSymbolDialog({
+  isOpen,
+  onClose,
+  onInsert,
+}: InsertSymbolDialogProps) {
   const {
     Root: Dialog,
     Portal: DialogPortal,
@@ -46,8 +55,10 @@ export function InsertSymbolDialog({ isOpen, onClose, onInsert }: InsertSymbolDi
 
   const activeSymbols: SymbolSearchEntry[] = search
     ? filterSymbols(search)
-    : (SYMBOL_CATEGORIES.find((category) => category.name === activeCategory)?.symbols.map(
-        (symbol) => Object.assign({}, symbol, { category: activeCategory }),
+    : (SYMBOL_CATEGORIES.find(
+        (category) => category.name === activeCategory,
+      )?.symbols.map((symbol) =>
+        Object.assign({}, symbol, { category: activeCategory }),
       ) ?? []);
 
   const insertSymbol = (symbol: string) => {
@@ -165,7 +176,11 @@ export function InsertSymbolDialog({ isOpen, onClose, onInsert }: InsertSymbolDi
           </div>
 
           <div className={DIALOG_FOOTER_CLASS}>
-            <button type="button" className={DIALOG_SECONDARY_BUTTON_CLASS} onClick={onClose}>
+            <button
+              type="button"
+              className={DIALOG_SECONDARY_BUTTON_CLASS}
+              onClick={onClose}
+            >
               {t("common.cancel")}
             </button>
             <button

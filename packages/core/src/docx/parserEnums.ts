@@ -50,11 +50,11 @@ import {
   SHADING_PATTERN_VALUES,
   SHAPE_TYPE_VALUES,
   STYLE_TYPE_VALUES,
+  TAB_LEADER_VALUES,
+  TAB_STOP_ALIGNMENT_VALUES,
   TABLE_JUSTIFICATION_VALUES,
   TABLE_ROW_HEIGHT_RULE_VALUES,
   TABLE_WIDTH_TYPE_VALUES,
-  TAB_LEADER_VALUES,
-  TAB_STOP_ALIGNMENT_VALUES,
   TEXT_DIRECTION_VALUES,
   TEXT_EFFECT_VALUES,
   UNDERLINE_STYLE_VALUES,
@@ -105,11 +105,17 @@ export const TabStopAlignmentSchema = v.picklist(TAB_STOP_ALIGNMENT_VALUES);
 
 export const TabLeaderSchema = v.picklist(TAB_LEADER_VALUES);
 
-export const PositionalTabRelativeToSchema = v.picklist(POSITIONAL_TAB_RELATIVE_TO_VALUES);
+export const PositionalTabRelativeToSchema = v.picklist(
+  POSITIONAL_TAB_RELATIVE_TO_VALUES,
+);
 
-export const PositionalTabAlignmentSchema = v.picklist(POSITIONAL_TAB_ALIGNMENT_VALUES);
+export const PositionalTabAlignmentSchema = v.picklist(
+  POSITIONAL_TAB_ALIGNMENT_VALUES,
+);
 
-export const PositionalTabLeaderSchema = v.picklist(POSITIONAL_TAB_LEADER_VALUES);
+export const PositionalTabLeaderSchema = v.picklist(
+  POSITIONAL_TAB_LEADER_VALUES,
+);
 
 export const FrameXAlignSchema = v.picklist(FRAME_X_ALIGN_VALUES);
 
@@ -135,7 +141,9 @@ export const FieldTypeSchema = v.picklist(FIELD_TYPE_VALUES);
 
 export const StyleTypeSchema = v.picklist(STYLE_TYPE_VALUES);
 
-export const ConditionalStyleTypeSchema = v.picklist(CONDITIONAL_STYLE_TYPE_VALUES);
+export const ConditionalStyleTypeSchema = v.picklist(
+  CONDITIONAL_STYLE_TYPE_VALUES,
+);
 
 // ---------------------------------------------------------------------------
 // Table enums
@@ -145,7 +153,9 @@ export const TableAlignmentSchema = v.picklist(TABLE_JUSTIFICATION_VALUES);
 
 export const TableWidthTypeSchema = v.picklist(TABLE_WIDTH_TYPE_VALUES);
 
-export const TableRowHeightRuleSchema = v.picklist(TABLE_ROW_HEIGHT_RULE_VALUES);
+export const TableRowHeightRuleSchema = v.picklist(
+  TABLE_ROW_HEIGHT_RULE_VALUES,
+);
 
 export const TextDirectionSchema = v.picklist(TEXT_DIRECTION_VALUES);
 
@@ -159,21 +169,33 @@ export const ShadingPatternSchema = v.picklist(SHADING_PATTERN_VALUES);
 // Floating table position enums
 // ---------------------------------------------------------------------------
 
-export const FloatingTableXSpecSchema = v.picklist(FLOATING_TABLE_X_SPEC_VALUES);
+export const FloatingTableXSpecSchema = v.picklist(
+  FLOATING_TABLE_X_SPEC_VALUES,
+);
 
-export const FloatingTableYSpecSchema = v.picklist(FLOATING_TABLE_Y_SPEC_VALUES);
+export const FloatingTableYSpecSchema = v.picklist(
+  FLOATING_TABLE_Y_SPEC_VALUES,
+);
 
 // ---------------------------------------------------------------------------
 // Image positioning / wrap enums
 // ---------------------------------------------------------------------------
 
-export const ImageHorizontalRelativeToSchema = v.picklist(IMAGE_HORIZONTAL_RELATIVE_TO_VALUES);
+export const ImageHorizontalRelativeToSchema = v.picklist(
+  IMAGE_HORIZONTAL_RELATIVE_TO_VALUES,
+);
 
-export const ImageHorizontalAlignmentSchema = v.picklist(IMAGE_HORIZONTAL_ALIGNMENT_VALUES);
+export const ImageHorizontalAlignmentSchema = v.picklist(
+  IMAGE_HORIZONTAL_ALIGNMENT_VALUES,
+);
 
-export const ImageVerticalRelativeToSchema = v.picklist(IMAGE_VERTICAL_RELATIVE_TO_VALUES);
+export const ImageVerticalRelativeToSchema = v.picklist(
+  IMAGE_VERTICAL_RELATIVE_TO_VALUES,
+);
 
-export const ImageVerticalAlignmentSchema = v.picklist(IMAGE_VERTICAL_ALIGNMENT_VALUES);
+export const ImageVerticalAlignmentSchema = v.picklist(
+  IMAGE_VERTICAL_ALIGNMENT_VALUES,
+);
 
 export const ImageWrapTextSchema = v.picklist(IMAGE_WRAP_TEXT_VALUES);
 

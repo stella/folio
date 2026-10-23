@@ -16,14 +16,21 @@ const parseFormatting = (innerXml: string): TextFormatting => {
   if (!runProperties || runProperties.type !== "element") {
     throw new TypeError("Expected run properties element");
   }
-  const formatting = parseRunProperties(runProperties, null, RUN_PROPERTY_OWNERS.standalone);
+  const formatting = parseRunProperties(
+    runProperties,
+    null,
+    RUN_PROPERTY_OWNERS.standalone,
+  );
   if (!formatting) {
     throw new TypeError("Expected parsed run formatting");
   }
   return formatting;
 };
 
-const documentWithRun = (text: string, formatting: TextFormatting): Document => ({
+const documentWithRun = (
+  text: string,
+  formatting: TextFormatting,
+): Document => ({
   package: {
     document: {
       content: [
@@ -42,7 +49,9 @@ const documentWithRun = (text: string, formatting: TextFormatting): Document => 
   },
 });
 
-const firstDocumentRunFormatting = (document: Document): TextFormatting | undefined => {
+const firstDocumentRunFormatting = (
+  document: Document,
+): TextFormatting | undefined => {
   const paragraph = document.package.document.content.at(0);
   if (paragraph?.type !== "paragraph") {
     throw new TypeError("Expected paragraph");
@@ -78,7 +87,9 @@ describe("complex-script formatting pipeline", () => {
     const document = documentWithRun("Aع", formatting);
 
     const roundTripped = firstDocumentRunFormatting(
-      fromProseDoc(toProseDoc(document), undefined, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(toProseDoc(document), undefined, {
+        stylesheetSource: { type: "package" },
+      }),
     );
     expect(roundTripped).toMatchObject({
       bold: true,
@@ -115,7 +126,9 @@ describe("complex-script formatting pipeline", () => {
 
     expect(
       firstDocumentRunFormatting(
-        fromProseDoc(clonedProseDoc, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(clonedProseDoc, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     ).toEqual({
       bold: false,
@@ -124,7 +137,9 @@ describe("complex-script formatting pipeline", () => {
       italicCs: false,
     });
 
-    const paragraph = toFlowBlocks(clonedProseDoc, {}).find((block) => block.kind === "paragraph");
+    const paragraph = toFlowBlocks(clonedProseDoc, {}).find(
+      (block) => block.kind === "paragraph",
+    );
     const run = paragraph?.runs.find((candidate) => candidate.kind === "text");
     expect(run).toMatchObject({
       bold: false,
@@ -153,7 +168,11 @@ describe("complex-script formatting pipeline", () => {
   test.each([
     ["bold", [schema.mark("bold")], "boldCs"],
     ["italic", [schema.mark("italic")], "italicCs"],
-    ["italic and strike", [schema.mark("italic"), schema.mark("strike")], "italicCs"],
+    [
+      "italic and strike",
+      [schema.mark("italic"), schema.mark("strike")],
+      "italicCs",
+    ],
     ["font size", [schema.mark("fontSize", { size: 24 })], "fontSizeCs"],
   ])(
     "does not synthesize complex-script provenance for ordinary %s marks",
@@ -162,11 +181,15 @@ describe("complex-script formatting pipeline", () => {
         schema.node("paragraph", null, [schema.text("!", marks)]),
       ]);
       const roundTripped = toProseDoc(
-        fromProseDoc(source, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(source, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       );
       const text = roundTripped.firstChild?.firstChild;
 
-      const override = text?.marks.find((mark) => mark.type.name === "runFormattingOverride");
+      const override = text?.marks.find(
+        (mark) => mark.type.name === "runFormattingOverride",
+      );
       expect(override?.attrs[complexProperty] ?? undefined).toBeUndefined();
     },
   );

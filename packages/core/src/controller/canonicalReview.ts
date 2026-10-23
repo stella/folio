@@ -1,10 +1,16 @@
-import { getTrackedChangesFromDoc, getTrackedChangeGroupIdsFromDoc } from "../ai-edits/read";
+import {
+  getTrackedChangeGroupIdsFromDoc,
+  getTrackedChangesFromDoc,
+} from "../ai-edits/read";
 import { findAIEditRevisionRange } from "../prosemirror/commands/comments";
 import type { FolioEditor } from "./folioEditor";
 
 type ResolveCanonicalReviewRangeOptions = {
   editor:
-    | Pick<FolioEditor, "getCanonicalDocument" | "getState" | "resolveCanonicalRevisions">
+    | Pick<
+        FolioEditor,
+        "getCanonicalDocument" | "getState" | "resolveCanonicalRevisions"
+      >
     | null
     | undefined;
   from: number;
@@ -28,7 +34,9 @@ export const resolveCanonicalReviewRange = ({
     const range = findAIEditRevisionRange(state, groupIds);
     if (!range) continue;
     const intersects =
-      from === to ? range.from <= from && range.to >= to : range.from < to && range.to > from;
+      from === to
+        ? range.from <= from && range.to >= to
+        : range.from < to && range.to > from;
     if (intersects) for (const id of groupIds) ids.add(id);
   }
   return ids.size > 0 && editor.resolveCanonicalRevisions([...ids], resolution);

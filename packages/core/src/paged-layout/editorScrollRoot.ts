@@ -3,15 +3,23 @@ import { prefersReducedMotionBehavior } from "./scrollNavigation";
 
 const EDITOR_SCROLL_ROOT_SELECTOR = "[data-folio-scroll]";
 
-export const getEditorScrollRoot = (element: HTMLElement | null): HTMLElement | null =>
+export const getEditorScrollRoot = (
+  element: HTMLElement | null,
+): HTMLElement | null =>
   element?.closest<HTMLElement>(EDITOR_SCROLL_ROOT_SELECTOR) ?? null;
 
 /** Resolve the root even when a caller holds a painted descendant or viewport. */
-export const scrollEditorTo = (element: HTMLElement | null, options: ScrollToOptions): void => {
+export const scrollEditorTo = (
+  element: HTMLElement | null,
+  options: ScrollToOptions,
+): void => {
   getEditorScrollRoot(element)?.scrollTo(options);
 };
 
-export const scrollEditorBy = (element: HTMLElement | null, delta: number): void => {
+export const scrollEditorBy = (
+  element: HTMLElement | null,
+  delta: number,
+): void => {
   const root = getEditorScrollRoot(element);
   if (root) {
     scrollEditorTo(root, { top: root.scrollTop + delta, behavior: "instant" });
@@ -36,10 +44,16 @@ const nearestScrollOffset = ({
   if (above && below) return 0;
   const targetSize = targetEnd - targetStart;
   const viewportSize = viewportEnd - viewportStart;
-  if ((above && targetSize <= viewportSize) || (below && targetSize > viewportSize)) {
+  if (
+    (above && targetSize <= viewportSize) ||
+    (below && targetSize > viewportSize)
+  ) {
     return targetStart - viewportStart;
   }
-  if ((below && targetSize <= viewportSize) || (above && targetSize > viewportSize)) {
+  if (
+    (below && targetSize <= viewportSize) ||
+    (above && targetSize > viewportSize)
+  ) {
     return targetEnd - viewportEnd;
   }
   return 0;
@@ -109,5 +123,9 @@ export const scrollEditorElementIntoView = (
       viewportEnd: visibleLeft + root.clientWidth,
     });
   if (top === root.scrollTop && left === root.scrollLeft) return;
-  scrollEditorTo(root, { top: Math.max(0, top), left: Math.max(0, left), behavior });
+  scrollEditorTo(root, {
+    top: Math.max(0, top),
+    left: Math.max(0, left),
+    behavior,
+  });
 };

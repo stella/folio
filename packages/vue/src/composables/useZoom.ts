@@ -6,7 +6,15 @@
  * Ctrl+0 keyboard shortcuts (matches React's useWheelZoom contract).
  */
 
-import { ref, computed, onMounted, onBeforeUnmount, type Ref, type ComputedRef } from "vue";
+import {
+  computed,
+  type ComputedRef,
+  onBeforeUnmount,
+  onMounted,
+  type Ref,
+  ref,
+} from "vue";
+
 import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "@stll/folio-core/utils/zoom";
 
 // Reachable range comes from folio-core so React and Vue clamp to the same span
@@ -40,7 +48,10 @@ export function useZoom(initialZoom = 1.0): UseZoomReturn {
   const isMaxZoom = computed(() => zoom.value >= MAX_ZOOM);
 
   function setZoom(level: number) {
-    zoom.value = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(level * 100) / 100));
+    zoom.value = Math.max(
+      MIN_ZOOM,
+      Math.min(MAX_ZOOM, Math.round(level * 100) / 100),
+    );
   }
 
   function zoomIn() {
@@ -90,7 +101,9 @@ export function useZoom(initialZoom = 1.0): UseZoomReturn {
    */
   function installShortcuts() {
     onMounted(() => document.addEventListener("keydown", handleKeyDown));
-    onBeforeUnmount(() => document.removeEventListener("keydown", handleKeyDown));
+    onBeforeUnmount(() =>
+      document.removeEventListener("keydown", handleKeyDown),
+    );
   }
 
   return {

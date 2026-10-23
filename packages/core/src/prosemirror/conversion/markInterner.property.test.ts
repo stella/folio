@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { Schema } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../types/document";
 import { createMarkInterner } from "./markInterner";
 import { toProseDoc } from "./toProseDoc";
@@ -30,7 +33,12 @@ const sameValue = (left: unknown, right: unknown): boolean => {
   if (Object.is(left, right)) {
     return true;
   }
-  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) {
+  if (
+    typeof left !== "object" ||
+    typeof right !== "object" ||
+    left === null ||
+    right === null
+  ) {
     return false;
   }
   if (Array.isArray(left) !== Array.isArray(right)) {
@@ -42,7 +50,8 @@ const sameValue = (left: unknown, right: unknown): boolean => {
     leftKeys.length === rightKeys.length &&
     leftKeys.every(
       (key, index) =>
-        key === rightKeys[index] && sameValue(Reflect.get(left, key), Reflect.get(right, key)),
+        key === rightKeys[index] &&
+        sameValue(Reflect.get(left, key), Reflect.get(right, key)),
     )
   );
 };
@@ -56,7 +65,10 @@ describe("createMarkInterner", () => {
           const createMark = createMarkInterner(testSchema);
           const leftMark = createMark("probe", left);
           const rightMark = createMark("probe", right);
-          const built = [testSchema.mark("probe", left), testSchema.mark("probe", right)] as const;
+          const built = [
+            testSchema.mark("probe", left),
+            testSchema.mark("probe", right),
+          ] as const;
           expect(sameValue(leftMark.attrs, built[0].attrs)).toBe(true);
           expect(sameValue(rightMark.attrs, built[1].attrs)).toBe(true);
           if (leftMark === rightMark) {
@@ -64,7 +76,9 @@ describe("createMarkInterner", () => {
             expect(built[0].eq(built[1])).toBe(true);
           }
           const copyMark = createMark("probe", leftCopy);
-          expect(copyMark === leftMark).toBe(built[0].eq(testSchema.mark("probe", leftCopy)));
+          expect(copyMark === leftMark).toBe(
+            built[0].eq(testSchema.mark("probe", leftCopy)),
+          );
         }),
         propertyConfig({ numRuns: 2000 }),
       );
@@ -75,7 +89,13 @@ describe("createMarkInterner", () => {
   test("scopes shared marks to one conversion", () => {
     const paragraph = (text: string): Paragraph => ({
       type: "paragraph",
-      content: [{ type: "run", content: [{ type: "text", text }], formatting: { fontSize: 24 } }],
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text }],
+          formatting: { fontSize: 24 },
+        },
+      ],
     });
     const document: Document = {
       package: { document: { content: [paragraph("one"), paragraph("two")] } },

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 
 import { parseParagraph } from "./paragraphParser";
 import { parseSectionProperties } from "./sectionParser";
@@ -8,7 +8,10 @@ import { serializeSectionProperties } from "./serializer/sectionPropertiesSerial
 import { serializeTable } from "./serializer/tableSerializer";
 import { serializeTrackedChangeAttributes } from "./serializer/trackedChangeAttributes";
 import { parseTable } from "./tableParser";
-import { DATE_UTC_NAMESPACE_URI, parseTrackedChangeInfo } from "./trackedChangeInfo";
+import {
+  DATE_UTC_NAMESPACE_URI,
+  parseTrackedChangeInfo,
+} from "./trackedChangeInfo";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -24,7 +27,9 @@ const parseElement = (xml: string): XmlElement => {
 };
 
 const replaceUtcDatePrefix = (
-  ...infos: Array<{ utcDate?: { attribute: string; value: string } } | undefined>
+  ...infos: Array<
+    { utcDate?: { attribute: string; value: string } } | undefined
+  >
 ): void => {
   for (const info of infos) {
     if (info?.utcDate) {
@@ -68,13 +73,23 @@ describe("tracked-change metadata round-trip", () => {
       attribute: "w16du:dateUtc",
       value: UTC_DATE,
     });
-    expect(paragraph.propertyChanges?.at(0)?.info.utcDate?.attribute).toBe("w16du:dateUtc");
-    const currentRun = paragraph.content.find((content) => content.type === "run");
+    expect(paragraph.propertyChanges?.at(0)?.info.utcDate?.attribute).toBe(
+      "w16du:dateUtc",
+    );
+    const currentRun = paragraph.content.find(
+      (content) => content.type === "run",
+    );
     expect(
-      currentRun?.type === "run" ? currentRun.propertyChanges?.at(0)?.info.utcDate : null,
+      currentRun?.type === "run"
+        ? currentRun.propertyChanges?.at(0)?.info.utcDate
+        : null,
     ).toEqual({ attribute: "w16du:dateUtc", value: UTC_DATE });
-    const insertion = paragraph.content.find((content) => content.type === "insertion");
-    expect(insertion?.type === "insertion" ? insertion.info.utcDate : null).toEqual({
+    const insertion = paragraph.content.find(
+      (content) => content.type === "insertion",
+    );
+    expect(
+      insertion?.type === "insertion" ? insertion.info.utcDate : null,
+    ).toEqual({
       attribute: "w16du:dateUtc",
       value: UTC_DATE,
     });
@@ -82,7 +97,9 @@ describe("tracked-change metadata round-trip", () => {
     replaceUtcDatePrefix(
       paragraph.pPrMark?.info,
       paragraph.propertyChanges?.at(0)?.info,
-      currentRun?.type === "run" ? currentRun.propertyChanges?.at(0)?.info : undefined,
+      currentRun?.type === "run"
+        ? currentRun.propertyChanges?.at(0)?.info
+        : undefined,
       insertion?.type === "insertion" ? insertion.info : undefined,
     );
 
@@ -152,15 +169,22 @@ describe("tracked-change metadata round-trip", () => {
       panic("expected table");
     }
 
-    expect(table.propertyChanges?.at(0)?.info.utcDate?.attribute).toBe("w16du:dateUtc");
-    expect(table.rows.at(0)?.propertyChanges?.at(0)?.info.utcDate?.attribute).toBe("w16du:dateUtc");
-    expect(table.rows.at(0)?.structuralChange?.info.utcDate?.attribute).toBe("w16du:dateUtc");
-    expect(table.rows.at(0)?.cells.at(0)?.propertyChanges?.at(0)?.info.utcDate?.attribute).toBe(
+    expect(table.propertyChanges?.at(0)?.info.utcDate?.attribute).toBe(
       "w16du:dateUtc",
     );
-    expect(table.rows.at(0)?.cells.at(0)?.structuralChange?.info.utcDate?.attribute).toBe(
+    expect(
+      table.rows.at(0)?.propertyChanges?.at(0)?.info.utcDate?.attribute,
+    ).toBe("w16du:dateUtc");
+    expect(table.rows.at(0)?.structuralChange?.info.utcDate?.attribute).toBe(
       "w16du:dateUtc",
     );
+    expect(
+      table.rows.at(0)?.cells.at(0)?.propertyChanges?.at(0)?.info.utcDate
+        ?.attribute,
+    ).toBe("w16du:dateUtc");
+    expect(
+      table.rows.at(0)?.cells.at(0)?.structuralChange?.info.utcDate?.attribute,
+    ).toBe("w16du:dateUtc");
 
     replaceUtcDatePrefix(
       table.propertyChanges?.at(0)?.info,
@@ -200,6 +224,8 @@ describe("tracked-change metadata round-trip", () => {
       utcDate: { attribute: "unbound:dateUtc", value: UTC_DATE },
     };
     Reflect.set(malformed.utcDate, "value", 42);
-    expect(serializeTrackedChangeAttributes(malformed)).toBe('w:id="13" w:author="Reviewer"');
+    expect(serializeTrackedChangeAttributes(malformed)).toBe(
+      'w:id="13" w:author="Reviewer"',
+    );
   });
 });

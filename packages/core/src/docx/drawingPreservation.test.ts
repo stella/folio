@@ -8,7 +8,8 @@ import { describe, expect, test } from "bun:test";
 import type { RunContent } from "../types/document";
 import { parseDocumentBody } from "./documentParser";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const NS = [
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
@@ -176,7 +177,11 @@ describe("mc:AlternateContent with nothing the parser can model", () => {
         <w:t>after</w:t>`),
     );
 
-    expect(contents.map((content) => content.type)).toEqual(["text", "drawing", "text"]);
+    expect(contents.map((content) => content.type)).toEqual([
+      "text",
+      "drawing",
+      "text",
+    ]);
   });
 });
 
@@ -212,8 +217,12 @@ describe("w:pict VML shapes with no image relationship", () => {
         </w:pict>`),
     );
 
-    expect(contents.filter((content) => content.type === "drawing")).toHaveLength(0);
+    expect(
+      contents.filter((content) => content.type === "drawing"),
+    ).toHaveLength(0);
     const shape = contents.find((content) => content.type === "shape");
-    expect(shape?.type === "shape" ? shape.shape.shapeType : undefined).toBe("textBox");
+    expect(shape?.type === "shape" ? shape.shape.shapeType : undefined).toBe(
+      "textBox",
+    );
   });
 });

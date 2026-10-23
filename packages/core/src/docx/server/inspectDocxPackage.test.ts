@@ -1,21 +1,22 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { createHash } from "node:crypto";
 
 import { createEmptyDocx } from "../rezip";
 import { DocxArchiveError } from "./boundedArchive";
 import {
   FOLIO_DOCX_PACKAGE_INSPECTION_VERSION,
   FolioDocxPackageInspectionError,
+  type FolioDocxPackagePart,
   inspectDocxPackage,
   readRequestedXmlParts,
-  type FolioDocxPackagePart,
 } from "./inspectDocxPackage";
 
 type MutatePackage = (zip: JSZip) => void;
 
-const mutateEmptyPackage = async (mutate: MutatePackage): Promise<Uint8Array> => {
+const mutateEmptyPackage = async (
+  mutate: MutatePackage,
+): Promise<Uint8Array> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   mutate(zip);
   return await zip.generateAsync({ type: "uint8array" });
@@ -45,12 +46,16 @@ describe("inspectDocxPackage", () => {
     expect(inspection.parts.map(({ path }) => path)).toEqual(
       inspection.parts.map(({ path }) => path).toSorted(),
     );
-    expect(inspection.parts.find(({ path }) => path === "word/document.xml")).toMatchObject({
+    expect(
+      inspection.parts.find(({ path }) => path === "word/document.xml"),
+    ).toMatchObject({
       kind: "xml",
       contentType:
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
     });
-    expect(inspection.parts.find(({ path }) => path === "word/media/payload.bin")).toMatchObject({
+    expect(
+      inspection.parts.find(({ path }) => path === "word/media/payload.bin"),
+    ).toMatchObject({
       kind: "binary",
       declaredUncompressedBytes: 1024,
     });
@@ -58,14 +63,19 @@ describe("inspectDocxPackage", () => {
 
   test("returns only explicitly requested XML with an exact byte hash", async () => {
     const zip = await JSZip.loadAsync(await createEmptyDocx());
-    const documentBytes = await zip.file("word/document.xml")?.async("uint8array");
+    const documentBytes = await zip
+      .file("word/document.xml")
+      ?.async("uint8array");
     if (documentBytes === undefined) {
       throw new Error("Expected document part");
     }
 
-    const inspection = await inspectDocxPackage(await zip.generateAsync({ type: "uint8array" }), {
-      xmlParts: ["word/document.xml"],
-    });
+    const inspection = await inspectDocxPackage(
+      await zip.generateAsync({ type: "uint8array" }),
+      {
+        xmlParts: ["word/document.xml"],
+      },
+    );
 
     expect(inspection.xmlParts).toHaveLength(1);
     expect(inspection.xmlParts.at(0)).toMatchObject({
@@ -77,13 +87,19 @@ describe("inspectDocxPackage", () => {
   });
 
   test("decodes UTF-16 XML part bodies", async () => {
-    const text = '<?xml version="1.0" encoding="UTF-16"?><root>Žluťoučký</root>';
+    const text =
+      '<?xml version="1.0" encoding="UTF-16"?><root>Žluťoučký</root>';
     const encoded = Buffer.from(text, "utf16le");
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file("custom.xml", Buffer.concat([Buffer.from([0xff, 0xfe]), encoded]));
+      zip.file(
+        "custom.xml",
+        Buffer.concat([Buffer.from([0xff, 0xfe]), encoded]),
+      );
     });
 
-    const inspection = await inspectDocxPackage(bytes, { xmlParts: ["custom.xml"] });
+    const inspection = await inspectDocxPackage(bytes, {
+      xmlParts: ["custom.xml"],
+    });
 
     expect(inspection.xmlParts.at(0)?.text).toBe(text);
   });
@@ -106,7 +122,9 @@ describe("inspectDocxPackage", () => {
       zip.file("malformed.xml", new Uint8Array([0xc3, 0x28]));
     });
 
-    const error = await rejection(inspectDocxPackage(bytes, { xmlParts: ["malformed.xml"] }));
+    const error = await rejection(
+      inspectDocxPackage(bytes, { xmlParts: ["malformed.xml"] }),
+    );
 
     expect(error).toMatchObject({
       message: 'Failed to decode XML package part "malformed.xml"',
@@ -123,12 +141,16 @@ describe("inspectDocxPackage", () => {
       zip.file("word/media/payload.bin", "data");
     });
 
-    const missing = await rejection(inspectDocxPackage(bytes, { xmlParts: ["missing.xml"] }));
+    const missing = await rejection(
+      inspectDocxPackage(bytes, { xmlParts: ["missing.xml"] }),
+    );
     const binary = await rejection(
       inspectDocxPackage(bytes, { xmlParts: ["word/media/payload.bin"] }),
     );
     const duplicate = await rejection(
-      inspectDocxPackage(bytes, { xmlParts: ["word/document.xml", "word/document.xml"] }),
+      inspectDocxPackage(bytes, {
+        xmlParts: ["word/document.xml", "word/document.xml"],
+      }),
     );
 
     expect(missing).toMatchObject({ code: "part-not-found" });
@@ -163,7 +185,10 @@ describe("inspectDocxPackage", () => {
     );
 
     expect(count).toMatchObject({ code: "too-many-xml-parts" });
-    expect(partBytes).toMatchObject({ code: "xml-part-too-large", part: "one.xml" });
+    expect(partBytes).toMatchObject({
+      code: "xml-part-too-large",
+      part: "one.xml",
+    });
     expect(totalBytes).toMatchObject({ code: "xml-total-too-large" });
   });
 
@@ -200,7 +225,10 @@ describe("inspectDocxPackage", () => {
     );
 
     expect(readLimits).toEqual([10, 6]);
-    expect(error).toMatchObject({ code: "xml-total-too-large", part: "two.xml" });
+    expect(error).toMatchObject({
+      code: "xml-total-too-large",
+      part: "two.xml",
+    });
   });
 
   test("rejects invalid limit values before loading the archive", async () => {

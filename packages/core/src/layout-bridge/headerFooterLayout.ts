@@ -14,7 +14,11 @@
 import type { EditorView } from "prosemirror-view";
 
 import { getCollapsedLineEdgeCaretGeometry } from "./dom/clickToPositionDom";
-import { createTextStreamRange, descendantTextNodes, totalTextLength } from "./dom/textStreamDom";
+import {
+  createTextStreamRange,
+  descendantTextNodes,
+  totalTextLength,
+} from "./dom/textStreamDom";
 
 // ============================================================================
 // HF DOM snapshot cache — shared by the caret + selection-rect computations
@@ -36,7 +40,10 @@ type HfDomSnapshot = {
 // in distinct hosts. A single shared slot let the first match in DOM order
 // (always the header) shadow the footer, so an active footer's caret/selection
 // resolved against the header's spans (#671).
-const hfDomCache: { header: HfDomSnapshot | null; footer: HfDomSnapshot | null } = {
+const hfDomCache: {
+  header: HfDomSnapshot | null;
+  footer: HfDomSnapshot | null;
+} = {
   header: null,
   footer: null,
 };
@@ -86,8 +93,12 @@ function getHfDomSnapshot(
   // so a section-only cache would keep resolving against the wrong instance.
   const cached = hfDomCache[section];
   if (cached && cached.host === host && cached.host.isConnected) return cached;
-  const spans = Array.from(host.querySelectorAll<HTMLElement>("span[data-pm-start][data-pm-end]"));
-  const ranged = Array.from(host.querySelectorAll<HTMLElement>("[data-pm-start][data-pm-end]"));
+  const spans = Array.from(
+    host.querySelectorAll<HTMLElement>("span[data-pm-start][data-pm-end]"),
+  );
+  const ranged = Array.from(
+    host.querySelectorAll<HTMLElement>("[data-pm-start][data-pm-end]"),
+  );
   const snapshot = { host, spans, ranged };
   hfDomCache[section] = snapshot;
   return snapshot;
@@ -135,7 +146,10 @@ export function computeHfCaretRectFromView(
         };
       }
 
-      const offset = Math.min(pmPos - start, totalTextLength(descendantTextNodes(span)));
+      const offset = Math.min(
+        pmPos - start,
+        totalTextLength(descendantTextNodes(span)),
+      );
       const range = createTextStreamRange(span, offset, offset);
       if (range) {
         const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
@@ -244,7 +258,12 @@ export function computeHfSelectionRectsFromView(
   if (sel.empty) return [];
   const from = sel.from;
   const to = sel.to;
-  const out: Array<{ top: number; left: number; width: number; height: number }> = [];
+  const out: Array<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  }> = [];
 
   // Reuse the cached HF DOM snapshot for this section. Every painted HF host
   // for the section shares the same PM coord space (only one HF doc, painted N
@@ -262,7 +281,12 @@ export function computeHfSelectionRectsFromView(
     // Tab spans: full-span highlight.
     if (spanEl.classList.contains("layout-run-tab")) {
       const rect = spanEl.getBoundingClientRect();
-      out.push({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+      out.push({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      });
       continue;
     }
 
@@ -276,7 +300,12 @@ export function computeHfSelectionRectsFromView(
     const range = createTextStreamRange(spanEl, startChar, endChar);
     if (!range) continue;
     for (const rect of Array.from(range.getClientRects())) {
-      out.push({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+      out.push({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      });
     }
   }
 

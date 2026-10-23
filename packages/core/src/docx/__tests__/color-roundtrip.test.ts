@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "../runParser";
 import { serializeTextFormatting } from "../serializer/textFormattingSerializer";
@@ -15,7 +15,11 @@ function parseRPr(xml: string): XmlElement {
 
 function roundTrip(innerXml: string) {
   const rPr = parseRPr(innerXml);
-  const formatting = parseRunProperties(rPr, null, RUN_PROPERTY_OWNERS.standalone);
+  const formatting = parseRunProperties(
+    rPr,
+    null,
+    RUN_PROPERTY_OWNERS.standalone,
+  );
   const serialized = serializeTextFormatting(formatting);
   return { formatting, serialized };
 }
@@ -78,7 +82,9 @@ describe("Theme text color round-trip", () => {
   });
 
   test("dark1 theme color", () => {
-    const { formatting, serialized } = roundTrip('<w:color w:val="000000" w:themeColor="dark1"/>');
+    const { formatting, serialized } = roundTrip(
+      '<w:color w:val="000000" w:themeColor="dark1"/>',
+    );
     expect(formatting?.color?.themeColor).toBe("dark1");
     expect(serialized).toContain('w:themeColor="dark1"');
   });
@@ -94,8 +100,13 @@ describe("Theme text color round-trip", () => {
   // `dk1` is DrawingML's spelling of the same slot and is not an
   // `ST_ThemeColor` member, so it is kept verbatim rather than painted.
   test("a DrawingML slot name is kept but not resolved", () => {
-    const { formatting, serialized } = roundTrip('<w:color w:val="000000" w:themeColor="dk1"/>');
-    expect(formatting?.color?.themeColor).toEqual({ kind: "unrecognised", raw: "dk1" });
+    const { formatting, serialized } = roundTrip(
+      '<w:color w:val="000000" w:themeColor="dk1"/>',
+    );
+    expect(formatting?.color?.themeColor).toEqual({
+      kind: "unrecognised",
+      raw: "dk1",
+    });
     expect(serialized).toContain('w:themeColor="dk1"');
   });
 });
@@ -140,7 +151,9 @@ describe("Named highlight color round-trip", () => {
 
   for (const hl of highlights) {
     test(`highlight "${hl}" round-trips`, () => {
-      const { formatting, serialized } = roundTrip(`<w:highlight w:val="${hl}"/>`);
+      const { formatting, serialized } = roundTrip(
+        `<w:highlight w:val="${hl}"/>`,
+      );
       expect(formatting?.highlight as string).toBe(hl);
       expect(serialized).toContain(`w:val="${hl}"`);
       expect(serialized).toContain("<w:highlight");
@@ -154,7 +167,9 @@ describe("Named highlight color round-trip", () => {
 
 describe("Character shading round-trip", () => {
   test("simple fill shading", () => {
-    const { formatting, serialized } = roundTrip('<w:shd w:val="clear" w:fill="FFFF00"/>');
+    const { formatting, serialized } = roundTrip(
+      '<w:shd w:val="clear" w:fill="FFFF00"/>',
+    );
     expect(formatting?.shading?.pattern).toBe("clear");
     expect(formatting?.shading?.fill?.rgb).toBe("FFFF00");
     expect(serialized).toContain('w:val="clear"');
@@ -217,7 +232,9 @@ describe("Border color round-trip", () => {
 
 describe("Underline color round-trip", () => {
   test("underline with RGB color", () => {
-    const { formatting, serialized } = roundTrip('<w:u w:val="single" w:color="FF0000"/>');
+    const { formatting, serialized } = roundTrip(
+      '<w:u w:val="single" w:color="FF0000"/>',
+    );
     expect(formatting?.underline?.style).toBe("single");
     expect(formatting?.underline?.color?.rgb).toBe("FF0000");
     expect(serialized).toContain('w:val="single"');

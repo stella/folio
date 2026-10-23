@@ -10,12 +10,16 @@ export const DOCX_CONTAINER_TYPES = {
   UNKNOWN: "unknown",
 } as const;
 
-export type DocxContainerType = (typeof DOCX_CONTAINER_TYPES)[keyof typeof DOCX_CONTAINER_TYPES];
+export type DocxContainerType =
+  (typeof DOCX_CONTAINER_TYPES)[keyof typeof DOCX_CONTAINER_TYPES];
 
 const ZIP_SIGNATURE = [0x50, 0x4b, 0x03, 0x04] as const;
 const OLE_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1] as const;
 
-const startsWith = (bytes: Uint8Array, signature: readonly number[]): boolean => {
+const startsWith = (
+  bytes: Uint8Array,
+  signature: readonly number[],
+): boolean => {
   if (bytes.length < signature.length) {
     return false;
   }
@@ -27,7 +31,9 @@ const startsWith = (bytes: Uint8Array, signature: readonly number[]): boolean =>
   return true;
 };
 
-export const detectDocxContainerType = (data: ArrayBuffer | Uint8Array): DocxContainerType => {
+export const detectDocxContainerType = (
+  data: ArrayBuffer | Uint8Array,
+): DocxContainerType => {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
   if (startsWith(bytes, ZIP_SIGNATURE)) {
     return DOCX_CONTAINER_TYPES.ZIP;

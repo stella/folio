@@ -1,4 +1,9 @@
-import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fixture";
+import {
+  ensureLiveView,
+  expect,
+  forEachAdapter,
+  openEditor,
+} from "./parity-fixture";
 
 // DocxEditorRef.getEditorRef() returns a PagedEditorRef-shaped handle in both
 // adapters. React sources it from the real PagedEditor component; Vue has no
@@ -8,30 +13,42 @@ import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fix
 // end-to-end — dispatch (through the nested ref, not the raw ProseMirror
 // view.dispatch other specs use) and getPageNumberForPmPos — and confirm both
 // adapters agree.
-forEachAdapter("getEditorRef(): dispatch + getPageNumberForPmPos", async (adapter, { page }) => {
-  await openEditor(page, adapter);
-  await ensureLiveView(page);
+forEachAdapter(
+  "getEditorRef(): dispatch + getPageNumberForPmPos",
+  async (adapter, { page }) => {
+    await openEditor(page, adapter);
+    await ensureLiveView(page);
 
-  const before = await page.evaluate(() => window.__folioParity?.getDocumentText() ?? "");
+    const before = await page.evaluate(
+      () => window.__folioParity?.getDocumentText() ?? "",
+    );
 
-  const inserted = await page.evaluate(
-    () => window.__folioParity?.insertTextViaPagedEditorRef("via-paged-ref-marker") ?? false,
-  );
-  expect(inserted).toBe(true);
+    const inserted = await page.evaluate(
+      () =>
+        window.__folioParity?.insertTextViaPagedEditorRef(
+          "via-paged-ref-marker",
+        ) ?? false,
+    );
+    expect(inserted).toBe(true);
 
-  await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""))
-    .toContain("via-paged-ref-marker");
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""),
+      )
+      .toContain("via-paged-ref-marker");
 
-  const after = await page.evaluate(() => window.__folioParity?.getDocumentText() ?? "");
-  expect(after).not.toBe(before);
+    const after = await page.evaluate(
+      () => window.__folioParity?.getDocumentText() ?? "",
+    );
+    expect(after).not.toBe(before);
 
-  // The selection anchor sits somewhere on the (now laid-out) first page.
-  const pageNumber = await page.evaluate(
-    () => window.__folioParity?.getPageNumberForSelection() ?? 0,
-  );
-  expect(pageNumber).toBeGreaterThanOrEqual(1);
-});
+    // The selection anchor sits somewhere on the (now laid-out) first page.
+    const pageNumber = await page.evaluate(
+      () => window.__folioParity?.getPageNumberForSelection() ?? 0,
+    );
+    expect(pageNumber).toBeGreaterThanOrEqual(1);
+  },
+);
 
 forEachAdapter(
   "block geometry is snapshot-aligned and scroll-root relative",
@@ -39,7 +56,9 @@ forEachAdapter(
     await openEditor(page, adapter);
     await ensureLiveView(page);
 
-    const geometry = await page.evaluate(() => window.__folioParity?.readBlockGeometry());
+    const geometry = await page.evaluate(() =>
+      window.__folioParity?.readBlockGeometry(),
+    );
     expect(geometry).toBeDefined();
     expect(geometry?.missingIsNull).toBe(true);
     expect(geometry?.hasScrollRoot).toBe(true);

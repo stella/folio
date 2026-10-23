@@ -38,7 +38,11 @@
     <span class="divider" />
 
     <!-- 2. Zoom (compact: -, 100%, +) -->
-    <div v-if="showZoomControl" class="toolbar-dropdown zoom-group" ref="zoomDropdownRef">
+    <div
+      v-if="showZoomControl"
+      class="toolbar-dropdown zoom-group"
+      ref="zoomDropdownRef"
+    >
       <button
         class="size-btn"
         @mousedown.prevent="$emit('zoom-out')"
@@ -105,7 +109,9 @@
           v-for="s in resolvedParagraphStyles"
           :key="s.id"
           class="toolbar-dropdown__item"
-          :class="{ active: (ctx.paragraphFormatting.styleId || 'Normal') === s.id }"
+          :class="{
+            active: (ctx.paragraphFormatting.styleId || 'Normal') === s.id,
+          }"
           @mousedown.prevent="handleApplyStyle(s.id)"
         >
           <!-- Spread into a fresh literal so it gets the implicit CSS-var index
@@ -135,7 +141,10 @@
         class="toolbar-dropdown__menu font-menu"
       >
         <template v-for="group in fontGroups" :key="group.label">
-          <div v-if="group.fonts.length > 0" class="toolbar-dropdown__group-label">
+          <div
+            v-if="group.fonts.length > 0"
+            class="toolbar-dropdown__group-label"
+          >
             {{ group.label }}
           </div>
           <button
@@ -154,7 +163,11 @@
 
     <!-- 5. Font Size: −, value, + -->
     <div class="toolbar-dropdown font-size-group" ref="sizeDropdownRef">
-      <button class="size-btn" @mousedown.prevent="decreaseFontSize" :title="t('decreaseFontSize')">
+      <button
+        class="size-btn"
+        @mousedown.prevent="decreaseFontSize"
+        :title="t('decreaseFontSize')"
+      >
         −
       </button>
       <input
@@ -172,7 +185,11 @@
         @keydown.enter.prevent="commitFontSize($event)"
         @blur="commitFontSize($event)"
       />
-      <button class="size-btn" @mousedown.prevent="increaseFontSize" :title="t('increaseFontSize')">
+      <button
+        class="size-btn"
+        @mousedown.prevent="increaseFontSize"
+        :title="t('increaseFontSize')"
+      >
         +
       </button>
       <div
@@ -457,7 +474,9 @@
         @change="(wrapType: string) => $emit('image-wrap-type', wrapType)"
       />
       <ImageTransformDropdown
-        @transform="(action: ImageTransformAction) => $emit('image-transform', action)"
+        @transform="
+          (action: ImageTransformAction) => $emit('image-transform', action)
+        "
       />
       <button
         :title="t('formattingBar.imagePropertiesShortcut')"
@@ -484,7 +503,9 @@
         :display-mode="displayMode"
         :read-only="readOnly"
         @toggle-track-changes="$emit('toggle-track-changes')"
-        @update:display-mode="(m: DisplayMode) => $emit('update:display-mode', m)"
+        @update:display-mode="
+          (m: DisplayMode) => $emit('update:display-mode', m)
+        "
       />
     </template>
 
@@ -501,38 +522,44 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import type { EditorView } from "prosemirror-view";
+import { redoDepth, undoDepth } from "prosemirror-history";
 import type { Command } from "prosemirror-state";
-import { undoDepth, redoDepth } from "prosemirror-history";
+import type { EditorView } from "prosemirror-view";
+import { computed, ref } from "vue";
+
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import { listStateLevel, NO_LIST_STATE } from "@stll/folio-core/prosemirror";
+import { clearFormatting } from "@stll/folio-core/prosemirror/commands/formatting";
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import {
   extractSelectionContext,
   type SelectionContext,
 } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
-import { listStateLevel, NO_LIST_STATE } from "@stll/folio-core/prosemirror";
-import { clearFormatting } from "@stll/folio-core/prosemirror/commands/formatting";
-import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
-import type { ColorValue, Theme, Style } from "@stll/folio-core/types/document";
-import MaterialSymbol from "./ui/MaterialSymbol.vue";
-import ImageWrapDropdown from "./ui/ImageWrapDropdown.vue";
-import ImageTransformDropdown from "./ui/ImageTransformDropdown.vue";
+import type { ColorValue, Style, Theme } from "@stll/folio-core/types/document";
+
+import { useParagraphStyleOptions } from "../composables/useParagraphStyleOptions";
+import { useToolbarDropdowns } from "../composables/useToolbarDropdowns";
+import { useToolbarFontSize } from "../composables/useToolbarFontSize";
+import { useTranslation } from "../i18n";
+import { useFolioUI } from "../ui/folio-ui";
+import {
+  excludeFontsByName,
+  type FontOption,
+  normalizeFontFamilies,
+} from "../utils/fontOptions";
+import type { EditorMode } from "./DocxEditor/types";
 import EditingModeDropdown from "./EditingModeDropdown.vue";
 import ReviewControls from "./ReviewControls.vue";
-import type { EditorMode } from "./DocxEditor/types";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
-import { normalizeFontFamilies, excludeFontsByName, type FontOption } from "../utils/fontOptions";
 import {
+  DEFAULT_ZOOM_PERCENT,
   defaultFonts,
   fontSizePresets,
   lineSpacingOptions,
   ZOOM_PRESETS,
-  DEFAULT_ZOOM_PERCENT,
 } from "./Toolbar/presets";
-import { useToolbarDropdowns } from "../composables/useToolbarDropdowns";
-import { useToolbarFontSize } from "../composables/useToolbarFontSize";
-import { useParagraphStyleOptions } from "../composables/useParagraphStyleOptions";
-import { useTranslation } from "../i18n";
-import { useFolioUI } from "../ui/folio-ui";
+import ImageTransformDropdown from "./ui/ImageTransformDropdown.vue";
+import ImageWrapDropdown from "./ui/ImageWrapDropdown.vue";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
 
 // Resolve the ColorPicker primitive from the FolioUI injection provider so a
 // host `components.ColorPicker` override renders here; falls back to the
@@ -676,15 +703,19 @@ const zoomDropdownRef = ref<HTMLElement | null>(null);
 // which forces overflow-y to clip per the CSS spec. Dropdowns therefore
 // can't escape via `position: absolute` — `useToolbarDropdowns` renders
 // each menu with `position: fixed` and recomputes coords on every open.
-const { openDropdown, dropdownMenuStyle, toggleDropdown, recomputeDropdownPos } =
-  useToolbarDropdowns({
-    zoom: zoomDropdownRef,
-    style: styleDropdownRef,
-    font: fontDropdownRef,
-    size: sizeDropdownRef,
-    align: alignDropdownRef,
-    spacing: spacingDropdownRef,
-  });
+const {
+  openDropdown,
+  dropdownMenuStyle,
+  toggleDropdown,
+  recomputeDropdownPos,
+} = useToolbarDropdowns({
+  zoom: zoomDropdownRef,
+  style: styleDropdownRef,
+  font: fontDropdownRef,
+  size: sizeDropdownRef,
+  align: alignDropdownRef,
+  spacing: spacingDropdownRef,
+});
 
 // =========================================================================
 // Selection context (reactive via stateTick)
@@ -747,11 +778,13 @@ const alignIconName = computed(() => {
 });
 
 // Style-picker options + current label (see useParagraphStyleOptions).
-const { resolvedParagraphStyles, currentStyleLabel } = useParagraphStyleOptions({
-  documentStyles: () => props.documentStyles,
-  currentStyleId: () => ctx.value.paragraphFormatting.styleId || "Normal",
-  t,
-});
+const { resolvedParagraphStyles, currentStyleLabel } = useParagraphStyleOptions(
+  {
+    documentStyles: () => props.documentStyles,
+    currentStyleId: () => ctx.value.paragraphFormatting.styleId || "Normal",
+    t,
+  },
+);
 
 // Standalone toolbars use PM history; an owning session supplies its journal.
 const canUndo = computed(() => {
@@ -796,7 +829,9 @@ const currentHighlightHex = computed<string | undefined>(() => {
 // Constants
 // =========================================================================
 
-const normalizedFonts = computed(() => normalizeFontFamilies(props.fontFamilies) ?? defaultFonts);
+const normalizedFonts = computed(
+  () => normalizeFontFamilies(props.fontFamilies) ?? defaultFonts,
+);
 // Document fonts shown above the built-in list, minus any the list already
 // covers (case-insensitive) so a font never appears twice.
 const docFonts = computed(() =>
@@ -812,7 +847,9 @@ const fontGroups = computed(() => [
   },
   {
     label: t("font.sansSerif"),
-    fonts: normalizedFonts.value.filter((font) => font.category === "sans-serif"),
+    fonts: normalizedFonts.value.filter(
+      (font) => font.category === "sans-serif",
+    ),
   },
   {
     label: t("font.serif"),
@@ -820,11 +857,15 @@ const fontGroups = computed(() => [
   },
   {
     label: t("font.monospace"),
-    fonts: normalizedFonts.value.filter((font) => font.category === "monospace"),
+    fonts: normalizedFonts.value.filter(
+      (font) => font.category === "monospace",
+    ),
   },
   {
     label: t("font.other"),
-    fonts: normalizedFonts.value.filter((font) => !font.category || font.category === "other"),
+    fonts: normalizedFonts.value.filter(
+      (font) => !font.category || font.category === "other",
+    ),
   },
 ]);
 
@@ -854,7 +895,8 @@ function execCommand(name: string, ...args: unknown[]) {
   const cmds = props.getCommands();
   const cmdFactory = cmds[name];
   if (!cmdFactory) {
-    if (typeof console !== "undefined") console.warn("[Toolbar] command not found:", name);
+    if (typeof console !== "undefined")
+      console.warn("[Toolbar] command not found:", name);
     return;
   }
   const command = cmdFactory(...args);
@@ -880,7 +922,12 @@ const {
   pickFontSize,
   increaseFontSize,
   decreaseFontSize,
-} = useToolbarFontSize({ currentFontSize, openDropdown, recomputeDropdownPos, execCommand });
+} = useToolbarFontSize({
+  currentFontSize,
+  openDropdown,
+  recomputeDropdownPos,
+  execCommand,
+});
 
 function onTextColor(color: ColorValue | string) {
   if (typeof color === "object" && color.auto) {
@@ -888,7 +935,10 @@ function onTextColor(color: ColorValue | string) {
     return;
   }
   // ColorPicker emits a ColorValue ({ rgb } or themed { themeColor, rgb, themeTint/Shade }).
-  execCommand("setTextColor", typeof color === "string" ? { rgb: color } : color);
+  execCommand(
+    "setTextColor",
+    typeof color === "string" ? { rgb: color } : color,
+  );
 }
 
 function handleClearFormatting() {

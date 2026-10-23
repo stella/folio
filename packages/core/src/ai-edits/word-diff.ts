@@ -56,7 +56,10 @@ export type WordDiffSegment = {
  * word, which reads well for a reference number or a date and badly for a
  * sentence.
  */
-export const WORD_DIFF_GRANULARITIES = Object.freeze(["word", "character"] as const);
+export const WORD_DIFF_GRANULARITIES = Object.freeze([
+  "word",
+  "character",
+] as const);
 
 export type WordDiffGranularity = (typeof WORD_DIFF_GRANULARITIES)[number];
 
@@ -130,7 +133,8 @@ const codePointAt = (value: string, index: number): string =>
 const codePointBefore = (value: string, end: number): string => {
   const low = value.charCodeAt(end - 1);
   const high = value.charCodeAt(end - 2);
-  const isPair = low >= 0xdc_00 && low <= 0xdf_ff && high >= 0xd8_00 && high <= 0xdb_ff;
+  const isPair =
+    low >= 0xdc_00 && low <= 0xdf_ff && high >= 0xd8_00 && high <= 0xdb_ff;
   return isPair ? value.slice(end - 2, end) : value.slice(end - 1, end);
 };
 
@@ -146,7 +150,12 @@ const codePointBefore = (value: string, end: number): string => {
  * `§` and `¶` are content markers despite their Unicode punctuation category;
  * symbols (general category S, such as `€` or `+`) are not punctuation.
  */
-const pushRunTokens = (tokens: string[], value: string, run: TokenRange, prefixStart: number) => {
+const pushRunTokens = (
+  tokens: string[],
+  value: string,
+  run: TokenRange,
+  prefixStart: number,
+) => {
   let wordStart = run.start;
   let pending = value.slice(prefixStart, run.start);
   let leadingMarks = 0;
@@ -214,16 +223,23 @@ export const tokenizeWords = (value: string): string[] => {
 const tokenizeCharacters = (value: string): string[] => [...value];
 
 const tokenize = (value: string, granularity: WordDiffGranularity): string[] =>
-  granularity === "character" ? tokenizeCharacters(value) : tokenizeWords(value);
+  granularity === "character"
+    ? tokenizeCharacters(value)
+    : tokenizeWords(value);
 
 /**
  * The key two tokens are matched on. `toLowerCase` rather than
  * `toLocaleLowerCase`: the ambient locale would make the same two documents
  * diff differently on two machines.
  */
-const comparisonKey = (token: string, normalization: WordDiffNormalization): string => {
+const comparisonKey = (
+  token: string,
+  normalization: WordDiffNormalization,
+): string => {
   const collapsed =
-    normalization.whitespace === true ? token.replaceAll(/\s+/gu, " ").trim() : token;
+    normalization.whitespace === true
+      ? token.replaceAll(/\s+/gu, " ").trim()
+      : token;
   return normalization.case === true ? collapsed.toLowerCase() : collapsed;
 };
 
@@ -298,7 +314,8 @@ type AlignmentResult = {
 const hasOppositeChange = (
   runs: readonly DiffRun[],
   direction: "insertion" | "deletion",
-): boolean => runs.some(({ type }) => type === (direction === "insertion" ? "del" : "ins"));
+): boolean =>
+  runs.some(({ type }) => type === (direction === "insertion" ? "del" : "ins"));
 
 type TokenRange = {
   start: number;
@@ -341,7 +358,10 @@ const pushRun = (runs: DiffRun[], run: DiffRun): void => {
   runs.push(run);
 };
 
-const joinTokenRange = (tokens: readonly string[], { start, end }: TokenRange): string => {
+const joinTokenRange = (
+  tokens: readonly string[],
+  { start, end }: TokenRange,
+): string => {
   return tokens.slice(start, end).join("");
 };
 
@@ -424,13 +444,18 @@ const findPatienceAnchors = ({
   }
 
   const candidates: TokenAnchor[] = [];
-  for (let beforeIndex = beforeRange.start; beforeIndex < beforeRange.end; beforeIndex++) {
+  for (
+    let beforeIndex = beforeRange.start;
+    beforeIndex < beforeRange.end;
+    beforeIndex++
+  ) {
     const key = beforeKeys[beforeIndex] ?? "";
     const beforeCount = beforeOccurrences.get(key);
     const afterOccurrence = afterOccurrences.get(key);
     // A unique comma is no lineage evidence; under content-first weighting
     // it must not pin the alignment the weighted LCS would reject.
-    const eligible = weighting === MATCH_WEIGHTING.Uniform || !isSeparatorOnly(key);
+    const eligible =
+      weighting === MATCH_WEIGHTING.Uniform || !isSeparatorOnly(key);
     if (eligible && beforeCount === 1 && afterOccurrence?.count === 1) {
       candidates.push({ beforeIndex, afterIndex: afterOccurrence.index });
     }
@@ -480,7 +505,11 @@ const findPatienceAnchors = ({
 
 type MonotoneChange = "equivalent" | "insertion" | "deletion" | "mixed";
 
-const keysEqual = (before: string, after: string, normalization: WordDiffNormalization): boolean =>
+const keysEqual = (
+  before: string,
+  after: string,
+  normalization: WordDiffNormalization,
+): boolean =>
   comparisonKey(before, normalization) === comparisonKey(after, normalization);
 
 type TokenSubsequenceOptions = {
@@ -502,7 +531,10 @@ const isTokenSubsequence = ({
     return true;
   }
   let subsequenceIndex = subsequenceRange.start;
-  let subsequenceKey = comparisonKey(subsequence[subsequenceIndex] ?? "", normalization);
+  let subsequenceKey = comparisonKey(
+    subsequence[subsequenceIndex] ?? "",
+    normalization,
+  );
   for (
     let sequenceIndex = sequenceRange.start;
     sequenceIndex < sequenceRange.end;
@@ -595,7 +627,11 @@ const alignMonotoneChange = (
   let sequenceOffset = 0;
   let sequenceChangeStartOffset = 0;
 
-  for (let sequenceIndex = 0; sequenceIndex < sequence.length; sequenceIndex++) {
+  for (
+    let sequenceIndex = 0;
+    sequenceIndex < sequence.length;
+    sequenceIndex++
+  ) {
     const subsequenceToken = subsequence[subsequenceIndex];
     const sequenceToken = sequence[sequenceIndex];
     const sequenceTokenStart = sequenceOffset;
@@ -609,7 +645,10 @@ const alignMonotoneChange = (
     }
 
     if (sequenceChangeStartOffset < sequenceTokenStart) {
-      const changedText = sequenceText.slice(sequenceChangeStartOffset, sequenceTokenStart);
+      const changedText = sequenceText.slice(
+        sequenceChangeStartOffset,
+        sequenceTokenStart,
+      );
       pushRun(
         runs,
         beforeIsSubsequence
@@ -631,7 +670,9 @@ const alignMonotoneChange = (
     const changedText = sequenceText.slice(sequenceChangeStartOffset);
     pushRun(
       runs,
-      beforeIsSubsequence ? { type: "ins", text: changedText } : { type: "del", text: changedText },
+      beforeIsSubsequence
+        ? { type: "ins", text: changedText }
+        : { type: "del", text: changedText },
     );
   }
   return runs;
@@ -683,7 +724,9 @@ const alignDenseGap = ({
   // The cell budget bounds the shorter side at 2,000 tokens, so the largest
   // score, about 2,000 * 2,001, fits a Uint32.
   const contentWeight =
-    weighting === MATCH_WEIGHTING.ContentFirst ? Math.min(beforeLength, afterLength) + 1 : 1;
+    weighting === MATCH_WEIGHTING.ContentFirst
+      ? Math.min(beforeLength, afterLength) + 1
+      : 1;
   const matchWeights = new Uint32Array(beforeLength);
   for (let beforeOffset = 0; beforeOffset < beforeLength; beforeOffset++) {
     const key = beforeKeys[beforeRange.start + beforeOffset] ?? "";
@@ -704,7 +747,9 @@ const alignDenseGap = ({
         continue;
       }
       const above =
-        beforeOffset > 0 ? (lengths[(beforeOffset - 1) * afterLength + afterOffset] ?? 0) : 0;
+        beforeOffset > 0
+          ? (lengths[(beforeOffset - 1) * afterLength + afterOffset] ?? 0)
+          : 0;
       const left = afterOffset > 0 ? (lengths[index - 1] ?? 0) : 0;
       lengths[index] = Math.max(above, left);
     }
@@ -716,7 +761,8 @@ const alignDenseGap = ({
   let afterOffset = afterLength - 1;
   while (beforeOffset >= 0 && afterOffset >= 0) {
     if (
-      beforeKeys[beforeRange.start + beforeOffset] === afterKeys[afterRange.start + afterOffset]
+      beforeKeys[beforeRange.start + beforeOffset] ===
+      afterKeys[afterRange.start + afterOffset]
     ) {
       reversedOperations[operationCount++] = ALIGNMENT_OPERATION.Equal;
       beforeOffset--;
@@ -724,8 +770,13 @@ const alignDenseGap = ({
       continue;
     }
     const above =
-      beforeOffset > 0 ? (lengths[(beforeOffset - 1) * afterLength + afterOffset] ?? 0) : 0;
-    const left = afterOffset > 0 ? (lengths[beforeOffset * afterLength + afterOffset - 1] ?? 0) : 0;
+      beforeOffset > 0
+        ? (lengths[(beforeOffset - 1) * afterLength + afterOffset] ?? 0)
+        : 0;
+    const left =
+      afterOffset > 0
+        ? (lengths[beforeOffset * afterLength + afterOffset - 1] ?? 0)
+        : 0;
     // Preserve the old LCS tie break. Because this trace is reversed, choosing
     // insertion on a tie yields deletion before insertion in forward order.
     if (above > left) {
@@ -747,7 +798,11 @@ const alignDenseGap = ({
 
   let beforeCursor = beforeRange.start;
   let afterCursor = afterRange.start;
-  for (let operationIndex = operationCount - 1; operationIndex >= 0; operationIndex--) {
+  for (
+    let operationIndex = operationCount - 1;
+    operationIndex >= 0;
+    operationIndex--
+  ) {
     const operation = reversedOperations[operationIndex];
     if (operation === ALIGNMENT_OPERATION.Equal) {
       pushRun(runs, {
@@ -839,7 +894,11 @@ const alignTokens = ({
   while (
     commonPrefixLength < before.length &&
     commonPrefixLength < after.length &&
-    keysEqual(before[commonPrefixLength] ?? "", after[commonPrefixLength] ?? "", normalization)
+    keysEqual(
+      before[commonPrefixLength] ?? "",
+      after[commonPrefixLength] ?? "",
+      normalization,
+    )
   ) {
     beforePrefixLength += before[commonPrefixLength]?.length ?? 0;
     afterPrefixLength += after[commonPrefixLength]?.length ?? 0;
@@ -853,7 +912,11 @@ const alignTokens = ({
   while (
     beforeMiddleEnd > commonPrefixLength &&
     afterMiddleEnd > commonPrefixLength &&
-    keysEqual(before[beforeMiddleEnd - 1] ?? "", after[afterMiddleEnd - 1] ?? "", normalization)
+    keysEqual(
+      before[beforeMiddleEnd - 1] ?? "",
+      after[afterMiddleEnd - 1] ?? "",
+      normalization,
+    )
   ) {
     beforeMiddleEnd--;
     afterMiddleEnd--;
@@ -890,7 +953,8 @@ const alignTokens = ({
   const fullInputFits = fitsCellBudget(before.length, after.length, budget);
   const fullInputFitsStorage =
     before.length + after.length <= MAX_WORD_DIFF_ANCHOR_TOKENS &&
-    beforeText.length + afterText.length <= MAX_WORD_DIFF_COMPARISON_KEY_CODE_UNITS;
+    beforeText.length + afterText.length <=
+      MAX_WORD_DIFF_COMPARISON_KEY_CODE_UNITS;
   const residualCodeUnitCount =
     beforeText.length -
     beforePrefixLength -
@@ -914,13 +978,19 @@ const alignTokens = ({
     if (beforePrefixLength + beforeSuffixLength < beforeText.length) {
       pushRun(runs, {
         type: "del",
-        text: beforeText.slice(beforePrefixLength, beforeText.length - beforeSuffixLength),
+        text: beforeText.slice(
+          beforePrefixLength,
+          beforeText.length - beforeSuffixLength,
+        ),
       });
     }
     if (afterPrefixLength + afterSuffixLength < afterText.length) {
       pushRun(runs, {
         type: "ins",
-        text: afterText.slice(afterPrefixLength, afterText.length - afterSuffixLength),
+        text: afterText.slice(
+          afterPrefixLength,
+          afterText.length - afterSuffixLength,
+        ),
       });
     }
     if (beforeSuffixLength > 0) {
@@ -938,8 +1008,12 @@ const alignTokens = ({
   // without a useful affix never materialize an attacker-sized second copy.
   const beforeMiddle = before.slice(beforeRange.start, beforeRange.end);
   const afterMiddle = after.slice(afterRange.start, afterRange.end);
-  const beforeKeys = beforeMiddle.map((token) => comparisonKey(token, normalization));
-  const afterKeys = afterMiddle.map((token) => comparisonKey(token, normalization));
+  const beforeKeys = beforeMiddle.map((token) =>
+    comparisonKey(token, normalization),
+  );
+  const afterKeys = afterMiddle.map((token) =>
+    comparisonKey(token, normalization),
+  );
   const middleRangeBefore = { start: 0, end: beforeMiddle.length };
   const middleRangeAfter = { start: 0, end: afterMiddle.length };
   const anchors = findPatienceAnchors({
@@ -1026,7 +1100,10 @@ const alignTokens = ({
  * True when the surviving matches are too short, relative to the strings they
  * sit in, to be read as anything but coincidence.
  */
-const isTooFragmented = (runs: readonly DiffRun[], averageLength: number): boolean => {
+const isTooFragmented = (
+  runs: readonly DiffRun[],
+  averageLength: number,
+): boolean => {
   if (averageLength < FRAGMENTATION_MINIMUM_AVERAGE_LENGTH) {
     return false;
   }
@@ -1075,7 +1152,8 @@ const demoteRejectedMatches = (runs: readonly DiffRun[]): DiffRun[] => {
       kept.push(run);
       continue;
     }
-    const interruptsAChange = runs[index - 1] !== undefined || runs[index + 1] !== undefined;
+    const interruptsAChange =
+      runs[index - 1] !== undefined || runs[index + 1] !== undefined;
     // A word between two punctuation or whitespace edits is what those edits
     // were made around, not a coincidence inside a rewrite. One changed word
     // beside it is enough to make it one.
@@ -1093,7 +1171,10 @@ const demoteRejectedMatches = (runs: readonly DiffRun[]): DiffRun[] => {
       kept.push(run);
       continue;
     }
-    kept.push({ type: "del", text: run.before }, { type: "ins", text: run.after });
+    kept.push(
+      { type: "del", text: run.before },
+      { type: "ins", text: run.after },
+    );
   }
   return kept;
 };
@@ -1103,11 +1184,16 @@ const TOKEN_WHITESPACE = /^(\s*)(.*?)(\s*)$/su;
 type TokenParts = { leading: string; text: string; trailing: string };
 
 const splitTokenWhitespace = (token: string): TokenParts => {
-  const [, leading = "", text = "", trailing = ""] = TOKEN_WHITESPACE.exec(token) ?? [];
+  const [, leading = "", text = "", trailing = ""] =
+    TOKEN_WHITESPACE.exec(token) ?? [];
   return { leading, text, trailing };
 };
 
-const pushChangedText = (runs: DiffRun[], before: string, after: string): void => {
+const pushChangedText = (
+  runs: DiffRun[],
+  before: string,
+  after: string,
+): void => {
   if (before.length > 0) {
     pushRun(runs, { type: "del", text: before });
   }
@@ -1116,7 +1202,11 @@ const pushChangedText = (runs: DiffRun[], before: string, after: string): void =
   }
 };
 
-const pushWhitespace = (runs: DiffRun[], before: string, after: string): void => {
+const pushWhitespace = (
+  runs: DiffRun[],
+  before: string,
+  after: string,
+): void => {
   if (before !== after) {
     pushChangedText(runs, before, after);
     return;
@@ -1148,7 +1238,12 @@ const separateWhitespaceChanges = (runs: readonly DiffRun[]): DiffRun[] => {
       const after = splitTokenWhitespace(afterTokens[index] ?? "");
       pushWhitespace(separated, before.leading, after.leading);
       if (before.text.length > 0 && after.text.length > 0) {
-        pushRun(separated, { type: "equal", before: before.text, after: after.text, units: 1 });
+        pushRun(separated, {
+          type: "equal",
+          before: before.text,
+          after: after.text,
+          units: 1,
+        });
       } else {
         pushChangedText(separated, before.text, after.text);
       }
@@ -1277,21 +1372,34 @@ const bestSlideStart = (window: SlideWindow): number => {
   const scoreAt = (position: number): number =>
     boundaryScore(
       position === 0 ? window.outsideBefore : codePointBefore(text, position),
-      position === text.length ? window.outsideAfter : codePointAt(text, position),
+      position === text.length
+        ? window.outsideAfter
+        : codePointAt(text, position),
     );
   let leftmost = start;
-  while (leftmost > minimumStart && text[leftmost - 1] === text[leftmost + length - 1]) {
+  while (
+    leftmost > minimumStart &&
+    text[leftmost - 1] === text[leftmost + length - 1]
+  ) {
     leftmost--;
   }
   let best = start;
   let bestScore = -1;
-  for (let candidate = leftmost; candidate + length <= maximumEnd; candidate++) {
+  for (
+    let candidate = leftmost;
+    candidate + length <= maximumEnd;
+    candidate++
+  ) {
     const end = candidate + length;
-    if (!splitsSurrogatePair(text, candidate) && !splitsSurrogatePair(text, end)) {
+    if (
+      !splitsSurrogatePair(text, candidate) &&
+      !splitsSurrogatePair(text, end)
+    ) {
       const startScore = scoreAt(candidate);
       const endScore = scoreAt(end);
       // A string edge must not outweigh cutting a word the change never touched.
-      const splitsWord = candidate !== start && (startScore === 0 || endScore === 0);
+      const splitsWord =
+        candidate !== start && (startScore === 0 || endScore === 0);
       if (!splitsWord && startScore + endScore > bestScore) {
         best = candidate;
         bestScore = startScore + endScore;
@@ -1312,7 +1420,10 @@ type SegmentType = WordDiffSegment["type"];
  * and a deletion may precede an insertion; an insertion before a deletion
  * would break deletion-first order.
  */
-const mayAbut = (first: SegmentType | undefined, second: SegmentType | undefined): boolean =>
+const mayAbut = (
+  first: SegmentType | undefined,
+  second: SegmentType | undefined,
+): boolean =>
   first === undefined ||
   second === undefined ||
   first === "equal" ||
@@ -1340,7 +1451,9 @@ const sideCodePoint = (
   return "";
 };
 
-const mergeAdjacentSegments = (segments: readonly WordDiffSegment[]): WordDiffSegment[] => {
+const mergeAdjacentSegments = (
+  segments: readonly WordDiffSegment[],
+): WordDiffSegment[] => {
   const merged: WordDiffSegment[] = [];
   for (const segment of segments) {
     const last = merged.at(-1);
@@ -1397,9 +1510,19 @@ const slideChangesToReadableBoundaries = (
       start: previous.text.length,
       length: change.text.length,
       minimumStart: mayAbut(slid[index - 2]?.type, change.type) ? 0 : 1,
-      maximumEnd: mayAbut(change.type, slid[index + 2]?.type) ? text.length : text.length - 1,
-      outsideBefore: sideCodePoint(slid, { from: index - 2, step: -1 }, change.type),
-      outsideAfter: sideCodePoint(slid, { from: index + 2, step: 1 }, change.type),
+      maximumEnd: mayAbut(change.type, slid[index + 2]?.type)
+        ? text.length
+        : text.length - 1,
+      outsideBefore: sideCodePoint(
+        slid,
+        { from: index - 2, step: -1 },
+        change.type,
+      ),
+      outsideAfter: sideCodePoint(
+        slid,
+        { from: index + 2, step: 1 },
+        change.type,
+      ),
     });
     const end = start + change.text.length;
     previous.text = text.slice(0, start);
@@ -1409,7 +1532,10 @@ const slideChangesToReadableBoundaries = (
   return mergeAdjacentSegments(slid);
 };
 
-const wholeStringReplacement = (before: string, after: string): WordDiffSegment[] => {
+const wholeStringReplacement = (
+  before: string,
+  after: string,
+): WordDiffSegment[] => {
   const segments: WordDiffSegment[] = [];
   if (before.length > 0) {
     segments.push({ type: "del", text: before });
@@ -1439,7 +1565,10 @@ const diffWordSegmentsWithBudget = (
       : requestedNormalization;
   const whitespaceIsSignificant =
     granularity === "word" && requestedNormalization.whitespace !== true;
-  const weighting = granularity === "word" ? MATCH_WEIGHTING.ContentFirst : MATCH_WEIGHTING.Uniform;
+  const weighting =
+    granularity === "word"
+      ? MATCH_WEIGHTING.ContentFirst
+      : MATCH_WEIGHTING.Uniform;
   const beforeTokens = tokenize(before, granularity);
   const afterTokens = tokenize(after, granularity);
   if (beforeTokens.length === 0 && afterTokens.length === 0) {
@@ -1460,17 +1589,27 @@ const diffWordSegmentsWithBudget = (
   });
   let surviving = demoteRejectedMatches(aligned.runs);
   const monotoneDirection = aligned.monotoneDirection;
-  if (monotoneDirection !== null && hasOppositeChange(surviving, monotoneDirection)) {
+  if (
+    monotoneDirection !== null &&
+    hasOppositeChange(surviving, monotoneDirection)
+  ) {
     const unanchoredFitsStorage =
       beforeTokens.length + afterTokens.length <= MAX_WORD_DIFF_ANCHOR_TOKENS &&
       before.length + after.length <= MAX_WORD_DIFF_COMPARISON_KEY_CODE_UNITS;
-    if (unanchoredFitsStorage && fitsCellBudget(beforeTokens.length, afterTokens.length, budget)) {
+    if (
+      unanchoredFitsStorage &&
+      fitsCellBudget(beforeTokens.length, afterTokens.length, budget)
+    ) {
       const unanchored: DiffRun[] = [];
       alignDenseGap({
         before: beforeTokens,
         after: afterTokens,
-        beforeKeys: beforeTokens.map((token) => comparisonKey(token, normalization)),
-        afterKeys: afterTokens.map((token) => comparisonKey(token, normalization)),
+        beforeKeys: beforeTokens.map((token) =>
+          comparisonKey(token, normalization),
+        ),
+        afterKeys: afterTokens.map((token) =>
+          comparisonKey(token, normalization),
+        ),
         beforeRange: { start: 0, end: beforeTokens.length },
         afterRange: { start: 0, end: afterTokens.length },
         runs: unanchored,
@@ -1509,8 +1648,13 @@ const diffWordSegmentsWithBudget = (
   ) {
     return wholeStringReplacement(before, after);
   }
-  let marked = whitespaceIsSignificant ? separateWhitespaceChanges(surviving) : surviving;
-  if (monotoneDirection !== null && hasOppositeChange(marked, monotoneDirection)) {
+  let marked = whitespaceIsSignificant
+    ? separateWhitespaceChanges(surviving)
+    : surviving;
+  if (
+    monotoneDirection !== null &&
+    hasOppositeChange(marked, monotoneDirection)
+  ) {
     const monotoneRuns = alignMonotoneChange(
       before,
       after,
@@ -1519,13 +1663,16 @@ const diffWordSegmentsWithBudget = (
       normalization,
       monotoneDirection,
     );
-    marked = whitespaceIsSignificant ? separateWhitespaceChanges(monotoneRuns) : monotoneRuns;
+    marked = whitespaceIsSignificant
+      ? separateWhitespaceChanges(monotoneRuns)
+      : monotoneRuns;
   }
   const segments = toSegments(orderDeletionsFirst(marked));
   // A normalized equal run carries only the before text, so sliding across
   // it would corrupt the after side.
   const equalRunsAreExact =
-    requestedNormalization.case !== true && requestedNormalization.whitespace !== true;
+    requestedNormalization.case !== true &&
+    requestedNormalization.whitespace !== true;
   return granularity === "word" && equalRunsAreExact
     ? slideChangesToReadableBoundaries(segments)
     : segments;
@@ -1554,8 +1701,9 @@ type ScopedWordDiffOptions = WordDiffOptions & {
   readonly [WORD_DIFF_SESSION]: ReturnType<typeof createWordDiffSession>;
 };
 
-const hasWordDiffSession = (options: WordDiffOptions): options is ScopedWordDiffOptions =>
-  WORD_DIFF_SESSION in options;
+const hasWordDiffSession = (
+  options: WordDiffOptions,
+): options is ScopedWordDiffOptions => WORD_DIFF_SESSION in options;
 
 /** Attach one internal work scope without widening a caller-facing option type. */
 export const createScopedWordDiffOptions = <Options extends WordDiffOptions>(

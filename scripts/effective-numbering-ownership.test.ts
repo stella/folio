@@ -22,12 +22,25 @@ const EFFECTIVE_READERS = new Set([
 const violations = (source: string): string[] => {
   // Files without either a source slot or a membership reader cannot cross
   // this boundary. Avoid constructing their syntax trees during discovery.
-  if (!source.includes("numPr") || ![...MEMBERSHIP_READERS].some((name) => source.includes(name)))
+  if (
+    !source.includes("numPr") ||
+    ![...MEMBERSHIP_READERS].some((name) => source.includes(name))
+  )
     return [];
-  const file = ts.createSourceFile("fixture.ts", source, ts.ScriptTarget.Latest, true);
+  const file = ts.createSourceFile(
+    "fixture.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const scopeOf = (node: ts.Node): ts.Node => {
     let scope = node.parent;
-    while (scope && !ts.isBlock(scope) && !ts.isSourceFile(scope) && !ts.isFunctionLike(scope))
+    while (
+      scope &&
+      !ts.isBlock(scope) &&
+      !ts.isSourceFile(scope) &&
+      !ts.isFunctionLike(scope)
+    )
       scope = scope.parent;
     return scope ?? file;
   };
@@ -35,7 +48,8 @@ const violations = (source: string): string[] => {
   const collect = (node: ts.Node): void => {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
       const scope = scopeOf(node);
-      const locals = bindings.get(scope) ?? new Map<string, ts.Expression | undefined>();
+      const locals =
+        bindings.get(scope) ?? new Map<string, ts.Expression | undefined>();
       locals.set(node.name.text, node.initializer);
       bindings.set(scope, locals);
     }
@@ -45,22 +59,28 @@ const violations = (source: string): string[] => {
       node.initializer
     ) {
       const scope = scopeOf(node);
-      const locals = bindings.get(scope) ?? new Map<string, ts.Expression | undefined>();
+      const locals =
+        bindings.get(scope) ?? new Map<string, ts.Expression | undefined>();
       for (const element of node.name.elements) {
         if (!ts.isIdentifier(element.name) || element.dotDotDotToken) continue;
         const property = element.propertyName ?? element.name;
         if (!ts.isIdentifier(property)) continue;
         locals.set(
           element.name.text,
-          ts.factory.createPropertyAccessExpression(node.initializer, property.text),
+          ts.factory.createPropertyAccessExpression(
+            node.initializer,
+            property.text,
+          ),
         );
       }
       bindings.set(scope, locals);
     }
     if (ts.isFunctionLike(node)) {
-      const locals = bindings.get(node) ?? new Map<string, ts.Expression | undefined>();
+      const locals =
+        bindings.get(node) ?? new Map<string, ts.Expression | undefined>();
       for (const parameter of node.parameters)
-        if (ts.isIdentifier(parameter.name)) locals.set(parameter.name.text, undefined);
+        if (ts.isIdentifier(parameter.name))
+          locals.set(parameter.name.text, undefined);
       bindings.set(node, locals);
     }
     ts.forEachChild(node, collect);
@@ -82,7 +102,10 @@ const violations = (source: string): string[] => {
     ts.forEachChild(node, collectImports);
   };
   collectImports(file);
-  const callableName = (node: ts.Expression, seen = new Set<string>()): string | undefined => {
+  const callableName = (
+    node: ts.Expression,
+    seen = new Set<string>(),
+  ): string | undefined => {
     if (ts.isPropertyAccessExpression(node)) return node.name.text;
     if (!ts.isIdentifier(node)) return undefined;
     if (seen.has(node.text)) return undefined;
@@ -112,8 +135,14 @@ const violations = (source: string): string[] => {
         ))
     );
   };
-  const readsAuthoredSlot = (node: ts.Node, seen = new Set<string>()): boolean => {
-    if (ts.isCallExpression(node) && EFFECTIVE_READERS.has(callableName(node.expression) ?? ""))
+  const readsAuthoredSlot = (
+    node: ts.Node,
+    seen = new Set<string>(),
+  ): boolean => {
+    if (
+      ts.isCallExpression(node) &&
+      EFFECTIVE_READERS.has(callableName(node.expression) ?? "")
+    )
       return false;
     if (
       (ts.isPropertyAccessExpression(node) &&
@@ -133,7 +162,12 @@ const violations = (source: string): string[] => {
         return readsAuthoredSlot(initializer, next);
       }
     }
-    return ts.forEachChild(node, (child) => readsAuthoredSlot(child, seen) || undefined) === true;
+    return (
+      ts.forEachChild(
+        node,
+        (child) => readsAuthoredSlot(child, seen) || undefined,
+      ) === true
+    );
   };
   const found: string[] = [];
   const visit = (node: ts.Node): void => {
@@ -152,15 +186,21 @@ const violations = (source: string): string[] => {
 test("membership readers require the effective numbering owner through local aliases", () => {
   expect(violations("resolveListState(map, attrs.numPr)")).toHaveLength(1);
   expect(
-    violations("const direct = attrs['numPr']; resolveParagraphNumbering(direct)"),
+    violations(
+      "const direct = attrs['numPr']; resolveParagraphNumbering(direct)",
+    ),
   ).toHaveLength(1);
-  expect(violations("resolveListState(map, effectiveParagraphNumbering(attrs))")).toEqual([]);
+  expect(
+    violations("resolveListState(map, effectiveParagraphNumbering(attrs))"),
+  ).toEqual([]);
   expect(
     violations(
       "const effective = effectiveParagraphNumberingReference(attrs); resolveListState(map, effective)",
     ),
   ).toEqual([]);
-  expect(violations("mergeParagraphNumbering(attrs.numPrFromStyle, attrs.numPr)")).toHaveLength(1);
+  expect(
+    violations("mergeParagraphNumbering(attrs.numPrFromStyle, attrs.numPr)"),
+  ).toHaveLength(1);
   expect(
     violations(
       "const direct = attrs.numPr; function safe(direct) { resolveListState(map, direct); }",
@@ -171,20 +211,31 @@ test("membership readers require the effective numbering owner through local ali
       "import { resolveListState as resolve } from './listState'; resolve(map, expectParagraphAttrs(node).numPr)",
     ),
   ).toHaveLength(1);
-  expect(violations("const resolve = resolveListState; resolve(map, attrs.numPr)")).toHaveLength(1);
-  expect(violations("const { numPr: direct } = attrs; resolveListState(map, direct)")).toHaveLength(
-    1,
-  );
+  expect(
+    violations("const resolve = resolveListState; resolve(map, attrs.numPr)"),
+  ).toHaveLength(1);
+  expect(
+    violations(
+      "const { numPr: direct } = attrs; resolveListState(map, direct)",
+    ),
+  ).toHaveLength(1);
 });
 
 test("production membership readers never consume the authored slot alone", () => {
-  const files = execFileSync("git", ["ls-files", "packages/core/src"], { cwd: ROOT })
+  const files = execFileSync("git", ["ls-files", "packages/core/src"], {
+    cwd: ROOT,
+  })
     .toString()
     .trim()
     .split("\n")
-    .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== OWNER);
+    .filter(
+      (file) =>
+        file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== OWNER,
+    );
   const found = files.flatMap((file) =>
-    violations(readFileSync(path.join(ROOT, file), "utf8")).map((entry) => `${file}: ${entry}`),
+    violations(readFileSync(path.join(ROOT, file), "utf8")).map(
+      (entry) => `${file}: ${entry}`,
+    ),
   );
   expect(found).toEqual([]);
 });

@@ -1,7 +1,6 @@
-import { onScopeDispose, watch, type Ref, type ShallowRef } from "vue";
 import type { EditorView } from "prosemirror-view";
+import { onScopeDispose, type Ref, type ShallowRef, watch } from "vue";
 
-import { BodySelectionOverlay } from "@stll/folio-core/render-dom/BodySelectionOverlay";
 import { getCaretPositionFromDom } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
 import {
   resetImeCaretAnchor,
@@ -13,6 +12,7 @@ import {
   projectMarkupView,
   visibleCaretPosition,
 } from "@stll/folio-core/prosemirror/markupViewProjection";
+import { BodySelectionOverlay } from "@stll/folio-core/render-dom/BodySelectionOverlay";
 
 import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
 import { Z_INDEX } from "../styles/zIndex";
@@ -34,7 +34,9 @@ export type UseSelectionSyncReturn = {
   updateSelectionOverlay: () => void;
 };
 
-export const useSelectionSync = (opts: UseSelectionSyncOptions): UseSelectionSyncReturn => {
+export const useSelectionSync = (
+  opts: UseSelectionSyncOptions,
+): UseSelectionSyncReturn => {
   const overlay = new BodySelectionOverlay();
   let animationFrame: number | null = null;
 
@@ -120,8 +122,12 @@ export const useSelectionSync = (opts: UseSelectionSyncOptions): UseSelectionSyn
     });
   };
 
-  const unsubscribeRender = opts.syncCoordinator.onRender(updateSelectionOverlay);
-  watch([opts.zoom, opts.editorView, opts.pagesRef], updateSelectionOverlay, { flush: "post" });
+  const unsubscribeRender = opts.syncCoordinator.onRender(
+    updateSelectionOverlay,
+  );
+  watch([opts.zoom, opts.editorView, opts.pagesRef], updateSelectionOverlay, {
+    flush: "post",
+  });
   watch(
     opts.hiddenContainer,
     (hiddenContainer, _previous, onCleanup) => {
@@ -129,10 +135,16 @@ export const useSelectionSync = (opts: UseSelectionSyncOptions): UseSelectionSyn
         return;
       }
       hiddenContainer.addEventListener("focusin", updateSelectionOverlay);
-      hiddenContainer.addEventListener("compositionend", updateSelectionOverlay);
+      hiddenContainer.addEventListener(
+        "compositionend",
+        updateSelectionOverlay,
+      );
       onCleanup(() => {
         hiddenContainer.removeEventListener("focusin", updateSelectionOverlay);
-        hiddenContainer.removeEventListener("compositionend", updateSelectionOverlay);
+        hiddenContainer.removeEventListener(
+          "compositionend",
+          updateSelectionOverlay,
+        );
       });
     },
     { immediate: true },

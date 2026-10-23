@@ -1,0 +1,7 @@
+{
+  "seed": 744138350,
+  "steps": 10,
+  "kind": "random",
+  "generation": "targeted",
+  "title": "an edit inside a pending insertion reads the same after save"
+}

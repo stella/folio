@@ -1,11 +1,12 @@
 import JSZip from "jszip";
-import { generateDocxFixture } from "./validatedDocxFixture";
+
 import {
   SCROLL_CONTROL_TAG,
   SCROLL_REVISION_ID,
   SCROLL_TARGET_PARA_ID,
   SCROLL_TARGET_TEXT,
 } from "../../packages/playground/src/scrollParityBridge";
+import { generateDocxFixture } from "./validatedDocxFixture";
 
 /** Explicit page boundaries and OOXML paragraph identifiers make navigation targets stable. */
 export const buildScrollRootDocument = () => {

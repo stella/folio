@@ -1,26 +1,20 @@
 import { TaggedError } from "better-result";
 
 import initializeRuntime, {
-  docxProjectionSchemaVersion as docxProjectionSchemaVersionInWasm,
-  projectCompressedDocx as projectCompressedDocxInWasm,
-  projectMainDocumentXml as projectMainDocumentXmlInWasm,
-  projectParagraphFragment as projectParagraphFragmentInWasm,
-  projectCompressedDocxWithReadableReviewFacts as projectCompressedDocxWithReadableReviewFactsInWasm,
-  projectCompressedDocxWithReviewFacts as projectCompressedDocxWithReviewFactsInWasm,
   type DocxAttributedComment,
   type DocxAttributedRevision,
   type DocxPackageProjectionWire,
   type DocxParagraphFragmentWire,
-  type DocxProjectionContainer,
   type DocxProjectionAlignment,
   type DocxProjectionAlignmentSource,
   type DocxProjectionAlignmentValue,
   type DocxProjectionBookmarkFact,
+  type DocxProjectionContainer,
   type DocxProjectionFactSet,
-  type DocxProjectionFormattingSpan,
   type DocxProjectionFormattingCompleteness,
   type DocxProjectionFormattingFamily,
   type DocxProjectionFormattingFamilyStatus,
+  type DocxProjectionFormattingSpan,
   type DocxProjectionFormattingUnknownReason,
   type DocxProjectionIndentationFact,
   type DocxProjectionNumberingFact,
@@ -29,15 +23,21 @@ import initializeRuntime, {
   type DocxProjectionReferenceFact,
   type DocxProjectionRevisionStatus,
   type DocxProjectionRevisionUnsupportedReason,
+  docxProjectionSchemaVersion as docxProjectionSchemaVersionInWasm,
   type DocxProjectionStructuralFacts,
   type DocxProjectionStructuralSpan,
   type DocxProjectionStructure,
   type DocxProjectionUnknownReason,
   type DocxProjectionWire,
-  type DocxReviewFactsWire,
   type DocxReviewFactSet,
+  type DocxReviewFactsWire,
   type DocxReviewUnknownReason,
   type DocxRevisionKind,
+  projectCompressedDocx as projectCompressedDocxInWasm,
+  projectCompressedDocxWithReadableReviewFacts as projectCompressedDocxWithReadableReviewFactsInWasm,
+  projectCompressedDocxWithReviewFacts as projectCompressedDocxWithReviewFactsInWasm,
+  projectMainDocumentXml as projectMainDocumentXmlInWasm,
+  projectParagraphFragment as projectParagraphFragmentInWasm,
 } from "./generated/docx_kernel.js";
 
 export type {
@@ -87,11 +87,7 @@ export class DocxProjectionError extends TaggedError("DocxProjectionError")<{
 }> {}
 
 export type DocxProjectionWasmSource =
-  | RequestInfo
-  | URL
-  | Response
-  | BufferSource
-  | WebAssembly.Module;
+  RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export type InitializeDocxProjectionOptions = {
   /**
@@ -108,14 +104,18 @@ export type ProjectCompressedDocxWithReviewFactsOptions = {
 };
 
 let initialization: Promise<void> | undefined;
-const DOCUMENT_PROJECTION_FAILURE_MESSAGE = "Could not project the DOCX document";
-const PACKAGE_PROJECTION_FAILURE_MESSAGE = "Could not project the DOCX package with review facts";
+const DOCUMENT_PROJECTION_FAILURE_MESSAGE =
+  "Could not project the DOCX document";
+const PACKAGE_PROJECTION_FAILURE_MESSAGE =
+  "Could not project the DOCX package with review facts";
 
 /** Loads and caches the single-threaded WebAssembly runtime. */
 export const initializeDocxProjection = ({
   wasm,
 }: InitializeDocxProjectionOptions = {}): Promise<void> => {
-  initialization ??= initializeRuntime(wasm === undefined ? undefined : { module_or_path: wasm })
+  initialization ??= initializeRuntime(
+    wasm === undefined ? undefined : { module_or_path: wasm },
+  )
     .then(() => undefined)
     .catch((cause: unknown) => {
       initialization = undefined;
@@ -155,7 +155,9 @@ export const docxProjectionSchemaVersion = async (): Promise<number> => {
   return docxProjectionSchemaVersionInWasm();
 };
 
-export const projectCompressedDocx = (bytes: Uint8Array): Promise<DocxProjectionWire> =>
+export const projectCompressedDocx = (
+  bytes: Uint8Array,
+): Promise<DocxProjectionWire> =>
   projectWith({
     bytes,
     project: projectCompressedDocxInWasm,
@@ -163,7 +165,9 @@ export const projectCompressedDocx = (bytes: Uint8Array): Promise<DocxProjection
   });
 
 /** Projects raw main-document XML or a Flat OPC package through Rust. */
-export const projectMainDocumentXml = (bytes: Uint8Array): Promise<DocxProjectionWire> =>
+export const projectMainDocumentXml = (
+  bytes: Uint8Array,
+): Promise<DocxProjectionWire> =>
   projectWith({
     bytes,
     project: projectMainDocumentXmlInWasm,
@@ -171,7 +175,9 @@ export const projectMainDocumentXml = (bytes: Uint8Array): Promise<DocxProjectio
   });
 
 /** Projects one Flat OPC paragraph; document structural facts remain unknown. */
-export const projectParagraphFragment = (bytes: Uint8Array): Promise<DocxParagraphFragmentWire> =>
+export const projectParagraphFragment = (
+  bytes: Uint8Array,
+): Promise<DocxParagraphFragmentWire> =>
   projectWith({
     bytes,
     project: projectParagraphFragmentInWasm,
@@ -185,7 +191,9 @@ export const projectParagraphFragment = (bytes: Uint8Array): Promise<DocxParagra
  */
 export const projectCompressedDocxWithReviewFacts = (
   bytes: Uint8Array,
-  { textMaterialization = "word-host" }: ProjectCompressedDocxWithReviewFactsOptions = {},
+  {
+    textMaterialization = "word-host",
+  }: ProjectCompressedDocxWithReviewFactsOptions = {},
 ): Promise<DocxPackageProjectionWire> =>
   projectWith({
     bytes,

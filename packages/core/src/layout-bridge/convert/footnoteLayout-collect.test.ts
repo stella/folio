@@ -8,7 +8,11 @@ import type {
 } from "../../layout-engine/types";
 import { collectFootnoteRefs } from "./footnoteLayout";
 
-function paragraphWithFootnoteRef(id: string, footnoteId: number, pmStart: number): ParagraphBlock {
+function paragraphWithFootnoteRef(
+  id: string,
+  footnoteId: number,
+  pmStart: number,
+): ParagraphBlock {
   return {
     kind: "paragraph",
     id,
@@ -103,7 +107,9 @@ describe("collectFootnoteRefs", () => {
       ],
     };
 
-    expect(collectFootnoteRefs([outerTable])).toEqual([{ footnoteId: 7, pmPos: 150 }]);
+    expect(collectFootnoteRefs([outerTable])).toEqual([
+      { footnoteId: 7, pmPos: 150 },
+    ]);
   });
 
   test("recurses into text box content", () => {
@@ -114,7 +120,9 @@ describe("collectFootnoteRefs", () => {
       content: [paragraphWithFootnoteRef("tb-p", 4, 50)],
     };
 
-    expect(collectFootnoteRefs([textBox])).toEqual([{ footnoteId: 4, pmPos: 50 }]);
+    expect(collectFootnoteRefs([textBox])).toEqual([
+      { footnoteId: 4, pmPos: 50 },
+    ]);
   });
 
   test("falls back to pmPos 0 when run lacks pmStart", () => {

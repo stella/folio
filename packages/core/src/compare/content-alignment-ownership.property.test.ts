@@ -1,10 +1,19 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-import { alignFolioContentBlocks, type FolioContentAlignedBlockEvent } from "./content-alignment";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import {
+  alignFolioContentBlocks,
+  type FolioContentAlignedBlockEvent,
+} from "./content-alignment";
 import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
-import type { FolioContentBlock, FolioContentParagraphKind } from "./content-types";
+import type {
+  FolioContentBlock,
+  FolioContentParagraphKind,
+} from "./content-types";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -73,8 +82,18 @@ const candidateForPass = (
       };
     case "exact":
       return {
-        base: { id: "base", idStability: "positional", kind: "paragraph", text },
-        revised: { id: "revised", idStability: "positional", kind: "paragraph", text },
+        base: {
+          id: "base",
+          idStability: "positional",
+          kind: "paragraph",
+          text,
+        },
+        revised: {
+          id: "revised",
+          idStability: "positional",
+          kind: "paragraph",
+          text,
+        },
       };
     case "continuity":
       return {
@@ -171,18 +190,30 @@ describe("block alignment ownership", () => {
         for (const structuralKind of DISTINCT_STRUCTURAL_KINDS) {
           for (const direction of ["fromParagraph", "toParagraph"] as const) {
             fc.assert(
-              fc.property(fc.string({ minLength: 1, maxLength: 40 }), (text) => {
-                const { base, revised } = candidateForPass(pass, text);
-                base.kind = direction === "fromParagraph" ? paragraphKind : structuralKind;
-                revised.kind = direction === "fromParagraph" ? structuralKind : paragraphKind;
+              fc.property(
+                fc.string({ minLength: 1, maxLength: 40 }),
+                (text) => {
+                  const { base, revised } = candidateForPass(pass, text);
+                  base.kind =
+                    direction === "fromParagraph"
+                      ? paragraphKind
+                      : structuralKind;
+                  revised.kind =
+                    direction === "fromParagraph"
+                      ? structuralKind
+                      : paragraphKind;
 
-                const events = alignFolioContentBlocks([base], [revised], {
-                  stableIdMismatch: "pair",
-                });
-                expect(events.map(({ type }) => type)).toEqual(["baseOnly", "revisedOnly"]);
-                expect(reconstruct(events, "base")).toEqual([base]);
-                expect(reconstruct(events, "revised")).toEqual([revised]);
-              }),
+                  const events = alignFolioContentBlocks([base], [revised], {
+                    stableIdMismatch: "pair",
+                  });
+                  expect(events.map(({ type }) => type)).toEqual([
+                    "baseOnly",
+                    "revisedOnly",
+                  ]);
+                  expect(reconstruct(events, "base")).toEqual([base]);
+                  expect(reconstruct(events, "revised")).toEqual([revised]);
+                },
+              ),
               propertyConfig({ numRuns: 10 }),
             );
           }
@@ -205,10 +236,17 @@ describe("block alignment ownership", () => {
 
             const blocked = candidateForPass(pass, text);
             applyBarrier(barrier, blocked.base, blocked.revised);
-            const events = alignFolioContentBlocks([blocked.base], [blocked.revised], {
-              stableIdMismatch: "pair",
-            });
-            expect(events.map(({ type }) => type)).toEqual(["baseOnly", "revisedOnly"]);
+            const events = alignFolioContentBlocks(
+              [blocked.base],
+              [blocked.revised],
+              {
+                stableIdMismatch: "pair",
+              },
+            );
+            expect(events.map(({ type }) => type)).toEqual([
+              "baseOnly",
+              "revisedOnly",
+            ]);
             expect(reconstruct(events, "base")).toEqual([blocked.base]);
             expect(reconstruct(events, "revised")).toEqual([blocked.revised]);
           }),
@@ -254,7 +292,9 @@ describe("block alignment ownership", () => {
       },
     ];
 
-    const events = alignFolioContentBlocks(base, revised, { stableIdMismatch: "pair" });
+    const events = alignFolioContentBlocks(base, revised, {
+      stableIdMismatch: "pair",
+    });
     // The duplicated id anchors nothing, so the unequal gap pairs by wording.
     expect(events.map(({ type }) => type)).toEqual([
       "baseOnly",
@@ -312,7 +352,9 @@ describe("block alignment ownership", () => {
 
     for (const base of cases) {
       const events = alignFolioContentBlocks(base, [unique]);
-      expect(events.slice(0, -1).every(({ type }) => type === "baseOnly")).toBe(true);
+      expect(events.slice(0, -1).every(({ type }) => type === "baseOnly")).toBe(
+        true,
+      );
       expect(events.at(-1)).toEqual({
         type: "pair",
         baseBlock: base.at(-1),
@@ -342,21 +384,20 @@ describe("block alignment ownership", () => {
             text,
           };
 
-          expect(alignFolioContentBlocks([base], [revised]).map(({ type }) => type)).toEqual([
-            "baseOnly",
-            "revisedOnly",
-          ]);
           expect(
-            alignFolioContentBlocks([base], [revised], { stableIdMismatch: "pair" }).map(
-              ({ type }) => type,
-            ),
+            alignFolioContentBlocks([base], [revised]).map(({ type }) => type),
+          ).toEqual(["baseOnly", "revisedOnly"]);
+          expect(
+            alignFolioContentBlocks([base], [revised], {
+              stableIdMismatch: "pair",
+            }).map(({ type }) => type),
           ).toEqual(["pair"]);
 
           revised.kind = "figure";
           expect(
-            alignFolioContentBlocks([base], [revised], { stableIdMismatch: "pair" }).map(
-              ({ type }) => type,
-            ),
+            alignFolioContentBlocks([base], [revised], {
+              stableIdMismatch: "pair",
+            }).map(({ type }) => type),
           ).toEqual(["baseOnly", "revisedOnly"]);
         },
       ),
@@ -432,7 +473,9 @@ describe("block alignment ownership", () => {
       },
     });
 
-    expect(events.map(({ type }) => type)).toEqual(Array(blockCount).fill("pair"));
+    expect(events.map(({ type }) => type)).toEqual(
+      Array(blockCount).fill("pair"),
+    );
     expect(containerPathReads).toBe(base.length + revised.length);
     expect(idStabilityReads).toBe(base.length + revised.length);
     expect(tableReads).toBe(base.length + revised.length);
@@ -517,15 +560,23 @@ describe("block alignment ownership", () => {
           text: "Revised text",
           containerPath: samePath,
         } as const satisfies FolioContentBlock;
-        expect(alignFolioContentBlocks([base], [revised]).map(({ type }) => type)).toEqual([
-          "pair",
-        ]);
-
-        const differentPath = [...samePath, { kind: "sentinel", id: "different" }];
-        expect(differentPath).toHaveLength(path.length + 1);
-        const structurallyDifferent = { ...revised, containerPath: differentPath };
         expect(
-          alignFolioContentBlocks([base], [structurallyDifferent]).map(({ type }) => type),
+          alignFolioContentBlocks([base], [revised]).map(({ type }) => type),
+        ).toEqual(["pair"]);
+
+        const differentPath = [
+          ...samePath,
+          { kind: "sentinel", id: "different" },
+        ];
+        expect(differentPath).toHaveLength(path.length + 1);
+        const structurallyDifferent = {
+          ...revised,
+          containerPath: differentPath,
+        };
+        expect(
+          alignFolioContentBlocks([base], [structurallyDifferent]).map(
+            ({ type }) => type,
+          ),
         ).toEqual(["baseOnly", "revisedOnly"]);
       }),
       propertyConfig({ numRuns: 160 }),

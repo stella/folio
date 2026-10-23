@@ -13,7 +13,8 @@ export const FONT_KERNING_MODE = {
   disabled: "none",
 } as const;
 
-export type FontKerningMode = (typeof FONT_KERNING_MODE)[keyof typeof FONT_KERNING_MODE];
+export type FontKerningMode =
+  (typeof FONT_KERNING_MODE)[keyof typeof FONT_KERNING_MODE];
 
 const NO_BREAK_HYPHEN = "\u2011";
 const PAINTED_HYPHEN = "-";
@@ -34,7 +35,9 @@ export function getRunFontKerningMode(
 }
 
 /** Convert normalized measurement style into the canvas/CSS kerning mode. */
-export function getFontKerningMode(style: Pick<FontStyle, "kerning">): FontKerningMode {
+export function getFontKerningMode(
+  style: Pick<FontStyle, "kerning">,
+): FontKerningMode {
   return style.kerning ? FONT_KERNING_MODE.enabled : FONT_KERNING_MODE.disabled;
 }
 

@@ -217,8 +217,14 @@ export function applyRunFormattingOverrideAttrs(
   }
 }
 
-export function applyRunFormattingOverrideMark(formatting: TextFormatting, mark: Mark): void {
-  applyRunFormattingOverrideAttrs(formatting, expectRunFormattingOverrideMarkAttrs(mark));
+export function applyRunFormattingOverrideMark(
+  formatting: TextFormatting,
+  mark: Mark,
+): void {
+  applyRunFormattingOverrideAttrs(
+    formatting,
+    expectRunFormattingOverrideMarkAttrs(mark),
+  );
 }
 
 export const RunFormattingOverrideExtension = createMarkExtension({

@@ -4,14 +4,17 @@
  * table with a comment in the same batch, and the refusals that write nothing.
  */
 
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
-
-import { makeTempDir, writeDocx, type FixtureBlock } from "./__tests__/fixtures";
+import {
+  type FixtureBlock,
+  makeTempDir,
+  writeDocx,
+} from "./__tests__/fixtures";
 import { fileVersionOf } from "./document";
 import { blockLines, createFolioMcpServer } from "./mcp";
 
@@ -29,9 +32,13 @@ beforeAll(async () => {
     author: "Reviewer",
     now: () => new Date("2026-01-02T03:04:05Z"),
   });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
   client = new Client({ name: "folio-batch", version: "0.0.0" });
-  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  await Promise.all([
+    server.connect(serverTransport),
+    client.connect(clientTransport),
+  ]);
 });
 
 afterAll(async () => {
@@ -51,8 +58,14 @@ const BLOCKS: FixtureBlock[] = [
   },
   {
     rows: [
-      [[{ text: "Role", paraId: "10000002" }], [{ text: "Party", paraId: "10000003" }]],
-      [[{ text: "Supplier", paraId: "10000004" }], [{ text: "Acme Ltd", paraId: "10000005" }]],
+      [
+        [{ text: "Role", paraId: "10000002" }],
+        [{ text: "Party", paraId: "10000003" }],
+      ],
+      [
+        [{ text: "Supplier", paraId: "10000004" }],
+        [{ text: "Acme Ltd", paraId: "10000005" }],
+      ],
     ],
   },
   { text: "7.2 The Supplier's liability is capped.", paraId: "10000006" },
@@ -61,9 +74,14 @@ const BLOCKS: FixtureBlock[] = [
 
 type Payload = { isError: boolean; body: Record<string, unknown> };
 
-const call = async (name: string, args: Record<string, unknown>): Promise<Payload> => {
+const call = async (
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Payload> => {
   const result = await client.callTool({ name, arguments: args });
-  const first: unknown = Array.isArray(result.content) ? result.content.at(0) : undefined;
+  const first: unknown = Array.isArray(result.content)
+    ? result.content.at(0)
+    : undefined;
   if (typeof first !== "object" || first === null || !("text" in first)) {
     throw new Error(`${name} returned no text`);
   }
@@ -73,9 +91,14 @@ const call = async (name: string, args: Record<string, unknown>): Promise<Payloa
   };
 };
 
-const fixture = async (name: string): Promise<{ file: string; fileVersion: string }> => {
+const fixture = async (
+  name: string,
+): Promise<{ file: string; fileVersion: string }> => {
   const file = await writeDocx(root, name, BLOCKS);
-  return { file, fileVersion: fileVersionOf(new Uint8Array(await readFile(file))) };
+  return {
+    file,
+    fileVersion: fileVersionOf(new Uint8Array(await readFile(file))),
+  };
 };
 
 const documentXml = async (file: string): Promise<string> => {
@@ -86,8 +109,18 @@ const documentXml = async (file: string): Promise<string> => {
 describe("read_document lines", () => {
   test("show list labels, and hide only an unnumbered heading's style id", () => {
     const lines = blockLines([
-      { blockId: "1", headingLevel: 1, displayLabel: "Heading1", text: "Terms" },
-      { blockId: "2", headingLevel: 2, displayLabel: "Article 1", text: "Scope" },
+      {
+        blockId: "1",
+        headingLevel: 1,
+        displayLabel: "Heading1",
+        text: "Terms",
+      },
+      {
+        blockId: "2",
+        headingLevel: 2,
+        displayLabel: "Article 1",
+        text: "Scope",
+      },
       { blockId: "3", displayLabel: "iii.", text: "third" },
       { blockId: "4", displayLabel: "vii)", text: "seventh" },
       { blockId: "5", displayLabel: "Article", text: "plain" },
@@ -123,8 +156,17 @@ describe("suggest_changes batch operations", () => {
       path: file,
       fileVersion,
       operations: [
-        { type: "replaceAll", find: "Supplier", replace: "Provider", matchCase: true },
-        { type: "addComment", quote: "liability is capped", comment: "Cap too low?" },
+        {
+          type: "replaceAll",
+          find: "Supplier",
+          replace: "Provider",
+          matchCase: true,
+        },
+        {
+          type: "addComment",
+          quote: "liability is capped",
+          comment: "Cap too low?",
+        },
       ],
     });
 
@@ -135,14 +177,18 @@ describe("suggest_changes batch operations", () => {
       replaced: [{ find: "Supplier", count: 5 }],
     });
     expect(written.body["commentIds"]).toHaveLength(1);
-    expect(written.body["fileVersion"]).toBe(fileVersionOf(new Uint8Array(await readFile(file))));
+    expect(written.body["fileVersion"]).toBe(
+      fileVersionOf(new Uint8Array(await readFile(file))),
+    );
 
     const xml = await documentXml(file);
     expect(xml.match(/<w:ins /gu)).toHaveLength(5);
     expect(xml.match(/<w:del /gu)).toHaveLength(5);
     expect(xml).toContain('w:author="Reviewer"');
     // The bold occurrence is replaced by bold text.
-    expect(xml).toMatch(/<w:ins [^>]*><w:r><w:rPr><w:b\/><\/w:rPr><w:t>Provider<\/w:t>/u);
+    expect(xml).toMatch(
+      /<w:ins [^>]*><w:r><w:rPr><w:b\/><\/w:rPr><w:t>Provider<\/w:t>/u,
+    );
     // The table cell is renamed too.
     expect(xml).toMatch(/<w:tc><w:p w14:paraId="10000004"[^>]*><w:del /u);
 
@@ -158,7 +204,14 @@ describe("suggest_changes batch operations", () => {
       path: file,
       fileVersion,
       mode: "direct",
-      operations: [{ type: "replaceAll", find: "supplier", replace: "Provider", wholeWord: true }],
+      operations: [
+        {
+          type: "replaceAll",
+          find: "supplier",
+          replace: "Provider",
+          wholeWord: true,
+        },
+      ],
     });
 
     expect(written.body).toMatchObject({ applied: 5 });
@@ -172,7 +225,9 @@ describe("suggest_changes batch operations", () => {
     const written = await call("suggest_changes", {
       path: file,
       fileVersion,
-      operations: [{ type: "addComment", blockId: "10000007", comment: "Which address?" }],
+      operations: [
+        { type: "addComment", blockId: "10000007", comment: "Which address?" },
+      ],
     });
 
     expect(written.body["commentIds"]).toHaveLength(1);
@@ -182,7 +237,9 @@ describe("suggest_changes batch operations", () => {
 
   test("refuses a quote in several blocks, a missing match, and stray fields, writing nothing", async () => {
     const { file, fileVersion } = await fixture("refusals.docx");
-    const refuse = async (operation: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const refuse = async (
+      operation: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> => {
       const result = await call("suggest_changes", {
         path: file,
         fileVersion,
@@ -192,15 +249,24 @@ describe("suggest_changes batch operations", () => {
       return result.body["error"] as Record<string, unknown>;
     };
 
-    expect(await refuse({ type: "addComment", quote: "Supplier", comment: "x" })).toMatchObject({
+    expect(
+      await refuse({ type: "addComment", quote: "Supplier", comment: "x" }),
+    ).toMatchObject({
       code: "ambiguous_target",
     });
-    expect(await refuse({ type: "replaceAll", find: "Vendor", replace: "Provider" })).toMatchObject(
-      { code: "not_found" },
-    );
     expect(
-      await refuse({ type: "replaceAll", find: "Supplier", replace: "Provider", comment: "x" }),
+      await refuse({ type: "replaceAll", find: "Vendor", replace: "Provider" }),
+    ).toMatchObject({ code: "not_found" });
+    expect(
+      await refuse({
+        type: "replaceAll",
+        find: "Supplier",
+        replace: "Provider",
+        comment: "x",
+      }),
     ).toMatchObject({ code: "invalid_input" });
-    expect(fileVersionOf(new Uint8Array(await readFile(file)))).toBe(fileVersion);
+    expect(fileVersionOf(new Uint8Array(await readFile(file)))).toBe(
+      fileVersion,
+    );
   });
 });

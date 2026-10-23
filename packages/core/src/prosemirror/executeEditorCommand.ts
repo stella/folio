@@ -1,7 +1,10 @@
 import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-const owners = new WeakMap<EditorView, (command: Command) => boolean | undefined>();
+const owners = new WeakMap<
+  EditorView,
+  (command: Command) => boolean | undefined
+>();
 
 /** The view's controller owns canonical command interpretation. */
 export const registerEditorCommandOwner = (
@@ -15,7 +18,10 @@ export const registerEditorCommandOwner = (
 };
 
 /** Keep commands on their selected view; a handled refusal must not fall through. */
-export const executeEditorCommand = (view: EditorView, command: Command): boolean => {
+export const executeEditorCommand = (
+  view: EditorView,
+  command: Command,
+): boolean => {
   const handled = owners.get(view)?.(command);
   if (handled !== undefined) return handled;
   return command(view.state, (transaction) => view.dispatch(transaction), view);
@@ -29,7 +35,8 @@ export const executeFirstEditorCommand = (
   for (const command of commands) {
     const handled = owners.get(view)?.(command);
     if (handled !== undefined) return handled;
-    if (command(view.state, (transaction) => view.dispatch(transaction), view)) return true;
+    if (command(view.state, (transaction) => view.dispatch(transaction), view))
+      return true;
   }
   return false;
 };

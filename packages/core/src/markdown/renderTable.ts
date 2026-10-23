@@ -6,28 +6,34 @@
  * both modes. Ported from eigenpal/docx-editor PR #595.
  */
 
+import {
+  ALT_CHUNK_READER_DIAGNOSTIC,
+  isAltChunkMarkup,
+} from "../docx/altChunk";
+import { getHyperlinkRuns } from "../docx/hyperlinkParser";
+import {
+  isOpaqueNestedRowMarkup,
+  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
+  opaqueRevisionCarrierName,
+} from "../docx/opaqueCarrier";
+import {
+  RELATIONSHIP_TYPES,
+  resolveRelationshipIdOfType,
+} from "../docx/relsParser";
 import type {
   BlockContent,
   DocxPackage,
   Hyperlink,
   ParagraphContent,
   Run,
-  TrackedRunContent,
   Table,
   TableCell,
   TableRow,
+  TrackedRunContent,
 } from "../types/document";
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { escapeTableCell } from "./escape";
 import { registerImage } from "./images";
-import { getHyperlinkRuns } from "../docx/hyperlinkParser";
-import { ALT_CHUNK_READER_DIAGNOSTIC, isAltChunkMarkup } from "../docx/altChunk";
-import {
-  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
-  isOpaqueNestedRowMarkup,
-  opaqueRevisionCarrierName,
-} from "../docx/opaqueCarrier";
-import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "../docx/relsParser";
 import { numberNoteReference, pushWarning } from "./internals";
 import { renderParagraph } from "./renderParagraph";
 import type { RenderContext } from "./types";
@@ -41,7 +47,9 @@ export function renderTable(
   const { rows } = table;
   const diagnostics = [
     ...preservedCarrierDiagnostics(table.preserved?.children),
-    ...rows.flatMap((row) => preservedCarrierDiagnostics(row.preserved?.children)),
+    ...rows.flatMap((row) =>
+      preservedCarrierDiagnostics(row.preserved?.children),
+    ),
   ];
   if (!rows.length) {
     return diagnostics.join("\n");
@@ -52,7 +60,9 @@ export function renderTable(
   return [rendered, ...diagnostics].filter(Boolean).join("\n\n");
 }
 
-const preservedCarrierDiagnostics = (children: readonly { xml: string }[] | undefined): string[] =>
+const preservedCarrierDiagnostics = (
+  children: readonly { xml: string }[] | undefined,
+): string[] =>
   (children ?? []).flatMap(({ xml }) => {
     if (isAltChunkMarkup(xml)) {
       return [ALT_CHUNK_READER_DIAGNOSTIC];
@@ -60,7 +70,9 @@ const preservedCarrierDiagnostics = (children: readonly { xml: string }[] | unde
     if (opaqueRevisionCarrierName(xml) !== undefined) {
       return [OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC];
     }
-    return isOpaqueNestedRowMarkup(xml) ? ["[Unsupported nested w:tr content]"] : [];
+    return isOpaqueNestedRowMarkup(xml)
+      ? ["[Unsupported nested w:tr content]"]
+      : [];
   });
 
 function needsHtmlFallback(rows: TableRow[]): boolean {
@@ -83,7 +95,8 @@ function needsHtmlFallback(rows: TableRow[]): boolean {
 const containsTable = (blocks: readonly BlockContent[]): boolean =>
   blocks.some(
     (block) =>
-      block.type === "table" || (block.type === "blockSdt" && containsTable(block.content)),
+      block.type === "table" ||
+      (block.type === "blockSdt" && containsTable(block.content)),
   );
 
 // ---------------------------------------------------------------------------
@@ -140,7 +153,11 @@ function toRowLine(cells: string[]): string {
   return `| ${cells.join(" | ")} |`;
 }
 
-function renderGfmRow(ctx: RenderContext, pkg: DocxPackage | undefined, row: TableRow): string[] {
+function renderGfmRow(
+  ctx: RenderContext,
+  pkg: DocxPackage | undefined,
+  row: TableRow,
+): string[] {
   const out: string[] = [];
   for (const cell of row.cells) {
     out.push(renderGfmCell(ctx, pkg, cell));
@@ -148,7 +165,11 @@ function renderGfmRow(ctx: RenderContext, pkg: DocxPackage | undefined, row: Tab
   return out;
 }
 
-function renderGfmCell(ctx: RenderContext, pkg: DocxPackage | undefined, cell: TableCell): string {
+function renderGfmCell(
+  ctx: RenderContext,
+  pkg: DocxPackage | undefined,
+  cell: TableCell,
+): string {
   ctx.listIndentWidths = [];
   const blocks: string[] = [];
   const renderBlocks = (content: readonly BlockContent[]): void => {
@@ -221,7 +242,9 @@ function renderHtmlTable(
           attrs.push(`rowspan="${rowspan}"`);
         }
         const attrStr = attrs.length ? ` ${attrs.join(" ")}` : "";
-        out.push(`    <${tag}${attrStr}>${renderHtmlCell(ctx, pkg, cell)}</${tag}>`);
+        out.push(
+          `    <${tag}${attrStr}>${renderHtmlCell(ctx, pkg, cell)}</${tag}>`,
+        );
       }
       gridCol += colspan;
     }
@@ -237,7 +260,12 @@ function renderHtmlTable(
  * but vertical merges align on the visual grid column, so a horizontal merge
  * (`gridSpan > 1`) above shifts array indices — we walk by cumulative gridSpan.
  */
-function countRowSpan(rows: TableRow[], rowIdx: number, gridCol: number, colspan: number): number {
+function countRowSpan(
+  rows: TableRow[],
+  rowIdx: number,
+  gridCol: number,
+  colspan: number,
+): number {
   let span = 1;
   for (let r = rowIdx + 1; r < rows.length; r++) {
     const row = rows[r];
@@ -258,7 +286,10 @@ function countRowSpan(rows: TableRow[], rowIdx: number, gridCol: number, colspan
   return span;
 }
 
-function cellAtGridColumn(row: TableRow, gridCol: number): TableCell | undefined {
+function cellAtGridColumn(
+  row: TableRow,
+  gridCol: number,
+): TableCell | undefined {
   let col = 0;
   for (const cell of row.cells) {
     if (col === gridCol) {
@@ -272,7 +303,11 @@ function cellAtGridColumn(row: TableRow, gridCol: number): TableCell | undefined
   return undefined;
 }
 
-function renderHtmlCell(ctx: RenderContext, pkg: DocxPackage | undefined, cell: TableCell): string {
+function renderHtmlCell(
+  ctx: RenderContext,
+  pkg: DocxPackage | undefined,
+  cell: TableCell,
+): string {
   const parts: string[] = [];
   const renderBlocks = (content: readonly BlockContent[]): void => {
     for (const item of content) {
@@ -355,7 +390,10 @@ function renderHtmlInline(
       case "insertion":
       case "moveTo": {
         const inner = renderHtmlChildren(ctx, pkg, item.content, paraId);
-        out += ctx.opts.trackedChanges === "annotate" ? `<ins>${inner}</ins>` : inner;
+        out +=
+          ctx.opts.trackedChanges === "annotate"
+            ? `<ins>${inner}</ins>`
+            : inner;
         break;
       }
       case "deletion":
@@ -366,7 +404,8 @@ function renderHtmlInline(
         break;
       case "simpleField":
       case "complexField": {
-        const runs = item.type === "simpleField" ? item.content : item.fieldResult;
+        const runs =
+          item.type === "simpleField" ? item.content : item.fieldResult;
         out += renderHtmlChildren(ctx, pkg, runs, paraId);
         break;
       }
@@ -421,6 +460,9 @@ function renderHtmlChildren(
         // as bytes: a capture is not read, so it has no words to render.
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "commentReference":
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":
@@ -476,7 +518,9 @@ function renderHtmlRun(
           RELATIONSHIP_TYPES.image,
         );
         const media =
-          ref.status === "resolved" ? pkg?.media?.get(ref.relationship.target) : undefined;
+          ref.status === "resolved"
+            ? pkg?.media?.get(ref.relationship.target)
+            : undefined;
         if (media) {
           const reg = registerImage(ctx, media, item.image, paraId);
           const alt = reg.alt ? escapeHtml(reg.alt) : "";
@@ -484,11 +528,16 @@ function renderHtmlRun(
           break;
         }
         if (item.image.src) {
-          const alt = escapeHtml(item.image.alt ?? item.image.title ?? item.image.filename ?? "");
+          const alt = escapeHtml(
+            item.image.alt ?? item.image.title ?? item.image.filename ?? "",
+          );
           text += `<img src="${escapeHtml(item.image.src)}" alt="${alt}">`;
           break;
         }
-        pushWarning(ctx, `image rId=${item.image.rId ?? "(absent)"} not resolvable`);
+        pushWarning(
+          ctx,
+          `image rId=${item.image.rId ?? "(absent)"} not resolvable`,
+        );
         break;
       }
       case "footnoteRef":

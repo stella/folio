@@ -10,6 +10,8 @@
  * `ST_Border`'s does, so a schema refresh widens these properties on its own.
  */
 
+import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 import { readFileSync } from "node:fs";
 
 import {
@@ -18,17 +20,20 @@ import {
   THEME_COLORS,
   themeColorSlot,
 } from "@stll/docx-core/model";
-import { describe, expect, test } from "bun:test";
-import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Theme } from "../types/document";
 import { resolveColor } from "../utils/colorResolver";
-
 import { parseBorderSpec } from "./borderParser";
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { serializeBorder } from "./serializer/borderSerializer";
-import { serializeShading, serializeTextFormatting } from "./serializer/textFormattingSerializer";
+import {
+  serializeShading,
+  serializeTextFormatting,
+} from "./serializer/textFormattingSerializer";
 import { parseShading } from "./shadingParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -52,7 +57,8 @@ const ST_THEME_COLOR_VALUES: readonly string[] = (() => {
   return themeColor.enumValues;
 })();
 
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const parseOne = (xml: string) => {
   const element = parseXmlDocument(xml);
@@ -91,7 +97,10 @@ const CARRIERS = {
       null,
       RUN_PROPERTY_OWNERS.standalone,
     );
-    return { color: formatting?.color, saved: serializeTextFormatting(formatting) };
+    return {
+      color: formatting?.color,
+      saved: serializeTextFormatting(formatting),
+    };
   },
 } as const;
 
@@ -124,7 +133,9 @@ const THEME: Theme = {
 
 describe("ST_ThemeColor members", () => {
   test("the model's enumeration is the schema's, member for member", () => {
-    expect([...THEME_COLORS].toSorted()).toEqual([...ST_THEME_COLOR_VALUES].toSorted());
+    expect([...THEME_COLORS].toSorted()).toEqual(
+      [...ST_THEME_COLOR_VALUES].toSorted(),
+    );
   });
 
   test("a hyperlink theme colour survives a save", () => {
@@ -136,7 +147,9 @@ describe("ST_ThemeColor members", () => {
 
   test("theme modifiers survive without a base theme slot", () => {
     const shading = parseShading(
-      parseOne(`<w:shd ${WORD_NAMESPACE} w:val="clear" w:themeTint="66" w:themeFillShade="77"/>`),
+      parseOne(
+        `<w:shd ${WORD_NAMESPACE} w:val="clear" w:themeTint="66" w:themeFillShade="77"/>`,
+      ),
     );
 
     expect(shading?.color).toEqual({ themeTint: "66" });
@@ -162,7 +175,9 @@ describe("ST_ThemeColor members", () => {
 
   test("none names no slot, so it paints the element's own colour", () => {
     expect(themeColorSlot("none")).toBeUndefined();
-    expect(resolveColor({ themeColor: "none", rgb: "0563C1" }, THEME)).toBe("#0563C1");
+    expect(resolveColor({ themeColor: "none", rgb: "0563C1" }, THEME)).toBe(
+      "#0563C1",
+    );
   });
 
   test("the two DrawingML spelling maps are mutual inverses", () => {
@@ -206,7 +221,10 @@ describe("ST_ThemeColor members", () => {
           fc.constantFrom(...CARRIER_NAMES),
           (token, carrier) => {
             const { color, saved } = CARRIERS[carrier](token);
-            expect(color?.themeColor).toEqual({ kind: "unrecognised", raw: token });
+            expect(color?.themeColor).toEqual({
+              kind: "unrecognised",
+              raw: token,
+            });
             expect(saved).toContain(`${SAVED_ATTRIBUTE[carrier]}="${token}"`);
           },
         ),

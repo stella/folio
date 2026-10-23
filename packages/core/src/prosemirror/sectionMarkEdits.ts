@@ -43,12 +43,13 @@ export const sectionMarkEditsOf = (
 ): SectionMarkEdits => {
   const deletedMarks = new Set<SectionProperties>();
   const carriers: { position: number; record: SectionProperties | null }[] = [];
-  const replacements: { step: ReplaceStep; doc: PMNode; mapIndex: number }[] = [];
+  const replacements: { step: ReplaceStep; doc: PMNode; mapIndex: number }[] =
+    [];
   const mapping = new Mapping();
   for (const transaction of transactions) {
     for (const [index, step] of transaction.steps.entries()) {
       const doc = transaction.docs[index];
-      if (step instanceof ReplaceStep && step.from < step.to && doc) {
+      if (step instanceof ReplaceStep && doc) {
         replacements.push({ step, doc, mapIndex: mapping.maps.length });
       }
       const map = transaction.mapping.maps[index];
@@ -58,17 +59,63 @@ export const sectionMarkEditsOf = (
 
   for (const { step, doc, mapIndex } of replacements) {
     const { from, to } = step;
+    if (from === to) {
+      // A split inside a paragraph copies its record object onto both halves.
+      // Only the trailing half ends with the mark that owns it; the leading half
+      // ends with a new mark and holds no break. A record set before the split
+      // is the copied one, and a record a paste or a later edit put on a half
+      // is a different object, so neither is lost.
+      // Text deleted beside the split does not remove either mark; a later join
+      // that does remove one leaves both positions in a single paragraph.
+      const after = mapping.slice(mapIndex);
+      const $left = finalDoc.resolve(after.map(from, -1));
+      const $right = finalDoc.resolve(after.map(from, 1));
+      if (
+        !isParagraph($left.parent) ||
+        !isParagraph($right.parent) ||
+        $left.start() === $right.start()
+      ) {
+        continue;
+      }
+      // The record the split copied is the split paragraph's record at that step.
+      const $split = doc.resolve(from);
+      const record = isParagraph($split.parent)
+        ? sectionPropertiesOf($split.parent)
+        : null;
+      if (record !== null && sectionPropertiesOf($left.parent) === record) {
+        carriers.push({ position: $left.before(), record: null });
+        // A split at the end of the paragraph creates the trailing half fresh,
+        // without the record; that half ends with the authored mark and takes it.
+        const split = step.apply(doc).doc;
+        const $trailing = split?.resolve(step.getMap().map(from, 1));
+        if (
+          $trailing &&
+          isParagraph($trailing.parent) &&
+          sectionPropertiesOf($trailing.parent) !== record &&
+          // A record a later edit or paste put on that half stays.
+          sectionPropertiesOf($right.parent) === null
+        ) {
+          carriers.push({ position: $right.before(), record });
+        }
+      }
+      continue;
+    }
     doc.nodesBetween(from, to, (node, position) => {
       if (!isParagraph(node)) return true;
       const record = sectionPropertiesOf(node);
       const markFrom = position + node.nodeSize - 1;
-      if (record && markFrom >= from && markFrom + 1 <= to) deletedMarks.add(record);
+      if (record && markFrom >= from && markFrom + 1 <= to)
+        deletedMarks.add(record);
       return false;
     });
 
     const $from = doc.resolve(from);
     const $to = doc.resolve(to);
-    if (!isParagraph($from.parent) || !isParagraph($to.parent) || $from.start() === $to.start()) {
+    if (
+      !isParagraph($from.parent) ||
+      !isParagraph($to.parent) ||
+      $from.start() === $to.start()
+    ) {
       continue;
     }
     const leftRecord = sectionPropertiesOf($from.parent);

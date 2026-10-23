@@ -81,7 +81,9 @@ export const SdtExtension = createNodeExtension({
             id: id !== null && !Number.isNaN(id) ? id : null,
             lock: el.dataset["lock"] || null,
             placeholder: el.dataset["placeholder"] || null,
-            showingPlaceholder: onOffFromDataset(el.dataset["showingPlaceholder"]),
+            showingPlaceholder: onOffFromDataset(
+              el.dataset["showingPlaceholder"],
+            ),
             dateFormat: el.dataset["dateFormat"] || null,
             dateValueISO: el.dataset["dateValueIso"] || null,
             listItems: el.dataset["listItems"] || null,
@@ -119,8 +121,13 @@ export const SdtExtension = createNodeExtension({
       if (attrs.placeholder) {
         dataAttrs["data-placeholder"] = attrs.placeholder;
       }
-      if (attrs.showingPlaceholder !== null && attrs.showingPlaceholder !== undefined) {
-        dataAttrs["data-showing-placeholder"] = String(attrs.showingPlaceholder);
+      if (
+        attrs.showingPlaceholder !== null &&
+        attrs.showingPlaceholder !== undefined
+      ) {
+        dataAttrs["data-showing-placeholder"] = String(
+          attrs.showingPlaceholder,
+        );
       }
       if (attrs.dateFormat) {
         dataAttrs["data-date-format"] = attrs.dateFormat;
@@ -143,7 +150,8 @@ export const SdtExtension = createNodeExtension({
         dataAttrs["style"] =
           "border: 1px solid #ccc; border-radius: 3px; padding: 0 2px; display: inline;";
       } else {
-        dataAttrs["style"] = "border-bottom: 1px dashed #999; padding: 0 1px; display: inline;";
+        dataAttrs["style"] =
+          "border-bottom: 1px dashed #999; padding: 0 1px; display: inline;";
       }
 
       return ["span", dataAttrs, 0];

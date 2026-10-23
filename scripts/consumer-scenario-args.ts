@@ -10,7 +10,9 @@ export {
 } from "../test/consumer-scenarios/support/replay-inputs";
 
 const optionForFlag = (flag: `--${string}`): string =>
-  flag.slice(2).replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+  flag
+    .slice(2)
+    .replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
 
 export type ConsumerArgs = {
   tarballs: string | null;
@@ -40,15 +42,26 @@ export type ConsumerArgs = {
   publicCorpusFixture: string | null;
 };
 
-export const parseConsumerArgs = (argv: readonly string[], repoRoot: string): ConsumerArgs => {
+export const parseConsumerArgs = (
+  argv: readonly string[],
+  repoRoot: string,
+): ConsumerArgs => {
   const args: ConsumerArgs = {
     tarballs: null,
     packOnly: null,
     keep: false,
     typecheck: false,
     only: null,
-    coverageOut: path.join(repoRoot, "test-results", "consumer-scenarios-coverage.json"),
-    featureCoverageOut: path.join(repoRoot, "test-results", "consumer-scenarios-features.json"),
+    coverageOut: path.join(
+      repoRoot,
+      "test-results",
+      "consumer-scenarios-coverage.json",
+    ),
+    featureCoverageOut: path.join(
+      repoRoot,
+      "test-results",
+      "consumer-scenarios-features.json",
+    ),
     files: [],
     seed: null,
     steps: null,
@@ -71,14 +84,16 @@ export const parseConsumerArgs = (argv: readonly string[], repoRoot: string): Co
   const seenReplayFlags = new Set<string>();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    const value = (): string => argv[++index] ?? panic(`consumer-scenarios: ${arg} needs a value`);
+    const value = (): string =>
+      argv[++index] ?? panic(`consumer-scenarios: ${arg} needs a value`);
     if (arg === "--tarballs") args.tarballs = path.resolve(value());
     else if (arg === "--pack-only") args.packOnly = path.resolve(value());
     else if (arg === "--keep") args.keep = true;
     else if (arg === "--typecheck") args.typecheck = true;
     else if (arg === "--only") args.only = value();
     else if (arg === "--coverage-out") args.coverageOut = path.resolve(value());
-    else if (arg === "--feature-coverage-out") args.featureCoverageOut = path.resolve(value());
+    else if (arg === "--feature-coverage-out")
+      args.featureCoverageOut = path.resolve(value());
     else if (arg !== undefined) {
       const input = CONSUMER_SCENARIO_REPLAY_INPUTS.find(
         ({ flag }) => flag === arg || arg.startsWith(`${flag}=`),
@@ -88,7 +103,8 @@ export const parseConsumerArgs = (argv: readonly string[], repoRoot: string): Co
           panic(`consumer-scenarios: repeated replay flag ${input.flag}`);
         }
         seenReplayFlags.add(input.flag);
-        const inputValue = arg === input.flag ? value() : arg.slice(input.flag.length + 1);
+        const inputValue =
+          arg === input.flag ? value() : arg.slice(input.flag.length + 1);
         Object.assign(args, {
           [optionForFlag(input.flag)]:
             input.kind === "path" ? path.resolve(inputValue) : inputValue,
@@ -110,10 +126,14 @@ export const consumerScenarioInputs = (
   Object.fromEntries(
     CONSUMER_SCENARIO_REPLAY_INPUTS.map(({ flag, env }) => [
       optionForFlag(flag),
-      args[optionForFlag(flag) as keyof ConsumerArgs] ?? environment[env] ?? null,
+      args[optionForFlag(flag) as keyof ConsumerArgs] ??
+        environment[env] ??
+        null,
     ]),
   );
 
 if (import.meta.main) {
-  console.log(JSON.stringify(parseConsumerArgs(process.argv.slice(2), process.cwd())));
+  console.log(
+    JSON.stringify(parseConsumerArgs(process.argv.slice(2), process.cwd())),
+  );
 }

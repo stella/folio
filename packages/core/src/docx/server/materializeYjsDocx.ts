@@ -12,8 +12,8 @@ import {
   readYjsParagraphSourceContract,
   withParagraphSourceContract,
 } from "../../prosemirror/yjsDocumentMetadata";
-import { parseDocx } from "../parser";
 import { ParagraphPropertySourceValidationError } from "../paragraphPropertySource";
+import { parseDocx } from "../parser";
 import { repackDocx } from "../rezip";
 
 /** Yjs fragment that stores Folio's canonical ProseMirror document. */
@@ -98,10 +98,14 @@ const readProseMirrorDocument = (yjsUpdate: Uint8Array) => {
       if (!contract) {
         throw new FolioYjsDocxMaterializationError({
           code: "source_mismatch",
-          message: "Yjs update does not identify its paragraph-property source document.",
+          message:
+            "Yjs update does not identify its paragraph-property source document.",
         });
       }
-      return withParagraphSourceContract(initProseMirrorDoc(fragment, schema).doc, contract);
+      return withParagraphSourceContract(
+        initProseMirrorDoc(fragment, schema).doc,
+        contract,
+      );
     },
     catch: (cause) => {
       if (cause instanceof FolioYjsDocxMaterializationError) return cause;
@@ -142,12 +146,15 @@ export const materializeYjsDocx = async ({
   const converted = Result.try({
     try: () =>
       // canonical-gap: pm-save-projection
-      fromProseDoc(proseMirrorDocument, baseDocument, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(proseMirrorDocument, baseDocument, {
+        stylesheetSource: { type: "package" },
+      }),
     catch: (cause) =>
       cause instanceof ParagraphPropertySourceValidationError
         ? new FolioYjsDocxMaterializationError({
             code: "source_mismatch",
-            message: "The collaboration snapshot belongs to a different source document.",
+            message:
+              "The collaboration snapshot belongs to a different source document.",
             cause,
           })
         : cause,

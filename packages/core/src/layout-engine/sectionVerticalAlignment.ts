@@ -18,7 +18,10 @@ const isFlowFragment = (fragment: Fragment): boolean => {
   }
 };
 
-const alignedOffset = (alignment: VerticalAlign, availableHeight: number): number => {
+const alignedOffset = (
+  alignment: VerticalAlign,
+  availableHeight: number,
+): number => {
   switch (alignment) {
     case "center":
       return availableHeight / 2;
@@ -43,9 +46,15 @@ const alignPage = (page: Page, alignment: VerticalAlign | undefined): Page => {
     return page;
   }
 
-  const contentBottom = page.size.h - page.margins.bottom - (page.footnoteReservedHeight ?? 0);
-  const occupiedBottom = Math.max(...flow.map((fragment) => fragment.y + fragment.height));
-  const offset = alignedOffset(alignment, Math.max(0, contentBottom - occupiedBottom));
+  const contentBottom =
+    page.size.h - page.margins.bottom - (page.footnoteReservedHeight ?? 0);
+  const occupiedBottom = Math.max(
+    ...flow.map((fragment) => fragment.y + fragment.height),
+  );
+  const offset = alignedOffset(
+    alignment,
+    Math.max(0, contentBottom - occupiedBottom),
+  );
   if (offset === 0) {
     return page;
   }
@@ -54,7 +63,9 @@ const alignPage = (page: Page, alignment: VerticalAlign | undefined): Page => {
   return {
     ...page,
     fragments: page.fragments.map((fragment) =>
-      flowSet.has(fragment) ? { ...fragment, y: fragment.y + offset } : fragment,
+      flowSet.has(fragment)
+        ? { ...fragment, y: fragment.y + offset }
+        : fragment,
     ),
   };
 };

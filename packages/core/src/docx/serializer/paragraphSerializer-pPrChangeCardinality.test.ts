@@ -11,6 +11,9 @@ const propertyChange = (id: number): ParagraphPropertyChange => ({
 
 test("refuses to serialize multiple non-suggested sibling w:pPrChange elements", () => {
   expect(() =>
-    serializeParagraphFormatting({ spaceBefore: 360 }, [propertyChange(1), propertyChange(2)]),
+    serializeParagraphFormatting({ spaceBefore: 360 }, [
+      propertyChange(1),
+      propertyChange(2),
+    ]),
   ).toThrow("A paragraph cannot serialize more than one w:pPrChange");
 });

@@ -9,6 +9,14 @@
  * `footnotes: "strip"` gate).
  */
 
+import { compileMarkdownToContent } from "@stll/docx-core";
+
+import { getHyperlinkRuns } from "../docx/hyperlinkParser";
+import {
+  RELATIONSHIP_TYPES,
+  resolveRelationshipIdOfType,
+  resolveRelativePath,
+} from "../docx/relsParser";
 import type {
   Comment,
   CommentRangeEnd,
@@ -24,18 +32,16 @@ import type {
   RunContent,
   TrackedRunContent,
 } from "../types/document";
-import { compileMarkdownToContent } from "@stll/docx-core";
-
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
-import { wrapComment, wrapDeletion, wrapInsertion, wrapMoveFrom, wrapMoveTo } from "./annotations";
+import {
+  wrapComment,
+  wrapDeletion,
+  wrapInsertion,
+  wrapMoveFrom,
+  wrapMoveTo,
+} from "./annotations";
 import { escapeAltText, escapeInline, escapeLinkUrl } from "./escape";
 import { registerImage } from "./images";
-import { getHyperlinkRuns } from "../docx/hyperlinkParser";
-import {
-  RELATIONSHIP_TYPES,
-  resolveRelationshipIdOfType,
-  resolveRelativePath,
-} from "../docx/relsParser";
 import { numberNoteReference, pushWarning } from "./internals";
 import type { RenderContext } from "./types";
 
@@ -144,7 +150,8 @@ type RunNeighbors = { before: Neighbor; after: Neighbor };
 
 const UNKNOWN_NEIGHBORS: RunNeighbors = { before: undefined, after: undefined };
 
-const isBlank = (ch: Neighbor): boolean => ch === "" || (ch !== undefined && /\s/u.test(ch));
+const isBlank = (ch: Neighbor): boolean =>
+  ch === "" || (ch !== undefined && /\s/u.test(ch));
 
 type EmphasisKey = Exclude<MarkKey, "code">;
 
@@ -189,7 +196,11 @@ const INLINE_UNIT = /\\[\s\S]|\[\^e?\d+\]|[\s\S]/gu;
  * those characters are left outside the emphasis rather than written as
  * literal asterisks.
  */
-function wrapFlanking(inner: string, mark: EmphasisKey, { before, after }: RunNeighbors): string {
+function wrapFlanking(
+  inner: string,
+  mark: EmphasisKey,
+  { before, after }: RunNeighbors,
+): string {
   const isPunctuation = punctuationFor(mark);
   const opensAfter = (ch: Neighbor) => isBlank(ch) || isPunctuation(ch);
   const units = Array.from(inner.matchAll(INLINE_UNIT), ([unit]) => unit);
@@ -201,7 +212,8 @@ function wrapFlanking(inner: string, mark: EmphasisKey, { before, after }: RunNe
   for (;;) {
     const unit = units[start];
     if (unit === undefined || start >= end) break;
-    const opens = !isBlank(unit) && (!isPunctuationUnit(unit) || opensAfter(outside));
+    const opens =
+      !isBlank(unit) && (!isPunctuationUnit(unit) || opensAfter(outside));
     if (opens) break;
     outside = unit.at(-1);
     start++;
@@ -210,7 +222,8 @@ function wrapFlanking(inner: string, mark: EmphasisKey, { before, after }: RunNe
   for (;;) {
     const unit = units[end - 1];
     if (unit === undefined || end <= start) break;
-    const closes = !isBlank(unit) && (!isPunctuationUnit(unit) || opensAfter(outside));
+    const closes =
+      !isBlank(unit) && (!isPunctuationUnit(unit) || opensAfter(outside));
     if (closes) break;
     outside = unit.at(0);
     end--;
@@ -368,7 +381,12 @@ function renderRunContent(
         );
         const media =
           ref.status === "resolved"
-            ? pkg?.media?.get(resolveRelativePath("word/document.xml", ref.relationship.target))
+            ? pkg?.media?.get(
+                resolveRelativePath(
+                  "word/document.xml",
+                  ref.relationship.target,
+                ),
+              )
             : undefined;
         if (media) {
           const reg = registerImage(ctx, media, item.image, paraId);
@@ -380,11 +398,15 @@ function renderRunContent(
         // live in `pkg.relationships`. The parser inlines the bytes into
         // `image.src` (typically a data URL) — emit that directly.
         if (item.image.src) {
-          const alt = item.image.alt ?? item.image.title ?? item.image.filename ?? "";
+          const alt =
+            item.image.alt ?? item.image.title ?? item.image.filename ?? "";
           out += `![${escapeAltText(alt)}](${item.image.src})`;
           break;
         }
-        pushWarning(ctx, `image rId=${item.image.rId ?? "(absent)"} not resolvable`);
+        pushWarning(
+          ctx,
+          `image rId=${item.image.rId ?? "(absent)"} not resolvable`,
+        );
         break;
       }
       case "shape":
@@ -434,10 +456,13 @@ type ReadCharacter = { char: string; marks: ReadonlySet<EmphasisKey> };
 /** What a markdown reader reads from one line: each character with its emphasis. */
 const readLine = (line: string): ReadCharacter[] =>
   compileMarkdownToContent(line)
-    .content.flatMap((block) => (block.type === "paragraph" ? block.content : []))
+    .content.flatMap((block) =>
+      block.type === "paragraph" ? block.content : [],
+    )
     .flatMap((item) => (item.type === "hyperlink" ? item.children : [item]))
     .flatMap((item) => {
-      if (item.type !== "run") return [{ char: "\u0000", marks: new Set<EmphasisKey>() }];
+      if (item.type !== "run")
+        return [{ char: "\u0000", marks: new Set<EmphasisKey>() }];
       const marks = new Set<EmphasisKey>(
         GROUPING_ORDER.filter((key) => item.formatting?.[key] === true),
       );
@@ -448,8 +473,10 @@ const readLine = (line: string): ReadCharacter[] =>
       );
     });
 
-const sameMarks = (left: ReadonlySet<EmphasisKey>, right: ReadonlySet<EmphasisKey>) =>
-  left.size === right.size && [...left].every((key) => right.has(key));
+const sameMarks = (
+  left: ReadonlySet<EmphasisKey>,
+  right: ReadonlySet<EmphasisKey>,
+) => left.size === right.size && [...left].every((key) => right.has(key));
 
 /**
  * How `rendered`, between `edges`, reads back: `"exact"` with the pieces'
@@ -466,10 +493,14 @@ const readBack = (
     if (ch === undefined) return "x";
     return ch === "" ? " " : ch;
   };
-  const line = (inner: string) => `x ${side(edges.before)}${inner}${side(edges.after)} x`;
+  const line = (inner: string) =>
+    `x ${side(edges.before)}${inner}${side(edges.after)} x`;
   const read = readLine(line(rendered));
   const plain = readLine(line(pieces.map(({ text }) => text).join("")));
-  if (read.map(({ char }) => char).join("") !== plain.map(({ char }) => char).join("")) {
+  if (
+    read.map(({ char }) => char).join("") !==
+    plain.map(({ char }) => char).join("")
+  ) {
     return null;
   }
   // What the reader reads from each piece on its own (a hard break or an
@@ -490,7 +521,8 @@ const readBack = (
     if (at?.char !== char) return null;
     // Emphasis the words did not have is never written.
     if ([...at.marks].some((mark) => !marks.has(mark))) return null;
-    if (/[\p{L}\p{N}]/u.test(char) && !sameMarks(at.marks, marks)) exact = false;
+    if (/[\p{L}\p{N}]/u.test(char) && !sameMarks(at.marks, marks))
+      exact = false;
   }
   return exact ? "exact" : "text";
 };
@@ -567,7 +599,10 @@ function renderHyperlink(
   if (!core) return inner;
   const href = link.href ?? (link.anchor ? `#${link.anchor}` : "");
   if (!href) {
-    pushWarning(ctx, "hyperlink missing href and anchor; rendered as plain text");
+    pushWarning(
+      ctx,
+      "hyperlink missing href and anchor; rendered as plain text",
+    );
     return inner;
   }
   if (ctx.opts.hyperlinks === "reference") {
@@ -596,7 +631,13 @@ function renderTrackedWrapper(
       // is the only way that text reaches the output.
       case "inlineWrapper":
       case "inlineSdt":
-        return renderParagraphInline(ctx, pkg, child.content, paraId, UNKNOWN_NEIGHBORS);
+        return renderParagraphInline(
+          ctx,
+          pkg,
+          child.content,
+          paraId,
+          UNKNOWN_NEIGHBORS,
+        );
       case "insertion":
       case "deletion":
       case "moveFrom":
@@ -604,11 +645,20 @@ function renderTrackedWrapper(
         return renderTrackedWrapper(ctx, pkg, child, paraId);
       case "simpleField":
       case "complexField":
-        return renderParagraphInline(ctx, pkg, [child], paraId, UNKNOWN_NEIGHBORS);
+        return renderParagraphInline(
+          ctx,
+          pkg,
+          [child],
+          paraId,
+          UNKNOWN_NEIGHBORS,
+        );
       // A range boundary carries no text, and neither does markup folio kept
       // as bytes: a capture is not read, so it has no words to render.
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -670,7 +720,9 @@ type CommentSlot = {
 };
 
 /** Clean revisions have no inline boundary; group their runs with surrounding runs. */
-const cleanRevisionContent = (content: readonly ParagraphContent[]): ParagraphContent[] =>
+const cleanRevisionContent = (
+  content: readonly ParagraphContent[],
+): ParagraphContent[] =>
   content.flatMap((item) => {
     switch (item.type) {
       case "insertion":
@@ -701,7 +753,9 @@ export function renderParagraphInline(
   // Markers that write nothing are left out, so the runs on either side of
   // one meet as they do on the line.
   const visibleContent =
-    ctx.opts.trackedChanges === "clean" ? cleanRevisionContent(content) : content;
+    ctx.opts.trackedChanges === "clean"
+      ? cleanRevisionContent(content)
+      : content;
   const items = visibleContent.filter(
     (item) =>
       !SILENT_MARKERS.has(item.type) &&
@@ -752,12 +806,19 @@ export function renderParagraphInline(
       case "simpleField":
       case "complexField": {
         // Render the visible result content.
-        const runs = item.type === "simpleField" ? item.content : item.fieldResult;
+        const runs =
+          item.type === "simpleField" ? item.content : item.fieldResult;
         for (const child of runs) {
           out +=
             child.type === "preservedInline"
               ? child.text
-              : renderParagraphInline(ctx, pkg, [child], paraId, UNKNOWN_NEIGHBORS);
+              : renderParagraphInline(
+                  ctx,
+                  pkg,
+                  [child],
+                  paraId,
+                  UNKNOWN_NEIGHBORS,
+                );
         }
         break;
       }
@@ -766,7 +827,13 @@ export function renderParagraphInline(
       // are read through to the text itself.
       case "inlineSdt":
       case "inlineWrapper":
-        out += renderParagraphInline(ctx, pkg, item.content, paraId, around(index));
+        out += renderParagraphInline(
+          ctx,
+          pkg,
+          item.content,
+          paraId,
+          around(index),
+        );
         break;
       case "mathEquation":
         // Markdown can't carry OMML; emit the plain-text fallback when present.
@@ -812,7 +879,11 @@ function handleCommentStart(
   return "";
 }
 
-function renderPointComment(ctx: RenderContext, pkg: DocxPackage | undefined, id: number): string {
+function renderPointComment(
+  ctx: RenderContext,
+  pkg: DocxPackage | undefined,
+  id: number,
+): string {
   if (ctx.opts.comments === "strip") {
     return "";
   }
@@ -842,7 +913,11 @@ function handleCommentEnd(
   return applyCommentWrapping(ctx, slot, current);
 }
 
-function applyCommentWrapping(ctx: RenderContext, slot: CommentSlot, current: string): string {
+function applyCommentWrapping(
+  ctx: RenderContext,
+  slot: CommentSlot,
+  current: string,
+): string {
   if (!slot.comment) {
     return current;
   }
@@ -853,5 +928,12 @@ function applyCommentWrapping(ctx: RenderContext, slot: CommentSlot, current: st
     ctx.commentRefs.push({ commentId: slot.comment.id, markerNumber });
     return `${before}${inner}[^c${markerNumber}]`;
   }
-  return before + wrapComment(ctx, { id: slot.comment.id, author: slot.comment.author }, inner);
+  return (
+    before +
+    wrapComment(
+      ctx,
+      { id: slot.comment.id, author: slot.comment.author },
+      inner,
+    )
+  );
 }

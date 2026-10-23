@@ -27,7 +27,9 @@ const median = (values: number[]): number => {
   return sorted[Math.floor(sorted.length / 2)]!;
 };
 
-const measure = async (prepare: () => Promise<Operation> | Operation): Promise<number> => {
+const measure = async (
+  prepare: () => Promise<Operation> | Operation,
+): Promise<number> => {
   const operation = await prepare();
   global.gc?.();
   const start = process.cpuUsage();
@@ -48,7 +50,11 @@ for (const scenario of scenarios) {
     samples.push(values);
     cpuMs.push(median(values));
   }
-  const assessment = assessComplexity(scenario.sizes, [cpuMs[0]!, cpuMs[1]!, cpuMs[2]!]);
+  const assessment = assessComplexity(scenario.sizes, [
+    cpuMs[0]!,
+    cpuMs[1]!,
+    cpuMs[2]!,
+  ]);
   const result = { scenario: scenario.name, samples, ...assessment };
   results.push(result);
   console.log(JSON.stringify(result));

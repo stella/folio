@@ -4,11 +4,14 @@
 
 import { panic } from "better-result";
 
-import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
 import { expectFontFamilyMarkAttrs } from "../../attrs";
+import {
+  canonicalRunFormatting,
+  withCanonicalCommand,
+} from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { canonicalSetMarkFormatting, setMark, removeMark } from "./markUtils";
+import { canonicalSetMarkFormatting, removeMark, setMark } from "./markUtils";
 
 export const FontFamilyExtension = createMarkExtension({
   name: "fontFamily",
@@ -30,7 +33,9 @@ export const FontFamilyExtension = createMarkExtension({
         style: "font-family",
         getAttrs: (value) => {
           // SAFETY: split always returns at least one element
-          const firstFont = (value.split(",")[0] ?? "").trim().replace(/['"]/gu, "");
+          const firstFont = (value.split(",")[0] ?? "")
+            .trim()
+            .replace(/['"]/gu, "");
           if (firstFont) {
             return { ascii: firstFont };
           }
@@ -46,7 +51,11 @@ export const FontFamilyExtension = createMarkExtension({
       }
       const quotedFont = fontName.includes(" ") ? `"${fontName}"` : fontName;
       // "Noto Sans Arabic" catches Arabic glyphs the Latin font lacks.
-      return ["span", { style: `font-family: ${quotedFont}, "Noto Sans Arabic", sans-serif` }, 0];
+      return [
+        "span",
+        { style: `font-family: ${quotedFont}, "Noto Sans Arabic", sans-serif` },
+        0,
+      ];
     },
   },
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {

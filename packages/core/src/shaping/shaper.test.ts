@@ -9,7 +9,12 @@ import path from "node:path";
 import { BIDI_DIRECTION, type BidiDirection, getShaper } from "./shaper";
 
 const SHAPER_MODULE = path.join(import.meta.dir, "shaper.ts");
-const WASM_PATH = path.join(import.meta.dir, "..", "generated", "text_shaper_bg.wasm");
+const WASM_PATH = path.join(
+  import.meta.dir,
+  "..",
+  "generated",
+  "text_shaper_bg.wasm",
+);
 const CONFORMANCE_FIXTURE = path.join(
   import.meta.dir,
   "..",
@@ -57,7 +62,11 @@ describe("loading from bytes", () => {
       const shaper = await getShaper({ wasm });
       console.log(JSON.stringify(shaper.resolveBidi({ text: "a\\u05d0", direction: "ltr" })));
     `);
-    expect(JSON.parse(out)).toEqual({ paragraphLevel: 0, levels: [0, 1], visualOrder: [0, 1] });
+    expect(JSON.parse(out)).toEqual({
+      paragraphLevel: 0,
+      levels: [0, 1],
+      visualOrder: [0, 1],
+    });
   });
 
   test("accepts an ArrayBuffer as well as a Uint8Array", async () => {
@@ -107,8 +116,13 @@ const readConformanceCases = (): readonly ConformanceCase[] =>
       if (raw === "" || raw.startsWith("#")) {
         return [];
       }
-      const [points = "", direction = "", paragraphLevel = "", levels = "", order = ""] =
-        raw.split(";");
+      const [
+        points = "",
+        direction = "",
+        paragraphLevel = "",
+        levels = "",
+        order = "",
+      ] = raw.split(";");
       const resolved = DIRECTION_BY_FIELD[direction];
       if (resolved === undefined) {
         throw new Error(`line ${index + 1}: unknown direction ${direction}`);
@@ -116,10 +130,14 @@ const readConformanceCases = (): readonly ConformanceCase[] =>
       return [
         {
           line: index + 1,
-          text: String.fromCodePoint(...points.split(" ").map((hex) => Number.parseInt(hex, 16))),
+          text: String.fromCodePoint(
+            ...points.split(" ").map((hex) => Number.parseInt(hex, 16)),
+          ),
           direction: resolved,
           paragraphLevel: Number(paragraphLevel),
-          levels: levels.split(" ").map((level) => (level === "x" ? null : Number(level))),
+          levels: levels
+            .split(" ")
+            .map((level) => (level === "x" ? null : Number(level))),
           visualOrder: numbersOf(order),
         },
       ];
@@ -131,11 +149,16 @@ describe("the bidirectional algorithm", () => {
     const cases = readConformanceCases();
     expect(cases.length).toBeGreaterThan(500);
     const failures = cases.flatMap((expected) => {
-      const line = shaper.resolveBidi({ text: expected.text, direction: expected.direction });
+      const line = shaper.resolveBidi({
+        text: expected.text,
+        direction: expected.direction,
+      });
       const levels = line.levels.map((level, index) =>
         expected.levels[index] === null ? null : level,
       );
-      const visualOrder = line.visualOrder.filter((index) => expected.levels[index] !== null);
+      const visualOrder = line.visualOrder.filter(
+        (index) => expected.levels[index] !== null,
+      );
       const matches =
         line.paragraphLevel === expected.paragraphLevel &&
         Bun.deepEquals(levels, expected.levels) &&
@@ -148,7 +171,10 @@ describe("the bidirectional algorithm", () => {
   test("counts code points, not UTF-16 units", async () => {
     const shaper = await getShaper();
     // An astral Adlam letter is two UTF-16 units and one code point.
-    const line = shaper.resolveBidi({ text: "a\u{1e900}b", direction: BIDI_DIRECTION.leftToRight });
+    const line = shaper.resolveBidi({
+      text: "a\u{1e900}b",
+      direction: BIDI_DIRECTION.leftToRight,
+    });
     expect(line.levels).toEqual([0, 1, 0]);
     expect(line.visualOrder).toEqual([0, 1, 2]);
   });

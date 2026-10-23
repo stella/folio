@@ -18,10 +18,14 @@ describe("blockSdt PM node", () => {
   });
 
   test("doc accepts a blockSdt child", () => {
-    const para = schema.node("paragraph", {}, [schema.text("inside the control")]);
-    const blockSdt = schema.node("blockSdt", { tag: "effective-date", sdtType: "richText" }, [
-      para,
+    const para = schema.node("paragraph", {}, [
+      schema.text("inside the control"),
     ]);
+    const blockSdt = schema.node(
+      "blockSdt",
+      { tag: "effective-date", sdtType: "richText" },
+      [para],
+    );
     const doc = schema.node("doc", null, [blockSdt]);
     expect(doc.firstChild?.type.name).toBe("blockSdt");
     expect(doc.firstChild?.firstChild?.type.name).toBe("paragraph");
@@ -29,14 +33,18 @@ describe("blockSdt PM node", () => {
   });
 
   test("blockSdt can nest another blockSdt", () => {
-    const inner = schema.node("blockSdt", { tag: "inner" }, [schema.node("paragraph", {}, [])]);
+    const inner = schema.node("blockSdt", { tag: "inner" }, [
+      schema.node("paragraph", {}, []),
+    ]);
     const outer = schema.node("blockSdt", { tag: "outer" }, [inner]);
     expect(outer.firstChild?.type.name).toBe("blockSdt");
     expect(outer.firstChild?.attrs["tag"]).toBe("inner");
   });
 
   test("the preserved property children and rawEndPropertiesXml round-trip via attrs", () => {
-    const preserved = { children: [{ index: 8, xml: '<w:dataBinding w:xpath="/a"/>' }] };
+    const preserved = {
+      children: [{ index: 8, xml: '<w:dataBinding w:xpath="/a"/>' }],
+    };
     const rawEnd = "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>";
     const blockSdt = schema.node(
       "blockSdt",

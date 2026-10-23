@@ -82,7 +82,11 @@ const romanValue = (letters: string): number | undefined => {
   return total > 0 && toRoman(total) === lower ? total : undefined;
 };
 
-const numbered = (numFmt: NumberFormat, punctuation: string, start: number): ListRequest => ({
+const numbered = (
+  numFmt: NumberFormat,
+  punctuation: string,
+  start: number,
+): ListRequest => ({
   kind: "numbered",
   format: { numFmt, lvlText: `%1${punctuation}` },
   start,
@@ -110,7 +114,9 @@ export const listRequestsForMarker = (text: string): ListRequest[] | null => {
   const number = NUMBER_PATTERN.exec(text)?.groups;
   if (number) {
     const value = Number.parseInt(number["value"] ?? "", 10);
-    return value >= 1 ? [numbered("decimal", number["punctuation"] ?? ".", value)] : null;
+    return value >= 1
+      ? [numbered("decimal", number["punctuation"] ?? ".", value)]
+      : null;
   }
   const lettered = LETTERS_PATTERN.exec(text)?.groups;
   if (!lettered) {

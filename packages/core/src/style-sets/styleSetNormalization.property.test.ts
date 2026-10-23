@@ -16,15 +16,20 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  NO_PARAGRAPH_NUMBERING,
+  PARSE_WARNING_CODES,
+} from "@stll/docx-core/model";
 
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { DOCUMENT_STYLE_SET_VERSION, type DocumentStyleSet } from "./types";
-import { NO_PARAGRAPH_NUMBERING } from "@stll/docx-core/model";
 
 /** A numbering slot: absent, the "no numbering" sentinel, defined, or dangling. */
 const NUMBERING_KINDS = ["none", "sentinel", "defined", "dangling"] as const;
@@ -35,14 +40,24 @@ const DANGLING_NUM_ID = 77;
 
 type GeneratedStyleSet = {
   /** One entry per style, in declaration order. */
-  styles: readonly { styleId: string; numbering: NumberingKind; isDefault: boolean }[];
+  styles: readonly {
+    styleId: string;
+    numbering: NumberingKind;
+    isDefault: boolean;
+  }[];
   /** The id the set names as its initial paragraph style. */
   initialParagraphStyleId: string;
   /** Repeat the first style's id on a later style. */
   duplicateFirstStyleId: boolean;
 };
 
-const styleIdArbitrary = fc.constantFrom("Normal", "Standard", "Body", "style0", "Nadpis1");
+const styleIdArbitrary = fc.constantFrom(
+  "Normal",
+  "Standard",
+  "Body",
+  "style0",
+  "Nadpis1",
+);
 
 const generatedStyleSetArbitrary: fc.Arbitrary<GeneratedStyleSet> = fc
   .uniqueArray(
@@ -73,9 +88,13 @@ const numPrFor = (numbering: NumberingKind) => {
     case "sentinel":
       return { numPr: { kind: "none" as const } };
     case "defined":
-      return { numPr: { kind: "reference" as const, numId: DEFINED_NUM_ID, ilvl: 0 } };
+      return {
+        numPr: { kind: "reference" as const, numId: DEFINED_NUM_ID, ilvl: 0 },
+      };
     case "dangling":
-      return { numPr: { kind: "reference" as const, numId: DANGLING_NUM_ID, ilvl: 0 } };
+      return {
+        numPr: { kind: "reference" as const, numId: DANGLING_NUM_ID, ilvl: 0 },
+      };
     default: {
       return numbering satisfies never;
     }
@@ -105,7 +124,10 @@ const styleSetFor = (generated: GeneratedStyleSet): DocumentStyleSet => {
     },
     numbering: {
       abstractNums: [
-        { abstractNumId: 0, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+        {
+          abstractNumId: 0,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
       ],
       nums: [{ numId: DEFINED_NUM_ID, abstractNumId: 0 }],
     },
@@ -122,21 +144,31 @@ describe("document style set boundary (property)", () => {
           const before = structuredClone(styleSet);
 
           const document = createEmptyDocument({ styleSet });
-          const reparsed = await parseDocx(await createDocx(document), { preloadFonts: false });
+          const reparsed = await parseDocx(await createDocx(document), {
+            preloadFonts: false,
+          });
 
           // The caller's value is theirs; normalisation works on a copy.
           expect(styleSet).toEqual(before);
 
-          const writtenIds = (reparsed.package.styles?.styles ?? []).map((style) => style.styleId);
+          const writtenIds = (reparsed.package.styles?.styles ?? []).map(
+            (style) => style.styleId,
+          );
           expect(writtenIds).toEqual([...new Set(writtenIds)]);
           expect(new Set(writtenIds)).toEqual(
-            new Set((document.package.styles?.styles ?? []).map((style) => style.styleId)),
+            new Set(
+              (document.package.styles?.styles ?? []).map(
+                (style) => style.styleId,
+              ),
+            ),
           );
 
           const firstBlock = reparsed.package.document.content.at(0);
           expect(firstBlock?.type).toBe("paragraph");
           const styleId =
-            firstBlock?.type === "paragraph" ? firstBlock.formatting?.styleId : undefined;
+            firstBlock?.type === "paragraph"
+              ? firstBlock.formatting?.styleId
+              : undefined;
           expect(writtenIds).toContain(styleId);
         }),
         propertyConfig({ numRuns: 50 }),
@@ -158,9 +190,11 @@ describe("document style set boundary (property)", () => {
       PARSE_WARNING_CODES.styleSetInitialStyleMissing,
     ]);
     const firstBlock = document.package.document.content.at(0);
-    expect(firstBlock?.type === "paragraph" ? firstBlock.formatting?.styleId : undefined).toBe(
-      "Standard",
-    );
+    expect(
+      firstBlock?.type === "paragraph"
+        ? firstBlock.formatting?.styleId
+        : undefined,
+    ).toBe("Standard");
   });
 
   test("a set repeating a style id keeps the first and reports the rest", () => {
@@ -172,7 +206,9 @@ describe("document style set boundary (property)", () => {
       }),
     });
 
-    expect(document.package.styles?.styles.map((style) => style.styleId)).toEqual(["Normal"]);
+    expect(
+      document.package.styles?.styles.map((style) => style.styleId),
+    ).toEqual(["Normal"]);
     expect(document.parseWarnings?.map((warning) => warning.code)).toEqual([
       PARSE_WARNING_CODES.styleSetDuplicateStyleId,
     ]);
@@ -187,7 +223,9 @@ describe("document style set boundary (property)", () => {
       }),
     });
 
-    expect(document.package.styles?.styles.at(0)?.pPr?.numPr).toEqual(NO_PARAGRAPH_NUMBERING);
+    expect(document.package.styles?.styles.at(0)?.pPr?.numPr).toEqual(
+      NO_PARAGRAPH_NUMBERING,
+    );
     expect(document.parseWarnings?.map((warning) => warning.code)).toEqual([
       PARSE_WARNING_CODES.unnumberedStyle,
     ]);

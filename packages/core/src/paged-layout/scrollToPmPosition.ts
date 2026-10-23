@@ -16,16 +16,25 @@
 
 import type { EditorView } from "prosemirror-view";
 
-import { findBodyPmAnchor, findBodyPmAnchors } from "../layout-bridge/dom/findBodyPmSpans";
+import {
+  findBodyPmAnchor,
+  findBodyPmAnchors,
+} from "../layout-bridge/dom/findBodyPmSpans";
 import { findPageShellForPmPos } from "../layout-painter/renderPage";
-import { getEditorScrollRoot, scrollEditorElementIntoView } from "./editorScrollRoot";
+import {
+  getEditorScrollRoot,
+  scrollEditorElementIntoView,
+} from "./editorScrollRoot";
 import { isValidPmScrollPosition } from "./scrollNavigation";
 
 /** Class on the pages container `PagedEditor` paints into. */
 export const PAGES_CONTAINER_CLASS = "paged-editor__pages";
 
 /** Scroll visible pages to a ProseMirror position. */
-export const scrollPagesToPmPosition = (pageContainer: HTMLElement, pmPos: number): void => {
+export const scrollPagesToPmPosition = (
+  pageContainer: HTMLElement,
+  pmPos: number,
+): void => {
   if (!isValidPmScrollPosition(pmPos)) {
     return;
   }
@@ -129,10 +138,14 @@ export const scrollPagesToPmPosition = (pageContainer: HTMLElement, pmPos: numbe
  * Returns false when no paged layout is found (non-paged host) so
  * callers can fall back to coordinate-based scrolling.
  */
-export const scrollFolioPositionIntoView = (view: EditorView, pmPos: number): boolean => {
+export const scrollFolioPositionIntoView = (
+  view: EditorView,
+  pmPos: number,
+): boolean => {
   const scrollContainer = getEditorScrollRoot(view.dom);
   const pageContainer =
-    scrollContainer?.querySelector<HTMLElement>(`.${PAGES_CONTAINER_CLASS}`) ?? null;
+    scrollContainer?.querySelector<HTMLElement>(`.${PAGES_CONTAINER_CLASS}`) ??
+    null;
   if (!pageContainer) {
     return false;
   }

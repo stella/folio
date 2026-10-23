@@ -1,8 +1,7 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PNG } from "pngjs";
 
 import { comparePageRasters, RasterComparisonError } from "../rasterCompare";
@@ -37,8 +36,18 @@ describe("page raster comparison", () => {
   });
 
   test("reports identical pages without pixel differences", async () => {
-    const reference = await writeSolidPng("same-reference.png", 2, 2, [255, 255, 255, 255]);
-    const folio = await writeSolidPng("same-folio.png", 2, 2, [255, 255, 255, 255]);
+    const reference = await writeSolidPng(
+      "same-reference.png",
+      2,
+      2,
+      [255, 255, 255, 255],
+    );
+    const folio = await writeSolidPng(
+      "same-folio.png",
+      2,
+      2,
+      [255, 255, 255, 255],
+    );
     const outputDir = path.join(tmpDir, "same-diffs");
 
     const result = await comparePageRasters({
@@ -68,8 +77,18 @@ describe("page raster comparison", () => {
   });
 
   test("counts painted differences across equal-size pages", async () => {
-    const reference = await writeSolidPng("different-reference.png", 2, 2, [255, 255, 255, 255]);
-    const folio = await writeSolidPng("different-folio.png", 2, 2, [0, 0, 0, 255]);
+    const reference = await writeSolidPng(
+      "different-reference.png",
+      2,
+      2,
+      [255, 255, 255, 255],
+    );
+    const folio = await writeSolidPng(
+      "different-folio.png",
+      2,
+      2,
+      [0, 0, 0, 255],
+    );
 
     const { comparison } = await comparePageRasters({
       referencePagePngs: [reference],
@@ -85,8 +104,18 @@ describe("page raster comparison", () => {
   });
 
   test("normalizes reviewer hues only when requested", async () => {
-    const reference = await writeSolidPng("revision-green-reference.png", 2, 2, [73, 130, 5, 255]);
-    const folio = await writeSolidPng("revision-red-folio.png", 2, 2, [192, 0, 0, 255]);
+    const reference = await writeSolidPng(
+      "revision-green-reference.png",
+      2,
+      2,
+      [73, 130, 5, 255],
+    );
+    const folio = await writeSolidPng(
+      "revision-red-folio.png",
+      2,
+      2,
+      [192, 0, 0, 255],
+    );
 
     const unchanged = await comparePageRasters({
       referencePagePngs: [reference],
@@ -119,42 +148,58 @@ describe("page raster comparison", () => {
     ] as const;
 
     await Promise.all(
-      cases.map(async ({ name, reference: [referenceWidth, referenceHeight], folio }) => {
-        const reference = await writeSolidPng(
-          `${name}-reference.png`,
-          referenceWidth,
-          referenceHeight,
-          [255, 255, 255, 255],
-        );
-        const folioPath = await writeSolidPng(
-          `${name}-folio.png`,
-          folio[0],
-          folio[1],
-          [255, 255, 255, 255],
-        );
+      cases.map(
+        async ({
+          name,
+          reference: [referenceWidth, referenceHeight],
+          folio,
+        }) => {
+          const reference = await writeSolidPng(
+            `${name}-reference.png`,
+            referenceWidth,
+            referenceHeight,
+            [255, 255, 255, 255],
+          );
+          const folioPath = await writeSolidPng(
+            `${name}-folio.png`,
+            folio[0],
+            folio[1],
+            [255, 255, 255, 255],
+          );
 
-        const { comparison } = await comparePageRasters({
-          referencePagePngs: [reference],
-          folioPagePngs: [folioPath],
-          outputDir: path.join(tmpDir, `${name}-diffs`),
-        });
+          const { comparison } = await comparePageRasters({
+            referencePagePngs: [reference],
+            folioPagePngs: [folioPath],
+            outputDir: path.join(tmpDir, `${name}-diffs`),
+          });
 
-        expect(comparison.status).toBe("compared");
-        if (comparison.status !== "compared") return;
-        expect(comparison.pages[0]).toMatchObject({
-          status: "match",
-          widthPx: 4,
-          heightPx: 4,
-          similarity: 1,
-        });
-        expect(comparison.score).toBe(1);
-      }),
+          expect(comparison.status).toBe("compared");
+          if (comparison.status !== "compared") return;
+          expect(comparison.pages[0]).toMatchObject({
+            status: "match",
+            widthPx: 4,
+            heightPx: 4,
+            similarity: 1,
+          });
+          expect(comparison.score).toBe(1);
+        },
+      ),
     );
   });
 
   test("makes larger page dimension differences part of the result", async () => {
-    const reference = await writeSolidPng("size-reference.png", 3, 2, [255, 255, 255, 255]);
-    const folio = await writeSolidPng("size-folio.png", 1, 2, [255, 255, 255, 255]);
+    const reference = await writeSolidPng(
+      "size-reference.png",
+      3,
+      2,
+      [255, 255, 255, 255],
+    );
+    const folio = await writeSolidPng(
+      "size-folio.png",
+      1,
+      2,
+      [255, 255, 255, 255],
+    );
 
     const { comparison } = await comparePageRasters({
       referencePagePngs: [reference],
@@ -176,7 +221,12 @@ describe("page raster comparison", () => {
   });
 
   test("treats a missing page as fully different", async () => {
-    const reference = await writeSolidPng("missing-reference.png", 2, 2, [255, 255, 255, 255]);
+    const reference = await writeSolidPng(
+      "missing-reference.png",
+      2,
+      2,
+      [255, 255, 255, 255],
+    );
 
     const { comparison } = await comparePageRasters({
       referencePagePngs: [reference],

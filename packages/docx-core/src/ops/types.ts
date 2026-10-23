@@ -26,39 +26,49 @@
  */
 
 import { INSERTION_SEAM_POLICIES } from "../model/content";
-import { captureDocumentOp } from "./wire";
-
 import type {
-  Paragraph,
+  BlockContent,
   Comment,
+  DocumentBody,
+  DocumentSettings,
+  Endnote,
+  Footnote,
+  HeaderFooter,
+  HeaderFooterType,
+  Paragraph,
   ParagraphContent,
   ParagraphFormatting,
   ParagraphMarkChange,
   ParagraphPropertyChange,
-  TextFormatting,
-  TableRow,
-  TableCellFormatting,
-  TableRowFormatting,
-  TableFormatting,
-  Table,
-  BlockContent,
-  HeaderFooterType,
-  HeaderFooter,
-  Footnote,
-  Endnote,
-  SectionProperties,
-  DocumentBody,
-  DocumentSettings,
   Section,
+  SectionProperties,
+  Table,
+  TableCellFormatting,
+  TableFormatting,
+  TableRow,
+  TableRowFormatting,
+  TextFormatting,
 } from "../model/document";
-import type { StyleDefinitions, Relationship, MediaFile } from "../model/styles";
-import type { AbstractNumbering, NumberingDefinitions, NumberingInstance } from "../model/lists";
+import type {
+  AbstractNumbering,
+  NumberingDefinitions,
+  NumberingInstance,
+} from "../model/lists";
+import type {
+  MediaFile,
+  Relationship,
+  StyleDefinitions,
+} from "../model/styles";
+import { captureDocumentOp } from "./wire";
 
 /** JSON-safe map presence, including an explicitly undefined section map. */
 export type SectionMapState =
   | { type: "omitted" }
   | { type: "undefined" }
-  | { type: "entries"; value: readonly (readonly [HeaderFooterType, HeaderFooter])[] };
+  | {
+      type: "entries";
+      value: readonly (readonly [HeaderFooterType, HeaderFooter])[];
+    };
 
 /** Section content is derived from the body's canonical blocks. */
 export type SectionViewEntry = {
@@ -155,10 +165,14 @@ export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
  * empty set. The two state the same thing; the choice is how an inverse
  * gives back a record in the spelling it had.
  */
-export const EMPTY_PROPERTY_SETS = Object.freeze({ OMIT: "omit", KEEP: "keep" } as const);
+export const EMPTY_PROPERTY_SETS = Object.freeze({
+  OMIT: "omit",
+  KEEP: "keep",
+} as const);
 
 /** One of {@link EMPTY_PROPERTY_SETS}. */
-export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
+export type EmptyPropertySet =
+  (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
 
 /**
  * Inserted text takes the properties of the run it joins: the run holding the
@@ -278,7 +292,8 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
-export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP_TYPES];
+export type DocumentOpType =
+  (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP_TYPES];
 
 /**
  * Insert text at a position.
@@ -385,7 +400,9 @@ export type JoinInlineOp = {
 };
 
 /** Whether a tracked run patch appends an independently rejectable review. */
-export const PROPERTY_REVIEW_POLICIES = Object.freeze({ APPEND: "append" } as const);
+export const PROPERTY_REVIEW_POLICIES = Object.freeze({
+  APPEND: "append",
+} as const);
 
 /**
  * Patch the run properties of every run between two positions of one
@@ -454,7 +471,10 @@ export const PARAGRAPH_MARK_FORMATTING_KEYS = Object.freeze([
 ] as const satisfies readonly (keyof ParagraphFormatting)[]);
 
 /** Which half of a split, or of a join, a rule applies to. */
-export const SPLIT_HALVES = Object.freeze({ FIRST: "first", SECOND: "second" } as const);
+export const SPLIT_HALVES = Object.freeze({
+  FIRST: "first",
+  SECOND: "second",
+} as const);
 
 /** One of {@link SPLIT_HALVES}. */
 export type SplitHalf = (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
@@ -546,8 +566,7 @@ export type JoinBlocksOp = {
 
 /** A paragraph-relative insertion point in one block list. */
 export type BlockInsertionPoint =
-  | { type: "before"; blockId: string }
-  | { type: "after"; blockId: string };
+  { type: "before"; blockId: string } | { type: "after"; blockId: string };
 
 /**
  * Insert paragraphs beside an existing paragraph, with pre-minted ids.
@@ -645,10 +664,14 @@ export type ReplaceInlineOp = {
 };
 
 /** What resolving a tracked change does with it. */
-export const REVISION_DECISIONS = Object.freeze({ ACCEPT: "accept", REJECT: "reject" } as const);
+export const REVISION_DECISIONS = Object.freeze({
+  ACCEPT: "accept",
+  REJECT: "reject",
+} as const);
 
 /** One of {@link REVISION_DECISIONS}. */
-export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS];
+export type RevisionDecision =
+  (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS];
 
 /**
  * Accept or reject tracked changes by revision id: insertions, deletions and
@@ -764,7 +787,9 @@ export type PackageResourcePart<Value> =
   | { type: "present"; value: Value };
 
 /** JSON-safe media bytes, rather than an ArrayBuffer that JSON discards. */
-export type PackageResourceMedia = Omit<MediaFile, "data"> & { data: readonly number[] };
+export type PackageResourceMedia = Omit<MediaFile, "data"> & {
+  data: readonly number[];
+};
 
 /** Package definitions captured before and after an explicit clipboard import. */
 export type PackageResources = {
@@ -774,7 +799,8 @@ export type PackageResources = {
 
 export type PackageResourcePresence = PackageResourcePart<unknown>["type"];
 
-export type PackageResourceEntry<Value> = { type: "absent" } | { type: "present"; value: Value };
+export type PackageResourceEntry<Value> =
+  { type: "absent" } | { type: "present"; value: Value };
 
 export type PackageResourceEntryChange<Value> = {
   key: string;
@@ -799,7 +825,8 @@ export type SetPackageResourcesOp = {
 };
 
 /** A section endpoint is either a paragraph's sectPr or the body's final sectPr. */
-export type SectionEndpoint = { type: "paragraph"; blockId: string } | { type: "final" };
+export type SectionEndpoint =
+  { type: "paragraph"; blockId: string } | { type: "final" };
 export type SectionPropertiesState =
   | { type: "omitted" }
   | { type: "undefined" }
@@ -875,11 +902,15 @@ export type AddNoteOp = {
   type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
   at: TextPosition;
   note: Footnote | Endnote;
+  revision?: RevisionStamp;
+  newIds?: NewIds;
 };
 export type RemoveNoteOp = {
   type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
   at: TextPosition;
   story: NoteStory;
+  revision?: RevisionStamp;
+  newIds?: NewIds;
 };
 export type SetSectionPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_SECTION_PROPS;
@@ -890,15 +921,24 @@ export type SetSectionPropsOp = {
 export type StoryParts = {
   /** Owned fields whose source explicitly had an undefined own property. */
   undefinedFields?: readonly (
-    | { target: "body"; keys: readonly (keyof NonNullable<StoryParts["body"]>)[] }
+    | {
+        target: "body";
+        keys: readonly (keyof NonNullable<StoryParts["body"]>)[];
+      }
     | {
         target: "package";
-        keys: readonly (keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">)[];
+        keys: readonly (keyof Omit<
+          StoryParts,
+          "body" | "sections" | "undefinedFields"
+        >)[];
       }
     | {
         target: "section";
         index: number;
-        keys: readonly (keyof Omit<NonNullable<StoryParts["sections"]>[number], "index">)[];
+        keys: readonly (keyof Omit<
+          NonNullable<StoryParts["sections"]>[number],
+          "index"
+        >)[];
       }
   )[];
   body?: {
@@ -1033,10 +1073,18 @@ export type DeleteCommentOp = {
 /** Exact owned comment records and the paragraph fragments containing their anchors. */
 export type CommentState = {
   relationshipPresence: "absent" | "undefined" | "present";
-  relationships: readonly { index: number; key: string; relationship: Relationship }[];
+  relationships: readonly {
+    index: number;
+    key: string;
+    relationship: Relationship;
+  }[];
   listPresence: "absent" | "undefined" | "present";
   records: readonly { index: number; comment: Comment }[];
-  anchors: readonly { story: OpStory; blockId: string; content: readonly ParagraphContent[] }[];
+  anchors: readonly {
+    story: OpStory;
+    blockId: string;
+    content: readonly ParagraphContent[];
+  }[];
 };
 export type RestoreCommentStateOp = {
   type: typeof DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE;

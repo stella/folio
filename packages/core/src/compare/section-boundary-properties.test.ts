@@ -6,7 +6,9 @@ import { compareSectionBoundaryProperties } from "./section-boundary-properties"
 const paragraph = (text: string, sectionProperties?: Record<string, unknown>) =>
   schema.node(
     "paragraph",
-    sectionProperties === undefined ? null : { _sectionProperties: sectionProperties },
+    sectionProperties === undefined
+      ? null
+      : { _sectionProperties: sectionProperties },
     text ? schema.text(text) : undefined,
   );
 
@@ -15,8 +17,14 @@ const documentWith = (...paragraphs: ReturnType<typeof paragraph>[]) =>
 
 describe("compareSectionBoundaryProperties", () => {
   test("stages properties only on a retained existing endpoint", () => {
-    const current = documentWith(paragraph("Before"), paragraph("After", { marginLeft: 720 }));
-    const target = documentWith(paragraph("Before"), paragraph("After", { marginLeft: 1440 }));
+    const current = documentWith(
+      paragraph("Before"),
+      paragraph("After", { marginLeft: 720 }),
+    );
+    const target = documentWith(
+      paragraph("Before"),
+      paragraph("After", { marginLeft: 1440 }),
+    );
 
     expect(compareSectionBoundaryProperties({ current, target })).toEqual({
       status: "matched",
@@ -32,7 +40,10 @@ describe("compareSectionBoundaryProperties", () => {
 
   test("refuses a section endpoint added to retained text", () => {
     const current = documentWith(paragraph("Before"), paragraph("After"));
-    const target = documentWith(paragraph("Before"), paragraph("After", { marginLeft: 1440 }));
+    const target = documentWith(
+      paragraph("Before"),
+      paragraph("After", { marginLeft: 1440 }),
+    );
 
     expect(compareSectionBoundaryProperties({ current, target })).toEqual({
       status: "unalignable",
@@ -41,7 +52,10 @@ describe("compareSectionBoundaryProperties", () => {
   });
 
   test("ignores opaque blocks that cannot carry a section endpoint", () => {
-    const current = documentWith(paragraph("Before"), paragraph("After", { marginLeft: 720 }));
+    const current = documentWith(
+      paragraph("Before"),
+      paragraph("After", { marginLeft: 720 }),
+    );
     const target = schema.node("doc", null, [
       paragraph("Before"),
       schema.node("preservedBlock", { xml: '<w:altChunk r:id="rId9"/>' }),
@@ -63,14 +77,22 @@ describe("compareSectionBoundaryProperties", () => {
   test("ignores block bookmark boundaries between retained endpoints", () => {
     const current = schema.node("doc", null, [
       paragraph("Before"),
-      schema.node("blockBookmarkBoundary", { type: "start", id: 1, name: "clause" }),
+      schema.node("blockBookmarkBoundary", {
+        type: "start",
+        id: 1,
+        name: "clause",
+      }),
       paragraph("After", { marginLeft: 720 }),
       schema.node("blockBookmarkBoundary", { type: "end", id: 1 }),
     ]);
     const target = schema.node("doc", null, [
       paragraph("Before"),
       paragraph("After", { marginLeft: 1440 }),
-      schema.node("blockBookmarkBoundary", { type: "start", id: 1, name: "clause" }),
+      schema.node("blockBookmarkBoundary", {
+        type: "start",
+        id: 1,
+        name: "clause",
+      }),
       schema.node("blockBookmarkBoundary", { type: "end", id: 1 }),
     ]);
 
@@ -89,22 +111,40 @@ describe("compareSectionBoundaryProperties", () => {
 
 import { EditorState } from "prosemirror-state";
 
-import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
 
-const resolve = ({ state, mode }: { state: EditorState; mode: "accept" | "reject" }) => {
+const resolve = ({
+  state,
+  mode,
+}: {
+  state: EditorState;
+  mode: "accept" | "reject";
+}) => {
   let resolved = state;
-  (mode === "accept" ? acceptAllChanges() : rejectAllChanges())(state, (transaction) => {
-    resolved = state.apply(transaction);
-  });
+  (mode === "accept" ? acceptAllChanges() : rejectAllChanges())(
+    state,
+    (transaction) => {
+      resolved = state.apply(transaction);
+    },
+  );
   return resolved;
 };
 import { stageSectionBoundaryProperties } from "./section-boundary-properties";
 
 test("stages nothing, and reads no accepted projection, for a target without endpoints", () => {
-  const deletion = schema.mark("deletion", { revisionId: 4, author: "Compare" });
+  const deletion = schema.mark("deletion", {
+    revisionId: 4,
+    author: "Compare",
+  });
   const doc = documentWith(
     paragraph("Before"),
-    schema.node("paragraph", null, [schema.text("Old", [deletion]), schema.text(" text")]),
+    schema.node("paragraph", null, [
+      schema.text("Old", [deletion]),
+      schema.text(" text"),
+    ]),
   );
   // Accepting every change walks the document; a target that ends no section
   // at a paragraph has nothing to stage, so the walk would be pure cost.
@@ -112,7 +152,9 @@ test("stages nothing, and reads no accepted projection, for a target without end
     Object.defineProperty(doc, walk, {
       configurable: true,
       value: () => {
-        throw new Error("The accepted projection was built for a target without endpoints.");
+        throw new Error(
+          "The accepted projection was built for a target without endpoints.",
+        );
       },
     });
   }
@@ -177,14 +219,21 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
   const deleted = schema.node(
     "paragraph",
     { pPrMark: { kind: "del", info: { id: 9, author: "Compare" } } },
-    schema.text("Removed", [schema.mark("deletion", { revisionId: 9, author: "Compare" })]),
+    schema.text("Removed", [
+      schema.mark("deletion", { revisionId: 9, author: "Compare" }),
+    ]),
   );
   const inserted = schema.node("paragraph", {
     pPrMark: { kind: "ins", info: { id: 20, author: "Compare" } },
   });
   const state = EditorState.create({
     schema,
-    doc: documentWith(deleted, paragraph("Before"), inserted, paragraph("After")),
+    doc: documentWith(
+      deleted,
+      paragraph("Before"),
+      inserted,
+      paragraph("After"),
+    ),
   });
   const target = documentWith(
     paragraph("Before"),
@@ -211,14 +260,24 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
   expect(resolve({ state: pending, mode: "accept" }).doc.eq(target)).toBe(true);
   expect(
     resolve({ state: pending, mode: "reject" }).doc.eq(
-      documentWith(paragraph("Removed"), paragraph("Before"), paragraph("After")),
+      documentWith(
+        paragraph("Removed"),
+        paragraph("Before"),
+        paragraph("After"),
+      ),
     ),
   ).toBe(true);
 });
 
 test("stages retained endpoint properties alongside an inline text revision", () => {
-  const deletion = schema.mark("deletion", { revisionId: 4, author: "Compare" });
-  const insertion = schema.mark("insertion", { revisionId: 5, author: "Compare" });
+  const deletion = schema.mark("deletion", {
+    revisionId: 4,
+    author: "Compare",
+  });
+  const insertion = schema.mark("insertion", {
+    revisionId: 5,
+    author: "Compare",
+  });
   const state = EditorState.create({
     schema,
     doc: documentWith(

@@ -33,7 +33,10 @@ export type FolioEditorEmitter = {
     listener: FolioEditorEventListener<K>,
   ) => () => void;
   /** Emit an event to all current listeners. */
-  emit: <K extends FolioEditorEventName>(event: K, payload: FolioEditorEventMap[K]) => void;
+  emit: <K extends FolioEditorEventName>(
+    event: K,
+    payload: FolioEditorEventMap[K],
+  ) => void;
   /** Drop all listeners (call on controller teardown). */
   clear: () => void;
 };

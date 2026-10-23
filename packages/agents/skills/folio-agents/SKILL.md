@@ -79,9 +79,9 @@ since a headless document has no live page/selection/scroll surface at all.
 ## Configuring `suggest_changes`
 
 `suggest_changes` is configured per host surface, never re-derived. Pass one
-`FolioSuggestChangesOptions` object to both `getFolioToolDefinitions({
-suggestChanges })` and `executeFolioToolCall(name, args, bridge, {
-suggestChanges })`:
+`FolioSuggestChangesOptions` object to both
+`getFolioToolDefinitions({ suggestChanges })` and
+`executeFolioToolCall(name, args, bridge, { suggestChanges })`:
 
 - `operationTypes`: any subset of the contract's operation types (default:
   everything except `commentOnBlock`, covered by `add_comment`, and
@@ -213,8 +213,8 @@ Two different questions, two different tools:
 - **Pending redlines in one document** — what a reviewer would see as tracked
   changes right now: use the `read_changes` tool on a capable bridge or call
   `reviewer.getChanges()` directly.
-- **Between two saved `.docx` versions** — `compareDocxVersions(previousBuffer,
-  currentBuffer)` + `formatVersionDiffForLLM(diff)`. Both are plain async
+- **Between two saved `.docx` versions** —
+  `compareDocxVersions(previousBuffer, currentBuffer)` + `formatVersionDiffForLLM(diff)`. Both are plain async
   functions, not tool definitions: a model can't attach two buffers to one
   tool call (they aren't JSON-serializable arguments). Wrap them in a
   host-side tool keyed by version identifiers instead — the model calls it

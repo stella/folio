@@ -93,15 +93,19 @@ const compareVersions = (left: string, right: string): number => {
   return 0;
 };
 
-/** Why an expiring ignore no longer applies, or undefined while it does. */
+/**
+ * Why an expiring ignore no longer applies, or undefined while it does.
+ * Without a registry `state` (an outage), only the expiry date is checked.
+ */
 export const staleIgnoreReason = (
   ignore: ExpiringIgnore,
-  state: RegistryState,
+  state: RegistryState | undefined,
   today: string,
 ): string | undefined => {
   if (today > ignore.expires) {
     return `${ignore.advisory}: the ignore expired on ${ignore.expires}; re-check the advisory and update or renew it.`;
   }
+  if (state === undefined) return undefined;
   if (compareVersions(state.latestVersion, ignore.vulnerableThrough) > 0) {
     return `${ignore.advisory}: ${ignore.packageName}@${state.latestVersion} is published; update it and remove the ignore.`;
   }
@@ -114,7 +118,10 @@ export const staleIgnoreReason = (
 type Manifest = { version: string; dependencies?: Record<string, string> };
 
 /** Whether the parent's latest manifest still pulls the vulnerable package in. */
-export const isStillRequired = (ignore: ExpiringIgnore, parent: Manifest): boolean => {
+export const isStillRequired = (
+  ignore: ExpiringIgnore,
+  parent: Manifest,
+): boolean => {
   const dependencies = parent.dependencies ?? {};
   const { requiredBy } = ignore;
   switch (requiredBy.type) {
@@ -129,12 +136,42 @@ export const isStillRequired = (ignore: ExpiringIgnore, parent: Manifest): boole
   }
 };
 
-const latestManifest = async (name: string): Promise<Manifest> => {
-  const response = await fetch(`https://registry.npmjs.org/${name}/latest`);
-  if (!response.ok) {
-    throw new Error(`npm registry returned ${response.status} for ${name}`);
+/** A registry answer, or an outage that outlasted every retry. */
+export type ManifestLookup =
+  | { type: "manifest"; manifest: Manifest }
+  | { type: "unavailable"; reason: string };
+
+/**
+ * The latest manifest of `name`. Network errors, 429 and 5xx answers are
+ * retried after each of `delaysMs`; an outage that outlasts them is reported
+ * as unavailable. Any other answer is an error: the name or URL is wrong.
+ */
+export const fetchLatestManifest = async (
+  name: string,
+  fetcher: (url: string) => Promise<Response> = fetch,
+  delaysMs: readonly number[] = [1_000, 3_000],
+): Promise<ManifestLookup> => {
+  let reason = "";
+  for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
+    if (attempt > 0) await Bun.sleep(delaysMs[attempt - 1] ?? 0);
+    let response: Response;
+    try {
+      response = await fetcher(`https://registry.npmjs.org/${name}/latest`);
+    } catch (error) {
+      reason = `request failed: ${String(error)}`;
+      continue;
+    }
+    if (response.ok)
+      return {
+        type: "manifest",
+        manifest: (await response.json()) as Manifest,
+      };
+    if (response.status !== 429 && response.status < 500) {
+      throw new Error(`npm registry returned ${response.status} for ${name}`);
+    }
+    reason = `npm registry returned ${response.status}`;
   }
-  return (await response.json()) as Manifest;
+  return { type: "unavailable", reason };
 };
 
 const main = async (): Promise<number> => {
@@ -142,26 +179,41 @@ const main = async (): Promise<number> => {
   const stale: string[] = [];
   for (const ignore of EXPIRING_IGNORES) {
     const [vulnerable, parent] = await Promise.all([
-      latestManifest(ignore.packageName),
-      latestManifest(ignore.requiredBy.parent),
+      fetchLatestManifest(ignore.packageName),
+      fetchLatestManifest(ignore.requiredBy.parent),
     ]);
-    const reason = staleIgnoreReason(
-      ignore,
-      {
-        latestVersion: vulnerable.version,
-        stillRequiredByParent: isStillRequired(ignore, parent),
-      },
-      today,
-    );
+    let state: RegistryState | undefined;
+    if (vulnerable.type === "manifest" && parent.type === "manifest") {
+      state = {
+        latestVersion: vulnerable.manifest.version,
+        stillRequiredByParent: isStillRequired(ignore, parent.manifest),
+      };
+    } else {
+      const outage = vulnerable.type === "unavailable" ? vulnerable : parent;
+      if (outage.type === "unavailable") {
+        console.warn(
+          `${ignore.advisory}: could not check for a published fix (${outage.reason}); the ignore stays until ${ignore.expires}.`,
+        );
+      }
+    }
+    const reason = staleIgnoreReason(ignore, state, today);
     if (reason) stale.push(reason);
   }
   if (stale.length > 0) {
     for (const reason of stale) console.error(reason);
     return 1;
   }
-  const ignores = [...PERMANENT_IGNORES, ...EXPIRING_IGNORES.map((ignore) => ignore.advisory)];
+  const ignores = [
+    ...PERMANENT_IGNORES,
+    ...EXPIRING_IGNORES.map((ignore) => ignore.advisory),
+  ];
   const audit = Bun.spawn(
-    ["bun", "audit", "--audit-level=moderate", ...ignores.map((id) => `--ignore=${id}`)],
+    [
+      "bun",
+      "audit",
+      "--audit-level=moderate",
+      ...ignores.map((id) => `--ignore=${id}`),
+    ],
     { stdout: "inherit", stderr: "inherit" },
   );
   return await audit.exited;

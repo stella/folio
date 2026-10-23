@@ -14,20 +14,24 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, ParagraphAlignment } from "../types/document";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../types/documentEnumValues";
-
 import { parseParagraphProperties } from "./paragraphProperties";
-import { parseStyles } from "./styleParser";
 import { serializeParagraphFormatting } from "./serializer/paragraphSerializer";
+import { parseStyles } from "./styleParser";
 import { parseXmlDocument } from "./xmlParser";
 
-const WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const WORD_NAMESPACE =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
-const parseParagraphTier = (alignment: string): ParagraphAlignment | undefined => {
-  const pPr = parseXmlDocument(`<w:pPr ${WORD_NAMESPACE}><w:jc w:val="${alignment}"/></w:pPr>`);
+const parseParagraphTier = (
+  alignment: string,
+): ParagraphAlignment | undefined => {
+  const pPr = parseXmlDocument(
+    `<w:pPr ${WORD_NAMESPACE}><w:jc w:val="${alignment}"/></w:pPr>`,
+  );
   if (!pPr) {
     throw new Error("fixture did not parse");
   }
@@ -52,14 +56,18 @@ const documentWithAlignment = (alignment: ParagraphAlignment): Document => ({
         {
           type: "paragraph",
           formatting: { alignment },
-          content: [{ type: "run", content: [{ type: "text", text: "Aligned" }] }],
+          content: [
+            { type: "run", content: [{ type: "text", text: "Aligned" }] },
+          ],
         },
       ],
     },
   },
 });
 
-const firstParagraphAlignment = (document: Document): ParagraphAlignment | undefined => {
+const firstParagraphAlignment = (
+  document: Document,
+): ParagraphAlignment | undefined => {
   const block = document.package.document.content.at(0);
   if (block?.type !== "paragraph") {
     throw new Error("expected a paragraph");
@@ -77,40 +85,60 @@ describe("ST_Jc", () => {
     expect(PARAGRAPH_ALIGNMENT_VALUES).toContain("numTab");
   });
 
-  test.each(PARAGRAPH_ALIGNMENT_VALUES)("a paragraph's w:jc reads %s", (alignment) => {
-    expect(parseParagraphTier(alignment)).toBe(alignment);
-  });
+  test.each(PARAGRAPH_ALIGNMENT_VALUES)(
+    "a paragraph's w:jc reads %s",
+    (alignment) => {
+      expect(parseParagraphTier(alignment)).toBe(alignment);
+    },
+  );
 
-  test.each(PARAGRAPH_ALIGNMENT_VALUES)("a style's w:jc reads %s", (alignment) => {
-    expect(parseStyleTier(alignment)).toBe(alignment);
-  });
+  test.each(PARAGRAPH_ALIGNMENT_VALUES)(
+    "a style's w:jc reads %s",
+    (alignment) => {
+      expect(parseStyleTier(alignment)).toBe(alignment);
+    },
+  );
 
-  test.each(PARAGRAPH_ALIGNMENT_VALUES)("%s survives parse, save and parse", (alignment) => {
-    const saved = serializeParagraphFormatting({ alignment });
-    expect(saved).toContain(`<w:jc w:val="${alignment}"/>`);
+  test.each(PARAGRAPH_ALIGNMENT_VALUES)(
+    "%s survives parse, save and parse",
+    (alignment) => {
+      const saved = serializeParagraphFormatting({ alignment });
+      expect(saved).toContain(`<w:jc w:val="${alignment}"/>`);
 
-    const reparsed = parseXmlDocument(saved.replace("<w:pPr>", `<w:pPr ${WORD_NAMESPACE}>`));
-    if (!reparsed) {
-      throw new Error("the saved properties did not parse");
-    }
-    expect(parseParagraphProperties(reparsed, null)?.alignment).toBe(alignment);
-  });
+      const reparsed = parseXmlDocument(
+        saved.replace("<w:pPr>", `<w:pPr ${WORD_NAMESPACE}>`),
+      );
+      if (!reparsed) {
+        throw new Error("the saved properties did not parse");
+      }
+      expect(parseParagraphProperties(reparsed, null)?.alignment).toBe(
+        alignment,
+      );
+    },
+  );
 
-  test.each(PARAGRAPH_ALIGNMENT_VALUES)("%s survives the editor projection", (alignment) => {
-    const original = documentWithAlignment(alignment);
-    expect(
-      firstParagraphAlignment(
-        fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } }),
-      ),
-    ).toBe(alignment);
-  });
+  test.each(PARAGRAPH_ALIGNMENT_VALUES)(
+    "%s survives the editor projection",
+    (alignment) => {
+      const original = documentWithAlignment(alignment);
+      expect(
+        firstParagraphAlignment(
+          fromProseDoc(toProseDoc(original), original, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
+      ).toBe(alignment);
+    },
+  );
 
   // `start` is not `left`: a reader that aliased the two would pass every
   // assertion above and still write the wrong alignment into an RTL paragraph.
   test("start and end are members, not spellings of left and right", () => {
     expect(parseParagraphTier("start")).toBe("start");
     expect(parseParagraphTier("end")).toBe("end");
-    expect(serializeParagraphFormatting({ alignment: "start" })).toContain('<w:jc w:val="start"/>');
+    expect(serializeParagraphFormatting({ alignment: "start" })).toContain(
+      '<w:jc w:val="start"/>',
+    );
   });
 
   test("a token outside the enumeration does not become an alignment", () => {

@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { viewportPosition } from "./viewportPosition";
 
 test(
@@ -20,7 +23,11 @@ test(
           const zoom = zoomPercent / 100;
           const clientX = left + x * zoom;
           const clientY = top + y * zoom;
-          const local = viewportPosition({ clientX, clientY, viewport: { left, top } });
+          const local = viewportPosition({
+            clientX,
+            clientY,
+            viewport: { left, top },
+          });
           // Positioning a sibling in the unscaled viewport must reconstruct the
           // painted point, regardless of page scale or the host's scroll origin.
           expect(left + local.left).toBeCloseTo(clientX, 8);

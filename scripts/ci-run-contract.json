@@ -53,7 +53,7 @@
       "if": null
     },
     {
-      "run": "bun run format:check",
+      "run": "bun fmt --check",
       "if": null
     },
     {
@@ -143,7 +143,7 @@
       "if": null
     },
     {
-      "run": "bun run typecheck",
+      "run": "bun scripts/ci-plan.ts --base \"$TYPECHECK_BASE\" --head \"$GITHUB_SHA\"",
       "if": null
     }
   ],

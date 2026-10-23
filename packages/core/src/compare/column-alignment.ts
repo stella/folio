@@ -29,7 +29,9 @@ type TableGrid<Block extends FolioContentBlockIdentity> = {
   height: number;
 };
 
-export type TableColumnAlignmentStep<Block extends FolioContentBlockIdentity = FolioContentBlock> =
+export type TableColumnAlignmentStep<
+  Block extends FolioContentBlockIdentity = FolioContentBlock,
+> =
   | {
       type: "baseColumn";
       blocks: readonly Block[];
@@ -44,7 +46,9 @@ export type TableColumnAlignmentStep<Block extends FolioContentBlockIdentity = F
       anchor: { blockId: string; position: "after" | "before" };
     };
 
-export type TableColumnAlignment<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
+export type TableColumnAlignment<
+  Block extends FolioContentBlockIdentity = FolioContentBlock,
+> = {
   steps: TableColumnAlignmentStep<Block>[];
   baseBlocks: Block[];
   revisedBlocks: Block[];
@@ -103,13 +107,20 @@ const extractTableGrid = <Block extends FolioContentBlockIdentity>(
   // The 63-column ceiling fits one bigint mask. A two-event sweep validates
   // rectangle overlap in O(cells log cells) storage and never materializes
   // empty rows in a sparse grid.
-  const occupancyEvents = [...cellsByPhysicalLocation.values()].flatMap((cell) => {
-    const mask = ((1n << BigInt(cell.columnSpan)) - 1n) << BigInt(cell.gridColumnIndex);
-    return [
-      { rowIndex: cell.rowIndex, type: "enter" as const, mask },
-      { rowIndex: cell.rowIndex + cell.rowSpan, type: "leave" as const, mask },
-    ];
-  });
+  const occupancyEvents = [...cellsByPhysicalLocation.values()].flatMap(
+    (cell) => {
+      const mask =
+        ((1n << BigInt(cell.columnSpan)) - 1n) << BigInt(cell.gridColumnIndex);
+      return [
+        { rowIndex: cell.rowIndex, type: "enter" as const, mask },
+        {
+          rowIndex: cell.rowIndex + cell.rowSpan,
+          type: "leave" as const,
+          mask,
+        },
+      ];
+    },
+  );
   occupancyEvents.sort((left, right) => {
     const rowOrder = left.rowIndex - right.rowIndex;
     if (rowOrder !== 0 || left.type === right.type) {
@@ -136,8 +147,14 @@ const tableGridColumns = <Block extends FolioContentBlockIdentity>(
   grid: TableGrid<Block>,
   internText: (text: string) => number,
 ): GridColumn<Block>[] => {
-  const coveringCellsByColumn: GridCell<Block>[][] = Array.from({ length: grid.width }, () => []);
-  const ownedCellsByColumn: GridCell<Block>[][] = Array.from({ length: grid.width }, () => []);
+  const coveringCellsByColumn: GridCell<Block>[][] = Array.from(
+    { length: grid.width },
+    () => [],
+  );
+  const ownedCellsByColumn: GridCell<Block>[][] = Array.from(
+    { length: grid.width },
+    () => [],
+  );
   const textKeysByCell = new Map<GridCell<Block>, readonly number[]>();
   for (const cell of grid.cells) {
     textKeysByCell.set(
@@ -162,7 +179,8 @@ const tableGridColumns = <Block extends FolioContentBlockIdentity>(
         cell.columnSpan,
         cell.rowIndex,
         cell.rowSpan,
-        textKeysByCell.get(cell) ?? panic("A table cell has no interned text signature"),
+        textKeysByCell.get(cell) ??
+          panic("A table cell has no interned text signature"),
       ]);
     return {
       index: columnIndex,
@@ -207,7 +225,9 @@ const uniqueColumnEmbedding = <Block extends FolioContentBlockIdentity>(
   let wideIndex = 0;
   while (shortIndex < shorter.length) {
     if (wideIndex >= wider.length) {
-      return panic("A unique column embedding ended before every column was mapped");
+      return panic(
+        "A unique column embedding ended before every column was mapped",
+      );
     }
     const canMatch =
       shorter[shortIndex]?.signature === wider[wideIndex]?.signature &&
@@ -225,7 +245,10 @@ const uniqueColumnEmbedding = <Block extends FolioContentBlockIdentity>(
 const columnOwnedBlocks = <Block extends FolioContentBlockIdentity>({
   ownedCells,
 }: GridColumn<Block>): Block[] | null => {
-  if (ownedCells.length === 0 || ownedCells.some(({ columnSpan }) => columnSpan !== 1)) {
+  if (
+    ownedCells.length === 0 ||
+    ownedCells.some(({ columnSpan }) => columnSpan !== 1)
+  ) {
     return null;
   }
   return ownedCells.flatMap(({ blocks }) => blocks);
@@ -265,7 +288,9 @@ export const alignTableColumns = <Block extends FolioContentBlockIdentity>(
   }
   const widerColumns = revisedIsWider ? revisedColumns : baseColumns;
   const mapped = new Set(mapping);
-  const unmatchedColumns = widerColumns.filter((_column, index) => !mapped.has(index));
+  const unmatchedColumns = widerColumns.filter(
+    (_column, index) => !mapped.has(index),
+  );
   const ownedColumns: { column: GridColumn<Block>; blocks: Block[] }[] = [];
   for (const column of unmatchedColumns) {
     const blocks = columnOwnedBlocks(column);
@@ -277,12 +302,16 @@ export const alignTableColumns = <Block extends FolioContentBlockIdentity>(
   if (
     ownedColumns.length === 0 ||
     (revisedIsWider &&
-      unmatchedColumns.some(({ ownedCells }) => ownedCells.some(({ rowSpan }) => rowSpan !== 1)))
+      unmatchedColumns.some(({ ownedCells }) =>
+        ownedCells.some(({ rowSpan }) => rowSpan !== 1),
+      ))
   ) {
     return null;
   }
 
-  const unmatchedIds = new Set(ownedColumns.flatMap(({ blocks }) => blocks.map(({ id }) => id)));
+  const unmatchedIds = new Set(
+    ownedColumns.flatMap(({ blocks }) => blocks.map(({ id }) => id)),
+  );
   const baseColumnKeys = new Map<number, number>();
   const revisedColumnKeys = new Map<number, number>();
   mapping.forEach((wideIndex, shortIndex) => {
@@ -302,15 +331,26 @@ export const alignTableColumns = <Block extends FolioContentBlockIdentity>(
       if (!location) {
         return null;
       }
-      steps.push({ type: "baseColumn", blocks, location, columnIndex: column.index });
+      steps.push({
+        type: "baseColumn",
+        blocks,
+        location,
+        columnIndex: column.index,
+      });
     }
   } else {
     for (const { column, blocks } of ownedColumns) {
       const location = blocks.at(0)?.table;
-      const rightBaseIndex = mapping.findIndex((targetIndex) => targetIndex > column.index);
-      const leftBaseIndex = mapping.findLastIndex((targetIndex) => targetIndex < column.index);
+      const rightBaseIndex = mapping.findIndex(
+        (targetIndex) => targetIndex > column.index,
+      );
+      const leftBaseIndex = mapping.findLastIndex(
+        (targetIndex) => targetIndex < column.index,
+      );
       const anchorColumn =
-        rightBaseIndex >= 0 ? baseColumns[rightBaseIndex] : baseColumns[leftBaseIndex];
+        rightBaseIndex >= 0
+          ? baseColumns[rightBaseIndex]
+          : baseColumns[leftBaseIndex];
       const anchorBlock = anchorColumn?.ownedCells.at(0)?.blocks.at(0);
       if (!location || !anchorBlock) {
         return null;
@@ -320,14 +360,21 @@ export const alignTableColumns = <Block extends FolioContentBlockIdentity>(
         blocks,
         location,
         columnIndex: column.index,
-        anchor: { blockId: anchorBlock.id, position: rightBaseIndex >= 0 ? "before" : "after" },
+        anchor: {
+          blockId: anchorBlock.id,
+          position: rightBaseIndex >= 0 ? "before" : "after",
+        },
       });
     }
   }
   return {
     steps,
-    baseBlocks: baseBlocks.filter(({ id }) => revisedIsWider || !unmatchedIds.has(id)),
-    revisedBlocks: revisedBlocks.filter(({ id }) => !revisedIsWider || !unmatchedIds.has(id)),
+    baseBlocks: baseBlocks.filter(
+      ({ id }) => revisedIsWider || !unmatchedIds.has(id),
+    ),
+    revisedBlocks: revisedBlocks.filter(
+      ({ id }) => !revisedIsWider || !unmatchedIds.has(id),
+    ),
     baseColumnKeys,
     revisedColumnKeys,
   };

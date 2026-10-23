@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { deleteNestedValue, getNestedValue, setNestedValue } from "./nested-object";
+import {
+  deleteNestedValue,
+  getNestedValue,
+  setNestedValue,
+} from "./nested-object";
 import type { NestedObject } from "./nested-object";
 
 afterEach(() => {
@@ -30,17 +34,20 @@ describe("setNestedValue", () => {
 
     expect(Object.hasOwn(target, "inheritedLocaleBranch")).toBe(true);
     expect(target.inheritedLocaleBranch).toEqual({ leaf: "safe" });
-    expect((Object.prototype as { inheritedLocaleBranch?: unknown }).inheritedLocaleBranch).toEqual(
-      {},
-    );
+    expect(
+      (Object.prototype as { inheritedLocaleBranch?: unknown })
+        .inheritedLocaleBranch,
+    ).toEqual({});
   });
 
   test("rejects prototype-chain path segments", () => {
     const target: NestedObject = {};
-    expect(() => setNestedValue(target, "constructor.prototype.polluted", "nope")).toThrow(
-      /unsafe key path/,
-    );
-    expect((Object.prototype as { polluted?: unknown }).polluted).toBeUndefined();
+    expect(() =>
+      setNestedValue(target, "constructor.prototype.polluted", "nope"),
+    ).toThrow(/unsafe key path/);
+    expect(
+      (Object.prototype as { polluted?: unknown }).polluted,
+    ).toBeUndefined();
   });
 });
 
@@ -53,10 +60,12 @@ describe("deleteNestedValue", () => {
 
   test("rejects prototype-chain path segments", () => {
     const target: NestedObject = {};
-    expect(() => deleteNestedValue(target, "constructor.prototype.polluted")).toThrow(
-      /unsafe key path/,
-    );
-    expect((Object.prototype as { polluted?: unknown }).polluted).toBeUndefined();
+    expect(() =>
+      deleteNestedValue(target, "constructor.prototype.polluted"),
+    ).toThrow(/unsafe key path/);
+    expect(
+      (Object.prototype as { polluted?: unknown }).polluted,
+    ).toBeUndefined();
   });
 });
 
@@ -76,6 +85,8 @@ describe("getNestedValue", () => {
     });
 
     const target: NestedObject = {};
-    expect(getNestedValue(target, "inheritedLocaleBranch.leaf")).toBeUndefined();
+    expect(
+      getNestedValue(target, "inheritedLocaleBranch.leaf"),
+    ).toBeUndefined();
   });
 });

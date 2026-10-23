@@ -206,7 +206,10 @@ const makeTableFixture = () => {
 
 describe("bidi paragraph interaction geometry", () => {
   test("keeps click, caret, and selection on the mirrored physical left", () => {
-    const { block, fragment, layout, measure, measures } = makeFixture("right", true);
+    const { block, fragment, layout, measure, measures } = makeFixture(
+      "right",
+      true,
+    );
     const click = clickToPositionInParagraph({
       fragment,
       block,
@@ -215,7 +218,15 @@ describe("bidi paragraph interaction geometry", () => {
       localX: 38,
       localY: 7,
     });
-    const directCaret = getPositionRect(block, measure, 1, 0, 0, fragment.width, 0);
+    const directCaret = getPositionRect(
+      block,
+      measure,
+      1,
+      0,
+      0,
+      fragment.width,
+      0,
+    );
     const caret = getCaretPosition(layout, [block], measures, 1);
     const selection = selectionToRects(layout, [block], measures, 1, 5);
 
@@ -226,26 +237,39 @@ describe("bidi paragraph interaction geometry", () => {
   });
 
   test("mirrors bidi left to physical right with asymmetric indents", () => {
-    const { block, fragment, layout, measure, measures } = makeFixture("left", true);
+    const { block, fragment, layout, measure, measures } = makeFixture(
+      "left",
+      true,
+    );
     const expectedStart = 30 + (fragment.width - 30 - 10 - 28);
 
-    expect(getPositionRect(block, measure, 1, 0, 0, fragment.width, 0)?.x).toBe(expectedStart);
-    expect(getCaretPosition(layout, [block], measures, 1)?.x).toBe(expectedStart);
-    expect(selectionToRects(layout, [block], measures, 1, 5)[0]?.x).toBe(expectedStart);
+    expect(getPositionRect(block, measure, 1, 0, 0, fragment.width, 0)?.x).toBe(
+      expectedStart,
+    );
+    expect(getCaretPosition(layout, [block], measures, 1)?.x).toBe(
+      expectedStart,
+    );
+    expect(selectionToRects(layout, [block], measures, 1, 5)[0]?.x).toBe(
+      expectedStart,
+    );
   });
 
   test("leaves explicit bidi=false physical geometry unchanged", () => {
     const { block, fragment, measure } = makeFixture("right", false);
     const expectedStart = 10 + (fragment.width - 10 - 30 - 28);
 
-    expect(getPositionRect(block, measure, 1, 0, 0, fragment.width, 0)?.x).toBe(expectedStart);
+    expect(getPositionRect(block, measure, 1, 0, 0, fragment.width, 0)?.x).toBe(
+      expectedStart,
+    );
   });
 
   test("leaves absent bidi physical geometry unchanged", () => {
     const { block, fragment, measure } = makeFixture("right");
     const expectedStart = 10 + (fragment.width - 10 - 30 - 28);
 
-    expect(getPositionRect(block, measure, 1, 0, 0, fragment.width, 0)?.x).toBe(expectedStart);
+    expect(getPositionRect(block, measure, 1, 0, 0, fragment.width, 0)?.x).toBe(
+      expectedStart,
+    );
   });
 
   test("keeps table-cell click and selection on the painted physical side", () => {
@@ -254,10 +278,15 @@ describe("bidi paragraph interaction geometry", () => {
     if (!page) {
       throw new Error("expected table page");
     }
-    const hit = hitTestTableCell({ pageIndex: 0, page, pageY: 7 }, [block], [measure], {
-      x: 175,
-      y: 7,
-    });
+    const hit = hitTestTableCell(
+      { pageIndex: 0, page, pageY: 7 },
+      [block],
+      [measure],
+      {
+        x: 175,
+        y: 7,
+      },
+    );
     if (!hit) {
       throw new Error("expected table cell hit");
     }

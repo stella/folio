@@ -11,15 +11,15 @@
  * counted a skipped invariant as a pass would shrink under load.
  */
 
-import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
-import { Result, panic } from "better-result";
+import { panic, Result } from "better-result";
 
 import { classifyCorpusFile } from "./corpus-classify";
+import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
 import {
   type CorpusInvariantInput,
   type CorpusInvariantOutcome,
-  type ExtendedCorpusInvariant,
   EXTENDED_CORPUS_INVARIANTS,
+  type ExtendedCorpusInvariant,
   isZeroFailure,
   type StageTimings,
 } from "./corpus-invariants/contract";
@@ -33,7 +33,11 @@ import { runPipelineTotalityInvariant } from "./corpus-invariants/pipeline-total
 import { runReserializeInvariant } from "./corpus-invariants/reserialize";
 import { runSaveIdempotenceInvariant } from "./corpus-invariants/save-idempotence";
 import { runSchemaValidityInvariant } from "./corpus-invariants/schema-validity";
-import { type CorpusProducer, PRODUCER_FAMILIES, readCorpusProducer } from "./corpus-producer";
+import {
+  type CorpusProducer,
+  PRODUCER_FAMILIES,
+  readCorpusProducer,
+} from "./corpus-producer";
 import {
   type CorpusFailure,
   type CorpusInvariant,
@@ -53,7 +57,8 @@ type RunnableInvariant = Exclude<
 
 const INVARIANT_RUNNERS = {
   [EXTENDED_CORPUS_INVARIANTS.schemaValidity]: runSchemaValidityInvariant,
-  [EXTENDED_CORPUS_INVARIANTS.kernelDifferential]: runKernelDifferentialInvariant,
+  [EXTENDED_CORPUS_INVARIANTS.kernelDifferential]:
+    runKernelDifferentialInvariant,
   [EXTENDED_CORPUS_INVARIANTS.editorRoundTrip]: runEditorRoundTripInvariant,
   [EXTENDED_CORPUS_INVARIANTS.editorProjection]: runEditorProjectionInvariant,
   [EXTENDED_CORPUS_INVARIANTS.reserialize]: runReserializeInvariant,
@@ -191,7 +196,10 @@ export const runExtendedChecks = async ({
       // still measured and its gating findings still count. Only the file
       // budget above, which skips what it has not reached, truncates.
       failures.push(
-        failureFromAssertion(BUDGET_INVARIANT, `${invariant} exceeded its per-file time budget`),
+        failureFromAssertion(
+          BUDGET_INVARIANT,
+          `${invariant} exceeded its per-file time budget`,
+        ),
       );
     }
   }

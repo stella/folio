@@ -11,7 +11,9 @@ import { resolveShadingFill } from "../formatToStyle";
 
 describe("resolveShadingFill", () => {
   test("clear + concrete fill renders the fill as a solid background", () => {
-    expect(resolveShadingFill({ pattern: "clear", fill: { rgb: "D9D9D9" } })).toBe("#D9D9D9");
+    expect(
+      resolveShadingFill({ pattern: "clear", fill: { rgb: "D9D9D9" } }),
+    ).toBe("#D9D9D9");
   });
 
   test("clear with no explicit pattern attribute also renders the fill", () => {
@@ -19,12 +21,18 @@ describe("resolveShadingFill", () => {
   });
 
   test("nil means no shading — the fill is ignored", () => {
-    expect(resolveShadingFill({ pattern: "nil", fill: { rgb: "D9D9D9" } })).toBe("");
+    expect(
+      resolveShadingFill({ pattern: "nil", fill: { rgb: "D9D9D9" } }),
+    ).toBe("");
   });
 
   test("clear + white/auto fills stay transparent (page-background no-ops)", () => {
-    expect(resolveShadingFill({ pattern: "clear", fill: { rgb: "FFFFFF" } })).toBe("");
-    expect(resolveShadingFill({ pattern: "clear", fill: { auto: true } })).toBe("");
+    expect(
+      resolveShadingFill({ pattern: "clear", fill: { rgb: "FFFFFF" } }),
+    ).toBe("");
+    expect(resolveShadingFill({ pattern: "clear", fill: { auto: true } })).toBe(
+      "",
+    );
   });
 
   test("clear with no fill is transparent", () => {
@@ -33,7 +41,9 @@ describe("resolveShadingFill", () => {
   });
 
   test("solid pattern still uses the pattern colour when there is no fill", () => {
-    expect(resolveShadingFill({ pattern: "solid", color: { rgb: "FF0000" } })).toBe("#FF0000");
+    expect(
+      resolveShadingFill({ pattern: "solid", color: { rgb: "FF0000" } }),
+    ).toBe("#FF0000");
   });
 
   test("renders percentage shading with automatic colors", () => {

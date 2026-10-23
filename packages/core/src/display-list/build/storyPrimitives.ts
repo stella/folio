@@ -26,25 +26,35 @@ import type {
   TableBlock,
   TextBoxBlock,
 } from "../../layout-engine/types";
-import { isFloatingImageRun } from "../../layout-painter/renderUtils";
 import { resolveAnchoredImagePosition } from "../../layout-painter/anchoredImagePosition";
-import type { BuildContext } from "./buildContext";
-import { blockRegion, type PageComposer } from "./regions";
+import { isFloatingImageRun } from "../../layout-painter/renderUtils";
 import { HIT_REGION_KINDS } from "../primitives";
+import type { BuildContext } from "./buildContext";
 import { paintImage, paintImageFragment } from "./imagePrimitives";
 import { paintParagraphFragment } from "./paragraphPrimitives";
+import { blockRegion, type PageComposer } from "./regions";
 import { paintTableFragment } from "./tablePrimitives";
 import { paintTextBoxFragment } from "./textBoxPrimitives";
-import { UNSUPPORTED_CONSTRUCT, type UnsupportedConstruct } from "./unsupported";
+import {
+  UNSUPPORTED_CONSTRUCT,
+  type UnsupportedConstruct,
+} from "./unsupported";
 
 /** Mirrors `isPositionedHeaderFooterTextBoxBlock`: an explicit display mode keeps a box in the flow. */
 const isPositionedTextBox = (block: TextBoxBlock): boolean =>
-  block.displayMode !== "block" && block.displayMode !== "inline" && isFloatingTextBoxBlock(block);
+  block.displayMode !== "block" &&
+  block.displayMode !== "inline" &&
+  isFloatingTextBoxBlock(block);
 
-const isAnchoredImage = (block: ImageBlock): boolean => block.anchor?.isAnchored === true;
+const isAnchoredImage = (block: ImageBlock): boolean =>
+  block.anchor?.isAnchored === true;
 
 /** `w:jc` / `w:tblInd` for an inline story table, as the body's `desiredX` resolves them. */
-const inlineTableOffsetPx = (block: TableBlock, tableWidthPx: number, widthPx: number): number => {
+const inlineTableOffsetPx = (
+  block: TableBlock,
+  tableWidthPx: number,
+  widthPx: number,
+): number => {
   if (block.justification === "center") {
     return (widthPx - tableWidthPx) / 2;
   }
@@ -61,7 +71,9 @@ const inlineTableOffsetPx = (block: TableBlock, tableWidthPx: number, widthPx: n
  * reserved and every following block with it.
  */
 const explicitSpaceBeforePx = (block: ParagraphBlock): number =>
-  block.attrs?.spacingExplicit?.before === true ? (block.attrs.spacing?.before ?? 0) : 0;
+  block.attrs?.spacingExplicit?.before === true
+    ? (block.attrs.spacing?.before ?? 0)
+    : 0;
 
 type PaintStoryBlockOptions = {
   readonly composer: PageComposer;
@@ -99,9 +111,12 @@ const paintStoryBlock = ({
       fromLine: 0,
       toLine: measure.lines.length,
     } as const;
-    composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.paragraph, context }), () => {
-      paintParagraphFragment({ fragment, block, measure, context, composer });
-    });
+    composer.region(
+      blockRegion({ fragment, kind: HIT_REGION_KINDS.paragraph, context }),
+      () => {
+        paintParagraphFragment({ fragment, block, measure, context, composer });
+      },
+    );
     return;
   }
 
@@ -116,16 +131,19 @@ const paintStoryBlock = ({
       fromRow: 0,
       toRow: block.rows.length,
     } as const;
-    composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.table, context }), () => {
-      paintTableFragment({
-        fragment,
-        block,
-        measure,
-        context,
-        composer,
-        paintTextBox: paintTextBoxFragment,
-      });
-    });
+    composer.region(
+      blockRegion({ fragment, kind: HIT_REGION_KINDS.table, context }),
+      () => {
+        paintTableFragment({
+          fragment,
+          block,
+          measure,
+          context,
+          composer,
+          paintTextBox: paintTextBoxFragment,
+        });
+      },
+    );
     return;
   }
 
@@ -138,9 +156,12 @@ const paintStoryBlock = ({
       width: measure.width,
       height: measure.height,
     } as const;
-    composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.image, context }), () => {
-      composer.push(paintImageFragment(fragment, block, context));
-    });
+    composer.region(
+      blockRegion({ fragment, kind: HIT_REGION_KINDS.image, context }),
+      () => {
+        composer.push(paintImageFragment(fragment, block, context));
+      },
+    );
     return;
   }
 
@@ -153,9 +174,12 @@ const paintStoryBlock = ({
       width: measure.width,
       height: measure.height,
     } as const;
-    composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.textBox, context }), () => {
-      paintTextBoxFragment({ composer, fragment, block, measure, context });
-    });
+    composer.region(
+      blockRegion({ fragment, kind: HIT_REGION_KINDS.textBox, context }),
+      () => {
+        paintTextBoxFragment({ composer, fragment, block, measure, context });
+      },
+    );
     return;
   }
 
@@ -225,11 +249,17 @@ const paintHeaderFooterFloatingImage = ({
     marginTop: page.margins.top,
     marginRight: page.margins.right,
     marginBottom: page.margins.bottom,
-    ...(page.authoredMargins === undefined ? {} : { authoredMargins: page.authoredMargins }),
+    ...(page.authoredMargins === undefined
+      ? {}
+      : { authoredMargins: page.authoredMargins }),
     contentWidth,
     contentHeight: page.size.h - page.margins.top - page.margins.bottom,
   };
-  const position = resolveAnchoredImagePosition(run, paragraphYPx - page.margins.top, geometry);
+  const position = resolveAnchoredImagePosition(
+    run,
+    paragraphYPx - page.margins.top,
+    geometry,
+  );
   const fragment = {
     blockId: block.id,
     x: page.margins.left + position.x,
@@ -239,21 +269,24 @@ const paintHeaderFooterFloatingImage = ({
     ...(run.pmStart === undefined ? {} : { pmStart: run.pmStart }),
     ...(run.pmEnd === undefined ? {} : { pmEnd: run.pmEnd }),
   };
-  composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.image, context }), () => {
-    composer.push(
-      paintImage({
-        source: run,
-        rect: {
-          xPx: fragment.x,
-          yPx: fragment.y,
-          widthPx: fragment.width,
-          heightPx: fragment.height,
-        },
-        context,
-        label: `${label} floating image`,
-      }),
-    );
-  });
+  composer.region(
+    blockRegion({ fragment, kind: HIT_REGION_KINDS.image, context }),
+    () => {
+      composer.push(
+        paintImage({
+          source: run,
+          rect: {
+            xPx: fragment.x,
+            yPx: fragment.y,
+            widthPx: fragment.width,
+            heightPx: fragment.height,
+          },
+          context,
+          label: `${label} floating image`,
+        }),
+      );
+    },
+  );
 };
 
 /**
@@ -352,7 +385,10 @@ export const paintHeaderFooterBlocks = ({
           construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
         });
         for (const run of block.runs) {
-          if (run.kind !== "image" || (!isFloatingImageRun(run) && run.position === undefined)) {
+          if (
+            run.kind !== "image" ||
+            (!isFloatingImageRun(run) && run.position === undefined)
+          ) {
             continue;
           }
           if (run.wrapType === "behind") {
@@ -379,7 +415,9 @@ export const paintHeaderFooterBlocks = ({
           break;
         }
         if (block.floating) {
-          reportOutOfFlow(`table ${String(block.id)} is floating (w:tblpPr) and is not painted`);
+          reportOutOfFlow(
+            `table ${String(block.id)} is floating (w:tblpPr) and is not painted`,
+          );
           continue;
         }
         paintStoryBlock({
@@ -401,7 +439,9 @@ export const paintHeaderFooterBlocks = ({
           break;
         }
         if (isAnchoredImage(block)) {
-          reportOutOfFlow(`image ${String(block.id)} is anchored and is not painted`);
+          reportOutOfFlow(
+            `image ${String(block.id)} is anchored and is not painted`,
+          );
           continue;
         }
         paintStoryBlock({
@@ -423,7 +463,9 @@ export const paintHeaderFooterBlocks = ({
           break;
         }
         if (isPositionedTextBox(block)) {
-          reportOutOfFlow(`text box ${String(block.id)} is positioned and is not painted`);
+          reportOutOfFlow(
+            `text box ${String(block.id)} is positioned and is not painted`,
+          );
           continue;
         }
         paintStoryBlock({

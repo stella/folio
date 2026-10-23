@@ -1,12 +1,12 @@
-import { expect, test } from "bun:test";
 import { panic } from "better-result";
+import { expect, test } from "bun:test";
 
-import { createDocx } from "../docx/rezip";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
   type FolioDocumentOperationMode,
 } from "../document-operations";
+import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { FolioRevisionStamp } from "./apply";
 import { FolioDocxReviewer } from "./headless";
@@ -23,10 +23,26 @@ const INSERTION_PROPERTIES = {
 
 const shape = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map((block) => {
-    if (block.kind === "diagnostic") panic("Generated prose fixture contains a diagnostic");
-    const { kind, text, styleId, headingLevel, statedNumbering, directAlignment, directSpacing } =
-      block;
-    return { kind, text, styleId, headingLevel, statedNumbering, directAlignment, directSpacing };
+    if (block.kind === "diagnostic")
+      panic("Generated prose fixture contains a diagnostic");
+    const {
+      kind,
+      text,
+      styleId,
+      headingLevel,
+      statedNumbering,
+      directAlignment,
+      directSpacing,
+    } = block;
+    return {
+      kind,
+      text,
+      styleId,
+      headingLevel,
+      statedNumbering,
+      directAlignment,
+      directSpacing,
+    };
   });
 
 // The sequence generator previously sampled deletion and insertion independently.
@@ -50,7 +66,10 @@ for (const finalKind of ["paragraph", "heading"] as const) {
           let rejected = await FolioDocxReviewer.fromBuffer(bytes);
           let selectivelyRejected = await FolioDocxReviewer.fromBuffer(bytes);
           const before = shape(tracked);
-          const replay = (reviewer: FolioDocxReviewer, mode: FolioDocumentOperationMode) => {
+          const replay = (
+            reviewer: FolioDocxReviewer,
+            mode: FolioDocumentOperationMode,
+          ) => {
             const blocks = reviewer.getContent();
             const anchor = blocks.at(1);
             if (!anchor) panic("Generated fixture has no surviving anchor");
@@ -59,7 +78,11 @@ for (const finalKind of ["paragraph", "heading"] as const) {
               revisionStamp: FolioRevisionStamp,
             ) => {
               const result = reviewer.applyDocumentOperations(
-                { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, mode, operations },
+                {
+                  version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                  mode,
+                  operations,
+                },
                 { undefinedReferences: "refuse", revisionStamp },
               );
               expect(result.skipped).toEqual([]);
@@ -91,15 +114,20 @@ for (const finalKind of ["paragraph", "heading"] as const) {
           replay(rejected, "tracked-changes");
           replay(selectivelyRejected, "tracked-changes");
           if (session === "reopened") {
-            tracked = await FolioDocxReviewer.fromBuffer(await tracked.toBuffer());
-            rejected = await FolioDocxReviewer.fromBuffer(await rejected.toBuffer());
+            tracked = await FolioDocxReviewer.fromBuffer(
+              await tracked.toBuffer(),
+            );
+            rejected = await FolioDocxReviewer.fromBuffer(
+              await rejected.toBuffer(),
+            );
             selectivelyRejected = await FolioDocxReviewer.fromBuffer(
               await selectivelyRejected.toBuffer(),
             );
           }
           expect(
-            selectivelyRejected.getChanges().filter(({ date }) => date === INSERTION_STAMP.date)
-              .length,
+            selectivelyRejected
+              .getChanges()
+              .filter(({ date }) => date === INSERTION_STAMP.date).length,
           ).toBeGreaterThan(0);
           for (const change of selectivelyRejected
             .getChanges()
@@ -107,23 +135,31 @@ for (const finalKind of ["paragraph", "heading"] as const) {
             selectivelyRejected.rejectChange(change);
           }
           expect(
-            selectivelyRejected.getChanges().some(({ date }) => date === INSERTION_STAMP.date),
+            selectivelyRejected
+              .getChanges()
+              .some(({ date }) => date === INSERTION_STAMP.date),
           ).toBe(false);
           selectivelyRejected.acceptAll();
           expect(shape(selectivelyRejected)).toEqual(before.slice(0, 2));
           expect(
-            shape(await FolioDocxReviewer.fromBuffer(await selectivelyRejected.toBuffer())),
+            shape(
+              await FolioDocxReviewer.fromBuffer(
+                await selectivelyRejected.toBuffer(),
+              ),
+            ),
           ).toEqual(before.slice(0, 2));
           tracked.acceptAll();
           expect(shape(tracked)).toEqual(shape(direct));
           rejected.rejectAll();
           expect(shape(rejected)).toEqual(before);
-          expect(shape(await FolioDocxReviewer.fromBuffer(await tracked.toBuffer()))).toEqual(
-            shape(direct),
-          );
-          expect(shape(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer()))).toEqual(
-            before,
-          );
+          expect(
+            shape(await FolioDocxReviewer.fromBuffer(await tracked.toBuffer())),
+          ).toEqual(shape(direct));
+          expect(
+            shape(
+              await FolioDocxReviewer.fromBuffer(await rejected.toBuffer()),
+            ),
+          ).toEqual(before);
         });
       }
     }

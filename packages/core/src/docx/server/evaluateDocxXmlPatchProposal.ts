@@ -1,19 +1,19 @@
-import { encodeUtf8 } from "../../utils/textEncoding";
+import { panic, TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 
-import { panic, TaggedError } from "better-result";
-
-import { getDocxXmlSafetyIssue, type DocxXmlSafetyIssue } from "../xmlSafety";
+import { encodeUtf8 } from "../../utils/textEncoding";
+import { type DocxXmlSafetyIssue, getDocxXmlSafetyIssue } from "../xmlSafety";
 import type { DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError } from "./boundedArchive";
 import {
+  type FolioDocxInspectedXmlPart,
   FolioDocxPackageInspectionError,
   inspectDocxPackage,
-  type FolioDocxInspectedXmlPart,
 } from "./inspectDocxPackage";
 
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION = 1 as const;
-export const FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE = "folio-xml-patch-proposal-v1" as const;
+export const FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE =
+  "folio-xml-patch-proposal-v1" as const;
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS = Object.freeze({
   maxReplacements: 16,
   maxPartBytes: 8 * 1024 * 1024,
@@ -50,7 +50,10 @@ export type FolioDocxXmlReplacement = {
 
 export type FolioDocxXmlPatchProposal = {
   readonly version: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION;
-  readonly replacements: readonly [FolioDocxXmlReplacement, ...FolioDocxXmlReplacement[]];
+  readonly replacements: readonly [
+    FolioDocxXmlReplacement,
+    ...FolioDocxXmlReplacement[],
+  ];
 };
 
 export type FolioDocxXmlPatchProposalLimits = {
@@ -168,7 +171,9 @@ const prepareXmlReplacement = ({
     path: replacement.path,
     baseSha256: replacement.baseSha256,
     currentSha256: current.sha256,
-    replacementSha256: createHash("sha256").update(replacementBytes).digest("hex"),
+    replacementSha256: createHash("sha256")
+      .update(replacementBytes)
+      .digest("hex"),
     replacementByteLength: replacementBytes.byteLength,
     encoding: "utf-8",
   };
@@ -197,7 +202,11 @@ const assertAllowedKeys = (
   }
 };
 
-const readString = (value: Record<string, unknown>, key: string, path: string): string => {
+const readString = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): string => {
   const result = value[key];
   if (typeof result !== "string") {
     return invalidProposal(`${path}.${key}`, "expected a string");
@@ -205,7 +214,10 @@ const readString = (value: Record<string, unknown>, key: string, path: string): 
   return result;
 };
 
-const parseXmlReplacement = (value: unknown, index: number): FolioDocxXmlReplacement => {
+const parseXmlReplacement = (
+  value: unknown,
+  index: number,
+): FolioDocxXmlReplacement => {
   const path = `$.replacements[${index}]`;
   if (!isPlainObject(value)) {
     return invalidProposal(path, "expected an object");
@@ -218,7 +230,9 @@ const parseXmlReplacement = (value: unknown, index: number): FolioDocxXmlReplace
   };
 };
 
-export const parseFolioDocxXmlPatchProposal = (value: unknown): FolioDocxXmlPatchProposal => {
+export const parseFolioDocxXmlPatchProposal = (
+  value: unknown,
+): FolioDocxXmlPatchProposal => {
   if (!isPlainObject(value)) {
     return invalidProposal("$", "expected an object");
   }
@@ -234,7 +248,9 @@ export const parseFolioDocxXmlPatchProposal = (value: unknown): FolioDocxXmlPatc
   if (!Array.isArray(replacements) || replacements.length === 0) {
     return invalidProposal("$.replacements", "expected a non-empty array");
   }
-  if (replacements.length > FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS.maxReplacements) {
+  if (
+    replacements.length > FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS.maxReplacements
+  ) {
     return invalidProposal(
       "$.replacements",
       `expected at most ${FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS.maxReplacements} replacements`,
@@ -251,7 +267,9 @@ export const parseFolioDocxXmlPatchProposal = (value: unknown): FolioDocxXmlPatc
       parseXmlReplacement(firstReplacement, 0),
       ...replacements
         .slice(1)
-        .map((replacement, index) => parseXmlReplacement(replacement, index + 1)),
+        .map((replacement, index) =>
+          parseXmlReplacement(replacement, index + 1),
+        ),
     ],
   };
 };
@@ -262,7 +280,11 @@ type ResolveLimitOptions = {
   path: string;
 };
 
-const resolveLimit = ({ value, fallback, path }: ResolveLimitOptions): number => {
+const resolveLimit = ({
+  value,
+  fallback,
+  path,
+}: ResolveLimitOptions): number => {
   const limit = value ?? fallback;
   if (!Number.isSafeInteger(limit) || limit < 0) {
     throw new InvalidFolioDocxXmlPatchProposalOptionsError({
@@ -281,7 +303,9 @@ const resolveLimits = (
     fallback: FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS.maxReplacements,
     path: "limits.maxReplacements",
   });
-  if (maxReplacements > FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS.maxReplacements) {
+  if (
+    maxReplacements > FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS.maxReplacements
+  ) {
     throw new InvalidFolioDocxXmlPatchProposalOptionsError({
       message: `limits.maxReplacements must not exceed ${FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS.maxReplacements}.`,
       path: "limits.maxReplacements",
@@ -308,9 +332,15 @@ const isNormalizedPackagePath = (path: string): boolean =>
   !path.startsWith("/") &&
   !path.endsWith("/") &&
   !path.includes("\\") &&
-  path.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+  path
+    .split("/")
+    .every(
+      (segment) => segment.length > 0 && segment !== "." && segment !== "..",
+    );
 
-const resolveAllowedParts = (allowedParts: readonly unknown[]): ReadonlySet<string> => {
+const resolveAllowedParts = (
+  allowedParts: readonly unknown[],
+): ReadonlySet<string> => {
   const resolved = new Set<string>();
   for (const [index, path] of allowedParts.entries()) {
     if (typeof path !== "string" || !isNormalizedPackagePath(path)) {
@@ -331,7 +361,10 @@ const resolveAllowedParts = (allowedParts: readonly unknown[]): ReadonlySet<stri
 };
 
 type RejectedEvaluationOptions = {
-  issues: readonly [FolioDocxXmlPatchProposalIssue, ...FolioDocxXmlPatchProposalIssue[]];
+  issues: readonly [
+    FolioDocxXmlPatchProposalIssue,
+    ...FolioDocxXmlPatchProposalIssue[],
+  ];
   limits: Required<FolioDocxXmlPatchProposalLimits>;
 };
 
@@ -349,7 +382,10 @@ const rejectedEvaluation = ({
 });
 
 type AcceptedEvaluationOptions = {
-  replacements: readonly [FolioDocxPreparedXmlReplacement, ...FolioDocxPreparedXmlReplacement[]];
+  replacements: readonly [
+    FolioDocxPreparedXmlReplacement,
+    ...FolioDocxPreparedXmlReplacement[],
+  ];
   limits: Required<FolioDocxXmlPatchProposalLimits>;
 };
 
@@ -392,7 +428,9 @@ export const evaluateDocxXmlPatchProposal = async ({
 }: EvaluateDocxXmlPatchProposalArgs): Promise<FolioDocxXmlPatchProposalEvaluation> => {
   const limits = resolveLimits(rawLimits);
   const allowed = resolveAllowedParts(allowedParts);
-  const rawReplacements = isPlainObject(rawProposal) ? rawProposal["replacements"] : undefined;
+  const rawReplacements = isPlainObject(rawProposal)
+    ? rawProposal["replacements"]
+    : undefined;
   if (
     isPlainObject(rawProposal) &&
     rawProposal["version"] === FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION &&
@@ -462,12 +500,16 @@ export const evaluateDocxXmlPatchProposal = async ({
     } else if (!allowed.has(replacement.path)) {
       issues.push({
         code: "part-not-allowed",
-        message: "The server-side policy does not allow replacing this package part.",
+        message:
+          "The server-side policy does not allow replacing this package part.",
         proposalPath: `${proposalPath}.path`,
         part: replacement.path,
       });
     }
-    if (replacement.baseSha256.length !== 64 || !SHA256_PATTERN.test(replacement.baseSha256)) {
+    if (
+      replacement.baseSha256.length !== 64 ||
+      !SHA256_PATTERN.test(replacement.baseSha256)
+    ) {
       issues.push({
         code: "invalid-base-sha256",
         message: "baseSha256 must be a lowercase hexadecimal SHA-256 digest.",
@@ -500,8 +542,10 @@ export const evaluateDocxXmlPatchProposal = async ({
     }
 
     const replacementBytes = encodeUtf8(replacement.replacementXml);
-    const exceedsEncodedPart = replacementBytes.byteLength > limits.maxPartBytes;
-    const nextEncodedTotalBytes = encodedTotalBytes + replacementBytes.byteLength;
+    const exceedsEncodedPart =
+      replacementBytes.byteLength > limits.maxPartBytes;
+    const nextEncodedTotalBytes =
+      encodedTotalBytes + replacementBytes.byteLength;
     if (exceedsEncodedPart) {
       issues.push({
         code: "replacement-too-large",
@@ -556,7 +600,10 @@ export const evaluateDocxXmlPatchProposal = async ({
     if (firstIssue === undefined) {
       return panic("Rejected XML patch proposal is missing an issue");
     }
-    return rejectedEvaluation({ issues: [firstIssue, ...issues.slice(1)], limits });
+    return rejectedEvaluation({
+      issues: [firstIssue, ...issues.slice(1)],
+      limits,
+    });
   }
 
   let inspected;
@@ -582,7 +629,8 @@ export const evaluateDocxXmlPatchProposal = async ({
         issues: [
           {
             code: "package-inspection-failed",
-            message: "The package could not be inspected within the configured limits.",
+            message:
+              "The package could not be inspected within the configured limits.",
           },
         ],
         limits,
@@ -591,7 +639,9 @@ export const evaluateDocxXmlPatchProposal = async ({
     throw error;
   }
 
-  const inspectedByPath = new Map(inspected.xmlParts.map((part) => [part.path, part] as const));
+  const inspectedByPath = new Map(
+    inspected.xmlParts.map((part) => [part.path, part] as const),
+  );
   for (const [index, replacement] of proposal.replacements.entries()) {
     const current = inspectedByPath.get(replacement.path);
     if (current === undefined || current.sha256 === replacement.baseSha256) {
@@ -599,7 +649,8 @@ export const evaluateDocxXmlPatchProposal = async ({
     }
     issues.push({
       code: "base-hash-mismatch",
-      message: "The package part changed after the proposal base was inspected.",
+      message:
+        "The package part changed after the proposal base was inspected.",
       proposalPath: `$.replacements[${index}].baseSha256`,
       part: replacement.path,
     });
@@ -609,7 +660,10 @@ export const evaluateDocxXmlPatchProposal = async ({
     if (firstIssue === undefined) {
       return panic("Rejected XML patch proposal is missing an issue");
     }
-    return rejectedEvaluation({ issues: [firstIssue, ...issues.slice(1)], limits });
+    return rejectedEvaluation({
+      issues: [firstIssue, ...issues.slice(1)],
+      limits,
+    });
   }
 
   const preparedReplacements = proposal.replacements.map((replacement) =>
@@ -617,7 +671,9 @@ export const evaluateDocxXmlPatchProposal = async ({
   );
   const firstPreparedReplacement = preparedReplacements.at(0);
   if (firstPreparedReplacement === undefined) {
-    return panic("Accepted XML patch proposal is missing a prepared replacement");
+    return panic(
+      "Accepted XML patch proposal is missing a prepared replacement",
+    );
   }
   return acceptedEvaluation({
     replacements: [firstPreparedReplacement, ...preparedReplacements.slice(1)],

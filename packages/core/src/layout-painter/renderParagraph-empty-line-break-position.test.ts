@@ -162,13 +162,19 @@ describe("blank line-break rows carry a resolvable position", () => {
         { kind: "lineBreak", pmStart: 6, pmEnd: 7 },
       ],
     };
-    const lineEl = renderLine(trailingBlock, line(2, 2, 0), undefined, fakeDocument, {
-      availableWidth: 360,
-      isLastLine: true,
-      isFirstLine: false,
-      paragraphEndsWithLineBreak: true,
-      leftIndentPx: 0,
-    }) as unknown as FakeElement;
+    const lineEl = renderLine(
+      trailingBlock,
+      line(2, 2, 0),
+      undefined,
+      fakeDocument,
+      {
+        availableWidth: 360,
+        isLastLine: true,
+        isFirstLine: false,
+        paragraphEndsWithLineBreak: true,
+        leftIndentPx: 0,
+      },
+    ) as unknown as FakeElement;
 
     // Collapsed at 7 so a click anywhere on the row resolves to after the break.
     expect(lineEl.children.at(0)?.dataset["pmStart"]).toBe("7");
@@ -198,13 +204,19 @@ describe("blank line-break rows carry a resolvable position", () => {
         { kind: "lineBreak", pmStart: 2, pmEnd: 3 },
       ],
     };
-    const lineEl = renderLine(floatBlock, line(0, 1, 0), undefined, fakeDocument, {
-      availableWidth: 360,
-      isLastLine: true,
-      isFirstLine: false,
-      paragraphEndsWithLineBreak: true,
-      leftIndentPx: 0,
-    }) as unknown as FakeElement;
+    const lineEl = renderLine(
+      floatBlock,
+      line(0, 1, 0),
+      undefined,
+      fakeDocument,
+      {
+        availableWidth: 360,
+        isLastLine: true,
+        isFirstLine: false,
+        paragraphEndsWithLineBreak: true,
+        leftIndentPx: 0,
+      },
+    ) as unknown as FakeElement;
 
     const marker = positionedSpans(lineEl).at(0);
     expect(marker?.dataset["pmStart"]).toBe("2");
@@ -221,7 +233,14 @@ describe("suppressed paragraph positions", () => {
       attrs: { suppressEmptyParagraphHeight: true },
       runs: [
         { kind: "text", text: "Hidden", hidden: true, pmStart: 1, pmEnd: 7 },
-        { kind: "text", text: " source", hidden: true, italic: true, pmStart: 7, pmEnd: 14 },
+        {
+          kind: "text",
+          text: " source",
+          hidden: true,
+          italic: true,
+          pmStart: 7,
+          pmEnd: 14,
+        },
       ],
     };
     const lineEl = renderLine(
@@ -249,7 +268,10 @@ describe("suppressed paragraph positions", () => {
 
     expect(lineEl.style["overflow"]).toBe("hidden");
     expect(
-      positionedSpans(lineEl).map((span) => [span.dataset["pmStart"], span.dataset["pmEnd"]]),
+      positionedSpans(lineEl).map((span) => [
+        span.dataset["pmStart"],
+        span.dataset["pmEnd"],
+      ]),
     ).toEqual([
       ["1", "7"],
       ["7", "14"],

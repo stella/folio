@@ -14,7 +14,10 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
-import { buildSectionsDocx, SECTIONS_FIXTURE_TEXT } from "./__fixtures__/sections";
+import {
+  buildSectionsDocx,
+  SECTIONS_FIXTURE_TEXT,
+} from "./__fixtures__/sections";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIEditApplyMode } from "./types";
 
@@ -22,49 +25,134 @@ const open = async (bytes: ArrayBuffer): Promise<FolioDocxReviewer> =>
   await FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
-  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  const block = reviewer
+    .getContent()
+    .find((candidate) => candidate.text === text);
   if (!block) throw new Error(`no block "${text}"`);
   return block.id;
 };
 
-const deleteBlock = (reviewer: FolioDocxReviewer, text: string, mode: FolioAIEditApplyMode) =>
+const deleteBlock = (
+  reviewer: FolioDocxReviewer,
+  text: string,
+  mode: FolioAIEditApplyMode,
+) =>
   reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       mode,
-      operations: [{ id: "delete", type: "deleteBlock", blockId: blockId(reviewer, text) }],
+      operations: [
+        { id: "delete", type: "deleteBlock", blockId: blockId(reviewer, text) },
+      ],
     },
     { undefinedReferences: "refuse" },
   );
 
 const documentXml = async (bytes: ArrayBuffer): Promise<string> => {
-  const xml = await (await JSZip.loadAsync(bytes)).file("word/document.xml")?.async("string");
+  const xml = await (
+    await JSZip.loadAsync(bytes)
+  )
+    .file("word/document.xml")
+    ?.async("string");
   if (xml === undefined) throw new Error("no document part");
   return xml;
 };
 
+const markParagraphBreakDeleted = async (
+  bytes: ArrayBuffer,
+  text: string,
+): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(bytes);
+  const part = zip.file("word/document.xml");
+  if (!part) throw new Error("no document part");
+  const xml = await part.async("string");
+  const run = `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+  const marked =
+    `<w:p><w:pPr><w:rPr>` +
+    `<w:del w:id="7" w:author="Reviewer" w:date="2026-10-19T00:00:00Z"/>` +
+    `</w:rPr></w:pPr>${run}</w:p>`;
+  if (!xml.includes(`<w:p>${run}</w:p>`))
+    throw new Error("paragraph not found");
+  zip.file("word/document.xml", xml.replace(`<w:p>${run}</w:p>`, marked));
+  return await zip.generateAsync({ type: "arraybuffer" });
+};
+
+const firstCellParagraph = (reviewer: FolioDocxReviewer) => {
+  const table = reviewer
+    .toDocument()
+    .package.document.content.find((block) => block.type === "table");
+  const paragraph =
+    table?.type === "table"
+      ? table.rows.at(0)?.cells.at(0)?.content.at(0)
+      : undefined;
+  if (paragraph?.type !== "paragraph")
+    throw new Error("no first cell paragraph");
+  return paragraph;
+};
+
 /** Each top-level paragraph's text and whether it ends a section, in order. */
-const sectionsOf = (reviewer: FolioDocxReviewer): { text: string; endsSection: boolean }[] =>
+const sectionsOf = (
+  reviewer: FolioDocxReviewer,
+): { text: string; endsSection: boolean }[] =>
   reviewer.getContent().flatMap((block) => {
     if (block.table) return [];
     const paragraph = reviewer
       .toDocument()
       .package.document.content.find(
-        (candidate) => candidate.type === "paragraph" && candidate.paraId === block.id,
+        (candidate) =>
+          candidate.type === "paragraph" && candidate.paraId === block.id,
       );
     return [
       {
         text: block.text,
-        endsSection: paragraph?.type === "paragraph" && paragraph.sectionProperties !== undefined,
+        endsSection:
+          paragraph?.type === "paragraph" &&
+          paragraph.sectionProperties !== undefined,
       },
     ];
   });
 
 describe("deleting the paragraph that ends a section", () => {
+  test("direct block deletion before a table removes the selected paragraph", async () => {
+    const source = await buildSectionsDocx();
+    const direct = await open(source);
+    expect(
+      deleteBlock(direct, SECTIONS_FIXTURE_TEXT.twoOpens, "direct").applied,
+    ).toHaveLength(1);
+    expect(
+      sectionsOf(direct).some(
+        ({ text }) => text === SECTIONS_FIXTURE_TEXT.twoOpens,
+      ),
+    ).toBe(false);
+  });
+
+  test("accepting only the paragraph-mark deletion runs its text into the table", async () => {
+    const reviewer = await open(
+      await markParagraphBreakDeleted(
+        await buildSectionsDocx(),
+        SECTIONS_FIXTURE_TEXT.twoOpens,
+      ),
+    );
+    const cellId = firstCellParagraph(reviewer).paraId;
+
+    reviewer.acceptAll();
+
+    const survivor = firstCellParagraph(reviewer);
+    expect(survivor.paraId).toBe(cellId);
+    expect(survivor.pPrMark).toBeUndefined();
+    expect(reviewer.getContent().find((block) => block.table)?.text).toBe(
+      SECTIONS_FIXTURE_TEXT.twoOpens + SECTIONS_FIXTURE_TEXT.cell,
+    );
+  });
+
   test("merges its section into the next one and saves, in direct mode", async () => {
     const reviewer = await open(await buildSectionsDocx());
 
-    const result = deleteBlock(reviewer, SECTIONS_FIXTURE_TEXT.oneCloses, "direct");
+    const result = deleteBlock(
+      reviewer,
+      SECTIONS_FIXTURE_TEXT.oneCloses,
+      "direct",
+    );
     expect(result.applied).toHaveLength(1);
     expect(result.issues).toEqual([]);
 
@@ -101,13 +189,16 @@ describe("deleting the paragraph that ends a section", () => {
 
     for (const mode of ["tracked-changes", "suggested"] as const) {
       const reviewer = await open(source);
-      expect(deleteBlock(reviewer, SECTIONS_FIXTURE_TEXT.oneCloses, mode).applied).toHaveLength(1);
+      expect(
+        deleteBlock(reviewer, SECTIONS_FIXTURE_TEXT.oneCloses, mode).applied,
+      ).toHaveLength(1);
       // Pending, the section is still there, and the package still saves.
       expect(sectionsOf(await open(await reviewer.toBuffer()))).toContainEqual({
         text: mode === "suggested" ? SECTIONS_FIXTURE_TEXT.oneCloses : "",
         endsSection: true,
       });
-      if (mode === "suggested") expect(reviewer.acceptSuggestion("delete")).toBe(true);
+      if (mode === "suggested")
+        expect(reviewer.acceptSuggestion("delete")).toBe(true);
       reviewer.acceptAll();
       const reopened = await open(await reviewer.toBuffer());
       expect(sectionsOf(reopened)).toEqual(expected);
@@ -142,11 +233,17 @@ describe("deleting the paragraph that ends a section", () => {
 
   test("restores the section when the deletion is undone", async () => {
     const reviewer = await open(await buildSectionsDocx());
-    const result = deleteBlock(reviewer, SECTIONS_FIXTURE_TEXT.oneCloses, "direct");
+    const result = deleteBlock(
+      reviewer,
+      SECTIONS_FIXTURE_TEXT.oneCloses,
+      "direct",
+    );
     expect(result.undoHandle).not.toBeNull();
     if (!result.undoHandle) return;
 
-    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe("undone");
+    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe(
+      "undone",
+    );
     expect(reviewer.getNotesAsText()).toContain("Header one default.");
     expect(reviewer.getNotesAsText()).toContain("Footer one default.");
 
@@ -162,7 +259,13 @@ describe("merging across the paragraph that ends a section", () => {
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "direct",
-        operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: blockId(reviewer, text) }],
+        operations: [
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: blockId(reviewer, text),
+          },
+        ],
       },
       { undefinedReferences: "refuse" },
     );

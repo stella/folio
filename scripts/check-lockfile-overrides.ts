@@ -34,11 +34,6 @@ const INTENTIONAL_BREAKS: Readonly<Record<string, IntentionalBreak>> = {
     range: "^7.0.1",
     reason: "archiver 8 resolves a dependency advisory",
   },
-  "simple-git": {
-    dependent: "@nuxt/devtools",
-    range: "^3.36.0",
-    reason: "simple-git 4 resolves dependency advisories",
-  },
   valibot: {
     dependent: "@stll/conditions",
     range: "1.4.2",
@@ -59,7 +54,8 @@ const isManifest = (value: unknown): value is Manifest =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Strips the version from `name@version`, keeping a scope's leading `@`. */
-const packageName = (spec: string): string => spec.slice(0, spec.lastIndexOf("@"));
+const packageName = (spec: string): string =>
+  spec.slice(0, spec.lastIndexOf("@"));
 
 const declarationsOf = (lock: Lockfile, name: string): Declaration[] => {
   const declarations: Declaration[] = [];
@@ -93,12 +89,15 @@ export const overrideViolations = (
     const allowed = intentional[name];
     let allowedUsed = false;
     for (const { dependent, range } of declarationsOf(lock, name)) {
-      if (!isSemverRange(range) || Bun.semver.satisfies(version, range)) continue;
+      if (!isSemverRange(range) || Bun.semver.satisfies(version, range))
+        continue;
       if (allowed?.dependent === dependent && allowed.range === range) {
         allowedUsed = true;
         continue;
       }
-      violations.push(`${dependent} declares ${name} ${range}; the override pins ${version}.`);
+      violations.push(
+        `${dependent} declares ${name} ${range}; the override pins ${version}.`,
+      );
     }
     if (allowed && !allowedUsed) {
       violations.push(
@@ -108,7 +107,9 @@ export const overrideViolations = (
   }
   for (const name of Object.keys(intentional)) {
     if (!(name in overrides)) {
-      violations.push(`${name}: intentional break listed without an override; remove it.`);
+      violations.push(
+        `${name}: intentional break listed without an override; remove it.`,
+      );
     }
   }
   return violations;
@@ -121,5 +122,7 @@ if (import.meta.main) {
   const violations = overrideViolations(lock, INTENTIONAL_BREAKS);
   for (const violation of violations) console.error(violation);
   if (violations.length > 0) process.exit(1);
-  console.log("bun.lock override check: every override satisfies its dependents. OK.");
+  console.log(
+    "bun.lock override check: every override satisfies its dependents. OK.",
+  );
 }

@@ -48,7 +48,8 @@ export const resolveAuthor = ({
   env,
   cwd,
 }: ResolveAuthorOptions): Result<string, FolioCliError> => {
-  const author = nonEmpty(explicit) ?? nonEmpty(env[AUTHOR_ENV]) ?? gitUserName(cwd, env);
+  const author =
+    nonEmpty(explicit) ?? nonEmpty(env[AUTHOR_ENV]) ?? gitUserName(cwd, env);
   return author === undefined
     ? Result.err(
         cliError({
@@ -61,7 +62,8 @@ export const resolveAuthor = ({
 };
 
 /** An ISO-8601 UTC timestamp at second precision, as revision dates are written. */
-const toRevisionDate = (date: Date): string => date.toISOString().replace(/\.\d{3}Z$/u, "Z");
+const toRevisionDate = (date: Date): string =>
+  date.toISOString().replace(/\.\d{3}Z$/u, "Z");
 
 /** The transaction timestamp: `--date` when given (for reproducible output), else now. */
 export const resolveTransactionDate = (

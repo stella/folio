@@ -54,7 +54,8 @@ export const DROP_REASONS = {
     fix: "Route the container's children through the shared dispatcher, whose default is an ordered verbatim sink.",
   },
   parsedNotSerialized: {
-    summary: "A parser reads it into the model and no serializer writes it back.",
+    summary:
+      "A parser reads it into the model and no serializer writes it back.",
     fix: "Write it from the model in the container's serializer.",
   },
   replayOnly: {
@@ -82,7 +83,8 @@ export const DROP_REASONS = {
     fix: "Trace the rewrite to the reader or writer that performs it; a spelling change folio makes by design belongs in the law's value equivalence instead.",
   },
   parserThrows: {
-    summary: "The construct makes the parser throw, so the document does not open at all.",
+    summary:
+      "The construct makes the parser throw, so the document does not open at all.",
     fix: "Make the parser tolerant of it; a refusal is a worse loss than a drop.",
   },
 } as const;

@@ -11,17 +11,25 @@
     :style="{ width: '440px', maxWidth: '90vw' }"
     @close="$emit('close')"
   >
-    <div class="fnpd-dialog__header">{{ t("dialogs.footnoteProperties.title") }}</div>
+    <div class="fnpd-dialog__header">
+      {{ t("dialogs.footnoteProperties.title") }}
+    </div>
 
     <div class="fnpd-dialog__body">
       <!-- Footnotes -->
       <fieldset class="fnpd-fieldset">
-        <legend class="fnpd-legend">{{ t("dialogs.footnoteProperties.footnotes") }}</legend>
+        <legend class="fnpd-legend">
+          {{ t("dialogs.footnoteProperties.footnotes") }}
+        </legend>
         <div class="fnpd-row">
-          <label class="fnpd-label">{{ t("dialogs.footnoteProperties.position") }}</label>
+          <label class="fnpd-label">{{
+            t("dialogs.footnoteProperties.position")
+          }}</label>
           <select v-model="fnPosition" class="fnpd-select">
             <option value="pageBottom">
-              {{ t("dialogs.footnoteProperties.footnotePositions.bottomOfPage") }}
+              {{
+                t("dialogs.footnoteProperties.footnotePositions.bottomOfPage")
+              }}
             </option>
             <option value="beneathText">
               {{ t("dialogs.footnoteProperties.footnotePositions.belowText") }}
@@ -29,25 +37,42 @@
           </select>
         </div>
         <div class="fnpd-row">
-          <label class="fnpd-label">{{ t("dialogs.footnoteProperties.numberFormat") }}</label>
+          <label class="fnpd-label">{{
+            t("dialogs.footnoteProperties.numberFormat")
+          }}</label>
           <select v-model="fnNumFmt" class="fnpd-select">
-            <option v-for="fmt in numberFormats" :key="fmt.value" :value="fmt.value">
+            <option
+              v-for="fmt in numberFormats"
+              :key="fmt.value"
+              :value="fmt.value"
+            >
               {{ fmt.label }}
             </option>
           </select>
         </div>
         <div class="fnpd-row">
-          <label class="fnpd-label">{{ t("dialogs.footnoteProperties.startAt") }}</label>
-          <input v-model.number="fnStart" type="number" class="fnpd-input" min="1" />
+          <label class="fnpd-label">{{
+            t("dialogs.footnoteProperties.startAt")
+          }}</label>
+          <input
+            v-model.number="fnStart"
+            type="number"
+            class="fnpd-input"
+            min="1"
+          />
         </div>
         <div class="fnpd-row">
-          <label class="fnpd-label">{{ t("dialogs.footnoteProperties.numbering") }}</label>
+          <label class="fnpd-label">{{
+            t("dialogs.footnoteProperties.numbering")
+          }}</label>
           <select v-model="fnRestart" class="fnpd-select">
             <option value="continuous">
               {{ t("dialogs.footnoteProperties.numberingOptions.continuous") }}
             </option>
             <option value="eachSect">
-              {{ t("dialogs.footnoteProperties.numberingOptions.restartSection") }}
+              {{
+                t("dialogs.footnoteProperties.numberingOptions.restartSection")
+              }}
             </option>
             <option value="eachPage">
               {{ t("dialogs.footnoteProperties.numberingOptions.restartPage") }}
@@ -58,38 +83,63 @@
 
       <!-- Endnotes -->
       <fieldset class="fnpd-fieldset">
-        <legend class="fnpd-legend">{{ t("dialogs.footnoteProperties.endnotes") }}</legend>
+        <legend class="fnpd-legend">
+          {{ t("dialogs.footnoteProperties.endnotes") }}
+        </legend>
         <div class="fnpd-row">
-          <label class="fnpd-label">{{ t("dialogs.footnoteProperties.position") }}</label>
+          <label class="fnpd-label">{{
+            t("dialogs.footnoteProperties.position")
+          }}</label>
           <select v-model="enPosition" class="fnpd-select">
             <option value="docEnd">
-              {{ t("dialogs.footnoteProperties.endnotePositions.endOfDocument") }}
+              {{
+                t("dialogs.footnoteProperties.endnotePositions.endOfDocument")
+              }}
             </option>
             <option value="sectEnd">
-              {{ t("dialogs.footnoteProperties.endnotePositions.endOfSection") }}
+              {{
+                t("dialogs.footnoteProperties.endnotePositions.endOfSection")
+              }}
             </option>
           </select>
         </div>
         <div class="fnpd-row">
-          <label class="fnpd-label">{{ t("dialogs.footnoteProperties.numberFormat") }}</label>
+          <label class="fnpd-label">{{
+            t("dialogs.footnoteProperties.numberFormat")
+          }}</label>
           <select v-model="enNumFmt" class="fnpd-select">
-            <option v-for="fmt in numberFormats" :key="fmt.value" :value="fmt.value">
+            <option
+              v-for="fmt in numberFormats"
+              :key="fmt.value"
+              :value="fmt.value"
+            >
               {{ fmt.label }}
             </option>
           </select>
         </div>
         <div class="fnpd-row">
-          <label class="fnpd-label">{{ t("dialogs.footnoteProperties.startAt") }}</label>
-          <input v-model.number="enStart" type="number" class="fnpd-input" min="1" />
+          <label class="fnpd-label">{{
+            t("dialogs.footnoteProperties.startAt")
+          }}</label>
+          <input
+            v-model.number="enStart"
+            type="number"
+            class="fnpd-input"
+            min="1"
+          />
         </div>
         <div class="fnpd-row">
-          <label class="fnpd-label">{{ t("dialogs.footnoteProperties.numbering") }}</label>
+          <label class="fnpd-label">{{
+            t("dialogs.footnoteProperties.numbering")
+          }}</label>
           <select v-model="enRestart" class="fnpd-select">
             <option value="continuous">
               {{ t("dialogs.footnoteProperties.numberingOptions.continuous") }}
             </option>
             <option value="eachSect">
-              {{ t("dialogs.footnoteProperties.numberingOptions.restartSection") }}
+              {{
+                t("dialogs.footnoteProperties.numberingOptions.restartSection")
+              }}
             </option>
           </select>
         </div>
@@ -97,14 +147,19 @@
     </div>
 
     <div class="fnpd-dialog__footer">
-      <button class="fnpd-btn" @click="$emit('close')">{{ t("common.cancel") }}</button>
-      <button class="fnpd-btn fnpd-btn--primary" @click="apply">{{ t("common.apply") }}</button>
+      <button class="fnpd-btn" @click="$emit('close')">
+        {{ t("common.cancel") }}
+      </button>
+      <button class="fnpd-btn fnpd-btn--primary" @click="apply">
+        {{ t("common.apply") }}
+      </button>
     </div>
   </FolioDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+
 import type {
   EndnotePosition,
   EndnoteProperties,
@@ -113,6 +168,7 @@ import type {
   NoteNumberRestart,
 } from "@stll/folio-core/types/content";
 import type { NumberFormat } from "@stll/folio-core/types/document";
+
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -130,15 +186,31 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "apply", footnotePr: FootnoteProperties, endnotePr: EndnoteProperties): void;
+  (
+    e: "apply",
+    footnotePr: FootnoteProperties,
+    endnotePr: EndnoteProperties,
+  ): void;
 }>();
 
 const numberFormats = computed<{ value: NumberFormat; label: string }[]>(() => [
   { value: "decimal", label: t("dialogs.footnoteProperties.formats.decimal") },
-  { value: "lowerLetter", label: t("dialogs.footnoteProperties.formats.lowerAlpha") },
-  { value: "upperLetter", label: t("dialogs.footnoteProperties.formats.upperAlpha") },
-  { value: "lowerRoman", label: t("dialogs.footnoteProperties.formats.lowerRoman") },
-  { value: "upperRoman", label: t("dialogs.footnoteProperties.formats.upperRoman") },
+  {
+    value: "lowerLetter",
+    label: t("dialogs.footnoteProperties.formats.lowerAlpha"),
+  },
+  {
+    value: "upperLetter",
+    label: t("dialogs.footnoteProperties.formats.upperAlpha"),
+  },
+  {
+    value: "lowerRoman",
+    label: t("dialogs.footnoteProperties.formats.lowerRoman"),
+  },
+  {
+    value: "upperRoman",
+    label: t("dialogs.footnoteProperties.formats.upperRoman"),
+  },
   { value: "chicago", label: t("dialogs.footnoteProperties.formats.symbols") },
 ]);
 

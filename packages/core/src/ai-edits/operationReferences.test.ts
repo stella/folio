@@ -12,16 +12,16 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, type Transaction } from "prosemirror-state";
 
-import { ensureParaIds } from "../docx/ensureParaIds";
-import { createDocx } from "../docx/rezip";
 import {
   applyFolioDocumentOperations,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
-  isFolioDocumentOperationModeSupported,
   type FolioDocumentOperation,
   type FolioDocumentOperationMode,
+  isFolioDocumentOperationModeSupported,
 } from "../document-operations";
+import { ensureParaIds } from "../docx/ensureParaIds";
+import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
@@ -70,7 +70,9 @@ const build = async (numbering?: NumberingDefinitions): Promise<Uint8Array> => {
 };
 
 const outline = (reviewer: FolioDocxReviewer): string[] =>
-  reviewer.getContent().map((block) => `${block.displayLabel ?? "·"} ${block.text}`);
+  reviewer
+    .getContent()
+    .map((block) => `${block.displayLabel ?? "·"} ${block.text}`);
 
 type NumberingOperationFactory = (
   ids: { anchor: string; tail: string },
@@ -125,7 +127,10 @@ const cases = Object.entries(PACKAGES).flatMap(([packageName, numbering]) =>
   Object.entries(NUMBERING_OPERATIONS).flatMap(([operationName, factory]) =>
     FOLIO_DOCUMENT_OPERATION_MODES.filter((mode) =>
       isFolioDocumentOperationModeSupported(
-        factory({ anchor: "", tail: "" }, { kind: "reference", numId: 1, ilvl: 0 }).type,
+        factory(
+          { anchor: "", tail: "" },
+          { kind: "reference", numId: 1, ilvl: 0 },
+        ).type,
         mode,
       ),
     ).map((mode) => ({ packageName, numbering, operationName, factory, mode })),
@@ -133,7 +138,9 @@ const cases = Object.entries(PACKAGES).flatMap(([packageName, numbering]) =>
 );
 
 const openReviewer = async (numbering?: NumberingDefinitions) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await build(numbering), { author: "AI" });
+  const reviewer = await FolioDocxReviewer.fromBuffer(await build(numbering), {
+    author: "AI",
+  });
   const blocks = reviewer.getContent();
   const anchor = blocks.find((block) => block.text === ANCHOR)?.id;
   const tail = blocks.find((block) => block.text === TAIL)?.id;
@@ -175,7 +182,11 @@ describe("an undefined numbering instance is skipped before anything is applied"
       expect(result.receipts).toEqual([]);
       expect(result.undoHandle).toBeNull();
       expect(result.skipped).toEqual([
-        { id: "op", reason: "missingNumbering", message: expect.stringContaining("numId 1") },
+        {
+          id: "op",
+          reason: "missingNumbering",
+          message: expect.stringContaining("numId 1"),
+        },
       ]);
       expect(result.issues).toEqual([
         {
@@ -190,7 +201,9 @@ describe("an undefined numbering instance is skipped before anything is applied"
       ]);
       expect(outline(reviewer)).toEqual(before);
       const saved = await reviewer.toBuffer();
-      expect(outline(await FolioDocxReviewer.fromBuffer(saved, { author: "AI" }))).toEqual(before);
+      expect(
+        outline(await FolioDocxReviewer.fromBuffer(saved, { author: "AI" })),
+      ).toEqual(before);
     },
   );
 
@@ -198,7 +211,11 @@ describe("an undefined numbering instance is skipped before anything is applied"
     const { reviewer, ids } = await openReviewer(UNUSED_901);
     const result = applyOne(
       reviewer,
-      NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, { kind: "reference", numId: 1, ilvl: 0 }),
+      NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, {
+        kind: "reference",
+        numId: 1,
+        ilvl: 0,
+      }),
       "tracked-changes",
     );
     expect(result.skipped[0]?.message).toBe(
@@ -212,7 +229,11 @@ describe("an undefined numbering instance is skipped before anything is applied"
       const { reviewer, ids } = await openReviewer(UNUSED_901);
       const result = applyOne(
         reviewer,
-        NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, { kind: "reference", numId: 901, ilvl: 0 }),
+        NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, {
+          kind: "reference",
+          numId: 901,
+          ilvl: 0,
+        }),
         mode,
       );
       expect(result.applied).toEqual([expect.objectContaining({ id: "op" })]);
@@ -231,7 +252,12 @@ describe("an undefined numbering instance is skipped before anything is applied"
         mode: "tracked-changes",
         atomic: true,
         operations: [
-          { id: "good", type: "insertAfterBlock", blockId: ids.tail, text: "Fine." },
+          {
+            id: "good",
+            type: "insertAfterBlock",
+            blockId: ids.tail,
+            text: "Fine.",
+          },
           {
             ...NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, {
               kind: "reference",
@@ -274,9 +300,12 @@ describe("a batch result the save validator refuses is not committed", () => {
   // no save accepts — nothing an operation's own fields can be checked for up
   // front, which is what the result check is for.
   const openWithBlankAuthor = async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await build(UNUSED_901), {
-      author: "  ",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await build(UNUSED_901),
+      {
+        author: "  ",
+      },
+    );
     const tail = reviewer.getContent().find((block) => block.text === TAIL)?.id;
     if (tail === undefined) {
       throw new Error("fixture must expose its tail block");
@@ -291,7 +320,14 @@ describe("a batch result the save validator refuses is not committed", () => {
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
-        operations: [{ id: "insert", type: "insertAfterBlock", blockId: tail, text: "Added." }],
+        operations: [
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: tail,
+            text: "Added.",
+          },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
@@ -320,8 +356,18 @@ describe("a batch result the save validator refuses is not committed", () => {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "direct",
         operations: [
-          { id: "direct", type: "insertAfterBlock", blockId: tail, text: "Direct." },
-          { id: "noted", type: "commentOnBlock", blockId: tail, comment: { text: "Why?" } },
+          {
+            id: "direct",
+            type: "insertAfterBlock",
+            blockId: tail,
+            text: "Direct.",
+          },
+          {
+            id: "noted",
+            type: "commentOnBlock",
+            blockId: tail,
+            comment: { text: "Why?" },
+          },
         ],
       },
       { undefinedReferences: "refuse" },
@@ -333,7 +379,9 @@ describe("a batch result the save validator refuses is not committed", () => {
       {
         id: "noted",
         reason: "invalidResult",
-        message: expect.stringContaining("Comment author cannot be whitespace-only."),
+        message: expect.stringContaining(
+          "Comment author cannot be whitespace-only.",
+        ),
       },
     ]);
     expect(outline(reviewer)).toContain(`· Direct.`);
@@ -356,7 +404,10 @@ describe("a batch result the save validator refuses is not committed", () => {
       { undefinedReferences: "refuse" },
     );
     expect(result.status).toBe("rejected");
-    expect(result.skipped.map(({ reason }) => reason)).toEqual(["invalidResult", "invalidResult"]);
+    expect(result.skipped.map(({ reason }) => reason)).toEqual([
+      "invalidResult",
+      "invalidResult",
+    ]);
     expect(outline(reviewer)).toEqual(before);
   });
 
@@ -367,12 +418,16 @@ describe("a batch result the save validator refuses is not committed", () => {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
         dryRun: true,
-        operations: [{ id: "a", type: "insertAfterBlock", blockId: tail, text: "One." }],
+        operations: [
+          { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
+        ],
       },
       { undefinedReferences: "refuse" },
     );
     expect(result.status).toBe("previewed");
-    expect(result.skipped.map(({ reason }) => reason)).toEqual(["invalidResult"]);
+    expect(result.skipped.map(({ reason }) => reason)).toEqual([
+      "invalidResult",
+    ]);
   });
 
   test("a live view never receives the refused transaction", () => {
@@ -403,10 +458,14 @@ describe("a batch result the save validator refuses is not committed", () => {
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
-        operations: [{ id: "a", type: "insertAfterBlock", blockId: tail, text: "One." }],
+        operations: [
+          { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
+        ],
       },
     });
-    expect(refused.skipped.map(({ reason }) => reason)).toEqual(["invalidResult"]);
+    expect(refused.skipped.map(({ reason }) => reason)).toEqual([
+      "invalidResult",
+    ]);
     expect(dispatched).toEqual([]);
 
     const accepted = applyFolioDocumentOperations({
@@ -417,7 +476,9 @@ describe("a batch result the save validator refuses is not committed", () => {
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
-        operations: [{ id: "a", type: "insertAfterBlock", blockId: tail, text: "One." }],
+        operations: [
+          { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
+        ],
       },
     });
     expect(accepted.applied.map(({ id }) => id)).toEqual(["a"]);
@@ -427,12 +488,18 @@ describe("a batch result the save validator refuses is not committed", () => {
 
 describe("findIntroducedModelErrors", () => {
   test("recognizes existing section part references outside the changed window", () => {
-    const known = { headerReferences: [{ type: "default", rId: "rIdKnown" }] } as const;
+    const known = {
+      headerReferences: [{ type: "default", rId: "rIdKnown" }],
+    } as const;
     const before = schema.node("doc", null, [
-      schema.node("paragraph", { _sectionProperties: known }, [schema.text("Alpha")]),
+      schema.node("paragraph", { _sectionProperties: known }, [
+        schema.text("Alpha"),
+      ]),
     ]);
     const state = EditorState.create({ schema, doc: before });
-    const added = schema.node("paragraph", { _sectionProperties: known }, [schema.text("Lead")]);
+    const added = schema.node("paragraph", { _sectionProperties: known }, [
+      schema.text("Lead"),
+    ]);
     const after = state.tr.insert(0, added).doc;
     const context = { numbering: undefined, createdCommentIds: [] };
     expect(findIntroducedModelErrors(before, after, context)).toEqual([]);
@@ -442,7 +509,13 @@ describe("findIntroducedModelErrors", () => {
         headerReferences: [{ type: "default", rId: "rIdMissing" }],
       },
     });
-    expect(findIntroducedModelErrors(before, state.tr.insert(0, dangling).doc, context)).toEqual([
+    expect(
+      findIntroducedModelErrors(
+        before,
+        state.tr.insert(0, dangling).doc,
+        context,
+      ),
+    ).toEqual([
       {
         path: "package.document.content[0].sectionProperties.headerReferences[0].rId",
         message: "Section references missing header rIdMissing.",
@@ -460,10 +533,18 @@ describe("findIntroducedModelErrors", () => {
     const state = EditorState.create({ schema, doc: before });
     const context = { numbering: undefined, createdCommentIds: [] };
     expect(
-      findIntroducedModelErrors(before, state.tr.insert(0, paragraph(7)).doc, context),
+      findIntroducedModelErrors(
+        before,
+        state.tr.insert(0, paragraph(7)).doc,
+        context,
+      ),
     ).toEqual([]);
     expect(
-      findIntroducedModelErrors(before, state.tr.insert(0, paragraph(8)).doc, context),
+      findIntroducedModelErrors(
+        before,
+        state.tr.insert(0, paragraph(8)).doc,
+        context,
+      ),
     ).toEqual([
       {
         path: "package.document.content[0].content[0]",
@@ -483,7 +564,11 @@ describe("findIntroducedModelErrors", () => {
       for (let child = 0; child < index; child += 1) {
         position += tr.doc.child(child).nodeSize;
       }
-      return tr.setNodeAttribute(position, "numPr", { kind: "reference", numId: id, ilvl: 0 });
+      return tr.setNodeAttribute(position, "numPr", {
+        kind: "reference",
+        numId: id,
+        ilvl: 0,
+      });
     };
     return { state, setNumbering, numId };
   };
@@ -492,7 +577,10 @@ describe("findIntroducedModelErrors", () => {
     const { state, setNumbering } = numbered(5);
     const after = setNumbering(2, 5)(state.tr).doc;
     expect(
-      findIntroducedModelErrors(state.doc, after, { numbering: UNUSED_901, createdCommentIds: [] }),
+      findIntroducedModelErrors(state.doc, after, {
+        numbering: UNUSED_901,
+        createdCommentIds: [],
+      }),
     ).toEqual([
       {
         path: "package.document.content[2].formatting.numPr.numId",
@@ -510,7 +598,10 @@ describe("findIntroducedModelErrors", () => {
       5,
     )(EditorState.create({ schema, doc: broken }).tr.insertText("x", 2)).doc;
     expect(
-      findIntroducedModelErrors(broken, after, { numbering: UNUSED_901, createdCommentIds: [] }),
+      findIntroducedModelErrors(broken, after, {
+        numbering: UNUSED_901,
+        createdCommentIds: [],
+      }),
     ).toEqual([]);
   });
 
@@ -522,7 +613,10 @@ describe("findIntroducedModelErrors", () => {
       5,
     )(EditorState.create({ schema, doc: broken }).tr.insertText("x", 2)).doc;
     expect(
-      findIntroducedModelErrors(broken, after, { numbering: UNUSED_901, createdCommentIds: [] }),
+      findIntroducedModelErrors(broken, after, {
+        numbering: UNUSED_901,
+        createdCommentIds: [],
+      }),
     ).toEqual([
       {
         path: "package.document.content[2].formatting.numPr.numId",
@@ -537,14 +631,19 @@ describe("findIntroducedModelErrors", () => {
     const after = setNumbering(0, 901)(state.tr).doc;
     const context = { numbering: UNUSED_901, createdCommentIds: [] };
     expect(findIntroducedModelErrors(state.doc, after, context)).toEqual([]);
-    expect(findIntroducedModelErrors(state.doc, state.doc, context)).toEqual([]);
+    expect(findIntroducedModelErrors(state.doc, state.doc, context)).toEqual(
+      [],
+    );
   });
 
   test("without numbering knowledge a reference is not held against the batch", () => {
     const { state, setNumbering } = numbered(5);
     const after = setNumbering(2, 5)(state.tr).doc;
     expect(
-      findIntroducedModelErrors(state.doc, after, { numbering: undefined, createdCommentIds: [] }),
+      findIntroducedModelErrors(state.doc, after, {
+        numbering: undefined,
+        createdCommentIds: [],
+      }),
     ).toEqual([]);
   });
 });

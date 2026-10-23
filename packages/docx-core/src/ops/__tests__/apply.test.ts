@@ -5,18 +5,22 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
-  SPLIT_HALVES,
   type DocumentOp,
   EMPTY_PROPERTY_SETS,
   INHERIT_RUN_PROPS,
   OP_STORIES,
+  SPLIT_HALVES,
 } from "../types";
 
 const RSID = [{ name: "rsidR", value: "00A1B2C3" }];
 
 const run = (text: string, bold?: boolean): Run =>
   bold === undefined
-    ? { type: "run", content: [{ type: "text", text }], preservedAttributes: RSID }
+    ? {
+        type: "run",
+        content: [{ type: "text", text }],
+        preservedAttributes: RSID,
+      }
     : {
         type: "run",
         formatting: { bold },
@@ -29,7 +33,9 @@ const documentOf = (...content: Paragraph[]): Document => ({
 });
 
 const paragraphs = (document: Document): Paragraph[] =>
-  document.package.document.content.flatMap((block) => (block.type === "paragraph" ? [block] : []));
+  document.package.document.content.flatMap((block) =>
+    block.type === "paragraph" ? [block] : [],
+  );
 
 const at = (blockId: string, offset: number, zeroWidthBefore?: number) =>
   zeroWidthBefore === undefined
@@ -49,13 +55,94 @@ const refusalOf = (document: Document, op: DocumentOp): string | undefined => {
   return result.isErr() ? result.error.reason : undefined;
 };
 
-const undone = (document: Document, inverse: readonly DocumentOp[]): Document => {
+const undone = (
+  document: Document,
+  inverse: readonly DocumentOp[],
+): Document => {
   const result = applyDocumentOps(document, inverse);
   if (result.isErr()) {
     throw result.error;
   }
   return result.value.document;
 };
+
+describe("tracked note lifecycle", () => {
+  const revision = { id: 41, author: "Reviewer", date: "2026-10-15T00:00:00Z" };
+
+  for (const kind of ["footnote", "endnote"] as const) {
+    test(`${kind} insertion and removal resolve to their direct edits`, () => {
+      const original = documentOf({
+        type: "paragraph",
+        paraId: "00000001",
+        content: [run("abcd")],
+      });
+      const note = {
+        type: kind,
+        id: 1,
+        content: [
+          {
+            type: "paragraph" as const,
+            paraId: "00000002",
+            content: [run("note")],
+          },
+        ],
+      };
+      const add = {
+        type: DOCUMENT_OP_TYPES.ADD_NOTE,
+        at: at("00000001", 2),
+        note,
+      } as const;
+      const directAdd = applied(original, add).document;
+      const trackedAdd = applied(original, { ...add, revision });
+      expect(undone(trackedAdd.document, trackedAdd.inverse)).toStrictEqual(
+        original,
+      );
+      expect(
+        applied(trackedAdd.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "reject",
+        }).document,
+      ).toStrictEqual(original);
+      expect(
+        applied(trackedAdd.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "accept",
+        }).document,
+      ).toStrictEqual(directAdd);
+
+      const remove = {
+        type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+        at: at("00000001", 2),
+        story: { kind, id: 1 },
+      } as const;
+      const directRemove = applied(directAdd, remove).document;
+      const trackedRemove = applied(directAdd, { ...remove, revision });
+      expect(
+        undone(trackedRemove.document, trackedRemove.inverse),
+      ).toStrictEqual(directAdd);
+      expect(
+        applied(trackedRemove.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "reject",
+        }).document,
+      ).toStrictEqual(directAdd);
+      expect(
+        applied(trackedRemove.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [revision.id],
+          decision: "accept",
+        }).document,
+      ).toStrictEqual(directRemove);
+    });
+  }
+});
 
 describe("insertText", () => {
   test("inherited text joins the run before it and is undone by a deletion", () => {
@@ -78,12 +165,18 @@ describe("insertText", () => {
       second,
     ]);
     expect(paragraph?.content[1]).toBe(second);
-    expect(inverse.map(({ type }) => type)).toEqual([DOCUMENT_OP_TYPES.DELETE_RANGE]);
+    expect(inverse.map(({ type }) => type)).toEqual([
+      DOCUMENT_OP_TYPES.DELETE_RANGE,
+    ]);
     expect(undone(next, inverse)).toEqual(document);
   });
 
   test("text with other properties splits its host, and the undo merges it back", () => {
-    const document = documentOf({ type: "paragraph", paraId: "00000001", content: [run("abcd")] });
+    const document = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      content: [run("abcd")],
+    });
     const { document: next, inverse } = applied(document, {
       type: DOCUMENT_OP_TYPES.INSERT_TEXT,
       at: at("00000001", 2),
@@ -92,7 +185,11 @@ describe("insertText", () => {
     });
     expect(paragraphs(next)[0]?.content).toEqual([
       run("ab"),
-      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "X" }] },
+      {
+        type: "run",
+        formatting: { italic: true },
+        content: [{ type: "text", text: "X" }],
+      },
       run("cd"),
     ]);
     expect(inverse).toEqual([
@@ -102,7 +199,11 @@ describe("insertText", () => {
         to: at("00000001", 3, 0),
         expected: {
           content: [
-            { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "X" }] },
+            {
+              type: "run",
+              formatting: { italic: true },
+              content: [{ type: "text", text: "X" }],
+            },
           ],
           openStart: 0,
           openEnd: 0,
@@ -164,7 +265,11 @@ describe("deleteRange", () => {
   });
 
   test("a deletion through a run keeps its ends as one run and puts the middle back", () => {
-    const original = documentOf({ type: "paragraph", paraId: "00000001", content: [run("abcd")] });
+    const original = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      content: [run("abcd")],
+    });
     const { document: next, inverse } = applied(original, {
       type: DOCUMENT_OP_TYPES.DELETE_RANGE,
       from: at("00000001", 1),
@@ -237,7 +342,11 @@ describe("setParagraphProps", () => {
       revision: { id: 1, author: "Reviewer" },
     },
   ])("treats $name as a canonical no-op", ({ patch, whenEmpty, revision }) => {
-    const document = documentOf({ type: "paragraph", paraId: "00000001", content: [] });
+    const document = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      content: [],
+    });
     const result = applied(document, {
       type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
       story: OP_STORIES.MAIN,
@@ -368,15 +477,21 @@ describe("splitBlock and joinBlocks", () => {
         at: at("00000002", 2, 0),
         newBlockId: "00000001",
         newHalf: SPLIT_HALVES.FIRST,
-        newParagraph: { formatting: { alignment: "center", runProperties: { bold: true } } },
+        newParagraph: {
+          formatting: { alignment: "center", runProperties: { bold: true } },
+        },
         firstMark: pPrMark,
       },
       {
         type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
         story: OP_STORIES.MAIN,
         blockId: "00000002",
-        expected: { formatting: { alignment: "center", runProperties: { italic: true } } },
-        review: { formatting: { alignment: "end", runProperties: { italic: true } } },
+        expected: {
+          formatting: { alignment: "center", runProperties: { italic: true } },
+        },
+        review: {
+          formatting: { alignment: "end", runProperties: { italic: true } },
+        },
       },
     ]);
     expect(undone(next, inverse)).toEqual(document);
@@ -434,7 +549,11 @@ describe("refusals", () => {
     ],
     [
       "the reserved zero id",
-      { type: DOCUMENT_OP_TYPES.SPLIT_BLOCK, at: at("0000ABCD", 1), newBlockId: "00000000" },
+      {
+        type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        at: at("0000ABCD", 1),
+        newBlockId: "00000000",
+      },
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
     ],
     [
@@ -471,9 +590,12 @@ describe("refusals", () => {
       { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at: at("0000ABCD", 4), depth: 1 },
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
     ],
-  ] satisfies [string, DocumentOp, string][])("refuses %s", (_name, op, reason) => {
-    expect(refusalOf(document, op)).toBe(reason);
-  });
+  ] satisfies [string, DocumentOp, string][])(
+    "refuses %s",
+    (_name, op, reason) => {
+      expect(refusalOf(document, op)).toBe(reason);
+    },
+  );
 
   test.each([
     ["past the paraId range", "FFFFFFFF"],
@@ -497,7 +619,9 @@ describe("refusals", () => {
       expected: second === undefined ? [] : [second],
       blocks: [{ type: "paragraph", paraId, content: [] }],
     });
-    expect(refusalOf(document, replace("0000abcd"))).toBe(DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION);
+    expect(refusalOf(document, replace("0000abcd"))).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+    );
     expect(refusalOf(document, replace("0000abce"))).toBeUndefined();
   });
 
@@ -516,7 +640,9 @@ describe("refusals", () => {
         type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
         story: OP_STORIES.MAIN,
         expected: paragraphs(sectioned),
-        blocks: [{ type: "paragraph", paraId: "00000003", content: [run("b")] }],
+        blocks: [
+          { type: "paragraph", paraId: "00000003", content: [run("b")] },
+        ],
       }),
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY);
   });
@@ -525,7 +651,9 @@ describe("refusals", () => {
     const withStories: Document = {
       package: {
         document: {
-          content: [{ type: "paragraph", paraId: "00000001", content: [run("ab")] }],
+          content: [
+            { type: "paragraph", paraId: "00000001", content: [run("ab")] },
+          ],
           comments: [
             {
               id: 1,
@@ -578,6 +706,8 @@ describe("refusals", () => {
       runProps: INHERIT_RUN_PROPS,
     });
     const undo = applyDocumentOps(later.document, edit.inverse);
-    expect(undo.isErr() ? undo.error.reason : undefined).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+    expect(undo.isErr() ? undo.error.reason : undefined).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   });
 });

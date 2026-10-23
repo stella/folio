@@ -46,7 +46,9 @@ export const resolveEffectiveLineBreakPolicy = ({
     ...(after && languageMatches(after.language, locale)
       ? { noLineBreaksAfter: toCodePointSet(after.characters) }
       : {}),
-    ...(rules?.useLegacyEthiopicAmharicRules ? { useLegacyEthiopicAmharicRules: true } : {}),
+    ...(rules?.useLegacyEthiopicAmharicRules
+      ? { useLegacyEthiopicAmharicRules: true }
+      : {}),
     ...(automaticHyphenation?.doNotHyphenateCaps !== undefined
       ? { doNotHyphenateCaps: automaticHyphenation.doNotHyphenateCaps }
       : {}),
@@ -61,7 +63,9 @@ export const resolveEffectiveLineBreakPolicy = ({
 };
 
 /** Cache fragments for every paragraph attribute consumed by the resolver. */
-export const lineBreakPolicyCacheParts = (attrs: ParagraphAttrs): readonly string[] => {
+export const lineBreakPolicyCacheParts = (
+  attrs: ParagraphAttrs,
+): readonly string[] => {
   const parts: string[] = [];
   if (attrs.kinsoku !== undefined) {
     parts.push(`kinsoku:${attrs.kinsoku}`);
@@ -93,14 +97,18 @@ const resolveAutomaticHyphenation = (
   attrs: ParagraphAttrs | undefined,
 ): EffectiveAutomaticHyphenation => {
   const automaticHyphenation = attrs?.automaticHyphenation;
-  if (automaticHyphenation?.enabled !== true || attrs?.suppressAutoHyphens === true) {
+  if (
+    automaticHyphenation?.enabled !== true ||
+    attrs?.suppressAutoHyphens === true
+  ) {
     return { type: "disabled" };
   }
   return {
     type: "enabled",
     consecutiveLineLimit: automaticHyphenation.consecutiveLineLimit ?? 0,
     hyphenationZoneTwips:
-      automaticHyphenation.hyphenationZoneTwips ?? DEFAULT_HYPHENATION_ZONE_TWIPS,
+      automaticHyphenation.hyphenationZoneTwips ??
+      DEFAULT_HYPHENATION_ZONE_TWIPS,
   };
 };
 
@@ -115,7 +123,10 @@ const resolveRunLocale = (run: TextRun): string | undefined => {
   return language?.val;
 };
 
-const languageMatches = (ruleLanguage: string | undefined, locale: string | undefined): boolean => {
+const languageMatches = (
+  ruleLanguage: string | undefined,
+  locale: string | undefined,
+): boolean => {
   if (!ruleLanguage) {
     return true;
   }
@@ -124,7 +135,11 @@ const languageMatches = (ruleLanguage: string | undefined, locale: string | unde
   }
   const rule = ruleLanguage.toLowerCase();
   const active = locale.toLowerCase();
-  return active === rule || active.startsWith(`${rule}-`) || rule.startsWith(`${active}-`);
+  return (
+    active === rule ||
+    active.startsWith(`${rule}-`) ||
+    rule.startsWith(`${active}-`)
+  );
 };
 
 /**
@@ -132,4 +147,5 @@ const languageMatches = (ruleLanguage: string | undefined, locale: string | unde
  * into a code-point Set so line-edge membership checks are O(1) instead of
  * an O(n) `String.includes` scan per character measured.
  */
-const toCodePointSet = (characters: string): ReadonlySet<string> => new Set(Array.from(characters));
+const toCodePointSet = (characters: string): ReadonlySet<string> =>
+  new Set(Array.from(characters));

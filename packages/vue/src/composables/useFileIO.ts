@@ -14,8 +14,9 @@
  * inlined here.
  */
 
-import { ref } from "vue";
 import type { EditorView } from "prosemirror-view";
+import { ref } from "vue";
+
 import { insertImageFromFile } from "@stll/folio-core/prosemirror/commands/image";
 import type { Document } from "@stll/folio-core/types/document";
 
@@ -28,7 +29,9 @@ type ReadDocxResult = {
 
 /** Read the first picked file from a file-input change event; resets the
  *  input so the same file can be re-selected. */
-async function readDocxFileFromInput(event: Event): Promise<ReadDocxResult | null> {
+async function readDocxFileFromInput(
+  event: Event,
+): Promise<ReadDocxResult | null> {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return null;
   const file = input.files?.[0];
@@ -95,13 +98,17 @@ export function useFileIO(opts: UseFileIOOptions) {
     // the built-in local load. Mirrors React's useFileIO onOpen branch.
     if (opts.onOpen) {
       const input = event.target;
-      const file = input instanceof HTMLInputElement ? input.files?.[0] : undefined;
+      const file =
+        input instanceof HTMLInputElement ? input.files?.[0] : undefined;
       if (input instanceof HTMLInputElement) input.value = ""; // allow re-selecting
       if (!file) return;
       try {
         await opts.onOpen(file);
       } catch (err) {
-        opts.emit("error", err instanceof Error ? err : new Error("Failed to open document"));
+        opts.emit(
+          "error",
+          err instanceof Error ? err : new Error("Failed to open document"),
+        );
       }
       return;
     }
@@ -114,7 +121,10 @@ export function useFileIO(opts: UseFileIOOptions) {
       opts.emit("rename", result.name);
       await emitReadyAfterSidebarStateRefresh();
     } catch (err) {
-      opts.emit("error", err instanceof Error ? err : new Error("Failed to open document"));
+      opts.emit(
+        "error",
+        err instanceof Error ? err : new Error("Failed to open document"),
+      );
     }
   }
 

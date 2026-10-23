@@ -30,7 +30,13 @@
  * can replace it with the same `components` injection used by other chrome.
  */
 
-import { defineComponent, inject, provide, type Component, type InjectionKey } from "vue";
+import {
+  type Component,
+  defineComponent,
+  inject,
+  type InjectionKey,
+  provide,
+} from "vue";
 
 import DefaultButton from "../components/ui/Button.vue";
 import DefaultCheckbox from "../components/ui/Checkbox.vue";
@@ -329,15 +335,21 @@ export const DEFAULT_COMPONENTS: FolioUIComponents = {
   OutlineRail: DefaultOutlineRail,
 };
 
-const FOLIO_UI_KEY: InjectionKey<FolioUIComponents> = Symbol("folio-ui-components");
+const FOLIO_UI_KEY: InjectionKey<FolioUIComponents> = Symbol(
+  "folio-ui-components",
+);
 
 /**
  * Merge a consumer's partial overrides over the built-in defaults: every key is
  * present (defaults fill the gaps), and each provided override wins. Pure, so
  * the resolution contract is testable independently of Vue.
  */
-export function resolveFolioComponents(components?: Partial<FolioUIComponents>): FolioUIComponents {
-  return components ? { ...DEFAULT_COMPONENTS, ...components } : DEFAULT_COMPONENTS;
+export function resolveFolioComponents(
+  components?: Partial<FolioUIComponents>,
+): FolioUIComponents {
+  return components
+    ? { ...DEFAULT_COMPONENTS, ...components }
+    : DEFAULT_COMPONENTS;
 }
 
 /**

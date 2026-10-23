@@ -1,8 +1,16 @@
 import { expect, test } from "bun:test";
 
-import { diffRecords, type DocumentRecord, type LineRecord } from "./engineLayoutDiff";
+import {
+  diffRecords,
+  type DocumentRecord,
+  type LineRecord,
+} from "./engineLayoutDiff";
 
-const line = (first: string, last: string, width: number | null = 100): LineRecord => ({
+const line = (
+  first: string,
+  last: string,
+  width: number | null = 100,
+): LineRecord => ({
   first,
   last,
   width,
@@ -24,7 +32,13 @@ test("page and line count differences are reported with 1-based positions", () =
   const actual = record([[line("A", "b")]]);
   expect(diffRecords(expected, actual)).toEqual([
     { kind: "page-count", document: "doc.docx", expected: 2, actual: 1 },
-    { kind: "line-count", document: "doc.docx", page: 1, expected: 2, actual: 1 },
+    {
+      kind: "line-count",
+      document: "doc.docx",
+      page: 1,
+      expected: 2,
+      actual: 1,
+    },
   ]);
 });
 

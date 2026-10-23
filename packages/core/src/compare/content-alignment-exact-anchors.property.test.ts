@@ -6,7 +6,10 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { alignFolioContentBlocks, type FolioContentAlignedBlockEvent } from "./content-alignment";
+import {
+  alignFolioContentBlocks,
+  type FolioContentAlignedBlockEvent,
+} from "./content-alignment";
 import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock } from "./content-types";
 
@@ -50,11 +53,18 @@ const reconstruct = (
     }
   });
 
-const historicalExactLcs = (base: readonly string[], revised: readonly string[]): string[] => {
+const historicalExactLcs = (
+  base: readonly string[],
+  revised: readonly string[],
+): string[] => {
   const stride = revised.length + 1;
   const lengths = new Uint16Array((base.length + 1) * stride);
   for (let baseIndex = base.length - 1; baseIndex >= 0; baseIndex--) {
-    for (let revisedIndex = revised.length - 1; revisedIndex >= 0; revisedIndex--) {
+    for (
+      let revisedIndex = revised.length - 1;
+      revisedIndex >= 0;
+      revisedIndex--
+    ) {
       lengths[baseIndex * stride + revisedIndex] =
         base[baseIndex] === revised[revisedIndex]
           ? (lengths[(baseIndex + 1) * stride + revisedIndex + 1] ?? 0) + 1
@@ -91,10 +101,18 @@ describe("gap-local exact block anchors", () => {
   test("does not use whitespace-only text as shifted identity evidence", () => {
     for (const whitespace of ["", " ", "\t\n", "\u00a0"]) {
       const base = positionalBlocks(["Alpha", whitespace, "Beta"], "base");
-      const revised = positionalBlocks([whitespace, "Alpha", "Beta"], "revised");
+      const revised = positionalBlocks(
+        [whitespace, "Alpha", "Beta"],
+        "revised",
+      );
 
       const events = alignFolioContentBlocks(base, revised);
-      expect(events.map(({ type }) => type)).toEqual(["revisedOnly", "pair", "baseOnly", "pair"]);
+      expect(events.map(({ type }) => type)).toEqual([
+        "revisedOnly",
+        "pair",
+        "baseOnly",
+        "pair",
+      ]);
       expect(reconstruct(events, "base")).toEqual(base);
       expect(reconstruct(events, "revised")).toEqual(revised);
     }
@@ -102,20 +120,40 @@ describe("gap-local exact block anchors", () => {
 
   test("does not promote exact text duplicated in its current gap", () => {
     const repeated = "Confidentiality obligations continue.";
-    const base = positionalBlocks([repeated, "Alpha", repeated, "Beta"], "base");
-    const revised = positionalBlocks([repeated, repeated, "Alpha", repeated, "Beta"], "revised");
+    const base = positionalBlocks(
+      [repeated, "Alpha", repeated, "Beta"],
+      "base",
+    );
+    const revised = positionalBlocks(
+      [repeated, repeated, "Alpha", repeated, "Beta"],
+      "revised",
+    );
 
     const events = alignFolioContentBlocks(base, revised);
-    expect(events.map(({ type }) => type)).toEqual(["pair", "revisedOnly", "pair", "pair", "pair"]);
+    expect(events.map(({ type }) => type)).toEqual([
+      "pair",
+      "revisedOnly",
+      "pair",
+      "pair",
+      "pair",
+    ]);
     expect(reconstruct(events, "base")).toEqual(base);
     expect(reconstruct(events, "revised")).toEqual(revised);
   });
 
   test("does not let repeated text displace a later unique anchor", () => {
-    const base = positionalBlocks(["Alpha", "Repeated", "Beta", "Repeated", "Gamma"], "base");
-    const revised = positionalBlocks(["Repeated", "Alpha", "Repeated", "Beta", "Gamma"], "revised");
+    const base = positionalBlocks(
+      ["Alpha", "Repeated", "Beta", "Repeated", "Gamma"],
+      "base",
+    );
+    const revised = positionalBlocks(
+      ["Repeated", "Alpha", "Repeated", "Beta", "Gamma"],
+      "revised",
+    );
 
-    const events = alignFolioContentBlocks(base, revised, { stableIdMismatch: "pair" });
+    const events = alignFolioContentBlocks(base, revised, {
+      stableIdMismatch: "pair",
+    });
     const exactPairTexts = events.flatMap((event) =>
       event.type === "pair" && event.baseBlock.text === event.revisedBlock.text
         ? [event.baseBlock.text]
@@ -146,7 +184,9 @@ describe("gap-local exact block anchors", () => {
     ]);
     expect(
       events.flatMap((event) =>
-        event.type === "pair" ? [[event.baseBlock.id, event.revisedBlock.id]] : [],
+        event.type === "pair"
+          ? [[event.baseBlock.id, event.revisedBlock.id]]
+          : [],
       ),
     ).toEqual([["stable-a", "stable-a"]]);
     expect(reconstruct(events, "base")).toEqual(base);
@@ -168,16 +208,32 @@ describe("gap-local exact block anchors", () => {
   });
 
   test("preserves the historical exact subsequence for generated unique permutations", () => {
-    const texts = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta"];
+    const texts = [
+      "Alpha",
+      "Beta",
+      "Gamma",
+      "Delta",
+      "Epsilon",
+      "Zeta",
+      "Eta",
+      "Theta",
+    ];
     fc.assert(
       fc.property(
-        fc.shuffledSubarray(texts, { minLength: texts.length, maxLength: texts.length }),
+        fc.shuffledSubarray(texts, {
+          minLength: texts.length,
+          maxLength: texts.length,
+        }),
         (revisedTexts) => {
           const base = positionalBlocks(texts, "base");
           const revised = positionalBlocks(revisedTexts, "revised");
-          const events = alignFolioContentBlocks(base, revised, { stableIdMismatch: "pair" });
+          const events = alignFolioContentBlocks(base, revised, {
+            stableIdMismatch: "pair",
+          });
           const exactPairs = events.filter(
-            (event) => event.type === "pair" && event.baseBlock.text === event.revisedBlock.text,
+            (event) =>
+              event.type === "pair" &&
+              event.baseBlock.text === event.revisedBlock.text,
           );
 
           expect(exactPairs.map(({ baseBlock }) => baseBlock.text)).toEqual(
@@ -185,9 +241,11 @@ describe("gap-local exact block anchors", () => {
           );
           expect(reconstruct(events, "base")).toEqual(base);
           expect(reconstruct(events, "revised")).toEqual(revised);
-          expect(alignFolioContentBlocks(base, revised, { stableIdMismatch: "pair" })).toEqual(
-            events,
-          );
+          expect(
+            alignFolioContentBlocks(base, revised, {
+              stableIdMismatch: "pair",
+            }),
+          ).toEqual(events);
         },
       ),
       propertyConfig({ numRuns: 300 }),
@@ -196,20 +254,31 @@ describe("gap-local exact block anchors", () => {
 
   test("reconstructs generated repeated, blank, and Unicode sequences", () => {
     const texts = fc.array(
-      fc.constantFrom("", " ", "Alpha", "Repeated terms", "§ 14.2", "😀", "e\u0301", "é"),
+      fc.constantFrom(
+        "",
+        " ",
+        "Alpha",
+        "Repeated terms",
+        "§ 14.2",
+        "😀",
+        "e\u0301",
+        "é",
+      ),
       { maxLength: 20 },
     );
     fc.assert(
       fc.property(texts, texts, (baseTexts, revisedTexts) => {
         const base = positionalBlocks(baseTexts, "base");
         const revised = positionalBlocks(revisedTexts, "revised");
-        const events = alignFolioContentBlocks(base, revised, { stableIdMismatch: "pair" });
+        const events = alignFolioContentBlocks(base, revised, {
+          stableIdMismatch: "pair",
+        });
 
         expect(reconstruct(events, "base")).toEqual(base);
         expect(reconstruct(events, "revised")).toEqual(revised);
-        expect(alignFolioContentBlocks(base, revised, { stableIdMismatch: "pair" })).toEqual(
-          events,
-        );
+        expect(
+          alignFolioContentBlocks(base, revised, { stableIdMismatch: "pair" }),
+        ).toEqual(events);
       }),
       propertyConfig({ numRuns: 300 }),
     );
@@ -239,7 +308,9 @@ test("persisted exact neighbours anchor generated edits around a recreated reloc
           ...source,
           idStability: "stable" as const,
           text:
-            index > 0 && index < moveIndex ? `${label} replacement ${String(index)}` : source.text,
+            index > 0 && index < moveIndex
+              ? `${label} replacement ${String(index)}`
+              : source.text,
         }));
         const moved = revised.splice(moveIndex, 1).at(0);
         if (!moved) throw new Error("Generated relocation source is missing");
@@ -248,8 +319,12 @@ test("persisted exact neighbours anchor generated edits around a recreated reloc
         expect(reconstruct(events, "base")).toEqual(base);
         expect(reconstruct(events, "revised")).toEqual(revised);
         expect(
-          events.flatMap((event) => (event.type === "pair" ? [event.baseBlock.id] : [])),
-        ).toEqual(base.filter((_, index) => index !== moveIndex).map(({ id }) => id));
+          events.flatMap((event) =>
+            event.type === "pair" ? [event.baseBlock.id] : [],
+          ),
+        ).toEqual(
+          base.filter((_, index) => index !== moveIndex).map(({ id }) => id),
+        );
       },
     ),
     {

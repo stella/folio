@@ -21,7 +21,9 @@ async function readFileAsDataUrl(file: File): Promise<string> {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader();
     // SAFETY: readAsDataURL always produces a string result
-    reader.addEventListener("load", () => resolve(reader.result as unknown as string));
+    reader.addEventListener("load", () =>
+      resolve(reader.result as unknown as string),
+    );
     reader.addEventListener("error", () =>
       reject(reader.error ?? new Error("Failed to read image file")),
     );
@@ -29,7 +31,9 @@ async function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-async function loadImageSize(src: string): Promise<{ width: number; height: number }> {
+async function loadImageSize(
+  src: string,
+): Promise<{ width: number; height: number }> {
   return await new Promise((resolve, reject) => {
     const safeSrc = sanitizeImageSrc(src);
     if (!safeSrc) {
@@ -40,12 +44,17 @@ async function loadImageSize(src: string): Promise<{ width: number; height: numb
     img.addEventListener("load", () =>
       resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 }),
     );
-    img.addEventListener("error", () => reject(new Error("Failed to load pasted image")));
+    img.addEventListener("error", () =>
+      reject(new Error("Failed to load pasted image")),
+    );
     img.src = safeSrc;
   });
 }
 
-async function insertImageFiles(view: EditorView, files: File[]): Promise<void> {
+async function insertImageFiles(
+  view: EditorView,
+  files: File[],
+): Promise<void> {
   const imageType = view.state.schema.nodes["image"];
   if (!imageType) {
     return;
@@ -121,7 +130,9 @@ export const ImagePasteExtension = createExtension({
       props: {
         handleDOMEvents: {
           paste(view, event) {
-            const imageFiles = getStandaloneClipboardImageFiles(event.clipboardData);
+            const imageFiles = getStandaloneClipboardImageFiles(
+              event.clipboardData,
+            );
 
             if (imageFiles.length === 0) {
               return false;

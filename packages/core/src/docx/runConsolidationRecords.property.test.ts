@@ -25,8 +25,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document, Paragraph, Run } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -34,7 +36,8 @@ import { consolidateRuns, runsMergeable } from "./runConsolidator";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /** The `w:rsid*` attributes `CT_R` declares, all of them `ST_LongHexNumber`. */
@@ -66,13 +69,18 @@ type RunRecord = {
 
 /** `ST_LongHexNumber`, distinct per (attribute, session) pair. */
 const rsidValue = (attribute: string, session: number): string =>
-  `00${(((attribute.length * 131 + session * 7919) * 2_654_435_761) % 0xff_ff_ff)
+  `00${(
+    ((attribute.length * 131 + session * 7919) * 2_654_435_761) %
+    0xff_ff_ff
+  )
     .toString(16)
     .padStart(6, "0")
     .toUpperCase()}`;
 
 const runXml = ({ session, rsids, sink }: RunRecord, text: string): string => {
-  const attributes = rsids.map((name) => ` w:${name}="${rsidValue(name, session)}"`).join("");
+  const attributes = rsids
+    .map((name) => ` w:${name}="${rsidValue(name, session)}"`)
+    .join("");
   const children = sink.map((name) => SINK_CHILDREN[name]).join("");
   // `w:b` is shared by every run, so typed formatting never decides a merge
   // here: only the remainder and the sink can.
@@ -95,7 +103,11 @@ const packageFor = async (xml: string): Promise<ArrayBuffer> => {
 };
 
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(buffer)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 const save = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
@@ -112,10 +124,14 @@ const firstParagraph = (document: Document): Paragraph => {
 };
 
 const runsOf = (document: Document): Run[] =>
-  firstParagraph(document).content.filter((item): item is Run => item.type === "run");
+  firstParagraph(document).content.filter(
+    (item): item is Run => item.type === "run",
+  );
 
 const textOf = (run: Run): string =>
-  run.content.map((content) => (content.type === "text" ? content.text : "")).join("");
+  run.content
+    .map((content) => (content.type === "text" ? content.text : ""))
+    .join("");
 
 /** The run's whole record, as the saved part spells it. */
 const savedRunTags = (xml: string): string[] => [
@@ -124,12 +140,16 @@ const savedRunTags = (xml: string): string[] => [
 
 /** Every `w:t` in the saved part, joined: the text however the runs were cut. */
 const savedText = (xml: string): string =>
-  [...xml.matchAll(/<w:t(?:\s[^>]*)?>(.*?)<\/w:t>/gsu)].map(([, text]) => text ?? "").join("");
+  [...xml.matchAll(/<w:t(?:\s[^>]*)?>(.*?)<\/w:t>/gsu)]
+    .map(([, text]) => text ?? "")
+    .join("");
 
 const runRecordArbitrary = fc.record({
   session: fc.integer({ min: 0, max: 2 }),
   rsids: fc.subarray([...RUN_RSID_ATTRIBUTES] as string[], { minLength: 0 }),
-  sink: fc.subarray(Object.keys(SINK_CHILDREN) as SinkChild[], { minLength: 0 }),
+  sink: fc.subarray(Object.keys(SINK_CHILDREN) as SinkChild[], {
+    minLength: 0,
+  }),
 });
 
 const plainRun = (text: string): Run => ({
@@ -168,7 +188,11 @@ describe("a merge needs the whole record to agree", () => {
   });
 
   test("one session and one property set become one run, stated once", async () => {
-    const record = { session: 1, rsids: ["rsidR", "rsidDel"], sink: ["webHidden"] } as const;
+    const record = {
+      session: 1,
+      rsids: ["rsidR", "rsidDel"],
+      sink: ["webHidden"],
+    } as const;
     const xml =
       `${XML_DECLARATION}<w:document xmlns:w="${W}"><w:body><w:p>` +
       runXml(record, "one") +
@@ -241,7 +265,9 @@ describe("the merge rule is what parse converges on", () => {
             const expectedTexts: string[] = [];
             for (const [index, record] of records.entries()) {
               const previous = records[index - 1];
-              const joins = previous !== undefined && recordKey(record) === recordKey(previous);
+              const joins =
+                previous !== undefined &&
+                recordKey(record) === recordKey(previous);
               const last = expectedTexts.at(-1);
               if (joins && last !== undefined) {
                 expectedTexts[expectedTexts.length - 1] = last + `r${index}`;
@@ -266,12 +292,16 @@ describe("the merge rule is what parse converges on", () => {
         fc.asyncProperty(
           fc.array(runRecordArbitrary, { minLength: 1, maxLength: 5 }),
           async (records) => {
-            const saved = await documentPartOf(await save(await open(documentXml(records))));
+            const saved = await documentPartOf(
+              await save(await open(documentXml(records))),
+            );
 
             // The second save is where a consolidation that merges more than the
             // next parse would stops being a fixed point: the text has already
             // been joined, so the run count can only fall again.
-            expect(await documentPartOf(await save(await open(saved)))).toBe(saved);
+            expect(await documentPartOf(await save(await open(saved)))).toBe(
+              saved,
+            );
           },
         ),
         propertyConfig({ numRuns: 25 }),
@@ -287,12 +317,18 @@ describe("the merge rule is what parse converges on", () => {
         fc.asyncProperty(
           fc.array(runRecordArbitrary, { minLength: 1, maxLength: 5 }),
           async (records) => {
-            const saved = await documentPartOf(await save(await open(documentXml(records))));
+            const saved = await documentPartOf(
+              await save(await open(documentXml(records))),
+            );
 
-            expect(savedText(saved)).toBe(records.map((_, index) => `r${index}`).join(""));
+            expect(savedText(saved)).toBe(
+              records.map((_, index) => `r${index}`).join(""),
+            );
             for (const { session, rsids, sink } of records) {
               for (const attribute of rsids) {
-                expect(saved).toContain(`w:${attribute}="${rsidValue(attribute, session)}"`);
+                expect(saved).toContain(
+                  `w:${attribute}="${rsidValue(attribute, session)}"`,
+                );
               }
               for (const child of sink) {
                 expect(saved).toContain(SINK_CHILDREN[child]);

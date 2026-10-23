@@ -25,16 +25,24 @@ describe("setContentControlContentBlocksTr", () => {
     const blocks: BlockContent[] = [
       {
         type: "paragraph",
-        content: [{ type: "run", content: [{ type: "text", text: "First line" }] }],
+        content: [
+          { type: "run", content: [{ type: "text", text: "First line" }] },
+        ],
       },
       {
         type: "paragraph",
-        content: [{ type: "run", content: [{ type: "text", text: "Second line" }] }],
+        content: [
+          { type: "run", content: [{ type: "text", text: "Second line" }] },
+        ],
       },
     ];
 
     const state = makeState();
-    const tr = setContentControlContentBlocksTr(state, { tag: "clause" }, blocks);
+    const tr = setContentControlContentBlocksTr(
+      state,
+      { tag: "clause" },
+      blocks,
+    );
     if (!tr) {
       throw new Error("expected a transaction");
     }
@@ -89,7 +97,11 @@ describe("setContentControlContentBlocksTr", () => {
       },
     ];
     const state = makeState();
-    const tr = setContentControlContentBlocksTr(state, { tag: "clause" }, blocks);
+    const tr = setContentControlContentBlocksTr(
+      state,
+      { tag: "clause" },
+      blocks,
+    );
     if (!tr) {
       throw new TypeError("expected a transaction");
     }
@@ -113,13 +125,19 @@ describe("setContentControlContentBlocksTr", () => {
         content: [
           {
             type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "inner" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "inner" }] },
+            ],
           },
         ],
       },
     ];
     const state = makeState();
-    const tr = setContentControlContentBlocksTr(state, { tag: "clause" }, blocks);
+    const tr = setContentControlContentBlocksTr(
+      state,
+      { tag: "clause" },
+      blocks,
+    );
     if (!tr) {
       throw new TypeError("expected a transaction");
     }
@@ -134,6 +152,8 @@ describe("setContentControlContentBlocksTr", () => {
 
   test("returns null when no control matches the filter", () => {
     const state = makeState();
-    expect(setContentControlContentBlocksTr(state, { tag: "missing" }, [])).toBeNull();
+    expect(
+      setContentControlContentBlocksTr(state, { tag: "missing" }, []),
+    ).toBeNull();
   });
 });

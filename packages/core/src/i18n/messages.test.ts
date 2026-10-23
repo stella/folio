@@ -15,7 +15,10 @@ const POST_EXTRACTION_KEYS = [
   "zoomGroup",
 ] as const;
 
-const flatten = (obj: Record<string, unknown>, prefix = ""): Map<string, string> => {
+const flatten = (
+  obj: Record<string, unknown>,
+  prefix = "",
+): Map<string, string> => {
   const out = new Map<string, string>();
   for (const [key, value] of Object.entries(obj)) {
     const path = prefix ? `${prefix}.${key}` : key;
@@ -86,7 +89,10 @@ describe("getFolioMessages", () => {
   test("English is 100% complete (every key present and non-empty)", () => {
     expect(englishKeys.size).toBeGreaterThan(0);
     for (const [key, value] of englishKeys) {
-      expect(value.length, `folio.${key} must be a non-empty English string`).toBeGreaterThan(0);
+      expect(
+        value.length,
+        `folio.${key} must be a non-empty English string`,
+      ).toBeGreaterThan(0);
     }
   });
 
@@ -101,7 +107,10 @@ describe("getFolioMessages", () => {
   test("no translated value is empty in any locale", () => {
     for (const locale of FOLIO_LOCALES) {
       for (const [key, value] of folioOf(locale)) {
-        expect(value.length, `${locale}: folio.${key} is empty`).toBeGreaterThan(0);
+        expect(
+          value.length,
+          `${locale}: folio.${key} is empty`,
+        ).toBeGreaterThan(0);
       }
     }
   });
@@ -120,9 +129,10 @@ describe("getFolioMessages", () => {
       if (locale === "en") {
         continue;
       }
-      expect(folioOf(locale).get("bold"), `${locale} should translate folio.bold`).not.toBe(
-        english,
-      );
+      expect(
+        folioOf(locale).get("bold"),
+        `${locale} should translate folio.bold`,
+      ).not.toBe(english);
     }
   });
 
@@ -142,9 +152,10 @@ describe("getFolioMessages", () => {
         if (locale === "en") {
           continue;
         }
-        expect(folioOf(locale).get(key), `${locale}: folio.${key} should be translated`).not.toBe(
-          english,
-        );
+        expect(
+          folioOf(locale).get(key),
+          `${locale}: folio.${key} should be translated`,
+        ).not.toBe(english);
       }
     }
   });

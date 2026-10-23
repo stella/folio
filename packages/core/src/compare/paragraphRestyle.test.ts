@@ -5,21 +5,34 @@ import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { compareDocx } from "./compare";
 
-const OPTIONS = { author: "compare", timestamp: "2026-09-27T00:00:00.000Z" } as const;
+const OPTIONS = {
+  author: "compare",
+  timestamp: "2026-09-27T00:00:00.000Z",
+} as const;
 
-const markdownDocx = (markdown: string): Promise<ArrayBuffer> => createDocx(fromMarkdown(markdown));
+const markdownDocx = (markdown: string): Promise<ArrayBuffer> =>
+  createDocx(fromMarkdown(markdown));
 
 const restyleProjection = (reviewer: FolioDocxReviewer) =>
   reviewer
     .getContent()
-    .map(({ kind, headingLevel, styleId, directOutlineLevel, text, previewRuns }) => ({
-      kind,
-      headingLevel,
-      styleId,
-      directOutlineLevel,
-      text,
-      previewRuns,
-    }));
+    .map(
+      ({
+        kind,
+        headingLevel,
+        styleId,
+        directOutlineLevel,
+        text,
+        previewRuns,
+      }) => ({
+        kind,
+        headingLevel,
+        styleId,
+        directOutlineLevel,
+        text,
+        previewRuns,
+      }),
+    );
 
 const expectVerifiedRestyle = async (
   base: ArrayBuffer,
@@ -34,13 +47,17 @@ const expectVerifiedRestyle = async (
 
   const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+  const accepted = await FolioDocxReviewer.fromBuffer(
+    await accepting.toBuffer(),
+  );
   const expected = await FolioDocxReviewer.fromBuffer(target);
   expect(restyleProjection(accepted)).toEqual(restyleProjection(expected));
 
   const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+  const rejected = await FolioDocxReviewer.fromBuffer(
+    await rejecting.toBuffer(),
+  );
   const original = await FolioDocxReviewer.fromBuffer(base);
   expect(restyleProjection(rejected)).toEqual(restyleProjection(original));
 };
@@ -75,11 +92,25 @@ describe("comparison paragraph restyles", () => {
   });
 
   test.each([
-    { label: "heading-to-plain", base: "# Scope\n\nBody.", target: "Scope\n\nBody." },
-    { label: "Heading1-to-Heading2", base: "# Scope\n\nBody.", target: "## Scope\n\nBody." },
-  ])("verifies a $label restyle without a run change", async ({ base, target }) => {
-    await expectVerifiedRestyle(await markdownDocx(base), await markdownDocx(target));
-  });
+    {
+      label: "heading-to-plain",
+      base: "# Scope\n\nBody.",
+      target: "Scope\n\nBody.",
+    },
+    {
+      label: "Heading1-to-Heading2",
+      base: "# Scope\n\nBody.",
+      target: "## Scope\n\nBody.",
+    },
+  ])(
+    "verifies a $label restyle without a run change",
+    async ({ base, target }) => {
+      await expectVerifiedRestyle(
+        await markdownDocx(base),
+        await markdownDocx(target),
+      );
+    },
+  );
 
   test("keeps an authored bold change alongside a paragraph restyle", async () => {
     await expectVerifiedRestyle(
@@ -114,7 +145,11 @@ describe("comparison insertions beside a heading that states its outline level",
       kinds: ["delete", "delete", "insert", "insert"],
     },
   ])("keeps $label ordinary once accepted", async ({ base, target, kinds }) => {
-    await expectVerifiedRestyle(await markdownDocx(base), await markdownDocx(target), kinds);
+    await expectVerifiedRestyle(
+      await markdownDocx(base),
+      await markdownDocx(target),
+      kinds,
+    );
   });
 
   test("keeps a relocated paragraph ordinary beside edited table rows", async () => {
@@ -144,7 +179,15 @@ describe("comparison insertions beside a heading that states its outline level",
           "The parties will maintain confidentiality.",
         ].join("\n\n"),
       ),
-      ["insert", "move", "replace", "replace", "table-row-delete", "table-row-insert", "delete"],
+      [
+        "insert",
+        "move",
+        "replace",
+        "replace",
+        "table-row-delete",
+        "table-row-insert",
+        "delete",
+      ],
     );
   });
 });

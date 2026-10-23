@@ -1,12 +1,13 @@
 import { Selection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import {
   allocateCommentId,
   seedCommentIdAbove,
 } from "@stll/folio-core/prosemirror/commentIdAllocator";
-import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import type { Comment } from "@stll/folio-core/types/content";
+
 import type { CommentMarkRange } from "./commentAnchors";
 import { clampCommentMarkRange } from "./commentAnchors";
 
@@ -57,12 +58,15 @@ export function findSelectionYPosition(
 
 const FALLBACK_TOP_OFFSET = 80;
 
-export function getFallbackCommentYPosition(scrollContainer: HTMLElement | null): number {
+export function getFallbackCommentYPosition(
+  scrollContainer: HTMLElement | null,
+): number {
   if (!scrollContainer) {
     return FALLBACK_TOP_OFFSET;
   }
   return (
-    scrollContainer.scrollTop + Math.max(FALLBACK_TOP_OFFSET, scrollContainer.clientHeight / 3)
+    scrollContainer.scrollTop +
+    Math.max(FALLBACK_TOP_OFFSET, scrollContainer.clientHeight / 3)
   );
 }
 
@@ -91,14 +95,18 @@ export function createComment(
       {
         type: "paragraph",
         formatting: {},
-        content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
+        content: [
+          { type: "run", formatting: {}, content: [{ type: "text", text }] },
+        ],
       },
     ],
     ...(parentId !== undefined && { parentId }),
   };
 }
 
-export function getCommentParentId(comment: Comment): number | null | undefined {
+export function getCommentParentId(
+  comment: Comment,
+): number | null | undefined {
   const runtimeComment: { parentId?: number | null } = comment;
   return runtimeComment.parentId;
 }
@@ -142,7 +150,11 @@ export function applyCommentMarkRange(
       commentMark.create({ commentId: PENDING_COMMENT_ID }),
     );
   }
-  tr = tr.addMark(safeRange.from, safeRange.to, commentMark.create({ commentId }));
+  tr = tr.addMark(
+    safeRange.from,
+    safeRange.to,
+    commentMark.create({ commentId }),
+  );
 
   if (options?.selectEnd) {
     tr = tr.setSelection(Selection.near(tr.doc.resolve(safeRange.to), -1));
@@ -171,7 +183,9 @@ export function applyCommentMarkRange(
  * handles `Map` containers (e.g., `package.headers`) which `Object.values`
  * would silently skip.
  */
-export function collectCommentIdsFromSources(...sources: readonly unknown[]): Set<number> {
+export function collectCommentIdsFromSources(
+  ...sources: readonly unknown[]
+): Set<number> {
   const ids = new Set<number>();
   const visit = (node: unknown): void => {
     if (node === null || node === undefined) {
@@ -195,7 +209,9 @@ export function collectCommentIdsFromSources(...sources: readonly unknown[]): Se
     const obj = node as Record<string, unknown>;
     const type = obj["type"];
     if (
-      (type === "commentRangeStart" || type === "commentRangeEnd" || type === "commentReference") &&
+      (type === "commentRangeStart" ||
+        type === "commentRangeEnd" ||
+        type === "commentReference") &&
       typeof obj["id"] === "number"
     ) {
       ids.add(obj["id"]);
@@ -236,7 +252,10 @@ export function collectCommentIdsFromSources(...sources: readonly unknown[]): Se
  * already prevents the phantom-thread regression when the array does
  * end up empty.
  */
-export function pruneOrphanedComments(comments: Comment[], _referencedIds: Set<number>): Comment[] {
+export function pruneOrphanedComments(
+  comments: Comment[],
+  _referencedIds: Set<number>,
+): Comment[] {
   void _referencedIds;
   const keptIds = new Set<number>();
   // Step 1: keep every top-level comment.
@@ -258,7 +277,11 @@ export function pruneOrphanedComments(comments: Comment[], _referencedIds: Set<n
         continue;
       }
       const parentId = getCommentParentId(comment);
-      if (parentId !== null && parentId !== undefined && keptIds.has(parentId)) {
+      if (
+        parentId !== null &&
+        parentId !== undefined &&
+        keptIds.has(parentId)
+      ) {
         keptIds.add(comment.id);
         addedThisPass = true;
       }
@@ -267,7 +290,10 @@ export function pruneOrphanedComments(comments: Comment[], _referencedIds: Set<n
   return comments.filter((comment) => keptIds.has(comment.id));
 }
 
-export function removePendingCommentMarkRange(view: EditorView, range: CommentMarkRange): void {
+export function removePendingCommentMarkRange(
+  view: EditorView,
+  range: CommentMarkRange,
+): void {
   const commentMark = view.state.schema.marks["comment"];
   const safeRange = clampCommentMarkRange(view.state.doc.content.size, range);
   if (!commentMark || !safeRange) {

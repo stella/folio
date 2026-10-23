@@ -14,7 +14,11 @@ const resolve = (attrs?: ParagraphAttrs, text = "text") =>
 describe("physical paragraph inline layout", () => {
   test("mirrors explicit horizontal alignment and asymmetric indents under bidi", () => {
     expect(
-      resolve({ alignment: "right", bidi: true, indent: { left: 12, right: 34 } }),
+      resolve({
+        alignment: "right",
+        bidi: true,
+        indent: { left: 12, right: 34 },
+      }),
     ).toMatchObject({
       alignment: "left",
       explicitAlignment: "left",
@@ -29,15 +33,30 @@ describe("physical paragraph inline layout", () => {
   });
 
   test("preserves center and justify under bidi", () => {
-    expect(resolve({ alignment: "center", bidi: true }).alignment).toBe("center");
-    expect(resolve({ alignment: "justify", bidi: true }).alignment).toBe("justify");
+    expect(resolve({ alignment: "center", bidi: true }).alignment).toBe(
+      "center",
+    );
+    expect(resolve({ alignment: "justify", bidi: true }).alignment).toBe(
+      "justify",
+    );
   });
 
   test("does not mirror explicit false or inferred RTL paragraphs", () => {
     expect(
-      resolve({ alignment: "right", bidi: false, indent: { left: 12, right: 34 } }),
-    ).toMatchObject({ alignment: "right", indentLeft: 12, indentRight: 34, isRtl: false });
-    expect(resolve({ alignment: "left", indent: { left: 12, right: 34 } }, "مرحبا")).toMatchObject({
+      resolve({
+        alignment: "right",
+        bidi: false,
+        indent: { left: 12, right: 34 },
+      }),
+    ).toMatchObject({
+      alignment: "right",
+      indentLeft: 12,
+      indentRight: 34,
+      isRtl: false,
+    });
+    expect(
+      resolve({ alignment: "left", indent: { left: 12, right: 34 } }, "مرحبا"),
+    ).toMatchObject({
       alignment: "left",
       indentLeft: 12,
       indentRight: 34,

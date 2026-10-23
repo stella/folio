@@ -1,3 +1,7 @@
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
+import { themeColorToken } from "@stll/docx-core/model";
+import { serializeSequenceChildren } from "@stll/docx-core/schema";
+
 import type {
   ColorValue,
   ExhaustiveFields,
@@ -10,17 +14,19 @@ import { roundHorizontalScalePercentForSerialization } from "../../utils/horizon
 import { serializePreservedAttributes } from "../attributeRemainder";
 import type { DeclaredChild } from "../containerChildren.gen";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
-import { themeColorToken } from "@stll/docx-core/model";
-import { serializeSequenceChildren } from "@stll/docx-core/schema";
 
 const VALID_HIGHLIGHT_COLORS = new Set(HIGHLIGHT_COLOR_VALUES);
 
-type ClassifiedColorField = "rgb" | "themeColor" | "themeTint" | "themeShade" | "auto";
+type ClassifiedColorField =
+  "rgb" | "themeColor" | "themeTint" | "themeShade" | "auto";
 type ExhaustiveColorValue = ExhaustiveFields<ColorValue, ClassifiedColorField>;
 
-type ClassifiedShadingField = "color" | "fill" | "pattern" | "preservedAttributes";
-type ExhaustiveShadingProperties = ExhaustiveFields<ShadingProperties, ClassifiedShadingField>;
+type ClassifiedShadingField =
+  "color" | "fill" | "pattern" | "preservedAttributes";
+type ExhaustiveShadingProperties = ExhaustiveFields<
+  ShadingProperties,
+  ClassifiedShadingField
+>;
 
 type FontFamily = NonNullable<TextFormatting["fontFamily"]>;
 type ClassifiedFontFamilyField =
@@ -33,11 +39,17 @@ type ClassifiedFontFamilyField =
   | "hAnsiTheme"
   | "eastAsiaTheme"
   | "csTheme";
-type ExhaustiveFontFamily = ExhaustiveFields<FontFamily, ClassifiedFontFamilyField>;
+type ExhaustiveFontFamily = ExhaustiveFields<
+  FontFamily,
+  ClassifiedFontFamilyField
+>;
 
 type Underline = NonNullable<TextFormatting["underline"]>;
 type ClassifiedUnderlineField = "style" | "color";
-type ExhaustiveUnderline = ExhaustiveFields<Underline, ClassifiedUnderlineField>;
+type ExhaustiveUnderline = ExhaustiveFields<
+  Underline,
+  ClassifiedUnderlineField
+>;
 
 type Language = NonNullable<TextFormatting["language"]>;
 type ClassifiedLanguageField = "val" | "eastAsia" | "bidi";
@@ -77,7 +89,10 @@ type ClassifiedTextFormattingField =
   | "cs"
   | "styleId"
   | "preserved";
-type ExhaustiveTextFormatting = ExhaustiveFields<TextFormatting, ClassifiedTextFormattingField>;
+type ExhaustiveTextFormatting = ExhaustiveFields<
+  TextFormatting,
+  ClassifiedTextFormattingField
+>;
 
 /**
  * A child of this `w:rPr` that another record owns, named by its declared
@@ -88,7 +103,10 @@ type ExhaustiveTextFormatting = ExhaustiveFields<TextFormatting, ClassifiedTextF
  * as markup rather than as a field. Naming each one means the schema decides
  * where it goes, exactly as it does for the modelled children.
  */
-type OwnedRunPropertyChild = readonly [name: DeclaredChild<"run-properties">, xml: string];
+type OwnedRunPropertyChild = readonly [
+  name: DeclaredChild<"run-properties">,
+  xml: string,
+];
 
 // ============================================================================
 // COLOR SERIALIZATION
@@ -97,7 +115,9 @@ type OwnedRunPropertyChild = readonly [name: DeclaredChild<"run-properties">, xm
 /**
  * Serialize a color element (w:color)
  */
-function serializeColorElement(color: ExhaustiveColorValue | undefined): string {
+function serializeColorElement(
+  color: ExhaustiveColorValue | undefined,
+): string {
   if (!color) {
     return "";
   }
@@ -113,7 +133,9 @@ function serializeColorElement(color: ExhaustiveColorValue | undefined): string 
   }
 
   if (themeColor) {
-    attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
+    attrs.push(
+      `w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`,
+    );
   }
 
   if (themeTint) {
@@ -134,7 +156,9 @@ function serializeColorElement(color: ExhaustiveColorValue | undefined): string 
 /**
  * Serialize shading properties (w:shd)
  */
-export function serializeShading(shading: ExhaustiveShadingProperties | undefined): string {
+export function serializeShading(
+  shading: ExhaustiveShadingProperties | undefined,
+): string {
   if (!shading) {
     return "";
   }
@@ -160,7 +184,9 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
       attrs.push('w:color="auto"');
     }
     if (themeColor) {
-      attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
+      attrs.push(
+        `w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`,
+      );
     }
     if (themeTint) {
       attrs.push(`w:themeTint="${escapeXmlAttribute(themeTint)}"`);
@@ -180,7 +206,9 @@ export function serializeShading(shading: ExhaustiveShadingProperties | undefine
       attrs.push('w:fill="auto"');
     }
     if (themeColor) {
-      attrs.push(`w:themeFill="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
+      attrs.push(
+        `w:themeFill="${escapeXmlAttribute(themeColorToken(themeColor))}"`,
+      );
     }
     if (themeTint) {
       attrs.push(`w:themeFillTint="${escapeXmlAttribute(themeTint)}"`);
@@ -260,12 +288,20 @@ const serializeUnderline = (underline: Underline | undefined): string => {
   const attrs: string[] = [`w:val="${style}"`];
   if (color) {
     const exhaustiveColor: ExhaustiveColorValue = color;
-    const { rgb, themeColor, themeTint, themeShade, auto: _auto } = exhaustiveColor;
+    const {
+      rgb,
+      themeColor,
+      themeTint,
+      themeShade,
+      auto: _auto,
+    } = exhaustiveColor;
     if (rgb && isValidHexColor(rgb)) {
       attrs.push(`w:color="${escapeXmlAttribute(rgb)}"`);
     }
     if (themeColor) {
-      attrs.push(`w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`);
+      attrs.push(
+        `w:themeColor="${escapeXmlAttribute(themeColorToken(themeColor))}"`,
+      );
     }
     if (themeTint) {
       attrs.push(`w:themeTint="${escapeXmlAttribute(themeTint)}"`);
@@ -358,9 +394,12 @@ export function serializeTextFormatting(
   // included, because that is what cancels an inherited highlight. A custom
   // color has no `w:highlight` spelling and falls back to `w:shd`, which sits
   // at its own place in the sequence.
-  const namedHighlight = highlight && VALID_HIGHLIGHT_COLORS.has(highlight) ? highlight : undefined;
+  const namedHighlight =
+    highlight && VALID_HIGHLIGHT_COLORS.has(highlight) ? highlight : undefined;
   const customHighlightHex =
-    highlight && !namedHighlight && !shading ? highlight.replace(/^#/u, "") : "";
+    highlight && !namedHighlight && !shading
+      ? highlight.replace(/^#/u, "")
+      : "";
   const customHighlightShadingXml = /^[0-9a-fA-F]{6}$/u.test(customHighlightHex)
     ? `<w:shd w:val="clear" w:color="auto" w:fill="${customHighlightHex}"/>`
     : "";
@@ -369,7 +408,10 @@ export function serializeTextFormatting(
     container: "run-properties",
     modelled: [
       ...owned,
-      ["rStyle", styleId ? `<w:rStyle w:val="${escapeXmlAttribute(styleId)}"/>` : ""],
+      [
+        "rStyle",
+        styleId ? `<w:rStyle w:val="${escapeXmlAttribute(styleId)}"/>` : "",
+      ],
       ["rFonts", serializeFontFamily(fontFamily)],
       ["b", serializeOnOffElement(bold, "b")],
       ["bCs", serializeOnOffElement(boldCs, "bCs")],
@@ -392,7 +434,10 @@ export function serializeTextFormatting(
       ["position", numberTag("position", position)],
       ["sz", numberTag("sz", fontSize)],
       ["szCs", numberTag("szCs", fontSizeCs)],
-      ["highlight", namedHighlight ? `<w:highlight w:val="${namedHighlight}"/>` : ""],
+      [
+        "highlight",
+        namedHighlight ? `<w:highlight w:val="${namedHighlight}"/>` : "",
+      ],
       ["u", serializeUnderline(underline)],
       ["effect", effect ? `<w:effect w:val="${effect}"/>` : ""],
       ["shd", serializeShading(shading) || customHighlightShadingXml],
@@ -411,7 +456,9 @@ export function serializeTextFormatting(
   // empty spellings is a constructed no-op, not evidence that the source
   // carried the element.
   if (parts.length === 0) {
-    return input !== undefined && Object.keys(input).length === 0 ? "<w:rPr/>" : "";
+    return input !== undefined && Object.keys(input).length === 0
+      ? "<w:rPr/>"
+      : "";
   }
 
   return `<w:rPr>${parts.join("")}</w:rPr>`;

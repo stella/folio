@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 import {
   aggregateTestTimings,
@@ -32,17 +39,21 @@ const fixture = (files: Record<string, string>) => {
   return root;
 };
 
-const suite = (files: string[]) => [{ cwd: "packages/app", preloads: [], files }];
+const suite = (files: string[]) => [
+  { cwd: "packages/app", preloads: [], files },
+];
 
 afterEach(() => {
-  for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of temporaryRoots.splice(0))
+    rmSync(root, { recursive: true, force: true });
 });
 
 describe("reverse import closure", () => {
   test("scans modules reached outside the graph roots", () => {
     const root = fixture({
       "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
-      "packages/app/src/selected.test.ts": 'import "../../../specifications/registry";',
+      "packages/app/src/selected.test.ts":
+        'import "../../../specifications/registry";',
       "packages/app/src/other.test.ts": "export {};",
       "packages/app/src/third.test.ts": "export {};",
       "specifications/registry.ts": 'import "./colors";',
@@ -73,7 +84,10 @@ describe("reverse import closure", () => {
       [file]: "export const unreachable = true;",
     });
     const result = selectFastTestSuitesWithReason({
-      suites: suite(["packages/app/src/one.test.ts", "packages/app/src/two.test.ts"]),
+      suites: suite([
+        "packages/app/src/one.test.ts",
+        "packages/app/src/two.test.ts",
+      ]),
       changedFiles: [file],
       focusedFiles: [],
       repoRoot: root,
@@ -90,9 +104,11 @@ describe("reverse import closure", () => {
       }),
       "packages/lib/src/feature.ts": "export const feature = 1;",
       "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
-      "packages/app/src/reexport.ts": 'export { feature } from "@stll/lib/feature";',
+      "packages/app/src/reexport.ts":
+        'export { feature } from "@stll/lib/feature";',
       "packages/app/src/lazy.ts": 'export const lazy = import("./reexport");',
-      "packages/app/src/cycle-a.ts": 'import "./cycle-b"; export { lazy } from "./lazy";',
+      "packages/app/src/cycle-a.ts":
+        'import "./cycle-b"; export { lazy } from "./lazy";',
       "packages/app/src/cycle-b.ts": 'import "./cycle-a";',
       "packages/app/src/selected.test.ts": 'import "./cycle-a";',
       "packages/app/src/other.test.ts": "export {};",
@@ -110,14 +126,18 @@ describe("reverse import closure", () => {
       repoRoot: root,
     });
     expect(result.reason).toBe("closure");
-    expect(result.suites.flatMap(({ files: selected }) => selected)).toEqual([files[0]]);
+    expect(result.suites.flatMap(({ files: selected }) => selected)).toEqual([
+      files[0],
+    ]);
   });
 
   test("ignores type-only imports without hiding a runtime import", () => {
     const root = fixture({
       "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
-      "packages/app/src/value.ts": "export type T = string; export const value = 1;",
-      "packages/app/src/type-only.test.ts": 'import type { T } from "./value"; export {};',
+      "packages/app/src/value.ts":
+        "export type T = string; export const value = 1;",
+      "packages/app/src/type-only.test.ts":
+        'import type { T } from "./value"; export {};',
       "packages/app/src/runtime.test.ts":
         'import type { T } from "./value"; import { value } from "./value"; void value;',
       "packages/app/src/other.test.ts": "export {};",
@@ -163,8 +183,12 @@ describe("reverse import closure", () => {
         repoRoot: root,
       });
       expect(result.reason).toBe("closure");
-      expect(result.suites.flatMap(({ files }) => files)).toEqual(["packages/app/src/one.test.ts"]);
-      expect(result.cause).toBe("unknown dependencies in 1 file: packages/app/src/one.test.ts");
+      expect(result.suites.flatMap(({ files }) => files)).toEqual([
+        "packages/app/src/one.test.ts",
+      ]);
+      expect(result.cause).toBe(
+        "unknown dependencies in 1 file: packages/app/src/one.test.ts",
+      );
 
       const documentationOnly = selectFastTestSuitesWithReason({
         suites: suite([
@@ -199,19 +223,27 @@ describe("reverse import closure", () => {
       focusedFiles: [],
       repoRoot: root,
     });
-    expect(result.suites.flatMap(({ files }) => files)).toEqual(["packages/app/src/one.test.ts"]);
+    expect(result.suites.flatMap(({ files }) => files)).toEqual([
+      "packages/app/src/one.test.ts",
+    ]);
     expect(result.cause).toBeUndefined();
   });
 
   test("fails closed for module-loading forms outside the static allowlist", () => {
     for (const [loader, changedFile] of [
-      ['const target = "./value"; require(target);', "packages/app/src/value.ts"],
+      [
+        'const target = "./value"; require(target);',
+        "packages/app/src/value.ts",
+      ],
       ['const load = require; load("./value");', "packages/app/src/value.ts"],
       [
         'import { createRequire } from "node:module"; createRequire(import.meta.url)("./value");',
         "packages/app/src/value.ts",
       ],
-      ['new Worker(new URL("./worker.ts", import.meta.url));', "packages/app/src/worker.ts"],
+      [
+        'new Worker(new URL("./worker.ts", import.meta.url));',
+        "packages/app/src/worker.ts",
+      ],
     ]) {
       const root = fixture({
         "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
@@ -235,7 +267,9 @@ describe("reverse import closure", () => {
       expect(result.suites.flatMap(({ files }) => files)).toEqual([
         "packages/app/src/selected.test.ts",
       ]);
-      expect(result.cause).toBe("unknown dependencies in 1 file: packages/app/src/loader.ts");
+      expect(result.cause).toBe(
+        "unknown dependencies in 1 file: packages/app/src/loader.ts",
+      );
     }
   });
 
@@ -267,11 +301,15 @@ describe("reverse import closure", () => {
   test("follows a tsconfig path alias that resolves inside the repository", () => {
     const root = fixture({
       "tsconfig.json": JSON.stringify({
-        compilerOptions: { baseUrl: ".", paths: { "@app/*": ["packages/app/src/*"] } },
+        compilerOptions: {
+          baseUrl: ".",
+          paths: { "@app/*": ["packages/app/src/*"] },
+        },
       }),
       "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
       "packages/app/src/value.ts": "export const value = 1;",
-      "packages/app/src/one.test.ts": 'import { value } from "@app/value"; void value;',
+      "packages/app/src/one.test.ts":
+        'import { value } from "@app/value"; void value;',
       "packages/app/src/two.test.ts": "export {};",
       "packages/app/src/three.test.ts": "export {};",
     });
@@ -286,7 +324,9 @@ describe("reverse import closure", () => {
       repoRoot: root,
     });
     expect(result.reason).toBe("closure");
-    expect(result.suites.flatMap(({ files }) => files)).toEqual(["packages/app/src/one.test.ts"]);
+    expect(result.suites.flatMap(({ files }) => files)).toEqual([
+      "packages/app/src/one.test.ts",
+    ]);
     expect(result.cause).toBeUndefined();
   });
 
@@ -310,7 +350,9 @@ describe("reverse import closure", () => {
       "packages/other/src/unrelated.ts": "export {};",
     });
     const suites = discoverTestSuites(root);
-    expect(suites.find(({ cwd }) => cwd === "packages/app")?.preloads).toEqual(["./test/setup.ts"]);
+    expect(suites.find(({ cwd }) => cwd === "packages/app")?.preloads).toEqual([
+      "./test/setup.ts",
+    ]);
     const reached = selectFastTestSuitesWithReason({
       suites,
       changedFiles: ["packages/app/src/value.ts"],
@@ -364,7 +406,10 @@ describe("reverse import closure", () => {
       "packages/app/src/two.test.ts": "export {};",
     });
     const result = selectFastTestSuitesWithReason({
-      suites: suite(["packages/app/src/one.test.ts", "packages/app/src/two.test.ts"]),
+      suites: suite([
+        "packages/app/src/one.test.ts",
+        "packages/app/src/two.test.ts",
+      ]),
       changedFiles: [file],
       focusedFiles: [],
       repoRoot: root,
@@ -396,7 +441,10 @@ describe("reverse import closure", () => {
         {
           cwd: "packages/other",
           preloads: [],
-          files: ["packages/other/src/four.test.ts", "packages/other/src/five.test.ts"],
+          files: [
+            "packages/other/src/four.test.ts",
+            "packages/other/src/five.test.ts",
+          ],
         },
       ],
       changedFiles: ["packages/app/fixtures/input.json"],
@@ -404,7 +452,9 @@ describe("reverse import closure", () => {
       repoRoot: root,
     });
     expect(data.reason).toBe("package-data");
-    expect(data.suites.flatMap(({ files: selected }) => selected)).toEqual(files);
+    expect(data.suites.flatMap(({ files: selected }) => selected)).toEqual(
+      files,
+    );
     const threshold = selectFastTestSuitesWithReason({
       suites: suite(files),
       changedFiles: ["packages/app/src/value.ts"],
@@ -419,7 +469,10 @@ describe("reverse import closure", () => {
       (_, index) => `packages/app/src/threshold-${index}.test.ts`,
     );
     for (const [index, file] of thresholdFiles.entries()) {
-      writeFileSync(path.join(root, file), index < 7 ? 'import "./value";' : "export {};");
+      writeFileSync(
+        path.join(root, file),
+        index < 7 ? 'import "./value";' : "export {};",
+      );
     }
     const atThreshold = selectFastTestSuitesWithReason({
       suites: suite(thresholdFiles),
@@ -464,7 +517,9 @@ test("random real source subsets preserve changed tests and closure intersection
   const suites = discoverTestSuites();
   const graph = buildModuleGraph();
   const tests = suites.flatMap(({ files }) => files);
-  const sources = [...graph.codeFiles].filter((file) => !/\.test\./u.test(file));
+  const sources = [...graph.codeFiles].filter(
+    (file) => !/\.test\./u.test(file),
+  );
   const dependencies = new Map<string, Set<string>>();
   for (const [dependency, importers] of graph.reverse) {
     for (const importer of importers) {
@@ -474,7 +529,8 @@ test("random real source subsets preserve changed tests and closure intersection
     }
   }
   let state = 0x19_62_10_18;
-  const random = () => (state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0) / 2 ** 32;
+  const random = () =>
+    (state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0) / 2 ** 32;
   for (let iteration = 0; iteration < 8; iteration++) {
     const changed = new Set(sources.filter(() => random() < 0.0015));
     changed.add(tests[Math.floor(random() * tests.length)] ?? tests[0]);
@@ -485,7 +541,8 @@ test("random real source subsets preserve changed tests and closure intersection
       graph,
     });
     const selected = result.suites.flatMap(({ files }) => files);
-    for (const file of changed) if (/\.test\./u.test(file)) expect(selected).toContain(file);
+    for (const file of changed)
+      if (/\.test\./u.test(file)) expect(selected).toContain(file);
     if (result.reason !== "closure") continue;
     for (const testFile of selected) {
       const seen = new Set([testFile]);
@@ -499,7 +556,9 @@ test("random real source subsets preserve changed tests and closure intersection
           pending.push(dependency);
         }
       }
-      expect([...changed, ...graph.unresolved.keys()].some((file) => seen.has(file))).toBe(true);
+      expect(
+        [...changed, ...graph.unresolved.keys()].some((file) => seen.has(file)),
+      ).toBe(true);
     }
   }
 });
@@ -507,7 +566,8 @@ test("random real source subsets preserve changed tests and closure intersection
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true });
+  for (const directory of temporaryDirectories.splice(0))
+    rmSync(directory, { recursive: true });
 });
 
 describe("measured test shard balancing", () => {
@@ -516,14 +576,20 @@ describe("measured test shard balancing", () => {
     () => {
       fc.assert(
         fc.property(
-          fc.array(fc.integer({ min: 1, max: 1_000 }), { minLength: 100, maxLength: 100 }),
+          fc.array(fc.integer({ min: 1, max: 1_000 }), {
+            minLength: 100,
+            maxLength: 100,
+          }),
           (weights) => {
             const timings = Object.fromEntries(
               weights.map((weight, index) => [`test-${index}`, weight]),
             );
             const mean = weights.reduce((sum, weight) => sum + weight, 0) / 4;
             fc.pre(Math.max(...weights) <= mean);
-            const loads = shardLoads(assignTestShards(Object.keys(timings), timings), timings);
+            const loads = shardLoads(
+              assignTestShards(Object.keys(timings), timings),
+              timings,
+            );
             expect(Math.max(...loads)).toBeLessThanOrEqual(mean * 1.25);
           },
         ),
@@ -535,9 +601,9 @@ describe("measured test shard balancing", () => {
 
   test("unmeasured files use the median measured weight", () => {
     const timings = { a: 10, b: 30, c: 50 };
-    expect(shardLoads(assignTestShards(["a", "b", "c", "new"], timings), timings)).toEqual([
-      50, 30, 30, 10,
-    ]);
+    expect(
+      shardLoads(assignTestShards(["a", "b", "c", "new"], timings), timings),
+    ).toEqual([50, 30, 30, 10]);
   });
 
   test("aggregation takes per-run medians, follows discovery, and is byte-stable", () => {
@@ -547,18 +613,24 @@ describe("measured test shard balancing", () => {
       { runId: "three", timings: { kept: 20 } },
     ];
     const first = aggregateTestTimings(artifacts, ["new", "kept"]);
-    expect(first).toBe(aggregateTestTimings(artifacts.toReversed(), ["kept", "new"]));
+    expect(first).toBe(
+      aggregateTestTimings(artifacts.toReversed(), ["kept", "new"]),
+    );
     expect(JSON.parse(first)).toEqual({ kept: 20, new: 15 });
     expect(first).not.toContain("vanished");
   });
 
   test("timing artifact discovery distinguishes a failed listing from no data", async () => {
     const failure = new Error("run listing failed");
-    expect(selectTimingArtifacts("stella/folio", async () => Promise.reject(failure))).rejects.toBe(
-      failure,
-    );
     expect(
-      await selectTimingArtifacts("stella/folio", async () => ({ workflow_runs: [] })),
+      selectTimingArtifacts("stella/folio", async () =>
+        Promise.reject(failure),
+      ),
+    ).rejects.toBe(failure);
+    expect(
+      await selectTimingArtifacts("stella/folio", async () => ({
+        workflow_runs: [],
+      })),
     ).toEqual([]);
   });
 
@@ -573,7 +645,10 @@ describe("measured test shard balancing", () => {
         };
       }
       return {
-        artifacts: [1, 2, 3, 4].map((id) => ({ id: 20 + id, name: `test-timings-2-${id}` })),
+        artifacts: [1, 2, 3, 4].map((id) => ({
+          id: 20 + id,
+          name: `test-timings-2-${id}`,
+        })),
       };
     };
     expect(await selectTimingArtifacts("stella/folio", fetchJson)).toEqual(
@@ -592,11 +667,15 @@ describe("measured test shard balancing", () => {
             })),
           };
         }
-        if (url.endsWith("&page=2")) return { workflow_runs: [{ event: "push", id: 5 }] };
+        if (url.endsWith("&page=2"))
+          return { workflow_runs: [{ event: "push", id: 5 }] };
         return { workflow_runs: [] };
       }
       return {
-        artifacts: [1, 2, 3, 4].map((id) => ({ id: 50 + id, name: `test-timings-5-${id}` })),
+        artifacts: [1, 2, 3, 4].map((id) => ({
+          id: 50 + id,
+          name: `test-timings-5-${id}`,
+        })),
       };
     };
     expect(await selectTimingArtifacts("stella/folio", fetchJson)).toEqual(
@@ -631,7 +710,9 @@ describe("measured test shard balancing", () => {
   test("assignment is deterministic for identical inputs", () => {
     const timings = { a: 10, b: 10, c: 5, d: 5, e: 1 };
     const assigned = () =>
-      assignTestShards(Object.keys(timings), timings).map((shard) => Array.from(shard));
+      assignTestShards(Object.keys(timings), timings).map((shard) =>
+        Array.from(shard),
+      );
     expect(assigned()).toEqual(assigned());
   });
 
@@ -640,7 +721,9 @@ describe("measured test shard balancing", () => {
     temporaryDirectories.push(directory);
     const timingFile = path.join(directory, "timings.json");
     const requestFile = path.join(directory, "request.json");
-    const timingBytes = Buffer.from(`${JSON.stringify({ sample: "x".repeat(210_000) })}\n`);
+    const timingBytes = Buffer.from(
+      `${JSON.stringify({ sample: "x".repeat(210_000) })}\n`,
+    );
     writeFileSync(timingFile, timingBytes);
 
     const args = [
@@ -657,7 +740,9 @@ describe("measured test shard balancing", () => {
       "--base",
       "0123456789abcdef0123456789abcdef01234567",
     ];
-    expect(Math.max(...args.map((argument) => Buffer.byteLength(argument)))).toBeLessThan(4_096);
+    expect(
+      Math.max(...args.map((argument) => Buffer.byteLength(argument))),
+    ).toBeLessThan(4_096);
     const result = Bun.spawnSync(args, { stderr: "pipe" });
     expect(result.exitCode, result.stderr.toString()).toBe(0);
 
@@ -671,11 +756,17 @@ describe("measured test shard balancing", () => {
       }),
     );
     expect(
-      Buffer.from(request.variables.input.fileChanges.additions[0].contents, "base64"),
+      Buffer.from(
+        request.variables.input.fileChanges.additions[0].contents,
+        "base64",
+      ),
     ).toEqual(timingBytes);
 
     const workflow = readFileSync(
-      path.resolve(import.meta.dir, "../.github/workflows/test-timing-refresh.yml"),
+      path.resolve(
+        import.meta.dir,
+        "../.github/workflows/test-timing-refresh.yml",
+      ),
       "utf8",
     );
     expect(workflow).toContain('--graphql-request "$request"');

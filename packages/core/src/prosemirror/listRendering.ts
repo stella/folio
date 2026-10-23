@@ -1,25 +1,32 @@
-import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumbering,
-} from "./numberingAttr";
+import type { NumberingMap } from "../docx/numberingParser";
 /**
  * The list rendering (marker, indentation bookkeeping) a paragraph's
  * numbering gives it, as a paragraph-property change records and restores it.
  */
-
-import type { NumberingMap } from "../docx/numberingParser";
 import {
-  type ParagraphNumberingOverride,
   paragraphNumberingLevel,
+  type ParagraphNumberingOverride,
   paragraphNumberingReferenceId,
   sameStatedParagraphNumbering,
 } from "../docx/numberingReference";
-import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "./listMarker";
+import {
+  CLEARED_LIST_RENDERING_ATTRS,
+  LIST_RENDERING_ATTR_KEYS,
+} from "./listMarker";
 import type { ListRenderingAttrKey } from "./listRenderingAttrs";
-import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "./schema/nodes";
+import {
+  effectiveParagraphNumbering,
+  paragraphNumberingSourcesFromBoundary,
+} from "./numberingAttr";
+import type {
+  ParagraphAttrs,
+  ParagraphPropertyChangeAttrs,
+} from "./schema/nodes";
 import { listAttrsFromNumbering } from "./styles/resolvedStyleAttrs";
 
-type PreviousFormatting = NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]>;
+type PreviousFormatting = NonNullable<
+  ParagraphPropertyChangeAttrs["previousFormatting"]
+>;
 
 /** These attrs come from inline content, not the numbering definition. */
 const CONTENT_DERIVED_LIST_RENDERING_ATTRS = new Set<ListRenderingAttrKey>([
@@ -62,7 +69,10 @@ export const listRenderingFor = (
  */
 export type RejectedListRenderingOptions = {
   /** The paragraph's attrs before the reject. */
-  current: Pick<ParagraphAttrs, "numPr" | "numPrFromStyle" | ListRenderingAttrKey>;
+  current: Pick<
+    ParagraphAttrs,
+    "numPr" | "numPrFromStyle" | ListRenderingAttrKey
+  >;
   /** The previous state the rejected record restores. */
   previousFormatting: PreviousFormatting | null | undefined;
   numbering: NumberingMap | null;
@@ -78,7 +88,8 @@ export const rejectedListRenderingPatch = ({
   const record = previousFormatting ?? {};
   if (recordsListRendering(record)) {
     const patch: Record<string, unknown> = {};
-    for (const key of LIST_RENDERING_ATTR_KEYS) patch[key] = record[key] ?? null;
+    for (const key of LIST_RENDERING_ATTR_KEYS)
+      patch[key] = record[key] ?? null;
     return patch;
   }
   const restored = restoredNumbering ?? undefined;

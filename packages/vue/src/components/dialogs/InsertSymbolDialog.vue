@@ -6,7 +6,13 @@
     <div class="dialog symbol-dialog" @mousedown.stop @keydown.stop>
       <div class="dialog__header">
         <span class="dialog__title">{{ t("dialogs.insertSymbol.title") }}</span>
-        <button class="dialog__close" :title="t('common.closeDialog')" @click="close">✕</button>
+        <button
+          class="dialog__close"
+          :title="t('common.closeDialog')"
+          @click="close"
+        >
+          ✕
+        </button>
       </div>
       <div class="dialog__body">
         <!-- Search -->
@@ -58,14 +64,20 @@
           <span class="symbol-preview__char">{{ selectedSymbol }}</span>
           <span class="symbol-preview__info"
             >U+{{
-              selectedSymbol.codePointAt(0)?.toString(16).toUpperCase().padStart(4, "0")
+              selectedSymbol
+                .codePointAt(0)
+                ?.toString(16)
+                .toUpperCase()
+                .padStart(4, "0")
             }}</span
           >
         </div>
 
         <!-- Recent -->
         <div v-if="recentSymbols.length > 0 && !search" class="symbol-recent">
-          <div class="symbol-recent__label">{{ t("dialogs.insertSymbol.recent") }}</div>
+          <div class="symbol-recent__label">
+            {{ t("dialogs.insertSymbol.recent") }}
+          </div>
           <button
             v-for="s in recentSymbols"
             :key="s"
@@ -78,7 +90,9 @@
         </div>
 
         <div class="dialog__actions">
-          <button class="dialog__btn" @click="close">{{ t("common.cancel") }}</button>
+          <button class="dialog__btn" @click="close">
+            {{ t("common.cancel") }}
+          </button>
           <button
             class="dialog__btn dialog__btn--primary"
             @mousedown.prevent="insertSymbol(selectedSymbol)"
@@ -93,9 +107,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
+
+import {
+  filterSymbols,
+  SYMBOL_CATEGORIES,
+  type SymbolSearchEntry,
+} from "@stll/folio-core/symbols";
+
 import { useTranslation } from "../../i18n";
-import { SYMBOL_CATEGORIES, filterSymbols, type SymbolSearchEntry } from "@stll/folio-core/symbols";
 
 const { t } = useTranslation();
 
@@ -118,7 +138,11 @@ const displayedSymbols = computed<SymbolSearchEntry[]>(() => {
     return filterSymbols(search.value);
   }
   const cat = categories.find((c) => c.name === activeCategory.value);
-  return cat ? cat.symbols.map((symbol) => Object.assign({}, symbol, { category: cat.name })) : [];
+  return cat
+    ? cat.symbols.map((symbol) =>
+        Object.assign({}, symbol, { category: cat.name }),
+      )
+    : [];
 });
 
 watch(
@@ -138,7 +162,10 @@ function close() {
 function insertSymbol(sym: string) {
   if (!sym) return;
   // Track recent
-  recentSymbols.value = [sym, ...recentSymbols.value.filter((s) => s !== sym)].slice(0, 10);
+  recentSymbols.value = [
+    sym,
+    ...recentSymbols.value.filter((s) => s !== sym),
+  ].slice(0, 10);
   emit("insert", sym);
 }
 </script>

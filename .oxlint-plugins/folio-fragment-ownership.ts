@@ -6,7 +6,10 @@
 type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
-  report: (descriptor: { node: unknown; messageId: "directPageFragmentPush" }) => void;
+  report: (descriptor: {
+    node: unknown;
+    messageId: "directPageFragmentPush";
+  }) => void;
 };
 
 const isAstNode = (value: unknown): value is AstNode =>
@@ -34,7 +37,11 @@ const memberName = (node: unknown): string | null => {
 
 const isDirectPageFragmentPush = (node: AstNode): boolean => {
   const callee = node.callee;
-  if (!isAstNode(callee) || callee.type !== "MemberExpression" || memberName(callee) !== "push") {
+  if (
+    !isAstNode(callee) ||
+    callee.type !== "MemberExpression" ||
+    memberName(callee) !== "push"
+  ) {
     return false;
   }
   const fragments = callee.object;

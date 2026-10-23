@@ -2,18 +2,24 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { paragraphNumberingReference, NO_PARAGRAPH_NUMBERING } from "@stll/docx-core/model";
+import {
+  NO_PARAGRAPH_NUMBERING,
+  paragraphNumberingReference,
+} from "@stll/docx-core/model";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIParagraphBlock } from "../ai-edits/types";
 import { createDocx } from "../docx/rezip";
 import { generateRedlineDocx } from "../redline";
 import { createEmptyDocument } from "../utils/createDocument";
+import { compareDocx } from "./compare";
 import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentStatedNumbering } from "./content-types";
-import { compareDocx } from "./compare";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
@@ -107,7 +113,10 @@ const buildInheritedCollisionDocument = async ({
       ? [
           {
             type: "paragraph" as const,
-            ...(!omitParagraphIds && { paraId: "ABCD1234", textId: "ABCD1234" }),
+            ...(!omitParagraphIds && {
+              paraId: "ABCD1234",
+              textId: "ABCD1234",
+            }),
             formatting: { styleId: "Normal" },
             content: [
               {
@@ -128,7 +137,9 @@ const buildInheritedCollisionDocument = async ({
             }),
             formatting: {
               styleId,
-              ...(statedNumbering.kind !== "inherit" && { numPr: statedNumbering }),
+              ...(statedNumbering.kind !== "inherit" && {
+                numPr: statedNumbering,
+              }),
             },
             content: [
               {
@@ -143,12 +154,17 @@ const buildInheritedCollisionDocument = async ({
       ? [
           {
             type: "paragraph" as const,
-            ...(!omitParagraphIds && { paraId: "DCBA4321", textId: "DCBA4321" }),
+            ...(!omitParagraphIds && {
+              paraId: "DCBA4321",
+              textId: "DCBA4321",
+            }),
             formatting: { styleId: "Normal" },
             content: [
               {
                 type: "run" as const,
-                content: [{ type: "text" as const, text: TRAILING_ANCHOR_TEXT }],
+                content: [
+                  { type: "text" as const, text: TRAILING_ANCHOR_TEXT },
+                ],
               },
             ],
           },
@@ -218,14 +234,18 @@ const TARGET_STATED_NUMBERINGS: readonly FolioContentStatedNumbering[] = [
   paragraphNumberingReference({ numId: 8 }),
 ];
 
-const ROUND_TRIP_CASES = (["Normal", "StyleNumbered"] as const).flatMap((targetStyle) =>
-  TARGET_STATED_NUMBERINGS.map((targetNumbering) => ({
-    targetStyle,
-    targetNumbering,
-  })),
+const ROUND_TRIP_CASES = (["Normal", "StyleNumbered"] as const).flatMap(
+  (targetStyle) =>
+    TARGET_STATED_NUMBERINGS.map((targetNumbering) => ({
+      targetStyle,
+      targetNumbering,
+    })),
 );
 
-const paragraphProjection = async (buffer: ArrayBuffer, text = PARAGRAPH_TEXT) => {
+const paragraphProjection = async (
+  buffer: ArrayBuffer,
+  text = PARAGRAPH_TEXT,
+) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
   const paragraph = expectParagraphBlock(
     reviewer.snapshot().blocks.find((block) => block.text === text),
@@ -234,12 +254,21 @@ const paragraphProjection = async (buffer: ArrayBuffer, text = PARAGRAPH_TEXT) =
     kind: paragraph.kind,
     text: paragraph.text,
     ...(paragraph.styleId !== undefined && { styleId: paragraph.styleId }),
-    ...(paragraph.displayLabel !== undefined && { displayLabel: paragraph.displayLabel }),
-    ...(paragraph.listReference !== undefined && { listReference: paragraph.listReference }),
+    ...(paragraph.displayLabel !== undefined && {
+      displayLabel: paragraph.displayLabel,
+    }),
+    ...(paragraph.listReference !== undefined && {
+      listReference: paragraph.listReference,
+    }),
     statedNumbering: paragraph.statedNumbering,
   } satisfies Pick<
     FolioAIParagraphBlock,
-    "kind" | "text" | "styleId" | "displayLabel" | "listReference" | "statedNumbering"
+    | "kind"
+    | "text"
+    | "styleId"
+    | "displayLabel"
+    | "listReference"
+    | "statedNumbering"
   >;
 };
 
@@ -259,18 +288,30 @@ test("accept and reject preserve authored numbering independently from rendered 
         // cases, where source provenance differs while the visible list can match.
         const targetBuffer = await buildDocument(targetStyle, targetNumbering);
         const targetProjection = await paragraphProjection(targetBuffer);
-        const compared = await compareDocx(baseBuffer, targetBuffer, COMPARE_OPTIONS);
+        const compared = await compareDocx(
+          baseBuffer,
+          targetBuffer,
+          COMPARE_OPTIONS,
+        );
         if (compared.isErr()) throw compared.error;
         expect(compared.value.verification).toEqual({ status: "verified" });
 
-        const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+        const accepting = await FolioDocxReviewer.fromBuffer(
+          compared.value.buffer,
+        );
         expect(accepting.acceptAll()).toBeGreaterThan(0);
-        const acceptedProjection = await paragraphProjection(await accepting.toBuffer());
+        const acceptedProjection = await paragraphProjection(
+          await accepting.toBuffer(),
+        );
         expect(acceptedProjection).toEqual(targetProjection);
 
-        const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+        const rejecting = await FolioDocxReviewer.fromBuffer(
+          compared.value.buffer,
+        );
         expect(rejecting.rejectAll()).toBeGreaterThan(0);
-        const rejectedProjection = await paragraphProjection(await rejecting.toBuffer());
+        const rejectedProjection = await paragraphProjection(
+          await rejecting.toBuffer(),
+        );
         expect(rejectedProjection).toEqual(baseProjection);
       }
     }),
@@ -335,7 +376,9 @@ test("accept and reject preserve style-only numbering across colliding definitio
         styleId: "BaseNumbered",
       });
       const baseProjection = await paragraphProjection(baseBuffer);
-      expect(baseProjection.statedNumbering).toEqual(INHERITED_PARAGRAPH_NUMBERING);
+      expect(baseProjection.statedNumbering).toEqual(
+        INHERITED_PARAGRAPH_NUMBERING,
+      );
       expect(baseProjection.displayLabel).toBe("1.");
 
       for (const { statedNumbering, targetMarker, targetNumbering } of cases) {
@@ -348,11 +391,17 @@ test("accept and reject preserve style-only numbering across colliding definitio
         expect(targetProjection.statedNumbering).toEqual(statedNumbering);
         expect(targetProjection.displayLabel).toBe(targetMarker);
 
-        const compared = await compareDocx(baseBuffer, targetBuffer, COMPARE_OPTIONS);
+        const compared = await compareDocx(
+          baseBuffer,
+          targetBuffer,
+          COMPARE_OPTIONS,
+        );
         if (compared.isErr()) throw compared.error;
         expect(compared.value.verification).toEqual({ status: "verified" });
 
-        const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+        const accepting = await FolioDocxReviewer.fromBuffer(
+          compared.value.buffer,
+        );
         expect(accepting.acceptAll()).toBeGreaterThan(0);
         const acceptedBuffer = await accepting.toBuffer();
         const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
@@ -368,12 +417,16 @@ test("accept and reject preserve style-only numbering across colliding definitio
           }),
         );
 
-        const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+        const rejecting = await FolioDocxReviewer.fromBuffer(
+          compared.value.buffer,
+        );
         expect(rejecting.rejectAll()).toBeGreaterThan(0);
         const rejectedBuffer = await rejecting.toBuffer();
         const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
         const rejectedProjection = await paragraphProjection(rejectedBuffer);
-        expect(rejectedProjection.statedNumbering).toEqual(INHERITED_PARAGRAPH_NUMBERING);
+        expect(rejectedProjection.statedNumbering).toEqual(
+          INHERITED_PARAGRAPH_NUMBERING,
+        );
         expect(rejectedProjection.styleId).toBe("BaseNumbered");
         expect(rejectedProjection.displayLabel).toBe("1.");
         expect(rejectedProjection.listReference).toBeDefined();
@@ -405,7 +458,12 @@ test("compare and redline preserve inserted style-only numbering across collisio
       const baseProjection = await paragraphProjection(baseBuffer, ANCHOR_TEXT);
       expect(baseProjection.text).toBe(ANCHOR_TEXT);
 
-      for (const { statedNumbering, numFmt, targetMarker, omitParagraphIds } of cases) {
+      for (const {
+        statedNumbering,
+        numFmt,
+        targetMarker,
+        omitParagraphIds,
+      } of cases) {
         const targetBuffer = await buildInheritedCollisionDocument({
           statedNumbering,
           numFmt,
@@ -426,7 +484,9 @@ test("compare and redline preserve inserted style-only numbering across collisio
         if (omitParagraphIds) {
           for (const fixtureBuffer of [caseBaseBuffer, targetBuffer]) {
             const zip = await JSZip.loadAsync(fixtureBuffer);
-            const documentXml = await zip.file("word/document.xml")?.async("text");
+            const documentXml = await zip
+              .file("word/document.xml")
+              ?.async("text");
             expect(documentXml).toBeDefined();
             expect(documentXml).not.toMatch(/w14:(?:paraId|textId)="/u);
           }
@@ -449,10 +509,9 @@ test("compare and redline preserve inserted style-only numbering across collisio
           expect(accepting.acceptAll()).toBeGreaterThan(0);
           const acceptedBuffer = await accepting.toBuffer();
           const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
-          expect(accepted.snapshot().blocks.map((block) => block.text)).toEqual([
-            ANCHOR_TEXT,
-            PARAGRAPH_TEXT,
-          ]);
+          expect(accepted.snapshot().blocks.map((block) => block.text)).toEqual(
+            [ANCHOR_TEXT, PARAGRAPH_TEXT],
+          );
           const acceptedProjection = await paragraphProjection(acceptedBuffer);
           expect(acceptedProjection.statedNumbering).toEqual(statedNumbering);
           expect(acceptedProjection.displayLabel).toBe(targetMarker);
@@ -468,7 +527,9 @@ test("compare and redline preserve inserted style-only numbering across collisio
           expect(rejecting.rejectAll()).toBeGreaterThan(0);
           const rejectedBuffer = await rejecting.toBuffer();
           const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
-          expect(rejected.snapshot().blocks.map((block) => block.text)).toEqual([ANCHOR_TEXT]);
+          expect(rejected.snapshot().blocks.map((block) => block.text)).toEqual(
+            [ANCHOR_TEXT],
+          );
           expect(rejected.readNumberingDefinitions()).toContainEqual(
             expect.objectContaining({ format: "decimal" }),
           );
@@ -498,9 +559,15 @@ test("redline preserves insertion resources between unchanged anchors with dupli
       includeStyledParagraph: false,
     });
     const anchorProjections = await Promise.all(
-      [ANCHOR_TEXT, TRAILING_ANCHOR_TEXT].map((text) => paragraphProjection(baseBuffer, text)),
+      [ANCHOR_TEXT, TRAILING_ANCHOR_TEXT].map((text) =>
+        paragraphProjection(baseBuffer, text),
+      ),
     );
-    for (const { statedNumbering, numFmt, targetMarker } of INSERTED_NUMBERING_CASES) {
+    for (const {
+      statedNumbering,
+      numFmt,
+      targetMarker,
+    } of INSERTED_NUMBERING_CASES) {
       const targetBuffer = await buildInheritedCollisionDocument({
         ...identityOptions,
         statedNumbering,
@@ -511,8 +578,8 @@ test("redline preserves insertion resources between unchanged anchors with dupli
       const xml = await zip.file("word/document.xml")?.async("text");
       expect(xml).toBeDefined();
       if (identity === "duplicate") {
-        const ids = [...(xml?.matchAll(/w14:paraId="([^"]+)"/gu) ?? [])].map((match) =>
-          match.at(1),
+        const ids = [...(xml?.matchAll(/w14:paraId="([^"]+)"/gu) ?? [])].map(
+          (match) => match.at(1),
         );
         expect(ids).toHaveLength(3);
         expect(ids.at(0)).toBe(ids.at(1));
@@ -522,7 +589,9 @@ test("redline preserves insertion resources between unchanged anchors with dupli
       }
       const revised = await FolioDocxReviewer.fromBuffer(targetBuffer);
       const inserted = expectParagraphBlock(
-        revised.snapshot().blocks.find((block) => block.text === PARAGRAPH_TEXT),
+        revised
+          .snapshot()
+          .blocks.find((block) => block.text === PARAGRAPH_TEXT),
       );
       expect(inserted.displayLabel).toBe(targetMarker);
       expect(inserted.idStability).toBe("positional");
@@ -541,9 +610,14 @@ test("redline preserves insertion resources between unchanged anchors with dupli
       expect(projection.statedNumbering).toEqual(statedNumbering);
       expect(projection.displayLabel).toBe(targetMarker);
       expect(projection.styleId).not.toBe(inserted.styleId);
-      expect(projection.listReference?.numId).not.toBe(inserted.listReference?.numId);
+      expect(projection.listReference?.numId).not.toBe(
+        inserted.listReference?.numId,
+      );
       expect(accepted.readNumberingDefinitions()).toContainEqual(
-        expect.objectContaining({ numId: projection.listReference?.numId, format: numFmt }),
+        expect.objectContaining({
+          numId: projection.listReference?.numId,
+          format: numFmt,
+        }),
       );
       expect(
         await Promise.all(

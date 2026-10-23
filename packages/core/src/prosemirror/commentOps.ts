@@ -6,13 +6,14 @@
  * UI stay in each adapter.
  */
 
-import { addTrackedDeletionMark } from "./addTrackedDeletionMark";
 import type { EditorView } from "prosemirror-view";
-import type { Comment } from "../types/content";
-import type { CommentIdAllocator } from "./commentIdAllocator";
-import { findParagraphByParaId } from "./utils/findParagraphByParaId";
-import { findTextInPmParagraph } from "./paraText";
+
 import { commentTextParagraph } from "../docx/commentTextParagraph";
+import type { Comment } from "../types/content";
+import { addTrackedDeletionMark } from "./addTrackedDeletionMark";
+import type { CommentIdAllocator } from "./commentIdAllocator";
+import { findTextInPmParagraph } from "./paraText";
+import { findParagraphByParaId } from "./utils/findParagraphByParaId";
 
 /** Build a Comment object with a freshly-allocated ID. */
 export function createComment(
@@ -58,7 +59,12 @@ export function addCommentToRange(
   let from = range.from + 1;
   let to = range.to - 1;
   if (options.search) {
-    const textRange = findTextInPmParagraph(view.state.doc, range.from, range.to, options.search);
+    const textRange = findTextInPmParagraph(
+      view.state.doc,
+      range.from,
+      range.to,
+      options.search,
+    );
     if (!textRange) return null;
     from = textRange.from;
     to = textRange.to;
@@ -70,7 +76,11 @@ export function addCommentToRange(
 
   const comment = createComment(allocator, options.text, options.author);
   view.dispatch(
-    view.state.tr.addMark(from, to, schema.marks["comment"].create({ commentId: comment.id })),
+    view.state.tr.addMark(
+      from,
+      to,
+      schema.marks["comment"].create({ commentId: comment.id }),
+    ),
   );
   return comment;
 }
@@ -110,7 +120,12 @@ export function applyProposedChange(
     textFrom = range.to - 1;
     textTo = range.to - 1;
   } else {
-    const textRange = findTextInPmParagraph(view.state.doc, range.from, range.to, options.search);
+    const textRange = findTextInPmParagraph(
+      view.state.doc,
+      range.from,
+      range.to,
+      options.search,
+    );
     if (!textRange) return false;
     textFrom = textRange.from;
     textTo = textRange.to;
@@ -121,7 +136,10 @@ export function applyProposedChange(
     let overlaps = false;
     view.state.doc.nodesBetween(textFrom, textTo, (node) => {
       for (const m of node.marks) {
-        if (m.type === schema.marks["insertion"] || m.type === schema.marks["deletion"]) {
+        if (
+          m.type === schema.marks["insertion"] ||
+          m.type === schema.marks["deletion"]
+        ) {
           overlaps = true;
           return false;
         }
@@ -153,7 +171,8 @@ export function applyProposedChange(
       to: textTo,
       mark: deletionMark,
     });
-  if (!isDeletion) tr = tr.insert(textTo, schema.text(options.replaceWith, [insertionMark]));
+  if (!isDeletion)
+    tr = tr.insert(textTo, schema.text(options.replaceWith, [insertionMark]));
   view.dispatch(tr);
   return true;
 }

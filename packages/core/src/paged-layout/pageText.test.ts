@@ -1,15 +1,18 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
+import { Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import type { Layout } from "../layout-engine";
 import { DISPLAY_MODES } from "../managers/EditorModeManager";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import { projectMarkupView } from "../prosemirror/markupViewProjection";
 import { schema as reviewSchema } from "../prosemirror/schema";
-import { Schema } from "prosemirror-model";
-
-import type { Layout } from "../layout-engine";
 import { getPageTextFromLayout } from "./pageText";
 
 const schema = new Schema({
@@ -93,7 +96,9 @@ describe("getPageTextFromLayout", () => {
   });
 
   test("reads a later page independently", () => {
-    expect(getPageTextFromLayout({ layout: layout, doc, page: 2 })).toBe("Page two content");
+    expect(getPageTextFromLayout({ layout: layout, doc, page: 2 })).toBe(
+      "Page two content",
+    );
   });
 
   test("returns an empty string for a page with no positioned fragments", () => {
@@ -106,7 +111,9 @@ describe("getPageTextFromLayout", () => {
   });
 
   test("returns null for a non-integer page number", () => {
-    expect(getPageTextFromLayout({ layout: layout, doc, page: 1.5 })).toBeNull();
+    expect(
+      getPageTextFromLayout({ layout: layout, doc, page: 1.5 }),
+    ).toBeNull();
   });
 
   test("returns null when the layout hasn't been computed yet", () => {
@@ -148,7 +155,8 @@ test(
             reviewSchema.node("paragraph", null, runs),
           ]);
           const state = EditorState.create({ doc: authored });
-          const fixturePage = layout.pages.at(0) ?? panic("Missing fixture page");
+          const fixturePage =
+            layout.pages.at(0) ?? panic("Missing fixture page");
           const projectedLayout = {
             pages: [
               {

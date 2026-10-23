@@ -5,12 +5,12 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  calculateSimpleTabWidth,
+  calculateTabWidth,
+  computeTabStops,
+  pixelsToTwips,
   type TabContext,
   twipsToPixels,
-  pixelsToTwips,
-  computeTabStops,
-  calculateTabWidth,
-  calculateSimpleTabWidth,
 } from "./tabCalculator";
 
 describe("twipsToPixels", () => {
@@ -120,7 +120,9 @@ describe("computeTabStops", () => {
       leftIndent: 1134,
     });
 
-    expect(stops.slice(0, 3).map((stop) => stop.pos)).toEqual([567, 1440, 2160]);
+    expect(stops.slice(0, 3).map((stop) => stop.pos)).toEqual([
+      567, 1440, 2160,
+    ]);
     expect(
       calculateTabWidth(twipsToPixels(1573), {
         explicitStops: [{ val: "start", pos: 567 }],
@@ -302,7 +304,10 @@ describe("calculateTabWidth", () => {
         .map((s) => s.pos)
         .slice(0, 3),
     ).toEqual([720, 1440, 2160]);
-    expect(calculateTabWidth(0, { explicitStops: [{ val: "bar", pos: 2880 }] }).width).toBe(48);
+    expect(
+      calculateTabWidth(0, { explicitStops: [{ val: "bar", pos: 2880 }] })
+        .width,
+    ).toBe(48);
   });
 });
 

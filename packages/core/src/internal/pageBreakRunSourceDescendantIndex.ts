@@ -16,7 +16,9 @@ export type PageBreakRunSourceDescendantIndex = {
   containsPageBreakRun: (content: readonly BlockContent[]) => boolean;
   /** The same question about one block, so a caller can ask it per sibling. */
   blockContainsPageBreakRun: (block: BlockContent) => boolean;
-  paragraphFeatures: (paragraph: Paragraph) => PageBreakRunSourceParagraphFeatures;
+  paragraphFeatures: (
+    paragraph: Paragraph,
+  ) => PageBreakRunSourceParagraphFeatures;
 };
 
 export type PageBreakRunSourceParagraphFeatures = {
@@ -25,7 +27,8 @@ export type PageBreakRunSourceParagraphFeatures = {
   pageBreakSharesTextBoxShape: boolean;
 };
 
-type ParagraphRunTreeNode = ParagraphContent | TrackedRunContent | InlineSdt["content"][number];
+type ParagraphRunTreeNode =
+  ParagraphContent | TrackedRunContent | InlineSdt["content"][number];
 
 const SOURCE_FLAGS = {
   containsPageBreak: 1,
@@ -42,7 +45,10 @@ export const buildPageBreakRunSourceDescendantIndex = (
 ): PageBreakRunSourceDescendantIndex => {
   const flagsByObject = new WeakMap<object, number>();
 
-  const inspectObject = (node: object, inspectChildren: () => number): number => {
+  const inspectObject = (
+    node: object,
+    inspectChildren: () => number,
+  ): number => {
     const cached = flagsByObject.get(node);
     if (cached !== undefined) {
       return cached;
@@ -55,7 +61,10 @@ export const buildPageBreakRunSourceDescendantIndex = (
     return flags;
   };
 
-  const inspectMany = <T>(items: readonly T[], inspect: (item: T) => number): number => {
+  const inspectMany = <T>(
+    items: readonly T[],
+    inspect: (item: T) => number,
+  ): number => {
     let flags = 0;
     for (const item of items) {
       flags |= inspect(item);
@@ -77,7 +86,8 @@ export const buildPageBreakRunSourceDescendantIndex = (
           }
           const descendantFlags = inspectBlocks(textBody.content);
           return (
-            (descendantFlags & SOURCE_FLAGS.containsPageBreak) | SOURCE_FLAGS.paragraphTextBoxShape
+            (descendantFlags & SOURCE_FLAGS.containsPageBreak) |
+            SOURCE_FLAGS.paragraphTextBoxShape
           );
         }
         case "drawing":
@@ -132,7 +142,10 @@ export const buildPageBreakRunSourceDescendantIndex = (
         case "inlineWrapper":
           return inspectMany(content.content, inspectParagraphContent);
         case "simpleField": {
-          const fieldResultFlags = inspectMany(content.content, inspectParagraphContent);
+          const fieldResultFlags = inspectMany(
+            content.content,
+            inspectParagraphContent,
+          );
           if (
             hasFlag(fieldResultFlags, SOURCE_FLAGS.paragraphPageBreak) &&
             hasFlag(fieldResultFlags, SOURCE_FLAGS.paragraphTextBoxShape)
@@ -183,7 +196,10 @@ export const buildPageBreakRunSourceDescendantIndex = (
     inspectObject(block, () => {
       switch (block.type) {
         case "paragraph": {
-          const paragraphFlags = inspectMany(block.content, inspectParagraphContent);
+          const paragraphFlags = inspectMany(
+            block.content,
+            inspectParagraphContent,
+          );
           return paragraphFlags;
         }
         case "table":
@@ -221,7 +237,9 @@ export const buildPageBreakRunSourceDescendantIndex = (
   const indexedFlags = (node: object): number => {
     const flags = flagsByObject.get(node);
     if (flags === undefined) {
-      panic("Page-break source ownership was queried outside its conversion index");
+      panic(
+        "Page-break source ownership was queried outside its conversion index",
+      );
     }
     return flags;
   };
@@ -234,12 +252,17 @@ export const buildPageBreakRunSourceDescendantIndex = (
     paragraphFeatures: (paragraph) => {
       const flags = flagsByObject.get(paragraph);
       if (flags === undefined) {
-        panic("Page-break paragraph ownership was queried outside its conversion index");
+        panic(
+          "Page-break paragraph ownership was queried outside its conversion index",
+        );
       }
       return {
         hasPageBreakRun: hasFlag(flags, SOURCE_FLAGS.paragraphPageBreak),
         hasTextBoxShape: hasFlag(flags, SOURCE_FLAGS.paragraphTextBoxShape),
-        pageBreakSharesTextBoxShape: hasFlag(flags, SOURCE_FLAGS.pageBreakSharesTextBoxShape),
+        pageBreakSharesTextBoxShape: hasFlag(
+          flags,
+          SOURCE_FLAGS.pageBreakSharesTextBoxShape,
+        ),
       };
     },
   };

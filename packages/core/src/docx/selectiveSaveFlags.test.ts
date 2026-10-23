@@ -2,23 +2,30 @@
  * Unit tests for selective save feature flag resolution.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
-import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES, resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
+import {
+  DEFAULT_SELECTIVE_SAVE_MAX_BYTES,
+  resolveSelectiveSaveFlags,
+} from "./selectiveSaveFlags";
 
 describe("resolveSelectiveSaveFlags", () => {
   test("defaults selective save on, tripwire off, when input is undefined", () => {
     const resolved = resolveSelectiveSaveFlags(undefined);
     expect(resolved.selectiveSave).toBe(true);
     expect(resolved.selectiveSaveTripwire).toBe(false);
-    expect(resolved.selectiveSaveMaxBytes).toBe(DEFAULT_SELECTIVE_SAVE_MAX_BYTES);
+    expect(resolved.selectiveSaveMaxBytes).toBe(
+      DEFAULT_SELECTIVE_SAVE_MAX_BYTES,
+    );
   });
 
   test("defaults selective save on, tripwire off, when input is an empty object", () => {
     const resolved = resolveSelectiveSaveFlags({});
     expect(resolved.selectiveSave).toBe(true);
     expect(resolved.selectiveSaveTripwire).toBe(false);
-    expect(resolved.selectiveSaveMaxBytes).toBe(DEFAULT_SELECTIVE_SAVE_MAX_BYTES);
+    expect(resolved.selectiveSaveMaxBytes).toBe(
+      DEFAULT_SELECTIVE_SAVE_MAX_BYTES,
+    );
   });
 
   test("honours an explicit `selectiveSave: true`", () => {

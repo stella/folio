@@ -18,7 +18,10 @@ import { EditorState, type Plugin } from "prosemirror-state";
 
 import { schema } from "../../schema";
 import { CommentReferenceExtension } from "./CommentReferenceExtension";
-import { RANGE_ANCHOR_DOM_ATTRIBUTE, RANGE_ANCHOR_NODE_NAME } from "./RangeAnchorExtension";
+import {
+  RANGE_ANCHOR_DOM_ATTRIBUTE,
+  RANGE_ANCHOR_NODE_NAME,
+} from "./RangeAnchorExtension";
 
 const COMMENT_ID = 7;
 
@@ -39,9 +42,13 @@ const parseRangeAnchor = (value: string | null) => {
 };
 
 const integrityPlugin = (): Plugin => {
-  const plugin = CommentReferenceExtension().onSchemaReady({ schema }).plugins?.at(0);
+  const plugin = CommentReferenceExtension()
+    .onSchemaReady({ schema })
+    .plugins?.at(0);
   if (!plugin) {
-    throw new Error("CommentReferenceExtension must enforce reference integrity");
+    throw new Error(
+      "CommentReferenceExtension must enforce reference integrity",
+    );
   }
   return plugin;
 };
@@ -52,7 +59,8 @@ const anchor = (): PMNode =>
     end: { type: "commentRangeEnd", id: COMMENT_ID },
   });
 
-const reference = (): PMNode => schema.node("commentReference", { commentId: COMMENT_ID });
+const reference = (): PMNode =>
+  schema.node("commentReference", { commentId: COMMENT_ID });
 
 const nodeNames = (doc: PMNode): string[] => {
   const names: string[] = [];
@@ -118,7 +126,10 @@ describe("a point comment under the caret", () => {
     const at = anchorPosition(state.doc);
     const applied = state.applyTransaction(state.tr.delete(at, at + 1));
 
-    expect(nodeNames(applied.state.doc)).toEqual(["paragraph", "text:alphaomega"]);
+    expect(nodeNames(applied.state.doc)).toEqual([
+      "paragraph",
+      "text:alphaomega",
+    ]);
   });
 
   test("the anchor alone keeps the reference the integrity pass would drop", () => {

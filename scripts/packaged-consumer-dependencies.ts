@@ -4,16 +4,19 @@ import { $ } from "bun";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildAndPack, repoRoot } from "./packaged-consumer-lib";
+
 import { installCleanRoomDependencies } from "./clean-room-install";
-import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 import { publicEntries } from "./lib/packed-exports";
+import { PUBLISHED_PACKAGES } from "./lib/published-packages";
+import { buildAndPack, repoRoot } from "./packaged-consumer-lib";
 
 const packIndex = process.argv.indexOf("--pack-dir");
 const packDir =
   packIndex < 0
     ? await mkdtemp(path.join(tmpdir(), "folio-dependency-packs-"))
-    : path.resolve(process.argv.at(packIndex + 1) ?? "test-results/package-tarballs");
+    : path.resolve(
+        process.argv.at(packIndex + 1) ?? "test-results/package-tarballs",
+      );
 await mkdir(packDir, { recursive: true });
 const tarballs: Record<string, string> = {};
 try {
@@ -22,12 +25,17 @@ try {
     await mkdir(destination, { recursive: true });
     tarballs[pkg.name] = await buildAndPack(pkg.root, destination);
   }
-  await writeFile(path.join(packDir, "tarballs.json"), JSON.stringify(tarballs));
+  await writeFile(
+    path.join(packDir, "tarballs.json"),
+    JSON.stringify(tarballs),
+  );
   // The same rules check emitted JS and declarations after the shared build.
   await $`bun scripts/check-package-dependencies.ts --dist`.cwd(repoRoot);
 
   for (const pkg of PUBLISHED_PACKAGES) {
-    const consumer = await mkdtemp(path.join(tmpdir(), "folio-dependency-consumer-"));
+    const consumer = await mkdtemp(
+      path.join(tmpdir(), "folio-dependency-consumer-"),
+    );
     try {
       await writeFile(
         path.join(consumer, "package.json"),
@@ -45,11 +53,16 @@ try {
       await mkdir(unpacked);
       await $`tar -xzf ${archive} -C ${unpacked}`.quiet();
       const packedRoot = path.join(unpacked, "package");
-      const manifest = await Bun.file(path.join(packedRoot, "package.json")).json();
-      const peers = Object.entries(manifest.peerDependencies ?? {}).map(([name, range]) => {
-        if (typeof range !== "string") throw new TypeError(`Invalid peer range for ${name}`);
-        return tarballs[name] ?? `${name}@${range}`;
-      });
+      const manifest = await Bun.file(
+        path.join(packedRoot, "package.json"),
+      ).json();
+      const peers = Object.entries(manifest.peerDependencies ?? {}).map(
+        ([name, range]) => {
+          if (typeof range !== "string")
+            throw new TypeError(`Invalid peer range for ${name}`);
+          return tarballs[name] ?? `${name}@${range}`;
+        },
+      );
       await installCleanRoomDependencies({
         consumerDir: consumer,
         dependencies: [archive, ...peers],
@@ -62,10 +75,17 @@ try {
         exports: manifest.exports,
         files: await readdir(packedRoot, { recursive: true }),
       });
-      if (entries.length === 0) throw new TypeError(`No public entries for ${pkg.name}`);
-      const esm = entries.filter((entry) => entry.esm).map((entry) => entry.specifier);
-      const cjs = entries.filter((entry) => entry.cjs).map((entry) => entry.specifier);
-      const assets = entries.filter((entry) => entry.asset).map((entry) => entry.specifier);
+      if (entries.length === 0)
+        throw new TypeError(`No public entries for ${pkg.name}`);
+      const esm = entries
+        .filter((entry) => entry.esm)
+        .map((entry) => entry.specifier);
+      const cjs = entries
+        .filter((entry) => entry.cjs)
+        .map((entry) => entry.specifier);
+      const assets = entries
+        .filter((entry) => entry.asset)
+        .map((entry) => entry.specifier);
       await writeFile(
         path.join(consumer, "runtime.mjs"),
         `
@@ -105,7 +125,13 @@ for (const entry of ${JSON.stringify(assets)}) { await access(fileURLToPath(impo
           files: ["consumer.ts"],
         }),
       );
-      const compiler = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
+      const compiler = path.join(
+        repoRoot,
+        "node_modules",
+        "typescript",
+        "bin",
+        "tsc",
+      );
       await $`node ${compiler} -p tsconfig.json`.cwd(consumer);
       const declarationCheck = path.join(
         repoRoot,
@@ -113,7 +139,9 @@ for (const entry of ${JSON.stringify(assets)}) { await access(fileURLToPath(impo
         "lib",
         "packed-declaration-diagnostics.ts",
       );
-      await $`bun ${declarationCheck} ${path.join(consumer, "tsconfig.json")}`.cwd(repoRoot);
+      await $`bun ${declarationCheck} ${path.join(consumer, "tsconfig.json")}`.cwd(
+        repoRoot,
+      );
       console.log(
         `PASS ${pkg.name}: ${esm.length} ESM, ${cjs.length} CJS, ${typed.length} type entries`,
       );

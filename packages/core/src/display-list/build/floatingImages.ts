@@ -12,8 +12,8 @@
 import type { ImageRun, Page, ParagraphBlock } from "../../layout-engine/types";
 import { isFloatingImageRun } from "../../layout-engine/types";
 import {
-  resolveAnchoredImagePosition,
   type PageGeometry,
+  resolveAnchoredImagePosition,
 } from "../../layout-painter/anchoredImagePosition";
 import type { DisplayPrimitive } from "../types";
 import type { BuildContext } from "./buildContext";
@@ -26,7 +26,9 @@ export const pageGeometryOf = (page: Page): PageGeometry => ({
   marginTop: page.margins.top,
   marginRight: page.margins.right,
   marginBottom: page.margins.bottom,
-  ...(page.authoredMargins === undefined ? {} : { authoredMargins: page.authoredMargins }),
+  ...(page.authoredMargins === undefined
+    ? {}
+    : { authoredMargins: page.authoredMargins }),
   contentWidth: page.size.w - page.margins.left - page.margins.right,
   contentHeight: page.size.h - page.margins.top - page.margins.bottom,
 });
@@ -64,7 +66,11 @@ export const collectFloatingImages = ({
     placed.add(run);
 
     // `resolveAnchoredImagePosition` answers in content-area coordinates.
-    const anchor = resolveAnchoredImagePosition(run, fragmentYPx - geometry.marginTop, geometry);
+    const anchor = resolveAnchoredImagePosition(
+      run,
+      fragmentYPx - geometry.marginTop,
+      geometry,
+    );
     placements.push({
       run,
       behindDoc: run.wrapType === "behind",

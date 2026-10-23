@@ -85,7 +85,11 @@ const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
 };
 
 test("a replacement in a highlighted cell paragraph records no run-property change", async () => {
-  const result = await compareDocx(await buildDocx("30"), await buildDocx("45"), OPTIONS);
+  const result = await compareDocx(
+    await buildDocx("30"),
+    await buildDocx("45"),
+    OPTIONS,
+  );
   if (result.isErr()) {
     throw result.error;
   }
@@ -106,7 +110,9 @@ test("a replacement in a highlighted cell paragraph records no run-property chan
  */
 test("an authoring replacement still clears the background it types over", () => {
   const document = createEmptyDocument();
-  document.package.document.content = [paragraph("22222222", PAYMENT_TERMS("30"), DRAFTING_NOTE)];
+  document.package.document.content = [
+    paragraph("22222222", PAYMENT_TERMS("30"), DRAFTING_NOTE),
+  ];
   const doc: PMNode = toProseDoc(document);
   const view = {
     state: EditorState.create({ doc }),
@@ -125,7 +131,12 @@ test("an authoring replacement still clears the background it types over", () =>
     view,
     snapshot,
     operations: [
-      { id: "replacement", type: "replaceBlock", blockId: block.id, text: PAYMENT_TERMS("45") },
+      {
+        id: "replacement",
+        type: "replaceBlock",
+        blockId: block.id,
+        text: PAYMENT_TERMS("45"),
+      },
     ],
     mode: "tracked-changes",
     revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: 10 },
@@ -135,7 +146,10 @@ test("an authoring replacement still clears the background it types over", () =>
   // removed characters keep theirs, as deleted text.
   const highlighted: { text: string; deleted: boolean }[] = [];
   view.state.doc.descendants((node) => {
-    if (node.isText && node.marks.some(({ type }) => type.name === "highlight")) {
+    if (
+      node.isText &&
+      node.marks.some(({ type }) => type.name === "highlight")
+    ) {
       highlighted.push({
         text: node.text ?? "",
         deleted: node.marks.some(({ type }) => type.name === "deletion"),

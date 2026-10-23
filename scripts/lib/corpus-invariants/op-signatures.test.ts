@@ -1,22 +1,32 @@
 import { expect, test } from "bun:test";
 
-import type { Document, Paragraph } from "../../../packages/docx-core/src/model/document";
+import { RELATIONSHIP_TYPES } from "@stll/folio-core/docx/relsParser";
+
+import type {
+  Document,
+  Paragraph,
+} from "../../../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   INHERIT_RUN_PROPS,
   OP_STORIES,
-  type DocumentOp,
 } from "../../../packages/docx-core/src/ops/documentOps";
-import { RELATIONSHIP_TYPES } from "@stll/folio-core/docx/relsParser";
-import { serializedInverseSequenceFailures, serializedInverseStepFailures } from "./op-inverse";
-import { localityStepFailures, serializedLocalityStepFailures } from "./op-locality";
+import {
+  serializedInverseSequenceFailures,
+  serializedInverseStepFailures,
+} from "./op-inverse";
+import {
+  localityStepFailures,
+  serializedLocalityStepFailures,
+} from "./op-locality";
 import { firstDifferingOpPart } from "./op-part-difference";
 import {
   exactOpModel,
-  serializeOpDocument,
   type OpSequence,
   type OpSequenceStep,
+  serializeOpDocument,
 } from "./op-sequences";
 
 const paragraph = (paraId: string): Paragraph => ({
@@ -28,14 +38,33 @@ const paragraph = (paraId: string): Paragraph => ({
 const fixture = () =>
   ({
     package: {
-      document: { content: [paragraph("00000001")], background: { themeTint: "AA" } },
+      document: {
+        content: [paragraph("00000001")],
+        background: { themeTint: "AA" },
+      },
       headers: new Map([
-        ["rIdHeader", { type: "header", hdrFtrType: "default", content: [paragraph("00000002")] }],
+        [
+          "rIdHeader",
+          {
+            type: "header",
+            hdrFtrType: "default",
+            content: [paragraph("00000002")],
+          },
+        ],
       ]),
       footers: new Map([
-        ["rIdFooter", { type: "footer", hdrFtrType: "default", content: [paragraph("00000003")] }],
+        [
+          "rIdFooter",
+          {
+            type: "footer",
+            hdrFtrType: "default",
+            content: [paragraph("00000003")],
+          },
+        ],
       ]),
-      footnotes: [{ type: "footnote", id: 1, content: [paragraph("00000004")] }],
+      footnotes: [
+        { type: "footnote", id: 1, content: [paragraph("00000004")] },
+      ],
       endnotes: [{ type: "endnote", id: 1, content: [paragraph("00000005")] }],
       properties: { title: "retained" },
     },
@@ -67,7 +96,9 @@ const parts = () =>
     ],
     [
       "[Content_Types].xml",
-      bytes('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'),
+      bytes(
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
+      ),
     ],
     ["stories/header3.xml", bytes("header")],
     ["stories/footer4.xml", bytes("footer")],
@@ -80,12 +111,15 @@ test("first differing part is deterministic and includes additions, removals and
     ["word/styles.xml", bytes("styles")],
     ["word/media/image27.png", new Uint8Array([1, 2])],
   ]);
-  expect(firstDifferingOpPart({ control, edited: new Map(control) })).toBeUndefined();
+  expect(
+    firstDifferingOpPart({ control, edited: new Map(control) }),
+  ).toBeUndefined();
   for (const change of ["added", "removed", "changed"] as const) {
     const edited = new Map([...control].toReversed());
     if (change === "added") edited.set("word/header27.xml", bytes("header"));
     if (change === "removed") edited.delete("word/media/image27.png");
-    if (change === "changed") edited.set("word/media/image27.png", new Uint8Array([1, 3]));
+    if (change === "changed")
+      edited.set("word/media/image27.png", new Uint8Array([1, 3]));
     expect(firstDifferingOpPart({ control, edited })).toBe(
       change === "added" ? "word/header27.xml" : "word/media/image27.png",
     );
@@ -104,7 +138,13 @@ test("serialized inverse signatures retain the operation kind and first differin
   expect(serializedInverseStepFailures({ step, control, restored })).toEqual([
     "insertText inverse changed the original serialized package parts: stories/footer4.xml",
   ]);
-  expect(serializedInverseStepFailures({ step, control, restored: new Map(control) })).toEqual([]);
+  expect(
+    serializedInverseStepFailures({
+      step,
+      control,
+      restored: new Map(control),
+    }),
+  ).toEqual([]);
 });
 
 test("secondary story scope permits declared edits and rejects an unrelated touched identity", () => {
@@ -119,8 +159,16 @@ test("secondary story scope permits declared edits and rejects an unrelated touc
       blockId: "00000003",
       part: "stories/footer4.xml",
     },
-    { story: { kind: "footnote", id: 1 }, blockId: "00000004", part: "stories/notes5.xml" },
-    { story: { kind: "endnote", id: 1 }, blockId: "00000005", part: "stories/endnotes6.xml" },
+    {
+      story: { kind: "footnote", id: 1 },
+      blockId: "00000004",
+      part: "stories/notes5.xml",
+    },
+    {
+      story: { kind: "endnote", id: 1 },
+      blockId: "00000005",
+      part: "stories/endnotes6.xml",
+    },
   ] as const;
   for (const { story, blockId, part } of cases) {
     const step = stepFor({ ...insert, at: { story, blockId, offset: 1 } });
@@ -129,7 +177,12 @@ test("secondary story scope permits declared edits and rejects an unrelated touc
     const edited = new Map(control);
     edited.set(part, bytes("declared change"));
     expect(
-      serializedLocalityStepFailures({ step, control, edited, documentPart: "custom/main.xml" }),
+      serializedLocalityStepFailures({
+        step,
+        control,
+        edited,
+        documentPart: "custom/main.xml",
+      }),
     ).toEqual([]);
     const changedMain = new Map(edited);
     changedMain.set("custom/main.xml", bytes("unrelated main story"));
@@ -140,14 +193,24 @@ test("secondary story scope permits declared edits and rejects an unrelated touc
         edited: changedMain,
         documentPart: "custom/main.xml",
       }),
-    ).toEqual(["insertText changed unrelated serialized part: custom/main.xml"]);
+    ).toEqual([
+      "insertText changed unrelated serialized part: custom/main.xml",
+    ]);
     edited.set("word/comments3.xml", bytes("unrelated change"));
     expect(
-      serializedLocalityStepFailures({ step, control, edited, documentPart: "custom/main.xml" }),
-    ).toEqual(["insertText changed unrelated serialized part: word/comments3.xml"]);
+      serializedLocalityStepFailures({
+        step,
+        control,
+        edited,
+        documentPart: "custom/main.xml",
+      }),
+    ).toEqual([
+      "insertText changed unrelated serialized part: word/comments3.xml",
+    ]);
     const changed = structuredClone(step.edit.document);
     const main = changed.package.document.content.at(0);
-    if (main?.type !== "paragraph") throw new Error("Missing main fixture paragraph");
+    if (main?.type !== "paragraph")
+      throw new Error("Missing main fixture paragraph");
     main.formatting = { alignment: "end" };
     const bad = {
       ...step,
@@ -172,7 +235,12 @@ test("restoration owns only supplied payload fields and collections", () => {
   expect(localityStepFailures(step)).toEqual([]);
   const changed = structuredClone(step.edit.document);
   changed.package.properties = { title: "unowned" };
-  expect(localityStepFailures({ ...step, edit: { ...step.edit, document: changed } })).toContain(
+  expect(
+    localityStepFailures({
+      ...step,
+      edit: { ...step.edit, document: changed },
+    }),
+  ).toContain(
     "restoreStoryParts changed records outside its declared story and section fields",
   );
   const notes = fixture().package.footnotes;
@@ -201,19 +269,29 @@ test("restoration owns only supplied payload fields and collections", () => {
       edited,
       documentPart: "custom/main.xml",
     }),
-  ).toEqual(["restoreStoryParts changed unrelated serialized part: stories/endnotes6.xml"]);
+  ).toEqual([
+    "restoreStoryParts changed unrelated serialized part: stories/endnotes6.xml",
+  ]);
 });
 
 test("body-field and section-field ownership cannot conceal paragraph edits in touched sets", () => {
   const before: Document = fixture();
   const first = before.package.document.content.at(0);
-  if (first?.type !== "paragraph") throw new Error("Missing main fixture paragraph");
+  if (first?.type !== "paragraph")
+    throw new Error("Missing main fixture paragraph");
   first.sectionProperties = { pageWidth: 12000 };
   before.package.document.sections = [
-    { content: before.package.document.content, properties: first.sectionProperties },
+    {
+      content: before.package.document.content,
+      properties: first.sectionProperties,
+    },
   ];
   const section = stepFor(
-    { type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS, sectionIndex: 0, patch: { pageWidth: 13000 } },
+    {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+      sectionIndex: 0,
+      patch: { pageWidth: 13000 },
+    },
     before,
   );
   const restoreSection = stepFor(
@@ -239,12 +317,20 @@ test("body-field and section-field ownership cannot conceal paragraph edits in t
     },
     before,
   );
-  for (const step of [section, restoreSection, restoreBackground, createHeader]) {
+  for (const step of [
+    section,
+    restoreSection,
+    restoreBackground,
+    createHeader,
+  ]) {
     expect(localityStepFailures(step)).toEqual([]);
     const changed = structuredClone(step.edit.document);
     const target = changed.package.document.content.at(0);
-    if (target?.type !== "paragraph") throw new Error("Missing main fixture paragraph");
-    target.content = [{ type: "run", content: [{ type: "text", text: "unowned change" }] }];
+    if (target?.type !== "paragraph")
+      throw new Error("Missing main fixture paragraph");
+    target.content = [
+      { type: "run", content: [{ type: "text", text: "unowned change" }] },
+    ];
     const corrupted = {
       ...step,
       edit: {
@@ -286,7 +372,12 @@ test("compound inverse diagnosis identifies the first failing reverse undo inste
   const control = await serializeParts(first.before);
   const restored = await serializeParts(second.edit.document);
   expect(
-    await serializedInverseSequenceFailures({ sequence, control, restored, serializeParts }),
+    await serializedInverseSequenceFailures({
+      sequence,
+      control,
+      restored,
+      serializeParts,
+    }),
   ).toEqual([
     "setParagraphProps inverse changed the original serialized package parts: word/document.xml",
   ]);
@@ -338,6 +429,13 @@ test("the first locality part is chosen across relationship, content type and by
   );
   edited.set("stories/footer4.xml", bytes("changed"));
   expect(
-    serializedLocalityStepFailures({ step, control, edited, documentPart: "custom/main.xml" }),
-  ).toEqual(["restoreStoryParts changed unrelated package content types: [Content_Types].xml"]);
+    serializedLocalityStepFailures({
+      step,
+      control,
+      edited,
+      documentPart: "custom/main.xml",
+    }),
+  ).toEqual([
+    "restoreStoryParts changed unrelated package content types: [Content_Types].xml",
+  ]);
 });

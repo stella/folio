@@ -13,15 +13,25 @@
  */
 import type { Token, Tokens } from "marked";
 
-import { isLegalDirectiveToken, isTokenType, lexLegalSource } from "../markdown/lexer";
-import type { LegalDirectiveToken, LegalSourceLexResult } from "../markdown/lexer";
-import { hasIllegalXmlCharacters, sanitizeXmlCharacters } from "../serialize/xmlEscape";
+import {
+  isLegalDirectiveToken,
+  isTokenType,
+  lexLegalSource,
+} from "../markdown/lexer";
+import type {
+  LegalDirectiveToken,
+  LegalSourceLexResult,
+} from "../markdown/lexer";
+import {
+  hasIllegalXmlCharacters,
+  sanitizeXmlCharacters,
+} from "../serialize/xmlEscape";
 import type {
   Autofix,
+  LegalDocumentKind,
   LegalDraft,
   LegalDraftBlock,
   LegalDraftDiagnostic,
-  LegalDocumentKind,
   LegalNumberingProfile,
   LegalPageOrientation,
   LegalPageSize,
@@ -192,7 +202,11 @@ export const parseLegalSource = (
   }
 
   const draft: LegalDraft = { meta: state.meta, blocks: state.blocks };
-  return applyDocumentAutofixes({ diagnostics: state.diagnostics, draft, fixes: state.fixes });
+  return applyDocumentAutofixes({
+    diagnostics: state.diagnostics,
+    draft,
+    fixes: state.fixes,
+  });
 };
 
 const pushBlock = (state: ParseState, block: LegalDraftBlock | null) => {
@@ -205,7 +219,11 @@ const pushBlock = (state: ParseState, block: LegalDraftBlock | null) => {
   }
 };
 
-const parseDirective = (token: LegalDirectiveToken, line: number, state: ParseState) => {
+const parseDirective = (
+  token: LegalDirectiveToken,
+  line: number,
+  state: ParseState,
+) => {
   const { diagnostics, fixes, meta } = state;
   const rawDirective = token.directive;
   const directive = DIRECTIVE_ALIASES[rawDirective] ?? rawDirective;
@@ -262,7 +280,10 @@ const parseDirective = (token: LegalDirectiveToken, line: number, state: ParseSt
       pushBlock(state, clauseBlock(2, argument, line, state));
       return;
     case "@paragraph":
-      pushBlock(state, { type: "paragraph", paragraphs: takeParagraphs(state) });
+      pushBlock(state, {
+        type: "paragraph",
+        paragraphs: takeParagraphs(state),
+      });
       return;
     case "@list": {
       const ordered = /\bordered\b/iu.test(argument);
@@ -274,7 +295,10 @@ const parseDirective = (token: LegalDirectiveToken, line: number, state: ParseSt
       return;
     }
     case "@table":
-      pushBlock(state, parseTableBlock(takeRawLines(state), line, diagnostics, fixes));
+      pushBlock(
+        state,
+        parseTableBlock(takeRawLines(state), line, diagnostics, fixes),
+      );
       return;
     case "@schedule":
       pushBlock(state, {
@@ -323,7 +347,11 @@ const clauseBlock = (
 // A markdown heading is the directive-free spelling of a title (`#`) or a
 // clause (`##` and deeper), so a model that writes plain markdown still gets
 // legal structure.
-const parseMarkdownHeading = (token: Tokens.Heading, line: number, state: ParseState) => {
+const parseMarkdownHeading = (
+  token: Tokens.Heading,
+  line: number,
+  state: ParseState,
+) => {
   const heading = token.text.trim();
   state.fixes.push({
     code: "markdown-heading-normalized",
@@ -334,7 +362,15 @@ const parseMarkdownHeading = (token: Tokens.Heading, line: number, state: ParseS
     pushBlock(state, heading ? { type: "title", text: heading } : null);
     return;
   }
-  pushBlock(state, clauseBlock(Math.min(token.depth - 1, MAX_CLAUSE_LEVEL), heading, line, state));
+  pushBlock(
+    state,
+    clauseBlock(
+      Math.min(token.depth - 1, MAX_CLAUSE_LEVEL),
+      heading,
+      line,
+      state,
+    ),
+  );
 };
 
 /**
@@ -475,7 +511,8 @@ const flattenListItems = (list: Tokens.List): string[] => {
   return items;
 };
 
-const cellText = (cell: Tokens.TableCell): string => collapseSoftBreaks(cell.text);
+const cellText = (cell: Tokens.TableCell): string =>
+  collapseSoftBreaks(cell.text);
 
 const INLINE_MARKDOWN_SPECIALS = /[\\`*_[\]<>~!]/gu;
 
@@ -559,7 +596,11 @@ const parseDocDirective = (
   }
 
   for (const key of attrs.keys()) {
-    if (!["kind", "locale", "numbering", "page", "orientation", "title"].includes(key)) {
+    if (
+      !["kind", "locale", "numbering", "page", "orientation", "title"].includes(
+        key,
+      )
+    ) {
       diagnostics.push({
         code: "unknown-doc-attribute",
         message: `Unknown @doc attribute "${key}".`,
@@ -593,7 +634,10 @@ type ParsedAttribute = {
   nextIndex: number;
 };
 
-const readAttribute = (value: string, startIndex: number): ParsedAttribute | null => {
+const readAttribute = (
+  value: string,
+  startIndex: number,
+): ParsedAttribute | null => {
   const keyStart = skipWhitespace(value, startIndex);
   const keyEnd = readAttributeKeyEnd(value, keyStart);
   const key = value.slice(keyStart, keyEnd).toLowerCase();
@@ -602,7 +646,10 @@ const readAttribute = (value: string, startIndex: number): ParsedAttribute | nul
     return null;
   }
 
-  const attributeValue = readAttributeValue(value, skipWhitespace(value, equalsIndex + 1));
+  const attributeValue = readAttributeValue(
+    value,
+    skipWhitespace(value, equalsIndex + 1),
+  );
   return {
     key,
     value: attributeValue.value,
@@ -676,7 +723,11 @@ const isAsciiAlphaNumeric = (char: string): boolean => {
   if (code === undefined) {
     return false;
   }
-  return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122)
+  );
 };
 
 const parseTableBlock = (
@@ -759,7 +810,9 @@ const applyDocumentAutofixes = ({
     hasSeenSubstantiveBlock ||= isSubstantiveDraftBlock(block);
   }
 
-  const signatureIndex = blocks.findIndex((block) => block.type === "signatures");
+  const signatureIndex = blocks.findIndex(
+    (block) => block.type === "signatures",
+  );
   if (signatureIndex !== -1 && signatureIndex !== blocks.length - 1) {
     const [signatureBlock] = blocks.splice(signatureIndex, 1);
     if (signatureBlock) {
@@ -847,7 +900,10 @@ const SIGNATURE_KEY_ALIASES: Record<string, string> = {
 };
 const SIGNATURE_FIELD_KEYS = new Set(["party", "by", "name", "title", "date"]);
 
-const parseSignatureParties = (lines: string[], heading: string): LegalSignatureParty[] => {
+const parseSignatureParties = (
+  lines: string[],
+  heading: string,
+): LegalSignatureParty[] => {
   const parties: LegalSignatureParty[] = [];
   let current: LegalSignatureParty | null = null;
 
@@ -920,7 +976,8 @@ const parseSignatureParties = (lines: string[], heading: string): LegalSignature
 };
 
 const ORDERED_LIST_MARKER_RE = /^(?:\d+(?:\.\d+)+|\d+[.)])\s+/u;
-const MANUAL_NUMBERING_PREFIX_RE = /^(?:\d+(?:\.\d+)+|\d+[.)]|[A-Za-z][.)]|\([a-zivx]+\))\s+/u;
+const MANUAL_NUMBERING_PREFIX_RE =
+  /^(?:\d+(?:\.\d+)+|\d+[.)]|[A-Za-z][.)]|\([a-zivx]+\))\s+/u;
 
 const stripListMarker = (rawLine: string, ordered: boolean): string => {
   const trimmed = rawLine.trim();
@@ -940,7 +997,11 @@ const parsePipeRow = (tableLine: string): string[] =>
 const isMarkdownDividerRow = (row: string[]): boolean =>
   row.every((cell) => /^:?-{3,}:?$/u.test(cell));
 
-const stripManualNumbering = (value: string, line: number, fixes: Autofix[]): string => {
+const stripManualNumbering = (
+  value: string,
+  line: number,
+  fixes: Autofix[],
+): string => {
   // Numeric and letter branches both require a delimiter so legit
   // headings starting with a year or single-word capital
   // ("2024 Compliance Obligations", "A Party's Obligations") are
@@ -976,11 +1037,15 @@ const isLegalKind = (value: string | undefined): value is LegalDocumentKind =>
   value === "pleading" ||
   value === "other";
 
-const isNumberingProfile = (value: string | undefined): value is LegalNumberingProfile =>
+const isNumberingProfile = (
+  value: string | undefined,
+): value is LegalNumberingProfile =>
   value === "legal" || value === "none" || value === "checklist";
 
 const isPageSize = (value: string | undefined): value is LegalPageSize =>
   value === "A4" || value === "Letter";
 
-const isPageOrientation = (value: string | undefined): value is LegalPageOrientation =>
+const isPageOrientation = (
+  value: string | undefined,
+): value is LegalPageOrientation =>
   value === "portrait" || value === "landscape";

@@ -1,35 +1,48 @@
 /** The one semantic compiler for canonical sidebar, controlled and public comments. */
 import { Result, TaggedError } from "better-result";
+
 import {
-  applyDocumentOps,
   allocateCommentAnchorIds,
-  packageParagraphIds,
+  applyDocumentOps,
+  type CreateCommentOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
-  type CreateCommentOp,
+  packageParagraphIds,
   type UpdateCommentContentOp,
 } from "@stll/docx-core/ops";
+
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Comment } from "../types/content";
 import type { Document } from "../types/document";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { canonicalJson } from "../utils/canonicalJson";
 
-export class CanonicalCommentError extends TaggedError("CanonicalCommentError")<{
+export class CanonicalCommentError extends TaggedError(
+  "CanonicalCommentError",
+)<{
   message: string;
   gap: typeof CANONICAL_GAP.comments;
 }> {}
 
 const refuse = (message: string) =>
-  Result.err(new CanonicalCommentError({ message, gap: CANONICAL_GAP.comments }));
+  Result.err(
+    new CanonicalCommentError({ message, gap: CANONICAL_GAP.comments }),
+  );
 
 export type CanonicalCommentCommand =
-  | { type: "create"; comment: CreateCommentOp["comment"]; anchor: CreateCommentOp["anchor"] }
+  | {
+      type: "create";
+      comment: CreateCommentOp["comment"];
+      anchor: CreateCommentOp["anchor"];
+    }
   | { type: "update"; id: number; content: Comment["content"] }
   | { type: "resolve"; id: number; status: "open" | "resolved" }
   | { type: "delete"; id: number }
   | { type: "replace"; comments: readonly Comment[] };
 
-type CompileCanonicalCommentsOptions = { document: Document; command: CanonicalCommentCommand };
+type CompileCanonicalCommentsOptions = {
+  document: Document;
+  command: CanonicalCommentCommand;
+};
 
 export const compileCanonicalComments = ({
   document,
@@ -69,13 +82,19 @@ export const compileCanonicalComments = ({
       ops.push({
         type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
         id: command.id,
-        scope: comment.parentId !== undefined && byId.has(comment.parentId) ? "reply" : "thread",
+        scope:
+          comment.parentId !== undefined && byId.has(comment.parentId)
+            ? "reply"
+            : "thread",
       });
       break;
     }
     case "replace": {
-      const nextById = new Map(command.comments.map((comment) => [comment.id, comment]));
-      if (nextById.size !== command.comments.length) return refuse("Comment ids must be unique.");
+      const nextById = new Map(
+        command.comments.map((comment) => [comment.id, comment]),
+      );
+      if (nextById.size !== command.comments.length)
+        return refuse("Comment ids must be unique.");
       for (const comment of current) {
         if (
           nextById.has(comment.id) &&
@@ -95,16 +114,24 @@ export const compileCanonicalComments = ({
         ops.push({
           type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
           id: comment.id,
-          scope: comment.parentId !== undefined && byId.has(comment.parentId) ? "reply" : "thread",
+          scope:
+            comment.parentId !== undefined && byId.has(comment.parentId)
+              ? "reply"
+              : "thread",
         });
       }
-      const pending = command.comments.filter((comment) => !byId.has(comment.id));
+      const pending = command.comments.filter(
+        (comment) => !byId.has(comment.id),
+      );
       const available = new Set(
-        current.filter((comment) => nextById.has(comment.id)).map((comment) => comment.id),
+        current
+          .filter((comment) => nextById.has(comment.id))
+          .map((comment) => comment.id),
       );
       while (pending.length > 0) {
         const index = pending.findIndex(
-          (comment) => comment.parentId !== undefined && available.has(comment.parentId),
+          (comment) =>
+            comment.parentId !== undefined && available.has(comment.parentId),
         );
         if (index < 0)
           return refuse(
@@ -141,12 +168,16 @@ export const compileCanonicalComments = ({
           ...nextMetadata
         } = next;
         if (canonicalJson(priorMetadata) !== canonicalJson(nextMetadata))
-          return refuse("Controlled comment identity and opaque metadata cannot be replaced.");
+          return refuse(
+            "Controlled comment identity and opaque metadata cannot be replaced.",
+          );
         const patch = {
           ...(priorAuthor === nextAuthor ? {} : { author: nextAuthor }),
           ...(priorInitials === nextInitials
             ? {}
-            : { initials: Object.hasOwn(next, "initials") ? nextInitials : null }),
+            : {
+                initials: Object.hasOwn(next, "initials") ? nextInitials : null,
+              }),
           ...(priorDate === nextDate
             ? {}
             : { date: Object.hasOwn(next, "date") ? nextDate : null }),
@@ -163,7 +194,9 @@ export const compileCanonicalComments = ({
           });
         if (priorDone !== nextDone) {
           if (nextDone === undefined)
-            return refuse("Resolution changes must name an open or resolved state.");
+            return refuse(
+              "Resolution changes must name an open or resolved state.",
+            );
           ops.push({
             type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
             id: next.id,
@@ -196,8 +229,13 @@ export const compileCanonicalComments = ({
   return Result.ok({ ops: compiled, document: draft, commentId });
 };
 
-export const canonicalCommentBody = (document: Document, text: string): Comment["content"] => {
-  const occupied = new Set(packageParagraphIds(document.package).map((id) => id.toUpperCase()));
+export const canonicalCommentBody = (
+  document: Document,
+  text: string,
+): Comment["content"] => {
+  const occupied = new Set(
+    packageParagraphIds(document.package).map((id) => id.toUpperCase()),
+  );
   let id = 1;
   while (occupied.has(id.toString(16).padStart(8, "0").toUpperCase())) id += 1;
   return [

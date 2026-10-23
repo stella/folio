@@ -1,11 +1,4 @@
-import type { ParagraphAttrs, ParagraphAttrsPatch } from "../prosemirror/schema/nodes";
-import type { FolioContentStatedNumbering } from "../compare/content-types";
-import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumbering,
-} from "../prosemirror/numberingAttr";
-import { classifyResourceReference } from "./referenceClassification";
-import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
+import { panic } from "better-result";
 import {
   Fragment,
   Mark,
@@ -17,42 +10,60 @@ import {
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canSplit } from "prosemirror-transform";
-import { panic } from "better-result";
+
 import {
+  type BatchOrderAddress,
   contentRank,
   groupInsertionRuns,
   orderBatchOperations,
-  type BatchOrderAddress,
 } from "@stll/docx-core/ops";
-import {
-  claimRevisionIds,
-  nextRevisionId as peekRevisionId,
-  nextRevisionIdRange,
-  reserveRevisionIds,
-  seedRevisionIdsFromDoc,
-} from "../prosemirror/plugins/revisionIds";
 
+import type { FolioContentStatedNumbering } from "../compare/content-types";
 import type { NumberingMap } from "../docx/numberingParser";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { isNumberingReference } from "../docx/numberingReference";
 import { formattingEquals } from "../docx/runConsolidator";
+import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
+import {
+  deleteTextBoxesAnchoredAt,
+  droppedTextBoxAnchorIds,
+  endOfParagraphWithItsTextBoxes,
+  gatherTextBoxesAfterParagraph,
+  textBoxAnchorIdOf,
+  textBoxAnchorIdsBetween,
+} from "../prosemirror/anchoredTextBoxes";
 import {
   expectParagraphAttrs,
-  mergeParagraphAttrs,
   expectRunPropertyChangeMarkAttrs,
   expectTableRowAttrs,
+  mergeParagraphAttrs,
 } from "../prosemirror/attrs";
+import { paragraphJoinAfter } from "../prosemirror/commands/paragraphBookmarkJoin";
 import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
 import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
+import {
+  addedBreakCarrierBefore,
+  finalParagraphsOf,
+  paragraphEndsItsContainer,
+} from "../prosemirror/containerFinalParagraph";
+import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
+import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/JoinedRunStyleExtension";
+import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
+  effectiveParagraphNumbering,
   paragraphNumberingAttr,
+  paragraphNumberingSourcesFromBoundary,
   readParagraphNumberingAttr,
   removedNumberingAttr,
 } from "../prosemirror/numberingAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
+import { styleResolvedParagraphFormatting } from "../prosemirror/paragraphFormattingProvenance";
 import {
   directParagraphIndentation,
   paragraphIndentationAttrPatch,
@@ -60,6 +71,14 @@ import {
   paragraphIndentationFromFormatting,
   withDirectParagraphIndentation,
 } from "../prosemirror/paragraphIndentation";
+import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
+import {
+  carriedParagraphProperties,
+  carryParagraphProperties,
+  paragraphLeftAfter,
+  propertiesSetInBatch,
+  recordReplacedParagraphProperties,
+} from "../prosemirror/paragraphPropertyCarry";
 import {
   directParagraphSpacing,
   paragraphSpacingAttrPatch,
@@ -68,52 +87,21 @@ import {
   withDirectParagraphSpacing,
 } from "../prosemirror/paragraphSpacing";
 import {
+  getDocumentNumbering,
+  getDocumentNumberingInstanceIds,
+} from "../prosemirror/plugins/documentNumbering";
+import {
   getDocumentStyleDefinitions,
   getDocumentStyleResolver,
 } from "../prosemirror/plugins/documentStyleState";
 import {
-  getDocumentNumbering,
-  getDocumentNumberingInstanceIds,
-} from "../prosemirror/plugins/documentNumbering";
-import { resolveNewListOperations } from "./newListNumbering";
-import {
-  readAuthoredRunFormatting,
-  readAuthoredRunPropertySnapshot,
-  reconcileRunFormattingMarks,
-} from "../prosemirror/runFormattingReconciliation";
-import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
-import {
-  type ParagraphRunStyleContext,
-  paragraphRunStyleContext,
-  paragraphRunStyleContextAt,
-  resolveParagraphBodyRunFormatting,
-} from "../prosemirror/runStyleFormatting";
-import { styleResolvedParagraphFormatting } from "../prosemirror/paragraphFormattingProvenance";
-import {
-  applyMarksToRunFormattingRepresentation,
-  runFormattingInlineControlNodeName,
-  selectRunFormattingCarrierRepresentations,
-  type SelectedRunFormattingCarrierRepresentation,
-} from "../prosemirror/runFormattingInlineCarriers";
-import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
-import {
-  listAttrsFromNumbering,
-  listLevelAttrPatch,
-  listLevelIndentRemovalPatch,
-} from "../prosemirror/styles/resolvedStyleAttrs";
-import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
-import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
-import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import {
-  removeRowsWithoutCellsAfterBatch,
-  type RowsEmptiedInBatch,
-} from "../prosemirror/tableGridMutation";
-import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
-import {
-  addedBreakCarrierBefore,
-  finalParagraphsOf,
-  paragraphEndsItsContainer,
-} from "../prosemirror/containerFinalParagraph";
+  claimRevisionIds,
+  nextRevisionId as peekRevisionId,
+  nextRevisionIdRange,
+  reserveRevisionIds,
+  seedRevisionIdsFromDoc,
+} from "../prosemirror/plugins/revisionIds";
+import { rebaseParagraphRuns } from "../prosemirror/rebaseParagraphRuns";
 import {
   addCarriedMarks,
   annotatedReplacement,
@@ -125,54 +113,59 @@ import {
   placeTrackedInsertion,
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
+import {
+  applyMarksToRunFormattingRepresentation,
+  runFormattingInlineControlNodeName,
+  type SelectedRunFormattingCarrierRepresentation,
+  selectRunFormattingCarrierRepresentations,
+} from "../prosemirror/runFormattingInlineCarriers";
+import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
+import {
+  readAuthoredRunFormatting,
+  readAuthoredRunPropertySnapshot,
+  reconcileRunFormattingMarks,
+} from "../prosemirror/runFormattingReconciliation";
+import {
+  type ParagraphRunStyleContext,
+  paragraphRunStyleContext,
+  paragraphRunStyleContextAt,
+  resolveParagraphBodyRunFormatting,
+} from "../prosemirror/runStyleFormatting";
+import type {
+  ParagraphAttrs,
+  ParagraphAttrsPatch,
+  ParagraphPropertyChangeAttrs,
+} from "../prosemirror/schema/nodes";
+import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
+import {
+  listAttrsFromNumbering,
+  listLevelAttrPatch,
+  listLevelIndentRemovalPatch,
+} from "../prosemirror/styles/resolvedStyleAttrs";
+import {
+  removeRowsWithoutCellsAfterBatch,
+  type RowsEmptiedInBatch,
+} from "../prosemirror/tableGridMutation";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
-import {
-  deleteTextBoxesAnchoredAt,
-  droppedTextBoxAnchorIds,
-  endOfParagraphWithItsTextBoxes,
-  gatherTextBoxesAfterParagraph,
-  textBoxAnchorIdOf,
-  textBoxAnchorIdsBetween,
-} from "../prosemirror/anchoredTextBoxes";
-import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
-import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/JoinedRunStyleExtension";
-import { paragraphJoinAfter } from "../prosemirror/commands/paragraphBookmarkJoin";
-import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
-import {
-  carryParagraphProperties,
-  carriedParagraphProperties,
-  paragraphLeftAfter,
-  propertiesSetInBatch,
-  recordReplacedParagraphProperties,
-} from "../prosemirror/paragraphPropertyCarry";
-import { rebaseParagraphRuns } from "../prosemirror/rebaseParagraphRuns";
-import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type {
   ParagraphFormatting,
   RunPropertyChange,
   Style,
   TextFormatting,
 } from "../types/document";
-import { stripBlockIdentityAttrs } from "./block-identity";
 import { type BatchClaim, BatchClaims } from "./batch-claims";
+import { stripBlockIdentityAttrs } from "./block-identity";
 import {
-  getFolioDocumentOperationRemovedBlockIds,
-  getTrackedFolioDocumentOperationCarrierBlockId,
-  getTrackedFolioDocumentOperationRemovedBlockIds,
-} from "./removed-blocks";
-import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
-import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
-import { separateRevisionStretches } from "./revisionStretches";
+  type CharacterBoundaryStrictness,
+  describeCharacterSplit,
+} from "./character-boundaries";
 import {
-  cutsIntoNoteReference,
-  noteReferenceEditsAllowed,
-  noteReferenceOf,
-  noteReferenceSpansWithin,
-  planChangesAroundNoteReferences,
-  segmentsAroundNoteReferences,
-  type NoteReferenceLabels,
-} from "./note-references";
+  buildCleanBlockText,
+  type CleanBlockText,
+  resolveCleanTextRange,
+} from "./clean-text";
 import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
@@ -186,6 +179,28 @@ import {
   type TextChange,
   widenChangesToAtomicSpans,
 } from "./minimal-replacement";
+import {
+  assertNewListsAllocated,
+  type FolioAIStagedEditOperation,
+  resolveNewListOperations,
+  stageNewListOperations,
+} from "./newListNumbering";
+import {
+  cutsIntoNoteReference,
+  noteReferenceEditsAllowed,
+  type NoteReferenceLabels,
+  noteReferenceOf,
+  noteReferenceSpansWithin,
+  planChangesAroundNoteReferences,
+  segmentsAroundNoteReferences,
+} from "./note-references";
+import { classifyResourceReference } from "./referenceClassification";
+import {
+  getFolioDocumentOperationRemovedBlockIds,
+  getTrackedFolioDocumentOperationCarrierBlockId,
+  getTrackedFolioDocumentOperationRemovedBlockIds,
+} from "./removed-blocks";
+import { separateRevisionStretches } from "./revisionStretches";
 import {
   collectNoteReferenceLabels,
   hashFolioAIBlockStructuralBoundaries,
@@ -214,24 +229,24 @@ import {
   findTableColumnInsertion,
   findTableRowInsertion,
   getTableColumnCoordinateKey,
+  markTableRowContent,
   splitCellParagraphTexts,
   type TableColumnDeletion,
   type TableColumnInsertion,
   type TableRowDeletion,
   type TableRowInsertion,
-  markTableRowContent,
 } from "./table-row-column-mutations";
 import {
-  tableFromTemplate,
-  type FolioTableTemplates,
-  type TableStructureRevision,
-} from "./table-template";
-import {
-  findOutermostTableBoundary,
   findEnclosingTableCell,
   findEnclosingTableRow,
+  findOutermostTableBoundary,
   tableRectangleCutsMergedCell,
 } from "./table-targets";
+import {
+  type FolioTableTemplates,
+  tableFromTemplate,
+  type TableStructureRevision,
+} from "./table-template";
 import type {
   FolioAIBlockParagraphProperties as RequestParagraphProperties,
   FolioAIEditAppliedOperation,
@@ -239,11 +254,11 @@ import type {
   FolioAIEditApplyResult,
   FolioAIEditNormalization,
   FolioAIEditOperation as RequestedEditOperation,
-  FolioAIResolvedEditOperation as FolioAIEditOperation,
+  FolioAIEditSkippedOperation,
+  FolioAIEditSkipReason,
   FolioAIEditSnapshot,
   FolioAIInlineFormattingPatch,
-  FolioAIEditSkipReason,
-  FolioAIEditSkippedOperation,
+  FolioAIResolvedEditOperation as FolioAIEditOperation,
   FolioAISignatureParty,
 } from "./types";
 import {
@@ -252,7 +267,15 @@ import {
   wordDiffSessionFromOptions,
 } from "./word-diff";
 
-type FolioAIBlockParagraphProperties = RequestParagraphProperties<FolioContentStatedNumbering>;
+type FolioAIBlockParagraphProperties =
+  RequestParagraphProperties<FolioContentStatedNumbering>;
+type StagedOperation = FolioAIStagedEditOperation;
+type StagedOperationNumbering = NonNullable<
+  Extract<
+    StagedOperation,
+    { type: "insertAfterBlock" | "insertBeforeBlock" }
+  >["numbering"]
+>;
 
 /**
  * The only editor surface the apply logic touches: a current `state`
@@ -316,12 +339,16 @@ type ApplyFolioAIEditOperationsOptions = {
   undefinedReferences: FolioUndefinedReferencePolicy;
 };
 
-type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
-  revisionIdSeed?: number;
-  wordDiffMode?: "bounded" | "coarse";
-};
+type ApplyFolioAIEditOperationsInternalOptions =
+  ApplyFolioAIEditOperationsOptions & {
+    revisionIdSeed?: number;
+    wordDiffMode?: "bounded" | "coarse";
+  };
 
-const coarseWordDiff: ReturnType<typeof createWordDiffSession>["diff"] = (before, after) => {
+const coarseWordDiff: ReturnType<typeof createWordDiffSession>["diff"] = (
+  before,
+  after,
+) => {
   if (before === after) {
     return before.length === 0 ? [] : [{ type: "equal", text: before }];
   }
@@ -380,14 +407,20 @@ const commitProvisionalComment = ({
 }: CommitProvisionalCommentOptions): Transaction => {
   const ranges = commentMarkRanges(tr.doc, commentType, provisionalId);
   if (ranges.length === 0) {
-    panic("A commented operation changed the document without producing a comment anchor");
+    panic(
+      "A commented operation changed the document without producing a comment anchor",
+    );
   }
   if (provisionalId === committedId) {
     return tr;
   }
   for (const { from, to, mark } of ranges) {
     tr = tr.removeMark(from, to, mark);
-    tr = tr.addMark(from, to, commentType.create({ ...mark.attrs, commentId: committedId }));
+    tr = tr.addMark(
+      from,
+      to,
+      commentType.create({ ...mark.attrs, commentId: committedId }),
+    );
   }
   return tr;
 };
@@ -453,7 +486,9 @@ export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
  * accepted. Cell merge/split (not row/column ops) and comment ops stay
  * `unsupportedMode`.
  */
-const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> = new Set([
+const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
+  FolioAIEditOperation["type"]
+> = new Set([
   "replaceInBlock",
   "replaceRange",
   "formatRange",
@@ -470,14 +505,11 @@ const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["typ
 ]);
 
 /** Operations that only add marks: they move no position of the document. */
-const ANNOTATION_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> = new Set([
-  "formatRange",
-  "commentOnRange",
-  "commentOnBlock",
-]);
+const ANNOTATION_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> =
+  new Set(["formatRange", "commentOnRange", "commentOnBlock"]);
 
 type ResolvedOperationFields = {
-  operation: FolioAIEditOperation;
+  operation: StagedOperation;
   from: number;
   to: number;
   blockFrom: number;
@@ -526,10 +558,13 @@ const REPLACE_BLOCK_IMPACT = {
 } as const;
 
 type ReplaceBlockImpact = keyof typeof REPLACE_BLOCK_IMPACT;
-type ReplaceBlockOperation = Extract<FolioAIEditOperation, { type: "replaceBlock" }>;
-type NonReplaceBlockOperation = Exclude<FolioAIEditOperation, ReplaceBlockOperation>;
+type ReplaceBlockOperation = Extract<StagedOperation, { type: "replaceBlock" }>;
+type NonReplaceBlockOperation = Exclude<StagedOperation, ReplaceBlockOperation>;
 
-type ResolvedReplaceBlockOperation = Omit<ResolvedOperationFields, "operation"> & {
+type ResolvedReplaceBlockOperation = Omit<
+  ResolvedOperationFields,
+  "operation"
+> & {
   operation: ReplaceBlockOperation;
   replaceBlockImpact: ReplaceBlockImpact;
 };
@@ -549,21 +584,29 @@ type ResolvedBaseNonReplaceBlockOperation = Omit<
   Exclude<ResolvedOperation, ResolvedReplaceBlockOperation>,
   "originalIndex" | "commentText"
 >;
-type ResolvedBase = ResolvedBaseReplaceBlockOperation | ResolvedBaseNonReplaceBlockOperation;
+type ResolvedBase =
+  ResolvedBaseReplaceBlockOperation | ResolvedBaseNonReplaceBlockOperation;
 
 const isResolvedReplaceBlockOperation = (
   item: ResolvedOperation,
-): item is ResolvedReplaceBlockOperation => item.operation.type === "replaceBlock";
+): item is ResolvedReplaceBlockOperation =>
+  item.operation.type === "replaceBlock";
 
 const isResolvedBaseReplaceBlockOperation = (
   item: ResolvedBase,
-): item is ResolvedBaseReplaceBlockOperation => item.operation.type === "replaceBlock";
+): item is ResolvedBaseReplaceBlockOperation =>
+  item.operation.type === "replaceBlock";
 
-const hasRepresentableCommentAnchor = (item: ResolvedBase, mode: FolioAIEditApplyMode): boolean => {
+const hasRepresentableCommentAnchor = (
+  item: ResolvedBase,
+  mode: FolioAIEditApplyMode,
+): boolean => {
   switch (item.operation.type) {
     case "insertAfterBlock":
     case "insertBeforeBlock":
-      return (item.insertTexts ?? [""]).some((text) => stripInlineEmphasisMarkers(text).length > 0);
+      return (item.insertTexts ?? [""]).some(
+        (text) => stripInlineEmphasisMarkers(text).length > 0,
+      );
     case "insertSignatureTable":
       // A table-wide range would cross cell boundaries, while choosing one
       // party silently changes the requested scope. The operation needs an
@@ -572,7 +615,9 @@ const hasRepresentableCommentAnchor = (item: ResolvedBase, mode: FolioAIEditAppl
     case "replaceInBlock":
     case "replaceRange": {
       const replacement = stripInlineEmphasisMarkers(item.operation.replace);
-      return replacement.length > 0 || (mode !== "direct" && item.from < item.to);
+      return (
+        replacement.length > 0 || (mode !== "direct" && item.from < item.to)
+      );
     }
     case "replaceBlock": {
       if (!isResolvedBaseReplaceBlockOperation(item)) {
@@ -583,7 +628,9 @@ const hasRepresentableCommentAnchor = (item: ResolvedBase, mode: FolioAIEditAppl
         return item.from < item.to;
       }
       const replacement = stripInlineEmphasisMarkers(item.operation.text);
-      return replacement.length > 0 || (mode !== "direct" && item.from < item.to);
+      return (
+        replacement.length > 0 || (mode !== "direct" && item.from < item.to)
+      );
     }
     case "deleteBlock":
       return mode !== "direct" && item.from < item.to;
@@ -628,7 +675,9 @@ const resolveReplaceBlockImpact = ({
   if (changesStyle) {
     return "style";
   }
-  return panic("Cannot resolve a replaceBlock that changes neither text nor style");
+  return panic(
+    "Cannot resolve a replaceBlock that changes neither text nor style",
+  );
 };
 
 type StatedNumberingPatchOptions = {
@@ -645,13 +694,17 @@ const statedNumberingAttrPatch = ({
   fromStyle,
   numbering,
 }: StatedNumberingPatchOptions): ParagraphAttrsPatch => {
-  const numPr = stated.kind === "inherit" ? undefined : paragraphNumberingAttr(stated);
+  const numPr =
+    stated.kind === "inherit" ? undefined : paragraphNumberingAttr(stated);
   const numPrFromStyle =
-    numPr?.kind === "reference" || numPr?.kind === "none" ? undefined : fromStyle;
+    numPr?.kind === "reference" || numPr?.kind === "none"
+      ? undefined
+      : fromStyle;
   const projected = { ...attrs };
   if (numPr === undefined) Reflect.deleteProperty(projected, "numPr");
   else projected.numPr = numPr;
-  if (numPrFromStyle === undefined) Reflect.deleteProperty(projected, "numPrFromStyle");
+  if (numPrFromStyle === undefined)
+    Reflect.deleteProperty(projected, "numPrFromStyle");
   else projected.numPrFromStyle = numPrFromStyle;
   const effective = effectiveParagraphNumbering(
     paragraphNumberingSourcesFromBoundary({
@@ -662,8 +715,15 @@ const statedNumberingAttrPatch = ({
   const rendering =
     effective?.kind === "reference"
       ? listLevelAttrPatch(projected, effective.ilvl ?? 0, numbering)
-      : { ...listLevelIndentRemovalPatch(attrs, numbering), ...CLEARED_LIST_RENDERING_ATTRS };
-  return { ...rendering, numPr: numPr ?? null, numPrFromStyle: numPrFromStyle ?? null };
+      : {
+          ...listLevelIndentRemovalPatch(attrs, numbering),
+          ...CLEARED_LIST_RENDERING_ATTRS,
+        };
+  return {
+    ...rendering,
+    numPr: numPr ?? null,
+    numPrFromStyle: numPrFromStyle ?? null,
+  };
 };
 
 /**
@@ -691,7 +751,9 @@ const paragraphPropertiesPatch = ({
   const resolvedIndentationFromStyle = paragraphIndentationFromFormatting(
     resolvedFormattingFromStyle,
   );
-  const resolvedSpacingFromStyle = paragraphSpacingFromFormatting(resolvedFormattingFromStyle);
+  const resolvedSpacingFromStyle = paragraphSpacingFromFormatting(
+    resolvedFormattingFromStyle,
+  );
   const patch: Record<string, unknown> = {};
   let originalFormatting = withDirectParagraphIndentation(
     attrs._originalFormatting,
@@ -699,13 +761,19 @@ const paragraphPropertiesPatch = ({
   );
   let originalFormattingChanged = false;
   const nextStyleId = properties.styleId;
-  const styleChanged = nextStyleId !== undefined && (attrs.styleId ?? null) !== nextStyleId;
+  const styleChanged =
+    nextStyleId !== undefined && (attrs.styleId ?? null) !== nextStyleId;
   if (styleChanged) {
     patch["styleId"] = nextStyleId;
-    patch["_resolvedFormatting"] = styleResolvedParagraphFormatting(resolvedFormattingFromStyle);
+    patch["_resolvedFormatting"] = styleResolvedParagraphFormatting(
+      resolvedFormattingFromStyle,
+    );
     patch["alignmentFromStyle"] = resolvedFormattingFromStyle?.alignment;
     if (properties.alignment === undefined) {
-      patch["alignment"] = currentDirectAlignment ?? resolvedFormattingFromStyle?.alignment ?? null;
+      patch["alignment"] =
+        currentDirectAlignment ??
+        resolvedFormattingFromStyle?.alignment ??
+        null;
     }
     if (properties.spacing === undefined) {
       Object.assign(
@@ -741,7 +809,9 @@ const paragraphPropertiesPatch = ({
     // only the stated values, so anything else would read differently on
     // reopening.
     patch["outlineLevel"] =
-      attrs._originalFormatting?.outlineLevel ?? resolvedFormattingFromStyle?.outlineLevel ?? null;
+      attrs._originalFormatting?.outlineLevel ??
+      resolvedFormattingFromStyle?.outlineLevel ??
+      null;
     Object.assign(
       patch,
       restyledListAttrs({
@@ -760,7 +830,8 @@ const paragraphPropertiesPatch = ({
     } else {
       originalFormatting.outlineLevel = directOutlineLevel;
     }
-    patch["outlineLevel"] = directOutlineLevel ?? resolvedFormattingFromStyle?.outlineLevel ?? null;
+    patch["outlineLevel"] =
+      directOutlineLevel ?? resolvedFormattingFromStyle?.outlineLevel ?? null;
     originalFormattingChanged = true;
   }
   // The style producer owns the inherited tier; the request owns only the stated tier.
@@ -768,7 +839,8 @@ const paragraphPropertiesPatch = ({
   if (resolvedFormattingFromStyle?.numPr !== undefined) {
     numPrFromStyle = paragraphNumberingAttr(resolvedFormattingFromStyle.numPr);
   } else if (styleChanged) {
-    numPrFromStyle = readParagraphNumberingAttr(patch["numPrFromStyle"]) ?? undefined;
+    numPrFromStyle =
+      readParagraphNumberingAttr(patch["numPrFromStyle"]) ?? undefined;
   }
   if (properties.numbering !== undefined) {
     Object.assign(
@@ -777,7 +849,9 @@ const paragraphPropertiesPatch = ({
         attrs: mergeParagraphAttrs(node, {
           ...attrs,
           ...patch,
-          _styleResolvedFormatting: styleResolvedParagraphFormatting(resolvedFormattingFromStyle),
+          _styleResolvedFormatting: styleResolvedParagraphFormatting(
+            resolvedFormattingFromStyle,
+          ),
         }),
         stated: properties.numbering,
         fromStyle: numPrFromStyle,
@@ -804,10 +878,17 @@ const paragraphPropertiesPatch = ({
   }
   if (
     properties.indentation !== undefined &&
-    (styleChanged || !paragraphIndentationEqual(currentDirectIndentation, properties.indentation))
+    (styleChanged ||
+      !paragraphIndentationEqual(
+        currentDirectIndentation,
+        properties.indentation,
+      ))
   ) {
     const directIndentation = properties.indentation ?? undefined;
-    originalFormatting = withDirectParagraphIndentation(originalFormatting, directIndentation);
+    originalFormatting = withDirectParagraphIndentation(
+      originalFormatting,
+      directIndentation,
+    );
     Object.assign(
       patch,
       paragraphIndentationAttrPatch({
@@ -819,23 +900,38 @@ const paragraphPropertiesPatch = ({
   }
   if (
     properties.spacing !== undefined &&
-    (styleChanged || !paragraphSpacingEqual(currentDirectSpacing, properties.spacing))
+    (styleChanged ||
+      !paragraphSpacingEqual(currentDirectSpacing, properties.spacing))
   ) {
     const directSpacing = properties.spacing ?? undefined;
-    originalFormatting = withDirectParagraphSpacing(originalFormatting, directSpacing);
+    originalFormatting = withDirectParagraphSpacing(
+      originalFormatting,
+      directSpacing,
+    );
     Object.assign(
       patch,
-      paragraphSpacingAttrPatch({ direct: directSpacing, inherited: resolvedSpacingFromStyle }),
+      paragraphSpacingAttrPatch({
+        direct: directSpacing,
+        inherited: resolvedSpacingFromStyle,
+      }),
     );
     originalFormattingChanged = true;
   }
   if (originalFormattingChanged) {
     patch["_originalFormatting"] =
-      originalFormatting && Object.keys(originalFormatting).length > 0 ? originalFormatting : null;
+      originalFormatting && Object.keys(originalFormatting).length > 0
+        ? originalFormatting
+        : null;
   }
-  if (styleChanged || properties.numbering !== undefined || properties.indentation !== undefined) {
+  if (
+    styleChanged ||
+    properties.numbering !== undefined ||
+    properties.indentation !== undefined
+  ) {
     const nextNumbering =
-      patch["numPr"] === undefined ? attrs.numPr : readParagraphNumberingAttr(patch["numPr"]);
+      patch["numPr"] === undefined
+        ? attrs.numPr
+        : readParagraphNumberingAttr(patch["numPr"]);
     const nextSources = {
       numPr: nextNumbering,
       numPrFromStyle:
@@ -859,23 +955,38 @@ const paragraphPropertiesPatch = ({
         listLevelAttrPatch(
           mergeParagraphAttrs(node, {
             numPr: nextNumbering ?? undefined,
-            _styleResolvedFormatting: styleResolvedParagraphFormatting(resolvedFormattingFromStyle),
+            _styleResolvedFormatting: styleResolvedParagraphFormatting(
+              resolvedFormattingFromStyle,
+            ),
             numPrFromStyle: nextSources.numPrFromStyle ?? undefined,
-            listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances,
-            _originalFormatting: withDirectParagraphIndentation(originalFormatting, direct),
+            listImplicitChildLevelAdvances:
+              attrs.listImplicitChildLevelAdvances,
+            _originalFormatting: withDirectParagraphIndentation(
+              originalFormatting,
+              direct,
+            ),
             _resolvedFormatting: withDirectParagraphIndentation(
               styleChanged
                 ? styleResolvedParagraphFormatting(resolvedFormattingFromStyle)
                 : attrs._resolvedFormatting,
               resolvedIndentationFromStyle,
             ),
-            indentLeft: direct?.indentLeft ?? resolvedFormattingFromStyle?.indentLeft ?? undefined,
+            indentLeft:
+              direct?.indentLeft ??
+              resolvedFormattingFromStyle?.indentLeft ??
+              undefined,
             indentRight:
-              direct?.indentRight ?? resolvedFormattingFromStyle?.indentRight ?? undefined,
+              direct?.indentRight ??
+              resolvedFormattingFromStyle?.indentRight ??
+              undefined,
             indentFirstLine:
-              direct?.indentFirstLine ?? resolvedFormattingFromStyle?.indentFirstLine ?? undefined,
+              direct?.indentFirstLine ??
+              resolvedFormattingFromStyle?.indentFirstLine ??
+              undefined,
             hangingIndent:
-              direct?.hangingIndent ?? resolvedFormattingFromStyle?.hangingIndent ?? false,
+              direct?.hangingIndent ??
+              resolvedFormattingFromStyle?.hangingIndent ??
+              false,
           }),
           effectiveNumbering.ilvl ?? 0,
           numbering,
@@ -889,7 +1000,10 @@ const paragraphPropertiesPatch = ({
   return Object.keys(patch).length > 0 ? patch : null;
 };
 
-const REVISION_MARK_NAMES: ReadonlySet<string> = new Set(["insertion", "deletion"]);
+const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
+  "insertion",
+  "deletion",
+]);
 
 const hasOrdinaryTextRevision = (block: PMNode): boolean => {
   let found = false;
@@ -897,7 +1011,8 @@ const hasOrdinaryTextRevision = (block: PMNode): boolean => {
     if (
       node.marks.some(
         (mark) =>
-          REVISION_MARK_NAMES.has(mark.type.name) && mark.attrs["provenance"] !== "suggested",
+          REVISION_MARK_NAMES.has(mark.type.name) &&
+          mark.attrs["provenance"] !== "suggested",
       )
     ) {
       found = true;
@@ -910,7 +1025,8 @@ const hasOrdinaryTextRevision = (block: PMNode): boolean => {
 
 const hasOrdinaryParagraphMarkRevision = (block: PMNode): boolean => {
   const mark: unknown = block.attrs["pPrMark"];
-  if (typeof mark !== "object" || mark === null || !("info" in mark)) return false;
+  if (typeof mark !== "object" || mark === null || !("info" in mark))
+    return false;
   const info: unknown = mark.info;
   if (typeof info !== "object" || info === null) return false;
   return !("provenance" in info) || info.provenance !== "suggested";
@@ -938,12 +1054,16 @@ const withoutRevisionsOnZeroWidthAnchors = (
     // A text box's anchor is where its drawing run is, and a paragraph
     // deleted whole deletes its drawings: that anchor's mark is the box's.
     const textBoxAnchorId = textBoxAnchorIdOf(node);
-    if (textBoxAnchorId !== undefined && deletedTextBoxAnchorIds.has(textBoxAnchorId)) {
+    if (
+      textBoxAnchorId !== undefined &&
+      deletedTextBoxAnchorIds.has(textBoxAnchorId)
+    ) {
       return false;
     }
     const marks = node.marks.filter(
       ({ attrs, type }) =>
-        REVISION_MARK_NAMES.has(type.name) && batchRevisionIds.has(attrs["revisionId"]),
+        REVISION_MARK_NAMES.has(type.name) &&
+        batchRevisionIds.has(attrs["revisionId"]),
     );
     if (marks.length > 0) {
       anchors.push({ from: pos, to: pos + node.nodeSize, marks });
@@ -981,7 +1101,8 @@ const undeletedContentAtomRanges = (
   block.forEach((child, offset) => {
     if (
       child.isText ||
-      (isZeroWidthAnchor(child) && child.type.name !== TEXT_BOX_ANCHOR_NODE_NAME) ||
+      (isZeroWidthAnchor(child) &&
+        child.type.name !== TEXT_BOX_ANCHOR_NODE_NAME) ||
       child.marks.some(({ type }) => type.name === "deletion")
     ) {
       return;
@@ -1004,7 +1125,9 @@ const paragraphPropertiesBeforePendingChanges = (
   node: PMNode,
 ): NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]> => {
   const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
-  const earliest = Array.isArray(propertyChanges) ? propertyChanges[0] : undefined;
+  const earliest = Array.isArray(propertyChanges)
+    ? propertyChanges[0]
+    : undefined;
   return earliest === undefined
     ? paragraphPropertiesSnapshot(node)
     : (earliest.previousFormatting ?? {});
@@ -1015,7 +1138,9 @@ const paragraphPropertiesOnReject = (
   node: PMNode,
 ): NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]> => {
   const [earliest] = expectParagraphAttrs(node)._propertyChanges ?? [];
-  return earliest ? (earliest.previousFormatting ?? {}) : paragraphPropertiesSnapshot(node);
+  return earliest
+    ? (earliest.previousFormatting ?? {})
+    : paragraphPropertiesSnapshot(node);
 };
 
 type ResolveFormattingFromStyleOptions = {
@@ -1029,7 +1154,8 @@ const resolveFormattingFromStyle = ({
   styleId,
   styleResolver,
 }: ResolveFormattingFromStyleOptions): ParagraphFormatting | undefined => {
-  const resolved = styleResolver?.resolveParagraphStyle(styleId).paragraphFormatting;
+  const resolved =
+    styleResolver?.resolveParagraphStyle(styleId).paragraphFormatting;
   if (resolved !== undefined) {
     return resolved;
   }
@@ -1076,7 +1202,8 @@ const preserveRunFormattingAcrossTrackedStyleChange = ({
   const propertyChangeType = tr.doc.type.schema.marks["runPropertyChange"];
   if (!propertyChangeType) return { tr, revisionIds: [] };
   const paragraph = tr.doc.nodeAt(paragraphPosition);
-  if (!paragraph || paragraph.type.name !== "paragraph") return { tr, revisionIds: [] };
+  if (!paragraph || paragraph.type.name !== "paragraph")
+    return { tr, revisionIds: [] };
   const previousContext = paragraphRunStyleContext(paragraph, styleResolver);
   const nextParagraph = paragraph.type.create(
     nextParagraphAttrs,
@@ -1091,13 +1218,18 @@ const preserveRunFormattingAcrossTrackedStyleChange = ({
   });
   const revisionIds: number[] = [];
   for (const representation of representations) {
-    if (!representation.node.marks.some(({ type }) => type.name === "deletion")) {
+    if (
+      !representation.node.marks.some(({ type }) => type.name === "deletion")
+    ) {
       continue;
     }
     const existingChange = representation.node.marks.find(
       (mark) => mark.type === propertyChangeType,
     );
-    if (existingChange && expectRunPropertyChangeMarkAttrs(existingChange).changes.length > 0) {
+    if (
+      existingChange &&
+      expectRunPropertyChangeMarkAttrs(existingChange).changes.length > 0
+    ) {
       continue;
     }
     const previousFormatting = readAuthoredRunFormatting({
@@ -1125,7 +1257,9 @@ const preserveRunFormattingAcrossTrackedStyleChange = ({
         {
           type: "runPropertyChange",
           info,
-          ...(Object.keys(previousFormatting).length > 0 && { previousFormatting }),
+          ...(Object.keys(previousFormatting).length > 0 && {
+            previousFormatting,
+          }),
         },
       ],
       ...suggestionAttrs,
@@ -1144,8 +1278,13 @@ const appendParagraphPropertyChange = (
   existing: readonly ParagraphPropertyChangeAttrs[] | null | undefined,
   change: ParagraphPropertyChangeAttrs,
 ): ParagraphPropertyChangeAttrs[] => {
-  if (change.info.provenance !== "suggested" && hasSerializableParagraphPropertyChange(existing)) {
-    panic("A paragraph-property write must resolve its occupied revision slot first");
+  if (
+    change.info.provenance !== "suggested" &&
+    hasSerializableParagraphPropertyChange(existing)
+  ) {
+    panic(
+      "A paragraph-property write must resolve its occupied revision slot first",
+    );
   }
   return [...(existing ?? []), change];
 };
@@ -1168,8 +1307,16 @@ const applyBlockParagraphProperties = ({
   const attrs = expectParagraphAttrs(node);
   const resolvedFormattingFromStyle =
     properties.styleId === undefined
-      ? resolveFormattingFromStyle({ attrs, styleId: attrs.styleId, styleResolver })
-      : resolveFormattingFromStyle({ attrs, styleId: properties.styleId, styleResolver });
+      ? resolveFormattingFromStyle({
+          attrs,
+          styleId: attrs.styleId,
+          styleResolver,
+        })
+      : resolveFormattingFromStyle({
+          attrs,
+          styleId: properties.styleId,
+          styleResolver,
+        });
   const patch = paragraphPropertiesPatch({
     node,
     properties,
@@ -1179,7 +1326,8 @@ const applyBlockParagraphProperties = ({
   if (patch === null) {
     return { tr, changed: false, revisionId: null, revisionIds: [] };
   }
-  const nextStyleId = properties.styleId === undefined ? attrs.styleId : properties.styleId;
+  const nextStyleId =
+    properties.styleId === undefined ? attrs.styleId : properties.styleId;
   if ((attrs.styleId ?? null) !== (nextStyleId ?? null)) {
     patch["defaultTextFormatting"] =
       resolveParagraphBodyRunFormatting({
@@ -1204,7 +1352,9 @@ const applyBlockParagraphProperties = ({
   const nextAttrs = {
     ...node.attrs,
     ...patch,
-    ...(change ? { _propertyChanges: appendParagraphPropertyChange(existing, change) } : {}),
+    ...(change
+      ? { _propertyChanges: appendParagraphPropertyChange(existing, change) }
+      : {}),
   };
   const bridgeResult =
     preserveRunFormatting && revisionInfo
@@ -1258,7 +1408,10 @@ const applyReplaceBlockStyleId = ({
   styleResolver,
   revisionInfo,
 }: ApplyReplaceBlockStyleIdOptions): ApplyReplaceBlockStyleIdResult => {
-  if (item.operation.type !== "replaceBlock" || item.operation.styleId === undefined) {
+  if (
+    item.operation.type !== "replaceBlock" ||
+    item.operation.styleId === undefined
+  ) {
     return { tr, revisionId: null, revisionIds: [] };
   }
 
@@ -1306,7 +1459,9 @@ const applyReplaceBlockStyleId = ({
   const nextAttrs = {
     ...block.attrs,
     ...patch,
-    ...(change ? { _propertyChanges: appendParagraphPropertyChange(existing, change) } : {}),
+    ...(change
+      ? { _propertyChanges: appendParagraphPropertyChange(existing, change) }
+      : {}),
   };
   const bridgeResult =
     preserveRunFormatting && revisionInfo
@@ -1318,7 +1473,11 @@ const applyReplaceBlockStyleId = ({
           tr,
         })
       : { tr, revisionIds: [] };
-  const styled = bridgeResult.tr.setNodeMarkup(blockPosition, undefined, nextAttrs);
+  const styled = bridgeResult.tr.setNodeMarkup(
+    blockPosition,
+    undefined,
+    nextAttrs,
+  );
   return {
     tr: rebaseParagraphRuns({
       tr: styled,
@@ -1352,7 +1511,8 @@ type InlineFormattingPatch = FolioAIInlineFormattingPatch &
 const includedFormattingProperty = (
   includedProperties: readonly string[] | undefined,
   property: string,
-): boolean => includedProperties === undefined || includedProperties.includes(property);
+): boolean =>
+  includedProperties === undefined || includedProperties.includes(property);
 
 type PatchAuthoredRunFormattingOptions = {
   authoredFormatting: TextFormatting;
@@ -1368,7 +1528,10 @@ const patchAuthoredRunFormatting = ({
   const next = { ...authoredFormatting };
   for (const property of ["bold", "italic"] as const) {
     const value = formatting[property];
-    if (value === undefined || !includedFormattingProperty(includedProperties, property)) {
+    if (
+      value === undefined ||
+      !includedFormattingProperty(includedProperties, property)
+    ) {
       continue;
     }
     if (value === null) {
@@ -1388,7 +1551,10 @@ const patchAuthoredRunFormatting = ({
       next.underline = { style: formatting.underline ? "single" : "none" };
     }
   }
-  if (formatting.strike !== undefined && includedFormattingProperty(includedProperties, "strike")) {
+  if (
+    formatting.strike !== undefined &&
+    includedFormattingProperty(includedProperties, "strike")
+  ) {
     delete next.doubleStrike;
     if (formatting.strike === null) {
       delete next.strike;
@@ -1403,7 +1569,10 @@ const patchAuthoredRunFormatting = ({
     if (formatting.fontFamily === null) {
       delete next.fontFamily;
     } else {
-      next.fontFamily = { ascii: formatting.fontFamily, hAnsi: formatting.fontFamily };
+      next.fontFamily = {
+        ascii: formatting.fontFamily,
+        hAnsi: formatting.fontFamily,
+      };
     }
   }
   if (
@@ -1416,7 +1585,10 @@ const patchAuthoredRunFormatting = ({
       next.fontSize = formatting.fontSizePt * 2;
     }
   }
-  if (formatting.color !== undefined && includedFormattingProperty(includedProperties, "color")) {
+  if (
+    formatting.color !== undefined &&
+    includedFormattingProperty(includedProperties, "color")
+  ) {
     if (formatting.color === null) {
       delete next.color;
     } else {
@@ -1446,7 +1618,11 @@ const applyInlineFormatting = ({
   includedProperties,
   styleResolver,
 }: ApplyInlineFormattingOptions): Transaction => {
-  const representations = selectRunFormattingCarrierRepresentations({ doc: tr.doc, from, to });
+  const representations = selectRunFormattingCarrierRepresentations({
+    doc: tr.doc,
+    from,
+    to,
+  });
   for (const representation of representations) {
     const styleContext = paragraphRunStyleContextAt({
       doc: tr.doc,
@@ -1478,17 +1654,32 @@ const sameDefinedFormattingValue = (left: unknown, right: unknown): boolean => {
   if (left === right) {
     return true;
   }
-  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) {
+  if (
+    typeof left !== "object" ||
+    left === null ||
+    typeof right !== "object" ||
+    right === null
+  ) {
     return false;
   }
   if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    if (
+      !Array.isArray(left) ||
+      !Array.isArray(right) ||
+      left.length !== right.length
+    ) {
       return false;
     }
-    return left.every((value, index) => sameDefinedFormattingValue(value, right.at(index)));
+    return left.every((value, index) =>
+      sameDefinedFormattingValue(value, right.at(index)),
+    );
   }
-  const leftEntries = Object.entries(left).filter(([, value]) => value !== undefined);
-  const rightEntries = Object.entries(right).filter(([, value]) => value !== undefined);
+  const leftEntries = Object.entries(left).filter(
+    ([, value]) => value !== undefined,
+  );
+  const rightEntries = Object.entries(right).filter(
+    ([, value]) => value !== undefined,
+  );
   if (leftEntries.length !== rightEntries.length) {
     return false;
   }
@@ -1589,7 +1780,8 @@ const clearReplacementBackground = ({
   const hasBackground =
     replacementBackground === "clear" &&
     [schema.marks["highlight"], schema.marks["runShading"]].some(
-      (markType) => markType !== undefined && tr.doc.rangeHasMark(from, to, markType),
+      (markType) =>
+        markType !== undefined && tr.doc.rangeHasMark(from, to, markType),
     );
   if (!hasBackground) {
     return {
@@ -1698,11 +1890,16 @@ const applyTrackedInlineFormattingToRanges = ({
     if (includedProperties.length === 0) {
       continue;
     }
-    const existingMark = node.marks.find((mark) => mark.type === propertyChangeType);
+    const existingMark = node.marks.find(
+      (mark) => mark.type === propertyChangeType,
+    );
     // A run-property container has one revision slot. Appending would create
     // invalid OOXML; merging would make two independently resolvable edits
     // share one owner. Refuse the whole operation before mutating any segment.
-    if (existingMark && expectRunPropertyChangeMarkAttrs(existingMark).changes.length > 0) {
+    if (
+      existingMark &&
+      expectRunPropertyChangeMarkAttrs(existingMark).changes.length > 0
+    ) {
       hasPendingRunPropertyChange = true;
       continue;
     }
@@ -1741,7 +1938,8 @@ const applyTrackedInlineFormattingToRanges = ({
       nextRevisionId: revisionIdSeed,
     };
   }
-  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
+  const suggestionAttrs =
+    suggestionId === null ? {} : { provenance: "suggested", suggestionId };
   const revisionIds: number[] = [];
   for (const segment of segments) {
     const revisionId = revisionIdSeed + revisionIds.length;
@@ -1800,7 +1998,10 @@ const collectLiveBlocksByHash = (doc: PMNode) => {
     // block under the same key. Otherwise a block mid-edit gets a
     // different hash than the snapshot recorded and the resolver
     // skips it as "changed".
-    const cleanText = buildCleanBlockText(node, pos, { fieldResults: "text", noteReferences }).text;
+    const cleanText = buildCleanBlockText(node, pos, {
+      fieldResults: "text",
+      noteReferences,
+    }).text;
     const hash = hashFolioAIBlockText(normalizeFolioAIBlockText(cleanText));
     const bucket = byHash.get(hash) ?? [];
     bucket.push({ from: pos, to: pos + node.nodeSize, node });
@@ -1853,7 +2054,9 @@ type TableCellMerge = {
 
 type TableCellSplit = TableCellMerge;
 
-const getTableMutationPlanTarget = (item: ResolvedBase): TableMutationPlanTarget => {
+const getTableMutationPlanTarget = (
+  item: ResolvedBase,
+): TableMutationPlanTarget => {
   if (item.tableCellMerge) {
     return { type: "mergeCells", ...item.tableCellMerge };
   }
@@ -1882,7 +2085,10 @@ const getTableMutationPlanTarget = (item: ResolvedBase): TableMutationPlanTarget
  * at the same boundary is the later one in input order, so the new row goes
  * before it.
  */
-const mapTableRowInsertion = (tr: Transaction, insertion: TableRowInsertion): TableRowInsertion => {
+const mapTableRowInsertion = (
+  tr: Transaction,
+  insertion: TableRowInsertion,
+): TableRowInsertion => {
   const tableStart = tr.mapping.map(insertion.tableStart, -1);
   return {
     ...insertion,
@@ -1921,10 +2127,17 @@ const deletedColumnCellRanges = (
     seen.add(relative);
     const rectangle = map.findCell(relative);
     const cell = table.nodeAt(relative);
-    if (!cell || rectangle.left !== columnIndex || rectangle.right !== columnIndex + 1) {
+    if (
+      !cell ||
+      rectangle.left !== columnIndex ||
+      rectangle.right !== columnIndex + 1
+    ) {
       continue;
     }
-    ranges.push({ from: tableStart + relative, to: tableStart + relative + cell.nodeSize });
+    ranges.push({
+      from: tableStart + relative,
+      to: tableStart + relative + cell.nodeSize,
+    });
   }
   return ranges;
 };
@@ -1941,10 +2154,14 @@ const deletedRowAffectedRanges = ({
   deletion,
   row,
 }: DeletedRowAffectedRangesOptions): { from: number; to: number }[] => {
-  const ranges = [{ from: deletion.rowPosition, to: deletion.rowPosition + row.nodeSize }];
+  const ranges = [
+    { from: deletion.rowPosition, to: deletion.rowPosition + row.nodeSize },
+  ];
   const table = doc.nodeAt(deletion.tablePosition);
   if (table?.type.spec["tableRole"] !== "table") {
-    return panic("A resolved row deletion lost its table", { position: deletion.tablePosition });
+    return panic("A resolved row deletion lost its table", {
+      position: deletion.tablePosition,
+    });
   }
   const map = TableMap.get(table);
   const seen = new Set<number>();
@@ -1973,7 +2190,9 @@ const foldedBlankCellRanges = (
 ): { from: number; to: number }[] => {
   const table = doc.nodeAt(tablePosition);
   if (table?.type.spec["tableRole"] !== "table") {
-    return panic("A resolved cell merge lost its table", { position: tablePosition });
+    return panic("A resolved cell merge lost its table", {
+      position: tablePosition,
+    });
   }
   const map = TableMap.get(table);
   const tableStart = tablePosition + 1;
@@ -1981,13 +2200,22 @@ const foldedBlankCellRanges = (
   return map.cellsInRect(rectangle).flatMap((relative) => {
     const cell = relative === kept ? null : table.nodeAt(relative);
     return cell && isEmptyTableCell(cell)
-      ? [{ from: tableStart + relative, to: tableStart + relative + cell.nodeSize }]
+      ? [
+          {
+            from: tableStart + relative,
+            to: tableStart + relative + cell.nodeSize,
+          },
+        ]
       : [];
   });
 };
 
 /** What `item` claims of the document its batch resolved against; see `batch-claims.ts`. */
-const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions): BatchClaim => {
+const batchClaimOf = ({
+  item,
+  doc,
+  producesTrackedChanges,
+}: BatchClaimOptions): BatchClaim => {
   const block = item.blockFrom;
   switch (item.operation.type) {
     case "replaceInBlock":
@@ -2006,14 +2234,23 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
     case "setBlockParagraphProperties":
       return { type: "paragraphProperties", block };
     case "mergeBlockWithNext":
-      return { type: "merge", block, next: item.blockTo, joinsNow: !producesTrackedChanges };
+      return {
+        type: "merge",
+        block,
+        next: item.blockTo,
+        joinsNow: !producesTrackedChanges,
+      };
     case "deleteBlock": {
       // The same test the deletion itself makes: see its case in the applier.
       const at = doc.resolve(block);
-      const endsItsContainer = paragraphEndsItsContainer(at, item.blockNode.type.name);
+      const endsItsContainer = paragraphEndsItsContainer(
+        at,
+        item.blockNode.type.name,
+      );
       const keepsParagraph = producesTrackedChanges
         ? endsItsContainer
-        : endsItsContainer && at.nodeBefore?.type.name !== item.blockNode.type.name;
+        : endsItsContainer &&
+          at.nodeBefore?.type.name !== item.blockNode.type.name;
       return {
         type: "deleteBlock",
         block,
@@ -2034,7 +2271,12 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
             table: deleted.position,
             wholeTable: true,
             axis: "table",
-            ranges: [{ from: deleted.position, to: deleted.position + deleted.node.nodeSize }],
+            ranges: [
+              {
+                from: deleted.position,
+                to: deleted.position + deleted.node.nodeSize,
+              },
+            ],
           }
         : { type: "unclaimed" };
     }
@@ -2050,7 +2292,12 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
             axis: "row",
             ranges:
               table.childCount === 1
-                ? [{ from: deletion.tablePosition, to: deletion.tablePosition + table.nodeSize }]
+                ? [
+                    {
+                      from: deletion.tablePosition,
+                      to: deletion.tablePosition + table.nodeSize,
+                    },
+                  ]
                 : deletedRowAffectedRanges({ doc, deletion, row }),
           }
         : { type: "unclaimed" };
@@ -2082,7 +2329,10 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
         type: "tableStructure",
         table: target.tablePosition,
         axis,
-        folded: target.type === "mergeCells" ? foldedBlankCellRanges(doc, target) : [],
+        folded:
+          target.type === "mergeCells"
+            ? foldedBlankCellRanges(doc, target)
+            : [],
       };
     }
   }
@@ -2095,7 +2345,10 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
  * (object insertion order) means anchors with the same hash come
  * out in document order, which is what we want.
  */
-const ordinalAmongSameHash = (snapshot: FolioAIEditSnapshot, blockId: string): number => {
+const ordinalAmongSameHash = (
+  snapshot: FolioAIEditSnapshot,
+  blockId: string,
+): number => {
   const target = snapshot.anchors[blockId];
   if (!target) {
     return -1;
@@ -2134,12 +2387,22 @@ type BuildTableNodeOptions = {
  * consumer that reads only run-level revisions keeps the text of a rejected
  * insertion when the row marker stands alone.
  */
-const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNode | null => {
+const buildTableNode = ({
+  schema,
+  rows,
+  revision,
+}: BuildTableNodeOptions): PMNode | null => {
   const paragraphType = schema.nodes["paragraph"];
   const cellType = schema.nodes["tableCell"];
   const rowType = schema.nodes["tableRow"];
   const tableType = schema.nodes["table"];
-  if (!paragraphType || !cellType || !rowType || !tableType || rows.length === 0) {
+  if (
+    !paragraphType ||
+    !cellType ||
+    !rowType ||
+    !tableType ||
+    rows.length === 0
+  ) {
     return null;
   }
   const insertionType = schema.marks["insertion"];
@@ -2151,8 +2414,12 @@ const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNo
             author: revision.author,
             date: revision.date,
             ...(revision.initials != null && { initials: revision.initials }),
-            ...(revision.provenance != null && { provenance: revision.provenance }),
-            ...(revision.suggestionId != null && { suggestionId: revision.suggestionId }),
+            ...(revision.provenance != null && {
+              provenance: revision.provenance,
+            }),
+            ...(revision.suggestionId != null && {
+              suggestionId: revision.suggestionId,
+            }),
           }),
         ]
       : undefined;
@@ -2165,7 +2432,9 @@ const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNo
           splitCellParagraphTexts(text).map((line) =>
             paragraphType.create(
               null,
-              line.length > 0 ? cleanTextInlineNodes({ schema, text: line, marks }) : null,
+              line.length > 0
+                ? cleanTextInlineNodes({ schema, text: line, marks })
+                : null,
             ),
           ),
         ),
@@ -2231,7 +2500,9 @@ const buildSignatureTableNode = ({
       buildParagraph(SIGNATURE_LINE, { styleId: "SignatureRule" }),
     ];
     if (party.signatory && party.signatory.length > 0) {
-      cellContent.push(buildParagraph(party.signatory, { styleId: "SignatureField" }));
+      cellContent.push(
+        buildParagraph(party.signatory, { styleId: "SignatureField" }),
+      );
     }
     if (party.title && party.title.length > 0) {
       cellContent.push(
@@ -2266,7 +2537,9 @@ const LINE_BREAK_PATTERN = /\r\n|\r|\n/;
  * paragraphs out of non-empty input.
  */
 const splitInsertParagraphTexts = (text: string): string[] => {
-  const nonBlankLines = text.split(LINE_BREAK_PATTERN).filter((line) => line.trim().length > 0);
+  const nonBlankLines = text
+    .split(LINE_BREAK_PATTERN)
+    .filter((line) => line.trim().length > 0);
   return nonBlankLines.length > 0 ? nonBlankLines : [""];
 };
 
@@ -2354,7 +2627,10 @@ const isBatchableParagraphInsertion = (
   item: ResolvedOperation,
   mode: FolioAIEditApplyMode,
 ): boolean => {
-  if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
+  if (
+    item.operation.type !== "insertAfterBlock" &&
+    item.operation.type !== "insertBeforeBlock"
+  ) {
     return false;
   }
   // A comment id is committed only after its operation has produced a real
@@ -2364,8 +2640,13 @@ const isBatchableParagraphInsertion = (
     return false;
   }
   const insertTexts = item.insertTexts ?? [""];
-  const isEmptyInsert = insertTexts.length === 1 && insertTexts[0]?.length === 0;
-  return !(mode === "tracked-changes" && item.operation.pageBreakBefore === true && isEmptyInsert);
+  const isEmptyInsert =
+    insertTexts.length === 1 && insertTexts[0]?.length === 0;
+  return !(
+    mode === "tracked-changes" &&
+    item.operation.pageBreakBefore === true &&
+    isEmptyInsert
+  );
 };
 
 type RotateAddedFinalBreaksOptions = {
@@ -2406,7 +2687,10 @@ type InsertBlocksInsideCommentsOptions = {
 const commentsAcrossTable = (doc: PMNode, tablePosition: number): Mark[] => {
   const table = doc.nodeAt(tablePosition);
   if (!table) return [];
-  const atEnd = commentsAcrossBlockBoundary(doc, tablePosition + table.nodeSize);
+  const atEnd = commentsAcrossBlockBoundary(
+    doc,
+    tablePosition + table.nodeSize,
+  );
   return commentsAcrossBlockBoundary(doc, tablePosition).filter((comment) =>
     comment.isInSet(atEnd),
   );
@@ -2444,7 +2728,10 @@ const insertBlocksInsideComments = ({
 
 /** A paragraph mark that is a pending insertion (not a relocation's end). */
 const isInsertedPPrMark = (value: unknown): boolean =>
-  typeof value === "object" && value !== null && "kind" in value && value.kind === "ins";
+  typeof value === "object" &&
+  value !== null &&
+  "kind" in value &&
+  value.kind === "ins";
 
 const isSuggestedParagraphInsert = (paragraph: PMNode): boolean =>
   typeof paragraph.attrs["_suggestedInsert"] === "object" &&
@@ -2469,7 +2756,12 @@ const hasRevisionMarker = (value: unknown): boolean =>
 
 const isDeletedCell = (cell: PMNode): boolean => {
   const marker: unknown = cell.attrs["cellMarker"];
-  return typeof marker === "object" && marker !== null && "kind" in marker && marker.kind === "del";
+  return (
+    typeof marker === "object" &&
+    marker !== null &&
+    "kind" in marker &&
+    marker.kind === "del"
+  );
 };
 
 /**
@@ -2500,7 +2792,10 @@ const isPendingDeletion = (
     if (name === "tableRow" && hasRevisionMarker(ancestor.attrs["trDel"])) {
       return true;
     }
-    if ((name === "tableCell" || name === "tableHeader") && isDeletedCell(ancestor)) {
+    if (
+      (name === "tableCell" || name === "tableHeader") &&
+      isDeletedCell(ancestor)
+    ) {
       return true;
     }
   }
@@ -2523,7 +2818,8 @@ const holdsOnlyInsertedContent = (
     whollyInserted = node.marks.some(
       (mark) =>
         mark.type.name === "insertion" &&
-        (revisions === "including-moves" || mark.attrs["moveKind"] !== "moveTo"),
+        (revisions === "including-moves" ||
+          mark.attrs["moveKind"] !== "moveTo"),
     );
     return false;
   });
@@ -2552,12 +2848,17 @@ const pendingParagraphRetraction = (
   const at = doc.resolve(position);
   const before = at.nodeBefore;
   const endsItsContainer = paragraphEndsItsContainer(at, paragraph.type.name);
-  if (at.parent.childCount < 2 || (endsItsContainer && before?.type.name !== paragraph.type.name)) {
+  if (
+    at.parent.childCount < 2 ||
+    (endsItsContainer && before?.type.name !== paragraph.type.name)
+  ) {
     // The container must keep a paragraph, and end with one.
     return null;
   }
   let followingIndex = at.index() + 1;
-  while (at.parent.maybeChild(followingIndex)?.type.name === "blockBookmarkBoundary") {
+  while (
+    at.parent.maybeChild(followingIndex)?.type.name === "blockBookmarkBoundary"
+  ) {
     followingIndex++;
   }
   const following = at.parent.maybeChild(followingIndex);
@@ -2571,7 +2872,10 @@ const pendingParagraphRetraction = (
     return { clearBreakAt: null };
   }
   if (!holdsOnlyInsertedContent(paragraph, "ordinary")) return null;
-  if (isInsertedPPrMark(paragraph.attrs["pPrMark"]) || isSuggestedParagraphInsert(paragraph)) {
+  if (
+    isInsertedPPrMark(paragraph.attrs["pPrMark"]) ||
+    isSuggestedParagraphInsert(paragraph)
+  ) {
     return { clearBreakAt: null };
   }
   if (endsItsContainer && before && paragraph.attrs["pPrMark"] == null) {
@@ -2583,7 +2887,12 @@ const pendingParagraphRetraction = (
 };
 
 const addedBreakRevisionId = (value: unknown): number | null => {
-  if (typeof value !== "object" || value === null || !("kind" in value) || !("info" in value)) {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("kind" in value) ||
+    !("info" in value)
+  ) {
     return null;
   }
   if (value.kind !== "ins" && value.kind !== "moveTo") {
@@ -2598,7 +2907,12 @@ const addedBreakRevisionId = (value: unknown): number | null => {
 
 /** The revision id of a paragraph mark that says its break was added or deleted. */
 const addedOrDeletedBreakRevisionId = (value: unknown): number | null => {
-  if (typeof value !== "object" || value === null || !("kind" in value) || !("info" in value)) {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("kind" in value) ||
+    !("info" in value)
+  ) {
     return null;
   }
   if (value.kind !== "del") {
@@ -2631,26 +2945,37 @@ const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
  * Whether everything after `position` in its container is paragraphs pending
  * deletion: a join there, once accepted, has no words after it.
  */
-const followedOnlyByDeletedParagraphs = (doc: PMNode, position: number): boolean => {
+const followedOnlyByDeletedParagraphs = (
+  doc: PMNode,
+  position: number,
+): boolean => {
   const at = doc.resolve(position);
   let deletes = false;
   for (let index = at.index(); index < at.parent.childCount; index++) {
     const node = at.parent.child(index);
-    if (node.type.name !== "paragraph" || !holdsOnlyDeletedContent(node)) return false;
-    deletes ||= node.content.size > 0 || isPlainDeletedPPrMark(node.attrs["pPrMark"]);
+    if (node.type.name !== "paragraph" || !holdsOnlyDeletedContent(node))
+      return false;
+    deletes ||=
+      node.content.size > 0 || isPlainDeletedPPrMark(node.attrs["pPrMark"]);
   }
   return deletes;
 };
 
 /** A paragraph mark that is a plain pending deletion (not a relocation's source). */
 const isPlainDeletedPPrMark = (value: unknown): boolean =>
-  typeof value === "object" && value !== null && "kind" in value && value.kind === "del";
+  typeof value === "object" &&
+  value !== null &&
+  "kind" in value &&
+  value.kind === "del";
 
 /** An emptied paragraph still carries deleted content, rather than being an original blank. */
 const hasDeletedContent = (paragraph: PMNode): boolean => {
   let found = false;
   paragraph.descendants((node) => {
-    if (node.isInline && node.marks.some((mark) => mark.type.name === "deletion")) {
+    if (
+      node.isInline &&
+      node.marks.some((mark) => mark.type.name === "deletion")
+    ) {
       found = true;
       return false;
     }
@@ -2660,15 +2985,23 @@ const hasDeletedContent = (paragraph: PMNode): boolean => {
 };
 
 /** The final paragraph reached by a chain of wholly deleted paragraphs. */
-const deletedFinalParagraphAfter = (at: ResolvedPos, paragraphTypeName: string): number | null => {
+const deletedFinalParagraphAfter = (
+  at: ResolvedPos,
+  paragraphTypeName: string,
+): number | null => {
   let position = at.pos;
   for (let index = at.index(); index < at.parent.childCount; index++) {
     const paragraph = at.parent.child(index);
-    if (paragraph.type.name !== paragraphTypeName || !holdsOnlyDeletedContent(paragraph)) {
+    if (
+      paragraph.type.name !== paragraphTypeName ||
+      !holdsOnlyDeletedContent(paragraph)
+    ) {
       return null;
     }
     if (index === at.parent.childCount - 1) {
-      return paragraph.attrs["pPrMark"] == null && hasDeletedContent(paragraph) ? position : null;
+      return paragraph.attrs["pPrMark"] == null && hasDeletedContent(paragraph)
+        ? position
+        : null;
     }
     if (!isPlainDeletedPPrMark(paragraph.attrs["pPrMark"])) {
       return null;
@@ -2703,7 +3036,8 @@ const finalBreakCarrierBefore = (
         const row = table.child(index);
         if (row.type.spec["tableRole"] !== "row") return false;
         const { trIns, trDel } = expectTableRowAttrs(row);
-        if (!trIns || trDel || !batchRevisionIds.has(trIns.revisionId)) return false;
+        if (!trIns || trDel || !batchRevisionIds.has(trIns.revisionId))
+          return false;
         revisionId ??= trIns.revisionId;
         if (trIns.revisionId !== revisionId) return false;
       }
@@ -2728,13 +3062,17 @@ const finalBreakCarrierBefore = (
     if (revisionId !== null && batchRevisionIds.has(revisionId)) {
       continue;
     }
-    const deletedBreakId = isPlainDeletedPPrMark(mark) ? addedOrDeletedBreakRevisionId(mark) : null;
+    const deletedBreakId = isPlainDeletedPPrMark(mark)
+      ? addedOrDeletedBreakRevisionId(mark)
+      : null;
     const cancels =
       deletedBreakId !== null &&
       batchRevisionIds.has(deletedBreakId) &&
       holdsOnlyDeletedContent(sibling) &&
       at.parent.maybeChild(index + 1)?.type.name === paragraphTypeName;
-    return cancels ? { position, node: sibling, cancelsDeletedBreak: true } : null;
+    return cancels
+      ? { position, node: sibling, cancelsDeletedBreak: true }
+      : null;
   }
   return null;
 };
@@ -2745,7 +3083,11 @@ type BatchParagraphPosition = { position: number; mappedFrom: number };
 /** A container-ending paragraph a tracked `deleteBlock` emptied, as it recorded it. */
 type DeletedFinalParagraph = BatchParagraphPosition & {
   operationId: string;
-  revisionExtras: { initials?: string; provenance?: "suggested"; suggestionId?: string };
+  revisionExtras: {
+    initials?: string;
+    provenance?: "suggested";
+    suggestionId?: string;
+  };
 };
 
 type RetireFinalParagraphsOptions = {
@@ -2791,7 +3133,11 @@ const finalParagraphPredecessor = (doc: PMNode, at: number) => {
       if (allRowsDeleted) continue;
     }
     if (node.type !== emptied.type) return null;
-    if (isPlainDeletedPPrMark(node.attrs["pPrMark"]) && holdsOnlyDeletedContent(node)) continue;
+    if (
+      isPlainDeletedPPrMark(node.attrs["pPrMark"]) &&
+      holdsOnlyDeletedContent(node)
+    )
+      continue;
     return { node, position };
   }
   return null;
@@ -2822,7 +3168,9 @@ const crossesBatchDeletion = ({
     const node = $to.parent.child(index);
     position -= node.nodeSize;
     const mark: unknown = node.attrs["pPrMark"];
-    const revisionId = isPlainDeletedPPrMark(mark) ? addedOrDeletedBreakRevisionId(mark) : null;
+    const revisionId = isPlainDeletedPPrMark(mark)
+      ? addedOrDeletedBreakRevisionId(mark)
+      : null;
     if (revisionId !== null && batchRevisionIds.has(revisionId)) return true;
   }
   return false;
@@ -2830,14 +3178,19 @@ const crossesBatchDeletion = ({
 
 type CanRetractFinalBreakOptions = { predecessor: PMNode; target: PMNode };
 
-const canRetractFinalBreak = ({ predecessor, target }: CanRetractFinalBreakOptions) => {
+const canRetractFinalBreak = ({
+  predecessor,
+  target,
+}: CanRetractFinalBreakOptions) => {
   if (target.type !== predecessor.type) return false;
   const formattingChanges =
     JSON.stringify(paragraphPropertiesBeforePendingChanges(target)) !==
     JSON.stringify(paragraphPropertiesSnapshot(predecessor));
   return !(
     formattingChanges &&
-    hasSerializableParagraphPropertyChange(expectParagraphAttrs(predecessor)._propertyChanges)
+    hasSerializableParagraphPropertyChange(
+      expectParagraphAttrs(predecessor)._propertyChanges,
+    )
   );
 };
 
@@ -2940,13 +3293,18 @@ const hasDeferredParagraphPropertyWrite = ({
     )
       continue;
     const writeTarget =
-      mark == null ? target : tr.doc.nodeAt(predecessor.position + predecessor.node.nodeSize);
+      mark == null
+        ? target
+        : tr.doc.nodeAt(predecessor.position + predecessor.node.nodeSize);
     if (!writeTarget || !targets.includes(writeTarget)) continue;
     if (
       mark != null &&
       !(
         addedBreakRevisionId(mark) !== null &&
-        canRetractFinalBreak({ predecessor: predecessor.node, target: writeTarget })
+        canRetractFinalBreak({
+          predecessor: predecessor.node,
+          target: writeTarget,
+        })
       )
     )
       continue;
@@ -2961,10 +3319,15 @@ const hasDeferredParagraphPropertyWrite = ({
             styleResolver,
             numbering,
           })
-        : { source: predecessor.node, keep: propertiesSetInBatch(writeTarget, batchRevisionIds) };
+        : {
+            source: predecessor.node,
+            keep: propertiesSetInBatch(writeTarget, batchRevisionIds),
+          };
     if (
       JSON.stringify(paragraphPropertiesSnapshot(writeTarget)) !==
-      JSON.stringify(carriedParagraphProperties({ ...transfer, target: writeTarget }))
+      JSON.stringify(
+        carriedParagraphProperties({ ...transfer, target: writeTarget }),
+      )
     )
       return true;
   }
@@ -2983,20 +3346,32 @@ const paragraphPropertyRevisionTargets = ({
   tr,
   deletedFinalParagraphs,
 }: ParagraphPropertyRevisionTargetsOptions): PMNode[] => {
-  const position = tr.mapping.map(item.blockFrom, item.operation.type === "replaceBlock" ? -1 : 1);
+  const position = tr.mapping.map(
+    item.blockFrom,
+    item.operation.type === "replaceBlock" ? -1 : 1,
+  );
   const source = tr.doc.nodeAt(position) ?? item.blockNode;
   const targets = source.type.name === "paragraph" ? [source] : [];
   if (item.operation.type !== "mergeBlockWithNext") return targets;
 
-  const removedBreakPositions = pendingRemovedFinalBreakPositions(tr, deletedFinalParagraphs);
+  const removedBreakPositions = pendingRemovedFinalBreakPositions(
+    tr,
+    deletedFinalParagraphs,
+  );
   // A preceding inserted break will retract into the emptied final carrier
   // before this operation when executed alone. Include that eventual writer
   // in preflight without changing the established deferred mutation order.
   for (const deletion of deletedFinalParagraphs) {
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
     const predecessor = finalParagraphPredecessor(tr.doc, at);
-    if (!predecessor || addedBreakRevisionId(predecessor.node.attrs["pPrMark"]) === null) continue;
-    const target = tr.doc.nodeAt(predecessor.position + predecessor.node.nodeSize);
+    if (
+      !predecessor ||
+      addedBreakRevisionId(predecessor.node.attrs["pPrMark"]) === null
+    )
+      continue;
+    const target = tr.doc.nodeAt(
+      predecessor.position + predecessor.node.nodeSize,
+    );
     if (!target) continue;
     if (canRetractFinalBreak({ predecessor: predecessor.node, target }))
       removedBreakPositions.add(predecessor.position);
@@ -3006,7 +3381,8 @@ const paragraphPropertyRevisionTargets = ({
     paragraphPos: position,
     removedBreakPositions,
   });
-  const survivor = survivorPosition === null ? null : tr.doc.nodeAt(survivorPosition);
+  const survivor =
+    survivorPosition === null ? null : tr.doc.nodeAt(survivorPosition);
   if (survivor?.type.name === "paragraph") {
     targets.push(survivor);
   }
@@ -3084,10 +3460,12 @@ const withRetiredFinalParagraphs = ({
       // Retirement completes the batch after admissible predecessor edits.
       // Carry their current properties before deleting the owning mark so
       // accepting the batch preserves the pending document's presentation.
-      const mergedProperties = mergedPropertyTargets.some(({ position: target, mappedFrom }) => {
-        const mapped = tr.mapping.slice(mappedFrom).mapResult(target);
-        return !mapped.deleted && mapped.pos === at;
-      });
+      const mergedProperties = mergedPropertyTargets.some(
+        ({ position: target, mappedFrom }) => {
+          const mapped = tr.mapping.slice(mappedFrom).mapResult(target);
+          return !mapped.deleted && mapped.pos === at;
+        },
+      );
       // The final deletion precedes the merge in execution order. A merge
       // has already given this carrier its later properties, even if that
       // transfer changed no values; do not replay the earlier transfer over it.
@@ -3115,7 +3493,10 @@ const withRetiredFinalParagraphs = ({
     }
     if (addedBreakRevisionId(mark) !== null) {
       const following = tr.doc.nodeAt(position + previous.nodeSize);
-      if (!following || !canRetractFinalBreak({ predecessor: previous, target: following })) {
+      if (
+        !following ||
+        !canRetractFinalBreak({ predecessor: previous, target: following })
+      ) {
         // One w:pPrChange per paragraph: an occupied predecessor keeps the emptied target.
         continue;
       }
@@ -3154,7 +3535,12 @@ const withRetiredFinalParagraphs = ({
     }
     // A surviving deleted break stays as it is.
   }
-  return { nextRevisionId, resolvedOperationIds, addedRevisions, retractedRevisionIds };
+  return {
+    nextRevisionId,
+    resolvedOperationIds,
+    addedRevisions,
+    retractedRevisionIds,
+  };
 };
 
 /**
@@ -3200,7 +3586,8 @@ const withRotatedAddedFinalBreaks = ({
   numbering,
 }: RotateAddedFinalBreaksOptions): RotatedAddedFinalBreaks => {
   let nextRevisionId = revisionSeed;
-  const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] = [];
+  const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] =
+    [];
   // A later insertion may land between a deleted break and the paragraph it
   // would join into. Move the old deletion to the new boundary so resolving
   // either revision keeps the inserted paragraph separate.
@@ -3209,26 +3596,41 @@ const withRotatedAddedFinalBreaks = ({
     inserted: number;
     deletedMark: unknown;
     precedingMark: unknown;
+    precedingFormatting: NonNullable<
+      ParagraphPropertyChangeAttrs["previousFormatting"]
+    >;
   }[] = [];
-  const collectSupersededDeletedBreaks = (parent: PMNode, contentStart: number): void => {
+  const collectSupersededDeletedBreaks = (
+    parent: PMNode,
+    contentStart: number,
+  ): void => {
     let previous: { node: PMNode; position: number } | null = null;
+    let carriedDeletedMark: unknown = null;
+    let carriedDeletedFormatting: NonNullable<
+      ParagraphPropertyChangeAttrs["previousFormatting"]
+    > | null = null;
     parent.forEach((node, offset) => {
       const position = contentStart + offset;
       if (node.type.name !== "paragraph") {
         previous = null;
+        carriedDeletedMark = null;
+        carriedDeletedFormatting = null;
         if (!node.isTextblock && node.childCount > 0) {
           collectSupersededDeletedBreaks(node, position + 1);
         }
         return;
       }
       if (previous) {
-        const deletedMark: unknown = previous.node.attrs["pPrMark"];
+        const deletedMark: unknown =
+          carriedDeletedMark ?? previous.node.attrs["pPrMark"];
         const insertedMark: unknown = node.attrs["pPrMark"];
         const insertedRevisionId = addedBreakRevisionId(insertedMark);
         const trackedInsertion =
-          insertedRevisionId !== null && batchRevisionIds.has(insertedRevisionId);
+          insertedRevisionId !== null &&
+          batchRevisionIds.has(insertedRevisionId);
         const suggestedInsertion = isSuggestedParagraphInsert(node);
-        const deletedBreakRevisionId = addedOrDeletedBreakRevisionId(deletedMark);
+        const deletedBreakRevisionId =
+          addedOrDeletedBreakRevisionId(deletedMark);
         if (
           isPlainDeletedPPrMark(deletedMark) &&
           deletedBreakRevisionId !== null &&
@@ -3242,35 +3644,55 @@ const withRotatedAddedFinalBreaks = ({
             inserted: position,
             deletedMark,
             precedingMark: trackedInsertion ? insertedMark : null,
+            precedingFormatting:
+              carriedDeletedFormatting ??
+              paragraphPropertiesOnReject(previous.node),
           });
+          carriedDeletedMark = deletedMark;
+          carriedDeletedFormatting ??= paragraphPropertiesOnReject(
+            previous.node,
+          );
+        } else {
+          carriedDeletedMark = null;
+          carriedDeletedFormatting = null;
         }
       }
       previous = { node, position };
     });
   };
   collectSupersededDeletedBreaks(tr.doc, 0);
-  for (const { preceding, inserted, deletedMark, precedingMark } of supersededDeletedBreaks) {
+  for (const {
+    preceding,
+    inserted,
+    deletedMark,
+    precedingMark,
+    precedingFormatting,
+  } of supersededDeletedBreaks) {
     const insertionRevisionId = addedBreakRevisionId(precedingMark);
     if (insertionRevisionId !== null) {
       const previous = tr.doc.nodeAt(preceding);
       const current = tr.doc.nodeAt(inserted);
-      if (!previous || !current) panic("A shifted paragraph break lost its carrier");
-      const previousFormatting = paragraphPropertiesOnReject(previous);
+      if (!previous || !current)
+        panic("A shifted paragraph break lost its carrier");
       const existing = expectParagraphAttrs(current)._propertyChanges;
       // Rejecting the shifted insertion joins the preceding words into this
       // paragraph, so its surviving mark must restore the preceding pPr too.
       if (
-        !hasSerializableParagraphPropertyChange(existing) &&
-        JSON.stringify(previousFormatting) !== JSON.stringify(paragraphPropertiesSnapshot(current))
+        hasSerializableParagraphPropertyChange(existing) ||
+        JSON.stringify(precedingFormatting) !==
+          JSON.stringify(paragraphPropertiesSnapshot(current))
       ) {
-        tr.setNodeAttribute(inserted, "_propertyChanges", [
-          ...(Array.isArray(existing) ? existing : []),
-          {
-            type: "paragraphPropertyChange",
-            info: { id: insertionRevisionId, author, date, ...(initials ? { initials } : {}) },
-            previousFormatting,
-          } satisfies ParagraphPropertyChangeAttrs,
-        ]);
+        const inverse = {
+          type: "paragraphPropertyChange",
+          info: {
+            id: insertionRevisionId,
+            author,
+            date,
+            ...(initials ? { initials } : {}),
+          },
+          previousFormatting: precedingFormatting,
+        } satisfies ParagraphPropertyChangeAttrs;
+        tr.setNodeAttribute(inserted, "_propertyChanges", [inverse]);
       }
     }
     tr.setNodeAttribute(preceding, "pPrMark", precedingMark);
@@ -3280,7 +3702,10 @@ const withRotatedAddedFinalBreaks = ({
     // on accept. Its mark must carry the inserted paragraph's properties too;
     // otherwise the final carrier still renders like the old last survivor.
     const source = tr.doc.nodeAt(inserted);
-    const survivor = paragraphLeftAfter({ doc: tr.doc, paragraphPos: inserted });
+    const survivor = paragraphLeftAfter({
+      doc: tr.doc,
+      paragraphPos: inserted,
+    });
     if (!source || survivor === null) continue;
     const revisionId = nextRevisionId;
     const carried = carryParagraphProperties({
@@ -3298,11 +3723,15 @@ const withRotatedAddedFinalBreaks = ({
     });
     if (carried.tracked) {
       nextRevisionId++;
-      synthesizedRevisions.push({ ownerRevisionId: insertionRevisionId, revisionId });
+      synthesizedRevisions.push({
+        ownerRevisionId: insertionRevisionId,
+        revisionId,
+      });
     }
   }
 
-  const paragraphTypeName = tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
+  const paragraphTypeName =
+    tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
   const rotations = finalParagraphsOf(tr.doc, paragraphTypeName)
     .flatMap(({ node, position }) => {
       const mark: unknown = node.attrs["pPrMark"];
@@ -3318,9 +3747,17 @@ const withRotatedAddedFinalBreaks = ({
   let next = tr;
   const retractedRevisionIds: number[] = [];
   // Attribute writes do not move anything, so the positions stay valid.
-  for (const { position: finalPosition, node: final, mark: finalMark } of rotations) {
+  for (const {
+    position: finalPosition,
+    node: final,
+    mark: finalMark,
+  } of rotations) {
     const resolved = next.doc.resolve(finalPosition);
-    const carrier = finalBreakCarrierBefore(resolved, final.type.name, batchRevisionIds);
+    const carrier = finalBreakCarrierBefore(
+      resolved,
+      final.type.name,
+      batchRevisionIds,
+    );
     if (!carrier) {
       // A deleted boundary or an existing table can block rotation. Keep the
       // insertion's own mark: rejecting it removes the emptied final paragraph,
@@ -3342,7 +3779,10 @@ const withRotatedAddedFinalBreaks = ({
       }
     }
     if (path.at(-1)?.position !== carrier.position) {
-      panic("A final-mark rotation lost its carrier", { finalPosition, carrier: carrier.position });
+      panic("A final-mark rotation lost its carrier", {
+        finalPosition,
+        carrier: carrier.position,
+      });
     }
     if (
       path.slice(0, -1).some(({ node }) => {
@@ -3357,7 +3797,9 @@ const withRotatedAddedFinalBreaks = ({
 
     // Every boundary in the chain resolves back to this one pre-batch mark;
     // local predecessor snapshots let right-to-left rejection overwrite it.
-    const previousFormatting = paragraphPropertiesBeforePendingChanges(carrier.node);
+    const previousFormatting = paragraphPropertiesBeforePendingChanges(
+      carrier.node,
+    );
     next = next.setNodeAttribute(finalPosition, "pPrMark", null);
     let carriedMark: unknown = finalMark;
     for (let index = 1; index < path.length; index++) {
@@ -3368,12 +3810,16 @@ const withRotatedAddedFinalBreaks = ({
       }
       const ownerRevisionId = addedBreakRevisionId(carriedMark);
       if (ownerRevisionId === null || !batchRevisionIds.has(ownerRevisionId)) {
-        panic("A final-mark rotation crossed a break outside its operation batch", {
-          ownerRevisionId,
-        });
+        panic(
+          "A final-mark rotation crossed a break outside its operation batch",
+          {
+            ownerRevisionId,
+          },
+        );
       }
       const displacedMark: unknown = previous.node.attrs["pPrMark"];
-      const cancels = carrier.cancelsDeletedBreak && previous.position === carrier.position;
+      const cancels =
+        carrier.cancelsDeletedBreak && previous.position === carrier.position;
       if (!cancels) {
         next = next.setNodeAttribute(previous.position, "pPrMark", carriedMark);
       }
@@ -3381,10 +3827,14 @@ const withRotatedAddedFinalBreaks = ({
       const currentFormatting = paragraphPropertiesSnapshot(current.node);
       // Both snapshots are built by the same fixed walk over the in-scope keys,
       // so comparing them serialized compares them key for key.
-      if (JSON.stringify(previousFormatting) !== JSON.stringify(currentFormatting)) {
+      if (
+        JSON.stringify(previousFormatting) !== JSON.stringify(currentFormatting)
+      ) {
         const liveCurrent = next.doc.nodeAt(current.position);
         if (!liveCurrent || liveCurrent.type.name !== final.type.name) {
-          panic("A final-mark rotation lost its paragraph", { position: current.position });
+          panic("A final-mark rotation lost its paragraph", {
+            position: current.position,
+          });
         }
         const existing = expectParagraphAttrs(liveCurrent)._propertyChanges;
         if (hasSerializableParagraphPropertyChange(existing)) {
@@ -3399,7 +3849,12 @@ const withRotatedAddedFinalBreaks = ({
             ...(Array.isArray(existing) ? existing : []),
             {
               type: "paragraphPropertyChange",
-              info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
+              info: {
+                id: revisionId,
+                author,
+                date,
+                ...(initials ? { initials } : {}),
+              },
               previousFormatting,
             } satisfies ParagraphPropertyChangeAttrs,
           ],
@@ -3435,7 +3890,12 @@ const withRotatedAddedFinalBreaks = ({
       carriedMark = displacedMark;
     }
   }
-  return { transaction: next, nextRevisionId, synthesizedRevisions, retractedRevisionIds };
+  return {
+    transaction: next,
+    nextRevisionId,
+    synthesizedRevisions,
+    retractedRevisionIds,
+  };
 };
 
 /**
@@ -3466,7 +3926,10 @@ const restyledListAttrs = ({
     stated,
     readParagraphNumberingAttr(attrs["numPrFromStyle"]),
   );
-  const fromStyle = styleNumbering === undefined ? null : paragraphNumberingAttr(styleNumbering);
+  const fromStyle =
+    styleNumbering === undefined
+      ? null
+      : paragraphNumberingAttr(styleNumbering);
   const kept = statedByOldStyle ? null : stated;
   // Out of every list, the new style's included.
   const numPr = removesNumbering ? removedNumberingAttr(fromStyle) : kept;
@@ -3476,7 +3939,10 @@ const restyledListAttrs = ({
   return {
     ...CLEARED_LIST_RENDERING_ATTRS,
     ...(effective?.kind === "reference" &&
-      listAttrsFromNumbering({ numId: effective.numId, ilvl: effective.ilvl ?? 0 }, numbering)),
+      listAttrsFromNumbering(
+        { numId: effective.numId, ilvl: effective.ilvl ?? 0 },
+        numbering,
+      )),
     // As stated: an absent `w:ilvl` stays absent.
     numPr,
     numPrFromStyle: fromStyle,
@@ -3498,16 +3964,24 @@ const buildInsertedParagraphs = ({
   numbering,
   styleResolver,
 }: BuildInsertedParagraphsOptions): BuiltInsertedParagraphs => {
+  assertNewListsAllocated(item.operation);
   const operation = item.operation;
-  if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") {
-    panic("Only paragraph insertions can build inserted paragraphs", { type: operation.type });
+  if (
+    operation.type !== "insertAfterBlock" &&
+    operation.type !== "insertBeforeBlock"
+  ) {
+    panic("Only paragraph insertions can build inserted paragraphs", {
+      type: operation.type,
+    });
   }
   const insertionType = schema.marks["insertion"];
   const producesTrackedChanges = mode !== "direct";
   const isSuggested = mode === "suggested";
   const trackedRevisionExtras = {
     ...(initials ? { initials } : {}),
-    ...(suggestionId !== null ? { provenance: "suggested" as const, suggestionId } : {}),
+    ...(suggestionId !== null
+      ? { provenance: "suggested" as const, suggestionId }
+      : {}),
   };
   // By default only the first paragraph split from one operation carries the
   // operation's formatting; later lines are new body paragraphs, not anchor
@@ -3550,12 +4024,16 @@ const buildInsertedParagraphs = ({
     if (commentMark) {
       marks.push(commentMark);
     }
-    const hardPageBreak = isFirstParagraph ? operation.hardPageBreak : undefined;
+    const hardPageBreak = isFirstParagraph
+      ? operation.hardPageBreak
+      : undefined;
     let content: PMNode[] | null = null;
     if (hardPageBreak !== undefined) {
       const pageBreakRun = schema.nodes["pageBreakRun"];
       if (pageBreakRun === undefined) {
-        panic("The schema has no page-break run node", { operationId: operation.id });
+        panic("The schema has no page-break run node", {
+          operationId: operation.id,
+        });
       }
       content = [pageBreakRun.create(hardPageBreak, null, marks)];
     } else if (text.length > 0) {
@@ -3563,7 +4041,9 @@ const buildInsertedParagraphs = ({
         ? cleanTextInlineNodes({ schema, text, marks })
         : buildEmphasisInlineContent(schema, text, marks);
     }
-    const attrs: Record<string, unknown> = formatsParagraph ? { ...baseAttrs } : {};
+    const attrs: Record<string, unknown> = formatsParagraph
+      ? { ...baseAttrs }
+      : {};
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
     }
@@ -3572,9 +4052,12 @@ const buildInsertedParagraphs = ({
         attrs,
         statedNumberingAttrPatch({
           attrs: mergeParagraphAttrs(schema.node("paragraph"), {
-            ...(operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode)),
+            ...(operation.inheritFormatting === false
+              ? {}
+              : expectParagraphAttrs(item.blockNode)),
             ...attrs,
-            _styleResolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
+            _styleResolvedFormatting:
+              styleResolvedParagraphFormatting(formattingFromStyle),
           }),
           stated: operation.numbering,
           fromStyle:
@@ -3587,11 +4070,13 @@ const buildInsertedParagraphs = ({
     }
     if (formatsParagraph && operation.styleId !== undefined) {
       attrs["styleId"] = operation.styleId;
-      attrs["_resolvedFormatting"] = styleResolvedParagraphFormatting(formattingFromStyle);
+      attrs["_resolvedFormatting"] =
+        styleResolvedParagraphFormatting(formattingFromStyle);
       attrs["defaultTextFormatting"] =
         resolveParagraphBodyRunFormatting({
           styleId: operation.styleId ?? undefined,
-          tableRunFormatting: expectParagraphAttrs(item.blockNode)._tableRunFormatting,
+          tableRunFormatting: expectParagraphAttrs(item.blockNode)
+            ._tableRunFormatting,
           styleResolver,
         }).defaultFormatting ?? null;
       if (operation.inheritFormatting !== false && operation.styleId !== null) {
@@ -3608,12 +4093,15 @@ const buildInsertedParagraphs = ({
         // included; only a level the anchor states itself carries over. The
         // save writes no other, so a heading style's level would make the
         // paragraph a heading only until the document is reopened.
-        const original = attrs["_originalFormatting"] as ParagraphFormatting | null | undefined;
-        attrs["outlineLevel"] = original?.outlineLevel ?? formattingFromStyle?.outlineLevel ?? null;
+        const original = attrs["_originalFormatting"] as
+          ParagraphFormatting | null | undefined;
+        attrs["outlineLevel"] =
+          original?.outlineLevel ?? formattingFromStyle?.outlineLevel ?? null;
       }
     }
     if (formatsParagraph && operation.outlineLevel !== undefined) {
-      attrs["outlineLevel"] = operation.outlineLevel ?? formattingFromStyle?.outlineLevel ?? null;
+      attrs["outlineLevel"] =
+        operation.outlineLevel ?? formattingFromStyle?.outlineLevel ?? null;
     }
     if (
       formatsParagraph &&
@@ -3640,13 +4128,16 @@ const buildInsertedParagraphs = ({
           ? inheritedDirectAlignment
           : (operation.alignment ?? undefined);
       const directSpacing =
-        operation.spacing === undefined ? inheritedDirectSpacing : (operation.spacing ?? undefined);
+        operation.spacing === undefined
+          ? inheritedDirectSpacing
+          : (operation.spacing ?? undefined);
       const directIndentation =
         operation.indentation === undefined
           ? inheritedDirectIndentation
           : (operation.indentation ?? undefined);
       attrs["alignmentFromStyle"] = formattingFromStyle?.alignment;
-      attrs["alignment"] = directAlignment ?? formattingFromStyle?.alignment ?? null;
+      attrs["alignment"] =
+        directAlignment ?? formattingFromStyle?.alignment ?? null;
       const sourceFormatting = attrs["_originalFormatting"];
       let originalFormatting: ParagraphFormatting | undefined =
         typeof sourceFormatting === "object" && sourceFormatting !== null
@@ -3668,7 +4159,10 @@ const buildInsertedParagraphs = ({
           originalFormatting.outlineLevel = operation.outlineLevel;
         }
       }
-      if (operation.alignment !== undefined || inheritedDirectAlignment !== undefined) {
+      if (
+        operation.alignment !== undefined ||
+        inheritedDirectAlignment !== undefined
+      ) {
         originalFormatting ??= {};
         if (directAlignment === undefined) {
           Reflect.deleteProperty(originalFormatting, "alignment");
@@ -3677,9 +4171,15 @@ const buildInsertedParagraphs = ({
         }
       }
       if (operation.spacing !== undefined) {
-        originalFormatting = withDirectParagraphSpacing(originalFormatting, directSpacing);
+        originalFormatting = withDirectParagraphSpacing(
+          originalFormatting,
+          directSpacing,
+        );
       }
-      originalFormatting = withDirectParagraphIndentation(originalFormatting, directIndentation);
+      originalFormatting = withDirectParagraphIndentation(
+        originalFormatting,
+        directIndentation,
+      );
       if (operation.styleId !== undefined || operation.spacing !== undefined) {
         Object.assign(
           attrs,
@@ -3689,7 +4189,10 @@ const buildInsertedParagraphs = ({
           }),
         );
       }
-      if (operation.styleId !== undefined || operation.indentation !== undefined) {
+      if (
+        operation.styleId !== undefined ||
+        operation.indentation !== undefined
+      ) {
         Object.assign(
           attrs,
           paragraphIndentationAttrPatch({
@@ -3703,7 +4206,9 @@ const buildInsertedParagraphs = ({
           ? originalFormatting
           : null;
       const finalNumbering = readParagraphNumberingAttr(attrs["numPr"]);
-      const finalFromStyle = readParagraphNumberingAttr(attrs["numPrFromStyle"]);
+      const finalFromStyle = readParagraphNumberingAttr(
+        attrs["numPrFromStyle"],
+      );
       const effectiveNumbering = effectiveParagraphNumbering(
         paragraphNumberingSourcesFromBoundary({
           numPr: finalNumbering ?? undefined,
@@ -3716,24 +4221,35 @@ const buildInsertedParagraphs = ({
           listLevelAttrPatch(
             mergeParagraphAttrs(schema.node("paragraph"), {
               numPr: finalNumbering ?? undefined,
-              _styleResolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
-              numPrFromStyle: readParagraphNumberingAttr(attrs["numPrFromStyle"]) ?? undefined,
+              _styleResolvedFormatting:
+                styleResolvedParagraphFormatting(formattingFromStyle),
+              numPrFromStyle:
+                readParagraphNumberingAttr(attrs["numPrFromStyle"]) ??
+                undefined,
               listImplicitChildLevelAdvances:
                 operation.inheritFormatting === false
                   ? undefined
-                  : expectParagraphAttrs(item.blockNode).listImplicitChildLevelAdvances,
+                  : expectParagraphAttrs(item.blockNode)
+                      .listImplicitChildLevelAdvances,
               _originalFormatting: originalFormatting,
-              _resolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
+              _resolvedFormatting:
+                styleResolvedParagraphFormatting(formattingFromStyle),
               indentLeft:
-                directIndentation?.indentLeft ?? formattingFromStyle?.indentLeft ?? undefined,
+                directIndentation?.indentLeft ??
+                formattingFromStyle?.indentLeft ??
+                undefined,
               indentRight:
-                directIndentation?.indentRight ?? formattingFromStyle?.indentRight ?? undefined,
+                directIndentation?.indentRight ??
+                formattingFromStyle?.indentRight ??
+                undefined,
               indentFirstLine:
                 directIndentation?.indentFirstLine ??
                 formattingFromStyle?.indentFirstLine ??
                 undefined,
               hangingIndent:
-                directIndentation?.hangingIndent ?? formattingFromStyle?.hangingIndent ?? false,
+                directIndentation?.hangingIndent ??
+                formattingFromStyle?.hangingIndent ??
+                false,
             }),
             effectiveNumbering.ilvl ?? 0,
             numbering,
@@ -3754,21 +4270,30 @@ const buildInsertedParagraphs = ({
       if (levelIndentation && operation.indentation === undefined) {
         const direct = attrs["_originalFormatting"];
         const directIndentLeft =
-          typeof direct === "object" && direct !== null && "indentLeft" in direct
+          typeof direct === "object" &&
+          direct !== null &&
+          "indentLeft" in direct
             ? direct.indentLeft
             : undefined;
         const directIndentFirstLine =
-          typeof direct === "object" && direct !== null && "indentFirstLine" in direct
+          typeof direct === "object" &&
+          direct !== null &&
+          "indentFirstLine" in direct
             ? direct.indentFirstLine
             : undefined;
-        if (directIndentLeft === undefined && formattingFromStyle.indentLeft === undefined) {
-          attrs["indentLeft"] = levelIndentation.indentLeft ?? attrs["indentLeft"];
+        if (
+          directIndentLeft === undefined &&
+          formattingFromStyle.indentLeft === undefined
+        ) {
+          attrs["indentLeft"] =
+            levelIndentation.indentLeft ?? attrs["indentLeft"];
         }
         if (
           directIndentFirstLine === undefined &&
           formattingFromStyle.indentFirstLine === undefined
         ) {
-          attrs["indentFirstLine"] = levelIndentation.indentFirstLine ?? attrs["indentFirstLine"];
+          attrs["indentFirstLine"] =
+            levelIndentation.indentFirstLine ?? attrs["indentFirstLine"];
         }
       }
     }
@@ -3887,7 +4412,9 @@ const applyFolioAIEditOperationsInternal = ({
     }
     const id = createCommentId(text);
     if (!Number.isSafeInteger(id) || occupiedCommentIds.has(id)) {
-      panic("A comment-id allocator returned an invalid or duplicate id", { id });
+      panic("A comment-id allocator returned an invalid or duplicate id", {
+        id,
+      });
     }
     occupiedCommentIds.add(id);
     return id;
@@ -3895,29 +4422,41 @@ const applyFolioAIEditOperationsInternal = ({
   const styleResolver = getDocumentStyleResolver(view.state);
   // A state without the styles plugin cannot say which definitions exist.
   const styleDefinitions = getDocumentStyleDefinitions(view.state);
-  // A new-list request becomes a reference to the instance minted for it, so
-  // everything below applies one kind of numbering.
-  const { operations, numbering } = resolveNewListOperations(
-    requestedOperations,
-    getDocumentNumbering(view.state),
-  );
+  // Stage new-list requests as private references so planning stays pure;
+  // the batch-order owner below replaces them with minted instances.
+  const operations = stageNewListOperations(requestedOperations);
+  let numbering = getDocumentNumbering(view.state);
   const formattingFromStyleForInsertion = (item: ResolvedOperation) => {
-    if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
+    if (
+      item.operation.type !== "insertAfterBlock" &&
+      item.operation.type !== "insertBeforeBlock"
+    ) {
       return undefined;
     }
     const anchorAttrs = expectParagraphAttrs(item.blockNode);
     const inheritedStyleId =
       item.operation.inheritFormatting === false ? null : anchorAttrs.styleId;
     const styleId =
-      item.operation.styleId !== undefined ? item.operation.styleId : inheritedStyleId;
-    return resolveFormattingFromStyle({ attrs: anchorAttrs, styleId, styleResolver });
+      item.operation.styleId !== undefined
+        ? item.operation.styleId
+        : inheritedStyleId;
+    return resolveFormattingFromStyle({
+      attrs: anchorAttrs,
+      styleId,
+      styleResolver,
+    });
   };
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
   const batchClaims = new BatchClaims();
-  const removedBlocksBy = new Map<string, { id: string; type: FolioAIEditOperation["type"] }>();
+  const removedBlocksBy = new Map<
+    string,
+    { id: string; type: FolioAIEditOperation["type"] }
+  >();
   const diffText: ReturnType<typeof createWordDiffSession>["diff"] =
-    wordDiffMode === "coarse" ? coarseWordDiff : wordDiffSessionFromOptions(wordDiff).diff;
+    wordDiffMode === "coarse"
+      ? coarseWordDiff
+      : wordDiffSessionFromOptions(wordDiff).diff;
 
   // `"suggested"` is `"tracked-changes"` plus a provenance stamp, so every
   // tracked-change code path below keys off this rather than an exact
@@ -3932,7 +4471,8 @@ const applyFolioAIEditOperationsInternal = ({
         id: operation.id,
         reason: "unsupportedBlock",
       })),
-      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? peekRevisionId(),
+      nextRevisionId:
+        revisionIdSeed ?? revisionStamp?.idSeed ?? peekRevisionId(),
     };
   }
 
@@ -3958,7 +4498,10 @@ const applyFolioAIEditOperationsInternal = ({
 
   for (const [index, operation] of operations.entries()) {
     const commentText = getOperationCommentText(operation);
-    if (commentText !== undefined && (!commentType || createCommentId === undefined)) {
+    if (
+      commentText !== undefined &&
+      (!commentType || createCommentId === undefined)
+    ) {
       skipped.push({ id: operation.id, reason: "unsupportedBlock" });
       continue;
     }
@@ -3978,11 +4521,16 @@ const applyFolioAIEditOperationsInternal = ({
         ...(resolution.canonicalRefusal !== undefined && {
           canonicalRefusal: resolution.canonicalRefusal,
         }),
-        ...(resolution.message !== undefined && { message: resolution.message }),
+        ...(resolution.message !== undefined && {
+          message: resolution.message,
+        }),
       });
       continue;
     }
-    if (commentText !== undefined && !hasRepresentableCommentAnchor(resolution.operation, mode)) {
+    if (
+      commentText !== undefined &&
+      !hasRepresentableCommentAnchor(resolution.operation, mode)
+    ) {
       skipped.push({ id: operation.id, reason: "unsupportedBlock" });
       continue;
     }
@@ -3995,7 +4543,10 @@ const applyFolioAIEditOperationsInternal = ({
       skipped.push({
         id: operation.id,
         reason: "missingStyle",
-        message: describeUndefinedParagraphStyle(undefinedStyle, styleDefinitions),
+        message: describeUndefinedParagraphStyle(
+          undefinedStyle,
+          styleDefinitions,
+        ),
       });
       continue;
     }
@@ -4008,7 +4559,10 @@ const applyFolioAIEditOperationsInternal = ({
       skipped.push({
         id: operation.id,
         reason: "missingNumbering",
-        message: describeUndefinedNumbering(undefinedNumbering, numberingInstanceIds),
+        message: describeUndefinedNumbering(
+          undefinedNumbering,
+          numberingInstanceIds,
+        ),
       });
       continue;
     }
@@ -4031,7 +4585,8 @@ const applyFolioAIEditOperationsInternal = ({
       }
     }
 
-    const targetBlockId = "range" in operation ? operation.range.blockId : operation.blockId;
+    const targetBlockId =
+      "range" in operation ? operation.range.blockId : operation.blockId;
     const targetsBlockIdentity = ![
       "insertAfterBlock",
       "insertBeforeBlock",
@@ -4045,9 +4600,12 @@ const applyFolioAIEditOperationsInternal = ({
       "mergeTableCells",
       "splitTableCell",
     ].includes(operation.type);
-    const removedBy = targetsBlockIdentity ? removedBlocksBy.get(targetBlockId) : undefined;
+    const removedBy = targetsBlockIdentity
+      ? removedBlocksBy.get(targetBlockId)
+      : undefined;
     const continuesMergeChain =
-      operation.type === "mergeBlockWithNext" && removedBy?.type === "mergeBlockWithNext";
+      operation.type === "mergeBlockWithNext" &&
+      removedBy?.type === "mergeBlockWithNext";
     if (removedBy !== undefined && !continuesMergeChain) {
       skipped.push({
         id: operation.id,
@@ -4077,14 +4635,28 @@ const applyFolioAIEditOperationsInternal = ({
     }
     batchClaims.add(operation.id, claim);
     const carrierBlockId = producesTrackedChanges
-      ? getTrackedFolioDocumentOperationCarrierBlockId(snapshot.blocks, operation, removedBlocksBy)
+      ? getTrackedFolioDocumentOperationCarrierBlockId(
+          snapshot.blocks,
+          requestedOperations[index] ??
+            panic("A planned operation lost its input", { index }),
+          removedBlocksBy,
+        )
       : undefined;
     const getRemovedBlockIds = producesTrackedChanges
       ? getTrackedFolioDocumentOperationRemovedBlockIds
       : getFolioDocumentOperationRemovedBlockIds;
-    for (const removedBlockId of getRemovedBlockIds(snapshot.blocks, operation)) {
+    const requestedOperation =
+      requestedOperations[index] ??
+      panic("A planned operation lost its input", { index });
+    for (const removedBlockId of getRemovedBlockIds(
+      snapshot.blocks,
+      requestedOperation,
+    )) {
       if (!removedBlocksBy.has(removedBlockId)) {
-        removedBlocksBy.set(removedBlockId, { id: operation.id, type: operation.type });
+        removedBlocksBy.set(removedBlockId, {
+          id: operation.id,
+          type: operation.type,
+        });
       }
     }
     if (carrierBlockId !== undefined) removedBlocksBy.delete(carrierBlockId);
@@ -4096,7 +4668,8 @@ const applyFolioAIEditOperationsInternal = ({
     }
 
     if (
-      (operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock") &&
+      (operation.type === "insertAfterBlock" ||
+        operation.type === "insertBeforeBlock") &&
       operation.lineBreakMode !== "inline" &&
       LINE_BREAK_PATTERN.test(operation.text)
     ) {
@@ -4130,7 +4703,8 @@ const applyFolioAIEditOperationsInternal = ({
       applied,
       skipped,
       ...(normalizations.length > 0 && { normalizations }),
-      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? peekRevisionId(),
+      nextRevisionId:
+        revisionIdSeed ?? revisionStamp?.idSeed ?? peekRevisionId(),
     };
   }
 
@@ -4157,8 +4731,29 @@ const applyFolioAIEditOperationsInternal = ({
     }
     moveSideCounts.set(moveId, counts);
   }
+  const refusedMoveIds = new Set<string>();
+  if (isSuggested) {
+    for (const candidate of executableResolved) {
+      if (
+        candidate.operation.type !== "insertBeforeBlock" ||
+        candidate.operation.moveId === undefined
+      ) {
+        continue;
+      }
+      const moveId = candidate.operation.moveId;
+      const sourceRunsBeforeDestination = executableResolved.some(
+        ({ operation, blockFrom }) =>
+          operation.type === "deleteBlock" &&
+          operation.moveId === moveId &&
+          blockFrom === candidate.blockFrom,
+      );
+      if (sourceRunsBeforeDestination) {
+        refusedMoveIds.add(moveId);
+      }
+    }
+  }
   const isPairedMove = (moveId: string | undefined): moveId is string => {
-    if (moveId === undefined) {
+    if (moveId === undefined || refusedMoveIds.has(moveId)) {
       return false;
     }
     const counts = moveSideCounts.get(moveId);
@@ -4183,8 +4778,10 @@ const applyFolioAIEditOperationsInternal = ({
   const deletedFinalParagraphs: DeletedFinalParagraph[] = [];
   const mergedPropertyTargets: BatchParagraphPosition[] = [];
   const deferredNoopFinalDeletions = new Set<string>();
-  const ownsSharedRevisionIdCursor = revisionIdSeed === undefined && revisionStamp === undefined;
-  let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? nextRevisionIdRange();
+  const ownsSharedRevisionIdCursor =
+    revisionIdSeed === undefined && revisionStamp === undefined;
+  let revisionSeed =
+    revisionIdSeed ?? revisionStamp?.idSeed ?? nextRevisionIdRange();
   let claimedThrough = revisionSeed;
   const claimSharedRevisionIds = (next: number): void => {
     // Negative ids are private preview sentinels, never committed.
@@ -4216,7 +4813,11 @@ const applyFolioAIEditOperationsInternal = ({
   if (mode === "tracked-changes") {
     const afterTables = new Map<number, Set<number>>();
     for (const item of executableResolved) {
-      if (item.operation.type !== "insertTable" || item.operation.position === "before") continue;
+      if (
+        item.operation.type !== "insertTable" ||
+        item.operation.position === "before"
+      )
+        continue;
       const boundaries = afterTables.get(item.blockFrom) ?? new Set<number>();
       boundaries.add(item.from);
       afterTables.set(item.blockFrom, boundaries);
@@ -4269,21 +4870,91 @@ const applyFolioAIEditOperationsInternal = ({
       };
     }
     if (ANNOTATION_OPERATION_TYPES.has(item.operation.type)) {
-      return { type: "annotation", position: item.from, inputIndex: item.originalIndex };
+      return {
+        type: "annotation",
+        position: item.from,
+        inputIndex: item.originalIndex,
+      };
     }
     const hasDeletedSplit = tableAfterDeletedSplit.has(item.blockFrom);
     return {
       type: "content",
-      position: hasDeletedSplit && item.operation.type === "deleteBlock" ? item.blockTo : item.from,
+      position:
+        hasDeletedSplit && item.operation.type === "deleteBlock"
+          ? item.blockTo
+          : item.from,
       rank: contentRank(item.operation, { hasDeletedSplit }),
       inputIndex: item.originalIndex,
     };
   };
   const executionOrder = orderBatchOperations(executableResolved, batchAddress);
+  type WillApplyNewListOperations = {
+    status: "willApply";
+    items: ResolvedOperation[];
+  };
+  const allocateNewLists = ({ items }: WillApplyNewListOperations): void => {
+    const allocated = resolveNewListOperations(
+      items.map(({ operation }) => operation),
+      numbering,
+    );
+    numbering = allocated.numbering;
+    for (const [index, candidate] of items.entries()) {
+      candidate.operation =
+        allocated.operations[index] ??
+        panic("A will-apply operation lost its new-list allocation", {
+          id: candidate.operation.id,
+        });
+    }
+  };
   const executionGroups = groupInsertionRuns(executionOrder, (candidate) =>
     isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
   );
-  for (const insertionRun of executionGroups) {
+  for (const executionGroup of executionGroups) {
+    // Recheck every insertion against the live anchor, including insertions
+    // sharing a gap. Earlier edits can delete its text or its containing row.
+    const insertionState = tr;
+    const insertionRun = executionGroup.filter((candidate) => {
+      if (
+        !isSuggested ||
+        (candidate.operation.type !== "insertAfterBlock" &&
+          candidate.operation.type !== "insertBeforeBlock")
+      ) {
+        return true;
+      }
+      const mapped = insertionState.mapping.mapResult(candidate.blockFrom);
+      const block = mapped.deletedAcross
+        ? null
+        : insertionState.doc.nodeAt(mapped.pos);
+      const paraId: unknown = candidate.blockNode.attrs["paraId"];
+      if (
+        !block?.isTextblock ||
+        block.type !== candidate.blockNode.type ||
+        (typeof paraId === "string" && block.attrs["paraId"] !== paraId)
+      ) {
+        if (candidate.operation.moveId !== undefined) {
+          refusedMoveIds.add(candidate.operation.moveId);
+        }
+        skipped.push({ id: candidate.operation.id, reason: "pendingDeletion" });
+        return false;
+      }
+      const blockFrom = mapped.pos;
+      if (
+        !isPendingDeletion(
+          insertionState.doc,
+          blockFrom,
+          block,
+          buildCleanBlockText(block, blockFrom, {
+            fieldResults: "text",
+            noteReferences,
+          }).text,
+        )
+      ) {
+        return true;
+      }
+      skipped.push({ id: candidate.operation.id, reason: "pendingDeletion" });
+      return false;
+    });
+    if (insertionRun.length === 0) continue;
     const item = insertionRun.at(0);
     if (!item) {
       panic("The operation execution group was empty");
@@ -4291,8 +4962,8 @@ const applyFolioAIEditOperationsInternal = ({
     continueSharedRevisionIds();
     if (mode === "tracked-changes" && writesParagraphPropertyChange(item)) {
       const appliedIds = new Set(applied.map(({ id }) => id));
-      const pendingDeletions = deletedFinalParagraphs.filter(({ operationId }) =>
-        appliedIds.has(operationId),
+      const pendingDeletions = deletedFinalParagraphs.filter(
+        ({ operationId }) => appliedIds.has(operationId),
       );
       const targets = paragraphPropertyRevisionTargets({
         item,
@@ -4301,7 +4972,9 @@ const applyFolioAIEditOperationsInternal = ({
       });
       if (
         targets.some((target) =>
-          hasSerializableParagraphPropertyChange(expectParagraphAttrs(target)._propertyChanges),
+          hasSerializableParagraphPropertyChange(
+            expectParagraphAttrs(target)._propertyChanges,
+          ),
         ) ||
         (item.operation.type === "mergeBlockWithNext" &&
           hasDeferredParagraphPropertyWrite({
@@ -4309,16 +4982,25 @@ const applyFolioAIEditOperationsInternal = ({
             deletions: pendingDeletions,
             targets,
             mergedPropertyTargets,
-            batchRevisionIds: new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? [])),
+            batchRevisionIds: new Set(
+              applied.flatMap(({ revisionIds }) => revisionIds ?? []),
+            ),
             styleResolver,
             numbering,
           }))
       ) {
-        skipped.push({ id: item.operation.id, reason: "pendingParagraphPropertyChange" });
+        skipped.push({
+          id: item.operation.id,
+          reason: "pendingParagraphPropertyChange",
+        });
         continue;
       }
     }
     if (insertionRun.length > 1) {
+      // A batchable insertion run has no operation-local refusal after this
+      // point. Mint all of its lists together so their execution order stays
+      // the allocation order.
+      allocateNewLists({ status: "willApply", items: insertionRun });
       const nodeGroups: PMNode[][] = [];
       const runApplied: FolioAIEditAppliedOperation[] = [];
       for (const insertion of insertionRun) {
@@ -4349,7 +5031,9 @@ const applyFolioAIEditOperationsInternal = ({
             revisionId: built.revisionIds[0],
             revisionIds: built.revisionIds,
           }),
-          ...(insertionSuggestionId !== null && { suggestionId: insertionSuggestionId }),
+          ...(insertionSuggestionId !== null && {
+            suggestionId: insertionSuggestionId,
+          }),
         });
       }
       const nodes: PMNode[] = [];
@@ -4363,7 +5047,9 @@ const applyFolioAIEditOperationsInternal = ({
       continue;
     }
     const provisionalCommentId =
-      item.commentText !== undefined ? reserveProvisionalCommentId() : undefined;
+      item.commentText !== undefined
+        ? reserveProvisionalCommentId()
+        : undefined;
     const commentMark =
       provisionalCommentId !== undefined && commentType
         ? commentType.create({ commentId: provisionalCommentId })
@@ -4389,7 +5075,10 @@ const applyFolioAIEditOperationsInternal = ({
     // `trIns`/`trDel`/`cellMarker` — is removed by the serialization strip.
     // Operations outside the allowlist (comment ops, cell merge/split) report
     // `unsupportedMode` so no unstrippable suggested state can be produced.
-    if (isSuggested && !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(item.operation.type)) {
+    if (
+      isSuggested &&
+      !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(item.operation.type)
+    ) {
       skipped.push({ id: item.operation.id, reason: "unsupportedMode" });
       continue;
     }
@@ -4405,15 +5094,23 @@ const applyFolioAIEditOperationsInternal = ({
     // whole-node `_suggestedInsert` marker this operation produces.
     const trackedRevisionExtras = {
       ...(initials ? { initials } : {}),
-      ...(suggestionId !== null ? { provenance: "suggested" as const, suggestionId } : {}),
+      ...(suggestionId !== null
+        ? { provenance: "suggested" as const, suggestionId }
+        : {}),
     };
     // Revision allocation is operation-local until the edit commits. Every
     // refusal path therefore discards its tentative ids by construction; a
     // later story cannot observe gaps for revisions that were never written.
     let operationRevisionSeed = revisionSeed;
-    const structuralRevision: TableStructureRevision | null = producesTrackedChanges
-      ? { revisionId: operationRevisionSeed, author, date, ...trackedRevisionExtras }
-      : null;
+    const structuralRevision: TableStructureRevision | null =
+      producesTrackedChanges
+        ? {
+            revisionId: operationRevisionSeed,
+            author,
+            date,
+            ...trackedRevisionExtras,
+          }
+        : null;
 
     const commentSource = tr.doc;
     const commentStepsBefore = tr.steps.length;
@@ -4429,7 +5126,8 @@ const applyFolioAIEditOperationsInternal = ({
             item,
             replacement: stripInlineEmphasisMarkers(commentReplacement),
             noteReferences,
-            planChanges: (before, after) => changesFromSegments(diffText(before, after)),
+            planChanges: (before, after) =>
+              changesFromSegments(diffText(before, after)),
             keepFieldsOf: planTextChanges,
           })
         : null;
@@ -4515,7 +5213,10 @@ const applyFolioAIEditOperationsInternal = ({
           styleResolver,
         });
         if (backgroundResult.type === "pendingRunPropertyChange") {
-          skipped.push({ id: item.operation.id, reason: backgroundResult.type });
+          skipped.push({
+            id: item.operation.id,
+            reason: backgroundResult.type,
+          });
           continue;
         }
         tr = backgroundResult.transaction;
@@ -4565,7 +5266,10 @@ const applyFolioAIEditOperationsInternal = ({
             styleResolver,
           });
           if (formattingResult.type === "pendingRunPropertyChange") {
-            skipped.push({ id: item.operation.id, reason: formattingResult.type });
+            skipped.push({
+              id: item.operation.id,
+              reason: formattingResult.type,
+            });
             continue;
           }
           tr = formattingResult.transaction;
@@ -4584,20 +5288,30 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "replaceBlock": {
         if (!isResolvedReplaceBlockOperation(item)) {
-          panic("Resolved replaceBlock operation lost its impact discriminator");
+          panic(
+            "Resolved replaceBlock operation lost its impact discriminator",
+          );
         }
-        const { changesStyle, changesText } = REPLACE_BLOCK_IMPACT[item.replaceBlockImpact];
+        const { changesStyle, changesText } =
+          REPLACE_BLOCK_IMPACT[item.replaceBlockImpact];
         // A merge earlier in the batch can delete this paragraph's mark after
         // resolution; acceptance would discard the style edit.
         if (
           changesStyle &&
-          isDeletedPPrMark(tr.doc.nodeAt(tr.mapping.map(item.blockFrom, -1))?.attrs["pPrMark"])
+          isDeletedPPrMark(
+            tr.doc.nodeAt(tr.mapping.map(item.blockFrom, -1))?.attrs["pPrMark"],
+          )
         ) {
-          skipped.push({ id: item.operation.id, ...pendingParagraphMarkPropertyRefusal });
+          skipped.push({
+            id: item.operation.id,
+            ...pendingParagraphMarkPropertyRefusal,
+          });
           continue;
         }
         const revisionIdDelete = operationRevisionSeed;
-        const revisionIdInsert = changesText ? operationRevisionSeed + 1 : operationRevisionSeed;
+        const revisionIdInsert = changesText
+          ? operationRevisionSeed + 1
+          : operationRevisionSeed;
         const revisionIdBackgroundSeed = changesText
           ? operationRevisionSeed + 2
           : operationRevisionSeed;
@@ -4708,10 +5422,16 @@ const applyFolioAIEditOperationsInternal = ({
           // The whole-span fallback would discard a field or a note reference
           // if atomic planning failed.
           if (rangeHoldsNoteReference(item)) {
-            skipped.push({ id: item.operation.id, reason: "protectedReference" });
+            skipped.push({
+              id: item.operation.id,
+              reason: "protectedReference",
+            });
             continue;
           }
-          if (buildCleanBlockText(item.blockNode, item.blockFrom).structuralBoundaries.length > 0) {
+          if (
+            buildCleanBlockText(item.blockNode, item.blockFrom)
+              .structuralBoundaries.length > 0
+          ) {
             skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
             continue;
           }
@@ -4731,7 +5451,10 @@ const applyFolioAIEditOperationsInternal = ({
             styleResolver,
           });
           if (backgroundResult.type === "pendingRunPropertyChange") {
-            skipped.push({ id: item.operation.id, reason: backgroundResult.type });
+            skipped.push({
+              id: item.operation.id,
+              reason: backgroundResult.type,
+            });
             continue;
           }
           tr = backgroundResult.transaction;
@@ -4780,21 +5503,8 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "insertAfterBlock":
       case "insertBeforeBlock": {
-        if (
-          isSuggested &&
-          isPendingDeletion(
-            tr.doc,
-            item.blockFrom,
-            item.blockNode,
-            buildCleanBlockText(item.blockNode, item.blockFrom, {
-              fieldResults: "text",
-              noteReferences,
-            }).text,
-          )
-        ) {
-          skipped.push({ id: item.operation.id, reason: "pendingDeletion" });
-          continue;
-        }
+        allocateNewLists({ status: "willApply", items: [item] });
+        assertNewListsAllocated(item.operation);
         const built = buildInsertedParagraphs({
           item,
           schema: view.state.schema,
@@ -4814,7 +5524,11 @@ const applyFolioAIEditOperationsInternal = ({
         if (built.revisionIds.length > 0) {
           appliedRevisionIds = built.revisionIds;
         }
-        tr = insertBlocksInsideComments({ tr, at: item.from, blocks: built.nodes });
+        tr = insertBlocksInsideComments({
+          tr,
+          at: item.from,
+          blocks: built.nodes,
+        });
         break;
       }
       case "insertSignatureTable": {
@@ -4945,7 +5659,10 @@ const applyFolioAIEditOperationsInternal = ({
         operationRevisionSeed += result.revisionIds.length;
         appliedRevisionIds = [...result.revisionIds];
         const columnKey = getTableColumnCoordinateKey(insertion);
-        insertedColumnCounts.set(columnKey, (insertedColumnCounts.get(columnKey) ?? 0) + 1);
+        insertedColumnCounts.set(
+          columnKey,
+          (insertedColumnCounts.get(columnKey) ?? 0) + 1,
+        );
         break;
       }
       case "deleteTableColumn": {
@@ -4980,8 +5697,11 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "mergeTableCells": {
         const merge = item.tableCellMerge;
-        const tablePosition = merge ? tr.mapping.map(merge.tablePosition, 1) : null;
-        const table = tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
+        const tablePosition = merge
+          ? tr.mapping.map(merge.tablePosition, 1)
+          : null;
+        const table =
+          tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
         if (
           !merge ||
           tablePosition === null ||
@@ -4994,10 +5714,16 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        const revisionId = mode === "tracked-changes" ? operationRevisionSeed : null;
+        const revisionId =
+          mode === "tracked-changes" ? operationRevisionSeed : null;
         const nextTr =
           revisionId === null
-            ? mergeTableRectangle({ tr, tablePosition, table, rectangle: merge.rectangle })
+            ? mergeTableRectangle({
+                tr,
+                tablePosition,
+                table,
+                rectangle: merge.rectangle,
+              })
             : mergeTrackedVerticalTableCells({
                 tr,
                 tablePosition,
@@ -5023,8 +5749,11 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "splitTableCell": {
         const split = item.tableCellSplit;
-        const tablePosition = split ? tr.mapping.map(split.tablePosition, 1) : null;
-        const table = tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
+        const tablePosition = split
+          ? tr.mapping.map(split.tablePosition, 1)
+          : null;
+        const table =
+          tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
         if (
           !split ||
           tablePosition === null ||
@@ -5037,10 +5766,16 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        const revisionId = mode === "tracked-changes" ? operationRevisionSeed : null;
+        const revisionId =
+          mode === "tracked-changes" ? operationRevisionSeed : null;
         const nextTr =
           revisionId === null
-            ? splitTableRectangle({ tr, tablePosition, table, rectangle: split.rectangle })
+            ? splitTableRectangle({
+                tr,
+                tablePosition,
+                table,
+                rectangle: split.rectangle,
+              })
             : splitTrackedVerticalTableCell({
                 tr,
                 tablePosition,
@@ -5110,9 +5845,13 @@ const applyFolioAIEditOperationsInternal = ({
           // node goes as any other would — which is what the tracked path
           // resolves to as well, its mark deleted one paragraph earlier.
           const at = tr.doc.resolve(item.blockFrom);
-          const endsItsContainer = paragraphEndsItsContainer(at, item.blockNode.type.name);
+          const endsItsContainer = paragraphEndsItsContainer(
+            at,
+            item.blockNode.type.name,
+          );
           const leavesAParagraph =
-            !endsItsContainer || at.nodeBefore?.type.name === item.blockNode.type.name;
+            !endsItsContainer ||
+            at.nodeBefore?.type.name === item.blockNode.type.name;
           tr = leavesAParagraph
             ? tr.delete(item.blockFrom, item.blockTo)
             : tr.delete(item.blockFrom + 1, item.blockTo - 1);
@@ -5148,7 +5887,12 @@ const applyFolioAIEditOperationsInternal = ({
                 tr,
                 position: retraction.clearBreakAt,
                 replaced: retracted,
-                revision: { id: revisionIdProperties, author, date, ...trackedRevisionExtras },
+                revision: {
+                  id: revisionIdProperties,
+                  author,
+                  date,
+                  ...trackedRevisionExtras,
+                },
               })
             ) {
               operationRevisionSeed++;
@@ -5164,7 +5908,9 @@ const applyFolioAIEditOperationsInternal = ({
             revisionId,
             author,
             date,
-            ...(isPairedMove(item.operation.moveId) && { moveKind: "moveFrom" }),
+            ...(isPairedMove(item.operation.moveId) && {
+              moveKind: "moveFrom",
+            }),
             ...trackedRevisionExtras,
           });
           addTrackedDeletionMark({
@@ -5196,8 +5942,14 @@ const applyFolioAIEditOperationsInternal = ({
             deletedTextBoxAnchorIds.add(anchorId);
           }
           // The block's content controls go with it, as they do directly.
-          encloseWholeControls({ tr, from: item.blockFrom, to: item.blockTo, revisionId });
-          const inlineRevisionApplied = item.from < item.to || atomRanges.length > 0;
+          encloseWholeControls({
+            tr,
+            from: item.blockFrom,
+            to: item.blockTo,
+            revisionId,
+          });
+          const inlineRevisionApplied =
+            item.from < item.to || atomRanges.length > 0;
           appliedRevisionIds = inlineRevisionApplied ? [revisionId] : [];
           // Deleting a paragraph's words leaves its paragraph mark behind, and
           // an accepted redline then holds a blank line where the paragraph
@@ -5228,10 +5980,14 @@ const applyFolioAIEditOperationsInternal = ({
           // matching one elsewhere rather than being a deletion of its own.
           const markPosition = tr.mapping.map(item.blockFrom);
           const markPlace = tr.doc.resolve(markPosition);
-          const endsItsContainer = paragraphEndsItsContainer(markPlace, item.blockNode.type.name);
+          const endsItsContainer = paragraphEndsItsContainer(
+            markPlace,
+            item.blockNode.type.name,
+          );
           const deleted = tr.doc.nodeAt(markPosition);
           const following =
-            deleted && paragraphJoinAfter(tr.doc, markPosition + deleted.nodeSize)?.next;
+            deleted &&
+            paragraphJoinAfter(tr.doc, markPosition + deleted.nodeSize)?.next;
           if (
             deleted &&
             following?.type === deleted.type &&
@@ -5250,11 +6006,13 @@ const applyFolioAIEditOperationsInternal = ({
             // paragraph's own are recorded as its `w:pPrChange` where they
             // differ, which is what rejecting reads to put them back.
             const restored = paragraphPropertiesOnReject(deleted);
-            const followingChanges = expectParagraphAttrs(following)._propertyChanges;
+            const followingChanges =
+              expectParagraphAttrs(following)._propertyChanges;
             const recordsRestored =
               isInsertedPPrMark(following.attrs["pPrMark"]) &&
               !hasSerializableParagraphPropertyChange(followingChanges) &&
-              JSON.stringify(restored) !== JSON.stringify(paragraphPropertiesSnapshot(following));
+              JSON.stringify(restored) !==
+                JSON.stringify(paragraphPropertiesSnapshot(following));
             joinAtParagraphMark({
               tr,
               paragraphPos: markPosition,
@@ -5271,7 +6029,12 @@ const applyFolioAIEditOperationsInternal = ({
                   ...(Array.isArray(followingChanges) ? followingChanges : []),
                   {
                     type: "paragraphPropertyChange",
-                    info: { id: propertyRevisionId, author, date, ...trackedRevisionExtras },
+                    info: {
+                      id: propertyRevisionId,
+                      author,
+                      date,
+                      ...trackedRevisionExtras,
+                    },
                     previousFormatting: restored,
                   } satisfies ParagraphPropertyChangeAttrs,
                 ],
@@ -5282,7 +6045,12 @@ const applyFolioAIEditOperationsInternal = ({
             const markRevisionId = operationRevisionSeed++;
             tr = tr.setNodeAttribute(markPosition, "pPrMark", {
               kind: isPairedMove(item.operation.moveId) ? "moveFrom" : "del",
-              info: { id: markRevisionId, author, date, ...trackedRevisionExtras },
+              info: {
+                id: markRevisionId,
+                author,
+                date,
+                ...trackedRevisionExtras,
+              },
             });
             appliedRevisionIds = inlineRevisionApplied
               ? [revisionId, markRevisionId]
@@ -5353,13 +6121,19 @@ const applyFolioAIEditOperationsInternal = ({
           appliedRevisionIds = [operationRevisionSeed++];
         }
         const carriedComments = tableAfterDeletedSplit.get(item.blockFrom);
-        const usesRetractedSplit = carriedComments !== undefined && item.from === item.blockTo;
-        let at = usesRetractedSplit ? tr.mapping.map(item.blockFrom, -1) : item.from;
+        const usesRetractedSplit =
+          carriedComments !== undefined && item.from === item.blockTo;
+        let at = usesRetractedSplit
+          ? tr.mapping.map(item.blockFrom, -1)
+          : item.from;
         let insertionComments = carriedComments;
         if (!usesRetractedSplit) {
           const boundary = tr.doc.resolve(at);
           const before = boundary.nodeBefore;
-          const finalDeleted = deletedFinalParagraphAfter(boundary, "paragraph");
+          const finalDeleted = deletedFinalParagraphAfter(
+            boundary,
+            "paragraph",
+          );
           const mapping = tr.mapping;
           const pendingIndex =
             finalDeleted === null
@@ -5368,24 +6142,34 @@ const applyFolioAIEditOperationsInternal = ({
                   ({ position, mappedFrom }) =>
                     mapping.slice(mappedFrom).map(position) === finalDeleted,
                 );
-          const pending = pendingIndex < 0 ? undefined : deletedFinalParagraphs.at(pendingIndex);
+          const pending =
+            pendingIndex < 0
+              ? undefined
+              : deletedFinalParagraphs.at(pendingIndex);
           if (
             before?.type.name === "paragraph" &&
             finalDeleted !== null &&
             (pending !== undefined ||
-              (isPlainDeletedPPrMark(before.attrs["pPrMark"]) && !holdsOnlyDeletedContent(before)))
+              (isPlainDeletedPPrMark(before.attrs["pPrMark"]) &&
+                !holdsOnlyDeletedContent(before)))
           ) {
             // The table follows the deleted tail in the tracked document, so
             // accepting removes that tail and leaves the table at its anchor.
             insertionComments = commentsAcrossBlockBoundary(tr.doc, at);
             const final = tr.doc.nodeAt(finalDeleted);
             if (!final) {
-              panic("A deleted final paragraph vanished before table insertion", { finalDeleted });
+              panic(
+                "A deleted final paragraph vanished before table insertion",
+                { finalDeleted },
+              );
             }
             if (pending) {
               // A deletion in this batch has not retired the final break yet.
-              const receiptIndex = applied.findIndex(({ id }) => id === pending.operationId);
-              const receipt = receiptIndex < 0 ? undefined : applied.at(receiptIndex);
+              const receiptIndex = applied.findIndex(
+                ({ id }) => id === pending.operationId,
+              );
+              const receipt =
+                receiptIndex < 0 ? undefined : applied.at(receiptIndex);
               if (receipt === undefined) {
                 panic("A deleted final paragraph lost its operation receipt", {
                   operationId: pending.operationId,
@@ -5394,7 +6178,12 @@ const applyFolioAIEditOperationsInternal = ({
               const revisionId = operationRevisionSeed++;
               tr.setNodeAttribute(finalDeleted, "pPrMark", {
                 kind: "del",
-                info: { id: revisionId, author, date, ...pending.revisionExtras },
+                info: {
+                  id: revisionId,
+                  author,
+                  date,
+                  ...pending.revisionExtras,
+                },
               });
               applied[receiptIndex] = {
                 ...receipt,
@@ -5406,7 +6195,11 @@ const applyFolioAIEditOperationsInternal = ({
             } else {
               // An earlier batch retired the break onto its surviving predecessor.
               tr.setNodeAttribute(at - before.nodeSize, "pPrMark", null);
-              tr.setNodeAttribute(finalDeleted, "pPrMark", before.attrs["pPrMark"]);
+              tr.setNodeAttribute(
+                finalDeleted,
+                "pPrMark",
+                before.attrs["pPrMark"],
+              );
             }
             at = finalDeleted + final.nodeSize;
           }
@@ -5415,7 +6208,9 @@ const applyFolioAIEditOperationsInternal = ({
           tr,
           at,
           blocks: table,
-          ...(insertionComments !== undefined && { carriedComments: insertionComments }),
+          ...(insertionComments !== undefined && {
+            carriedComments: insertionComments,
+          }),
         });
         markStructuralChange(tr);
         break;
@@ -5457,7 +6252,10 @@ const applyFolioAIEditOperationsInternal = ({
         let rowOffset = livePosition + 1;
         let holdsPendingInsertedRow = false;
         liveTable.forEach((row) => {
-          if (row.type.spec["tableRole"] === "row" && row.attrs["trDel"] == null) {
+          if (
+            row.type.spec["tableRole"] === "row" &&
+            row.attrs["trDel"] == null
+          ) {
             rowPositions.push(rowOffset);
             holdsPendingInsertedRow ||= row.attrs["trIns"] != null;
           }
@@ -5502,7 +6300,9 @@ const applyFolioAIEditOperationsInternal = ({
         // cannot say so: a paragraph inserted right before this one sets it
         // as well, though this one is still there.
         const mapped = tr.mapping.mapResult(item.blockFrom);
-        const liveBlock = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
+        const liveBlock = mapped.deletedAcross
+          ? null
+          : tr.doc.nodeAt(mapped.pos);
         const paraId: unknown = item.blockNode.attrs["paraId"];
         if (
           !liveBlock ||
@@ -5514,9 +6314,16 @@ const applyFolioAIEditOperationsInternal = ({
         }
         const blockPosition = mapped.pos;
         if (isDeletedPPrMark(liveBlock.attrs["pPrMark"])) {
-          skipped.push({ id: item.operation.id, ...pendingParagraphMarkPropertyRefusal });
+          skipped.push({
+            id: item.operation.id,
+            ...pendingParagraphMarkPropertyRefusal,
+          });
           continue;
         }
+        // A deferred new list necessarily changes the paragraph, so the
+        // ordinary no-op branch below cannot refuse it after allocation.
+        allocateNewLists({ status: "willApply", items: [item] });
+        assertNewListsAllocated(item.operation);
         const appliedProperties = applyBlockParagraphProperties({
           tr,
           position: blockPosition,
@@ -5553,6 +6360,12 @@ const applyFolioAIEditOperationsInternal = ({
         const splitsFromItsTextBoxes =
           textBoxAnchorIdsBetween(tr.doc, item.blockFrom, item.from).size > 0 &&
           endOfParagraphWithItsTextBoxes(tr.doc, item.blockFrom) > item.blockTo;
+        if (mode !== "direct" && splitsFromItsTextBoxes) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
+        allocateNewLists({ status: "willApply", items: [item] });
+        assertNewListsAllocated(item.operation);
         if (mode === "direct") {
           if (item.to > item.from) {
             tr = tr.delete(item.from, item.to);
@@ -5561,12 +6374,14 @@ const applyFolioAIEditOperationsInternal = ({
           if (splitsFromItsTextBoxes) {
             gatherTextBoxesAfterParagraph(tr, item.blockFrom);
           }
-        } else if (splitsFromItsTextBoxes) {
-          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
-          continue;
         } else {
           const revisionIdMark = operationRevisionSeed++;
-          const info = { id: revisionIdMark, author, date, ...trackedRevisionExtras };
+          const info = {
+            id: revisionIdMark,
+            author,
+            date,
+            ...trackedRevisionExtras,
+          };
           appliedRevisionIds = [revisionIdMark];
           if (item.to > item.from && deletionType) {
             const revisionIdSeparator = operationRevisionSeed++;
@@ -5588,7 +6403,10 @@ const applyFolioAIEditOperationsInternal = ({
           // The mark goes on the FIRST half: the break belongs to the paragraph
           // it now ends, and a reader rejecting it closes that paragraph back
           // over the second half.
-          tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", { kind: "ins", info });
+          tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
+            kind: "ins",
+            info,
+          });
         }
 
         const allocateSplitParagraphPropertyRevisionInfo = () => ({
@@ -5659,6 +6477,8 @@ const applyFolioAIEditOperationsInternal = ({
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
         }
+        allocateNewLists({ status: "willApply", items: [item] });
+        assertNewListsAllocated(item.operation);
         const separator = followedOnlyByDeletedParagraphs(tr.doc, blockTo)
           ? ""
           : (item.operation.separator ?? "");
@@ -5679,7 +6499,8 @@ const applyFolioAIEditOperationsInternal = ({
               RUN_FORMATTING_MARK_NAMES.has(type.name),
             ) ?? [];
           const sourceNode = view.state.schema.text(separator, sourceMarks);
-          const context = paragraph && paragraphRunStyleContext(paragraph, styleResolver);
+          const context =
+            paragraph && paragraphRunStyleContext(paragraph, styleResolver);
           const marks = context
             ? reconcileRunFormattingMarks({
                 authoredFormatting: readAuthoredRunFormatting({
@@ -5748,11 +6569,23 @@ const applyFolioAIEditOperationsInternal = ({
             );
           }
           if (joined && sectionPropertiesOf(joined) !== secondSection) {
-            tr = tr.setNodeAttribute(blockFrom, "_sectionProperties", secondSection);
+            tr = tr.setNodeAttribute(
+              blockFrom,
+              "_sectionProperties",
+              secondSection,
+            );
           }
-          const endingMark = second ? expectParagraphAttrs(second).pPrMark : null;
-          if (joined && (endingMark?.kind === "del" || endingMark?.kind === "moveFrom")) {
-            const survivor = paragraphLeftAfter({ doc: tr.doc, paragraphPos: blockFrom });
+          const endingMark = second
+            ? expectParagraphAttrs(second).pPrMark
+            : null;
+          if (
+            joined &&
+            (endingMark?.kind === "del" || endingMark?.kind === "moveFrom")
+          ) {
+            const survivor = paragraphLeftAfter({
+              doc: tr.doc,
+              paragraphPos: blockFrom,
+            });
             if (survivor !== null) {
               tr = carryParagraphProperties({
                 tr,
@@ -5811,13 +6644,15 @@ const applyFolioAIEditOperationsInternal = ({
             // as the first, as a chain of pending merges does. A break this
             // batch's final deletion will retire counts as pending already:
             // one at a time, that deletion has run before the merge.
-            const joinedMark: unknown = tr.doc.nodeAt(blockFrom)?.attrs["pPrMark"];
+            const joinedMark: unknown =
+              tr.doc.nodeAt(blockFrom)?.attrs["pPrMark"];
             const removedBreakPositions = pendingRemovedFinalBreakPositions(
               tr,
               deletedFinalParagraphs,
             );
             const carryPos =
-              isDeletedPPrMark(joinedMark) || removedBreakPositions.has(blockFrom)
+              isDeletedPPrMark(joinedMark) ||
+              removedBreakPositions.has(blockFrom)
                 ? (paragraphLeftAfter({
                     doc: tr.doc,
                     paragraphPos: blockFrom,
@@ -5830,18 +6665,30 @@ const applyFolioAIEditOperationsInternal = ({
               source: paragraph,
               styleResolver,
               numbering,
-              revision: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
+              revision: {
+                id: revisionIdMark,
+                author,
+                date,
+                ...trackedRevisionExtras,
+              },
             });
             mergedPropertiesAt = carryPos;
             tr = carried.tr;
             mergedPropertiesRecorded = carried.tracked;
             if (!carried.tracked) {
-              appliedRevisionIds = appliedRevisionIds.filter((id) => id !== revisionIdMark);
+              appliedRevisionIds = appliedRevisionIds.filter(
+                (id) => id !== revisionIdMark,
+              );
             }
           } else {
             tr = tr.setNodeAttribute(blockFrom, "pPrMark", {
               kind: "del",
-              info: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
+              info: {
+                id: revisionIdMark,
+                author,
+                date,
+                ...trackedRevisionExtras,
+              },
             });
             // Accepting the removed mark leaves the NEXT paragraph, so it
             // takes this one's properties now, as part of the same change:
@@ -5863,7 +6710,12 @@ const applyFolioAIEditOperationsInternal = ({
               source: paragraph,
               styleResolver,
               numbering,
-              revision: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
+              revision: {
+                id: revisionIdMark,
+                author,
+                date,
+                ...trackedRevisionExtras,
+              },
             });
             tr = carried.tr;
             mergedPropertiesRecorded = carried.tracked;
@@ -5933,7 +6785,11 @@ const applyFolioAIEditOperationsInternal = ({
     // edge case where the comment mark is missing. Treat any op
     // that emitted zero transaction steps as a no-op skip.
     if (tr.steps.length === stepsBefore) {
-      if (!deletedFinalParagraphs.some(({ operationId }) => operationId === item.operation.id)) {
+      if (
+        !deletedFinalParagraphs.some(
+          ({ operationId }) => operationId === item.operation.id,
+        )
+      ) {
         skipped.push({ id: item.operation.id, reason: "noopOperation" });
         continue;
       }
@@ -5947,16 +6803,20 @@ const applyFolioAIEditOperationsInternal = ({
       if (
         commentType === undefined ||
         provisionalCommentId === undefined ||
-        commentMarkRanges(tr.doc, commentType, provisionalCommentId).length === 0
+        commentMarkRanges(tr.doc, commentType, provisionalCommentId).length ===
+          0
       ) {
         // Planning accepts comments only for operations with a representable
         // inline anchor. Reaching this branch means an operation implementation
         // violated that contract. Nothing has been dispatched and no external
         // id has been allocated, so fail the whole batch atomically.
-        panic("A commented operation changed the document without producing a comment anchor", {
-          operationId: item.operation.id,
-          operationType: item.operation.type,
-        });
+        panic(
+          "A commented operation changed the document without producing a comment anchor",
+          {
+            operationId: item.operation.id,
+            operationType: item.operation.type,
+          },
+        );
       }
       // The callback is the host's code, and may start another batch.
       claimSharedRevisionIds(operationRevisionSeed);
@@ -5977,11 +6837,16 @@ const applyFolioAIEditOperationsInternal = ({
     // accept/reject paths that must clear every mark belonging to
     // this op.
     if (unifiedFormatting) {
-      normalizations.push({ id: item.operation.id, code: "uniformReplacementFormatting" });
+      normalizations.push({
+        id: item.operation.id,
+        code: "uniformReplacementFormatting",
+      });
     }
     applied.push({
       id: item.operation.id,
-      ...(committedCommentId !== undefined && { commentId: committedCommentId }),
+      ...(committedCommentId !== undefined && {
+        commentId: committedCommentId,
+      }),
       ...(appliedRevisionIds[0] !== undefined && {
         revisionId: appliedRevisionIds[0],
         revisionIds: appliedRevisionIds,
@@ -5993,10 +6858,21 @@ const applyFolioAIEditOperationsInternal = ({
   removeRowsWithoutCellsAfterBatch(tr, emptiedRows);
 
   if (tr.docChanged || deferredNoopFinalDeletions.size > 0) {
-    const batchRevisionIds = new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? []));
-    tr = withoutRevisionsOnZeroWidthAnchors(tr, batchRevisionIds, deletedTextBoxAnchorIds);
+    const batchRevisionIds = new Set(
+      applied.flatMap(({ revisionIds }) => revisionIds ?? []),
+    );
+    tr = withoutRevisionsOnZeroWidthAnchors(
+      tr,
+      batchRevisionIds,
+      deletedTextBoxAnchorIds,
+    );
     // A text box goes with the paragraph content it is drawn in.
-    if (deleteTextBoxesAnchoredAt(tr, droppedTextBoxAnchorIds(view.state.doc, tr.doc))) {
+    if (
+      deleteTextBoxesAnchoredAt(
+        tr,
+        droppedTextBoxAnchorIds(view.state.doc, tr.doc),
+      )
+    ) {
       markStructuralChange(tr);
     }
     continueSharedRevisionIds();
@@ -6037,9 +6913,13 @@ const applyFolioAIEditOperationsInternal = ({
         receiptIndexByRevisionId.set(revisionId, receiptIndex);
       }
     }
-    for (const { ownerRevisionId, revisionId } of rotated.synthesizedRevisions) {
+    for (const {
+      ownerRevisionId,
+      revisionId,
+    } of rotated.synthesizedRevisions) {
       const receiptIndex = receiptIndexByRevisionId.get(ownerRevisionId);
-      const receipt = receiptIndex === undefined ? undefined : applied.at(receiptIndex);
+      const receipt =
+        receiptIndex === undefined ? undefined : applied.at(receiptIndex);
       if (receiptIndex === undefined || !receipt?.revisionIds) {
         panic("A synthesized final-mark revision lost its operation receipt", {
           ownerRevisionId,
@@ -6073,7 +6953,9 @@ const applyFolioAIEditOperationsInternal = ({
     ]);
     if (retractedRevisionIds.size > 0) {
       for (const [receiptIndex, receipt] of applied.entries()) {
-        const revisionIds = receipt.revisionIds?.filter((id) => !retractedRevisionIds.has(id));
+        const revisionIds = receipt.revisionIds?.filter(
+          (id) => !retractedRevisionIds.has(id),
+        );
         if (revisionIds === undefined) {
           continue;
         }
@@ -6095,7 +6977,9 @@ const applyFolioAIEditOperationsInternal = ({
     const separated = separateRevisionStretches({ tr, revisionSeed });
     revisionSeed = separated.nextRevisionId;
     for (const { revisionId, from } of separated.minted) {
-      const receiptIndex = applied.findIndex(({ revisionIds }) => revisionIds?.includes(from));
+      const receiptIndex = applied.findIndex(({ revisionIds }) =>
+        revisionIds?.includes(from),
+      );
       const receipt = applied.at(receiptIndex);
       if (receiptIndex >= 0 && receipt?.revisionIds) {
         applied[receiptIndex] = {
@@ -6111,7 +6995,10 @@ const applyFolioAIEditOperationsInternal = ({
       // allocator plugin, which is random by default. A stamped batch has
       // promised its caller a reproducible package, so the ids must be
       // derived from the stamp too.
-      requestDeterministicParaIds(tr, `${revisionStamp.date}:${String(revisionStamp.idSeed)}`);
+      requestDeterministicParaIds(
+        tr,
+        `${revisionStamp.date}:${String(revisionStamp.idSeed)}`,
+      );
     }
     if (tr.docChanged) view.dispatch(tr);
   }
@@ -6130,7 +7017,8 @@ export const applyFolioAIEditOperations = (
 
 export const previewFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
-): FolioAIEditApplyOutcome => previewFolioAIEditOperationsWithResult(options).outcome;
+): FolioAIEditApplyOutcome =>
+  previewFolioAIEditOperationsWithResult(options).outcome;
 
 /**
  * A preview together with the document it would leave and the provisional
@@ -6139,7 +7027,11 @@ export const previewFolioAIEditOperations = (
  */
 export const previewFolioAIEditOperationsWithResult = (
   options: ApplyFolioAIEditOperationsOptions,
-): { outcome: FolioAIEditApplyOutcome; doc: PMNode; commentIds: readonly number[] } => {
+): {
+  outcome: FolioAIEditApplyOutcome;
+  doc: PMNode;
+  commentIds: readonly number[];
+} => {
   const { view, createCommentId, ...applyOptions } = options;
   let previewCommentId = -1;
   const commentIds: number[] = [];
@@ -6166,7 +7058,9 @@ export const previewFolioAIEditOperationsWithResult = (
     outcome: {
       applied: result.applied.map(({ id }) => ({ id })),
       skipped: result.skipped,
-      ...(result.normalizations !== undefined && { normalizations: result.normalizations }),
+      ...(result.normalizations !== undefined && {
+        normalizations: result.normalizations,
+      }),
       // A preview allocates from a sentinel range and commits nothing, so the
       // next id is still the one the batch would have started from.
       nextRevisionId: options.revisionStamp?.idSeed ?? peekRevisionId(),
@@ -6202,7 +7096,8 @@ type TextReplacementOptions = {
 
 const CLEAN_TEXT_CONTROL_PATTERN = /[\t\n]/gu;
 
-const hasCleanTextControls = (text: string): boolean => text.includes("\t") || text.includes("\n");
+const hasCleanTextControls = (text: string): boolean =>
+  text.includes("\t") || text.includes("\n");
 
 type CleanTextInlineNodesOptions = {
   schema: Schema;
@@ -6226,11 +7121,17 @@ const cleanTextInlineNodes = ({
     const control = match[0];
     const nodeName = runFormattingInlineControlNodeName(control);
     if (nodeName === null) {
-      panic("A clean-text control pattern matched an unrepresentable character", { control });
+      panic(
+        "A clean-text control pattern matched an unrepresentable character",
+        { control },
+      );
     }
     const type = schema.nodes[nodeName];
     if (!type) {
-      panic("The editor schema cannot represent a clean-text control character", { control });
+      panic(
+        "The editor schema cannot represent a clean-text control character",
+        { control },
+      );
     }
     nodes.push(type.create(null, null, marks));
     offset = index + control.length;
@@ -6280,7 +7181,8 @@ const insertCleanText = ({
 }: InsertCleanTextOptions): InsertedCleanText => {
   const annotations = surveyReplacedAnnotations(tr.doc, from, to);
   const carried = standsInFor
-    ? surveyReplacedAnnotations(tr.doc, standsInFor.from, standsInFor.to).carried
+    ? surveyReplacedAnnotations(tr.doc, standsInFor.from, standsInFor.to)
+        .carried
     : [];
   const replaced = keepsReplacedText
     ? (commentsForTrackedInsertion(tr.doc, from, [carried])[0] ?? [])
@@ -6290,7 +7192,19 @@ const insertCleanText = ({
     replaced.length === 0 &&
     !hasCleanTextControls(text)
   ) {
-    return { transaction: tr.insertText(text, from, to), start: from, end: from + text.length };
+    if (text.length === 0) {
+      return { transaction: tr.delete(from, to), start: from, end: from };
+    }
+    // Explicit stored marks (formatting switched on at the caret) win over the replaced span.
+    const replacement = tr.doc.type.schema.text(
+      text,
+      tr.storedMarks ?? inheritedReplacementMarks(tr.doc, from, to),
+    );
+    return {
+      transaction: tr.replaceWith(from, to, replacement),
+      start: from,
+      end: from + text.length,
+    };
   }
   const schema = tr.doc.type.schema;
   const { fragment, leadingSize, contentSize } = annotatedReplacement({
@@ -6299,12 +7213,19 @@ const insertCleanText = ({
       cleanTextInlineNodes({
         schema,
         text,
-        marks: addCarriedMarks(inheritedReplacementMarks(tr.doc, from, to), replaced),
+        marks: addCarriedMarks(
+          inheritedReplacementMarks(tr.doc, from, to),
+          replaced,
+        ),
       }),
     ),
   });
   const start = from + leadingSize;
-  return { transaction: tr.replaceWith(from, to, fragment), start, end: start + contentSize };
+  return {
+    transaction: tr.replaceWith(from, to, fragment),
+    start,
+    end: start + contentSize,
+  };
 };
 
 const applyTextReplacement = ({
@@ -6322,7 +7243,10 @@ const applyTextReplacement = ({
   let nextTr = tr;
   const replacement = stripInlineEmphasisMarkers(
     (() => {
-      if (item.operation.type === "replaceInBlock" || item.operation.type === "replaceRange") {
+      if (
+        item.operation.type === "replaceInBlock" ||
+        item.operation.type === "replaceRange"
+      ) {
         return item.operation.replace;
       }
       if (item.operation.type === "replaceBlock") {
@@ -6339,7 +7263,8 @@ const applyTextReplacement = ({
     // never reaches here with emphasis; the tracked-changes path below still
     // strips, since its word-diff redline can't carry inline marks.
     if (
-      (item.operation.type === "replaceInBlock" || item.operation.type === "replaceRange") &&
+      (item.operation.type === "replaceInBlock" ||
+        item.operation.type === "replaceRange") &&
       hasInlineEmphasis(item.operation.replace)
     ) {
       const { fragment } = annotatedReplacement({
@@ -6369,7 +7294,8 @@ const applyTextReplacement = ({
 
   const insertionType = nextTr.doc.type.schema.marks["insertion"];
   const deletionType = nextTr.doc.type.schema.marks["deletion"];
-  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
+  const suggestionAttrs =
+    suggestionId === null ? {} : { provenance: "suggested", suggestionId };
   const initialsAttr = initials ? { initials } : {};
   const delAttrs = {
     revisionId: revisionIdDelete,
@@ -6398,7 +7324,11 @@ const applyTextReplacement = ({
       keepsReplacedText: true,
     });
     nextTr = inserted.transaction;
-    nextTr = nextTr.addMark(inserted.start, inserted.end, insertionType.create(insAttrs));
+    nextTr = nextTr.addMark(
+      inserted.start,
+      inserted.end,
+      insertionType.create(insAttrs),
+    );
     if (commentMark) {
       nextTr = nextTr.addMark(inserted.start, inserted.end, commentMark);
     }
@@ -6426,14 +7356,21 @@ const rangeHoldsNoteReference = ({
   blockFrom,
   from,
   to,
-}: Pick<ResolvedOperation, "blockNode" | "blockFrom" | "from" | "to">): boolean => {
+}: Pick<
+  ResolvedOperation,
+  "blockNode" | "blockFrom" | "from" | "to"
+>): boolean => {
   let holds = false;
   blockNode.descendants((node, pos) => {
     if (holds) {
       return false;
     }
     const start = blockFrom + 1 + pos;
-    if (noteReferenceOf(node) !== null && start < to && start + node.nodeSize > from) {
+    if (
+      noteReferenceOf(node) !== null &&
+      start < to &&
+      start + node.nodeSize > from
+    ) {
       holds = true;
     }
     return !holds;
@@ -6457,7 +7394,10 @@ const replacedCleanSpan = (
     }
     case "replaceRange": {
       const { startOffset, endOffset } = item.operation.range;
-      return { start: startOffset, text: cleanBlock.text.slice(startOffset, endOffset) };
+      return {
+        start: startOffset,
+        text: cleanBlock.text.slice(startOffset, endOffset),
+      };
     }
     case "replaceBlock":
       return { start: 0, text: cleanBlock.text };
@@ -6492,17 +7432,22 @@ type DocumentReplacementPlan = {
   replacementStyleSource: (change: TextChange) => PositionRange | null;
 };
 
-const BACKGROUND_MARK_NAMES: ReadonlySet<string> = new Set(["highlight", "runShading"]);
+const BACKGROUND_MARK_NAMES: ReadonlySet<string> = new Set([
+  "highlight",
+  "runShading",
+]);
 
 /**
  * Formatting, as opposed to a mark naming something outside the text or
  * describing one character (see `NON_INCLUSIVE_MARK_DISPOSITION`).
  */
-const isFormattingMark = (mark: Mark): boolean => mark.type.spec.inclusive !== false;
+const isFormattingMark = (mark: Mark): boolean =>
+  mark.type.spec.inclusive !== false;
 
 const isCarriedMark = (mark: Mark): boolean =>
-  NON_INCLUSIVE_MARK_DISPOSITION[mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION] ===
-  "carry";
+  NON_INCLUSIVE_MARK_DISPOSITION[
+    mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION
+  ] === "carry";
 
 type PlanDocumentReplacementOptions = {
   doc: PMNode;
@@ -6548,17 +7493,23 @@ const planDocumentReplacement = ({
   }
   const spanStart = span.start;
   const spanEnd = span.start + span.text.length;
-  const noteReferenceSpans = noteReferenceSpansWithin(cleanBlock, spanStart, spanEnd);
+  const noteReferenceSpans = noteReferenceSpansWithin(
+    cleanBlock,
+    spanStart,
+    spanEnd,
+  );
   // The changes are planned between the markers the replacement keeps, so none
   // reaches a reference. A comparison may also remove references and write
   // new markers: when the replacement does not keep them, its markers are
   // atomic like a field result instead, and a change touching one takes the
   // whole reference.
   const keepsReferences =
-    segmentsAroundNoteReferences(span.text, replacement, noteReferenceSpans) !== null;
+    segmentsAroundNoteReferences(span.text, replacement, noteReferenceSpans) !==
+    null;
   const editsReferences = !keepsReferences && noteReferenceEditsAllowed();
   const atomicSpans = cleanBlock.structuralBoundaries.flatMap((boundary) =>
-    boundary.type === "field" || (editsReferences && boundary.type === "noteReference")
+    boundary.type === "field" ||
+    (editsReferences && boundary.type === "noteReference")
       ? [{ offset: boundary.offset - spanStart, length: boundary.length }]
       : [],
   );
@@ -6567,13 +7518,23 @@ const planDocumentReplacement = ({
   ): TextChange[] | null =>
     editsReferences
       ? [...plan(span.text, replacement)]
-      : planChangesAroundNoteReferences(span.text, replacement, noteReferenceSpans, plan);
+      : planChangesAroundNoteReferences(
+          span.text,
+          replacement,
+          noteReferenceSpans,
+          plan,
+        );
   const pieceChanges = planPieces(planChanges);
   if (pieceChanges === null) {
     return null;
   }
-  const widened = widenChangesToAtomicSpans(span.text, pieceChanges, atomicSpans);
-  const keptPieces = keepFieldsOf === undefined ? null : planPieces(keepFieldsOf);
+  const widened = widenChangesToAtomicSpans(
+    span.text,
+    pieceChanges,
+    atomicSpans,
+  );
+  const keptPieces =
+    keepFieldsOf === undefined ? null : planPieces(keepFieldsOf);
   const changes =
     keptPieces === null
       ? widened
@@ -6609,7 +7570,11 @@ const planDocumentReplacement = ({
   const climbAfter = (position: number): number => {
     let at = position;
     for (let $at = doc.resolve(at); ; $at = doc.resolve(at)) {
-      if (!$at.parent.isInline || at !== $at.end() || holdsMatch($at.start(), $at.end())) {
+      if (
+        !$at.parent.isInline ||
+        at !== $at.end() ||
+        holdsMatch($at.start(), $at.end())
+      ) {
         return at;
       }
       at = $at.after();
@@ -6618,7 +7583,11 @@ const planDocumentReplacement = ({
   const climbBefore = (position: number): number => {
     let at = position;
     for (let $at = doc.resolve(at); ; $at = doc.resolve(at)) {
-      if (!$at.parent.isInline || at !== $at.start() || holdsMatch($at.start(), $at.end())) {
+      if (
+        !$at.parent.isInline ||
+        at !== $at.start() ||
+        holdsMatch($at.start(), $at.end())
+      ) {
         return at;
       }
       at = $at.before();
@@ -6631,7 +7600,9 @@ const planDocumentReplacement = ({
   const isNoteReference = (index: number): boolean => {
     const unit = unitAt(index);
     const node = unit === null ? null : doc.nodeAt(unit.from);
-    return node?.marks.some((mark) => mark.type.name === "footnoteRef") ?? false;
+    return (
+      node?.marks.some((mark) => mark.type.name === "footnoteRef") ?? false
+    );
   };
   const formattingSourceBefore = (index: number): number => {
     let source = index;
@@ -6662,7 +7633,9 @@ const planDocumentReplacement = ({
     for (let index = spanStart; index < spanEnd; index++) {
       const unit = unitAt(index);
       const marks = (unit === null ? null : doc.nodeAt(unit.from))?.marks ?? [];
-      carried = (carried ?? marks.filter(isCarriedMark)).filter((mark) => mark.isInSet(marks));
+      carried = (carried ?? marks.filter(isCarriedMark)).filter((mark) =>
+        mark.isInSet(marks),
+      );
       if (carried.length === 0) {
         break;
       }
@@ -6673,7 +7646,11 @@ const planDocumentReplacement = ({
   const planned: PlannedDocumentChange[] = [];
   for (const change of changes) {
     const pieces: PositionRange[] = [];
-    for (let index = spanStart + change.start; index < spanStart + change.end; index++) {
+    for (
+      let index = spanStart + change.start;
+      index < spanStart + change.end;
+      index++
+    ) {
       const unit = unitAt(index);
       if (unit === null) {
         return null;
@@ -6699,7 +7676,10 @@ const planDocumentReplacement = ({
         change,
         pieces,
         text: change.text,
-        insertion: { at: matchedFrom, marks: (current) => current.resolve(matchedFrom).marks() },
+        insertion: {
+          at: matchedFrom,
+          marks: (current) => current.resolve(matchedFrom).marks(),
+        },
       });
       continue;
     }
@@ -6718,7 +7698,9 @@ const planDocumentReplacement = ({
           at: climbAfter(previous.to),
           marks: (current) =>
             addCarriedMarks(
-              styleSource === null ? [] : current.resolve(styleSource.to).marks(),
+              styleSource === null
+                ? []
+                : current.resolve(styleSource.to).marks(),
               matchCarried,
             ),
         },
@@ -6741,7 +7723,9 @@ const planDocumentReplacement = ({
           addCarriedMarks(
             styleSource === null
               ? []
-              : (current.nodeAt(styleSource.from)?.marks ?? []).filter(isFormattingMark),
+              : (current.nodeAt(styleSource.from)?.marks ?? []).filter(
+                  isFormattingMark,
+                ),
             matchCarried,
           ),
       },
@@ -6770,7 +7754,10 @@ const presentationMarks = (marks: readonly Mark[]): readonly Mark[] =>
  * where the replaced text did. That is the rule for every mode, and the
  * receipt says it was applied (`uniformReplacementFormatting`).
  */
-const replacementUnifiesFormatting = (doc: PMNode, plan: DocumentReplacementPlan): boolean =>
+const replacementUnifiesFormatting = (
+  doc: PMNode,
+  plan: DocumentReplacementPlan,
+): boolean =>
   plan.planned.some(({ change, pieces }) => {
     if (pieces.length === 0 || change.text.length === 0) {
       return false;
@@ -6778,7 +7765,9 @@ const replacementUnifiesFormatting = (doc: PMNode, plan: DocumentReplacementPlan
     let first: readonly Mark[] | null = null;
     for (let index = change.start; index < change.end; index++) {
       const unit = plan.unitAt(plan.spanStart + index);
-      const marks = presentationMarks((unit ? doc.nodeAt(unit.from)?.marks : null) ?? Mark.none);
+      const marks = presentationMarks(
+        (unit ? doc.nodeAt(unit.from)?.marks : null) ?? Mark.none,
+      );
       if (first === null) {
         first = marks;
       } else if (!Mark.sameSet(first, marks)) {
@@ -6810,7 +7799,9 @@ const directReplacementMarks = ({
   replacementBackground: FolioReplacementBackground;
 }): (readonly Mark[])[] => {
   const clearsBackground = replacementBackground === "clear";
-  const touched = clearsBackground ? touchedBackgroundIndices({ doc, plan }) : new Set<number>();
+  const touched = clearsBackground
+    ? touchedBackgroundIndices({ doc, plan })
+    : new Set<number>();
   const withoutBackground = (marks: readonly Mark[]): readonly Mark[] =>
     marks.filter((mark) => !BACKGROUND_MARK_NAMES.has(mark.type.name));
   const allocated: (readonly Mark[])[] = [];
@@ -6852,7 +7843,7 @@ const directReplacementMarks = ({
   return allocated;
 };
 
-const replacementText = (operation: FolioAIEditOperation): string | null => {
+const replacementText = (operation: StagedOperation): string | null => {
   switch (operation.type) {
     case "replaceBlock":
       return operation.text;
@@ -6882,15 +7873,24 @@ const applyAlignedReplacementComments = ({
   stepsBefore,
   noteReferences,
 }: AlignedReplacementCommentsOptions): Transaction => {
-  const comments = surveyReplacedAnnotations(source, item.from, item.to).carried.filter(
-    (mark) => mark.type.name === "comment",
-  );
+  const comments = surveyReplacedAnnotations(
+    source,
+    item.from,
+    item.to,
+  ).carried.filter((mark) => mark.type.name === "comment");
   if (comments.length === 0) return tr;
-  const marks = directReplacementMarks({ doc: source, plan, replacementBackground: "keep" });
+  const marks = directReplacementMarks({
+    doc: source,
+    plan,
+    replacementBackground: "keep",
+  });
   const blockFrom = tr.mapping.slice(stepsBefore).map(item.blockFrom, -1);
   const block = tr.doc.nodeAt(blockFrom);
   if (!block) panic("Replacement lost its paragraph");
-  const clean = buildCleanBlockText(block, blockFrom, { fieldResults: "text", noteReferences });
+  const clean = buildCleanBlockText(block, blockFrom, {
+    fieldResults: "text",
+    noteReferences,
+  });
   for (const [index, expected] of marks.entries()) {
     const from = clean.offsets[plan.spanStart + index];
     if (from === undefined) panic("Replacement lost an aligned character");
@@ -6955,7 +7955,10 @@ const applyMinimalDirectReplacement = ({
   if (replacementBackground === "clear") {
     nextTr = clearTouchedBackground({
       tr: nextTr,
-      ranges: unitRanges(touchedBackgroundIndices({ doc: nextTr.doc, plan }), plan.unitAt),
+      ranges: unitRanges(
+        touchedBackgroundIndices({ doc: nextTr.doc, plan }),
+        plan.unitAt,
+      ),
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
   }
@@ -6969,9 +7972,17 @@ const applyMinimalDirectReplacement = ({
       const { at, marks } = change.insertion;
       nextTr = nextTr.insert(
         at,
-        cleanTextInlineNodes({ schema, text: change.text, marks: marks(nextTr.doc) }),
+        cleanTextInlineNodes({
+          schema,
+          text: change.text,
+          marks: marks(nextTr.doc),
+        }),
       );
-      written.push({ from: at, to: at + change.text.length, step: nextTr.steps.length });
+      written.push({
+        from: at,
+        to: at + change.text.length,
+        step: nextTr.steps.length,
+      });
       continue;
     }
     const [first, ...rest] = change.pieces;
@@ -6988,13 +7999,20 @@ const applyMinimalDirectReplacement = ({
         standsInFor: { from: first.from, to: rest.at(-1)?.to ?? first.to },
       });
       nextTr = replaced.transaction;
-      written.push({ from: replaced.start, to: replaced.end, step: nextTr.steps.length });
+      written.push({
+        from: replaced.start,
+        to: replaced.end,
+        step: nextTr.steps.length,
+      });
     } else {
       nextTr = nextTr.delete(first.from, first.to);
     }
     const afterWrite = nextTr.mapping.slice(stepsBeforeWrite);
     for (const piece of rest.toReversed()) {
-      nextTr = nextTr.delete(afterWrite.map(piece.from, 1), afterWrite.map(piece.to, -1));
+      nextTr = nextTr.delete(
+        afterWrite.map(piece.from, 1),
+        afterWrite.map(piece.to, -1),
+      );
     }
   }
 
@@ -7089,7 +8107,8 @@ const applyMinimalTrackedReplacement = ({
     item,
     replacement,
     noteReferences,
-    planChanges: (source, target) => changesFromSegments(diffText(source, target)),
+    planChanges: (source, target) =>
+      changesFromSegments(diffText(source, target)),
     // A field the direct edit keeps stays a field once this redline is
     // accepted, rather than coming back as its displayed text.
     keepFieldsOf: planTextChanges,
@@ -7114,15 +8133,22 @@ const applyMinimalTrackedReplacement = ({
   const allocatedMarks =
     directPlan === null
       ? null
-      : directReplacementMarks({ doc: tr.doc, plan: directPlan, replacementBackground }).map(
-          (marks, index) =>
-            addCarriedMarks(
-              marks.filter((mark) => mark.type.name !== "comment"),
-              (annotationMarks[index] ?? []).filter((mark) => mark.type.name === "comment"),
+      : directReplacementMarks({
+          doc: tr.doc,
+          plan: directPlan,
+          replacementBackground,
+        }).map((marks, index) =>
+          addCarriedMarks(
+            marks.filter((mark) => mark.type.name !== "comment"),
+            (annotationMarks[index] ?? []).filter(
+              (mark) => mark.type.name === "comment",
             ),
+          ),
         );
   const unifiesFormatting =
-    directPlan === null ? false : replacementUnifiesFormatting(tr.doc, directPlan);
+    directPlan === null
+      ? false
+      : replacementUnifiesFormatting(tr.doc, directPlan);
 
   let nextTr = tr;
   let backgroundRevisionIds: readonly number[] = [];
@@ -7137,9 +8163,9 @@ const applyMinimalTrackedReplacement = ({
         ),
       ),
     );
-    const kept = [...touchedBackgroundIndices({ doc: nextTr.doc, plan })].filter(
-      (index) => !removed.has(index),
-    );
+    const kept = [
+      ...touchedBackgroundIndices({ doc: nextTr.doc, plan }),
+    ].filter((index) => !removed.has(index));
     const ranges = unitRanges(new Set(kept), plan.unitAt);
     if (ranges.length > 0) {
       const cleared = applyTrackedInlineFormattingToRanges({
@@ -7163,10 +8189,22 @@ const applyMinimalTrackedReplacement = ({
     }
   }
 
-  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
-  const revisionAttrs = { author, date, ...(initials ? { initials } : {}), ...suggestionAttrs };
-  const deletion = deletionType.create({ revisionId: revisionIdDelete, ...revisionAttrs });
-  const insertion = insertionType.create({ revisionId: revisionIdInsert, ...revisionAttrs });
+  const suggestionAttrs =
+    suggestionId === null ? {} : { provenance: "suggested", suggestionId };
+  const revisionAttrs = {
+    author,
+    date,
+    ...(initials ? { initials } : {}),
+    ...suggestionAttrs,
+  };
+  const deletion = deletionType.create({
+    revisionId: revisionIdDelete,
+    ...revisionAttrs,
+  });
+  const insertion = insertionType.create({
+    revisionId: revisionIdInsert,
+    ...revisionAttrs,
+  });
   const insertedMarks = (marks: readonly Mark[]): readonly Mark[] =>
     marks.filter(
       (mark) =>
@@ -7189,14 +8227,21 @@ const applyMinimalTrackedReplacement = ({
     fallback: readonly Mark[],
   ): PMNode[] => {
     if (allocatedMarks?.length !== replacement.length) {
-      return cleanTextInlineNodes({ schema, text, marks: insertedMarks(fallback) });
+      return cleanTextInlineNodes({
+        schema,
+        text,
+        marks: insertedMarks(fallback),
+      });
     }
     const marksAt = (offset: number): readonly Mark[] =>
       allocatedMarks[replacementStart + offset] ?? fallback;
     const nodes: PMNode[] = [];
     let groupStart = 0;
     for (let offset = 1; offset <= text.length; offset++) {
-      if (offset < text.length && Mark.sameSet(marksAt(offset), marksAt(groupStart))) {
+      if (
+        offset < text.length &&
+        Mark.sameSet(marksAt(offset), marksAt(groupStart))
+      ) {
         continue;
       }
       nodes.push(
@@ -7213,7 +8258,11 @@ const applyMinimalTrackedReplacement = ({
 
   // Right to left, so a change never moves the positions of one before it.
   // Marking a deletion moves nothing; only the inserted text does.
-  for (let plannedIndex = plan.planned.length - 1; plannedIndex >= 0; plannedIndex--) {
+  for (
+    let plannedIndex = plan.planned.length - 1;
+    plannedIndex >= 0;
+    plannedIndex--
+  ) {
     const change = plan.planned[plannedIndex];
     if (change === undefined) {
       panic("A planned replacement change went missing", { plannedIndex });
@@ -7258,7 +8307,11 @@ const applyMinimalTrackedReplacement = ({
     if (change.text.length === 0) {
       continue;
     }
-    const pieces = insertedNodes(change.text, replacementStarts[plannedIndex] ?? 0, marks);
+    const pieces = insertedNodes(
+      change.text,
+      replacementStarts[plannedIndex] ?? 0,
+      marks,
+    );
     // A piece given a comment goes next to that comment's removed text, so
     // the comment stays one stretch (see `placeTrackedInsertion`).
     const positions =
@@ -7293,7 +8346,9 @@ const applyMinimalTrackedReplacement = ({
           run.at,
           run.pieces.map((node) => node.marks),
         );
-        nodes = run.pieces.map((node, index) => node.mark(pieceMarks[index] ?? node.marks));
+        nodes = run.pieces.map((node, index) =>
+          node.mark(pieceMarks[index] ?? node.marks),
+        );
       }
       nextTr = nextTr.insert(run.at, nodes);
       const end = run.at + Fragment.fromArray(nodes).size;
@@ -7333,7 +8388,10 @@ const touchedBackgroundIndices = ({
   const hasBackground = (index: number): boolean => {
     const unit = unitAt(index);
     const node = unit === null ? null : doc.nodeAt(unit.from);
-    return node?.marks.some((mark) => BACKGROUND_MARK_NAMES.has(mark.type.name)) ?? false;
+    return (
+      node?.marks.some((mark) => BACKGROUND_MARK_NAMES.has(mark.type.name)) ??
+      false
+    );
   };
   const touched = new Set<number>();
   for (const change of changes) {
@@ -7347,10 +8405,18 @@ const touchedBackgroundIndices = ({
         continue;
       }
       touched.add(index);
-      for (let left = index - 1; left >= spanStart && hasBackground(left); left--) {
+      for (
+        let left = index - 1;
+        left >= spanStart && hasBackground(left);
+        left--
+      ) {
         touched.add(left);
       }
-      for (let right = index + 1; right < spanEnd && hasBackground(right); right++) {
+      for (
+        let right = index + 1;
+        right < spanEnd && hasBackground(right);
+        right++
+      ) {
         touched.add(right);
       }
     }
@@ -7410,14 +8476,17 @@ const clearTouchedBackground = ({
 
 type ResolveOperationArgs = {
   snapshot: FolioAIEditSnapshot;
-  operation: FolioAIEditOperation;
+  operation: StagedOperation;
   liveBlocks: Map<string, LiveBlockEntry[]>;
   liveBlocksByParaId: Map<string, LiveBlockEntry>;
   noteReferences: NoteReferenceLabels;
   doc: PMNode;
 };
 
-type ResolveStableBlockArgs = Omit<ResolveOperationArgs, "operation" | "doc"> & {
+type ResolveStableBlockArgs = Omit<
+  ResolveOperationArgs,
+  "operation" | "doc"
+> & {
   blockId: string;
 };
 
@@ -7466,8 +8535,11 @@ const resolveStableBlock = ({
     noteReferences,
   });
   const currentText = cleanBlock.text;
-  const currentTextHash = hashFolioAIBlockText(normalizeFolioAIBlockText(currentText));
-  const structuralBoundaryHash = hashFolioAIBlockStructuralBoundaries(cleanBlock);
+  const currentTextHash = hashFolioAIBlockText(
+    normalizeFolioAIBlockText(currentText),
+  );
+  const structuralBoundaryHash =
+    hashFolioAIBlockStructuralBoundaries(cleanBlock);
   if (
     currentTextHash !== anchor.textHash ||
     structuralBoundaryHash !== anchor.structuralBoundaryHash
@@ -7513,7 +8585,10 @@ const refuseNoteReferenceEdit = (
 ): OperationResolutionSkip | null => {
   const { operation } = item;
   let replacement: string;
-  if (operation.type === "replaceInBlock" || operation.type === "replaceRange") {
+  if (
+    operation.type === "replaceInBlock" ||
+    operation.type === "replaceRange"
+  ) {
     replacement = operation.replace;
   } else if (operation.type === "replaceBlock") {
     replacement = operation.text;
@@ -7528,17 +8603,25 @@ const refuseNoteReferenceEdit = (
   if (span === null) {
     return null;
   }
-  const spans = noteReferenceSpansWithin(cleanBlock, span.start, span.start + span.text.length);
+  const spans = noteReferenceSpansWithin(
+    cleanBlock,
+    span.start,
+    span.start + span.text.length,
+  );
   // Dropping a block's formatting rebuilds it from the replacement text alone.
-  const rebuildsBlock = operation.type === "replaceBlock" && operation.preserveFormatting === false;
+  const rebuildsBlock =
+    operation.type === "replaceBlock" && operation.preserveFormatting === false;
   if (spans.length > 0 && (hasInlineEmphasis(replacement) || rebuildsBlock)) {
     return { type: "skip", reason: "protectedReference" };
   }
   if (operation.type === "replaceBlock" && replacement === span.text) {
     return null;
   }
-  return segmentsAroundNoteReferences(span.text, stripInlineEmphasisMarkers(replacement), spans) ===
-    null
+  return segmentsAroundNoteReferences(
+    span.text,
+    stripInlineEmphasisMarkers(replacement),
+    spans,
+  ) === null
     ? { type: "skip", reason: "protectedReference" }
     : null;
 };
@@ -7551,8 +8634,7 @@ const resolveOperationTarget = ({
   noteReferences,
   doc,
 }: ResolveOperationArgs):
-  | { type: "resolved"; operation: ResolvedBase }
-  | OperationResolutionSkip => {
+  { type: "resolved"; operation: ResolvedBase } | OperationResolutionSkip => {
   const blockId =
     operation.type === "replaceRange" ||
     operation.type === "commentOnRange" ||
@@ -7569,7 +8651,14 @@ const resolveOperationTarget = ({
   if (primaryBlock.type === "skip") {
     return primaryBlock;
   }
-  const { blockNode, blockFrom, blockTo, cleanBlock, currentText, currentTextHash } = primaryBlock;
+  const {
+    blockNode,
+    blockFrom,
+    blockTo,
+    cleanBlock,
+    currentText,
+    currentTextHash,
+  } = primaryBlock;
   if (
     operation.precondition !== undefined &&
     currentTextHash !== operation.precondition.blockTextHash
@@ -7599,7 +8688,11 @@ const resolveOperationTarget = ({
       operation.type === "replaceRange" ? "grapheme" : "codePoint",
     );
     if (characterSplit !== null) {
-      return { type: "skip", reason: "splitsCharacter", message: characterSplit };
+      return {
+        type: "skip",
+        reason: "splitsCharacter",
+        message: characterSplit,
+      };
     }
     if (cutsIntoNoteReference(cleanBlock, startOffset, endOffset)) {
       return { type: "skip", reason: "protectedReference" };
@@ -7608,7 +8701,10 @@ const resolveOperationTarget = ({
     if (range === null) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
-    if (operation.type === "replaceRange" && selectedText === operation.replace) {
+    if (
+      operation.type === "replaceRange" &&
+      selectedText === operation.replace
+    ) {
       return { type: "skip", reason: "noopOperation" };
     }
     return {
@@ -7624,7 +8720,10 @@ const resolveOperationTarget = ({
     };
   }
 
-  if (operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock") {
+  if (
+    operation.type === "insertAfterBlock" ||
+    operation.type === "insertBeforeBlock"
+  ) {
     // An empty `text` inserts a blank paragraph. That is a real edit — a blank
     // line between two clauses is something a document says — and it is the
     // only way to write one, so it is not refused. An insertion always changes
@@ -7643,10 +8742,13 @@ const resolveOperationTarget = ({
     } else {
       // After a paragraph is after the text boxes drawn in it too: a block
       // between the two is read after the boxes once the package is saved.
-      insertFrom = isInsertAfter ? endOfParagraphWithItsTextBoxes(doc, blockFrom) : blockFrom;
+      insertFrom = isInsertAfter
+        ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
+        : blockFrom;
     }
     const splitParagraphs =
-      operation.lineBreakMode !== "inline" && LINE_BREAK_PATTERN.test(operation.text);
+      operation.lineBreakMode !== "inline" &&
+      LINE_BREAK_PATTERN.test(operation.text);
     const insertTexts = splitParagraphs
       ? splitInsertParagraphTexts(operation.text)
       : [operation.text];
@@ -7672,10 +8774,13 @@ const resolveOperationTarget = ({
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     let insertFrom: number;
     if (tableBoundary) {
-      insertFrom = position === "after" ? tableBoundary.after : tableBoundary.before;
+      insertFrom =
+        position === "after" ? tableBoundary.after : tableBoundary.before;
     } else {
       insertFrom =
-        position === "after" ? endOfParagraphWithItsTextBoxes(doc, blockFrom) : blockFrom;
+        position === "after"
+          ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
+          : blockFrom;
     }
     return {
       type: "resolved",
@@ -7719,7 +8824,10 @@ const resolveOperationTarget = ({
         blockTo,
         blockNode,
         tableRowInsertion: insertion,
-        tableRowComments: commentsAcrossBlockBoundary(doc, insertion.rowPosition),
+        tableRowComments: commentsAcrossBlockBoundary(
+          doc,
+          insertion.rowPosition,
+        ),
       },
     };
   }
@@ -7765,7 +8873,10 @@ const resolveOperationTarget = ({
         blockTo,
         blockNode,
         tableColumnInsertion,
-        tableColumnComments: commentsAcrossTable(doc, tableColumnInsertion.tablePosition),
+        tableColumnComments: commentsAcrossTable(
+          doc,
+          tableColumnInsertion.tablePosition,
+        ),
       },
     };
   }
@@ -7819,8 +8930,12 @@ const resolveOperationTarget = ({
       ) {
         return { type: "skip", reason: "unsupportedBlock" };
       }
-      const endRelativePosition = map.map[(rectangle.bottom - 1) * map.width + rectangle.left];
-      const endCell = endRelativePosition === undefined ? null : table.nodeAt(endRelativePosition);
+      const endRelativePosition =
+        map.map[(rectangle.bottom - 1) * map.width + rectangle.left];
+      const endCell =
+        endRelativePosition === undefined
+          ? null
+          : table.nodeAt(endRelativePosition);
       if (!endCell || endRelativePosition === undefined) {
         return { type: "skip", reason: "unsupportedBlock" };
       }
@@ -7851,13 +8966,15 @@ const resolveOperationTarget = ({
       endCellEndPosition = endCell.cellEndPosition;
     }
     if (
-      (rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1) ||
+      (rectangle.right - rectangle.left === 1 &&
+        rectangle.bottom - rectangle.top === 1) ||
       tableRectangleCutsMergedCell(map, rectangle)
     ) {
       return {
         type: "skip",
         reason:
-          rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1
+          rectangle.right - rectangle.left === 1 &&
+          rectangle.bottom - rectangle.top === 1
             ? "noopOperation"
             : "unsupportedBlock",
       };
@@ -7890,7 +9007,10 @@ const resolveOperationTarget = ({
       right: cell.rightColumnIndex,
       bottom: cell.bottomRowIndex,
     };
-    if (rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1) {
+    if (
+      rectangle.right - rectangle.left === 1 &&
+      rectangle.bottom - rectangle.top === 1
+    ) {
       return { type: "skip", reason: "noopOperation" };
     }
     return {
@@ -7918,10 +9038,19 @@ const resolveOperationTarget = ({
       after: endOfParagraphWithItsTextBoxes(doc, blockFrom),
     };
     const insertFrom =
-      (operation.position ?? "after") === "after" ? boundary.after : boundary.before;
+      (operation.position ?? "after") === "after"
+        ? boundary.after
+        : boundary.before;
     return {
       type: "resolved",
-      operation: { operation, from: insertFrom, to: insertFrom, blockFrom, blockTo, blockNode },
+      operation: {
+        operation,
+        from: insertFrom,
+        to: insertFrom,
+        blockFrom,
+        blockTo,
+        blockNode,
+      },
     };
   }
 
@@ -7950,7 +9079,14 @@ const resolveOperationTarget = ({
     }
     return {
       type: "resolved",
-      operation: { operation, from: blockFrom, to: blockTo, blockFrom, blockTo, blockNode },
+      operation: {
+        operation,
+        from: blockFrom,
+        to: blockTo,
+        blockFrom,
+        blockTo,
+        blockNode,
+      },
     };
   }
 
@@ -7970,7 +9106,12 @@ const resolveOperationTarget = ({
     ) {
       return { type: "skip", reason: "staleRange" };
     }
-    if (currentText.slice(operation.offset, operation.offset + separator.length) !== separator) {
+    if (
+      currentText.slice(
+        operation.offset,
+        operation.offset + separator.length,
+      ) !== separator
+    ) {
       return { type: "skip", reason: "staleRange" };
     }
     const characterSplit = describeCharacterSplit(
@@ -7979,7 +9120,11 @@ const resolveOperationTarget = ({
       "grapheme",
     );
     if (characterSplit !== null) {
-      return { type: "skip", reason: "splitsCharacter", message: characterSplit };
+      return {
+        type: "skip",
+        reason: "splitsCharacter",
+        message: characterSplit,
+      };
     }
     const range = resolveCleanTextRange({ cleanBlock, startOffset, endOffset });
     if (range === null || !canSplit(doc, range.from)) {
@@ -8008,7 +9153,14 @@ const resolveOperationTarget = ({
     }
     return {
       type: "resolved",
-      operation: { operation, from: blockTo, to: blockTo, blockFrom, blockTo, blockNode },
+      operation: {
+        operation,
+        from: blockTo,
+        to: blockTo,
+        blockFrom,
+        blockTo,
+        blockNode,
+      },
     };
   }
 
@@ -8022,7 +9174,8 @@ const resolveOperationTarget = ({
   }
 
   if (operation.type === "deleteBlock" || operation.type === "replaceBlock") {
-    const replaceChangesText = operation.type === "replaceBlock" && operation.text !== currentText;
+    const replaceChangesText =
+      operation.type === "replaceBlock" && operation.text !== currentText;
     const replaceChangesStyle =
       operation.type === "replaceBlock" &&
       operation.styleId !== undefined &&
@@ -8035,7 +9188,8 @@ const resolveOperationTarget = ({
     if (
       replaceChangesText &&
       cleanBlock.structuralBoundaries.some(
-        (boundary) => boundary.type !== "field" && boundary.type !== "noteReference",
+        (boundary) =>
+          boundary.type !== "field" && boundary.type !== "noteReference",
       )
     ) {
       return { type: "skip", reason: "unsupportedBlock" };
@@ -8054,7 +9208,8 @@ const resolveOperationTarget = ({
       const resolvesOnABlank =
         operation.type === "deleteBlock"
           ? true
-          : currentText.length === 0 && (operation.text.length > 0 || replaceChangesStyle);
+          : currentText.length === 0 &&
+            (operation.text.length > 0 || replaceChangesStyle);
       if (!resolvesOnABlank) {
         return { type: "skip", reason: "unsupportedBlock" };
       }
@@ -8128,7 +9283,10 @@ const resolveOperationTarget = ({
     };
   }
 
-  if (operation.type === "replaceInBlock" && operation.find === operation.replace) {
+  if (
+    operation.type === "replaceInBlock" &&
+    operation.find === operation.replace
+  ) {
     return { type: "skip", reason: "noopOperation" };
   }
 
@@ -8187,7 +9345,11 @@ const resolveTextInCleanBlock = (
     strictness,
   );
   if (characterSplit !== null) {
-    return { type: "skip", reason: "splitsCharacter", message: `the match's ${characterSplit}` };
+    return {
+      type: "skip",
+      reason: "splitsCharacter",
+      message: `the match's ${characterSplit}`,
+    };
   }
   if (cutsIntoNoteReference(cleanBlock, firstIndex, firstIndex + find.length)) {
     return { type: "skip", reason: "protectedReference" };
@@ -8220,7 +9382,9 @@ const getTextRangeFromCleanBlock = (cleanBlock: {
   return { from, to };
 };
 
-const getOperationCommentText = (operation: FolioAIEditOperation): string | undefined =>
+const getOperationCommentText = (
+  operation: StagedOperation,
+): string | undefined =>
   "comment" in operation ? operation.comment?.text : undefined;
 
 type UndefinedParagraphStyleReference = {
@@ -8239,7 +9403,7 @@ type StyleDefinitionLookup = ReturnType<typeof getDocumentStyleDefinitions>;
  * construction.
  */
 const operationParagraphStyleReferences = (
-  operation: FolioAIEditOperation,
+  operation: StagedOperation,
 ): { path: string; styleId: string | null | undefined }[] => {
   switch (operation.type) {
     case "insertAfterBlock":
@@ -8247,7 +9411,9 @@ const operationParagraphStyleReferences = (
     case "replaceBlock":
       return [{ path: "styleId", styleId: operation.styleId }];
     case "setBlockParagraphProperties":
-      return [{ path: "properties.styleId", styleId: operation.properties.styleId }];
+      return [
+        { path: "properties.styleId", styleId: operation.properties.styleId },
+      ];
     case "splitBlock":
       return [
         {
@@ -8272,7 +9438,7 @@ const operationParagraphStyleReferences = (
 };
 
 type FindUndefinedParagraphStyleReferenceOptions = {
-  operation: FolioAIEditOperation;
+  operation: StagedOperation;
   definitions: StyleDefinitionLookup;
   undefinedReferences: FolioUndefinedReferencePolicy;
 };
@@ -8287,11 +9453,14 @@ const findUndefinedParagraphStyleReference = ({
   operation,
   definitions,
   undefinedReferences,
-}: FindUndefinedParagraphStyleReferenceOptions): UndefinedParagraphStyleReference | undefined => {
+}: FindUndefinedParagraphStyleReferenceOptions):
+  UndefinedParagraphStyleReference | undefined => {
   if (definitions === null) {
     return undefined;
   }
-  for (const { path, styleId } of operationParagraphStyleReferences(operation)) {
+  for (const { path, styleId } of operationParagraphStyleReferences(
+    operation,
+  )) {
     if (styleId === null || styleId === undefined) {
       continue;
     }
@@ -8305,7 +9474,9 @@ const findUndefinedParagraphStyleReference = ({
     if (reference !== "sourceDefined") {
       return { path, styleId, definedAs: undefined };
     }
-    const definition = definitions.get(styleId) ?? panic("A classified style lost its definition");
+    const definition =
+      definitions.get(styleId) ??
+      panic("A classified style lost its definition");
     if (definition.type !== "paragraph") {
       return { path, styleId, definedAs: definition.type };
     }
@@ -8319,7 +9490,9 @@ const describeUndefinedParagraphStyle = (
   { path, styleId, definedAs }: UndefinedParagraphStyleReference,
   definitions: StyleDefinitionLookup,
 ): string => {
-  const defined = (definitions?.paragraphStyles() ?? []).map((style) => style.styleId);
+  const defined = (definitions?.paragraphStyles() ?? []).map(
+    (style) => style.styleId,
+  );
   let available = "it defines no visible paragraph styles";
   if (defined.length > 0) {
     const listed = defined.slice(0, MAX_LISTED_PARAGRAPH_STYLES).join(", ");
@@ -8336,22 +9509,30 @@ type UndefinedNumberingReference = { path: string; numId: number };
 
 /** The `w:num` id a stated numbering names, when it names one. */
 const statedNumberingInstance = (
-  numbering: FolioContentStatedNumbering | undefined,
-): number | undefined => (numbering?.kind === "reference" ? numbering.numId : undefined);
+  numbering: StagedOperationNumbering | undefined,
+): number | undefined =>
+  numbering?.kind === "reference" && isNumberingReference(numbering.numId)
+    ? numbering.numId
+    : undefined;
 
 /**
  * Every numbering instance an operation names, with the field that names it.
  * Only reference variants name an instance; inheritance, cancellation and level-only do not.
  */
 const operationNumberingReferences = (
-  operation: FolioAIEditOperation,
-): { path: string; numbering: FolioContentStatedNumbering | undefined }[] => {
+  operation: StagedOperation,
+): { path: string; numbering: StagedOperationNumbering | undefined }[] => {
   switch (operation.type) {
     case "insertAfterBlock":
     case "insertBeforeBlock":
       return [{ path: "numbering", numbering: operation.numbering }];
     case "setBlockParagraphProperties":
-      return [{ path: "properties.numbering", numbering: operation.properties.numbering }];
+      return [
+        {
+          path: "properties.numbering",
+          numbering: operation.properties.numbering,
+        },
+      ];
     case "splitBlock":
       return [
         {
@@ -8382,7 +9563,7 @@ const operationNumberingReferences = (
  * check nothing.
  */
 type FindUndefinedNumberingReferenceOptions = {
-  operation: FolioAIEditOperation;
+  operation: StagedOperation;
   instanceIds: ReadonlySet<number> | null;
   undefinedReferences: FolioUndefinedReferencePolicy;
 };
@@ -8391,7 +9572,8 @@ const findUndefinedNumberingReference = ({
   operation,
   instanceIds,
   undefinedReferences,
-}: FindUndefinedNumberingReferenceOptions): UndefinedNumberingReference | undefined => {
+}: FindUndefinedNumberingReferenceOptions):
+  UndefinedNumberingReference | undefined => {
   if (instanceIds === null) {
     return undefined;
   }
@@ -8426,7 +9608,7 @@ const describeUndefinedNumbering = (
   return `${path}.numId ${String(numId)} names no numbering instance in this document (${available}).`;
 };
 
-const getOperationQuote = (operation: FolioAIEditOperation): string | undefined => {
+const getOperationQuote = (operation: StagedOperation): string | undefined => {
   if (operation.type === "replaceInBlock") {
     return operation.find;
   }

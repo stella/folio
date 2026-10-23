@@ -54,7 +54,9 @@ export type TableInsertHoverInput = {
  * mouse isn't near a row's left edge or a column's top edge — or if the
  * relevant table belongs to an inactive HF/body region.
  */
-export function detectTableInsertHover(input: TableInsertHoverInput): TableInsertHoverHit | null {
+export function detectTableInsertHover(
+  input: TableInsertHoverInput,
+): TableInsertHoverHit | null {
   const {
     mouseX,
     mouseY,
@@ -102,9 +104,11 @@ export function detectTableInsertHover(input: TableInsertHoverInput): TableInser
   const tableRect = tableEl.getBoundingClientRect();
 
   const nearLeftEdge =
-    mouseX < tableRect.left + edgeProximity && mouseX >= tableRect.left - edgeProximity;
+    mouseX < tableRect.left + edgeProximity &&
+    mouseX >= tableRect.left - edgeProximity;
   const nearTopEdge =
-    mouseY < tableRect.top + edgeProximity && mouseY >= tableRect.top - edgeProximity;
+    mouseY < tableRect.top + edgeProximity &&
+    mouseY >= tableRect.top - edgeProximity;
 
   if (!nearLeftEdge && !nearTopEdge) return null;
 
@@ -133,7 +137,9 @@ export function detectTableInsertHover(input: TableInsertHoverInput): TableInser
 
   const firstRow = rows[0];
   if (nearTopEdge && firstRow) {
-    const cells = firstRow.querySelectorAll<HTMLElement>(`:scope > ${cellSelector}`);
+    const cells = firstRow.querySelectorAll<HTMLElement>(
+      `:scope > ${cellSelector}`,
+    );
     for (const cell of Array.from(cells)) {
       const cellRect = cell.getBoundingClientRect();
       if (mouseX >= cellRect.left && mouseX <= cellRect.right) {

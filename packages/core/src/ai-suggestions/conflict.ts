@@ -37,7 +37,11 @@ export function resolveSuggestionAnchor(
   const docSize = doc.content.size;
   const { from, to } = suggestion.range;
 
-  if (from >= 0 && to <= docSize && to - from === suggestion.originalText.length) {
+  if (
+    from >= 0 &&
+    to <= docSize &&
+    to - from === suggestion.originalText.length
+  ) {
     const slice = doc.textBetween(from, to, "\n", "\n");
     if (slice === suggestion.originalText) {
       return { from, to };
@@ -55,7 +59,10 @@ export function resolveSuggestionAnchor(
   // relaxation cannot grab the wrong occurrence.
   const needles = [
     {
-      needle: suggestion.contextBefore + suggestion.originalText + suggestion.contextAfter,
+      needle:
+        suggestion.contextBefore +
+        suggestion.originalText +
+        suggestion.contextAfter,
       prefix: suggestion.contextBefore.length,
     },
     {
@@ -93,6 +100,9 @@ export function resolveSuggestionAnchor(
   return null;
 }
 
-export function isSuggestionStale(doc: PMNode, suggestion: AISuggestion): boolean {
+export function isSuggestionStale(
+  doc: PMNode,
+  suggestion: AISuggestion,
+): boolean {
   return resolveSuggestionAnchor(doc, suggestion) === null;
 }

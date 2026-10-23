@@ -73,7 +73,9 @@ const tableLookMask = (val: string | undefined): number => {
  * same fact: a producer that writes both and disagrees means the flags, and a
  * producer that writes only `w:val` still gets its banding and its header row.
  */
-export const resolveTableLook = (look: TableLook | undefined): ResolvedTableLook => {
+export const resolveTableLook = (
+  look: TableLook | undefined,
+): ResolvedTableLook => {
   const mask = tableLookMask(look?.val);
   const resolve = (flag: TableLookFlag): boolean =>
     // oxlint-disable-next-line no-bitwise -- w:val is an OOXML bitmask
@@ -107,7 +109,10 @@ type SetTableLookFlagsOptions = {
  * the bits outside the six modelled here — the bitmask is 16 bits wide and the
  * format reserves the rest — and folio has nothing to put there.
  */
-export const setTableLookFlags = ({ look, flags }: SetTableLookFlagsOptions): TableLook => ({
+export const setTableLookFlags = ({
+  look,
+  flags,
+}: SetTableLookFlagsOptions): TableLook => ({
   ...look,
   ...flags,
 });

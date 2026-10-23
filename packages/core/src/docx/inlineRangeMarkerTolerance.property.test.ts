@@ -24,17 +24,21 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { createEmptyDocument } from "../utils/createDocument";
+import { validateFolioDocumentModel } from "./modelValidation";
 import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
-import { validateFolioDocumentModel } from "./modelValidation";
-import { createEmptyDocument } from "../utils/createDocument";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const AUTHORED = 'w:author="A" w:date="2024-01-01T00:00:00Z"';
 
 const MARKERS = {
@@ -57,11 +61,20 @@ type MarkerKind = keyof typeof MARKERS;
 const MARKER_KINDS = Object.keys(MARKERS) as MarkerKind[];
 
 /** Which halves of the pair the document carries. */
-const BALANCES = ["both", "startOnly", "endOnly", "twoStarts", "twoEnds"] as const;
+const BALANCES = [
+  "both",
+  "startOnly",
+  "endOnly",
+  "twoStarts",
+  "twoEnds",
+] as const;
 
 type Balance = (typeof BALANCES)[number];
 
-const halvesFor = (balance: Balance, marker: { start: string; end: string }): string[] => {
+const halvesFor = (
+  balance: Balance,
+  marker: { start: string; end: string },
+): string[] => {
   switch (balance) {
     case "both":
       return [marker.start, marker.end];
@@ -87,9 +100,11 @@ const HOSTS = {
   /** Directly in the paragraph. */
   paragraph: (inner: string) => `<w:p>${inner}</w:p>`,
   /** Inside a tracked insertion. */
-  insertion: (inner: string) => `<w:p><w:ins w:id="800" ${AUTHORED}>${inner}</w:ins></w:p>`,
+  insertion: (inner: string) =>
+    `<w:p><w:ins w:id="800" ${AUTHORED}>${inner}</w:ins></w:p>`,
   /** Inside a bidirectional override. */
-  bidiOverride: (inner: string) => `<w:p><w:bdo w:val="rtl">${inner}</w:bdo></w:p>`,
+  bidiOverride: (inner: string) =>
+    `<w:p><w:bdo w:val="rtl">${inner}</w:bdo></w:p>`,
   /** Inside a bidirectional embedding nested in an insertion. */
   bidiInInsertion: (inner: string) =>
     `<w:p><w:ins w:id="801" ${AUTHORED}><w:dir w:val="ltr">${inner}</w:dir></w:ins></w:p>`,
@@ -136,7 +151,10 @@ const basePackage = (): Promise<ArrayBuffer> => {
             paraId: "C0000001",
             content: COMMENT_IDS.flatMap((id) => [
               { type: "commentRangeStart" as const, id },
-              { type: "run" as const, content: [{ type: "text" as const, text: "seed" }] },
+              {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: "seed" }],
+              },
               { type: "commentRangeEnd" as const, id },
               { type: "commentReference" as const, id },
             ]),
@@ -169,7 +187,9 @@ type Outcome = {
 };
 
 const openAndSave = async (body: string): Promise<Outcome> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
   const saved = await repackDocx(parsed, { updateModifiedDate: false });
   const reopened = await parseDocx(saved, { preloadFonts: false });
   return {
@@ -179,7 +199,8 @@ const openAndSave = async (body: string): Promise<Outcome> => {
   };
 };
 
-const occurrences = (xml: string, needle: string): number => xml.split(needle).length - 1;
+const occurrences = (xml: string, needle: string): number =>
+  xml.split(needle).length - 1;
 
 describe("an unbalanced inline range marker never refuses the document", () => {
   test("every marker kind, in every wrapper, in every balance, opens and re-saves", async () => {
@@ -192,7 +213,9 @@ describe("an unbalanced inline range marker never refuses the document", () => {
         async (kind, host, balance, id) => {
           const marker = MARKERS[kind](id);
           const halves = halvesFor(balance, marker);
-          const inner = [halves[0] ?? "", run("text"), ...halves.slice(1)].join("");
+          const inner = [halves[0] ?? "", run("text"), ...halves.slice(1)].join(
+            "",
+          );
 
           const { saved, savedIsValid } = await openAndSave(HOSTS[host](inner));
 
@@ -209,7 +232,12 @@ describe("an unbalanced inline range marker never refuses the document", () => {
           const ends = occurrences(saved, marker.end);
           if (balance === "both") {
             // A balanced pair is untouched, wherever it sits.
-            expect({ kind, host, starts, ends }).toEqual({ kind, host, starts: 1, ends: 1 });
+            expect({ kind, host, starts, ends }).toEqual({
+              kind,
+              host,
+              starts: 1,
+              ends: 1,
+            });
             return;
           }
           // Every unmatched half is gone, deterministically: a comment range's
@@ -222,7 +250,9 @@ describe("an unbalanced inline range marker never refuses the document", () => {
             ends: 0,
           });
           if (kind === "commentRange") {
-            expect(occurrences(saved, `<w:commentReference w:id="${id}"/>`)).toBe(halves.length);
+            expect(
+              occurrences(saved, `<w:commentReference w:id="${id}"/>`),
+            ).toBe(halves.length);
           }
         },
       ),
@@ -248,6 +278,8 @@ describe("an unbalanced inline range marker never refuses the document", () => {
     );
 
     expect(savedIsValid).toBe(true);
-    expect(warnings.join("\n")).toContain("unbalanced tracked move range marker");
+    expect(warnings.join("\n")).toContain(
+      "unbalanced tracked move range marker",
+    );
   });
 });

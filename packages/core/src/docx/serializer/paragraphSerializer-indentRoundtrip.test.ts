@@ -25,11 +25,15 @@ describe("paragraph indentation round-trip", () => {
     const originalBuffer = await zip.generateAsync({ type: "arraybuffer" });
     const document = await parseDocx(originalBuffer, { preloadFonts: false });
 
-    expect(document.package.document.content.at(0)?.formatting?.indentFirstLine).toBe(0);
+    expect(
+      document.package.document.content.at(0)?.formatting?.indentFirstLine,
+    ).toBe(0);
 
     const saved = await repackDocx({ ...document, originalBuffer });
     const reparsed = await parseDocx(saved, { preloadFonts: false });
 
-    expect(reparsed.package.document.content.at(0)?.formatting?.indentFirstLine).toBe(0);
+    expect(
+      reparsed.package.document.content.at(0)?.formatting?.indentFirstLine,
+    ).toBe(0);
   });
 });

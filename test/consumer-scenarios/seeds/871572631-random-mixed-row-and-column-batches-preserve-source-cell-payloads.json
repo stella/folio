@@ -1,0 +1,7 @@
+{
+  "seed": 871572631,
+  "steps": 10,
+  "kind": "random",
+  "generation": "targeted",
+  "title": "mixed row and column batches preserve source cell payloads"
+}

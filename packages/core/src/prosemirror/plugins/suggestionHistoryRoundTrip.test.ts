@@ -1,6 +1,6 @@
-import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
+import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { TextSelection } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -58,7 +58,9 @@ for (const mode of ["editing", "suggesting"] as const) {
     const view = mountEditor(createHarnessState(base, mode));
     const initial = view.state.doc;
     view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
-    view.dispatch(view.state.tr.insertText("alpha").setMeta("composition", 101));
+    view.dispatch(
+      view.state.tr.insertText("alpha").setMeta("composition", 101),
+    );
     view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
     await Promise.resolve();
     const composed = view.state.doc;
@@ -98,7 +100,8 @@ for (const { shape, direction, startOffset, endOffset } of selectionCases) {
       });
       const first = positions.at(0);
       const second = positions.at(1);
-      if (first === undefined || second === undefined) panic("Missing selection paragraphs");
+      if (first === undefined || second === undefined)
+        panic("Missing selection paragraphs");
       const from = first + startOffset;
       const to = second + endOffset;
       view.dispatch(
@@ -121,10 +124,14 @@ for (const { shape, direction, startOffset, endOffset } of selectionCases) {
       outcomes.push(summarizeState(accepted));
       const saved = await saveHarnessState(accepted, base);
       expect(
-        summarizeState(createHarnessState(await parseShapeDocument(saved.bytes), "editing")),
+        summarizeState(
+          createHarnessState(await parseShapeDocument(saved.bytes), "editing"),
+        ),
       ).toEqual(summarizeState(accepted));
       if (mode === "suggesting") {
-        expect(summarizeState(resolveAllChanges(view.state, "reject"))).toEqual(baseline);
+        expect(summarizeState(resolveAllChanges(view.state, "reject"))).toEqual(
+          baseline,
+        );
       }
     }
     expect(outcomes.at(1)).toEqual(outcomes.at(0));

@@ -22,7 +22,7 @@ import path from "node:path";
 
 import { compareDocx } from "@stll/folio-core/compare/compare";
 
-import { loadCorpus, readDocument, type CorpusPair } from "./corpus";
+import { type CorpusPair, loadCorpus, readDocument } from "./corpus";
 import { checkRecordedDigests } from "./digest-check";
 import {
   buildDocumentPackage,
@@ -32,29 +32,44 @@ import {
   type DocumentSize,
 } from "./documents";
 import { checkInvariants, type InvariantOutcome } from "./invariants";
-import { measureHeapGrowth, sample, summarize, type Distribution } from "./measure";
+import {
+  type Distribution,
+  measureHeapGrowth,
+  sample,
+  summarize,
+} from "./measure";
 import { zipPackage } from "./package-xml";
 import {
   classifyRefusal,
+  type PairOutcome,
   REFUSAL_BUCKETS,
+  type RefusalBucket,
   summarizeRefusals,
   summarizeUnverified,
   summarizeVerification,
-  type PairOutcome,
-  type RefusalBucket,
 } from "./refusals";
-import { COMPARE_STAGES, runStagedCompare, type CompareStage } from "./stages";
-import { applyVariant, EDIT_VARIANTS, type EditVariant } from "./variants";
+import { COMPARE_STAGES, type CompareStage, runStagedCompare } from "./stages";
 import { PACKAGE_VALIDATOR_HINT, resolvePackageValidator } from "./validator";
+import { applyVariant, EDIT_VARIANTS, type EditVariant } from "./variants";
 
-const OPTIONS = { author: "folio compare benchmark", timestamp: "2000-01-01T00:00:00.000Z" };
+const OPTIONS = {
+  author: "folio compare benchmark",
+  timestamp: "2000-01-01T00:00:00.000Z",
+};
 
 const DIGESTS_FILE = path.join(import.meta.dir, "digests.json");
 
-type Configuration = { documentClass: DocumentClass; size: DocumentSize; variant: EditVariant };
+type Configuration = {
+  documentClass: DocumentClass;
+  size: DocumentSize;
+  variant: EditVariant;
+};
 
-const configurationId = ({ documentClass, size, variant }: Configuration): string =>
-  `${documentClass}/${size}/${variant}`;
+const configurationId = ({
+  documentClass,
+  size,
+  variant,
+}: Configuration): string => `${documentClass}/${size}/${variant}`;
 
 const parseConfigurationId = (id: string): Configuration => {
   const [documentClass, size, variant] = id.split("/");
@@ -114,7 +129,10 @@ const buildGeneratedPair = async ({
   if (targetParts === null) {
     return null;
   }
-  return { base: await zipPackage(parts), target: await zipPackage(targetParts) };
+  return {
+    base: await zipPackage(parts),
+    target: await zipPackage(targetParts),
+  };
 };
 
 type MeasurePairOptions = {
@@ -134,7 +152,8 @@ const measurePair = async ({
   expectedChanges,
   expectation,
 }: MeasurePairOptions): Promise<CaseResult> => {
-  const run = async () => await runStagedCompare(pair.base, pair.target, OPTIONS);
+  const run = async () =>
+    await runStagedCompare(pair.base, pair.target, OPTIONS);
   const probe = await run();
   if (probe.status === "failed") {
     return { id, status: "failed", detail: `${probe.stage}: ${probe.error}` };
@@ -154,7 +173,11 @@ const measurePair = async ({
   for (let index = 0; index < iterations; index++) {
     const measured = await run();
     if (measured.status === "failed") {
-      return { id, status: "failed", detail: `${measured.stage}: ${measured.error}` };
+      return {
+        id,
+        status: "failed",
+        detail: `${measured.stage}: ${measured.error}`,
+      };
     }
     for (const stage of COMPARE_STAGES) {
       stageSamples[stage].push(measured.durations[stage]);
@@ -162,7 +185,9 @@ const measurePair = async ({
   }
 
   const heapGrowthBytes = await measureHeapGrowth(run);
-  const unsupported = [...new Set(last.unsupported.map(({ reason }) => reason))].toSorted();
+  const unsupported = [
+    ...new Set(last.unsupported.map(({ reason }) => reason)),
+  ].toSorted();
   const { outcomes, digests } = await checkInvariants({
     base: pair.base,
     target: pair.target,
@@ -228,7 +253,9 @@ const printBucketTable = (
   console.log("| Bucket | Documents | What it is | A representative shape |");
   console.log("| ------ | --------: | ---------- | ---------------------- |");
   for (const { bucket, count, shape } of rows) {
-    console.log(`| \`${bucket}\` | ${String(count)} | ${REFUSAL_BUCKETS[bucket]} | ${shape} |`);
+    console.log(
+      `| \`${bucket}\` | ${String(count)} | ${REFUSAL_BUCKETS[bucket]} | ${shape} |`,
+    );
   }
 };
 
@@ -250,7 +277,9 @@ const printBucketTable = (
  */
 const runRefusals = async (options: CliOptions): Promise<number> => {
   if (options.corpusDirectory === null) {
-    console.log("--refusals needs --corpus <dir>; the repository ships no corpus of its own.");
+    console.log(
+      "--refusals needs --corpus <dir>; the repository ships no corpus of its own.",
+    );
     return 1;
   }
   const corpus = loadCorpus(options.corpusDirectory);
@@ -266,7 +295,10 @@ const runRefusals = async (options: CliOptions): Promise<number> => {
     }
     const { base, target } = corpusPairBytes(pair);
     const strictResult = await compareDocx(base, target, OPTIONS);
-    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    const emitted = await compareDocx(base, target, {
+      ...OPTIONS,
+      onUnverified: "emit",
+    });
     outcomes.push({
       id: pair.id,
       strict: strictResult.isOk()
@@ -279,9 +311,15 @@ const runRefusals = async (options: CliOptions): Promise<number> => {
   const total = outcomes.length;
   const share = (count: number): string =>
     total === 0 ? "0.0%" : `${((count / total) * 100).toFixed(1)}%`;
-  const refused = outcomes.filter(({ strict }) => strict.status === "refused").length;
-  const emittedCount = outcomes.filter(({ bestEffort }) => bestEffort.status !== "failed").length;
-  const verified = outcomes.filter(({ bestEffort }) => bestEffort.status === "verified").length;
+  const refused = outcomes.filter(
+    ({ strict }) => strict.status === "refused",
+  ).length;
+  const emittedCount = outcomes.filter(
+    ({ bestEffort }) => bestEffort.status !== "failed",
+  ).length;
+  const verified = outcomes.filter(
+    ({ bestEffort }) => bestEffort.status === "verified",
+  ).length;
 
   console.log(
     `\n${String(total)} pairs.\n` +
@@ -387,7 +425,8 @@ const runChild = async (options: CliOptions): Promise<void> => {
     id,
     pair,
     expectedChanges: null,
-    expectation: configuration.variant === "identical" ? "identical" : "different",
+    expectation:
+      configuration.variant === "identical" ? "identical" : "different",
     ...shared,
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
@@ -395,7 +434,10 @@ const runChild = async (options: CliOptions): Promise<void> => {
 
 type ChildRequest = { id: string; argv: readonly string[] };
 
-const runInChildProcess = (request: ChildRequest, options: CliOptions): CaseResult => {
+const runInChildProcess = (
+  request: ChildRequest,
+  options: CliOptions,
+): CaseResult => {
   const result = spawnSync(
     process.execPath,
     [
@@ -412,7 +454,11 @@ const runInChildProcess = (request: ChildRequest, options: CliOptions): CaseResu
     return {
       id: request.id,
       status: "failed",
-      detail: (result.stderr || result.error?.message || "child exited non-zero")
+      detail: (
+        result.stderr ||
+        result.error?.message ||
+        "child exited non-zero"
+      )
         .trim()
         .slice(0, 400),
     };
@@ -429,10 +475,14 @@ const printCase = (result: CaseResult): void => {
     return;
   }
   const stages = COMPARE_STAGES.map(
-    (stage) => `${stage.slice(0, 3)} ${milliseconds(result.stages[stage].median)}`,
+    (stage) =>
+      `${stage.slice(0, 3)} ${milliseconds(result.stages[stage].median)}`,
   ).join("  ");
   const failed = result.invariants.filter(({ status }) => status === "failed");
-  const flag = failed.length === 0 ? "ok" : `BROKEN(${failed.map((o) => o.invariant).join(",")})`;
+  const flag =
+    failed.length === 0
+      ? "ok"
+      : `BROKEN(${failed.map((o) => o.invariant).join(",")})`;
   console.log(
     `${result.id.padEnd(34)} ${String(result.baseBlocks).padStart(5)} blocks ` +
       `${milliseconds(result.wall.median).padStart(9)} [${stages}] ` +
@@ -444,7 +494,9 @@ const printCase = (result: CaseResult): void => {
 type Digests = Record<string, { buffer: string; changes: string }>;
 
 const readDigests = (): Digests =>
-  existsSync(DIGESTS_FILE) ? (JSON.parse(readFileSync(DIGESTS_FILE, "utf8")) as Digests) : {};
+  existsSync(DIGESTS_FILE)
+    ? (JSON.parse(readFileSync(DIGESTS_FILE, "utf8")) as Digests)
+    : {};
 
 const applyDigestMode = (report: Report, mode: CliOptions["mode"]): number => {
   const measured = report.cases.filter(
@@ -458,14 +510,19 @@ const applyDigestMode = (report: Report, mode: CliOptions["mode"]): number => {
       digests[id] = value;
     }
     writeFileSync(DIGESTS_FILE, `${JSON.stringify(digests, null, 2)}\n`);
-    console.log(`\nWrote ${String(measured.length)} digests to ${DIGESTS_FILE}`);
+    console.log(
+      `\nWrote ${String(measured.length)} digests to ${DIGESTS_FILE}`,
+    );
     return 0;
   }
   if (mode !== "check") {
     return 0;
   }
   const recorded = readDigests();
-  const { drifted, missing, checked } = checkRecordedDigests(measured, recorded);
+  const { drifted, missing, checked } = checkRecordedDigests(
+    measured,
+    recorded,
+  );
   for (const id of drifted) {
     console.log(`digest changed: ${id}`);
   }
@@ -513,7 +570,9 @@ const runParent = (options: CliOptions): number => {
   }
 
   if (resolvePackageValidator() === null) {
-    console.log(`schema validation skipped; build it with: ${PACKAGE_VALIDATOR_HINT}\n`);
+    console.log(
+      `schema validation skipped; build it with: ${PACKAGE_VALIDATOR_HINT}\n`,
+    );
   }
 
   const cases: CaseResult[] = [];
@@ -543,7 +602,8 @@ const runParent = (options: CliOptions): number => {
   const broken = cases.filter(
     (result) =>
       result.status === "failed" ||
-      (result.status === "measured" && result.invariants.some(({ status }) => status === "failed")),
+      (result.status === "measured" &&
+        result.invariants.some(({ status }) => status === "failed")),
   );
   console.log(
     `\n${String(cases.length)} cases, ${String(broken.length)} with a failing invariant or error.` +

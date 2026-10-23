@@ -1,29 +1,33 @@
-/** Explicit story lifecycle and section property edits, with exact JSON-safe inverses. */
-import { cloneModel } from "./modelClone";
 import { panic, Result } from "better-result";
-import { DEFAULT_TAB_STOP_TWIPS, setDocumentBodyComments } from "../model/document";
+
+import {
+  DEFAULT_TAB_STOP_TWIPS,
+  setDocumentBodyComments,
+} from "../model/document";
 import type {
+  BlockContent,
   Document,
   DocumentBody,
   HeaderFooter,
-  SectionProperties,
   Paragraph,
-  BlockContent,
+  SectionProperties,
 } from "../model/document";
-import { withBodyContent, storyParagraphs } from "./blocks";
+import { storyParagraphs, withBodyContent } from "./blocks";
 import { contractViolation } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
+/** Explicit story lifecycle and section property edits, with exact JSON-safe inverses. */
+import { cloneModel } from "./modelClone";
 import { applyFormattingPatch } from "./patch";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
+  type CreateHeaderFooterOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
-  type StoryParts,
-  type CreateHeaderFooterOp,
   type RemoveHeaderFooterOp,
-  type SetSectionPropsOp,
   type RestoreStoryPartsOp,
+  type SetSectionPropsOp,
+  type StoryParts,
 } from "./types";
 
 type LifecycleOp =
@@ -50,7 +54,10 @@ const bodyValues = (body: DocumentBody) =>
   }) satisfies Required<NonNullable<StoryParts["body"]>>;
 
 /** Capture only fields owned by the lifecycle delta; absent values survive JSON as null. */
-export const captureStoryParts = (document: Document, owned: StoryParts): StoryParts => {
+export const captureStoryParts = (
+  document: Document,
+  owned: StoryParts,
+): StoryParts => {
   const body = document.package.document;
   const values = bodyValues(body);
   const pkg = document.package;
@@ -58,75 +65,113 @@ export const captureStoryParts = (document: Document, owned: StoryParts): StoryP
   if (owned.body !== undefined) {
     const fields: NonNullable<StoryParts["body"]> = {};
     if (owned.body.content !== undefined) fields.content = values.content;
-    if (owned.body.background !== undefined) fields.background = values.background;
+    if (owned.body.background !== undefined)
+      fields.background = values.background;
     if (owned.body.finalSectionProperties !== undefined)
       fields.finalSectionProperties = values.finalSectionProperties;
     if (owned.body.comments !== undefined) fields.comments = values.comments;
     parts.body = fields;
   }
   if (owned.sections !== undefined)
-    parts.sections = owned.sections.map(({ index, properties, headers, footers }) => {
-      const fields: NonNullable<StoryParts["sections"]>[number] = { index };
-      const section = body.sections?.at(index);
-      // Missing owned fields must differ from the expected capture and refuse as stale.
-      if (!section) return fields;
-      if (properties !== undefined) fields.properties = section.properties;
-      if (headers !== undefined) fields.headers = section.headers ? [...section.headers] : null;
-      if (footers !== undefined) fields.footers = section.footers ? [...section.footers] : null;
-      return fields;
-    });
-  if (owned.headers !== undefined) parts.headers = pkg.headers ? [...pkg.headers] : null;
-  if (owned.footers !== undefined) parts.footers = pkg.footers ? [...pkg.footers] : null;
+    parts.sections = owned.sections.map(
+      ({ index, properties, headers, footers }) => {
+        const fields: NonNullable<StoryParts["sections"]>[number] = { index };
+        const section = body.sections?.at(index);
+        // Missing owned fields must differ from the expected capture and refuse as stale.
+        if (!section) return fields;
+        if (properties !== undefined) fields.properties = section.properties;
+        if (headers !== undefined)
+          fields.headers = section.headers ? [...section.headers] : null;
+        if (footers !== undefined)
+          fields.footers = section.footers ? [...section.footers] : null;
+        return fields;
+      },
+    );
+  if (owned.headers !== undefined)
+    parts.headers = pkg.headers ? [...pkg.headers] : null;
+  if (owned.footers !== undefined)
+    parts.footers = pkg.footers ? [...pkg.footers] : null;
   if (owned.footnotes !== undefined) parts.footnotes = pkg.footnotes ?? null;
   if (owned.endnotes !== undefined) parts.endnotes = pkg.endnotes ?? null;
   if (owned.settings !== undefined) parts.settings = pkg.settings ?? null;
-  const undefinedFields: NonNullable<StoryParts["undefinedFields"]>[number][] = [];
+  const undefinedFields: NonNullable<StoryParts["undefinedFields"]>[number][] =
+    [];
   const bodyKeys = Object.keys(owned.body ?? {})
-    .filter((key): key is keyof NonNullable<StoryParts["body"]> => key in values)
-    .filter((key) => Object.hasOwn(body, key) && Reflect.get(body, key) === undefined);
-  if (bodyKeys.length > 0) undefinedFields.push({ target: "body", keys: bodyKeys });
+    .filter(
+      (key): key is keyof NonNullable<StoryParts["body"]> => key in values,
+    )
+    .filter(
+      (key) => Object.hasOwn(body, key) && Reflect.get(body, key) === undefined,
+    );
+  if (bodyKeys.length > 0)
+    undefinedFields.push({ target: "body", keys: bodyKeys });
   const packageKeys = Object.keys(owned)
     .filter(
-      (key): key is keyof Omit<StoryParts, "body" | "sections" | "undefinedFields"> =>
-        key !== "body" && key !== "sections" && key !== "undefinedFields",
+      (
+        key,
+      ): key is keyof Omit<
+        StoryParts,
+        "body" | "sections" | "undefinedFields"
+      > => key !== "body" && key !== "sections" && key !== "undefinedFields",
     )
-    .filter((key) => Object.hasOwn(pkg, key) && Reflect.get(pkg, key) === undefined);
-  if (packageKeys.length > 0) undefinedFields.push({ target: "package", keys: packageKeys });
+    .filter(
+      (key) => Object.hasOwn(pkg, key) && Reflect.get(pkg, key) === undefined,
+    );
+  if (packageKeys.length > 0)
+    undefinedFields.push({ target: "package", keys: packageKeys });
   for (const fields of owned.sections ?? []) {
     const section = body.sections?.at(fields.index);
     if (!section) continue;
     const keys = Object.keys(fields)
       .filter(
-        (key): key is keyof Omit<NonNullable<StoryParts["sections"]>[number], "index"> =>
-          key !== "index",
+        (
+          key,
+        ): key is keyof Omit<
+          NonNullable<StoryParts["sections"]>[number],
+          "index"
+        > => key !== "index",
       )
-      .filter((key) => Object.hasOwn(section, key) && Reflect.get(section, key) === undefined);
-    if (keys.length > 0) undefinedFields.push({ target: "section", index: fields.index, keys });
+      .filter(
+        (key) =>
+          Object.hasOwn(section, key) &&
+          Reflect.get(section, key) === undefined,
+      );
+    if (keys.length > 0)
+      undefinedFields.push({ target: "section", index: fields.index, keys });
   }
   if (undefinedFields.length > 0) parts.undefinedFields = undefinedFields;
   return parts;
 };
 
 /** Immutable operations share unowned fields; section content is a derived mirror. */
-const changedParts = (before: Document, after: Document): StoryParts => {
+const changedParts = (
+  before: Document,
+  after: Document,
+  semantic = false,
+): StoryParts => {
+  const changed = (left: unknown, right: unknown) =>
+    semantic ? !structurallyEqual(left, right) : left !== right;
   const oldBody = before.package.document;
   const newBody = after.package.document;
   const body: NonNullable<StoryParts["body"]> = {};
-  if (oldBody.content !== newBody.content) body.content = oldBody.content;
-  if (oldBody.background !== newBody.background) body.background = oldBody.background ?? null;
-  if (oldBody.finalSectionProperties !== newBody.finalSectionProperties)
+  if (changed(oldBody.content, newBody.content)) body.content = oldBody.content;
+  if (changed(oldBody.background, newBody.background))
+    body.background = oldBody.background ?? null;
+  if (changed(oldBody.finalSectionProperties, newBody.finalSectionProperties))
     body.finalSectionProperties = oldBody.finalSectionProperties ?? null;
-  if (oldBody.comments !== newBody.comments) body.comments = oldBody.comments ?? null;
+  if (changed(oldBody.comments, newBody.comments))
+    body.comments = oldBody.comments ?? null;
   const sections: NonNullable<StoryParts["sections"]>[number][] = [];
   if (oldBody.sections !== newBody.sections)
     for (const [index, section] of (oldBody.sections ?? []).entries()) {
       const next = newBody.sections?.at(index);
       if (section === next) continue;
       const changes: NonNullable<StoryParts["sections"]>[number] = { index };
-      if (section.properties !== next?.properties) changes.properties = section.properties;
-      if (section.headers !== next?.headers)
+      if (changed(section.properties, next?.properties))
+        changes.properties = section.properties;
+      if (changed(section.headers, next?.headers))
         changes.headers = section.headers ? [...section.headers] : null;
-      if (section.footers !== next?.footers)
+      if (changed(section.footers, next?.footers))
         changes.footers = section.footers ? [...section.footers] : null;
       if (Object.keys(changes).length > 1) sections.push(changes);
     }
@@ -137,11 +182,11 @@ const changedParts = (before: Document, after: Document): StoryParts => {
     parts.headers = before.package.headers ? [...before.package.headers] : null;
   if (before.package.footers !== after.package.footers)
     parts.footers = before.package.footers ? [...before.package.footers] : null;
-  if (before.package.footnotes !== after.package.footnotes)
+  if (changed(before.package.footnotes, after.package.footnotes))
     parts.footnotes = before.package.footnotes ?? null;
-  if (before.package.endnotes !== after.package.endnotes)
+  if (changed(before.package.endnotes, after.package.endnotes))
     parts.endnotes = before.package.endnotes ?? null;
-  if (before.package.settings !== after.package.settings)
+  if (changed(before.package.settings, after.package.settings))
     parts.settings = before.package.settings ?? null;
   return captureStoryParts(before, parts);
 };
@@ -158,7 +203,9 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
         body,
         fields.content.map((block, index) => {
           const previous = existingBlocks.at(index);
-          return previous && structurallyEqual(block, previous) ? previous : block;
+          return previous && structurallyEqual(block, previous)
+            ? previous
+            : block;
         }),
       );
     }
@@ -167,7 +214,8 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
       else body.background = fields.background;
     }
     if (fields.finalSectionProperties !== undefined) {
-      if (fields.finalSectionProperties === null) delete body.finalSectionProperties;
+      if (fields.finalSectionProperties === null)
+        delete body.finalSectionProperties;
       else body.finalSectionProperties = fields.finalSectionProperties;
     }
     if (fields.comments !== undefined) {
@@ -181,7 +229,10 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
       pkg.headers = new Map(
         parts.headers.map(([rId, part]) => {
           const previous = pkg.headers?.get(rId);
-          return [rId, previous && structurallyEqual(previous, part) ? previous : part] as const;
+          return [
+            rId,
+            previous && structurallyEqual(previous, part) ? previous : part,
+          ] as const;
         }),
       );
   }
@@ -191,7 +242,10 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
       pkg.footers = new Map(
         parts.footers.map(([rId, part]) => {
           const previous = pkg.footers?.get(rId);
-          return [rId, previous && structurallyEqual(previous, part) ? previous : part] as const;
+          return [
+            rId,
+            previous && structurallyEqual(previous, part) ? previous : part,
+          ] as const;
         }),
       );
   }
@@ -199,9 +253,13 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
     const sections = [...body.sections];
     for (const fields of parts.sections) {
       const previous = sections.at(fields.index);
-      if (!previous) return panic("Owned lifecycle section is missing after staleness validation.");
+      if (!previous)
+        return panic(
+          "Owned lifecycle section is missing after staleness validation.",
+        );
       const section = { ...previous };
-      if (fields.properties !== undefined) section.properties = fields.properties;
+      if (fields.properties !== undefined)
+        section.properties = fields.properties;
       if (fields.headers !== undefined) {
         if (fields.headers === null) delete section.headers;
         else
@@ -210,8 +268,12 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
               const rId = section.properties.headerReferences?.find(
                 ({ type }) => type === variant,
               )?.rId;
-              const owned = rId === undefined ? undefined : pkg.headers?.get(rId);
-              return [variant, owned && structurallyEqual(owned, part) ? owned : part] as const;
+              const owned =
+                rId === undefined ? undefined : pkg.headers?.get(rId);
+              return [
+                variant,
+                owned && structurallyEqual(owned, part) ? owned : part,
+              ] as const;
             }),
           );
       }
@@ -223,8 +285,12 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
               const rId = section.properties.footerReferences?.find(
                 ({ type }) => type === variant,
               )?.rId;
-              const owned = rId === undefined ? undefined : pkg.footers?.get(rId);
-              return [variant, owned && structurallyEqual(owned, part) ? owned : part] as const;
+              const owned =
+                rId === undefined ? undefined : pkg.footers?.get(rId);
+              return [
+                variant,
+                owned && structurallyEqual(owned, part) ? owned : part,
+              ] as const;
             }),
           );
       }
@@ -278,7 +344,9 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
         }
         break;
       case "section": {
-        const owned = parts.sections?.find(({ index }) => index === fields.index);
+        const owned = parts.sections?.find(
+          ({ index }) => index === fields.index,
+        );
         const section = pkg.document.sections?.at(fields.index);
         if (!owned || !section)
           return panic("Undefined section metadata names an unowned section.");
@@ -321,7 +389,10 @@ const changedParagraphs = (before: Document, after: Document) => {
     const oldParts = before.package[key];
     const newParts = after.package[key];
     if (oldParts === newParts) continue;
-    for (const rId of new Set([...(oldParts?.keys() ?? []), ...(newParts?.keys() ?? [])]))
+    for (const rId of new Set([
+      ...(oldParts?.keys() ?? []),
+      ...(newParts?.keys() ?? []),
+    ]))
       collect(oldParts?.get(rId)?.content, newParts?.get(rId)?.content);
   }
   for (const key of ["footnotes", "endnotes"] as const) {
@@ -340,13 +411,18 @@ export const storyLifecycleEdit = (
   before: Document,
   after: Document,
   op: DocumentOp,
+  semantic = false,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   const invalid = contractViolation(after);
   if (invalid)
     return Result.err(
-      new DocumentOpRefusal({ opType: op.type, reason: invalid.reason, message: invalid.message }),
+      new DocumentOpRefusal({
+        opType: op.type,
+        reason: invalid.reason,
+        message: invalid.message,
+      }),
     );
-  const prior = changedParts(before, after);
+  const prior = changedParts(before, after, semantic);
   const next = captureStoryParts(after, prior);
   const { oldParagraphs, newParagraphs } = changedParagraphs(before, after);
   const oldIds = new Set(oldParagraphs.keys());
@@ -362,7 +438,9 @@ export const storyLifecycleEdit = (
     ],
     touched: {
       modified: [...newIds].filter(
-        (id) => oldIds.has(id) && !structurallyEqual(oldParagraphs.get(id), newParagraphs.get(id)),
+        (id) =>
+          oldIds.has(id) &&
+          !structurallyEqual(oldParagraphs.get(id), newParagraphs.get(id)),
       ),
       inserted: [...newIds].filter((id) => !oldIds.has(id)),
       removed: [...oldIds].filter((id) => !newIds.has(id)),
@@ -430,15 +508,23 @@ const undefinedFieldsIssue = (parts: StoryParts): string | undefined => {
         break;
       case "package":
         if (
-          fields.keys.some((key) => !Object.hasOwn(parts, key) || Reflect.get(parts, key) !== null)
+          fields.keys.some(
+            (key) =>
+              !Object.hasOwn(parts, key) || Reflect.get(parts, key) !== null,
+          )
         )
           return "Undefined package metadata must name owned null fields.";
         break;
       case "section": {
-        const owned = parts.sections?.find(({ index }) => index === fields.index);
+        const owned = parts.sections?.find(
+          ({ index }) => index === fields.index,
+        );
         if (
           !owned ||
-          fields.keys.some((key) => !Object.hasOwn(owned, key) || Reflect.get(owned, key) !== null)
+          fields.keys.some(
+            (key) =>
+              !Object.hasOwn(owned, key) || Reflect.get(owned, key) !== null,
+          )
         )
           return "Undefined section metadata must name owned null fields.";
         break;
@@ -455,7 +541,9 @@ export const applyStoryLifecycle = (
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) {
     const metadataIssue = undefinedFieldsIssue(op.parts);
     if (metadataIssue) return refuse(op, metadataIssue);
-    if (!structurallyEqual(captureStoryParts(document, op.expected), op.expected))
+    if (
+      !structurallyEqual(captureStoryParts(document, op.expected), op.expected)
+    )
       return Result.err(
         new DocumentOpRefusal({
           opType: op.type,
@@ -463,7 +551,11 @@ export const applyStoryLifecycle = (
           message: "Story lifecycle inverse is stale.",
         }),
       );
-    return storyLifecycleEdit(document, restoreParts(document, cloneModel(op.parts)), op);
+    return storyLifecycleEdit(
+      document,
+      restoreParts(document, cloneModel(op.parts)),
+      op,
+    );
   }
   const properties = sectionPropertiesAt(document, op.sectionIndex);
   if (!properties) return refuse(op, "The section does not exist.");
@@ -472,20 +564,28 @@ export const applyStoryLifecycle = (
     let next = withSectionProperties(document, op.sectionIndex, nextProps);
     if (
       op.patch.evenAndOddHeaders !== undefined &&
-      (op.patch.evenAndOddHeaders !== null || next.package.settings !== undefined)
+      (op.patch.evenAndOddHeaders !== null ||
+        next.package.settings !== undefined)
     ) {
       const settings = {
-        ...(next.package.settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
+        ...(next.package.settings ?? {
+          defaultTabStop: DEFAULT_TAB_STOP_TWIPS,
+        }),
       };
-      if (op.patch.evenAndOddHeaders === null) delete settings.evenAndOddHeaders;
+      if (op.patch.evenAndOddHeaders === null)
+        delete settings.evenAndOddHeaders;
       else settings.evenAndOddHeaders = op.patch.evenAndOddHeaders;
       next = { ...next, package: { ...next.package, settings } };
     }
     return storyLifecycleEdit(document, next, op);
   }
   const kind = op.story.kind;
-  const refs = kind === "header" ? properties.headerReferences : properties.footerReferences;
-  const parts = kind === "header" ? document.package.headers : document.package.footers;
+  const refs =
+    kind === "header"
+      ? properties.headerReferences
+      : properties.footerReferences;
+  const parts =
+    kind === "header" ? document.package.headers : document.package.footers;
   const nextParts = new Map(parts);
   let nextRefs = [...(refs ?? [])];
   const nextProps = { ...properties };
@@ -497,8 +597,14 @@ export const applyStoryLifecycle = (
       document.package.footers?.has(op.story.rId) ||
       refs?.some(({ type }) => type === op.referenceType)
     )
-      return refuse(op, "The header/footer identity or section variant is already used.");
-    if (op.content.length === 0 || storyParagraphs({ content: op.content }).length === 0)
+      return refuse(
+        op,
+        "The header/footer identity or section variant is already used.",
+      );
+    if (
+      op.content.length === 0 ||
+      storyParagraphs({ content: op.content }).length === 0
+    )
       return refuse(op, "A header/footer needs an addressable paragraph.");
     const part: HeaderFooter = {
       type: kind,
@@ -512,20 +618,25 @@ export const applyStoryLifecycle = (
   } else {
     if (
       !parts?.has(op.story.rId) ||
-      !refs?.some(({ type, rId }) => type === op.referenceType && rId === op.story.rId)
+      !refs?.some(
+        ({ type, rId }) => type === op.referenceType && rId === op.story.rId,
+      )
     )
       return refuse(op, "The section does not own this header/footer variant.");
     nextRefs = nextRefs.filter(({ type }) => type !== op.referenceType);
     // Shared parts survive while another section still references them.
     const usedElsewhere = [
-      ...sectionEnds(document.package.document).map(({ properties: sectionProps }) => sectionProps),
+      ...sectionEnds(document.package.document).map(
+        ({ properties: sectionProps }) => sectionProps,
+      ),
       document.package.document.finalSectionProperties ?? {},
     ].some(
       (sectionProps, index) =>
         index !== op.sectionIndex &&
-        (kind === "header" ? sectionProps.headerReferences : sectionProps.footerReferences)?.some(
-          ({ rId }) => rId === op.story.rId,
-        ),
+        (kind === "header"
+          ? sectionProps.headerReferences
+          : sectionProps.footerReferences
+        )?.some(({ rId }) => rId === op.story.rId),
     );
     if (!usedElsewhere && !nextRefs.some(({ rId }) => rId === op.story.rId))
       nextParts.delete(op.story.rId);
@@ -537,13 +648,18 @@ export const applyStoryLifecycle = (
     kind === "header"
       ? { ...next, package: { ...next.package, headers: nextParts } }
       : { ...next, package: { ...next.package, footers: nextParts } };
-  if (op.type === DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER && op.referenceType === "even")
+  if (
+    op.type === DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER &&
+    op.referenceType === "even"
+  )
     next = {
       ...next,
       package: {
         ...next.package,
         settings: {
-          ...(next.package.settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
+          ...(next.package.settings ?? {
+            defaultTabStop: DEFAULT_TAB_STOP_TWIPS,
+          }),
           evenAndOddHeaders: true,
         },
       },
@@ -551,16 +667,23 @@ export const applyStoryLifecycle = (
   if (next.package.document.sections) {
     const sections = next.package.document.sections.map((section, index) => {
       if (index !== op.sectionIndex) return section;
-      const bound = new Map(kind === "header" ? section.headers : section.footers);
+      const bound = new Map(
+        kind === "header" ? section.headers : section.footers,
+      );
       const part = nextParts.get(op.story.rId);
       if (op.type === DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER && part)
         bound.set(op.referenceType, part);
       else bound.delete(op.referenceType);
-      return kind === "header" ? { ...section, headers: bound } : { ...section, footers: bound };
+      return kind === "header"
+        ? { ...section, headers: bound }
+        : { ...section, footers: bound };
     });
     next = {
       ...next,
-      package: { ...next.package, document: { ...next.package.document, sections } },
+      package: {
+        ...next.package,
+        document: { ...next.package.document, sections },
+      },
     };
   }
   return storyLifecycleEdit(document, next, op);

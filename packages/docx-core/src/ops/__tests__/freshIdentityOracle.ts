@@ -23,8 +23,16 @@ export const assertFreshIdentityEquivalent = ({
   for (const space of Object.values(IDENTITY_SPACES)) {
     for (const [index, id] of (allocated[space] ?? []).entries()) {
       const key = slotKey({ space, id });
-      deepStrictEqual(source.has(key), false, "Fresh allocations cannot reuse source identities.");
-      deepStrictEqual(allocation.has(key), false, "Fresh allocations must be unique.");
+      deepStrictEqual(
+        source.has(key),
+        false,
+        "Fresh allocations cannot reuse source identities.",
+      );
+      deepStrictEqual(
+        allocation.has(key),
+        false,
+        "Fresh allocations must be unique.",
+      );
       allocation.set(key, index);
     }
   }
@@ -39,7 +47,8 @@ export const assertFreshIdentityEquivalent = ({
         false,
         "Every fresh identity must come from the allocation.",
       );
-      if (rank === undefined) throw new Error("A checked allocation must exist.");
+      if (rank === undefined)
+        throw new Error("A checked allocation must exist.");
       deepStrictEqual(
         fresh.has(key),
         false,
@@ -56,13 +65,18 @@ export const assertFreshIdentityEquivalent = ({
     }
     const walk = (value: unknown, heldBy?: string): unknown => {
       if (Array.isArray(value)) return value.map((item) => walk(item, heldBy));
-      if (value instanceof Map) return new Map([...value].map(([key, item]) => [key, walk(item)]));
+      if (value instanceof Map)
+        return new Map([...value].map(([key, item]) => [key, walk(item)]));
       if (value === null || typeof value !== "object") return value;
       if (Object.getPrototypeOf(value) !== Object.prototype) return value;
       const identitySpace = () => {
-        if (heldBy === "info" && typeof Reflect.get(value, "author") === "string")
+        if (
+          heldBy === "info" &&
+          typeof Reflect.get(value, "author") === "string"
+        )
           return IDENTITY_SPACES.REVISION;
-        if (typeof Reflect.get(value, "sdtType") === "string") return IDENTITY_SPACES.CONTROL;
+        if (typeof Reflect.get(value, "sdtType") === "string")
+          return IDENTITY_SPACES.CONTROL;
         return undefined;
       };
       const space = identitySpace();

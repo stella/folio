@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import type { PositionedBookmarkMarker } from "../types/document";
-
 import { schema } from "./schema";
-import { assertValidProseMirrorDocument, validateProseMirrorDocument } from "./validation";
+import {
+  assertValidProseMirrorDocument,
+  validateProseMirrorDocument,
+} from "./validation";
 
 /**
  * Assert an issue whose message starts with `fragment`. Bookmark messages carry
@@ -50,8 +52,14 @@ describe("ProseMirror document validation", () => {
     const valid = schema.mark("highlight", { color: "yellow" });
     const invalid = schema.mark("highlight", { color: "customYellow" });
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("a", [valid]), schema.text("b", [invalid])]),
-      schema.node("paragraph", null, [schema.text("c", [invalid]), schema.text("d", [valid])]),
+      schema.node("paragraph", null, [
+        schema.text("a", [valid]),
+        schema.text("b", [invalid]),
+      ]),
+      schema.node("paragraph", null, [
+        schema.text("c", [invalid]),
+        schema.text("d", [valid]),
+      ]),
     ]);
     const invalidPaths = [
       "doc.content[0].content[1].marks[0].highlight.attrs.color",
@@ -59,16 +67,22 @@ describe("ProseMirror document validation", () => {
     ];
 
     for (let pass = 0; pass < 2; pass += 1) {
-      expect(validateProseMirrorDocument(doc).issues.map(({ path }) => path)).toEqual(invalidPaths);
+      expect(
+        validateProseMirrorDocument(doc).issues.map(({ path }) => path),
+      ).toEqual(invalidPaths);
     }
   });
 
   test("throws a formatted validation error", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { lineSpacing: "240" }, [schema.text("invalid")]),
+      schema.node("paragraph", { lineSpacing: "240" }, [
+        schema.text("invalid"),
+      ]),
     ]);
 
-    expect(() => assertValidProseMirrorDocument(doc, "Cannot use invalid PM document")).toThrow(
+    expect(() =>
+      assertValidProseMirrorDocument(doc, "Cannot use invalid PM document"),
+    ).toThrow(
       "ProseMirror document error at doc.content[0].paragraph.attrs.lineSpacing",
     );
   });
@@ -76,7 +90,9 @@ describe("ProseMirror document validation", () => {
   test.each([
     {
       name: "lone start",
-      content: [schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" })],
+      content: [
+        schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
+      ],
       message: 'Bookmark "one" (id 1) has no matching end boundary',
     },
     {
@@ -89,13 +105,19 @@ describe("ProseMirror document validation", () => {
       content: [
         schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
         schema.node("bookmarkBoundary", { type: "end", id: 1 }),
-        schema.node("bookmarkBoundary", { type: "start", id: 1, name: "duplicate" }),
+        schema.node("bookmarkBoundary", {
+          type: "start",
+          id: 1,
+          name: "duplicate",
+        }),
         schema.node("bookmarkBoundary", { type: "end", id: 1 }),
       ],
       message: 'Bookmark "duplicate" (id 1) has more than one start boundary',
     },
   ])("rejects $name bookmark boundaries", ({ content, message }) => {
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, content)]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, content),
+    ]);
 
     const result = validateProseMirrorDocument(doc);
 
@@ -110,18 +132,30 @@ describe("ProseMirror document validation", () => {
     // unloadable. The attr serializes as a start and an end around its own
     // paragraph, so the repeat writes back exactly what was read.
     const paragraph = (paraId: string) =>
-      schema.node("paragraph", { paraId, bookmarks: [{ id: 0, name: "_GoBack" }] }, [
-        schema.text(`clause ${paraId}`),
-      ]);
-    const doc = schema.node("doc", null, [paragraph("A0000001"), paragraph("A0000002")]);
+      schema.node(
+        "paragraph",
+        { paraId, bookmarks: [{ id: 0, name: "_GoBack" }] },
+        [schema.text(`clause ${paraId}`)],
+      );
+    const doc = schema.node("doc", null, [
+      paragraph("A0000001"),
+      paragraph("A0000002"),
+    ]);
 
-    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+    expect(validateProseMirrorDocument(doc)).toEqual({
+      valid: true,
+      issues: [],
+    });
   });
 
   test("names the bookmark and the paragraph a boundary failure sits in", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { paraId: "B0000001" }, [
-        schema.node("bookmarkBoundary", { type: "start", id: 4, name: "unclosed" }),
+        schema.node("bookmarkBoundary", {
+          type: "start",
+          id: 4,
+          name: "unclosed",
+        }),
         schema.text("body"),
       ]),
     ]);
@@ -142,7 +176,10 @@ describe("ProseMirror document validation", () => {
       ]),
     ]);
 
-    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+    expect(validateProseMirrorDocument(doc)).toEqual({
+      valid: true,
+      issues: [],
+    });
   });
 
   test("pairs table and row bookmark starts with ends inside following cells", () => {
@@ -153,20 +190,33 @@ describe("ProseMirror document validation", () => {
     const row = schema.node(
       "tableRow",
       {
-        _bookmarks: [{ index: 0, marker: { type: "bookmarkStart", id: 2, name: "row range" } }],
+        _bookmarks: [
+          {
+            index: 0,
+            marker: { type: "bookmarkStart", id: 2, name: "row range" },
+          },
+        ],
       },
       [schema.node("tableCell", null, [paragraph])],
     );
     const table = schema.node(
       "table",
       {
-        _bookmarks: [{ index: 0, marker: { type: "bookmarkStart", id: 1, name: "table range" } }],
+        _bookmarks: [
+          {
+            index: 0,
+            marker: { type: "bookmarkStart", id: 1, name: "table range" },
+          },
+        ],
       },
       [row],
     );
     const doc = schema.node("doc", null, [table]);
 
-    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+    expect(validateProseMirrorDocument(doc)).toEqual({
+      valid: true,
+      issues: [],
+    });
   });
 
   test("allows an unmatched positioned bookmark end from an imported table", () => {
@@ -179,7 +229,10 @@ describe("ProseMirror document validation", () => {
     );
     const doc = schema.node("doc", null, [schema.node("table", null, [row])]);
 
-    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+    expect(validateProseMirrorDocument(doc)).toEqual({
+      valid: true,
+      issues: [],
+    });
   });
 
   test("allows an unmatched positioned bookmark start from an imported table", () => {
@@ -187,14 +240,20 @@ describe("ProseMirror document validation", () => {
       "tableRow",
       {
         _bookmarks: [
-          { index: 0, marker: { type: "bookmarkStart", id: 1, name: "imported range" } },
+          {
+            index: 0,
+            marker: { type: "bookmarkStart", id: 1, name: "imported range" },
+          },
         ],
       },
       [schema.node("tableCell", null, [schema.node("paragraph")])],
     );
     const doc = schema.node("doc", null, [schema.node("table", null, [row])]);
 
-    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+    expect(validateProseMirrorDocument(doc)).toEqual({
+      valid: true,
+      issues: [],
+    });
   });
 
   const tableWithRowBookmark = (index: number, id: number) =>
@@ -203,7 +262,9 @@ describe("ProseMirror document validation", () => {
         schema.node(
           "tableRow",
           {
-            _bookmarks: [{ index, marker: { type: "bookmarkStart", id, name: "range" } }],
+            _bookmarks: [
+              { index, marker: { type: "bookmarkStart", id, name: "range" } },
+            ],
           },
           [schema.node("tableCell", null, [schema.node("paragraph")])],
         ),
@@ -257,7 +318,14 @@ describe("ProseMirror document validation", () => {
         { length: childCount },
         (_, index) =>
           [
-            { index, marker: { type: "bookmarkStart", id: index, name: `range-${index}` } },
+            {
+              index,
+              marker: {
+                type: "bookmarkStart",
+                id: index,
+                name: `range-${index}`,
+              },
+            },
             { index, marker: { type: "bookmarkEnd", id: index } },
           ] satisfies PositionedBookmarkMarker[],
       ).flat(),
@@ -276,8 +344,13 @@ describe("ProseMirror document validation", () => {
     const row = schema.node("tableRow", { _bookmarks: bookmarks }, cells);
     const doc = schema.node("doc", null, [schema.node("table", null, [row])]);
 
-    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
-    expect(markerReads).toBeLessThanOrEqual(bookmarks.length * maxMarkerReadPasses);
+    expect(validateProseMirrorDocument(doc)).toEqual({
+      valid: true,
+      issues: [],
+    });
+    expect(markerReads).toBeLessThanOrEqual(
+      bookmarks.length * maxMarkerReadPasses,
+    );
   });
 
   test("allows a bookmark to overlap a tracked hyperlink", () => {
@@ -295,7 +368,12 @@ describe("ProseMirror document validation", () => {
     const marks = [hyperlink, insertion];
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }, null, marks),
+        schema.node(
+          "bookmarkBoundary",
+          { type: "start", id: 1, name: "one" },
+          null,
+          marks,
+        ),
         schema.text("outside"),
         schema.node("bookmarkBoundary", { type: "end", id: 1 }, null, marks),
       ]),
@@ -316,9 +394,16 @@ describe("ProseMirror document validation", () => {
     });
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }, null, [insertion]),
+        schema.node(
+          "bookmarkBoundary",
+          { type: "start", id: 1, name: "one" },
+          null,
+          [insertion],
+        ),
         schema.text("tracked", [insertion]),
-        schema.node("bookmarkBoundary", { type: "end", id: 1 }, null, [insertion]),
+        schema.node("bookmarkBoundary", { type: "end", id: 1 }, null, [
+          insertion,
+        ]),
       ]),
     ]);
 
@@ -339,7 +424,11 @@ describe("ProseMirror document validation", () => {
             fieldKind: "simple",
           },
           [
-            schema.node("bookmarkBoundary", { type: "start", id: 3, name: "target" }),
+            schema.node("bookmarkBoundary", {
+              type: "start",
+              id: 3,
+              name: "target",
+            }),
             schema.text("Target"),
             schema.node("bookmarkBoundary", { type: "end", id: 3 }),
           ],
@@ -347,7 +436,9 @@ describe("ProseMirror document validation", () => {
       ]),
     ]);
 
-    expect(validateProseMirrorDocument(doc).issues.map((issue) => issue.message)).toContain(
+    expect(
+      validateProseMirrorDocument(doc).issues.map((issue) => issue.message),
+    ).toContain(
       "Bookmark boundaries inside fields require a hyperlink parent.",
     );
   });
@@ -362,11 +453,13 @@ describe("ProseMirror document validation", () => {
       },
       schema.text("forged"),
     );
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [field]),
+    ]);
 
-    expect(validateProseMirrorDocument(doc).issues.map((issue) => issue.message)).toContain(
-      "Ordinary fields cannot contain structured result children.",
-    );
+    expect(
+      validateProseMirrorDocument(doc).issues.map((issue) => issue.message),
+    ).toContain("Ordinary fields cannot contain structured result children.");
   });
 
   test("rejects any structured children in complex field results", () => {
@@ -385,9 +478,9 @@ describe("ProseMirror document validation", () => {
       ]),
     ]);
 
-    expect(validateProseMirrorDocument(doc).issues.map((issue) => issue.message)).toContain(
-      "Complex fields cannot contain structured result children.",
-    );
+    expect(
+      validateProseMirrorDocument(doc).issues.map((issue) => issue.message),
+    ).toContain("Complex fields cannot contain structured result children.");
   });
 
   test("rejects text-only structured simple field children", () => {
@@ -406,7 +499,9 @@ describe("ProseMirror document validation", () => {
       ]),
     ]);
 
-    expect(validateProseMirrorDocument(doc).issues.map((issue) => issue.message)).toContain(
+    expect(
+      validateProseMirrorDocument(doc).issues.map((issue) => issue.message),
+    ).toContain(
       "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
     );
   });
@@ -414,7 +509,11 @@ describe("ProseMirror document validation", () => {
   test("rejects ids shared by legacy paragraph bookmarks and boundary atoms", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { bookmarks: [{ id: 1, name: "legacy" }] }, [
-        schema.node("bookmarkBoundary", { type: "start", id: 1, name: "pasted" }),
+        schema.node("bookmarkBoundary", {
+          type: "start",
+          id: 1,
+          name: "pasted",
+        }),
         schema.text("collision"),
         schema.node("bookmarkBoundary", { type: "end", id: 1 }),
       ]),
@@ -423,7 +522,10 @@ describe("ProseMirror document validation", () => {
     const result = validateProseMirrorDocument(doc);
 
     expect(result.valid).toBe(false);
-    expectIssueContaining(result, 'Bookmark "pasted" (id 1) has more than one start boundary');
+    expectIssueContaining(
+      result,
+      'Bookmark "pasted" (id 1) has more than one start boundary',
+    );
   });
 
   test("rejects an internally pasted pair that collides with an existing id", () => {
@@ -438,6 +540,9 @@ describe("ProseMirror document validation", () => {
     const result = validateProseMirrorDocument(doc);
 
     expect(result.valid).toBe(false);
-    expectIssueContaining(result, 'Bookmark "pasted" (id 1) has more than one start boundary');
+    expectIssueContaining(
+      result,
+      'Bookmark "pasted" (id 1) has more than one start boundary',
+    );
   });
 });

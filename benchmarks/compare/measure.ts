@@ -48,7 +48,9 @@ export const summarize = (values: readonly number[]): Distribution => {
  * linear in document size, not as an exact allocation count: the collector is
  * the only thing that can answer, and it answers approximately.
  */
-export const measureHeapGrowth = async (run: () => Promise<unknown>): Promise<number> => {
+export const measureHeapGrowth = async (
+  run: () => Promise<unknown>,
+): Promise<number> => {
   Bun.gc(true);
   const before = heapStats().heapSize;
   await run();

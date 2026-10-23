@@ -1,4 +1,4 @@
-import { sliceText } from "../../utils/sliceText";
+import type { Node as PMNode } from "prosemirror-model";
 /**
  * Transaction invariants: a development and test aid that checks the editor
  * document after every transaction, so a command that leaves a document the
@@ -18,19 +18,21 @@ import { sliceText } from "../../utils/sliceText";
  * - every paragraph numbering reference names an instance the document's
  *   numbering defines.
  */
-
-import { createPluginKeyOwner } from "../pluginKeyOwner";
-import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 
+import { sliceText } from "../../utils/sliceText";
 import { expectParagraphAttrs } from "../attrs";
 import {
-  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
 } from "../numberingAttr";
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import { validateProseMirrorDocument } from "../validation";
-import { getDocumentNumbering, hasDocumentNumbering } from "./documentNumbering";
+import {
+  getDocumentNumbering,
+  hasDocumentNumbering,
+} from "./documentNumbering";
 
 export type TransactionInvariantFlags = {
   /** Install the invariant plugin in every extension-manager runtime. */
@@ -68,7 +70,10 @@ export class TransactionInvariantError extends Error {
   readonly issues: readonly TransactionInvariantIssue[];
   readonly steps: readonly unknown[];
 
-  constructor(issues: readonly TransactionInvariantIssue[], transactions: readonly Transaction[]) {
+  constructor(
+    issues: readonly TransactionInvariantIssue[],
+    transactions: readonly Transaction[],
+  ) {
     super(
       `A transaction left the editor document invalid:\n${issues
         .map((issue) => `- ${issue.path}: ${issue.message}`)
@@ -82,7 +87,9 @@ export class TransactionInvariantError extends Error {
   }
 }
 
-const numberingReferenceIssues = (state: EditorState): TransactionInvariantIssue[] => {
+const numberingReferenceIssues = (
+  state: EditorState,
+): TransactionInvariantIssue[] => {
   if (!hasDocumentNumbering(state)) {
     return [];
   }
@@ -111,7 +118,9 @@ const numberingReferenceIssues = (state: EditorState): TransactionInvariantIssue
 };
 
 /** Every invariant the state breaks; empty when it is sound. */
-export const checkEditorStateInvariants = (state: EditorState): TransactionInvariantIssue[] => [
+export const checkEditorStateInvariants = (
+  state: EditorState,
+): TransactionInvariantIssue[] => [
   ...validateProseMirrorDocument(state.doc).issues,
   ...numberingReferenceIssues(state),
 ];

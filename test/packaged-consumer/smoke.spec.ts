@@ -25,8 +25,9 @@
 import { expect, test } from "@playwright/test";
 import type { ConsoleMessage } from "@playwright/test";
 
-import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import type { DocxProjectionWire } from "@stll/docx-core/projection";
+
+import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import type { mountHostEditor } from "./src/host-editor";
 
 declare global {
@@ -46,7 +47,9 @@ type CapturedMessage = { level: string; text: string };
 const MISSING_MESSAGE_PATTERN = /MISSING_MESSAGE|IntlError/u;
 const WORKER_PATTERN = /worker/iu;
 
-test("packaged consumer mounts, lays out via the worker, and logs no errors", async ({ page }) => {
+test("packaged consumer mounts, lays out via the worker, and logs no errors", async ({
+  page,
+}) => {
   const messages: CapturedMessage[] = [];
   const pageErrors: string[] = [];
 
@@ -60,7 +63,9 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   await page.goto("/");
 
   // --- Surface 1: the editor mounts and lays out. ---------------------------
-  await page.waitForSelector('[data-testid="folio-editor"]', { timeout: 20_000 });
+  await page.waitForSelector('[data-testid="folio-editor"]', {
+    timeout: 20_000,
+  });
   await page.waitForFunction(
     () => document.querySelectorAll(".layout-page").length >= 1,
     undefined,
@@ -70,17 +75,24 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   );
   await page.evaluate(() => document.fonts.ready);
 
-  const projection = await page.evaluate(() => globalThis.__folioSmoke?.projectFixture());
+  const projection = await page.evaluate(() =>
+    globalThis.__folioSmoke?.projectFixture(),
+  );
   const schemaVersion = await page.evaluate(() =>
     globalThis.__folioSmoke?.projectionSchemaVersion(),
   );
-  expect(schemaVersion, "packed package must expose its projection schema").toBeDefined();
-  expect(projection?.[0], "packed DOCX projection schema must load through WASM").toBe(
+  expect(
     schemaVersion,
-  );
-  expect(projection?.[1].length ?? 0, "fixture must contain projected paragraphs").toBeGreaterThan(
-    0,
-  );
+    "packed package must expose its projection schema",
+  ).toBeDefined();
+  expect(
+    projection?.[0],
+    "packed DOCX projection schema must load through WASM",
+  ).toBe(schemaVersion);
+  expect(
+    projection?.[1].length ?? 0,
+    "fixture must contain projected paragraphs",
+  ).toBeGreaterThan(0);
 
   // A painted page with real geometry: paged layout ran to completion.
   const pageBox = await page.locator(".layout-page").first().boundingBox();
@@ -93,10 +105,15 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   // `prefetchMeasurement` (the flag is on). This drives one more measurement and
   // asserts the worker returned a width: proof it spawned, ran, and replied. On
   // a broken worker this width never lands and `alive` flips false.
-  const worker = await page.evaluate(() => globalThis.__folioSmoke?.measureRoundTrip());
+  const worker = await page.evaluate(() =>
+    globalThis.__folioSmoke?.measureRoundTrip(),
+  );
   expect(worker, "smoke hook must be installed").toBeDefined();
   expect(worker?.alive, "worker proxy must not have errored out").toBe(true);
-  expect(worker?.width ?? -1, "worker must return a measured width > 0").toBeGreaterThan(0);
+  expect(
+    worker?.width ?? -1,
+    "worker must return a measured width > 0",
+  ).toBeGreaterThan(0);
 
   // --- Surface 2: the toolbar renders (chrome + catalog strings). -----------
   await expect(page.getByRole("toolbar").first()).toBeVisible();
@@ -130,7 +147,10 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   });
 
   const folioIdentity = await page.evaluateHandle(() => {
-    const view = globalThis.__folioSmoke?.getEditorRef()?.getEditorRef()?.getView();
+    const view = globalThis.__folioSmoke
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
     const paragraph = document.querySelector(".layout-paragraph");
     if (!view || !paragraph) throw new Error("Folio content is unavailable");
     return { view, dom: view.dom, paragraph };
@@ -173,9 +193,18 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   expect(hostIsolation.intercepted).toBe(false);
   expect(hostIsolation.hostText).toBe("Host text works");
   expect(hostIsolation.yjsText).toBe("Host Yjs");
-  expect(hostIsolation.sameView, "host interaction must preserve the Folio view").toBe(true);
-  expect(hostIsolation.sameViewDom, "host interaction must preserve the editor DOM").toBe(true);
-  expect(hostIsolation.sameParagraph, "host interaction must preserve painted content").toBe(true);
+  expect(
+    hostIsolation.sameView,
+    "host interaction must preserve the Folio view",
+  ).toBe(true);
+  expect(
+    hostIsolation.sameViewDom,
+    "host interaction must preserve the editor DOM",
+  ).toBe(true);
+  expect(
+    hostIsolation.sameParagraph,
+    "host interaction must preserve painted content",
+  ).toBe(true);
   expect(hostIsolation.hostCaret).toBe("rgb(12, 34, 56)");
   expect(hostIsolation.hostColor).toBe("rgb(12, 34, 56)");
   expect(hostIsolation.hostOutline).toBe("3px");
@@ -191,7 +220,11 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
     const insertedText = "Folio edit ";
     const painted = new Promise<void>((resolve) => {
       const unsubscribe = editor.onLayoutChange(() => {
-        if (!document.querySelector(".layout-paragraph")?.textContent?.includes(insertedText))
+        if (
+          !document
+            .querySelector(".layout-paragraph")
+            ?.textContent?.includes(insertedText)
+        )
           return;
         unsubscribe();
         resolve();
@@ -201,8 +234,11 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
     await painted;
     return {
       edited: view.state.doc.textContent !== before,
-      rendered: document.querySelector(".layout-paragraph")?.textContent?.includes(insertedText),
-      sameView: editor.getEditorRef()?.getView() === view && view.dom.isConnected,
+      rendered: document
+        .querySelector(".layout-paragraph")
+        ?.textContent?.includes(insertedText),
+      sameView:
+        editor.getEditorRef()?.getView() === view && view.dom.isConnected,
     };
   });
   expect(folioEdit).toEqual({ edited: true, rendered: true, sameView: true });
@@ -218,12 +254,19 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
 
   // --- Console net: the whole-session assertions. ---------------------------
   const errorLevel = messages.filter((m) => m.level === "error");
-  expect(errorLevel, `console error(s): ${JSON.stringify(errorLevel)}`).toEqual([]);
+  expect(errorLevel, `console error(s): ${JSON.stringify(errorLevel)}`).toEqual(
+    [],
+  );
   expect(pageErrors, `pageerror(s): ${JSON.stringify(pageErrors)}`).toEqual([]);
 
   const intlHits = messages.filter((m) => MISSING_MESSAGE_PATTERN.test(m.text));
-  expect(intlHits, `missing-message log(s): ${JSON.stringify(intlHits)}`).toEqual([]);
+  expect(
+    intlHits,
+    `missing-message log(s): ${JSON.stringify(intlHits)}`,
+  ).toEqual([]);
 
   const workerHits = messages.filter((m) => WORKER_PATTERN.test(m.text));
-  expect(workerHits, `worker log(s): ${JSON.stringify(workerHits)}`).toEqual([]);
+  expect(workerHits, `worker log(s): ${JSON.stringify(workerHits)}`).toEqual(
+    [],
+  );
 });

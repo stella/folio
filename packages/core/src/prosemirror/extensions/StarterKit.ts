@@ -22,10 +22,10 @@ import { BidiShortcutExtension } from "./features/BidiShortcutExtension";
 import { ContentControlWidgetsExtension } from "./features/ContentControlWidgetsExtension";
 import { DropCursorExtension } from "./features/DropCursorExtension";
 import { EmptyParagraphFormatExtension } from "./features/EmptyParagraphFormatExtension";
-import { JoinedRunStyleExtension } from "./features/JoinedRunStyleExtension";
 import { GapCursorExtension } from "./features/GapCursorExtension";
 import { ImageDragExtension } from "./features/ImageDragExtension";
 import { ImagePasteExtension } from "./features/ImagePasteExtension";
+import { JoinedRunStyleExtension } from "./features/JoinedRunStyleExtension";
 // Features
 import { ListExtension } from "./features/ListExtension";
 import { ParagraphChangeTrackerExtension } from "./features/ParagraphChangeTrackerExtension";
@@ -35,32 +35,35 @@ import { PasteStyleInlinerExtension } from "./features/PasteStyleInlinerExtensio
 import { SelectionTrackerExtension } from "./features/SelectionTrackerExtension";
 // Marks
 import { MARK_EXTENSIONS, MARK_NESTING_ORDER } from "./markRegistry";
-import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
-import { BlockCustomXmlExtension } from "./nodes/BlockCustomXmlExtension";
 import { BlockBookmarkBoundaryExtension } from "./nodes/BlockBookmarkBoundaryExtension";
+import { BlockCustomXmlExtension } from "./nodes/BlockCustomXmlExtension";
+import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
 import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
 import { CommentReferenceExtension } from "./nodes/CommentReferenceExtension";
-import { MoveRangeBoundaryExtension } from "./nodes/MoveRangeBoundaryExtension";
-import { RangeAnchorExtension } from "./nodes/RangeAnchorExtension";
-import { FieldExtension, StructuredFieldExtension } from "./nodes/FieldExtension";
+import {
+  FieldExtension,
+  StructuredFieldExtension,
+} from "./nodes/FieldExtension";
 // Nodes
 import { HardBreakExtension } from "./nodes/HardBreakExtension";
 import { HorizontalRuleExtension } from "./nodes/HorizontalRuleExtension";
 import { ImageExtension } from "./nodes/ImageExtension";
 import { MathExtension } from "./nodes/MathExtension";
+import { MoveRangeBoundaryExtension } from "./nodes/MoveRangeBoundaryExtension";
+import { NoteMarkerExtension } from "./nodes/NoteMarkerExtension";
 import { PageBreakExtension } from "./nodes/PageBreakExtension";
 import { PageBreakRunExtension } from "./nodes/PageBreakRunExtension";
+import { PreservedBlockExtension } from "./nodes/PreservedBlockExtension";
+import { PreservedXmlExtension } from "./nodes/PreservedXmlExtension";
+import { RangeAnchorExtension } from "./nodes/RangeAnchorExtension";
 import { RenderedPageBreakExtension } from "./nodes/RenderedPageBreakExtension";
 import { SdtExtension } from "./nodes/SdtExtension";
 import { ShapeExtension } from "./nodes/ShapeExtension";
-import { PreservedBlockExtension } from "./nodes/PreservedBlockExtension";
-import { NoteMarkerExtension } from "./nodes/NoteMarkerExtension";
-import { PreservedXmlExtension } from "./nodes/PreservedXmlExtension";
 import { SymbolExtension } from "./nodes/SymbolExtension";
 import { TabExtension } from "./nodes/TabExtension";
 import { createTableExtensions } from "./nodes/TableExtension";
-import { TextBoxExtension } from "./nodes/TextBoxExtension";
 import { TextBoxAnchorExtension } from "./nodes/TextBoxAnchorExtension";
+import { TextBoxExtension } from "./nodes/TextBoxExtension";
 import type { AnyExtension } from "./types";
 
 export type StarterKitOptions = {
@@ -79,8 +82,12 @@ export type StarterKitOptions = {
 /**
  * Create the full set of extensions for the DOCX editor
  */
-export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[] {
-  const disabled = options.disable ? new Set(options.disable) : new Set<string>();
+export function createStarterKit(
+  options: StarterKitOptions = {},
+): AnyExtension[] {
+  const disabled = options.disable
+    ? new Set(options.disable)
+    : new Set<string>();
 
   const extensions: AnyExtension[] = [];
   let internalClipboardToken: string | undefined;
@@ -102,11 +109,15 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add(
     "history",
     HistoryExtension({
-      ...(options.historyDepth !== undefined ? { depth: options.historyDepth } : {}),
+      ...(options.historyDepth !== undefined
+        ? { depth: options.historyDepth }
+        : {}),
       ...(options.historyNewGroupDelay !== undefined
         ? { newGroupDelay: options.historyNewGroupDelay }
         : {}),
-      ...(options.historyShortcuts !== undefined ? { shortcuts: options.historyShortcuts } : {}),
+      ...(options.historyShortcuts !== undefined
+        ? { shortcuts: options.historyShortcuts }
+        : {}),
     }),
   );
 
@@ -117,10 +128,19 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   }
 
   // Nodes
-  add("bookmarkBoundary", BookmarkBoundaryExtension({ getInternalClipboardToken }));
+  add(
+    "bookmarkBoundary",
+    BookmarkBoundaryExtension({ getInternalClipboardToken }),
+  );
   add("blockBookmarkBoundary", BlockBookmarkBoundaryExtension());
-  add("commentReference", CommentReferenceExtension({ getInternalClipboardToken }));
-  add("moveRangeBoundary", MoveRangeBoundaryExtension({ getInternalClipboardToken }));
+  add(
+    "commentReference",
+    CommentReferenceExtension({ getInternalClipboardToken }),
+  );
+  add(
+    "moveRangeBoundary",
+    MoveRangeBoundaryExtension({ getInternalClipboardToken }),
+  );
   add("rangeAnchor", RangeAnchorExtension({ getInternalClipboardToken }));
   add("hardBreak", HardBreakExtension());
   add("tab", TabExtension());

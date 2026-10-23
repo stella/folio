@@ -11,33 +11,37 @@
  * each piece keeping every field of the record, as a direct edit cuts them.
  */
 
-import type {
-  Paragraph,
-  ParagraphContent,
-  ParagraphFormatting,
-  ParagraphPropertyChange,
-  TrackedChangeInfo,
-  TrackedRunContent,
+import {
+  finalizeParagraphFormatting,
+  type Paragraph,
+  type ParagraphContent,
+  type ParagraphFormatting,
+  type ParagraphPropertyChange,
+  type TrackedChangeInfo,
+  type TrackedRunContent,
 } from "../model/document";
 import { structurallyEqual } from "./equality";
-import { getParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
 import { IDENTITY_SPACES, slotKey } from "./ids";
 import {
   childNodes,
   type Cursor,
   type Gap,
-  isCommentAnchor,
   type InlineNode,
+  isCommentAnchor,
   isParagraphContent,
   mergeLists,
   partitionNode,
   rebuildNode,
-  startCursor,
   spanningRecords,
+  startCursor,
 } from "./leaves";
 import { isTrackedChild } from "./offsets";
+import { getParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  type DocumentOpRefusalReason,
+} from "./refusal";
 import { identitySlots } from "./slots";
-import { DOCUMENT_OP_REFUSAL_REASONS, type DocumentOpRefusalReason } from "./refusal";
 import {
   PARAGRAPH_MARK_FORMATTING_KEYS,
   type ParagraphReviewFields,
@@ -50,7 +54,11 @@ import {
 
 /** The tracked-change metadata a stamp writes on the records it creates. */
 export const stampInfo = (stamp: RevisionStamp): TrackedChangeInfo => {
-  const info: TrackedChangeInfo = { id: stamp.id, author: stamp.author, date: stamp.date };
+  const info: TrackedChangeInfo = {
+    id: stamp.id,
+    author: stamp.author,
+    date: stamp.date,
+  };
   if (stamp.initials !== undefined) {
     info.initials = stamp.initials;
   }
@@ -58,7 +66,10 @@ export const stampInfo = (stamp: RevisionStamp): TrackedChangeInfo => {
 };
 
 /** Whether a record's metadata is the stamp's, whatever its id. */
-export const carriesStamp = (info: TrackedChangeInfo, stamp: RevisionStamp): boolean =>
+export const carriesStamp = (
+  info: TrackedChangeInfo,
+  stamp: RevisionStamp,
+): boolean =>
   structurallyEqual({ ...info, id: 0 }, { ...stampInfo(stamp), id: 0 });
 
 /** Tracked insertions, deletions and moves. */
@@ -115,7 +126,11 @@ export const stampedRevisionIds = (
   for (const paragraph of paragraphs) {
     for (const info of revisionInfosOf(paragraph)) {
       const key = slotKey({ space: IDENTITY_SPACES.REVISION, id: info.id });
-      if (carriesStamp(info, stamp) && !known.has(key) && !out.includes(info.id)) {
+      if (
+        carriesStamp(info, stamp) &&
+        !known.has(key) &&
+        !out.includes(info.id)
+      ) {
         out.push(info.id);
       }
     }
@@ -131,7 +146,9 @@ const MARK_KEYS: ReadonlySet<string> = new Set(PARAGRAPH_MARK_FORMATTING_KEYS);
 
 /** Whether a patch or property set names a key of the paragraph mark's run properties. */
 export const namesMarkFormatting = (formatting: object): boolean =>
-  Object.entries(formatting).some(([key, value]) => value !== undefined && MARK_KEYS.has(key));
+  Object.entries(formatting).some(
+    ([key, value]) => value !== undefined && MARK_KEYS.has(key),
+  );
 
 const pick = (
   formatting: ParagraphFormatting | undefined,
@@ -149,27 +166,35 @@ const pick = (
 /** The paragraph properties a `w:pPrChange` records: all but the mark's run properties. */
 export const paragraphPropertiesOf = (
   formatting: ParagraphFormatting | undefined,
-): ParagraphFormatting | undefined => pick(formatting, (key) => !MARK_KEYS.has(key));
+): ParagraphFormatting | undefined =>
+  pick(formatting, (key) => !MARK_KEYS.has(key));
 
 /** The paragraph mark's run properties of a property set; `undefined` when it states none. */
 const markFormattingOf = (
   formatting: ParagraphFormatting | undefined,
 ): ParagraphFormatting | undefined => {
   const marks = pick(formatting, (key) => MARK_KEYS.has(key));
-  return marks === undefined || Object.keys(marks).length === 0 ? undefined : marks;
+  return marks === undefined || Object.keys(marks).length === 0
+    ? undefined
+    : marks;
 };
 
 /** Whether two property sets state the same paragraph properties. */
 export const sameParagraphProperties = (
   left: ParagraphFormatting | undefined,
   right: ParagraphFormatting | undefined,
-): boolean => structurallyEqual(paragraphPropertiesOf(left), paragraphPropertiesOf(right));
+): boolean =>
+  structurallyEqual(paragraphPropertiesOf(left), paragraphPropertiesOf(right));
 
 /** Whether two property sets state the same run properties for the paragraph mark. */
 export const sameMarkFormatting = (
   left: ParagraphFormatting | undefined,
   right: ParagraphFormatting | undefined,
-): boolean => structurallyEqual(markFormattingOf(left) ?? {}, markFormattingOf(right) ?? {});
+): boolean =>
+  structurallyEqual(
+    markFormattingOf(left) ?? {},
+    markFormattingOf(right) ?? {},
+  );
 
 /**
  * The paragraph properties of `properties` with the mark's run properties of
@@ -192,8 +217,13 @@ export const paragraphPropertyChange = (
   info: TrackedChangeInfo,
   paragraph: Paragraph,
 ): ParagraphPropertyChange => {
-  const change: ParagraphPropertyChange = { type: "paragraphPropertyChange", info };
-  const recorded = paragraphPropertiesOf(getParagraphPropertySnapshot(paragraph));
+  const change: ParagraphPropertyChange = {
+    type: "paragraphPropertyChange",
+    info,
+  };
+  const recorded = paragraphPropertiesOf(
+    getParagraphPropertySnapshot(paragraph),
+  );
   if (recorded !== undefined) {
     change.previousFormatting = recorded;
   }
@@ -213,7 +243,8 @@ export const foldedParagraphPropertyChange = ({
   stamp,
 }: FoldParagraphPropertyChangeOptions): ParagraphPropertyChange => {
   const existing = paragraph.propertyChanges?.at(0);
-  if (existing === undefined) return paragraphPropertyChange(stampInfo(stamp), paragraph);
+  if (existing === undefined)
+    return paragraphPropertyChange(stampInfo(stamp), paragraph);
   const info = { ...existing.info, ...stampInfo(stamp), id: existing.info.id };
   if (stamp.initials === undefined) delete info.initials;
   // A companion date belongs to the previous attribution, not the new stamp.
@@ -228,10 +259,14 @@ export const foldedParagraphPropertyChange = ({
 };
 
 /** The review fields a paragraph states, each only when present. */
-export const reviewFieldsOf = (paragraph: Paragraph): ParagraphReviewFields => {
+export const reviewFieldsOf = (
+  paragraph: ParagraphReviewFields,
+): ParagraphReviewFields => {
   const fields: ParagraphReviewFields = {};
-  if (paragraph.formatting !== undefined) fields.formatting = paragraph.formatting;
-  if (paragraph.propertyChanges !== undefined) fields.propertyChanges = paragraph.propertyChanges;
+  const formatting = finalizeParagraphFormatting(paragraph.formatting);
+  if (formatting !== undefined) fields.formatting = formatting;
+  if (paragraph.propertyChanges !== undefined)
+    fields.propertyChanges = paragraph.propertyChanges;
   if (paragraph.pPrMark !== undefined) fields.pPrMark = paragraph.pPrMark;
   return fields;
 };
@@ -245,8 +280,10 @@ export const withReviewFields = (
   delete next.formatting;
   delete next.propertyChanges;
   delete next.pPrMark;
-  if (review.formatting !== undefined) next.formatting = review.formatting;
-  if (review.propertyChanges !== undefined) next.propertyChanges = review.propertyChanges;
+  const formatting = finalizeParagraphFormatting(review.formatting);
+  if (formatting !== undefined) next.formatting = formatting;
+  if (review.propertyChanges !== undefined)
+    next.propertyChanges = review.propertyChanges;
   if (review.pPrMark !== undefined) next.pPrMark = review.pPrMark;
   return next;
 };
@@ -256,14 +293,21 @@ export const withReviewFields = (
 // ---------------------------------------------------------------------------
 
 /** Which tracked change a wrap records. */
-export const WRAP_KINDS = Object.freeze({ INSERTION: "insertion", DELETION: "deletion" } as const);
+export const WRAP_KINDS = Object.freeze({
+  INSERTION: "insertion",
+  DELETION: "deletion",
+} as const);
 
 export type WrapKind = (typeof WRAP_KINDS)[keyof typeof WRAP_KINDS];
 
 /** What a wrap does with a record the range runs into but does not cover. */
 type SpanningAction = "cut" | "descend" | "keep" | "refuse";
 
-const spanningAction = (node: InlineNode, kind: WrapKind, stamp: RevisionStamp): SpanningAction => {
+const spanningAction = (
+  node: InlineNode,
+  kind: WrapKind,
+  stamp: RevisionStamp,
+): SpanningAction => {
   if (node.type === "inlineSdt" || node.type === "inlineWrapper") {
     return "descend";
   }
@@ -297,7 +341,9 @@ type Entry = {
   covered: boolean;
   joinBefore?: number;
   joinAfter?: number;
-  retainedAfter?: NonNullable<TrackedWrapper["resolutionJoins"]>["retainedAfter"];
+  retainedAfter?: NonNullable<
+    TrackedWrapper["resolutionJoins"]
+  >["retainedAfter"];
 };
 
 type WrapState = {
@@ -315,10 +361,16 @@ type WrapState = {
 };
 
 /** Merge a created wrapper into a neighbour carrying the same stamp: the left one, else the right. */
-const mergeWithStampedNeighbour = (out: InlineNode[], index: number, state: WrapState): void => {
+const mergeWithStampedNeighbour = (
+  out: InlineNode[],
+  index: number,
+  state: WrapState,
+): void => {
   const wrapper = out[index];
   if (wrapper === undefined || !isTrackedWrapper(wrapper)) return;
-  const matching = (neighbour: InlineNode | undefined): neighbour is TrackedWrapper =>
+  const matching = (
+    neighbour: InlineNode | undefined,
+  ): neighbour is TrackedWrapper =>
     neighbour !== undefined &&
     isTrackedWrapper(neighbour) &&
     neighbour.type === wrapper.type &&
@@ -348,7 +400,10 @@ const mergeWithStampedNeighbour = (out: InlineNode[], index: number, state: Wrap
   const right = out[index + 1];
   if (matching(right)) {
     // The wrapper that was there keeps its id.
-    const merged = mergeLists([wrapper], [right], 1, { mode: "exact", identity: "second" });
+    const merged = mergeLists([wrapper], [right], 1, {
+      mode: "exact",
+      identity: "second",
+    });
     if (merged !== undefined) {
       state.created.delete(wrapper);
       out.splice(index, 2, ...merged);
@@ -372,7 +427,10 @@ const trackedContent = (
 };
 
 /** Group the covered entries of a list into wrappers; `undefined` once refused. */
-const groupCovered = (entries: readonly Entry[], state: WrapState): InlineNode[] | undefined => {
+const groupCovered = (
+  entries: readonly Entry[],
+  state: WrapState,
+): InlineNode[] | undefined => {
   const out: InlineNode[] = [];
   const wrapperAt: number[] = [];
   let stretch: Entry[] = [];
@@ -394,9 +452,11 @@ const groupCovered = (entries: readonly Entry[], state: WrapState): InlineNode[]
         after: stretch.at(-1)?.joinAfter ?? 0,
         remove: Math.max(0, state.resolutionJoin - state.depth),
       };
-      if (state.acceptance !== undefined) wrapper.resolutionJoins.acceptance = state.acceptance;
+      if (state.acceptance !== undefined)
+        wrapper.resolutionJoins.acceptance = state.acceptance;
       const retainedAfter = stretch.at(-1)?.retainedAfter;
-      if (retainedAfter !== undefined) wrapper.resolutionJoins.retainedAfter = retainedAfter;
+      if (retainedAfter !== undefined)
+        wrapper.resolutionJoins.retainedAfter = retainedAfter;
     }
     state.created.add(wrapper);
     state.recorded = true;
@@ -439,7 +499,8 @@ const groupCovered = (entries: readonly Entry[], state: WrapState): InlineNode[]
     }
   }
   if (!flush()) return undefined;
-  for (const index of wrapperAt.toReversed()) mergeWithStampedNeighbour(out, index, state);
+  for (const index of wrapperAt.toReversed())
+    mergeWithStampedNeighbour(out, index, state);
   return out;
 };
 
@@ -481,7 +542,9 @@ const wrapList = (
         for (const [region, piece] of measured.pieces) {
           // An insertion does not nest inside another stamp's: that piece gives up its wrapper.
           const unwrap =
-            region === 1 && state.kind === WRAP_KINDS.INSERTION && isTrackedWrapper(piece);
+            region === 1 &&
+            state.kind === WRAP_KINDS.INSERTION &&
+            isTrackedWrapper(piece);
           for (const part of unwrap ? (childNodes(piece) ?? []) : [piece]) {
             const localGap = (gap: Gap): Gap => ({
               offset: gap.offset - start.position,
@@ -490,12 +553,19 @@ const wrapList = (
                   ? gap.zeroWidthBefore - start.zeroWidthSeen
                   : gap.zeroWidthBefore,
             });
-            const afterChain = spanningRecords([node], [localGap(state.gaps[1])], 0, 1);
+            const afterChain = spanningRecords(
+              [node],
+              [localGap(state.gaps[1])],
+              0,
+              1,
+            );
             const retainedAfter =
               region === 1 && state.kind === WRAP_KINDS.DELETION
                 ? afterChain.flatMap((record, depth) => {
                     const source = identitySlots(record);
-                    return source.length === 0 ? [] : [{ depth, source, target: source }];
+                    return source.length === 0
+                      ? []
+                      : [{ depth, source, target: source }];
                   })
                 : [];
             entries.push({
@@ -503,9 +573,15 @@ const wrapList = (
               ...(retainedAfter.length === 0 ? {} : { retainedAfter }),
               covered: region === 1,
               joinBefore:
-                region === 1 ? spanningRecords([node], [localGap(state.gaps[0])], 0, 1).length : 0,
+                region === 1
+                  ? spanningRecords([node], [localGap(state.gaps[0])], 0, 1)
+                      .length
+                  : 0,
               joinAfter:
-                region === 1 ? spanningRecords([node], [localGap(state.gaps[1])], 0, 1).length : 0,
+                region === 1
+                  ? spanningRecords([node], [localGap(state.gaps[1])], 0, 1)
+                      .length
+                  : 0,
             });
           }
         }
@@ -573,7 +649,10 @@ export const wrapTracked = ({
   const out: ParagraphContent[] = [];
   for (const node of content) {
     if (!isParagraphContent(node)) {
-      return { kind: "refused", reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE };
+      return {
+        kind: "refused",
+        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      };
     }
     out.push(node);
   }

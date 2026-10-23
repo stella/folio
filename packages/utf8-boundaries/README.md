@@ -3,7 +3,11 @@
 Shared Unicode boundaries for ZIP entries, streamed text, and previews.
 
 ```ts
-import { writeZipEntry, createTextReader, truncateGraphemes } from "@stll/utf8-boundaries";
+import {
+  createTextReader,
+  truncateGraphemes,
+  writeZipEntry,
+} from "@stll/utf8-boundaries";
 
 writeZipEntry(zip, "word/document.xml", xml);
 const reader = createTextReader({ fatal: true, ignoreBOM: true });

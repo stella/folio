@@ -8,8 +8,8 @@
  * header/footer).
  */
 
-import type { EditorView } from "prosemirror-view";
 import { CellSelection } from "prosemirror-tables";
+import type { EditorView } from "prosemirror-view";
 
 /**
  * @deprecated No longer used. The tracker ignores pointer overflow so same-cell
@@ -23,7 +23,10 @@ export const CELL_SELECT_OVERFLOW_PX = 5;
  * return its `before(d)` position (what `CellSelection` resolves against), or
  * null when the position isn't inside a table cell.
  */
-export function findCellPosFromPmPos(view: EditorView, pmPos: number): number | null {
+export function findCellPosFromPmPos(
+  view: EditorView,
+  pmPos: number,
+): number | null {
   try {
     const $pos = view.state.doc.resolve(pmPos);
     for (let d = $pos.depth; d > 0; d--) {

@@ -9,7 +9,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { applyContextualSpacing } from "./index";
-import type { FlowBlock, ParagraphBlock, TableBlock, TextBoxBlock } from "./types";
+import type {
+  FlowBlock,
+  ParagraphBlock,
+  TableBlock,
+  TextBoxBlock,
+} from "./types";
 
 function bullet(id: string, styleId: string): ParagraphBlock {
   return {

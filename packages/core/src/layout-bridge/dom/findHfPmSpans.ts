@@ -35,10 +35,14 @@ function querySlotDescendants(
 ): HTMLElement[] {
   return uniqueElements([
     ...Array.from(
-      container.querySelectorAll<HTMLElement>(`${slotSelector(kind, rId)} ${selector}`),
+      container.querySelectorAll<HTMLElement>(
+        `${slotSelector(kind, rId)} ${selector}`,
+      ),
     ),
     ...Array.from(
-      container.querySelectorAll<HTMLElement>(`${associatedSlotSelector(kind, rId)} ${selector}`),
+      container.querySelectorAll<HTMLElement>(
+        `${associatedSlotSelector(kind, rId)} ${selector}`,
+      ),
     ),
   ]);
 }
@@ -52,13 +56,24 @@ function querySlotAnchors(
   return uniqueElements([
     ...querySlotDescendants(container, kind, rId, selector),
     ...Array.from(
-      container.querySelectorAll<HTMLElement>(`${associatedSlotSelector(kind, rId)}${selector}`),
+      container.querySelectorAll<HTMLElement>(
+        `${associatedSlotSelector(kind, rId)}${selector}`,
+      ),
     ),
   ]);
 }
 
-export function findHfPmSpans(container: ParentNode, kind: HfSlotKind, rId: string): HTMLElement[] {
-  return querySlotDescendants(container, kind, rId, "span[data-pm-start][data-pm-end]");
+export function findHfPmSpans(
+  container: ParentNode,
+  kind: HfSlotKind,
+  rId: string,
+): HTMLElement[] {
+  return querySlotDescendants(
+    container,
+    kind,
+    rId,
+    "span[data-pm-start][data-pm-end]",
+  );
 }
 
 export function findHfPmAnchors(
@@ -184,7 +199,8 @@ export function clickToPositionInHfSlot(
   clientX: number,
   clientY: number,
 ): number | null {
-  const ownerDoc = container instanceof Element ? container.ownerDocument : document;
+  const ownerDoc =
+    container instanceof Element ? container.ownerDocument : document;
   const elements = ownerDoc.elementsFromPoint(clientX, clientY);
   for (const el of elements) {
     if (!(el instanceof HTMLElement)) {
@@ -209,7 +225,11 @@ export function clickToPositionInHfSlot(
   return findNearestSpanInHfSlots(container, kind, rId, clientX, clientY);
 }
 
-function computeColDist(inside: boolean, rect: DOMRect, clientX: number): number {
+function computeColDist(
+  inside: boolean,
+  rect: DOMRect,
+  clientX: number,
+): number {
   if (inside) {
     return 0;
   }
@@ -247,7 +267,8 @@ function findNearestSpanInHfSlots(
     const better =
       rowDist < bestRowDist ||
       (rowDist === bestRowDist &&
-        ((inside && !bestInside) || (inside === bestInside && colDist < bestColDist)));
+        ((inside && !bestInside) ||
+          (inside === bestInside && colDist < bestColDist)));
     if (better) {
       bestRowDist = rowDist;
       bestColDist = colDist;

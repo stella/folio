@@ -3,9 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { CharacterSpacingExtension } from "./CharacterSpacingExtension";
 
 const parseScale = (scale: string) => {
-  const getAttrs = CharacterSpacingExtension().config.markSpec.parseDOM?.at(0)?.getAttrs;
+  const getAttrs =
+    CharacterSpacingExtension().config.markSpec.parseDOM?.at(0)?.getAttrs;
   if (!getAttrs) {
-    throw new Error("CharacterSpacingExtension must define parseDOM[0].getAttrs");
+    throw new Error(
+      "CharacterSpacingExtension must define parseDOM[0].getAttrs",
+    );
   }
 
   // SAFETY: getAttrs reads only HTMLElement.dataset in this test fixture.

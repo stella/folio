@@ -1,5 +1,4 @@
 import type { Document } from "../packages/docx-core/src/model/document";
-
 import {
   describePackageDifferences,
   type PackageDifferences,
@@ -7,9 +6,16 @@ import {
 import { canonicalReviewBlocks } from "./reviewProjection";
 
 /** Compare authored main-story content; ids and paragraph survivor identity stay exact. */
-export const reviewDifferences = (before: Document, after: Document): PackageDifferences => {
+export const reviewDifferences = (
+  before: Document,
+  after: Document,
+): PackageDifferences => {
   const contentOnly = (document: Document): Document => ({
-    package: { document: { content: canonicalReviewBlocks(document.package.document.content) } },
+    package: {
+      document: {
+        content: canonicalReviewBlocks(document.package.document.content),
+      },
+    },
   });
   return describePackageDifferences(contentOnly(before), contentOnly(after));
 };

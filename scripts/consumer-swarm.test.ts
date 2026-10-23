@@ -1,12 +1,24 @@
 import { expect, test } from "bun:test";
 
-import { type FlowFile, flowId, parseFlowFile } from "../test/consumer-scenarios/support/flow-file";
+import {
+  type FlowFile,
+  flowId,
+  parseFlowFile,
+} from "../test/consumer-scenarios/support/flow-file";
 import { mutateFlow } from "../test/consumer-scenarios/support/flow-mutate";
 import { createRandom } from "../test/consumer-scenarios/support/random";
 import { shrinkFlow } from "../test/consumer-scenarios/support/shrink";
-import { drawSwarm, swarmIncludesBatch } from "../test/consumer-scenarios/support/swarm";
+import {
+  drawSwarm,
+  swarmIncludesBatch,
+} from "../test/consumer-scenarios/support/swarm";
 
-const kinds = ["replaceInBlock", "insertAfterBlock", "deleteBlock", "formatRange"];
+const kinds = [
+  "replaceInBlock",
+  "insertAfterBlock",
+  "deleteBlock",
+  "formatRange",
+];
 const parent = {
   version: 1,
   kind: "collisions",
@@ -43,7 +55,9 @@ test("seeded swarms disable kinds, remain nonempty, and reproduce independently"
 
 test("swarm data roundtrips, changes identity, and rejects empty or duplicate kinds", () => {
   const configured = { ...parent, swarm: drawSwarm(parent.seed, kinds) };
-  expect(parseFlowFile(JSON.parse(JSON.stringify(configured)))).toEqual(configured);
+  expect(parseFlowFile(JSON.parse(JSON.stringify(configured)))).toEqual(
+    configured,
+  );
   expect(flowId(configured)).not.toBe(flowId(parent));
   expect(parseFlowFile(parent)).toEqual(parent);
   for (const swarm of [[], [""], ["replaceInBlock", "replaceInBlock"], [7]]) {
@@ -83,11 +97,19 @@ test("mutation keeps the swarm and redraws donors from another swarm", () => {
   const donor = {
     ...parent,
     swarm: ["deleteBlock"],
-    steps: [{ action: "core batch", seed: 999, operations: [{ type: "deleteBlock" }] }],
+    steps: [
+      {
+        action: "core batch",
+        seed: 999,
+        operations: [{ type: "deleteBlock" }],
+      },
+    ],
   } satisfies FlowFile;
   let spliced = false;
   for (let seed = 0; seed < 256; seed += 1) {
-    const mutated = mutateFlow(configured, createRandom(seed), { donors: [donor] });
+    const mutated = mutateFlow(configured, createRandom(seed), {
+      donors: [donor],
+    });
     expect(mutated.flow.swarm).toEqual(configured.swarm);
     expect(parseFlowFile(mutated.flow)).toEqual(mutated.flow);
     for (const step of mutated.flow.steps) {
@@ -101,7 +123,8 @@ test("mutation keeps the swarm and redraws donors from another swarm", () => {
 test("shrinking keeps the recorded swarm while deleting steps", async () => {
   const configured = { ...parent, swarm: ["replaceInBlock"] };
   const shrunk = await shrinkFlow(configured, {
-    holds: (candidate) => Promise.resolve(candidate.steps.some(({ seed }) => seed === 1)),
+    holds: (candidate) =>
+      Promise.resolve(candidate.steps.some(({ seed }) => seed === 1)),
     materialize: (candidate) => Promise.resolve(candidate),
     budget: { maxAttempts: 20, deadline: Date.now() + 10_000 },
   });

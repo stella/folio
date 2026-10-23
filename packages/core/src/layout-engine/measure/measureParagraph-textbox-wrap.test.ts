@@ -8,8 +8,14 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
-import { type FloatingExclusionRect, rectsToFloatingZones } from "./floatingZones";
+import {
+  fixedCharWidth,
+  withFakeTextMeasure,
+} from "./__tests__/fakeTextMeasure";
+import {
+  type FloatingExclusionRect,
+  rectsToFloatingZones,
+} from "./floatingZones";
 import { measureParagraph } from "./measureParagraph";
 
 const fakeMeasure = { charWidth: fixedCharWidth(5) };

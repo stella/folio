@@ -75,7 +75,12 @@ describe("withoutOrphanCommentRanges", () => {
             {
               type: "header",
               hdrFtrType: "default",
-              content: [paragraph([{ type: "commentRangeStart", id: 405 }, run("header")])],
+              content: [
+                paragraph([
+                  { type: "commentRangeStart", id: 405 },
+                  run("header"),
+                ]),
+              ],
             },
           ],
         ]),
@@ -83,14 +88,24 @@ describe("withoutOrphanCommentRanges", () => {
           {
             type: "footnote",
             id: 2,
-            content: [paragraph([run("footnote"), { type: "commentRangeEnd", id: 406 }])],
+            content: [
+              paragraph([
+                run("footnote"),
+                { type: "commentRangeEnd", id: 406 },
+              ]),
+            ],
           },
         ],
         endnotes: [
           {
             type: "endnote",
             id: 3,
-            content: [paragraph([{ type: "commentReference", id: 407 }, run("endnote")])],
+            content: [
+              paragraph([
+                { type: "commentReference", id: 407 },
+                run("endnote"),
+              ]),
+            ],
           },
         ],
       },
@@ -99,7 +114,10 @@ describe("withoutOrphanCommentRanges", () => {
     const result = withoutOrphanCommentRanges(document);
 
     expect(result).not.toBe(document);
-    expect(contentTypes(result.package.document.content.at(0))).toEqual(["run", "commentRangeEnd"]);
+    expect(contentTypes(result.package.document.content.at(0))).toEqual([
+      "run",
+      "commentRangeEnd",
+    ]);
 
     const table = result.package.document.content.at(1);
     expect(table?.type).toBe("table");
@@ -111,9 +129,15 @@ describe("withoutOrphanCommentRanges", () => {
       "commentReference",
     ]);
 
-    expect(contentTypes(result.package.headers?.get("rIdHeader")?.content.at(0))).toEqual(["run"]);
-    expect(contentTypes(result.package.footnotes?.at(0)?.content.at(0))).toEqual(["run"]);
-    expect(contentTypes(result.package.endnotes?.at(0)?.content.at(0))).toEqual(["run"]);
+    expect(
+      contentTypes(result.package.headers?.get("rIdHeader")?.content.at(0)),
+    ).toEqual(["run"]);
+    expect(
+      contentTypes(result.package.footnotes?.at(0)?.content.at(0)),
+    ).toEqual(["run"]);
+    expect(contentTypes(result.package.endnotes?.at(0)?.content.at(0))).toEqual(
+      ["run"],
+    );
   });
 
   test("does not mutate the caller's document model", () => {
@@ -138,7 +162,9 @@ describe("withoutOrphanCommentRanges", () => {
       "run",
       "commentReference",
     ]);
-    expect(contentTypes(result.package.document.content.at(0))).toEqual(["run"]);
+    expect(contentTypes(result.package.document.content.at(0))).toEqual([
+      "run",
+    ]);
     expect(result.package.document.content.at(0)).not.toBe(originalParagraph);
   });
 
@@ -186,8 +212,13 @@ describe("withoutOrphanCommentRanges", () => {
     const result = withoutOrphanCommentRanges(document);
 
     expect(result).not.toBe(document);
-    const commentParagraph = result.package.document.comments?.at(0)?.content.at(0);
-    expect(commentParagraph?.content.map((item) => item.type)).toEqual(["run", "commentReference"]);
+    const commentParagraph = result.package.document.comments
+      ?.at(0)
+      ?.content.at(0);
+    expect(commentParagraph?.content.map((item) => item.type)).toEqual([
+      "run",
+      "commentReference",
+    ]);
   });
 
   test("drops orphan commentReference markers", () => {
@@ -196,7 +227,11 @@ describe("withoutOrphanCommentRanges", () => {
         document: {
           comments: [validComment],
           content: [
-            paragraph([run("before"), { type: "commentReference", id: 404 }, run("after")]),
+            paragraph([
+              run("before"),
+              { type: "commentReference", id: 404 },
+              run("after"),
+            ]),
           ],
         },
       },
@@ -204,7 +239,10 @@ describe("withoutOrphanCommentRanges", () => {
 
     const result = withoutOrphanCommentRanges(document);
 
-    expect(contentTypes(result.package.document.content.at(0))).toEqual(["run", "run"]);
+    expect(contentTypes(result.package.document.content.at(0))).toEqual([
+      "run",
+      "run",
+    ]);
   });
 });
 
@@ -250,7 +288,10 @@ describe("patchBreaksCommentRangeBalance", () => {
       ),
     ).toBe(false);
     expect(
-      patchBreaksCommentRangeBalance(story(`<w:r/>${CLOSES}`), story(`<w:r>x</w:r>${CLOSES}`)),
+      patchBreaksCommentRangeBalance(
+        story(`<w:r/>${CLOSES}`),
+        story(`<w:r>x</w:r>${CLOSES}`),
+      ),
     ).toBe(false);
   });
 });

@@ -28,8 +28,6 @@ import type { Transaction } from "prosemirror-state";
 
 import type { PropertyRevisionKind } from "@stll/docx-core/model";
 
-import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-
 import {
   tableCellRejectAttrPatch,
   tableRejectAttrPatch,
@@ -40,8 +38,13 @@ import {
   tableCellAttrsToFormatting,
   tableRowAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
+import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import type { TableCellAttrs } from "../prosemirror/schema/nodes";
-import type { TableCellFormatting, TableFormatting, TableRowFormatting } from "../types/document";
+import type {
+  TableCellFormatting,
+  TableFormatting,
+  TableRowFormatting,
+} from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import type { FolioStoryTable } from "./snapshot";
 
@@ -64,8 +67,12 @@ const withoutOriginalFormatting = (keys: readonly string[]): string[] =>
  * them: the grid is `w:tblGrid`, not `w:tblPr`, and the editable model has no
  * `w:tblGridChange` to record a change of it against.
  */
-const TABLE_SCOPED_ATTRS = withoutOriginalFormatting(Object.keys(tableRejectAttrPatch(undefined)));
-const ROW_SCOPED_ATTRS = withoutOriginalFormatting(Object.keys(tableRowRejectAttrPatch(undefined)));
+const TABLE_SCOPED_ATTRS = withoutOriginalFormatting(
+  Object.keys(tableRejectAttrPatch(undefined)),
+);
+const ROW_SCOPED_ATTRS = withoutOriginalFormatting(
+  Object.keys(tableRowRejectAttrPatch(undefined)),
+);
 const CELL_SCOPED_ATTRS = withoutOriginalFormatting(
   Object.keys(tableCellRejectAttrPatch(undefined, undefined)),
 );
@@ -192,8 +199,10 @@ type PropertyScope<TFormatting> = {
  */
 const cellAttrsOf = (node: PMNode): TableCellAttrs => ({
   ...effectiveAttrs(node),
-  colspan: typeof node.attrs["colspan"] === "number" ? node.attrs["colspan"] : 1,
-  rowspan: typeof node.attrs["rowspan"] === "number" ? node.attrs["rowspan"] : 1,
+  colspan:
+    typeof node.attrs["colspan"] === "number" ? node.attrs["colspan"] : 1,
+  rowspan:
+    typeof node.attrs["rowspan"] === "number" ? node.attrs["rowspan"] : 1,
 });
 
 /**
@@ -216,7 +225,8 @@ const effectiveAttrs = (node: PMNode): Record<string, unknown> => ({
 
 const TABLE_SCOPE = {
   keys: TABLE_SCOPED_ATTRS,
-  signatureOf: (node) => formattingProjection(tableAttrsToFormatting(effectiveAttrs(node))),
+  signatureOf: (node) =>
+    formattingProjection(tableAttrsToFormatting(effectiveAttrs(node))),
   formattingOf: (node) => tableAttrsToFormatting(effectiveAttrs(node)),
   rejectPatch: (previousFormatting) => tableRejectAttrPatch(previousFormatting),
   changeAttr: "tblPrChange",
@@ -227,7 +237,8 @@ const ROW_SCOPE = {
   keys: ROW_SCOPED_ATTRS,
   signatureOf: (node) => scopedValues(node.attrs, ROW_SCOPED_ATTRS),
   formattingOf: (node) => tableRowAttrsToFormatting(node.attrs),
-  rejectPatch: (previousFormatting) => tableRowRejectAttrPatch(previousFormatting),
+  rejectPatch: (previousFormatting) =>
+    tableRowRejectAttrPatch(previousFormatting),
   changeAttr: "trPrChange",
   changeType: "tableRowPropertyChange",
 } as const satisfies PropertyScope<TableRowFormatting>;
@@ -257,8 +268,10 @@ const GEOMETRY_SCOPES = {
   | PropertyScope<TableCellFormatting>
 >;
 
-const scopedValues = (attrs: Record<string, unknown>, keys: readonly string[]): string =>
-  canonicalJson(scopedAttrs(attrs, keys));
+const scopedValues = (
+  attrs: Record<string, unknown>,
+  keys: readonly string[],
+): string => canonicalJson(scopedAttrs(attrs, keys));
 
 /**
  * `sourceXml` and `gridSourceXml` record byte-exact captures; they are
@@ -266,16 +279,23 @@ const scopedValues = (attrs: Record<string, unknown>, keys: readonly string[]): 
  * parsed property is serializer-supported and belongs in the complete old
  * property set Word stores in a property-change element.
  */
-const semanticFormatting = (formatting: TableFormatting | undefined): Record<string, unknown> => {
+const semanticFormatting = (
+  formatting: TableFormatting | undefined,
+): Record<string, unknown> => {
   if (!formatting) {
     return {};
   }
-  const { sourceXml: _sourceXml, gridSourceXml: _gridSourceXml, ...properties } = formatting;
+  const {
+    sourceXml: _sourceXml,
+    gridSourceXml: _gridSourceXml,
+    ...properties
+  } = formatting;
   return properties;
 };
 
-const formattingProjection = (formatting: TableFormatting | undefined): string =>
-  canonicalJson(semanticFormatting(formatting));
+const formattingProjection = (
+  formatting: TableFormatting | undefined,
+): string => canonicalJson(semanticFormatting(formatting));
 
 const cellProjection = (cell: PMNode): string =>
   canonicalJson({
@@ -298,7 +318,9 @@ const rowProjection = (row: PMNode): string => {
  * their own lines rather than being folded into their parent's, so a
  * difference names the table it is in.
  */
-export const projectTableGeometry = (tables: readonly FolioStoryTable[]): string[] =>
+export const projectTableGeometry = (
+  tables: readonly FolioStoryTable[],
+): string[] =>
   tables.map(({ node }) => {
     const rows: string[] = [];
     node.forEach((row) => {
@@ -335,7 +357,10 @@ const propertyChangeFor = <TFormatting>(
     return null;
   }
   if (
-    scopedValues(scope.rejectPatch(previousFormatting, previousFormatting), scope.keys) !== live
+    scopedValues(
+      scope.rejectPatch(previousFormatting, previousFormatting),
+      scope.keys,
+    ) !== live
   ) {
     return null;
   }
@@ -402,7 +427,9 @@ export const matchTableGeometry = ({
     }
     const baseRow = baseTable.node.maybeChild(base.rowIndex);
     const targetRow = targetTable.maybeChild(target.rowIndex);
-    const rowPosition = childPositions(baseTable.node, baseTable.start)[base.rowIndex];
+    const rowPosition = childPositions(baseTable.node, baseTable.start)[
+      base.rowIndex
+    ];
     if (!baseRow || !targetRow || rowPosition === undefined) {
       continue;
     }
@@ -412,9 +439,24 @@ export const matchTableGeometry = ({
     if (!baseCell || !targetCell || cellPosition === undefined) {
       continue;
     }
-    consider(baseTable.node, targetTable, baseTable.start, GEOMETRY_SCOPES.tablePropertyChange);
-    consider(baseRow, targetRow, rowPosition, GEOMETRY_SCOPES.tableRowPropertyChange);
-    consider(baseCell, targetCell, cellPosition, GEOMETRY_SCOPES.tableCellPropertyChange);
+    consider(
+      baseTable.node,
+      targetTable,
+      baseTable.start,
+      GEOMETRY_SCOPES.tablePropertyChange,
+    );
+    consider(
+      baseRow,
+      targetRow,
+      rowPosition,
+      GEOMETRY_SCOPES.tableRowPropertyChange,
+    );
+    consider(
+      baseCell,
+      targetCell,
+      cellPosition,
+      GEOMETRY_SCOPES.tableCellPropertyChange,
+    );
   }
 
   let revisionId = revision.idSeed;
@@ -429,7 +471,11 @@ export const matchTableGeometry = ({
       [target.changeAttr]: [
         {
           type: target.changeType,
-          info: { id: revisionId, author: revision.author, date: revision.date },
+          info: {
+            id: revisionId,
+            author: revision.author,
+            date: revision.date,
+          },
           ...(target.previousFormatting != null && {
             previousFormatting: target.previousFormatting,
           }),

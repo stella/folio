@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
+
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { resolvePainterTarget } from "../tests/visual/painterTargetCommit";
 
@@ -8,7 +9,10 @@ test(
   async () => {
     await assertProperty(
       fc.asyncProperty(
-        fc.array(fc.integer({ min: 1, max: 100 }), { minLength: 1, maxLength: 20 }),
+        fc.array(fc.integer({ min: 1, max: 100 }), {
+          minLength: 1,
+          maxLength: 20,
+        }),
         async (edits) => {
           let current = 0;
           let painted = -1;
@@ -25,7 +29,9 @@ test(
               };
             },
             read: () =>
-              painted === current ? { position: current, coordinate: painted * 10 } : null,
+              painted === current
+                ? { position: current, coordinate: painted * 10 }
+                : null,
           });
           for (const edit of edits) {
             current += edit;
@@ -35,7 +41,10 @@ test(
           painted = current;
           listener?.();
           const result = await pending;
-          expect(result).toEqual({ position: current, coordinate: current * 10 });
+          expect(result).toEqual({
+            position: current,
+            coordinate: current * 10,
+          });
           expect(subscriptions).toBe(0);
           current++;
           expect(result.position * 10).toBe(result.coordinate);
@@ -105,7 +114,8 @@ test(
               painted = current;
               listener?.();
             },
-            read: () => (visible ? { position: current, coordinate: painted * 10 } : null),
+            read: () =>
+              visible ? { position: current, coordinate: painted * 10 } : null,
           });
           if (visibility === "virtualized") {
             expect(subscriptions).toBe(1);
@@ -113,7 +123,10 @@ test(
             listener?.();
           }
           const target = await pending;
-          expect(target).toEqual({ position: current, coordinate: current * 10 });
+          expect(target).toEqual({
+            position: current,
+            coordinate: current * 10,
+          });
           expect(commits).toBe(1);
           expect(subscriptions).toBe(0);
         },

@@ -8,7 +8,10 @@ export type RemoteSelectionGeometry = {
   selectionRects: SelectionRect[];
 };
 
-const hasSameCaretPosition = (previous: CaretPosition | null, next: CaretPosition | null) => {
+const hasSameCaretPosition = (
+  previous: CaretPosition | null,
+  next: CaretPosition | null,
+) => {
   if (previous === null || next === null) {
     return previous === next;
   }

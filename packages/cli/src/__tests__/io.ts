@@ -1,6 +1,10 @@
 import type { FolioCliIo } from "../cli";
 
-export type CapturedIo = { io: FolioCliIo; stdout: () => string; stderr: () => string };
+export type CapturedIo = {
+  io: FolioCliIo;
+  stdout: () => string;
+  stderr: () => string;
+};
 
 /**
  * An environment where git has no user configuration, so author resolution
@@ -49,7 +53,8 @@ export const captureIo = ({
 /** The parsed envelope a JSON-mode command printed. */
 export const envelopeOf = (text: string): Record<string, unknown> => {
   const parsed: unknown = JSON.parse(text);
-  if (typeof parsed !== "object" || parsed === null) throw new Error("not an envelope");
+  if (typeof parsed !== "object" || parsed === null)
+    throw new Error("not an envelope");
   return { ...parsed };
 };
 

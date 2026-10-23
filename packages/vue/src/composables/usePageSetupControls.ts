@@ -7,15 +7,19 @@
  * mutation otherwise.
  */
 
-import type { Ref } from "vue";
 import type { EditorView } from "prosemirror-view";
-import type { Document, SectionProperties } from "@stll/folio-core/types/document";
+import type { Ref } from "vue";
+
 import {
+  removeTabStop,
+  setIndentFirstLine,
   setIndentLeft,
   setIndentRight,
-  setIndentFirstLine,
-  removeTabStop,
 } from "@stll/folio-core/prosemirror/commands/paragraph";
+import type {
+  Document,
+  SectionProperties,
+} from "@stll/folio-core/types/document";
 
 export type UsePageSetupControlsOptions = {
   editorView: Ref<EditorView | null>;
@@ -36,7 +40,8 @@ export type UsePageSetupControlsOptions = {
   ) => "applied" | "refused" | "unhandled";
 };
 
-type MarginProperty = "marginLeft" | "marginRight" | "marginTop" | "marginBottom";
+type MarginProperty =
+  "marginLeft" | "marginRight" | "marginTop" | "marginBottom";
 
 export function usePageSetupControls(opts: UsePageSetupControlsOptions) {
   function handlePageSetupApply(sp: Partial<SectionProperties>) {

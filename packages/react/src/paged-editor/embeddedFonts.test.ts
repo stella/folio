@@ -8,7 +8,9 @@ let extractImpl: (buffer: ArrayBuffer) => Promise<EmbeddedFont[]>;
 void mock.module("@stll/folio-core/fonts/embeddedFonts", () => ({
   extractEmbeddedFonts: (buffer: ArrayBuffer) => extractImpl(buffer),
   buildEmbeddedFontFamilyMap: (faces: readonly EmbeddedFont[]) =>
-    new Map(faces.map(({ originalFamily, family }) => [originalFamily, family])),
+    new Map(
+      faces.map(({ originalFamily, family }) => [originalFamily, family]),
+    ),
 }));
 
 const { loadEmbeddedFontFaces } = await import("./embeddedFonts");
@@ -54,10 +56,18 @@ type StubbedGlobal = "document" | "FontFace";
 // assignment throws. Redefine them via a configurable descriptor (matching
 // folio-core's global-stub tests) and delete/restore afterwards.
 function stubGlobal(prop: StubbedGlobal, value: unknown): void {
-  Object.defineProperty(globalThis, prop, { value, configurable: true, writable: true });
+  Object.defineProperty(globalThis, prop, {
+    value,
+    configurable: true,
+    writable: true,
+  });
 }
 
-function restoreGlobal(prop: StubbedGlobal, had: boolean, original: unknown): void {
+function restoreGlobal(
+  prop: StubbedGlobal,
+  had: boolean,
+  original: unknown,
+): void {
   if (had) {
     Object.defineProperty(globalThis, prop, {
       value: original,
@@ -104,13 +114,19 @@ afterEach(() => {
 
 describe("loadEmbeddedFontFaces (best-effort)", () => {
   test("registers and returns the loaded faces on success", async () => {
-    const { faces, familyMap } = await loadEmbeddedFontFaces(new ArrayBuffer(8));
+    const { faces, familyMap } = await loadEmbeddedFontFaces(
+      new ArrayBuffer(8),
+    );
     expect(faces).toHaveLength(1);
     expect(addedFaces).toHaveLength(1);
     expect(deletedFaces).toHaveLength(0);
     // The face is registered under its scoped name, mapped from the original.
-    expect(addedFaces[0]).toMatchObject({ family: "folio-embedded-test-nonce-My Brand Sans" });
-    expect(familyMap.get("My Brand Sans")).toBe("folio-embedded-test-nonce-My Brand Sans");
+    expect(addedFaces[0]).toMatchObject({
+      family: "folio-embedded-test-nonce-My Brand Sans",
+    });
+    expect(familyMap.get("My Brand Sans")).toBe(
+      "folio-embedded-test-nonce-My Brand Sans",
+    );
   });
 
   test("does not throw and returns empty when extraction throws", async () => {

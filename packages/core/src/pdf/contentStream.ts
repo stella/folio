@@ -12,6 +12,7 @@
  */
 
 import { panic } from "better-result";
+
 import type { DisplayColor } from "../display-list/types";
 import { formatNumber } from "./objects";
 import type { PdfMatrix } from "./pageSpace";
@@ -21,7 +22,8 @@ export type PdfResourceUse =
   | { readonly kind: "image"; readonly imageIndex: number }
   | { readonly kind: "extGState"; readonly alpha: number };
 
-export type ContentPart = { readonly kind: "literal"; readonly text: string } | PdfResourceUse;
+export type ContentPart =
+  { readonly kind: "literal"; readonly text: string } | PdfResourceUse;
 
 /** A glyph plus the correction that follows it in a `TJ` array. */
 export type PositionedGlyph = {
@@ -34,8 +36,13 @@ export type PositionedGlyph = {
  * Text rendering modes. `fillThenStroke` is what an outlined run (`w:outline`)
  * paints.
  */
-export const TEXT_RENDER_MODE = { fill: 0, stroke: 1, fillThenStroke: 2 } as const;
-export type PdfTextRenderMode = (typeof TEXT_RENDER_MODE)[keyof typeof TEXT_RENDER_MODE];
+export const TEXT_RENDER_MODE = {
+  fill: 0,
+  stroke: 1,
+  fillThenStroke: 2,
+} as const;
+export type PdfTextRenderMode =
+  (typeof TEXT_RENDER_MODE)[keyof typeof TEXT_RENDER_MODE];
 
 const COLOR_MAX = 255;
 
@@ -59,7 +66,12 @@ export type ContentStream = {
   readonly setDash: (pattern: readonly number[], phasePx: number) => void;
   /** Selects an `ExtGState` carrying `/ca` and `/CA` set to `alpha`. */
   readonly setAlpha: (alpha: number) => void;
-  readonly appendRect: (xPx: number, yPx: number, widthPx: number, heightPx: number) => void;
+  readonly appendRect: (
+    xPx: number,
+    yPx: number,
+    widthPx: number,
+    heightPx: number,
+  ) => void;
   readonly moveTo: (xPx: number, yPx: number) => void;
   readonly lineTo: (xPx: number, yPx: number) => void;
   readonly fill: () => void;
@@ -94,7 +106,9 @@ export const createContentStream = (): ContentStream => {
     setStrokeColor: (color) => line(`${colorComponents(color)} RG`),
     setLineWidth: (widthPx) => line(`${formatNumber(widthPx)} w`),
     setDash: (pattern, phasePx) =>
-      line(`[${pattern.map(formatNumber).join(" ")}] ${formatNumber(phasePx)} d`),
+      line(
+        `[${pattern.map(formatNumber).join(" ")}] ${formatNumber(phasePx)} d`,
+      ),
     setAlpha: (alpha) => use({ kind: "extGState", alpha }, " gs"),
     appendRect: (xPx, yPx, widthPx, heightPx) =>
       line(
@@ -154,7 +168,9 @@ export type ContentResources = {
   readonly extGStateNames: ReadonlyMap<string, string>;
 };
 
-export const collectResources = (parts: readonly ContentPart[]): ContentResources => {
+export const collectResources = (
+  parts: readonly ContentPart[],
+): ContentResources => {
   const fonts = new Set<number>();
   const images = new Set<number>();
   const alphas = new Set<string>();

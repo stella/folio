@@ -78,7 +78,10 @@ export const COLUMN_RESERVED = {
   space: NO_RESERVED_VALUE,
 } satisfies Record<keyof Column, ReservedValueDisposition>;
 
-export type ExhaustiveColumnReserved = ExhaustiveFields<Column, keyof typeof COLUMN_RESERVED>;
+export type ExhaustiveColumnReserved = ExhaustiveFields<
+  Column,
+  keyof typeof COLUMN_RESERVED
+>;
 
 type SectionLineNumbers = NonNullable<SectionProperties["lineNumbers"]>;
 
@@ -192,7 +195,10 @@ export const ENDNOTE_RESERVED = NOTE_RESERVED satisfies Record<
   ReservedValueDisposition
 >;
 
-export type ExhaustiveNoteReserved = ExhaustiveFields<Footnote, keyof typeof NOTE_RESERVED> &
+export type ExhaustiveNoteReserved = ExhaustiveFields<
+  Footnote,
+  keyof typeof NOTE_RESERVED
+> &
   ExhaustiveFields<Endnote, keyof typeof NOTE_RESERVED>;
 
 export const FOOTNOTE_PROPERTIES_RESERVED = {

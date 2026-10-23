@@ -23,7 +23,9 @@ const NS =
   'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
 
 const roundTrip = (inner: string): string => {
-  const node = parseXmlDocument(`<w:p ${NS}>${inner}</w:p>`) as XmlElement | null;
+  const node = parseXmlDocument(
+    `<w:p ${NS}>${inner}</w:p>`,
+  ) as XmlElement | null;
   if (!node) {
     throw new Error("the fixture did not parse");
   }
@@ -58,14 +60,18 @@ describe("a revision keeps the wrapper it was authored around", () => {
         const xml = roundTrip(
           `<w:${tag} ${ATTRS}>${open}<w:r><w:t>x</w:t></w:r>${close}</w:${tag}>`,
         );
-        expect(xml).toContain(`<w:${tag} ${ATTRS}>${open}<w:r>${text}</w:r>${close}</w:${tag}>`);
+        expect(xml).toContain(
+          `<w:${tag} ${ATTRS}>${open}<w:r>${text}</w:r>${close}</w:${tag}>`,
+        );
       });
 
       test(`w:${tag} stays inside ${name}`, () => {
         const xml = roundTrip(
           `${open}<w:${tag} ${ATTRS}><w:r><w:t>x</w:t></w:r></w:${tag}>${close}`,
         );
-        expect(xml).toContain(`${open}<w:${tag} ${ATTRS}><w:r>${text}</w:r></w:${tag}>${close}`);
+        expect(xml).toContain(
+          `${open}<w:${tag} ${ATTRS}><w:r>${text}</w:r></w:${tag}>${close}`,
+        );
       });
     }
   }
@@ -99,22 +105,25 @@ describe("a revision keeps the wrapper it was authored around", () => {
     }
     const paragraph = parseParagraph(node, new Map(), null, null);
     const revision = paragraph.content.at(0);
-    const sdt = revision?.type === "insertion" ? revision.content.at(0) : undefined;
+    const sdt =
+      revision?.type === "insertion" ? revision.content.at(0) : undefined;
     if (sdt?.type !== "inlineSdt") {
       throw new Error("the control was not kept inside the revision");
     }
 
     const xml = serializeParagraph(paragraph);
     expect(xml).toContain(`<w:ins ${ATTRS}><w:sdt>`);
-    expect(xml).toContain("<w:sdtContent><w:r><w:t>x</w:t></w:r></w:sdtContent></w:sdt></w:ins>");
+    expect(xml).toContain(
+      "<w:sdtContent><w:r><w:t>x</w:t></w:r></w:sdtContent></w:sdt></w:ins>",
+    );
   });
 
-  test("content the revision may not hold still splits it", () => {
+  test("a range start stays in the revision run sequence", () => {
     const xml = roundTrip(
       `<w:ins ${ATTRS}><w:r><w:t>a</w:t></w:r><w:commentRangeStart w:id="1"/><w:r><w:t>b</w:t></w:r></w:ins>`,
     );
     expect(xml).toContain(
-      `<w:ins ${ATTRS}><w:r><w:t>a</w:t></w:r></w:ins><w:commentRangeStart w:id="1"/><w:ins ${ATTRS}><w:r><w:t>b</w:t></w:r></w:ins>`,
+      `<w:ins ${ATTRS}><w:r><w:t>a</w:t></w:r><w:commentRangeStart w:id="1"/><w:r><w:t>b</w:t></w:r></w:ins>`,
     );
   });
 });

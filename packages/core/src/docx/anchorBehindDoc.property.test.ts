@@ -13,8 +13,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDrawing } from "./imageParser";
 import { parseTextBox } from "./textBoxParser";
 import { parseXmlDocument } from "./xmlParser";
@@ -96,7 +98,8 @@ describe("the wp:anchor behindDoc reader", () => {
     () => {
       fc.assert(
         fc.property(fc.constantFrom(...BEHIND_DOC_SPELLINGS), (behindDoc) => {
-          const expected = behindDoc === "1" || behindDoc === "true" ? "behind" : "inFront";
+          const expected =
+            behindDoc === "1" || behindDoc === "true" ? "behind" : "inFront";
 
           expect(textBoxWrapType(behindDoc)).toBe(expected);
           expect(imageWrapType(behindDoc)).toBe(expected);

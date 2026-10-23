@@ -210,7 +210,12 @@ describe("footnote column reflow", () => {
     const cleanedInitial = reflowFootnoteColumns({
       initialLayout: {
         ...initial,
-        pages: [{ ...initialPage, fragments: [{ ...initialPage.fragments[0]!, y: 70 }] }],
+        pages: [
+          {
+            ...initialPage,
+            fragments: [{ ...initialPage.fragments[0]!, y: 70 }],
+          },
+        ],
       },
       runLayout: () => initial,
     });

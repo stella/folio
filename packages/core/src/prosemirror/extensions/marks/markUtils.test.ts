@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 
@@ -43,7 +43,9 @@ describe("rtl run direction round-trips through the mark helpers", () => {
       doc: schema.node("doc", null, [schema.node("paragraph")]),
       schema,
     });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1)),
+    );
 
     setMark(rtl, {})(state, (tr) => {
       state = state.apply(tr);
@@ -95,14 +97,18 @@ describe("mark commands", () => {
       doc: schema.node("doc", null, [schema.node("paragraph")]),
       schema,
     });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1)),
+    );
 
     const didSetMark = setMark(fontSize, { size: 32 })(state, (tr) => {
       state = state.apply(tr);
     });
 
     expect(didSetMark).toBe(true);
-    expect(state.storedMarks?.some((mark) => mark.type === fontSize)).toBe(true);
+    expect(state.storedMarks?.some((mark) => mark.type === fontSize)).toBe(
+      true,
+    );
     expect(state.doc.firstChild?.attrs.defaultTextFormatting).toEqual({
       fontSize: 32,
     });
@@ -133,10 +139,17 @@ describe("mark commands", () => {
       schema,
     });
 
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 5)));
-    state = applyCommand(state, setMark(fontFamily, { ascii: "Georgia", hAnsi: "Georgia" }));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1, 5)),
+    );
+    state = applyCommand(
+      state,
+      setMark(fontFamily, { ascii: "Georgia", hAnsi: "Georgia" }),
+    );
 
-    const mark = fontFamily.isInSet(state.doc.firstChild?.firstChild?.marks ?? []);
+    const mark = fontFamily.isInSet(
+      state.doc.firstChild?.firstChild?.marks ?? [],
+    );
     expect(mark?.attrs).toMatchObject({
       ascii: "Georgia",
       hAnsi: "Georgia",
@@ -203,8 +216,13 @@ describe("mark commands", () => {
       schema,
     });
 
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3)));
-    state = applyCommand(state, setMark(fontFamily, { ascii: "Verdana", hAnsi: "Verdana" }));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 3)),
+    );
+    state = applyCommand(
+      state,
+      setMark(fontFamily, { ascii: "Verdana", hAnsi: "Verdana" }),
+    );
 
     const mark = fontFamily.isInSet(state.storedMarks ?? []);
     expect(mark?.attrs).toMatchObject({
@@ -236,11 +254,15 @@ describe("mark commands", () => {
       schema,
     });
 
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 5)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1, 5)),
+    );
     state = applyCommand(state, toggleUnderlineMark(underline));
     state = applyCommand(state, toggleUnderlineMark(underline));
 
-    const mark = underline.isInSet(state.doc.firstChild?.firstChild?.marks ?? []);
+    const mark = underline.isInSet(
+      state.doc.firstChild?.firstChild?.marks ?? [],
+    );
     expect(mark?.attrs).toEqual({
       style: "single",
       color: { rgb: "FF0000" },
@@ -267,7 +289,9 @@ describe("mark commands", () => {
       schema,
     });
 
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 3)),
+    );
     state = applyCommand(state, toggleUnderlineMark(underline));
     state = applyCommand(state, toggleUnderlineMark(underline));
 
@@ -285,11 +309,15 @@ describe("mark commands", () => {
     }
 
     let state = EditorState.create({
-      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("text")])]),
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("text")]),
+      ]),
       schema,
     });
 
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 3)),
+    );
     state = applyCommand(state, toggleUnderlineMark(underline));
 
     const mark = underline.isInSet(state.storedMarks ?? []);
@@ -358,7 +386,9 @@ test("reference-only formatting does not decide a text selection toggle", () => 
         ]);
         let state = EditorState.create({ schema, doc });
         state = state.apply(
-          state.tr.setSelection(TextSelection.create(doc, 1, doc.content.size - 1)),
+          state.tr.setSelection(
+            TextSelection.create(doc, 1, doc.content.size - 1),
+          ),
         );
         expect(isMarkActive(state, mark)).toBe(proseMarked);
       }

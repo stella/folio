@@ -1,15 +1,24 @@
 #!/usr/bin/env bun
 
+import { TaggedError } from "better-result";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
-
-import { TaggedError } from "better-result";
 import ts from "typescript";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const REPORT_VERSION = 1;
-const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
-const TEST_FILE_PATTERN = /(?:^|\/)[^/]+(?:\.[^/]+)*\.(?:test|spec)\.[cm]?[jt]sx?$/u;
+const SOURCE_EXTENSIONS = [
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+];
+const TEST_FILE_PATTERN =
+  /(?:^|\/)[^/]+(?:\.[^/]+)*\.(?:test|spec)\.[cm]?[jt]sx?$/u;
 const TEST_IMPORT_DISTANCE = 2;
 
 const SEAM = {
@@ -57,7 +66,10 @@ export type OrientationReport = {
   readonly changesetPackages: readonly string[];
 };
 
-class OrientError extends TaggedError("OrientError")<{ message: string; cause?: unknown }> {}
+class OrientError extends TaggedError("OrientError")<{
+  message: string;
+  cause?: unknown;
+}> {}
 
 type CliFlags = {
   readonly json: boolean;
@@ -97,9 +109,16 @@ const parseArgs = (argv: readonly string[]): CliFlags => {
   }
 
   if (diffRef !== null && paths.length > 0) {
-    throw new OrientError({ message: "Use either --diff [ref] or explicit paths, not both." });
+    throw new OrientError({
+      message: "Use either --diff [ref] or explicit paths, not both.",
+    });
   }
-  return { json, help, diffRef: diffRef ?? (paths.length === 0 ? "HEAD" : null), paths };
+  return {
+    json,
+    help,
+    diffRef: diffRef ?? (paths.length === 0 ? "HEAD" : null),
+    paths,
+  };
 };
 
 const runGit = (repoRoot: string, args: readonly string[]): string => {
@@ -127,17 +146,32 @@ const relativeInsideRepo = (repoRoot: string, candidate: string): string => {
   const absolute = path.resolve(repoRoot, candidate);
   const relative = path.relative(repoRoot, absolute);
   if (relative === "" || relative === ".") return "";
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new OrientError({ message: `Path is outside the repository: ${candidate}` });
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new OrientError({
+      message: `Path is outside the repository: ${candidate}`,
+    });
   }
   return relative.split(path.sep).join("/");
 };
 
-const canonicalPathInsideRepo = (canonicalRepoRoot: string, candidate: string): string => {
+const canonicalPathInsideRepo = (
+  canonicalRepoRoot: string,
+  candidate: string,
+): string => {
   const canonical = realpathSync(candidate);
   const relative = path.relative(canonicalRepoRoot, canonical);
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new OrientError({ message: `Path resolves outside the repository: ${candidate}` });
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new OrientError({
+      message: `Path resolves outside the repository: ${candidate}`,
+    });
   }
   return canonical;
 };
@@ -157,7 +191,12 @@ export const resolveFiles = ({
 }: ResolveFilesOptions): readonly string[] => {
   if (diffRef !== null) {
     const tracked = new Set(trackedFiles);
-    return runGit(repoRoot, ["diff", "--name-only", "--diff-filter=ACMRTUXB", diffRef])
+    return runGit(repoRoot, [
+      "diff",
+      "--name-only",
+      "--diff-filter=ACMRTUXB",
+      diffRef,
+    ])
       .split("\n")
       .filter((file) => tracked.has(file))
       .toSorted((a, b) => a.localeCompare(b));
@@ -169,7 +208,9 @@ export const resolveFiles = ({
     const relative = relativeInsideRepo(repoRoot, requestedPath);
     const absolute = path.join(repoRoot, relative);
     if (!existsSync(absolute)) {
-      throw new OrientError({ message: `Path does not exist: ${requestedPath}` });
+      throw new OrientError({
+        message: `Path does not exist: ${requestedPath}`,
+      });
     }
     if (!statSync(absolute).isDirectory()) {
       resolved.add(relative);
@@ -184,12 +225,16 @@ export const resolveFiles = ({
 };
 
 export const classifySeam = (file: string): Seam => {
-  if (file.startsWith("crates/docx-kernel/") || file.startsWith("packages/docx-core/")) {
+  if (
+    file.startsWith("crates/docx-kernel/") ||
+    file.startsWith("packages/docx-core/")
+  ) {
     return SEAM.kernel;
   }
   if (file.startsWith("parity/")) return SEAM.parity;
   if (file.startsWith("scripts/")) return SEAM.tooling;
-  if (file.startsWith("tests/") || TEST_FILE_PATTERN.test(file)) return SEAM.tests;
+  if (file.startsWith("tests/") || TEST_FILE_PATTERN.test(file))
+    return SEAM.tests;
   if (/^packages\/(?:react|vue|nuxt|playground|playground-vue)\//u.test(file)) {
     return SEAM.adapter;
   }
@@ -199,10 +244,14 @@ export const classifySeam = (file: string): Seam => {
   }
   if (file.includes("/layout-engine/")) return SEAM.pagination;
   if (file.includes("/display-list/build/")) return SEAM.displayList;
-  if (file.includes("/display-list/dom/") || file.includes("/layout-painter/")) {
+  if (
+    file.includes("/display-list/dom/") ||
+    file.includes("/layout-painter/")
+  ) {
     return SEAM.domRender;
   }
-  if (file.includes("/controller/") || file.includes("/managers/")) return SEAM.controller;
+  if (file.includes("/controller/") || file.includes("/managers/"))
+    return SEAM.controller;
   if (file.includes("/prosemirror/")) return SEAM.editableModel;
   if (file.startsWith("packages/core/src/docx/")) return SEAM.parserSerializer;
   if (file.startsWith("packages/core/src/types/")) return SEAM.docxModel;
@@ -215,12 +264,24 @@ const packageFor = (repoRoot: string, file: string): PackageInfo | null => {
   if (directory === undefined) return null;
   const manifestPath = path.join(repoRoot, directory, "package.json");
   if (!existsSync(manifestPath)) return null;
-  const canonicalManifestPath = canonicalPathInsideRepo(realpathSync(repoRoot), manifestPath);
-  const manifest: unknown = JSON.parse(readFileSync(canonicalManifestPath, "utf8"));
-  if (typeof manifest !== "object" || manifest === null || !("name" in manifest)) return null;
+  const canonicalManifestPath = canonicalPathInsideRepo(
+    realpathSync(repoRoot),
+    manifestPath,
+  );
+  const manifest: unknown = JSON.parse(
+    readFileSync(canonicalManifestPath, "utf8"),
+  );
+  if (
+    typeof manifest !== "object" ||
+    manifest === null ||
+    !("name" in manifest)
+  )
+    return null;
   const name = Reflect.get(manifest, "name");
   const isPrivate = Reflect.get(manifest, "private");
-  return typeof name === "string" ? { directory, name, published: isPrivate !== true } : null;
+  return typeof name === "string"
+    ? { directory, name, published: isPrivate !== true }
+    : null;
 };
 
 const instructionsFor = (repoRoot: string, file: string): readonly string[] => {
@@ -228,11 +289,14 @@ const instructionsFor = (repoRoot: string, file: string): readonly string[] => {
   let current = path.dirname(path.join(repoRoot, file));
   while (current === repoRoot || current.startsWith(`${repoRoot}${path.sep}`)) {
     const candidate = path.join(current, "AGENTS.md");
-    if (existsSync(candidate)) directories.push(path.relative(repoRoot, candidate));
+    if (existsSync(candidate))
+      directories.push(path.relative(repoRoot, candidate));
     if (current === repoRoot) break;
     current = path.dirname(current);
   }
-  return directories.reverse().map((filePath) => filePath.split(path.sep).join("/"));
+  return directories
+    .reverse()
+    .map((filePath) => filePath.split(path.sep).join("/"));
 };
 
 const resolveImport = (
@@ -241,19 +305,26 @@ const resolveImport = (
   tracked: ReadonlySet<string>,
 ): string | null => {
   if (!specifier.startsWith(".")) return null;
-  const base = path.posix.normalize(path.posix.join(path.posix.dirname(importer), specifier));
+  const base = path.posix.normalize(
+    path.posix.join(path.posix.dirname(importer), specifier),
+  );
   const extension = path.posix.extname(base);
   const candidates =
     extension.length > 0
       ? [
           base,
           ...SOURCE_EXTENSIONS.map(
-            (sourceExtension) => base.slice(0, -extension.length) + sourceExtension,
+            (sourceExtension) =>
+              base.slice(0, -extension.length) + sourceExtension,
           ),
         ]
       : [
-          ...SOURCE_EXTENSIONS.map((sourceExtension) => `${base}${sourceExtension}`),
-          ...SOURCE_EXTENSIONS.map((sourceExtension) => `${base}/index${sourceExtension}`),
+          ...SOURCE_EXTENSIONS.map(
+            (sourceExtension) => `${base}${sourceExtension}`,
+          ),
+          ...SOURCE_EXTENSIONS.map(
+            (sourceExtension) => `${base}/index${sourceExtension}`,
+          ),
         ];
   return candidates.find((candidate) => tracked.has(candidate)) ?? null;
 };
@@ -276,11 +347,13 @@ const importSpecifiers = (file: string, source: string): string[] => {
     } else if (
       ts.isCallExpression(node) &&
       (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+        (ts.isIdentifier(node.expression) &&
+          node.expression.text === "require"))
     ) {
       const argument = node.arguments.at(0);
       // A fixed template (`./module`) names a module as plainly as a string.
-      if (argument && ts.isStringLiteralLike(argument)) specifiers.push(argument.text);
+      if (argument && ts.isStringLiteralLike(argument))
+        specifiers.push(argument.text);
     } else if (
       ts.isImportEqualsDeclaration(node) &&
       ts.isExternalModuleReference(node.moduleReference) &&
@@ -305,19 +378,26 @@ export const buildImportGraph = (
   repoRoot: string,
   trackedFiles: readonly string[],
 ): ImportGraph => {
-  const sourceFiles = trackedFiles.filter((file) => SOURCE_EXTENSIONS.includes(path.extname(file)));
+  const sourceFiles = trackedFiles.filter((file) =>
+    SOURCE_EXTENSIONS.includes(path.extname(file)),
+  );
   const tracked = new Set(trackedFiles);
   const canonicalRepoRoot = realpathSync(repoRoot);
   const imports = new Map<string, readonly string[]>();
   const reverse = new Map<string, string[]>();
 
   for (const file of sourceFiles) {
-    const sourcePath = canonicalPathInsideRepo(canonicalRepoRoot, path.join(repoRoot, file));
+    const sourcePath = canonicalPathInsideRepo(
+      canonicalRepoRoot,
+      path.join(repoRoot, file),
+    );
     const source = readFileSync(sourcePath, "utf8");
     const resolved = importSpecifiers(file, source)
       .map((specifier) => resolveImport(file, specifier, tracked))
       .filter((candidate): candidate is string => candidate !== null);
-    const unique = [...new Set(resolved)].toSorted((a, b) => a.localeCompare(b));
+    const unique = [...new Set(resolved)].toSorted((a, b) =>
+      a.localeCompare(b),
+    );
     imports.set(file, unique);
     for (const dependency of unique) {
       const importers = reverse.get(dependency) ?? [];
@@ -347,7 +427,8 @@ const testsFor = (
   const stem = path.posix.basename(file).replace(/\.[^.]+$/u, "");
   const adjacentPrefix = `${directory}/${stem}`;
   const adjacent = trackedFiles.filter(
-    (candidate) => TEST_FILE_PATTERN.test(candidate) && candidate.startsWith(adjacentPrefix),
+    (candidate) =>
+      TEST_FILE_PATTERN.test(candidate) && candidate.startsWith(adjacentPrefix),
   );
   const related = new Set<string>();
   const visited = new Set([file]);
@@ -367,7 +448,9 @@ const testsFor = (
     }
     frontier = next;
   }
-  return [...new Set([...adjacent, ...related])].toSorted((a, b) => a.localeCompare(b));
+  return [...new Set([...adjacent, ...related])].toSorted((a, b) =>
+    a.localeCompare(b),
+  );
 };
 
 export const checksForFile = (file: string): readonly string[] => {
@@ -384,7 +467,10 @@ export const checksForFile = (file: string): readonly string[] => {
     checks.add("bun run test:interactions");
     checks.add("bun run test:measure-parity");
   }
-  if (file.startsWith("packages/docx-core/") || file.startsWith("crates/docx-kernel/")) {
+  if (
+    file.startsWith("packages/docx-core/") ||
+    file.startsWith("crates/docx-kernel/")
+  ) {
     checks.add("bun run check:docx-kernel");
   }
   if (/^packages\/(?:react|vue)\/src\//u.test(file)) {
@@ -400,7 +486,7 @@ export const checksForFile = (file: string): readonly string[] => {
     checks.add("bun run typecheck:tooling");
   }
   checks.add("bun run lint");
-  checks.add("bun run format:check");
+  checks.add("bun fmt --check");
   return [...checks];
 };
 
@@ -413,7 +499,8 @@ export const buildReport = (
   const orientations = files.map((file): FileOrientation => {
     const packageInfo = packageFor(repoRoot, file);
     const requiresChangeset =
-      packageInfo?.published === true && file.startsWith(`${packageInfo.directory}/src/`);
+      packageInfo?.published === true &&
+      file.startsWith(`${packageInfo.directory}/src/`);
     return {
       file,
       package: packageInfo,
@@ -450,7 +537,9 @@ const printHuman = (report: OrientationReport): void => {
     console.log(`\n${file.file}`);
     console.log(`  seam: ${file.seam}`);
     console.log(`  package: ${file.package?.name ?? "repository"}`);
-    console.log(`  changeset: ${file.requiresChangeset ? "required" : "not required"}`);
+    console.log(
+      `  changeset: ${file.requiresChangeset ? "required" : "not required"}`,
+    );
     console.log(section("  instructions", file.instructions));
     console.log(section("  focused tests", file.tests));
     console.log(section("  imports", file.imports));

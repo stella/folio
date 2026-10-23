@@ -11,7 +11,10 @@
 
 import { LAYOUT_MEASURE, type LayoutRunOptions } from "./layoutRunOptions";
 
-export type RunLayout<TState> = (state: TState, options: LayoutRunOptions) => void;
+export type RunLayout<TState> = (
+  state: TState,
+  options: LayoutRunOptions,
+) => void;
 
 // Injected timing primitives so the scheduler is environment-agnostic (browser
 // rAF today; a host-provided clock for desktop or deterministic tests). Mirrors
@@ -103,7 +106,10 @@ export const createLayoutScheduler = <TState>(
       if (state === null) {
         return;
       }
-      config.runLayout(state, { reason: "transaction", measure: LAYOUT_MEASURE.incremental });
+      config.runLayout(state, {
+        reason: "transaction",
+        measure: LAYOUT_MEASURE.incremental,
+      });
     });
   };
 

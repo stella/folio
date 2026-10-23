@@ -14,11 +14,14 @@ describe("backup", () => {
   });
 
   test("starts with a readable header", () => {
-    const encoded = encodeBackup({ baseline: BASELINE, bytes: new Uint8Array([1]) });
+    const encoded = encodeBackup({
+      baseline: BASELINE,
+      bytes: new Uint8Array([1]),
+    });
 
-    expect(new TextDecoder().decode(encoded.subarray(0, encoded.indexOf(0x0a)))).toBe(
-      `folio-vscode-backup {"version":1,"baseline":"${BASELINE}"}`,
-    );
+    expect(
+      new TextDecoder().decode(encoded.subarray(0, encoded.indexOf(0x0a))),
+    ).toBe(`folio-vscode-backup {"version":1,"baseline":"${BASELINE}"}`);
   });
 
   test("refuses data it did not write", () => {
@@ -26,10 +29,20 @@ describe("backup", () => {
 
     expect(decodeBackup(new Uint8Array([0x50, 0x4b, 0x03, 0x04]))).toBeNull();
     expect(decodeBackup(encode("folio-vscode-backup {\n"))).toBeNull();
-    expect(decodeBackup(encode('folio-vscode-backup {"version":2,"baseline":"x"}\n'))).toBeNull();
     expect(
-      decodeBackup(encode('folio-vscode-backup {"version":1,"baseline":"not-a-version"}\nPK')),
+      decodeBackup(
+        encode('folio-vscode-backup {"version":2,"baseline":"x"}\n'),
+      ),
     ).toBeNull();
-    expect(decodeBackup(encode(`folio-vscode-backup ${"x".repeat(5000)}\n`))).toBeNull();
+    expect(
+      decodeBackup(
+        encode(
+          'folio-vscode-backup {"version":1,"baseline":"not-a-version"}\nPK',
+        ),
+      ),
+    ).toBeNull();
+    expect(
+      decodeBackup(encode(`folio-vscode-backup ${"x".repeat(5000)}\n`)),
+    ).toBeNull();
   });
 });

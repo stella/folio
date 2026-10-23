@@ -28,8 +28,15 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
-import type { BlockContent, Paragraph, SectionProperties } from "../types/document";
-import { buildSectionsDocx, SECTIONS_FIXTURE_TEXT } from "./__fixtures__/sections";
+import type {
+  BlockContent,
+  Paragraph,
+  SectionProperties,
+} from "../types/document";
+import {
+  buildSectionsDocx,
+  SECTIONS_FIXTURE_TEXT,
+} from "./__fixtures__/sections";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIEditApplyMode } from "./types";
 
@@ -42,7 +49,9 @@ type Projection = { blocks: Projected[]; final: string };
 
 /** Sections are told apart by the header parts they reference. */
 const sectionName = (properties: SectionProperties): string =>
-  (properties.headerReferences ?? []).map(({ type, rId }) => `${type}:${rId}`).join(" ");
+  (properties.headerReferences ?? [])
+    .map(({ type, rId }) => `${type}:${rId}`)
+    .join(" ");
 
 const paragraphText = (paragraph: Paragraph): string => {
   let text = "";
@@ -66,7 +75,9 @@ const projectBlocks = (blocks: readonly BlockContent[]): Projected[] =>
       return {
         kind: "paragraph",
         text: paragraphText(block),
-        ends: block.sectionProperties ? sectionName(block.sectionProperties) : null,
+        ends: block.sectionProperties
+          ? sectionName(block.sectionProperties)
+          : null,
       };
     }
     if (block.type === "table") {
@@ -91,10 +102,17 @@ const project = (reviewer: FolioDocxReviewer): Projection => {
   };
 };
 
-const saveAndReopen = async (reviewer: FolioDocxReviewer): Promise<FolioDocxReviewer> =>
-  await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { author: "Reviewer" });
+const saveAndReopen = async (
+  reviewer: FolioDocxReviewer,
+): Promise<FolioDocxReviewer> =>
+  await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    author: "Reviewer",
+  });
 
-type Transform = (blocks: Projected[], mode: FolioAIEditApplyMode) => Projected[];
+type Transform = (
+  blocks: Projected[],
+  mode: FolioAIEditApplyMode,
+) => Projected[];
 
 /** One operation of a case and what it asks for. */
 type Step = {
@@ -105,14 +123,17 @@ type Step = {
 type Case = { name: string; steps: Step[] };
 
 const indexOfText = (blocks: readonly Projected[], text: string): number => {
-  const index = blocks.findIndex((block) => block.kind === "paragraph" && block.text === text);
+  const index = blocks.findIndex(
+    (block) => block.kind === "paragraph" && block.text === text,
+  );
   if (index === -1) throw new Error(`no paragraph "${text}"`);
   return index;
 };
 
 const paragraphAt = (blocks: readonly Projected[], index: number) => {
   const block = blocks[index];
-  if (block?.kind !== "paragraph") throw new Error(`block ${String(index)} is not a paragraph`);
+  if (block?.kind !== "paragraph")
+    throw new Error(`block ${String(index)} is not a paragraph`);
   return block;
 };
 
@@ -132,7 +153,9 @@ const deleted =
       index === blocks.length - 1 &&
       blocks.at(index - 1)?.kind !== "paragraph"
     ) {
-      return blocks.map((block, at) => (at === index ? { ...block, text: "" } : block));
+      return blocks.map((block, at) =>
+        at === index ? { ...block, text: "" } : block,
+      );
     }
     return blocks.filter((_, at) => at !== index);
   };
@@ -160,7 +183,11 @@ const split =
     return [
       ...blocks.slice(0, index),
       { kind: "paragraph", text: block.text.slice(0, offset), ends: null },
-      { kind: "paragraph", text: block.text.slice(offset + 1), ends: block.ends },
+      {
+        kind: "paragraph",
+        text: block.text.slice(offset + 1),
+        ends: block.ends,
+      },
       ...blocks.slice(index + 1),
     ];
   };
@@ -169,11 +196,17 @@ const replaced =
   (text: string, replacement: string): Transform =>
   (blocks) =>
     blocks.map((block) =>
-      block.kind === "paragraph" && block.text === text ? { ...block, text: replacement } : block,
+      block.kind === "paragraph" && block.text === text
+        ? { ...block, text: replacement }
+        : block,
     );
 
 const deleteStep = (text: string): Step => ({
-  operation: (id) => ({ id: `delete ${text}`, type: "deleteBlock", blockId: id(text) }),
+  operation: (id) => ({
+    id: `delete ${text}`,
+    type: "deleteBlock",
+    blockId: id(text),
+  }),
   outcome: deleted(text),
 });
 
@@ -193,7 +226,9 @@ const BODY_PARAGRAPHS = Object.values(SECTIONS_FIXTURE_TEXT).filter(
 );
 /** Paragraphs whose next top-level sibling is a paragraph too. */
 const MERGEABLE = BODY_PARAGRAPHS.filter(
-  (text) => text !== SECTIONS_FIXTURE_TEXT.twoOpens && text !== SECTIONS_FIXTURE_TEXT.threeCloses,
+  (text) =>
+    text !== SECTIONS_FIXTURE_TEXT.twoOpens &&
+    text !== SECTIONS_FIXTURE_TEXT.threeCloses,
 );
 
 const CASES: Case[] = [
@@ -205,7 +240,11 @@ const CASES: Case[] = [
     name: `mergeBlockWithNext "${text}"`,
     steps: [
       {
-        operation: (id) => ({ id: "merge", type: "mergeBlockWithNext", blockId: id(text) }),
+        operation: (id) => ({
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: id(text),
+        }),
         outcome: merged(text),
       },
     ],
@@ -257,7 +296,11 @@ const CASES: Case[] = [
   },
 ];
 
-const MODES: readonly FolioAIEditApplyMode[] = ["direct", "tracked-changes", "suggested"];
+const MODES: readonly FolioAIEditApplyMode[] = [
+  "direct",
+  "tracked-changes",
+  "suggested",
+];
 
 const source = await buildSectionsDocx();
 
@@ -266,14 +309,21 @@ const open = async (): Promise<FolioDocxReviewer> =>
 
 const original = project(await open());
 
-const apply = (reviewer: FolioDocxReviewer, testCase: Case, mode: FolioAIEditApplyMode) => {
+const apply = (
+  reviewer: FolioDocxReviewer,
+  testCase: Case,
+  mode: FolioAIEditApplyMode,
+) => {
   const blocks = reviewer.getContent();
   const blockId = (text: string): string => {
     const block = blocks.find((candidate) => candidate.text === text);
     if (!block) throw new Error(`no block "${text}"`);
     return block.id;
   };
-  const operations = testCase.steps.map((step) => ({ step, operation: step.operation(blockId) }));
+  const operations = testCase.steps.map((step) => ({
+    step,
+    operation: step.operation(blockId),
+  }));
   const result = reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -283,7 +333,9 @@ const apply = (reviewer: FolioDocxReviewer, testCase: Case, mode: FolioAIEditApp
     { undefinedReferences: "refuse" },
   );
   const appliedIds = new Set(result.applied.map(({ id }) => id));
-  const applied = operations.filter(({ operation }) => appliedIds.has(operation.id));
+  const applied = operations.filter(({ operation }) =>
+    appliedIds.has(operation.id),
+  );
   let expected = original.blocks;
   for (const { step } of applied) {
     expected = step.outcome(expected, mode);
@@ -291,10 +343,15 @@ const apply = (reviewer: FolioDocxReviewer, testCase: Case, mode: FolioAIEditApp
   return { applied: applied.length > 0, expected };
 };
 
-const acceptApplied = (reviewer: FolioDocxReviewer, mode: FolioAIEditApplyMode): void => {
+const acceptApplied = (
+  reviewer: FolioDocxReviewer,
+  mode: FolioAIEditApplyMode,
+): void => {
   if (mode === "suggested") {
     const ids = new Set(
-      reviewer.exportPendingSuggestions().map(({ suggestionId }) => suggestionId),
+      reviewer
+        .exportPendingSuggestions()
+        .map(({ suggestionId }) => suggestionId),
     );
     for (const id of ids) expect(reviewer.acceptSuggestion(id)).toBe(true);
   }
@@ -304,7 +361,9 @@ const acceptApplied = (reviewer: FolioDocxReviewer, mode: FolioAIEditApplyMode):
 describe("an applied operation saves as requested", () => {
   test("the fixture has three sections, two of them ended by paragraphs", () => {
     expect(
-      original.blocks.filter((block) => block.kind === "paragraph" && block.ends),
+      original.blocks.filter(
+        (block) => block.kind === "paragraph" && block.ends,
+      ),
     ).toHaveLength(2);
     expect(original.final).not.toBe("");
   });
@@ -323,7 +382,9 @@ describe("an applied operation saves as requested", () => {
 
         if (mode === "tracked-changes") {
           const pending = await saveAndReopen(reviewer);
-          const rejecting = await FolioDocxReviewer.fromBuffer(await pending.toBuffer());
+          const rejecting = await FolioDocxReviewer.fromBuffer(
+            await pending.toBuffer(),
+          );
           pending.acceptAll();
           expect(project(await saveAndReopen(pending))).toEqual(expected);
           rejecting.rejectAll();
@@ -348,14 +409,22 @@ describe("an applied operation saves as requested", () => {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
             mode: "direct",
             operations: [
-              { id: "lead", type: "insertBeforeBlock", blockId: first.id, text: "Lead." },
+              {
+                id: "lead",
+                type: "insertBeforeBlock",
+                blockId: first.id,
+                text: "Lead.",
+              },
             ],
           },
           { undefinedReferences: "refuse" },
         );
         expect(later.applied).toHaveLength(1);
         expect(project(await saveAndReopen(reviewer))).toEqual({
-          blocks: [{ kind: "paragraph", text: "Lead.", ends: null }, ...expected],
+          blocks: [
+            { kind: "paragraph", text: "Lead.", ends: null },
+            ...expected,
+          ],
           final: original.final,
         });
       });

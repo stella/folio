@@ -1,9 +1,15 @@
-import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { expectParagraphBlock } from "../../../../../test/paragraphBlock";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
+import { hashParagraphBlock } from "../../layout-engine/measure/cache";
 import { getHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlinkInstance";
+import {
+  buildFontString,
+  buildRunFontStyle,
+} from "../../layout-engine/measure/measureHelpers";
 import { getTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { insertPageBreak } from "../../prosemirror/commands/pageBreak";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
@@ -21,10 +27,7 @@ import {
   TAB_STOP_ALIGNMENT_VALUES,
 } from "../../types/documentEnumValues";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
-import { expectParagraphBlock } from "../../../../../test/paragraphBlock";
 import { toFlowBlocks } from "./toFlowBlocks";
-import { buildRunFontStyle, buildFontString } from "../../layout-engine/measure/measureHelpers";
-import { hashParagraphBlock } from "../../layout-engine/measure/cache";
 
 describe("toFlowBlocks paragraph formatting", () => {
   type FlowAlignment = "left" | "center" | "right" | "justify";
@@ -58,7 +61,10 @@ describe("toFlowBlocks paragraph formatting", () => {
 
   const RIGHT_TO_LEFT = { source: "manual", value: "rtl" } as const;
 
-  const alignedParagraph = (alignment: ParagraphAlignment, rightToLeft = false) =>
+  const alignedParagraph = (
+    alignment: ParagraphAlignment,
+    rightToLeft = false,
+  ) =>
     toFlowBlocks(
       schema.node("doc", null, [
         schema.node(
@@ -91,7 +97,9 @@ describe("toFlowBlocks paragraph formatting", () => {
       if (paragraph?.kind !== "paragraph") {
         return;
       }
-      expect(paragraph.attrs?.alignment).toBe(expectedRightToLeftFlowAlignment[alignment]);
+      expect(paragraph.attrs?.alignment).toBe(
+        expectedRightToLeftFlowAlignment[alignment],
+      );
     },
   );
 
@@ -131,7 +139,9 @@ describe("toFlowBlocks paragraph formatting", () => {
       if (paragraph?.kind !== "paragraph") {
         return;
       }
-      expect(paragraph.attrs?.tabs?.at(0)?.val).toBe(expectedTabAlignment[alignment]);
+      expect(paragraph.attrs?.tabs?.at(0)?.val).toBe(
+        expectedTabAlignment[alignment],
+      );
     },
   );
 
@@ -196,7 +206,10 @@ describe("toFlowBlocks paragraph formatting", () => {
   });
 
   test("keeps newly tracked deletions on the current paragraph formatting", () => {
-    const deletion = schema.mark("deletion", { revisionId: 1, author: "Reviewer" });
+    const deletion = schema.mark("deletion", {
+      revisionId: 1,
+      author: "Reviewer",
+    });
     const doc = schema.node("doc", null, [
       schema.node(
         "paragraph",
@@ -224,24 +237,34 @@ describe("toFlowBlocks paragraph formatting", () => {
 
   test("moves each section-owned start mode to its preceding boundary", () => {
     const doc = schema.node("doc", { _finalSectionStart: "evenPage" }, [
-      schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }),
-      schema.node("paragraph", { _sectionProperties: { sectionStart: "oddPage" } }),
+      schema.node("paragraph", {
+        _sectionProperties: { sectionStart: "continuous" },
+      }),
+      schema.node("paragraph", {
+        _sectionProperties: { sectionStart: "oddPage" },
+      }),
       schema.node("paragraph"),
     ]);
 
-    const breaks = toFlowBlocks(doc).filter((block) => block.kind === "sectionBreak");
+    const breaks = toFlowBlocks(doc).filter(
+      (block) => block.kind === "sectionBreak",
+    );
 
     expect(breaks.map((block) => block.type)).toEqual(["oddPage", "evenPage"]);
   });
 
   test("keeps an omitted following section start omitted", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }),
+      schema.node("paragraph", {
+        _sectionProperties: { sectionStart: "continuous" },
+      }),
       schema.node("paragraph", { _sectionProperties: {} }),
       schema.node("paragraph"),
     ]);
 
-    const breaks = toFlowBlocks(doc).filter((block) => block.kind === "sectionBreak");
+    const breaks = toFlowBlocks(doc).filter(
+      (block) => block.kind === "sectionBreak",
+    );
 
     expect(breaks.map((block) => block.type)).toEqual([undefined, undefined]);
   });
@@ -249,11 +272,15 @@ describe("toFlowBlocks paragraph formatting", () => {
   test("projects authored section page-number restarts", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", {
-        _sectionProperties: { pageNumbering: { start: 13, format: "lowerRoman" } },
+        _sectionProperties: {
+          pageNumbering: { start: 13, format: "lowerRoman" },
+        },
       }),
     ]);
 
-    expect(toFlowBlocks(doc, {}).find((block) => block.kind === "sectionBreak")).toMatchObject({
+    expect(
+      toFlowBlocks(doc, {}).find((block) => block.kind === "sectionBreak"),
+    ).toMatchObject({
       kind: "sectionBreak",
       pageNumbering: { type: "restart", start: 13, format: "lowerRoman" },
     });
@@ -269,7 +296,9 @@ describe("toFlowBlocks paragraph formatting", () => {
       schema.node("paragraph", null, [schema.text("Final section")]),
     ]);
 
-    const blocks = toFlowBlocks(doc, { finalSectionDocumentGridLinePitchTwips: 480 });
+    const blocks = toFlowBlocks(doc, {
+      finalSectionDocumentGridLinePitchTwips: 480,
+    });
     const paragraphs = blocks.filter((block) => block.kind === "paragraph");
 
     expect(paragraphs.at(0)?.attrs?.documentGridLinePitch).toBe(24);
@@ -279,7 +308,9 @@ describe("toFlowBlocks paragraph formatting", () => {
   test("does not apply the body line grid to table-cell paragraphs", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
-        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Cell")])]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Cell")]),
+        ]),
       ]),
     ]);
     const blocks = toFlowBlocks(schema.node("doc", null, [table]), {
@@ -302,7 +333,9 @@ describe("toFlowBlocks paragraph formatting", () => {
   test("applies the section line grid to nested table cells when requested", () => {
     const nestedTable = schema.node("table", null, [
       schema.node("tableRow", null, [
-        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Nested")])]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Nested")]),
+        ]),
       ]),
     ]);
     const table = schema.node("table", null, [
@@ -313,9 +346,12 @@ describe("toFlowBlocks paragraph formatting", () => {
         ]),
       ]),
     ]);
-    const blocks = toFlowBlocks(schema.node("doc", { _adjustLineHeightInTable: true }, [table]), {
-      finalSectionDocumentGridLinePitchTwips: 360,
-    });
+    const blocks = toFlowBlocks(
+      schema.node("doc", { _adjustLineHeightInTable: true }, [table]),
+      {
+        finalSectionDocumentGridLinePitchTwips: 360,
+      },
+    );
     const tableBlock = blocks.at(0);
 
     expect(tableBlock?.kind).toBe("table");
@@ -327,11 +363,17 @@ describe("toFlowBlocks paragraph formatting", () => {
     const nestedTableBlock = cellBlocks?.at(1);
     expect(cellParagraph?.kind).toBe("paragraph");
     expect(nestedTableBlock?.kind).toBe("table");
-    if (cellParagraph?.kind !== "paragraph" || nestedTableBlock?.kind !== "table") {
+    if (
+      cellParagraph?.kind !== "paragraph" ||
+      nestedTableBlock?.kind !== "table"
+    ) {
       return;
     }
     expect(cellParagraph.attrs?.documentGridLinePitch).toBe(24);
-    const nestedParagraph = nestedTableBlock.rows.at(0)?.cells.at(0)?.blocks.at(0);
+    const nestedParagraph = nestedTableBlock.rows
+      .at(0)
+      ?.cells.at(0)
+      ?.blocks.at(0);
     expect(nestedParagraph?.kind).toBe("paragraph");
     if (nestedParagraph?.kind === "paragraph") {
       expect(nestedParagraph.attrs?.documentGridLinePitch).toBe(24);
@@ -351,7 +393,9 @@ describe("toFlowBlocks paragraph formatting", () => {
           _trailingPageBreak: true,
           paraId: "A1B2C3D4",
           bookmarks: [{ id: 7, name: "section-cover" }],
-          borders: { bottom: { style: "single", size: 8, color: { rgb: "000000" } } },
+          borders: {
+            bottom: { style: "single", size: 8, color: { rgb: "000000" } },
+          },
           shading: { fill: { rgb: "FFFF00" } },
           pageBreakBefore: true,
           renderedPageBreakBefore: true,
@@ -444,8 +488,16 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
 
     expect(
-      toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true }).map((block) => block.kind),
-    ).toEqual(["paragraph", "pageBreak", "paragraph", "sectionBreak", "paragraph"]);
+      toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true }).map(
+        (block) => block.kind,
+      ),
+    ).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+      "sectionBreak",
+      "paragraph",
+    ]);
   });
 
   test.each([
@@ -459,7 +511,13 @@ describe("toFlowBlocks paragraph formatting", () => {
       name: "text plus trailing break",
       content: [schema.text("Section ending"), schema.node("pageBreakRun")],
       compact: ["paragraph", "sectionBreak", "paragraph"],
-      split: ["paragraph", "pageBreak", "paragraph", "sectionBreak", "paragraph"],
+      split: [
+        "paragraph",
+        "pageBreak",
+        "paragraph",
+        "sectionBreak",
+        "paragraph",
+      ],
     },
   ])(
     "coalesces an inline $name before a continuous section only in compact paragraph-mark mode",
@@ -471,7 +529,9 @@ describe("toFlowBlocks paragraph formatting", () => {
 
       expect(toFlowBlocks(doc).map((block) => block.kind)).toEqual(compact);
       expect(
-        toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true }).map((block) => block.kind),
+        toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true }).map(
+          (block) => block.kind,
+        ),
       ).toEqual(split);
     },
   );
@@ -512,7 +572,11 @@ describe("toFlowBlocks paragraph formatting", () => {
     },
     {
       name: "interior",
-      content: [schema.text("A"), schema.node("pageBreakRun"), schema.text("B")],
+      content: [
+        schema.text("A"),
+        schema.node("pageBreakRun"),
+        schema.text("B"),
+      ],
       kinds: ["paragraph", "pageBreak", "paragraph"],
       text: ["A", "B"],
     },
@@ -528,33 +592,46 @@ describe("toFlowBlocks paragraph formatting", () => {
       kinds: ["pageBreak", "paragraph", "pageBreak", "paragraph", "pageBreak"],
       text: ["A", "B"],
     },
-  ])("projects every $name inline page break at its exact boundary", ({ content, kinds, text }) => {
-    const blocks = toFlowBlocks(
-      schema.node("doc", null, [schema.node("paragraph", null, content)]),
-    );
+  ])(
+    "projects every $name inline page break at its exact boundary",
+    ({ content, kinds, text }) => {
+      const blocks = toFlowBlocks(
+        schema.node("doc", null, [schema.node("paragraph", null, content)]),
+      );
 
-    expect(blocks.map((block) => block.kind)).toEqual(kinds);
-    expect(
-      blocks.flatMap((block) =>
-        block.kind === "paragraph"
-          ? block.runs.flatMap((run) => (run.kind === "text" ? [run.text] : []))
-          : [],
-      ),
-    ).toEqual(text);
-  });
+      expect(blocks.map((block) => block.kind)).toEqual(kinds);
+      expect(
+        blocks.flatMap((block) =>
+          block.kind === "paragraph"
+            ? block.runs.flatMap((run) =>
+                run.kind === "text" ? [run.text] : [],
+              )
+            : [],
+        ),
+      ).toEqual(text);
+    },
+  );
 
   test("maps a trailing paragraph mark after its page break in split mode", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("A"), schema.node("pageBreakRun")]),
+      schema.node("paragraph", null, [
+        schema.text("A"),
+        schema.node("pageBreakRun"),
+      ]),
     ]);
 
     const blocks = toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true });
 
-    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "pageBreak", "paragraph"]);
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+    ]);
     expect(blocks.at(1)).toMatchObject({ pmStart: 2, pmEnd: 3 });
     expect(blocks.at(2)).toMatchObject({ pmStart: 3, pmEnd: 4 });
     expect(
-      blocks.at(2)?.kind === "paragraph" && blocks.at(2)?.attrs?.suppressEmptyParagraphHeight,
+      blocks.at(2)?.kind === "paragraph" &&
+        blocks.at(2)?.attrs?.suppressEmptyParagraphHeight,
     ).toBeFalsy();
   });
 
@@ -566,30 +643,39 @@ describe("toFlowBlocks paragraph formatting", () => {
     },
     {
       name: "hanging",
-      paragraphAttrs: { indentLeft: 720, indentFirstLine: -360, hangingIndent: true },
+      paragraphAttrs: {
+        indentLeft: 720,
+        indentFirstLine: -360,
+        hangingIndent: true,
+      },
       firstIndent: { left: 48, hanging: 24 },
     },
-  ])("does not restart $name indentation after an interior page break", (shape) => {
-    const doc = schema.node("doc", null, [
-      schema.node(
-        "paragraph",
-        {
-          ...shape.paragraphAttrs,
-          pageBreakBefore: true,
-          renderedPageBreakBefore: true,
-        },
-        [schema.text("A"), schema.node("pageBreakRun"), schema.text("B")],
-      ),
-    ]);
+  ])(
+    "does not restart $name indentation after an interior page break",
+    (shape) => {
+      const doc = schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            ...shape.paragraphAttrs,
+            pageBreakBefore: true,
+            renderedPageBreakBefore: true,
+          },
+          [schema.text("A"), schema.node("pageBreakRun"), schema.text("B")],
+        ),
+      ]);
 
-    const paragraphs = toFlowBlocks(doc).filter((block) => block.kind === "paragraph");
+      const paragraphs = toFlowBlocks(doc).filter(
+        (block) => block.kind === "paragraph",
+      );
 
-    expect(paragraphs.at(0)?.attrs?.indent).toEqual(shape.firstIndent);
-    expect(paragraphs.at(1)?.attrs?.indent).toEqual({ left: 48 });
-    expect(paragraphs.at(0)?.attrs?.pageBreakBefore).toBe(true);
-    expect(paragraphs.at(1)?.attrs?.pageBreakBefore).toBeUndefined();
-    expect(paragraphs.at(1)?.attrs?.renderedPageBreakBefore).toBeUndefined();
-  });
+      expect(paragraphs.at(0)?.attrs?.indent).toEqual(shape.firstIndent);
+      expect(paragraphs.at(1)?.attrs?.indent).toEqual({ left: 48 });
+      expect(paragraphs.at(0)?.attrs?.pageBreakBefore).toBe(true);
+      expect(paragraphs.at(1)?.attrs?.pageBreakBefore).toBeUndefined();
+      expect(paragraphs.at(1)?.attrs?.renderedPageBreakBefore).toBeUndefined();
+    },
+  );
 
   test("keeps paragraph-end and paragraph-start ownership on the correct fragments", () => {
     const doc = schema.node("doc", null, [
@@ -607,7 +693,9 @@ describe("toFlowBlocks paragraph formatting", () => {
       ),
     ]);
 
-    const paragraphs = toFlowBlocks(doc).filter((block) => block.kind === "paragraph");
+    const paragraphs = toFlowBlocks(doc).filter(
+      (block) => block.kind === "paragraph",
+    );
 
     expect(paragraphs.at(0)?.bookmarks).toEqual(["owned-start"]);
     expect(paragraphs.at(1)?.bookmarks).toBeUndefined();
@@ -625,9 +713,15 @@ describe("toFlowBlocks paragraph formatting", () => {
   // fragment the split produces. That is an approximation; refusing it stopped
   // the document from being laid out or exported at all.
   test.each([
-    { name: "frame", attrs: { _originalFormatting: { frame: { width: 720 } } } },
+    {
+      name: "frame",
+      attrs: { _originalFormatting: { frame: { width: 720 } } },
+    },
     { name: "outline", attrs: { outlineLevel: { kind: "heading", level: 0 } } },
-    { name: "borders", attrs: { borders: { bottom: { style: "single", size: 8 } } } },
+    {
+      name: "borders",
+      attrs: { borders: { bottom: { style: "single", size: 8 } } },
+    },
   ])("splits a paragraph whose $name the split cannot own exactly", (shape) => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", shape.attrs, [
@@ -683,61 +777,88 @@ describe("toFlowBlocks paragraph formatting", () => {
   });
 
   test.each([
-    { name: "insertion", markName: "insertion", moveKind: null, paginates: true },
-    { name: "moveTo", markName: "insertion", moveKind: "moveTo", paginates: true },
-    { name: "deletion", markName: "deletion", moveKind: null, paginates: false },
-    { name: "moveFrom", markName: "deletion", moveKind: "moveFrom", paginates: false },
-  ] as const)("projects a $name page-break revision in review view", (shape) => {
-    const change = schema.mark(shape.markName, {
-      author: "Reviewer",
-      date: "2026-09-09T00:00:00.000Z",
-      revisionId: 31,
-      moveKind: shape.moveKind,
-    });
-    const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [
-        schema.text("A"),
-        schema.node("pageBreakRun", null, null, [change]),
-        schema.text("B"),
-      ]),
-    ]);
-
-    const blocks = toFlowBlocks(doc);
-
-    if (shape.paginates) {
-      expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "pageBreak", "paragraph"]);
-      expect(blocks.at(1)).toMatchObject({
-        kind: "pageBreak",
-        isInsertion: true,
-        changeAuthor: "Reviewer",
-        changeDate: "2026-09-09T00:00:00.000Z",
-        changeRevisionId: 31,
-        pmStart: 2,
-        pmEnd: 3,
+    {
+      name: "insertion",
+      markName: "insertion",
+      moveKind: null,
+      paginates: true,
+    },
+    {
+      name: "moveTo",
+      markName: "insertion",
+      moveKind: "moveTo",
+      paginates: true,
+    },
+    {
+      name: "deletion",
+      markName: "deletion",
+      moveKind: null,
+      paginates: false,
+    },
+    {
+      name: "moveFrom",
+      markName: "deletion",
+      moveKind: "moveFrom",
+      paginates: false,
+    },
+  ] as const)(
+    "projects a $name page-break revision in review view",
+    (shape) => {
+      const change = schema.mark(shape.markName, {
+        author: "Reviewer",
+        date: "2026-09-09T00:00:00.000Z",
+        revisionId: 31,
+        moveKind: shape.moveKind,
       });
-      return;
-    }
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("A"),
+          schema.node("pageBreakRun", null, null, [change]),
+          schema.text("B"),
+        ]),
+      ]);
 
-    expect(blocks.map((block) => block.kind)).toEqual(["paragraph"]);
-    const paragraph = blocks.at(0);
-    if (paragraph?.kind !== "paragraph") {
-      throw new Error("Expected paragraph");
-    }
-    expect(paragraph.runs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "text",
-          text: "",
-          isDeletion: true,
+      const blocks = toFlowBlocks(doc);
+
+      if (shape.paginates) {
+        expect(blocks.map((block) => block.kind)).toEqual([
+          "paragraph",
+          "pageBreak",
+          "paragraph",
+        ]);
+        expect(blocks.at(1)).toMatchObject({
+          kind: "pageBreak",
+          isInsertion: true,
           changeAuthor: "Reviewer",
           changeDate: "2026-09-09T00:00:00.000Z",
           changeRevisionId: 31,
           pmStart: 2,
           pmEnd: 3,
-        }),
-      ]),
-    );
-  });
+        });
+        return;
+      }
+
+      expect(blocks.map((block) => block.kind)).toEqual(["paragraph"]);
+      const paragraph = blocks.at(0);
+      if (paragraph?.kind !== "paragraph") {
+        throw new Error("Expected paragraph");
+      }
+      expect(paragraph.runs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "text",
+            text: "",
+            isDeletion: true,
+            changeAuthor: "Reviewer",
+            changeDate: "2026-09-09T00:00:00.000Z",
+            changeRevisionId: 31,
+            pmStart: 2,
+            pmEnd: 3,
+          }),
+        ]),
+      );
+    },
+  );
 
   test("keeps a hidden page-break atom in package topology and pagination", () => {
     const hidden = schema.mark("hidden");
@@ -750,7 +871,8 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
 
     expect(
-      expectParagraphBlock(createFolioAIEditSnapshot(doc).blocks.at(0)).structuralBoundaries,
+      expectParagraphBlock(createFolioAIEditSnapshot(doc).blocks.at(0))
+        .structuralBoundaries,
     ).toEqual([{ type: "pageBreak", offset: 1 }]);
     expect(toFlowBlocks(doc).map(({ kind }) => kind)).toEqual([
       "paragraph",
@@ -765,8 +887,12 @@ describe("toFlowBlocks paragraph formatting", () => {
       revisionId: 41,
       moveKind: "moveFrom",
     });
-    const container = schema.node("sdt", null, [schema.node("pageBreakRun")]).mark([deletion]);
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [container])]);
+    const container = schema
+      .node("sdt", null, [schema.node("pageBreakRun")])
+      .mark([deletion]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [container]),
+    ]);
 
     const blocks = toFlowBlocks(doc);
 
@@ -803,7 +929,9 @@ describe("toFlowBlocks paragraph formatting", () => {
         [schema.node("pageBreakRun")],
       )
       .mark([moveFrom]);
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [field]),
+    ]);
 
     const blocks = toFlowBlocks(doc);
 
@@ -822,14 +950,21 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
   });
 
-  for (const wrapper of ["structured field", "inline content control"] as const) {
+  for (const wrapper of [
+    "structured field",
+    "inline content control",
+  ] as const) {
     test(`projects formatting and insertion marks from ${wrapper} across its page break`, () => {
       const insertion = schema.mark("insertion", {
         author: "Reviewer",
         date: "2026-09-10T00:00:00.000Z",
         revisionId: 43,
       });
-      const wrapperMarks = [schema.mark("bold"), schema.mark("underline"), insertion];
+      const wrapperMarks = [
+        schema.mark("bold"),
+        schema.mark("underline"),
+        insertion,
+      ];
       const children = [
         schema.text("A", [schema.mark("italic")]),
         schema.node("pageBreakRun"),
@@ -854,10 +989,16 @@ describe("toFlowBlocks paragraph formatting", () => {
         schema.node("doc", null, [schema.node("paragraph", null, [carrier])]),
       );
 
-      expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "pageBreak", "paragraph"]);
+      expect(blocks.map((block) => block.kind)).toEqual([
+        "paragraph",
+        "pageBreak",
+        "paragraph",
+      ]);
       const textRuns = blocks.flatMap((block) =>
         block.kind === "paragraph"
-          ? block.runs.filter((run) => run.kind === "text" && run.text.length > 0)
+          ? block.runs.filter(
+              (run) => run.kind === "text" && run.text.length > 0,
+            )
           : [],
       );
       expect(textRuns).toEqual([
@@ -971,7 +1112,12 @@ describe("toFlowBlocks paragraph formatting", () => {
       throw new Error("Expected paragraph before the page break");
     }
 
-    expect(paragraph.runs.map(({ kind }) => kind)).toEqual(["text", "text", "tab", "image"]);
+    expect(paragraph.runs.map(({ kind }) => kind)).toEqual([
+      "text",
+      "text",
+      "tab",
+      "image",
+    ]);
     for (const run of paragraph.runs) {
       expect(run).toMatchObject({
         isInsertion: true,
@@ -995,9 +1141,13 @@ describe("toFlowBlocks paragraph formatting", () => {
       displayText: "1",
       fieldKind: "complex",
     });
-    const contentControl = schema.node("sdt", null, [field]).mark([schema.mark("bold"), insertion]);
+    const contentControl = schema
+      .node("sdt", null, [field])
+      .mark([schema.mark("bold"), insertion]);
     const paragraph = toFlowBlocks(
-      schema.node("doc", null, [schema.node("paragraph", null, [contentControl])]),
+      schema.node("doc", null, [
+        schema.node("paragraph", null, [contentControl]),
+      ]),
     ).at(0);
     if (paragraph?.kind !== "paragraph") {
       throw new Error("Expected paragraph");
@@ -1022,12 +1172,17 @@ describe("toFlowBlocks paragraph formatting", () => {
     const compact = toFlowBlocks(doc);
     const split = toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true });
 
-    expect(compact.map((block) => block.kind)).toEqual(["pageBreak", "paragraph"]);
+    expect(compact.map((block) => block.kind)).toEqual([
+      "pageBreak",
+      "paragraph",
+    ]);
     expect(
-      compact.at(1)?.kind === "paragraph" && compact.at(1)?.attrs?.suppressEmptyParagraphHeight,
+      compact.at(1)?.kind === "paragraph" &&
+        compact.at(1)?.attrs?.suppressEmptyParagraphHeight,
     ).toBe(true);
     expect(
-      split.at(1)?.kind === "paragraph" && split.at(1)?.attrs?.suppressEmptyParagraphHeight,
+      split.at(1)?.kind === "paragraph" &&
+        split.at(1)?.attrs?.suppressEmptyParagraphHeight,
     ).toBeFalsy();
     expect(compact.at(0)).toMatchObject({ pmStart: 1, pmEnd: 2 });
     expect(compact.at(1)).toMatchObject({ pmStart: 2, pmEnd: 3 });
@@ -1038,7 +1193,9 @@ describe("toFlowBlocks paragraph formatting", () => {
       schema.node("paragraph", { listMarker: "1." }, [schema.text("AB")]),
     ]);
     let state = EditorState.create({ doc });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 2)),
+    );
     expect(
       insertPageBreak(state, (transaction) => {
         state = state.apply(transaction);
@@ -1046,12 +1203,32 @@ describe("toFlowBlocks paragraph formatting", () => {
     ).toBe(true);
 
     const blocks = toFlowBlocks(state.doc);
-    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "pageBreak", "paragraph"]);
-    expect(blocks.at(0)).toMatchObject({ kind: "paragraph", pmStart: 0, pmEnd: 2 });
-    expect(blocks.at(1)).toMatchObject({ kind: "pageBreak", pmStart: 2, pmEnd: 3 });
-    expect(blocks.at(2)).toMatchObject({ kind: "paragraph", pmStart: 3, pmEnd: 5 });
-    expect(blocks.at(0)?.kind === "paragraph" && blocks.at(0)?.attrs?.listMarker).toBe("1.");
-    expect(blocks.at(2)?.kind === "paragraph" && blocks.at(2)?.attrs?.listMarker).toBeUndefined();
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+    ]);
+    expect(blocks.at(0)).toMatchObject({
+      kind: "paragraph",
+      pmStart: 0,
+      pmEnd: 2,
+    });
+    expect(blocks.at(1)).toMatchObject({
+      kind: "pageBreak",
+      pmStart: 2,
+      pmEnd: 3,
+    });
+    expect(blocks.at(2)).toMatchObject({
+      kind: "paragraph",
+      pmStart: 3,
+      pmEnd: 5,
+    });
+    expect(
+      blocks.at(0)?.kind === "paragraph" && blocks.at(0)?.attrs?.listMarker,
+    ).toBe("1.");
+    expect(
+      blocks.at(2)?.kind === "paragraph" && blocks.at(2)?.attrs?.listMarker,
+    ).toBeUndefined();
   });
 
   test("keeps alternating run and page-break order through the layout boundary", () => {
@@ -1083,7 +1260,11 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(
       blocks
         .filter((block) => block.kind === "paragraph")
-        .map(({ runs }) => runs.flatMap((run) => (run.kind === "text" ? [run.text] : [])).join("")),
+        .map(({ runs }) =>
+          runs
+            .flatMap((run) => (run.kind === "text" ? [run.text] : []))
+            .join(""),
+        ),
     ).toEqual(["A", "B", "C", "D"]);
     expect(
       blocks
@@ -1112,10 +1293,9 @@ describe("toFlowBlocks paragraph formatting", () => {
     }
 
     expect(paragraph.runs).toHaveLength(2);
-    expect(paragraph.runs.flatMap((run) => (run.kind === "text" ? [run.text] : []))).toEqual([
-      "Before",
-      "After",
-    ]);
+    expect(
+      paragraph.runs.flatMap((run) => (run.kind === "text" ? [run.text] : [])),
+    ).toEqual(["Before", "After"]);
   });
 
   // A text box is placed as a unit, so a break inside it paginates nothing.
@@ -1161,13 +1341,17 @@ describe("toFlowBlocks paragraph formatting", () => {
       throw new Error("Expected an owned text box after its host paragraph");
     }
 
-    expect(Reflect.get(textBox, Symbol.for("stll.textBoxAnchorBlockId"))).toBe(paragraph.id);
+    expect(Reflect.get(textBox, Symbol.for("stll.textBoxAnchorBlockId"))).toBe(
+      paragraph.id,
+    );
   });
 
   test("retains paragraph suppression and stamps the document hyphenation policy", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [
-        schema.node("paragraph", { suppressAutoHyphens: true }, [schema.text("Hyphenation")]),
+        schema.node("paragraph", { suppressAutoHyphens: true }, [
+          schema.text("Hyphenation"),
+        ]),
       ]),
       {
         justificationCompatibility: { type: "legacy" },
@@ -1217,7 +1401,10 @@ describe("toFlowBlocks paragraph formatting", () => {
       schema.node("doc", null, [
         schema.node(
           "paragraph",
-          { numPr: { kind: "reference", numId: 1, ilvl: 1 }, listMarker: "%1.%2." },
+          {
+            numPr: { kind: "reference", numId: 1, ilvl: 1 },
+            listMarker: "%1.%2.",
+          },
           [schema.text("Nested item")],
         ),
       ]),
@@ -1258,8 +1445,12 @@ describe("toFlowBlocks paragraph formatting", () => {
     };
     const blocks = toFlowBlocks(
       schema.node("doc", null, [
-        schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("First")]),
-        schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("Second")]),
+        schema.node("paragraph", { _originalFormatting: { frame } }, [
+          schema.text("First"),
+        ]),
+        schema.node("paragraph", { _originalFormatting: { frame } }, [
+          schema.text("Second"),
+        ]),
         schema.node("paragraph", null, [schema.text("Body")]),
       ]),
     );
@@ -1311,12 +1502,19 @@ describe("toFlowBlocks paragraph formatting", () => {
         [schema.node("paragraph", null, [schema.text("Inside")])],
       );
     const effectExtentOf = (wrapType: "inline" | "square") => {
-      const block = toFlowBlocks(schema.node("doc", null, [boxWithExtent(wrapType)])).at(0);
+      const block = toFlowBlocks(
+        schema.node("doc", null, [boxWithExtent(wrapType)]),
+      ).at(0);
       return block?.kind === "textBox" ? block.effectExtent : "not a text box";
     };
 
     test("an inline box carries its drawing's effect extent in pixels", () => {
-      expect(effectExtentOf("inline")).toEqual({ left: 4, top: 4, right: 13, bottom: 12 });
+      expect(effectExtentOf("inline")).toEqual({
+        left: 4,
+        top: 4,
+        right: 13,
+        bottom: 12,
+      });
     });
 
     test("an anchored box is not offset by its effect extent", () => {
@@ -1346,7 +1544,9 @@ describe("toFlowBlocks paragraph formatting", () => {
         [schema.node("paragraph", null, [schema.text("Inside")])],
       );
     const hostParagraphOf = (wrapType: "inline" | "square") => {
-      const block = toFlowBlocks(schema.node("doc", null, [hostedBox(wrapType)])).at(0);
+      const block = toFlowBlocks(
+        schema.node("doc", null, [hostedBox(wrapType)]),
+      ).at(0);
       return block?.kind === "textBox" ? block.hostParagraph : "not a text box";
     };
 
@@ -1368,7 +1568,9 @@ describe("toFlowBlocks paragraph formatting", () => {
     const first = schema.node("paragraph", null, [schema.text("Before")]);
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
-        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Cell")])]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Cell")]),
+        ]),
       ]),
     ]);
     const last = schema.node("paragraph", null, [schema.text("After")]);
@@ -1381,7 +1583,11 @@ describe("toFlowBlocks paragraph formatting", () => {
       throw new Error("Expected text box block");
     }
 
-    expect(textBox.content.map((block) => block.kind)).toEqual(["paragraph", "table", "paragraph"]);
+    expect(textBox.content.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "table",
+      "paragraph",
+    ]);
     expect(textBox.content.map((block) => block.pmStart)).toEqual([
       1,
       1 + first.nodeSize,
@@ -1423,26 +1629,38 @@ describe("toFlowBlocks paragraph formatting", () => {
   test("does not paint an empty structural section-break paragraph", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("Section content")]),
-      schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }),
+      schema.node("paragraph", {
+        _sectionProperties: { sectionStart: "continuous" },
+      }),
       schema.node("paragraph", null, [schema.text("Next section")]),
     ]);
 
     const blocks = toFlowBlocks(doc);
 
-    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "sectionBreak", "paragraph"]);
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "sectionBreak",
+      "paragraph",
+    ]);
   });
 
   test("paints text in a paragraph that also ends a section", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }, [
-        schema.text("Section ending text"),
-      ]),
+      schema.node(
+        "paragraph",
+        { _sectionProperties: { sectionStart: "continuous" } },
+        [schema.text("Section ending text")],
+      ),
       schema.node("paragraph", null, [schema.text("Next section")]),
     ]);
 
     const blocks = toFlowBlocks(doc);
 
-    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "sectionBreak", "paragraph"]);
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "sectionBreak",
+      "paragraph",
+    ]);
   });
 
   test("paints an empty list item that also ends a section", () => {
@@ -1457,20 +1675,34 @@ describe("toFlowBlocks paragraph formatting", () => {
 
     const blocks = toFlowBlocks(doc);
 
-    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "sectionBreak", "paragraph"]);
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "sectionBreak",
+      "paragraph",
+    ]);
   });
 
   test("emits a structural break for a standalone column break paragraph", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("First column")]),
-      schema.node("paragraph", null, [schema.node("hardBreak", { breakType: "column" })]),
+      schema.node("paragraph", null, [
+        schema.node("hardBreak", { breakType: "column" }),
+      ]),
       schema.node("paragraph", null, [schema.text("Second column")]),
     ]);
 
     const blocks = toFlowBlocks(doc);
 
-    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "columnBreak", "paragraph"]);
-    expect(blocks.at(1)).toMatchObject({ kind: "columnBreak", pmStart: 14, pmEnd: 17 });
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "columnBreak",
+      "paragraph",
+    ]);
+    expect(blocks.at(1)).toMatchObject({
+      kind: "columnBreak",
+      pmStart: 14,
+      pmEnd: 17,
+    });
   });
 
   test("emits a structural break before text after a leading column break", () => {
@@ -1484,8 +1716,16 @@ describe("toFlowBlocks paragraph formatting", () => {
 
     const blocks = toFlowBlocks(doc);
 
-    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "columnBreak", "paragraph"]);
-    expect(blocks.at(1)).toMatchObject({ kind: "columnBreak", pmStart: 15, pmEnd: 16 });
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "columnBreak",
+      "paragraph",
+    ]);
+    expect(blocks.at(1)).toMatchObject({
+      kind: "columnBreak",
+      pmStart: 15,
+      pmEnd: 16,
+    });
     expect(blocks.at(2)).toMatchObject({
       kind: "paragraph",
       runs: [{ kind: "text", text: "Second column" }],
@@ -1497,7 +1737,10 @@ describe("toFlowBlocks paragraph formatting", () => {
       schema.node("paragraph", {
         styleId: "Heading6",
         outlineLevel: { kind: "heading", level: 0 },
-        defaultTextFormatting: { fontSize: 22, fontFamily: { ascii: "Calibri" } },
+        defaultTextFormatting: {
+          fontSize: 22,
+          fontFamily: { ascii: "Calibri" },
+        },
         _originalFormatting: {
           styleId: "Heading6",
           runProperties: { fontSize: 2, fontFamily: { ascii: "Arial" } },
@@ -1510,7 +1753,10 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.kind).toBe("paragraph");
     expect(paragraph?.attrs?.defaultFontSize).toBe(1);
     expect(paragraph?.attrs?.defaultFontFamily).toBe("Arial");
-    expect(paragraph?.attrs?.outlineLevel).toEqual({ kind: "heading", level: 0 });
+    expect(paragraph?.attrs?.outlineLevel).toEqual({
+      kind: "heading",
+      level: 0,
+    });
     expect(paragraph?.attrs?.reserveEmptyOutlineHeight).toBe(true);
   });
 
@@ -1519,9 +1765,15 @@ describe("toFlowBlocks paragraph formatting", () => {
       schema.node(
         "paragraph",
         {
-          defaultTextFormatting: { fontSize: 22, fontFamily: { ascii: "Calibri" } },
+          defaultTextFormatting: {
+            fontSize: 22,
+            fontFamily: { ascii: "Calibri" },
+          },
           _originalFormatting: {
-            runProperties: { fontSize: 16, fontFamily: { ascii: "Arial Narrow" } },
+            runProperties: {
+              fontSize: 16,
+              fontFamily: { ascii: "Arial Narrow" },
+            },
           },
         },
         [schema.text(" ")],
@@ -1559,7 +1811,10 @@ describe("toFlowBlocks paragraph formatting", () => {
 
     const blocks = toFlowBlocks(
       schema.node("doc", null, [
-        listParagraph({ direction: { source: "manual", value: "rtl" } }, "Right-to-left item"),
+        listParagraph(
+          { direction: { source: "manual", value: "rtl" } },
+          "Right-to-left item",
+        ),
         listParagraph({}, "Left-to-right item"),
         ordinaryParagraph,
       ]),
@@ -1575,17 +1830,24 @@ describe("toFlowBlocks paragraph formatting", () => {
     const blocks = toFlowBlocks(
       schema.node("doc", null, [
         schema.node("paragraph", null, [schema.text("content")]),
-        schema.node("paragraph", { outlineLevel: { kind: "heading", level: 0 } }),
+        schema.node("paragraph", {
+          outlineLevel: { kind: "heading", level: 0 },
+        }),
       ]),
     );
 
-    expect(blocks.at(1)?.attrs?.outlineLevel).toEqual({ kind: "heading", level: 0 });
+    expect(blocks.at(1)?.attrs?.outlineLevel).toEqual({
+      kind: "heading",
+      level: 0,
+    });
     expect(blocks.at(1)?.attrs?.reserveEmptyOutlineHeight).toBeUndefined();
   });
 
   test("ignores a null outline attribute at the layout boundary", () => {
     const paragraph = toFlowBlocks(
-      schema.node("doc", null, [schema.node("paragraph", { outlineLevel: null })]),
+      schema.node("doc", null, [
+        schema.node("paragraph", { outlineLevel: null }),
+      ]),
     ).at(0);
 
     expect(paragraph?.attrs?.outlineLevel).toBeUndefined();
@@ -1642,7 +1904,9 @@ describe("toFlowBlocks paragraph formatting", () => {
 
   test("preserves Word rendered-page-break hints for layout", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { renderedPageBreakBefore: true }, [schema.text("Next page")]),
+      schema.node("paragraph", { renderedPageBreakBefore: true }, [
+        schema.text("Next page"),
+      ]),
     ]);
 
     const paragraph = toFlowBlocks(doc).at(0);
@@ -1666,7 +1930,11 @@ describe("toFlowBlocks paragraph formatting", () => {
     if (paragraph?.kind !== "paragraph") {
       return;
     }
-    expect(paragraph.runs.map((run) => run.kind)).toEqual(["text", "renderedPageBreak", "text"]);
+    expect(paragraph.runs.map((run) => run.kind)).toEqual([
+      "text",
+      "renderedPageBreak",
+      "text",
+    ]);
   });
 
   test("does not duplicate a leading cached page boundary in flow runs", () => {
@@ -1701,7 +1969,9 @@ describe("toFlowBlocks paragraph formatting", () => {
 
   test("carries stable PM paraId onto paragraph blocks", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { paraId: "1A2B3C4D" }, [schema.text("Locate me")]),
+      schema.node("paragraph", { paraId: "1A2B3C4D" }, [
+        schema.text("Locate me"),
+      ]),
     ]);
     const para = toFlowBlocks(doc)[0];
     expect(para?.kind).toBe("paragraph");
@@ -1721,8 +1991,12 @@ describe("toFlowBlocks paragraph formatting", () => {
       wrap: "around" as const,
     };
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("first")]),
-      schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("second")]),
+      schema.node("paragraph", { _originalFormatting: { frame } }, [
+        schema.text("first"),
+      ]),
+      schema.node("paragraph", { _originalFormatting: { frame } }, [
+        schema.text("second"),
+      ]),
       schema.node("paragraph", null, [schema.text("body")]),
     ]);
 
@@ -1790,11 +2064,15 @@ describe("toFlowBlocks paragraph formatting", () => {
       wrap: "around" as const,
     };
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("left")]),
-      schema.node("paragraph", { paragraphStyle: "Anchor" }),
-      schema.node("paragraph", { _originalFormatting: { frame: { ...frame, x: 2880 } } }, [
-        schema.text("right"),
+      schema.node("paragraph", { _originalFormatting: { frame } }, [
+        schema.text("left"),
       ]),
+      schema.node("paragraph", { paragraphStyle: "Anchor" }),
+      schema.node(
+        "paragraph",
+        { _originalFormatting: { frame: { ...frame, x: 2880 } } },
+        [schema.text("right")],
+      ),
       schema.node("paragraph", null, [schema.text("body")]),
     ]);
 
@@ -1817,7 +2095,9 @@ describe("toFlowBlocks paragraph formatting", () => {
 
   test("rejects malformed paragraph attrs at the layout boundary", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { lineSpacing: "240" }, [schema.text("Invalid paragraph")]),
+      schema.node("paragraph", { lineSpacing: "240" }, [
+        schema.text("Invalid paragraph"),
+      ]),
     ]);
 
     expect(() => toFlowBlocks(doc)).toThrow("paragraph.attrs.lineSpacing");
@@ -1911,7 +2191,10 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.kind).toBe("paragraph");
     expect(paragraph?.attrs?.spacing?.before).toBe(AUTO_PARAGRAPH_SPACING_PX);
     expect(paragraph?.attrs?.spacing?.after).toBe(AUTO_PARAGRAPH_SPACING_PX);
-    expect(paragraph?.attrs?.automaticSpacing).toEqual({ before: true, after: true });
+    expect(paragraph?.attrs?.automaticSpacing).toEqual({
+      before: true,
+      after: true,
+    });
   });
 
   test("an explicit spacing edit overrides imported auto-spacing (#823)", () => {
@@ -2055,7 +2338,10 @@ describe("toFlowBlocks paragraph formatting", () => {
 
     expect(paragraph?.attrs?.spacing?.before).toBe(120 / 15);
     expect(paragraph?.attrs?.spacing?.after).toBe(160 / 15);
-    expect(paragraph?.attrs?.spacingExplicit).toEqual({ before: true, after: true });
+    expect(paragraph?.attrs?.spacingExplicit).toEqual({
+      before: true,
+      after: true,
+    });
   });
 
   test("suppresses empty hidden list paragraphs and their markers", () => {
@@ -2106,12 +2392,15 @@ describe("toFlowBlocks paragraph formatting", () => {
       ]),
     ]);
 
-    const paragraphs = toFlowBlocks(doc).filter((block) => block.kind === "paragraph");
+    const paragraphs = toFlowBlocks(doc).filter(
+      (block) => block.kind === "paragraph",
+    );
 
-    expect(paragraphs.map((paragraph) => paragraph.attrs?.suppressEmptyParagraphHeight)).toEqual([
-      undefined,
-      undefined,
-    ]);
+    expect(
+      paragraphs.map(
+        (paragraph) => paragraph.attrs?.suppressEmptyParagraphHeight,
+      ),
+    ).toEqual([undefined, undefined]);
   });
 
   test("suppresses a paintless imported page-break carrier", () => {
@@ -2378,7 +2667,9 @@ describe("toFlowBlocks TOC hyperlink style strip", () => {
       },
     };
 
-    const blocks = toFlowBlocks(toProseDoc(document, { styles: document.package.styles }));
+    const blocks = toFlowBlocks(
+      toProseDoc(document, { styles: document.package.styles }),
+    );
     const paragraph = blocks.at(0);
     if (paragraph?.kind !== "paragraph") {
       throw new Error("Expected paragraph block");
@@ -2449,7 +2740,9 @@ describe("toFlowBlocks TOC hyperlink style strip", () => {
     }
 
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("body link", [linkMark, underline, textColor])]),
+      schema.node("paragraph", null, [
+        schema.text("body link", [linkMark, underline, textColor]),
+      ]),
     ]);
 
     const blocks = toFlowBlocks(doc);
@@ -2524,12 +2817,16 @@ describe("toFlowBlocks hyperlink identity", () => {
                 {
                   type: "hyperlink",
                   href,
-                  children: [{ type: "run", content: [{ type: "text", text: href }] }],
+                  children: [
+                    { type: "run", content: [{ type: "text", text: href }] },
+                  ],
                 },
                 {
                   type: "hyperlink",
                   href,
-                  children: [{ type: "run", content: [{ type: "text", text: "رابط" }] }],
+                  children: [
+                    { type: "run", content: [{ type: "text", text: "رابط" }] },
+                  ],
                 },
               ],
             },
@@ -2542,7 +2839,9 @@ describe("toFlowBlocks hyperlink identity", () => {
     if (paragraph?.kind !== "paragraph") {
       throw new Error("Expected paragraph block");
     }
-    const hyperlinks = paragraph.runs.flatMap((run) => (run.hyperlink ? [run.hyperlink] : []));
+    const hyperlinks = paragraph.runs.flatMap((run) =>
+      run.hyperlink ? [run.hyperlink] : [],
+    );
 
     expect(hyperlinks.map(getHyperlinkInstanceIndex)).toEqual([0, 1]);
     expect(JSON.stringify(paragraph)).not.toContain("HyperlinkIndex");
@@ -2561,7 +2860,10 @@ describe("toFlowBlocks hyperlink identity", () => {
                   type: "hyperlink",
                   href,
                   children: [
-                    { type: "run", content: [{ type: "text", text: "https://example." }] },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "https://example." }],
+                    },
                     {
                       type: "run",
                       formatting: { bold: true },
@@ -2591,7 +2893,9 @@ describe("toFlowBlocks hyperlink identity", () => {
                 {
                   type: "hyperlink",
                   href,
-                  children: [{ type: "run", content: [{ type: "text", text: href }] }],
+                  children: [
+                    { type: "run", content: [{ type: "text", text: href }] },
+                  ],
                 },
                 {
                   type: "inlineSdt",
@@ -2600,7 +2904,12 @@ describe("toFlowBlocks hyperlink identity", () => {
                     {
                       type: "hyperlink",
                       href,
-                      children: [{ type: "run", content: [{ type: "text", text: "رابط" }] }],
+                      children: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "رابط" }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -2636,8 +2945,11 @@ describe("toFlowBlocks hyperlink identity", () => {
         content: links,
       }) as const;
     const documentWith = (content: Paragraph["content"]): Document =>
-      ({ package: { document: { content: [{ type: "paragraph", content }] } } }) as const;
-    const boundaryWith = (inserted: Hyperlink) => documentWith([left, insertion([inserted])]);
+      ({
+        package: { document: { content: [{ type: "paragraph", content }] } },
+      }) as const;
+    const boundaryWith = (inserted: Hyperlink) =>
+      documentWith([left, insertion([inserted])]);
 
     expect(getHyperlinkIndexes(boundaryWith(right))).toEqual([0, 0]);
 
@@ -2650,7 +2962,10 @@ describe("toFlowBlocks hyperlink identity", () => {
       history: { history: false },
       docLocation: { docLocation: "changed" },
     } as const satisfies {
-      [Key in keyof Omit<HyperlinkAttrs, "_docxHyperlinkIndex">]-?: Pick<HyperlinkAttrs, Key>;
+      [Key in keyof Omit<HyperlinkAttrs, "_docxHyperlinkIndex">]-?: Pick<
+        HyperlinkAttrs,
+        Key
+      >;
     };
     expect(Object.keys(changedAttributes).sort()).toEqual(
       Object.keys(schema.marks["hyperlink"]?.spec.attrs ?? {})
@@ -2658,11 +2973,15 @@ describe("toFlowBlocks hyperlink identity", () => {
         .sort(),
     );
     for (const changed of Object.values(changedAttributes)) {
-      expect(getHyperlinkIndexes(boundaryWith({ ...right, ...changed }))).toEqual([0, 1]);
+      expect(
+        getHyperlinkIndexes(boundaryWith({ ...right, ...changed })),
+      ).toEqual([0, 1]);
     }
 
     expect(getHyperlinkIndexes(documentWith([left, right]))).toEqual([0, 1]);
-    expect(getHyperlinkIndexes(documentWith([insertion([left, right])]))).toEqual([0, 1]);
+    expect(
+      getHyperlinkIndexes(documentWith([insertion([left, right])])),
+    ).toEqual([0, 1]);
   });
 
   test("keeps identities distinct when run-in paragraphs merge", () => {
@@ -2678,7 +2997,9 @@ describe("toFlowBlocks hyperlink identity", () => {
                 {
                   type: "hyperlink",
                   href,
-                  children: [{ type: "run", content: [{ type: "text", text: href }] }],
+                  children: [
+                    { type: "run", content: [{ type: "text", text: href }] },
+                  ],
                 },
               ],
             },
@@ -2688,7 +3009,9 @@ describe("toFlowBlocks hyperlink identity", () => {
                 {
                   type: "hyperlink",
                   href,
-                  children: [{ type: "run", content: [{ type: "text", text: "رابط" }] }],
+                  children: [
+                    { type: "run", content: [{ type: "text", text: "رابط" }] },
+                  ],
                 },
               ],
             },
@@ -2704,25 +3027,34 @@ describe("toFlowBlocks hyperlink identity", () => {
 describe("toFlowBlocks table cell formatting", () => {
   test.each([
     { name: "ordinary", rowAttrs: null },
-    { name: "cantSplit", rowAttrs: { _originalFormatting: { cantSplit: true } } },
-  ])("projects a leading page-break run as a $name row boundary", ({ rowAttrs }) => {
-    const doc = schema.node("doc", null, [
-      schema.node("table", null, [
-        schema.node("tableRow", rowAttrs, [
-          schema.node("tableCell", null, [
-            schema.node("paragraph", null, [schema.node("pageBreakRun"), schema.text("after")]),
+    {
+      name: "cantSplit",
+      rowAttrs: { _originalFormatting: { cantSplit: true } },
+    },
+  ])(
+    "projects a leading page-break run as a $name row boundary",
+    ({ rowAttrs }) => {
+      const doc = schema.node("doc", null, [
+        schema.node("table", null, [
+          schema.node("tableRow", rowAttrs, [
+            schema.node("tableCell", null, [
+              schema.node("paragraph", null, [
+                schema.node("pageBreakRun"),
+                schema.text("after"),
+              ]),
+            ]),
           ]),
         ]),
-      ]),
-    ]);
+      ]);
 
-    const table = toFlowBlocks(doc).at(0);
-    if (table?.kind !== "table") {
-      throw new Error("Expected table block");
-    }
+      const table = toFlowBlocks(doc).at(0);
+      if (table?.kind !== "table") {
+        throw new Error("Expected table block");
+      }
 
-    expect(table.rows.at(0)?.breakBefore).toBe("page");
-  });
+      expect(table.rows.at(0)?.breakBefore).toBe("page");
+    },
+  );
 
   test("ignores a zero-width bookmark before a leading row boundary", () => {
     const doc = schema.node("doc", null, [
@@ -2730,7 +3062,11 @@ describe("toFlowBlocks table cell formatting", () => {
         schema.node("tableRow", null, [
           schema.node("tableCell", null, [
             schema.node("paragraph", null, [
-              schema.node("bookmarkBoundary", { type: "start", id: 7, name: "boundary" }),
+              schema.node("bookmarkBoundary", {
+                type: "start",
+                id: 7,
+                name: "boundary",
+              }),
               schema.node("pageBreakRun"),
               schema.text("after"),
               schema.node("bookmarkBoundary", { type: "end", id: 7 }),
@@ -2756,7 +3092,12 @@ describe("toFlowBlocks table cell formatting", () => {
       cellAttrs: null,
       nested: false,
     },
-    { name: "vMerge restart", rowAttrs: null, cellAttrs: { _vMergeRestart: true }, nested: false },
+    {
+      name: "vMerge restart",
+      rowAttrs: null,
+      cellAttrs: { _vMergeRestart: true },
+      nested: false,
+    },
     { name: "nested table", rowAttrs: null, cellAttrs: null, nested: true },
     // An interior break needs table-fragment ownership, which cell-local flow
     // cannot model. The row is laid out whole rather than refused.
@@ -2769,7 +3110,9 @@ describe("toFlowBlocks table cell formatting", () => {
     const nestedContent = shape.nested
       ? [
           schema.node("table", null, [
-            schema.node("tableRow", null, [schema.node("tableCell", null, [breakParagraph])]),
+            schema.node("tableRow", null, [
+              schema.node("tableCell", null, [breakParagraph]),
+            ]),
           ]),
           schema.node("paragraph"),
         ]
@@ -2785,7 +3128,9 @@ describe("toFlowBlocks table cell formatting", () => {
 
     const table = toFlowBlocks(doc).at(0);
     expect(table?.kind).toBe("table");
-    expect(table?.kind === "table" ? table.rows.at(0)?.breakBefore : "unset").toBeUndefined();
+    expect(
+      table?.kind === "table" ? table.rows.at(0)?.breakBefore : "unset",
+    ).toBeUndefined();
     expect(doc.toJSON()).toEqual(before);
   });
 
@@ -2793,7 +3138,9 @@ describe("toFlowBlocks table cell formatting", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", { cellMargins: { left: 180, right: 180 } }, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", { margins: { left: 0, right: 0 } }, [schema.node("paragraph")]),
+          schema.node("tableCell", { margins: { left: 0, right: 0 } }, [
+            schema.node("paragraph"),
+          ]),
         ]),
       ]),
     ]);
@@ -2803,7 +3150,10 @@ describe("toFlowBlocks table cell formatting", () => {
       throw new Error("Expected table block");
     }
 
-    expect(table.rows.at(0)?.cells.at(0)?.padding).toMatchObject({ left: 0, right: 0 });
+    expect(table.rows.at(0)?.cells.at(0)?.padding).toMatchObject({
+      left: 0,
+      right: 0,
+    });
   });
 
   test("preserves a zero-size styled cell border as a layout-free hairline", () => {
@@ -2881,7 +3231,9 @@ describe("toFlowBlocks table cell formatting", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", { hideMark: true }, [schema.node("paragraph")]),
+          schema.node("tableCell", { hideMark: true }, [
+            schema.node("paragraph"),
+          ]),
           schema.node("tableCell", null, [schema.node("paragraph")]),
         ]),
       ]),
@@ -2896,11 +3248,18 @@ describe("toFlowBlocks table cell formatting", () => {
 
     expect(hiddenMarkerParagraph?.kind).toBe("paragraph");
     expect(ordinaryParagraph?.kind).toBe("paragraph");
-    if (hiddenMarkerParagraph?.kind !== "paragraph" || ordinaryParagraph?.kind !== "paragraph") {
+    if (
+      hiddenMarkerParagraph?.kind !== "paragraph" ||
+      ordinaryParagraph?.kind !== "paragraph"
+    ) {
       return;
     }
-    expect(hiddenMarkerParagraph.attrs?.suppressEmptyParagraphHeight).toBe(true);
-    expect(ordinaryParagraph.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+    expect(hiddenMarkerParagraph.attrs?.suppressEmptyParagraphHeight).toBe(
+      true,
+    );
+    expect(
+      ordinaryParagraph.attrs?.suppressEmptyParagraphHeight,
+    ).toBeUndefined();
   });
 
   test("threads the cell text direction into the engine TableCell", () => {
@@ -2943,20 +3302,29 @@ describe("toFlowBlocks table cell formatting", () => {
     }
 
     const cells = table.rows.at(0)?.cells;
-    expect(cells?.at(0)?.blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
-    expect(cells?.at(1)?.blocks.at(0)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+    expect(
+      cells?.at(0)?.blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight,
+    ).toBeUndefined();
+    expect(
+      cells?.at(1)?.blocks.at(0)?.attrs?.suppressEmptyParagraphHeight,
+    ).toBeUndefined();
   });
 
   test("suppresses the required trailing paragraph after a nested table", () => {
     const nestedTable = schema.node("table", null, [
       schema.node("tableRow", null, [
-        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("nested")])]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("nested")]),
+        ]),
       ]),
     ]);
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
         schema.node("tableRow", null, [
-          schema.node("tableCell", null, [nestedTable, schema.node("paragraph")]),
+          schema.node("tableCell", null, [
+            nestedTable,
+            schema.node("paragraph"),
+          ]),
         ]),
       ]),
     ]);
@@ -2966,9 +3334,10 @@ describe("toFlowBlocks table cell formatting", () => {
       throw new Error("Expected table block");
     }
 
-    expect(table.rows.at(0)?.cells.at(0)?.blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBe(
-      true,
-    );
+    expect(
+      table.rows.at(0)?.cells.at(0)?.blocks.at(-1)?.attrs
+        ?.suppressEmptyParagraphHeight,
+    ).toBe(true);
   });
 
   test("suppresses only the final empty body paragraph after a final table", () => {
@@ -2980,7 +3349,9 @@ describe("toFlowBlocks table cell formatting", () => {
           ]),
         ]),
       ]),
-      schema.node("paragraph", { tabs: [{ position: 360, alignment: "left" }] }),
+      schema.node("paragraph", {
+        tabs: [{ position: 360, alignment: "left" }],
+      }),
       schema.node("paragraph", {
         _originalFormatting: { runProperties: { italic: true } },
       }),
@@ -2988,12 +3359,18 @@ describe("toFlowBlocks table cell formatting", () => {
 
     const blocks = toFlowBlocks(doc);
 
-    expect(blocks.map((block) => block.kind)).toEqual(["table", "paragraph", "paragraph"]);
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "table",
+      "paragraph",
+      "paragraph",
+    ]);
     expect(
       blocks
         .slice(1)
         .map((block) =>
-          block.kind === "paragraph" ? block.attrs?.suppressEmptyParagraphHeight : undefined,
+          block.kind === "paragraph"
+            ? block.attrs?.suppressEmptyParagraphHeight
+            : undefined,
         ),
     ).toEqual([undefined, true]);
   });
@@ -3037,20 +3414,24 @@ describe("toFlowBlocks table cell formatting", () => {
       blocks
         .slice(-2)
         .map((block) =>
-          block.kind === "paragraph" ? block.attrs?.suppressEmptyParagraphHeight : undefined,
+          block.kind === "paragraph"
+            ? block.attrs?.suppressEmptyParagraphHeight
+            : undefined,
         ),
     ).toEqual([undefined, true]);
   });
 
   test("keeps terminal empty paragraph height when the document contains only empty paragraphs", () => {
     const blocks = toFlowBlocks(
-      schema.node("doc", null, [schema.node("paragraph"), schema.node("paragraph")]),
+      schema.node("doc", null, [
+        schema.node("paragraph"),
+        schema.node("paragraph"),
+      ]),
     );
 
-    expect(blocks.map((block) => block.attrs?.suppressEmptyParagraphHeight)).toEqual([
-      undefined,
-      undefined,
-    ]);
+    expect(
+      blocks.map((block) => block.attrs?.suppressEmptyParagraphHeight),
+    ).toEqual([undefined, undefined]);
   });
 
   test("keeps a visible empty list item after a final table", () => {
@@ -3170,9 +3551,9 @@ describe("toFlowBlocks list numbering", () => {
     });
 
     expect(blocks.at(0)?.attrs?.listMarker).toBe("1.");
-    expect(blocks.at(0)?.attrs?.listMarkerFormatting?.complexScriptFontFamily).toBe(
-      "Sakkal Majalla",
-    );
+    expect(
+      blocks.at(0)?.attrs?.listMarkerFormatting?.complexScriptFontFamily,
+    ).toBe("Sakkal Majalla");
     expect(blocks.at(0)?.attrs?.listMarkerRevision).toEqual({
       kind: "del",
       author: "Reviewer",
@@ -3288,7 +3669,10 @@ describe("toFlowBlocks list numbering", () => {
         },
         [schema.text(text)],
       );
-    const doc = schema.node("doc", null, [removedItem(31, "first"), removedItem(32, "second")]);
+    const doc = schema.node("doc", null, [
+      removedItem(31, "first"),
+      removedItem(32, "second"),
+    ]);
 
     const blocks = toFlowBlocks(doc);
     const first = blocks.at(0);
@@ -3517,11 +3901,20 @@ describe("toFlowBlocks list numbering", () => {
 
     const blocks = toFlowBlocks(doc);
 
-    expect(blocks.map((block) => block.attrs?.listMarker)).toEqual(["1.", "1.1.", "2.", "2.1."]);
+    expect(blocks.map((block) => block.attrs?.listMarker)).toEqual([
+      "1.",
+      "1.1.",
+      "2.",
+      "2.1.",
+    ]);
   });
 
   test("never emits a non-finite list marker", () => {
-    const nonFiniteCounters = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+    const nonFiniteCounters = [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ];
     const doc = schema.node(
       "doc",
       null,
@@ -3543,7 +3936,9 @@ describe("toFlowBlocks list numbering", () => {
     const markers = toFlowBlocks(doc).map((block) => block.attrs?.listMarker);
 
     expect(markers).toEqual(["4.", "4.", "4."]);
-    expect(markers.every((marker) => !/NaN|Infinity/.test(marker ?? ""))).toBe(true);
+    expect(markers.every((marker) => !/NaN|Infinity/.test(marker ?? ""))).toBe(
+      true,
+    );
   });
 
   test("uses authored starts when a nested list begins without parent paragraphs", () => {
@@ -3674,7 +4069,10 @@ describe("toFlowBlocks list numbering", () => {
       textBoxNode.create(null, [
         schema.node(
           "paragraph",
-          { numPr: { kind: "reference", numId: 4, ilvl: 0 }, listMarker: "%1." },
+          {
+            numPr: { kind: "reference", numId: 4, ilvl: 0 },
+            listMarker: "%1.",
+          },
           [schema.text("Inside")],
         ),
       ]),
@@ -3733,7 +4131,9 @@ describe("toFlowBlocks list numbering", () => {
         { numPr: { kind: "reference", numId: 5, ilvl: 0 }, listMarker: "%1." },
         [schema.text("Numbered")],
       ),
-      schema.node("paragraph", { listMarker: "%1." }, [schema.text("Style inherited")]),
+      schema.node("paragraph", { listMarker: "%1." }, [
+        schema.text("Style inherited"),
+      ]),
     ]);
 
     const blocks = toFlowBlocks(doc);
@@ -3915,7 +4315,9 @@ describe("toFlowBlocks image attribute normalization", () => {
       ]),
     ]);
 
-    const paragraph = toFlowBlocks(doc, { forceAnchorLayoutInCell: true }).at(0);
+    const paragraph = toFlowBlocks(doc, { forceAnchorLayoutInCell: true }).at(
+      0,
+    );
     if (paragraph?.kind !== "paragraph") {
       throw new Error("Expected paragraph block");
     }
@@ -3951,7 +4353,9 @@ describe("toFlowBlocks image attribute normalization", () => {
 test("font resolution stays owned by each derived document without changing authored data", () => {
   const doc = schema.node("doc", null, [
     schema.node("paragraph", null, [
-      schema.text("same text", [schema.mark("fontFamily", { value: "Calibri" })]),
+      schema.text("same text", [
+        schema.mark("fontFamily", { value: "Calibri" }),
+      ]),
     ]),
   ]);
   const before = doc.toJSON();
@@ -3963,13 +4367,14 @@ test("font resolution stays owned by each derived document without changing auth
     return panic("Expected paragraphs");
   const firstRun = first.runs.at(0);
   const secondRun = second.runs.at(0);
-  if (firstRun?.kind !== "text" || secondRun?.kind !== "text") return panic("Expected text runs");
+  if (firstRun?.kind !== "text" || secondRun?.kind !== "text")
+    return panic("Expected text runs");
   expect(buildFontString(buildRunFontStyle(firstRun, "Calibri", 11))).toContain(
     "folio-embedded-first-Calibri",
   );
-  expect(buildFontString(buildRunFontStyle(secondRun, "Calibri", 11))).toContain(
-    "folio-embedded-second-Calibri",
-  );
+  expect(
+    buildFontString(buildRunFontStyle(secondRun, "Calibri", 11)),
+  ).toContain("folio-embedded-second-Calibri");
   expect(buildFontString(buildRunFontStyle(firstRun, "Calibri", 11))).toContain(
     "folio-embedded-first-Calibri",
   );

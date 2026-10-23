@@ -18,15 +18,24 @@
       <div class="reply-thread__header">
         <Avatar :name="reply.author" :size="28" />
         <div class="reply-thread__author-block">
-          <div class="reply-thread__author">{{ reply.author || "Unknown" }}</div>
+          <div class="reply-thread__author">
+            {{ reply.author || "Unknown" }}
+          </div>
           <div class="reply-thread__date">{{ formatDate(reply.date) }}</div>
         </div>
       </div>
-      <div class="reply-thread__body" :class="{ 'reply-thread__body--clamp': !isExpanded }">
-        <template v-for="(paragraph, paragraphIndex) in reply.content" :key="paragraphIndex">
-          <span :data-find-comment-id="reply.id" :data-find-comment-paragraph="paragraphIndex">{{
-            getFindParagraphText(paragraph)
-          }}</span
+      <div
+        class="reply-thread__body"
+        :class="{ 'reply-thread__body--clamp': !isExpanded }"
+      >
+        <template
+          v-for="(paragraph, paragraphIndex) in reply.content"
+          :key="paragraphIndex"
+        >
+          <span
+            :data-find-comment-id="reply.id"
+            :data-find-comment-paragraph="paragraphIndex"
+            >{{ getFindParagraphText(paragraph) }}</span
           >{{ " " }}
         </template>
       </div>
@@ -36,18 +45,24 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+
 import type { Comment } from "@stll/folio-core/types/content";
 import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
-import { formatDate } from "./sidebarUtils";
+
 import Avatar from "./Avatar.vue";
+import { formatDate } from "./sidebarUtils";
 
 const props = defineProps<{
   replies: Comment[];
   isExpanded: boolean;
 }>();
 
-const visibleReplies = computed(() => (props.isExpanded ? props.replies : props.replies.slice(-1)));
-const hiddenCount = computed(() => (props.isExpanded ? 0 : Math.max(0, props.replies.length - 1)));
+const visibleReplies = computed(() =>
+  props.isExpanded ? props.replies : props.replies.slice(-1),
+);
+const hiddenCount = computed(() =>
+  props.isExpanded ? 0 : Math.max(0, props.replies.length - 1),
+);
 </script>
 
 <style scoped>

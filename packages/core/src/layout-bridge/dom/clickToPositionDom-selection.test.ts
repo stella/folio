@@ -34,7 +34,9 @@ class FakeHTMLElement {
   dataset: Record<string, string> = {};
   readonly childNodes: Array<FakeHTMLElement | FakeText> = [];
   private parent: FakeHTMLElement | null = null;
-  readonly classList = { contains: (className: string) => this.classes.includes(className) };
+  readonly classList = {
+    contains: (className: string) => this.classes.includes(className),
+  };
 
   constructor(
     private readonly classes: string[] = [],
@@ -64,7 +66,10 @@ class FakeHTMLElement {
     const found: FakeHTMLElement[] = [];
     for (const child of this.childNodes) {
       if (!(child instanceof FakeHTMLElement)) continue;
-      if (selector.includes(".layout-page-content") && child.classes.includes("layout-run-text")) {
+      if (
+        selector.includes(".layout-page-content") &&
+        child.classes.includes("layout-run-text")
+      ) {
         found.push(child);
       }
       found.push(...child.querySelectorAll(selector));
@@ -73,7 +78,8 @@ class FakeHTMLElement {
   }
 
   closest(selector: string): FakeHTMLElement | null {
-    if (selector === ".layout-page" && this.classes.includes("layout-page")) return this;
+    if (selector === ".layout-page" && this.classes.includes("layout-page"))
+      return this;
     return this.parent?.closest(selector) ?? null;
   }
 
@@ -94,8 +100,11 @@ const fakeDocument = {
       setEnd: (node: FakeText, offset: number) => {
         rangeEnd = { node, offset };
       },
-      getClientRects: () => [rect({ left: 20, top: 30, width: 80, height: 16 })],
-      getBoundingClientRect: () => rect({ left: 40, top: 30, width: 0, height: 16 }),
+      getClientRects: () => [
+        rect({ left: 20, top: 30, width: 80, height: 16 }),
+      ],
+      getBoundingClientRect: () =>
+        rect({ left: 40, top: 30, width: 0, height: 16 }),
     }) as unknown as Range,
 };
 
@@ -186,7 +195,9 @@ describe("getSelectionRectsFromDom", () => {
 
     const selection = getSelectionRectsFromDom(container, 10, 32, rect({}));
 
-    expect(selection).toEqual([{ x: 20, y: 30, width: 80, height: 16, pageIndex: 1 }]);
+    expect(selection).toEqual([
+      { x: 20, y: 30, width: 80, height: 16, pageIndex: 1 },
+    ]);
     expect(rangeStart).toEqual({ node: first, offset: 0 });
     expect(rangeEnd).toEqual({ node: last, offset: 5 });
   });

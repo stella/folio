@@ -37,8 +37,10 @@ import {
   validateOoxmlPart,
 } from "./lib/corpus-schema-validator";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /**
  * The attributes each marker's schema type declares, required and optional.
@@ -47,7 +49,12 @@ const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/mai
  * bookmark start, `CT_MoveBookmark` for a move-range start.
  */
 const MARKUP_RANGE = ["id", "displacedByCustomXml"] as const;
-const BOOKMARK_RANGE = [...MARKUP_RANGE, "colFirst", "colLast", "name"] as const;
+const BOOKMARK_RANGE = [
+  ...MARKUP_RANGE,
+  "colFirst",
+  "colLast",
+  "name",
+] as const;
 const MOVE_BOOKMARK = [...BOOKMARK_RANGE, "author", "date"] as const;
 
 const MARKER_ATTRIBUTES = {
@@ -102,7 +109,8 @@ type MarkerCase = { marker: MarkerName; attributes: Record<string, string> };
  * an orphan and the property would pass by testing nothing. Its `w:id` is the
  * comment's, so it is the one attribute the case cannot choose freely.
  */
-const isCommentRange = (marker: MarkerName): boolean => marker.startsWith("commentRange");
+const isCommentRange = (marker: MarkerName): boolean =>
+  marker.startsWith("commentRange");
 
 const markerCase = (marker: MarkerName): fc.Arbitrary<MarkerCase> =>
   fc
@@ -202,13 +210,18 @@ const buildDocx = async (subject: MarkerCase): Promise<ArrayBuffer> => {
 };
 
 /** The attributes of the first `w:<marker>` element in the saved part. */
-const savedAttributes = (xml: string, marker: MarkerName): Record<string, string> | undefined => {
+const savedAttributes = (
+  xml: string,
+  marker: MarkerName,
+): Record<string, string> | undefined => {
   const element = new RegExp(`<w:${marker}\\b([^>]*)/>`, "u").exec(xml);
   if (element === null) {
     return undefined;
   }
   const attributes: Record<string, string> = {};
-  for (const [, name, value] of element[1]?.matchAll(/\bw:([\w]+)="([^"]*)"/gu) ?? []) {
+  for (const [, name, value] of element[1]?.matchAll(
+    /\bw:([\w]+)="([^"]*)"/gu,
+  ) ?? []) {
     if (name !== undefined && value !== undefined) {
       attributes[name] = value;
     }
@@ -224,17 +237,27 @@ const savedAttributes = (xml: string, marker: MarkerName): Record<string, string
  * exists on the serializer path, so the property has to take it.
  */
 const editFirstParagraph = (paragraph: Paragraph): void => {
-  paragraph.content.push({ type: "run", content: [{ type: "text", text: "edited" }] });
+  paragraph.content.push({
+    type: "run",
+    content: [{ type: "text", text: "edited" }],
+  });
 };
 
 type SaveResult = { documentXml: string; violations: SchemaViolation[] };
 
 type SaveOptions = { subject: MarkerCase; viaEditor: boolean };
 
-const saveEdited = async ({ subject, viaEditor }: SaveOptions): Promise<SaveResult> => {
-  const parsed = await parseDocx(await buildDocx(subject), { preloadFonts: false });
+const saveEdited = async ({
+  subject,
+  viaEditor,
+}: SaveOptions): Promise<SaveResult> => {
+  const parsed = await parseDocx(await buildDocx(subject), {
+    preloadFonts: false,
+  });
   const document = viaEditor
-    ? fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } })
+    ? fromProseDoc(toProseDoc(parsed), parsed, {
+        stylesheetSource: { type: "package" },
+      })
     : parsed;
   const first = document.package.document.content.at(0);
   if (first?.type !== "paragraph") {
@@ -243,10 +266,14 @@ const saveEdited = async ({ subject, viaEditor }: SaveOptions): Promise<SaveResu
   editFirstParagraph(first);
   const saved = await repackDocx(document, { updateModifiedDate: false });
   const zip = await JSZip.loadAsync(saved);
-  const documentXml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const documentXml =
+    (await zip.file("word/document.xml")?.async("text")) ?? "";
   return {
     documentXml,
-    violations: validateOoxmlPart({ graph: await loadSchemaGraph(), xml: documentXml }),
+    violations: validateOoxmlPart({
+      graph: await loadSchemaGraph(),
+      xml: documentXml,
+    }),
   };
 };
 
@@ -263,7 +290,8 @@ const saveEdited = async ({ subject, viaEditor }: SaveOptions): Promise<SaveResu
  */
 const EDITOR_PROJECTIONS = { whole: "whole", idOnly: "id-only" } as const;
 
-type EditorProjection = (typeof EDITOR_PROJECTIONS)[keyof typeof EDITOR_PROJECTIONS];
+type EditorProjection =
+  (typeof EDITOR_PROJECTIONS)[keyof typeof EDITOR_PROJECTIONS];
 
 const EDITOR_PROJECTION = {
   bookmarkStart: EDITOR_PROJECTIONS.whole,
@@ -281,7 +309,10 @@ describe("range markers keep every attribute a real save re-serializes", () => {
     test(`w:${marker}`, async () => {
       await fc.assert(
         fc.asyncProperty(markerCase(marker), async (subject) => {
-          const { documentXml, violations } = await saveEdited({ subject, viaEditor: false });
+          const { documentXml, violations } = await saveEdited({
+            subject,
+            viaEditor: false,
+          });
 
           const written = savedAttributes(documentXml, marker);
           expect(written).toBeDefined();
@@ -304,7 +335,10 @@ describe("what the editor projection carries, it carries whole", () => {
       const projection = EDITOR_PROJECTION[marker];
       await fc.assert(
         fc.asyncProperty(markerCase(marker), async (subject) => {
-          const { documentXml, violations } = await saveEdited({ subject, viaEditor: true });
+          const { documentXml, violations } = await saveEdited({
+            subject,
+            viaEditor: true,
+          });
           const written = savedAttributes(documentXml, marker);
           expect(violations).toEqual([]);
           switch (projection) {

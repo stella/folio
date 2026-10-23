@@ -22,7 +22,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const BASELINE_PATH = path.join(REPO_ROOT, "scripts/reserved-value-baseline.json");
+const BASELINE_PATH = path.join(
+  REPO_ROOT,
+  "scripts/reserved-value-baseline.json",
+);
 const BASELINE_RELATIVE_PATH = "scripts/reserved-value-baseline.json";
 const LINT_CONFIG = "oxlint.reserved-values.config.ts";
 const RULE_CODE = "folio-reserved-values(no-bare-reserved-compare)";
@@ -39,7 +42,16 @@ const lintReport = (): string => {
   const reportPath = path.join(directory, "report.json");
   try {
     const result = Bun.spawnSync(
-      ["bun", "--bun", "oxlint", "-c", LINT_CONFIG, "--format", "json", "packages"],
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        LINT_CONFIG,
+        "--format",
+        "json",
+        "packages",
+      ],
       { cwd: REPO_ROOT, stdout: Bun.file(reportPath), stderr: "pipe" },
     );
     const report = readFileSync(reportPath, "utf8");
@@ -53,7 +65,11 @@ const lintReport = (): string => {
 };
 
 const diagnosticsOf = (parsed: unknown): Diagnostic[] => {
-  if (typeof parsed !== "object" || parsed === null || !("diagnostics" in parsed)) {
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("diagnostics" in parsed)
+  ) {
     return [];
   }
   const { diagnostics } = parsed;
@@ -70,10 +86,14 @@ const countsByFile = (report: string): Record<string, number> => {
     if (typeof filename !== "string") {
       continue;
     }
-    const file = path.relative(REPO_ROOT, path.resolve(REPO_ROOT, filename)).replaceAll("\\", "/");
+    const file = path
+      .relative(REPO_ROOT, path.resolve(REPO_ROOT, filename))
+      .replaceAll("\\", "/");
     counts.set(file, (counts.get(file) ?? 0) + 1);
   }
-  return Object.fromEntries([...counts.entries()].toSorted(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(
+    [...counts.entries()].toSorted(([a], [b]) => a.localeCompare(b)),
+  );
 };
 
 const total = (counts: Record<string, number>): number =>
@@ -108,17 +128,24 @@ if (mode === "report") {
   process.exit(0);
 }
 
-const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<string, number>;
+const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<
+  string,
+  number
+>;
 const failures: string[] = [];
 
 for (const [file, count] of Object.entries(current)) {
   const allowed = baseline[file];
   if (allowed === undefined) {
-    failures.push(`${file}: ${count} new bare reserved-value comparison(s) in a clean file`);
+    failures.push(
+      `${file}: ${count} new bare reserved-value comparison(s) in a clean file`,
+    );
     continue;
   }
   if (count > allowed) {
-    failures.push(`${file}: bare reserved-value comparisons rose from ${allowed} to ${count}`);
+    failures.push(
+      `${file}: bare reserved-value comparisons rose from ${allowed} to ${count}`,
+    );
   }
 }
 

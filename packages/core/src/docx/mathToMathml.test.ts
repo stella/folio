@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { ommlToMathml } from "./mathToMathml";
 import { parseXmlDocument } from "./xmlParser";
 
-const MATH_NS = 'xmlns="http://schemas.openxmlformats.org/officeDocument/2006/math"';
+const MATH_NS =
+  'xmlns="http://schemas.openxmlformats.org/officeDocument/2006/math"';
 
 function parse(xml: string) {
   const root = parseXmlDocument(xml);
@@ -44,19 +45,25 @@ describe("ommlToMathml — root + display", () => {
 
 describe("ommlToMathml — run tokenisation", () => {
   test("classifies digits into <mn>", () => {
-    const omml = parse(`<m:oMath ${MATH_NS}><m:r><m:t>123</m:t></m:r></m:oMath>`);
+    const omml = parse(
+      `<m:oMath ${MATH_NS}><m:r><m:t>123</m:t></m:r></m:oMath>`,
+    );
     expect(ommlToMathml(omml)).toContain("<mn>123</mn>");
   });
 
   test("classifies letters into per-character <mi>", () => {
-    const omml = parse(`<m:oMath ${MATH_NS}><m:r><m:t>ab</m:t></m:r></m:oMath>`);
+    const omml = parse(
+      `<m:oMath ${MATH_NS}><m:r><m:t>ab</m:t></m:r></m:oMath>`,
+    );
     const mml = ommlToMathml(omml);
     expect(mml).toContain("<mi>a</mi>");
     expect(mml).toContain("<mi>b</mi>");
   });
 
   test("classifies operators into <mo>", () => {
-    const omml = parse(`<m:oMath ${MATH_NS}><m:r><m:t>x+1</m:t></m:r></m:oMath>`);
+    const omml = parse(
+      `<m:oMath ${MATH_NS}><m:r><m:t>x+1</m:t></m:r></m:oMath>`,
+    );
     const mml = ommlToMathml(omml);
     expect(mml).toContain("<mi>x</mi>");
     expect(mml).toContain("<mo>+</mo>");
@@ -64,12 +71,16 @@ describe("ommlToMathml — run tokenisation", () => {
   });
 
   test("treats decimal points as part of the digit cluster", () => {
-    const omml = parse(`<m:oMath ${MATH_NS}><m:r><m:t>3.14</m:t></m:r></m:oMath>`);
+    const omml = parse(
+      `<m:oMath ${MATH_NS}><m:r><m:t>3.14</m:t></m:r></m:oMath>`,
+    );
     expect(ommlToMathml(omml)).toContain("<mn>3.14</mn>");
   });
 
   test("escapes XML metacharacters in math text", () => {
-    const omml = parse(`<m:oMath ${MATH_NS}><m:r><m:t>a&lt;b</m:t></m:r></m:oMath>`);
+    const omml = parse(
+      `<m:oMath ${MATH_NS}><m:r><m:t>a&lt;b</m:t></m:r></m:oMath>`,
+    );
     const mml = ommlToMathml(omml);
     expect(mml).toContain("&lt;");
     expect(mml).not.toContain("<b>");
@@ -81,7 +92,9 @@ describe("ommlToMathml — run tokenisation", () => {
   });
 
   test("handles Letterlike and Mathematical Alphanumeric Symbols as identifiers", () => {
-    const omml = parse(`<m:oMath ${MATH_NS}><m:r><m:t>ℏ𝑥</m:t></m:r></m:oMath>`);
+    const omml = parse(
+      `<m:oMath ${MATH_NS}><m:r><m:t>ℏ𝑥</m:t></m:r></m:oMath>`,
+    );
     const mml = ommlToMathml(omml);
     expect(mml).toContain("<mi>ℏ</mi>");
     expect(mml).toContain("<mi>𝑥</mi>");

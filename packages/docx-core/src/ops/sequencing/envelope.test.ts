@@ -1,21 +1,32 @@
-import path from "node:path";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import { applyDocumentOps } from "../apply";
+import path from "node:path";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document } from "../../model/document";
-import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES, type DocumentOp } from "../types";
 import { envelopes } from "../__tests__/wireFixtures";
+import { applyDocumentOps } from "../apply";
+import {
+  DOCUMENT_OP_SCHEMA_VERSION,
+  type DocumentOp,
+  OP_STORIES,
+} from "../types";
+import {
+  envelopeFixtures,
+  sequencedFixture,
+} from "./__tests__/envelopeFixtures";
 import {
   BATCH_REJECTION_REASONS,
   BATCH_WIRE_OP_TYPES,
   MAX_BATCH_WIRE_BYTES,
-  TABLE_EXCLUSIVE_OP_TYPES,
   parseDocumentBatch,
+  TABLE_EXCLUSIVE_OP_TYPES,
   validateDocumentBatch,
   validateSequencedBatch,
 } from "./envelope";
-import { envelopeFixtures, sequencedFixture } from "./__tests__/envelopeFixtures";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -41,10 +52,18 @@ test("unsupported operation families refuse production-shaped wire fixtures", ()
 
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {
   const pinned: unknown = await Bun.file(
-    path.join(import.meta.dir, "__fixtures__", `batches-v${DOCUMENT_OP_SCHEMA_VERSION}.json`),
+    path.join(
+      import.meta.dir,
+      "__fixtures__",
+      `batches-v${DOCUMENT_OP_SCHEMA_VERSION}.json`,
+    ),
   ).json();
-  expect(JSON.parse(JSON.stringify([...envelopeFixtures, sequencedFixture]))).toEqual(pinned);
-  const kinds = new Set(envelopeFixtures.flatMap(({ ops }) => ops.map(({ type }) => type)));
+  expect(
+    JSON.parse(JSON.stringify([...envelopeFixtures, sequencedFixture])),
+  ).toEqual(pinned);
+  const kinds = new Set(
+    envelopeFixtures.flatMap(({ ops }) => ops.map(({ type }) => type)),
+  );
   expect([...kinds].toSorted()).toEqual([...BATCH_WIRE_OP_TYPES].toSorted());
   for (const batch of envelopeFixtures) {
     const decoded = parseDocumentBatch(JSON.stringify(batch));
@@ -53,8 +72,12 @@ test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", 
     expect(decoded.value).toStrictEqual(batch);
     expect(JSON.stringify(decoded.value)).toBe(JSON.stringify(batch));
   }
-  expect(JSON.parse(JSON.stringify(sequencedFixture))).toStrictEqual(sequencedFixture);
-  expect(validateSequencedBatch(JSON.parse(JSON.stringify(sequencedFixture))).isOk()).toBe(true);
+  expect(JSON.parse(JSON.stringify(sequencedFixture))).toStrictEqual(
+    sequencedFixture,
+  );
+  expect(
+    validateSequencedBatch(JSON.parse(JSON.stringify(sequencedFixture))).isOk(),
+  ).toBe(true);
   expect(validateSequencedBatch(fixture).isErr()).toBe(true);
   expect(
     validateSequencedBatch({
@@ -64,11 +87,23 @@ test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", 
       ),
     }).isErr(),
   ).toBe(true);
-  expect(validateSequencedBatch({ ...sequencedFixture, effects: [] }).isErr()).toBe(true);
+  expect(
+    validateSequencedBatch({ ...sequencedFixture, effects: [] }).isErr(),
+  ).toBe(true);
 });
 
 test("unknown envelopes refuse invalid identities, revisions, schemas and keys", () => {
-  for (const schema of [1, 2, 3, 4, 5, 6, 7, 8, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    DOCUMENT_OP_SCHEMA_VERSION + 1,
+  ]) {
     const refused = validateDocumentBatch({ ...fixture, schema });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
@@ -103,7 +138,9 @@ test("surplus identity pools retain their JSON and apply like consumed-only pool
                 {
                   type: "paragraph",
                   paraId: "00000001",
-                  content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "abc" }] },
+                  ],
                 },
               ],
             },
@@ -124,7 +161,12 @@ test("surplus identity pools retain their JSON and apply like consumed-only pool
                         {
                           type: "insertion",
                           info: { id: 5, author: "Editor" },
-                          content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
+                          content: [
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: "abc" }],
+                            },
+                          ],
                         },
                       ],
                     },
@@ -144,8 +186,14 @@ test("surplus identity pools retain their JSON and apply like consumed-only pool
       const supplied = {
         ...compact,
         newIds: {
-          revision: [43, ...Array.from({ length: revisionCount }, (_, index) => index + 100)],
-          control: [9, ...Array.from({ length: controlCount }, (_, index) => index + 100)],
+          revision: [
+            43,
+            ...Array.from({ length: revisionCount }, (_, index) => index + 100),
+          ],
+          control: [
+            9,
+            ...Array.from({ length: controlCount }, (_, index) => index + 100),
+          ],
         },
       };
       const batch = withOp(supplied);
@@ -156,7 +204,8 @@ test("surplus identity pools retain their JSON and apply like consumed-only pool
         const old = applyDocumentOps(document, decoded.value.ops);
         const first = document.package.document.content.at(0);
         const newIds =
-          first?.type === "paragraph" && first.content.at(0)?.type === "inlineSdt"
+          first?.type === "paragraph" &&
+          first.content.at(0)?.type === "inlineSdt"
             ? compact.newIds
             : {};
         const trimmed = applyDocumentOps(document, [{ ...compact, newIds }]);
@@ -168,7 +217,9 @@ test("surplus identity pools retain their JSON and apply like consumed-only pool
         expect(undone.value.document).toStrictEqual(document);
       }
     }),
-    { id: "surplus identity pools retain their JSON and apply like consumed-only pools" },
+    {
+      id: "surplus identity pools retain their JSON and apply like consumed-only pools",
+    },
   );
 });
 
@@ -192,19 +243,27 @@ test("empty and omitted identity pools decode without a schema change", () => {
     expect(decoded.value).toStrictEqual(batch);
   }
   for (const schema of [1, 2, 3, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
-    const decoded = parseDocumentBatch(JSON.stringify({ ...withOp(op), schema }));
+    const decoded = parseDocumentBatch(
+      JSON.stringify({ ...withOp(op), schema }),
+    );
     expect(decoded.isErr()).toBe(true);
     if (decoded.isErr())
-      expect(decoded.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA);
+      expect(decoded.error.reason).toBe(
+        BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA,
+      );
   }
 });
 
 test("each supported operation validates every supplied field and nested payload", () => {
   for (const op of fixture.ops) {
     expect(validateDocumentBatch(withOp(op)).isOk()).toBe(true);
-    expect(validateDocumentBatch(withOp({ ...op, extra: true })).isErr()).toBe(true);
+    expect(validateDocumentBatch(withOp({ ...op, extra: true })).isErr()).toBe(
+      true,
+    );
     for (const key of Object.keys(op)) {
-      expect(validateDocumentBatch(withOp({ ...op, [key]: 12345 })).isErr()).toBe(true);
+      expect(
+        validateDocumentBatch(withOp({ ...op, [key]: 12345 })).isErr(),
+      ).toBe(true);
     }
   }
   const malformed = [
@@ -222,7 +281,12 @@ test("each supported operation validates every supplied field and nested payload
     },
     {
       type: "insertText",
-      at: { story: "main", blockId: "00000001", offset: 0, zeroWidthBefore: -1 },
+      at: {
+        story: "main",
+        blockId: "00000001",
+        offset: 0,
+        zeroWidthBefore: -1,
+      },
       text: "A",
       runProps: "inherit",
     },
@@ -256,7 +320,8 @@ test("each supported operation validates every supplied field and nested payload
     },
     { type: "unknown" },
   ];
-  for (const op of malformed) expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
+  for (const op of malformed)
+    expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
 });
 
 test("wire validation refuses non-JSON data without executing getters", () => {
@@ -293,9 +358,14 @@ test("wire validation refuses non-JSON data without executing getters", () => {
 });
 
 test("wire byte limit counts UTF-8 bytes and parser input", () => {
-  expect(parseDocumentBatch(" ".repeat(MAX_BATCH_WIRE_BYTES + 1)).isErr()).toBe(true);
+  expect(parseDocumentBatch(" ".repeat(MAX_BATCH_WIRE_BYTES + 1)).isErr()).toBe(
+    true,
+  );
   expect(
-    validateDocumentBatch({ ...fixture, actor: "😀".repeat(MAX_BATCH_WIRE_BYTES / 3) }).isErr(),
+    validateDocumentBatch({
+      ...fixture,
+      actor: "😀".repeat(MAX_BATCH_WIRE_BYTES / 3),
+    }).isErr(),
   ).toBe(true);
 });
 
@@ -307,13 +377,19 @@ test("actual text inverses normalize absent optional fields and remain decodable
           {
             type: "paragraph",
             paraId: "00000001",
-            content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "abc" }] },
+            ],
           },
         ],
       },
     },
   };
-  const at = (offset: number) => ({ story: OP_STORIES.MAIN, blockId: "00000001", offset });
+  const at = (offset: number) => ({
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    offset,
+  });
   const operations = [
     { type: "insertText", at: at(1), text: "X", runProps: "inherit" },
     { type: "deleteRange", from: at(0), to: at(2) },
@@ -321,10 +397,16 @@ test("actual text inverses normalize absent optional fields and remain decodable
   for (const op of operations) {
     const applied = applyDocumentOps(document, [op]);
     if (applied.isErr()) throw applied.error;
-    const inverseBatch = validateDocumentBatch({ ...fixture, ops: applied.value.inverse });
+    const inverseBatch = validateDocumentBatch({
+      ...fixture,
+      ops: applied.value.inverse,
+    });
     expect(inverseBatch.isOk()).toBe(true);
     if (inverseBatch.isErr()) throw inverseBatch.error;
-    const undone = applyDocumentOps(applied.value.document, inverseBatch.value.ops);
+    const undone = applyDocumentOps(
+      applied.value.document,
+      inverseBatch.value.ops,
+    );
     if (undone.isErr()) throw undone.error;
     expect(undone.value.document).toEqual(document);
   }
@@ -373,7 +455,8 @@ test("sequencing refuses unsupported property-review and section-boundary payloa
       sectionView: { expected: [], restore: [] },
     },
   ] as const satisfies readonly DocumentOp[];
-  for (const op of operations) expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
+  for (const op of operations)
+    expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
 });
 
 test("older batch schemas and persisted batches are refused structurally", async () => {
@@ -383,18 +466,23 @@ test("older batch schemas and persisted batches are refused structurally", async
     const result = validateDocumentBatch(source);
     expect(result.isErr()).toBe(true);
     if (result.isErr())
-      expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA);
+      expect(result.error.reason).toBe(
+        BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA,
+      );
     expect(source).toStrictEqual(snapshot);
   }
   const batches: unknown = await Bun.file(
     path.join(import.meta.dir, "__fixtures__", "batches-v5.json"),
   ).json();
-  if (!Array.isArray(batches)) throw new Error("Historical batch fixture must be an array.");
+  if (!Array.isArray(batches))
+    throw new Error("Historical batch fixture must be an array.");
   for (const source of batches) {
     const result = validateDocumentBatch(source);
     expect(result.isErr()).toBe(true);
     if (result.isErr())
-      expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA);
+      expect(result.error.reason).toBe(
+        BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA,
+      );
   }
 });
 
@@ -410,10 +498,16 @@ test("every table family refuses explicitly and mixed text/table batches apply n
       const before = structuredClone(batch);
       const result = validateDocumentBatch(batch);
       if (result.isOk())
-        throw new Error(`Table operation ${op.type} must require exclusive editing.`);
-      expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT);
+        throw new Error(
+          `Table operation ${op.type} must require exclusive editing.`,
+        );
+      expect(result.error.reason).toBe(
+        BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
+      );
       expect(batch).toStrictEqual(before);
     }
   }
-  expect([...exercised].toSorted()).toEqual(Object.keys(TABLE_EXCLUSIVE_OP_TYPES).toSorted());
+  expect([...exercised].toSorted()).toEqual(
+    Object.keys(TABLE_EXCLUSIVE_OP_TYPES).toSorted(),
+  );
 });

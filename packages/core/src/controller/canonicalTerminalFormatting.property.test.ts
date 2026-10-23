@@ -1,23 +1,34 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
+
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   OP_STORIES,
   paragraphVisibleText,
-  type DocumentOp,
 } from "@stll/docx-core/ops";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { schema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
-import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 test("canonical tracked terminal deletion preserves the preceding formatting request", async () => {
   await assertProperty(
     fc.asyncProperty(
-      fc.array(fc.constantFrom("Launch 🚀", "Tail", "東京", "é"), { minLength: 2, maxLength: 5 }),
+      fc.array(fc.constantFrom("Launch 🚀", "Tail", "東京", "é"), {
+        minLength: 2,
+        maxLength: 5,
+      }),
       fc.constantFrom("start", "end", "center"),
       async (texts, alignment) => {
         const document = createEmptyDocument({ initialText: "" });
@@ -28,7 +39,11 @@ test("canonical tracked terminal deletion preserves the preceding formatting req
         }));
         const targetId = (texts.length - 1).toString(16).padStart(8, "0");
         const terminalId = texts.length.toString(16).padStart(8, "0");
-        const revision = { id: 10, author: "Reviewer", date: "2026-02-03T04:05:06Z" };
+        const revision = {
+          id: 10,
+          author: "Reviewer",
+          date: "2026-02-03T04:05:06Z",
+        };
         const ops = [
           {
             type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
@@ -71,7 +86,9 @@ test("canonical tracked terminal deletion preserves the preceding formatting req
           ),
         ).toEqual(texts.slice(0, -1));
         const survivor = accepted.at(-1);
-        expect(survivor?.type === "paragraph" && survivor.formatting?.alignment).toBe(alignment);
+        expect(
+          survivor?.type === "paragraph" && survivor.formatting?.alignment,
+        ).toBe(alignment);
         state = publishCanonicalProjection({
           state,
           session,

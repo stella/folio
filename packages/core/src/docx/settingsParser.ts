@@ -9,8 +9,9 @@
  * See ECMA-376 §17.15 for the full settings part.
  */
 
-import type { DocumentSettings } from "../types/document";
 import { DEFAULT_TAB_STOP_TWIPS } from "@stll/docx-core/model";
+
+import type { DocumentSettings } from "../types/document";
 import { parseEndnoteProperties } from "./notePropertiesParser";
 import {
   findChild,
@@ -60,7 +61,11 @@ export function parseSettings(xml: string | null): DocumentSettings {
   // Absent and an explicit off are kept apart, because the serializer writes
   // the off back and a settings part that stated one must keep stating it.
   const wordprocessingFlag = (localName: string): boolean | undefined => {
-    const element = findChildByNamespaceUri(root, WORDPROCESSINGML_NAMESPACE_URIS, localName);
+    const element = findChildByNamespaceUri(
+      root,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      localName,
+    );
     return element === null ? undefined : parseBooleanElement(element);
   };
   // `w:evenAndOddHeaders` lives in settings.xml, not sectPr.
@@ -129,7 +134,10 @@ export function parseSettings(xml: string | null): DocumentSettings {
   const splitPageBreakAndParagraphMark = compat
     ? findChild(compat, "w", "splitPgBreakAndParaMark")
     : null;
-  if (splitPageBreakAndParagraphMark && parseBooleanElement(splitPageBreakAndParagraphMark)) {
+  if (
+    splitPageBreakAndParagraphMark &&
+    parseBooleanElement(splitPageBreakAndParagraphMark)
+  ) {
     settings.splitPageBreakAndParagraphMark = true;
   }
   const wordprocessingCompat = root
@@ -152,17 +160,28 @@ export function parseSettings(xml: string | null): DocumentSettings {
         "doNotUseIndentAsNumberingTabStop",
       )
     : null;
-  if (doNotUseIndentAsNumberingTabStop && parseBooleanElement(doNotUseIndentAsNumberingTabStop)) {
+  if (
+    doNotUseIndentAsNumberingTabStop &&
+    parseBooleanElement(doNotUseIndentAsNumberingTabStop)
+  ) {
     settings.doNotUseIndentAsNumberingTabStop = true;
   }
-  const applyBreakingRules = compat ? findChild(compat, "w", "applyBreakingRules") : null;
+  const applyBreakingRules = compat
+    ? findChild(compat, "w", "applyBreakingRules")
+    : null;
   const useLegacyEthiopicAmharicRules =
     applyBreakingRules !== null && parseBooleanElement(applyBreakingRules);
-  if (noLineBreaksBefore || noLineBreaksAfter || useLegacyEthiopicAmharicRules) {
+  if (
+    noLineBreaksBefore ||
+    noLineBreaksAfter ||
+    useLegacyEthiopicAmharicRules
+  ) {
     settings.lineBreakRules = {
       ...(noLineBreaksBefore ? { noLineBreaksBefore } : {}),
       ...(noLineBreaksAfter ? { noLineBreaksAfter } : {}),
-      ...(useLegacyEthiopicAmharicRules ? { useLegacyEthiopicAmharicRules: true } : {}),
+      ...(useLegacyEthiopicAmharicRules
+        ? { useLegacyEthiopicAmharicRules: true }
+        : {}),
     };
   }
 
@@ -196,7 +215,10 @@ function parseCompatibilityMode(compat: XmlElement | null): number | undefined {
 
 type OnOffSettingName = "autoHyphenation" | "doNotHyphenateCaps";
 
-function parseOnOffSetting(root: XmlElement | null, name: OnOffSettingName): boolean | undefined {
+function parseOnOffSetting(
+  root: XmlElement | null,
+  name: OnOffSettingName,
+): boolean | undefined {
   if (!root) {
     return undefined;
   }
@@ -239,7 +261,9 @@ function parseKinsokuOverride(
   return {
     // Code-point safe truncation: slicing the raw string could split a
     // surrogate pair in half.
-    characters: Array.from(characters).slice(0, MAX_KINSOKU_CHARACTERS_LENGTH).join(""),
+    characters: Array.from(characters)
+      .slice(0, MAX_KINSOKU_CHARACTERS_LENGTH)
+      .join(""),
     ...(language ? { language } : {}),
   };
 }
@@ -257,7 +281,11 @@ function parseDefaultTabStop(root: XmlElement | null): number {
     return DEFAULT_TAB_STOP_TWIPS;
   }
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < MIN_TAB_STOP_TWIPS || parsed > MAX_TAB_STOP_TWIPS) {
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < MIN_TAB_STOP_TWIPS ||
+    parsed > MAX_TAB_STOP_TWIPS
+  ) {
     return DEFAULT_TAB_STOP_TWIPS;
   }
   return parsed;

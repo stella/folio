@@ -1,4 +1,4 @@
-import { base64ToBytes, encodeUtf8 } from "../../utils/textEncoding";
+import { Result } from "better-result";
 /**
  * Images: the source table, and the primitives an image draws.
  *
@@ -10,11 +10,10 @@ import { base64ToBytes, encodeUtf8 } from "../../utils/textEncoding";
  * is worse than a named one.
  */
 
-import { Result } from "better-result";
-
 import type { ImageBlock, ImageFragment } from "../../layout-engine/types";
 import { parseRotationDegrees } from "../../utils/rotationBoundingBox";
 import { sanitizeImageSrc } from "../../utils/sanitizeImageSrc";
+import { base64ToBytes, encodeUtf8 } from "../../utils/textEncoding";
 import type {
   DisplayImagePrimitive,
   DisplayImageRef,
@@ -59,7 +58,8 @@ const readUint16BE = (bytes: Uint8Array, offset: number): number =>
   (bytes[offset]! << 8) | bytes[offset + 1]!;
 
 const startsWith = (bytes: Uint8Array, signature: readonly number[]): boolean =>
-  bytes.length >= signature.length && signature.every((byte, index) => bytes[index] === byte);
+  bytes.length >= signature.length &&
+  signature.every((byte, index) => bytes[index] === byte);
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 const JPEG_SIGNATURE = [0xff, 0xd8, 0xff] as const;
@@ -120,13 +120,22 @@ const sniffOtherFormat = (bytes: Uint8Array): string | undefined => {
   if (startsWith(bytes, [0x42, 0x4d])) {
     return "BMP";
   }
-  if (startsWith(bytes, [0x49, 0x49, 0x2a, 0x00]) || startsWith(bytes, [0x4d, 0x4d, 0x00, 0x2a])) {
+  if (
+    startsWith(bytes, [0x49, 0x49, 0x2a, 0x00]) ||
+    startsWith(bytes, [0x4d, 0x4d, 0x00, 0x2a])
+  ) {
     return "TIFF";
   }
-  if (startsWith(bytes, [0xd7, 0xcd, 0xc6, 0x9a]) || startsWith(bytes, [0x01, 0x00, 0x00, 0x00])) {
+  if (
+    startsWith(bytes, [0xd7, 0xcd, 0xc6, 0x9a]) ||
+    startsWith(bytes, [0x01, 0x00, 0x00, 0x00])
+  ) {
     return "WMF/EMF";
   }
-  if (startsWith(bytes, [0x3c, 0x3f, 0x78, 0x6d]) || startsWith(bytes, [0x3c, 0x73, 0x76, 0x67])) {
+  if (
+    startsWith(bytes, [0x3c, 0x3f, 0x78, 0x6d]) ||
+    startsWith(bytes, [0x3c, 0x73, 0x76, 0x67])
+  ) {
     return "SVG";
   }
   return undefined;
@@ -141,7 +150,10 @@ const decodeImageBytes = (bytes: Uint8Array): DecodedImage | DecodeFailure => {
   }
   const other = sniffOtherFormat(bytes);
   return {
-    reason: other === undefined ? "unrecognised image bytes" : `${other} is not PNG or JPEG`,
+    reason:
+      other === undefined
+        ? "unrecognised image bytes"
+        : `${other} is not PNG or JPEG`,
   };
 };
 
@@ -175,7 +187,9 @@ export class ImageTable {
     }
     const match = DATA_URL_PATTERN.exec(safeSrc);
     if (!match) {
-      return fail("image bytes are not inline (blob: URLs need a fetch the builder cannot do)");
+      return fail(
+        "image bytes are not inline (blob: URLs need a fetch the builder cannot do)",
+      );
     }
     // Generated group previews are percent-encoded SVG. Keeping their source
     // bytes lets the DOM display-list backend paint the same vector image as
@@ -188,8 +202,12 @@ export class ImageTable {
       if (!decoded.value.includes('data-folio-preview="wpGroup"')) {
         return fail("SVG is not a supported generated group preview");
       }
-      const width = /<svg\b[^>]*\bwidth="([0-9.]+)"/u.exec(decoded.value)?.at(1);
-      const height = /<svg\b[^>]*\bheight="([0-9.]+)"/u.exec(decoded.value)?.at(1);
+      const width = /<svg\b[^>]*\bwidth="([0-9.]+)"/u
+        .exec(decoded.value)
+        ?.at(1);
+      const height = /<svg\b[^>]*\bheight="([0-9.]+)"/u
+        .exec(decoded.value)
+        ?.at(1);
       const pixelWidth = width === undefined ? 0 : Number(width);
       const pixelHeight = height === undefined ? 0 : Number(height);
       if (!(pixelWidth > 0 && pixelHeight > 0)) {
@@ -207,7 +225,9 @@ export class ImageTable {
     }
     // SAFETY: groups 2 and 3 exist whenever the pattern matched.
     if (match[2] === undefined) {
-      return fail("only base64 data: URLs and SVG previews carry decodable bytes");
+      return fail(
+        "only base64 data: URLs and SVG previews carry decodable bytes",
+      );
     }
     const bytes = decodeBase64(match[3]!);
     if (bytes === undefined) {
@@ -280,7 +300,9 @@ const withOpacity = (
   children: readonly DisplayPrimitive[],
   opacity: number,
 ): readonly DisplayPrimitive[] =>
-  opacity === 1 || children.length === 0 ? children : [{ kind: "opacityGroup", opacity, children }];
+  opacity === 1 || children.length === 0
+    ? children
+    : [{ kind: "opacityGroup", opacity, children }];
 
 /** The bitmap one picture draws, or nothing, with the reason already reported. */
 const paintBitmap = ({
@@ -291,11 +313,16 @@ const paintBitmap = ({
 }: PaintImageOptions): readonly DisplayPrimitive[] => {
   const ref = context.images.intern(source.src);
   if (ref === undefined) {
-    const reason = context.images.failureFor(source.src) ?? "image could not be decoded";
+    const reason =
+      context.images.failureFor(source.src) ?? "image could not be decoded";
     const construct = reason.includes("not PNG or JPEG")
       ? UNSUPPORTED_CONSTRUCT.imageFormat
       : UNSUPPORTED_CONSTRUCT.imageSource;
-    context.unsupported.report(construct, context.pageIndex, `${label}: ${reason}`);
+    context.unsupported.report(
+      construct,
+      context.pageIndex,
+      `${label}: ${reason}`,
+    );
     return [];
   }
   const crop = cropOf(source);

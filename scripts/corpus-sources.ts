@@ -19,16 +19,16 @@ import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
-  CorpusManifestError,
+  corpusLockDigest,
   type CorpusLockEntry,
   type CorpusLockSource,
   type CorpusManifest,
+  CorpusManifestError,
   type CorpusSource,
   type CorpusTier,
-  LOCK_PATH,
-  corpusLockDigest,
   loadCorpusLock,
   loadCorpusManifest,
+  LOCK_PATH,
   sha256Bytes,
   sourceCheckoutPath,
   writeJsonFile,
@@ -78,8 +78,14 @@ const fetchSource = async (source: CorpusSource): Promise<void> => {
       message: `Cached checkout for ${source.id} points at ${origin}, not ${source.repository}`,
     });
   }
-  await runGit(["sparse-checkout", "set", "--no-cone", ...source.paths], checkout);
-  await runGit(["fetch", "--depth=1", "--filter=blob:none", "origin", source.commit], checkout);
+  await runGit(
+    ["sparse-checkout", "set", "--no-cone", ...source.paths],
+    checkout,
+  );
+  await runGit(
+    ["fetch", "--depth=1", "--filter=blob:none", "origin", source.commit],
+    checkout,
+  );
   await runGit(["checkout", "--detach", "--force", source.commit], checkout);
   await verifySourceCheckout(source);
 };
@@ -112,7 +118,9 @@ const mapWithConcurrency = async <T, R>(
       results[index] = await run(items[index] as T);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
   return results;
 };
 
@@ -130,7 +138,10 @@ const collectSourceFiles = async (
 ): Promise<SourceFiles> => {
   const checkout = sourceCheckoutPath(source.id);
   const relativePaths: string[] = [];
-  for await (const relative of new Bun.Glob("**/*.docx").scan({ cwd: checkout, onlyFiles: true })) {
+  for await (const relative of new Bun.Glob("**/*.docx").scan({
+    cwd: checkout,
+    onlyFiles: true,
+  })) {
     relativePaths.push(relative);
   }
   relativePaths.sort();
@@ -139,14 +150,26 @@ const collectSourceFiles = async (
   let oversized = 0;
   for (const relative of relativePaths) {
     // oxlint-disable-next-line no-await-in-loop -- hashing is bounded by file size, and a whole source is one bounded set
-    const bytes = new Uint8Array(await Bun.file(path.join(checkout, relative)).arrayBuffer());
+    const bytes = new Uint8Array(
+      await Bun.file(path.join(checkout, relative)).arrayBuffer(),
+    );
     if (bytes.byteLength > maxFileBytes) {
       oversized += 1;
       continue;
     }
-    files.push({ path: relative, sha256: sha256Bytes(bytes), bytes: bytes.byteLength });
+    files.push({
+      path: relative,
+      sha256: sha256Bytes(bytes),
+      bytes: bytes.byteLength,
+    });
   }
-  return { id: source.id, commit: source.commit, tier: source.tier, files, oversized };
+  return {
+    id: source.id,
+    commit: source.commit,
+    tier: source.tier,
+    files,
+    oversized,
+  };
 };
 
 type BuiltLock = {
@@ -161,9 +184,14 @@ type BuiltLock = {
   dropped: number;
 };
 
-const buildLock = async (manifest: CorpusManifest, digest: string): Promise<BuiltLock> => {
-  const collected = await mapWithConcurrency(manifest.sources, FETCH_CONCURRENCY, (source) =>
-    collectSourceFiles(source, manifest.maxFileBytes),
+const buildLock = async (
+  manifest: CorpusManifest,
+  digest: string,
+): Promise<BuiltLock> => {
+  const collected = await mapWithConcurrency(
+    manifest.sources,
+    FETCH_CONCURRENCY,
+    (source) => collectSourceFiles(source, manifest.maxFileBytes),
   );
 
   // The file cap is applied by ascending tier, then in manifest order, so the
@@ -172,7 +200,9 @@ const buildLock = async (manifest: CorpusManifest, digest: string): Promise<Buil
   let remaining = manifest.fileLimit;
   let dropped = 0;
   const keptById = new Map<string, CorpusLockEntry[]>();
-  for (const { id, files } of [...collected].sort((left, right) => left.tier - right.tier)) {
+  for (const { id, files } of [...collected].sort(
+    (left, right) => left.tier - right.tier,
+  )) {
     const kept = files.slice(0, Math.max(remaining, 0));
     dropped += files.length - kept.length;
     remaining -= kept.length;
@@ -192,13 +222,22 @@ const buildLock = async (manifest: CorpusManifest, digest: string): Promise<Buil
   }
 
   return {
-    lock: { schemaVersion: 1, manifestDigest: digest, fileCount, totalBytes, sources },
+    lock: {
+      schemaVersion: 1,
+      manifestDigest: digest,
+      fileCount,
+      totalBytes,
+      sources,
+    },
     oversized: collected.reduce((total, source) => total + source.oversized, 0),
     dropped,
   };
 };
 
-const writeLock = async (manifest: CorpusManifest, digest: string): Promise<void> => {
+const writeLock = async (
+  manifest: CorpusManifest,
+  digest: string,
+): Promise<void> => {
   const { lock, oversized, dropped } = await buildLock(manifest, digest);
   await writeJsonFile(LOCK_PATH, lock);
   const megabytes = (lock.totalBytes / 1_048_576).toFixed(1);
@@ -212,7 +251,10 @@ const writeLock = async (manifest: CorpusManifest, digest: string): Promise<void
 type CheckCounts = { verified: number; missing: number; mismatched: string[] };
 
 const checkLock = async (): Promise<CheckCounts> => {
-  const [{ manifest, digest }, lock] = await Promise.all([loadCorpusManifest(), loadCorpusLock()]);
+  const [{ manifest, digest }, lock] = await Promise.all([
+    loadCorpusManifest(),
+    loadCorpusLock(),
+  ]);
   if (lock.manifestDigest !== digest) {
     throw new CorpusManifestError({
       message:
@@ -248,7 +290,9 @@ const checkLock = async (): Promise<CheckCounts> => {
       // oxlint-disable-next-line no-await-in-loop -- see above
       const bytes = new Uint8Array(await Bun.file(absolute).arrayBuffer());
       if (sha256Bytes(bytes) !== file.sha256) {
-        counts.mismatched.push(`${source.id}/${file.path}: content differs from the lock`);
+        counts.mismatched.push(
+          `${source.id}/${file.path}: content differs from the lock`,
+        );
         continue;
       }
       counts.verified += 1;
@@ -275,7 +319,9 @@ const main = async (args: string[]): Promise<void> => {
           .join("\n")}`,
       });
     }
-    process.stdout.write(`Corpus cache: ${verified} verified, ${missing} not cached\n`);
+    process.stdout.write(
+      `Corpus cache: ${verified} verified, ${missing} not cached\n`,
+    );
     return;
   }
 
@@ -290,7 +336,9 @@ const main = async (args: string[]): Promise<void> => {
 
 if (import.meta.main) {
   main(process.argv.slice(2)).catch((cause: unknown) => {
-    process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+    process.stderr.write(
+      `${cause instanceof Error ? cause.message : String(cause)}\n`,
+    );
     process.exitCode = 1;
   });
 }

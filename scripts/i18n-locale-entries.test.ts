@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,7 +24,10 @@ const runtimeSpecifiers = (file: string) => {
   );
   const specifiers: string[] = [];
   const visit = (node: ts.Node) => {
-    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
       const clause = node.importClause;
       const bindings = clause?.namedBindings;
       const onlyTypes =
@@ -52,12 +55,14 @@ const runtimeSpecifiers = (file: string) => {
     if (
       ts.isCallExpression(node) &&
       (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+        (ts.isIdentifier(node.expression) &&
+          node.expression.text === "require"))
     ) {
       const argument = node.arguments.at(0);
       // A computed dependency defeats this source graph's isolation proof.
       expect(argument && ts.isStringLiteral(argument)).toBe(true);
-      if (argument && ts.isStringLiteral(argument)) specifiers.push(argument.text);
+      if (argument && ts.isStringLiteral(argument))
+        specifiers.push(argument.text);
     }
     ts.forEachChild(node, visit);
   };
@@ -74,17 +79,27 @@ const runtimeGraph = (entry: string) => {
     visited.add(file);
     for (const specifier of runtimeSpecifiers(file)) {
       let base: string;
-      if (specifier.startsWith(".")) base = path.resolve(path.dirname(file), specifier);
+      if (specifier.startsWith("."))
+        base = path.resolve(path.dirname(file), specifier);
       else if (specifier.startsWith("@stll/folio-core/")) {
-        base = path.join(root, "packages/core/src", specifier.slice("@stll/folio-core/".length));
-        if (path.dirname(base) === messagesDirectory("core") && path.basename(base) !== "locales")
+        base = path.join(
+          root,
+          "packages/core/src",
+          specifier.slice("@stll/folio-core/".length),
+        );
+        if (
+          path.dirname(base) === messagesDirectory("core") &&
+          path.basename(base) !== "locales"
+        )
           base += ".gen";
       } else {
         // These data-only entry points have no runtime dependency on external packages.
         expect(specifier).toBe("");
         continue;
       }
-      const resolved = [base, `${base}.ts`, base.replace(/\.js$/u, ".ts")].find(existsSync);
+      const resolved = [base, `${base}.ts`, base.replace(/\.js$/u, ".ts")].find(
+        existsSync,
+      );
       expect(resolved).toBeDefined();
       if (resolved) pending.push(resolved);
     }
@@ -103,7 +118,10 @@ test("generated entry sets exactly cover the shipped catalogs and lightweight lo
   for (const packageName of packages) {
     const entries = readdirSync(messagesDirectory(packageName))
       .filter(
-        (file) => file.endsWith(".ts") && file !== "catalogs.gen.ts" && file !== "messages.gen.ts",
+        (file) =>
+          file.endsWith(".ts") &&
+          file !== "catalogs.gen.ts" &&
+          file !== "messages.gen.ts",
       )
       .map((file) => file.replace(/(?:\.gen)?\.ts$/u, ""))
       .sort();
@@ -114,18 +132,30 @@ test("generated entry sets exactly cover the shipped catalogs and lightweight lo
 for (const packageName of packages) {
   for (const locale of FOLIO_LOCALES) {
     test(`${packageName}/${locale} exports the existing catalog without other locales`, async () => {
-      const entry = path.join(messagesDirectory(packageName), localeFilename(packageName, locale));
+      const entry = path.join(
+        messagesDirectory(packageName),
+        localeFilename(packageName, locale),
+      );
       const module = await import(entry);
       expect(module.default).toBe(module.messages);
       expect(module.messages).toEqual(getFolioMessages(locale));
       expect(module.messages).toEqual(
-        JSON.parse(readFileSync(path.join(messagesDirectory("core"), `${locale}.json`), "utf8")),
+        JSON.parse(
+          readFileSync(
+            path.join(messagesDirectory("core"), `${locale}.json`),
+            "utf8",
+          ),
+        ),
       );
       for (const dependency of runtimeGraph(entry)) {
-        expect(dependency).not.toBe(path.join(root, "packages/core/src/i18n/messages.ts"));
+        expect(dependency).not.toBe(
+          path.join(root, "packages/core/src/i18n/messages.ts"),
+        );
         expect(path.basename(dependency)).not.toBe("catalogs.gen.ts");
         if (path.dirname(dependency) === messagesDirectory("core")) {
-          expect([`${locale}.gen.ts`, "locales.ts"]).toContain(path.basename(dependency));
+          expect([`${locale}.gen.ts`, "locales.ts"]).toContain(
+            path.basename(dependency),
+          );
         }
       }
     });
@@ -144,7 +174,8 @@ test("public export patterns resolve each generated entry", async () => {
     const manifest = await Bun.file(
       path.join(root, "packages", packageName, "package.json"),
     ).json();
-    const pattern = packageName === "core" ? "./i18n/messages/*" : "./messages/*";
+    const pattern =
+      packageName === "core" ? "./i18n/messages/*" : "./messages/*";
     if (packageName === "vue") {
       expect(manifest.exports[pattern]).toEqual({
         types: "./dist/i18n/messages/*.d.ts",
@@ -154,10 +185,14 @@ test("public export patterns resolve each generated entry", async () => {
       continue;
     }
     expect(manifest.exports[pattern]).toBe(
-      packageName === "core" ? "./src/i18n/messages/*.gen.ts" : "./src/i18n/messages/*.ts",
+      packageName === "core"
+        ? "./src/i18n/messages/*.gen.ts"
+        : "./src/i18n/messages/*.ts",
     );
     if (packageName === "core")
-      expect(manifest.exports["./i18n/messages/locales"]).toBe("./src/i18n/messages/locales.ts");
+      expect(manifest.exports["./i18n/messages/locales"]).toBe(
+        "./src/i18n/messages/locales.ts",
+      );
     for (const locale of [...FOLIO_LOCALES, "locales"]) {
       expect(
         existsSync(
@@ -176,8 +211,12 @@ test("public export patterns resolve each generated entry", async () => {
 });
 
 test("locale exports preserve the generated message-key type used by React", () => {
-  const manifest = JSON.parse(readFileSync(path.join(root, "packages/core/package.json"), "utf8"));
-  expect(manifest.exports["./i18n/messages/*.gen"]).toBe("./src/i18n/messages/*.gen.ts");
+  const manifest = JSON.parse(
+    readFileSync(path.join(root, "packages/core/package.json"), "utf8"),
+  );
+  expect(manifest.exports["./i18n/messages/*.gen"]).toBe(
+    "./src/i18n/messages/*.gen.ts",
+  );
   // Node resolves exports without Bun's workspace tsconfig path aliases.
   const result = Bun.spawnSync(
     [
@@ -189,11 +228,16 @@ test("locale exports preserve the generated message-key type used by React", () 
     { cwd: path.join(root, "packages/react"), stdout: "pipe", stderr: "pipe" },
   );
   expect(result.exitCode).toBe(0);
-  expect(result.stdout.toString()).toBe(path.join(messagesDirectory("core"), "messages.gen.ts"));
+  expect(result.stdout.toString()).toBe(
+    path.join(messagesDirectory("core"), "messages.gen.ts"),
+  );
 });
 
 test("build configurations include locale-derived entries and the discovery module", () => {
-  const coreConfig = readFileSync(path.join(root, "packages/core/tsdown.config.ts"), "utf8");
+  const coreConfig = readFileSync(
+    path.join(root, "packages/core/tsdown.config.ts"),
+    "utf8",
+  );
   expect(coreConfig).toContain('"src/**/*.ts"');
   expect(coreConfig).not.toMatch(/![^"\n]*i18n\/messages/u);
   for (const packageName of ["react", "vue"]) {
@@ -205,7 +249,9 @@ test("build configurations include locale-derived entries and the discovery modu
     );
     const imports = runtimeSpecifiers(configFile);
     expect(imports).toContain("@stll/folio-core/i18n/messages/locales");
-    expect(imports.some((specifier) => specifier.startsWith("../core/"))).toBe(false);
+    expect(imports.some((specifier) => specifier.startsWith("../core/"))).toBe(
+      false,
+    );
     const source = ts.createSourceFile(
       configFile,
       readFileSync(configFile, "utf8"),
@@ -215,7 +261,8 @@ test("build configurations include locale-derived entries and the discovery modu
     const prefix = packageName === "react" ? "i18n/messages" : "messages";
     const entrySpreads: string[] = [];
     const visit = (node: ts.Node) => {
-      if (ts.isSpreadAssignment(node)) entrySpreads.push(node.expression.getText(source));
+      if (ts.isSpreadAssignment(node))
+        entrySpreads.push(node.expression.getText(source));
       ts.forEachChild(node, visit);
     };
     visit(source);
@@ -229,13 +276,17 @@ test("build configurations include locale-derived entries and the discovery modu
       ),
     ).toBe(true);
     // The discovery entry may be explicitly declared or included in the mapped names.
-    const runtimeText = source.statements.map((statement) => statement.getText(source)).join("\n");
+    const runtimeText = source.statements
+      .map((statement) => statement.getText(source))
+      .join("\n");
     expect(runtimeText).toContain("locales");
   }
 });
 
 test("publish preparation preserves nested locale wildcard destinations", async () => {
-  const packageRoot = await mkdtemp(path.join(tmpdir(), "folio-locale-publish-"));
+  const packageRoot = await mkdtemp(
+    path.join(tmpdir(), "folio-locale-publish-"),
+  );
   try {
     await mkdir(path.join(packageRoot, "dist"));
     await writeFile(path.join(packageRoot, "dist/index.js"), "export {};\n");
@@ -247,15 +298,24 @@ test("publish preparation preserves nested locale wildcard destinations", async 
         JSON.stringify({
           name: "@stll/locale-fixture",
           version: "1.0.0",
-          exports: { ".": "./src/index.ts", [pattern]: `./src/i18n/messages/*${suffix}.ts` },
+          exports: {
+            ".": "./src/index.ts",
+            [pattern]: `./src/i18n/messages/*${suffix}.ts`,
+          },
         }),
       );
       const result = Bun.spawnSync(
-        [process.execPath, path.join(import.meta.dir, "prepare-publish.ts"), packageRoot],
+        [
+          process.execPath,
+          path.join(import.meta.dir, "prepare-publish.ts"),
+          packageRoot,
+        ],
         { stderr: "pipe", stdout: "pipe" },
       );
       expect(result.exitCode).toBe(0);
-      const manifest = await Bun.file(path.join(packageRoot, "package.json")).json();
+      const manifest = await Bun.file(
+        path.join(packageRoot, "package.json"),
+      ).json();
       expect(manifest.exports[pattern]).toEqual({
         types: `./dist/i18n/messages/*${suffix}.d.ts`,
         import: `./dist/i18n/messages/*${suffix}.js`,

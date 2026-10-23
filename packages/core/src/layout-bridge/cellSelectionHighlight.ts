@@ -37,7 +37,8 @@ export function applyCellSelectionHighlight(
   // tree — a footer CellSelection at pos 100 would otherwise also light up a
   // header cell at `data-pm-start="100"` (#671), and a body selection would
   // bleed into both.
-  const scopeClass = scope === "body" ? "layout-page-content" : `layout-page-${scope}`;
+  const scopeClass =
+    scope === "body" ? "layout-page-content" : `layout-page-${scope}`;
   const scopeSelector = `.${scopeClass} .layout-table-cell`;
 
   // Only clear highlights inside this scope so the body call doesn't wipe
@@ -53,7 +54,8 @@ export function applyCellSelectionHighlight(
   // SAFETY: prosemirror-tables' `CellSelection` cannot be identified with
   // `instanceof` across bundled copies, so duck-type its structural shape.
   const sel = state.selection as unknown as CellSelectionLike;
-  const isCellSel = "$anchorCell" in sel && typeof sel.forEachCell === "function";
+  const isCellSel =
+    "$anchorCell" in sel && typeof sel.forEachCell === "function";
   if (!isCellSel || !sel.forEachCell) return;
 
   const selectedRanges: Array<[number, number]> = [];

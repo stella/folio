@@ -9,7 +9,10 @@
 import { panic } from "better-result";
 
 import { getFolioToolDefinitions } from "@stll/folio-agents/tools";
-import { FOLIO_AGENT_TOOL_NAMES, type FolioAgentToolName } from "@stll/folio-agents/types";
+import {
+  FOLIO_AGENT_TOOL_NAMES,
+  type FolioAgentToolName,
+} from "@stll/folio-agents/types";
 
 import { withBatchOperations } from "./batch-operations";
 
@@ -21,7 +24,10 @@ export type JsonObjectSchema = {
 };
 
 /** A positional argument after `<file>` that sets one tool argument. */
-export type FolioPositionalSpec = { readonly name: string; readonly property: string };
+export type FolioPositionalSpec = {
+  readonly name: string;
+  readonly property: string;
+};
 
 /** One `folio <name>` command. */
 export type FolioCommandSpec = {
@@ -52,7 +58,10 @@ type FolioToolSpecBase = {
  * destination, writes a redline.
  */
 export type FolioFileToolSpec =
-  | (FolioToolSpecBase & { readonly type: "agentRead"; readonly agentTool: FolioAgentToolName })
+  | (FolioToolSpecBase & {
+      readonly type: "agentRead";
+      readonly agentTool: FolioAgentToolName;
+    })
   | (FolioToolSpecBase & {
       readonly type: "agentWrite";
       readonly agentTool: FolioAgentToolName;
@@ -98,7 +107,8 @@ const isJsonObjectSchema = (schema: unknown): schema is JsonObjectSchema =>
 
 const agentDefinition = (name: FolioAgentToolName) => {
   const definition =
-    agentDefinitions.get(name) ?? panic(`@stll/folio-agents has no tool named ${name}`);
+    agentDefinitions.get(name) ??
+    panic(`@stll/folio-agents has no tool named ${name}`);
   const schema = definition.inputSchema;
   if (!isJsonObjectSchema(schema)) {
     return panic(`@stll/folio-agents tool ${name} has no object input schema`);
@@ -122,7 +132,11 @@ const agentArgsSchema = (
   additionalProperties: false,
 });
 
-const agentRead = ({ agentTool, commands, extraProperties = {} }: AgentToolOptions) => {
+const agentRead = ({
+  agentTool,
+  commands,
+  extraProperties = {},
+}: AgentToolOptions) => {
   const { description, schema } = agentDefinition(agentTool);
   return {
     type: "agentRead",
@@ -167,7 +181,8 @@ const READ_DOCUMENT_PAGING_PROPERTIES = {
     type: "integer",
     minimum: 1,
     maximum: MAX_READ_BLOCKS,
-    description: "Blocks per page. The response carries `nextCursor` when more remain.",
+    description:
+      "Blocks per page. The response carries `nextCursor` when more remain.",
   },
   cursor: {
     type: "string",
@@ -190,7 +205,11 @@ const RESOLVE_CHANGES_TOOL = {
   argsSchema: {
     type: "object",
     properties: {
-      action: { type: "string", enum: RESOLVE_CHANGE_ACTIONS, description: "accept or reject." },
+      action: {
+        type: "string",
+        enum: RESOLVE_CHANGE_ACTIONS,
+        description: "accept or reject.",
+      },
       ids: {
         type: "array",
         items: { type: "string" },
@@ -231,7 +250,8 @@ const COMPARE_TOOL = {
       revisedPath: { type: "string", description: "The revised .docx." },
       revisedFileVersion: {
         type: "string",
-        description: "Refuse unless the revised file still has this SHA-256 fileVersion.",
+        description:
+          "Refuse unless the revised file still has this SHA-256 fileVersion.",
       },
     },
     required: ["revisedPath"],
@@ -249,20 +269,37 @@ const COMPARE_TOOL = {
 export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.readDocument,
-    commands: [{ name: "read", summary: "Print the document's blocks with ids and text hashes" }],
+    commands: [
+      {
+        name: "read",
+        summary: "Print the document's blocks with ids and text hashes",
+      },
+    ],
     extraProperties: READ_DOCUMENT_PAGING_PROPERTIES,
   }),
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.getDocumentOutline,
-    commands: [{ name: "outline", summary: "Print the heading outline and section handles" }],
+    commands: [
+      {
+        name: "outline",
+        summary: "Print the heading outline and section handles",
+      },
+    ],
   }),
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.readSection,
-    commands: [{ name: "section", summary: "Print one section's blocks by its outline handle" }],
+    commands: [
+      {
+        name: "section",
+        summary: "Print one section's blocks by its outline handle",
+      },
+    ],
   }),
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.listStories,
-    commands: [{ name: "stories", summary: "List header, footer, and note stories" }],
+    commands: [
+      { name: "stories", summary: "List header, footer, and note stories" },
+    ],
   }),
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.readStory,
@@ -270,7 +307,9 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   }),
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.findText,
-    commands: [{ name: "find", summary: "Find exact text and print range handles" }],
+    commands: [
+      { name: "find", summary: "Find exact text and print range handles" },
+    ],
   }),
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.readComments,
@@ -294,7 +333,12 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   agentWrite({
     agentTool: FOLIO_AGENT_TOOL_NAMES.addComment,
     editMode: "fixed",
-    commands: [{ name: "comment", summary: "Comment on a block, optionally quoting text in it" }],
+    commands: [
+      {
+        name: "comment",
+        summary: "Comment on a block, optionally quoting text in it",
+      },
+    ],
   }),
   agentWrite({
     agentTool: FOLIO_AGENT_TOOL_NAMES.replyComment,
@@ -304,7 +348,9 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   agentWrite({
     agentTool: FOLIO_AGENT_TOOL_NAMES.resolveComment,
     editMode: "fixed",
-    commands: [{ name: "resolve", summary: "Resolve or reopen a comment thread" }],
+    commands: [
+      { name: "resolve", summary: "Resolve or reopen a comment thread" },
+    ],
   }),
   RESOLVE_CHANGES_TOOL,
   COMPARE_TOOL,
@@ -312,9 +358,13 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
 
 const toolsByName = new Map(FOLIO_FILE_TOOLS.map((tool) => [tool.name, tool]));
 
-export const findFileTool = (name: string): FolioFileToolSpec | undefined => toolsByName.get(name);
+export const findFileTool = (name: string): FolioFileToolSpec | undefined =>
+  toolsByName.get(name);
 
-export type FolioResolvedCommand = { tool: FolioFileToolSpec; command: FolioCommandSpec };
+export type FolioResolvedCommand = {
+  tool: FolioFileToolSpec;
+  command: FolioCommandSpec;
+};
 
 const commandsByName = new Map<string, FolioResolvedCommand>();
 for (const tool of FOLIO_FILE_TOOLS) {
@@ -329,4 +379,6 @@ for (const tool of FOLIO_FILE_TOOLS) {
 export const findCommand = (name: string): FolioResolvedCommand | undefined =>
   commandsByName.get(name);
 
-export const listCommands = (): readonly FolioResolvedCommand[] => [...commandsByName.values()];
+export const listCommands = (): readonly FolioResolvedCommand[] => [
+  ...commandsByName.values(),
+];

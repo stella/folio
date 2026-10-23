@@ -1,6 +1,9 @@
 import { escapeXmlAttribute } from "./xmlEscape";
 
-export const attr = (name: string, value: string | number | boolean | undefined) =>
+export const attr = (
+  name: string,
+  value: string | number | boolean | undefined,
+) =>
   value === undefined ? "" : ` ${name}="${escapeXmlAttribute(String(value))}"`;
 
 /**
@@ -25,7 +28,10 @@ export const attr = (name: string, value: string | number | boolean | undefined)
  * *writes* is one spelling per polarity, because a package that writes three
  * makes every byte-level comparison argue about which one it is looking at.
  */
-export const serializeOnOffElement = (value: boolean | undefined, name: string): string => {
+export const serializeOnOffElement = (
+  value: boolean | undefined,
+  name: string,
+): string => {
   if (value === undefined) {
     return "";
   }

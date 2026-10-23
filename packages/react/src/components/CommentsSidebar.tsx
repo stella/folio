@@ -1,4 +1,3 @@
-import { sliceText } from "@stll/folio-core/utils/sliceText";
 /**
  * Comments Sidebar
  *
@@ -9,32 +8,40 @@ import { sliceText } from "@stll/folio-core/utils/sliceText";
  * Tracked changes are rendered purely inline (Word-style) and do not appear
  * in this sidebar.
  */
-
 import React, {
+  useCallback,
   useEffect,
   useEffectEvent,
-  useState,
-  useRef,
-  useCallback,
-  useMemo,
   useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 
 import { CheckIcon, MoreVerticalIcon } from "lucide-react";
 import { useLocale, useTranslations } from "use-intl";
 
-import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
 import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
+import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 import { commentAnchorSelector } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment } from "@stll/folio-core/types/content";
-import { closestHtmlElement, queryHtmlElement } from "@stll/folio-core/utils/domGuards";
+import {
+  closestHtmlElement,
+  queryHtmlElement,
+} from "@stll/folio-core/utils/domGuards";
+import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
+import { sliceText } from "@stll/folio-core/utils/sliceText";
+
 import { containedHandler } from "../utils/contained-handler";
 import { useDrawerFocus } from "./panelDrawer";
-import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 
 const renderCommentText = (comment: Comment) =>
   comment.content.map((paragraph, index) => (
-    <span key={index} data-find-comment-id={comment.id} data-find-comment-paragraph={index}>
+    <span
+      key={index}
+      data-find-comment-id={comment.id}
+      data-find-comment-paragraph={index}
+    >
       {getFindParagraphText(paragraph)}
     </span>
   ));
@@ -150,14 +157,19 @@ const DRAWER_SURFACE_STYLE: React.CSSProperties = {
   outline: "none",
 };
 
-const COLUMN_SURFACE_STYLE: React.CSSProperties = { backgroundColor: "transparent" };
+const COLUMN_SURFACE_STYLE: React.CSSProperties = {
+  backgroundColor: "transparent",
+};
 
 // Minimum gap between stacked cards to avoid overlap
 const MIN_CARD_GAP = 6;
 const DEFAULT_CARD_HEIGHT = 64;
 const DEFAULT_INPUT_HEIGHT = 104;
 
-function arePositionMapsEqual(a: Map<string, number>, b: Map<string, number>): boolean {
+function arePositionMapsEqual(
+  a: Map<string, number>,
+  b: Map<string, number>,
+): boolean {
   if (a.size !== b.size) {
     return false;
   }
@@ -220,19 +232,26 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState("");
   const [newCommentText, setNewCommentText] = useState("");
-  const expandedCard = activeCommentId === null ? null : `comment-${activeCommentId}`;
+  const expandedCard =
+    activeCommentId === null ? null : `comment-${activeCommentId}`;
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
-  const [{ positions: cardPositions, knownCards }, setCardGeometry] = useState(() => ({
-    positions: new Map<string, number>(),
-    knownCards: new Set<string>(),
-  }));
+  const [{ positions: cardPositions, knownCards }, setCardGeometry] = useState(
+    () => ({
+      positions: new Map<string, number>(),
+      knownCards: new Set<string>(),
+    }),
+  );
   const [measuredLeft, setMeasuredLeft] = useState<number | null>(null);
   const [initialPositionsDone, setInitialPositionsDone] = useState(false);
   const lastKnownCardPositionsRef = useRef<Map<string, number>>(new Map());
   const sidebarRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const isDrawer = surface === "drawer";
-  const [drawerBox, setDrawerBox] = useState<{ top: number; width: number; height: number }>({
+  const [drawerBox, setDrawerBox] = useState<{
+    top: number;
+    width: number;
+    height: number;
+  }>({
     top: 0,
     width: PANEL_METRICS.drawerWidth,
     height: 0,
@@ -248,7 +267,8 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     const sidebarEl = sidebarRef.current;
     const pageEl = scrollEl ? queryHtmlElement(scrollEl, ".layout-page") : null;
     const offsetParentRaw = sidebarEl?.offsetParent;
-    const offsetParent = offsetParentRaw instanceof HTMLElement ? offsetParentRaw : null;
+    const offsetParent =
+      offsetParentRaw instanceof HTMLElement ? offsetParentRaw : null;
 
     if (!scrollEl || !pageEl || !offsetParent) {
       setMeasuredLeft(null);
@@ -258,14 +278,22 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     const parentRect = offsetParent.getBoundingClientRect();
     // DOM rectangles include CSS zoom and transforms; style.left uses the
     // offset parent's unscaled CSS pixels. Keep every measured X in that space.
-    const parentScale = offsetParent.clientWidth ? parentRect.width / offsetParent.clientWidth : 1;
-    const parentX = (viewportX: number) => (viewportX - parentRect.left) / parentScale;
+    const parentScale = offsetParent.clientWidth
+      ? parentRect.width / offsetParent.clientWidth
+      : 1;
+    const parentX = (viewportX: number) =>
+      (viewportX - parentRect.left) / parentScale;
     if (isDrawer) {
       // Pinned to the end edge of the visible viewport, whatever the scroll,
       // and reaching up over the sticky ruler to the top of the scroll content.
       const scrollRect = scrollEl.getBoundingClientRect();
-      const top = -Math.round((parentRect.top - scrollRect.top) / parentScale + scrollEl.scrollTop);
-      const width = Math.min(PANEL_METRICS.drawerWidth, scrollEl.clientWidth - 16);
+      const top = -Math.round(
+        (parentRect.top - scrollRect.top) / parentScale + scrollEl.scrollTop,
+      );
+      const width = Math.min(
+        PANEL_METRICS.drawerWidth,
+        scrollEl.clientWidth - 16,
+      );
       const height = scrollEl.clientHeight;
       const scrollScale = scrollEl.offsetWidth
         ? scrollRect.width / scrollEl.offsetWidth
@@ -281,13 +309,20 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
     const pageRect = pageEl.getBoundingClientRect();
     const rawLeft = parentX(pageRect.right) + PANEL_METRICS.commentsGap;
-    const maxVisibleLeft = Math.max(8, offsetParent.clientWidth - SIDEBAR_WIDTH - 8);
+    const maxVisibleLeft = Math.max(
+      8,
+      offsetParent.clientWidth - SIDEBAR_WIDTH - 8,
+    );
     setMeasuredLeft(Math.max(8, Math.min(rawLeft, maxVisibleLeft)));
   }, [editorContainerRef, isDrawer]);
 
   const measureSidebarCommit = useEffectEvent(
     (
-      _layout: { pageWidth: number; isAddingComment: boolean; commentCount: number },
+      _layout: {
+        pageWidth: number;
+        isAddingComment: boolean;
+        commentCount: number;
+      },
       measure: () => void,
     ) => measure(),
   );
@@ -350,7 +385,8 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     return map;
   }, [comments]);
 
-  const getReplies = (commentId: number) => repliesByParent.get(commentId) ?? [];
+  const getReplies = (commentId: number) =>
+    repliesByParent.get(commentId) ?? [];
 
   // Find Y positions for comment/change anchors.
   // Prefer rendered anchors; layout positions cover virtualized pages.
@@ -406,12 +442,14 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
         positions.push({
           id: cardId,
           targetY: lastKnownY,
-          height: cardRefs.current.get(cardId)?.offsetHeight || DEFAULT_CARD_HEIGHT,
+          height:
+            cardRefs.current.get(cardId)?.offsetHeight || DEFAULT_CARD_HEIGHT,
         });
         continue;
       }
 
-      const newCommentY = lastKnownCardPositionsRef.current.get("new-comment-input");
+      const newCommentY =
+        lastKnownCardPositionsRef.current.get("new-comment-input");
       if (activeCommentId === comment.id && newCommentY !== undefined) {
         pushPosition(
           cardId,
@@ -427,9 +465,14 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       positions.push({
         id: "new-comment-input",
         targetY: addCommentYPosition,
-        height: cardRefs.current.get("new-comment-input")?.offsetHeight || DEFAULT_INPUT_HEIGHT,
+        height:
+          cardRefs.current.get("new-comment-input")?.offsetHeight ||
+          DEFAULT_INPUT_HEIGHT,
       });
-      lastKnownCardPositionsRef.current.set("new-comment-input", addCommentYPosition);
+      lastKnownCardPositionsRef.current.set(
+        "new-comment-input",
+        addCommentYPosition,
+      );
     }
 
     // Sort by target Y and resolve overlaps
@@ -444,10 +487,12 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
 
     setCardGeometry((previous) => {
-      if (arePositionMapsEqual(previous.positions, resolvedPositions)) return previous;
+      if (arePositionMapsEqual(previous.positions, resolvedPositions))
+        return previous;
       // First positions fade in; later snapshots animate already positioned cards.
       const nextKnownCards = new Set(previous.knownCards);
-      for (const cardId of previous.positions.keys()) nextKnownCards.add(cardId);
+      for (const cardId of previous.positions.keys())
+        nextKnownCards.add(cardId);
       return { positions: resolvedPositions, knownCards: nextKnownCards };
     });
 
@@ -567,13 +612,20 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
 
   // Recalculate positions after a card expand/collapse or add-comment toggle.
   const measureCardsCommit = useEffectEvent(
-    (_layout: { expandedCard: string | null; isAddingComment: boolean }, measure: () => void) => {
+    (
+      _layout: { expandedCard: string | null; isAddingComment: boolean },
+      measure: () => void,
+    ) => {
       const raf = requestAnimationFrame(measure);
       return () => cancelAnimationFrame(raf);
     },
   );
   useEffect(
-    () => measureCardsCommit({ expandedCard, isAddingComment }, updateCardPositions),
+    () =>
+      measureCardsCommit(
+        { expandedCard, isAddingComment },
+        updateCardPositions,
+      ),
     [expandedCard, isAddingComment, updateCardPositions],
   );
 
@@ -631,7 +683,9 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   // opening one scrolls the document to the text it is about.
   const revealAnchor = (cardId: string) => {
     const scrollEl = editorContainerRef?.current;
-    const anchorY = lastKnownCardPositionsRef.current.get(cardId) ?? anchorPositions?.get(cardId);
+    const anchorY =
+      lastKnownCardPositionsRef.current.get(cardId) ??
+      anchorPositions?.get(cardId);
     if (!scrollEl || anchorY === undefined) {
       return;
     }
@@ -646,7 +700,10 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const hasPositions = !isDrawer && cardPositions.size > 0;
 
   // --- Shared styles ---
-  const avatarStyle = (name: string, size: 28 | 22 = 28): React.CSSProperties => ({
+  const avatarStyle = (
+    name: string,
+    size: 28 | 22 = 28,
+  ): React.CSSProperties => ({
     width: size,
     height: size,
     borderRadius: "50%",
@@ -668,7 +725,9 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       ? "1px solid var(--primary, var(--doc-primary))"
       : "1px solid var(--border, var(--doc-border))",
     borderRadius: 6,
-    background: enabled ? "var(--primary, var(--doc-primary))" : "var(--muted, var(--doc-bg))",
+    background: enabled
+      ? "var(--primary, var(--doc-primary))"
+      : "var(--muted, var(--doc-bg))",
     color: enabled
       ? "var(--primary-foreground, var(--doc-page))"
       : "var(--muted-foreground, var(--doc-text-muted))",
@@ -802,7 +861,10 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   };
 
   // Reply input renderer (used by comment cards)
-  const renderReplySection = (replyKey: number, submitFn?: (id: number, text: string) => void) => (
+  const renderReplySection = (
+    replyKey: number,
+    submitFn?: (id: number, text: string) => void,
+  ) => (
     <div
       onClick={(e) => e.stopPropagation()}
       role="presentation"
@@ -934,17 +996,23 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
             handleCardClick(cardId, comment.id);
           }
         }}
-        onMouseDown={containedHandler((e: React.MouseEvent) => e.stopPropagation())}
+        onMouseDown={containedHandler((e: React.MouseEvent) =>
+          e.stopPropagation(),
+        )}
         style={{
           ...cardContainerStyle(cardId, isExpanded, yPos),
           opacity: comment.done ? 0.6 : 1,
-          outline: isActive ? "2px solid var(--doc-primary, var(--primary))" : "none",
+          outline: isActive
+            ? "2px solid var(--doc-primary, var(--primary))"
+            : "none",
           outlineOffset: 2,
         }}
       >
         {/* Header: avatar + name/date + actions */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-          <div style={avatarStyle(comment.author || "U")}>{getInitials(comment.author || "U")}</div>
+          <div style={avatarStyle(comment.author || "U")}>
+            {getInitials(comment.author || "U")}
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
@@ -1029,10 +1097,12 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
                       fontFamily: "inherit",
                     }}
                     onMouseOver={(e) => {
-                      e.currentTarget.style.backgroundColor = "var(--doc-primary-light)";
+                      e.currentTarget.style.backgroundColor =
+                        "var(--doc-primary-light)";
                     }}
                     onFocus={(e) => {
-                      e.currentTarget.style.backgroundColor = "var(--doc-primary-light)";
+                      e.currentTarget.style.backgroundColor =
+                        "var(--doc-primary-light)";
                     }}
                     onMouseOut={(e) => {
                       e.currentTarget.style.backgroundColor = "transparent";
@@ -1064,7 +1134,9 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
         {renderReplies(replies, isExpanded)}
 
         {/* Reply input */}
-        {isExpanded && !comment.done && renderReplySection(comment.id, onCommentReply)}
+        {isExpanded &&
+          !comment.done &&
+          renderReplySection(comment.id, onCommentReply)}
       </div>
     );
   };
@@ -1081,19 +1153,27 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       style={{
         position: "absolute",
         top: isDrawer ? drawerBox.top : topOffset,
-        left: measuredLeft ?? `calc(50% - 120px + ${pageWidth / 2 + PANEL_METRICS.commentsGap}px)`,
+        left:
+          measuredLeft ??
+          `calc(50% - 120px + ${pageWidth / 2 + PANEL_METRICS.commentsGap}px)`,
         bottom: 0,
         width: isDrawer ? drawerBox.width : SIDEBAR_WIDTH,
         fontFamily: "inherit",
         zIndex: isDrawer ? 46 : 40,
         overflowY: "visible",
         overflowX: "visible",
-        opacity: isDrawer || initialPositionsDone || cardPositions.size > 0 ? 1 : 0,
-        pointerEvents: isDrawer || initialPositionsDone || cardPositions.size > 0 ? "auto" : "none",
+        opacity:
+          isDrawer || initialPositionsDone || cardPositions.size > 0 ? 1 : 0,
+        pointerEvents:
+          isDrawer || initialPositionsDone || cardPositions.size > 0
+            ? "auto"
+            : "none",
         transition: "opacity 0.15s ease",
         ...(isDrawer ? DRAWER_SURFACE_STYLE : COLUMN_SURFACE_STYLE),
       }}
-      onMouseDown={containedHandler((e: React.MouseEvent) => e.stopPropagation())}
+      onMouseDown={containedHandler((e: React.MouseEvent) =>
+        e.stopPropagation(),
+      )}
     >
       {/* Cards container — relative for absolute card positioning; in a
           drawer, a list pinned to the viewport that scrolls on its own. */}

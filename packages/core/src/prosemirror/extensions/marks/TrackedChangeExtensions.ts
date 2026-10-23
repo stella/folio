@@ -6,8 +6,11 @@
  * Colors are assigned per author via CSS custom properties (see editor.css).
  */
 
-import { getAuthorColorIdx, AUTHOR_COLORS } from "../../../utils/authorColors";
-import { expectTrackedChangeMarkAttrs, isTrackedRevisionAncestorArray } from "../../attrs";
+import { AUTHOR_COLORS, getAuthorColorIdx } from "../../../utils/authorColors";
+import {
+  expectTrackedChangeMarkAttrs,
+  isTrackedRevisionAncestorArray,
+} from "../../attrs";
 import { createMarkExtension } from "../create";
 
 /**
@@ -32,7 +35,8 @@ const deletionStyle = (color: string): string =>
  * variables are not in scope.
  */
 const SUGGESTION_COLOR = "var(--suggestion-color, #6d3bd6)";
-const SUGGESTION_TINT = "var(--suggestion-bg, color-mix(in oklch, #6d3bd6 12%, transparent))";
+const SUGGESTION_TINT =
+  "var(--suggestion-bg, color-mix(in oklch, #6d3bd6 12%, transparent))";
 // Layered as a translucent background-image (not background-color) so authored
 // highlight/shading beneath the suggestion stays visible under the tint.
 const SUGGESTION_TINT_LAYER = `linear-gradient(${SUGGESTION_TINT}, ${SUGGESTION_TINT})`;
@@ -85,13 +89,16 @@ export const InsertionExtension = createMarkExtension({
       _docxOuterWrapperCount: { default: null },
       _docxResolutionJoins: { default: null },
       _docxRevisionAncestors: { default: null },
+      _docxCommentRangeBoundaries: { default: undefined },
     },
     inclusive: false,
     parseDOM: [
       {
         tag: "span.docx-insertion",
         getAttrs(dom) {
-          const ancestors = revisionAncestorsFromDom(dom.dataset["revisionAncestors"]);
+          const ancestors = revisionAncestorsFromDom(
+            dom.dataset["revisionAncestors"],
+          );
           if (ancestors === false) {
             return false;
           }
@@ -126,21 +133,31 @@ export const InsertionExtension = createMarkExtension({
       return [
         "span",
         {
-          class: suggested ? "docx-insertion docx-insertion--suggested" : "docx-insertion",
+          class: suggested
+            ? "docx-insertion docx-insertion--suggested"
+            : "docx-insertion",
           "data-revision-id": String(revisionId),
           "data-author": author,
           "data-tc-author-idx": String(idx),
           ...(suggested ? { "data-provenance": "suggested" } : {}),
-          ...(suggested && suggestionId ? { "data-suggestion-id": suggestionId } : {}),
+          ...(suggested && suggestionId
+            ? { "data-suggestion-id": suggestionId }
+            : {}),
           ...(date ? { "data-date": date } : {}),
           ...(_docxOuterWrapperCount != null
             ? { "data-outer-wrapper-count": String(_docxOuterWrapperCount) }
             : {}),
           ...(_docxRevisionAncestors
-            ? { "data-revision-ancestors": JSON.stringify(_docxRevisionAncestors) }
+            ? {
+                "data-revision-ancestors": JSON.stringify(
+                  _docxRevisionAncestors,
+                ),
+              }
             : {}),
           ...(titleParts.length > 0
-            ? { title: `${suggested ? "Suggested" : "Inserted"}: ${titleParts.join(", ")}` }
+            ? {
+                title: `${suggested ? "Suggested" : "Inserted"}: ${titleParts.join(", ")}`,
+              }
             : {}),
           style: suggested ? suggestedInsertionStyle() : insertionStyle(color),
         },
@@ -179,13 +196,16 @@ export const DeletionExtension = createMarkExtension({
       _docxOuterWrapperCount: { default: null },
       _docxResolutionJoins: { default: null },
       _docxRevisionAncestors: { default: null },
+      _docxCommentRangeBoundaries: { default: undefined },
     },
     inclusive: false,
     parseDOM: [
       {
         tag: "span.docx-deletion",
         getAttrs(dom) {
-          const ancestors = revisionAncestorsFromDom(dom.dataset["revisionAncestors"]);
+          const ancestors = revisionAncestorsFromDom(
+            dom.dataset["revisionAncestors"],
+          );
           if (ancestors === false) {
             return false;
           }
@@ -220,18 +240,26 @@ export const DeletionExtension = createMarkExtension({
       return [
         "span",
         {
-          class: suggested ? "docx-deletion docx-deletion--suggested" : "docx-deletion",
+          class: suggested
+            ? "docx-deletion docx-deletion--suggested"
+            : "docx-deletion",
           "data-revision-id": String(revisionId),
           "data-author": author,
           "data-tc-author-idx": String(idx),
           ...(suggested ? { "data-provenance": "suggested" } : {}),
-          ...(suggested && suggestionId ? { "data-suggestion-id": suggestionId } : {}),
+          ...(suggested && suggestionId
+            ? { "data-suggestion-id": suggestionId }
+            : {}),
           ...(date ? { "data-date": date } : {}),
           ...(_docxOuterWrapperCount != null
             ? { "data-outer-wrapper-count": String(_docxOuterWrapperCount) }
             : {}),
           ...(_docxRevisionAncestors
-            ? { "data-revision-ancestors": JSON.stringify(_docxRevisionAncestors) }
+            ? {
+                "data-revision-ancestors": JSON.stringify(
+                  _docxRevisionAncestors,
+                ),
+              }
             : {}),
           ...(titleParts.length > 0
             ? {

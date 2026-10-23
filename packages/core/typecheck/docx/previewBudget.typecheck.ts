@@ -1,7 +1,10 @@
 import { createPackagePreviewBudget } from "../../src/docx/previewBudget";
 
 const budget = createPackagePreviewBudget();
-const frame = { size: { width: 1, height: 1 }, wrap: { type: "inline" } } as const;
+const frame = {
+  size: { width: 1, height: 1 },
+  wrap: { type: "inline" },
+} as const;
 
 // A descriptor-backed preview has no image data and therefore no character allowance.
 // @ts-expect-error `smartArt` is deliberately absent from PreviewBudgetOverrides.

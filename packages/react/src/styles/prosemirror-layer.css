@@ -170,7 +170,9 @@
 }
 
 /* Fallback for bullet lists without marker */
-.prosemirror-editor .ProseMirror .docx-list-bullet:not([data-list-marker])::before {
+.prosemirror-editor
+  .ProseMirror
+  .docx-list-bullet:not([data-list-marker])::before {
   content: "•";
   position: absolute;
   left: 0;
@@ -183,7 +185,9 @@
   counter-increment: list-counter;
 }
 
-.prosemirror-editor .ProseMirror .docx-list-decimal:not([data-list-marker])::before {
+.prosemirror-editor
+  .ProseMirror
+  .docx-list-decimal:not([data-list-marker])::before {
   content: counter(list-counter) ".";
   position: absolute;
   left: 0;
@@ -191,7 +195,9 @@
   text-align: right;
 }
 
-.prosemirror-editor .ProseMirror .docx-list-lower-roman:not([data-list-marker])::before {
+.prosemirror-editor
+  .ProseMirror
+  .docx-list-lower-roman:not([data-list-marker])::before {
   content: counter(list-counter, lower-roman) ".";
   position: absolute;
   left: 0;
@@ -199,7 +205,9 @@
   text-align: right;
 }
 
-.prosemirror-editor .ProseMirror .docx-list-upper-roman:not([data-list-marker])::before {
+.prosemirror-editor
+  .ProseMirror
+  .docx-list-upper-roman:not([data-list-marker])::before {
   content: counter(list-counter, upper-roman) ".";
   position: absolute;
   left: 0;
@@ -207,7 +215,9 @@
   text-align: right;
 }
 
-.prosemirror-editor .ProseMirror .docx-list-lower-alpha:not([data-list-marker])::before {
+.prosemirror-editor
+  .ProseMirror
+  .docx-list-lower-alpha:not([data-list-marker])::before {
   content: counter(list-counter, lower-alpha) ".";
   position: absolute;
   left: 0;
@@ -215,7 +225,9 @@
   text-align: right;
 }
 
-.prosemirror-editor .ProseMirror .docx-list-upper-alpha:not([data-list-marker])::before {
+.prosemirror-editor
+  .ProseMirror
+  .docx-list-upper-alpha:not([data-list-marker])::before {
   content: counter(list-counter, upper-alpha) ".";
   position: absolute;
   left: 0;
@@ -224,7 +236,9 @@
 }
 
 /* Reset counter at level 0 for fallback */
-.prosemirror-editor .ProseMirror .docx-list-level-0:not([data-list-marker]):first-of-type {
+.prosemirror-editor
+  .ProseMirror
+  .docx-list-level-0:not([data-list-marker]):first-of-type {
   counter-reset: list-counter;
 }
 
@@ -335,7 +349,9 @@
 }
 
 /* Image dragging state */
-.prosemirror-editor .ProseMirror.pm-image-dragging img.docx-image.ProseMirror-selectednode {
+.prosemirror-editor
+  .ProseMirror.pm-image-dragging
+  img.docx-image.ProseMirror-selectednode {
   opacity: 0.4;
   outline: 2px dashed var(--doc-primary, #4285f4);
   cursor: grabbing;
@@ -564,7 +580,9 @@
   overflow: hidden;
 }
 
-.prosemirror-editor .ProseMirror span.docx-tab[data-leader="underscore"]::before {
+.prosemirror-editor
+  .ProseMirror
+  span.docx-tab[data-leader="underscore"]::before {
   content: "___________";
   position: absolute;
   color: inherit;
@@ -633,12 +651,14 @@
 }
 
 .layout-paragraph.folio-paragraph-flash {
-  animation: folio-paragraph-flash-fade var(--folio-paragraph-flash-duration, 1200ms) ease-out both;
+  animation: folio-paragraph-flash-fade
+    var(--folio-paragraph-flash-duration, 1200ms) ease-out both;
 }
 
 @keyframes folio-paragraph-flash-fade {
   from {
-    box-shadow: inset 0 0 0 9999px var(--folio-paragraph-flash-color, rgba(255, 235, 59, 0.55));
+    box-shadow: inset 0 0 0 9999px
+      var(--folio-paragraph-flash-color, rgba(255, 235, 59, 0.55));
   }
   to {
     box-shadow: inset 0 0 0 9999px transparent;

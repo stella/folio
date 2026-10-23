@@ -1,10 +1,15 @@
-import type { CellBorderSpec, TableBlock, TableFragment, TableMeasure } from "../types";
+import { paintsCssBorder } from "../../utils/borderCss";
+import type {
+  CellBorderSpec,
+  TableBlock,
+  TableFragment,
+  TableMeasure,
+} from "../types";
 import {
   buildTableCellGrid,
   buildTableCellPlacements,
   type TableCellPlacements,
 } from "./tableCellGrid";
-import { paintsCssBorder } from "../../utils/borderCss";
 
 type TableFragmentBottomBorder = {
   readonly left: number;
@@ -19,7 +24,9 @@ type TableFragmentBottomBordersOptions = {
   readonly placements?: TableCellPlacements;
 };
 
-const isVisible = (border: CellBorderSpec | undefined): border is CellBorderSpec =>
+const isVisible = (
+  border: CellBorderSpec | undefined,
+): border is CellBorderSpec =>
   border !== undefined && paintsCssBorder(border.style);
 
 export const tableFragmentBottomBorders = ({
@@ -28,7 +35,8 @@ export const tableFragmentBottomBorders = ({
   measure,
   placements: suppliedPlacements,
 }: TableFragmentBottomBordersOptions): readonly TableFragmentBottomBorder[] => {
-  if (fragment.continuesOnNext !== true || fragment.bottomClip === undefined) return [];
+  if (fragment.continuesOnNext !== true || fragment.bottomClip === undefined)
+    return [];
 
   const splitRow = block.rows.at(fragment.toRow - 1);
   if (!splitRow) return [];

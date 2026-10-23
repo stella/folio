@@ -1,9 +1,12 @@
 import type { EditorState, Transaction } from "prosemirror-state";
 import { Selection, TextSelection } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
 import { ReplaceStep } from "prosemirror-transform";
+import type { EditorView } from "prosemirror-view";
 
-import { getEditorInputTargetRange, handleEditorBeforeInput } from "../prosemirror/textInput";
+import {
+  getEditorInputTargetRange,
+  handleEditorBeforeInput,
+} from "../prosemirror/textInput";
 import { createCanonicalComposition } from "./canonicalComposition";
 import { deletionRange, isCanonicalJoinBoundary } from "./canonicalSession";
 
@@ -20,7 +23,10 @@ type ReplaceTextInput = {
   text: string;
 } & (
   | { semantic: "composition"; compositionPhase?: "correction" }
-  | { semantic?: "typing" | "deleteBackward" | "deleteForward"; compositionPhase?: never }
+  | {
+      semantic?: "typing" | "deleteBackward" | "deleteForward";
+      compositionPhase?: never;
+    }
 );
 
 type CanonicalInputOptions = {
@@ -53,7 +59,9 @@ type NativeProposal =
   | { type: "replacement"; state: EditorState; input: ReplaceTextInput };
 
 /** Native changes require a preceding, classified input event at the same state. */
-export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => {
+export const createCanonicalInputBoundary = (
+  options: CanonicalInputOptions,
+) => {
   const composition = createCanonicalComposition({
     begin: () => options.beginComposition?.() ?? true,
     end: () => options.endComposition?.(),
@@ -82,7 +90,8 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
   const refuseEvent = (event: Event, reason: string) => {
     event.preventDefault();
     closeGroup();
-    if (!composition.active && proposal.type !== "refused") options.refuse(reason);
+    if (!composition.active && proposal.type !== "refused")
+      options.refuse(reason);
     if (!composition.active) proposal = { type: "refused" };
     return true;
   };
@@ -96,7 +105,9 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
 
   const refuseNativeMutation = (view: EditorView) => {
     if (!composition.active && proposal.type !== "refused") {
-      options.refuse("Unclassified native text is unavailable in this session.");
+      options.refuse(
+        "Unclassified native text is unavailable in this session.",
+      );
       proposal = { type: "refused" };
     }
     repaint(view);
@@ -141,10 +152,18 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       return composition.active;
     },
     acceptComposition: composition.accept,
-    handleTextInput: (view: EditorView, from: number, to: number, text: string) => {
+    handleTextInput: (
+      view: EditorView,
+      from: number,
+      to: number,
+      text: string,
+    ) => {
       if (composition.active || composition.pendingFinal) return false;
       const pending = proposal;
-      if (authorizedInput?.view === view && authorizedInput.state === view.state) {
+      if (
+        authorizedInput?.view === view &&
+        authorizedInput.state === view.state
+      ) {
         options.replace({ from, to, text, semantic: "typing" });
         return true;
       }
@@ -178,7 +197,11 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         return false;
       }
       const modifier = event.metaKey || event.ctrlKey;
-      if (modifier || event.altKey || /^(?:Arrow|Home$|End$|Page|Escape$|Tab$)/u.test(event.key))
+      if (
+        modifier ||
+        event.altKey ||
+        /^(?:Arrow|Home$|End$|Page|Escape$|Tab$)/u.test(event.key)
+      )
         closeGroup();
       if (modifier && event.key.toLowerCase() === "z") {
         event.preventDefault();
@@ -225,7 +248,12 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         }
         return true;
       }
-      if (modifier && event.altKey && event.key.toLowerCase() === "v" && options.pastePlainText) {
+      if (
+        modifier &&
+        event.altKey &&
+        event.key.toLowerCase() === "v" &&
+        options.pastePlainText
+      ) {
         event.preventDefault();
         closeGroup();
         options.pastePlainText(view);
@@ -240,15 +268,24 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         event.preventDefault();
         closeGroup();
         if (options.structure === undefined)
-          return refuseEvent(event, "Paragraph structure edits are unavailable in this session.");
+          return refuseEvent(
+            event,
+            "Paragraph structure edits are unavailable in this session.",
+          );
         if (modifier) options.structure("pageBreak");
         else options.structure(event.shiftKey ? "lineBreak" : "split");
         return true;
       }
-      if (event.key === "Tab" && !modifier && !event.altKey && options.structure !== undefined) {
+      if (
+        event.key === "Tab" &&
+        !modifier &&
+        !event.altKey &&
+        options.structure !== undefined
+      ) {
         event.preventDefault();
         const list = view.state.selection.$from.parent.attrs["numPr"];
-        if (list?.kind === "reference") options.structure(event.shiftKey ? "outdent" : "indent");
+        if (list?.kind === "reference")
+          options.structure(event.shiftKey ? "outdent" : "indent");
         else if (!event.shiftKey) options.structure("tab");
         return true;
       }
@@ -257,20 +294,30 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       if (modifier || event.altKey || view.composing || composition.active) {
         closeGroup();
         if (!composition.active)
-          options.refuse("Only plain character deletion is available in this session.");
+          options.refuse(
+            "Only plain character deletion is available in this session.",
+          );
         return true;
       }
       const selection = view.state.selection;
       if (
         selection.empty &&
         options.structure !== undefined &&
-        isCanonicalJoinBoundary(view.state, event.key === "Backspace" ? "backward" : "forward")
+        isCanonicalJoinBoundary(
+          view.state,
+          event.key === "Backspace" ? "backward" : "forward",
+        )
       ) {
         closeGroup();
-        options.structure(event.key === "Backspace" ? "joinBackward" : "joinForward");
+        options.structure(
+          event.key === "Backspace" ? "joinBackward" : "joinForward",
+        );
         return true;
       }
-      const range = deletionRange(view.state, event.key === "Backspace" ? "backward" : "forward");
+      const range = deletionRange(
+        view.state,
+        event.key === "Backspace" ? "backward" : "forward",
+      );
       if (range.isErr()) {
         closeGroup();
         options.refuse(range.error.message);
@@ -278,7 +325,8 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         options.replace({
           ...range.value,
           text: "",
-          semantic: event.key === "Backspace" ? "deleteBackward" : "deleteForward",
+          semantic:
+            event.key === "Backspace" ? "deleteBackward" : "deleteForward",
         });
       return true;
     },
@@ -300,7 +348,9 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       compositionend: (view: EditorView, event: Event) => {
         composition.ended(
           view,
-          event instanceof CompositionEvent && typeof event.data === "string" ? event.data : null,
+          event instanceof CompositionEvent && typeof event.data === "string"
+            ? event.data
+            : null,
         );
         return false;
       },
@@ -318,15 +368,23 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         return false;
       },
       beforeinput: (view: EditorView, event: InputEvent) => {
-        beginGesture(event.inputType === "insertFromComposition" ? "compositionFinal" : "new");
+        beginGesture(
+          event.inputType === "insertFromComposition"
+            ? "compositionFinal"
+            : "new",
+        );
         if (
           event.isComposing ||
-          CANONICAL_COMPOSITION_INPUT_TYPES.some((inputType) => inputType === event.inputType)
+          CANONICAL_COMPOSITION_INPUT_TYPES.some(
+            (inputType) => inputType === event.inputType,
+          )
         ) {
           if (composition.active) {
             composition.authorizeNative(
               view,
-              event.inputType === "insertFromComposition" ? "explicitFinal" : "provisional",
+              event.inputType === "insertFromComposition"
+                ? "explicitFinal"
+                : "provisional",
             );
             return false;
           }
@@ -335,7 +393,10 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
             composition.authorizeLateFinal(view, event.data)
           )
             return false;
-          return refuseEvent(event, "Composition has no captured canonical baseline.");
+          return refuseEvent(
+            event,
+            "Composition has no captured canonical baseline.",
+          );
         }
         // A new, non-composition event recovers an IME missing compositionend.
         if (composition.active) {
@@ -360,7 +421,8 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           // even when its text equals the preceding composition payload.
           const nativeFinal =
             view.composing &&
-            (event.inputType === "insertText" || event.inputType === "insertReplacementText");
+            (event.inputType === "insertText" ||
+              event.inputType === "insertReplacementText");
           const nativeStillComposing = view.composing;
           if (nativeFinal) composition.authorizeNative(view, "explicitFinal");
           const recovered = composition.recover(view);
@@ -371,7 +433,8 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           if (
             nativeFinal &&
             ((recovered.type === "refused" && nativeStillComposing) ||
-              ((recovered.type === "committed" || recovered.type === "refused") &&
+              ((recovered.type === "committed" ||
+                recovered.type === "refused") &&
                 recovered.text !== null &&
                 recovered.text === event.data))
           ) {
@@ -379,9 +442,16 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
             return true;
           }
         }
-        if (event.inputType === "insertText" || event.inputType === "insertReplacementText") {
+        if (
+          event.inputType === "insertText" ||
+          event.inputType === "insertReplacementText"
+        ) {
           if (event.cancelable) {
-            if (view.composing && event.inputType === "insertText" && event.data !== null) {
+            if (
+              view.composing &&
+              event.inputType === "insertText" &&
+              event.data !== null
+            ) {
               event.preventDefault();
               proposal = { type: "idle" };
               options.replace({
@@ -396,13 +466,19 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
             authorizedInput = { view, state: view.state };
             try {
               if (handleEditorBeforeInput(view, event)) return true;
-              return refuseEvent(event, "This native replacement cannot be addressed safely.");
+              return refuseEvent(
+                event,
+                "This native replacement cannot be addressed safely.",
+              );
             } finally {
               authorizedInput = null;
             }
           }
           if (event.inputType !== "insertText" || event.data === null) {
-            return refuseEvent(event, "This native replacement cannot be addressed safely.");
+            return refuseEvent(
+              event,
+              "This native replacement cannot be addressed safely.",
+            );
           }
           proposal = {
             type: "replacement",
@@ -417,13 +493,16 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           return false;
         }
         if (
-          (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") &&
+          (event.inputType === "insertParagraph" ||
+            event.inputType === "insertLineBreak") &&
           event.cancelable &&
           options.structure !== undefined
         ) {
           event.preventDefault();
           closeGroup();
-          options.structure(event.inputType === "insertParagraph" ? "split" : "lineBreak");
+          options.structure(
+            event.inputType === "insertParagraph" ? "split" : "lineBreak",
+          );
           return true;
         }
         if (
@@ -436,7 +515,10 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
             event.cancelable &&
             selection.empty &&
             options.structure !== undefined &&
-            isCanonicalJoinBoundary(view.state, backward ? "backward" : "forward")
+            isCanonicalJoinBoundary(
+              view.state,
+              backward ? "backward" : "forward",
+            )
           ) {
             event.preventDefault();
             closeGroup();
@@ -445,7 +527,9 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           }
           const range = deletionRange(
             view.state,
-            event.inputType === "deleteContentBackward" ? "backward" : "forward",
+            event.inputType === "deleteContentBackward"
+              ? "backward"
+              : "forward",
           );
           if (range.isErr()) return refuseEvent(event, range.error.message);
           const input = {
@@ -464,13 +548,19 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           proposal = { type: "replacement", state: view.state, input };
           return false;
         }
-        if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
+        if (
+          event.inputType === "historyUndo" ||
+          event.inputType === "historyRedo"
+        ) {
           event.preventDefault();
           if (event.inputType === "historyUndo") options.undo();
           else options.redo();
           return true;
         }
-        return refuseEvent(event, `Input ${event.inputType} is unavailable in this session.`);
+        return refuseEvent(
+          event,
+          `Input ${event.inputType} is unavailable in this session.`,
+        );
       },
       // A native DOM proposal is valid only until this event's observer flush.
       input: (view: EditorView) => {
@@ -482,7 +572,8 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         queueMicrotask(() => {
           if (view.isDestroyed) return;
           view.updateState(view.state);
-          if (proposal === pending && !composition.active) proposal = { type: "idle" };
+          if (proposal === pending && !composition.active)
+            proposal = { type: "idle" };
         });
         return false;
       },
@@ -490,24 +581,36 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         beginGesture();
         closeGroup();
         if (composition.active)
-          return refuseClipboardGesture(event, "Composition must finish before pasting.");
+          return refuseClipboardGesture(
+            event,
+            "Composition must finish before pasting.",
+          );
         return false;
       },
       cut: (view: EditorView, event: ClipboardEvent) => {
         beginGesture();
         if (composition.active)
-          return refuseClipboardGesture(event, "Composition must finish before cutting.");
+          return refuseClipboardGesture(
+            event,
+            "Composition must finish before cutting.",
+          );
         if (options.cut !== undefined) {
           closeGroup();
           return options.cut(view, event);
         }
-        return refuseEvent(event, "The canonical clipboard owner is unavailable.");
+        return refuseEvent(
+          event,
+          "The canonical clipboard owner is unavailable.",
+        );
       },
       drop: (_view: EditorView, event: Event) => {
         beginGesture();
         closeGroup();
         if (composition.active)
-          return refuseClipboardGesture(event, "Composition must finish before dropping.");
+          return refuseClipboardGesture(
+            event,
+            "Composition must finish before dropping.",
+          );
         return false;
       },
     },

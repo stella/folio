@@ -36,7 +36,8 @@ export type BorderStyleValue = BorderStyle | UnrecognisedBorderStyle;
 const DECLARED: ReadonlySet<string> = new Set<string>(BORDER_STYLES);
 
 /** Whether the schema declares this token. */
-export const isBorderStyle = (value: string): value is BorderStyle => DECLARED.has(value);
+export const isBorderStyle = (value: string): value is BorderStyle =>
+  DECLARED.has(value);
 
 /** Read a `w:val` into the model, keeping an undeclared token verbatim. */
 export const borderStyleFrom = (value: string): BorderStyleValue =>
@@ -47,10 +48,12 @@ export const borderStyleToken = (style: BorderStyleValue): string =>
   typeof style === "string" ? style : style.raw;
 
 /** `none`: the author cancelled a border inherited from the container. */
-export const isBorderNone = (style: BorderStyleValue | undefined): boolean => style === "none";
+export const isBorderNone = (style: BorderStyleValue | undefined): boolean =>
+  style === "none";
 
 /** `nil`: the author stated no border. */
-export const isBorderNil = (style: BorderStyleValue | undefined): boolean => style === "nil";
+export const isBorderNil = (style: BorderStyleValue | undefined): boolean =>
+  style === "nil";
 
 /**
  * Whether the edge paints nothing, by either reserved member.

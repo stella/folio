@@ -63,7 +63,9 @@ describe("image wrap distance conversion", () => {
   });
 
   test("keeps absent wrap distances absent", () => {
-    const attrs = firstImageAttrs(docWithImage(floatingImage({ type: "square" })));
+    const attrs = firstImageAttrs(
+      docWithImage(floatingImage({ type: "square" })),
+    );
 
     expect(attrs["distTop"]).toBeNull();
     expect(attrs["distLeft"]).toBeNull();

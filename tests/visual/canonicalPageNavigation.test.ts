@@ -15,7 +15,9 @@ test("canonical history page evaluations use the navigation owner", () => {
       true,
     );
     const evaluationOwner =
-      name === "canonicalTimerProbe.ts" ? "evaluateCanonicalDocument" : "evaluateCanonicalPage";
+      name === "canonicalTimerProbe.ts"
+        ? "evaluateCanonicalDocument"
+        : "evaluateCanonicalPage";
     let evaluations = 0;
     const visit = (node: ts.Node) => {
       if (
@@ -36,11 +38,17 @@ test("canonical history page evaluations use the navigation owner", () => {
         ) {
           parent = parent.parent;
         }
-        expect(parent, `${name}: evaluation bypasses the navigation owner`).toBeDefined();
+        expect(
+          parent,
+          `${name}: evaluation bypasses the navigation owner`,
+        ).toBeDefined();
       }
       ts.forEachChild(node, visit);
     };
     visit(source);
-    expect(evaluations, `${name}: guard must exercise page evaluations`).toBeGreaterThan(0);
+    expect(
+      evaluations,
+      `${name}: guard must exercise page evaluations`,
+    ).toBeGreaterThan(0);
   }
 });

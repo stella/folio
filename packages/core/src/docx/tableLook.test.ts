@@ -12,15 +12,16 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { resolveTableLook } from "./tableLook";
 
-import type { Document } from "../types/document";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document } from "../types/document";
 import { serializeTableFormatting } from "./serializer/tableSerializer";
+import { resolveTableLook } from "./tableLook";
 import { parseTableProperties } from "./tableParser";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
-const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const lookOf = (attributes: string) => {
   const root = parseXmlDocument(
@@ -49,7 +50,11 @@ describe("reading w:tblLook", () => {
   });
 
   test("reads every ST_OnOff spelling of both polarities", () => {
-    expect(lookOf('w:firstRow="true" w:lastRow="off" w:noHBand="on" w:noVBand="false"')).toEqual({
+    expect(
+      lookOf(
+        'w:firstRow="true" w:lastRow="off" w:noHBand="on" w:noVBand="false"',
+      ),
+    ).toEqual({
       firstRow: true,
       lastRow: false,
       noHBand: true,
@@ -73,8 +78,12 @@ describe("resolving w:tblLook", () => {
   test("a stated flag overrides the bit that disagrees with it", () => {
     // 0x04A0 sets firstRow; the attribute says otherwise and is the later
     // spelling of the same fact.
-    expect(resolveTableLook(lookOf('w:val="04A0" w:firstRow="0"')).firstRow).toBe(false);
-    expect(resolveTableLook(lookOf('w:val="0000" w:noHBand="1"')).noHBand).toBe(true);
+    expect(
+      resolveTableLook(lookOf('w:val="04A0" w:firstRow="0"')).firstRow,
+    ).toBe(false);
+    expect(resolveTableLook(lookOf('w:val="0000" w:noHBand="1"')).noHBand).toBe(
+      true,
+    );
   });
 
   test("a val outside ST_ShortHexNumber states nothing", () => {
@@ -91,7 +100,9 @@ describe("resolving w:tblLook", () => {
 
 describe("writing w:tblLook", () => {
   test("writes w:val first, then every flag the author stated", () => {
-    expect(rewritten('w:val="04A0" w:firstRow="1" w:lastRow="0" w:noVBand="1"')).toContain(
+    expect(
+      rewritten('w:val="04A0" w:firstRow="1" w:lastRow="0" w:noVBand="1"'),
+    ).toContain(
       '<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:noVBand="1"/>',
     );
   });
@@ -134,7 +145,12 @@ const valOnlyDocument = (look: string): Document => ({
                   {
                     type: "paragraph",
                     content: [
-                      { type: "run", content: [{ type: "text", text: `row ${String(index)}` }] },
+                      {
+                        type: "run",
+                        content: [
+                          { type: "text", text: `row ${String(index)}` },
+                        ],
+                      },
                     ],
                   },
                 ],
@@ -148,7 +164,9 @@ const valOnlyDocument = (look: string): Document => ({
 });
 
 const rowMarkNames = (document: Document, rowIndex: number): string[] => {
-  const table = toProseDoc(document, { styles: document.package.styles }).firstChild;
+  const table = toProseDoc(document, {
+    styles: document.package.styles,
+  }).firstChild;
   const run = table?.child(rowIndex).firstChild?.firstChild?.firstChild;
   return (run?.marks ?? []).map((mark) => mark.type.name);
 };

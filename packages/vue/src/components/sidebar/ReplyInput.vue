@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from "vue";
+import { computed, nextTick, ref } from "vue";
 
 const emit = defineEmits<{
   (e: "submit", text: string): void;

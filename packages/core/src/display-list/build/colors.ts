@@ -18,12 +18,22 @@ import type { DisplayColor } from "../types";
  */
 export const DOC_CANVAS = WHITE;
 export const DOC_CANVAS_TEXT = BLACK;
-export const SUGGESTION_COLOR: DisplayColor = { r: 0x6d, g: 0x3b, b: 0xd6, a: 1 };
+export const SUGGESTION_COLOR: DisplayColor = {
+  r: 0x6d,
+  g: 0x3b,
+  b: 0xd6,
+  a: 1,
+};
 
 export const TRANSPARENT: DisplayColor = { r: 0, g: 0, b: 0, a: 0 };
 
 /** Word's automatic-colour keywords (`w:color w:val="auto"`). */
-const AUTOMATIC_COLOR_VALUES = new Set(["auto", "windowtext", "currentcolor", "inherit"]);
+const AUTOMATIC_COLOR_VALUES = new Set([
+  "auto",
+  "windowtext",
+  "currentcolor",
+  "inherit",
+]);
 
 /**
  * OOXML's named highlight palette (§17.18.40) plus the CSS basic colours the
@@ -70,7 +80,8 @@ const RGB_PATTERN =
   /^rgba?\(\s*([\d.]+%?)\s*[, ]\s*([\d.]+%?)\s*[, ]\s*([\d.]+%?)\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/iu;
 const VAR_PATTERN = /^var\(\s*(--[\w-]+)\s*(?:,\s*(.+))?\)$/iu;
 
-const clampChannel = (value: number): number => Math.min(255, Math.max(0, Math.round(value)));
+const clampChannel = (value: number): number =>
+  Math.min(255, Math.max(0, Math.round(value)));
 
 const clampAlpha = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -96,7 +107,9 @@ const parseHex = (raw: string): DisplayColor | undefined => {
 };
 
 const parseComponent = (raw: string, scale: number): number =>
-  raw.endsWith("%") ? (Number.parseFloat(raw) / 100) * scale : Number.parseFloat(raw);
+  raw.endsWith("%")
+    ? (Number.parseFloat(raw) / 100) * scale
+    : Number.parseFloat(raw);
 
 const parseRgb = (raw: string): DisplayColor | undefined => {
   const match = RGB_PATTERN.exec(raw);
@@ -108,7 +121,8 @@ const parseRgb = (raw: string): DisplayColor | undefined => {
   const g = clampChannel(parseComponent(match[2]!, 255));
   const b = clampChannel(parseComponent(match[3]!, 255));
   const alphaRaw = match[4];
-  const a = alphaRaw === undefined ? 1 : clampAlpha(parseComponent(alphaRaw, 1));
+  const a =
+    alphaRaw === undefined ? 1 : clampAlpha(parseComponent(alphaRaw, 1));
   return { r, g, b, a };
 };
 
@@ -117,7 +131,9 @@ const parseRgb = (raw: string): DisplayColor | undefined => {
  * cannot turn into concrete channels (`color-mix()`, `oklch()`, an unknown
  * name) so the caller can report it rather than paint a guess.
  */
-export const parseDisplayColor = (color: string | undefined): DisplayColor | undefined => {
+export const parseDisplayColor = (
+  color: string | undefined,
+): DisplayColor | undefined => {
   if (color === undefined) {
     return undefined;
   }

@@ -42,14 +42,19 @@ import {
   type WriteDestination,
 } from "./execute-write";
 import { findCommit, journalPathFor, recoverStages } from "./journal";
-import { adoptLease, DEFAULT_LEASE_OWNER, isLeaseOwner, type AcquiredLease } from "./lock";
+import {
+  type AcquiredLease,
+  adoptLease,
+  DEFAULT_LEASE_OWNER,
+  isLeaseOwner,
+} from "./lock";
 import {
   failureEnvelope,
   isOutputFormat,
   OUTPUT_FORMATS,
+  type OutputFormat,
   renderEnvelope,
   successEnvelope,
-  type OutputFormat,
 } from "./output";
 import { diffPackages } from "./package-parts";
 import { resolveAuthor, resolveTransactionDate } from "./provenance";
@@ -57,7 +62,11 @@ import { unsafePath } from "./sidecar";
 import { commitTransaction } from "./transaction";
 
 /** How the editor produced the bytes, as it reports it. */
-export const EDITOR_SAVE_STRATEGIES = ["selective", "full-repack", "unspecified"] as const;
+export const EDITOR_SAVE_STRATEGIES = [
+  "selective",
+  "full-repack",
+  "unspecified",
+] as const;
 
 export type EditorSaveStrategy = (typeof EDITOR_SAVE_STRATEGIES)[number];
 
@@ -99,18 +108,28 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const NAME_PATTERN = /^[\w.-]{1,64}$/u;
 
-const checkOptions = (options: SaveDocumentOptions): Result<void, FolioCliError> => {
+const checkOptions = (
+  options: SaveDocumentOptions,
+): Result<void, FolioCliError> => {
   if (options.txId !== undefined && !TX_ID_PATTERN.test(options.txId)) {
-    return Result.err(invalidInput("txId must be 1 to 128 letters, digits, '.', '_' or '-'."));
+    return Result.err(
+      invalidInput("txId must be 1 to 128 letters, digits, '.', '_' or '-'."),
+    );
   }
   if (options.owner !== undefined && !isLeaseOwner(options.owner)) {
-    return Result.err(invalidInput("owner must be 1 to 64 letters, digits, '.', '_' or '-'."));
+    return Result.err(
+      invalidInput("owner must be 1 to 64 letters, digits, '.', '_' or '-'."),
+    );
   }
   if (options.surface !== undefined && !NAME_PATTERN.test(options.surface)) {
-    return Result.err(invalidInput("surface must be 1 to 64 letters, digits, '.', '_' or '-'."));
+    return Result.err(
+      invalidInput("surface must be 1 to 64 letters, digits, '.', '_' or '-'."),
+    );
   }
   if (!isFileVersion(options.expectedVersion)) {
-    return Result.err(invalidInput("expectedVersion must be a 64-character hex fileVersion."));
+    return Result.err(
+      invalidInput("expectedVersion must be a 64-character hex fileVersion."),
+    );
   }
   if (options.bytes.byteLength > MAX_DOCUMENT_BYTES) {
     return Result.err(
@@ -124,7 +143,9 @@ const checkOptions = (options: SaveDocumentOptions): Result<void, FolioCliError>
 };
 
 /** The bytes must open as a document before anything is staged. */
-const checkParses = async (bytes: Uint8Array): Promise<Result<void, FolioCliError>> => {
+const checkParses = async (
+  bytes: Uint8Array,
+): Promise<Result<void, FolioCliError>> => {
   const parsed = await Result.tryPromise({
     try: () => FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
     catch: (error) =>
@@ -155,7 +176,9 @@ const leaseForSave = async (
     txId,
     force: options.force === true,
     owner: options.owner ?? DEFAULT_LEASE_OWNER,
-    ...(options.flushWaitMs !== undefined && { flushWaitMs: options.flushWaitMs }),
+    ...(options.flushWaitMs !== undefined && {
+      flushWaitMs: options.flushWaitMs,
+    }),
   });
 };
 
@@ -172,7 +195,9 @@ export const saveDocumentBytes = async (
   if (checked.isErr()) return Result.err(checked.error);
   const date = resolveTransactionDate(options.date);
   if (date.isErr()) return Result.err(date.error);
-  const destination: WriteDestination = options.destination ?? { type: "inPlace" };
+  const destination: WriteDestination = options.destination ?? {
+    type: "inPlace",
+  };
   const txId = options.txId ?? randomUUID();
   const surface = options.surface ?? "cli";
   const saveStrategy = options.saveStrategy ?? "unspecified";
@@ -232,9 +257,13 @@ export const saveDocumentBytes = async (
       inPlace &&
       (flush.type !== "notAsked" ||
         recovered.value.some(({ action }) => action === "rolledForward"));
-    const expectedIdentity = replacedInPlace ? source.value.identity : sourceIdentity;
+    const expectedIdentity = replacedInPlace
+      ? source.value.identity
+      : sourceIdentity;
     if (!sameFile(source.value.identity, expectedIdentity)) {
-      return Result.err(unsafePath(`${sourcePath} was replaced while the save started.`));
+      return Result.err(
+        unsafePath(`${sourcePath} was replaced while the save started.`),
+      );
     }
     if (inPlace && source.value.links > 1) {
       return Result.err(
@@ -264,7 +293,9 @@ export const saveDocumentBytes = async (
       tool: EDITOR_SAVE_TOOL,
       path: destinationPath,
       fromVersion: source.value.fileVersion,
-      ...(!inPlace && { source: { path: sourcePath, fileVersion: source.value.fileVersion } }),
+      ...(!inPlace && {
+        source: { path: sourcePath, fileVersion: source.value.fileVersion },
+      }),
       author: options.author,
       time: date.value,
       owner,
@@ -272,7 +303,12 @@ export const saveDocumentBytes = async (
       saveStrategy,
     };
     if (inPlace && toVersion === source.value.fileVersion) {
-      return Result.ok({ ...base, status: "unchanged", fileVersion: toVersion, changedParts: [] });
+      return Result.ok({
+        ...base,
+        status: "unchanged",
+        fileVersion: toVersion,
+        changedParts: [],
+      });
     }
     const changedParts = await diffPackages(source.value.bytes, bytes);
     if (changedParts.isErr()) return Result.err(changedParts.error);
@@ -306,7 +342,9 @@ export const saveDocumentBytes = async (
       },
       receipt,
     });
-    return committed.isErr() ? Result.err(committed.error) : Result.ok(committed.value.receipt);
+    return committed.isErr()
+      ? Result.err(committed.error)
+      : Result.ok(committed.value.receipt);
   } finally {
     await lease.release();
   }
@@ -373,11 +411,18 @@ export const parseFlushWait = (
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 0
     ? Result.ok(parsed)
-    : Result.err(usageError("--flush-wait expects a whole number of milliseconds."));
+    : Result.err(
+        usageError("--flush-wait expects a whole number of milliseconds."),
+      );
 };
 
 const parseSaveArgs = (rest: readonly string[]) =>
-  parseArgs({ args: [...rest], options: saveOptions, allowPositionals: true, strict: true });
+  parseArgs({
+    args: [...rest],
+    options: saveOptions,
+    allowPositionals: true,
+    strict: true,
+  });
 
 type SaveValues = ReturnType<typeof parseSaveArgs>["values"];
 
@@ -389,7 +434,9 @@ const runSaveValues = async (
   const [file, ...extra] = positionals;
   if (file === undefined || extra.length > 0) {
     return Result.err(
-      usageError("Usage: folio save <file> --from <saved.docx> --expect-version <sha>."),
+      usageError(
+        "Usage: folio save <file> --from <saved.docx> --expect-version <sha>.",
+      ),
     );
   }
   if (values.from === undefined) {
@@ -397,12 +444,18 @@ const runSaveValues = async (
   }
   if (values["expect-version"] === undefined) {
     return Result.err(
-      usageError("folio save needs --expect-version <fileVersion> of the file the editor loaded."),
+      usageError(
+        "folio save needs --expect-version <fileVersion> of the file the editor loaded.",
+      ),
     );
   }
   const saveStrategy = values["save-strategy"];
   if (saveStrategy !== undefined && !isEditorSaveStrategy(saveStrategy)) {
-    return Result.err(usageError(`--save-strategy must be ${EDITOR_SAVE_STRATEGIES.join(", ")}.`));
+    return Result.err(
+      usageError(
+        `--save-strategy must be ${EDITOR_SAVE_STRATEGIES.join(", ")}.`,
+      ),
+    );
   }
   const expectedDestination = values["expect-destination-version"];
   if (
@@ -410,12 +463,18 @@ const runSaveValues = async (
     values.out === undefined
   ) {
     return Result.err(
-      usageError("--overwrite and --expect-destination-version only apply to -o <path>."),
+      usageError(
+        "--overwrite and --expect-destination-version only apply to -o <path>.",
+      ),
     );
   }
   const flushWaitMs = parseFlushWait(values["flush-wait"]);
   if (flushWaitMs.isErr()) return Result.err(flushWaitMs.error);
-  const author = resolveAuthor({ explicit: values.author, env: io.env, cwd: io.cwd });
+  const author = resolveAuthor({
+    explicit: values.author,
+    env: io.env,
+    cwd: io.cwd,
+  });
   if (author.isErr()) return Result.err(author.error);
   const saved = await readDocumentFile(values.from);
   if (saved.isErr()) return Result.err(saved.error);
@@ -428,7 +487,9 @@ const runSaveValues = async (
     ...(values.surface !== undefined && { surface: values.surface }),
     ...(saveStrategy !== undefined && { saveStrategy }),
     ...(values["tx-id"] !== undefined && { txId: values["tx-id"] }),
-    ...(values["lease-token"] !== undefined && { leaseToken: values["lease-token"] }),
+    ...(values["lease-token"] !== undefined && {
+      leaseToken: values["lease-token"],
+    }),
     ...(flushWaitMs.value !== undefined && { flushWaitMs: flushWaitMs.value }),
     ...(values.date !== undefined && { date: values.date }),
     force: values.force === true,
@@ -449,19 +510,27 @@ const emit = (
   format: OutputFormat,
   result: Result<unknown, FolioCliError>,
 ): number => {
-  const envelope = result.isOk() ? successEnvelope(result.value) : failureEnvelope(result.error);
+  const envelope = result.isOk()
+    ? successEnvelope(result.value)
+    : failureEnvelope(result.error);
   const rendered = renderEnvelope({ envelope, format, tool: EDITOR_SAVE_TOOL });
   if (rendered.stdout !== "") io.stdout(rendered.stdout);
   if (rendered.stderr !== "") io.stderr(rendered.stderr);
   return result.isOk() ? EXIT_CODES.ok : exitCodeForError(result.error.code);
 };
 
-export const runSave = async (rest: readonly string[], io: FolioCliIo): Promise<number> => {
+export const runSave = async (
+  rest: readonly string[],
+  io: FolioCliIo,
+): Promise<number> => {
   const fallback: OutputFormat = io.isTTY ? "text" : "json";
   const parsed = Result.try({
     try: () => parseSaveArgs(rest),
     catch: (error) =>
-      usageError(error instanceof Error ? error.message : String(error), "Run folio save --help."),
+      usageError(
+        error instanceof Error ? error.message : String(error),
+        "Run folio save --help.",
+      ),
   });
   if (parsed.isErr()) return emit(io, fallback, parsed);
   const { values, positionals } = parsed.value;
@@ -474,8 +543,14 @@ export const runSave = async (rest: readonly string[], io: FolioCliIo): Promise<
     return emit(
       io,
       fallback,
-      Result.err(usageError(`--output must be ${OUTPUT_FORMATS.join(" or ")}.`)),
+      Result.err(
+        usageError(`--output must be ${OUTPUT_FORMATS.join(" or ")}.`),
+      ),
     );
   }
-  return emit(io, output ?? fallback, await runSaveValues(values, positionals, io));
+  return emit(
+    io,
+    output ?? fallback,
+    await runSaveValues(values, positionals, io),
+  );
 };

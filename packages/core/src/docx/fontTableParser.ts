@@ -10,20 +10,40 @@
  * in the ordered sink beside the font's own fields.
  */
 
-import type { EmbeddedFontRef, FontCharset, FontInfo, FontTable } from "../types/document";
-
-import { attributeRemainder, DERIVED_PART_ROOT_ATTRIBUTES } from "./attributeRemainder";
-import { CAPTURE, type ChildHandlers, dispatchChildrenWithContext } from "./containerChildren";
+import type {
+  EmbeddedFontRef,
+  FontCharset,
+  FontInfo,
+  FontTable,
+} from "../types/document";
+import {
+  attributeRemainder,
+  DERIVED_PART_ROOT_ATTRIBUTES,
+} from "./attributeRemainder";
+import {
+  CAPTURE,
+  type ChildHandlers,
+  dispatchChildrenWithContext,
+} from "./containerChildren";
 import { getAttribute, parseXmlDocument } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
-const FONT_FAMILIES = ["decorative", "modern", "roman", "script", "swiss", "auto"] as const;
+const FONT_FAMILIES = [
+  "decorative",
+  "modern",
+  "roman",
+  "script",
+  "swiss",
+  "auto",
+] as const;
 const FONT_PITCHES = ["default", "fixed", "variable"] as const;
 
 /** `w:font` reads its name; everything else it carries is the remainder's. */
 const MODELLED_FONT_ATTRIBUTES: ReadonlySet<string> = new Set(["name"]);
 
-export const parseFontTable = (xml: string | null | undefined): FontTable | undefined => {
+export const parseFontTable = (
+  xml: string | null | undefined,
+): FontTable | undefined => {
   if (!xml) {
     return undefined;
   }
@@ -43,7 +63,11 @@ export const parseFontTable = (xml: string | null | undefined): FontTable | unde
     element: root,
     modelled: DERIVED_PART_ROOT_ATTRIBUTES,
   });
-  if (fonts.length === 0 && preserved === undefined && preservedAttributes === undefined) {
+  if (
+    fonts.length === 0 &&
+    preserved === undefined &&
+    preservedAttributes === undefined
+  ) {
     return undefined;
   }
   return {
@@ -118,11 +142,21 @@ const embedOf = (element: XmlElement): EmbeddedFontRef | undefined => {
     ...(fontKey === undefined ? {} : { fontKey }),
     ...(subsetted === null || subsetted === undefined
       ? {}
-      : { subsetted: subsetted === "true" || subsetted === "1" || subsetted === "on" }),
+      : {
+          subsetted:
+            subsetted === "true" || subsetted === "1" || subsetted === "on",
+        }),
   };
 };
 
-const SIGNATURE_ATTRIBUTES = ["usb0", "usb1", "usb2", "usb3", "csb0", "csb1"] as const;
+const SIGNATURE_ATTRIBUTES = [
+  "usb0",
+  "usb1",
+  "usb2",
+  "usb3",
+  "csb0",
+  "csb1",
+] as const;
 
 const signatureOf = (element: XmlElement): FontInfo["sig"] | undefined => {
   const signature: NonNullable<FontInfo["sig"]> = {};
@@ -172,14 +206,17 @@ const FONT_HANDLERS = {
   altName: (child, walk) => read(walk, "altName", value(child)),
   panose1: (child, walk) => read(walk, "panose1", value(child)),
   charset: (child, walk) => read(walk, "charset", charsetOf(child)),
-  family: (child, walk) => read(walk, "family", narrow(value(child), FONT_FAMILIES)),
+  family: (child, walk) =>
+    read(walk, "family", narrow(value(child), FONT_FAMILIES)),
   // Word's own flag for a face that is not TrueType. folio has no model
   // for it and no reader asks, so the bytes go back where they were.
   notTrueType: CAPTURE,
-  pitch: (child, walk) => read(walk, "pitch", narrow(value(child), FONT_PITCHES)),
+  pitch: (child, walk) =>
+    read(walk, "pitch", narrow(value(child), FONT_PITCHES)),
   sig: (child, walk) => read(walk, "sig", signatureOf(child)),
   embedRegular: (child, walk) => read(walk, "embedRegular", embedOf(child)),
   embedBold: (child, walk) => read(walk, "embedBold", embedOf(child)),
   embedItalic: (child, walk) => read(walk, "embedItalic", embedOf(child)),
-  embedBoldItalic: (child, walk) => read(walk, "embedBoldItalic", embedOf(child)),
+  embedBoldItalic: (child, walk) =>
+    read(walk, "embedBoldItalic", embedOf(child)),
 } as const satisfies ChildHandlers<"w:font", FontWalk>;

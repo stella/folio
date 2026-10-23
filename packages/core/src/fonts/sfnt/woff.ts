@@ -1,4 +1,4 @@
-import { encodeBinaryString } from "../../utils/textEncoding";
+import { Result, TaggedError } from "better-result";
 /**
  * WOFF 1.0 container decoding.
  *
@@ -8,11 +8,9 @@ import { encodeBinaryString } from "../../utils/textEncoding";
  * `glyf`/`loca` transform has to be reversed and Brotli decoded), so it is
  * rejected here rather than half-supported.
  */
-
 import { inflateSync } from "node:zlib";
 
-import { Result, TaggedError } from "better-result";
-
+import { encodeBinaryString } from "../../utils/textEncoding";
 import {
   readSfntVersion,
   readTag,
@@ -22,7 +20,9 @@ import {
   SFNT_VERSION,
 } from "./tables";
 
-export class WoffDecodeError extends TaggedError("WoffDecodeError")<{ message: string }> {}
+export class WoffDecodeError extends TaggedError("WoffDecodeError")<{
+  message: string;
+}> {}
 
 const fail = (message: string) => Result.err(new WoffDecodeError({ message }));
 
@@ -98,14 +98,24 @@ const searchParametersFor = (numTables: number) => {
 };
 
 /** Assembles decoded tables into a standard sfnt, directory sorted by tag. */
-const buildSfnt = (flavor: number, tables: readonly DecodedTable[]): Uint8Array => {
-  const sorted = [...tables].sort((left, right) => (left.tag < right.tag ? -1 : 1));
+const buildSfnt = (
+  flavor: number,
+  tables: readonly DecodedTable[],
+): Uint8Array => {
+  const sorted = [...tables].sort((left, right) =>
+    left.tag < right.tag ? -1 : 1,
+  );
   const directorySize = sorted.length * SFNT_DIRECTORY_ENTRY_SIZE;
-  const bodySize = sorted.reduce((total, table) => total + alignUp(table.data.byteLength), 0);
+  const bodySize = sorted.reduce(
+    (total, table) => total + alignUp(table.data.byteLength),
+    0,
+  );
   const output = new Uint8Array(SFNT_HEADER_SIZE + directorySize + bodySize);
   const view = new DataView(output.buffer);
 
-  const { searchRange, entrySelector, rangeShift } = searchParametersFor(sorted.length);
+  const { searchRange, entrySelector, rangeShift } = searchParametersFor(
+    sorted.length,
+  );
   view.setUint32(0, flavor);
   view.setUint16(4, sorted.length);
   view.setUint16(6, searchRange);
@@ -128,9 +138,13 @@ const buildSfnt = (flavor: number, tables: readonly DecodedTable[]): Uint8Array 
   return output;
 };
 
-export const decodeWoff = (bytes: Uint8Array): Result<Uint8Array, WoffDecodeError> => {
+export const decodeWoff = (
+  bytes: Uint8Array,
+): Result<Uint8Array, WoffDecodeError> => {
   if (bytes.byteLength < WOFF_HEADER.size) {
-    return fail(`WOFF header needs ${WOFF_HEADER.size} bytes, buffer has ${bytes.byteLength}`);
+    return fail(
+      `WOFF header needs ${WOFF_HEADER.size} bytes, buffer has ${bytes.byteLength}`,
+    );
   }
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -172,7 +186,9 @@ export const decodeWoff = (bytes: Uint8Array): Result<Uint8Array, WoffDecodeErro
       );
     }
     if (origLength > MAX_TABLE_LENGTH) {
-      return fail(`WOFF table '${tag}' claims ${origLength} bytes, above the decode ceiling`);
+      return fail(
+        `WOFF table '${tag}' claims ${origLength} bytes, above the decode ceiling`,
+      );
     }
     decodedLength += origLength;
     if (decodedLength > MAX_DECODED_FONT_LENGTH) {
@@ -229,7 +245,9 @@ export const decodeWoff = (bytes: Uint8Array): Result<Uint8Array, WoffDecodeErro
  * The entry point a caller with bytes of unknown provenance wants: plain sfnt
  * passes through untouched, WOFF is decoded, WOFF2 is refused by name.
  */
-export const toSfntBytes = (bytes: Uint8Array): Result<Uint8Array, WoffDecodeError> => {
+export const toSfntBytes = (
+  bytes: Uint8Array,
+): Result<Uint8Array, WoffDecodeError> => {
   const version = readSfntVersion(bytes);
   if (version === undefined) {
     return fail(`buffer is ${bytes.byteLength} bytes, too short to identify`);
@@ -250,6 +268,8 @@ export const toSfntBytes = (bytes: Uint8Array): Result<Uint8Array, WoffDecodeErr
       // bytes: let the parser be the one that explains it.
       return Result.ok(bytes);
     default:
-      return fail(`unrecognized font container 0x${version.toString(16).padStart(8, "0")}`);
+      return fail(
+        `unrecognized font container 0x${version.toString(16).padStart(8, "0")}`,
+      );
   }
 };

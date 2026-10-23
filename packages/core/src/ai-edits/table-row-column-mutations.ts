@@ -1,5 +1,3 @@
-import { sliceText } from "../utils/sliceText";
-import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import {
@@ -10,22 +8,27 @@ import {
   tableNodeTypes,
 } from "prosemirror-tables";
 
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import {
+  markRowsEmptiedInBatch,
   reconcileTableGridAfterColumnInsertion,
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCells,
-  markRowsEmptiedInBatch,
   removeTableRow,
   type RowsEmptiedInBatch,
 } from "../prosemirror/tableGridMutation";
+import { sliceText } from "../utils/sliceText";
 import { stripBlockIdentityAttrs } from "./block-identity";
-import { tableRowFromTemplate, type TableStructureRevision } from "./table-template";
 import {
   findEnclosingTableCell,
   findEnclosingTableRow,
   type TableRowTarget,
 } from "./table-targets";
+import {
+  tableRowFromTemplate,
+  type TableStructureRevision,
+} from "./table-template";
 
 export type TableRowInsertion = {
   tableStart: number;
@@ -69,14 +72,16 @@ type TableRowColumnMutationResult =
  * each cell's marker as a revision of its own, and each is accepted or
  * rejected on its own; the reviewer's revisions are those from the start.
  */
-const cellRevision = (revision: TableStructureRevision, index: number): TableStructureRevision => ({
+const cellRevision = (
+  revision: TableStructureRevision,
+  index: number,
+): TableStructureRevision => ({
   ...revision,
   revisionId: revision.revisionId + index,
 });
 
 type TableColumnInsertionResult =
-  | TableRowColumnMutationResult
-  | { type: "payloadDoesNotFit"; message: string };
+  TableRowColumnMutationResult | { type: "payloadDoesNotFit"; message: string };
 
 const UNPLACED_TEXT_PREVIEW_LENGTH = 40;
 
@@ -114,7 +119,10 @@ export const describeUnplacedCellTexts = ({
   }
   const unplaced = cellTexts
     .slice(capacity)
-    .map((text, offset) => `cellTexts[${capacity + offset}] ${previewCellText(text)}`);
+    .map(
+      (text, offset) =>
+        `cellTexts[${capacity + offset}] ${previewCellText(text)}`,
+    );
   const cause =
     target === "row"
       ? "a merged cell from the row above reaches through the rest"
@@ -148,8 +156,10 @@ export const findTableColumnInsertion = ({
   }
   return {
     tablePosition: target.tablePosition,
-    columnIndex: position === "before" ? target.leftColumnIndex : target.rightColumnIndex,
-    boundaryPosition: position === "before" ? target.cellPosition : target.cellEndPosition,
+    columnIndex:
+      position === "before" ? target.leftColumnIndex : target.rightColumnIndex,
+    boundaryPosition:
+      position === "before" ? target.cellPosition : target.cellEndPosition,
   };
 };
 
@@ -165,7 +175,8 @@ export const findTableRowInsertion = ({
     return null;
   }
   const map = TableMap.get(target.table);
-  const rowIndex = position === "before" ? target.rowIndex : target.rowIndex + 1;
+  const rowIndex =
+    position === "before" ? target.rowIndex : target.rowIndex + 1;
   return buildTableRowInsertion({
     map,
     table: target.table,
@@ -200,7 +211,11 @@ export const applyTableRowInsertion = ({
   // the new row through a continuation cell inside the inserted `w:tr`, so a
   // reject that removes the row shortens the merge with it, exactly as
   // `removeTableRow` does here.
-  const liveRowspanUpdates: { position: number; cell: PMNode; rowspan: number }[] = [];
+  const liveRowspanUpdates: {
+    position: number;
+    cell: PMNode;
+    rowspan: number;
+  }[] = [];
   for (const updatePosition of insertion.rowspanUpdates) {
     const cellPosition = insertion.tableStart + updatePosition;
     const liveCell = tr.doc.nodeAt(cellPosition);
@@ -208,7 +223,11 @@ export const applyTableRowInsertion = ({
     if (!liveCell || typeof rowspan !== "number") {
       return { type: "unsupported" };
     }
-    liveRowspanUpdates.push({ position: cellPosition, cell: liveCell, rowspan });
+    liveRowspanUpdates.push({
+      position: cellPosition,
+      cell: liveCell,
+      rowspan,
+    });
   }
 
   for (const update of liveRowspanUpdates) {
@@ -230,11 +249,22 @@ export const applyTableRowInsertion = ({
       ? null
       : tableRowFromTemplate({ template, columnCount: insertion.columnCount });
   const row = templated
-    ? templated.type.create({ ...templated.attrs, ...rowAttrs }, templated.content)
-    : populateTableRow(insertion.rowType.create(rowAttrs, insertion.cells), cellTexts);
+    ? templated.type.create(
+        { ...templated.attrs, ...rowAttrs },
+        templated.content,
+      )
+    : populateTableRow(
+        insertion.rowType.create(rowAttrs, insertion.cells),
+        cellTexts,
+      );
   tr.insert(insertion.rowPosition, row);
   if (revision) {
-    markTableRowContent({ tr, rowPosition: insertion.rowPosition, kind: "insertion", revision });
+    markTableRowContent({
+      tr,
+      rowPosition: insertion.rowPosition,
+      kind: "insertion",
+      revision,
+    });
   }
   return applied(tr, revision);
 };
@@ -282,7 +312,9 @@ export const markTableRowContent = ({
     date: revision.date,
     ...(revision.initials != null && { initials: revision.initials }),
     ...(revision.provenance != null && { provenance: revision.provenance }),
-    ...(revision.suggestionId != null && { suggestionId: revision.suggestionId }),
+    ...(revision.suggestionId != null && {
+      suggestionId: revision.suggestionId,
+    }),
   });
   const contentFrom = rowPosition + 1;
   const markable: { from: number; to: number }[] = [];
@@ -321,7 +353,12 @@ export const markTableRowContent = ({
   }
   for (const range of markable) {
     if (kind === "deletion")
-      addTrackedDeletionMark({ insertionPolicy: "preserve-pending", tr, ...range, mark });
+      addTrackedDeletionMark({
+        insertionPolicy: "preserve-pending",
+        tr,
+        ...range,
+        mark,
+      });
     else tr.addMark(range.from, range.to, mark);
   }
 };
@@ -331,7 +368,10 @@ const isTrackedChangeMark = (mark: Mark): boolean =>
 
 const isRowSpanningCell = (node: PMNode): boolean => {
   const role = node.type.spec["tableRole"];
-  return (role === "cell" || role === "header_cell") && Number(node.attrs["rowspan"]) > 1;
+  return (
+    (role === "cell" || role === "header_cell") &&
+    Number(node.attrs["rowspan"]) > 1
+  );
 };
 
 type ApplyTableColumnInsertionOptions = {
@@ -357,7 +397,8 @@ export const applyTableColumnInsertion = ({
   if (insertion.columnIndex >= 0 && insertion.columnIndex <= map.width) {
     const overflow = describeUnplacedCellTexts({
       cellTexts,
-      capacity: getInsertedPhysicalColumnRows(map, insertion.columnIndex).length,
+      capacity: getInsertedPhysicalColumnRows(map, insertion.columnIndex)
+        .length,
       target: "column",
     });
     if (overflow !== null) {
@@ -370,14 +411,19 @@ export const applyTableColumnInsertion = ({
     columnIndex: insertion.columnIndex,
     cellTexts,
   });
-  if (!actions || (revision && actions.some(({ type }) => type === "setColspan"))) {
+  if (
+    !actions ||
+    (revision && actions.some(({ type }) => type === "setColspan"))
+  ) {
     return { type: "unsupported" };
   }
 
   const mapFrom = tr.mapping.maps.length;
   let markedCells = 0;
   for (const action of actions) {
-    const position = tr.mapping.slice(mapFrom).map(tablePosition + 1 + action.position);
+    const position = tr.mapping
+      .slice(mapFrom)
+      .map(tablePosition + 1 + action.position);
     if (action.type === "setColspan") {
       tr.setNodeMarkup(position, undefined, action.attrs);
       continue;
@@ -435,7 +481,11 @@ export const applyTableColumnDeletion = ({
   }
 
   if (revision) {
-    const cellPositions = getTableColumnDeletionCellPositions({ map, table, columnIndex });
+    const cellPositions = getTableColumnDeletionCellPositions({
+      map,
+      table,
+      columnIndex,
+    });
     if (!cellPositions) {
       return { type: "unsupported" };
     }
@@ -473,7 +523,12 @@ export const applyTableColumnDeletion = ({
     removedColumn: columnIndex,
   });
   if (emptiedRows) {
-    markRowsEmptiedInBatch({ tr, tablePosition, previousTable: table, emptied: emptiedRows });
+    markRowsEmptiedInBatch({
+      tr,
+      tablePosition,
+      previousTable: table,
+      emptied: emptiedRows,
+    });
   } else {
     removeRowsWithoutCells(tr, tablePosition);
   }
@@ -514,7 +569,10 @@ export const applyTableRowDeletion = ({
   // delete that new row instead.
   const at = tr.doc.resolve(tr.mapping.map(deletion.rowPosition));
   const table = at.parent;
-  if (table.type.spec["tableRole"] !== "table" || at.nodeAfter?.type.spec["tableRole"] !== "row") {
+  if (
+    table.type.spec["tableRole"] !== "table" ||
+    at.nodeAfter?.type.spec["tableRole"] !== "row"
+  ) {
     return { type: "unsupported" };
   }
   const tablePosition = at.before();
@@ -523,7 +581,11 @@ export const applyTableRowDeletion = ({
     return transaction ? applied(transaction, null) : { type: "unsupported" };
   }
 
-  removeTableRow(tr, { map: TableMap.get(table), table, tableStart: at.start() }, at.index());
+  removeTableRow(
+    tr,
+    { map: TableMap.get(table), table, tableStart: at.start() },
+    at.index(),
+  );
   return applied(tr, null);
 };
 
@@ -536,7 +598,10 @@ const applied = (
   transaction,
   revisionId: revision?.revisionId ?? null,
   revisionIds: revision
-    ? Array.from({ length: revisionCount }, (_, index) => revision.revisionId + index)
+    ? Array.from(
+        { length: revisionCount },
+        (_, index) => revision.revisionId + index,
+      )
     : [],
 });
 
@@ -561,7 +626,12 @@ const deleteTableNode = ({
   const emptyParagraph = tr.doc.type.schema.nodes["paragraph"]?.createAndFill();
   if (
     !emptyParagraph ||
-    !parent.canReplaceWith(tableIndex, tableIndex + 1, emptyParagraph.type, emptyParagraph.marks)
+    !parent.canReplaceWith(
+      tableIndex,
+      tableIndex + 1,
+      emptyParagraph.type,
+      emptyParagraph.marks,
+    )
   ) {
     return null;
   }
@@ -587,8 +657,16 @@ const buildTableRowInsertion = ({
   if (rowIsHeader(map, table, rowIndex + referenceRow)) {
     referenceRow = rowIndex === 0 || rowIndex === map.height ? null : 0;
   }
-  for (let col = 0, index = map.width * rowIndex; col < map.width; col++, index++) {
-    if (rowIndex > 0 && rowIndex < map.height && map.map[index] === map.map[index - map.width]) {
+  for (
+    let col = 0, index = map.width * rowIndex;
+    col < map.width;
+    col++, index++
+  ) {
+    if (
+      rowIndex > 0 &&
+      rowIndex < map.height &&
+      map.map[index] === map.map[index - map.width]
+    ) {
       const cellPosition = map.map[index];
       if (cellPosition === undefined) {
         return null;
@@ -607,7 +685,9 @@ const buildTableRowInsertion = ({
       continue;
     }
     const referencePosition =
-      referenceRow === null ? undefined : map.map[index + referenceRow * map.width];
+      referenceRow === null
+        ? undefined
+        : map.map[index + referenceRow * map.width];
     const cellType =
       referencePosition === undefined
         ? tableNodeTypes(table.type.schema).cell
@@ -658,7 +738,10 @@ export const splitCellParagraphTexts = (text: string): string[] =>
  * did not name stay empty. The resolver has already refused more texts than
  * cells ({@link describeUnplacedCellTexts}).
  */
-const populateTableRow = (row: PMNode, cellTexts: readonly string[] | undefined): PMNode => {
+const populateTableRow = (
+  row: PMNode,
+  cellTexts: readonly string[] | undefined,
+): PMNode => {
   if (cellTexts === undefined) {
     return row;
   }
@@ -672,19 +755,27 @@ const populateTableRow = (row: PMNode, cellTexts: readonly string[] | undefined)
     }
     const attrs = stripBlockIdentityAttrs(paragraph.attrs);
     const paragraphs = splitCellParagraphTexts(text).map((line) =>
-      paragraph.type.create(attrs, line.length > 0 ? row.type.schema.text(line) : null),
+      paragraph.type.create(
+        attrs,
+        line.length > 0 ? row.type.schema.text(line) : null,
+      ),
     );
     cells.push(cell.type.create(cell.attrs, paragraphs));
   });
   return row.type.create(row.attrs, cells);
 };
 
-const getInsertedPhysicalColumnRows = (map: TableMap, columnIndex: number): number[] => {
+const getInsertedPhysicalColumnRows = (
+  map: TableMap,
+  columnIndex: number,
+): number[] => {
   const rows: number[] = [];
   for (let row = 0; row < map.height; row++) {
     const index = row * map.width + columnIndex;
     const crossesColspan =
-      columnIndex > 0 && columnIndex < map.width && map.map[index - 1] === map.map[index];
+      columnIndex > 0 &&
+      columnIndex < map.width &&
+      map.map[index - 1] === map.map[index];
     if (!crossesColspan) {
       rows.push(row);
     }
@@ -726,7 +817,10 @@ const expandTableCellColspan = (
   if (colwidth !== null && !Array.isArray(colwidth)) {
     return null;
   }
-  if (Array.isArray(colwidth) && !colwidth.every((width) => typeof width === "number")) {
+  if (
+    Array.isArray(colwidth) &&
+    !colwidth.every((width) => typeof width === "number")
+  ) {
     return null;
   }
   const nextColwidth = Array.isArray(colwidth) ? [...colwidth] : null;
@@ -744,7 +838,10 @@ const populateTableCell = (cell: PMNode, text: string): PMNode | null => {
     return null;
   }
   const content = text.length > 0 ? cell.type.schema.text(text) : null;
-  const nextParagraph = paragraph.type.create(stripBlockIdentityAttrs(paragraph.attrs), content);
+  const nextParagraph = paragraph.type.create(
+    stripBlockIdentityAttrs(paragraph.attrs),
+    content,
+  );
   return cell.type.create(cell.attrs, nextParagraph);
 };
 
@@ -753,7 +850,8 @@ const buildTableColumnInsertionActions = ({
   table,
   columnIndex,
   cellTexts,
-}: BuildTableColumnInsertionActionsOptions): TableColumnInsertionAction[] | null => {
+}: BuildTableColumnInsertionActionsOptions):
+  TableColumnInsertionAction[] | null => {
   if (columnIndex < 0 || columnIndex > map.width) {
     return null;
   }
@@ -769,7 +867,11 @@ const buildTableColumnInsertionActions = ({
   let physicalCellIndex = 0;
   for (let row = 0; row < map.height; row++) {
     const index = row * map.width + columnIndex;
-    if (columnIndex > 0 && columnIndex < map.width && map.map[index - 1] === map.map[index]) {
+    if (
+      columnIndex > 0 &&
+      columnIndex < map.width &&
+      map.map[index - 1] === map.map[index]
+    ) {
       const position = map.map[index];
       if (position === undefined) {
         return null;
@@ -797,7 +899,10 @@ const buildTableColumnInsertionActions = ({
     if (!cell) {
       return null;
     }
-    const populatedCell = populateTableCell(cell, cellTexts?.[physicalCellIndex] ?? "");
+    const populatedCell = populateTableCell(
+      cell,
+      cellTexts?.[physicalCellIndex] ?? "",
+    );
     if (!populatedCell) {
       return null;
     }

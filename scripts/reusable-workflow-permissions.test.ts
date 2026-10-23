@@ -1,14 +1,14 @@
-import { scanTestTimeout } from "../test/scan-timeout";
-
-import { setDefaultTimeout, expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { scanTestTimeout } from "../test/scan-timeout";
 import {
-  REFRESH_REUSABLE_WORKFLOWS,
-  REUSABLE_WORKFLOW_FIXTURES,
   checkReusableWorkflowPermissions,
   loadPermissionWorkflow,
   parsePermissionWorkflow,
+  REFRESH_REUSABLE_WORKFLOWS,
+  REUSABLE_WORKFLOW_FIXTURES,
   workflowReference,
 } from "./lib/reusable-workflow-permissions";
 
@@ -31,8 +31,12 @@ test("every reusable workflow call covers its pinned callee permissions offline"
   const root = path.resolve(import.meta.dir, "..");
   const used = new Set<string>();
   const problems: string[] = [];
-  for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({ cwd: root })) {
-    const workflow = parsePermissionWorkflow(readFileSync(path.join(root, file), "utf8"));
+  for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({
+    cwd: root,
+  })) {
+    const workflow = parsePermissionWorkflow(
+      readFileSync(path.join(root, file), "utf8"),
+    );
     problems.push(
       ...checkReusableWorkflowPermissions({
         source: file,
@@ -51,7 +55,10 @@ test("every reusable workflow call covers its pinned callee permissions offline"
       dot: true,
     }),
   ]);
-  expect(vendored, `Refresh pinned workflows: ${REFRESH_REUSABLE_WORKFLOWS}`).toEqual(used);
+  expect(
+    vendored,
+    `Refresh pinned workflows: ${REFRESH_REUSABLE_WORKFLOWS}`,
+  ).toEqual(used);
 });
 
 test("missing root and job grants fail with the maintainer refresh command", () => {
@@ -66,8 +73,12 @@ test("missing root and job grants fail with the maintainer refresh command", () 
       workflow: caller(permissions),
       load: () => callee,
     });
-    expect(problems.some((problem) => problem.includes(`${missing}: read`))).toBe(true);
-    expect(problems.at(-1)).toBe(`Refresh pinned workflows: ${REFRESH_REUSABLE_WORKFLOWS}`);
+    expect(
+      problems.some((problem) => problem.includes(`${missing}: read`)),
+    ).toBe(true);
+    expect(problems.at(-1)).toBe(
+      `Refresh pinned workflows: ${REFRESH_REUSABLE_WORKFLOWS}`,
+    );
   }
 });
 
@@ -95,8 +106,12 @@ test("job declarations replace root grants and write covers read", () => {
       workflow: caller(permissions),
       load: () => callee,
     });
-  expect(check({ contents: "read", "pull-requests": "read" }).at(0)).toContain("checks: read");
-  expect(check({ contents: "write", "pull-requests": "write", checks: "write" })).toEqual([]);
+  expect(check({ contents: "read", "pull-requests": "read" }).at(0)).toContain(
+    "checks: read",
+  );
+  expect(
+    check({ contents: "write", "pull-requests": "write", checks: "write" }),
+  ).toEqual([]);
   expect(check("read-all")).toEqual([]);
   const inherited = caller(undefined);
   expect(
@@ -124,7 +139,8 @@ test("nested calls preserve caller restrictions and require their own pinned fix
   const absent = checkReusableWorkflowPermissions({
     source: "release-pr.yml",
     workflow: caller("write-all"),
-    load: (reference) => (reference.file === "release.yml" ? nested : undefined),
+    load: (reference) =>
+      reference.file === "release.yml" ? nested : undefined,
   });
   expect(absent.at(0)).toContain(`stella/.github/${SHA}/child.yml`);
 });
@@ -135,7 +151,9 @@ test("local calls are resolved locally and mutable remote refs are rejected", ()
     file: "local.yaml",
     key: "./.github/workflows/local.yaml",
   });
-  expect(workflowReference("stella/.github/.github/workflows/release.yml@main")).toBeUndefined();
+  expect(
+    workflowReference("stella/.github/.github/workflows/release.yml@main"),
+  ).toBeUndefined();
   const workflow = parsePermissionWorkflow(
     "permissions: {}\njobs:\n  call:\n    uses: stella/.github/.github/workflows/release.yml@main\n",
   );

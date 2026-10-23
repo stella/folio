@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import type { Document, ParagraphNumberingOverride, Table } from "../model/document";
+import type {
+  Document,
+  ParagraphNumberingOverride,
+  Table,
+} from "../model/document";
 import { serializeDocumentToDocx } from "./docx";
 import { InvalidOoxmlNumericIdError } from "./numericIds";
 
@@ -66,7 +70,10 @@ test("the standalone DOCX writer refuses overflowing replayed identifiers", asyn
     package: {
       document: {
         content: [
-          { type: "preservedBlock", xml: '<w:bookmarkStart w:id="2147483648" w:name="marker"/>' },
+          {
+            type: "preservedBlock",
+            xml: '<w:bookmarkStart w:id="2147483648" w:name="marker"/>',
+          },
         ],
       },
     },
@@ -120,7 +127,9 @@ test("numbering markers serialize independent complex-script typography", async 
 describe("DOCX border serialization escapes attribute values", () => {
   test("a style value cannot inject extra XML attributes", async () => {
     const xml = await readDocumentXml(
-      await serializeDocumentToDocx(docWithBorder('single" w:evil="1', "CCCCCC")),
+      await serializeDocumentToDocx(
+        docWithBorder('single" w:evil="1', "CCCCCC"),
+      ),
     );
     // The injected attribute must not appear as a real attribute, and the
     // quote must be entity-escaped.
@@ -175,7 +184,9 @@ describe("DOCX positional tab serialization", () => {
     };
 
     const xml = await readDocumentXml(await serializeDocumentToDocx(document));
-    expect(xml).toContain('<w:ptab w:relativeTo="margin" w:alignment="right" w:leader="dot"/>');
+    expect(xml).toContain(
+      '<w:ptab w:relativeTo="margin" w:alignment="right" w:leader="dot"/>',
+    );
   });
 });
 
@@ -218,7 +229,9 @@ describe("DOCX numbering serialization states only what the paragraph carries", 
   // the file, which `CT_DecimalNumber` does not accept.
   test("an absent ilvl writes no w:ilvl at all", async () => {
     const xml = await readDocumentXml(
-      await serializeDocumentToDocx(docWithNumbering({ kind: "reference", numId: 7 })),
+      await serializeDocumentToDocx(
+        docWithNumbering({ kind: "reference", numId: 7 }),
+      ),
     );
     expect(xml).toContain('<w:numPr><w:numId w:val="7"/></w:numPr>');
     expect(xml).not.toContain("w:ilvl");
@@ -226,8 +239,12 @@ describe("DOCX numbering serialization states only what the paragraph carries", 
 
   test("a stated ilvl is written", async () => {
     const xml = await readDocumentXml(
-      await serializeDocumentToDocx(docWithNumbering({ kind: "reference", numId: 7, ilvl: 2 })),
+      await serializeDocumentToDocx(
+        docWithNumbering({ kind: "reference", numId: 7, ilvl: 2 }),
+      ),
     );
-    expect(xml).toContain('<w:numPr><w:ilvl w:val="2"/><w:numId w:val="7"/></w:numPr>');
+    expect(xml).toContain(
+      '<w:numPr><w:ilvl w:val="2"/><w:numId w:val="7"/></w:numPr>',
+    );
   });
 });

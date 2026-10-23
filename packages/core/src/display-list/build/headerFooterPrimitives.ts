@@ -13,11 +13,11 @@
  */
 
 import type { HeaderFooterContent, Page } from "../../layout-engine/types";
-import type { BuildContext } from "./buildContext";
-import { paintHeaderFooterBlocks } from "./storyPrimitives";
 import { HIT_REGION_KINDS } from "../primitives";
-import type { PageComposer } from "./regions";
 import type { DisplayStoryRef } from "../types";
+import type { BuildContext } from "./buildContext";
+import type { PageComposer } from "./regions";
+import { paintHeaderFooterBlocks } from "./storyPrimitives";
 
 /** `renderPage.ts`: the fallback when neither the caller nor `w:pgMar` states one. */
 const DEFAULT_DISTANCE_PX = 48;
@@ -50,7 +50,8 @@ export const paintHeaderFooter = ({
     distancePx ??
     (section === "header" ? page.margins.header : page.margins.footer) ??
     DEFAULT_DISTANCE_PX;
-  const originYPx = section === "header" ? distance : page.size.h - distance - content.height;
+  const originYPx =
+    section === "header" ? distance : page.size.h - distance - content.height;
   const story: DisplayStoryRef = { kind: section, rId: content.rId ?? null };
 
   // The slot's own box, which is what a double-click enters: the story it
@@ -58,7 +59,10 @@ export const paintHeaderFooter = ({
   // sections can share one part and a document can hold many.
   composer.region(
     {
-      kind: section === "header" ? HIT_REGION_KINDS.headerSlot : HIT_REGION_KINDS.footerSlot,
+      kind:
+        section === "header"
+          ? HIT_REGION_KINDS.headerSlot
+          : HIT_REGION_KINDS.footerSlot,
       rect: {
         xPx: page.margins.left,
         yPx: originYPx,
@@ -77,7 +81,8 @@ export const paintHeaderFooter = ({
         widthPx: page.size.w - page.margins.left - page.margins.right,
         page,
         context: { ...context, story },
-        label: content.rId === undefined ? section : `${section} ${content.rId}`,
+        label:
+          content.rId === undefined ? section : `${section} ${content.rId}`,
       });
     },
   );

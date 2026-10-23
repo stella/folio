@@ -19,19 +19,31 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-
-import { CONTAINER_CHILDREN, type DispatchedContainer } from "./containerChildren.gen";
+import {
+  CONTAINER_CHILDREN,
+  type DispatchedContainer,
+} from "./containerChildren.gen";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
-import { getChildElements, getLocalName, parseXmlDocument, type XmlElement } from "./xmlParser";
+import {
+  getChildElements,
+  getLocalName,
+  parseXmlDocument,
+  type XmlElement,
+} from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /**
  * Every block-level container the dispatcher covers that declares a bookmark.
@@ -52,7 +64,8 @@ const BLOCK_LEVEL_CONTAINERS = [
   "table-content",
 ] as const satisfies readonly BlockLevelContainer[];
 
-const paragraph = (text: string): string => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const paragraph = (text: string): string =>
+  `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
 
 const start = (id: number, name: string): string =>
   `<w:bookmarkStart w:id="${id}" w:name="${name}"/>`;
@@ -86,7 +99,8 @@ const PLACEMENTS = {
   /** `_GoBack` and a table-of-contents range: a body's own children. */
   body: {
     container: "block-content",
-    body: (id) => `${paragraph("one")}${start(id, `b${id}`)}${paragraph("two")}${end(id)}`,
+    body: (id) =>
+      `${paragraph("one")}${start(id, `b${id}`)}${paragraph("two")}${end(id)}`,
     parent: "body",
     startOrdinal: 1,
     endOrdinal: 3,
@@ -107,7 +121,9 @@ const PLACEMENTS = {
     container: "block-content",
     body: (id) =>
       `<w:tbl>${grid}<w:tr>` +
-      cell(`${start(id, `b${id}`)}${paragraph("a")}${end(id)}${paragraph("b")}`) +
+      cell(
+        `${start(id, `b${id}`)}${paragraph("a")}${end(id)}${paragraph("b")}`,
+      ) +
       cell(paragraph("c")) +
       `</w:tr></w:tbl>`,
     parent: "tc",
@@ -178,7 +194,10 @@ const PROPERTY_CHILDREN: ReadonlySet<string> = new Set([
 ]);
 
 /** Where every `w:bookmarkStart`/`w:bookmarkEnd` with this id sits. */
-const anchorsOf = (xml: string, id: number): { start: Anchor[]; end: Anchor[] } => {
+const anchorsOf = (
+  xml: string,
+  id: number,
+): { start: Anchor[]; end: Anchor[] } => {
   const root = parseXmlDocument(xml);
   const found: { start: Anchor[]; end: Anchor[] } = { start: [], end: [] };
   if (!root) {
@@ -197,7 +216,10 @@ const anchorsOf = (xml: string, id: number): { start: Anchor[]; end: Anchor[] } 
         const attributes = child.attributes ?? {};
         const written = attributes["w:id"] ?? attributes["id"];
         if (written !== undefined && Number(written) === id) {
-          found[local === "bookmarkStart" ? "start" : "end"].push({ parent, ordinal });
+          found[local === "bookmarkStart" ? "start" : "end"].push({
+            parent,
+            ordinal,
+          });
         }
       }
       ordinal += 1;
@@ -213,7 +235,9 @@ const documentXmlOf = async (saved: ArrayBuffer): Promise<string> => {
   return (await zip.file("word/document.xml")?.async("text")) ?? "";
 };
 
-const expectedAnchors = (placement: Placement): { start: Anchor[]; end: Anchor[] } => ({
+const expectedAnchors = (
+  placement: Placement,
+): { start: Anchor[]; end: Anchor[] } => ({
   start: [{ parent: placement.parent, ordinal: placement.startOrdinal }],
   end: [{ parent: placement.parent, ordinal: placement.endOrdinal }],
 });
@@ -221,10 +245,16 @@ const expectedAnchors = (placement: Placement): { start: Anchor[]; end: Anchor[]
 describe("a bookmark marker at block level keeps its container and its ordinal", () => {
   test("every block container the schema lets hold one is exercised", () => {
     const declaring = BLOCK_LEVEL_CONTAINERS.filter((container) =>
-      (CONTAINER_CHILDREN[container] as readonly string[]).includes("bookmarkStart"),
+      (CONTAINER_CHILDREN[container] as readonly string[]).includes(
+        "bookmarkStart",
+      ),
     );
-    const exercised = new Set(PLACEMENT_KEYS.map((key) => PLACEMENTS[key].container));
-    expect(declaring.filter((container) => !exercised.has(container))).toEqual([]);
+    const exercised = new Set(
+      PLACEMENT_KEYS.map((key) => PLACEMENTS[key].container),
+    );
+    expect(declaring.filter((container) => !exercised.has(container))).toEqual(
+      [],
+    );
   });
 
   test("every block container that declares one, through a save", async () => {
@@ -239,10 +269,12 @@ describe("a bookmark marker at block level keeps its container and its ordinal",
           });
           const saved = await repackDocx(parsed, { updateModifiedDate: false });
 
-          expect({ key, ...anchorsOf(await documentXmlOf(saved), id) }).toEqual({
-            key,
-            ...expectedAnchors(placement),
-          });
+          expect({ key, ...anchorsOf(await documentXmlOf(saved), id) }).toEqual(
+            {
+              key,
+              ...expectedAnchors(placement),
+            },
+          );
         },
       ),
       propertyConfig({ numRuns: 30 }),
@@ -262,12 +294,16 @@ describe("a bookmark marker at block level keeps its container and its ordinal",
           const document = fromProseDoc(toProseDoc(parsed), parsed, {
             stylesheetSource: { type: "package" },
           });
-          const saved = await repackDocx(document, { updateModifiedDate: false });
-
-          expect({ key, ...anchorsOf(await documentXmlOf(saved), id) }).toEqual({
-            key,
-            ...expectedAnchors(placement),
+          const saved = await repackDocx(document, {
+            updateModifiedDate: false,
           });
+
+          expect({ key, ...anchorsOf(await documentXmlOf(saved), id) }).toEqual(
+            {
+              key,
+              ...expectedAnchors(placement),
+            },
+          );
         },
       ),
       propertyConfig({ numRuns: 30 }),
@@ -285,7 +321,12 @@ describe("an edit inside a spanned cell keeps the bookmark's extent", () => {
     // Type into the first spanned cell: the edit ProseMirror's own mapping has
     // to carry the boundary through.
     const edited = proseDoc.type.schema.nodeFromJSON(
-      JSON.parse(JSON.stringify(proseDoc.toJSON()).replace('"text":"a"', '"text":"a edited"')),
+      JSON.parse(
+        JSON.stringify(proseDoc.toJSON()).replace(
+          '"text":"a"',
+          '"text":"a edited"',
+        ),
+      ),
     );
     const saved = await repackDocx(
       fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } }),

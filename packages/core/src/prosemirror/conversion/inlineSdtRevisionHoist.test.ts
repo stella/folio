@@ -20,12 +20,18 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
-import type { Document, InlineSdt, Paragraph, ParagraphContent, Run } from "../../types/document";
+import type {
+  Document,
+  InlineSdt,
+  Paragraph,
+  ParagraphContent,
+  Run,
+} from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import {
   acceptAIEditRevision,
-  acceptChange,
   acceptAllChanges,
+  acceptChange,
   findNextChange,
   rejectAllChanges,
   resolveAllChangesInHeadlessState,
@@ -33,9 +39,16 @@ import {
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
-const run = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+const run = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
 
-const REVISION_INFO = { id: 4, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+const REVISION_INFO = {
+  id: 4,
+  author: "Reviewer",
+  date: "2026-01-01T00:00:00Z",
+};
 
 const control = (content: InlineSdt["content"]): InlineSdt => ({
   type: "inlineSdt",
@@ -87,7 +100,9 @@ const paragraphContentOf = (document: Document): ParagraphContent[] => {
 const saved = (content: Paragraph["content"]): ParagraphContent[] => {
   const source = documentWith(content);
   return paragraphContentOf(
-    fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    }),
   );
 };
 
@@ -97,7 +112,9 @@ const insertedControl = (item: ParagraphContent | undefined): InlineSdt => {
   }
   const inner = item.content.at(0);
   if (inner?.type !== "inlineSdt") {
-    throw new Error(`Expected the insertion to hold a control, got ${inner?.type ?? "nothing"}`);
+    throw new Error(
+      `Expected the insertion to hold a control, got ${inner?.type ?? "nothing"}`,
+    );
   }
   return inner;
 };
@@ -144,7 +161,8 @@ describe("a revision that covers a whole inline content control", () => {
   });
 
   for (const authored of [REVISION_OUTSIDE_CONTROL, REVISION_INSIDE_CONTROL]) {
-    const order = authored.type === "insertion" ? "revision outside" : "revision inside";
+    const order =
+      authored.type === "insertion" ? "revision outside" : "revision inside";
     test(`saving the result again does not change it (${order})`, () => {
       const once = saved([authored]);
       expect(saved(once)).toEqual(once);
@@ -164,8 +182,13 @@ describe("a revision that covers a whole inline content control", () => {
 });
 
 describe("resolving a revision that covers a whole control", () => {
-  const resolvedDoc = (content: Paragraph["content"], command: typeof acceptAllChanges): PMNode => {
-    const state = EditorState.create({ doc: toProseDoc(documentWith(content)) });
+  const resolvedDoc = (
+    content: Paragraph["content"],
+    command: typeof acceptAllChanges,
+  ): PMNode => {
+    const state = EditorState.create({
+      doc: toProseDoc(documentWith(content)),
+    });
     let next = state;
     command()(state, (transaction) => {
       next = state.apply(transaction);
@@ -184,18 +207,26 @@ describe("resolving a revision that covers a whole control", () => {
 
   const INSERTED = [REVISION_OUTSIDE_CONTROL, run(" after")];
   const DELETED = [
-    { type: "deletion", info: REVISION_INFO, content: [control([run("inside")])] } as const,
+    {
+      type: "deletion",
+      info: REVISION_INFO,
+      content: [control([run("inside")])],
+    } as const,
     run(" after"),
   ];
   const CONTENT_INSERTED = [REVISION_INSIDE_CONTROL, run(" after")];
   const CONTENT_DELETED = [
-    control([{ type: "deletion", info: REVISION_INFO, content: [run("inside")] }]),
+    control([
+      { type: "deletion", info: REVISION_INFO, content: [run("inside")] },
+    ]),
     run(" after"),
   ];
   const emptiedControl = (rebuilt: readonly ParagraphContent[]): InlineSdt => {
     const first = rebuilt.at(0);
     if (first?.type !== "inlineSdt") {
-      throw new Error(`Expected the control to stay, got ${first?.type ?? "nothing"}`);
+      throw new Error(
+        `Expected the control to stay, got ${first?.type ?? "nothing"}`,
+      );
     }
     expect(first.content).toEqual([]);
     return first;
@@ -255,7 +286,13 @@ describe("resolving a revision that covers a whole control", () => {
         type: "deletion",
         info: { ...REVISION_INFO, id: 5 },
         content: [
-          control([{ type: "insertion", info: { ...REVISION_INFO, id: 6 }, content: [run("in")] }]),
+          control([
+            {
+              type: "insertion",
+              info: { ...REVISION_INFO, id: 6 },
+              content: [run("in")],
+            },
+          ]),
         ],
       } as const,
       run(" after"),
@@ -273,9 +310,13 @@ describe("resolving a revision that covers a whole control", () => {
     ] as const) {
       const rebuilt = resolved(content, () => (state, dispatch) => {
         const range = findNextChange(state, 0);
-        return range !== null && acceptChange(range.from, range.to)(state, dispatch);
+        return (
+          range !== null && acceptChange(range.from, range.to)(state, dispatch)
+        );
       });
-      expect(rebuilt.filter((item) => item.type === "inlineSdt")).toHaveLength(controls);
+      expect(rebuilt.filter((item) => item.type === "inlineSdt")).toHaveLength(
+        controls,
+      );
       expect(textIn(rebuilt)).toBe(" after");
     }
   });
@@ -290,7 +331,10 @@ describe("resolving a revision that covers a whole control", () => {
   // The headless resolver rewrites the inline content in one pass instead of
   // deleting ranges, so it decides the control's fate in its own code. The two
   // have to agree, or which one ran would change the document.
-  const headlessResolvedDoc = (content: Paragraph["content"], mode: "accept" | "reject") => {
+  const headlessResolvedDoc = (
+    content: Paragraph["content"],
+    mode: "accept" | "reject",
+  ) => {
     const state = EditorState.create({
       doc: toProseDoc(documentWith(content)),
       plugins: [...pluginsForHeadlessRevisionResolution([])],
@@ -327,8 +371,14 @@ describe("resolving a revision that covers a whole control", () => {
   // A resolved revision no longer exists; a control that kept naming it would
   // claim whichever later revision is given the same id.
   test("a control forgets the revision that enclosed it once it is resolved", () => {
-    expect(enclosingRevisionsIn(toProseDoc(documentWith(INSERTED)))).toEqual([[REVISION_INFO.id]]);
-    expect(enclosingRevisionsIn(resolvedDoc(INSERTED, acceptAllChanges))).toEqual([null]);
-    expect(enclosingRevisionsIn(headlessResolvedDoc(INSERTED, "accept"))).toEqual([null]);
+    expect(enclosingRevisionsIn(toProseDoc(documentWith(INSERTED)))).toEqual([
+      [REVISION_INFO.id],
+    ]);
+    expect(
+      enclosingRevisionsIn(resolvedDoc(INSERTED, acceptAllChanges)),
+    ).toEqual([null]);
+    expect(
+      enclosingRevisionsIn(headlessResolvedDoc(INSERTED, "accept")),
+    ).toEqual([null]);
   });
 });

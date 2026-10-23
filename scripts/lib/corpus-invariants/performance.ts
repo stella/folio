@@ -136,7 +136,9 @@ const median = (values: number[]): number | null => {
  * state in which the corpus cannot say what it costs. Ties are skipped rather
  * than treated as infinite slopes.
  */
-const fitAffine = (points: readonly { x: number; y: number }[]): AffineCost | null => {
+const fitAffine = (
+  points: readonly { x: number; y: number }[],
+): AffineCost | null => {
   const sorted = [...points].sort((left, right) => left.x - right.x);
   if (sorted.length < 2) {
     return null;
@@ -176,7 +178,10 @@ const fitAffine = (points: readonly { x: number; y: number }[]): AffineCost | nu
  * nothing about why is indistinguishable from a broken one.
  */
 export type PerformanceLoad =
-  | { readonly status: "measured"; readonly observations: readonly PerformanceObservation[] }
+  | {
+      readonly status: "measured";
+      readonly observations: readonly PerformanceObservation[];
+    }
   | { readonly status: "degraded"; readonly reason: string };
 
 /**
@@ -201,7 +206,8 @@ export const normalizeForLoad = (
   if (readings.length === 0) {
     return {
       status: "degraded",
-      reason: "no reference timing was recorded, so the run cannot price the machine",
+      reason:
+        "no reference timing was recorded, so the run cannot price the machine",
     };
   }
 
@@ -209,14 +215,16 @@ export const normalizeForLoad = (
   if (reference === null || reference > MAX_REFERENCE_MS) {
     return {
       status: "degraded",
-      reason: "the reference package exceeded its own budget, so the run measured load, not cost",
+      reason:
+        "the reference package exceeded its own budget, so the run measured load, not cost",
     };
   }
 
   return {
     status: "measured",
     observations: observations.map((observation) => {
-      const usable = observation.referenceMs > 0 && Number.isFinite(observation.referenceMs);
+      const usable =
+        observation.referenceMs > 0 && Number.isFinite(observation.referenceMs);
       return {
         bytes: observation.bytes,
         parseMs: usable
@@ -240,8 +248,12 @@ export const fitCorpusCost = (
   observations: readonly PerformanceObservation[],
 ): CorpusCostModel | null => {
   const sized = observations.filter(({ bytes }) => bytes > 0);
-  const parseMs = fitAffine(sized.map(({ bytes, parseMs: y }) => ({ x: bytes, y })));
-  const peakRssBytes = fitAffine(sized.map(({ bytes, peakRssBytes: y }) => ({ x: bytes, y })));
+  const parseMs = fitAffine(
+    sized.map(({ bytes, parseMs: y }) => ({ x: bytes, y })),
+  );
+  const peakRssBytes = fitAffine(
+    sized.map(({ bytes, peakRssBytes: y }) => ({ x: bytes, y })),
+  );
   if (!parseMs || !peakRssBytes) {
     return null;
   }
@@ -257,8 +269,11 @@ export const fitCorpusCost = (
 const MIN_PREDICTED_MS = 1;
 const MIN_PREDICTED_RSS_BYTES = 1_048_576;
 
-const predict = ({ intercept, slope }: AffineCost, bytes: number, floor: number): number =>
-  Math.max(floor, intercept + slope * bytes);
+const predict = (
+  { intercept, slope }: AffineCost,
+  bytes: number,
+  floor: number,
+): number => Math.max(floor, intercept + slope * bytes);
 
 const TEN_TIMES = 10;
 const HUNDRED_TIMES = 100;
@@ -272,10 +287,12 @@ const HUNDRED_TIMES = 100;
  * predicted cost and a file at five hundred times it are different defects,
  * and nothing between them is.
  */
-const TEN_TIMES_MESSAGE = "parse cost exceeds ten times the corpus baseline for its size";
+const TEN_TIMES_MESSAGE =
+  "parse cost exceeds ten times the corpus baseline for its size";
 const HUNDRED_TIMES_MESSAGE =
   "parse cost exceeds one hundred times the corpus baseline for its size";
-const RSS_MESSAGE = "peak resident set exceeds ten times the corpus baseline for its size";
+const RSS_MESSAGE =
+  "peak resident set exceeds ten times the corpus baseline for its size";
 
 /**
  * The outlier verdict for one observation against the fitted census.
@@ -299,18 +316,36 @@ export const performanceFailures = (
   }
 
   const failures: CorpusFailure[] = [];
-  const predictedMs = predict(model.parseMs, observation.bytes, MIN_PREDICTED_MS);
+  const predictedMs = predict(
+    model.parseMs,
+    observation.bytes,
+    MIN_PREDICTED_MS,
+  );
   if (observation.parseMs > HUNDRED_TIMES * predictedMs) {
     failures.push(
-      failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.performance, HUNDRED_TIMES_MESSAGE),
+      failureFromAssertion(
+        EXTENDED_CORPUS_INVARIANTS.performance,
+        HUNDRED_TIMES_MESSAGE,
+      ),
     );
   } else if (observation.parseMs > TEN_TIMES * predictedMs) {
-    failures.push(failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.performance, TEN_TIMES_MESSAGE));
+    failures.push(
+      failureFromAssertion(
+        EXTENDED_CORPUS_INVARIANTS.performance,
+        TEN_TIMES_MESSAGE,
+      ),
+    );
   }
 
-  const predictedRss = predict(model.peakRssBytes, observation.bytes, MIN_PREDICTED_RSS_BYTES);
+  const predictedRss = predict(
+    model.peakRssBytes,
+    observation.bytes,
+    MIN_PREDICTED_RSS_BYTES,
+  );
   if (observation.peakRssBytes > TEN_TIMES * predictedRss) {
-    failures.push(failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.performance, RSS_MESSAGE));
+    failures.push(
+      failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.performance, RSS_MESSAGE),
+    );
   }
 
   return failures;

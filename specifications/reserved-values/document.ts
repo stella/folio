@@ -1,12 +1,16 @@
 /** Reserved-value decisions for document settings and the package. */
 
-import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import type {
   Document,
   DocumentSettings,
   DocxPackage,
 } from "../../packages/docx-core/src/model/document";
-import { NO_RESERVED_VALUE, type ReservedValueDisposition, toggle } from "./disposition.ts";
+import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
+import {
+  NO_RESERVED_VALUE,
+  type ReservedValueDisposition,
+  toggle,
+} from "./disposition.ts";
 
 export const DOCUMENT_SETTINGS_RESERVED = {
   compatibilityMode: NO_RESERVED_VALUE,
@@ -14,7 +18,9 @@ export const DOCUMENT_SETTINGS_RESERVED = {
   evenAndOddHeaders: toggle("w:evenAndOddHeaders@val"),
   mirrorMargins: toggle("w:mirrorMargins@val"),
   adjustLineHeightInTable: toggle("w:adjustLineHeightInTable@val"),
-  doNotUseIndentAsNumberingTabStop: toggle("w:doNotUseIndentAsNumberingTabStop@val"),
+  doNotUseIndentAsNumberingTabStop: toggle(
+    "w:doNotUseIndentAsNumberingTabStop@val",
+  ),
   updateFields: toggle("w:updateFields@val"),
   themeFontLang: NO_RESERVED_VALUE,
   autoHyphenation: toggle("w:autoHyphenation@val"),
@@ -34,7 +40,10 @@ export type ExhaustiveDocumentSettingsReserved = ExhaustiveFields<
 export const THEME_FONT_LANG_RESERVED = {
   eastAsia: NO_RESERVED_VALUE,
   bidi: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<DocumentSettings["themeFontLang"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<DocumentSettings["themeFontLang"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveThemeFontLangReserved = ExhaustiveFields<
   NonNullable<DocumentSettings["themeFontLang"]>,
@@ -45,7 +54,10 @@ export const LINE_BREAK_RULES_RESERVED = {
   noLineBreaksBefore: NO_RESERVED_VALUE,
   noLineBreaksAfter: NO_RESERVED_VALUE,
   useLegacyEthiopicAmharicRules: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<DocumentSettings["lineBreakRules"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<DocumentSettings["lineBreakRules"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveLineBreakRulesReserved = ExhaustiveFields<
   NonNullable<DocumentSettings["lineBreakRules"]>,
@@ -99,7 +111,10 @@ export const DOCX_PACKAGE_PROPERTIES_RESERVED = {
   revision: NO_RESERVED_VALUE,
   created: NO_RESERVED_VALUE,
   modified: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonNullable<DocxPackage["properties"]>, ReservedValueDisposition>;
+} satisfies Record<
+  keyof NonNullable<DocxPackage["properties"]>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveDocxPackagePropertiesReserved = ExhaustiveFields<
   NonNullable<DocxPackage["properties"]>,
@@ -115,4 +130,7 @@ export const DOCUMENT_RESERVED = {
   parseWarnings: NO_RESERVED_VALUE,
 } satisfies Record<keyof Document, ReservedValueDisposition>;
 
-export type ExhaustiveDocumentReserved = ExhaustiveFields<Document, keyof typeof DOCUMENT_RESERVED>;
+export type ExhaustiveDocumentReserved = ExhaustiveFields<
+  Document,
+  keyof typeof DOCUMENT_RESERVED
+>;

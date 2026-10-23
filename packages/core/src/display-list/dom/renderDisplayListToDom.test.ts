@@ -13,7 +13,10 @@ import type {
   DisplayPrimitive,
   DisplayStrokePattern,
 } from "../types";
-import { renderDisplayListToDom, renderDisplayPageToDom } from "./renderDisplayListToDom";
+import {
+  renderDisplayListToDom,
+  renderDisplayPageToDom,
+} from "./renderDisplayListToDom";
 
 /**
  * Bun's test runtime has no DOM and the repository carries neither happy-dom
@@ -65,7 +68,8 @@ const createStubElement = (tagName: string): StubElement => {
 
 // SAFETY: the renderer touches only createElement plus the element properties
 // StubElement declares; nothing here reaches the rest of the DOM API.
-const stubDocument = () => ({ createElement: createStubElement }) as unknown as Document;
+const stubDocument = () =>
+  ({ createElement: createStubElement }) as unknown as Document;
 
 const asStub = (element: HTMLElement) => element as unknown as StubElement;
 
@@ -136,7 +140,12 @@ test("decoration-only glyph ranges preserve source metadata without editing posi
     direction: "ltr",
     kerning: false,
     smallCaps: false,
-    decorationRange: { start: 12, end: 13, story: { kind: "header", rId: "rId7" }, textOffset: 0 },
+    decorationRange: {
+      start: 12,
+      end: 13,
+      story: { kind: "header", rId: "rId7" },
+      textOffset: 0,
+    },
   } as const satisfies DisplayGlyphRun;
   const page = renderPrimitives([run]);
   const span = page.children.at(0);
@@ -152,7 +161,10 @@ test("decoration-only glyph ranges preserve source metadata without editing posi
   expect(span?.dataset["pmEnd"]).toBeUndefined();
 });
 
-const findByClass = (element: StubElement, className: string): StubElement | undefined => {
+const findByClass = (
+  element: StubElement,
+  className: string,
+): StubElement | undefined => {
   if (element.className.split(" ").includes(className)) {
     return element;
   }
@@ -280,7 +292,9 @@ describe("renderDisplayListToDom", () => {
       region("tableRow", { rowIndex: 3 }),
       region("tableCell", { rowIndex: 3, columnIndex: 2 }),
       region("note", { story: { kind: "footnote", id: 9 } }),
-      region("tab", { pmRange: { start: 15, end: 16, story: { kind: "body" } } }),
+      region("tab", {
+        pmRange: { start: 15, end: 16, story: { kind: "body" } },
+      }),
     ];
     const page = asStub(
       renderDisplayPageToDom(
@@ -297,7 +311,9 @@ describe("renderDisplayListToDom", () => {
       hfSlotKind: "header",
       hfKind: "header",
     });
-    expect(findByClass(page, "layout-page-footer")?.dataset).toEqual({ story: "footer" });
+    expect(findByClass(page, "layout-page-footer")?.dataset).toEqual({
+      story: "footer",
+    });
     expect(findByClass(page, "layout-line")?.dataset).toMatchObject({
       blockId: "paragraph-1",
       pmStart: "12",
@@ -305,7 +321,9 @@ describe("renderDisplayListToDom", () => {
       story: "body",
       commentId: "42",
     });
-    expect(findByClass(page, "layout-table-row")?.dataset).toMatchObject({ rowIndex: "3" });
+    expect(findByClass(page, "layout-table-row")?.dataset).toMatchObject({
+      rowIndex: "3",
+    });
     expect(findByClass(page, "layout-table-cell")?.dataset).toMatchObject({
       rowIndex: "3",
       columnIndex: "2",
@@ -321,7 +339,9 @@ describe("renderDisplayListToDom", () => {
     });
     // One range, so no membership list: the DOM is what it was before
     // overlapping ranges got a spelling of their own.
-    expect(findByClass(page, "layout-line")?.dataset["commentIds"]).toBeUndefined();
+    expect(
+      findByClass(page, "layout-line")?.dataset["commentIds"],
+    ).toBeUndefined();
   });
 
   test("a region inside overlapping comment ranges advertises every comment", () => {
@@ -351,10 +371,15 @@ describe("renderDisplayListToDom", () => {
   test("renders one page element per display page, in page order", () => {
     const list = listOf([emptyPage([]), { ...emptyPage([]), pageNumber: 7 }]);
 
-    const pages = renderDisplayListToDom(list, { doc: stubDocument() }).map(asStub);
+    const pages = renderDisplayListToDom(list, { doc: stubDocument() }).map(
+      asStub,
+    );
 
     expect(pages).toHaveLength(2);
-    expect(pages.map((page) => page.className)).toEqual(["layout-page", "layout-page"]);
+    expect(pages.map((page) => page.className)).toEqual([
+      "layout-page",
+      "layout-page",
+    ]);
     // Anchors follow the list index, not the engine's physical page number.
     expect(pages.map((page) => page.id)).toEqual(["page-0", "page-1"]);
     expect(pages.at(0)?.style.width).toBe("816px");
@@ -363,7 +388,10 @@ describe("renderDisplayListToDom", () => {
   test("paints every primitive kind", () => {
     for (const kind of DISPLAY_PRIMITIVE_KINDS) {
       const page = renderPrimitives([PRIMITIVE_SAMPLES[kind]]);
-      expect(page.children.length, `no element painted for ${kind}`).toBeGreaterThan(0);
+      expect(
+        page.children.length,
+        `no element painted for ${kind}`,
+      ).toBeGreaterThan(0);
     }
   });
 
@@ -408,7 +436,11 @@ describe("renderDisplayListToDom", () => {
 
   test("reapplies the spacing the advances were measured with", () => {
     const span = renderRun({
-      adjustments: { letterSpacingPx: 2, horizontalScale: 1, wordSpacingPx: -1.5 },
+      adjustments: {
+        letterSpacingPx: 2,
+        horizontalScale: 1,
+        wordSpacingPx: -1.5,
+      },
     });
 
     expect(span?.style.letterSpacing).toBe("2px");
@@ -452,14 +484,16 @@ describe("renderDisplayListToDom", () => {
     };
     const page = renderPrimitives([PRIMITIVE_SAMPLES.glyphRun], [face]);
 
-    expect(page.children.at(0)?.style.fontFamily).toBe(`"Calibri", "Carlito", "Arial", sans-serif`);
+    expect(page.children.at(0)?.style.fontFamily).toBe(
+      `"Calibri", "Carlito", "Arial", sans-serif`,
+    );
   });
 
   test("gives an rtl run the same box as an ltr one", () => {
     const ltr = renderPrimitives([PRIMITIVE_SAMPLES.glyphRun]).children.at(0);
-    const rtl = renderPrimitives([{ ...PRIMITIVE_SAMPLES.glyphRun, direction: "rtl" }]).children.at(
-      0,
-    );
+    const rtl = renderPrimitives([
+      { ...PRIMITIVE_SAMPLES.glyphRun, direction: "rtl" },
+    ]).children.at(0);
 
     expect(rtl?.style.left).toBe(ltr?.style.left);
     expect(rtl?.style.width).toBe(ltr?.style.width);
@@ -470,12 +504,18 @@ describe("renderDisplayListToDom", () => {
     // The same mixed-direction text: the wrapper's control is the only
     // difference, and it is what decides whether the browser may reorder the
     // Latin word inside the rtl run.
-    const mixed = { text: "אabc", advancesPx: [4, 5, 6, 7], direction: "rtl" } as const;
+    const mixed = {
+      text: "אabc",
+      advancesPx: [4, 5, 6, 7],
+      direction: "rtl",
+    } as const;
 
-    expect(renderRun({ ...mixed, unicodeBidi: "bidi-override" })?.style.unicodeBidi).toBe(
-      "bidi-override",
-    );
-    expect(renderRun({ ...mixed, unicodeBidi: "embed" })?.style.unicodeBidi).toBe("embed");
+    expect(
+      renderRun({ ...mixed, unicodeBidi: "bidi-override" })?.style.unicodeBidi,
+    ).toBe("bidi-override");
+    expect(
+      renderRun({ ...mixed, unicodeBidi: "embed" })?.style.unicodeBidi,
+    ).toBe("embed");
     expect(renderRun(mixed)?.style.unicodeBidi).toBeUndefined();
   });
 
@@ -494,7 +534,10 @@ describe("renderDisplayListToDom", () => {
 
   test("keeps a cursively joined word whole", () => {
     // Nothing may split it: isolated forms are what a reader would see.
-    const span = renderRun({ text: "\u0628\u064a\u062a", advancesPx: [6, 6, 6] });
+    const span = renderRun({
+      text: "\u0628\u064a\u062a",
+      advancesPx: [6, 6, 6],
+    });
 
     expect(runText(span)).toBe("\u0628\u064a\u062a");
     expect(span?.children.length ?? 0).toBe(0);
@@ -522,7 +565,10 @@ describe("renderDisplayListToDom", () => {
 
     const backgrounds = patterns.map((pattern) => {
       const element = renderPrimitives([
-        { ...PRIMITIVE_SAMPLES.line, stroke: { color: BLUE, thicknessPx: 2, pattern } },
+        {
+          ...PRIMITIVE_SAMPLES.line,
+          stroke: { color: BLUE, thicknessPx: 2, pattern },
+        },
       ]).children.at(0);
       return element?.style.background ?? "";
     });
@@ -534,7 +580,10 @@ describe("renderDisplayListToDom", () => {
   test("reaches across the path only as far as the pattern needs", () => {
     const crossExtent = (pattern: DisplayStrokePattern) => {
       const element = renderPrimitives([
-        { ...PRIMITIVE_SAMPLES.line, stroke: { color: BLUE, thicknessPx: 2, pattern } },
+        {
+          ...PRIMITIVE_SAMPLES.line,
+          stroke: { color: BLUE, thicknessPx: 2, pattern },
+        },
       ]).children.at(0);
       return [element?.style.height, element?.style.top];
     };
@@ -547,7 +596,10 @@ describe("renderDisplayListToDom", () => {
 
   test("draws dashes on the shared period", () => {
     const element = renderPrimitives([
-      { ...PRIMITIVE_SAMPLES.line, stroke: { color: BLUE, thicknessPx: 2, pattern: "dashed" } },
+      {
+        ...PRIMITIVE_SAMPLES.line,
+        stroke: { color: BLUE, thicknessPx: 2, pattern: "dashed" },
+      },
     ]).children.at(0);
 
     // STROKE_DASH_FACTORS.dashed is 3 on, 2 off, at 2px thick.
@@ -610,7 +662,11 @@ describe("renderDisplayListToDom", () => {
     expect(rotate?.children.at(0)?.style.left).toBe("10px");
 
     const opacity = renderPrimitives([
-      { kind: "opacityGroup", opacity: 0.25, children: [PRIMITIVE_SAMPLES.rect] },
+      {
+        kind: "opacityGroup",
+        opacity: 0.25,
+        children: [PRIMITIVE_SAMPLES.rect],
+      },
     ]).children.at(0);
 
     expect(opacity?.style.opacity).toBe("0.25");
@@ -619,10 +675,18 @@ describe("renderDisplayListToDom", () => {
 
   test("serializes an opaque colour as rgb and a translucent one as rgba", () => {
     const opaque = renderPrimitives([
-      { kind: "rect", rect: PRIMITIVE_SAMPLES.rect.rect, fill: { r: 1, g: 2, b: 3, a: 1 } },
+      {
+        kind: "rect",
+        rect: PRIMITIVE_SAMPLES.rect.rect,
+        fill: { r: 1, g: 2, b: 3, a: 1 },
+      },
     ]).children.at(0);
     const translucent = renderPrimitives([
-      { kind: "rect", rect: PRIMITIVE_SAMPLES.rect.rect, fill: { r: 1, g: 2, b: 3, a: 0.5 } },
+      {
+        kind: "rect",
+        rect: PRIMITIVE_SAMPLES.rect.rect,
+        fill: { r: 1, g: 2, b: 3, a: 0.5 },
+      },
     ]).children.at(0);
 
     expect(opaque?.style.backgroundColor).toBe("rgb(1, 2, 3)");
@@ -666,14 +730,17 @@ describe("renderDisplayListToDom", () => {
           stroke: { color: BLUE, thicknessPx: 1, pattern },
         },
       ]).children.at(0);
-      expect(children.at(1)?.style.background, pattern).toBe(line?.style.background ?? "");
+      expect(children.at(1)?.style.background, pattern).toBe(
+        line?.style.background ?? "",
+      );
     }
   });
 
   test("draws a heavy underline at the weight the producer stroked it with", () => {
     const FONT_SIZE_PX = 16;
     const PATH_YPX = 20;
-    const heavyPx = underlineThicknessPx(FONT_SIZE_PX) * UNDERLINE_STROKES.thick.weight;
+    const heavyPx =
+      underlineThicknessPx(FONT_SIZE_PX) * UNDERLINE_STROKES.thick.weight;
     const underline = (thicknessPx: number) =>
       renderPrimitives([
         {
@@ -718,12 +785,17 @@ describe("renderDisplayListToDom", () => {
     expect(image?.style.top).toBe("0px");
     expect(image?.style.opacity).toBe("0.5");
     expect(image?.style.filter).toBe("contrast(0.157067) brightness(1.910013)");
-    expect(image?.src.startsWith("blob:") || image?.src.startsWith("data:image/png")).toBe(true);
+    expect(
+      image?.src.startsWith("blob:") || image?.src.startsWith("data:image/png"),
+    ).toBe(true);
   });
 
   test("registers an embedded face once and names it ahead of the family", () => {
     const pages = renderDisplayListToDom(
-      listOf([emptyPage([PRIMITIVE_SAMPLES.glyphRun]), emptyPage([])], [EMBEDDED_FONT]),
+      listOf(
+        [emptyPage([PRIMITIVE_SAMPLES.glyphRun]), emptyPage([])],
+        [EMBEDDED_FONT],
+      ),
       { doc: stubDocument() },
     ).map(asStub);
 
@@ -735,7 +807,9 @@ describe("renderDisplayListToDom", () => {
     expect(rules.at(1)?.textContent).toBe(rules.at(0)?.textContent ?? "");
 
     const span = pages.at(0)?.children.at(1);
-    expect(span?.style.fontFamily).toBe(`"embedded-1", "Folio Sans", sans-serif`);
+    expect(span?.style.fontFamily).toBe(
+      `"embedded-1", "Folio Sans", sans-serif`,
+    );
   });
 
   test("omits the style element when no face is embedded", () => {

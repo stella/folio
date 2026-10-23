@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { EditorState, NodeSelection, TextSelection, type Command } from "prosemirror-state";
+import {
+  type Command,
+  EditorState,
+  NodeSelection,
+  TextSelection,
+} from "prosemirror-state";
 
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { parseDocx } from "../../docx/parser";
@@ -17,7 +22,9 @@ const documentWithRun = (
 ): Document => {
   const document = createEmptyDocument();
   document.package.styles = {
-    ...(inheritedFormatting ? { docDefaults: { rPr: inheritedFormatting } } : {}),
+    ...(inheritedFormatting
+      ? { docDefaults: { rPr: inheritedFormatting } }
+      : {}),
     styles: [],
   };
   document.package.document.content = [
@@ -37,22 +44,32 @@ const documentWithRun = (
 
 const firstRunFormatting = (document: Document): TextFormatting | undefined => {
   const paragraph = document.package.document.content.at(0);
-  const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+  const run =
+    paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
   return run?.type === "run" ? run.formatting : undefined;
 };
 
 const editableRoundTrip = (document: Document): TextFormatting | undefined =>
   firstRunFormatting(
-    fromProseDoc(toProseDoc(document, { styles: document.package.styles }), document, {
-      stylesheetSource: { type: "package" },
-    }),
+    fromProseDoc(
+      toProseDoc(document, { styles: document.package.styles }),
+      document,
+      {
+        stylesheetSource: { type: "package" },
+      },
+    ),
   );
 
 const reopenThroughDocx = async (document: Document): Promise<Document> =>
-  parseDocx(await createDocx(document), { detectVariables: false, preloadFonts: false });
+  parseDocx(await createDocx(document), {
+    detectVariables: false,
+    preloadFonts: false,
+  });
 
 const clonedEditorDocument = (document: Document) =>
-  schema.nodeFromJSON(toProseDoc(document, { styles: document.package.styles }).toJSON());
+  schema.nodeFromJSON(
+    toProseDoc(document, { styles: document.package.styles }).toJSON(),
+  );
 
 const applyCommand = (state: EditorState, command: Command): EditorState => {
   let next = state;
@@ -74,13 +91,17 @@ const assertTwoPackageCycles = async (
 
 describe("complex-script run-property provenance", () => {
   test("preserves an absent szCs beside a direct size and an inherited complex size", () => {
-    expect(editableRoundTrip(documentWithRun({ fontSize: 22 }, { fontSizeCs: 30 }))).toEqual({
+    expect(
+      editableRoundTrip(documentWithRun({ fontSize: 22 }, { fontSizeCs: 30 })),
+    ).toEqual({
       fontSize: 22,
     });
   });
 
   test("preserves an absent szCs beside a standalone direct size", () => {
-    expect(editableRoundTrip(documentWithRun({ fontSize: 22 }))).toEqual({ fontSize: 22 });
+    expect(editableRoundTrip(documentWithRun({ fontSize: 22 }))).toEqual({
+      fontSize: 22,
+    });
   });
 
   test("keeps empty authored run properties without materializing inherited formatting", () => {
@@ -136,14 +157,18 @@ describe("complex-script run-property provenance", () => {
 
     expect(
       firstRunFormatting(
-        fromProseDoc(pmDocument, undefined, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(pmDocument, undefined, {
+          stylesheetSource: { type: "package" },
+        }),
       ),
     ).toEqual({
       bold: true,
       italic: true,
       fontSize: 22,
     });
-    expect(createFolioAIEditSnapshot(pmDocument).blocks.at(0)?.previewRuns).toEqual([
+    expect(
+      createFolioAIEditSnapshot(pmDocument).blocks.at(0)?.previewRuns,
+    ).toEqual([
       {
         text: "authored",
         bold: true,
@@ -161,12 +186,16 @@ describe("complex-script run-property provenance", () => {
   test("toolbar commands explicitly author ordinary and complex-script companions", async () => {
     const base = documentWithRun({});
     let state = EditorState.create({ doc: clonedEditorDocument(base) });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 7)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1, 7)),
+    );
     state = applyCommand(state, toggleBold);
     state = applyCommand(state, toggleItalic);
     state = applyCommand(state, setFontSize(22));
 
-    const authored = fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } });
+    const authored = fromProseDoc(state.doc, base, {
+      stylesheetSource: { type: "package" },
+    });
     const expected = {
       bold: true,
       boldCs: true,
@@ -176,7 +205,9 @@ describe("complex-script run-property provenance", () => {
       fontSizeCs: 22,
     };
     expect(firstRunFormatting(authored)).toEqual(expected);
-    expect(createFolioAIEditSnapshot(state.doc).blocks.at(0)?.previewRuns).toEqual([
+    expect(
+      createFolioAIEditSnapshot(state.doc).blocks.at(0)?.previewRuns,
+    ).toEqual([
       {
         text: "direct",
         bold: true,
@@ -196,7 +227,10 @@ describe("complex-script run-property provenance", () => {
     ["text", () => schema.text("x")],
     ["tab", () => schema.node("tab")],
     ["hard break", () => schema.node("hardBreak")],
-    ["symbol", () => schema.node("symbol", { font: "Wingdings", char: "F06F" })],
+    [
+      "symbol",
+      () => schema.node("symbol", { font: "Wingdings", char: "F06F" }),
+    ],
     [
       "field",
       () =>
@@ -225,51 +259,70 @@ describe("complex-script run-property provenance", () => {
           [schema.text("field")],
         ),
     ],
-  ] as const)("toolbar commands preserve companion provenance on a selected %s", (_, makeNode) => {
-    for (const command of [toggleBold, setFontSize(22)]) {
-      const carrier = makeNode();
-      const doc = schema.node("doc", null, [schema.node("paragraph", null, [carrier])]);
-      let state = EditorState.create({ doc });
-      state = state.apply(
-        state.tr.setSelection(
-          carrier.isText
-            ? TextSelection.create(state.doc, 1, 2)
-            : NodeSelection.create(state.doc, 1),
-        ),
-      );
-      state = applyCommand(state, command);
+  ] as const)(
+    "toolbar commands preserve companion provenance on a selected %s",
+    (_, makeNode) => {
+      for (const command of [toggleBold, setFontSize(22)]) {
+        const carrier = makeNode();
+        const doc = schema.node("doc", null, [
+          schema.node("paragraph", null, [carrier]),
+        ]);
+        let state = EditorState.create({ doc });
+        state = state.apply(
+          state.tr.setSelection(
+            carrier.isText
+              ? TextSelection.create(state.doc, 1, 2)
+              : NodeSelection.create(state.doc, 1),
+          ),
+        );
+        state = applyCommand(state, command);
 
-      const formattedNodes: (typeof carrier)[] = [];
-      state.doc.firstChild?.descendants((node) => {
-        if (
-          node.isInline &&
-          (node.type.name !== "structuredField" || formattedNodes.length === 0)
-        ) {
-          formattedNodes.push(node);
-        }
-        return true;
-      });
-      for (const node of formattedNodes) {
-        const override = node.marks.find(({ type }) => type.name === "runFormattingOverride");
-        expect(override, `${node.type.name} must carry direct-formatting provenance`).toBeDefined();
-        if (command === toggleBold) {
-          expect(override?.attrs["bold"]).toBe(true);
-          expect(override?.attrs["boldCs"]).toBe(true);
-        } else {
-          expect(override?.attrs["directFontProperties"]).toContain("fontSize");
-          expect(override?.attrs["fontSizeCs"]).toBe(22);
+        const formattedNodes: (typeof carrier)[] = [];
+        state.doc.firstChild?.descendants((node) => {
+          if (
+            node.isInline &&
+            (node.type.name !== "structuredField" ||
+              formattedNodes.length === 0)
+          ) {
+            formattedNodes.push(node);
+          }
+          return true;
+        });
+        for (const node of formattedNodes) {
+          const override = node.marks.find(
+            ({ type }) => type.name === "runFormattingOverride",
+          );
+          expect(
+            override,
+            `${node.type.name} must carry direct-formatting provenance`,
+          ).toBeDefined();
+          if (command === toggleBold) {
+            expect(override?.attrs["bold"]).toBe(true);
+            expect(override?.attrs["boldCs"]).toBe(true);
+          } else {
+            expect(override?.attrs["directFontProperties"]).toContain(
+              "fontSize",
+            );
+            expect(override?.attrs["fontSizeCs"]).toBe(22);
+          }
         }
       }
-    }
-  });
+    },
+  );
 
   test("collapsed toolbar formatting keeps companion provenance in stored marks", () => {
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text("x")])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("x")]),
+    ]);
     let state = EditorState.create({ doc });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1)),
+    );
     state = applyCommand(state, toggleBold);
 
-    const override = state.storedMarks?.find(({ type }) => type.name === "runFormattingOverride");
+    const override = state.storedMarks?.find(
+      ({ type }) => type.name === "runFormattingOverride",
+    );
     expect(override?.attrs["bold"]).toBe(true);
     expect(override?.attrs["boldCs"]).toBe(true);
   });
@@ -290,14 +343,20 @@ describe("complex-script run-property provenance", () => {
     let state = EditorState.create({
       doc: schema.node("doc", null, [schema.node("paragraph", null, [field])]),
     });
-    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2, 3)));
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 2, 3)),
+    );
     state = applyCommand(state, toggleBold);
 
     const updatedField = state.doc.firstChild?.firstChild;
-    expect(updatedField?.marks.some(({ type }) => type.name === "bold")).toBe(false);
-    expect(updatedField?.marks.some(({ type }) => type.name === "runFormattingOverride")).toBe(
+    expect(updatedField?.marks.some(({ type }) => type.name === "bold")).toBe(
       false,
     );
+    expect(
+      updatedField?.marks.some(
+        ({ type }) => type.name === "runFormattingOverride",
+      ),
+    ).toBe(false);
     expect(updatedField?.child(0).text).toBe("A");
     expect(updatedField?.child(0).marks.map(({ type }) => type.name)).toEqual([
       "bold",
@@ -310,26 +369,41 @@ describe("complex-script run-property provenance", () => {
   test.each([
     [
       "bookmark boundary",
-      () => schema.node("bookmarkBoundary", { type: "start", id: 1, name: "carrier" }),
+      () =>
+        schema.node("bookmarkBoundary", {
+          type: "start",
+          id: 1,
+          name: "carrier",
+        }),
     ],
     ["image", () => schema.node("image", { src: "data:image/png;base64," })],
     ["math", () => schema.node("math")],
     ["rendered page break", () => schema.node("renderedPageBreak")],
     ["shape", () => schema.node("shape")],
-    ["text-box anchor", () => schema.node("textBoxAnchor", { anchorId: "carrier" })],
-  ] as const)("toolbar formatting leaves %s without run provenance", (_, makeNode) => {
-    const atom = makeNode();
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [atom])]);
-    let state = EditorState.create({ doc });
-    state = state.apply(state.tr.setSelection(NodeSelection.create(state.doc, 1)));
-    state = applyCommand(state, toggleBold);
+    [
+      "text-box anchor",
+      () => schema.node("textBoxAnchor", { anchorId: "carrier" }),
+    ],
+  ] as const)(
+    "toolbar formatting leaves %s without run provenance",
+    (_, makeNode) => {
+      const atom = makeNode();
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", null, [atom]),
+      ]);
+      let state = EditorState.create({ doc });
+      state = state.apply(
+        state.tr.setSelection(NodeSelection.create(state.doc, 1)),
+      );
+      state = applyCommand(state, toggleBold);
 
-    expect(
-      state.doc.firstChild?.firstChild?.marks.some(
-        ({ type }) => type.name === "runFormattingOverride",
-      ),
-    ).toBe(false);
-  });
+      expect(
+        state.doc.firstChild?.firstChild?.marks.some(
+          ({ type }) => type.name === "runFormattingOverride",
+        ),
+      ).toBe(false);
+    },
+  );
 
   test.each([
     ["ordinary bold", { bold: true }],
@@ -387,15 +461,21 @@ describe("complex-script run-property provenance", () => {
       throw new Error("Expected bold mark type");
     }
     const withoutBold = state.apply(state.tr.removeMark(1, 7, bold)).doc;
-    const cleared = fromProseDoc(withoutBold, document, { stylesheetSource: { type: "package" } });
+    const cleared = fromProseDoc(withoutBold, document, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(firstRunFormatting(cleared)).toBeUndefined();
     await assertTwoPackageCycles(cleared, undefined);
 
     const plain = documentWithRun({});
     const plainState = EditorState.create({ doc: clonedEditorDocument(plain) });
-    const withBold = plainState.apply(plainState.tr.addMark(1, 7, bold.create())).doc;
-    const authored = fromProseDoc(withBold, plain, { stylesheetSource: { type: "package" } });
+    const withBold = plainState.apply(
+      plainState.tr.addMark(1, 7, bold.create()),
+    ).doc;
+    const authored = fromProseDoc(withBold, plain, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(firstRunFormatting(authored)).toEqual({ bold: true });
     await assertTwoPackageCycles(authored, { bold: true });

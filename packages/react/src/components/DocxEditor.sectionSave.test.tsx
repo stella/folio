@@ -2,17 +2,18 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
-import { panic } from "better-result";
-import { TextSelection } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
+
+import { panic } from "better-result";
+import { afterAll, expect, test } from "bun:test";
+import { TextSelection } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 import { IntlProvider } from "use-intl";
 
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/document-operations";
-import { createDocx } from "@stll/folio-core/docx/rezip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
+import { createDocx } from "@stll/folio-core/docx/rezip";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { acceptAllChanges } from "@stll/folio-core/prosemirror/commands/comments";
@@ -21,7 +22,10 @@ import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
-const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+const previousActEnvironment = Reflect.get(
+  globalThis,
+  "IS_REACT_ACT_ENVIRONMENT",
+);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
@@ -35,7 +39,8 @@ const SECOND = "Second section.";
 const twoSections = async (): Promise<ArrayBuffer> => {
   const model = fromMarkdown(`${FIRST}\n\n${SECOND}`);
   const [first] = model.package.document.content;
-  if (first?.type !== "paragraph") panic("The fixture lost its first paragraph");
+  if (first?.type !== "paragraph")
+    panic("The fixture lost its first paragraph");
   first.sectionProperties = {
     ...structuredClone(model.package.document.finalSectionProperties),
     sectionStart: "nextPage",
@@ -71,7 +76,11 @@ const editAndSave = async (
   try {
     await act(async () => {
       root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
           <DocxEditor
             ref={editor}
             documentBuffer={bytes}
@@ -83,13 +92,18 @@ const editAndSave = async (
         </IntlProvider>,
       );
     });
-    for (let attempt = 0; attempt < 50 && !views.at(-1)?.state.doc.textContent; attempt++) {
+    for (
+      let attempt = 0;
+      attempt < 50 && !views.at(-1)?.state.doc.textContent;
+      attempt++
+    ) {
       await act(async () => {
         editor.current?.ensureEditorView({ focus: false });
         await new Promise((resolve) => setTimeout(resolve, 10));
       });
     }
-    const view = views.at(-1) ?? panic("The editor did not report its body view");
+    const view =
+      views.at(-1) ?? panic("The editor did not report its body view");
     const ref = editor.current ?? panic("The editor did not expose its ref");
     await act(async () => edit(view, ref));
     let saved: ArrayBuffer | null = null;
@@ -105,24 +119,36 @@ const editAndSave = async (
 
 /** Press `key` in the body view, as the keyboard does. */
 const press = (view: EditorView, key: "Backspace" | "Delete"): void => {
-  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
-  expect(view.someProp("handleKeyDown", (handle) => handle(view, event))).toBe(true);
+  const event = new KeyboardEvent("keydown", {
+    key,
+    bubbles: true,
+    cancelable: true,
+  });
+  expect(view.someProp("handleKeyDown", (handle) => handle(view, event))).toBe(
+    true,
+  );
 };
 
 /** Put the selection in the body view, from `anchor` to `head`. */
 const select = (view: EditorView, anchor: number, head = anchor): void => {
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, anchor, head),
+    ),
+  );
 };
 
 /** Where the text of the body's second paragraph starts. */
-const secondStart = (view: EditorView): number => view.state.doc.child(0).nodeSize + 1;
+const secondStart = (view: EditorView): number =>
+  view.state.doc.child(0).nodeSize + 1;
 
 /** What the saved package holds: its paragraphs, and whether any is landscape. */
 const savedSections = async (bytes: ArrayBuffer) => {
   const body = (await parseDocx(bytes)).package.document;
   return {
     carriers: body.content.filter(
-      (block) => block.type === "paragraph" && block.sectionProperties !== undefined,
+      (block) =>
+        block.type === "paragraph" && block.sectionProperties !== undefined,
     ).length,
     finalOrientation: body.finalSectionProperties?.orientation ?? "portrait",
   };
@@ -130,7 +156,8 @@ const savedSections = async (bytes: ArrayBuffer) => {
 
 const sectionCarriers = async (bytes: ArrayBuffer): Promise<number> =>
   (await parseDocx(bytes)).package.document.content.filter(
-    (block) => block.type === "paragraph" && block.sectionProperties !== undefined,
+    (block) =>
+      block.type === "paragraph" && block.sectionProperties !== undefined,
   ).length;
 
 test("the editor saves after a direct deleteBlock of the paragraph that ends a section", async () => {
@@ -138,7 +165,8 @@ test("the editor saves after a direct deleteBlock of the paragraph that ends a s
   expect(await sectionCarriers(source)).toBe(1);
 
   const { saved, errors } = await editAndSave(source, (_view, editor) => {
-    const snapshot = editor.createAIEditSnapshot() ?? panic("The editor made no snapshot");
+    const snapshot =
+      editor.createAIEditSnapshot() ?? panic("The editor made no snapshot");
     const first = snapshot.blocks.at(0) ?? panic("The snapshot has no blocks");
     expect(first.text).toBe(FIRST);
     const result = editor.applyDocumentOperations({
@@ -161,7 +189,9 @@ test("the editor saves after a direct deleteBlock of the paragraph that ends a s
 });
 
 test("the editor saves after accepting a tracked deletion of that paragraph", async () => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await twoSections(), { author: "Reviewer" });
+  const reviewer = await FolioDocxReviewer.fromBuffer(await twoSections(), {
+    author: "Reviewer",
+  });
   const [first] = reviewer.getContent();
   if (!first) panic("The fixture has no blocks");
   reviewer.applyDocumentOperations(
@@ -196,7 +226,10 @@ test("the editor saves after Backspace joins across the paragraph that ends a se
   if (saved === null) panic("The save returned nothing");
   // The first section is gone; its content took the following section's
   // properties, as a deleteBlock of the paragraph leaves them.
-  expect(await savedSections(saved)).toEqual({ carriers: 0, finalOrientation: "portrait" });
+  expect(await savedSections(saved)).toEqual({
+    carriers: 0,
+    finalOrientation: "portrait",
+  });
 });
 
 test("the editor saves after deleting a selection that spans the section break", async () => {
@@ -208,7 +241,10 @@ test("the editor saves after deleting a selection that spans the section break",
 
   expect(errors).toEqual([]);
   if (saved === null) panic("The save returned nothing");
-  expect(await savedSections(saved)).toEqual({ carriers: 0, finalOrientation: "portrait" });
+  expect(await savedSections(saved)).toEqual({
+    carriers: 0,
+    finalOrientation: "portrait",
+  });
 });
 
 test("in suggesting mode, Backspace across the break is tracked and saves once accepted", async () => {
@@ -219,7 +255,9 @@ test("in suggesting mode, Backspace across the break is tracked and saves once a
       press(view, "Backspace");
       // Tracked: both paragraphs are still there, the first one's mark deleted.
       expect(view.state.doc.childCount).toBe(2);
-      expect(view.state.doc.child(0).attrs["pPrMark"]).toMatchObject({ kind: "del" });
+      expect(view.state.doc.child(0).attrs["pPrMark"]).toMatchObject({
+        kind: "del",
+      });
       acceptAllChanges()(view.state, view.dispatch);
       expect(view.state.doc.childCount).toBe(1);
     },
@@ -228,5 +266,8 @@ test("in suggesting mode, Backspace across the break is tracked and saves once a
 
   expect(errors).toEqual([]);
   if (saved === null) panic("The save returned nothing");
-  expect(await savedSections(saved)).toEqual({ carriers: 0, finalOrientation: "portrait" });
+  expect(await savedSections(saved)).toEqual({
+    carriers: 0,
+    finalOrientation: "portrait",
+  });
 });

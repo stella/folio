@@ -1,14 +1,16 @@
-import { getEndnoteText, getFootnoteText } from "./storyPlainText";
+import { describe, expect, test } from "bun:test";
 /**
  * SDT inside a footnote/endnote body must round-trip as BlockSdt so
  * getContentControls + headless mutate APIs see citation slots and
  * bound metadata in notes the same way they see them in the main body.
  */
 
-import { describe, expect, test } from "bun:test";
-
-import { findContentControls, setContentControlContent } from "../content-controls";
+import {
+  findContentControls,
+  setContentControlContent,
+} from "../content-controls";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
+import { getEndnoteText, getFootnoteText } from "./storyPlainText";
 
 const FOOTNOTE_WITH_SDT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -155,7 +157,11 @@ describe("findContentControls / mutators reach SDTs in notes", () => {
         footnotes: [footnote],
       },
     };
-    const updated = setContentControlContent(doc, { tag: "cite" }, "Smith v Jones");
+    const updated = setContentControlContent(
+      doc,
+      { tag: "cite" },
+      "Smith v Jones",
+    );
     const sdt = updated.package.footnotes?.[0]?.content[1];
     if (!sdt || sdt.type !== "blockSdt") {
       throw new TypeError("expected blockSdt in updated footnote");
@@ -164,6 +170,8 @@ describe("findContentControls / mutators reach SDTs in notes", () => {
     if (!firstBlock || firstBlock.type !== "paragraph") {
       throw new TypeError("expected paragraph inside updated SDT");
     }
-    expect(getFootnoteText(updated.package.footnotes![0]!)).toContain("Smith v Jones");
+    expect(getFootnoteText(updated.package.footnotes![0]!)).toContain(
+      "Smith v Jones",
+    );
   });
 });

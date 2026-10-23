@@ -12,9 +12,9 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { calculateTabWidth, type TabContext } from "./tabCalculator";
 import { withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
 import { measureParagraph } from "./measureParagraph";
+import { calculateTabWidth, type TabContext } from "./tabCalculator";
 
 describe("measureParagraph — decimal tab stop (PR #512 gemini HIGH)", () => {
   test("decimal tab measurer matches painter (decimalPrefixWidth threaded)", () => {
@@ -55,7 +55,9 @@ describe("measureParagraph — decimal tab stop (PR #512 gemini HIGH)", () => {
       });
       const painterLineWidth = leadingWidth + tabResult.width + followingWidth;
 
-      expect(Math.abs((line?.width ?? 0) - painterLineWidth)).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs((line?.width ?? 0) - painterLineWidth),
+      ).toBeLessThanOrEqual(0.5);
     });
   });
 
@@ -96,7 +98,9 @@ describe("measureParagraph — decimal tab stop (PR #512 gemini HIGH)", () => {
       });
       const painterLineWidth = leadingWidth + tabResult.width + followingWidth;
 
-      expect(Math.abs((line?.width ?? 0) - painterLineWidth)).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs((line?.width ?? 0) - painterLineWidth),
+      ).toBeLessThanOrEqual(0.5);
     });
   });
 
@@ -179,7 +183,9 @@ describe("measureInlineWidthAfterTab — formatting parity (PR #512 gemini mediu
       const fieldLine = fieldMeasure.lines.at(0);
       expect(textLine).toBeDefined();
       expect(fieldLine).toBeDefined();
-      expect(Math.abs((textLine?.width ?? 0) - (fieldLine?.width ?? 0))).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs((textLine?.width ?? 0) - (fieldLine?.width ?? 0)),
+      ).toBeLessThanOrEqual(0.5);
     });
   });
 });
@@ -215,7 +221,10 @@ describe("measureInlineWidthAfterTab — floating images (PR #512 codex P2)", ()
       const withoutFloat = {
         kind: "paragraph" as const,
         id: "tab-nofloat",
-        runs: [{ kind: "text" as const, text: "Title", fontSize: 11 }, { kind: "tab" as const }],
+        runs: [
+          { kind: "text" as const, text: "Title", fontSize: 11 },
+          { kind: "tab" as const },
+        ],
         attrs: baseAttrs,
       };
 
@@ -225,7 +234,9 @@ describe("measureInlineWidthAfterTab — floating images (PR #512 codex P2)", ()
       const lineB = b.lines.at(0);
       expect(lineA).toBeDefined();
       expect(lineB).toBeDefined();
-      expect(Math.abs((lineA?.width ?? 0) - (lineB?.width ?? 0))).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs((lineA?.width ?? 0) - (lineB?.width ?? 0)),
+      ).toBeLessThanOrEqual(0.5);
     });
   });
 
@@ -255,7 +266,10 @@ describe("measureInlineWidthAfterTab — floating images (PR #512 codex P2)", ()
       const withoutImage = {
         kind: "paragraph" as const,
         id: "tab-no-img",
-        runs: [{ kind: "text" as const, text: "Title", fontSize: 11 }, { kind: "tab" as const }],
+        runs: [
+          { kind: "text" as const, text: "Title", fontSize: 11 },
+          { kind: "tab" as const },
+        ],
         attrs: baseAttrs,
       };
 
@@ -269,7 +283,9 @@ describe("measureInlineWidthAfterTab — floating images (PR #512 codex P2)", ()
       // subtracts from the tab advance, so the lines should still match: the
       // 40px reappears as image width in `lineA`. Both should be the same
       // total line width because the image is still rendered.
-      expect(Math.abs((lineA?.width ?? 0) - (lineB?.width ?? 0))).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs((lineA?.width ?? 0) - (lineB?.width ?? 0)),
+      ).toBeLessThanOrEqual(0.5);
     });
   });
 
@@ -297,7 +313,10 @@ describe("measureInlineWidthAfterTab — floating images (PR #512 codex P2)", ()
       const withoutImage = {
         kind: "paragraph" as const,
         id: "tab-no-block-img",
-        runs: [{ kind: "text" as const, text: "Title", fontSize: 11 }, { kind: "tab" as const }],
+        runs: [
+          { kind: "text" as const, text: "Title", fontSize: 11 },
+          { kind: "tab" as const },
+        ],
         attrs: baseAttrs,
       };
 
@@ -307,7 +326,9 @@ describe("measureInlineWidthAfterTab — floating images (PR #512 codex P2)", ()
       const lineB = b.lines.at(0);
       expect(lineA).toBeDefined();
       expect(lineB).toBeDefined();
-      expect(Math.abs((lineA?.width ?? 0) - (lineB?.width ?? 0))).toBeLessThanOrEqual(0.5);
+      expect(
+        Math.abs((lineA?.width ?? 0) - (lineB?.width ?? 0)),
+      ).toBeLessThanOrEqual(0.5);
     });
   });
 });

@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { createDocx } from "../docx/rezip";
-import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import type { ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -48,7 +51,9 @@ const comparisonInsertedText = (text: string) =>
     }),
   ]);
 
-const docxWith = async (content: readonly ParagraphContent[]): Promise<ArrayBuffer> => {
+const docxWith = async (
+  content: readonly ParagraphContent[],
+): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   document.package.document.content = [
     { type: "paragraph", paraId: "12345678", content: [...content] },
@@ -74,39 +79,61 @@ const resolve = ({
 describe("matchInlineAtoms", () => {
   test("compares equivalent simple and complex fields by their document facts", () => {
     const simple = field();
-    const complex = simple.type.create({ ...simple.attrs, fieldKind: "complex" });
-    expect(sameInlineAtoms(documentWith([simple]), documentWith([complex]))).toBe(true);
+    const complex = simple.type.create({
+      ...simple.attrs,
+      fieldKind: "complex",
+    });
+    expect(
+      sameInlineAtoms(documentWith([simple]), documentWith([complex])),
+    ).toBe(true);
     const withCode = complex.type.create({
       ...complex.attrs,
       _docxFieldCode: {
         instruction: " NUMPAGES ",
-        runs: [{ type: "run", content: [{ type: "instrText", text: " NUMPAGES " }] }],
+        runs: [
+          { type: "run", content: [{ type: "instrText", text: " NUMPAGES " }] },
+        ],
       },
     });
-    expect(sameInlineAtoms(documentWith([simple]), documentWith([withCode]))).toBe(true);
-    expect(sameInlineAtoms(documentWith([complex]), documentWith([withCode]))).toBe(true);
+    expect(
+      sameInlineAtoms(documentWith([simple]), documentWith([withCode])),
+    ).toBe(true);
+    expect(
+      sameInlineAtoms(documentWith([complex]), documentWith([withCode])),
+    ).toBe(true);
     expect(
       sameInlineAtoms(
         documentWith([simple]),
-        documentWith([complex.type.create({ ...complex.attrs, instruction: " NUMWORDS " })]),
+        documentWith([
+          complex.type.create({ ...complex.attrs, instruction: " NUMWORDS " }),
+        ]),
       ),
     ).toBe(false);
     expect(
       sameInlineAtoms(
         documentWith([simple]),
-        documentWith([complex.type.create({ ...complex.attrs, displayText: "2" })]),
+        documentWith([
+          complex.type.create({ ...complex.attrs, displayText: "2" }),
+        ]),
       ),
     ).toBe(false);
     expect(
       sameInlineAtoms(
         documentWith([simple]),
-        documentWith([complex.type.create({ ...complex.attrs, fldLock: true })]),
+        documentWith([
+          complex.type.create({ ...complex.attrs, fldLock: true }),
+        ]),
       ),
     ).toBe(false);
     expect(
       sameInlineAtoms(
         documentWith([simple]),
-        documentWith([complex.type.create({ ...complex.attrs, fieldResultIsFallback: true })]),
+        documentWith([
+          complex.type.create({
+            ...complex.attrs,
+            fieldResultIsFallback: true,
+          }),
+        ]),
       ),
     ).toBe(false);
   });
@@ -127,7 +154,11 @@ describe("matchInlineAtoms", () => {
         instruction: " PAGE ",
         fieldCode: [],
         fieldResult: [
-          { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "1" }] },
+          {
+            type: "run",
+            formatting: { bold: true },
+            content: [{ type: "text", text: "1" }],
+          },
         ],
       },
     ]);
@@ -136,11 +167,15 @@ describe("matchInlineAtoms", () => {
       timestamp: "2026-09-13T00:00:00.000Z",
     });
     if (compared.isErr()) throw compared.error;
-    expect(compared.value.changes.some(({ kind }) => kind === "format")).toBe(true);
+    expect(compared.value.changes.some(({ kind }) => kind === "format")).toBe(
+      true,
+    );
   });
 
   test("replaces a materialized field result with its serialized carrier", async () => {
-    const base = await docxWith([{ type: "run", content: [{ type: "text", text: "Count: 12" }] }]);
+    const base = await docxWith([
+      { type: "run", content: [{ type: "text", text: "Count: 12" }] },
+    ]);
     const target = await docxWith([
       { type: "run", content: [{ type: "text", text: "Count: " }] },
       {
@@ -203,18 +238,28 @@ describe("matchInlineAtoms", () => {
       type: "complexField",
       instruction: " REF _Ref1 \\h ",
       fieldCode: [],
-      fieldResult: [{ type: "run", content: [{ type: "text", text: "clause 1" }] }],
+      fieldResult: [
+        { type: "run", content: [{ type: "text", text: "clause 1" }] },
+      ],
     };
     const targetField: ParagraphContent = { ...originalField, fieldResult: [] };
     const base = await docxWith([
-      { type: "run", content: [{ type: "text", text: "Agreement applies to " }] },
+      {
+        type: "run",
+        content: [{ type: "text", text: "Agreement applies to " }],
+      },
       originalField,
       { type: "run", content: [{ type: "text", text: " today." }] },
     ]);
     const target = await docxWith([
       {
         type: "run",
-        content: [{ type: "text", text: "Agreement materially applies to clause 1 today." }],
+        content: [
+          {
+            type: "text",
+            text: "Agreement materially applies to clause 1 today.",
+          },
+        ],
       },
       targetField,
     ]);
@@ -236,7 +281,9 @@ describe("matchInlineAtoms", () => {
   });
 
   test("restores a field carrier after comparison inserts its result text", async () => {
-    const base = await docxWith([{ type: "run", content: [{ type: "text", text: "Count: " }] }]);
+    const base = await docxWith([
+      { type: "run", content: [{ type: "text", text: "Count: " }] },
+    ]);
     const target = await docxWith([
       { type: "run", content: [{ type: "text", text: "Count: " }] },
       {
@@ -266,7 +313,9 @@ describe("matchInlineAtoms", () => {
         content: [{ type: "run", content: [{ type: "text", text: "12" }] }],
       },
     ]);
-    const target = await docxWith([{ type: "run", content: [{ type: "text", text: "Count: " }] }]);
+    const target = await docxWith([
+      { type: "run", content: [{ type: "text", text: "Count: " }] },
+    ]);
 
     const compared = await compareDocx(base, target, {
       author: "Compare",
@@ -295,12 +344,19 @@ describe("matchInlineAtoms", () => {
     expect(result.status).toBe("matched");
     if (result.status !== "matched") return;
     const reviewed = state.apply(result.transaction);
-    expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(true);
-    expect(resolve({ state: reviewed, mode: "reject" }).doc.textContent).toBe("Pages: ");
+    expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(
+      true,
+    );
+    expect(resolve({ state: reviewed, mode: "reject" }).doc.textContent).toBe(
+      "Pages: ",
+    );
     const repeated = matchInlineAtoms({
       state: reviewed,
       targetSnapshot: createFolioAIEditSnapshot(target),
-      revisionStamp: { idSeed: result.nextRevisionId, date: "2026-09-13T00:00:00.000Z" },
+      revisionStamp: {
+        idSeed: result.nextRevisionId,
+        date: "2026-09-13T00:00:00.000Z",
+      },
       originalRevisionIdSeed: 10,
       author: "Compare",
       maxRanges: 10,
@@ -316,12 +372,19 @@ describe("matchInlineAtoms", () => {
         {
           pPrMark: {
             kind: "del",
-            info: { id: 8, author: "Compare", date: "2026-09-13T00:00:00.000Z" },
+            info: {
+              id: 8,
+              author: "Compare",
+              date: "2026-09-13T00:00:00.000Z",
+            },
           },
         },
         [schema.text("Pages:")],
       ),
-      schema.node("paragraph", null, [schema.text(" "), comparisonInsertedText("1")]),
+      schema.node("paragraph", null, [
+        schema.text(" "),
+        comparisonInsertedText("1"),
+      ]),
     ]);
     const state = EditorState.create({ schema, doc: source });
     expect(resolve({ state, mode: "accept" }).doc.textContent).toBe("Pages: 1");
@@ -337,17 +400,28 @@ describe("matchInlineAtoms", () => {
     expect(result.status).toBe("matched");
     if (result.status !== "matched") return;
     const reviewed = state.apply(result.transaction);
-    expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(true);
+    expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(
+      true,
+    );
     expect(
-      resolve({ state: reviewed, mode: "reject" }).doc.eq(resolve({ state, mode: "reject" }).doc),
+      resolve({ state: reviewed, mode: "reject" }).doc.eq(
+        resolve({ state, mode: "reject" }).doc,
+      ),
     ).toBe(true);
   });
 
   test("preserves the target order for multiple atoms at one text boundary", () => {
-    const target = documentWith([schema.text("Counts: "), field(), wordsField()]);
+    const target = documentWith([
+      schema.text("Counts: "),
+      field(),
+      wordsField(),
+    ]);
     const state = EditorState.create({
       schema,
-      doc: documentWith([schema.text("Counts: "), comparisonInsertedText("12")]),
+      doc: documentWith([
+        schema.text("Counts: "),
+        comparisonInsertedText("12"),
+      ]),
     });
     const result = matchInlineAtoms({
       state,
@@ -360,9 +434,12 @@ describe("matchInlineAtoms", () => {
 
     expect(result.status).toBe("matched");
     if (result.status !== "matched") return;
-    expect(resolve({ state: state.apply(result.transaction), mode: "accept" }).doc.eq(target)).toBe(
-      true,
-    );
+    expect(
+      resolve({
+        state: state.apply(result.transaction),
+        mode: "accept",
+      }).doc.eq(target),
+    ).toBe(true);
   });
 
   test("tracks a zero-width page break without changing surrounding text", () => {
@@ -371,7 +448,10 @@ describe("matchInlineAtoms", () => {
       schema.node("pageBreakRun"),
       schema.text("After"),
     ]);
-    const state = EditorState.create({ schema, doc: documentWith([schema.text("BeforeAfter")]) });
+    const state = EditorState.create({
+      schema,
+      doc: documentWith([schema.text("BeforeAfter")]),
+    });
     const result = matchInlineAtoms({
       state,
       targetSnapshot: createFolioAIEditSnapshot(target),
@@ -384,8 +464,12 @@ describe("matchInlineAtoms", () => {
     expect(result.status).toBe("matched");
     if (result.status !== "matched") return;
     const reviewed = state.apply(result.transaction);
-    expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(true);
-    expect(resolve({ state: reviewed, mode: "reject" }).doc.textContent).toBe("BeforeAfter");
+    expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(
+      true,
+    );
+    expect(resolve({ state: reviewed, mode: "reject" }).doc.textContent).toBe(
+      "BeforeAfter",
+    );
   });
 
   test("ignores package-local comment ids beside an unchanged supported carrier", () => {
@@ -437,7 +521,10 @@ describe("matchInlineAtoms", () => {
 
     expect(result.status).toBe("matched");
     if (result.status !== "matched") return;
-    const accepted = resolve({ state: state.apply(result.transaction), mode: "accept" }).doc;
+    const accepted = resolve({
+      state: state.apply(result.transaction),
+      mode: "accept",
+    }).doc;
     expect(sameInlineAtoms(accepted, target)).toBe(true);
   });
 
@@ -451,7 +538,9 @@ describe("matchInlineAtoms", () => {
     };
     const source = schema.node("doc", null, [schema.node("paragraph", attrs)]);
     const target = schema.node("doc", null, [
-      schema.node("paragraph", { ...attrs, pPrMark: null }, [schema.node("pageBreakRun")]),
+      schema.node("paragraph", { ...attrs, pPrMark: null }, [
+        schema.node("pageBreakRun"),
+      ]),
     ]);
     const state = EditorState.create({ schema, doc: source });
     const result = matchInlineAtoms({
@@ -466,7 +555,9 @@ describe("matchInlineAtoms", () => {
     expect(result.status).toBe("matched");
     if (result.status !== "matched") return;
     const reviewed = state.apply(result.transaction);
-    expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(true);
+    expect(resolve({ state: reviewed, mode: "accept" }).doc.eq(target)).toBe(
+      true,
+    );
     const rejected = resolve({ state: reviewed, mode: "reject" }).doc;
     expect(rejected.firstChild?.childCount).toBe(0);
     expect(rejected.firstChild?.attrs["pPrMark"]).toBeNull();
@@ -491,7 +582,9 @@ describe("matchInlineAtoms", () => {
       }),
     ]);
     const target = schema.node("doc", null, [
-      schema.node("paragraph", { ...attrs, pPrMark: null }, [schema.node("pageBreakRun")]),
+      schema.node("paragraph", { ...attrs, pPrMark: null }, [
+        schema.node("pageBreakRun"),
+      ]),
     ]);
     const result = matchInlineAtoms({
       state: EditorState.create({ schema, doc: source }),
@@ -510,7 +603,10 @@ describe("matchInlineAtoms", () => {
     const result = matchInlineAtoms({
       state: EditorState.create({
         schema,
-        doc: documentWith([schema.text("Pages: "), comparisonInsertedText("1")]),
+        doc: documentWith([
+          schema.text("Pages: "),
+          comparisonInsertedText("1"),
+        ]),
       }),
       targetSnapshot: createFolioAIEditSnapshot(target),
       revisionStamp: { idSeed: 40, date: "2026-09-13T00:00:00.000Z" },
@@ -525,10 +621,14 @@ describe("matchInlineAtoms", () => {
   test("refuses many field replacements before planning past the range budget", () => {
     const fieldCount = 4_096;
     const source = documentWith(
-      Array.from({ length: fieldCount }, (_, index) => numberedField(` NUMPAGES ${index} `)),
+      Array.from({ length: fieldCount }, (_, index) =>
+        numberedField(` NUMPAGES ${index} `),
+      ),
     );
     const target = documentWith(
-      Array.from({ length: fieldCount }, (_, index) => numberedField(` NUMPAGES ${index + 1} `)),
+      Array.from({ length: fieldCount }, (_, index) =>
+        numberedField(` NUMPAGES ${index + 1} `),
+      ),
     );
 
     const result = matchInlineAtoms({

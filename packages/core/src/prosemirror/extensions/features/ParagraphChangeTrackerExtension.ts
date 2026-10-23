@@ -6,9 +6,8 @@
  * Used by the selective save system to patch only changed paragraphs in document.xml.
  */
 
-import { createPluginKeyOwner } from "../../pluginKeyOwner";
-import type { Node as PMNode } from "prosemirror-model";
 import { isHistoryTransaction } from "prosemirror-history";
+import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 import {
@@ -31,14 +30,21 @@ import {
   nodeAtIndexed,
   nodesBetweenIndexed,
 } from "../../indexedNodeLookup";
-import { sweepPositions, type PositionQuery, type SweptPosition } from "../../positionSweep";
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
+import {
+  type PositionQuery,
+  sweepPositions,
+  type SweptPosition,
+} from "../../positionSweep";
 import { sectionPropertiesOf } from "../../sectionCarrier";
 import { sectionMarkEditsOf } from "../../sectionMarkEdits";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
 export const paragraphChangeTrackerKey =
-  createPluginKeyOwner<InternalParagraphChangeTrackerState>("paragraphChangeTracker");
+  createPluginKeyOwner<InternalParagraphChangeTrackerState>(
+    "paragraphChangeTracker",
+  );
 
 const CLEAR_META = "clear";
 const IGNORE_META = "ignore";
@@ -59,23 +65,31 @@ type ChangedParagraphRangesMeta = {
   batches: readonly ChangedParagraphRangeBatch[];
 };
 
-const isChangedParagraphRangesMeta = (value: unknown): value is ChangedParagraphRangesMeta =>
+const isChangedParagraphRangesMeta = (
+  value: unknown,
+): value is ChangedParagraphRangesMeta =>
   typeof value === "object" &&
   value !== null &&
   "type" in value &&
   value.type === "changed-paragraph-ranges";
 
-const isRemovedSectionReference = (value: unknown): value is RemovedSectionReference =>
+const isRemovedSectionReference = (
+  value: unknown,
+): value is RemovedSectionReference =>
   typeof value === "object" &&
   value !== null &&
   "part" in value &&
   (value.part === "header" || value.part === "footer") &&
   "type" in value &&
-  (value.type === "default" || value.type === "first" || value.type === "even") &&
+  (value.type === "default" ||
+    value.type === "first" ||
+    value.type === "even") &&
   "relationshipId" in value &&
   typeof value.relationshipId === "string";
 
-const isTrackedSectionEndpointRemoval = (value: unknown): value is TrackedSectionEndpointRemoval =>
+const isTrackedSectionEndpointRemoval = (
+  value: unknown,
+): value is TrackedSectionEndpointRemoval =>
   typeof value === "object" &&
   value !== null &&
   "type" in value &&
@@ -128,7 +142,8 @@ const isSectionEditMeta = (value: unknown): value is SectionEditMeta =>
   "type" in value &&
   value.type === "section-edit-meta" &&
   "authorization" in value &&
-  (value.authorization === null || isTrackedSectionEndpointRemoval(value.authorization)) &&
+  (value.authorization === null ||
+    isTrackedSectionEndpointRemoval(value.authorization)) &&
   "expectedEndpointFingerprint" in value &&
   typeof value.expectedEndpointFingerprint === "string";
 
@@ -185,7 +200,8 @@ function countDocumentStructure(doc: PMNode): DocumentStructureCounts {
   }[] = [];
   const visit = (parent: PMNode, parentPath: string): void => {
     parent.forEach((node, _offset, index) => {
-      const path = parentPath.length === 0 ? `${index}` : `${parentPath}.${index}`;
+      const path =
+        parentPath.length === 0 ? `${index}` : `${parentPath}.${index}`;
       blockRecords.push(
         node.type.name === "paragraph"
           ? [path, node.type.name, node.attrs["paraId"] ?? null]
@@ -199,7 +215,8 @@ function countDocumentStructure(doc: PMNode): DocumentStructureCounts {
           // The record is the whole endpoint: its `sectionStart` is inside the
           // canonical JSON below, so a type change is a fingerprint change.
           endpointRecords.push({
-            path: parentPath.length === 0 ? `${index}` : `${parentPath}.${index}`,
+            path:
+              parentPath.length === 0 ? `${index}` : `${parentPath}.${index}`,
             paraId: node.attrs["paraId"] ?? null,
             sectionProperties,
           });
@@ -234,7 +251,9 @@ const holdsTheSameSections = (
   next: Pick<DocumentStructureCounts, "sectionRecords">,
 ): boolean =>
   previous.sectionRecords.size === next.sectionRecords.size &&
-  [...next.sectionRecords].every((record) => previous.sectionRecords.has(record));
+  [...next.sectionRecords].every((record) =>
+    previous.sectionRecords.has(record),
+  );
 
 const isUsableParaId = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value !== "00000000";
@@ -309,12 +328,21 @@ function collectAffectedParaIdsFromMarkLikeStep(
  * ownership: each position's paragraph in `tr.doc`, or null once deleted. The
  * positions go through the transaction together (see `sweepPositions`).
  */
-const mapParagraphPositions = (tr: Transaction, positions: readonly number[]): (number | null)[] =>
+const mapParagraphPositions = (
+  tr: Transaction,
+  positions: readonly number[],
+): (number | null)[] =>
   sweepPositions(
     [tr.mapping],
-    positions.map((position): PositionQuery => ({ pos: position + 1, assoc: 1, from: 0 })),
+    positions.map((position): PositionQuery => ({
+      pos: position + 1,
+      assoc: 1,
+      from: 0,
+    })),
   ).map((mapped) =>
-    mapped.deletedAcross ? null : (enclosingParagraphIndexed(tr.doc, mapped.pos)?.pos ?? null),
+    mapped.deletedAcross
+      ? null
+      : (enclosingParagraphIndexed(tr.doc, mapped.pos)?.pos ?? null),
   );
 
 const mapAffectedParagraphPositions = (
@@ -335,7 +363,10 @@ const mapAffectedParagraphPositions = (
  * positions are in the final document. `query` indexes its first position in
  * the sweep; a range's end is the next one.
  */
-type StepTouch = { kind: "mark-range" | "node" | "replaced-range"; query: number };
+type StepTouch = {
+  kind: "mark-range" | "node" | "replaced-range";
+  query: number;
+};
 
 /**
  * Every position the step loop reads, each entering the sweep at the step
@@ -355,12 +386,16 @@ const mapStepTouches = (
     at: number,
   ): void => {
     touches.push({ kind, query: queries.length });
-    queries.push({ pos: from, assoc: 1, from: at }, { pos: to, assoc: -1, from: at });
+    queries.push(
+      { pos: from, assoc: 1, from: at },
+      { pos: to, assoc: -1, from: at },
+    );
   };
 
   const replacedStepMaps = new Set<number>();
   for (const batch of batches) {
-    if (batch.replacesStepMapAt !== undefined) replacedStepMaps.add(batch.replacesStepMapAt);
+    if (batch.replacesStepMapAt !== undefined)
+      replacedStepMaps.add(batch.replacesStepMapAt);
     for (const range of batch.ranges) {
       addRange("mark-range", range.from, range.to, batch.mappingFrom);
     }
@@ -423,8 +458,12 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
         prevState: InternalParagraphChangeTrackerState,
       ): InternalParagraphChangeTrackerState {
         const meta = tr.getMeta(paragraphChangeTrackerKey);
-        const changedParagraphRangesMeta = tr.getMeta(CHANGED_PARAGRAPH_RANGES_META);
-        const sectionEndpointRemovalMeta = tr.getMeta(SECTION_ENDPOINT_REMOVAL_META);
+        const changedParagraphRangesMeta = tr.getMeta(
+          CHANGED_PARAGRAPH_RANGES_META,
+        );
+        const sectionEndpointRemovalMeta = tr.getMeta(
+          SECTION_ENDPOINT_REMOVAL_META,
+        );
         const sectionEditMeta: unknown = tr.getMeta(SECTION_EDIT_META);
         // Check for explicit clear meta
         if (meta === CLEAR_META) {
@@ -482,14 +521,22 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
         }
 
         if (meta === PACKAGE_CHANGE_META && !tr.docChanged) {
-          return { ...prevState, hasUntrackedSourceChanges: true, hasUntrackedChanges: true };
+          return {
+            ...prevState,
+            hasUntrackedSourceChanges: true,
+            hasUntrackedChanges: true,
+          };
         }
 
         // If no doc changes, keep previous state
         if (!tr.docChanged) {
           return isSectionEditMeta(sectionEditMeta) &&
-            sectionEditMeta.expectedEndpointFingerprint === prevState.sectionEndpointFingerprint
-            ? { ...prevState, sectionEndpointRemoval: sectionEditMeta.authorization }
+            sectionEditMeta.expectedEndpointFingerprint ===
+              prevState.sectionEndpointFingerprint
+            ? {
+                ...prevState,
+                sectionEndpointRemoval: sectionEditMeta.authorization,
+              }
             : prevState;
         }
 
@@ -497,36 +544,48 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
         const counts = countDocumentStructure(tr.doc);
         const newCount = counts.paragraphs;
         let sectionEndpointRemoval = prevState.sectionEndpointRemoval;
-        if (counts.sectionEndpointFingerprint !== prevState.sectionEndpointFingerprint) {
+        if (
+          counts.sectionEndpointFingerprint !==
+          prevState.sectionEndpointFingerprint
+        ) {
           if (
             isTrackedSectionEndpointRemovalMeta(sectionEndpointRemovalMeta) &&
-            sectionEndpointRemovalMeta.authorization.sourceEndpointFingerprint ===
+            sectionEndpointRemovalMeta.authorization
+              .sourceEndpointFingerprint ===
               prevState.sectionEndpointFingerprint &&
-            sectionEndpointRemovalMeta.authorization.expectedEndpointFingerprint ===
+            sectionEndpointRemovalMeta.authorization
+              .expectedEndpointFingerprint ===
               counts.sectionEndpointFingerprint &&
-            sectionEndpointRemovalMeta.authorization.sourceParagraphEndpointCount ===
+            sectionEndpointRemovalMeta.authorization
+              .sourceParagraphEndpointCount ===
               prevState.sectionEndpointCount &&
-            sectionEndpointRemovalMeta.authorization.expectedParagraphEndpointCount ===
-              counts.sectionEndpoints &&
+            sectionEndpointRemovalMeta.authorization
+              .expectedParagraphEndpointCount === counts.sectionEndpoints &&
             counts.sectionEndpoints < prevState.sectionEndpointCount
           ) {
             const authorization = sectionEndpointRemovalMeta.authorization;
             sectionEndpointRemoval = {
               type: "tracked-section-endpoint-removal",
               sourceParagraphEndpointCount:
-                prevState.sectionEndpointRemoval?.expectedParagraphEndpointCount ===
+                prevState.sectionEndpointRemoval
+                  ?.expectedParagraphEndpointCount ===
                 authorization.sourceParagraphEndpointCount
-                  ? prevState.sectionEndpointRemoval.sourceParagraphEndpointCount
+                  ? prevState.sectionEndpointRemoval
+                      .sourceParagraphEndpointCount
                   : authorization.sourceParagraphEndpointCount,
-              expectedParagraphEndpointCount: authorization.expectedParagraphEndpointCount,
+              expectedParagraphEndpointCount:
+                authorization.expectedParagraphEndpointCount,
               sourceEndpointFingerprint:
-                prevState.sectionEndpointRemoval?.expectedParagraphEndpointCount ===
+                prevState.sectionEndpointRemoval
+                  ?.expectedParagraphEndpointCount ===
                 authorization.sourceParagraphEndpointCount
                   ? prevState.sectionEndpointRemoval.sourceEndpointFingerprint
                   : authorization.sourceEndpointFingerprint,
-              expectedEndpointFingerprint: authorization.expectedEndpointFingerprint,
+              expectedEndpointFingerprint:
+                authorization.expectedEndpointFingerprint,
               removedReferences: [
-                ...(prevState.sectionEndpointRemoval?.expectedParagraphEndpointCount ===
+                ...(prevState.sectionEndpointRemoval
+                  ?.expectedParagraphEndpointCount ===
                 authorization.sourceParagraphEndpointCount
                   ? prevState.sectionEndpointRemoval.removedReferences
                   : []),
@@ -539,7 +598,8 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
         }
         if (
           isSectionEditMeta(sectionEditMeta) &&
-          sectionEditMeta.expectedEndpointFingerprint === counts.sectionEndpointFingerprint
+          sectionEditMeta.expectedEndpointFingerprint ===
+            counts.sectionEndpointFingerprint
         ) {
           sectionEndpointRemoval = sectionEditMeta.authorization;
         }
@@ -553,7 +613,8 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
           hasUntrackedSourceChanges: prevState.hasUntrackedSourceChanges,
           blockStructureFingerprint: counts.blockStructureFingerprint,
           changedParaIds: new Set(prevState.changedParaIds),
-          structuralChange: prevState.structuralChange || meta === STRUCTURAL_META,
+          structuralChange:
+            prevState.structuralChange || meta === STRUCTURAL_META,
           hasUntrackedChanges: prevState.hasUntrackedChanges,
           paragraphCount: newCount,
           sectionEndpointCount: counts.sectionEndpoints,
@@ -562,7 +623,11 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
           sectionEndpointRemoval,
         };
 
-        const recordAffected = ({ ids, positions, hasUntracked }: AffectedParagraphs): void => {
+        const recordAffected = ({
+          ids,
+          positions,
+          hasUntracked,
+        }: AffectedParagraphs): void => {
           for (const position of positions) {
             newState.affectedParagraphPositions.add(position);
           }
@@ -596,7 +661,9 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
             }
             const node = nodeAtIndexed(tr.doc, from);
             if (node) {
-              recordAffected(collectAffectedParaIds(tr.doc, from, from + node.nodeSize));
+              recordAffected(
+                collectAffectedParaIds(tr.doc, from, from + node.nodeSize),
+              );
             }
             continue;
           }
@@ -604,7 +671,9 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
           const to = mapped[touch.query + 1]!.pos;
           if (touch.kind === "mark-range") {
             if (to > from) {
-              recordAffected(collectAffectedParaIdsFromMarkLikeStep(tr.doc, from, to));
+              recordAffected(
+                collectAffectedParaIdsFromMarkLikeStep(tr.doc, from, to),
+              );
             }
             continue;
           }
@@ -615,7 +684,10 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
 
         // Membership, order, container shape, and table attributes matter even
         // when the total number of paragraphs stays unchanged.
-        if (prevState.blockStructureFingerprint !== counts.blockStructureFingerprint) {
+        if (
+          prevState.blockStructureFingerprint !==
+          counts.blockStructureFingerprint
+        ) {
           newState.structuralChange = true;
         }
 
@@ -624,7 +696,8 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
         // assigning an ID later does not establish its original XML identity.
         if (
           newState.hasUntrackedChanges ||
-          prevState.blockStructureFingerprint !== counts.blockStructureFingerprint
+          prevState.blockStructureFingerprint !==
+            counts.blockStructureFingerprint
         ) {
           const unidentified: number[] = [];
           tr.before.descendants((node, position) => {
@@ -637,7 +710,10 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
             return false;
           });
           for (const survivor of mapParagraphPositions(tr, unidentified)) {
-            if (survivor === null || newState.affectedParagraphPositions.has(survivor)) {
+            if (
+              survivor === null ||
+              newState.affectedParagraphPositions.has(survivor)
+            ) {
               newState.hasUntrackedSourceChanges = true;
               newState.hasUntrackedChanges = true;
             }
@@ -657,7 +733,9 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
   });
 }
 
-const referencesOf = (records: readonly SectionProperties[]): RemovedSectionReference[] => {
+const referencesOf = (
+  records: readonly SectionProperties[],
+): RemovedSectionReference[] => {
   const references: RemovedSectionReference[] = [];
   for (const record of records) {
     for (const { type, rId } of record.headerReferences ?? []) {
@@ -715,7 +793,8 @@ const sectionEditTransaction = (
   // ride along with an edit; they are no edit of their own.
   const edited = transactions.some(
     (transaction) =>
-      transaction.docChanged && transaction.getMeta(paragraphChangeTrackerKey) !== IGNORE_META,
+      transaction.docChanged &&
+      transaction.getMeta(paragraphChangeTrackerKey) !== IGNORE_META,
   );
   if (
     !edited ||
@@ -738,10 +817,15 @@ const sectionEditTransaction = (
   const tr = newState.tr;
   // An undo or redo restores a document that already held its breaks where
   // they belong; it is recorded, never rearranged.
-  const restoring = transactions.some((transaction) => isHistoryTransaction(transaction));
+  const restoring = transactions.some((transaction) =>
+    isHistoryTransaction(transaction),
+  );
   for (const { position, record } of restoring ? [] : edits.carriers) {
     const paragraph = tr.doc.nodeAt(position);
-    if (paragraph?.type.name === "paragraph" && sectionPropertiesOf(paragraph) !== record) {
+    if (
+      paragraph?.type.name === "paragraph" &&
+      sectionPropertiesOf(paragraph) !== record
+    ) {
       tr.setNodeAttribute(position, "_sectionProperties", record);
     }
   }
@@ -755,8 +839,12 @@ const sectionEditTransaction = (
         } satisfies SectionEditMeta)
       : null;
   }
-  const removed = [...base.sectionRecords].filter((record) => !after.sectionRecords.has(record));
-  const added = [...after.sectionRecords].filter((record) => !base.sectionRecords.has(record));
+  const removed = [...base.sectionRecords].filter(
+    (record) => !after.sectionRecords.has(record),
+  );
+  const added = [...after.sectionRecords].filter(
+    (record) => !base.sectionRecords.has(record),
+  );
   if (removed.some((record) => !edits.deletedMarks.has(record))) {
     return tr.docChanged ? tr : null;
   }
@@ -788,7 +876,9 @@ const sectionEditTransaction = (
 /**
  * Get the change tracker state from an EditorState
  */
-export function getChangeTrackerState(state: EditorState): ParagraphChangeTrackerState | undefined {
+export function getChangeTrackerState(
+  state: EditorState,
+): ParagraphChangeTrackerState | undefined {
   return paragraphChangeTrackerKey.getState(state);
 }
 
@@ -860,13 +950,20 @@ type MarkTrackedSectionEndpointRemovalOptions = {
 /** Record only a complete, internally consistent endpoint-removal transition. */
 export function markTrackedSectionEndpointRemoval(
   tr: Transaction,
-  { sourceDoc, removedEndpointCount, removedReferences }: MarkTrackedSectionEndpointRemovalOptions,
+  {
+    sourceDoc,
+    removedEndpointCount,
+    removedReferences,
+  }: MarkTrackedSectionEndpointRemovalOptions,
 ): Transaction {
   const sourceStructure = countDocumentStructure(sourceDoc);
   const sourceParagraphEndpointCount = sourceStructure.sectionEndpoints;
   const expectedStructure = countDocumentStructure(tr.doc);
   const expectedParagraphEndpointCount = expectedStructure.sectionEndpoints;
-  if (sourceParagraphEndpointCount - expectedParagraphEndpointCount !== removedEndpointCount) {
+  if (
+    sourceParagraphEndpointCount - expectedParagraphEndpointCount !==
+    removedEndpointCount
+  ) {
     return tr;
   }
   return tr.setMeta(SECTION_ENDPOINT_REMOVAL_META, {
@@ -888,11 +985,17 @@ export function markTrackedSectionEndpointRemoval(
  * reads for itself). Only a plain removal is recorded; a transaction that also
  * adds or replaces a record is left as it is.
  */
-export function markSectionBreakRemoval(tr: Transaction, sourceDoc: PMNode): Transaction {
+export function markSectionBreakRemoval(
+  tr: Transaction,
+  sourceDoc: PMNode,
+): Transaction {
   const before = countDocumentStructure(sourceDoc).sectionRecords;
   const after = countDocumentStructure(tr.doc).sectionRecords;
   const removed = [...before].filter((record) => !after.has(record));
-  if (removed.length === 0 || [...after].some((record) => !before.has(record))) {
+  if (
+    removed.length === 0 ||
+    [...after].some((record) => !before.has(record))
+  ) {
     return tr;
   }
   return markTrackedSectionEndpointRemoval(tr, {
@@ -933,7 +1036,9 @@ export function markChangedParagraphRanges(
   batch: MarkChangedParagraphRangesOptions,
 ): Transaction {
   const previous = tr.getMeta(CHANGED_PARAGRAPH_RANGES_META);
-  const batches = isChangedParagraphRangesMeta(previous) ? [...previous.batches, batch] : [batch];
+  const batches = isChangedParagraphRangesMeta(previous)
+    ? [...previous.batches, batch]
+    : [batch];
   return tr.setMeta(CHANGED_PARAGRAPH_RANGES_META, {
     type: "changed-paragraph-ranges",
     batches,

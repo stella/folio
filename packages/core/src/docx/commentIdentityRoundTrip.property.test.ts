@@ -25,18 +25,22 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Comment, Document } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
-import type { Comment, Document } from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordml";
 const W15_NAMESPACE = "http://schemas.microsoft.com/office/word/2012/wordml";
 
@@ -84,7 +88,10 @@ const commentForest = fc
   .map((rows): GeneratedComment[] =>
     rows.map((row, index) => ({
       ...row,
-      parent: row.parentOffset === null || index === 0 ? null : row.parentOffset % index,
+      parent:
+        row.parentOffset === null || index === 0
+          ? null
+          : row.parentOffset % index,
       // A thread root cannot go id-less or share an id: its key is what its
       // replies name, and a package that loses it is malformed input, not a
       // round trip to hold folio to.
@@ -102,7 +109,10 @@ const commentForest = fc
 
 const commentId = (index: number): number => index + 1;
 
-const paraIdFor = (forest: readonly GeneratedComment[], index: number): string | null => {
+const paraIdFor = (
+  forest: readonly GeneratedComment[],
+  index: number,
+): string | null => {
   const state = forest[index]?.paraIdState;
   if (state === "none") {
     return null;
@@ -118,9 +128,14 @@ const anchorMarkers = (index: number): string =>
   `<w:commentRangeEnd w:id="${commentId(index)}"/>` +
   `<w:r><w:commentReference w:id="${commentId(index)}"/></w:r>`;
 
-const anchorsFor = (forest: readonly GeneratedComment[], surface: AnchorSurface): string => {
+const anchorsFor = (
+  forest: readonly GeneratedComment[],
+  surface: AnchorSurface,
+): string => {
   const markers = forest
-    .map((comment, index) => (comment.anchor === surface ? anchorMarkers(index) : ""))
+    .map((comment, index) =>
+      comment.anchor === surface ? anchorMarkers(index) : "",
+    )
     .join("");
   if (markers === "") {
     return "";
@@ -137,7 +152,9 @@ const anchorsFor = (forest: readonly GeneratedComment[], surface: AnchorSurface)
 
 const HEADER_RELATIONSHIP_ID = "rIdPropHeader";
 
-const buildDocx = async (forest: readonly GeneratedComment[]): Promise<ArrayBuffer> => {
+const buildDocx = async (
+  forest: readonly GeneratedComment[],
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
 
   zip.file(
@@ -187,7 +204,8 @@ const buildDocx = async (forest: readonly GeneratedComment[]): Promise<ArrayBuff
         return "";
       }
       const parentParaId = parent === null ? null : paraIdFor(forest, parent);
-      const parentAttribute = parentParaId === null ? "" : ` w15:paraIdParent="${parentParaId}"`;
+      const parentAttribute =
+        parentParaId === null ? "" : ` w15:paraIdParent="${parentParaId}"`;
       return `<w15:commentEx w15:paraId="${paraId}"${parentAttribute} w15:done="${done ? 1 : 0}"/>`;
     })
     .join("");
@@ -229,7 +247,9 @@ const commentText = ({ content }: Comment): string =>
       (paragraph.content ?? [])
         .map((item) =>
           item.type === "run"
-            ? (item.content ?? []).map((run) => (run.type === "text" ? run.text : "")).join("")
+            ? (item.content ?? [])
+                .map((run) => (run.type === "text" ? run.text : ""))
+                .join("")
             : "",
         )
         .join(""),
@@ -253,7 +273,9 @@ const anchoredCommentIds = (document: Document): Record<number, number> => {
     const { type, id } = record;
     if (
       typeof id === "number" &&
-      (type === "commentRangeStart" || type === "commentRangeEnd" || type === "commentReference")
+      (type === "commentRangeStart" ||
+        type === "commentRangeEnd" ||
+        type === "commentReference")
     ) {
       counts[id] = (counts[id] ?? 0) + 1;
     }
@@ -290,7 +312,9 @@ describe("a comment keeps its own identity across a round trip", () => {
   test("parse → save → parse moves no comment's facts onto another id", async () => {
     await fc.assert(
       fc.asyncProperty(commentForest, async (forest) => {
-        const parsed = await parseDocx(await buildDocx(forest), { preloadFonts: false });
+        const parsed = await parseDocx(await buildDocx(forest), {
+          preloadFonts: false,
+        });
         const before = {
           identities: identities(parsed),
           order: commentOrder(parsed),
@@ -313,8 +337,13 @@ describe("a comment keeps its own identity across a round trip", () => {
   test("the editor round trip moves no comment's facts onto another id", async () => {
     await fc.assert(
       fc.asyncProperty(commentForest, async (forest) => {
-        const parsed = await parseDocx(await buildDocx(forest), { preloadFonts: false });
-        const before = { identities: identities(parsed), order: commentOrder(parsed) };
+        const parsed = await parseDocx(await buildDocx(forest), {
+          preloadFonts: false,
+        });
+        const before = {
+          identities: identities(parsed),
+          order: commentOrder(parsed),
+        };
 
         const edited = fromProseDoc(toProseDoc(parsed), parsed, {
           stylesheetSource: { type: "package" },
@@ -322,7 +351,10 @@ describe("a comment keeps its own identity across a round trip", () => {
         const saved = await repackDocx(edited, { updateModifiedDate: false });
         const reparsed = await parseDocx(saved, { preloadFonts: false });
 
-        expect({ identities: identities(reparsed), order: commentOrder(reparsed) }).toEqual(before);
+        expect({
+          identities: identities(reparsed),
+          order: commentOrder(reparsed),
+        }).toEqual(before);
       }),
       propertyConfig({ numRuns: 40 }),
     );

@@ -20,7 +20,11 @@ import {
   isDegradedRun,
   isFailingViolation,
 } from "./lib/corpus-baseline";
-import { CensusBuilder, type CorpusCensus, type CorpusFileId } from "./lib/corpus-census";
+import {
+  CensusBuilder,
+  type CorpusCensus,
+  type CorpusFileId,
+} from "./lib/corpus-census";
 import { EXTENDED_CORPUS_INVARIANTS } from "./lib/corpus-invariants/contract";
 import {
   CORPUS_INVARIANTS,
@@ -58,7 +62,10 @@ describe("a truncated file contributes no gating evidence", () => {
       failures: [
         // Produced before the budget ran out: still not evidence.
         fail(GATING, "text changed"),
-        fail(PERFORMANCE, "the file time budget was exhausted before reserialize ran"),
+        fail(
+          PERFORMANCE,
+          "the file time budget was exhausted before reserialize ran",
+        ),
       ],
     });
     return builder.build();
@@ -66,14 +73,18 @@ describe("a truncated file contributes no gating evidence", () => {
 
   test("its gating findings do not reach the census", () => {
     const census = censusWithTruncatedFailure();
-    const gating = census.signatures.find((signature) => signature.invariant === GATING);
+    const gating = census.signatures.find(
+      (signature) => signature.invariant === GATING,
+    );
     expect(gating?.files).toBe(1);
     expect(gating?.examples.map((example) => example.path)).toEqual(["a"]);
   });
 
   test("its timing findings do reach the census", () => {
     const census = censusWithTruncatedFailure();
-    const timing = census.signatures.find((signature) => signature.invariant === PERFORMANCE);
+    const timing = census.signatures.find(
+      (signature) => signature.invariant === PERFORMANCE,
+    );
     expect(timing).toBeDefined();
     expect(timing?.files).toBe(1);
   });
@@ -81,7 +92,9 @@ describe("a truncated file contributes no gating evidence", () => {
   test("it is counted and named with the stage it stopped at", () => {
     const census = censusWithTruncatedFailure();
     expect(census.truncated).toBe(1);
-    expect(census.truncatedExamples).toEqual([{ file: file("b"), stage: "reserialize" }]);
+    expect(census.truncatedExamples).toEqual([
+      { file: file("b"), stage: "reserialize" },
+    ]);
   });
 
   test("it is not counted as a file that passed", () => {
@@ -103,7 +116,11 @@ describe("an unlisted truncation degrades the run", () => {
   const runTruncating = (total: number, truncated: number): CorpusCensus => {
     const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
     for (let index = 0; index < total - truncated; index += 1) {
-      builder.add(file(`ok${index}`), { kind: "complete", declaredRefusals: [], failures: [] });
+      builder.add(file(`ok${index}`), {
+        kind: "complete",
+        declaredRefusals: [],
+        failures: [],
+      });
     }
     for (let index = 0; index < truncated; index += 1) {
       builder.add(file(`slow${index}`), {

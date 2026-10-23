@@ -2,19 +2,25 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { BlockContent } from "../../types/document";
 import { parseDocx } from "../parser";
-import { createEmptyDocx, createDocx } from "../rezip";
+import { createDocx, createEmptyDocx } from "../rezip";
 import {
+  type BilingualTableLayout,
   createBilingualDocument,
   readBilingualDocument,
-  type BilingualTableLayout,
 } from "./createBilingualDocument";
 
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const M_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const M_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/math";
 const CHUNK_PART = "word/imported.html";
 const CHUNK_CONTENT = "<html><body><p>Imported clause</p></body></html>";
 
@@ -39,7 +45,8 @@ const PLACEMENTS = {
   body: (xml: string) => xml,
   sdt: (xml: string) =>
     `<w:sdt><w:sdtPr><w:tag w:val="source"/></w:sdtPr><w:sdtContent>${xml}</w:sdtContent></w:sdt>`,
-  customXml: (xml: string) => `<w:customXml w:element="clause">${xml}</w:customXml>`,
+  customXml: (xml: string) =>
+    `<w:customXml w:element="clause">${xml}</w:customXml>`,
 } as const;
 
 const buildPackage = async (body: string): Promise<ArrayBuffer> => {
@@ -78,7 +85,8 @@ const paragraphIds = (blocks: readonly BlockContent[]): Set<string> => {
         if (block.paraId !== undefined) ids.add(block.paraId);
         return;
       case "table":
-        for (const row of block.rows) for (const cell of row.cells) cell.content.forEach(visit);
+        for (const row of block.rows)
+          for (const cell of row.cells) cell.content.forEach(visit);
         return;
       case "blockSdt":
       case "blockCustomXml":
@@ -116,7 +124,8 @@ const carriedBlocks = (blocks: readonly BlockContent[]): string[] => {
         block.content.forEach(visit);
         return;
       case "table":
-        for (const row of block.rows) for (const cell of row.cells) cell.content.forEach(visit);
+        for (const row of block.rows)
+          for (const cell of row.cells) cell.content.forEach(visit);
         return;
       case "paragraph":
         return;
@@ -131,7 +140,9 @@ const carriedBlocks = (blocks: readonly BlockContent[]): string[] => {
 };
 
 const roundTrip = async (body: string, tableLayout: BilingualTableLayout) => {
-  const source = await parseDocx(await buildPackage(body), { preloadFonts: false });
+  const source = await parseDocx(await buildPackage(body), {
+    preloadFonts: false,
+  });
   const options = {
     targetStyleSuffix: "en",
     tableLayout,
@@ -147,9 +158,12 @@ const roundTrip = async (body: string, tableLayout: BilingualTableLayout) => {
   expect(carriedBlocks(reparsed.package.document.content)).toEqual(
     carriedBlocks(source.package.document.content),
   );
-  expect(readBilingualDocument(reparsed, paragraphIds(reparsed.package.document.content))).toEqual(
-    result.rows,
-  );
+  expect(
+    readBilingualDocument(
+      reparsed,
+      paragraphIds(reparsed.package.document.content),
+    ),
+  ).toEqual(result.rows);
   return { source, result, reparsed, zip: await JSZip.loadAsync(saved) };
 };
 
@@ -185,16 +199,20 @@ describe("bilingual body block preservation", () => {
       }
       for (const bookmarkId of [600, 602]) {
         expect(
-          xml?.match(new RegExp(`<w:bookmarkStart\\b[^>]*w:id="${bookmarkId}"`, "g")),
+          xml?.match(
+            new RegExp(`<w:bookmarkStart\\b[^>]*w:id="${bookmarkId}"`, "g"),
+          ),
         ).toHaveLength(1);
         expect(
-          xml?.match(new RegExp(`<w:bookmarkEnd\\b[^>]*w:id="${bookmarkId}"`, "g")),
+          xml?.match(
+            new RegExp(`<w:bookmarkEnd\\b[^>]*w:id="${bookmarkId}"`, "g"),
+          ),
         ).toHaveLength(1);
       }
       expect(await zip.file(CHUNK_PART)?.async("text")).toBe(CHUNK_CONTENT);
-      expect(await zip.file("word/_rels/document.xml.rels")?.async("text")).toContain(
-        'Target="imported.html"',
-      );
+      expect(
+        await zip.file("word/_rels/document.xml.rels")?.async("text"),
+      ).toContain('Target="imported.html"');
       expect(await zip.file("[Content_Types].xml")?.async("text")).toContain(
         'PartName="/word/imported.html"',
       );
@@ -221,7 +239,10 @@ describe("bilingual body block preservation", () => {
             await roundTrip(body, layout);
           },
         ),
-        { id: "bilingual carries every non-stamped body block in source order", numRuns: 30 },
+        {
+          id: "bilingual carries every non-stamped body block in source order",
+          numRuns: 30,
+        },
       );
     },
     propertyTestTimeout(30_000),

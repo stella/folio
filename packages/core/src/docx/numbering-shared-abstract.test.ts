@@ -27,7 +27,10 @@ const NUMBERING_SHARED = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?
   </w:num>
 </w:numbering>`;
 
-function parseParagraphXml(xml: string, numbering: ReturnType<typeof parseNumbering>) {
+function parseParagraphXml(
+  xml: string,
+  numbering: ReturnType<typeof parseNumbering>,
+) {
   const root = parseXmlDocument(xml) as XmlElement | null;
   if (!root) {
     throw new Error("Failed to parse paragraph XML");
@@ -78,7 +81,8 @@ describe("paragraphParser exposes abstractNumId and startOverride for sharing", 
 });
 
 test("nested numbering starts from authored levels when no parent paragraph exists", () => {
-  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const numbering =
+    parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:abstractNum w:abstractNumId="8">
     <w:lvl w:ilvl="0"><w:start w:val="3"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
@@ -99,16 +103,19 @@ test("nested numbering starts from authored levels when no parent paragraph exis
   const paragraphs = parseBlockContent(root, null, null, numbering, null, null);
 
   expect(paragraphs.at(0)?.type).toBe("paragraph");
-  expect(paragraphs.at(0)?.type === "paragraph" && paragraphs.at(0)?.listRendering?.marker).toBe(
-    "3.3.",
-  );
-  expect(paragraphs.at(1)?.type === "paragraph" && paragraphs.at(1)?.listRendering?.marker).toBe(
-    "3.4.",
-  );
+  expect(
+    paragraphs.at(0)?.type === "paragraph" &&
+      paragraphs.at(0)?.listRendering?.marker,
+  ).toBe("3.3.");
+  expect(
+    paragraphs.at(1)?.type === "paragraph" &&
+      paragraphs.at(1)?.listRendering?.marker,
+  ).toBe("3.4.");
 });
 
 test("zero-based numbering advances instead of repeatedly reinitializing", () => {
-  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const numbering =
+    parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:abstractNum w:abstractNumId="9">
     <w:lvl w:ilvl="0"><w:start w:val="0"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2."/></w:lvl>
@@ -128,16 +135,19 @@ test("zero-based numbering advances instead of repeatedly reinitializing", () =>
 
   const paragraphs = parseBlockContent(root, null, null, numbering, null, null);
 
-  expect(paragraphs.at(0)?.type === "paragraph" && paragraphs.at(0)?.listRendering?.marker).toBe(
-    "0.0.",
-  );
-  expect(paragraphs.at(1)?.type === "paragraph" && paragraphs.at(1)?.listRendering?.marker).toBe(
-    "0.1.",
-  );
+  expect(
+    paragraphs.at(0)?.type === "paragraph" &&
+      paragraphs.at(0)?.listRendering?.marker,
+  ).toBe("0.0.");
+  expect(
+    paragraphs.at(1)?.type === "paragraph" &&
+      paragraphs.at(1)?.listRendering?.marker,
+  ).toBe("0.1.");
 });
 
 test("numbering metadata with a none format does not paint a decimal marker", () => {
-  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const numbering =
+    parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:abstractNum w:abstractNumId="10">
     <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="none"/><w:lvlText w:val="%1"/></w:lvl>
@@ -155,14 +165,16 @@ test("numbering metadata with a none format does not paint a decimal marker", ()
 
   const paragraphs = parseBlockContent(root, null, null, numbering, null, null);
 
-  expect(paragraphs.at(0)?.type === "paragraph" && paragraphs.at(0)?.listRendering?.marker).toBe(
-    "",
-  );
+  expect(
+    paragraphs.at(0)?.type === "paragraph" &&
+      paragraphs.at(0)?.listRendering?.marker,
+  ).toBe("");
 });
 
 test("style numbering resumes the latest compatible restarted instance", () => {
   const numbering = parseNumbering(NUMBERING_SHARED);
-  const styles = parseStyles(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const styles =
+    parseStyles(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
       <w:style w:type="paragraph" w:styleId="Article">
         <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr>
@@ -180,14 +192,28 @@ test("style numbering resumes the latest compatible restarted instance", () => {
     throw new Error("Failed to parse body XML");
   }
 
-  const paragraphs = parseBlockContent(root, styles, null, numbering, null, null);
+  const paragraphs = parseBlockContent(
+    root,
+    styles,
+    null,
+    numbering,
+    null,
+    null,
+  );
 
   expect(
     paragraphs.map((paragraph) =>
-      paragraph.type === "paragraph" ? paragraph.listRendering?.marker : undefined,
+      paragraph.type === "paragraph"
+        ? paragraph.listRendering?.marker
+        : undefined,
     ),
   ).toEqual(["(1)", "(1)", "(2)", "(3)"]);
-  expect(layoutMarkers(paragraphs, styles)).toEqual(["(1)", "(1)", "(2)", "(3)"]);
+  expect(layoutMarkers(paragraphs, styles)).toEqual([
+    "(1)",
+    "(1)",
+    "(2)",
+    "(3)",
+  ]);
 });
 
 test("an adjacent base instance continues an explicit restart instance", () => {
@@ -207,7 +233,9 @@ test("an adjacent base instance continues an explicit restart instance", () => {
 
   expect(
     paragraphs.map((paragraph) =>
-      paragraph.type === "paragraph" ? paragraph.listRendering?.marker : undefined,
+      paragraph.type === "paragraph"
+        ? paragraph.listRendering?.marker
+        : undefined,
     ),
   ).toEqual(["(1)", "(2)", "(3)"]);
 });
@@ -229,13 +257,16 @@ test("a non-list paragraph ends an explicit restart handoff", () => {
 
   expect(
     paragraphs.map((paragraph) =>
-      paragraph.type === "paragraph" ? paragraph.listRendering?.marker : undefined,
+      paragraph.type === "paragraph"
+        ? paragraph.listRendering?.marker
+        : undefined,
     ),
   ).toEqual(["(1)", undefined, "(1)"]);
 });
 
 test("a direct instance continues an adjacent style-derived sequence", () => {
-  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const numbering =
+    parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
       <w:abstractNum w:abstractNumId="4">
         <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="(%1)"/></w:lvl>
@@ -243,7 +274,8 @@ test("a direct instance continues an adjacent style-derived sequence", () => {
       <w:num w:numId="1"><w:abstractNumId w:val="4"/></w:num>
       <w:num w:numId="2"><w:abstractNumId w:val="4"/></w:num>
     </w:numbering>`);
-  const styles = parseStyles(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const styles =
+    parseStyles(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
       <w:style w:type="paragraph" w:styleId="Clause">
         <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr>
@@ -260,17 +292,27 @@ test("a direct instance continues an adjacent style-derived sequence", () => {
     throw new Error("Failed to parse body XML");
   }
 
-  const paragraphs = parseBlockContent(root, styles, null, numbering, null, null);
+  const paragraphs = parseBlockContent(
+    root,
+    styles,
+    null,
+    numbering,
+    null,
+    null,
+  );
 
   expect(
     paragraphs.map((paragraph) =>
-      paragraph.type === "paragraph" ? paragraph.listRendering?.marker : undefined,
+      paragraph.type === "paragraph"
+        ? paragraph.listRendering?.marker
+        : undefined,
     ),
   ).toEqual(["(1)", "(2)", "(3)"]);
 });
 
 test("a style-numbered bridge advances the concrete stream it resumes", () => {
-  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const numbering =
+    parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
       <w:abstractNum w:abstractNumId="4">
         <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl>
@@ -279,7 +321,8 @@ test("a style-numbered bridge advances the concrete stream it resumes", () => {
       <w:num w:numId="1"><w:abstractNumId w:val="4"/></w:num>
       <w:num w:numId="2"><w:abstractNumId w:val="4"/></w:num>
     </w:numbering>`);
-  const styles = parseStyles(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const styles =
+    parseStyles(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
       <w:style w:type="paragraph" w:styleId="Clause">
         <w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="2"/></w:numPr></w:pPr>
@@ -299,11 +342,20 @@ test("a style-numbered bridge advances the concrete stream it resumes", () => {
     throw new Error("Failed to parse body XML");
   }
 
-  const paragraphs = parseBlockContent(root, styles, null, numbering, null, null);
+  const paragraphs = parseBlockContent(
+    root,
+    styles,
+    null,
+    numbering,
+    null,
+    null,
+  );
 
   expect(
     paragraphs.map((paragraph) =>
-      paragraph.type === "paragraph" ? paragraph.listRendering?.marker : undefined,
+      paragraph.type === "paragraph"
+        ? paragraph.listRendering?.marker
+        : undefined,
     ),
   ).toEqual(["I.", "I.1", "II.", "II.1", "II.2", "II.3"]);
 });

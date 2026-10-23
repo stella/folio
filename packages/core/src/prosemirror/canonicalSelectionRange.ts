@@ -1,9 +1,12 @@
-import { AllSelection, Selection, type EditorState } from "prosemirror-state";
 import type { Node } from "prosemirror-model";
+import { AllSelection, type EditorState, Selection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
 /** Document edges denote the first and last editable content gaps. */
-export const canonicalContentPosition = (doc: Node, position: number): number => {
+export const canonicalContentPosition = (
+  doc: Node,
+  position: number,
+): number => {
   if (position === 0) return Selection.atStart(doc).from;
   if (position === doc.content.size) return Selection.atEnd(doc).to;
   return position;

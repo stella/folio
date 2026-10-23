@@ -1,17 +1,32 @@
 import { resolveListTemplate } from "../docx/listTemplate";
 
-export { resolveListTemplate, resolveListTemplateWithComponents } from "../docx/listTemplate";
-export type { ResolvedListComponent, ResolvedListTemplate } from "../docx/listTemplate";
+export {
+  resolveListTemplate,
+  resolveListTemplateWithComponents,
+} from "../docx/listTemplate";
+export type {
+  ResolvedListComponent,
+  ResolvedListTemplate,
+} from "../docx/listTemplate";
+import {
+  bulletMarkerFontName,
+  convertBulletToUnicode,
+} from "../docx/bulletMarkers";
+import {
+  paragraphNumberingLevel,
+  paragraphNumberingReferenceId,
+} from "../docx/numberingReference";
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
-import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
-import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/numberingReference";
 import type { CounterFormat } from "../types/document";
+import {
+  hasListRendering,
+  type ListRenderingAttrKey,
+} from "./listRenderingAttrs";
 import {
   effectiveParagraphNumbering,
   paragraphNumberingSourcesFromBoundary,
 } from "./numberingAttr";
 import type { ParagraphAttrs } from "./schema/nodes";
-import { hasListRendering, type ListRenderingAttrKey } from "./listRenderingAttrs";
 
 export type ListCounterState = {
   counters: Map<number, number[]>;
@@ -83,7 +98,9 @@ export function createListCounterState(): ListCounterState {
   };
 }
 
-export function cloneListCounterState(state: ListCounterState): ListCounterState {
+export function cloneListCounterState(
+  state: ListCounterState,
+): ListCounterState {
   const clonedArrays = new Map<number[], number[]>();
   const cloneCounters = (source: number[]): number[] => {
     const existing = clonedArrays.get(source);
@@ -106,7 +123,11 @@ export function cloneListCounterState(state: ListCounterState): ListCounterState
     seenLevels: new Set(state.seenLevels),
     restartedNumIds: new Set(state.restartedNumIds ?? []),
     previousList: {
-      ...(state.previousList ?? { abstractNumId: null, fromStyle: false, numId: null }),
+      ...(state.previousList ?? {
+        abstractNumId: null,
+        fromStyle: false,
+        numId: null,
+      }),
     },
     ...(state.lastAdvancedNumId !== undefined
       ? { lastAdvancedNumId: state.lastAdvancedNumId }
@@ -120,11 +141,21 @@ function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
   const previous = change.previousFormatting ?? {};
   return {
     ...(previous.numPr == null ? {} : { numPr: previous.numPr }),
-    ...(previous.numPrFromStyle == null ? {} : { numPrFromStyle: previous.numPrFromStyle }),
-    ...(previous.listIsBullet !== undefined ? { listIsBullet: previous.listIsBullet } : {}),
-    ...(previous.listIsLegal !== undefined ? { listIsLegal: previous.listIsLegal } : {}),
-    ...(previous.listNumFmt !== undefined ? { listNumFmt: previous.listNumFmt } : {}),
-    ...(previous.listMarker !== undefined ? { listMarker: previous.listMarker } : {}),
+    ...(previous.numPrFromStyle == null
+      ? {}
+      : { numPrFromStyle: previous.numPrFromStyle }),
+    ...(previous.listIsBullet !== undefined
+      ? { listIsBullet: previous.listIsBullet }
+      : {}),
+    ...(previous.listIsLegal !== undefined
+      ? { listIsLegal: previous.listIsLegal }
+      : {}),
+    ...(previous.listNumFmt !== undefined
+      ? { listNumFmt: previous.listNumFmt }
+      : {}),
+    ...(previous.listMarker !== undefined
+      ? { listMarker: previous.listMarker }
+      : {}),
     ...(previous.listMarkerTemplate !== undefined
       ? { listMarkerTemplate: previous.listMarkerTemplate }
       : {}),
@@ -147,10 +178,16 @@ function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
       ? { listMarkerAllCaps: previous.listMarkerAllCaps }
       : {}),
     ...(previous.listImplicitChildLevelAdvances !== undefined
-      ? { listImplicitChildLevelAdvances: previous.listImplicitChildLevelAdvances }
+      ? {
+          listImplicitChildLevelAdvances:
+            previous.listImplicitChildLevelAdvances,
+        }
       : {}),
     ...(previous.listMarkerSecondSlotOffsetTwips !== undefined
-      ? { listMarkerSecondSlotOffsetTwips: previous.listMarkerSecondSlotOffsetTwips }
+      ? {
+          listMarkerSecondSlotOffsetTwips:
+            previous.listMarkerSecondSlotOffsetTwips,
+        }
       : {}),
     ...(previous.listLevelNumFmts !== undefined
       ? { listLevelNumFmts: previous.listLevelNumFmts }
@@ -158,7 +195,9 @@ function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
     ...(previous.listLevelStarts !== undefined
       ? { listLevelStarts: previous.listLevelStarts }
       : {}),
-    ...(previous.listLevelTabs !== undefined ? { listLevelTabs: previous.listLevelTabs } : {}),
+    ...(previous.listLevelTabs !== undefined
+      ? { listLevelTabs: previous.listLevelTabs }
+      : {}),
     ...(previous.listAbstractNumId !== undefined
       ? { listAbstractNumId: previous.listAbstractNumId }
       : {}),
@@ -178,7 +217,10 @@ export function advanceVisibleListMarker(
   streams: ListCounterStreams,
 ): VisibleListMarker {
   const advances: AdvancedListMarker[] = [];
-  const advance = (counterAttrs: ParagraphAttrs, stream: ListCounterStream): AdvancedListMarker => {
+  const advance = (
+    counterAttrs: ParagraphAttrs,
+    stream: ListCounterStream,
+  ): AdvancedListMarker => {
     const counterState = streams[stream];
     const advanced = {
       marker: advanceListMarker(counterAttrs, counterState),
@@ -196,7 +238,9 @@ export function advanceVisibleListMarker(
   }
   const final = advance(attrs, "final");
   const original =
-    attrs.pPrMark?.kind === "ins" ? undefined : advance(previous ?? attrs, "original");
+    attrs.pPrMark?.kind === "ins"
+      ? undefined
+      : advance(previous ?? attrs, "original");
   const visible =
     attrs.numPr?.kind !== "none" &&
     final.marker === null &&
@@ -208,7 +252,10 @@ export function advanceVisibleListMarker(
   return { ...visible, advances };
 }
 
-export function formatCounter(value: number, format: CounterFormat | undefined): string {
+export function formatCounter(
+  value: number,
+  format: CounterFormat | undefined,
+): string {
   return formatOoxmlCounter(value, format);
 }
 
@@ -230,7 +277,10 @@ function formatNumberedMarker(counters: number[], level: number): string {
   return parts.length === 0 ? "1." : `${parts.join(".")}.`;
 }
 
-export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState): string | null {
+export function advanceListMarker(
+  attrs: ParagraphAttrs,
+  state: ListCounterState,
+): string | null {
   if (!hasListRendering(attrs)) {
     state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
     return null;
@@ -274,11 +324,14 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
       attrs.listMarkerTemplate ?? attrs.listMarker ?? "",
       bulletMarkerFontName(attrs.listMarkerFormatting),
     );
-    return foldedMarkerSuffix === undefined ? marker : `${marker}\t${foldedMarkerSuffix}`;
+    return foldedMarkerSuffix === undefined
+      ? marker
+      : `${marker}\t${foldedMarkerSuffix}`;
   }
 
   const firstInstanceEncounter = !state.counters.has(numId);
-  let counters = state.counters.get(numId) ?? Array.from({ length: 9 }, () => Number.NaN);
+  let counters =
+    state.counters.get(numId) ?? Array.from({ length: 9 }, () => Number.NaN);
   const abstractNumId = attrs.listAbstractNumId;
   const previousList = state.previousList ?? {
     abstractNumId: null,
@@ -287,9 +340,12 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   };
   const restartedNumIds = (state.restartedNumIds ??= new Set());
   const latestAbstractCounters =
-    abstractNumId === undefined ? undefined : state.abstractCounters.get(abstractNumId);
+    abstractNumId === undefined
+      ? undefined
+      : state.abstractCounters.get(abstractNumId);
   const styleNumbering =
-    attrs.numPr?.kind !== "reference" && attrs.numPrFromStyle?.kind === "reference";
+    attrs.numPr?.kind !== "reference" &&
+    attrs.numPrFromStyle?.kind === "reference";
   const resumesRestartedInstance =
     firstInstanceEncounter &&
     attrs.listStartOverride == null &&
@@ -319,7 +375,9 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
     restartedNumIds.add(numId);
   }
   if (level > 0) {
-    if (counters.slice(0, level).every((counter) => !Number.isFinite(counter))) {
+    if (
+      counters.slice(0, level).every((counter) => !Number.isFinite(counter))
+    ) {
       for (let index = 0; index < level; index += 1) {
         const latestCounter = latestAbstractCounters?.[index];
         counters[index] =
@@ -350,8 +408,9 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   if (childAdvances > 0 && level + 1 < counters.length) {
     const childCounter = counters[level + 1];
     counters[level + 1] =
-      (childCounter === undefined || !Number.isFinite(childCounter) ? 0 : childCounter) +
-      childAdvances;
+      (childCounter === undefined || !Number.isFinite(childCounter)
+        ? 0
+        : childCounter) + childAdvances;
   }
   state.counters.set(numId, counters);
   state.lastAdvancedNumId = numId;
@@ -365,7 +424,8 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   };
 
   const levelFormats =
-    attrs.listLevelNumFmts ?? (attrs.listNumFmt ? [attrs.listNumFmt] : undefined);
+    attrs.listLevelNumFmts ??
+    (attrs.listNumFmt ? [attrs.listNumFmt] : undefined);
   if (
     markerTemplate?.includes("%") &&
     (foldedMarkerSuffix === undefined || attrs.listMarkerTemplate != null)
@@ -376,7 +436,9 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
       levelFormats,
       forceDecimal: attrs.listIsLegal,
     });
-    return foldedMarkerSuffix === undefined ? marker : `${marker}\t${foldedMarkerSuffix}`;
+    return foldedMarkerSuffix === undefined
+      ? marker
+      : `${marker}\t${foldedMarkerSuffix}`;
   }
   if (foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate != null) {
     return `${attrs.listMarkerTemplate}\t${foldedMarkerSuffix}`;

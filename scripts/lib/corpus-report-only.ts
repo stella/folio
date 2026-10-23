@@ -19,10 +19,9 @@
  * noticed, not carried as a silent exemption.
  */
 
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import path from "node:path";
-
-import { TaggedError } from "better-result";
 
 import { fileIdOf } from "./corpus-census";
 import { CORPUS_DIRECTORY, type CorpusLock, isSha256 } from "./corpus-manifest";
@@ -31,7 +30,10 @@ export class ReportOnlyFilesError extends TaggedError("ReportOnlyFilesError")<{
   message: string;
 }> {}
 
-export const REPORT_ONLY_FILES_PATH = path.join(CORPUS_DIRECTORY, "report-only-files.json");
+export const REPORT_ONLY_FILES_PATH = path.join(
+  CORPUS_DIRECTORY,
+  "report-only-files.json",
+);
 
 export type ReportOnlyFile = {
   sourceId: string;
@@ -52,7 +54,11 @@ const LIST_KEYS = new Set(["files", "schemaVersion"]);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const validateEntry = (value: unknown, index: number, issues: string[]): void => {
+const validateEntry = (
+  value: unknown,
+  index: number,
+  issues: string[],
+): void => {
   const location = `files[${index}]`;
   if (!isRecord(value)) {
     issues.push(`${location}: expected an object`);
@@ -99,7 +105,9 @@ export const validateReportOnlyFiles = (value: unknown): string[] => {
   // Sorted and unique: the file is read by humans deciding whether an exemption
   // is still earned, and the digest below has to be a function of the set.
   const ids = files.flatMap((entry) =>
-    isRecord(entry) && typeof entry["sourceId"] === "string" && typeof entry["path"] === "string"
+    isRecord(entry) &&
+    typeof entry["sourceId"] === "string" &&
+    typeof entry["path"] === "string"
       ? [fileIdOf({ sourceId: entry["sourceId"], path: entry["path"] })]
       : [],
   );
@@ -121,7 +129,10 @@ export const validateReportOnlyFiles = (value: unknown): string[] => {
 export const reportOnlyFilesDigest = (list: ReportOnlyFiles): string => {
   const hash = createHash("sha256");
   for (const file of list.files) {
-    hash.update(`${file.sourceId}\u0000${file.path}\u0000${file.sha256}\n`, "utf8");
+    hash.update(
+      `${file.sourceId}\u0000${file.path}\u0000${file.sha256}\n`,
+      "utf8",
+    );
   }
   return hash.digest("hex");
 };
@@ -135,11 +146,18 @@ export const reportOnlyFileIds = (list: ReportOnlyFiles): ReadonlySet<string> =>
  * An exemption is granted for a file, not for a path: a repin that replaces the
  * content must be reviewed again rather than inheriting the old decision.
  */
-export const deadReportOnlyEntries = (list: ReportOnlyFiles, lock: CorpusLock): string[] => {
+export const deadReportOnlyEntries = (
+  list: ReportOnlyFiles,
+  lock: CorpusLock,
+): string[] => {
   const locked = new Map(
     lock.sources.flatMap((source) =>
       source.files.map(
-        (file) => [fileIdOf({ sourceId: source.id, path: file.path }), file.sha256] as const,
+        (file) =>
+          [
+            fileIdOf({ sourceId: source.id, path: file.path }),
+            file.sha256,
+          ] as const,
       ),
     ),
   );
@@ -177,7 +195,10 @@ export const loadReportOnlyFiles = async (): Promise<ReportOnlyFiles> => {
   return value as ReportOnlyFiles;
 };
 
-export const assertReportOnlyFilesAreLive = (list: ReportOnlyFiles, lock: CorpusLock): void => {
+export const assertReportOnlyFilesAreLive = (
+  list: ReportOnlyFiles,
+  lock: CorpusLock,
+): void => {
   const dead = deadReportOnlyEntries(list, lock);
   if (dead.length > 0) {
     throw new ReportOnlyFilesError({

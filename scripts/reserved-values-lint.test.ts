@@ -7,11 +7,11 @@ import {
   RESERVED_VALUE_NAMESPACE_URIS,
   type ReservedValueDisposition,
 } from "../specifications/reserved-values/disposition";
+import { RESERVED_VALUE_READERS } from "../specifications/reserved-values/readers";
 import {
   RESERVED_VALUE_REGISTRY,
   reservedValueEntries,
 } from "../specifications/reserved-values/registry";
-import { RESERVED_VALUE_READERS } from "../specifications/reserved-values/readers";
 import baseline from "./reserved-value-baseline.json";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -102,12 +102,14 @@ describe("reserved-value registry", () => {
       .filter(
         (
           entry,
-        ): entry is typeof entry & { disposition: Extract<ReservedValueDisposition, object> } =>
-          entry.disposition !== "no-reserved-value",
+        ): entry is typeof entry & {
+          disposition: Extract<ReservedValueDisposition, object>;
+        } => entry.disposition !== "no-reserved-value",
       )
       .filter(
         ({ disposition }) =>
-          disposition.disposition === "reader-owned" && !known.has(disposition.reader),
+          disposition.disposition === "reader-owned" &&
+          !known.has(disposition.reader),
       )
       .map(({ modelType, field }) => `${modelType}.${field}`);
     expect(strays).toEqual([]);

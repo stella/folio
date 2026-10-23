@@ -40,7 +40,8 @@ export const RESERVED_VALUE_NAMESPACE_URIS = {
 } as const;
 
 /** A prefix the registry may spell a slot with. */
-export type ReservedValueNamespacePrefix = keyof typeof RESERVED_VALUE_NAMESPACE_URIS;
+export type ReservedValueNamespacePrefix =
+  keyof typeof RESERVED_VALUE_NAMESPACE_URIS;
 
 /**
  * The slots one field covers, as `"<prefix>:<element>@<attribute>"`, several
@@ -124,10 +125,7 @@ type NotModelledSlot = {
  * means itself, so no reader owns it and no comparison against it is bare.
  */
 export type ReservedValueDisposition =
-  | "no-reserved-value"
-  | ReaderOwnedSlot
-  | UnrepresentableSlot
-  | NotModelledSlot;
+  "no-reserved-value" | ReaderOwnedSlot | UnrepresentableSlot | NotModelledSlot;
 
 /**
  * Every serialized string key of every member of a union type.
@@ -137,7 +135,9 @@ export type ReservedValueDisposition =
  * with no decision. Phantom brands use unique-symbol keys and are deliberately
  * absent: they have no OOXML slot or runtime representation to classify.
  */
-export type UnionFields<Source> = Source extends unknown ? Extract<keyof Source, string> : never;
+export type UnionFields<Source> = Source extends unknown
+  ? Extract<keyof Source, string>
+  : never;
 
 /**
  * The constructors below annotate their return type on purpose.
@@ -216,4 +216,6 @@ export const toggle = (slot: ReservedValueSlots): ReservedValueDisposition =>
   });
 
 /** Every field decision recorded for one model type. */
-export type ReservedValueMap = Readonly<Record<string, ReservedValueDisposition>>;
+export type ReservedValueMap = Readonly<
+  Record<string, ReservedValueDisposition>
+>;

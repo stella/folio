@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "suggested",
+  "seed": 877798201,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1118410389,
+      "atomic": false,
+      "operations": [
+        { "type": "deleteBlock", "blockId": "7735D914" },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "7735D914",
+          "text": "Goods delivery party term."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "insertTableRow"
+  ],
+  "origin": "Shrunk from random flow seed 877798201 (#2021)"
+}

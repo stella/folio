@@ -4,18 +4,27 @@
  * resolution per script slot.
  */
 
-import { getFontAlternate, type FontAlternates } from "../../fonts/fontAlternates";
-import type { RunFormatting, ListMarkerFormatting } from "../../layout-engine/types";
-import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
-import { mergeTextFormatting } from "../../utils/textFormattingMerge";
+import {
+  type FontAlternates,
+  getFontAlternate,
+} from "../../fonts/fontAlternates";
+import type {
+  ListMarkerFormatting,
+  RunFormatting,
+} from "../../layout-engine/types";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
-import type { ColorValue, Theme, TextFormatting } from "../../types/document";
+import type { ColorValue, TextFormatting, Theme } from "../../types/document";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
+import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { halfPointsToPixels, halfPointsToPoints } from "../../utils/units";
 import { twipsToPixels } from "./flowConversionShared";
 
-type ThemeFontAttributes = Omit<NonNullable<TextFormatting["fontFamily"]>, "asciiTheme"> & {
+type ThemeFontAttributes = Omit<
+  NonNullable<TextFormatting["fontFamily"]>,
+  "asciiTheme"
+> & {
   /** The ProseMirror attr reader validates this against the canonical theme values. */
   asciiTheme?: string;
 };
@@ -25,7 +34,9 @@ export const resolveWesternThemeFont = (
   theme?: Theme | null,
 ): string | undefined => {
   const themeRef = fontFamily.asciiTheme ?? fontFamily.hAnsiTheme;
-  const themedFont = themeRef ? resolveThemeFont(themeRef, theme?.fontScheme) : null;
+  const themedFont = themeRef
+    ? resolveThemeFont(themeRef, theme?.fontScheme)
+    : null;
   return themedFont ?? fontFamily.ascii ?? fontFamily.hAnsi ?? undefined;
 };
 
@@ -129,16 +140,25 @@ function textFormattingToRunFormatting(
   if (defaultTextFormatting.cs !== undefined) {
     result.forceComplexScript = defaultTextFormatting.cs;
   }
-  if (defaultTextFormatting.underline && defaultTextFormatting.underline.style !== "none") {
+  if (
+    defaultTextFormatting.underline &&
+    defaultTextFormatting.underline.style !== "none"
+  ) {
     result.underline = { style: defaultTextFormatting.underline.style };
     if (defaultTextFormatting.underline.color) {
-      result.underline.color = resolveColor(defaultTextFormatting.underline.color, theme);
+      result.underline.color = resolveColor(
+        defaultTextFormatting.underline.color,
+        theme,
+      );
     }
   }
   if (defaultTextFormatting.strike !== undefined) {
     result.strike = defaultTextFormatting.strike;
   }
-  if (defaultTextFormatting.color && !isAutomaticTextColorValue(defaultTextFormatting.color)) {
+  if (
+    defaultTextFormatting.color &&
+    !isAutomaticTextColorValue(defaultTextFormatting.color)
+  ) {
     result.color = resolveColor(defaultTextFormatting.color, theme);
     result.textColorSource = "paragraphDefault";
   }
@@ -160,17 +180,28 @@ function textFormattingToRunFormatting(
   if (defaultTextFormatting.smallCaps !== undefined) {
     result.smallCaps = defaultTextFormatting.smallCaps;
   }
-  if (defaultTextFormatting.spacing !== undefined && defaultTextFormatting.spacing !== 0) {
+  if (
+    defaultTextFormatting.spacing !== undefined &&
+    defaultTextFormatting.spacing !== 0
+  ) {
     result.letterSpacing = twipsToPixels(defaultTextFormatting.spacing);
   }
-  if (defaultTextFormatting.position !== undefined && defaultTextFormatting.position !== 0) {
+  if (
+    defaultTextFormatting.position !== undefined &&
+    defaultTextFormatting.position !== 0
+  ) {
     result.positionPx = halfPointsToPixels(defaultTextFormatting.position);
   }
-  const horizontalScale = normalizeHorizontalScalePercent(defaultTextFormatting.scale);
+  const horizontalScale = normalizeHorizontalScalePercent(
+    defaultTextFormatting.scale,
+  );
   if (horizontalScale !== undefined && horizontalScale !== 100) {
     result.horizontalScale = horizontalScale;
   }
-  if (defaultTextFormatting.kerning !== undefined && defaultTextFormatting.kerning > 0) {
+  if (
+    defaultTextFormatting.kerning !== undefined &&
+    defaultTextFormatting.kerning > 0
+  ) {
     result.kerningMinPt = halfPointsToPoints(defaultTextFormatting.kerning);
   }
   if (defaultTextFormatting.emboss !== undefined) {
@@ -185,7 +216,10 @@ function textFormattingToRunFormatting(
   if (defaultTextFormatting.outline !== undefined) {
     result.textOutline = defaultTextFormatting.outline;
   }
-  if (defaultTextFormatting.emphasisMark && defaultTextFormatting.emphasisMark !== "none") {
+  if (
+    defaultTextFormatting.emphasisMark &&
+    defaultTextFormatting.emphasisMark !== "none"
+  ) {
     result.emphasisMark = defaultTextFormatting.emphasisMark;
   }
   return result;
@@ -239,5 +273,9 @@ export function paragraphRunDefaults(
   theme?: Theme | null,
   fontAlternates?: FontAlternates,
 ): RunFormatting {
-  return textFormattingToRunFormatting(pmAttrs.defaultTextFormatting, theme, fontAlternates);
+  return textFormattingToRunFormatting(
+    pmAttrs.defaultTextFormatting,
+    theme,
+    fontAlternates,
+  );
 }

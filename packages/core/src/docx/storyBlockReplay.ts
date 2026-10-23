@@ -1,11 +1,18 @@
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+
 import type { BlockContent, DocumentBody } from "../types/document";
-import { captureSourceProfileXml, isSafeCapturedXmlDocument } from "./verbatimCapture";
 import { canonicalJson } from "../utils/canonicalJson";
 import { spliceXml, type XmlSplice } from "./selectiveXmlPatch";
+import {
+  getXmlSourceRange,
+  parseStreamingXmlWithSourceRanges,
+} from "./streamingXmlParser";
 import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "./strictValueEncodings.gen";
-import { getXmlSourceRange, parseStreamingXmlWithSourceRanges } from "./streamingXmlParser";
+import {
+  captureSourceProfileXml,
+  isSafeCapturedXmlDocument,
+} from "./verbatimCapture";
 import {
   getAttributeByNamespaceUri,
   getChildElements,
@@ -30,14 +37,19 @@ type ModelMatchOptions = {
   element: XmlElement;
   mode: "source" | "generated";
 };
-const modelMatchesElement = ({ value, element, mode }: ModelMatchOptions): boolean => {
+const modelMatchesElement = ({
+  value,
+  element,
+  mode,
+}: ModelMatchOptions): boolean => {
   if (value === undefined) return false;
   // The parser projects a supported AlternateContent branch as one block;
   // source cardinality and the trusted baseline preserve its outer carrier.
   if (
     mode === "source" &&
     getLocalName(element.name) === "AlternateContent" &&
-    getNamespaceUri(element) === "http://schemas.openxmlformats.org/markup-compatibility/2006" &&
+    getNamespaceUri(element) ===
+      "http://schemas.openxmlformats.org/markup-compatibility/2006" &&
     (value.type === "paragraph" || value.type === "table")
   )
     return true;
@@ -48,12 +60,17 @@ const modelMatchesElement = ({ value, element, mode }: ModelMatchOptions): boole
       WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
     );
   if (value.type !== "preservedBlock") return false;
-  const parsed = parseStreamingXmlWithSourceRanges(value.xml, element.namespaceScope);
+  const parsed = parseStreamingXmlWithSourceRanges(
+    value.xml,
+    element.namespaceScope,
+  );
   if (parsed.status !== "parsed") return false;
   const roots = getChildElements(parsed.value);
   const root = roots.at(0);
   const normalize = (uri: string | undefined) =>
-    uri === undefined ? undefined : (TRANSITIONAL_NAMESPACE_BY_STRICT_URI.get(uri) ?? uri);
+    uri === undefined
+      ? undefined
+      : (TRANSITIONAL_NAMESPACE_BY_STRICT_URI.get(uri) ?? uri);
   return (
     roots.length === 1 &&
     root !== undefined &&
@@ -67,7 +84,11 @@ const XML_TOKEN =
   /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(?:"[^"]*"|'[^']*'|[^'">])*>/gu;
 const XML_ATTRIBUTE = /([^\s=<>/]+)(\s*=\s*)(["'])(.*?)\3/gsu;
 
-const readStory = (xml: string, scope?: XmlNamespaceScope, ignoredChild?: string) => {
+const readStory = (
+  xml: string,
+  scope?: XmlNamespaceScope,
+  ignoredChild?: string,
+) => {
   const parsed = parseStreamingXmlWithSourceRanges(xml, scope);
   if (parsed.status !== "parsed") return null;
   const roots = getChildElements(parsed.value);
@@ -79,7 +100,10 @@ const readStory = (xml: string, scope?: XmlNamespaceScope, ignoredChild?: string
   )
     return null;
   if (
-    root.elements?.some((child) => child.type === "text" && String(child.text ?? "").trim() !== "")
+    root.elements?.some(
+      (child) =>
+        child.type === "text" && String(child.text ?? "").trim() !== "",
+    )
   )
     return null;
   const children = getChildElements(root);
@@ -126,41 +150,63 @@ export const materializeReplayFragment = ({
   const strict = TRANSITIONAL_NAMESPACE_BY_STRICT_URI.has(sourceNamespace);
   const tokens = [...xml.matchAll(XML_TOKEN)];
   const first = tokens.at(0);
-  if (!first || first.index !== 0 || first[0].startsWith("<!") || first[0].startsWith("<?"))
+  if (
+    !first ||
+    first.index !== 0 ||
+    first[0].startsWith("<!") ||
+    first[0].startsWith("<?")
+  )
     return null;
   const opening = first[0];
   const additions = [];
   const bindings = effectiveBindings(element);
-  const markupCompatibilityUri = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  const markupCompatibilityUri =
+    "http://schemas.openxmlformats.org/markup-compatibility/2006";
   const ignorableUris = new Set([markupCompatibilityUri]);
   const inheritedIgnorable =
     generatedRoot === undefined
       ? null
       : getAttributeByNamespaceUri(generatedRoot, ignorableUris, "Ignorable");
-  const localIgnorable = getAttributeByNamespaceUri(element, ignorableUris, "Ignorable");
+  const localIgnorable = getAttributeByNamespaceUri(
+    element,
+    ignorableUris,
+    "Ignorable",
+  );
   const ignorable = [
     ...new Set(
-      `${inheritedIgnorable ?? ""} ${localIgnorable ?? ""}`.trim().split(/\s+/u).filter(Boolean),
+      `${inheritedIgnorable ?? ""} ${localIgnorable ?? ""}`
+        .trim()
+        .split(/\s+/u)
+        .filter(Boolean),
     ),
   ];
   let ignorableAttribute: string | undefined;
   if (ignorable.length > 0) {
-    const localAttribute = Object.keys(element.attributes ?? {}).find((name) => {
-      const colon = name.indexOf(":");
-      return (
-        colon > 0 &&
-        getLocalName(name) === "Ignorable" &&
-        bindings.get(name.slice(0, colon)) === markupCompatibilityUri
-      );
-    });
+    const localAttribute = Object.keys(element.attributes ?? {}).find(
+      (name) => {
+        const colon = name.indexOf(":");
+        return (
+          colon > 0 &&
+          getLocalName(name) === "Ignorable" &&
+          bindings.get(name.slice(0, colon)) === markupCompatibilityUri
+        );
+      },
+    );
     const compatibilityPrefix =
       localAttribute?.slice(0, localAttribute.indexOf(":")) ??
-      [...bindings].find(([prefix, uri]) => prefix !== "" && uri === markupCompatibilityUri)?.[0];
-    if (compatibilityPrefix === undefined || ignorable.some((prefix) => !bindings.has(prefix)))
+      [...bindings].find(
+        ([prefix, uri]) => prefix !== "" && uri === markupCompatibilityUri,
+      )?.[0];
+    if (
+      compatibilityPrefix === undefined ||
+      ignorable.some((prefix) => !bindings.has(prefix))
+    )
       return null;
     ignorableAttribute = `${compatibilityPrefix}:Ignorable`;
     if (localIgnorable === null)
-      additions.push(` ${ignorableAttribute}="${escapeXmlAttribute(ignorable.join(" "))}"`);
+      additions.push(
+        ` ${ignorableAttribute}="${escapeXmlAttribute(ignorable.join(" "))}"`,
+      );
   }
   for (const [prefix, uri] of bindings) {
     const name = prefix === "" ? "xmlns" : `xmlns:${prefix}`;
@@ -174,23 +220,33 @@ export const materializeReplayFragment = ({
         ? `${name}${assignment}${quote}${escapeXmlAttribute(ignorable.join(" "))}${quote}`
         : match,
   );
-  const close = opening.endsWith("/>") ? replacedOpening.length - 2 : replacedOpening.length - 1;
+  const close = opening.endsWith("/>")
+    ? replacedOpening.length - 2
+    : replacedOpening.length - 1;
   replacedOpening =
-    replacedOpening.slice(0, close) + additions.join("") + replacedOpening.slice(close);
+    replacedOpening.slice(0, close) +
+    additions.join("") +
+    replacedOpening.slice(close);
   const materialized = replacedOpening + xml.slice(opening.length);
   if (!isSafeCapturedXmlDocument(materialized)) return null;
   if (!strict) return materialized;
   const parsed = parseStreamingXmlWithSourceRanges(materialized);
   if (parsed.status !== "parsed") return null;
   const root = getChildElements(parsed.value).at(0);
-  return root === undefined ? null : captureSourceProfileXml(root, DOCX_CONFORMANCE_CLASSES.STRICT);
+  return root === undefined
+    ? null
+    : captureSourceProfileXml(root, DOCX_CONFORMANCE_CLASSES.STRICT);
 };
 
 const paragraphIdentity = (value: BlockContent): string | undefined =>
   value.type === "paragraph" ? value.paraId?.toUpperCase() : undefined;
 
 type CandidateQueue = { indices: number[]; cursor: number };
-type AddCandidateOptions = { map: Map<string, CandidateQueue>; key: string; index: number };
+type AddCandidateOptions = {
+  map: Map<string, CandidateQueue>;
+  key: string;
+  index: number;
+};
 const addCandidate = ({ map, key, index }: AddCandidateOptions): void => {
   const queue = map.get(key);
   if (queue) queue.indices.push(index);
@@ -272,7 +328,8 @@ const replayBlocks = (
     if (fingerprint === undefined) return null;
     addCandidate({ map: byFingerprint, key: fingerprint, index });
     const identity = paragraphIdentity(block);
-    if (identity !== undefined) addCandidate({ map: identities, key: identity, index });
+    if (identity !== undefined)
+      addCandidate({ map: identities, key: identity, index });
   }
   const used = new Set<number>();
   const fragments: string[] = [];
@@ -280,21 +337,30 @@ const replayBlocks = (
     const fingerprint = canonicalJson(block);
     const identity = paragraphIdentity(block);
     let originalIndex =
-      takeCandidate(identity === undefined ? undefined : identities.get(identity), used) ??
-      takeCandidate(byFingerprint.get(fingerprint), used);
+      takeCandidate(
+        identity === undefined ? undefined : identities.get(identity),
+        used,
+      ) ?? takeCandidate(byFingerprint.get(fingerprint), used);
     // Containers have no durable block id. An unchanged wrapper at the same
     // ordinal can still retain its source while its nested blocks are edited.
     if (
       originalIndex === undefined &&
-      (block.type === "table" || block.type === "blockSdt" || block.type === "blockCustomXml") &&
+      (block.type === "table" ||
+        block.type === "blockSdt" ||
+        block.type === "blockCustomXml") &&
       !used.has(index)
     ) {
       const baseline = baselineContent[index];
       if (baseline?.type === block.type) originalIndex = index;
     }
     if (originalIndex !== undefined) used.add(originalIndex);
-    const original = originalIndex === undefined ? undefined : source.blocks[originalIndex];
-    if (originalIndex !== undefined && original && fingerprints[originalIndex] === fingerprint) {
+    const original =
+      originalIndex === undefined ? undefined : source.blocks[originalIndex];
+    if (
+      originalIndex !== undefined &&
+      original &&
+      fingerprints[originalIndex] === fingerprint
+    ) {
       fragments.push(sourceXml.slice(original.start, original.end));
       continue;
     }
@@ -334,7 +400,9 @@ const replayBlocks = (
   }));
   if (source.blocks.length === 0 && fragments.length > 0) {
     const opening = [
-      ...sourceXml.slice(source.range.start, source.range.end).matchAll(XML_TOKEN),
+      ...sourceXml
+        .slice(source.range.start, source.range.end)
+        .matchAll(XML_TOKEN),
     ].at(0)?.[0];
     if (!opening || !source.root.name) return null;
     if (opening.endsWith("/>")) {
@@ -350,7 +418,9 @@ const replayBlocks = (
           : getChildElements(source.root).find(
               (child) =>
                 getLocalName(child.name) === ignoredChild &&
-                WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? ""),
+                WORDPROCESSINGML_NAMESPACE_URIS.has(
+                  getNamespaceUri(child) ?? "",
+                ),
             );
       const close =
         (ignored && getXmlSourceRange(ignored)?.start) ??
@@ -362,8 +432,9 @@ const replayBlocks = (
   return spliceXml(sourceXml, splices);
 };
 
-export const buildStoryBlockReplay = (options: StoryBlockReplayOptions): string | null =>
-  replayBlocks(options);
+export const buildStoryBlockReplay = (
+  options: StoryBlockReplayOptions,
+): string | null => replayBlocks(options);
 
 const withoutChildren = (value: object, key: string) =>
   Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
@@ -407,8 +478,14 @@ const replayNestedBlock = ({
     if (!sourceContentRange || !generatedContentRange) return false;
     const patched = replayBlocks(
       {
-        sourceXml: sourceXml.slice(sourceContentRange.start, sourceContentRange.end),
-        serializedXml: serializedXml.slice(generatedContentRange.start, generatedContentRange.end),
+        sourceXml: sourceXml.slice(
+          sourceContentRange.start,
+          sourceContentRange.end,
+        ),
+        serializedXml: serializedXml.slice(
+          generatedContentRange.start,
+          generatedContentRange.end,
+        ),
         baselineContent: before,
         currentContent: after,
       },
@@ -436,7 +513,14 @@ const replayNestedBlock = ({
       )
         return null;
       if (current.type === "blockCustomXml") {
-        if (!nestedContent(sourceElement, generatedElement, baseline.content, current.content))
+        if (
+          !nestedContent(
+            sourceElement,
+            generatedElement,
+            baseline.content,
+            current.content,
+          )
+        )
           return null;
         break;
       }
@@ -449,7 +533,12 @@ const replayNestedBlock = ({
         generatedChildren.length !== 1 ||
         !sourceContainer ||
         !generatedContainer ||
-        !nestedContent(sourceContainer, generatedContainer, baseline.content, current.content)
+        !nestedContent(
+          sourceContainer,
+          generatedContainer,
+          baseline.content,
+          current.content,
+        )
       )
         return null;
       break;
@@ -464,7 +553,10 @@ const replayNestedBlock = ({
         return null;
       const sourceRows = wordChildren(sourceElement, "tr");
       const generatedRows = wordChildren(generatedElement, "tr");
-      if (sourceRows.length !== current.rows.length || generatedRows.length !== current.rows.length)
+      if (
+        sourceRows.length !== current.rows.length ||
+        generatedRows.length !== current.rows.length
+      )
         return null;
       for (const [rowIndex, row] of current.rows.entries()) {
         const beforeRow = baseline.rows[rowIndex];
@@ -481,7 +573,10 @@ const replayNestedBlock = ({
           return null;
         const sourceCells = wordChildren(sourceRow, "tc");
         const generatedCells = wordChildren(generatedRow, "tc");
-        if (sourceCells.length !== row.cells.length || generatedCells.length !== row.cells.length)
+        if (
+          sourceCells.length !== row.cells.length ||
+          generatedCells.length !== row.cells.length
+        )
           return null;
         for (const [cellIndex, cell] of row.cells.entries()) {
           const beforeCell = beforeRow.cells[cellIndex];
@@ -524,7 +619,10 @@ const replayNestedBlock = ({
       return unreachable;
     }
   }
-  return spliceXml(sourceXml.slice(sourceRange.start, sourceRange.end), splices);
+  return spliceXml(
+    sourceXml.slice(sourceRange.start, sourceRange.end),
+    splices,
+  );
 };
 
 type CellContentOptions = {
@@ -554,11 +652,15 @@ const replayCellContent = ({
   if (!sourceRange || !generatedRange) return false;
   const sourceProperties = wordChildren(sourceCell, "tcPr");
   const generatedProperties = wordChildren(generatedCell, "tcPr");
-  if (sourceProperties.length > 1 || generatedProperties.length > 1) return false;
+  if (sourceProperties.length > 1 || generatedProperties.length > 1)
+    return false;
   const sourceProperty = sourceProperties.at(0);
   const generatedProperty = generatedProperties.at(0);
   const sourceView = sourceXml.slice(sourceRange.start, sourceRange.end);
-  let generatedView = serializedXml.slice(generatedRange.start, generatedRange.end);
+  let generatedView = serializedXml.slice(
+    generatedRange.start,
+    generatedRange.end,
+  );
   const baselineContent = [...before];
   const currentContent: BlockContent[] = [...after];
   if (sourceProperty !== undefined) {
@@ -578,7 +680,10 @@ const replayCellContent = ({
     if (propertyXml === null) return false;
     // Wrapper metadata is unchanged. Treat it as an explicitly owned opaque
     // child so source offsets, lexical syntax and surrounding gaps stay exact.
-    const property = { type: "preservedBlock", xml: propertyXml } as const satisfies BlockContent;
+    const property = {
+      type: "preservedBlock",
+      xml: propertyXml,
+    } as const satisfies BlockContent;
     baselineContent.unshift(property);
     currentContent.unshift(property);
   } else if (generatedProperty !== undefined) {
@@ -595,8 +700,17 @@ const replayCellContent = ({
     generatedView = stripped;
   }
   const patched = replayBlocks(
-    { sourceXml: sourceView, serializedXml: generatedView, baselineContent, currentContent },
-    { source: sourceCell.namespaceScope, generated: generatedCell.namespaceScope, generatedRoot },
+    {
+      sourceXml: sourceView,
+      serializedXml: generatedView,
+      baselineContent,
+      currentContent,
+    },
+    {
+      source: sourceCell.namespaceScope,
+      generated: generatedCell.namespaceScope,
+      generatedRoot,
+    },
   );
   if (patched === null) return false;
   splices.push({
@@ -624,7 +738,10 @@ const readDocumentStory = (xml: string) => {
 };
 
 /** Validate source/model correspondence before replaying an unchanged complete part. */
-export const canReplayDocumentSource = (sourceXml: string, baseline: DocumentBody): boolean => {
+export const canReplayDocumentSource = (
+  sourceXml: string,
+  baseline: DocumentBody,
+): boolean => {
   const source = readDocumentStory(sourceXml);
   if (!source) return false;
   const body = readStory(
@@ -663,11 +780,18 @@ export const buildDocumentBlockReplay = ({
   const generatedStory = readDocumentStory(serializedXml);
   if (!sourceStory || !generatedStory) return null;
   const { body: sourceBody, range: sourceRange } = sourceStory;
-  const { document: generated, body: generatedBody, range: generatedRange } = generatedStory;
+  const {
+    document: generated,
+    body: generatedBody,
+    range: generatedRange,
+  } = generatedStory;
   let bodyXml = replayBlocks(
     {
       sourceXml: sourceXml.slice(sourceRange.start, sourceRange.end),
-      serializedXml: serializedXml.slice(generatedRange.start, generatedRange.end),
+      serializedXml: serializedXml.slice(
+        generatedRange.start,
+        generatedRange.end,
+      ),
       baselineContent: baseline.content,
       currentContent: current.content,
       ignoredChild: "sectPr",
@@ -693,7 +817,8 @@ export const buildDocumentBlockReplay = ({
     const containerRange = getXmlSourceRange(sourceContainer);
     const oldRange = old && getXmlSourceRange(old);
     const nextRange = next && getXmlSourceRange(next);
-    if (!containerRange || (old && !oldRange) || (next && !nextRange)) return null;
+    if (!containerRange || (old && !oldRange) || (next && !nextRange))
+      return null;
     const replacement =
       next && nextRange
         ? materializeReplayFragment({
@@ -718,12 +843,18 @@ export const buildDocumentBlockReplay = ({
         ? ([...xml.matchAll(XML_TOKEN)].at(0)?.[0].length ?? -1)
         : xml.lastIndexOf("</");
     if (insertion < 0) return null;
-    return spliceXml(xml, [{ start: insertion, end: insertion, newXml: replacement }]);
+    return spliceXml(xml, [
+      { start: insertion, end: insertion, newXml: replacement },
+    ]);
   };
   if (
-    canonicalJson(baseline.finalSectionProperties) !== canonicalJson(current.finalSectionProperties)
+    canonicalJson(baseline.finalSectionProperties) !==
+    canonicalJson(current.finalSectionProperties)
   ) {
-    const reparsed = parseStreamingXmlWithSourceRanges(bodyXml, sourceBody.namespaceScope);
+    const reparsed = parseStreamingXmlWithSourceRanges(
+      bodyXml,
+      sourceBody.namespaceScope,
+    );
     if (reparsed.status !== "parsed") return null;
     const root = getChildElements(reparsed.value).at(0);
     if (!root) return null;
@@ -734,15 +865,26 @@ export const buildDocumentBlockReplay = ({
     { start: sourceRange.start, end: sourceRange.end, newXml: bodyXml },
   ]);
   if (result === null) return null;
-  if (canonicalJson(baseline.background) !== canonicalJson(current.background)) {
+  if (
+    canonicalJson(baseline.background) !== canonicalJson(current.background)
+  ) {
     const reparsed = readStory(result);
     if (!reparsed) return null;
     // Root range can begin after an XML declaration: keep those absolute offsets.
     const rootXml = result.slice(reparsed.range.start, reparsed.range.end);
-    const replaced = replaceMetadata(rootXml, reparsed.root, generated.root, "background");
+    const replaced = replaceMetadata(
+      rootXml,
+      reparsed.root,
+      generated.root,
+      "background",
+    );
     if (replaced === null) return null;
     result = spliceXml(result, [
-      { start: reparsed.range.start, end: reparsed.range.end, newXml: replaced },
+      {
+        start: reparsed.range.start,
+        end: reparsed.range.end,
+        newXml: replaced,
+      },
     ]);
   }
   return result;

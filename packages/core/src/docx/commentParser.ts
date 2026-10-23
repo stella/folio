@@ -19,32 +19,40 @@
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
-import { CAPTURE, type ChildHandlers, dispatchChildrenWithContext } from "./containerChildren";
-import { commentThreadParaId } from "./commentThreadKey";
-import { PARA_ID_NAMESPACE_URIS, paraIdAttribute, paraIdParentAttribute } from "./paraIdAttribute";
-import type { ParseContext } from "./parseContext";
-import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import type {
   Comment,
-  Paragraph,
-  Theme,
-  RelationshipMap,
   MediaFile,
+  Paragraph,
+  RelationshipMap,
   TextFormatting,
+  Theme,
 } from "../types/document";
+import { commentThreadParaId } from "./commentThreadKey";
+import {
+  CAPTURE,
+  type ChildHandlers,
+  dispatchChildrenWithContext,
+} from "./containerChildren";
 import { parseParagraph } from "./paragraphParser";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
+import {
+  PARA_ID_NAMESPACE_URIS,
+  paraIdAttribute,
+  paraIdParentAttribute,
+} from "./paraIdAttribute";
+import type { ParseContext } from "./parseContext";
+import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import type { StyleMap } from "./styleParser";
 import {
-  parseXml,
   findChild,
-  getChildElements,
   getAttribute,
   getAttributeByNamespaceUri,
+  getChildElements,
   getLocalName,
-  type XmlElement,
   parseOnOffValue,
+  parseXml,
+  type XmlElement,
 } from "./xmlParser";
 
 /** The whole lexical form of `ST_DecimalNumber`: an optional sign and digits. */
@@ -98,13 +106,19 @@ const normalizeFirstCommentParagraph = (
   const firstParsedContent = paragraph.content.at(0);
   const normalizedParagraph =
     firstParsedContent?.type === "run" &&
-    firstParsedContent.content.every((item) => item.type === "preservedXml" && item.text === "")
-      ? cloneParagraphWithPropertySource(paragraph, { content: paragraph.content.slice(1) })
+    firstParsedContent.content.every(
+      (item) => item.type === "preservedXml" && item.text === "",
+    )
+      ? cloneParagraphWithPropertySource(paragraph, {
+          content: paragraph.content.slice(1),
+        })
       : paragraph;
 
   return {
     paragraph: normalizedParagraph,
-    ...(annotationReferenceFormatting !== undefined ? { annotationReferenceFormatting } : {}),
+    ...(annotationReferenceFormatting !== undefined
+      ? { annotationReferenceFormatting }
+      : {}),
   };
 };
 
@@ -169,7 +183,9 @@ export type CommentExtendedInfo = {
  * `w15:paraIdParent` points at the parent thread's paraId; `w15:done`
  * (`"1"` / `"true"`) marks the thread resolved.
  */
-export function parseCommentsExtended(xml: string): Map<string, CommentExtendedInfo> {
+export function parseCommentsExtended(
+  xml: string,
+): Map<string, CommentExtendedInfo> {
   const infoByParaId = new Map<string, CommentExtendedInfo>();
 
   const root = parseXml(xml);
@@ -194,7 +210,8 @@ export function parseCommentsExtended(xml: string): Map<string, CommentExtendedI
     }
 
     const parentParaId = paraIdParentAttribute(child);
-    const doneAttr = getAttribute(child, "w15", "done") ?? child.attributes?.["w15:done"];
+    const doneAttr =
+      getAttribute(child, "w15", "done") ?? child.attributes?.["w15:done"];
 
     const info: CommentExtendedInfo = {};
     if (parentParaId) {
@@ -223,15 +240,28 @@ type CommentBodyWalk = {
 const COMMENT_BODY_HANDLERS = {
   p: (contentChild, walk) => {
     const { styles, theme, rels, media, previews, paragraphs } = walk;
-    const paragraph = parseParagraph(contentChild, styles, theme, null, rels, media, {
-      previews,
-    });
+    const paragraph = parseParagraph(
+      contentChild,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      {
+        previews,
+      },
+    );
     if (paragraphs.length > 0) {
       paragraphs.push(paragraph);
       return;
     }
-    const normalized = normalizeFirstCommentParagraph(contentChild, paragraph, theme);
-    walk.annotationReferenceFormatting = normalized.annotationReferenceFormatting;
+    const normalized = normalizeFirstCommentParagraph(
+      contentChild,
+      paragraph,
+      theme,
+    );
+    walk.annotationReferenceFormatting =
+      normalized.annotationReferenceFormatting;
     paragraphs.push(normalized.paragraph);
   },
   altChunk: CAPTURE,
@@ -325,7 +355,9 @@ export function parseComments(
     // which is the duplicate this guard exists to prevent, wearing an id that
     // another comment genuinely holds.
     const id =
-      rawId !== null && DECIMAL_NUMBER.test(rawId) ? Number.parseInt(rawId, 10) : Number.NaN;
+      rawId !== null && DECIMAL_NUMBER.test(rawId)
+        ? Number.parseInt(rawId, 10)
+        : Number.NaN;
     if (Number.isNaN(id)) {
       context?.warn({
         code: PARSE_WARNING_CODES.missingCommentId,
@@ -400,7 +432,9 @@ export function parseComments(
         ...(initials !== undefined ? { initials } : {}),
         ...(date !== undefined ? { date } : {}),
         ...(done !== undefined ? { done } : {}),
-        ...(annotationReferenceFormatting !== undefined ? { annotationReferenceFormatting } : {}),
+        ...(annotationReferenceFormatting !== undefined
+          ? { annotationReferenceFormatting }
+          : {}),
         ...(preserved !== undefined ? { preserved } : {}),
         content: paragraphs,
       },
@@ -417,7 +451,9 @@ export function parseComments(
     const parentParaId = threadParaId
       ? extendedByParaId.get(threadParaId)?.parentParaId
       : undefined;
-    const parentId = parentParaId ? commentIdByParaId.get(parentParaId) : undefined;
+    const parentId = parentParaId
+      ? commentIdByParaId.get(parentParaId)
+      : undefined;
     if (parentId !== undefined && parentId !== comment.id) {
       comment.parentId = parentId;
     }

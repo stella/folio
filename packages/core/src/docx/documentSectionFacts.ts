@@ -27,18 +27,26 @@ export type DocumentSectionFacts = {
   headerFooterReferences: readonly HeaderFooterReference[];
 };
 
-const isWordprocessingElement = (element: XmlElement, localName: string): boolean =>
+const isWordprocessingElement = (
+  element: XmlElement,
+  localName: string,
+): boolean =>
   getLocalName(element.name) === localName &&
   WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "");
 
 /** Both facts from one walk of a parsed document tree. */
-export const collectDocumentSectionFacts = (root: XmlElement): DocumentSectionFacts => {
+export const collectDocumentSectionFacts = (
+  root: XmlElement,
+): DocumentSectionFacts => {
   let sectionCount = 0;
   const headerFooterReferences: HeaderFooterReference[] = [];
-  const pending: Array<{ element: XmlElement; insidePropertyChange: boolean }> = [
-    { element: root, insidePropertyChange: false },
-  ];
-  for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
+  const pending: Array<{ element: XmlElement; insidePropertyChange: boolean }> =
+    [{ element: root, insidePropertyChange: false }];
+  for (
+    let current = pending.pop();
+    current !== undefined;
+    current = pending.pop()
+  ) {
     const { element, insidePropertyChange } = current;
     const localName = getLocalName(element.name);
     if (!insidePropertyChange && isWordprocessingElement(element, "sectPr")) {
@@ -48,7 +56,11 @@ export const collectDocumentSectionFacts = (root: XmlElement): DocumentSectionFa
       (localName === "headerReference" || localName === "footerReference") &&
       isWordprocessingElement(element, localName)
     ) {
-      const rId = getAttributeByNamespaceUri(element, OFFICE_RELATIONSHIP_NAMESPACE_URIS, "id");
+      const rId = getAttributeByNamespaceUri(
+        element,
+        OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+        "id",
+      );
       if (rId) {
         headerFooterReferences.push({
           element: localName,
@@ -56,7 +68,11 @@ export const collectDocumentSectionFacts = (root: XmlElement): DocumentSectionFa
           // parse boundary normalised would otherwise read as a dropped
           // reference when the serialized package states the normalised value.
           type: parseHeaderFooterType(
-            getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "type"),
+            getAttributeByNamespaceUri(
+              element,
+              WORDPROCESSINGML_NAMESPACE_URIS,
+              "type",
+            ),
           ),
           rId,
         });
@@ -65,7 +81,10 @@ export const collectDocumentSectionFacts = (root: XmlElement): DocumentSectionFa
     const childrenInsidePropertyChange =
       insidePropertyChange || isWordprocessingElement(element, "sectPrChange");
     for (const child of getChildElements(element)) {
-      pending.push({ element: child, insidePropertyChange: childrenInsidePropertyChange });
+      pending.push({
+        element: child,
+        insidePropertyChange: childrenInsidePropertyChange,
+      });
     }
   }
   return { sectionCount, headerFooterReferences };

@@ -34,7 +34,10 @@ export function intAttr(value: number | undefined | null): string {
  * sibling markup or close the enclosing `<w:sdt>` early. Callers should fall
  * back to a synthesized properties block when this returns `false`.
  */
-export function isSingleWellFormedElement(xml: string, expectedLocalName: string): boolean {
+export function isSingleWellFormedElement(
+  xml: string,
+  expectedLocalName: string,
+): boolean {
   const trimmed = xml.trim();
   if (!trimmed) {
     return false;
@@ -47,11 +50,15 @@ export function isSingleWellFormedElement(xml: string, expectedLocalName: string
     return false;
   }
 
-  const roots = (parsed.elements ?? []).filter((element) => element.type === "element");
+  const roots = (parsed.elements ?? []).filter(
+    (element) => element.type === "element",
+  );
   if (roots.length !== 1) {
     return false;
   }
 
   const root = roots[0];
-  return root?.name !== undefined && getLocalName(root.name) === expectedLocalName;
+  return (
+    root?.name !== undefined && getLocalName(root.name) === expectedLocalName
+  );
 }

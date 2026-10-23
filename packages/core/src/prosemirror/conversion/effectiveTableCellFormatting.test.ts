@@ -96,9 +96,18 @@ describe("resolveEffectiveTableCellFormatting", () => {
       theme,
     });
 
-    expect(result.borders?.top).toEqual({ style: "double", color: { rgb: "ED7D31" } });
-    expect(result.borders?.bottom).toEqual({ style: "single", color: { rgb: "4472C4" } });
-    expect(result.borders?.left).toEqual({ style: "dashed", color: { rgb: "123456" } });
+    expect(result.borders?.top).toEqual({
+      style: "double",
+      color: { rgb: "ED7D31" },
+    });
+    expect(result.borders?.bottom).toEqual({
+      style: "single",
+      color: { rgb: "4472C4" },
+    });
+    expect(result.borders?.left).toEqual({
+      style: "dashed",
+      color: { rgb: "123456" },
+    });
   });
 
   test("uses direct margins before style and table defaults", () => {

@@ -18,7 +18,8 @@ import type { Locator, Page } from "@playwright/test";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 
 declare global {
-  var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
+  var __folioPlayground:
+    { getEditorRef: () => DocxEditorRef | null } | undefined;
 }
 
 const isMac = process.platform === "darwin";
@@ -27,16 +28,23 @@ const MOD = isMac ? "Meta" : "Control";
 /** Mount a fixture and force the (deferred) editor view to materialise. */
 async function mountFixture(page: Page, fixture: string): Promise<void> {
   await page.goto(`/?file=${encodeURIComponent(fixture)}`);
-  await page.waitForSelector('[data-testid="folio-editor"]', { timeout: 15_000 });
-  await page.waitForFunction(() => document.querySelectorAll(".layout-page").length >= 1);
+  await page.waitForSelector('[data-testid="folio-editor"]', {
+    timeout: 15_000,
+  });
+  await page.waitForFunction(
+    () => document.querySelectorAll(".layout-page").length >= 1,
+  );
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
   await page.evaluate(() => {
-    globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView({ focus: true });
+    globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.ensureEditorView({ focus: true });
   });
   await page.waitForFunction(
-    () => !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
+    () =>
+      !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
     undefined,
     { timeout: 10_000 },
   );
@@ -63,16 +71,19 @@ async function clickToolbarButton(page: Page, name: string): Promise<void> {
 function bodyText(page: Page): Promise<string> {
   return page.evaluate(
     () =>
-      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.doc
-        .textContent ?? "",
+      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
+        ?.state.doc.textContent ?? "",
   );
 }
 
 function bodyDocumentFingerprint(page: Page): Promise<string> {
   return page.evaluate(() =>
     JSON.stringify(
-      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.doc.toJSON() ??
-        null,
+      globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.getEditorRef()
+        ?.getView()
+        ?.state.doc.toJSON() ?? null,
     ),
   );
 }
@@ -90,7 +101,10 @@ function paintedBodyContains(page: Page, text: string): Promise<boolean> {
 /** Count body ProseMirror nodes by type name in the live document. */
 function countNodes(page: Page, typeName: string): Promise<number> {
   return page.evaluate((name) => {
-    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    const view = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
     let n = 0;
     view?.state.doc.descendants((node) => {
       if (node.type.name === name) n += 1;
@@ -139,7 +153,10 @@ function selectionMarkState(page: Page): Promise<SelectionMarkState> {
       afterItalic: false,
       afterUnderline: false,
     };
-    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    const view = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
     if (!view) return empty;
     const { from, to } = view.state.selection;
     const { schema, doc } = view.state;
@@ -189,7 +206,10 @@ function caretParagraphListState(
   page: Page,
 ): Promise<{ numPr: unknown; listIsBullet: boolean | null }> {
   return page.evaluate(() => {
-    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    const view = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
     if (!view) throw new Error("Editor view is unavailable");
     const { $from } = view.state.selection;
     for (let depth = $from.depth; depth >= 0; depth -= 1) {
@@ -226,7 +246,10 @@ function savedHfText(page: Page, slot: "headers" | "footers"): Promise<string> {
       return collect(content);
     };
     const slotMap = doc?.package?.[key];
-    const values = slotMap instanceof Map ? [...slotMap.values()] : Object.values(slotMap ?? {});
+    const values =
+      slotMap instanceof Map
+        ? [...slotMap.values()]
+        : Object.values(slotMap ?? {});
     return values.map((value) => collect(value)).join("");
   }, slot);
 }
@@ -258,7 +281,9 @@ test.describe("inline formatting", () => {
     for (let i = 0; i < MARKER.length; i += 1) {
       await page.keyboard.press("Shift+ArrowLeft");
     }
-    await expect.poll(async () => (await selectionMarkState(page)).text).toBe(MARKER);
+    await expect
+      .poll(async () => (await selectionMarkState(page)).text)
+      .toBe(MARKER);
     const before = await selectionMarkState(page);
 
     // The chars flanking the selection must keep their formatting through every
@@ -342,7 +367,9 @@ test.describe("footer", () => {
     // useHeaderFooterEditor double-click handler as the header) and places the
     // caret in the footer content editor.
     await footer.dblclick();
-    await page.locator(".hf-inline-editor").waitFor({ state: "visible", timeout: 5000 });
+    await page
+      .locator(".hf-inline-editor")
+      .waitFor({ state: "visible", timeout: 5000 });
 
     // Pause before typing so focus must persist in the footer view past the
     // brief entry-focus window, rather than snapping back to the body.
@@ -388,7 +415,9 @@ test.describe("lists", () => {
 
     // Clicking the already-active numbered-list button clears list formatting.
     await clickToolbarButton(page, "Numbered List");
-    await expect.poll(() => caretParagraphListState(page)).toMatchObject({ numPr: null });
+    await expect
+      .poll(() => caretParagraphListState(page))
+      .toMatchObject({ numPr: null });
   });
 
   test("Backspace continues into text after exiting a style-numbered paragraph", async ({
@@ -403,7 +432,10 @@ test.describe("lists", () => {
     await page.keyboard.type(inserted);
 
     await page.evaluate((expected) => {
-      const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+      const view = globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.getEditorRef()
+        ?.getView();
       if (!view) throw new Error("Editor view is unavailable");
       const boundary = view.state.schema.nodes.bookmarkBoundary;
       if (!boundary) throw new Error("Bookmark boundary node is unavailable");
@@ -416,11 +448,15 @@ test.describe("lists", () => {
         }
         return true;
       });
-      if (targetStart === null) throw new Error("Synthetic target is unavailable");
+      if (targetStart === null)
+        throw new Error("Synthetic target is unavailable");
       const targetEnd = targetStart + expected.length;
       const transaction = view.state.tr
         .insert(targetEnd, boundary.create({ type: "end", id: 707 }))
-        .insert(targetStart, boundary.create({ type: "start", id: 707, name: "synthetic-range" }));
+        .insert(
+          targetStart,
+          boundary.create({ type: "start", id: 707, name: "synthetic-range" }),
+        );
       view.dispatch(transaction);
       view.focus();
     }, inserted);
@@ -429,22 +465,31 @@ test.describe("lists", () => {
     // must disappear atomically, and paint must consume the full transaction
     // batch rather than only the initiating edit.
     await page.evaluate(() => {
-      const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+      const view = globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.getEditorRef()
+        ?.getView();
       if (!view) throw new Error("Editor view is unavailable");
       let endPosition: number | null = null;
       view.state.doc.descendants((node, position) => {
-        if (node.type.name === "bookmarkBoundary" && node.attrs.type === "end") {
+        if (
+          node.type.name === "bookmarkBoundary" &&
+          node.attrs.type === "end"
+        ) {
           endPosition = position;
           return false;
         }
         return true;
       });
-      if (endPosition === null) throw new Error("Synthetic endpoint is unavailable");
+      if (endPosition === null)
+        throw new Error("Synthetic endpoint is unavailable");
       view.dispatch(view.state.tr.delete(endPosition - 1, endPosition + 1));
       view.focus();
     });
     await expect.poll(() => countNodes(page, "bookmarkBoundary")).toBe(0);
-    await expect.poll(async () => (await bodyText(page)).includes(inserted)).toBe(false);
+    await expect
+      .poll(async () => (await bodyText(page)).includes(inserted))
+      .toBe(false);
     await expect.poll(() => paintedBodyContains(page, inserted)).toBe(false);
 
     for (let index = 0; index < inserted.length - 1; index += 1) {
@@ -465,7 +510,9 @@ test.describe("lists", () => {
     for (let index = 0; index < 6; index += 1) {
       const documentBeforeKey = await bodyDocumentFingerprint(page);
       await page.keyboard.press("Backspace");
-      await expect.poll(() => bodyDocumentFingerprint(page)).not.toBe(documentBeforeKey);
+      await expect
+        .poll(() => bodyDocumentFingerprint(page))
+        .not.toBe(documentBeforeKey);
       const currentLength = (await bodyText(page)).length;
       if (currentLength < modelLengthBeforeDelete) {
         expect(currentLength).toBe(modelLengthBeforeDelete - 1);
@@ -478,7 +525,9 @@ test.describe("lists", () => {
 });
 
 test.describe("table", () => {
-  test("a single undo reverts a row insertion back to the original structure", async ({ page }) => {
+  test("a single undo reverts a row insertion back to the original structure", async ({
+    page,
+  }) => {
     await mountFixture(page, "sample.docx");
 
     const rows0 = await countNodes(page, "tableRow");
@@ -486,7 +535,9 @@ test.describe("table", () => {
 
     const menu = await openTableCellMenu(page);
     await menu.getByRole("menuitem", { name: "Insert row below" }).click();
-    await expect.poll(() => countNodes(page, "tableRow")).toBeGreaterThan(rows0);
+    await expect
+      .poll(() => countNodes(page, "tableRow"))
+      .toBeGreaterThan(rows0);
 
     // Re-place the caret in the table body so the history shortcut targets the
     // body view, then ONE undo must restore the original row count: a structural

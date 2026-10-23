@@ -10,48 +10,76 @@ const ROOT = path.resolve(import.meta.dir, "..");
 const PROPERTY_FILE = "test/canonical-session.fuzz.ts";
 const BROWSER_FILE = "canonical-browser-input-fuzz.interactions.spec.ts";
 const replayCallDefects = (text: string) => {
-  const source = ts.createSourceFile("replay.ts", text, ts.ScriptTarget.Latest, true);
+  const source = ts.createSourceFile(
+    "replay.ts",
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const required = new Set<string>();
   const calls: ts.CallExpression[] = [];
   const visit = (node: ts.Node): void => {
-    if (ts.isTypeAliasDeclaration(node) && node.name.text === "RunFuzzOptions") {
-      if (!ts.isTypeLiteralNode(node.type)) throw new TypeError("Missing replay options fields.");
+    if (
+      ts.isTypeAliasDeclaration(node) &&
+      node.name.text === "RunFuzzOptions"
+    ) {
+      if (!ts.isTypeLiteralNode(node.type))
+        throw new TypeError("Missing replay options fields.");
       for (const member of node.type.members) {
         if (ts.isPropertySignature(member) && !member.questionToken)
           required.add(member.name.getText(source));
       }
     }
-    if (ts.isCallExpression(node) && node.expression.getText(source) === "runMode")
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.getText(source) === "runMode"
+    )
       calls.push(node);
     ts.forEachChild(node, visit);
   };
   visit(source);
-  if (required.size === 0 || calls.length === 0) throw new TypeError("Missing replay contract.");
+  if (required.size === 0 || calls.length === 0)
+    throw new TypeError("Missing replay contract.");
   return calls.flatMap((call) => {
     const options = call.arguments.at(0);
-    if (call.arguments.length !== 1 || !options || !ts.isObjectLiteralExpression(options))
+    if (
+      call.arguments.length !== 1 ||
+      !options ||
+      !ts.isObjectLiteralExpression(options)
+    )
       return [call.getText(source)];
     const keys = new Set(
       options.properties.flatMap((property) =>
-        ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)
+        ts.isPropertyAssignment(property) ||
+        ts.isShorthandPropertyAssignment(property)
           ? [property.name.getText(source)]
           : [],
       ),
     );
-    return [...required].every((key) => keys.has(key)) ? [] : [call.getText(source)];
+    return [...required].every((key) => keys.has(key))
+      ? []
+      : [call.getText(source)];
   });
 };
 
 test("every browser replay caller supplies the declared options contract", () => {
   expect(
     replayCallDefects(
-      readFileSync(path.join(ROOT, "tests/visual/browser-input-fuzz.interactions.spec.ts"), "utf8"),
+      readFileSync(
+        path.join(ROOT, "tests/visual/browser-input-fuzz.interactions.spec.ts"),
+        "utf8",
+      ),
     ),
   ).toEqual([]);
-  const contract = "type RunFuzzOptions = { page: Page; authority: Authority };";
-  expect(replayCallDefects(`${contract} runMode(page, source);`)).toHaveLength(1);
+  const contract =
+    "type RunFuzzOptions = { page: Page; authority: Authority };";
+  expect(replayCallDefects(`${contract} runMode(page, source);`)).toHaveLength(
+    1,
+  );
   expect(replayCallDefects(`${contract} runMode({ page });`)).toHaveLength(1);
-  expect(replayCallDefects(`${contract} runMode({ page, authority });`)).toEqual([]);
+  expect(
+    replayCallDefects(`${contract} runMode({ page, authority });`),
+  ).toEqual([]);
 });
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -64,7 +92,8 @@ const workflow = (name: string): Record<string, unknown> => {
 };
 
 const stepsOf = (job: unknown): Record<string, unknown>[] => {
-  if (!record(job) || !Array.isArray(job["steps"])) throw new Error("Missing workflow steps");
+  if (!record(job) || !Array.isArray(job["steps"]))
+    throw new Error("Missing workflow steps");
   return job["steps"].filter(record);
 };
 
@@ -73,20 +102,28 @@ test("required CI never invokes either random canonical harness", () => {
   if (!record(jobs)) throw new Error("Missing CI jobs");
   for (const job of Object.values(jobs)) {
     for (const step of stepsOf(job)) {
-      expect(String(step["run"] ?? "")).not.toMatch(/canonical-session|--project=browser-fuzzer/);
+      expect(String(step["run"] ?? "")).not.toMatch(
+        /canonical-session|--project=browser-fuzzer/,
+      );
     }
   }
   // Bun and the property-area collector discover .test/.spec, not .fuzz files.
   expect(PROPERTY_FILE).not.toMatch(/(?:\.test|_test_|\.spec|_spec_)/);
-  expect(readFileSync(path.join(ROOT, PROPERTY_FILE), "utf8")).toContain("assertProperty(");
+  expect(readFileSync(path.join(ROOT, PROPERTY_FILE), "utf8")).toContain(
+    "assertProperty(",
+  );
 });
 
 test("nightly explicitly executes both lanes and keeps logs for issue filing", () => {
   const nightly = workflow("nightly-browser-input-fuzzer.yml");
   const triggers = nightly["on"];
   const jobs = nightly["jobs"];
-  if (!record(triggers) || !record(jobs)) throw new Error("Missing nightly workflow structure");
-  expect(Object.keys(triggers).toSorted()).toEqual(["schedule", "workflow_dispatch"]);
+  if (!record(triggers) || !record(jobs))
+    throw new Error("Missing nightly workflow structure");
+  expect(Object.keys(triggers).toSorted()).toEqual([
+    "schedule",
+    "workflow_dispatch",
+  ]);
   const fuzz = jobs["browser-input-fuzzer"];
   if (!record(fuzz)) throw new Error("Missing nightly fuzz job");
   expect(fuzz["permissions"]).toEqual({ contents: "read" });
@@ -94,11 +131,17 @@ test("nightly explicitly executes both lanes and keeps logs for issue filing", (
   const property = steps.find((step) => step["id"] === "canonical");
   const browser = steps.find((step) => step["id"] === "fuzz");
   expect(property?.["run"]).toContain(`bun test ./${PROPERTY_FILE}`);
-  expect(property?.["run"]).toContain("tee fuzz-artifacts/canonical/canonical-fuzz.log");
+  expect(property?.["run"]).toContain(
+    "tee fuzz-artifacts/canonical/canonical-fuzz.log",
+  );
   expect(browser?.["run"]).toContain("--project=browser-fuzzer");
-  expect(browser?.["run"]).toContain("tee fuzz-artifacts/browser/browser-fuzz.log");
+  expect(browser?.["run"]).toContain(
+    "tee fuzz-artifacts/browser/browser-fuzz.log",
+  );
   expect(
-    steps.find((step) => step["name"] === "Preserve nightly failure status")?.["if"],
+    steps.find((step) => step["name"] === "Preserve nightly failure status")?.[
+      "if"
+    ],
   ).toContain("steps.canonical.outcome == 'failure'");
   const report = jobs["report-canonical"];
   if (!record(report)) throw new Error("Missing issue reporter");
@@ -113,7 +156,9 @@ test("nightly explicitly executes both lanes and keeps logs for issue filing", (
   });
   const browserReport = jobs["report"];
   if (!record(browserReport)) throw new Error("Missing browser issue reporter");
-  expect(browserReport["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+  expect(browserReport["uses"]).toBe(
+    "./.github/workflows/fuzz-failure-report.yml",
+  );
   expect(browserReport["with"]).toEqual({
     "artifact-pattern": "browser-input-fuzzer",
     "log-pattern": "**/fuzz-artifacts/browser/*.log",
@@ -130,30 +175,44 @@ test("all nightly evidence survives Playwright output cleanup and is uploaded", 
   if (!record(jobs)) throw new Error("Missing nightly jobs");
   const steps = stepsOf(jobs["browser-input-fuzzer"]);
   const output = path.resolve(ROOT, playwright.outputDir ?? "test-results");
-  const lanes = steps.filter((step) => step["id"] === "canonical" || step["id"] === "fuzz");
+  const lanes = steps.filter(
+    (step) => step["id"] === "canonical" || step["id"] === "fuzz",
+  );
   expect(lanes).toHaveLength(2);
   for (const lane of lanes) {
     const env = lane["env"];
     if (!record(env)) throw new Error("Missing lane environment");
     for (const [key, value] of Object.entries(env)) {
       if (!key.endsWith("FAILURES_DIR")) continue;
-      expect(path.resolve(ROOT, String(value)).startsWith(`${output}${path.sep}`)).toBe(false);
+      expect(
+        path.resolve(ROOT, String(value)).startsWith(`${output}${path.sep}`),
+      ).toBe(false);
       expect(String(value)).toBe("fuzz-artifacts/canonical/findings");
     }
     expect(lane["continue-on-error"]).toBe(true);
     expect(lane["run"]).not.toContain("tee test-results/");
   }
   const fuzz = jobs["browser-input-fuzzer"];
-  if (!record(fuzz) || !record(fuzz["outputs"])) throw new Error("Missing fuzz outputs");
-  expect(fuzz["outputs"]["canonical_outcome"]).toBe("${{ steps.canonical.outcome }}");
-  const upload = steps.find((step) => step["name"] === "Keep health log and minimized traces");
+  if (!record(fuzz) || !record(fuzz["outputs"]))
+    throw new Error("Missing fuzz outputs");
+  expect(fuzz["outputs"]["canonical_outcome"]).toBe(
+    "${{ steps.canonical.outcome }}",
+  );
+  const upload = steps.find(
+    (step) => step["name"] === "Keep health log and minimized traces",
+  );
   const options = upload?.["with"];
   if (!record(options)) throw new Error("Missing upload options");
-  expect(String(options["path"]).split("\n")).toContain("fuzz-artifacts/canonical");
-  for (const file of [BROWSER_FILE, "browser-input-fuzz.interactions.spec.ts"]) {
-    expect(readFileSync(path.join(ROOT, "tests/visual", file), "utf8")).toContain(
-      'process.env["FOLIO_FUZZ_FAILURES_DIR"]',
-    );
+  expect(String(options["path"]).split("\n")).toContain(
+    "fuzz-artifacts/canonical",
+  );
+  for (const file of [
+    BROWSER_FILE,
+    "browser-input-fuzz.interactions.spec.ts",
+  ]) {
+    expect(
+      readFileSync(path.join(ROOT, "tests/visual", file), "utf8"),
+    ).toContain('process.env["FOLIO_FUZZ_FAILURES_DIR"]');
   }
 });
 

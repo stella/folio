@@ -46,12 +46,16 @@ const isSectionBreakType = (value: unknown): value is SectionBreakType =>
   SECTION_BREAK_TYPES.some((type) => type === value);
 
 /** A break type read off an untrusted boundary (a `data-` attribute, a snapshot). */
-export const parseSectionBreakType = (value: unknown): SectionBreakType | null =>
-  isSectionBreakType(value) ? value : null;
+export const parseSectionBreakType = (
+  value: unknown,
+): SectionBreakType | null => (isSectionBreakType(value) ? value : null);
 
 /** The section record a paragraph holds, or `null` when it ends no section. */
-export const sectionPropertiesOf = (paragraph: PMNode): SectionProperties | null =>
-  (paragraph.attrs["_sectionProperties"] as SectionProperties | null | undefined) ?? null;
+export const sectionPropertiesOf = (
+  paragraph: PMNode,
+): SectionProperties | null =>
+  (paragraph.attrs["_sectionProperties"] as
+    SectionProperties | null | undefined) ?? null;
 
 /**
  * The break type a section record states, or `null` when it states none.
@@ -73,6 +77,8 @@ export const sectionBreakTypeOf = (
  * is inherited from the section that follows it, which is what a reader of the
  * package does with a `w:sectPr` that omits them.
  */
-export const mintSectionProperties = (breakType: SectionBreakType): SectionProperties => ({
+export const mintSectionProperties = (
+  breakType: SectionBreakType,
+): SectionProperties => ({
   sectionStart: breakType,
 });

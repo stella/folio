@@ -26,17 +26,23 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const V_NAMESPACE = "urn:schemas-microsoft-com:vml";
 const O_NAMESPACE = "urn:schemas-microsoft-com:office:office";
-const PACKAGE_RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
+const PACKAGE_RELATIONSHIPS =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
 
 const IMAGE_RID = "rIdImg";
 const HEADER_RID = "rIdHdr";
@@ -77,7 +83,8 @@ const WATERMARK_SPELLINGS = {
   none: "none",
 } as const;
 
-type WatermarkSpelling = (typeof WATERMARK_SPELLINGS)[keyof typeof WATERMARK_SPELLINGS];
+type WatermarkSpelling =
+  (typeof WATERMARK_SPELLINGS)[keyof typeof WATERMARK_SPELLINGS];
 
 /** What the shape carries, which is what `watermarkParser` reads to claim it. */
 const PAYLOADS = {
@@ -91,7 +98,11 @@ const PAYLOADS = {
 type Payload = (typeof PAYLOADS)[keyof typeof PAYLOADS];
 
 /** The part the `w:pict` lives in. Only a header has a watermark reader. */
-const CONTAINERS = { body: "body", header: "header", footer: "footer" } as const;
+const CONTAINERS = {
+  body: "body",
+  header: "header",
+  footer: "footer",
+} as const;
 
 type Container = (typeof CONTAINERS)[keyof typeof CONTAINERS];
 
@@ -122,8 +133,12 @@ const payloadMarkup = (payload: Payload): string => {
 };
 
 const shapeMarkup = ({ kind, spelling, payload }: PictCase): string => {
-  const id = spelling === WATERMARK_SPELLINGS.idPrefix ? "WordPictureWatermark101" : "shape101";
-  const type = spelling === WATERMARK_SPELLINGS.wordArtType ? ' type="#_x0000_t136"' : "";
+  const id =
+    spelling === WATERMARK_SPELLINGS.idPrefix
+      ? "WordPictureWatermark101"
+      : "shape101";
+  const type =
+    spelling === WATERMARK_SPELLINGS.wordArtType ? ' type="#_x0000_t136"' : "";
   return (
     `<v:${kind} id="${id}"${type} style="width:100pt;height:50pt">` +
     `${payloadMarkup(payload)}</v:${kind}>`
@@ -158,7 +173,10 @@ const PART_PATHS = {
 } as const satisfies Record<Container, string>;
 
 const relsPathOf = (partPath: string): string =>
-  partPath.replace(/^(?<directory>.*\/)(?<name>[^/]+)$/u, "$<directory>_rels/$<name>.rels");
+  partPath.replace(
+    /^(?<directory>.*\/)(?<name>[^/]+)$/u,
+    "$<directory>_rels/$<name>.rels",
+  );
 
 const buildDocx = async (pict: PictCase): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
@@ -198,17 +216,25 @@ const buildDocx = async (pict: PictCase): Promise<ArrayBuffer> => {
       ),
     );
   }
-  const existingRels = await zip.file("word/_rels/document.xml.rels")!.async("text");
+  const existingRels = await zip
+    .file("word/_rels/document.xml.rels")!
+    .async("text");
   zip.file(
     "word/_rels/document.xml.rels",
-    existingRels.replace("</Relationships>", `${documentRelationships.join("")}</Relationships>`),
+    existingRels.replace(
+      "</Relationships>",
+      `${documentRelationships.join("")}</Relationships>`,
+    ),
   );
 
   const types = await zip.file("[Content_Types].xml")!.async("text");
   if (!types.includes('Extension="png"')) {
     zip.file(
       "[Content_Types].xml",
-      types.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+      types.replace(
+        "</Types>",
+        '<Default Extension="png" ContentType="image/png"/></Types>',
+      ),
     );
   }
   return zip.generateAsync({ type: "arraybuffer" });
@@ -229,7 +255,10 @@ const REBUILDABLE_CAPTURES = new Set([
   "rawEndPropertiesXml",
 ]);
 
-const stripRebuildableCaptures = (value: unknown, seen = new WeakSet<object>()): void => {
+const stripRebuildableCaptures = (
+  value: unknown,
+  seen = new WeakSet<object>(),
+): void => {
   if (typeof value !== "object" || value === null || seen.has(value)) {
     return;
   }
@@ -281,15 +310,20 @@ describe("a w:pict is modelled or preserved, never neither", () => {
           const saved = await repackDocx(parsed, { updateModifiedDate: false });
 
           const savedPart = await textOf(saved, partPath);
-          expect({ pict, kept: savedPart.includes(`<v:${pict.kind}`) }).toEqual({
-            pict,
-            kept: true,
-          });
+          expect({ pict, kept: savedPart.includes(`<v:${pict.kind}`) }).toEqual(
+            {
+              pict,
+              kept: true,
+            },
+          );
 
           // The markup is worth nothing without the relationship it names.
           if (pict.payload === PAYLOADS.imagedata) {
             const savedRels = await textOf(saved, relsPathOf(partPath));
-            expect({ pict, resolves: savedRels.includes(`Id="${IMAGE_RID}"`) }).toEqual({
+            expect({
+              pict,
+              resolves: savedRels.includes(`Id="${IMAGE_RID}"`),
+            }).toEqual({
               pict,
               resolves: true,
             });
@@ -299,7 +333,9 @@ describe("a w:pict is modelled or preserved, never neither", () => {
           // preserved the same way, and no owner claims it on the way back.
           const reparsed = await parseDocx(saved, { preloadFonts: false });
           stripRebuildableCaptures(reparsed);
-          const again = await repackDocx(reparsed, { updateModifiedDate: false });
+          const again = await repackDocx(reparsed, {
+            updateModifiedDate: false,
+          });
           expect({ pict, part: await textOf(again, partPath) }).toEqual({
             pict,
             part: savedPart,
@@ -321,8 +357,12 @@ describe("a w:pict is modelled or preserved, never neither", () => {
       container: CONTAINERS.header,
     } as const satisfies PictCase;
 
-    const parsed = await parseDocx(await buildDocx(pict), { preloadFonts: false });
-    expect(parsed.package.headers?.get(HEADER_RID)?.watermark?.kind).toBe("text");
+    const parsed = await parseDocx(await buildDocx(pict), {
+      preloadFonts: false,
+    });
+    expect(parsed.package.headers?.get(HEADER_RID)?.watermark?.kind).toBe(
+      "text",
+    );
 
     stripRebuildableCaptures(parsed);
     const saved = await textOf(

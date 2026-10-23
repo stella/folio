@@ -1,7 +1,8 @@
+import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
+
 import type { DocumentSettings } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
 import { intAttr } from "./xmlUtils";
-import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 
 /** `w:compatSetting/@w:uri` the named application compatibility settings share. */
 const COMPAT_SETTING_URI = "http://schemas.microsoft.com/office/word";
@@ -12,7 +13,10 @@ const COMPAT_SETTING_URI = "http://schemas.microsoft.com/office/word";
  * never flips `w:mirrorIndents`, so declaring both on describes how the
  * package is already laid out.
  */
-const MODERN_COMPAT_SETTINGS = ["enableOpenTypeFeatures", "doNotFlipMirrorIndents"] as const;
+const MODERN_COMPAT_SETTINGS = [
+  "enableOpenTypeFeatures",
+  "doNotFlipMirrorIndents",
+] as const;
 
 const FIRST_MODERN_COMPATIBILITY_MODE = 15;
 
@@ -42,7 +46,9 @@ export const serializeSettingsXml = (settings: DocumentSettings): string => {
   if (settings.themeFontLang) {
     const attrs: string[] = [];
     if (settings.themeFontLang.eastAsia) {
-      attrs.push(`w:eastAsia="${escapeXmlAttribute(settings.themeFontLang.eastAsia)}"`);
+      attrs.push(
+        `w:eastAsia="${escapeXmlAttribute(settings.themeFontLang.eastAsia)}"`,
+      );
     }
     if (settings.themeFontLang.bidi) {
       attrs.push(`w:bidi="${escapeXmlAttribute(settings.themeFontLang.bidi)}"`);

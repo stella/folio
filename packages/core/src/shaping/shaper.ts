@@ -31,7 +31,8 @@ export const SHAPING_DIRECTION = {
   rightToLeft: "rtl",
 } as const;
 
-export type ShapingDirection = (typeof SHAPING_DIRECTION)[keyof typeof SHAPING_DIRECTION];
+export type ShapingDirection =
+  (typeof SHAPING_DIRECTION)[keyof typeof SHAPING_DIRECTION];
 
 export type ShapeRunRequest = {
   /** sfnt bytes of the face to shape with, which must be the face measured. */
@@ -80,7 +81,8 @@ export const BIDI_DIRECTION = {
   auto: "auto",
 } as const;
 
-export type BidiDirection = (typeof BIDI_DIRECTION)[keyof typeof BIDI_DIRECTION];
+export type BidiDirection =
+  (typeof BIDI_DIRECTION)[keyof typeof BIDI_DIRECTION];
 
 export type ResolveBidiRequest = {
   /** One paragraph laid out as one line; a paragraph separator does not split it. */
@@ -162,7 +164,9 @@ const RIGHT_TO_LEFT_BY_BIDI_DIRECTION = {
 
 const shaper: Shaper = {
   resolveBidi: ({ text, direction }) =>
-    decodeBidi(resolveBidiInWasm(text, RIGHT_TO_LEFT_BY_BIDI_DIRECTION[direction])),
+    decodeBidi(
+      resolveBidiInWasm(text, RIGHT_TO_LEFT_BY_BIDI_DIRECTION[direction]),
+    ),
   shapeRun: ({
     font,
     faceIndex = 0,
@@ -187,7 +191,10 @@ const shaper: Shaper = {
         ),
       );
     } catch (cause) {
-      throw new ShaperError({ message: "Could not shape a run of text", cause });
+      throw new ShaperError({
+        message: "Could not shape a run of text",
+        cause,
+      });
     }
   },
 };
@@ -213,7 +220,9 @@ let loading: Promise<Shaper> | undefined;
  * the first successful load is the one every later call shares.
  */
 export const getShaper = (source?: ShaperSource): Promise<Shaper> => {
-  loading ??= initializeShaper(source === undefined ? undefined : { module_or_path: source.wasm })
+  loading ??= initializeShaper(
+    source === undefined ? undefined : { module_or_path: source.wasm },
+  )
     .then(() => {
       resolved = shaper;
       return shaper;
@@ -222,7 +231,10 @@ export const getShaper = (source?: ShaperSource): Promise<Shaper> => {
       // A failed load must not poison every later attempt: a transient fetch
       // failure is not a permanent absence of a shaper.
       loading = undefined;
-      throw new ShaperError({ message: "Could not initialize the text shaper", cause });
+      throw new ShaperError({
+        message: "Could not initialize the text shaper",
+        cause,
+      });
     });
   return loading;
 };

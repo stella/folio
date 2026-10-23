@@ -1,26 +1,36 @@
-import { expect, test, setDefaultTimeout } from "bun:test";
 import { panic } from "better-result";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
+
 import {
   applyDocumentOps,
   DOCUMENT_OP_TYPES,
   OP_STORIES,
+  type OpStory,
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,
   storyBody,
-  type OpStory,
 } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { canonicalReviewBlocks, storyRevisionIds } from "../../../../test/reviewProjection";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { reviewDifferences } from "../../../../test/reviewDifferences";
+import {
+  canonicalReviewBlocks,
+  storyRevisionIds,
+} from "../../../../test/reviewProjection";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
-import { createCanonicalSession, type CanonicalCommit } from "./canonicalSession";
+import {
+  type CanonicalCommit,
+  createCanonicalSession,
+} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
@@ -37,8 +47,16 @@ const paragraph = (paraId: string, text: string): Paragraph => ({
   type: "paragraph",
   paraId,
   content: [
-    { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
-    { type: "run", formatting: { bold: true }, content: [{ type: "text", text }] },
+    {
+      type: "run",
+      formatting: { italic: true },
+      content: [{ type: "text", text: "" }],
+    },
+    {
+      type: "run",
+      formatting: { bold: true },
+      content: [{ type: "text", text }],
+    },
   ],
 });
 
@@ -73,25 +91,45 @@ const fixture = (): Document => ({
     headers: new Map([
       [
         "rIdHeader",
-        { type: "header", hdrFtrType: "default", content: [paragraph("23456789", "A😀éB")] },
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [paragraph("23456789", "A😀éB")],
+        },
       ],
     ]),
     footers: new Map([
       [
         "rIdFooterDefault",
-        { type: "footer", hdrFtrType: "default", content: [paragraph("34567890", "A😀éB")] },
+        {
+          type: "footer",
+          hdrFtrType: "default",
+          content: [paragraph("34567890", "A😀éB")],
+        },
       ],
       [
         "rIdFooterFirst",
-        { type: "footer", hdrFtrType: "first", content: [paragraph("45678901", "A😀éB")] },
+        {
+          type: "footer",
+          hdrFtrType: "first",
+          content: [paragraph("45678901", "A😀éB")],
+        },
       ],
       [
         "rIdFooterEven",
-        { type: "footer", hdrFtrType: "even", content: [paragraph("56789012", "A😀éB")] },
+        {
+          type: "footer",
+          hdrFtrType: "even",
+          content: [paragraph("56789012", "A😀éB")],
+        },
       ],
     ]),
-    footnotes: [{ type: "footnote", id: 12, content: [paragraph("67890123", "A😀éB")] }],
-    endnotes: [{ type: "endnote", id: 13, content: [paragraph("78901234", "A😀éB")] }],
+    footnotes: [
+      { type: "footnote", id: 12, content: [paragraph("67890123", "A😀éB")] },
+    ],
+    endnotes: [
+      { type: "endnote", id: 13, content: [paragraph("78901234", "A😀éB")] },
+    ],
   },
 });
 
@@ -107,9 +145,16 @@ const accept = (state: EditorState, commit: CanonicalCommit) => {
 };
 
 const assertSavedStories = async (document: Document) => {
-  const reopened = await parseDocx(await createDocx(document), { preloadFonts: false });
+  const reopened = await parseDocx(await createDocx(document), {
+    preloadFonts: false,
+  });
   for (const story of [OP_STORIES.MAIN, ...STORIES]) {
-    expect(reviewDifferences(asMainStory(document, story), asMainStory(reopened, story))).toEqual({
+    expect(
+      reviewDifferences(
+        asMainStory(document, story),
+        asMainStory(reopened, story),
+      ),
+    ).toEqual({
       messages: [],
       omitted: 0,
     });
@@ -150,10 +195,19 @@ test("generated tracked secondary replacements preserve shared history and saved
               // Body and story edits share one journal even when undo is requested by the story editor.
               tracked.setMode({ type: "editing" });
               for (const session of [direct, tracked]) {
-                const bodyState = EditorState.create({ schema, doc: session.projection.doc });
+                const bodyState = EditorState.create({
+                  schema,
+                  doc: session.projection.doc,
+                });
                 accept(
                   bodyState,
-                  session.prepareReplace(bodyState, { from: 1, to: 1, text: "Journal" }).unwrap(),
+                  session
+                    .prepareReplace(bodyState, {
+                      from: 1,
+                      to: 1,
+                      text: "Journal",
+                    })
+                    .unwrap(),
                 );
               }
               snapshots.push(tracked.document);
@@ -162,7 +216,8 @@ test("generated tracked secondary replacements preserve shared history and saved
             tracked.setMode({ type: "suggesting", author: input.author });
             const before = tracked.document;
             const current = storyBody(tracked.document, story).content.at(0);
-            if (current?.type !== "paragraph") panic("The story generator lost its paragraph.");
+            if (current?.type !== "paragraph")
+              panic("The story generator lost its paragraph.");
             const gaps = [0];
             let offset = 0;
             for (const character of paragraphVisibleText(current)) {
@@ -170,67 +225,74 @@ test("generated tracked secondary replacements preserve shared history and saved
               gaps.push(offset);
             }
             const index = input.index % gaps.length;
-            const from = gaps.at(index) ?? panic("The story generator lost its start gap.");
+            const from =
+              gaps.at(index) ??
+              panic("The story generator lost its start gap.");
             const to =
               gaps.at(Math.min(index + input.count, gaps.length - 1)) ??
               panic("The story generator lost its end gap.");
             if (from === to && input.text === "") continue;
-            directState = accept(
-              directState,
-              direct
-                .prepareReplace(directState, {
-                  from: direct
-                    .projectStory(story)
-                    .unwrap()
-                    .positionAt({
-                      story,
-                      blockId: current.paraId ?? panic("Story paragraph id missing."),
-                      offset: from,
-                    })
-                    .unwrap(),
-                  to: direct
-                    .projectStory(story)
-                    .unwrap()
-                    .positionAt({
-                      story,
-                      blockId: current.paraId ?? panic("Story paragraph id missing."),
-                      offset: to,
-                    })
-                    .unwrap(),
-                  text: input.text,
+            const directPrepared = direct.prepareReplace(directState, {
+              from: direct
+                .projectStory(story)
+                .unwrap()
+                .positionAt({
                   story,
+                  blockId:
+                    current.paraId ?? panic("Story paragraph id missing."),
+                  offset: from,
                 })
                 .unwrap(),
-            );
-            trackedState = accept(
-              trackedState,
-              tracked
-                .prepareReplace(trackedState, {
-                  from: tracked
-                    .projectStory(story)
-                    .unwrap()
-                    .positionAt({
-                      story,
-                      blockId: current.paraId ?? panic("Story paragraph id missing."),
-                      offset: physicalOffsetAtVisibleOffset(current, from),
-                    })
-                    .unwrap(),
-                  to: tracked
-                    .projectStory(story)
-                    .unwrap()
-                    .positionAt({
-                      story,
-                      blockId: current.paraId ?? panic("Story paragraph id missing."),
-                      offset: physicalOffsetAtVisibleOffset(current, to),
-                    })
-                    .unwrap(),
-                  text: input.text,
+              to: direct
+                .projectStory(story)
+                .unwrap()
+                .positionAt({
                   story,
+                  blockId:
+                    current.paraId ?? panic("Story paragraph id missing."),
+                  offset: to,
                 })
                 .unwrap(),
-            );
-            snapshots.push(tracked.document);
-            selections.push(trackedState.selection.toJSON());
+              text: input.text,
+              story,
+            });
+            const trackedPrepared = tracked.prepareReplace(trackedState, {
+              from: tracked
+                .projectStory(story)
+                .unwrap()
+                .positionAt({
+                  story,
+                  blockId:
+                    current.paraId ?? panic("Story paragraph id missing."),
+                  offset: physicalOffsetAtVisibleOffset(current, from),
+                })
+                .unwrap(),
+              to: tracked
+                .projectStory(story)
+                .unwrap()
+                .positionAt({
+                  story,
+                  blockId:
+                    current.paraId ?? panic("Story paragraph id missing."),
+                  offset: physicalOffsetAtVisibleOffset(current, to),
+                })
+                .unwrap(),
+              text: input.text,
+              story,
+            });
+            // A mode may find nothing to change (for example only the protected note marker is
+            // covered); the other mode's edit still applies and the final accepted comparison
+            // checks that both agree.
+            if (directPrepared.isErr())
+              expect(directPrepared.error.reason).toBe("noChange");
+            else directState = accept(directState, directPrepared.value);
+            if (trackedPrepared.isErr())
+              expect(trackedPrepared.error.reason).toBe("noChange");
+            else {
+              trackedState = accept(trackedState, trackedPrepared.value);
+              snapshots.push(tracked.document);
+              selections.push(trackedState.selection.toJSON());
+            }
             for (const other of [OP_STORIES.MAIN, ...STORIES].filter(
               (candidate) => candidate !== story,
             )) {
@@ -248,19 +310,35 @@ test("generated tracked secondary replacements preserve shared history and saved
             panic("The authored story lost its paragraph.");
           for (const content of pendingParagraph.content) {
             if (content.type === "insertion" || content.type === "deletion")
-              expect(["Story author", "Other author"].includes(content.info.author)).toBe(true);
+              expect(
+                ["Story author", "Other author"].includes(content.info.author),
+              ).toBe(true);
           }
           for (const decision of ["accept", "reject"] as const) {
             if (revisionIds.length === 0) continue;
             const resolved = applyDocumentOps(pending, [
-              { type: DOCUMENT_OP_TYPES.RESOLVE_REVISION, story, revisionIds, decision },
+              {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story,
+                revisionIds,
+                decision,
+              },
             ]).unwrap();
             const expected = decision === "accept" ? direct.document : baseline;
-            expect(canonicalReviewBlocks(storyBody(resolved.document, story).content)).toEqual(
+            expect(
+              canonicalReviewBlocks(
+                storyBody(resolved.document, story).content,
+              ),
+            ).toEqual(
               canonicalReviewBlocks(storyBody(expected, story).content),
             );
             const reopenedResolved = applyDocumentOps(reopenedPending, [
-              { type: DOCUMENT_OP_TYPES.RESOLVE_REVISION, story, revisionIds, decision },
+              {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story,
+                revisionIds,
+                decision,
+              },
             ]).unwrap();
             expect(
               reviewDifferences(
@@ -276,23 +354,37 @@ test("generated tracked secondary replacements preserve shared history and saved
                 storyBody(pending, other).content,
               );
             }
-            const undone = applyDocumentOps(resolved.document, resolved.inverse).unwrap();
+            const undone = applyDocumentOps(
+              resolved.document,
+              resolved.inverse,
+            ).unwrap();
             assertExactModel(undone.document, pending);
             assertExactModel(
-              applyDocumentOps(undone.document, undone.inverse).unwrap().document,
+              applyDocumentOps(undone.document, undone.inverse).unwrap()
+                .document,
               resolved.document,
             );
             await assertSavedStories(resolved.document);
           }
           for (let index = snapshots.length - 2; index >= 0; index--) {
-            trackedState = accept(trackedState, tracked.prepareUndo(trackedState, story).unwrap());
+            trackedState = accept(
+              trackedState,
+              tracked.prepareUndo(trackedState, story).unwrap(),
+            );
             assertExactModel(tracked.document, snapshots.at(index));
-            expect(trackedState.selection.toJSON()).toEqual(selections.at(index));
+            expect(trackedState.selection.toJSON()).toEqual(
+              selections.at(index),
+            );
           }
           for (let index = 1; index < snapshots.length; index++) {
-            trackedState = accept(trackedState, tracked.prepareRedo(trackedState, story).unwrap());
+            trackedState = accept(
+              trackedState,
+              tracked.prepareRedo(trackedState, story).unwrap(),
+            );
             assertExactModel(tracked.document, snapshots.at(index));
-            expect(trackedState.selection.toJSON()).toEqual(selections.at(index));
+            expect(trackedState.selection.toJSON()).toEqual(
+              selections.at(index),
+            );
           }
         }
       },

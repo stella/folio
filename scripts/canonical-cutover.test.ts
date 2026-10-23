@@ -1,24 +1,30 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
   usesCanonicalSession,
 } from "../packages/core/src/types/canonicalCapabilities";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
+  canonicalCutoverDocs,
+  checkCanonicalBaseline,
   inspectCanonicalSources,
   PUBLIC_OPERATION_SOURCE_GAPS,
-  checkCanonicalBaseline,
-  canonicalCutoverDocs,
 } from "./lib/canonical-cutover";
 
 setDefaultTimeout(propertyTestTimeout(10_000));
 
 const selectors = Object.keys(CANONICAL_GAP)
-  .map((key) => `usesCanonicalSession(experimentalSession, CANONICAL_GAP.${key});`)
+  .map(
+    (key) => `usesCanonicalSession(experimentalSession, CANONICAL_GAP.${key});`,
+  )
   .join("\n");
-const source = (text: string, file = "packages/react/src/fixture.tsx") => ({ file, source: text });
+const source = (text: string, file = "packages/react/src/fixture.tsx") => ({
+  file,
+  source: text,
+});
 const failuresOf = (text: string, file?: string) =>
   inspectCanonicalSources([source(selectors), source(text, file)]).failures;
 
@@ -26,7 +32,9 @@ describe("canonical cutover guard", () => {
   test("every ledger id has a typed selector with exact session semantics", () => {
     const inspected = inspectCanonicalSources([source(selectors)]);
     expect(inspected.failures).toEqual([]);
-    expect([...inspected.sites.keys()].sort()).toEqual(Object.keys(CANONICAL_CAPABILITIES).sort());
+    expect([...inspected.sites.keys()].sort()).toEqual(
+      Object.keys(CANONICAL_CAPABILITIES).sort(),
+    );
     for (const id of Object.values(CANONICAL_GAP)) {
       expect(usesCanonicalSession("canonical", id)).toBe(true);
       expect(usesCanonicalSession(undefined, id)).toBe(false);
@@ -37,7 +45,10 @@ describe("canonical cutover guard", () => {
     for (const key of Object.keys(CANONICAL_GAP)) {
       const inspected = inspectCanonicalSources([
         source(
-          selectors.replace(`usesCanonicalSession(experimentalSession, CANONICAL_GAP.${key});`, ""),
+          selectors.replace(
+            `usesCanonicalSession(experimentalSession, CANONICAL_GAP.${key});`,
+            "",
+          ),
         ),
       ]);
       expect(inspected.failures).toHaveLength(1);
@@ -66,7 +77,10 @@ describe("canonical cutover guard", () => {
             ),
           ])
             expect(
-              inspectCanonicalSources([source(selectors), fixture]).failures.some((failure) =>
+              inspectCanonicalSources([
+                source(selectors),
+                fixture,
+              ]).failures.some((failure) =>
                 failure.includes("raw session comparison"),
               ),
             ).toBe(true);
@@ -104,10 +118,14 @@ describe("canonical cutover guard", () => {
             checkCanonicalBaseline(inspected.branches, {
               "packages/react/src/other.tsx": Object.keys(CANONICAL_GAP).length,
             }),
-          ).toContain(`${fixture.file}: session branches increased from 0 to 1`);
+          ).toContain(
+            `${fixture.file}: session branches increased from 0 to 1`,
+          );
         },
       ),
-      { id: "namespace-qualified guards count branches and resolve their ledger ids" },
+      {
+        id: "namespace-qualified guards count branches and resolve their ledger ids",
+      },
     );
     for (const call of [
       "caps.usesCanonicalSession(experimentalSession)",
@@ -116,8 +134,9 @@ describe("canonical cutover guard", () => {
       "new caps.CanonicalSessionRefusalError({ message: 'refused' })",
     ]) {
       expect(
-        failuresOf(`import * as caps from "@stll/folio-core/types/canonicalCapabilities"; ${call};`)
-          .length,
+        failuresOf(
+          `import * as caps from "@stll/folio-core/types/canonicalCapabilities"; ${call};`,
+        ).length,
       ).toBeGreaterThan(0);
     }
   });
@@ -149,14 +168,24 @@ describe("canonical cutover guard", () => {
           const error = bracket ? `${name}["error"]` : `${name}.error`;
           const message = bracket ? `${error}["message"]` : `${error}.message`;
           const gap = bracket ? `${error}["gap"]` : `${error}.gap`;
-          expect(failuresOf(`${relay} forward(${message}, ${gap});`)).toEqual([]);
-          for (const argument of ["", ", CANONICAL_GAP.dispatch", ", other.error.gap"])
-            expect(failuresOf(`${relay} forward(${message}${argument});`)).toContain(
+          expect(failuresOf(`${relay} forward(${message}, ${gap});`)).toEqual(
+            [],
+          );
+          for (const argument of [
+            "",
+            ", CANONICAL_GAP.dispatch",
+            ", other.error.gap",
+          ])
+            expect(
+              failuresOf(`${relay} forward(${message}${argument});`),
+            ).toContain(
               "packages/react/src/fixture.tsx: canonical error relay must forward the original gap id",
             );
         },
       ),
-      { id: "gap-aware error relays cannot discard or replace an error's capability" },
+      {
+        id: "gap-aware error relays cannot discard or replace an error's capability",
+      },
     );
   });
 
@@ -222,20 +251,28 @@ describe("canonical cutover guard", () => {
           !mutationFixtures.some(({ gap }) => gap === id),
       )
       .map(([id]) => id);
-    expect([...new Set([...mutationFixtures.map(({ gap }) => gap), ...publicGaps])].sort()).toEqual(
-      mutationSources.map(([id]) => id).sort(),
-    );
-    const sourceGaps = [...new Set([...publicGaps, ...PUBLIC_OPERATION_SOURCE_GAPS])];
-    const markers = sourceGaps.map((gap) => `// canonical-gap: ${gap}`).join("\n");
+    expect(
+      [
+        ...new Set([...mutationFixtures.map(({ gap }) => gap), ...publicGaps]),
+      ].sort(),
+    ).toEqual(mutationSources.map(([id]) => id).sort());
+    const sourceGaps = [
+      ...new Set([...publicGaps, ...PUBLIC_OPERATION_SOURCE_GAPS]),
+    ];
+    const markers = sourceGaps
+      .map((gap) => `// canonical-gap: ${gap}`)
+      .join("\n");
     for (const removed of sourceGaps) {
       const fixture =
         markers
           .split("\n")
           .filter((line) => line !== `// canonical-gap: ${removed}`)
-          .join("\n") + '\napplyFolioAIEditOperations({ undefinedReferences: "refuse" });';
+          .join("\n") +
+        '\napplyFolioAIEditOperations({ undefinedReferences: "refuse" });';
       expect(
-        failuresOf(fixture, "packages/core/src/document-operations.ts").some((failure) =>
-          failure.includes(`${removed} source needs its ledger marker`),
+        failuresOf(fixture, "packages/core/src/document-operations.ts").some(
+          (failure) =>
+            failure.includes(`${removed} source needs its ledger marker`),
         ),
       ).toBe(true);
     }
@@ -253,14 +290,16 @@ describe("canonical cutover guard", () => {
     expect(failuresOf(code, file)).toContain(
       `${file}:1: ${CANONICAL_GAP.save} source needs its ledger marker`,
     );
-    expect(failuresOf(`// canonical-gap: ${CANONICAL_GAP.save}\n${code}`, file)).toEqual([]);
+    expect(
+      failuresOf(`// canonical-gap: ${CANONICAL_GAP.save}\n${code}`, file),
+    ).toEqual([]);
   });
 
   test("cannot keep a dead source alive with an orphan comment", () => {
     expect(
-      failuresOf("// canonical-gap: pm-save-projection\nconst unrelated = true;").some((failure) =>
-        failure.includes("orphan canonical gap marker"),
-      ),
+      failuresOf(
+        "// canonical-gap: pm-save-projection\nconst unrelated = true;",
+      ).some((failure) => failure.includes("orphan canonical gap marker")),
     ).toBe(true);
   });
 
@@ -270,13 +309,22 @@ describe("canonical cutover guard", () => {
 
   test("per-file counts require every decrease and reject every increase", () => {
     assertProperty(
-      fc.property(fc.nat({ max: 1000 }), fc.nat({ max: 1000 }), (before, after) => {
-        const failures = checkCanonicalBaseline({ "fixture.ts": after }, { "fixture.ts": before });
-        expect(failures.length).toBe(before === after ? 0 : 1);
-        if (after > before) expect(failures.at(0)).toContain("increased");
-        if (after < before) expect(failures.at(0)).toContain("decrease");
-      }),
-      { id: "per-file counts require every decrease and reject every increase" },
+      fc.property(
+        fc.nat({ max: 1000 }),
+        fc.nat({ max: 1000 }),
+        (before, after) => {
+          const failures = checkCanonicalBaseline(
+            { "fixture.ts": after },
+            { "fixture.ts": before },
+          );
+          expect(failures.length).toBe(before === after ? 0 : 1);
+          if (after > before) expect(failures.at(0)).toContain("increased");
+          if (after < before) expect(failures.at(0)).toContain("decrease");
+        },
+      ),
+      {
+        id: "per-file counts require every decrease and reject every increase",
+      },
     );
     expect(checkCanonicalBaseline({ "new.ts": 1 }, {})).toHaveLength(1);
     expect(checkCanonicalBaseline({}, { "removed.ts": 1 })).toHaveLength(1);
@@ -294,7 +342,9 @@ describe("canonical cutover guard", () => {
       "packages/core/src/docx/canonicalSave.ts: canonical serialization cannot derive authority from PM",
     );
     expect(
-      failuresOf("serializeCanonicalSave({ snapshot: { document: fromProseDoc(pm) } });"),
+      failuresOf(
+        "serializeCanonicalSave({ snapshot: { document: fromProseDoc(pm) } });",
+      ),
     ).toContain(
       "packages/react/src/fixture.tsx: canonical serialization requires a controller save snapshot",
     );
@@ -311,7 +361,10 @@ describe("canonical cutover guard", () => {
     const ids = docs
       .split("\n")
       .filter(
-        (line) => line.startsWith("| ") && !line.startsWith("| Id ") && !line.startsWith("| ---"),
+        (line) =>
+          line.startsWith("| ") &&
+          !line.startsWith("| Id ") &&
+          !line.startsWith("| ---"),
       )
       .map((line) => line.split(" | ").at(0)?.slice(2).trim());
     expect(ids.sort()).toEqual(Object.keys(CANONICAL_CAPABILITIES).sort());

@@ -11,23 +11,28 @@
  * second's own.
  */
 
-import { paragraphJoinAfter } from "./commands/paragraphBookmarkJoin";
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import type { NumberingMap } from "../docx/numberingParser";
 import { expectParagraphAttrs } from "./attrs";
+import { paragraphJoinAfter } from "./commands/paragraphBookmarkJoin";
 import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "./commands/propertyChangeScope";
 import { resolveParagraphChangeAttrs } from "./commands/resolveParagraphProperties";
 import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
-import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
+import {
+  paragraphRunStyleContext,
+  type RunStyleResolver,
+} from "./runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "./schema/nodes";
 
-type RecordedFormatting = NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]>;
+type RecordedFormatting = NonNullable<
+  ParagraphPropertyChangeAttrs["previousFormatting"]
+>;
 
 type CarryParagraphPropertiesOptions = {
   tr: Transaction;
@@ -57,8 +62,12 @@ export const carriedParagraphProperties = ({
   keep,
 }: CarriedParagraphPropertiesOptions): RecordedFormatting =>
   Object.fromEntries([
-    ...Object.entries(paragraphPropertiesSnapshot(source)).filter(([key]) => !keep?.has(key)),
-    ...Object.entries(paragraphPropertiesSnapshot(target)).filter(([key]) => keep?.has(key)),
+    ...Object.entries(paragraphPropertiesSnapshot(source)).filter(
+      ([key]) => !keep?.has(key),
+    ),
+    ...Object.entries(paragraphPropertiesSnapshot(target)).filter(([key]) =>
+      keep?.has(key),
+    ),
   ]);
 
 /**
@@ -76,7 +85,11 @@ export const carryParagraphProperties = ({
   numbering,
   revision,
   keep,
-}: CarryParagraphPropertiesOptions): { tr: Transaction; changed: boolean; tracked: boolean } => {
+}: CarryParagraphPropertiesOptions): {
+  tr: Transaction;
+  changed: boolean;
+  tracked: boolean;
+} => {
   const target = tr.doc.nodeAt(position);
   if (!target || target.type !== source.type) {
     // No paragraph follows to take them (a bookmark boundary or a table):
@@ -93,7 +106,8 @@ export const carryParagraphProperties = ({
     return { tr, changed: false, tracked: false };
   }
   const existing = expectParagraphAttrs(target)._propertyChanges;
-  const tracked = revision !== undefined && !hasSerializableParagraphPropertyChange(existing);
+  const tracked =
+    revision !== undefined && !hasSerializableParagraphPropertyChange(existing);
   // Restoring a property change sets exactly the in-scope properties and
   // leaves the rest, which is this hand-over read the other way round.
   const carried = resolveParagraphChangeAttrs({
@@ -118,7 +132,9 @@ export const carryParagraphProperties = ({
     numbering,
   });
   if (!carried) {
-    return panic("Paragraph properties did not pass to the paragraph", { position });
+    return panic("Paragraph properties did not pass to the paragraph", {
+      position,
+    });
   }
   const changes = [
     ...(Array.isArray(existing) ? existing : []),
@@ -160,7 +176,8 @@ const carriedNumberingProvenance = (
   target: PMNode,
   keep: ReadonlySet<string> | undefined,
 ): Record<string, unknown> => ({
-  numPrFromStyle: expectParagraphAttrs(keep?.has("numPr") ? target : source).numPrFromStyle,
+  numPrFromStyle: expectParagraphAttrs(keep?.has("numPr") ? target : source)
+    .numPrFromStyle,
 });
 
 type ParagraphLeftAfterOptions = {
@@ -192,7 +209,8 @@ export const paragraphLeftAfter = ({
     const nextGoes =
       removedBreakPositions?.has(nextPos) ||
       (mark != null && (mark.kind === "del" || mark.kind === "moveFrom"));
-    if (!nextGoes || !paragraphJoinAfter(doc, nextPos + next.nodeSize)) return nextPos;
+    if (!nextGoes || !paragraphJoinAfter(doc, nextPos + next.nodeSize))
+      return nextPos;
     position = nextPos;
     node = next;
   }
@@ -221,7 +239,11 @@ export const recordReplacedParagraphProperties = ({
 }): boolean => {
   const target = tr.doc.nodeAt(position);
   if (!target || target.type !== replaced.type) return false;
-  if (hasSerializableParagraphPropertyChange(expectParagraphAttrs(target)._propertyChanges)) {
+  if (
+    hasSerializableParagraphPropertyChange(
+      expectParagraphAttrs(target)._propertyChanges,
+    )
+  ) {
     return false;
   }
   const pending = expectParagraphAttrs(replaced)._propertyChanges;
@@ -230,7 +252,10 @@ export const recordReplacedParagraphProperties = ({
     return false;
   }
   const previousFormatting = recordedFormatting(replaced);
-  if (JSON.stringify(previousFormatting) === JSON.stringify(recordedFormatting(target))) {
+  if (
+    JSON.stringify(previousFormatting) ===
+    JSON.stringify(recordedFormatting(target))
+  ) {
     return false;
   }
   tr.setNodeAttribute(position, "_propertyChanges", [

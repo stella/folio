@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 
-import { detectActiveTrackedChange, detectImageContext } from "./selectionDetection";
+import {
+  detectActiveTrackedChange,
+  detectImageContext,
+} from "./selectionDetection";
 
 // Minimal schema covering the bits the detection helpers care about:
 //  - an `image` node (so NodeSelection wraps it)
@@ -66,7 +69,9 @@ function paragraphState(text: string): EditorState {
 }
 
 function withCursorAt(state: EditorState, pos: number): EditorState {
-  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)));
+  return state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, pos)),
+  );
 }
 
 describe("detectImageContext", () => {
@@ -95,10 +100,14 @@ describe("detectImageContext", () => {
       borderColor: "var(--test-border)",
       borderStyle: "dashed",
     });
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [imageNode])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [imageNode]),
+    ]);
     const initial = EditorState.create({ doc });
     // The image is the only inline child at position 1 (inside the paragraph).
-    const state = initial.apply(initial.tr.setSelection(NodeSelection.create(initial.doc, 1)));
+    const state = initial.apply(
+      initial.tr.setSelection(NodeSelection.create(initial.doc, 1)),
+    );
 
     expect(detectImageContext(state)).toEqual({
       pos: 1,
@@ -115,9 +124,13 @@ describe("detectImageContext", () => {
 
   test("falls back to defaults when image attrs are absent", () => {
     const imageNode = schema.nodes["image"]!.create();
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, [imageNode])]);
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [imageNode]),
+    ]);
     const initial = EditorState.create({ doc });
-    const state = initial.apply(initial.tr.setSelection(NodeSelection.create(initial.doc, 1)));
+    const state = initial.apply(
+      initial.tr.setSelection(NodeSelection.create(initial.doc, 1)),
+    );
 
     expect(detectImageContext(state)).toEqual({
       pos: 1,
@@ -173,7 +186,10 @@ describe("detectActiveTrackedChange", () => {
   });
 
   test("returns the deletion context when the cursor is on a deleted run", () => {
-    const state = withCursorAt(paragraphWithMark("deletion", { author: "Bob" }), 2);
+    const state = withCursorAt(
+      paragraphWithMark("deletion", { author: "Bob" }),
+      2,
+    );
     expect(detectActiveTrackedChange(state)).toEqual({
       type: "deletion",
       author: "Bob",

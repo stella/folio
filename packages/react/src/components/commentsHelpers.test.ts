@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Comment } from "@stll/folio-core/types/content";
+
 import {
   allocateCommentId,
   collectCommentIdsFromSources,
@@ -141,9 +142,9 @@ describe("collectCommentIdsFromSources", () => {
         ],
       },
     ];
-    expect(collectCommentIdsFromSources(body, headers, footnotes, endnotes)).toEqual(
-      new Set([1, 10, 20, 30]),
-    );
+    expect(
+      collectCommentIdsFromSources(body, headers, footnotes, endnotes),
+    ).toEqual(new Set([1, 10, 20, 30]));
   });
 
   test("walks Map containers (e.g., headers/footers keyed by relationship id)", () => {
@@ -183,16 +184,18 @@ describe("pruneOrphanedComments", () => {
     // worse than re-emitting a comment whose anchor was deleted.
     const kept = makeComment(1);
     const unanchoredTopLevel = makeComment(2);
-    expect(pruneOrphanedComments([kept, unanchoredTopLevel], new Set([1]))).toEqual([
-      kept,
-      unanchoredTopLevel,
-    ]);
+    expect(
+      pruneOrphanedComments([kept, unanchoredTopLevel], new Set([1])),
+    ).toEqual([kept, unanchoredTopLevel]);
   });
 
   test("keeps a reply when its parent is still present", () => {
     const parent = makeComment(1);
     const reply = makeComment(2, 1);
-    expect(pruneOrphanedComments([parent, reply], new Set([1]))).toEqual([parent, reply]);
+    expect(pruneOrphanedComments([parent, reply], new Set([1]))).toEqual([
+      parent,
+      reply,
+    ]);
   });
 
   test("keeps replies whose explicit parent exists, even when the parent's anchor was deleted", () => {
@@ -200,7 +203,10 @@ describe("pruneOrphanedComments", () => {
     // replies pointing to them are kept too.
     const parent = makeComment(1);
     const reply = makeComment(2, 1);
-    expect(pruneOrphanedComments([parent, reply], new Set())).toEqual([parent, reply]);
+    expect(pruneOrphanedComments([parent, reply], new Set())).toEqual([
+      parent,
+      reply,
+    ]);
   });
 
   test("drops a reply whose explicit parent doesn't exist", () => {
@@ -218,11 +224,9 @@ describe("pruneOrphanedComments", () => {
     const root = makeComment(1);
     const reply = makeComment(2, 1);
     const replyToReply = makeComment(3, 2);
-    expect(pruneOrphanedComments([root, reply, replyToReply], new Set([1]))).toEqual([
-      root,
-      reply,
-      replyToReply,
-    ]);
+    expect(
+      pruneOrphanedComments([root, reply, replyToReply], new Set([1])),
+    ).toEqual([root, reply, replyToReply]);
   });
 
   test("drops the whole branch when an intermediate reply has no surviving root", () => {
@@ -244,7 +248,10 @@ describe("pruneOrphanedComments", () => {
     const unparsedReplyA = makeComment(2);
     const unparsedReplyB = makeComment(3);
     expect(
-      pruneOrphanedComments([anchoredParent, unparsedReplyA, unparsedReplyB], new Set([1])),
+      pruneOrphanedComments(
+        [anchoredParent, unparsedReplyA, unparsedReplyB],
+        new Set([1]),
+      ),
     ).toEqual([anchoredParent, unparsedReplyA, unparsedReplyB]);
   });
 });
@@ -259,7 +266,10 @@ describe("pruneOrphanedComments", () => {
 describe("createComment: external comment id adoption", () => {
   test("creates bounded IDs outside adopted IDs at the upper boundary", () => {
     createComment("Existing maximum", "Reviewer", undefined, MAX_COMMENT_ID);
-    const ids = Array.from({ length: 12 }, () => createComment("Note", "Reviewer").id);
+    const ids = Array.from(
+      { length: 12 },
+      () => createComment("Note", "Reviewer").id,
+    );
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) {
       expect(Number.isInteger(id)).toBe(true);
@@ -268,7 +278,12 @@ describe("createComment: external comment id adoption", () => {
     }
   });
   test("adopts a supplied commentId instead of minting one", () => {
-    const comment = createComment("Please confirm the carve-out.", "CLM", undefined, 9999);
+    const comment = createComment(
+      "Please confirm the carve-out.",
+      "CLM",
+      undefined,
+      9999,
+    );
     expect(comment.id).toBe(9999);
   });
 

@@ -87,11 +87,19 @@ const fakeDocument = {
   },
 } as unknown as Document;
 
-function paintedVisualSpaceContraction(element: FakeElement, ancestorScale = 1): number {
-  const transformScale = /^scaleX\(([^)]+)\)$/u.exec(element.style.transform ?? "")?.at(1);
-  const effectiveScale = ancestorScale * (transformScale ? Number(transformScale) : 1);
+function paintedVisualSpaceContraction(
+  element: FakeElement,
+  ancestorScale = 1,
+): number {
+  const transformScale = /^scaleX\(([^)]+)\)$/u
+    .exec(element.style.transform ?? "")
+    ?.at(1);
+  const effectiveScale =
+    ancestorScale * (transformScale ? Number(transformScale) : 1);
   const wordSpacing = Number.parseFloat(element.style.wordSpacing ?? "0");
-  const asciiSpaces = [...element.textContent].filter((character) => character === " ").length;
+  const asciiSpaces = [...element.textContent].filter(
+    (character) => character === " ",
+  ).length;
   let contraction = -wordSpacing * asciiSpaces * effectiveScale;
   for (const child of element.children) {
     contraction += paintedVisualSpaceContraction(child, effectiveScale);
@@ -120,7 +128,9 @@ function renderJustifiedFirstLine(
     attrs: {
       alignment: "justify",
       indent: { firstLine },
-      ...(listMarkerTracked ? { listMarkerRevision: { kind: "ins" as const } } : {}),
+      ...(listMarkerTracked
+        ? { listMarkerRevision: { kind: "ins" as const } }
+        : {}),
     },
   };
   const line = (toChar: number, fromChar: number, width: number) => ({
@@ -228,7 +238,9 @@ describe("Issue #868 — justify first line to full content width on indented pa
     expect(lineEl.style.textAlign).toBe("left");
     expect(lineEl.style.textAlignLast).toBe("auto");
     expect(lineEl.style.wordSpacing).toBe("0");
-    expect((lineEl as unknown as FakeElement).children.at(0)?.style.wordSpacing).toBe("-5px");
+    expect(
+      (lineEl as unknown as FakeElement).children.at(0)?.style.wordSpacing,
+    ).toBe("-5px");
   });
 
   test("compresses an overfull final justified line without expanding an underfull one", () => {
@@ -238,7 +250,10 @@ describe("Issue #868 — justify first line to full content width on indented pa
       runs: [{ kind: "text", text: "alpha beta gamma" }],
       attrs: { alignment: "justify", listMarker: "1." },
     };
-    const line = (width: number, admission: "admitted" | "unadmitted"): MeasuredLine => {
+    const line = (
+      width: number,
+      admission: "admitted" | "unadmitted",
+    ): MeasuredLine => {
       const measuredLine = {
         fromRun: 0,
         fromChar: 0,
@@ -264,13 +279,33 @@ describe("Issue #868 — justify first line to full content width on indented pa
       paragraphEndsWithLineBreak: false,
     };
 
-    const overfull = renderLine(block, line(102, "admitted"), "justify", fakeDocument, options);
-    const unadmitted = renderLine(block, line(103, "unadmitted"), "justify", fakeDocument, options);
-    const underfull = renderLine(block, line(90, "admitted"), "justify", fakeDocument, options);
+    const overfull = renderLine(
+      block,
+      line(102, "admitted"),
+      "justify",
+      fakeDocument,
+      options,
+    );
+    const unadmitted = renderLine(
+      block,
+      line(103, "unadmitted"),
+      "justify",
+      fakeDocument,
+      options,
+    );
+    const underfull = renderLine(
+      block,
+      line(90, "admitted"),
+      "justify",
+      fakeDocument,
+      options,
+    );
 
     expect(overfull.style.width).toBe("100px");
     expect(overfull.style.wordSpacing).toBe("0");
-    expect((overfull as unknown as FakeElement).children.at(0)?.style.wordSpacing).toBe("-1px");
+    expect(
+      (overfull as unknown as FakeElement).children.at(0)?.style.wordSpacing,
+    ).toBe("-1px");
     expect(unadmitted.style.width).toBeUndefined();
     expect(unadmitted.style.wordSpacing).toBeUndefined();
     expect(underfull.style.width).toBeUndefined();
@@ -316,7 +351,11 @@ describe("Issue #868 — justify first line to full content width on indented pa
       kind: "paragraph",
       id: "p-final-line-cjk-hanging",
       runs: [{ kind: "text", text, language: { eastAsia: "zh-CN" } }],
-      attrs: { alignment: "justify", listMarker: "1.", overflowPunctuation: true },
+      attrs: {
+        alignment: "justify",
+        listMarker: "1.",
+        overflowPunctuation: true,
+      },
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -338,7 +377,9 @@ describe("Issue #868 — justify first line to full content width on indented pa
     });
 
     expect(lineEl.style.wordSpacing).toBe("0");
-    expect((lineEl as unknown as FakeElement).children.at(0)?.style.wordSpacing).toBe("-0.04px");
+    expect(
+      (lineEl as unknown as FakeElement).children.at(0)?.style.wordSpacing,
+    ).toBe("-0.04px");
   });
 
   test("compensates final-list space contraction inside 50% scaled text", () => {
@@ -495,7 +536,9 @@ describe("Issue #868 — justify first line to full content width on indented pa
       paragraphEndsWithLineBreak: false,
     }) as unknown as FakeElement;
     const scaledRun = lineEl.children.at(0);
-    const tab = lineEl.children.find((child) => child.className.includes("layout-run-tab"));
+    const tab = lineEl.children.find((child) =>
+      child.className.includes("layout-run-tab"),
+    );
 
     expect(scaledRun?.style.width).toBe("8.5px");
     expect(tab?.style.width).toBe("39.5px");
@@ -627,7 +670,9 @@ describe("Issue #868 — justify first line to full content width on indented pa
     });
 
     expect(lineEl.style.wordSpacing).toBe("0");
-    expect((lineEl as unknown as FakeElement).children.at(0)?.style.wordSpacing).toBe("-5px");
+    expect(
+      (lineEl as unknown as FakeElement).children.at(0)?.style.wordSpacing,
+    ).toBe("-5px");
   });
 
   test("does not treat native math spaces as compressible line spaces", () => {
@@ -776,7 +821,11 @@ describe("Issue #868 — justify first line to full content width on indented pa
       kind: "paragraph",
       id: "p-list-justify-width",
       runs: [{ kind: "text", text: "Item text" }],
-      attrs: { alignment: "justify", listMarker: "1.", indent: { left: 36, hanging: 36 } },
+      attrs: {
+        alignment: "justify",
+        listMarker: "1.",
+        indent: { left: 36, hanging: 36 },
+      },
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -792,7 +841,10 @@ describe("Issue #868 — justify first line to full content width on indented pa
     withFakeTextMeasure(
       () => {
         const originalDocument = globalThis.document;
-        Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
+        Object.defineProperty(globalThis, "document", {
+          value: fakeDocument,
+          configurable: true,
+        });
         resetCanvasContext();
         try {
           const lineEl = renderLine(block, line, "justify", fakeDocument, {
@@ -822,7 +874,11 @@ describe("Issue #868 — justify first line to full content width on indented pa
       kind: "paragraph",
       id: "p-zero-left-list-justify-width",
       runs: [{ kind: "text", text: "Item text" }],
-      attrs: { alignment: "justify", listMarker: "1.", indent: { left: 0, hanging: 36 } },
+      attrs: {
+        alignment: "justify",
+        listMarker: "1.",
+        indent: { left: 0, hanging: 36 },
+      },
     };
     const line: MeasuredLine = {
       fromRun: 0,
@@ -838,7 +894,10 @@ describe("Issue #868 — justify first line to full content width on indented pa
     withFakeTextMeasure(
       () => {
         const originalDocument = globalThis.document;
-        Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
+        Object.defineProperty(globalThis, "document", {
+          value: fakeDocument,
+          configurable: true,
+        });
         resetCanvasContext();
         try {
           const lineEl = renderLine(block, line, "justify", fakeDocument, {

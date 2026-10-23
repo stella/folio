@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document, Paragraph, Style, StyleDefinitions } from "../../types/document";
+import type {
+  Document,
+  Paragraph,
+  Style,
+  StyleDefinitions,
+} from "../../types/document";
 import { toProseDoc } from "./toProseDoc";
 
 function makeDocAndStyles(
@@ -40,9 +45,9 @@ describe("toProseDoc fontFamily merge", () => {
     });
 
     const pmDoc = toProseDoc(doc, { styles });
-    const defaultTextFormatting = pmDoc.firstChild?.attrs["defaultTextFormatting"] as
-      | { fontFamily?: { ascii?: string; eastAsia?: string } }
-      | undefined;
+    const defaultTextFormatting = pmDoc.firstChild?.attrs[
+      "defaultTextFormatting"
+    ] as { fontFamily?: { ascii?: string; eastAsia?: string } } | undefined;
 
     expect(defaultTextFormatting?.fontFamily?.ascii).toBe("Arial Narrow");
     expect(defaultTextFormatting?.fontFamily?.eastAsia).toBe("Calibri");

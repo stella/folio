@@ -1,6 +1,8 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { ref } from "vue";
+
 import type { Document } from "@stll/folio-core/types/document";
+
 import { usePageSetupControls } from "./usePageSetupControls";
 
 function makeDoc(): Document {
@@ -77,7 +79,9 @@ test.each(["applied", "refused", "unhandled"] as const)(
     handlePageSetupApply({ marginLeft: 720 });
     expect(applySectionProperties).toHaveBeenCalledWith({ marginLeft: 720 });
     const directWrites = result === "unhandled" ? 1 : 0;
-    expect(doc.package.document.finalSectionProperties?.marginLeft).toBe(directWrites ? 720 : 1440);
+    expect(doc.package.document.finalSectionProperties?.marginLeft).toBe(
+      directWrites ? 720 : 1440,
+    );
     expect(onChange).toHaveBeenCalledTimes(directWrites);
     expect(reLayout).toHaveBeenCalledTimes(directWrites);
     expect(stateTick.value).toBe(directWrites);

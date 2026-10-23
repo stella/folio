@@ -13,27 +13,37 @@
  * silent comparison against the wrong corpus.
  */
 
+import { TaggedError } from "better-result";
 import path from "node:path";
 
-import { TaggedError } from "better-result";
-
-import { type BaselineViolation, reportOnlyListChanged } from "./corpus-baseline";
-import { type FamilyCensus, type FamilySignature } from "./corpus-family-census";
 import {
+  type BaselineViolation,
+  reportOnlyListChanged,
+} from "./corpus-baseline";
+import {
+  type FamilyCensus,
+  type FamilySignature,
+} from "./corpus-family-census";
+import {
+  CORPUS_FAMILY_GATING,
   type CorpusInvariantFamily,
   EXTENDED_INVARIANT_FAMILY,
-  CORPUS_FAMILY_GATING,
-  isZeroFamily,
   isZeroFailure,
+  isZeroFamily,
 } from "./corpus-invariants/contract";
 import { CORPUS_DIRECTORY, writeJsonFile } from "./corpus-manifest";
 import type { CorpusInvariant } from "./corpus-signature";
 
-export class CorpusFamilyBaselineError extends TaggedError("CorpusFamilyBaselineError")<{
+export class CorpusFamilyBaselineError extends TaggedError(
+  "CorpusFamilyBaselineError",
+)<{
   message: string;
 }> {}
 
-export const FAMILY_BASELINE_DIRECTORY = path.join(CORPUS_DIRECTORY, "baselines");
+export const FAMILY_BASELINE_DIRECTORY = path.join(
+  CORPUS_DIRECTORY,
+  "baselines",
+);
 
 export const familyBaselinePath = (family: CorpusInvariantFamily): string =>
   path.join(FAMILY_BASELINE_DIRECTORY, `${family}.json`);
@@ -69,7 +79,10 @@ export type FamilyBaseline = {
   entries: FamilyBaselineEntry[];
 };
 
-const signaturesOf = (census: FamilyCensus, family: CorpusInvariantFamily): FamilySignature[] =>
+const signaturesOf = (
+  census: FamilyCensus,
+  family: CorpusInvariantFamily,
+): FamilySignature[] =>
   census.signatures.filter((signature) => signature.family === family);
 
 export const familyBaselineFromCensus = (
@@ -105,18 +118,22 @@ export const familyBaselineFromCensus = (
 export const compareZeroFamilies = (
   census: Pick<FamilyCensus, "signatures">,
 ): BaselineViolation[] =>
-  census.signatures.filter(isZeroFailure).map(({ signature, files, examples, family }) => ({
-    kind: "new-signature",
-    signature,
-    detail: `${family} requires zero findings; ${files} file(s), e.g. ${examples.at(0)?.sourceId ?? "-"}/${examples.at(0)?.path ?? "-"}`,
-  }));
+  census.signatures
+    .filter(isZeroFailure)
+    .map(({ signature, files, examples, family }) => ({
+      kind: "new-signature",
+      signature,
+      detail: `${family} requires zero findings; ${files} file(s), e.g. ${examples.at(0)?.sourceId ?? "-"}/${examples.at(0)?.path ?? "-"}`,
+    }));
 
 export const compareFamilyToBaseline = (
   baseline: FamilyBaseline,
   census: FamilyCensus,
 ): BaselineViolation[] => {
   if (isZeroFamily(baseline.family)) {
-    return compareZeroFamilies({ signatures: signaturesOf(census, baseline.family) });
+    return compareZeroFamilies({
+      signatures: signaturesOf(census, baseline.family),
+    });
   }
   if (baseline.lockDigest !== census.lockDigest) {
     return [
@@ -129,7 +146,9 @@ export const compareFamilyToBaseline = (
   }
 
   const listChanged = reportOnlyListChanged(baseline, census);
-  const recorded = new Map(baseline.entries.map((entry) => [entry.signature, entry]));
+  const recorded = new Map(
+    baseline.entries.map((entry) => [entry.signature, entry]),
+  );
   const violations: BaselineViolation[] = [];
   for (const observed of signaturesOf(census, baseline.family)) {
     const entry = recorded.get(observed.signature);
@@ -198,15 +217,21 @@ export const loadFamilyBaseline = async (
   return (await file.json()) as FamilyBaseline;
 };
 
-export const writeFamilyBaselines = async (census: FamilyCensus): Promise<void> => {
+export const writeFamilyBaselines = async (
+  census: FamilyCensus,
+): Promise<void> => {
   if (compareZeroFamilies(census).length > 0) {
     throw new CorpusFamilyBaselineError({
-      message: "Operation invariant findings cannot be written into a baseline allowance",
+      message:
+        "Operation invariant findings cannot be written into a baseline allowance",
     });
   }
   await Promise.all(
     FAMILY_BASELINE_FAMILIES.map((family) =>
-      writeJsonFile(familyBaselinePath(family), familyBaselineFromCensus(census, family)),
+      writeJsonFile(
+        familyBaselinePath(family),
+        familyBaselineFromCensus(census, family),
+      ),
     ),
   );
 };

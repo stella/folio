@@ -9,8 +9,8 @@ import { describe, expect, test } from "bun:test";
 import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 import {
-  parseFolioDocumentOperationBatch,
   type FolioDocumentOperation,
+  parseFolioDocumentOperationBatch,
 } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
@@ -19,17 +19,63 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
 const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
-  const { docx } = await ensureParaIds(await createDocx(fromMarkdown(markdown)));
+  const { docx } = await ensureParaIds(
+    await createDocx(fromMarkdown(markdown)),
+  );
   return FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
 };
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
-  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  const block = reviewer
+    .getContent()
+    .find((candidate) => candidate.text === text);
   if (!block) {
     throw new Error(`no block reads "${text}"`);
   }
   return block.id;
 };
+
+const listInstancesByText = async (
+  reviewer: FolioDocxReviewer,
+): Promise<Record<string, number>> => {
+  const reparsed = await parseDocx(await reviewer.toBuffer(), {
+    preloadFonts: false,
+    detectVariables: false,
+  });
+  const instances: Record<string, number> = {};
+  for (const block of reparsed.package.document.content) {
+    if (block.type !== "paragraph") continue;
+    const numId = paragraphNumberingReferenceId(block.formatting?.numPr);
+    const text = block.content
+      .flatMap((item) =>
+        item.type === "run"
+          ? item.content.flatMap((part) =>
+              part.type === "text" ? [part.text] : [],
+            )
+          : [],
+      )
+      .join("");
+    if (numId !== undefined) instances[text] = numId;
+  }
+  return instances;
+};
+
+const twoNewLists = (reviewer: FolioDocxReviewer): FolioDocumentOperation[] => [
+  {
+    id: "left",
+    type: "insertAfterBlock",
+    blockId: blockId(reviewer, "Left."),
+    text: "Left list",
+    numbering: { kind: "newList", format: "bullet" },
+  },
+  {
+    id: "right",
+    type: "insertAfterBlock",
+    blockId: blockId(reviewer, "Right."),
+    text: "Right list",
+    numbering: { kind: "newList", format: "bullet" },
+  },
+];
 
 /** Apply, save, check every reference is defined, and read the labels back. */
 const savedLabels = async (
@@ -48,8 +94,13 @@ const savedLabels = async (
   expect(result.issues).toEqual([]);
 
   const saved = await reviewer.toBuffer();
-  const reparsed = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
-  const defined = new Set((reparsed.package.numbering?.nums ?? []).map(({ numId }) => numId));
+  const reparsed = await parseDocx(saved, {
+    preloadFonts: false,
+    detectVariables: false,
+  });
+  const defined = new Set(
+    (reparsed.package.numbering?.nums ?? []).map(({ numId }) => numId),
+  );
   for (const block of reparsed.package.document.content) {
     if (block.type !== "paragraph") continue;
     const numId = paragraphNumberingReferenceId(block.formatting?.numPr);
@@ -90,7 +141,13 @@ describe("an operation that starts a new list", () => {
       },
     ]);
 
-    expect(labels).toEqual(["1. Alpha", "2. Beta", "Tail.", "1. Gamma", "2. Delta"]);
+    expect(labels).toEqual([
+      "1. Alpha",
+      "2. Beta",
+      "Tail.",
+      "1. Gamma",
+      "2. Delta",
+    ]);
   });
 
   test("starts a bullet list", async () => {
@@ -109,6 +166,56 @@ describe("an operation that starts a new list", () => {
     expect(labels).toEqual(["Intro.", "• First", "• Second"]);
   });
 
+  test("allocates a batch in the same right-to-left order as one-at-a-time replay", async () => {
+    const batch = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
+    const replay = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
+    const operations = twoNewLists(batch);
+    batch.applyDocumentOperations(
+      { version: 1, mode: "direct", operations },
+      {},
+    );
+
+    const replayOperations = twoNewLists(replay);
+    for (const operation of [...replayOperations].reverse()) {
+      replay.applyDocumentOperations(
+        { version: 1, mode: "direct", operations: [operation] },
+        {},
+      );
+    }
+
+    expect(await listInstancesByText(batch)).toEqual(
+      await listInstancesByText(replay),
+    );
+  });
+
+  test("allocates direct and accepted tracked batches alike after save and reopen", async () => {
+    const direct = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
+    const tracked = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
+    direct.applyDocumentOperations(
+      { version: 1, mode: "direct", operations: twoNewLists(direct) },
+      {},
+    );
+    tracked.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: twoNewLists(tracked),
+      },
+      {},
+    );
+    tracked.acceptAll();
+
+    const reopenedDirect = await FolioDocxReviewer.fromBuffer(
+      await direct.toBuffer(),
+    );
+    const reopenedTracked = await FolioDocxReviewer.fromBuffer(
+      await tracked.toBuffer(),
+    );
+    expect(await listInstancesByText(reopenedTracked)).toEqual(
+      await listInstancesByText(reopenedDirect),
+    );
+  });
+
   test("numbers existing paragraphs, one list per operation", async () => {
     const reviewer = await reviewerOf("One\n\nProse.\n\nTwo");
     const labels = await savedLabels(reviewer, [
@@ -122,20 +229,97 @@ describe("an operation that starts a new list", () => {
         id: "second",
         type: "setBlockParagraphProperties",
         blockId: blockId(reviewer, "Two"),
-        properties: { numbering: { kind: "newList", format: "numbered", level: 0 } },
+        properties: {
+          numbering: { kind: "newList", format: "numbered", level: 0 },
+        },
       },
     ]);
 
     expect(labels).toEqual(["1. One", "Prose.", "1. Two"]);
   });
 
+  test("does not allocate for paragraph properties refused by a pending mark deletion", async () => {
+    const prepared = await reviewerOf("Left.\n\nRefused.\n\nTail.");
+    const leftBlockId = blockId(prepared, "Left.");
+    const refusedBlockId = blockId(prepared, "Refused.");
+    const deletion = prepared.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "delete-refused-mark",
+            type: "deleteBlock",
+            blockId: refusedBlockId,
+          },
+        ],
+      },
+      {},
+    );
+    expect(deletion.status).toBe("committed");
+
+    const source = await prepared.toBuffer();
+    const batch = await FolioDocxReviewer.fromBuffer(source, {
+      author: "Agent",
+    });
+    const sequential = await FolioDocxReviewer.fromBuffer(source, {
+      author: "Agent",
+    });
+    const operations: FolioDocumentOperation[] = [
+      {
+        id: "refused-list",
+        type: "setBlockParagraphProperties",
+        blockId: refusedBlockId,
+        properties: { numbering: { kind: "newList", format: "numbered" } },
+      },
+      {
+        id: "persisted-list",
+        type: "insertAfterBlock",
+        blockId: leftBlockId,
+        text: "Persisted list",
+        numbering: { kind: "newList", format: "numbered" },
+      },
+    ];
+
+    const batchResult = batch.applyDocumentOperations(
+      { version: 1, mode: "tracked-changes", operations },
+      {},
+    );
+    const refusedResult = sequential.applyDocumentOperations(
+      { version: 1, mode: "tracked-changes", operations: [operations[0]!] },
+      {},
+    );
+    sequential.applyDocumentOperations(
+      { version: 1, mode: "tracked-changes", operations: [operations[1]!] },
+      {},
+    );
+
+    expect(batchResult.skipped).toEqual([
+      expect.objectContaining({
+        id: "refused-list",
+        reason: "pendingParagraphMarkDeletion",
+      }),
+    ]);
+    expect(refusedResult.skipped).toEqual(batchResult.skipped);
+    expect((await listInstancesByText(batch))["Refused."]).toBeUndefined();
+    expect(await listInstancesByText(batch)).toEqual(
+      await listInstancesByText(sequential),
+    );
+  });
+
   test.each([
-    [{ kind: "newList", format: "roman" }, "$.operations[0].properties.numbering.format"],
+    [
+      { kind: "newList", format: "roman" },
+      "$.operations[0].properties.numbering.format",
+    ],
     [
       { kind: "newList", format: "numbered", level: 9 },
       "$.operations[0].properties.numbering.level",
     ],
-    [{ kind: "newList", format: "bullet", numId: 3 }, "$.operations[0].properties.numbering.numId"],
+    [
+      { kind: "newList", format: "bullet", numId: 3 },
+      "$.operations[0].properties.numbering.numId",
+    ],
     [
       { kind: "newList", format: "bullet", start: "old" },
       "$.operations[0].properties.numbering.start",
@@ -145,9 +329,19 @@ describe("an operation that starts a new list", () => {
       parseFolioDocumentOperationBatch({
         version: 1,
         operations: [
-          { id: "1", type: "setBlockParagraphProperties", blockId: "a", properties: { numbering } },
+          {
+            id: "1",
+            type: "setBlockParagraphProperties",
+            blockId: "a",
+            properties: { numbering },
+          },
         ],
       }),
-    ).toThrow(expect.objectContaining({ _tag: "InvalidFolioDocumentOperationBatchError", path }));
+    ).toThrow(
+      expect.objectContaining({
+        _tag: "InvalidFolioDocumentOperationBatchError",
+        path,
+      }),
+    );
   });
 });

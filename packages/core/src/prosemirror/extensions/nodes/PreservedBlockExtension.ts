@@ -27,7 +27,10 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 
-import { expectPreservedBlockAttrs, readPreservedBlockAttrs } from "../../attrs";
+import {
+  expectPreservedBlockAttrs,
+  readPreservedBlockAttrs,
+} from "../../attrs";
 import { createNodeExtension } from "../create";
 
 /** The node name, for callers asking what a container holds. */

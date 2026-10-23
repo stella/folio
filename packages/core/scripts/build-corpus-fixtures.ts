@@ -20,9 +20,10 @@
  */
 
 import JSZip from "jszip";
-import { importedIdCollisionFixtures } from "./imported-id-collision-fixtures";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+
+import { importedIdCollisionFixtures } from "./imported-id-collision-fixtures";
 
 const FIXTURES_DIR = path.join(
   import.meta.dir,
@@ -84,21 +85,32 @@ type Fixture = {
   /** `<Default>` entries, for a media extension the package introduces. */
   contentTypeDefaults?: readonly { extension: string; contentType: string }[];
   /** Relationships from `word/document.xml` to those parts. */
-  documentRelationships?: readonly { id: string; type: string; target: string }[];
+  documentRelationships?: readonly {
+    id: string;
+    type: string;
+    target: string;
+  }[];
 };
 
 /** Relationship types, spelled once. */
 const REL = {
-  footnotes: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
-  header: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
-  footer: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
-  image: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+  footnotes:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+  header:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+  footer:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
+  image:
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
 } as const;
 
 const CONTENT_TYPE = {
-  footnotes: "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
-  header: "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
-  footer: "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
+  footnotes:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+  header:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+  footer:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
 } as const;
 
 /**
@@ -109,7 +121,8 @@ const CONTENT_TYPE = {
 const WATERMARK_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR42mM4ceISSYhhVMOohuGrAQA/ymIfmkHlDAAAAABJRU5ErkJggg==";
 
-const watermarkPng = (): Uint8Array => Uint8Array.from(Buffer.from(WATERMARK_PNG_BASE64, "base64"));
+const watermarkPng = (): Uint8Array =>
+  Uint8Array.from(Buffer.from(WATERMARK_PNG_BASE64, "base64"));
 
 /** The namespaces a VML watermark shape needs on its story's root element. */
 const STORY_NS =
@@ -746,8 +759,12 @@ const FIXTURES: Fixture[] = [
   </w:footnote>
 </w:footnotes>`,
     },
-    contentTypes: [{ partName: "/word/footnotes.xml", contentType: CONTENT_TYPE.footnotes }],
-    documentRelationships: [{ id: "rId10", type: REL.footnotes, target: "footnotes.xml" }],
+    contentTypes: [
+      { partName: "/word/footnotes.xml", contentType: CONTENT_TYPE.footnotes },
+    ],
+    documentRelationships: [
+      { id: "rId10", type: REL.footnotes, target: "footnotes.xml" },
+    ],
   },
 
   // 28. A text watermark, as Word writes one: VML WordArt in a header part,
@@ -781,8 +798,12 @@ const FIXTURES: Fixture[] = [
   </w:p>
 </w:hdr>`,
     },
-    contentTypes: [{ partName: "/word/header1.xml", contentType: CONTENT_TYPE.header }],
-    documentRelationships: [{ id: "rId11", type: REL.header, target: "header1.xml" }],
+    contentTypes: [
+      { partName: "/word/header1.xml", contentType: CONTENT_TYPE.header },
+    ],
+    documentRelationships: [
+      { id: "rId11", type: REL.header, target: "header1.xml" },
+    ],
   },
 
   // 29. A picture watermark: the same header slot, a VML image shape, and a
@@ -820,9 +841,13 @@ const FIXTURES: Fixture[] = [
 </Relationships>`,
       "word/media/watermark.png": watermarkPng(),
     },
-    contentTypes: [{ partName: "/word/header1.xml", contentType: CONTENT_TYPE.header }],
+    contentTypes: [
+      { partName: "/word/header1.xml", contentType: CONTENT_TYPE.header },
+    ],
     contentTypeDefaults: [{ extension: "png", contentType: "image/png" }],
-    documentRelationships: [{ id: "rId11", type: REL.header, target: "header1.xml" }],
+    documentRelationships: [
+      { id: "rId11", type: REL.header, target: "header1.xml" },
+    ],
   },
 
   // 30. Page borders on all four sides, with two different line styles and a
@@ -948,16 +973,23 @@ const contentTypesFor = (fixture: Fixture): string => {
         `\n  <Override PartName="${partName}" ContentType="${contentType}"/>`,
     )
     .join("");
-  return CONTENT_TYPES.replace("\n</Types>", `${defaults}${overrides}\n</Types>`);
+  return CONTENT_TYPES.replace(
+    "\n</Types>",
+    `${defaults}${overrides}\n</Types>`,
+  );
 };
 
 const documentRelsFor = (fixture: Fixture): string => {
   const extra = (fixture.documentRelationships ?? [])
     .map(
-      ({ id, type, target }) => `\n  <Relationship Id="${id}" Type="${type}" Target="${target}"/>`,
+      ({ id, type, target }) =>
+        `\n  <Relationship Id="${id}" Type="${type}" Target="${target}"/>`,
     )
     .join("");
-  return DOCUMENT_RELS.replace("\n</Relationships>", `${extra}\n</Relationships>`);
+  return DOCUMENT_RELS.replace(
+    "\n</Relationships>",
+    `${extra}\n</Relationships>`,
+  );
 };
 
 async function buildFixture(fixture: Fixture): Promise<ArrayBuffer> {
@@ -975,7 +1007,9 @@ async function buildFixture(fixture: Fixture): Promise<ArrayBuffer> {
   // Alt-prefix fixture also needs the body element to use the same prefix.
   const bodyTag = open.startsWith("<x:") ? "x:body" : "w:body";
   const section = fixture.sectionProps ?? SECTION_PROPS;
-  const sectPr = open.startsWith("<x:") ? section.replace(/w:/gu, "x:") : section;
+  const sectPr = open.startsWith("<x:")
+    ? section.replace(/w:/gu, "x:")
+    : section;
 
   const documentXml =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
@@ -993,7 +1027,9 @@ async function buildFixture(fixture: Fixture): Promise<ArrayBuffer> {
 async function main(): Promise<void> {
   const requested = new Set(process.argv.slice(2));
   const selected =
-    requested.size === 0 ? FIXTURES : FIXTURES.filter((fixture) => requested.has(fixture.filename));
+    requested.size === 0
+      ? FIXTURES
+      : FIXTURES.filter((fixture) => requested.has(fixture.filename));
   const unknown = [...requested].filter(
     (filename) => !FIXTURES.some((fixture) => fixture.filename === filename),
   );

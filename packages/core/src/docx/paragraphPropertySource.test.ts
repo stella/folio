@@ -2,10 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
 import type { BlockContent, Paragraph } from "../types/document";
-import { parseDocx } from "./parser";
 import {
-  ParagraphPropertySourceValidationError,
-  TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
   cloneDocumentWithParagraphPropertySources,
   cloneParagraphWithoutPropertySource,
   copyDocumentParagraphPropertySources,
@@ -16,11 +13,14 @@ import {
   getParagraphPropertySourceToken,
   inspectParagraphSourceIdentity,
   paragraphPropertySourceBelongsToDocument,
+  ParagraphPropertySourceValidationError,
   restoreTableCellsWithParagraphPropertySources,
+  TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
   transportTableCellsWithParagraphPropertySources,
   visitDocumentStoryParagraphs,
   visitTableCellParagraphPropertySourceBindings,
 } from "./paragraphPropertySource";
+import { parseDocx } from "./parser";
 
 const LAYOUT_FIXTURE = new URL(
   "../../../../parity/fixtures/layout-kitchen-sink.docx",
@@ -30,8 +30,10 @@ const BLOCK_SDT_FIXTURE = new URL(
   "./__tests__/__fixtures__/corpus/nested-block-sdt.docx",
   import.meta.url,
 );
-const LAYOUT_DIGEST = "96aef5ba6161127dc9b85ec487101c934ca1bc93f63fbb8caa53dde196a5fd5b";
-const BLOCK_SDT_DIGEST = "2c4d3273683c5a7a059711c5d2a6ba2d040e914cb6b84d72fa809b7419b42e11";
+const LAYOUT_DIGEST =
+  "96aef5ba6161127dc9b85ec487101c934ca1bc93f63fbb8caa53dde196a5fd5b";
+const BLOCK_SDT_DIGEST =
+  "2c4d3273683c5a7a059711c5d2a6ba2d040e914cb6b84d72fa809b7419b42e11";
 
 const token = (digest: string, ordinal: number) =>
   `p1d:${digest.slice(0, 32)}:${ordinal.toString(36)}`;
@@ -73,28 +75,42 @@ const firstParagraphIn = (content: BlockContent[]): Paragraph | undefined => {
 
 describe("paragraph-property source identity", () => {
   test("immutable captures retain their owner without copying durable identity", async () => {
-    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
-    const paragraph = [...(copyDocumentParagraphPropertySources(document)?.values() ?? [])].find(
-      (candidate) => getParagraphPropertySource(candidate) !== undefined,
-    );
+    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), {
+      preloadFonts: false,
+    });
+    const paragraph = [
+      ...(copyDocumentParagraphPropertySources(document)?.values() ?? []),
+    ].find((candidate) => getParagraphPropertySource(candidate) !== undefined);
     if (!paragraph) throw new TypeError("Expected a parsed paragraph");
     const derived = { ...paragraph, content: [...paragraph.content] };
-    expect(getParagraphPropertySource(derived)).toBe(getParagraphPropertySource(paragraph));
-    expect(paragraphPropertySourceBelongsToDocument(derived, document)).toBe(true);
+    expect(getParagraphPropertySource(derived)).toBe(
+      getParagraphPropertySource(paragraph),
+    );
+    expect(paragraphPropertySourceBelongsToDocument(derived, document)).toBe(
+      true,
+    );
     expect(getParagraphPropertySourceToken(derived)).toBeUndefined();
     expect(inspectParagraphSourceIdentity(paragraph, document)).toEqual({
       type: "durable",
       token: getParagraphPropertySourceToken(paragraph),
     });
-    expect(inspectParagraphSourceIdentity(derived, document)).toEqual({ type: "capture-only" });
-    expect(getParagraphPropertySource(structuredClone(derived))).toBeUndefined();
+    expect(inspectParagraphSourceIdentity(derived, document)).toEqual({
+      type: "capture-only",
+    });
+    expect(
+      getParagraphPropertySource(structuredClone(derived)),
+    ).toBeUndefined();
     const unbound = cloneParagraphWithoutPropertySource(derived, {});
     expect(getParagraphPropertySource(unbound)).toBeUndefined();
-    expect(inspectParagraphSourceIdentity(unbound, document)).toEqual({ type: "authored" });
+    expect(inspectParagraphSourceIdentity(unbound, document)).toEqual({
+      type: "authored",
+    });
     const capturedWire = JSON.stringify(derived);
     const unboundWire = JSON.stringify(unbound);
     expect(capturedWire).toBe(unboundWire);
-    expect(new TextEncoder().encode(capturedWire)).toEqual(new TextEncoder().encode(unboundWire));
+    expect(new TextEncoder().encode(capturedWire)).toEqual(
+      new TextEncoder().encode(unboundWire),
+    );
     expect(structuredClone(derived)).toStrictEqual(structuredClone(unbound));
     expect(JSON.stringify(derived)).not.toContain("paragraphPropertyCapture");
 
@@ -105,48 +121,66 @@ describe("paragraph-property source identity", () => {
     if (!captureKey) throw new TypeError("Expected the private capture handle");
     Object.defineProperty(forged, captureKey, { value: {} });
     expect(getParagraphPropertySource(forged)).toBeUndefined();
-    expect(inspectParagraphSourceIdentity(forged, document)).toEqual({ type: "invalid" });
-    expect(paragraphPropertySourceBelongsToDocument(forged, document)).toBe(false);
+    expect(inspectParagraphSourceIdentity(forged, document)).toEqual({
+      type: "invalid",
+    });
+    expect(paragraphPropertySourceBelongsToDocument(forged, document)).toBe(
+      false,
+    );
   });
 
   test("the private contract follows immutable derivations without entering JSON", async () => {
-    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
+    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), {
+      preloadFonts: false,
+    });
     const contract = getDocumentParagraphPropertySourceContract(document);
     const derived = { ...document, package: { ...document.package } };
 
     expect(getDocumentParagraphPropertySourceContract(derived)).toBe(contract);
     expect(copyDocumentParagraphPropertySources(derived)?.size).toBe(41);
-    expect(JSON.stringify(derived)).not.toContain("paragraphPropertySourceBinding");
+    expect(JSON.stringify(derived)).not.toContain(
+      "paragraphPropertySourceBinding",
+    );
     expect(JSON.stringify(derived)).not.toContain("folio-ppr-v1");
   });
 
   test("callers receive an isolated copy of the private source registry", async () => {
-    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
+    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), {
+      preloadFonts: false,
+    });
     const sources = copyDocumentParagraphPropertySources(document);
     const sourceCount = sources?.size;
 
     sources?.clear();
 
     expect(sourceCount).toBe(41);
-    expect(copyDocumentParagraphPropertySources(document)?.size).toBe(sourceCount);
+    expect(copyDocumentParagraphPropertySources(document)?.size).toBe(
+      sourceCount,
+    );
   });
 
   test("the sanctioned structured clone explicitly transfers private source identity", async () => {
-    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
+    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), {
+      preloadFonts: false,
+    });
     const rawClone = structuredClone(document);
     const ownedClone = cloneDocumentWithParagraphPropertySources(document);
     const sourceParagraph = firstParagraphIn(document.package.document.content);
-    const clonedParagraph = firstParagraphIn(ownedClone.package.document.content);
+    const clonedParagraph = firstParagraphIn(
+      ownedClone.package.document.content,
+    );
 
-    expect(getDocumentParagraphPropertySourceContract(rawClone)).toBeUndefined();
+    expect(
+      getDocumentParagraphPropertySourceContract(rawClone),
+    ).toBeUndefined();
     expect(copyDocumentParagraphPropertySources(rawClone)).toBeUndefined();
     expect(getDocumentParagraphPropertySourceContract(ownedClone)).toBe(
       getDocumentParagraphPropertySourceContract(document),
     );
     expect(copyDocumentParagraphPropertySources(ownedClone)?.size).toBe(41);
-    expect(sourceParagraph && getParagraphPropertySource(sourceParagraph)).toEqual(
-      clonedParagraph && getParagraphPropertySource(clonedParagraph),
-    );
+    expect(
+      sourceParagraph && getParagraphPropertySource(sourceParagraph),
+    ).toEqual(clonedParagraph && getParagraphPropertySource(clonedParagraph));
   });
 
   test("v1 traversal fixes body, text-box, and table ordinals across parse options", async () => {
@@ -173,10 +207,14 @@ describe("paragraph-property source identity", () => {
       .flatMap((run) => run.content)
       .find((content) => content.type === "shape" && content.shape.textBody)
       ?.shape.textBody?.content.at(0);
-    const table = browser.package.document.content.find((block) => block.type === "table");
+    const table = browser.package.document.content.find(
+      (block) => block.type === "table",
+    );
     const tableParagraph = table?.rows.at(0)?.cells.at(0)?.content.at(0);
 
-    expect(getParagraphPropertySourceToken(bodyParagraph)).toBe(token(LAYOUT_DIGEST, 0));
+    expect(getParagraphPropertySourceToken(bodyParagraph)).toBe(
+      token(LAYOUT_DIGEST, 0),
+    );
     expect(textBoxParagraph?.type).toBe("paragraph");
     expect(
       textBoxParagraph?.type === "paragraph"
@@ -196,14 +234,18 @@ describe("paragraph-property source identity", () => {
     const document = await parseDocx(source, { preloadFonts: false });
     const paragraph = firstParagraphIn(document.package.document.content);
 
-    expect(tokensIn(document.package.document.content)).toEqual([token(BLOCK_SDT_DIGEST, 0)]);
+    expect(tokensIn(document.package.document.content)).toEqual([
+      token(BLOCK_SDT_DIGEST, 0),
+    ]);
     expect(paragraph && getParagraphPropertySourceToken(paragraph)).toBe(
       token(BLOCK_SDT_DIGEST, 0),
     );
   });
 
   test("hidden table paragraphs retain one source identity across transport clones", async () => {
-    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
+    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), {
+      preloadFonts: false,
+    });
     const paragraph = firstParagraphIn(document.package.document.content);
     if (!paragraph) {
       throw new Error("Layout fixture must contain a paragraph");
@@ -212,17 +254,28 @@ describe("paragraph-property source identity", () => {
     const firstTransport = transportTableCellsWithParagraphPropertySources([
       { type: "tableCell", content: [paragraph] },
     ]);
-    const secondTransport = transportTableCellsWithParagraphPropertySources(firstTransport);
+    const secondTransport =
+      transportTableCellsWithParagraphPropertySources(firstTransport);
     const restored = restoreTableCellsWithParagraphPropertySources(
       decodeTableCellParagraphSourcePayload(secondTransport),
     );
     const restoredParagraph = restored.at(0)?.content.at(0);
-    if (typeof sourceToken !== "string" || restoredParagraph?.type !== "paragraph") {
+    if (
+      typeof sourceToken !== "string" ||
+      restoredParagraph?.type !== "paragraph"
+    ) {
       throw new Error("Transport fixture lost its paragraph source");
     }
 
-    expect(getParagraphPropertySourceToken(restoredParagraph)).toBe(sourceToken);
-    expect(Object.hasOwn(restoredParagraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)).toBe(false);
+    expect(getParagraphPropertySourceToken(restoredParagraph)).toBe(
+      sourceToken,
+    );
+    expect(
+      Object.hasOwn(
+        restoredParagraph,
+        TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+      ),
+    ).toBe(false);
   });
 
   test("transport explicitly marks a newly authored hidden paragraph", () => {
@@ -235,7 +288,12 @@ describe("paragraph-property source identity", () => {
       throw new Error("Transport fixture lost its authored paragraph");
     }
 
-    expect(Reflect.get(transportedParagraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)).toEqual({
+    expect(
+      Reflect.get(
+        transportedParagraph,
+        TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+      ),
+    ).toEqual({
       type: "authored",
     });
     const restored = restoreTableCellsWithParagraphPropertySources(
@@ -245,7 +303,10 @@ describe("paragraph-property source identity", () => {
     expect(restoredParagraph?.type).toBe("paragraph");
     expect(
       restoredParagraph?.type === "paragraph"
-        ? Object.hasOwn(restoredParagraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)
+        ? Object.hasOwn(
+            restoredParagraph,
+            TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+          )
         : true,
     ).toBe(false);
   });
@@ -254,22 +315,37 @@ describe("paragraph-property source identity", () => {
     { type: "source" },
     { token: "p1d:00000000000000000000000000000000:0", type: "source" },
     { type: "authored" },
-  ] as const)("rejects conflicting hidden transport binding %#", async (binding) => {
-    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
-    const paragraph = firstParagraphIn(document.package.document.content);
-    if (!paragraph) {
-      throw new Error("Layout fixture must contain a paragraph");
-    }
-    const tampered = { ...paragraph };
-    copyParagraphPropertySource(tampered, paragraph);
-    if (!Reflect.set(tampered, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR, binding)) {
-      throw new Error("Transport fixture could not attach its invalid binding");
-    }
+  ] as const)(
+    "rejects conflicting hidden transport binding %#",
+    async (binding) => {
+      const document = await parseDocx(await readFile(LAYOUT_FIXTURE), {
+        preloadFonts: false,
+      });
+      const paragraph = firstParagraphIn(document.package.document.content);
+      if (!paragraph) {
+        throw new Error("Layout fixture must contain a paragraph");
+      }
+      const tampered = { ...paragraph };
+      copyParagraphPropertySource(tampered, paragraph);
+      if (
+        !Reflect.set(
+          tampered,
+          TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+          binding,
+        )
+      ) {
+        throw new Error(
+          "Transport fixture could not attach its invalid binding",
+        );
+      }
 
-    expect(() =>
-      transportTableCellsWithParagraphPropertySources([{ type: "tableCell", content: [tampered] }]),
-    ).toThrow();
-  });
+      expect(() =>
+        transportTableCellsWithParagraphPropertySources([
+          { type: "tableCell", content: [tampered] },
+        ]),
+      ).toThrow();
+    },
+  );
 
   test("decodes nested hidden table-cell paragraph bindings before typed traversal", () => {
     const payload = decodeTableCellParagraphSourcePayload([
@@ -286,7 +362,9 @@ describe("paragraph-property source identity", () => {
                     type: "tableCell",
                     content: [
                       {
-                        [TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR]: { type: "authored" },
+                        [TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR]: {
+                          type: "authored",
+                        },
                         type: "paragraph",
                         content: [],
                       },
@@ -322,9 +400,10 @@ describe("paragraph-property source identity", () => {
 
     expect(second).toBe(first);
     expect(Reflect.set(firstCell, "content", [])).toBe(false);
-    expect(restoreTableCellsWithParagraphPropertySources(first).at(0)?.content.at(0)?.type).toBe(
-      "paragraph",
-    );
+    expect(
+      restoreTableCellsWithParagraphPropertySources(first).at(0)?.content.at(0)
+        ?.type,
+    ).toBe("paragraph");
   });
 
   test("payload validation errors never retain document values", () => {
@@ -378,7 +457,10 @@ describe("paragraph-property source identity", () => {
     {
       classification: "cyclic_or_aliased_graph",
       createPayload: () => {
-        const cell: Record<string, unknown> = { type: "tableCell", content: [] };
+        const cell: Record<string, unknown> = {
+          type: "tableCell",
+          content: [],
+        };
         cell["content"] = [cell];
         return [cell];
       },
@@ -423,7 +505,10 @@ describe("paragraph-property source identity", () => {
     {
       classification: "complexity_limit",
       createPayload: () =>
-        Array.from({ length: 50_001 }, () => ({ type: "tableCell", content: [] })),
+        Array.from({ length: 50_001 }, () => ({
+          type: "tableCell",
+          content: [],
+        })),
       type: "over-complex",
     },
   ] as const)(

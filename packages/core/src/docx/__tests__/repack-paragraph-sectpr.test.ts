@@ -15,13 +15,18 @@ const FIXTURE_PATH = path.join(
 
 const readFixture = (): ArrayBuffer => {
   const bytes = readFileSync(FIXTURE_PATH);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 };
 
 const countParagraphSectPrs = (
   blocks: readonly { type: string; sectionProperties?: unknown }[],
 ): number =>
-  blocks.filter((b) => b.type === "paragraph" && b.sectionProperties !== undefined).length;
+  blocks.filter(
+    (b) => b.type === "paragraph" && b.sectionProperties !== undefined,
+  ).length;
 
 // Regression: this real-world contract places its body-level A4 sectPr before
 // all content, followed by an empty paragraph-level section break. Repacking
@@ -32,7 +37,9 @@ describe("repack preserves paragraph-level section properties", () => {
     const buf = readFixture();
     const doc = await parseDocx(buf);
 
-    const originalParagraphSectPrs = countParagraphSectPrs(doc.package.document.content);
+    const originalParagraphSectPrs = countParagraphSectPrs(
+      doc.package.document.content,
+    );
     expect(originalParagraphSectPrs).toBeGreaterThan(0);
     const originalSectionBreak = doc.package.document.content.find(
       (block): block is Paragraph =>
@@ -42,12 +49,16 @@ describe("repack preserves paragraph-level section properties", () => {
       pageWidth: 11_906,
       pageHeight: 16_838,
     });
-    expect(doc.package.document.finalSectionProperties?.pageWidth).toBeUndefined();
+    expect(
+      doc.package.document.finalSectionProperties?.pageWidth,
+    ).toBeUndefined();
 
     const repacked = await repackDocx(doc, { updateModifiedDate: false });
     const reparsed = await parseDocx(repacked);
 
-    expect(countParagraphSectPrs(reparsed.package.document.content)).toBe(originalParagraphSectPrs);
+    expect(countParagraphSectPrs(reparsed.package.document.content)).toBe(
+      originalParagraphSectPrs,
+    );
     const reparsedSectionBreak = reparsed.package.document.content.find(
       (block): block is Paragraph =>
         block.type === "paragraph" && block.sectionProperties !== undefined,
@@ -56,6 +67,8 @@ describe("repack preserves paragraph-level section properties", () => {
       pageWidth: 11_906,
       pageHeight: 16_838,
     });
-    expect(reparsed.package.document.finalSectionProperties?.pageWidth).toBeUndefined();
+    expect(
+      reparsed.package.document.finalSectionProperties?.pageWidth,
+    ).toBeUndefined();
   });
 });

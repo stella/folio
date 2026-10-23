@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { EditorView } from "prosemirror-view";
 
 import { ContentControlLockedError } from "../content-controls";
@@ -59,7 +59,9 @@ describe("ContentControlWidgetController", () => {
     picker.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(controller.getSnapshot().status).toBe("dropdown");
 
-    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    document.body.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true }),
+    );
     expect(controller.getSnapshot()).toEqual({ status: "closed" });
     controller.destroy();
     picker.remove();
@@ -113,7 +115,10 @@ describe("ContentControlWidgetController", () => {
       pmPos: 9,
       sdtType: "date",
       anchor: anchor(10, 20),
-      error: new ContentControlLockedError({ message: "locked", lock: "contentLocked" }),
+      error: new ContentControlLockedError({
+        message: "locked",
+        lock: "contentLocked",
+      }),
     });
     expect(refused).toBe(true);
     expect(controller.getSnapshot()).toEqual({ status: "closed" });

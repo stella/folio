@@ -70,15 +70,20 @@ export const planTableMutations = <T>(
         skipped.push({ id: candidate.operationId, reason: "unsupportedBlock" });
         continue;
       }
-      const claimedRectangles = mergeRectanglesByTable.get(target.tablePosition) ?? [];
+      const claimedRectangles =
+        mergeRectanglesByTable.get(target.tablePosition) ?? [];
       if (
-        claimedRectangles.some((rectangle) => tableRectanglesEqual(rectangle, target.rectangle))
+        claimedRectangles.some((rectangle) =>
+          tableRectanglesEqual(rectangle, target.rectangle),
+        )
       ) {
         skipped.push({ id: candidate.operationId, reason: "noopOperation" });
         continue;
       }
       if (
-        claimedRectangles.some((rectangle) => tableRectanglesOverlap(rectangle, target.rectangle))
+        claimedRectangles.some((rectangle) =>
+          tableRectanglesOverlap(rectangle, target.rectangle),
+        )
       ) {
         skipped.push({ id: candidate.operationId, reason: "unsupportedBlock" });
         continue;
@@ -108,15 +113,20 @@ export const planTableMutations = <T>(
         skipped.push({ id: candidate.operationId, reason: "unsupportedBlock" });
         continue;
       }
-      const claimedRectangles = splitRectanglesByTable.get(target.tablePosition) ?? [];
+      const claimedRectangles =
+        splitRectanglesByTable.get(target.tablePosition) ?? [];
       if (
-        claimedRectangles.some((rectangle) => tableRectanglesEqual(rectangle, target.rectangle))
+        claimedRectangles.some((rectangle) =>
+          tableRectanglesEqual(rectangle, target.rectangle),
+        )
       ) {
         skipped.push({ id: candidate.operationId, reason: "noopOperation" });
         continue;
       }
       if (
-        claimedRectangles.some((rectangle) => tableRectanglesOverlap(rectangle, target.rectangle))
+        claimedRectangles.some((rectangle) =>
+          tableRectanglesOverlap(rectangle, target.rectangle),
+        )
       ) {
         skipped.push({ id: candidate.operationId, reason: "unsupportedBlock" });
         continue;
@@ -145,10 +155,16 @@ type MergesRemoveRowOptions = {
  * tracked merging cannot record that removal. Keep a row-removing merge alone
  * and refuse the later merge when their combined folded cells empty a row.
  */
-const mergesRemoveRow = ({ doc, tablePosition, rectangles }: MergesRemoveRowOptions): boolean => {
+const mergesRemoveRow = ({
+  doc,
+  tablePosition,
+  rectangles,
+}: MergesRemoveRowOptions): boolean => {
   const table = doc.nodeAt(tablePosition);
   if (table?.type.spec["tableRole"] !== "table") {
-    return panic("A planned cell merge lost its table", { position: tablePosition });
+    return panic("A planned cell merge lost its table", {
+      position: tablePosition,
+    });
   }
   const map = TableMap.get(table);
   const folded = new Set<number>();
@@ -169,13 +185,19 @@ const mergesRemoveRow = ({ doc, tablePosition, rectangles }: MergesRemoveRowOpti
   return removesRow;
 };
 
-const tableRectanglesOverlap = (left: TableRectangle, right: TableRectangle): boolean =>
+const tableRectanglesOverlap = (
+  left: TableRectangle,
+  right: TableRectangle,
+): boolean =>
   left.left < right.right &&
   right.left < left.right &&
   left.top < right.bottom &&
   right.top < left.bottom;
 
-export const tableRectanglesEqual = (left: TableRectangle, right: TableRectangle): boolean =>
+export const tableRectanglesEqual = (
+  left: TableRectangle,
+  right: TableRectangle,
+): boolean =>
   left.left === right.left &&
   left.top === right.top &&
   left.right === right.right &&

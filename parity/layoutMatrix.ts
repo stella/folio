@@ -1,9 +1,9 @@
+import { TaggedError } from "better-result";
 import path from "node:path";
 
-import { TaggedError } from "better-result";
 import {
-  layoutInteractionCasePairs,
   type LayoutInteractionCase,
+  layoutInteractionCasePairs,
 } from "./fixtures/layout-interaction-matrix";
 import type {
   CorpusReport,
@@ -75,7 +75,9 @@ const countDivergences = (divergences: Divergence[]): DivergenceCounts => {
 const hasRasterDifference = (raster: RasterComparison | undefined): boolean =>
   raster === undefined || raster.status === "empty" || raster.score < 1;
 
-const countRequiredRasterFailures = (raster: RasterComparison | undefined): number => {
+const countRequiredRasterFailures = (
+  raster: RasterComparison | undefined,
+): number => {
   if (raster === undefined || raster.status === "empty") return 1;
   return raster.pages.filter(
     ({ status }) =>
@@ -99,13 +101,21 @@ const summarizeCase = (
   result: FeatureAttributedResult,
 ): LayoutMatrixCaseResult => {
   const geometryReliable = isGeometryScoreReliable(result.fontEnvironment);
-  const required = result.divergences.filter(({ kind }) => REQUIRED_DIVERGENCE_KINDS.has(kind));
-  const diagnostics = result.divergences.filter(({ kind }) => !REQUIRED_DIVERGENCE_KINDS.has(kind));
-  const requiredRasterFailures = countRequiredRasterFailures(result.rasterComparison);
+  const required = result.divergences.filter(({ kind }) =>
+    REQUIRED_DIVERGENCE_KINDS.has(kind),
+  );
+  const diagnostics = result.divergences.filter(
+    ({ kind }) => !REQUIRED_DIVERGENCE_KINDS.has(kind),
+  );
+  const requiredRasterFailures = countRequiredRasterFailures(
+    result.rasterComparison,
+  );
   const hasRequiredFailure =
     (geometryReliable && required.length > 0) || requiredRasterFailures > 0;
   const hasDiagnostic =
-    required.length > 0 || diagnostics.length > 0 || hasRasterDifference(result.rasterComparison);
+    required.length > 0 ||
+    diagnostics.length > 0 ||
+    hasRasterDifference(result.rasterComparison);
   const status = caseStatus(hasRequiredFailure, hasDiagnostic);
 
   return {
@@ -117,7 +127,9 @@ const summarizeCase = (
     requiredDivergences: countDivergences(required),
     diagnosticDivergences: countDivergences(diagnostics),
     requiredRasterFailures,
-    ...(result.rasterComparison === undefined ? {} : { rasterComparison: result.rasterComparison }),
+    ...(result.rasterComparison === undefined
+      ? {}
+      : { rasterComparison: result.rasterComparison }),
   };
 };
 
@@ -136,8 +148,10 @@ const requireCaseResults = (
     // clean/default slice because its fixtures contain no review markup.
     if (result.reviewView === "all-markup") continue;
     const id = resultCaseId(result);
-    if (!expected.has(id)) throw layoutMatrixError(`Unexpected matrix result: ${id}.`);
-    if (byId.has(id)) throw layoutMatrixError(`Duplicate matrix result: ${id}.`);
+    if (!expected.has(id))
+      throw layoutMatrixError(`Unexpected matrix result: ${id}.`);
+    if (byId.has(id))
+      throw layoutMatrixError(`Duplicate matrix result: ${id}.`);
     byId.set(id, result);
   }
   for (const { id } of scenarios) {
@@ -146,7 +160,9 @@ const requireCaseResults = (
   return byId;
 };
 
-const clusterFailures = (cases: LayoutMatrixCaseResult[]): LayoutMatrixInteractionCluster[] => {
+const clusterFailures = (
+  cases: LayoutMatrixCaseResult[],
+): LayoutMatrixInteractionCluster[] => {
   const clusters = new Map<string, string[]>();
   for (const result of cases) {
     if (result.status !== "fail") continue;
@@ -161,7 +177,9 @@ const clusterFailures = (cases: LayoutMatrixCaseResult[]): LayoutMatrixInteracti
     failingCases: caseIds.length,
     caseIds,
   })).toSorted(
-    (left, right) => right.failingCases - left.failingCases || left.pair.localeCompare(right.pair),
+    (left, right) =>
+      right.failingCases - left.failingCases ||
+      left.pair.localeCompare(right.pair),
   );
 };
 
@@ -172,7 +190,8 @@ export const summarizeLayoutMatrix = (
   const byId = requireCaseResults(scenarios, report.results);
   const cases = scenarios.map((scenario) => {
     const result = byId.get(scenario.id);
-    if (!result) throw layoutMatrixError(`Missing matrix result: ${scenario.id}.`);
+    if (!result)
+      throw layoutMatrixError(`Missing matrix result: ${scenario.id}.`);
     return summarizeCase(scenario, result);
   });
   const summary = { total: cases.length, pass: 0, advisory: 0, fail: 0 };

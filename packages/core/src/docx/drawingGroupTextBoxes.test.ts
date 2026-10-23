@@ -3,7 +3,13 @@ import { EditorState } from "prosemirror-state";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, DrawingContent, Paragraph, Shape, ShapeContent } from "../types/document";
+import type {
+  Document,
+  DrawingContent,
+  Paragraph,
+  Shape,
+  ShapeContent,
+} from "../types/document";
 import { parseDocumentBody } from "./documentParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 
@@ -23,7 +29,12 @@ const textBoxShape = (
 ): string =>
   `<wps:wsp><wps:cNvPr id="9" name="${name}"/><wps:cNvSpPr txBox="1"/><wps:spPr><a:xfrm><a:off x="${frame.x}" y="${frame.y}"/><a:ext cx="${frame.cx}" cy="${frame.cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></wps:spPr><wps:txbx><w:txbxContent><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:txbxContent></wps:txbx>${bodyPr}</wps:wsp>`;
 
-const rectangle = (frame: { x: number; y: number; cx: number; cy: number }): string =>
+const rectangle = (frame: {
+  x: number;
+  y: number;
+  cx: number;
+  cy: number;
+}): string =>
   `<wps:wsp><wps:cNvPr id="8" name="Fill"/><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x="${frame.x}" y="${frame.y}"/><a:ext cx="${frame.cx}" cy="${frame.cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="D9E1F3"/></a:solidFill></wps:spPr><wps:bodyPr/></wps:wsp>`;
 
 /**
@@ -74,7 +85,9 @@ const firstParagraph = (document: Document): Paragraph => {
 };
 
 const runContents = (paragraph: Paragraph) =>
-  paragraph.content.filter((content) => content.type === "run").flatMap((run) => run.content);
+  paragraph.content
+    .filter((content) => content.type === "run")
+    .flatMap((run) => run.content);
 
 const liftedShapes = (paragraph: Paragraph): Shape[] =>
   runContents(paragraph)
@@ -83,7 +96,9 @@ const liftedShapes = (paragraph: Paragraph): Shape[] =>
     .filter((shape) => shape.groupChild !== undefined);
 
 const groupDrawing = (paragraph: Paragraph): DrawingContent => {
-  const drawing = runContents(paragraph).find((content) => content.type === "drawing");
+  const drawing = runContents(paragraph).find(
+    (content) => content.type === "drawing",
+  );
   if (drawing?.type !== "drawing") {
     throw new Error("Expected the group drawing");
   }
@@ -102,7 +117,9 @@ const textOf = (shape: Shape): string =>
 
 describe("text boxes inside a DrawingML group", () => {
   test("maps each child frame through the group's child coordinate space", () => {
-    const paragraph = firstParagraph(documentWith(anchoredGroup(TWO_TEXT_BOXES)));
+    const paragraph = firstParagraph(
+      documentWith(anchoredGroup(TWO_TEXT_BOXES)),
+    );
     const [first, second] = liftedShapes(paragraph);
 
     // (150 - 100) * 2000 = 100,000 and (-150 + 200) * 2000 = 100,000 from the
@@ -122,12 +139,24 @@ describe("text boxes inside a DrawingML group", () => {
   });
 
   test("keeps each child's body insets, anchoring and autofit, and the group's layer", () => {
-    const paragraph = firstParagraph(documentWith(anchoredGroup(TWO_TEXT_BOXES)));
+    const paragraph = firstParagraph(
+      documentWith(anchoredGroup(TWO_TEXT_BOXES)),
+    );
     const [first, second] = liftedShapes(paragraph);
 
-    expect(first?.textBody?.margins).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
+    expect(first?.textBody?.margins).toEqual({
+      left: 0,
+      top: 0,
+      right: 0,
+      bottom: 0,
+    });
     expect(first?.textBody?.anchor).toBe("top");
-    expect(second?.textBody?.margins).toEqual({ left: 45_720, top: 0, right: 45_720, bottom: 0 });
+    expect(second?.textBody?.margins).toEqual({
+      left: 45_720,
+      top: 0,
+      right: 45_720,
+      bottom: 0,
+    });
     expect(second?.textBody?.anchor).toBe("middle");
     expect(second?.textBody?.autoFit).toBe("none");
     expect(first?.wrap).toEqual({ type: "behind" });
@@ -137,7 +166,9 @@ describe("text boxes inside a DrawingML group", () => {
   });
 
   test("leaves the lifted text out of the group's preview but keeps its geometry", () => {
-    const drawing = groupDrawing(firstParagraph(documentWith(anchoredGroup(TWO_TEXT_BOXES))));
+    const drawing = groupDrawing(
+      firstParagraph(documentWith(anchoredGroup(TWO_TEXT_BOXES))),
+    );
     const svg = svgOf(drawing);
 
     expect(svg).toContain('fill="#D9E1F3"');
@@ -161,11 +192,14 @@ describe("text boxes inside a DrawingML group", () => {
   });
 
   test("carries a child's rotation and flips onto its text box", () => {
-    const rotated = textBoxShape("Turned", { x: 150, y: -150, cx: 400, cy: 100 }, "Delta").replace(
-      "<a:xfrm>",
-      '<a:xfrm rot="5400000" flipH="1">',
+    const rotated = textBoxShape(
+      "Turned",
+      { x: 150, y: -150, cx: 400, cy: 100 },
+      "Delta",
+    ).replace("<a:xfrm>", '<a:xfrm rot="5400000" flipH="1">');
+    const [shape] = liftedShapes(
+      firstParagraph(documentWith(anchoredGroup(rotated))),
     );
-    const [shape] = liftedShapes(firstParagraph(documentWith(anchoredGroup(rotated))));
 
     expect(shape?.transform).toEqual({ rotation: 90, flipH: true });
   });
@@ -177,13 +211,19 @@ describe("text boxes inside a DrawingML group", () => {
       "</wpg:grpSpPr>",
       `</wpg:grpSpPr>${rectangle({ x: 0, y: 0, cx: 100, cy: 100 })}`,
     );
-    const svg = svgOf(groupDrawing(firstParagraph(documentWith(anchoredGroup(nestedFill + line)))));
+    const svg = svgOf(
+      groupDrawing(
+        firstParagraph(documentWith(anchoredGroup(nestedFill + line))),
+      ),
+    );
 
     // 6,000 EMU of line width is 3 units where one unit spans 2,000 EMU.
     expect(svg).toContain(
       '<line x1="100" y1="-100" x2="1100" y2="-100" stroke="#000000" stroke-width="3"/>',
     );
-    expect(svg).toContain('<g transform="translate(500 0) scale(5 2.5) translate(0 0)">');
+    expect(svg).toContain(
+      '<g transform="translate(500 0) scale(5 2.5) translate(0 0)">',
+    );
     expect(svg).not.toContain("Gamma");
   });
 
@@ -203,7 +243,10 @@ describe("text boxes inside a DrawingML group", () => {
 });
 
 describe("saving text boxes inside a DrawingML group", () => {
-  const roundTrip = (document: Document, edit?: (state: EditorState) => EditorState): Paragraph => {
+  const roundTrip = (
+    document: Document,
+    edit?: (state: EditorState) => EditorState,
+  ): Paragraph => {
     const pmDocument = toProseDoc(document);
     const state = EditorState.create({ doc: pmDocument });
     const edited = edit ? edit(state).doc : pmDocument;
@@ -251,14 +294,19 @@ describe("saving text boxes inside a DrawingML group", () => {
   test("writes an edited text box back into its place in the group", () => {
     const document = documentWith(anchoredGroup(NESTED));
     const paragraph = roundTrip(document, (state) =>
-      state.apply(state.tr.insertText("Edited ", textPositionIn(state, "Inner"))),
+      state.apply(
+        state.tr.insertText("Edited ", textPositionIn(state, "Inner")),
+      ),
     );
     const xml = serializeParagraph(paragraph);
 
     expect(xml.match(/<wpg:wgp>/gu)).toHaveLength(1);
     expect(xml.match(/<wps:txbx>/gu)).toHaveLength(1);
     expect(xml).not.toContain("wordprocessingShape");
-    const nested = xml.slice(xml.indexOf("<wpg:grpSp>"), xml.indexOf("</wpg:grpSp>"));
+    const nested = xml.slice(
+      xml.indexOf("<wpg:grpSp>"),
+      xml.indexOf("</wpg:grpSp>"),
+    );
     expect(nested).toContain("Edited Gamma");
     expect(xml.indexOf("Edited Gamma")).toBeLessThan(xml.indexOf("</wpg:wgp>"));
   });
@@ -266,11 +314,15 @@ describe("saving text boxes inside a DrawingML group", () => {
   test("keeps the untouched sibling's authored XML when one text box is edited", () => {
     const document = documentWith(anchoredGroup(TWO_TEXT_BOXES));
     const paragraph = roundTrip(document, (state) =>
-      state.apply(state.tr.insertText("Edited ", textPositionIn(state, "Second"))),
+      state.apply(
+        state.tr.insertText("Edited ", textPositionIn(state, "Second")),
+      ),
     );
     const xml = serializeParagraph(paragraph);
 
-    expect(xml).toContain("<w:txbxContent><w:p><w:r><w:t>Alpha</w:t></w:r></w:p></w:txbxContent>");
+    expect(xml).toContain(
+      "<w:txbxContent><w:p><w:r><w:t>Alpha</w:t></w:r></w:p></w:txbxContent>",
+    );
     expect(xml).toContain("Edited Beta");
     expect(xml.match(/<wps:txbx>/gu)).toHaveLength(2);
   });
@@ -284,14 +336,20 @@ describe("saving text boxes inside a DrawingML group", () => {
 
     const xml = serializeParagraph(
       roundTrip(document, (state) =>
-        state.apply(state.tr.insertText("Edited ", textPositionIn(state, "First"))),
+        state.apply(
+          state.tr.insertText("Edited ", textPositionIn(state, "First")),
+        ),
       ),
     );
 
     expect(xml.match(/<mc:AlternateContent/gu)).toHaveLength(1);
     expect(xml).toContain("<mc:Fallback><w:pict/></mc:Fallback>");
-    expect(xml.indexOf("Edited Alpha")).toBeGreaterThan(xml.indexOf("<mc:Choice"));
-    expect(xml.indexOf("Edited Alpha")).toBeLessThan(xml.indexOf("</mc:Choice>"));
+    expect(xml.indexOf("Edited Alpha")).toBeGreaterThan(
+      xml.indexOf("<mc:Choice"),
+    );
+    expect(xml.indexOf("Edited Alpha")).toBeLessThan(
+      xml.indexOf("</mc:Choice>"),
+    );
     expect(xml).not.toContain("wordprocessingShape");
   });
 

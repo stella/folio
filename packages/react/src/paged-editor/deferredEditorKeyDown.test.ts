@@ -33,7 +33,10 @@ type FakeTextInputHandler = (
 
 type FakeTextInputView = {
   dispatch: (tr: Transaction) => void;
-  someProp: (propName: "handleTextInput", f: (handler: FakeTextInputHandler) => unknown) => unknown;
+  someProp: (
+    propName: "handleTextInput",
+    f: (handler: FakeTextInputHandler) => unknown,
+  ) => unknown;
   state: EditorState;
 };
 
@@ -57,7 +60,9 @@ const createState = (text: string): EditorState => {
   });
 };
 
-const createFakeTextInputView = (handler?: FakeTextInputHandler): FakeTextInputView => {
+const createFakeTextInputView = (
+  handler?: FakeTextInputHandler,
+): FakeTextInputView => {
   const view: FakeTextInputView = {
     dispatch(tr) {
       view.state = view.state.apply(tr);
@@ -86,34 +91,50 @@ describe("deferred editor keydown detection", () => {
   });
 
   test("replays editor modifier shortcuts while the hidden editor is deferred", () => {
-    expect(isDeferredEditorKeyDown(keyEvent("a", { metaKey: true }))).toBe(true);
-    expect(isDeferredEditorKeyDown(keyEvent("A", { ctrlKey: true }))).toBe(true);
-    expect(isDeferredEditorKeyDown(keyEvent("z", { metaKey: true }))).toBe(true);
+    expect(isDeferredEditorKeyDown(keyEvent("a", { metaKey: true }))).toBe(
+      true,
+    );
+    expect(isDeferredEditorKeyDown(keyEvent("A", { ctrlKey: true }))).toBe(
+      true,
+    );
+    expect(isDeferredEditorKeyDown(keyEvent("z", { metaKey: true }))).toBe(
+      true,
+    );
   });
 
   test("does not claim unrelated browser modifier shortcuts", () => {
-    expect(isDeferredEditorKeyDown(keyEvent("p", { metaKey: true }))).toBe(false);
-    expect(isDeferredEditorKeyDown(keyEvent("s", { ctrlKey: true }))).toBe(false);
+    expect(isDeferredEditorKeyDown(keyEvent("p", { metaKey: true }))).toBe(
+      false,
+    );
+    expect(isDeferredEditorKeyDown(keyEvent("s", { ctrlKey: true }))).toBe(
+      false,
+    );
   });
 
   test("replays composition key events", () => {
-    expect(isDeferredEditorKeyDown(keyEvent("Process", { isComposing: true }))).toBe(true);
+    expect(
+      isDeferredEditorKeyDown(keyEvent("Process", { isComposing: true })),
+    ).toBe(true);
   });
 });
 
 describe("deferred editor text replay", () => {
   test("routes text through handleTextInput hooks before dispatching fallback insertion", () => {
     let fallbackText: string | null = null;
-    const view = createFakeTextInputView((handlerView, from, to, text, defaultTransaction) => {
-      expect(handlerView).toBe(view);
-      expect(from).toBe(3);
-      expect(to).toBe(3);
-      expect(text).toBe("x");
+    const view = createFakeTextInputView(
+      (handlerView, from, to, text, defaultTransaction) => {
+        expect(handlerView).toBe(view);
+        expect(from).toBe(3);
+        expect(to).toBe(3);
+        expect(text).toBe("x");
 
-      fallbackText = defaultTransaction().doc.textContent;
-      handlerView.dispatch(handlerView.state.tr.insertText(`[${text}]`, from, to));
-      return true;
-    });
+        fallbackText = defaultTransaction().doc.textContent;
+        handlerView.dispatch(
+          handlerView.state.tr.insertText(`[${text}]`, from, to),
+        );
+        return true;
+      },
+    );
 
     dispatchEditorTextInput(view, "x");
 

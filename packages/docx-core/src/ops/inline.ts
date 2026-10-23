@@ -38,8 +38,8 @@ import {
   withChildren,
 } from "./offsets";
 import { applyFormattingPatch, priorValues } from "./patch";
-import { identitySlots } from "./slots";
 import { mergeRunContent, runsMergeable } from "./runMerge";
+import { identitySlots } from "./slots";
 import {
   EMPTY_PROPERTY_SETS,
   type EmptyPropertySet,
@@ -52,7 +52,10 @@ import {
 } from "./types";
 
 /** A run with the property set it states, or none. */
-const withRunFormatting = (run: Run, formatting: TextFormatting | undefined): Run => {
+const withRunFormatting = (
+  run: Run,
+  formatting: TextFormatting | undefined,
+): Run => {
   const next: Run = { ...run };
   if (formatting === undefined) {
     delete next.formatting;
@@ -62,7 +65,10 @@ const withRunFormatting = (run: Run, formatting: TextFormatting | undefined): Ru
   return next;
 };
 
-const withRunContent = (run: Run, content: RunContent[]): Run => ({ ...run, content });
+const withRunContent = (run: Run, content: RunContent[]): Run => ({
+  ...run,
+  content,
+});
 
 /** Two property sets state the same thing; an absent set states nothing. */
 export const sameRunFormatting = (
@@ -71,7 +77,9 @@ export const sameRunFormatting = (
 ): boolean => structurallyEqual(left ?? {}, right ?? {});
 
 /** How an inverse spells a property set it gives back: absent, or an empty set. */
-export const emptySetSpelling = (formatting: object | undefined): EmptyPropertySet =>
+export const emptySetSpelling = (
+  formatting: object | undefined,
+): EmptyPropertySet =>
   formatting !== undefined && Object.keys(formatting).length === 0
     ? EMPTY_PROPERTY_SETS.KEEP
     : EMPTY_PROPERTY_SETS.OMIT;
@@ -82,9 +90,13 @@ export const patchedSet = <Formatting extends object>(
   patch: FormattingPatch<Formatting>,
   whenEmpty: EmptyPropertySet | undefined,
 ): Partial<Formatting> | undefined =>
-  applyFormattingPatch(base, patch) ?? (whenEmpty === EMPTY_PROPERTY_SETS.KEEP ? {} : undefined);
+  applyFormattingPatch(base, patch) ??
+  (whenEmpty === EMPTY_PROPERTY_SETS.KEEP ? {} : undefined);
 
-const newTextRun = (text: string, formatting: TextFormatting | undefined): Run => {
+const newTextRun = (
+  text: string,
+  formatting: TextFormatting | undefined,
+): Run => {
   const content: RunContent[] = [{ type: "text", text }];
   return formatting === undefined || Object.keys(formatting).length === 0
     ? { type: "run", content }
@@ -109,7 +121,8 @@ export const deleteBetween = (
   const [before = [], middle = [], after = []] = partitionContent(items, gaps);
   const across = spanningRecords(items, gaps, 0, 2).length;
   const content =
-    mergeLists(before, after, across) ?? panic("The two ends of a cut record always merge.");
+    mergeLists(before, after, across) ??
+    panic("The two ends of a cut record always merge.");
   return {
     content: asParagraphContent(content),
     removed: {
@@ -147,7 +160,10 @@ export const insertSliceAt = (
 };
 
 /** The gap after inserted content: its trailing zero-width leaves come before it. */
-export const gapAfterInserted = (at: Gap, inserted: readonly ParagraphContent[]): Gap => {
+export const gapAfterInserted = (
+  at: Gap,
+  inserted: readonly ParagraphContent[],
+): Gap => {
   const width = contentWidth(inserted);
   const trailing = zeroWidthLeavesAt(inserted, width).length;
   return {
@@ -231,7 +247,10 @@ const mergeRetiring = (
   depth: number,
   from: number,
 ): Joined => {
-  const retired: { revision: number[]; control: number[] } = { revision: [], control: [] };
+  const retired: { revision: number[]; control: number[] } = {
+    revision: [],
+    control: [],
+  };
   let shared = false;
   const content = mergeLists(left, right, depth, {
     mode: "exact",
@@ -254,7 +273,11 @@ const mergeRetiring = (
 };
 
 /** Merge the records meeting at a gap, `depth` levels below the ones already running across it. */
-export const joinAt = (items: readonly ParagraphContent[], at: Gap, depth: number): Joined => {
+export const joinAt = (
+  items: readonly ParagraphContent[],
+  at: Gap,
+  depth: number,
+): Joined => {
   const across = spanningRecords(items, [at], 0, 1).length;
   const [before = [], after = []] = partitionContent(items, [at]);
   return mergeRetiring(before, after, across + depth, across + 1);
@@ -264,7 +287,11 @@ export const joinAt = (items: readonly ParagraphContent[], at: Gap, depth: numbe
 export const cutAt = (
   items: readonly ParagraphContent[],
   at: Gap,
-): { before: ParagraphContent[]; after: ParagraphContent[]; through: InlineNode[] } => {
+): {
+  before: ParagraphContent[];
+  after: ParagraphContent[];
+  through: InlineNode[];
+} => {
   const [before = [], after = []] = partitionContent(items, [at]);
   return {
     before: asParagraphContent(before),
@@ -290,7 +317,11 @@ export const joinParagraphSeam = (
 ): ParagraphContent[] => {
   const left = first.at(-1);
   const right = second.at(0);
-  if (left?.type !== "run" || right?.type !== "run" || !runsMergeable(left, right))
+  if (
+    left?.type !== "run" ||
+    right?.type !== "run" ||
+    !runsMergeable(left, right)
+  )
     return [...first, ...second];
   return [
     ...first.slice(0, -1),
@@ -303,7 +334,10 @@ export const joinParagraphSeam = (
 // Insert text
 // ---------------------------------------------------------------------------
 
-const splitRun = (run: Run, offset: number): { left: Run | undefined; right: Run | undefined } => {
+const splitRun = (
+  run: Run,
+  offset: number,
+): { left: Run | undefined; right: Run | undefined } => {
   const left: RunContent[] = [];
   const right: RunContent[] = [];
   let position = 0;
@@ -350,7 +384,12 @@ const runAtUnit = (
       continue;
     }
     if (item.type === "run") {
-      return { path: [index], run: item, runOffset: unit - start, insideRemovedRevision };
+      return {
+        path: [index],
+        run: item,
+        runOffset: unit - start,
+        insideRemovedRevision,
+      };
     }
     if (isInlineContainer(item)) {
       const hit = runAtUnit(
@@ -358,7 +397,9 @@ const runAtUnit = (
         unit - start,
         insideRemovedRevision || isRemovedRevision(item),
       );
-      return hit === undefined ? undefined : { ...hit, path: [index, ...hit.path] };
+      return hit === undefined
+        ? undefined
+        : { ...hit, path: [index, ...hit.path] };
     }
     return undefined;
   }
@@ -378,7 +419,11 @@ const insertionHost = (
 ): InsertionHost | undefined => {
   const before = offset > 0 ? runAtUnit(items, offset - 1, false) : undefined;
   if (before !== undefined && !before.insideRemovedRevision) {
-    return { path: before.path, run: before.run, runOffset: before.runOffset + 1 };
+    return {
+      path: before.path,
+      run: before.run,
+      runOffset: before.runOffset + 1,
+    };
   }
   const after = runAtUnit(items, offset, false);
   if (after !== undefined && !after.insideRemovedRevision) {
@@ -406,7 +451,10 @@ const replaceAtPath = (
   if (item === undefined || !isInlineContainer(item)) {
     return panic(`Inline path step ${index} does not name a container.`);
   }
-  out[index] = withChildren(item, replaceAtPath(childrenOf(item), rest, replacement));
+  out[index] = withChildren(
+    item,
+    replaceAtPath(childrenOf(item), rest, replacement),
+  );
   return out;
 };
 
@@ -428,7 +476,10 @@ const runWithText = (run: Run, runOffset: number, text: string): Run => {
     ) {
       const cut = runOffset - position;
       const content = [...run.content];
-      content[index] = { ...child, text: child.text.slice(0, cut) + text + child.text.slice(cut) };
+      content[index] = {
+        ...child,
+        text: child.text.slice(0, cut) + text + child.text.slice(cut),
+      };
       return withRunContent(run, content);
     }
     position += width;
@@ -492,8 +543,13 @@ export const insertTextInContent = (
   if (host === undefined) {
     return insertRunAtSlot(items, offset, newTextRun(text, formatting));
   }
-  if (formatting === undefined || sameRunFormatting(formatting, host.run.formatting)) {
-    return replaceAtPath(items, host.path, [runWithText(host.run, host.runOffset, text)]);
+  if (
+    formatting === undefined ||
+    sameRunFormatting(formatting, host.run.formatting)
+  ) {
+    return replaceAtPath(items, host.path, [
+      runWithText(host.run, host.runOffset, text),
+    ]);
   }
   const halves = splitRun(host.run, host.runOffset);
   const replacement: Run[] = [];
@@ -539,13 +595,17 @@ const patchRunsIn = ({
   for (const node of nodes) {
     if (node.type === "run") {
       const formatting = patchedSet(node.formatting, patch, whenEmpty);
-      if (runWidth(node) === 0 || sameRunFormatting(formatting, node.formatting)) {
+      if (
+        runWidth(node) === 0 ||
+        sameRunFormatting(formatting, node.formatting)
+      ) {
         out.push(node);
         continue;
       }
       const patchedRun = withRunFormatting(node, formatting);
       const boundaryJoins = boundaries.get(node);
-      if (boundaryJoins === undefined) panic("A changed run has no boundary provenance.");
+      if (boundaryJoins === undefined)
+        panic("A changed run has no boundary provenance.");
       const run =
         decorate === undefined
           ? patchedRun
@@ -556,7 +616,14 @@ const patchRunsIn = ({
     }
     if (isParagraphContent(node) && isInlineContainer(node)) {
       const children = childrenOf(node);
-      const next = patchRunsIn({ nodes: children, patch, whenEmpty, prior, decorate, boundaries });
+      const next = patchRunsIn({
+        nodes: children,
+        patch,
+        whenEmpty,
+        prior,
+        decorate,
+        boundaries,
+      });
       const same = next.every((child, index) => child === children[index]);
       out.push(same ? node : withChildren(node, asParagraphContent(next)));
       continue;
@@ -579,7 +646,11 @@ const collectRuns = (nodes: readonly InlineNode[], out: Run[]): void => {
 };
 
 /** The runs a patch between two gaps reaches, cut at the gaps: those with units there. */
-export const runsBetween = (items: readonly ParagraphContent[], from: Gap, to: Gap): Run[] => {
+export const runsBetween = (
+  items: readonly ParagraphContent[],
+  from: Gap,
+  to: Gap,
+): Run[] => {
   const [, middle = []] = partitionContent(items, [from, to]);
   const out: Run[] = [];
   collectRuns(middle, out);
@@ -618,8 +689,12 @@ export const patchRunsBetween = (
   const prior = new Map<Run, TextFormatting | undefined>();
   const middleRuns: Run[] = [];
   collectRuns(middle, middleRuns);
-  const cutsBefore = spanningRecords(items, gaps, 0, 1).some((node) => node.type === "run");
-  const cutsAfter = spanningRecords(items, gaps, 1, 2).some((node) => node.type === "run");
+  const cutsBefore = spanningRecords(items, gaps, 0, 1).some(
+    (node) => node.type === "run",
+  );
+  const cutsAfter = spanningRecords(items, gaps, 1, 2).some(
+    (node) => node.type === "run",
+  );
   const firstRun = middleRuns.at(0);
   const lastRun = middleRuns.at(-1);
   const boundaries = new Map<Run, readonly RunBoundaryJoin[]>();
@@ -642,8 +717,18 @@ export const patchRunsBetween = (
   }
   // A cut run the patch changed stays cut; containers and unchanged runs merge back.
   const alike = { mode: "asFarAsAlike" } as const;
-  const head = mergeLists(before, patchedMiddle, spanningRecords(items, gaps, 0, 1).length, alike);
-  const whole = mergeLists(head ?? [], after, spanningRecords(items, gaps, 1, 2).length, alike);
+  const head = mergeLists(
+    before,
+    patchedMiddle,
+    spanningRecords(items, gaps, 0, 1).length,
+    alike,
+  );
+  const whole = mergeLists(
+    head ?? [],
+    after,
+    spanningRecords(items, gaps, 1, 2).length,
+    alike,
+  );
   const content = asParagraphContent(whole ?? []);
 
   const restoring: (RunPatchSpan & { key: string })[] = [];
@@ -662,17 +747,25 @@ export const patchRunsBetween = (
     if (stretchOpen && last !== undefined && last.key === key) {
       last.to = end;
     } else {
-      restoring.push({ from: start, to: end, patch: restore, whenEmpty: spelling, key });
+      restoring.push({
+        from: start,
+        to: end,
+        patch: restore,
+        whenEmpty: spelling,
+        key,
+      });
     }
     stretchOpen = true;
   }
   return {
     content,
-    restoring: restoring.map(({ from: start, to: end, patch: restore, whenEmpty: spelling }) => ({
-      from: start,
-      to: end,
-      patch: restore,
-      whenEmpty: spelling,
-    })),
+    restoring: restoring.map(
+      ({ from: start, to: end, patch: restore, whenEmpty: spelling }) => ({
+        from: start,
+        to: end,
+        patch: restore,
+        whenEmpty: spelling,
+      }),
+    ),
   };
 };

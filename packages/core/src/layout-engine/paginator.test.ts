@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { SECTION_START_PLACEMENT, createPaginator } from "./paginator";
+import { createPaginator, SECTION_START_PLACEMENT } from "./paginator";
 import type { ParagraphFragment } from "./types";
 
 const SIZE = { w: 800, h: 1000 };
@@ -70,7 +70,10 @@ describe("paginator even-page margins", () => {
       sectionEvenPageMargins: [undefined, evenMargins],
     });
     paginator.forcePageBreak();
-    paginator.startSection({ sectionIndex: 1, pageNumbering: { type: "restart", start: 2 } });
+    paginator.startSection({
+      sectionIndex: 1,
+      pageNumbering: { type: "restart", start: 2 },
+    });
 
     const page = paginator.forcePageBreak({ coalesceBlankPage: true }).page;
 
@@ -90,12 +93,23 @@ describe("paginator logical page numbers", () => {
 
     const first = paginator.getCurrentState().page;
     const second = paginator.forcePageBreak().page;
-    paginator.startSection({ sectionIndex: 1, pageNumbering: { type: "continue" } });
+    paginator.startSection({
+      sectionIndex: 1,
+      pageNumbering: { type: "continue" },
+    });
     const continued = paginator.forcePageBreak().page;
-    paginator.startSection({ sectionIndex: 2, pageNumbering: { type: "restart", start: 4 } });
+    paginator.startSection({
+      sectionIndex: 2,
+      pageNumbering: { type: "restart", start: 4 },
+    });
     const restarted = paginator.forcePageBreak().page;
 
-    expect([first.number, second.number, continued.number, restarted.number]).toEqual([1, 2, 3, 4]);
+    expect([
+      first.number,
+      second.number,
+      continued.number,
+      restarted.number,
+    ]).toEqual([1, 2, 3, 4]);
     expect([
       first.logicalNumber,
       second.logicalNumber,
@@ -123,9 +137,20 @@ describe("paginator logical page numbers", () => {
     const shared = paginator.pages[0];
     const following = paginator.forcePageBreak().page;
 
-    expect(shared?.fragments.map(({ blockId }) => blockId)).toEqual(["outgoing", "incoming"]);
-    expect(shared).toMatchObject({ logicalNumber: 1, sectionIndex: 0, sectionPageNumber: 1 });
-    expect(following).toMatchObject({ logicalNumber: 3, sectionIndex: 1, sectionPageNumber: 2 });
+    expect(shared?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "outgoing",
+      "incoming",
+    ]);
+    expect(shared).toMatchObject({
+      logicalNumber: 1,
+      sectionIndex: 0,
+      sectionPageNumber: 1,
+    });
+    expect(following).toMatchObject({
+      logicalNumber: 3,
+      sectionIndex: 1,
+      sectionPageNumber: 2,
+    });
   });
 
   test("consumes a section restart on its first unflowed shared-page fragment", () => {
@@ -148,8 +173,15 @@ describe("paginator logical page numbers", () => {
     });
     const following = paginator.forcePageBreak().page;
 
-    expect(paginator.pages[0]).toMatchObject({ logicalNumber: 1, sectionIndex: 0 });
-    expect(following).toMatchObject({ logicalNumber: 3, sectionIndex: 1, sectionPageNumber: 2 });
+    expect(paginator.pages[0]).toMatchObject({
+      logicalNumber: 1,
+      sectionIndex: 0,
+    });
+    expect(following).toMatchObject({
+      logicalNumber: 3,
+      sectionIndex: 1,
+      sectionPageNumber: 2,
+    });
   });
 
   test("defers a restart when the first section fragment advances to a fresh page", () => {
@@ -164,21 +196,35 @@ describe("paginator logical page numbers", () => {
     paginator.addFragment(paragraphFragment("incoming"), 20);
 
     expect(paginator.pages).toHaveLength(2);
-    expect(paginator.pages[0]).toMatchObject({ logicalNumber: 1, sectionIndex: 0 });
-    expect(paginator.pages[1]).toMatchObject({ logicalNumber: 2, sectionIndex: 1 });
+    expect(paginator.pages[0]).toMatchObject({
+      logicalNumber: 1,
+      sectionIndex: 0,
+    });
+    expect(paginator.pages[1]).toMatchObject({
+      logicalNumber: 2,
+      sectionIndex: 1,
+    });
   });
 
   test("defers a restart when the first section fragment follows a forced break", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     paginator.addFragment(paragraphFragment("outgoing"), 20);
 
-    paginator.startSection({ sectionIndex: 1, pageNumbering: { type: "restart", start: 2 } });
+    paginator.startSection({
+      sectionIndex: 1,
+      pageNumbering: { type: "restart", start: 2 },
+    });
     paginator.forcePageBreak();
     paginator.addFragment(paragraphFragment("incoming"), 20);
 
-    expect(paginator.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([1, 2]);
+    expect(paginator.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([
+      1, 2,
+    ]);
     expect(paginator.pages[0]?.sectionIndex).toBe(0);
-    expect(paginator.pages[1]).toMatchObject({ sectionIndex: 1, sectionPageNumber: 1 });
+    expect(paginator.pages[1]).toMatchObject({
+      sectionIndex: 1,
+      sectionPageNumber: 1,
+    });
   });
 
   test("consumes a continuous section first-page slot before a forced break", () => {
@@ -192,20 +238,29 @@ describe("paginator logical page numbers", () => {
     });
     const following = paginator.forcePageBreak().page;
 
-    expect(paginator.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([1, 3]);
+    expect(paginator.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([
+      1, 3,
+    ]);
     expect(following).toMatchObject({ sectionIndex: 1, sectionPageNumber: 2 });
   });
 
   test("advances authored ordinals when a hard break reuses the current sheet", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     paginator.addFragment(paragraphFragment("outgoing"), 20);
-    paginator.startSection({ sectionIndex: 1, pageNumbering: { type: "restart", start: 0 } });
+    paginator.startSection({
+      sectionIndex: 1,
+      pageNumbering: { type: "restart", start: 0 },
+    });
     paginator.forcePageBreak();
 
     const reused = paginator.coalescePageBreak().page;
 
     expect(paginator.pages).toHaveLength(2);
-    expect(reused).toMatchObject({ logicalNumber: 1, sectionIndex: 1, sectionPageNumber: 2 });
+    expect(reused).toMatchObject({
+      logicalNumber: 1,
+      sectionIndex: 1,
+      sectionPageNumber: 2,
+    });
   });
 });
 
@@ -333,7 +388,11 @@ describe("paginator forcePageBreak", () => {
     }
 
     expect(paginator.pages.at(0)?.fragments).toHaveLength(carrierCount);
-    expect(writes).toEqual({ x: carrierCount * 2, y: carrierCount * 2, width: carrierCount });
+    expect(writes).toEqual({
+      x: carrierCount * 2,
+      y: carrierCount * 2,
+      width: carrierCount,
+    });
   });
 
   test("retargetCurrentBlankPage leaves nonblank pages unchanged", () => {
@@ -359,7 +418,12 @@ describe("paginator block spacing", () => {
     });
 
     paginator.addFragment({ kind: "paragraph" } as never, 10, 0, 20);
-    const result = paginator.addFragment({ kind: "paragraph" } as never, 10, 10, 0);
+    const result = paginator.addFragment(
+      { kind: "paragraph" } as never,
+      10,
+      10,
+      0,
+    );
 
     expect(result.y).toBe(40);
   });
@@ -371,7 +435,12 @@ describe("paginator block spacing", () => {
     });
 
     paginator.addFragment({ kind: "paragraph" } as never, 70, 0, 20);
-    const result = paginator.addFragment({ kind: "paragraph" } as never, 20, 0, 0);
+    const result = paginator.addFragment(
+      { kind: "paragraph" } as never,
+      20,
+      0,
+      0,
+    );
 
     expect(paginator.pages.length).toBe(2);
     expect(result.y).toBe(10);
@@ -384,7 +453,12 @@ describe("paginator block spacing", () => {
     });
 
     paginator.addFragment({ kind: "paragraph" } as never, 70, 0, 20);
-    const result = paginator.addFragment({ kind: "paragraph" } as never, 20, 5, 0);
+    const result = paginator.addFragment(
+      { kind: "paragraph" } as never,
+      20,
+      5,
+      0,
+    );
 
     expect(paginator.pages.length).toBe(2);
     expect(result.y).toBe(15);

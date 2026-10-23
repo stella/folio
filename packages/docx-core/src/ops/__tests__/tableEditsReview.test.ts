@@ -10,23 +10,29 @@ import type {
 } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { compileEditorIntent } from "../editorIntent";
-import { locateTableRow } from "../tableLocation";
-import { tableEditParagraphDemand } from "../tableEdits";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import { tableEditParagraphDemand } from "../tableEdits";
+import { locateTableRow } from "../tableLocation";
 import {
   DOCUMENT_OP_TYPES,
-  OP_STORIES,
   type DocumentOp,
+  OP_STORIES,
   type TableIntentOperation,
 } from "../types";
 
-const id = (value: number): string => value.toString(16).toUpperCase().padStart(8, "0");
+const id = (value: number): string =>
+  value.toString(16).toUpperCase().padStart(8, "0");
 const paragraph = (value: number, text = "cell"): Paragraph => ({
   type: "paragraph",
   paraId: id(value),
-  content: text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+  content:
+    text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
 });
-const cell = (value: number, text = "cell", width?: TableMeasurement): TableCell => ({
+const cell = (
+  value: number,
+  text = "cell",
+  width?: TableMeasurement,
+): TableCell => ({
   type: "tableCell",
   ...(width === undefined ? {} : { formatting: { width } }),
   content: [paragraph(value, text)],
@@ -63,7 +69,8 @@ const expectGridCoverage = (table: Table): void => {
 };
 const tableFrom = (document: Document): Table => {
   const table = document.package.document.content.at(1);
-  if (table?.type !== "table") throw new Error("The fixture table remains in place.");
+  if (table?.type !== "table")
+    throw new Error("The fixture table remains in place.");
   return table;
 };
 const paragraphIds = (document: Document): string[] => {
@@ -71,7 +78,8 @@ const paragraphIds = (document: Document): string[] => {
     const ids: string[] = [];
     for (const block of blocks) {
       if (block.type === "paragraph") {
-        if (block.paraId === undefined) throw new Error("Fixture paragraph id missing.");
+        if (block.paraId === undefined)
+          throw new Error("Fixture paragraph id missing.");
         ids.push(block.paraId);
         continue;
       }
@@ -89,66 +97,80 @@ const paragraphIds = (document: Document): string[] => {
 const tableAddress = (blockId: string) => ({ story: OP_STORIES.MAIN, blockId });
 
 describe("table edit review fixes", () => {
-  test.each(["dxa", "pct"] as const)("split divides %s width exactly across unit cells", (type) => {
-    const originalWidth = { type, value: 101 } satisfies TableMeasurement;
-    const baseline = documentOf({
-      type: "table",
-      columnWidths: [130, 170],
-      rows: [
-        {
-          type: "tableRow",
-          cells: [
-            {
-              ...cell(100, "span", originalWidth),
-              formatting: { width: originalWidth, gridSpan: 2 },
-            },
-          ],
-        },
-      ],
-    });
-    const after = appliedDocument(baseline, {
-      ...tableAddress(id(100)),
-      type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-      newBlockIds: [id(101)],
-    });
-    const table = tableFrom(after);
-    const widths = table.rows.at(0)?.cells.map(({ formatting }) => formatting?.width);
-    expect(table.rows.at(0)?.cells).toHaveLength(2);
-    expect(widths).toEqual([
-      { type, value: 51 },
-      { type, value: 50 },
-    ]);
-    expect(widths?.reduce((total, width) => total + (width?.value ?? 0), 0)).toBe(
-      originalWidth.value,
-    );
-    expectGridCoverage(table);
-  });
+  test.each(["dxa", "pct"] as const)(
+    "split divides %s width exactly across unit cells",
+    (type) => {
+      const originalWidth = { type, value: 101 } satisfies TableMeasurement;
+      const baseline = documentOf({
+        type: "table",
+        columnWidths: [130, 170],
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                ...cell(100, "span", originalWidth),
+                formatting: { width: originalWidth, gridSpan: 2 },
+              },
+            ],
+          },
+        ],
+      });
+      const after = appliedDocument(baseline, {
+        ...tableAddress(id(100)),
+        type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+        newBlockIds: [id(101)],
+      });
+      const table = tableFrom(after);
+      const widths = table.rows
+        .at(0)
+        ?.cells.map(({ formatting }) => formatting?.width);
+      expect(table.rows.at(0)?.cells).toHaveLength(2);
+      expect(widths).toEqual([
+        { type, value: 51 },
+        { type, value: 50 },
+      ]);
+      expect(
+        widths?.reduce((total, width) => total + (width?.value ?? 0), 0),
+      ).toBe(originalWidth.value);
+      expectGridCoverage(table);
+    },
+  );
 
-  test.each(["dxa", "pct"] as const)("merge sums compatible top-row %s widths", (type) => {
-    const table: Table = {
-      type: "table",
-      columnWidths: [80, 120],
-      rows: [
-        {
-          type: "tableRow",
-          cells: [cell(100, "left", { type, value: 40 }), cell(101, "right", { type, value: 61 })],
-        },
-      ],
-    };
-    const after = appliedDocument(documentOf(table), {
-      ...tableAddress(id(100)),
-      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
-      top: 0,
-      bottom: 1,
-      left: 0,
-      right: 2,
-      newBlockIds: [],
-    });
-    const merged = tableFrom(after);
-    expect(merged.rows.at(0)?.cells).toHaveLength(1);
-    expect(merged.rows.at(0)?.cells.at(0)?.formatting?.width).toEqual({ type, value: 101 });
-    expectGridCoverage(merged);
-  });
+  test.each(["dxa", "pct"] as const)(
+    "merge sums compatible top-row %s widths",
+    (type) => {
+      const table: Table = {
+        type: "table",
+        columnWidths: [80, 120],
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              cell(100, "left", { type, value: 40 }),
+              cell(101, "right", { type, value: 61 }),
+            ],
+          },
+        ],
+      };
+      const after = appliedDocument(documentOf(table), {
+        ...tableAddress(id(100)),
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        top: 0,
+        bottom: 1,
+        left: 0,
+        right: 2,
+        newBlockIds: [],
+      });
+      const merged = tableFrom(after);
+      expect(merged.rows.at(0)?.cells).toHaveLength(1);
+      expect(merged.rows.at(0)?.cells.at(0)?.formatting?.width).toEqual({
+        type,
+        value: 101,
+      });
+      expectGridCoverage(merged);
+    },
+  );
 
   test("merge preserves the leading width when selected widths are incompatible", () => {
     const after = appliedDocument(
@@ -175,10 +197,12 @@ describe("table edit review fixes", () => {
         newBlockIds: [],
       },
     );
-    expect(tableFrom(after).rows.at(0)?.cells.at(0)?.formatting?.width).toEqual({
-      type: "dxa",
-      value: 40,
-    });
+    expect(tableFrom(after).rows.at(0)?.cells.at(0)?.formatting?.width).toEqual(
+      {
+        type: "dxa",
+        value: 40,
+      },
+    );
   });
 
   test("split refuses fractional OOXML width units atomically", () => {
@@ -215,7 +239,10 @@ describe("table edit review fixes", () => {
             cells: [
               {
                 ...cell(100, "span", { type: "dxa", value: 101.5 }),
-                formatting: { width: { type: "dxa", value: 101.5 }, gridSpan: 2 },
+                formatting: {
+                  width: { type: "dxa", value: 101.5 },
+                  gridSpan: 2,
+                },
               },
             ],
           },
@@ -236,7 +263,9 @@ describe("table edit review fixes", () => {
       newBlockIds: [],
     } satisfies DocumentOp;
     const direct = applyDocumentOp(document, operation);
-    expect(direct.isErr() && direct.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE);
+    expect(direct.isErr() && direct.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+    );
 
     const intent = {
       ...tableAddress(id(100)),
@@ -245,12 +274,16 @@ describe("table edit review fixes", () => {
     const located = locateTableRow(document, intent);
     if (located.isErr()) throw located.error;
     const demand = tableEditParagraphDemand(located.value, intent);
-    expect(demand.isErr() && demand.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE);
+    expect(demand.isErr() && demand.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+    );
     const compiled = compileEditorIntent(document, {
       intent: { type: "table", operation: intent },
       mode: { type: "editing" },
     });
-    expect(compiled.isErr() && compiled.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE);
+    expect(compiled.isErr() && compiled.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+    );
   });
 
   test("a physically addressed vertical continuation refuses before id demand", () => {
@@ -329,12 +362,22 @@ describe("table edit review fixes", () => {
     expect(verticalOp.newBlockIds).toEqual([]);
     const appliedVertical = appliedDocument(emptyContinuation, verticalOp);
     const verticalTable = tableFrom(appliedVertical);
-    expect(verticalTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe("restart");
-    expect(verticalTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBe("continue");
-    expect(verticalTable.rows.at(0)?.cells.at(0)?.content).toEqual([paragraph(100, "owner")]);
-    expect(verticalTable.rows.at(1)?.cells.at(0)?.content).toEqual([paragraph(101, "")]);
+    expect(verticalTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
+      "restart",
+    );
+    expect(verticalTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBe(
+      "continue",
+    );
+    expect(verticalTable.rows.at(0)?.cells.at(0)?.content).toEqual([
+      paragraph(100, "owner"),
+    ]);
+    expect(verticalTable.rows.at(1)?.cells.at(0)?.content).toEqual([
+      paragraph(101, ""),
+    ]);
     expectGridCoverage(verticalTable);
-    expect(new Set(paragraphIds(appliedVertical)).size).toBe(paragraphIds(appliedVertical).length);
+    expect(new Set(paragraphIds(appliedVertical)).size).toBe(
+      paragraphIds(appliedVertical).length,
+    );
 
     const general = documentOf({
       type: "table",
@@ -375,8 +418,12 @@ describe("table edit review fixes", () => {
     expect(rectangularTable.rows.at(1)?.cells.at(0)?.content).toEqual([
       { type: "paragraph", paraId: continuationId, content: [] },
     ]);
-    expect(rectangularTable.rows.at(0)?.cells.at(0)?.formatting?.gridSpan).toBe(2);
-    expect(rectangularTable.rows.at(1)?.cells.at(0)?.formatting?.gridSpan).toBe(2);
+    expect(rectangularTable.rows.at(0)?.cells.at(0)?.formatting?.gridSpan).toBe(
+      2,
+    );
+    expect(rectangularTable.rows.at(1)?.cells.at(0)?.formatting?.gridSpan).toBe(
+      2,
+    );
     expectGridCoverage(rectangularTable);
     const ids = paragraphIds(appliedRectangular);
     expect(new Set(ids).size).toBe(ids.length);

@@ -68,7 +68,8 @@ const clickWidget = ({
     getBoundingClientRect: () => ({ bottom: 80, left: 24 }),
   };
   const target = {
-    closest: (selector: string) => (selector === "[data-sdt-type]" ? anchor : null),
+    closest: (selector: string) =>
+      selector === "[data-sdt-type]" ? anchor : null,
   };
   const events: ContentControlWidgetEvent[] = [];
   let prevented = false;
@@ -157,7 +158,9 @@ describe("handleContentControlWidgetClick", () => {
     expect(prevented).toBe(true);
     expect(events).toEqual([]);
     expect(stateRef.state.doc.firstChild?.attrs["checked"]).toBe(true);
-    expect(stateRef.state.doc.firstChild?.firstChild?.firstChild?.attrs).toMatchObject({
+    expect(
+      stateRef.state.doc.firstChild?.firstChild?.firstChild?.attrs,
+    ).toMatchObject({
       char: "2612",
       font: "MS Gothic",
     });
@@ -347,8 +350,12 @@ describe("dispatchDropdownPick — lock handling", () => {
       plugins: [...singletonManager.getPlugins()],
     });
     const ref = { state: initial };
-    expect(() => dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca")).not.toThrow();
-    expect(dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca")).toBe(false);
+    expect(() =>
+      dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca"),
+    ).not.toThrow();
+    expect(dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca")).toBe(
+      false,
+    );
   });
 });
 
@@ -370,8 +377,12 @@ describe("dispatchDropdownPick — bound handling", () => {
       plugins: [...singletonManager.getPlugins()],
     });
     const ref = { state: initial };
-    expect(() => dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca")).not.toThrow();
-    expect(dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca")).toBe(false);
+    expect(() =>
+      dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca"),
+    ).not.toThrow();
+    expect(dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca")).toBe(
+      false,
+    );
   });
 });
 
@@ -392,8 +403,12 @@ describe("dispatchDatePick", () => {
       plugins: [...singletonManager.getPlugins()],
     });
     const ref = { state: initial };
-    expect(() => dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02")).not.toThrow();
-    expect(dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02")).toBe(false);
+    expect(() =>
+      dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02"),
+    ).not.toThrow();
+    expect(dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02")).toBe(
+      false,
+    );
   });
 
   test("returns false instead of throwing when the picked control is bound", () => {
@@ -412,8 +427,12 @@ describe("dispatchDatePick", () => {
       plugins: [...singletonManager.getPlugins()],
     });
     const ref = { state: initial };
-    expect(() => dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02")).not.toThrow();
-    expect(dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02")).toBe(false);
+    expect(() =>
+      dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02"),
+    ).not.toThrow();
+    expect(dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02")).toBe(
+      false,
+    );
   });
 
   test("writes the picked date into the control body", () => {
@@ -428,6 +447,8 @@ describe("dispatchDatePick", () => {
     const ref = { state: initial };
     const ok = dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02");
     expect(ok).toBe(true);
-    expect(ref.state.doc.firstChild?.firstChild?.textContent).toBe("2026-06-02");
+    expect(ref.state.doc.firstChild?.firstChild?.textContent).toBe(
+      "2026-06-02",
+    );
   });
 });

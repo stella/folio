@@ -52,7 +52,9 @@ const ATOM_FIXTURES = [
   },
 ] as const satisfies readonly AtomFixture[];
 
-const withMainContent = (content: Document["package"]["document"]["content"]): Document => {
+const withMainContent = (
+  content: Document["package"]["document"]["content"],
+): Document => {
   const document = createEmptyDocument();
   return {
     ...document,
@@ -66,7 +68,10 @@ const withMainContent = (content: Document["package"]["document"]["content"]): D
   };
 };
 
-const reviewedAtomDocument = (atom: RunContent, type: "insertion" | "deletion"): Document => {
+const reviewedAtomDocument = (
+  atom: RunContent,
+  type: "insertion" | "deletion",
+): Document => {
   const change: TrackedRunChange = {
     type,
     info: REVISION_INFO,
@@ -75,7 +80,10 @@ const reviewedAtomDocument = (atom: RunContent, type: "insertion" | "deletion"):
   return withMainContent([{ type: "paragraph", content: [change] }]);
 };
 
-const unreviewedAtomDocument = (atom: RunContent, formatting?: TextFormatting): Document =>
+const unreviewedAtomDocument = (
+  atom: RunContent,
+  formatting?: TextFormatting,
+): Document =>
   withMainContent([
     {
       type: "paragraph",
@@ -89,7 +97,10 @@ const unreviewedAtomDocument = (atom: RunContent, formatting?: TextFormatting): 
     },
   ]);
 
-const reviewedFieldDocument = (field: SimpleField, type: "insertion" | "deletion"): Document =>
+const reviewedFieldDocument = (
+  field: SimpleField,
+  type: "insertion" | "deletion",
+): Document =>
   withMainContent([
     {
       type: "paragraph",
@@ -120,9 +131,13 @@ const fieldBeginCount = (xml: string): number =>
 
 const hasUnderline = (xml: string): boolean => /<w:u(?:[\s/>])/u.test(xml);
 
-const roundTripThroughEditorModel = (document: Document): Promise<ArrayBuffer> =>
+const roundTripThroughEditorModel = (
+  document: Document,
+): Promise<ArrayBuffer> =>
   createDocx(
-    fromProseDoc(toProseDoc(document), document, { stylesheetSource: { type: "package" } }),
+    fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    }),
   );
 
 const resolveAll = async (
@@ -132,9 +147,15 @@ const resolveAll = async (
 ): Promise<ArrayBuffer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
   expect(reviewer.getChanges()).toEqual([
-    expect.objectContaining({ id: REVISION_INFO.id, type: expectedType, text: "" }),
+    expect.objectContaining({
+      id: REVISION_INFO.id,
+      type: expectedType,
+      text: "",
+    }),
   ]);
-  expect(decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll()).toBe(1);
+  expect(
+    decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll(),
+  ).toBe(1);
   const resolved = await reviewer.toBuffer();
   const reopened = await FolioDocxReviewer.fromBuffer(resolved);
   expect(reopened.getChanges()).toHaveLength(0);
@@ -156,7 +177,9 @@ describe("tracked run inline atom ownership", () => {
             {
               type,
               info: REVISION_INFO,
-              content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
+              content: [
+                { type: "run", content: [{ type: "renderedPageBreak" }] },
+              ],
             },
             { type: "run", content: [{ type: "text", text: "B" }] },
           ],
@@ -176,10 +199,13 @@ describe("tracked run inline atom ownership", () => {
         moveTo: "insertion",
       } as const satisfies Record<TrackedRunChange["type"], string>;
       expect(marks).toContain(markNames[type]);
-      const roundTrip = fromProseDoc(projected, source, { stylesheetSource: { type: "package" } });
+      const roundTrip = fromProseDoc(projected, source, {
+        stylesheetSource: { type: "package" },
+      });
       const paragraph = roundTrip.package.document.content.at(0);
       expect(paragraph?.type).toBe("paragraph");
-      if (paragraph?.type !== "paragraph") throw new TypeError("Paragraph projection is missing");
+      if (paragraph?.type !== "paragraph")
+        throw new TypeError("Paragraph projection is missing");
       expect(paragraph.content).toContainEqual({
         type,
         info: REVISION_INFO,
@@ -207,20 +233,36 @@ describe("tracked run inline atom ownership", () => {
       .map(({ name }) => name)
       .toSorted();
 
-    expect(Object.keys(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS).toSorted()).toEqual(schemaAtoms);
+    expect(
+      Object.keys(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS).toSorted(),
+    ).toEqual(schemaAtoms);
 
-    expect(schema.nodes["paragraph"]!.allowsMarkType(schema.marks["insertion"]!)).toBe(true);
-    expect(schema.nodes["paragraph"]!.allowsMarkType(schema.marks["deletion"]!)).toBe(true);
+    expect(
+      schema.nodes["paragraph"]!.allowsMarkType(schema.marks["insertion"]!),
+    ).toBe(true);
+    expect(
+      schema.nodes["paragraph"]!.allowsMarkType(schema.marks["deletion"]!),
+    ).toBe(true);
     // A leaf's mark set governs its nonexistent child content, not marks on the
     // inline leaf itself. The enclosing paragraph owns that validity decision.
     for (const name of ["hardBreak", "tab"] as const) {
-      expect(schema.nodes[name].allowsMarkType(schema.marks["insertion"]!)).toBe(false);
-      expect(schema.nodes[name].allowsMarkType(schema.marks["deletion"]!)).toBe(false);
+      expect(
+        schema.nodes[name].allowsMarkType(schema.marks["insertion"]!),
+      ).toBe(false);
+      expect(schema.nodes[name].allowsMarkType(schema.marks["deletion"]!)).toBe(
+        false,
+      );
     }
     expect(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS.field).toBe("field-carrier");
-    expect(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS.pageBreakRun).toBe("page-break-carrier");
-    expect(schema.nodes["field"]!.allowsMarkType(schema.marks["insertion"]!)).toBe(false);
-    expect(schema.nodes["field"]!.allowsMarkType(schema.marks["deletion"]!)).toBe(false);
+    expect(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS.pageBreakRun).toBe(
+      "page-break-carrier",
+    );
+    expect(
+      schema.nodes["field"]!.allowsMarkType(schema.marks["insertion"]!),
+    ).toBe(false);
+    expect(
+      schema.nodes["field"]!.allowsMarkType(schema.marks["deletion"]!),
+    ).toBe(false);
   });
 
   for (const { name, content, xmlTag, xmlAttribute } of ATOM_FIXTURES) {
@@ -232,26 +274,40 @@ describe("tracked run inline atom ownership", () => {
         if (xmlAttribute) {
           expect(pendingXml).toContain(xmlAttribute);
         }
-        expect(pendingXml).toContain(`<w:${type === "insertion" ? "ins" : "del"} `);
+        expect(pendingXml).toContain(
+          `<w:${type === "insertion" ? "ins" : "del"} `,
+        );
         expect(hasUnderline(pendingXml)).toBe(true);
 
-        const acceptedXml = await documentXml(await resolveAll(pending, "accept", type));
-        const rejectedXml = await documentXml(await resolveAll(pending, "reject", type));
-        expect(elementCount(acceptedXml, xmlTag)).toBe(type === "insertion" ? 1 : 0);
-        expect(elementCount(rejectedXml, xmlTag)).toBe(type === "deletion" ? 1 : 0);
+        const acceptedXml = await documentXml(
+          await resolveAll(pending, "accept", type),
+        );
+        const rejectedXml = await documentXml(
+          await resolveAll(pending, "reject", type),
+        );
+        expect(elementCount(acceptedXml, xmlTag)).toBe(
+          type === "insertion" ? 1 : 0,
+        );
+        expect(elementCount(rejectedXml, xmlTag)).toBe(
+          type === "deletion" ? 1 : 0,
+        );
       }
     });
 
     test(`keeps an unresolved tracked ${name} through the editor model`, async () => {
       for (const type of ["insertion", "deletion"] as const) {
-        const pending = await roundTripThroughEditorModel(reviewedAtomDocument(content, type));
+        const pending = await roundTripThroughEditorModel(
+          reviewedAtomDocument(content, type),
+        );
         const pendingXml = await documentXml(pending);
 
         expect(elementCount(pendingXml, xmlTag)).toBe(1);
         if (xmlAttribute) {
           expect(pendingXml).toContain(xmlAttribute);
         }
-        expect(pendingXml).toContain(`<w:${type === "insertion" ? "ins" : "del"} `);
+        expect(pendingXml).toContain(
+          `<w:${type === "insertion" ? "ins" : "del"} `,
+        );
 
         const reopened = await FolioDocxReviewer.fromBuffer(pending);
         expect(reopened.getChanges()).toEqual([
@@ -262,7 +318,9 @@ describe("tracked run inline atom ownership", () => {
 
     test(`keeps unmarked and formatted ${name} runs through a no-edit save`, async () => {
       for (const formatting of [undefined, FORMATTED_RUN]) {
-        const original = await createDocx(unreviewedAtomDocument(content, formatting));
+        const original = await createDocx(
+          unreviewedAtomDocument(content, formatting),
+        );
         const reviewer = await FolioDocxReviewer.fromBuffer(original);
         expect(reviewer.getChanges()).toHaveLength(0);
         const savedXml = await documentXml(await reviewer.toBuffer());
@@ -293,15 +351,20 @@ describe("tracked run inline atom ownership", () => {
     expect(pendingXml).not.toContain("<w:fldSimple");
     expect(fieldBeginCount(pendingXml)).toBe(1);
     expect(
-      fieldBeginCount(await documentXml(await resolveAll(pending, "accept", "deletion"))),
+      fieldBeginCount(
+        await documentXml(await resolveAll(pending, "accept", "deletion")),
+      ),
     ).toBe(0);
     expect(
-      fieldBeginCount(await documentXml(await resolveAll(pending, "reject", "deletion"))),
+      fieldBeginCount(
+        await documentXml(await resolveAll(pending, "reject", "deletion")),
+      ),
     ).toBe(1);
   });
 
   test("resolves tracked display math after an editor-model round trip", async () => {
-    const mathXml = "<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>";
+    const mathXml =
+      "<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>";
     const document = withMainContent([
       {
         type: "paragraph",
@@ -327,10 +390,14 @@ describe("tracked run inline atom ownership", () => {
     expect(pendingXml).toContain(`<w:del `);
     expect(pendingXml).toContain(mathXml);
 
-    const acceptedXml = await documentXml(await resolveAll(pending, "accept", "deletion"));
+    const acceptedXml = await documentXml(
+      await resolveAll(pending, "accept", "deletion"),
+    );
     expect(acceptedXml).not.toContain("<m:oMathPara");
 
-    const rejectedXml = await documentXml(await resolveAll(pending, "reject", "deletion"));
+    const rejectedXml = await documentXml(
+      await resolveAll(pending, "reject", "deletion"),
+    );
     expect(rejectedXml).toContain(mathXml);
   });
 
@@ -343,7 +410,9 @@ describe("tracked run inline atom ownership", () => {
         {
           type: "hyperlink",
           anchor: "field-link",
-          children: [{ type: "run", content: [{ type: "text", text: "Field value" }] }],
+          children: [
+            { type: "run", content: [{ type: "text", text: "Field value" }] },
+          ],
         },
       ],
     };
@@ -352,10 +421,14 @@ describe("tracked run inline atom ownership", () => {
     const trackedXml = await documentXml(tracked);
     expect(trackedXml).not.toContain("<w:fldSimple");
     expect(trackedXml).toContain('<w:hyperlink w:anchor="field-link"><w:ins ');
-    const pending = await roundTripThroughEditorModel(reviewedFieldDocument(field, "insertion"));
+    const pending = await roundTripThroughEditorModel(
+      reviewedFieldDocument(field, "insertion"),
+    );
     expect(await documentXml(pending)).toContain("Field value");
 
-    const untracked = await createDocx(withMainContent([{ type: "paragraph", content: [field] }]));
+    const untracked = await createDocx(
+      withMainContent([{ type: "paragraph", content: [field] }]),
+    );
     const reviewer = await FolioDocxReviewer.fromBuffer(untracked);
     expect(reviewer.getChanges()).toHaveLength(0);
     const savedXml = await documentXml(await reviewer.toBuffer());

@@ -22,14 +22,19 @@
  * live outside `document.content`, which is the only block stream walked here.
  */
 
+import { withoutExhaustedComments } from "../docx/commentRangeIntegrity";
 import type { Document } from "../types/document";
 import { newContext } from "./internals";
 import { renderBlocks } from "./renderBlock";
 import { appendTrailers } from "./trailers";
 import type { MarkdownOptions, MarkdownResult } from "./types";
-import { withoutExhaustedComments } from "../docx/commentRangeIntegrity";
 
-export type { ImageMeta, ImageRef, MarkdownOptions, MarkdownResult } from "./types";
+export type {
+  ImageMeta,
+  ImageRef,
+  MarkdownOptions,
+  MarkdownResult,
+} from "./types";
 
 // Markdown → Document import — the inverse of toMarkdown (the skills bridge's
 // second half).
@@ -48,11 +53,17 @@ export function toMarkdown(doc: Document, opts?: MarkdownOptions): string {
  * non-fatal warnings. Use when post-processing image bytes or surfacing
  * diagnostics; skill bodies only need {@link toMarkdown}.
  */
-export function toMarkdownResult(doc: Document, opts?: MarkdownOptions): MarkdownResult {
+export function toMarkdownResult(
+  doc: Document,
+  opts?: MarkdownOptions,
+): MarkdownResult {
   return renderDocument(doc, opts);
 }
 
-function renderDocument(doc: Document, opts: MarkdownOptions = {}): MarkdownResult {
+function renderDocument(
+  doc: Document,
+  opts: MarkdownOptions = {},
+): MarkdownResult {
   doc = withoutExhaustedComments(doc);
   const ctx = newContext(opts, doc.package.styles);
   const body = renderBlocks(ctx, doc.package, doc.package.document.content);

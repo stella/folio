@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import type { TableBlock, TableFragment, TableMeasure } from "../layout-engine/types";
-import { renderNestedTable, renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
+import type {
+  TableBlock,
+  TableFragment,
+  TableMeasure,
+} from "../layout-engine/types";
+import {
+  renderNestedTable,
+  renderTableFragment,
+  TABLE_CLASS_NAMES,
+} from "./renderTable";
 import type { RenderContext } from "./renderUtils";
 
 // Minimal DOM stand-in (mirrors renderTableFragment.test.ts) so the painter can
@@ -184,7 +192,9 @@ describe("renderTableFragment RTL column order (w:bidiVisual)", () => {
     expect(cellByColumn(cells, "0").style["left"]).toBe("0px");
     expect(cellByColumn(cells, "1").style["left"]).toBe("100px");
     // Outer left border lives on the leftmost cell (logical column 0).
-    expect(cellByColumn(cells, "0").style["borderLeft"]).toBe("1px solid var(--doc-border)");
+    expect(cellByColumn(cells, "0").style["borderLeft"]).toBe(
+      "1px solid var(--doc-border)",
+    );
     expect(cellByColumn(cells, "1").style["borderLeft"]).toBeUndefined();
   });
 
@@ -197,19 +207,28 @@ describe("renderTableFragment RTL column order (w:bidiVisual)", () => {
     expect(cellByColumn(cells, "0").dataset["columnIndex"]).toBe("0");
     expect(cellByColumn(cells, "1").dataset["columnIndex"]).toBe("1");
     // The visual-leftmost cell (logical last column) now draws the left border.
-    expect(cellByColumn(cells, "1").style["borderLeft"]).toBe("1px solid var(--doc-border)");
+    expect(cellByColumn(cells, "1").style["borderLeft"]).toBe(
+      "1px solid var(--doc-border)",
+    );
     expect(cellByColumn(cells, "0").style["borderLeft"]).toBeUndefined();
   });
 
   test("bidiVisual mirrors the internal column resize handle", () => {
     const { fragment, block, measure } = buildTwoColumnTable(true);
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
+    const tableEl = renderTableFragment(
+      fragment,
+      block,
+      measure,
+      renderContext,
+      {
+        document: fakeDocument,
+      },
+    ) as unknown as FakeElement;
 
     const handle = tableEl.children.find(
       (child) =>
-        child.className === TABLE_CLASS_NAMES.resizeHandle && child.dataset["columnIndex"] === "0",
+        child.className === TABLE_CLASS_NAMES.resizeHandle &&
+        child.dataset["columnIndex"] === "0",
     );
     // Boundary after logical column 0 is at x=100; mirrored to 250-100=150, less the 3px grab offset.
     expect(handle?.style["left"]).toBe("147px");
@@ -228,7 +247,9 @@ describe("renderTableFragment RTL column order (w:bidiVisual)", () => {
     const rtl = renderTable(true);
 
     const edgeOf = (el: FakeElement): FakeElement | undefined =>
-      el.children.find((child) => child.className === TABLE_CLASS_NAMES.tableEdgeHandleRight);
+      el.children.find(
+        (child) => child.className === TABLE_CLASS_NAMES.tableEdgeHandleRight,
+      );
 
     // LTR: the right edge resizes the last logical column.
     expect(edgeOf(ltr)?.dataset["columnIndex"]).toBe("1");
@@ -313,7 +334,12 @@ describe("renderNestedTable RTL placement", () => {
   test("keeps non-default leading cell padding independent of an authored indent", () => {
     const { block, measure } = buildTwoColumnTable(true);
     block.indent = 10;
-    block.rows[0]!.cells[0]!.padding = { top: 0, right: 12, bottom: 0, left: 7 };
+    block.rows[0]!.cells[0]!.padding = {
+      top: 0,
+      right: 12,
+      bottom: 0,
+      left: 7,
+    };
 
     const tableEl = renderNestedTable(
       block,
@@ -352,7 +378,12 @@ describe("renderNestedTable LTR placement", () => {
   test("keeps non-default leading cell padding independent of an authored indent", () => {
     const { block, measure } = buildTwoColumnTable(false);
     block.indent = 10;
-    block.rows[0]!.cells[0]!.padding = { top: 0, right: 7, bottom: 0, left: 12 };
+    block.rows[0]!.cells[0]!.padding = {
+      top: 0,
+      right: 7,
+      bottom: 0,
+      left: 12,
+    };
 
     const tableEl = renderNestedTable(
       block,

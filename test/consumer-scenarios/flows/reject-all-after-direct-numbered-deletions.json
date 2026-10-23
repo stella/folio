@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 774176251,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1659186934,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    },
+    {
+      "action": "new reviewer",
+      "seed": 3230001358
+    },
+    {
+      "action": "accept all",
+      "seed": 3797895831
+    },
+    {
+      "action": "story batch",
+      "seed": 3854260798,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "5E88C024",
+          "text": "Written delivery term party goods agreement agreement."
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3094542734,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 22
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "deleteTable"
+  ],
+  "origin": "shrunk from swap+splice+splice of 59fc9b62eeb8548c"
+}

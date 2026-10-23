@@ -1,8 +1,9 @@
 import { Result, TaggedError } from "better-result";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+
 import type { PinnedSeed } from "./property-testing";
 
 /**
@@ -12,12 +13,17 @@ import type { PinnedSeed } from "./property-testing";
  */
 export const PROPERTY_SEEDS_FILE = "test/property-seeds";
 const LEGACY_FILE = "test/property-seeds.json";
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 type SeedRegistry = Record<string, readonly PinnedSeed[]>;
 type SeedFiles = Record<string, SeedRegistry>;
 
-class SeedRegistryError extends TaggedError("SeedRegistryError")<{ message: string }> {}
+class SeedRegistryError extends TaggedError("SeedRegistryError")<{
+  message: string;
+}> {}
 const invalid = (message: string): never => {
   throw new SeedRegistryError({ message });
 };
@@ -59,7 +65,8 @@ export const splitPinnedSeeds = (registry: SeedRegistry): SeedFiles => {
   const files = new Map<string, Map<string, readonly PinnedSeed[]>>();
   for (const [key, seeds] of Object.entries(registry)) {
     const separator = key.indexOf("::");
-    if (separator < 1 || separator + 2 === key.length) return invalid(`Invalid seed key: ${key}`);
+    if (separator < 1 || separator + 2 === key.length)
+      return invalid(`Invalid seed key: ${key}`);
     const file = seedFileFor(key.slice(0, separator));
     const titles = files.get(file) ?? new Map<string, readonly PinnedSeed[]>();
     titles.set(key.slice(separator + 2), seeds);
@@ -72,7 +79,9 @@ export const splitPinnedSeeds = (registry: SeedRegistry): SeedFiles => {
         ([file, titles]) =>
           [
             file,
-            Object.fromEntries([...titles].toSorted(([a], [b]) => compareNames(a, b))),
+            Object.fromEntries(
+              [...titles].toSorted(([a], [b]) => compareNames(a, b)),
+            ),
           ] as const,
       ),
   );
@@ -110,26 +119,41 @@ export const parseSeedTitles = (source: string, file: string): SeedRegistry => {
   const result = Result.try(() => JSON.parse(source));
   if (result.isErr()) return invalid(`Invalid seed JSON in ${file}`);
   const parsed: unknown = result.value;
-  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSON);
+  const ast = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JSON,
+  );
   const visit = (node: ts.Node): void => {
     if (ts.isObjectLiteralExpression(node)) {
       const keys = new Set<string>();
       for (const property of node.properties) {
-        if (!ts.isPropertyAssignment(property) || !ts.isStringLiteral(property.name))
+        if (
+          !ts.isPropertyAssignment(property) ||
+          !ts.isStringLiteral(property.name)
+        )
           return invalid(`Invalid seed object in ${file}`);
         const key = property.name.text;
-        if (keys.has(key)) return invalid(`Duplicate seed key ${JSON.stringify(key)} in ${file}`);
+        if (keys.has(key))
+          return invalid(
+            `Duplicate seed key ${JSON.stringify(key)} in ${file}`,
+          );
         keys.add(key);
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(ast);
-  if (!isRecord(parsed)) return invalid(`Seed titles must be an object in ${file}`);
+  if (!isRecord(parsed))
+    return invalid(`Seed titles must be an object in ${file}`);
   const entries: [string, readonly PinnedSeed[]][] = [];
   for (const [title, seeds] of Object.entries(parsed)) {
     if (!title || !Array.isArray(seeds) || !seeds.every(isPinnedSeed))
-      return invalid(`Invalid seed entries for ${JSON.stringify(title)} in ${file}`);
+      return invalid(
+        `Invalid seed entries for ${JSON.stringify(title)} in ${file}`,
+      );
     entries.push([title, seeds]);
   }
   return Object.fromEntries(entries);
@@ -144,8 +168,12 @@ export const readSeedRegistry = (repoRoot = REPO_ROOT): SeedRegistry => {
   }).toSorted((a, b) => compareNames(a.name, b.name))) {
     const file = `${PROPERTY_SEEDS_FILE}/${entry.name}`;
     testFileForSeedFile(file);
-    if (!entry.isFile()) return invalid(`Seed registry entry must be a regular file: ${file}`);
-    files.push([file, parseSeedTitles(readFileSync(path.join(repoRoot, file), "utf8"), file)]);
+    if (!entry.isFile())
+      return invalid(`Seed registry entry must be a regular file: ${file}`);
+    files.push([
+      file,
+      parseSeedTitles(readFileSync(path.join(repoRoot, file), "utf8"), file),
+    ]);
   }
   return joinPinnedSeeds(Object.fromEntries(files));
 };

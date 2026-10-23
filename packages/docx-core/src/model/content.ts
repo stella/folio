@@ -9,22 +9,26 @@
  * and are kept together to avoid circular import issues.
  */
 
-import type { ColorValue, BorderSpec } from "./colors";
-import type { ThemeColorValue } from "./themeColor";
+import type { BorderSpec, ColorValue } from "./colors";
 import type {
-  TextFormatting,
   ParagraphFormatting,
+  TableCellFormatting,
   TableFormatting,
   TablePropertyExceptionFormatting,
   TableRowFormatting,
-  TableCellFormatting,
   TextDirection,
+  TextFormatting,
 } from "./formatting";
-import type { NumberFormat, ListRendering } from "./lists";
-import type { PreservedAttribute, PreservedChild, PreservedMarkup } from "./preservedMarkup";
+import type { ListRendering, NumberFormat } from "./lists";
+import type {
+  PreservedAttribute,
+  PreservedChild,
+  PreservedMarkup,
+} from "./preservedMarkup";
+import type { PresetLineDashValue } from "./presetLineDash";
 import type { PreviewDescriptor } from "./preview";
 import type { RelationshipId } from "./relationshipId";
-import type { PresetLineDashValue } from "./presetLineDash";
+import type { ThemeColorValue } from "./themeColor";
 
 // ============================================================================
 // RUN CONTENT TYPES
@@ -104,7 +108,10 @@ export type NoteReferenceContent = {
 };
 
 /** The authored automatic reference mark inside a note body (w:footnoteRef/w:endnoteRef). */
-export type NoteMarkerContent = { type: "noteMarker"; kind: "footnote" | "endnote" };
+export type NoteMarkerContent = {
+  type: "noteMarker";
+  kind: "footnote" | "endnote";
+};
 
 /** IDs reserved for the separator records in footnotes.xml and endnotes.xml. */
 export const RESERVED_NOTE_REFERENCE_IDS = [-1, 0] as const;
@@ -192,7 +199,8 @@ export const DRAWING_RAW_XML_MODES = {
 } as const;
 
 /** Raw XML handling mode for a drawing. */
-export type DrawingRawXmlMode = (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
+export type DrawingRawXmlMode =
+  (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
 
 /** Drawing/image reference with replayable XML required for preservation-only content. */
 export type DrawingContent =
@@ -337,7 +345,9 @@ export type Hyperlink = {
    * That is the parse leg only: the editor carries a wrapper as a mark and the
    * save leg writes the canonical order, wrapper outside the link.
    */
-  children: (Run | BookmarkStart | BookmarkEnd | InlineWrapper | PreservedInline)[];
+  children: (
+    Run | BookmarkStart | BookmarkEnd | InlineWrapper | PreservedInline
+  )[];
 };
 
 /**
@@ -496,7 +506,9 @@ export type SimpleField = {
    * `EG_PContent` admits can sit here, `w:bdo` / `w:dir` / `w:smartTag` /
    * `w:customXml` among them.
    */
-  content: (Run | Hyperlink | InlineWrapper | PreservedInline | TrackedRunChange)[];
+  content: (
+    Run | Hyperlink | InlineWrapper | PreservedInline | TrackedRunChange
+  )[];
   /** `@w:fldLock`: absent states nothing, `false` is an explicit unlock. */
   fldLock?: boolean;
   /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */
@@ -621,7 +633,14 @@ export type ImageWrapPolygon = {
  * Image wrap type for floating images
  */
 export type ImageWrap = {
-  type: "inline" | "square" | "tight" | "through" | "topAndBottom" | "behind" | "inFront";
+  type:
+    | "inline"
+    | "square"
+    | "tight"
+    | "through"
+    | "topAndBottom"
+    | "behind"
+    | "inFront";
   /** Wrap text direction */
   wrapText?: "bothSides" | "left" | "right" | "largest";
   /** The inset in force: the wrap child's where it stated one, the drawing's otherwise. */
@@ -1512,7 +1531,9 @@ export type Comment = {
 /**
  * Comment range start marker in paragraph content
  */
-export type CommentRangeStart = { type: "commentRangeStart" } & MarkupRangeMarker;
+export type CommentRangeStart = {
+  type: "commentRangeStart";
+} & MarkupRangeMarker;
 
 /**
  * Comment range end marker in paragraph content
@@ -1627,6 +1648,9 @@ export type TrackedRunContent =
   | Hyperlink
   | BookmarkStart
   | BookmarkEnd
+  | CommentRangeStart
+  | CommentRangeEnd
+  | CommentReference
   | MoveFromRangeStart
   | MoveFromRangeEnd
   | MoveToRangeStart
@@ -1640,7 +1664,9 @@ export type TrackedRunContent =
   | PreservedInline
   | TrackedRunChange;
 
-export const INSERTION_SEAM_POLICIES = { MERGE_PLAIN_RUNS: "merge-plain-runs" } as const;
+export const INSERTION_SEAM_POLICIES = {
+  MERGE_PLAIN_RUNS: "merge-plain-runs",
+} as const;
 
 /** Operation-created seams only; source OOXML has no such provenance. */
 type TrackedResolutionJoins = {
@@ -1724,7 +1750,10 @@ export type MoveTo = {
  * `unicode-bidi: embed` and `unicode-bidi: bidi-override`, and HTML gives the
  * second an element of its own, `<bdo>`.
  */
-export const BIDI_CONTROLS = { embedding: "embedding", override: "override" } as const;
+export const BIDI_CONTROLS = {
+  embedding: "embedding",
+  override: "override",
+} as const;
 
 export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
 
@@ -1793,7 +1822,9 @@ export type InlineWrapper =
  * Move-from range start marker (w:moveFromRangeStart) — ECMA-376 §17.13.5.22
  * Pairs with moveFromRangeEnd to delimit the source of a move in the document.
  */
-export type MoveFromRangeStart = { type: "moveFromRangeStart" } & MoveBookmarkMarker;
+export type MoveFromRangeStart = {
+  type: "moveFromRangeStart";
+} & MoveBookmarkMarker;
 
 /**
  * Move-from range end marker (w:moveFromRangeEnd)
@@ -1804,7 +1835,9 @@ export type MoveFromRangeEnd = { type: "moveFromRangeEnd" } & MarkupRangeMarker;
  * Move-to range start marker (w:moveToRangeStart) — ECMA-376 §17.13.5.24
  * Pairs with moveToRangeEnd to delimit the destination of a move.
  */
-export type MoveToRangeStart = { type: "moveToRangeStart" } & MoveBookmarkMarker;
+export type MoveToRangeStart = {
+  type: "moveToRangeStart";
+} & MoveBookmarkMarker;
 
 /**
  * Move-to range end marker (w:moveToRangeEnd)
@@ -1973,7 +2006,11 @@ export const PROPERTY_REVISION_KINDS = Object.freeze({
  */
 export type TableStructuralChangeInfo =
   | {
-      type: "tableRowInsertion" | "tableRowDeletion" | "tableCellInsertion" | "tableCellDeletion";
+      type:
+        | "tableRowInsertion"
+        | "tableRowDeletion"
+        | "tableCellInsertion"
+        | "tableCellDeletion";
       /** Tracked change metadata */
       info: TrackedChangeInfo;
     }
@@ -2218,7 +2255,8 @@ export type PreservedInline = {
  * otherwise be. A capture is hidden only while the paragraph's marker shows
  * it; anywhere else it is replaced by this item, which shows on the line.
  */
-export type FoldedListNumber = { kind: "field"; field: ComplexField } | { kind: "tab"; run: Run };
+export type FoldedListNumber =
+  { kind: "field"; field: ComplexField } | { kind: "tab"; run: Run };
 
 /**
  * Paragraph content types
@@ -2269,7 +2307,8 @@ export const PARAGRAPH_MARK_CHANGE_KINDS = Object.freeze([
 ] as const);
 
 /** One of {@link PARAGRAPH_MARK_CHANGE_KINDS}. */
-export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[number];
+export type ParagraphMarkChangeKind =
+  (typeof PARAGRAPH_MARK_CHANGE_KINDS)[number];
 
 /** A paragraph-mark tracked change, written under `<w:pPr><w:rPr>`. */
 export type ParagraphMarkChange = {
@@ -2284,7 +2323,8 @@ export const REVIEW_CARRIERS = {
 } as const;
 
 /** A Folio-private untracked paragraph used to resolve a terminal table deletion. */
-export type ReviewCarrier = (typeof REVIEW_CARRIERS)[keyof typeof REVIEW_CARRIERS];
+export type ReviewCarrier =
+  (typeof REVIEW_CARRIERS)[keyof typeof REVIEW_CARRIERS];
 
 /** Paragraph (w:p) */
 export type Paragraph = {
@@ -2468,7 +2508,8 @@ export type PictureWatermark = {
 /**
  * Footnote position
  */
-export type FootnotePosition = "pageBottom" | "beneathText" | "sectEnd" | "docEnd";
+export type FootnotePosition =
+  "pageBottom" | "beneathText" | "sectEnd" | "docEnd";
 
 /**
  * Endnote position
@@ -2512,7 +2553,8 @@ export type Footnote = {
   /** Footnote ID */
   id: number;
   /** Special footnote type */
-  noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
+  noteType?:
+    "normal" | "separator" | "continuationSeparator" | "continuationNotice";
   /**
    * Content. Note bodies may carry block-level `<w:sdt>` content
    * controls (citation slots, bound metadata fields) — preserved as
@@ -2531,7 +2573,8 @@ export type Endnote = {
   /** Endnote ID */
   id: number;
   /** Special endnote type */
-  noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
+  noteType?:
+    "normal" | "separator" | "continuationSeparator" | "continuationNotice";
   /**
    * Content. Like `Footnote.content`, may carry block-level `<w:sdt>`
    * preserved as `BlockSdt` so SDT round-trip works inside endnotes.
@@ -2551,7 +2594,8 @@ export type PageOrientation = "portrait" | "landscape";
 /**
  * Section start type
  */
-export type SectionStart = "continuous" | "nextPage" | "oddPage" | "evenPage" | "nextColumn";
+export type SectionStart =
+  "continuous" | "nextPage" | "oddPage" | "evenPage" | "nextColumn";
 
 /**
  * Vertical alignment

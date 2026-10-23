@@ -32,7 +32,10 @@ const page = (): Page => ({
   ],
 });
 
-const layout = (): Layout => ({ pageSize: { w: 800, h: 1_000 }, pages: [page()] });
+const layout = (): Layout => ({
+  pageSize: { w: 800, h: 1_000 },
+  pages: [page()],
+});
 
 describe("section vertical alignment", () => {
   test("centers flowing body content without moving page-positioned objects", () => {

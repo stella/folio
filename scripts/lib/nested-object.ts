@@ -12,7 +12,11 @@ export type NestedObject = {
 
 const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
-const assertSafePath = (path: string, parts: string[], action: "set" | "delete" | "get"): void => {
+const assertSafePath = (
+  path: string,
+  parts: string[],
+  action: "set" | "delete" | "get",
+): void => {
   if (parts.some((part) => UNSAFE_KEYS.has(part))) {
     throw new Error(`Refusing to ${action} unsafe key path: ${path}`);
   }

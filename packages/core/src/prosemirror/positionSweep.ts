@@ -50,7 +50,8 @@ type Chunk = {
 type Cursor = { chunk: number; index: number };
 
 const cursorBefore = (left: Cursor, right: Cursor): boolean =>
-  left.chunk < right.chunk || (left.chunk === right.chunk && left.index < right.index);
+  left.chunk < right.chunk ||
+  (left.chunk === right.chunk && left.index < right.index);
 
 /** Positions sharing one `assoc`, sorted by their current value. */
 class Lane {
@@ -88,7 +89,8 @@ class Lane {
     const chunkIndex = Math.min(cursor.chunk, this.chunks.length - 1);
     // SAFETY: chunkIndex is clamped into the non-empty chunk list.
     const chunk = this.chunks[chunkIndex]!;
-    const index = cursor.chunk === chunkIndex ? cursor.index : chunk.values.length;
+    const index =
+      cursor.chunk === chunkIndex ? cursor.index : chunk.values.length;
     chunk.values.splice(index, 0, value - chunk.shift);
     chunk.ids.splice(index, 0, id);
     if (chunk.values.length > 2 * CHUNK_SIZE) {
@@ -195,7 +197,11 @@ class Lane {
       const lower = this.bound(oldStart, false);
       const start = cursorBefore(lower, previousEnd) ? previousEnd : lower;
       const end = this.bound(oldEnd, true);
-      ranges.push({ start, end, delta: newEnd - newStart - (oldEnd - oldStart) });
+      ranges.push({
+        start,
+        end,
+        delta: newEnd - newStart - (oldEnd - oldStart),
+      });
       previousEnd = end;
     });
     let cursor: Cursor = { chunk: 0, index: 0 };
@@ -204,7 +210,10 @@ class Lane {
       this.shiftFrom(cursor, range.start, delta);
       this.forEachBetween(range.start, range.end, (chunk, index) => {
         // SAFETY: forEachBetween only visits indices inside the chunk.
-        const result = map.mapResult(chunk.values[index]! + chunk.shift, this.assoc);
+        const result = map.mapResult(
+          chunk.values[index]! + chunk.shift,
+          this.assoc,
+        );
         chunk.values[index] = result.pos - chunk.shift;
         if (result.deletedAcross) {
           // SAFETY: as above.
@@ -283,7 +292,10 @@ export const sweepPositions = (
     mapping.maps.slice(mapping.from, mapping.to),
   );
   const order = queries
-    .map((query, id) => ({ id, from: Math.min(Math.max(query.from, 0), maps.length) }))
+    .map((query, id) => ({
+      id,
+      from: Math.min(Math.max(query.from, 0), maps.length),
+    }))
     .sort((left, right) => left.from - right.from || left.id - right.id);
   const backward = new Lane(-1);
   const forward = new Lane(1);
@@ -328,5 +340,8 @@ export const sweepPositions = (
   const positions: number[] = queries.map(({ pos }) => pos);
   backward.collect(positions);
   forward.collect(positions);
-  return positions.map((pos, id) => ({ pos, deletedAcross: deletedAcross[id] ?? false }));
+  return positions.map((pos, id) => ({
+    pos,
+    deletedAcross: deletedAcross[id] ?? false,
+  }));
 };

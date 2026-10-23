@@ -49,7 +49,9 @@ describe("serializeSectionProperties", () => {
     });
 
     expect(xml.indexOf("<w:titlePg/>")).toBeGreaterThanOrEqual(0);
-    expect(xml.indexOf("<w:bidi/>")).toBeGreaterThan(xml.indexOf("<w:titlePg/>"));
+    expect(xml.indexOf("<w:bidi/>")).toBeGreaterThan(
+      xml.indexOf("<w:titlePg/>"),
+    );
   });
 
   test("preserves an explicitly disabled title page", () => {
@@ -167,7 +169,9 @@ describe("serializeSectionProperties", () => {
           </w:sectPr>
         `),
       ),
-    ).toBe('<w:sectPr><w:background w:color="F2F2F2" w:themeColor="background1"/></w:sectPr>');
+    ).toBe(
+      '<w:sectPr><w:background w:color="F2F2F2" w:themeColor="background1"/></w:sectPr>',
+    );
 
     expect(
       serializeSectionProperties(

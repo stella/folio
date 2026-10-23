@@ -49,31 +49,41 @@
 import { panic } from "better-result";
 import { $ } from "bun";
 import { existsSync } from "node:fs";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { installCleanRoomDependencies } from "./clean-room-install";
-import { consumerScenarioInputs, parseConsumerArgs } from "./consumer-scenario-args";
-
 import { commitSeed } from "../test/commit-seed";
 import {
-  type Expectations,
   describePattern,
+  type Expectations,
   formatLedger,
   hitUnreachableCells,
-  mergeLedgers,
   mergeFeatureFiles,
+  mergeLedgers,
   missingCells,
   summarize,
 } from "../test/consumer-scenarios/support/coverage";
 import {
+  type FeatureCoverage,
   mergeFeatureCoverage,
   summarizeFeatureCoverage,
-  type FeatureCoverage,
 } from "../test/consumer-scenarios/support/feature-coverage";
-import { buildAndPack, repoRoot } from "./packaged-consumer-lib";
+import { installCleanRoomDependencies } from "./clean-room-install";
+import {
+  consumerScenarioInputs,
+  parseConsumerArgs,
+} from "./consumer-scenario-args";
 import { CONSUMER_DEPENDENCIES } from "./consumer-scenario-dependencies";
+import { buildAndPack, repoRoot } from "./packaged-consumer-lib";
 
 const scenarioSrc = path.join(repoRoot, "test", "consumer-scenarios");
 
@@ -111,7 +121,10 @@ const importTarget = (target: unknown): string | null => {
  * it (an exact key first, else the pattern with the longest prefix before its
  * `*`), or `null` when the map does not export it.
  */
-export const resolveExport = (exportsMap: ExportsMap, subpath: string): string | null => {
+export const resolveExport = (
+  exportsMap: ExportsMap,
+  subpath: string,
+): string | null => {
   if (Object.hasOwn(exportsMap, subpath)) {
     return importTarget(exportsMap[subpath]);
   }
@@ -132,7 +145,10 @@ export const resolveExport = (exportsMap: ExportsMap, subpath: string): string |
   }
   if (best === null) return null;
   const target = importTarget(exportsMap[best.key]);
-  const matched = subpath.slice(best.before.length, subpath.length - best.after.length);
+  const matched = subpath.slice(
+    best.before.length,
+    subpath.length - best.after.length,
+  );
   return target === null ? null : target.replaceAll("*", matched);
 };
 
@@ -152,7 +168,10 @@ type GuardContext = {
 };
 
 /** Every import in `source` that reaches past a published entry point. */
-export const findForbiddenImports = (source: string, context: GuardContext): string[] => {
+export const findForbiddenImports = (
+  source: string,
+  context: GuardContext,
+): string[] => {
   const problems: string[] = [];
   for (const match of source.matchAll(IMPORT_SPECIFIER)) {
     const specifier = match.groups?.["specifier"] ?? "";
@@ -160,7 +179,9 @@ export const findForbiddenImports = (source: string, context: GuardContext): str
     if (specifier.startsWith(".")) {
       // A scenario's own support modules, never a way around `exports`.
       if (/node_modules|\/dist\/|\/src\//u.test(specifier)) {
-        problems.push(`${specifier}: reaches into an installed package's files`);
+        problems.push(
+          `${specifier}: reaches into an installed package's files`,
+        );
       }
       continue;
     }
@@ -190,10 +211,15 @@ const listSourceFiles = async (dir: string): Promise<string[]> =>
     .map((file) => path.join(dir, file));
 
 const guardImports = async (consumerDir: string): Promise<void> => {
-  const exportsByPackage = new Map<string, { exports: ExportsMap; dir: string }>();
+  const exportsByPackage = new Map<
+    string,
+    { exports: ExportsMap; dir: string }
+  >();
   for (const { name } of PACKAGES) {
     const dir = path.join(consumerDir, "node_modules", name);
-    const manifest = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as {
+    const manifest = JSON.parse(
+      await readFile(path.join(dir, "package.json"), "utf8"),
+    ) as {
       exports: ExportsMap;
     };
     exportsByPackage.set(name, { exports: manifest.exports, dir });
@@ -201,7 +227,9 @@ const guardImports = async (consumerDir: string): Promise<void> => {
   const context: GuardContext = {
     exportsByPackage,
     allowedPackages: new Set(
-      CONSUMER_DEPENDENCIES.map((dependency) => dependency.slice(0, dependency.lastIndexOf("@"))),
+      CONSUMER_DEPENDENCIES.map((dependency) =>
+        dependency.slice(0, dependency.lastIndexOf("@")),
+      ),
     ),
   };
 
@@ -211,20 +239,27 @@ const guardImports = async (consumerDir: string): Promise<void> => {
     context,
   );
   if (selfTest.length !== 2) {
-    panic(`consumer-scenarios: the import guard let an internal path through (${selfTest})`);
+    panic(
+      `consumer-scenarios: the import guard let an internal path through (${selfTest})`,
+    );
   }
 
   const problems: string[] = [];
   for (const dir of ["scenarios", "support"]) {
     for (const file of await listSourceFiles(path.join(consumerDir, dir))) {
-      for (const problem of findForbiddenImports(await readFile(file, "utf8"), context)) {
+      for (const problem of findForbiddenImports(
+        await readFile(file, "utf8"),
+        context,
+      )) {
         problems.push(`${path.relative(consumerDir, file)}: ${problem}`);
       }
     }
   }
   if (problems.length > 0) {
     console.error(problems.map((problem) => `  ${problem}`).join("\n"));
-    panic("consumer-scenarios: scenarios may import only published entry points");
+    panic(
+      "consumer-scenarios: scenarios may import only published entry points",
+    );
   }
 };
 
@@ -238,7 +273,10 @@ const packAll = async (destRoot: string): Promise<Map<string, string>> => {
     const dest = path.join(destRoot, dir);
     await rm(dest, { recursive: true, force: true });
     await mkdir(dest, { recursive: true });
-    tarballs.set(name, await buildAndPack(path.join(repoRoot, "packages", dir), dest));
+    tarballs.set(
+      name,
+      await buildAndPack(path.join(repoRoot, "packages", dir), dest),
+    );
   }
   return tarballs;
 };
@@ -246,10 +284,14 @@ const packAll = async (destRoot: string): Promise<Map<string, string>> => {
 const findTarballs = async (root: string): Promise<Map<string, string>> => {
   const tarballs = new Map<string, string>();
   for (const { dir, name } of PACKAGES) {
-    const files = (await readdir(path.join(root, dir))).filter((file) => file.endsWith(".tgz"));
+    const files = (await readdir(path.join(root, dir))).filter((file) =>
+      file.endsWith(".tgz"),
+    );
     const [only] = files;
     if (files.length !== 1 || only === undefined) {
-      panic(`consumer-scenarios: expected one tarball in ${path.join(root, dir)}`);
+      panic(
+        `consumer-scenarios: expected one tarball in ${path.join(root, dir)}`,
+      );
     }
     tarballs.set(name, path.join(root, dir, only));
   }
@@ -260,11 +302,21 @@ const stageConsumer = async (
   tarballs: ReadonlyMap<string, string>,
   typecheck: boolean,
 ): Promise<string> => {
-  const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-scenarios-"));
+  const consumerDir = await mkdtemp(
+    path.join(tmpdir(), "folio-consumer-scenarios-"),
+  );
   console.log(`→ staging the consumer in ${consumerDir}`);
-  for (const entry of ["scenarios", "support", "flows", "scenario-seeds.json", "tsconfig.json"]) {
+  for (const entry of [
+    "scenarios",
+    "support",
+    "flows",
+    "seeds",
+    "tsconfig.json",
+  ]) {
     if (!existsSync(path.join(scenarioSrc, entry))) continue;
-    await cp(path.join(scenarioSrc, entry), path.join(consumerDir, entry), { recursive: true });
+    await cp(path.join(scenarioSrc, entry), path.join(consumerDir, entry), {
+      recursive: true,
+    });
   }
   const tarball = (name: string): string =>
     tarballs.get(name) ?? panic(`consumer-scenarios: no tarball for ${name}`);
@@ -276,13 +328,15 @@ const stageConsumer = async (
     // Pin every transitive folio package to its packed tarball; nothing here
     // may resolve from a registry or the workspace.
     overrides: Object.fromEntries(
-      PACKAGES.filter(({ name }) => name !== "@stll/folio-cli").map(({ name }) => [
-        name,
-        tarball(name),
-      ]),
+      PACKAGES.filter(({ name }) => name !== "@stll/folio-cli").map(
+        ({ name }) => [name, tarball(name)],
+      ),
     ),
   };
-  await writeFile(path.join(consumerDir, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(
+    path.join(consumerDir, "package.json"),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
   console.log("→ installing the tarballs");
   const dependencies = [
     ...PACKAGES.map(({ name }) => tarball(name)),
@@ -305,12 +359,18 @@ const reportCoverage = async (
   enforce: boolean,
 ): Promise<string | null> => {
   const expectations = JSON.parse(
-    await readFile(path.join(scenarioSrc, "coverage-expectations.json"), "utf8"),
+    await readFile(
+      path.join(scenarioSrc, "coverage-expectations.json"),
+      "utf8",
+    ),
   ) as Expectations;
   const merged = mergeLedgers(coverageDir);
   console.log(`\n${formatLedger(merged)}`);
   await mkdir(path.dirname(out), { recursive: true });
-  await writeFile(out, `${JSON.stringify(summarize(merged, expectations), null, 2)}\n`);
+  await writeFile(
+    out,
+    `${JSON.stringify(summarize(merged, expectations), null, 2)}\n`,
+  );
   console.log(`\n→ coverage ledger written to ${path.relative(repoRoot, out)}`);
   const conformanceInput = process.env["FOLIO_CONFORMANCE_FEATURE_COVERAGE_IN"];
   const conformance = conformanceInput
@@ -323,9 +383,14 @@ const reportCoverage = async (
   const featureSummary = summarizeFeatureCoverage(features);
   await mkdir(path.dirname(featureOut), { recursive: true });
   await writeFile(featureOut, `${JSON.stringify(featureSummary, null, 2)}\n`);
-  console.log(`→ feature coverage written to ${path.relative(repoRoot, featureOut)}`);
-  console.log(`→ ${featureSummary.emptyCells.length} empty operation × feature × selection cells`);
-  for (const cell of featureSummary.emptyCells.slice(0, 10)) console.log(`  no hits: ${cell}`);
+  console.log(
+    `→ feature coverage written to ${path.relative(repoRoot, featureOut)}`,
+  );
+  console.log(
+    `→ ${featureSummary.emptyCells.length} empty operation × feature × selection cells`,
+  );
+  for (const cell of featureSummary.emptyCells.slice(0, 10))
+    console.log(`  no hits: ${cell}`);
   if (!enforce) {
     console.log("→ a subset ran; coverage expectations are not enforced");
     return null;
@@ -334,7 +399,9 @@ const reportCoverage = async (
   const unexpected = hitUnreachableCells(merged, expectations);
   const failures: string[] = [];
   if (missing.length === 0) {
-    console.log(`✓ every required coverage cell was applied (${expectations.required.length})`);
+    console.log(
+      `✓ every required coverage cell was applied (${expectations.required.length})`,
+    );
   } else {
     console.error(missing.map((cell) => `  no hits: ${cell}`).join("\n"));
     failures.push(
@@ -379,13 +446,16 @@ const DEFAULT_SEED = "20260926";
 /** A non-negative base with room for `seed + run` to stay a safe integer. */
 const ciSeed = (): string | null => {
   const ci = process.env["CI"];
-  if (ci === undefined || ci === "" || ci === "false" || ci === "0") return null;
+  if (ci === undefined || ci === "" || ci === "false" || ci === "0")
+    return null;
   const derived = commitSeed("consumer-scenarios fuzz");
   return derived === undefined ? null : String(derived >>> 1);
 };
 const requestedSeed = scenarioInputs.seed ?? ciSeed() ?? DEFAULT_SEED;
 const seed =
-  requestedSeed === "random" ? String(Math.floor(Math.random() * 2 ** 31)) : requestedSeed;
+  requestedSeed === "random"
+    ? String(Math.floor(Math.random() * 2 ** 31))
+    : requestedSeed;
 
 /**
  * The flow-file settings as the staged scenarios need them: directories made
@@ -417,8 +487,10 @@ const flowEnvironment = async (): Promise<Record<string, string>> => {
     "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
     "FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT",
   ]) {
-    const value = cliEnvironment[name as keyof typeof cliEnvironment] ?? process.env[name];
-    if (value !== undefined && value !== "") environment[name] = path.resolve(value);
+    const value =
+      cliEnvironment[name as keyof typeof cliEnvironment] ?? process.env[name];
+    if (value !== undefined && value !== "")
+      environment[name] = path.resolve(value);
   }
   for (const [name, value] of Object.entries(cliEnvironment)) {
     if (value !== null && value !== "" && environment[name] === undefined) {
@@ -426,7 +498,11 @@ const flowEnvironment = async (): Promise<Record<string, string>> => {
     }
   }
   // Fingerprints with an open issue: continuous-fuzz.test.ts records them without failing.
-  const knownRegistryPath = path.join(repoRoot, "test", "known-failure-fingerprints.json");
+  const knownRegistryPath = path.join(
+    repoRoot,
+    "test",
+    "known-failure-fingerprints.json",
+  );
   environment["FOLIO_SCENARIO_KNOWN_FAILURE_REGISTRY"] = knownRegistryPath;
   const known = JSON.parse(await readFile(knownRegistryPath, "utf8")) as {
     known: { fingerprint: string }[];
@@ -449,7 +525,9 @@ let consumerDir = "";
 try {
   let tarballs: Map<string, string>;
   if (args.tarballs === null) {
-    packRoot = await mkdtemp(path.join(tmpdir(), "folio-consumer-scenarios-pack-"));
+    packRoot = await mkdtemp(
+      path.join(tmpdir(), "folio-consumer-scenarios-pack-"),
+    );
     tarballs = await packAll(packRoot);
   } else {
     tarballs = await findTarballs(args.tarballs);
@@ -458,13 +536,17 @@ try {
   await guardImports(consumerDir);
 
   if (args.typecheck) {
-    console.log("→ typechecking the scenarios against the published declarations");
-    const typecheck = await $`node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json`
-      .cwd(consumerDir)
-      .nothrow();
+    console.log(
+      "→ typechecking the scenarios against the published declarations",
+    );
+    const typecheck =
+      await $`node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json`
+        .cwd(consumerDir)
+        .nothrow();
     if (typecheck.exitCode !== 0) {
       console.error(typecheck.stdout.toString() || typecheck.stderr.toString());
-      failure = "✗ consumer-scenarios: the scenarios do not typecheck against the tarballs.";
+      failure =
+        "✗ consumer-scenarios: the scenarios do not typecheck against the tarballs.";
     }
   }
 
@@ -476,26 +558,32 @@ try {
             .filter((file) => file.endsWith(".test.ts"))
             .sort()
             .map((file) => path.join("scenarios", file));
-    const nameFilter = args.only === null ? [] : ["--test-name-pattern", args.only];
-    console.log(`→ node --test over ${files.length} scenario files (seed ${seed})`);
+    const nameFilter =
+      args.only === null ? [] : ["--test-name-pattern", args.only];
+    console.log(
+      `→ node --test over ${files.length} scenario files (seed ${seed})`,
+    );
     const coverageDir = path.join(consumerDir, "coverage");
-    const run = await $`node --import tsx --test --test-reporter=spec ${nameFilter} ${files}`
-      .cwd(consumerDir)
-      .env({
-        ...process.env,
-        ...(await flowEnvironment()),
-        FOLIO_SCENARIO_SEED: seed,
-        FOLIO_SCENARIO_COVERAGE_DIR: coverageDir,
-        FOLIO_SCENARIO_SAMPLE_DIR:
-          process.env["FOLIO_SCENARIO_SAMPLE_DIR"] ??
-          path.join(repoRoot, "test-results", "consumer-scenario-samples"),
-        ...(scenarioInputs.featureWeights
-          ? {
-              FOLIO_SCENARIO_FEATURE_WEIGHTS: path.resolve(scenarioInputs.featureWeights),
-            }
-          : {}),
-      })
-      .nothrow();
+    const run =
+      await $`node --import tsx --test --test-reporter=spec ${nameFilter} ${files}`
+        .cwd(consumerDir)
+        .env({
+          ...process.env,
+          ...(await flowEnvironment()),
+          FOLIO_SCENARIO_SEED: seed,
+          FOLIO_SCENARIO_COVERAGE_DIR: coverageDir,
+          FOLIO_SCENARIO_SAMPLE_DIR:
+            process.env["FOLIO_SCENARIO_SAMPLE_DIR"] ??
+            path.join(repoRoot, "test-results", "consumer-scenario-samples"),
+          ...(scenarioInputs.featureWeights
+            ? {
+                FOLIO_SCENARIO_FEATURE_WEIGHTS: path.resolve(
+                  scenarioInputs.featureWeights,
+                ),
+              }
+            : {}),
+        })
+        .nothrow();
     if (run.exitCode !== 0) {
       failure = `✗ consumer-scenarios: scenarios failed (FOLIO_SCENARIO_SEED=${seed} reproduces the fuzz runs).`;
     }

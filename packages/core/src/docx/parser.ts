@@ -1,4 +1,4 @@
-import { decodeText, encodeUtf8 } from "../utils/textEncoding";
+import { panic, TaggedError } from "better-result";
 /**
  * Main Parser Orchestrator - Unified parseDocx function
  *
@@ -19,61 +19,63 @@ import { decodeText, encodeUtf8 } from "../utils/textEncoding";
  * 11. Assemble final Document
  */
 
-import { panic, TaggedError } from "better-result";
+import {
+  PARSE_WARNING_CODES,
+  setDocumentBodyComments,
+} from "@stll/docx-core/model";
+import { isCommentExhausted } from "@stll/docx-core/ops";
 
 import type {
-  Document,
-  DocxPackage,
-  DocumentBody,
   BlockContent,
-  Theme,
-  Footnote,
+  Document,
+  DocumentBody,
+  DocxPackage,
   Endnote,
+  Footnote,
   HeaderFooter,
-  RelationshipMap,
   MediaFile,
+  RelationshipMap,
   StyleDefinitions,
+  Theme,
 } from "../types/document";
 import { toArrayBuffer } from "../utils/docxInput";
 import type { DocxInput } from "../utils/docxInput";
 import { loadFontsWithMapping } from "../utils/fontLoader";
+import { decodeText, encodeUtf8 } from "../utils/textEncoding";
 import {
   convertTiffToPngDataUrl,
   isTiffMimeType,
   MAX_PACKAGE_TIFF_PIXELS,
 } from "../utils/tiffConverter";
-import { PARSE_WARNING_CODES, setDocumentBodyComments } from "@stll/docx-core/model";
-import { isCommentExhausted } from "@stll/docx-core/ops";
-
+import {
+  ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES,
+  getAltChunkRelationshipId,
+  isAltChunkMarkup,
+} from "./altChunk";
+import { normalizeBookmarkIdsInXmlParts } from "./bookmarkIdNormalization";
+import {
+  DUPLICATE_COMMENT_ID_WARNING,
+  normalizeCommentIds,
+} from "./commentIdNormalization";
 import { parseComments } from "./commentParser";
-import { type ParseContext, createParseWarningCollector } from "./parseContext";
-import { formatParseWarnings } from "./parseWarningMessage";
-import { DUPLICATE_COMMENT_ID_WARNING, normalizeCommentIds } from "./commentIdNormalization";
 import {
   DANGLING_COMMENT_REFERENCE_WARNING,
-  UNBALANCED_COMMENT_RANGE_WARNING,
   normalizeCommentReferences,
+  UNBALANCED_COMMENT_RANGE_WARNING,
 } from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
 import { parseCoreProperties } from "./corePropertiesParser";
+import { countDanglingRelationshipReferences } from "./danglingRelationshipReferences";
 import {
+  extractAllTemplateVariables,
   parseDocumentBody,
   parseDocumentBodyTree,
-  extractAllTemplateVariables,
 } from "./documentParser";
-import { normalizeRawDocxNumericIds } from "./numericIdNormalization";
-import { normalizeBookmarkIdsInXmlParts } from "./bookmarkIdNormalization";
-import { diagnoseImportedIdCollisions } from "./importedIdCollisions";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
-import { parseFootnotes, parseEndnotes } from "./footnoteParser";
-import { parseHeader, parseFooter } from "./headerFooterParser";
-import {
-  assignHeaderFooterVerbatimXml,
-  captureHeaderFooterPackageBaselines,
-  captureDocumentSourceBaseline,
-  canReplayHeaderFooterVerbatim,
-  refreshHeaderFooterVerbatimFingerprint,
-} from "./headerFooterVerbatim";
+import { DocxEncryptionError } from "./encryption/errors";
+import { parseFontTable } from "./fontTableParser";
+import { parseEndnotes, parseFootnotes } from "./footnoteParser";
+import { parseFooter, parseHeader } from "./headerFooterParser";
 import {
   assignHeaderFooterRoles,
   DANGLING_FOOTER_REFERENCE_WARNING,
@@ -81,37 +83,62 @@ import {
   normalizeHeaderFooterReferences,
 } from "./headerFooterReferenceNormalization";
 import {
+  assignHeaderFooterVerbatimXml,
+  canReplayHeaderFooterVerbatim,
+  captureDocumentSourceBaseline,
+  captureHeaderFooterPackageBaselines,
+  refreshHeaderFooterVerbatimFingerprint,
+} from "./headerFooterVerbatim";
+import { diagnoseImportedIdCollisions } from "./importedIdCollisions";
+import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
+import { renderEmfSvg } from "./metafileSvg";
+import {
   DocxModelValidationError,
   formatDocumentModelIssues,
   validateFolioDocumentModel,
 } from "./modelValidation";
-import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
-import { renderEmfSvg } from "./metafileSvg";
-import { renderWmfSvg } from "./wmfSvg";
+import { parseNumbering } from "./numberingParser";
+import type { NumberingMap } from "./numberingParser";
 import {
+  normalizeNumberingReferences,
+  normalizeStyleNumberingReferences,
+  UNNUMBERED_PARAGRAPH_WARNING,
+  UNNUMBERED_STYLE_WARNING,
+} from "./numberingReferenceNormalization";
+import { normalizeRawDocxNumericIds } from "./numericIdNormalization";
+import { countOpaqueRevisionWrappers } from "./opaqueCarrier";
+import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
+import { createParseWarningCollector, type ParseContext } from "./parseContext";
+import { formatParseWarnings } from "./parseWarningMessage";
+import {
+  createPackagePreviewBudget,
   type PreviewBudgetOverrides,
   type PreviewLedger,
-  createPackagePreviewBudget,
 } from "./previewBudget";
-import { parseNumbering } from "./numberingParser";
-import { parseFontTable } from "./fontTableParser";
-import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
-import type { NumberingMap } from "./numberingParser";
-import { countDanglingRelationshipReferences } from "./danglingRelationshipReferences";
+import { detectRasterMimeType } from "./rasterMime";
 import {
-  ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES,
-  getAltChunkRelationshipId,
-  isAltChunkMarkup,
-} from "./altChunk";
-import { countOpaqueRevisionWrappers } from "./opaqueCarrier";
+  parseRelationships,
+  RELATIONSHIP_TYPES,
+  resolveRelativePath,
+} from "./relsParser";
+import { normalizeRenderedPageBreakHints } from "./renderedPageBreakNormalization";
+import { parseSettings } from "./settingsParser";
+import { parseStylesPackage } from "./styleParser";
+import type { StyleMap } from "./styleParser";
+import { applyThemeFontLang, parseTheme } from "./themeParser";
+import {
+  normalizeTrackedMoveRanges,
+  UNBALANCED_MOVE_RANGE_WARNING,
+} from "./trackedMoveRangeNormalization";
 import {
   getEntryUncompressedSize,
-  unzipDocx,
   getMediaMimeType,
   mediaToDataUrl,
   replaceRawDocxXmlParts,
+  unzipDocx,
 } from "./unzip";
-import { detectRasterMimeType } from "./rasterMime";
+import type { DocxUnzipOptions, RawDocxContent } from "./unzip";
+import { renderWmfSvg } from "./wmfSvg";
 import {
   getAttribute,
   getChildElements,
@@ -119,24 +146,6 @@ import {
   parseXml,
   parseXmlDocument,
 } from "./xmlParser";
-import {
-  UNNUMBERED_PARAGRAPH_WARNING,
-  UNNUMBERED_STYLE_WARNING,
-  normalizeNumberingReferences,
-  normalizeStyleNumberingReferences,
-} from "./numberingReferenceNormalization";
-import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
-import { normalizeRenderedPageBreakHints } from "./renderedPageBreakNormalization";
-import { parseSettings } from "./settingsParser";
-import { parseStylesPackage } from "./styleParser";
-import type { StyleMap } from "./styleParser";
-import { applyThemeFontLang, parseTheme } from "./themeParser";
-import {
-  UNBALANCED_MOVE_RANGE_WARNING,
-  normalizeTrackedMoveRanges,
-} from "./trackedMoveRangeNormalization";
-import { DocxEncryptionError } from "./encryption/errors";
-import type { DocxUnzipOptions, RawDocxContent } from "./unzip";
 import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
 const EMF_MIME_TYPE = "image/x-emf";
@@ -170,7 +179,9 @@ export type ProgressCallback = (stage: string, percent: number) => void;
  * extracts embedded PNG/JPEG previews and renders a bounded filled-path EMF
  * subset; this hook covers remaining formats and unsupported vector records.
  */
-export type MediaResolver = (file: MediaFile) => Promise<string | null | undefined>;
+export type MediaResolver = (
+  file: MediaFile,
+) => Promise<string | null | undefined>;
 
 /**
  * Parsing options
@@ -220,7 +231,9 @@ const countAltChunks = (blocks: readonly BlockContent[]): number => {
         break;
       default: {
         const unsupported: never = block;
-        panic(`Unsupported block while counting altChunks: ${JSON.stringify(unsupported)}`);
+        panic(
+          `Unsupported block while counting altChunks: ${JSON.stringify(unsupported)}`,
+        );
       }
     }
   }
@@ -231,9 +244,13 @@ const ALT_CHUNK_RELATIONSHIP_TYPE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk";
 const ALT_CHUNK_STRICT_RELATIONSHIP_TYPE =
   "http://purl.oclc.org/ooxml/officeDocument/relationships/aFChunk";
-const CONTENT_TYPES_NAMESPACE_URI = "http://schemas.openxmlformats.org/package/2006/content-types";
+const CONTENT_TYPES_NAMESPACE_URI =
+  "http://schemas.openxmlformats.org/package/2006/content-types";
 
-const contentTypeOf = (contentTypesXml: string | null, partPath: string): string | undefined => {
+const contentTypeOf = (
+  contentTypesXml: string | null,
+  partPath: string,
+): string | undefined => {
   if (!contentTypesXml) {
     return undefined;
   }
@@ -249,10 +266,16 @@ const contentTypeOf = (contentTypesXml: string | null, partPath: string): string
     }
     const name = getLocalName(child.name);
     const contentType = getAttribute(child, null, "ContentType");
-    if (name === "Override" && getAttribute(child, null, "PartName") === `/${partPath}`) {
+    if (
+      name === "Override" &&
+      getAttribute(child, null, "PartName") === `/${partPath}`
+    ) {
       return contentType ?? undefined;
     }
-    if (name === "Default" && getAttribute(child, null, "Extension")?.toLowerCase() === extension) {
+    if (
+      name === "Default" &&
+      getAttribute(child, null, "Extension")?.toLowerCase() === extension
+    ) {
       defaultContentType = contentType ?? undefined;
     }
   }
@@ -272,7 +295,9 @@ const extractAltChunkPlainText = async (
 ): Promise<string | undefined> => {
   const relationshipId = getAltChunkRelationshipId(xml);
   const relationship =
-    relationshipId === undefined ? undefined : context.relationships.get(relationshipId);
+    relationshipId === undefined
+      ? undefined
+      : context.relationships.get(relationshipId);
   if (
     !relationship ||
     relationship.targetMode === "External" ||
@@ -281,10 +306,15 @@ const extractAltChunkPlainText = async (
   ) {
     return undefined;
   }
-  const partPath = resolveRelativePath(context.relationshipsPath, relationship.target);
+  const partPath = resolveRelativePath(
+    context.relationshipsPath,
+    relationship.target,
+  );
   if (
-    contentTypeOf(context.raw.contentTypesXml, partPath)?.split(";")[0]?.trim().toLowerCase() !==
-    "text/plain"
+    contentTypeOf(context.raw.contentTypesXml, partPath)
+      ?.split(";")[0]
+      ?.trim()
+      .toLowerCase() !== "text/plain"
   ) {
     return undefined;
   }
@@ -293,7 +323,8 @@ const extractAltChunkPlainText = async (
     return undefined;
   }
   const declaredSize = getEntryUncompressedSize(file);
-  if (declaredSize === null || declaredSize > context.budget.remainingBytes) return undefined;
+  if (declaredSize === null || declaredSize > context.budget.remainingBytes)
+    return undefined;
   const bytes = await file.async("uint8array");
   if (bytes.byteLength > context.budget.remainingBytes) {
     return undefined;
@@ -330,7 +361,9 @@ const attachAltChunkPlainText = async (
   }
 };
 
-const countOpaqueRevisionCarriers = (blocks: readonly BlockContent[]): number => {
+const countOpaqueRevisionCarriers = (
+  blocks: readonly BlockContent[],
+): number => {
   let count = 0;
   for (const block of blocks) {
     switch (block.type) {
@@ -364,7 +397,9 @@ const countOpaqueRevisionCarriers = (blocks: readonly BlockContent[]): number =>
         break;
       default: {
         const unsupported: never = block;
-        panic(`Unsupported block while counting opaque revisions: ${JSON.stringify(unsupported)}`);
+        panic(
+          `Unsupported block while counting opaque revisions: ${JSON.stringify(unsupported)}`,
+        );
       }
     }
   }
@@ -379,7 +414,10 @@ const countOpaqueRevisionCarriers = (blocks: readonly BlockContent[]): number =>
  * @returns Promise resolving to Document
  * @throws {Error} if parsing fails
  */
-export function parseDocx(input: DocxInput, options: ParseOptions = {}): Promise<Document> {
+export function parseDocx(
+  input: DocxInput,
+  options: ParseOptions = {},
+): Promise<Document> {
   return parseDocxWithPreviewBudget(input, options, {});
 }
 
@@ -393,7 +431,8 @@ export async function parseDocxWithPreviewBudget(
   previewBudget: PreviewBudgetOverrides,
 ): Promise<Document> {
   // Normalize any supported input type to ArrayBuffer
-  const buffer = input instanceof ArrayBuffer ? input : await toArrayBuffer(input);
+  const buffer =
+    input instanceof ArrayBuffer ? input : await toArrayBuffer(input);
   const {
     // oxlint-disable-next-line no-empty-function -- intentional no-op default
     onProgress = () => {},
@@ -409,7 +448,8 @@ export async function parseDocxWithPreviewBudget(
   // One collector per parse: warnings are structured here and rendered once,
   // so `Document.warnings` cannot say something `Document.parseWarnings` does
   // not. It is an explicit parameter from here down, never ambient state.
-  const { context: parseContext, warnings: collectedWarnings } = createParseWarningCollector();
+  const { context: parseContext, warnings: collectedWarnings } =
+    createParseWarningCollector();
   // One preview ledger per parse, for the same reason: every part parser
   // registers the previews it builds here, and the budget charges only these.
   const previews = createPackagePreviewBudget();
@@ -417,7 +457,10 @@ export async function parseDocxWithPreviewBudget(
   try {
     const timeStage = <T>(_name: string, fn: () => T): T => fn();
 
-    const timeStageAsync = async <T>(_name: string, fn: () => Promise<T>): Promise<T> => await fn();
+    const timeStageAsync = async <T>(
+      _name: string,
+      fn: () => Promise<T>,
+    ): Promise<T> => await fn();
 
     // ========================================================================
     // STAGE 1: Unzip DOCX package (0-10%)
@@ -427,7 +470,10 @@ export async function parseDocxWithPreviewBudget(
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
     diagnoseImportedIdCollisions(raw.allXml, parseContext);
-    await replaceRawDocxXmlParts(raw, normalizeBookmarkIdsInXmlParts(raw.allXml));
+    await replaceRawDocxXmlParts(
+      raw,
+      normalizeBookmarkIdsInXmlParts(raw.allXml),
+    );
     const repairedDocumentTree = await normalizeRawDocxNumericIds(raw);
     const paragraphPropertySourceDigest = sha256Hex(raw.originalBuffer);
     if (raw.wasEncrypted) {
@@ -436,7 +482,10 @@ export async function parseDocxWithPreviewBudget(
     // The archive reader owns its own prose; it is carried through rather than
     // re-worded, and marked with a code so the list stays one shape.
     for (const message of raw.warnings) {
-      parseContext.warn({ code: PARSE_WARNING_CODES.packageArchive, detail: message });
+      parseContext.warn({
+        code: PARSE_WARNING_CODES.packageArchive,
+        detail: message,
+      });
     }
     onProgress("Extracted DOCX", 10);
 
@@ -458,7 +507,9 @@ export async function parseDocxWithPreviewBudget(
     // theme's empty EastAsian/complex-script slots (eigenpal/docx-editor#949);
     // styles, body, and header/footer parsing all resolve theme fonts off this
     // mutated theme object.
-    const settings = timeStage("settings", () => parseSettings(raw.settingsXml));
+    const settings = timeStage("settings", () =>
+      parseSettings(raw.settingsXml),
+    );
     applyThemeFontLang(theme, settings.themeFontLang);
     onProgress("Parsed theme", 20);
 
@@ -482,8 +533,12 @@ export async function parseDocxWithPreviewBudget(
     // STAGE 5: Parse numbering (30-35%)
     // ========================================================================
     onProgress("Parsing numbering...", 30);
-    const numbering = timeStage("numbering", () => parseNumbering(raw.numberingXml));
-    const fontTable = timeStage("fontTable", () => parseFontTable(raw.fontTableXml));
+    const numbering = timeStage("numbering", () =>
+      parseNumbering(raw.numberingXml),
+    );
+    const fontTable = timeStage("fontTable", () =>
+      parseFontTable(raw.fontTableXml),
+    );
     onProgress("Parsed numbering", 35);
 
     // ========================================================================
@@ -492,7 +547,9 @@ export async function parseDocxWithPreviewBudget(
     onProgress("Processing media files...", 35);
     const media = await timeStageAsync("media", () => buildMediaMap(raw, rels));
     if (mediaResolver) {
-      await timeStageAsync("mediaResolver", () => applyMediaResolver(media, mediaResolver));
+      await timeStageAsync("mediaResolver", () =>
+        applyMediaResolver(media, mediaResolver),
+      );
     }
     onProgress("Processed media", 40);
 
@@ -529,7 +586,15 @@ export async function parseDocxWithPreviewBudget(
     if (parseHeadersFooters) {
       onProgress("Parsing headers/footers...", 55);
       const hf = timeStage("headersFooters", () =>
-        parseHeadersAndFooters(raw, styles, theme, numbering, rels, media, previews.ledger),
+        parseHeadersAndFooters(
+          raw,
+          styles,
+          theme,
+          numbering,
+          rels,
+          media,
+          previews.ledger,
+        ),
       );
       headers = hf.headers;
       footers = hf.footers;
@@ -587,7 +652,9 @@ export async function parseDocxWithPreviewBudget(
     const commentIdNormalization = normalizeCommentIds(comments);
     if (commentIdNormalization.droppedDuplicateComments > 0) {
       const kept = new Set(comments);
-      previews.ledger.release(parsedComments.filter((comment) => !kept.has(comment)));
+      previews.ledger.release(
+        parsedComments.filter((comment) => !kept.has(comment)),
+      );
     }
     if (commentIdNormalization.droppedDuplicateComments > 0) {
       // A duplicate id can only exist in the comments part, so the warning
@@ -648,16 +715,22 @@ export async function parseDocxWithPreviewBudget(
       ...(headers !== undefined ? { headers } : {}),
       ...(footers !== undefined ? { footers } : {}),
     });
-    if (headerFooterReferenceNormalization.removedDanglingHeaderReferences > 0) {
+    if (
+      headerFooterReferenceNormalization.removedDanglingHeaderReferences > 0
+    ) {
       parseContext.warn({
         code: DANGLING_HEADER_REFERENCE_WARNING,
-        count: headerFooterReferenceNormalization.removedDanglingHeaderReferences,
+        count:
+          headerFooterReferenceNormalization.removedDanglingHeaderReferences,
       });
     }
-    if (headerFooterReferenceNormalization.removedDanglingFooterReferences > 0) {
+    if (
+      headerFooterReferenceNormalization.removedDanglingFooterReferences > 0
+    ) {
       parseContext.warn({
         code: DANGLING_FOOTER_REFERENCE_WARNING,
-        count: headerFooterReferenceNormalization.removedDanglingFooterReferences,
+        count:
+          headerFooterReferenceNormalization.removedDanglingFooterReferences,
       });
     }
     assignHeaderFooterRoles({
@@ -762,7 +835,9 @@ export async function parseDocxWithPreviewBudget(
     // ========================================================================
     onProgress("Assembling document...", 95);
 
-    const properties = timeStage("coreProperties", () => parseCoreProperties(raw.corePropsXml));
+    const properties = timeStage("coreProperties", () =>
+      parseCoreProperties(raw.corePropsXml),
+    );
 
     const pkg: DocxPackage = {
       conformanceClass: detectDocxConformanceClass(raw.documentXml),
@@ -802,9 +877,14 @@ export async function parseDocxWithPreviewBudget(
     });
     const altChunkContextForPart = (partPath: string): AltChunkTextContext => {
       const relationshipsPath = getRelationshipsPathForPart(partPath);
-      const relationshipsXml = getMapCaseInsensitive(raw.allXml, relationshipsPath);
+      const relationshipsXml = getMapCaseInsensitive(
+        raw.allXml,
+        relationshipsPath,
+      );
       return {
-        relationships: relationshipsXml ? parseRelationships(relationshipsXml) : new Map(),
+        relationships: relationshipsXml
+          ? parseRelationships(relationshipsXml)
+          : new Map(),
         relationshipsPath,
         raw,
         budget: altChunkBudget,
@@ -850,8 +930,14 @@ export async function parseDocxWithPreviewBudget(
         (total, part) => total + countAltChunks(part.content),
         0,
       ) +
-      (pkg.footnotes ?? []).reduce((total, part) => total + countAltChunks(part.content), 0) +
-      (pkg.endnotes ?? []).reduce((total, part) => total + countAltChunks(part.content), 0);
+      (pkg.footnotes ?? []).reduce(
+        (total, part) => total + countAltChunks(part.content),
+        0,
+      ) +
+      (pkg.endnotes ?? []).reduce(
+        (total, part) => total + countAltChunks(part.content),
+        0,
+      );
     if (altChunkCount > 0) {
       parseContext.warn({
         code: PARSE_WARNING_CODES.altChunkUnsupported,
@@ -884,7 +970,10 @@ export async function parseDocxWithPreviewBudget(
         count: opaqueRevisionCount,
       });
     }
-    assignDocumentParagraphPropertySourceContract(document, await paragraphPropertySourceDigest);
+    assignDocumentParagraphPropertySourceContract(
+      document,
+      await paragraphPropertySourceDigest,
+    );
     previews.enforce(previewBudget);
 
     const validation = validateFolioDocumentModel(document);
@@ -896,7 +985,10 @@ export async function parseDocxWithPreviewBudget(
       );
     }
     for (const issue of formatDocumentModelIssues(validation.issues)) {
-      parseContext.warn({ code: PARSE_WARNING_CODES.documentModelIssue, detail: issue });
+      parseContext.warn({
+        code: PARSE_WARNING_CODES.documentModelIssue,
+        detail: issue,
+      });
     }
     const parseWarnings = collectedWarnings();
     if (parseWarnings.length > 0) {
@@ -945,7 +1037,10 @@ function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
  * relationships plus every `.rels` part the unzip kept. Entries outside it are
  * still stored so a round-trip keeps their bytes, but nothing decodes them.
  */
-function collectReferencedMediaPaths(raw: RawDocxContent, rels: RelationshipMap): Set<string> {
+function collectReferencedMediaPaths(
+  raw: RawDocxContent,
+  rels: RelationshipMap,
+): Set<string> {
   const referenced = new Set<string>();
 
   const addTargets = (map: RelationshipMap, relsPath: string): void => {
@@ -993,7 +1088,10 @@ async function buildMediaMap(
     // in-browser preview is broken.
     if (isReferenced && isTiffMimeType(mimeType) && remainingTiffPixels > 0) {
       // oxlint-disable-next-line no-await-in-loop -- TIFF decode uses a shared Canvas; conversions must stay serialized to avoid contention
-      const converted = await convertTiffToPngDataUrl(data, remainingTiffPixels);
+      const converted = await convertTiffToPngDataUrl(
+        data,
+        remainingTiffPixels,
+      );
       if (converted) {
         remainingTiffPixels -= converted.pixels;
         const mediaFile: MediaFile = {
@@ -1013,14 +1111,19 @@ async function buildMediaMap(
     }
 
     const raster =
-      isReferenced && isMetafileMimeType(mimeType) ? extractMetafileRaster(data) : null;
+      isReferenced && isMetafileMimeType(mimeType)
+        ? extractMetafileRaster(data)
+        : null;
     if (raster) {
       const mediaFile: MediaFile = {
         path,
         filename,
         mimeType,
         data,
-        dataUrl: mediaToDataUrl(copyBytesToArrayBuffer(raster.bytes), raster.mimeType),
+        dataUrl: mediaToDataUrl(
+          copyBytesToArrayBuffer(raster.bytes),
+          raster.mimeType,
+        ),
       };
       media.set(path, mediaFile);
       const normalizedPath = path.replace(/^word\//u, "");
@@ -1047,7 +1150,10 @@ async function buildMediaMap(
           filename,
           mimeType,
           data,
-          dataUrl: mediaToDataUrl(copyBytesToArrayBuffer(svgBytes), SVG_MIME_TYPE),
+          dataUrl: mediaToDataUrl(
+            copyBytesToArrayBuffer(svgBytes),
+            SVG_MIME_TYPE,
+          ),
         };
         media.set(path, mediaFile);
         const normalizedPath = path.replace(/^word\//u, "");
@@ -1142,7 +1248,10 @@ function attachLazyDataUrl(mediaFile: MediaFile): void {
  * Case-insensitive lookup in a Map
  * ZIP files may have inconsistent casing for paths/filenames
  */
-function getMapCaseInsensitive<T>(map: Map<string, T>, targetKey: string): T | undefined {
+function getMapCaseInsensitive<T>(
+  map: Map<string, T>,
+  targetKey: string,
+): T | undefined {
   const lowerTarget = targetKey.toLowerCase();
   for (const [key, value] of map.entries()) {
     if (key.toLowerCase() === lowerTarget) {
@@ -1172,7 +1281,8 @@ function getHeaderFooterXml(
 ): string | undefined {
   const filename = partPath.split("/").pop() ?? partPath;
   return (
-    getMapCaseInsensitive(raw.allXml, partPath) ?? getMapCaseInsensitive(indexedParts, filename)
+    getMapCaseInsensitive(raw.allXml, partPath) ??
+    getMapCaseInsensitive(indexedParts, filename)
   );
 }
 
@@ -1206,7 +1316,9 @@ function parseHeadersAndFooters(
         // A part with no `.rels` has no relationships. Falling back to the
         // document's would resolve a header-local `rId1` against the body, and
         // header ids restart at 1 in every part.
-        const headerRels = headerRelsXml ? parseRelationships(headerRelsXml) : new Map();
+        const headerRels = headerRelsXml
+          ? parseRelationships(headerRelsXml)
+          : new Map();
 
         const header = parseHeader(
           headerXml,
@@ -1231,7 +1343,10 @@ function parseHeadersAndFooters(
               watermark.imageTarget = imageRel.target;
               watermark.imageTargetExternal = true;
             } else {
-              watermark.imageTarget = resolveRelativePath(headerRelsPath, imageRel.target);
+              watermark.imageTarget = resolveRelativePath(
+                headerRelsPath,
+                imageRel.target,
+              );
             }
           }
           // parseHeader fingerprints the modeled fields before the package-level
@@ -1253,7 +1368,9 @@ function parseHeadersAndFooters(
         // A part with no `.rels` has no relationships. Falling back to the
         // document's would resolve a footer-local `rId1` against the body, and
         // footer ids restart at 1 in every part.
-        const footerRels = footerRelsXml ? parseRelationships(footerRelsXml) : new Map();
+        const footerRels = footerRelsXml
+          ? parseRelationships(footerRelsXml)
+          : new Map();
 
         const footer = parseFooter(
           footerXml,
@@ -1289,7 +1406,10 @@ function parseNotesContent(
   // Note parts own their relationships (word/_rels/footnotes.xml.rels); fall
   // back to the document rels only when the part has none.
   const relsForNotePart = (partPath: string): RelationshipMap => {
-    const xml = getMapCaseInsensitive(raw.allXml, getRelationshipsPathForPart(partPath));
+    const xml = getMapCaseInsensitive(
+      raw.allXml,
+      getRelationshipsPathForPart(partPath),
+    );
     return xml ? parseRelationships(xml) : rels;
   };
   const footnoteMap = parseFootnotes(
@@ -1317,8 +1437,12 @@ function parseNotesContent(
   // Separator and continuation notes are parsed but never reach the model.
   const footnotes = footnoteMap.getNormalFootnotes();
   const endnotes = endnoteMap.getNormalEndnotes();
-  previews.release(footnoteMap.footnotes.filter((note) => !footnotes.includes(note)));
-  previews.release(endnoteMap.endnotes.filter((note) => !endnotes.includes(note)));
+  previews.release(
+    footnoteMap.footnotes.filter((note) => !footnotes.includes(note)),
+  );
+  previews.release(
+    endnoteMap.endnotes.filter((note) => !endnotes.includes(note)),
+  );
   return { footnotes, endnotes };
 }
 

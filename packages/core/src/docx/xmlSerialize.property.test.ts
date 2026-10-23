@@ -22,11 +22,13 @@
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { XMLBuilder } from "fast-xml-parser";
 import fc from "fast-check";
+import { XMLBuilder } from "fast-xml-parser";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { elementToXml, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -90,7 +92,11 @@ const withPlaceholderAttributes = (element: XmlElement): XmlElement => {
 
 /** The previous implementation, in full, with that one difference applied. */
 const previousElementToXml = (element: XmlElement): string =>
-  (fxpBuilder.build([elementToFxpNode(withPlaceholderAttributes(element))]) as string)
+  (
+    fxpBuilder.build([
+      elementToFxpNode(withPlaceholderAttributes(element)),
+    ]) as string
+  )
     .replaceAll("\r", "&#13;")
     .replaceAll(ATTRIBUTE_TAB_PLACEHOLDER, "&#9;")
     .replaceAll(ATTRIBUTE_LINE_FEED_PLACEHOLDER, "&#10;");
@@ -110,22 +116,34 @@ const xmlName = fc
 /** Content that exercises every escape, plus the values that self-close. */
 const textContent = fc.oneof(
   { weight: 3, arbitrary: fc.string({ maxLength: 20 }) },
-  { weight: 2, arbitrary: fc.constantFrom("", " ", "   ", "\r", "\n", "\t", "\r\n") },
+  {
+    weight: 2,
+    arbitrary: fc.constantFrom("", " ", "   ", "\r", "\n", "\t", "\r\n"),
+  },
   {
     weight: 3,
     arbitrary: fc
-      .array(fc.constantFrom("&", "<", ">", '"', "'", "\r", "\n", "a", " "), { maxLength: 16 })
+      .array(fc.constantFrom("&", "<", ">", '"', "'", "\r", "\n", "a", " "), {
+        maxLength: 16,
+      })
       .map((characters) => characters.join("")),
   },
 );
 
 const attributes = fc.dictionary(xmlName, textContent, { maxKeys: 4 });
 
-const textNode = textContent.map((text): XmlElement => ({ type: "text", text }));
+const textNode = textContent.map((text): XmlElement => ({
+  type: "text",
+  text,
+}));
 
 const elementNode = fc.letrec<{ node: XmlElement }>((tie) => ({
   node: fc
-    .tuple(xmlName, attributes, fc.array(fc.oneof(textNode, tie("node")), { maxLength: 4 }))
+    .tuple(
+      xmlName,
+      attributes,
+      fc.array(fc.oneof(textNode, tie("node")), { maxLength: 4 }),
+    )
     .map(([name, attrs, children]): XmlElement => {
       const element: XmlElement = { type: "element", name };
       if (Object.keys(attrs).length > 0) {
@@ -160,7 +178,11 @@ describe("element serialization", () => {
   test("matches it on trees nested deeply enough to copy", () => {
     const nest = (depth: number): XmlElement =>
       depth === 0
-        ? { type: "element", name: "w:t", elements: [{ type: "text", text: "leaf & <tail>" }] }
+        ? {
+            type: "element",
+            name: "w:t",
+            elements: [{ type: "text", text: "leaf & <tail>" }],
+          }
         : {
             type: "element",
             name: `w:level${String(depth)}`,
@@ -252,7 +274,11 @@ describe("deeply nested serialization", () => {
     const wrap = (depth: number): XmlElement =>
       depth === 0
         ? { type: "element", name: "w:tbl", elements: [leaf, leaf, leaf, leaf] }
-        : { type: "element", name: `w:n${String(depth)}`, elements: [wrap(depth - 1)] };
+        : {
+            type: "element",
+            name: `w:n${String(depth)}`,
+            elements: [wrap(depth - 1)],
+          };
 
     let previousLength = 0;
     for (const depth of [1, 2, 4, 8, 16, 32]) {

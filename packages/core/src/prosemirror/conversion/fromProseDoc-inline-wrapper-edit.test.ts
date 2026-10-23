@@ -24,7 +24,10 @@ import { createSuggestionModePlugin } from "../plugins/suggestionMode";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
-const run = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+const run = (text: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
 
 const WRAPPED: InlineWrapper = {
   type: "inlineWrapper",
@@ -41,7 +44,8 @@ const TAGGED: readonly InlineWrapper[] = [
     kind: "smartTag",
     element: "City",
     uri: "urn:example:tags",
-    propertiesXml: '<w:smartTagPr><w:attr w:name="k" w:val="v"/></w:smartTagPr>',
+    propertiesXml:
+      '<w:smartTagPr><w:attr w:name="k" w:val="v"/></w:smartTagPr>',
     content: [run("inside")],
   },
   {
@@ -52,7 +56,11 @@ const TAGGED: readonly InlineWrapper[] = [
   },
 ];
 
-const REVISION_INFO = { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+const REVISION_INFO = {
+  id: 7,
+  author: "Reviewer",
+  date: "2026-01-01T00:00:00Z",
+};
 
 /** `w:bdo > w:ins > w:r`: the wrapper the author put outside the revision. */
 const WRAPPER_OUTSIDE_REVISION: InlineWrapper = {
@@ -60,7 +68,9 @@ const WRAPPER_OUTSIDE_REVISION: InlineWrapper = {
   kind: "bidi",
   control: "override",
   direction: "rtl",
-  content: [{ type: "insertion", info: REVISION_INFO, content: [run("inside")] }],
+  content: [
+    { type: "insertion", info: REVISION_INFO, content: [run("inside")] },
+  ],
 };
 
 /** `w:ins > w:bdo > w:r`: the same span with the revision outside. */
@@ -92,7 +102,10 @@ const paragraphContentOf = (document: Document): ParagraphContent[] => {
   return block.content;
 };
 
-const rangeOfText = (state: EditorState, text: string): { from: number; to: number } => {
+const rangeOfText = (
+  state: EditorState,
+  text: string,
+): { from: number; to: number } => {
   let range: { from: number; to: number } | undefined;
   state.doc.descendants((node, position) => {
     const at = node.isText ? (node.text?.indexOf(text) ?? -1) : -1;
@@ -122,7 +135,9 @@ const editAndSave = (
     plugins: [createSuggestionModePlugin(mode === "tracked", "Reviewer")],
   });
   const { from, to } = rangeOfText(state, target);
-  const selected = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
+  const selected = state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, from, to)),
+  );
   const edited = selected.apply(selected.tr.insertText(replacement, from, to));
   return paragraphContentOf(
     fromProseDoc(edited.doc, source, { stylesheetSource: { type: "package" } }),
@@ -187,7 +202,9 @@ describe("text replaced inside a bidirectional wrapper", () => {
 
     expect(saved.every((item) => item.type === "inlineWrapper")).toBe(true);
     expect(
-      wrappersIn(saved).flatMap((wrapper) => wrapper.content.map((item) => item.type)),
+      wrappersIn(saved).flatMap((wrapper) =>
+        wrapper.content.map((item) => item.type),
+      ),
     ).toEqual(expect.arrayContaining(["insertion"]));
   });
 
@@ -208,7 +225,10 @@ describe("text replaced inside a bidirectional wrapper", () => {
     });
 
     test(`keeps the authored wrapper and revision order (${mode})`, () => {
-      for (const authored of [WRAPPER_OUTSIDE_REVISION, REVISION_OUTSIDE_WRAPPER]) {
+      for (const authored of [
+        WRAPPER_OUTSIDE_REVISION,
+        REVISION_OUTSIDE_WRAPPER,
+      ]) {
         const saved = editAndSave([authored], mode, "sid", "SID");
         expect(saved.at(0)?.type).toBe(authored.type);
         expect(wrappersIn(saved).length).toBeGreaterThan(0);
@@ -219,7 +239,9 @@ describe("text replaced inside a bidirectional wrapper", () => {
       const once = editAndSave([WRAPPED, run(" outside")], mode, "sid", "SID");
       const source = documentWith(once);
       const twice = paragraphContentOf(
-        fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+        fromProseDoc(toProseDoc(source), source, {
+          stylesheetSource: { type: "package" },
+        }),
       );
       expect(twice).toEqual(once);
     });
@@ -233,11 +255,15 @@ describe("text replaced inside a smart tag or a custom-XML wrapper", () => {
     }
     for (const mode of ["direct", "tracked"] as const) {
       test(`keeps the ${authored.kind} around the replacement (${mode})`, () => {
-        const wrappers = wrappersIn(editAndSave([authored, run(" outside")], mode, "sid", "SID"));
+        const wrappers = wrappersIn(
+          editAndSave([authored, run(" outside")], mode, "sid", "SID"),
+        );
         expect(wrappers.length).toBeGreaterThan(0);
         for (const wrapper of wrappers) {
           if (wrapper.kind === "bidi") {
-            throw new Error("The edit turned the wrapper into a bidirectional one");
+            throw new Error(
+              "The edit turned the wrapper into a bidirectional one",
+            );
           }
           expect(wrapper.kind).toBe(authored.kind);
           expect(wrapper.element).toBe(authored.element);
@@ -251,11 +277,18 @@ describe("text replaced inside a smart tag or a custom-XML wrapper", () => {
       });
 
       test(`saving the ${authored.kind} result again does not change it (${mode})`, () => {
-        const once = editAndSave([authored, run(" outside")], mode, "sid", "SID");
+        const once = editAndSave(
+          [authored, run(" outside")],
+          mode,
+          "sid",
+          "SID",
+        );
         const source = documentWith(once);
         expect(
           paragraphContentOf(
-            fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+            fromProseDoc(toProseDoc(source), source, {
+              stylesheetSource: { type: "package" },
+            }),
           ),
         ).toEqual(once);
       });
@@ -288,7 +321,9 @@ describe("a wrapper with nothing left in it", () => {
       rejected = state.apply(tr);
     });
     const saved = paragraphContentOf(
-      fromProseDoc(rejected.doc, source, { stylesheetSource: { type: "package" } }),
+      fromProseDoc(rejected.doc, source, {
+        stylesheetSource: { type: "package" },
+      }),
     );
     expect(wrappersIn(saved)).toHaveLength(0);
     expect(textIn(saved)).toBe(" outside");

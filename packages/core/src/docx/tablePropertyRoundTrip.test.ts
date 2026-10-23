@@ -22,10 +22,21 @@ import type { Document } from "../types/document";
 import { parseDocx } from "./parser";
 import { repackDocx } from "./rezip";
 import { unzipDocx } from "./unzip";
-import { getChildElements, getLocalName, parseXmlDocument, type XmlElement } from "./xmlParser";
+import {
+  getChildElements,
+  getLocalName,
+  parseXmlDocument,
+  type XmlElement,
+} from "./xmlParser";
 
-const VISUAL_FIXTURES = path.resolve(import.meta.dir, "../../../../tests/visual/fixtures");
-const CORPUS_FIXTURES = path.join(import.meta.dir, "__tests__/__fixtures__/corpus");
+const VISUAL_FIXTURES = path.resolve(
+  import.meta.dir,
+  "../../../../tests/visual/fixtures",
+);
+const CORPUS_FIXTURES = path.join(
+  import.meta.dir,
+  "__tests__/__fixtures__/corpus",
+);
 
 /** Real documents the repository already keeps, each carrying tables. */
 const FIXTURES = [
@@ -35,9 +46,18 @@ const FIXTURES = [
   { dir: CORPUS_FIXTURES, name: "upstream-with-tables.docx" },
 ] as const;
 
-const readFixture = ({ dir, name }: { dir: string; name: string }): ArrayBuffer => {
+const readFixture = ({
+  dir,
+  name,
+}: {
+  dir: string;
+  name: string;
+}): ArrayBuffer => {
   const bytes = readFileSync(path.join(dir, name));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 };
 
 const documentPart = async (buffer: ArrayBuffer): Promise<XmlElement> => {
@@ -100,7 +120,9 @@ describe("table properties survive a no-edit full repack", () => {
       // document missing a `w:tblGrid` the schema requires gets one, so the
       // check is that nothing is lost or altered rather than that nothing is
       // added.
-      const after = tableProperties(await documentPart(await noEditRepack(buffer)));
+      const after = tableProperties(
+        await documentPart(await noEditRepack(buffer)),
+      );
       const remaining = [...after];
       const lost = before.filter((element) => {
         const index = remaining.indexOf(element);

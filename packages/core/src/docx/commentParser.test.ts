@@ -5,7 +5,7 @@
  * commentsExtensible.xml for UTC timestamps.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import { parseComments } from "./commentParser";
 
@@ -62,12 +62,24 @@ const emptyMedia = new Map();
 describe("commentParser", () => {
   describe("basic parsing without commentsExtensible", () => {
     test("returns empty array for null input", () => {
-      const result = parseComments(null, emptyStyles, emptyTheme, emptyRels, emptyMedia);
+      const result = parseComments(
+        null,
+        emptyStyles,
+        emptyTheme,
+        emptyRels,
+        emptyMedia,
+      );
       expect(result).toEqual([]);
     });
 
     test("parses comments with local dates", () => {
-      const comments = parseComments(COMMENTS_XML, emptyStyles, emptyTheme, emptyRels, emptyMedia);
+      const comments = parseComments(
+        COMMENTS_XML,
+        emptyStyles,
+        emptyTheme,
+        emptyRels,
+        emptyMedia,
+      );
 
       expect(comments).toHaveLength(2);
 
@@ -83,7 +95,13 @@ describe("commentParser", () => {
     });
 
     test("parses comment content as paragraphs", () => {
-      const comments = parseComments(COMMENTS_XML, emptyStyles, emptyTheme, emptyRels, emptyMedia);
+      const comments = parseComments(
+        COMMENTS_XML,
+        emptyStyles,
+        emptyTheme,
+        emptyRels,
+        emptyMedia,
+      );
 
       expect(comments[0].content).toHaveLength(1);
       // Paragraph should contain content with a text run
@@ -113,9 +131,19 @@ describe("commentParser", () => {
   <w:comment w:id="3"><w:p/></w:comment>
 </w:comments>`;
 
-      const comments = parseComments(commentsXml, emptyStyles, emptyTheme, emptyRels, emptyMedia);
+      const comments = parseComments(
+        commentsXml,
+        emptyStyles,
+        emptyTheme,
+        emptyRels,
+        emptyMedia,
+      );
 
-      expect(comments.map(({ author }) => author)).toEqual(["", "Unknown", "Unknown"]);
+      expect(comments.map(({ author }) => author)).toEqual([
+        "",
+        "Unknown",
+        "Unknown",
+      ]);
     });
   });
 
@@ -400,7 +428,10 @@ describe("commentParser", () => {
       // parent and resolved state.
       expect(
         dateUtcFor(
-          commentsWith('xmlns:vendor="https://vendor.example/ns"', 'vendor:paraId="1A2B3C4D"'),
+          commentsWith(
+            'xmlns:vendor="https://vendor.example/ns"',
+            'vendor:paraId="1A2B3C4D"',
+          ),
         ),
       ).toBe("2024-02-10T15:30:00");
     });

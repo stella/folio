@@ -15,11 +15,14 @@ import * as Y from "yjs";
 import {
   type OutlineLevel,
   outlineLevelFromStatedValue,
-  type ParagraphNumberingOverride,
   paragraphNumberingFromSlots,
+  type ParagraphNumberingOverride,
 } from "@stll/docx-core/model";
 
-import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { schema } from "../../prosemirror/schema";
 import {
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
@@ -37,7 +40,10 @@ import { migrateFolioYjsSnapshot } from "./migrateYjsAttrSchema";
 const paragraphs = fc.array(
   fc.record({
     numPr: fc.option(
-      fc.record({ ilvl: fc.nat({ max: 8 }), numId: fc.nat({ max: 9 }) }, { requiredKeys: [] }),
+      fc.record(
+        { ilvl: fc.nat({ max: 8 }), numId: fc.nat({ max: 9 }) },
+        { requiredKeys: [] },
+      ),
       { nil: null },
     ),
     outlineLevel: fc.option(fc.nat({ max: 12 }), { nil: null }),
@@ -46,7 +52,8 @@ const paragraphs = fc.array(
   { maxLength: 6, minLength: 1 },
 );
 
-type SyntheticParagraph = typeof paragraphs extends fc.Arbitrary<infer T> ? T[number] : never;
+type SyntheticParagraph =
+  typeof paragraphs extends fc.Arbitrary<infer T> ? T[number] : never;
 
 /** The union a stored version-6 number carries forward to, or absent. */
 const migratedOutlineLevel = (stated: number | null): OutlineLevel | null =>
@@ -58,9 +65,15 @@ const migratedNumbering = (
 ): ParagraphNumberingOverride | null =>
   stated === null ? null : (paragraphNumberingFromSlots(stated) ?? null);
 
-type StoredAttrsOf = (block: SyntheticParagraph) => { numPr: unknown; outlineLevel: unknown };
+type StoredAttrsOf = (block: SyntheticParagraph) => {
+  numPr: unknown;
+  outlineLevel: unknown;
+};
 
-const proseDocument = (blocks: readonly SyntheticParagraph[], attrsOf: StoredAttrsOf) =>
+const proseDocument = (
+  blocks: readonly SyntheticParagraph[],
+  attrsOf: StoredAttrsOf,
+) =>
   schema.topNodeType.create(
     null,
     blocks.map((block) =>
@@ -93,7 +106,9 @@ type SyntheticSnapshot = {
   versioned: Uint8Array;
 };
 
-const syntheticSnapshot = (blocks: readonly SyntheticParagraph[]): SyntheticSnapshot => {
+const syntheticSnapshot = (
+  blocks: readonly SyntheticParagraph[],
+): SyntheticSnapshot => {
   const document = proseDocument(blocks, legacyAttrs);
   const unversionedDoc = new Y.Doc();
   prosemirrorToYXmlFragment(
@@ -154,7 +169,11 @@ describe("migrateFolioYjsSnapshot", () => {
           // Every attr equals what the stored value implies: the outline union
           // for 0..9 and absent beyond it, the numbering union for the slot
           // pair and absent when the element stated neither slot.
-          expect(proseDocumentOf(once.update).eq(proseDocument(blocks, currentAttrs))).toBe(true);
+          expect(
+            proseDocumentOf(once.update).eq(
+              proseDocument(blocks, currentAttrs),
+            ),
+          ).toBe(true);
         }),
         { id: "is a fixed point and leaves content alone", numRuns: 60 },
       );

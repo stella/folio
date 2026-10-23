@@ -98,7 +98,10 @@
       </div>
 
       <!-- Replace row -->
-      <div v-if="replaceMode && !replacementReadOnly" class="find-replace-dialog__row">
+      <div
+        v-if="replaceMode && !replacementReadOnly"
+        class="find-replace-dialog__row"
+      >
         <FolioInput
           v-model="replaceText"
           class="find-replace-dialog__input"
@@ -141,17 +144,23 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
+
+import type { ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
+
+import type { UseFindReplaceReturn } from "../../composables/useFindReplace";
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
-import type { ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
-import type { UseFindReplaceReturn } from "../../composables/useFindReplace";
 
 const { t } = useTranslation();
 
 // Resolve Button/Input/Checkbox from the FolioUI injection provider so a host
 // override takes effect here too (previously static markup — this dialog is a
 // floating panel, not a modal, so it does not use the Dialog primitive).
-const { Button: FolioButton, Input: FolioInput, Checkbox: FolioCheckbox } = useFolioUI();
+const {
+  Button: FolioButton,
+  Input: FolioInput,
+  Checkbox: FolioCheckbox,
+} = useFolioUI();
 
 const props = defineProps<{
   isOpen: boolean;
@@ -165,7 +174,9 @@ const emit = defineEmits<{
 const searchInputRef = ref<HTMLInputElement | null>(null);
 const replaceMode = ref(false);
 const replacementSummary = ref<ReplaceAllSummary | null>(null);
-const replacementReadOnly = computed(() => props.search.replacementRefusal.value !== null);
+const replacementReadOnly = computed(
+  () => props.search.replacementRefusal.value !== null,
+);
 const {
   searchText,
   replaceText,
@@ -184,9 +195,12 @@ const {
 const handleReplaceAll = () => {
   replacementSummary.value = replaceAll();
 };
-watch([searchText, () => options.matchCase, () => options.matchWholeWord], () => {
-  replacementSummary.value = null;
-});
+watch(
+  [searchText, () => options.matchCase, () => options.matchWholeWord],
+  () => {
+    replacementSummary.value = null;
+  },
+);
 const matchCase = toRef(options, "matchCase");
 const matchWholeWord = toRef(options, "matchWholeWord");
 
@@ -194,7 +208,9 @@ const matchCountText = computed(() => {
   if (!searchText.value.trim()) return "";
   if (matches.value.length === 0) return t("findReplace.noResults");
   if (currentIndex.value < 0)
-    return t("dialogs.findReplace.matchesFound", { total: matches.value.length });
+    return t("dialogs.findReplace.matchesFound", {
+      total: matches.value.length,
+    });
   return t("findReplace.matchCounter", {
     current: currentIndex.value + 1,
     total: matches.value.length,

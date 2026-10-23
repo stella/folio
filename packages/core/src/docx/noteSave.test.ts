@@ -16,14 +16,15 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import type { Endnote, Footnote } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createDocx, repackDocx, repackDocxFromRaw } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 import { unzipDocx } from "./unzip";
-import { createEmptyDocument } from "../utils/createDocument";
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 // A footnotes part with the two separator notes Word always emits (ids -1 / 0)
 // followed by one normal note whose paragraph carries a paraId so the selective
@@ -175,8 +176,12 @@ describe("footnote / endnote body write path (selective save)", () => {
     expect(noteBodyText(reparsed.package.footnotes?.[0])).toBe(editedText);
 
     // The unedited endnote part and other parts are untouched.
-    expect(await readPart(result, "word/endnotes.xml")).toBe(originalEndnotesXml);
-    expect(await readPart(result, "word/document.xml")).toBe(originalDocumentXml);
+    expect(await readPart(result, "word/endnotes.xml")).toBe(
+      originalEndnotesXml,
+    );
+    expect(await readPart(result, "word/document.xml")).toBe(
+      originalDocumentXml,
+    );
     expect(await readPart(result, "word/styles.xml")).toBe(originalStylesXml);
 
     // Within footnotes.xml, the required separator notes stay byte-exact and
@@ -214,7 +219,9 @@ describe("footnote / endnote body write path (selective save)", () => {
     expect(noteBodyText(reparsed.package.endnotes?.[0])).toBe(editedText);
 
     // The footnote part is untouched when only an endnote changed.
-    expect(await readPart(result, "word/footnotes.xml")).toBe(originalFootnotesXml);
+    expect(await readPart(result, "word/footnotes.xml")).toBe(
+      originalFootnotesXml,
+    );
 
     const savedEndnotesXml = await readPart(result, "word/endnotes.xml");
     expect(savedEndnotesXml).toContain(ENDNOTE_SEPARATORS);
@@ -254,11 +261,17 @@ describe("footnote / endnote body write path (selective save)", () => {
     }
 
     // Note parts are never touched by a body-only edit.
-    expect(await readPart(result, "word/footnotes.xml")).toBe(originalFootnotesXml);
-    expect(await readPart(result, "word/endnotes.xml")).toBe(originalEndnotesXml);
+    expect(await readPart(result, "word/footnotes.xml")).toBe(
+      originalFootnotesXml,
+    );
+    expect(await readPart(result, "word/endnotes.xml")).toBe(
+      originalEndnotesXml,
+    );
 
     // The body edit landed in document.xml.
-    expect(await readPart(result, "word/document.xml")).toContain("Body text edited");
+    expect(await readPart(result, "word/document.xml")).toContain(
+      "Body text edited",
+    );
   });
 });
 
@@ -280,7 +293,12 @@ describe("footnote / endnote body write path (full repack)", () => {
         content: [
           {
             type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "New footnote" }] }],
+            content: [
+              {
+                type: "run",
+                content: [{ type: "text", text: "New footnote" }],
+              },
+            ],
           },
         ],
       },
@@ -292,7 +310,9 @@ describe("footnote / endnote body write path (full repack)", () => {
         content: [
           {
             type: "paragraph",
-            content: [{ type: "run", content: [{ type: "text", text: "New endnote" }] }],
+            content: [
+              { type: "run", content: [{ type: "text", text: "New endnote" }] },
+            ],
           },
         ],
       },
@@ -300,7 +320,10 @@ describe("footnote / endnote body write path (full repack)", () => {
 
     const result = await createDocx(doc);
     const contentTypes = await readPart(result, "[Content_Types].xml");
-    const relationships = await readPart(result, "word/_rels/document.xml.rels");
+    const relationships = await readPart(
+      result,
+      "word/_rels/document.xml.rels",
+    );
     const savedFootnotes = await readPart(result, "word/footnotes.xml");
     const savedEndnotes = await readPart(result, "word/endnotes.xml");
 
@@ -308,7 +331,9 @@ describe("footnote / endnote body write path (full repack)", () => {
     expect(contentTypes).toContain('PartName="/word/endnotes.xml"');
     expect(relationships).toContain(`Type="${RELATIONSHIP_TYPES.footnotes}"`);
     expect(relationships).toContain(`Type="${RELATIONSHIP_TYPES.endnotes}"`);
-    expect(savedFootnotes).toContain('<w:footnote w:type="separator" w:id="-1">');
+    expect(savedFootnotes).toContain(
+      '<w:footnote w:type="separator" w:id="-1">',
+    );
     expect(savedFootnotes).toContain("<w:footnoteRef/>");
     expect(savedFootnotes).toContain("New footnote");
     expect(savedEndnotes).toContain('<w:endnote w:type="separator" w:id="-1">');
@@ -316,7 +341,9 @@ describe("footnote / endnote body write path (full repack)", () => {
     expect(savedEndnotes).toContain("New endnote");
 
     const reparsed = await parseDocx(result, { preloadFonts: false });
-    expect(noteBodyText(reparsed.package.footnotes?.at(0))).toBe("New footnote");
+    expect(noteBodyText(reparsed.package.footnotes?.at(0))).toBe(
+      "New footnote",
+    );
     expect(noteBodyText(reparsed.package.endnotes?.at(0))).toBe("New endnote");
   });
 
@@ -339,7 +366,9 @@ describe("footnote / endnote body write path (full repack)", () => {
 
     // Full repack rebuilds document.xml from the model, but the unedited endnote
     // part is left byte-exact (no endnote paragraph changed).
-    expect(await readPart(result, "word/endnotes.xml")).toBe(originalEndnotesXml);
+    expect(await readPart(result, "word/endnotes.xml")).toBe(
+      originalEndnotesXml,
+    );
 
     // Separator notes stay byte-exact inside footnotes.xml; the old body text is
     // gone, replaced by the edit.
@@ -367,7 +396,9 @@ describe("footnote / endnote body write path (full repack)", () => {
     expect(noteBodyText(reparsed.package.endnotes?.[0])).toBe(editedText);
 
     // The unedited footnote part is left byte-exact.
-    expect(await readPart(result, "word/footnotes.xml")).toBe(originalFootnotesXml);
+    expect(await readPart(result, "word/footnotes.xml")).toBe(
+      originalFootnotesXml,
+    );
 
     const savedEndnotesXml = await readPart(result, "word/endnotes.xml");
     expect(savedEndnotesXml).toContain(ENDNOTE_SEPARATORS);
@@ -377,8 +408,13 @@ describe("footnote / endnote body write path (full repack)", () => {
 
   test("raw repack persists an edited paraId-less footnote", async () => {
     const sourceZip = await JSZip.loadAsync(await createNotesFixture());
-    const paraIdLessFootnotesXml = footnotesXml.replace(` w14:paraId="${FOOTNOTE_PARA_ID}"`, "");
-    expect(paraIdLessFootnotesXml).not.toContain(`w14:paraId="${FOOTNOTE_PARA_ID}"`);
+    const paraIdLessFootnotesXml = footnotesXml.replace(
+      ` w14:paraId="${FOOTNOTE_PARA_ID}"`,
+      "",
+    );
+    expect(paraIdLessFootnotesXml).not.toContain(
+      `w14:paraId="${FOOTNOTE_PARA_ID}"`,
+    );
     sourceZip.file("word/footnotes.xml", paraIdLessFootnotesXml);
     const source = await sourceZip.generateAsync({ type: "arraybuffer" });
     const doc = await parseDocx(source, { preloadFonts: false });
@@ -401,7 +437,9 @@ describe("footnote / endnote body write path (full repack)", () => {
     const reparsed = await parseDocx(result, { preloadFonts: false });
 
     expect(noteBodyText(reparsed.package.footnotes?.[0])).toBe(editedText);
-    expect(await readPart(result, "word/footnotes.xml")).toContain(FOOTNOTE_SEPARATORS);
+    expect(await readPart(result, "word/footnotes.xml")).toContain(
+      FOOTNOTE_SEPARATORS,
+    );
   });
 
   test("raw repack ignores a dirty paragraph id removed by a note merge", async () => {
@@ -429,7 +467,9 @@ describe("footnote / endnote body write path (full repack)", () => {
     const savedFootnotesXml = await readPart(result, "word/footnotes.xml");
     const reparsed = await parseDocx(result, { preloadFonts: false });
 
-    expect(noteBodyText(reparsed.package.footnotes?.at(0))).toBe("Merged paragraphs");
+    expect(noteBodyText(reparsed.package.footnotes?.at(0))).toBe(
+      "Merged paragraphs",
+    );
     expect(reparsed.package.footnotes?.at(0)?.content).toHaveLength(1);
     expect(savedFootnotesXml).not.toContain(`w14:paraId="${removedParaId}"`);
   });
@@ -454,8 +494,12 @@ describe("footnote / endnote body write path (full repack)", () => {
 
     // The note bodies still round-trip unchanged.
     const reparsed = await parseDocx(result, { preloadFonts: false });
-    expect(noteBodyText(reparsed.package.footnotes?.[0])).toBe(ORIGINAL_FOOTNOTE_TEXT);
-    expect(noteBodyText(reparsed.package.endnotes?.[0])).toBe(ORIGINAL_ENDNOTE_TEXT);
+    expect(noteBodyText(reparsed.package.footnotes?.[0])).toBe(
+      ORIGINAL_FOOTNOTE_TEXT,
+    );
+    expect(noteBodyText(reparsed.package.endnotes?.[0])).toBe(
+      ORIGINAL_ENDNOTE_TEXT,
+    );
   });
 
   test("a note added to a part that already exists is written, and the part's notes stay byte-exact", async () => {
@@ -467,7 +511,9 @@ describe("footnote / endnote body write path (full repack)", () => {
     const added = (text: string) => [
       {
         type: "paragraph" as const,
-        content: [{ type: "run" as const, content: [{ type: "text" as const, text }] }],
+        content: [
+          { type: "run" as const, content: [{ type: "text" as const, text }] },
+        ],
       },
     ];
     doc.package.footnotes = [

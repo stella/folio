@@ -19,8 +19,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
-
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { parseDocx } from "./parser";
@@ -28,9 +30,12 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const W_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const M_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+const XML_DECLARATION =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const W_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const M_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/math";
 
 /**
  * One captured child per kind folio has no model for, spanning the reasons a
@@ -42,14 +47,16 @@ const PRESERVED = {
   altChunk: '<w:altChunk r:id="rIdChunk"/>',
   oMathPara: `<m:oMathPara xmlns:m="${M_NAMESPACE}"><m:oMath/></m:oMathPara>`,
   proofErr: '<w:proofErr w:type="spellStart"/>',
-  customXml: '<w:customXml w:element="clause"><w:p><w:r><w:t>inner</w:t></w:r></w:p></w:customXml>',
+  customXml:
+    '<w:customXml w:element="clause"><w:p><w:r><w:t>inner</w:t></w:r></w:p></w:customXml>',
 } as const;
 
 type PreservedKind = keyof typeof PRESERVED;
 
 const PRESERVED_KINDS = Object.keys(PRESERVED) as PreservedKind[];
 
-const paragraph = (text: string): string => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const paragraph = (text: string): string =>
+  `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
 
 const table = (text: string): string =>
   `<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid>` +
@@ -104,20 +111,30 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
 };
 
 const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+  (await (
+    await JSZip.loadAsync(saved)
+  )
+    .file("word/document.xml")
+    ?.async("text")) ?? "";
 
 /** Parse, project through the editor and back, save: the trip that used to lose it. */
 const throughTheEditor = async (body: string): Promise<string> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
   const projected = fromProseDoc(toProseDoc(parsed), parsed, {
     stylesheetSource: { type: "package" },
   });
-  return documentXmlOf(await repackDocx(projected, { updateModifiedDate: false }));
+  return documentXmlOf(
+    await repackDocx(projected, { updateModifiedDate: false }),
+  );
 };
 
 /** Parse and save, with no editor in between. */
 const throughASave = async (body: string): Promise<string> => {
-  const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+  const parsed = await parseDocx(await buildDocx(body), {
+    preloadFonts: false,
+  });
   return documentXmlOf(await repackDocx(parsed, { updateModifiedDate: false }));
 };
 
@@ -138,9 +155,15 @@ describe("a block child folio does not model survives in place", () => {
         fc.constantFrom(...PRESERVED_KINDS),
         fc.constantFrom(...PLACEMENT_VALUES),
         async (kind, placement) => {
-          const saved = await throughTheEditor(bodyFor(placement, PRESERVED[kind]));
+          const saved = await throughTheEditor(
+            bodyFor(placement, PRESERVED[kind]),
+          );
           const at = saved.indexOf(markerFor(kind));
-          expect({ kind, placement, kept: at !== -1 }).toEqual({ kind, placement, kept: true });
+          expect({ kind, placement, kept: at !== -1 }).toEqual({
+            kind,
+            placement,
+            kept: true,
+          });
 
           const one = saved.indexOf("<w:t>one</w:t>");
           const second = saved.indexOf("<w:t>two</w:t>");
@@ -175,10 +198,16 @@ describe("a block child folio does not model survives in place", () => {
   });
 
   test("a save with no editor in between keeps it too", async () => {
-    const saved = await throughASave(bodyFor(PLACEMENTS.betweenParagraphs, PRESERVED.permStart));
+    const saved = await throughASave(
+      bodyFor(PLACEMENTS.betweenParagraphs, PRESERVED.permStart),
+    );
     expect(saved).toContain('<w:permStart w:id="77" w:edGrp="everyone"/>');
-    expect(saved.indexOf("<w:permStart")).toBeGreaterThan(saved.indexOf("<w:t>one</w:t>"));
-    expect(saved.indexOf("<w:permStart")).toBeLessThan(saved.indexOf("<w:t>two</w:t>"));
+    expect(saved.indexOf("<w:permStart")).toBeGreaterThan(
+      saved.indexOf("<w:t>one</w:t>"),
+    );
+    expect(saved.indexOf("<w:permStart")).toBeLessThan(
+      saved.indexOf("<w:t>two</w:t>"),
+    );
   });
 
   test("a header keeps one, and so does a table cell", async () => {
@@ -188,7 +217,11 @@ describe("a block child folio does not model survives in place", () => {
       `${paragraph("after")}</w:tc></w:tr></w:tbl>`;
     const saved = await throughTheEditor(cellBody);
     expect(saved).toContain("<w:permStart");
-    expect(saved.indexOf("<w:permStart")).toBeGreaterThan(saved.indexOf("<w:t>before</w:t>"));
-    expect(saved.indexOf("<w:permStart")).toBeLessThan(saved.indexOf("<w:t>after</w:t>"));
+    expect(saved.indexOf("<w:permStart")).toBeGreaterThan(
+      saved.indexOf("<w:t>before</w:t>"),
+    );
+    expect(saved.indexOf("<w:permStart")).toBeLessThan(
+      saved.indexOf("<w:t>after</w:t>"),
+    );
   });
 });

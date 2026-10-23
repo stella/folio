@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+
 import {
   InvalidFolioDocumentOperationBatchError,
   parseFolioDocumentOperationBatch,
@@ -27,7 +28,10 @@ const MINTED_FIRST_ID = expect.stringMatching(/^op-[0-9a-f-]{36}-1$/);
 
 describe("parseAddCommentInput", () => {
   test("valid input builds a commentOnBlock operation", () => {
-    const result = parseAddCommentInput({ blockId: "b1", text: "Please clarify." });
+    const result = parseAddCommentInput({
+      blockId: "b1",
+      text: "Please clarify.",
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) {
       throw new Error("expected ok:true");
@@ -41,7 +45,11 @@ describe("parseAddCommentInput", () => {
   });
 
   test("valid input with a quote includes it on the operation", () => {
-    const result = parseAddCommentInput({ blockId: "b1", text: "note", quote: "the quoted text" });
+    const result = parseAddCommentInput({
+      blockId: "b1",
+      text: "note",
+      quote: "the quoted text",
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) {
       throw new Error("expected ok:true");
@@ -59,7 +67,9 @@ describe("parseAddCommentInput", () => {
     if (!result.ok) {
       throw new Error("expected ok:true");
     }
-    expect(result.operation).toMatchObject({ precondition: { blockTextHash: "h1a2b3" } });
+    expect(result.operation).toMatchObject({
+      precondition: { blockTextHash: "h1a2b3" },
+    });
   });
 
   test("rejects a malformed precondition", () => {
@@ -99,7 +109,11 @@ describe("parseAddCommentInput", () => {
   });
 
   test("rejects a non-string quote", () => {
-    const result = parseAddCommentInput({ blockId: "b1", text: "note", quote: 42 });
+    const result = parseAddCommentInput({
+      blockId: "b1",
+      text: "note",
+      quote: 42,
+    });
     expect(result.ok).toBe(false);
     if (result.ok) {
       throw new Error("expected ok:false");
@@ -119,7 +133,11 @@ describe("parseAddCommentInput", () => {
 
   test("rejects quote over the length cap", () => {
     const tooLong = "x".repeat(100_001);
-    const result = parseAddCommentInput({ blockId: "b1", text: "fine", quote: tooLong });
+    const result = parseAddCommentInput({
+      blockId: "b1",
+      text: "fine",
+      quote: tooLong,
+    });
     expect(result.ok).toBe(false);
     if (result.ok) {
       throw new Error("expected ok:false");
@@ -146,7 +164,12 @@ describe("parseSuggestChangesInput", () => {
       throw new Error("expected ok:true");
     }
     expect(result.operations).toEqual([
-      { id: MINTED_FIRST_ID, type: "commentOnRange", range, comment: { text: "Review this" } },
+      {
+        id: MINTED_FIRST_ID,
+        type: "commentOnRange",
+        range,
+        comment: { text: "Review this" },
+      },
     ]);
   });
 
@@ -173,7 +196,14 @@ describe("parseSuggestChangesInput", () => {
 
   test("valid replaceInBlock operation is parsed with an auto-generated id", () => {
     const result = parseSuggestChangesInput({
-      operations: [{ type: "replaceInBlock", blockId: "b1", find: "Heading", replace: "Intro" }],
+      operations: [
+        {
+          type: "replaceInBlock",
+          blockId: "b1",
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
     });
     expect(result.ok).toBe(true);
     if (!result.ok) {
@@ -206,7 +236,9 @@ describe("parseSuggestChangesInput", () => {
     if (!result.ok) {
       throw new Error("expected ok:true");
     }
-    expect(result.operations[0]?.precondition).toEqual({ blockTextHash: "h1a2b3" });
+    expect(result.operations[0]?.precondition).toEqual({
+      blockTextHash: "h1a2b3",
+    });
   });
 
   test("rejects a precondition with a malformed blockTextHash", () => {
@@ -298,7 +330,9 @@ describe("parseSuggestChangesInput", () => {
     expect(result).toEqual({
       ok: true,
       normalizations: [],
-      operations: [{ id: MINTED_FIRST_ID, type: "deleteTableColumn", blockId: "cell-1" }],
+      operations: [
+        { id: MINTED_FIRST_ID, type: "deleteTableColumn", blockId: "cell-1" },
+      ],
     });
   });
 
@@ -343,19 +377,25 @@ describe("parseSuggestChangesInput", () => {
     expect(result).toEqual({
       ok: true,
       normalizations: [],
-      operations: [{ id: MINTED_FIRST_ID, type: "deleteTableRow", blockId: "cell-1" }],
+      operations: [
+        { id: MINTED_FIRST_ID, type: "deleteTableRow", blockId: "cell-1" },
+      ],
     });
   });
 
   test("an optional comment attaches a review comment to the operation", () => {
     const result = parseSuggestChangesInput({
-      operations: [{ type: "deleteBlock", blockId: "b1", comment: "why this edit" }],
+      operations: [
+        { type: "deleteBlock", blockId: "b1", comment: "why this edit" },
+      ],
     });
     expect(result.ok).toBe(true);
     if (!result.ok) {
       throw new Error("expected ok:true");
     }
-    expect(result.operations[0]).toMatchObject({ comment: { text: "why this edit" } });
+    expect(result.operations[0]).toMatchObject({
+      comment: { text: "why this edit" },
+    });
   });
 
   test("rejects a missing operations array", () => {
@@ -455,7 +495,9 @@ describe("parseSuggestChangesInput", () => {
     const tooLong = "x".repeat(100_001);
 
     const findTooLong = parseSuggestChangesInput({
-      operations: [{ type: "replaceInBlock", blockId: "b1", find: tooLong, replace: "y" }],
+      operations: [
+        { type: "replaceInBlock", blockId: "b1", find: tooLong, replace: "y" },
+      ],
     });
     expect(findTooLong.ok).toBe(false);
     if (findTooLong.ok) {
@@ -464,7 +506,9 @@ describe("parseSuggestChangesInput", () => {
     expect(findTooLong.error).toContain("100,000-character limit");
 
     const replaceTooLong = parseSuggestChangesInput({
-      operations: [{ type: "replaceInBlock", blockId: "b1", find: "x", replace: tooLong }],
+      operations: [
+        { type: "replaceInBlock", blockId: "b1", find: "x", replace: tooLong },
+      ],
     });
     expect(replaceTooLong.ok).toBe(false);
     if (replaceTooLong.ok) {
@@ -522,11 +566,15 @@ describe("parseSuggestChangesInput", () => {
       formatting: { bold: true },
     });
     for (const type of SUGGEST_CHANGES_OPERATION_TYPES) {
-      const result = parseSuggestChangesInput({ operations: [supersetOperation(type)] });
+      const result = parseSuggestChangesInput({
+        operations: [supersetOperation(type)],
+      });
       expect(result.ok, type).toBe(true);
     }
     for (const excludedType of ["commentOnBlock", "insertSignatureTable"]) {
-      const result = parseSuggestChangesInput({ operations: [supersetOperation(excludedType)] });
+      const result = parseSuggestChangesInput({
+        operations: [supersetOperation(excludedType)],
+      });
       expect(result.ok, excludedType).toBe(false);
     }
   });
