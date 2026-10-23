@@ -1,6 +1,11 @@
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { canJoin } from "prosemirror-transform";
 
+import {
+  inlineBoundariesOf,
+  isBlockBoundaryNode,
+} from "../keptRangeBoundaries";
+
 type InlineBookmarksForParagraphJoinOptions = {
   first: PMNode;
   boundaries: readonly PMNode[];
@@ -10,16 +15,7 @@ type InlineBookmarksForParagraphJoinOptions = {
 /** The inline form of boundaries whose enclosing paragraph break was removed. */
 export const inlineBookmarksOf = (
   boundaries: readonly PMNode[],
-): PMNode[] | null => {
-  const inlineType = boundaries.at(0)?.type.schema.nodes["bookmarkBoundary"];
-  if (
-    !inlineType ||
-    boundaries.some((node) => node.type.name !== "blockBookmarkBoundary")
-  ) {
-    return null;
-  }
-  return boundaries.map((node) => inlineType.create(node.attrs));
-};
+): PMNode[] | null => inlineBoundariesOf(boundaries);
 
 /** Inline boundaries that can replace the paragraph break without replacing either paragraph's content. */
 export const inlineBookmarksForParagraphJoin = ({
@@ -39,7 +35,7 @@ export const inlineBookmarksForParagraphJoin = ({
   return first.type.validContent(content) ? inline : null;
 };
 
-/** Paragraph siblings separated only by typed bookmark boundaries. */
+/** Paragraph siblings separated only by typed range boundaries. */
 export const paragraphJoinAfter = (doc: PMNode, position: number) => {
   const at = doc.resolve(position);
   const first = at.nodeBefore;
@@ -49,7 +45,7 @@ export const paragraphJoinAfter = (doc: PMNode, position: number) => {
   let index = at.index();
   while (index < at.parent.childCount) {
     const boundary = at.parent.child(index);
-    if (boundary.type.name !== "blockBookmarkBoundary") break;
+    if (!isBlockBoundaryNode(boundary)) break;
     boundaries.push(boundary);
     nextPosition += boundary.nodeSize;
     index++;

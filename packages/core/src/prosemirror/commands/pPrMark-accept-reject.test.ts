@@ -15,6 +15,12 @@ import {
   rejectChange,
 } from "./comments";
 
+const BOOKMARK_ATTRS = {
+  type: { default: "start" },
+  id: { default: 0 },
+  name: { default: "bookmark" },
+};
+
 const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
@@ -33,7 +39,18 @@ const schema = new Schema({
     // Zero-width anchors: they hold a position, carry no revision of their
     // own, and therefore outlive a deletion that took every word around them.
     renderedPageBreak: { inline: true, group: "inline", atom: true },
-    bookmarkBoundary: { inline: true, group: "inline", atom: true },
+    bookmarkBoundary: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      attrs: BOOKMARK_ATTRS,
+    },
+    // Where a bookmark stands between blocks once its paragraph is gone.
+    blockBookmarkBoundary: {
+      group: "block",
+      atom: true,
+      attrs: BOOKMARK_ATTRS,
+    },
     textBoxAnchor: { inline: true, group: "inline", atom: true },
   },
   marks: {
@@ -283,22 +300,29 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
     expect(view.state.doc.child(0).textContent).toBe("first");
   });
 
-  // A zero-width anchor holds a position and shows nothing. Counting one as
-  // content left an emptied paragraph standing as a blank line around an
-  // invisible node.
-  for (const anchor of [
-    "renderedPageBreak",
-    "bookmarkBoundary",
-    "textBoxAnchor",
-  ]) {
-    test(`a ${anchor} does not keep an emptied paragraph alive`, () => {
+  // Whether an emptied paragraph stays is the engine's one paragraph-content
+  // rule, the same in the editor: a cached page break is not content, so the
+  // paragraph goes; a bookmark boundary is a position, so the paragraph goes
+  // and leaves it where it was (this table takes no run-in); a text box anchor
+  // stands for its drawing, so the paragraph keeps it instead of orphaning the
+  // box.
+  for (const [anchor, attrs, blocks] of [
+    ["renderedPageBreak", null, ["table", "paragraph"]],
+    [
+      "bookmarkBoundary",
+      { type: "start", id: 1, name: "kept" },
+      ["blockBookmarkBoundary", "table", "paragraph"],
+    ],
+    ["textBoxAnchor", null, ["paragraph", "table", "paragraph"]],
+  ] as const) {
+    test(`a ${anchor} left in an emptied paragraph leaves ${blocks.join(", ")}`, () => {
       const deletion = schema.marks["deletion"]!;
       const revision = { revisionId: 1, author: "Alice", date: "2026-05-01" };
       const state = EditorState.create({
         schema,
         doc: schema.node("doc", null, [
           schema.node("paragraph", { pPrMark: delMark({ id: 2 }) }, [
-            schema.node(anchor),
+            schema.node(anchor, attrs),
             schema.text("gone", [deletion.create(revision)]),
           ]),
           schema.node("table", null, [
@@ -311,8 +335,15 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       acceptAllChanges()(view.state, view.dispatch);
 
-      expect(view.state.doc.childCount).toBe(2);
-      expect(view.state.doc.child(0).type.name).toBe("table");
+      const children: string[] = [];
+      view.state.doc.forEach((child) => children.push(child.type.name));
+      expect(children).toEqual([...blocks]);
+      if (blocks[0] === "paragraph") {
+        const paragraph = view.state.doc.child(0);
+        expect(paragraph.textContent).toBe("");
+        expect(paragraph.childCount).toBe(1);
+        expect(paragraph.firstChild?.type.name).toBe(anchor);
+      }
     });
   }
 

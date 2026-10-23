@@ -36,6 +36,7 @@ import {
 } from "./ids";
 import { textsIn } from "./leaves";
 import { cloneModel } from "./modelClone";
+import { isBlockBoundary } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { stampInfo, WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
@@ -173,9 +174,14 @@ const commitBlocks = ({
         "A table has rows and cells; each cell and the story retain a final paragraph.",
     });
   }
+  // A range boundary between blocks moves with the paragraphs: one that goes
+  // leaves its boundaries where it was. Wrappers and captured blocks stay.
   const fixedBlocks = (items: readonly BlockContent[]) =>
     items.filter(
-      (block) => block.type !== "table" && block.type !== "paragraph",
+      (block) =>
+        block.type !== "table" &&
+        block.type !== "paragraph" &&
+        !isBlockBoundary(block),
     );
   if (!structurallyEqual(fixedBlocks(before), fixedBlocks(blocks))) {
     return refuse({
