@@ -174,67 +174,72 @@ const nodeFor = (item: BoundaryItem, beside: PMNode): PMNode | undefined => {
   });
 };
 
+/** One change to `tr.doc` the plan asks for, at a position in that document. */
+type BoundaryEdit =
+  | { kind: "replace"; position: number; size: number; node?: PMNode }
+  | { kind: "insert"; position: number; node: PMNode };
+
 /**
  * Make every range a rejection kept boundaries of well-formed, by the
- * engine's own rule (`planWellFormedRanges`): `kept` holds the positions, in
- * `tr.doc`, of the nodes the rejection kept from removed content.
+ * engine's own plan (`planWellFormedRanges`): `kept` holds the positions, in
+ * `tr.doc`, of the nodes the rejection kept from removed content. The plan
+ * runs once over every boundary in document order and names each by its
+ * place in that list, as the engine names its own, so applying it never
+ * reads a position the repair itself moved.
  */
 export const normalizeKeptRangeBoundaries = (
   tr: Transaction,
   kept: ReadonlySet<number>,
 ): void => {
   if (kept.size === 0) return;
-  // Copies first: a node loses the boundaries the plan drops, and a point
-  // range that keeps only one half becomes a node of that half.
   const found = boundariesIn(tr.doc, kept);
-  const dropped = new Set(
-    planWellFormedRanges(found.map(({ occurrence }) => occurrence)).dropped,
-  );
-  const start = tr.steps.length;
-  const keptAfter = new Set<number>();
-  const byNode = new Map<number, Found[]>();
-  for (const entry of found)
-    byNode.set(entry.position, [...(byNode.get(entry.position) ?? []), entry]);
-  for (const [position, entries] of [...byNode].toReversed()) {
-    const remaining = entries.filter(
-      (entry) => !dropped.has(found.indexOf(entry)),
-    );
-    if (remaining.length === entries.length) continue;
-    const node = entries[0]?.node;
-    if (node === undefined) continue;
-    const at = tr.mapping.slice(start).map(position);
-    const [only] = remaining;
+  const plan = planWellFormedRanges(found.map(({ occurrence }) => occurrence));
+  const leaving = new Set(plan.dropped);
+  for (const { end } of plan.moved) leaving.add(end);
+  const edits: BoundaryEdit[] = [];
+  const byNode = new Map<number, number[]>();
+  for (const [index, { position }] of found.entries())
+    byNode.set(position, [...(byNode.get(position) ?? []), index]);
+  for (const [position, indices] of byNode) {
+    const staying = indices.filter((index) => !leaving.has(index));
+    const node = found[indices[0] ?? -1]?.node;
+    if (node === undefined || staying.length === indices.length) continue;
+    // A point range that keeps only one half becomes a node of that half.
+    const only = staying.length === 1 ? found[staying[0] ?? -1] : undefined;
     const replacement =
-      remaining.length === 1 && only !== undefined
-        ? nodeFor(only.item, node)
-        : undefined;
-    if (replacement === undefined) tr.delete(at, at + node.nodeSize);
-    else tr.replaceWith(at, at + node.nodeSize, replacement);
+      only === undefined ? undefined : nodeFor(only.item, node);
+    edits.push({
+      kind: "replace",
+      position,
+      size: node.nodeSize,
+      ...(replacement === undefined ? {} : { node: replacement }),
+    });
   }
-  for (const position of kept)
-    keptAfter.add(tr.mapping.slice(start).map(position));
-  // Then ends before their starts, on what remains.
-  const after = boundariesIn(tr.doc, keptAfter);
-  const moves = planWellFormedRanges(
-    after.map(({ occurrence }) => occurrence),
-  ).moved;
-  const movedFrom = tr.steps.length;
-  for (const { end: endIndex, start: startIndex } of moves) {
-    const end = after[endIndex];
-    const startAt = after[startIndex];
-    if (end === undefined || startAt === undefined) continue;
-    // A point range holds both halves: it is never a reversed pair on its own.
-    if (rangeBoundaryItemsOf(end.node).length > 1) continue;
-    const moved = nodeFor(end.item, startAt.node);
-    if (moved === undefined) continue;
-    tr.insert(
-      tr.mapping
-        .slice(movedFrom)
-        .map(startAt.position + startAt.node.nodeSize, -1),
-      moved,
-    );
-    const at = tr.mapping.slice(movedFrom).map(end.position);
-    tr.delete(at, at + end.node.nodeSize);
+  for (const { end: endIndex, start: startIndex } of plan.moved) {
+    const end = found[endIndex];
+    const start = found[startIndex];
+    const moved =
+      end === undefined || start === undefined
+        ? undefined
+        : nodeFor(end.item, start.node);
+    if (start !== undefined && moved !== undefined)
+      edits.push({
+        kind: "insert",
+        position: start.position + start.node.nodeSize,
+        node: moved,
+      });
+  }
+  // Last position first, so every edit lands where the plan read it; at one
+  // position a node's own change goes before what is inserted ahead of it.
+  const order = (edit: BoundaryEdit) => (edit.kind === "replace" ? 0 : 1);
+  for (const edit of edits.toSorted(
+    (left, right) =>
+      right.position - left.position || order(left) - order(right),
+  )) {
+    if (edit.kind === "insert") tr.insert(edit.position, edit.node);
+    else if (edit.node === undefined)
+      tr.delete(edit.position, edit.position + edit.size);
+    else tr.replaceWith(edit.position, edit.position + edit.size, edit.node);
   }
 };
 

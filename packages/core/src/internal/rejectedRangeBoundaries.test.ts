@@ -153,6 +153,36 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     ]);
   });
 
+  test("dropping an inserted copy leaves the next range alone, in both", () => {
+    // The copy sits right before another range's end, which comes before its
+    // own start; only the range the rejection kept a boundary of is repaired.
+    const document = documentWith([
+      {
+        type: "insertion",
+        info: insertion,
+        content: [
+          { type: "moveToRangeStart", id: 7, name: "move7", author: "A" },
+        ],
+      },
+      { type: "moveToRangeEnd", id: 8 },
+      { type: "run", content: [{ type: "text", text: "one" }] },
+      { type: "moveToRangeStart", id: 8, name: "move8", author: "A" },
+      { type: "moveToRangeStart", id: 7, name: "move7", author: "A" },
+      { type: "run", content: [{ type: "text", text: "two" }] },
+      { type: "moveToRangeEnd", id: 7 },
+    ]);
+    const editor = outline(rejectInEditor(document));
+    expect(editor).toEqual(outline(rejectInEngine(document)));
+    expect(editor).toEqual([
+      "type:moveToRangeEnd,id:8",
+      "text:one",
+      "type:moveToRangeStart,id:8",
+      "type:moveToRangeStart,id:7",
+      "text:two",
+      "type:moveToRangeEnd,id:7",
+    ]);
+  });
+
   test(
     "editor and engine reject generated insertions holding every boundary kind alike",
     async () => {
@@ -231,8 +261,13 @@ describe("rejecting an insertion keeps its range boundaries", () => {
               fc.pre(false);
               return;
             }
+            // Both reject the document the editor holds: its import may
+            // already have joined a range's two halves into one point.
+            const imported = fromProseDoc(state.doc, document, {
+              stylesheetSource: { type: "package" },
+            });
             expect(outline(rejectInState(state, document))).toEqual(
-              outline(rejectInEngine(document)),
+              outline(rejectInEngine(imported)),
             );
           },
         ),
