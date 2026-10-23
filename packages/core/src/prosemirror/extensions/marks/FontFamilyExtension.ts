@@ -5,13 +5,15 @@
 import { panic } from "better-result";
 
 import { expectFontFamilyMarkAttrs } from "../../attrs";
-import {
-  canonicalRunFormatting,
-  withCanonicalCommand,
-} from "../../canonicalCommands";
+import { canonicalRunFormatting } from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { canonicalSetMarkFormatting, removeMark, setMark } from "./markUtils";
+import {
+  canonicalSetMarkFormatting,
+  removeMark,
+  setMark,
+  withRunFormattingLock,
+} from "./markUtils";
 
 export const FontFamilyExtension = createMarkExtension({
   name: "fontFamily",
@@ -66,7 +68,7 @@ export const FontFamilyExtension = createMarkExtension({
     return {
       commands: {
         setFontFamily: (fontName: string) =>
-          withCanonicalCommand(
+          withRunFormattingLock(
             setMark(fontFamilyType, {
               ascii: fontName,
               hAnsi: fontName,
@@ -79,7 +81,7 @@ export const FontFamilyExtension = createMarkExtension({
               }),
           ),
         clearFontFamily: () =>
-          withCanonicalCommand(removeMark(fontFamilyType), (state) =>
+          withRunFormattingLock(removeMark(fontFamilyType), (state) =>
             canonicalRunFormatting(state, { fontFamily: null }),
           ),
       },

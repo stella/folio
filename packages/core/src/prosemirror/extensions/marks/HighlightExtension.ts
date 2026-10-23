@@ -8,13 +8,10 @@ import type { TextFormatting } from "../../../types/document";
 import { HIGHLIGHT_COLOR_VALUES } from "../../../types/documentEnumValues";
 import { resolveHighlightToCss } from "../../../utils/colorResolver";
 import { expectHighlightMarkAttrs } from "../../attrs";
-import {
-  canonicalRunFormatting,
-  withCanonicalCommand,
-} from "../../canonicalCommands";
+import { canonicalRunFormatting } from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { removeMark, setMark } from "./markUtils";
+import { removeMark, setMark, withRunFormattingLock } from "./markUtils";
 
 type HighlightColor = NonNullable<TextFormatting["highlight"]>;
 
@@ -174,18 +171,18 @@ export const HighlightExtension = createMarkExtension({
       commands: {
         setHighlight: (color: string) => {
           if (!color || color === "none") {
-            return withCanonicalCommand(removeMark(highlightType), (state) =>
+            return withRunFormattingLock(removeMark(highlightType), (state) =>
               canonicalRunFormatting(state, { highlight: null }),
             );
           }
           const highlight = parseDOMHighlightColor(color) ?? "yellow";
-          return withCanonicalCommand(
+          return withRunFormattingLock(
             setMark(highlightType, { color: highlight }),
             (state) => canonicalRunFormatting(state, { highlight }),
           );
         },
         clearHighlight: () =>
-          withCanonicalCommand(removeMark(highlightType), (state) =>
+          withRunFormattingLock(removeMark(highlightType), (state) =>
             canonicalRunFormatting(state, { highlight: null }),
           ),
       },

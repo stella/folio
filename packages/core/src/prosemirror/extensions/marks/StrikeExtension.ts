@@ -4,13 +4,14 @@
 
 import { panic } from "better-result";
 
-import {
-  canonicalRunFormatting,
-  withCanonicalCommand,
-} from "../../canonicalCommands";
+import { canonicalRunFormatting } from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { isMarkActive, toggleDocumentMark } from "./markUtils";
+import {
+  isMarkActive,
+  toggleDocumentMark,
+  withRunFormattingLock,
+} from "./markUtils";
 
 export const StrikeExtension = createMarkExtension({
   name: "strike",
@@ -40,7 +41,7 @@ export const StrikeExtension = createMarkExtension({
     return {
       commands: {
         toggleStrike: () =>
-          withCanonicalCommand(toggleDocumentMark(strikeType), (state) => {
+          withRunFormattingLock(toggleDocumentMark(strikeType), (state) => {
             const active = isMarkActive(state, strikeType);
             return canonicalRunFormatting(state, {
               strike: active ? null : true,

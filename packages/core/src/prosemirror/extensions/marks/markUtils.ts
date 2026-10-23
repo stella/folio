@@ -12,6 +12,7 @@ import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { readThemeColor } from "@stll/docx-core/model";
 import type { RunPropsPatch } from "@stll/docx-core/ops";
 
+import { isContentLocked } from "../../../content-controls/mutateContentControls";
 import type { TextFormatting, UnderlineStyle } from "../../../types/document";
 import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
@@ -28,6 +29,7 @@ import {
   expectTextEffectMarkAttrs,
 } from "../../attrs";
 import {
+  type CanonicalCommandIntent,
   canonicalRunFormatting,
   withCanonicalCommand,
 } from "../../canonicalCommands";
@@ -56,6 +58,50 @@ import {
 type MarkAttrs = Record<string, unknown>;
 type FontFamilyFormatting = NonNullable<TextFormatting["fontFamily"]>;
 type FontTheme = NonNullable<FontFamilyFormatting["asciiTheme"]>;
+
+const isContentLockedControl = (node: {
+  type: { name: string };
+  attrs: Attrs;
+}) =>
+  (node.type.name === "sdt" || node.type.name === "blockSdt") &&
+  isContentLocked(node.attrs["lock"]);
+
+const selectionTouchesContentLockedControl = (state: EditorState): boolean => {
+  const { from, to, $from, $to } = state.selection;
+  const hasLockedAncestor = (position: typeof $from): boolean => {
+    for (let depth = 1; depth <= position.depth; depth += 1) {
+      if (isContentLockedControl(position.node(depth))) return true;
+    }
+    return false;
+  };
+  if (hasLockedAncestor($from) || hasLockedAncestor($to)) return true;
+  if (state.selection.empty) return false;
+
+  let touchesLockedControl = false;
+  state.doc.nodesBetween(from, to, (node) => {
+    if (isContentLockedControl(node)) {
+      touchesLockedControl = true;
+      return false;
+    }
+    return true;
+  });
+  return touchesLockedControl;
+};
+
+export const withRunFormattingLock = (
+  command: Command,
+  describe: (
+    state: EditorState,
+  ) => readonly CanonicalCommandIntent[] | undefined,
+): Command => {
+  const guarded: Command = (state, dispatch, view) =>
+    selectionTouchesContentLockedControl(state)
+      ? false
+      : command(state, dispatch, view);
+  return withCanonicalCommand(guarded, (state) =>
+    selectionTouchesContentLockedControl(state) ? [] : describe(state),
+  );
+};
 
 const isFontTheme = (value: string | undefined): value is FontTheme =>
   value !== undefined && FONT_THEME_VALUES.some((theme) => theme === value);
@@ -366,6 +412,11 @@ export const canonicalSetMarkFormatting = ({
   type,
   attrs,
 }: CanonicalSetMarkFormattingOptions) => {
+  if (
+    RUN_FORMATTING_MARK_NAMES.has(type.name) &&
+    selectionTouchesContentLockedControl(state)
+  )
+    return [];
   const markType = documentMarkType(state, type);
   const { empty } = state.selection;
   if (empty) {
@@ -443,7 +494,7 @@ export function setMark(type: MarkType, attrs: MarkAttrs): Command {
     return true;
   };
   if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
-  return withCanonicalCommand(command, (state) =>
+  return withRunFormattingLock(command, (state) =>
     canonicalSetMarkFormatting({ state, type, attrs }),
   );
 }
@@ -594,7 +645,7 @@ export const toggleDocumentMark = (type: MarkType): Command => {
     return nextCommand(state, dispatch, view);
   };
   if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
-  return withCanonicalCommand(command, (state) => {
+  return withRunFormattingLock(command, (state) => {
     const markType = documentMarkType(state, type);
     const formatting = marksToTextFormatting([markType.create()]);
     if (!isMarkActive(state, markType))
@@ -615,7 +666,7 @@ export const toggleMarkForAllScripts = (
   type: MarkType,
   property: PairedToggleProperty,
 ): Command =>
-  withCanonicalCommand(
+  withRunFormattingLock(
     (state, dispatch) => {
       const markType = documentMarkType(state, type);
       const enabled = !isMarkActive(state, markType);
@@ -638,7 +689,7 @@ export const setFontSizeForAllScripts = (
   markType: MarkType,
   size: number,
 ): Command =>
-  withCanonicalCommand(
+  withRunFormattingLock(
     withRunFormattingOverride(setMark(markType, { size }), (attrs) =>
       updateFontSizeCompanionAttrs(attrs, size),
     ),
@@ -648,7 +699,7 @@ export const setFontSizeForAllScripts = (
 
 /** Clears both ordinary and complex-script direct size through the UI command boundary. */
 export const clearFontSizeForAllScripts = (markType: MarkType): Command =>
-  withCanonicalCommand(
+  withRunFormattingLock(
     withRunFormattingOverride(removeMark(markType), (attrs) =>
       updateFontSizeCompanionAttrs(attrs, undefined),
     ),
@@ -686,7 +737,7 @@ function selectionHasVisibleUnderline(
 }
 
 export function toggleUnderlineMark(markType: MarkType): Command {
-  return withCanonicalCommand(
+  return withRunFormattingLock(
     (state, dispatch) =>
       setMark(markType, {
         style: selectionHasVisibleUnderline(
@@ -734,7 +785,7 @@ export function removeMark(type: MarkType): Command {
     return true;
   };
   if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
-  return withCanonicalCommand(command, (state) => {
+  return withRunFormattingLock(command, (state) => {
     const formatting = marksToTextFormatting([
       documentMarkType(state, type).create(),
     ]);
@@ -1137,6 +1188,7 @@ export function textFormattingToMarks(
  * text, orphaned the note and silently resolved the revision.
  */
 const clearFormattingCommand: Command = (state, dispatch) => {
+  if (selectionTouchesContentLockedControl(state)) return false;
   const { empty } = state.selection;
 
   if (empty) {
@@ -1174,7 +1226,7 @@ const clearFormattingCommand: Command = (state, dispatch) => {
 };
 
 /** Clear character formatting from the selection. */
-export const clearFormatting: Command = withCanonicalCommand(
+export const clearFormatting: Command = withRunFormattingLock(
   clearFormattingCommand,
   (state) =>
     canonicalSelectionRanges(state).flatMap(({ from, to }) =>

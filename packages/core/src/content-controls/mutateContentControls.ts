@@ -151,6 +151,11 @@ function throwLocked(
  * - `sdtContentLocked` blocks both.
  * - `sdtLocked` blocks only container removal, NOT content edits.
  */
+export const isContentLocked = (
+  lock: SdtProperties["lock"],
+): lock is "contentLocked" | "sdtContentLocked" =>
+  lock === "contentLocked" || lock === "sdtContentLocked";
+
 function ensureContentNotLocked(
   control: BlockSdt,
   force: boolean | undefined,
@@ -159,7 +164,7 @@ function ensureContentNotLocked(
     return;
   }
   const lock = control.properties.lock;
-  if (lock === "contentLocked" || lock === "sdtContentLocked") {
+  if (isContentLocked(lock)) {
     throwLocked(control, lock);
   }
 }

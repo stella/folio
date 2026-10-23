@@ -4,13 +4,14 @@
 
 import { panic } from "better-result";
 
-import {
-  canonicalRunFormatting,
-  withCanonicalCommand,
-} from "../../canonicalCommands";
+import { canonicalRunFormatting } from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { isMarkActive, toggleDocumentMark } from "./markUtils";
+import {
+  isMarkActive,
+  toggleDocumentMark,
+  withRunFormattingLock,
+} from "./markUtils";
 
 export const SubscriptExtension = createMarkExtension({
   name: "subscript",
@@ -30,7 +31,7 @@ export const SubscriptExtension = createMarkExtension({
     return {
       commands: {
         toggleSubscript: () =>
-          withCanonicalCommand(toggleDocumentMark(subscriptType), (state) =>
+          withRunFormattingLock(toggleDocumentMark(subscriptType), (state) =>
             canonicalRunFormatting(state, {
               vertAlign: isMarkActive(state, subscriptType)
                 ? null
