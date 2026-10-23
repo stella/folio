@@ -1,6 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { buildGlyphs } from "../display-list/build/glyphs";
 import { paragraphToRuns } from "../layout-bridge/convert/paragraphRuns";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
@@ -51,6 +55,8 @@ const style = {
   fontSize: 12,
   automaticTextSpacing: { latin: true, numbers: true },
 } satisfies FontStyle;
+
+setDefaultTimeout(propertyTestTimeout(10_000));
 
 const paragraph = (runs: TextRun[]): ParagraphBlock => ({
   kind: "paragraph",
@@ -259,7 +265,7 @@ test("glyph advances, engine caret, selection and hit testing own identical sour
 test("formatting-only splits preserve unwrapped width and display advances", () => {
   withFakeTextMeasure(
     () => {
-      fc.assert(
+      assertProperty(
         fc.property(
           fc.array(
             fc.constantFrom("漢", "𠀀", "A", "é\u0301", "1", " ", "🙂"),
@@ -305,7 +311,7 @@ test("formatting-only splits preserve unwrapped width and display advances", () 
             expect(glyphWidth).toBeCloseTo(expected, 8);
           },
         ),
-        { numRuns: 80 },
+        { id: "split-run-advance-invariance", numRuns: 80 },
       );
     },
     { charWidth: fixedCharWidth(10) },
@@ -389,7 +395,7 @@ test("derived advances exclude projected, note, script and direction overrides",
 test("auto-width noWrap cells price unwrapped advances without changing the authored grid", () => {
   withFakeTextMeasure(
     () => {
-      fc.assert(
+      assertProperty(
         fc.property(
           fc.integer({ min: 1, max: 3 }),
           fc.integer({ min: 1, max: 12 }),
@@ -433,7 +439,7 @@ test("auto-width noWrap cells price unwrapped advances without changing the auth
             ).toEqual(table.columnWidths);
           },
         ),
-        { numRuns: 24 },
+        { id: "no-wrap-cell-advance-invariance", numRuns: 24 },
       );
     },
     { charWidth: fixedCharWidth(10) },
