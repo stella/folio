@@ -51,19 +51,40 @@ export const isZeroWidthAnchor = (node: PMNode): boolean =>
   ANCHOR_ITEMS.has(node.type.name);
 
 /**
+ * A node's width the way the engine counts it: an atom or leaf (text, a
+ * field, an image) is one unit or more, a container (an inline content
+ * control) counts its children in place, and an anchor counts as the engine
+ * item it stands for, which for a zero-width item is no width.
+ */
+const engineWidth = (node: PMNode): number => {
+  const item = ANCHOR_ITEMS.get(node.type.name);
+  if (item !== undefined) {
+    return item === "unit" ? 1 : 0;
+  }
+  if (node.isAtom || node.isLeaf) {
+    return 1;
+  }
+  let width = 0;
+  node.forEach((child) => {
+    width += engineWidth(child);
+  });
+  return width;
+};
+
+/**
  * Whether the textblock holds content its paragraph mark must not take away,
- * by the engine's rule: any child other than an anchor is width, and each
- * anchor counts as the engine item it stands for.
+ * by the engine's rule: the paragraph's width, and each anchor directly in
+ * it counted as the engine item it stands for.
  */
 export const paragraphContentOf = (block: PMNode): ParagraphContentVerdict => {
   let width = 0;
   const zeroWidthItems: ZeroWidthItem[] = [];
   block.forEach((child) => {
     const item = ANCHOR_ITEMS.get(child.type.name);
-    if (item === undefined || item === "unit") {
-      width += 1;
-    } else {
+    if (item !== undefined && item !== "unit") {
       zeroWidthItems.push(item);
+    } else {
+      width += engineWidth(child);
     }
   });
   return paragraphContentVerdict({ width, zeroWidthItems });

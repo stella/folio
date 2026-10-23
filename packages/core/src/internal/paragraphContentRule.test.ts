@@ -107,6 +107,32 @@ describe("editor and engine share one paragraph-content rule", () => {
     });
   });
 
+  // A content control is counted in place, as the engine counts it: holding
+  // nothing, or only a marker, it is no width in either.
+  for (const [label, content] of [
+    ["an empty content control", []],
+    [
+      "a content control holding only a bookmark",
+      [
+        { type: "bookmarkStart", id: 2, name: "inside" },
+        { type: "bookmarkEnd", id: 2 },
+      ],
+    ],
+  ] as const) {
+    test(`${label} decides the same outcome in both`, () => {
+      const document = documentWith([
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText" },
+          content: [...content],
+        },
+      ]);
+      expect(outcome(acceptInEditor(document))).toEqual(
+        outcome(acceptInEngine(document)),
+      );
+    });
+  }
+
   test("a paragraph holding only a cached page break is removed in both", () => {
     const document = documentWith([
       { type: "run", content: [{ type: "renderedPageBreak" }] },
