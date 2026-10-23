@@ -133,14 +133,24 @@ test("the owner boundary rejects renderer, DOM, and test imports", () => {
 });
 
 test("page lifecycle callers import the shared owner directly", () => {
-  for (const relativePath of [
-    "display-list/dom/renderDisplayListToDom.ts",
-    "layout-painter/index.ts",
-    "layout-painter/renderPage.ts",
-  ]) {
-    const source = readFileSync(path.resolve(CORE_SRC, relativePath), "utf8");
+  const callerEntries = [
+    {
+      path: "display-list/dom/renderDisplayListToDom.ts",
+      ownerImport: "../pageResourceOwnership",
+    },
+    {
+      path: "layout-painter/index.ts",
+      ownerImport: "../display-list/pageResourceOwnership",
+    },
+    {
+      path: "layout-painter/renderPage.ts",
+      ownerImport: "../display-list/pageResourceOwnership",
+    },
+  ];
+  for (const callers of callerEntries) {
+    const source = readFileSync(path.resolve(CORE_SRC, callers.path), "utf8");
     const parsed = ts.createSourceFile(
-      relativePath,
+      callers.path,
       source,
       ts.ScriptTarget.Latest,
       true,
@@ -151,7 +161,7 @@ test("page lifecycle callers import the shared owner directly", () => {
         ? [statement.moduleSpecifier.text]
         : [],
     );
-    expect(importSpecifiers).toContain("../display-list/pageResourceOwnership");
+    expect(importSpecifiers).toContain(callers.ownerImport);
     expect(importSpecifiers).not.toContain(
       "../display-list/dom/renderDisplayListToDom",
     );
