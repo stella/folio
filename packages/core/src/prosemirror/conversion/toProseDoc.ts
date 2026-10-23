@@ -97,6 +97,7 @@ import type {
   RunContent,
   RunPropertyChange,
   Shape,
+  ShapeContent,
   ShapeFill,
   ShapeTextBody,
   SimpleField,
