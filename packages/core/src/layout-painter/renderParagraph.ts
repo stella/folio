@@ -1763,7 +1763,7 @@ function renderRun({
     return renderImageRun({
       run,
       doc,
-      context,
+      ...(context === undefined ? {} : { context }),
       sizing,
       imageLeft,
     });
@@ -3097,7 +3097,9 @@ export function renderLine(
                 renderImageRun({
                   run: next,
                   doc,
-                  context: options?.context,
+                  ...(options?.context === undefined
+                    ? {}
+                    : { context: options.context }),
                   sizing: inlinePictureSizingForParagraph(
                     block,
                     options?.context,
@@ -3111,7 +3113,9 @@ export function renderLine(
               renderRun({
                 run: next,
                 doc,
-                context: options?.context,
+                ...(options?.context === undefined
+                  ? {}
+                  : { context: options.context }),
                 sizing: inlinePictureSizingForParagraph(
                   block,
                   options?.context,
@@ -3229,7 +3233,7 @@ export function renderLine(
       const runEl = renderImageRun({
         run,
         doc,
-        context: options?.context,
+        ...(options?.context === undefined ? {} : { context: options.context }),
         sizing: inlinePictureSizingForParagraph(block, options?.context),
         imageLeft: imageLeftAtCurrentX(),
       });
@@ -3310,7 +3314,7 @@ export function renderLine(
       const runEl = renderRun({
         run,
         doc,
-        context: options?.context,
+        ...(options?.context === undefined ? {} : { context: options.context }),
         sizing: inlinePictureSizingForParagraph(block, options?.context),
         imageLeft: imageLeftAtCurrentX(),
       });
