@@ -1,6 +1,8 @@
 /** Owns browser font registration for one Vue editor instance. */
 
-import { type Ref, watch } from "vue";
+import { onScopeDispose, type Ref, watch } from "vue";
+
+import { FontFaceLifecycle } from "@stll/folio-core/fonts/FontFaceLifecycle";
 
 import type { FontDefinition } from "../components/DocxEditor/types";
 import {
@@ -83,35 +85,24 @@ export function useFontLifecycle(
     { immediate: true },
   );
 
+  const hostFonts = new FontFaceLifecycle((faces: readonly FontFace[]) =>
+    dependencies.remove(faces),
+  );
+  const unsubscribe = hostFonts.subscribe(options.remeasure);
+  onScopeDispose(() => {
+    unsubscribe();
+    hostFonts.destroy();
+  });
+
   watch(
     options.fonts,
-    (fonts, _previous, onCleanup) => {
+    (fonts) => {
       if (!fonts || fonts.length === 0) {
+        hostFonts.clear();
         return;
       }
-
-      let cancelled = false;
-      let registered: FontFace[] = [];
-      void dependencies.loadHost(fonts).then((faces) => {
-        if (cancelled) {
-          dependencies.remove(faces);
-          return undefined;
-        }
-        registered = faces;
-        if (faces.length > 0) {
-          options.remeasure();
-        }
-        return undefined;
-      });
-
-      onCleanup(() => {
-        cancelled = true;
-        if (registered.length === 0) {
-          return;
-        }
-        dependencies.remove(registered);
-        options.remeasure();
-      });
+      const commit = hostFonts.beginReplacement();
+      void dependencies.loadHost(fonts).then(commit);
     },
     { immediate: true },
   );
