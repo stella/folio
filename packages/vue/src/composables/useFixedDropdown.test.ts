@@ -1,8 +1,9 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { afterAll, expect, test } from "bun:test";
 
-if (!GlobalRegistrator.isRegistered) GlobalRegistrator.register();
+import { acquireHarnessDom } from "../../../../test/harnessDom";
 
-import { expect, test } from "bun:test";
+const releaseDom = acquireHarnessDom();
+afterAll(releaseDom);
 
 const { createApp, h, nextTick, ref } = await import("vue");
 const { useFixedDropdown } = await import("./useFixedDropdown");

@@ -1,14 +1,13 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
-
-GlobalRegistrator.register();
-
 import { afterAll, expect, test } from "bun:test";
 import type { Ref } from "vue";
 
+import { acquireHarnessDom } from "../../../../test/harnessDom";
+
+const releaseDom = acquireHarnessDom();
+afterAll(releaseDom);
+
 const { createApp, defineComponent, h, nextTick, ref } = await import("vue");
 const { useOutlineDrawerFocus } = await import("./useOutlineDrawerFocus");
-
-afterAll(() => GlobalRegistrator.unregister());
 
 test("an available drawer focuses and closes with Escape when no headings survive filtering", async () => {
   const container = document.createElement("div");
