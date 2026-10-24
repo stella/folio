@@ -178,6 +178,9 @@ export function calculateEmptyParagraphMetrics(
     ...(attrs?.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: attrs.embeddedFontFamilyMap }
       : {}),
+    ...(attrs?.documentFontFacts
+      ? { documentFontFacts: attrs.documentFontFacts }
+      : {}),
     fontSize,
     fontFamily: fontFamily ?? DEFAULT_FONT_FAMILY,
     ...(attrs?.defaultAlternateFontFamily !== undefined

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
+import type { FontTable } from "@stll/docx-core/model";
+
+import {
+  buildDocumentFontFacts,
+  documentFontFactsCacheIdentity,
+  documentFontInfoOf,
+} from "../fonts/documentFontFacts";
 import {
   buildFontString,
   getResolvedData,
@@ -108,6 +115,87 @@ describe("fontResolver — David uses a Hebrew serif fallback", () => {
 });
 
 describe("fontResolver — alternate families", () => {
+  test("document font facts are a stable snapshot of source font data", () => {
+    const fontTable: FontTable = {
+      fonts: [
+        {
+          name: "LedgerFace",
+          family: "roman",
+          pitch: "variable",
+          charset: { val: "00", characterSet: "ANSI" },
+        },
+      ],
+    };
+    const sourceFont = fontTable.fonts.at(0);
+    if (!sourceFont) {
+      throw new Error("Expected one test font");
+    }
+    const facts = buildDocumentFontFacts(fontTable);
+    if (!facts) {
+      throw new Error("Expected document font facts");
+    }
+    const cacheIdentity = documentFontFactsCacheIdentity(facts);
+
+    sourceFont.family = "swiss";
+    sourceFont.pitch = "fixed";
+    if (sourceFont.charset) {
+      sourceFont.charset.val = "02";
+    }
+
+    expect(documentFontFactsCacheIdentity(facts)).toBe(cacheIdentity);
+    expect("byName" in facts).toBe(false);
+    expect(documentFontInfoOf("ledgerface", facts)).toMatchObject({
+      family: "roman",
+      pitch: "variable",
+      charset: { val: "00", characterSet: "ANSI" },
+    });
+    const fontInfo = documentFontInfoOf("ledgerface", facts);
+    expect(Object.isFrozen(fontInfo)).toBe(true);
+    expect(Object.isFrozen(fontInfo?.charset)).toBe(true);
+    if (fontInfo?.charset) {
+      expect(Reflect.set(fontInfo.charset, "val", "02")).toBe(false);
+    }
+  });
+
+  test("uses font-table family and pitch facts for an unknown authored face", () => {
+    const romanFacts = buildDocumentFontFacts({
+      fonts: [{ name: "LedgerFace", family: "roman", pitch: "variable" }],
+    });
+    const fixedFacts = buildDocumentFontFacts({
+      fonts: [{ name: "LedgerFace", family: "roman", pitch: "fixed" }],
+    });
+
+    const romanFallback = resolveFontFamily("LedgerFace", {
+      documentFontFacts: romanFacts,
+    }).cssFallback;
+    expect(parseFontFamilyList(romanFallback)).toEqual([
+      "LedgerFace",
+      "Times New Roman",
+      "Times",
+      "Noto Sans Arabic",
+      "serif",
+    ]);
+    expect(
+      parseFontFamilyList(
+        resolveFontFamily("LedgerFace", { documentFontFacts: fixedFacts })
+          .cssFallback,
+      ),
+    ).toEqual([
+      "LedgerFace",
+      "Courier New",
+      "Courier",
+      "Noto Sans Arabic",
+      "monospace",
+    ]);
+    const fontString = buildFontString({
+      fontFamily: "LedgerFace",
+      documentFontFacts: romanFacts,
+    });
+    expect(
+      parseFontFamilyList(fontString.slice(fontString.indexOf("px ") + 3)),
+    ).toEqual(parseFontFamilyList(romanFallback));
+  });
+
   test("tries an alternate immediately after a mapped primary", () => {
     const resolved = resolveFontFamily("Calibri", {
       alternateFontName: "Times New Roman",

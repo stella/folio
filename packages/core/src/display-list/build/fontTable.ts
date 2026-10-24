@@ -119,6 +119,7 @@ export class FontTable {
       resolveFontFamily(fontFamily, {
         alternateFontName: alternateFontFamily,
         embeddedFontFamilyMap: measureStyle.embeddedFontFamilyMap,
+        documentFontFacts: measureStyle.documentFontFacts,
       }).cssFallback,
     );
     // The leading entry is the concrete face the canvas measured with, and the

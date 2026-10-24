@@ -23,6 +23,7 @@ import type {
   VerticalAlign,
 } from "@stll/docx-core/model";
 
+import type { DocumentFontFacts } from "../fonts/documentFontFacts";
 import type { OutlineStyleAttr } from "../types/documentEnumValues";
 import type { NoteStoryKey } from "../types/editor-story";
 import { isFloatingWrapType, isWrapNone } from "../types/wrap";
@@ -44,6 +45,8 @@ export type BlockId = string | number;
 export type RunFormatting = {
   /** Embedded families owned by this editor, never ambient process state. */
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+  /** Authored font-table facts owned by this document. */
+  documentFontFacts?: DocumentFontFacts;
   bold?: boolean;
   italic?: boolean;
   /**
@@ -200,6 +203,7 @@ export type RunFormatting = {
 export type ListMarkerFormatting = Pick<
   RunFormatting,
   | "embeddedFontFamilyMap"
+  | "documentFontFacts"
   | "fontFamily"
   | "alternateFontFamily"
   | "eastAsiaFontFamily"
@@ -510,6 +514,7 @@ export const isListNumPr = (
  */
 export type ParagraphAttrs = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+  documentFontFacts?: DocumentFontFacts;
   alignment?: "left" | "center" | "right" | "justify";
   /** Document-generation policy for justified line fitting. */
   justificationCompatibility?: { type: "legacy" };

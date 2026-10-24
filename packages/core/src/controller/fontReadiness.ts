@@ -16,6 +16,10 @@ import type { EditorState } from "prosemirror-state";
 
 import { blockPlainText } from "../docx/blockPlainText";
 import {
+  buildDocumentFontFacts,
+  type DocumentFontFacts,
+} from "../fonts/documentFontFacts";
+import {
   buildFontAlternates,
   type FontAlternates,
   getFontAlternate,
@@ -172,6 +176,11 @@ export type LayoutFontFace = {
   weight: (typeof LAYOUT_FONT_DESCRIPTORS)[number]["weight"];
 };
 
+type FontFaceResolutionContext = {
+  fontAlternates: FontAlternates;
+  documentFontFacts: DocumentFontFacts | undefined;
+};
+
 /**
  * Resolve once every face the first layout will measure has loaded (`true`),
  * or after a timeout (`false`), so the first layout does not measure fallbacks.
@@ -273,86 +282,111 @@ export function collectInitialLayoutFontFaces(
   pmDoc: EditorState["doc"],
 ): LayoutFontFace[] {
   const faces = new Map<string, LayoutFontFace>();
-  const fontAlternates = buildFontAlternates(documentModel?.package.fontTable);
-  addLayoutFontFamilyFace(
+  const resolution: FontFaceResolutionContext = {
+    fontAlternates: buildFontAlternates(documentModel?.package.fontTable),
+    documentFontFacts: buildDocumentFontFacts(documentModel?.package.fontTable),
+  };
+  addLayoutFontFamilyFace({
     faces,
-    DEFAULT_FONT_FAMILY,
-    REGULAR_LAYOUT_FONT_DESCRIPTOR,
-    fontAlternates,
-  );
+    value: DEFAULT_FONT_FAMILY,
+    descriptor: REGULAR_LAYOUT_FONT_DESCRIPTOR,
+    ...resolution,
+  });
 
   for (const family of documentModel?.requiredFonts ?? []) {
-    addLayoutFontFamilyFace(
+    addLayoutFontFamilyFace({
       faces,
-      family,
-      REGULAR_LAYOUT_FONT_DESCRIPTOR,
-      fontAlternates,
-    );
+      value: family,
+      descriptor: REGULAR_LAYOUT_FONT_DESCRIPTOR,
+      ...resolution,
+    });
   }
 
-  addLayoutFontFamilyFace(
+  addLayoutFontFamilyFace({
     faces,
-    documentModel?.package.theme?.fontScheme?.majorFont?.latin,
-    REGULAR_LAYOUT_FONT_DESCRIPTOR,
-    fontAlternates,
-  );
-  addLayoutFontFamilyFace(
+    value: documentModel?.package.theme?.fontScheme?.majorFont?.latin,
+    descriptor: REGULAR_LAYOUT_FONT_DESCRIPTOR,
+    ...resolution,
+  });
+  addLayoutFontFamilyFace({
     faces,
-    documentModel?.package.theme?.fontScheme?.minorFont?.latin,
-    REGULAR_LAYOUT_FONT_DESCRIPTOR,
-    fontAlternates,
-  );
-  addTextFormattingFontFaces(
+    value: documentModel?.package.theme?.fontScheme?.minorFont?.latin,
+    descriptor: REGULAR_LAYOUT_FONT_DESCRIPTOR,
+    ...resolution,
+  });
+  addTextFormattingFontFaces({
     faces,
-    documentModel?.package.styles?.docDefaults?.rPr,
-    fontAlternates,
-  );
+    formatting: documentModel?.package.styles?.docDefaults?.rPr,
+    resolution,
+  });
   for (const style of documentModel?.package.styles?.styles ?? []) {
-    addTextFormattingFontFaces(faces, style.rPr, fontAlternates);
+    addTextFormattingFontFaces({ faces, formatting: style.rPr, resolution });
   }
 
-  collectProseMirrorFontFaces(faces, pmDoc, undefined, fontAlternates);
+  collectProseMirrorFontFaces({
+    faces,
+    node: pmDoc,
+    inheritedTextFormatting: undefined,
+    resolution,
+  });
 
   return Array.from(faces.values());
 }
 
-function addTextFormattingFontFaces(
-  faces: Map<string, LayoutFontFace>,
-  formatting: TextFormatting | undefined,
-  fontAlternates: FontAlternates,
-): void {
+type AddTextFormattingFontFacesOptions = {
+  faces: Map<string, LayoutFontFace>;
+  formatting: TextFormatting | undefined;
+  resolution: FontFaceResolutionContext;
+};
+
+function addTextFormattingFontFaces({
+  faces,
+  formatting,
+  resolution,
+}: AddTextFormattingFontFacesOptions): void {
   const standardDescriptor = layoutDescriptorFromFormatting(formatting);
   const complexScriptDescriptor = layoutDescriptorFromEmphasis(
     formatting?.boldCs ?? formatting?.bold,
     formatting?.italicCs ?? formatting?.italic,
   );
-  addLayoutFontFamilyFace(
+  addLayoutFontFamilyFace({
     faces,
-    formatting?.fontFamily,
-    standardDescriptor,
-    fontAlternates,
+    value: formatting?.fontFamily,
+    descriptor: standardDescriptor,
+    ...resolution,
     complexScriptDescriptor,
-  );
+  });
 }
 
-function collectProseMirrorFontFaces(
-  faces: Map<string, LayoutFontFace>,
-  node: PMNode,
-  inheritedTextFormatting: TextFormatting | undefined,
-  fontAlternates: FontAlternates,
-): void {
+type CollectProseMirrorFontFacesOptions = {
+  faces: Map<string, LayoutFontFace>;
+  node: PMNode;
+  inheritedTextFormatting: TextFormatting | undefined;
+  resolution: FontFaceResolutionContext;
+};
+
+function collectProseMirrorFontFaces({
+  faces,
+  node,
+  inheritedTextFormatting,
+  resolution,
+}: CollectProseMirrorFontFacesOptions): void {
   const paragraphDefaults = readParagraphDefaultTextFormatting(node);
   const textFormatting = paragraphDefaults ?? inheritedTextFormatting;
   if (paragraphDefaults) {
-    addTextFormattingFontFaces(faces, paragraphDefaults, fontAlternates);
+    addTextFormattingFontFaces({
+      faces,
+      formatting: paragraphDefaults,
+      resolution,
+    });
   }
 
   if (node.type.name === "paragraph") {
-    addTextFormattingFontFaces(
+    addTextFormattingFontFaces({
       faces,
-      expectParagraphAttrs(node).listMarkerFormatting,
-      fontAlternates,
-    );
+      formatting: expectParagraphAttrs(node).listMarkerFormatting,
+      resolution,
+    });
   }
 
   if (node.isText) {
@@ -361,17 +395,23 @@ function collectProseMirrorFontFaces(
       node.marks,
     );
     const markFontFamily = readFontFamilyMarkAttrs(node.marks);
-    addLayoutFontFamilyFace(
+    addLayoutFontFamilyFace({
       faces,
-      markFontFamily ?? textFormatting?.fontFamily ?? DEFAULT_FONT_FAMILY,
+      value:
+        markFontFamily ?? textFormatting?.fontFamily ?? DEFAULT_FONT_FAMILY,
       descriptor,
-      fontAlternates,
-    );
+      ...resolution,
+    });
   }
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
-    collectProseMirrorFontFaces(faces, child, textFormatting, fontAlternates);
+    collectProseMirrorFontFaces({
+      faces,
+      node: child,
+      inheritedTextFormatting: textFormatting,
+      resolution,
+    });
   });
 }
 
@@ -432,15 +472,29 @@ function layoutDescriptorFromFormattingAndMarks(
   };
 }
 
-function addLayoutFontFamilyFace(
-  faces: Map<string, LayoutFontFace>,
-  value: unknown,
-  descriptor: Omit<LayoutFontFace, "family">,
-  fontAlternates: FontAlternates,
+type AddLayoutFontFamilyFaceOptions = FontFaceResolutionContext & {
+  faces: Map<string, LayoutFontFace>;
+  value: unknown;
+  descriptor: Omit<LayoutFontFace, "family">;
+  complexScriptDescriptor?: Omit<LayoutFontFace, "family">;
+};
+
+function addLayoutFontFamilyFace({
+  faces,
+  value,
+  descriptor,
+  fontAlternates,
+  documentFontFacts,
   complexScriptDescriptor = descriptor,
-): void {
+}: AddLayoutFontFamilyFaceOptions): void {
   if (typeof value === "string") {
-    addLayoutFontFamilyNameFace(faces, value, descriptor, fontAlternates);
+    addLayoutFontFamilyNameFace({
+      faces,
+      family: value,
+      descriptor,
+      fontAlternates,
+      documentFontFacts,
+    });
     return;
   }
 
@@ -459,28 +513,49 @@ function addLayoutFontFamilyFace(
     cs?: unknown;
     eastAsia?: unknown;
   };
-  addLayoutFontFamilyFace(faces, fontFamily.ascii, descriptor, fontAlternates);
-  addLayoutFontFamilyFace(faces, fontFamily.hAnsi, descriptor, fontAlternates);
-  addLayoutFontFamilyFace(
+  addLayoutFontFamilyFace({
     faces,
-    fontFamily.cs,
-    complexScriptDescriptor,
-    fontAlternates,
-  );
-  addLayoutFontFamilyFace(
-    faces,
-    fontFamily.eastAsia,
+    value: fontFamily.ascii,
     descriptor,
     fontAlternates,
-  );
+    documentFontFacts,
+  });
+  addLayoutFontFamilyFace({
+    faces,
+    value: fontFamily.hAnsi,
+    descriptor,
+    fontAlternates,
+    documentFontFacts,
+  });
+  addLayoutFontFamilyFace({
+    faces,
+    value: fontFamily.cs,
+    descriptor: complexScriptDescriptor,
+    fontAlternates,
+    documentFontFacts,
+  });
+  addLayoutFontFamilyFace({
+    faces,
+    value: fontFamily.eastAsia,
+    descriptor,
+    fontAlternates,
+    documentFontFacts,
+  });
 }
 
-function addLayoutFontFamilyNameFace(
-  faces: Map<string, LayoutFontFace>,
-  family: string,
-  descriptor: Omit<LayoutFontFace, "family">,
-  fontAlternates: FontAlternates,
-): void {
+type AddLayoutFontFamilyNameFaceOptions = FontFaceResolutionContext & {
+  faces: Map<string, LayoutFontFace>;
+  family: string;
+  descriptor: Omit<LayoutFontFace, "family">;
+};
+
+function addLayoutFontFamilyNameFace({
+  faces,
+  family,
+  descriptor,
+  fontAlternates,
+  documentFontFacts,
+}: AddLayoutFontFamilyNameFaceOptions): void {
   const normalized = family.trim();
   if (!normalized || CSS_GENERIC_FONT_FAMILIES.has(normalized)) {
     return;
@@ -501,7 +576,11 @@ function addLayoutFontFamilyNameFace(
   //
   // Derived rather than listed: a hand-kept table of substitutes would be a
   // second copy of the resolver's mapping, free to drift from it.
-  for (const stackFamily of resolvedStackFamilies(normalized, alternate)) {
+  for (const stackFamily of resolvedStackFamilies({
+    family: normalized,
+    alternate,
+    documentFontFacts,
+  })) {
     addLayoutFontFace(faces, stackFamily, descriptor);
   }
 }
@@ -512,12 +591,20 @@ function addLayoutFontFamilyNameFace(
  * Parsed from the stack rather than read from a map because the stack is what
  * the painter and the measurer put in `ctx.font` and `style.fontFamily`.
  */
-function resolvedStackFamilies(
-  family: string,
-  alternate: string | undefined,
-): string[] {
+type ResolvedStackFamiliesOptions = {
+  family: string;
+  alternate: string | undefined;
+  documentFontFacts: DocumentFontFacts | undefined;
+};
+
+function resolvedStackFamilies({
+  family,
+  alternate,
+  documentFontFacts,
+}: ResolvedStackFamiliesOptions): string[] {
   const { cssFallback } = resolveFontFamily(family, {
     alternateFontName: alternate,
+    documentFontFacts,
   });
   return parseFontFamilyList(cssFallback).filter(
     (name) => !CSS_GENERIC_FONT_FAMILIES.has(name),

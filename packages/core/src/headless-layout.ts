@@ -42,6 +42,7 @@ import { createParseWarningCollector } from "./docx/parseContext";
 import { parseDocx } from "./docx/parser";
 import { formatParseWarnings } from "./docx/parseWarningMessage";
 import { buildHeaderFooterFieldValues } from "./fields/resolveFieldValues";
+import { buildDocumentFontFacts } from "./fonts/documentFontFacts";
 import { type EmbeddedFont, extractEmbeddedFonts } from "./fonts/embeddedFonts";
 import { buildFontAlternates } from "./fonts/fontAlternates";
 import {
@@ -204,10 +205,12 @@ const buildFlowOptions = (
   pageContentHeight: number,
 ): ToFlowBlocksOptions => {
   const settings = document.package.settings;
+  const documentFontFacts = buildDocumentFontFacts(document.package.fontTable);
   const options: ToFlowBlocksOptions = {
     pageContentHeight,
     defaultSize: WORD_UNSPECIFIED_FONT_SIZE,
     fontAlternates: buildFontAlternates(document.package.fontTable),
+    ...(documentFontFacts === undefined ? {} : { documentFontFacts }),
     ...(document.package.styles ? { styles: document.package.styles } : {}),
   };
   const theme = document.package.theme;
@@ -270,6 +273,9 @@ const buildBlockLookup = (
 type StoryOptions = Omit<ConvertFootnoteOptions, "measureBlocks">;
 
 const buildStoryOptions = (flowOptions: ToFlowBlocksOptions): StoryOptions => ({
+  ...(flowOptions.documentFontFacts === undefined
+    ? {}
+    : { documentFontFacts: flowOptions.documentFontFacts }),
   ...(flowOptions.embeddedFontFamilyMap === undefined
     ? {}
     : { embeddedFontFamilyMap: flowOptions.embeddedFontFamilyMap }),
@@ -785,6 +791,9 @@ export const layoutDocxHeadless = async (
     proseDoc: projected.value,
     documentFeatures: readPaintFeatures(document),
     furniture: {
+      ...(flowOptions.documentFontFacts === undefined
+        ? {}
+        : { documentFontFacts: flowOptions.documentFontFacts }),
       // The painter takes one page-border spec and one theme per render, so the
       // first section's borders are the document's borders here too.
       ...(pageBorders === undefined ? {} : { pageBorders }),
