@@ -676,7 +676,7 @@ const batchAgainstOneAtATime = async ({
   // last paragraph the batch keeps end in the deleted one's paragraph, whose
   // mark is the one that stays: that paragraph goes by the deleted one's id.
   const lastIndex = BLOCK_COUNT - 1;
-  if (mode !== "direct" && deletes(lastIndex) && !insertsAfterLast) {
+  if (mode !== "direct" && deletes(lastIndex) && !rotatesFinalBreak) {
     let kept = lastIndex - 1;
     while (kept >= 0 && deletes(kept)) kept--;
     if (kept >= 0) named.add(kept);

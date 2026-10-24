@@ -43,7 +43,12 @@ import {
   comparePreservedLinks,
   type LinkSnapshot,
 } from "./link-oracle.ts";
-import { coreBatch, type Mode, type Operation } from "./operations.ts";
+import {
+  type AppliedOperation,
+  coreBatch,
+  type Mode,
+  type Operation,
+} from "./operations.ts";
 import {
   applyTableOperation,
   compareTableGeometry,
@@ -1248,10 +1253,14 @@ const isBullet = (label: string | undefined): boolean =>
 
 type ParagraphRequest = Record<string, unknown>;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 type ParagraphRequestOptions = {
   model: Model;
   request: ParagraphRequest;
   pre: Row | undefined;
+  source: ModelRow;
   inherited?: Row;
   numbering: "deriveStyle" | "preserveDirect";
 };
@@ -1261,6 +1270,7 @@ const paragraphRequest = ({
   model,
   request,
   pre,
+  source,
   inherited,
   numbering: numberingMode,
 }: ParagraphRequestOptions): { fields: Fields; checks: ModelRow["checks"] } => {
@@ -1307,15 +1317,11 @@ const paragraphRequest = ({
           return actual.every(
             (flag, offset) =>
               flag === expected ||
-              model.rows.some(
-                (entry) =>
-                  entry.pre === pre &&
-                  entry.formats.some(
-                    (format) =>
-                      format.property === property &&
-                      offset >= format.start &&
-                      offset < format.end,
-                  ),
+              source.formats.some(
+                (format) =>
+                  format.property === property &&
+                  offset >= format.start &&
+                  offset < format.end,
               ),
           )
             ? null
@@ -1583,6 +1589,7 @@ const paragraphRequestForLiveRow = ({
     model,
     request,
     pre: live,
+    source: row,
     inherited,
     numbering: preserveDirect ? "preserveDirect" : "deriveStyle",
   });
@@ -1832,6 +1839,7 @@ export const EXPECTATIONS = {
           model,
           request: first,
           pre: liveParagraph(row),
+          source: row,
           numbering: "deriveStyle",
         }).fields,
       );
@@ -1846,6 +1854,7 @@ export const EXPECTATIONS = {
                 model,
                 request: second,
                 pre: liveParagraph(row),
+                source: row,
                 numbering: "deriveStyle",
               }).fields,
             },
@@ -1891,7 +1900,7 @@ export const EXPECTATIONS = {
   setBlockParagraphProperties: (model, operation) => {
     const row = target(model, operation["blockId"]);
     const properties = operation["properties"];
-    if (properties !== null && typeof properties === "object") {
+    if (isRecord(properties)) {
       row.listLineage = operationListLineage({
         model,
         request: properties,
@@ -2767,7 +2776,7 @@ export const capture = async (
 
 export type Outcome = {
   /** The operations the receipt says applied, in request order. */
-  applied: readonly Operation[];
+  applied: readonly AppliedOperation[];
   /** Every operation asked for, applied or not (the ledger counts refusals); `applied` if absent. */
   attempted?: readonly Operation[];
 };
@@ -2801,7 +2810,7 @@ const offsetsOf = (
 
 /** Record every attempted operation of an outcome in the coverage ledger. */
 const recordOutcome = (pre: Pre, outcome: Outcome): void => {
-  const applied = new Set(outcome.applied);
+  const applied: Set<Operation> = new Set(outcome.applied);
   for (const operation of outcome.attempted ?? outcome.applied) {
     if (typeof operation !== "object" || operation === null) continue;
     const range = operation["range"] as { blockId?: unknown } | undefined;

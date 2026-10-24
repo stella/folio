@@ -36,7 +36,7 @@ export type Block =
     })
   | (BlockFields & { kind: "diagnostic" });
 
-export type Operation = { type: string } & Record<string, unknown>;
+export type Operation = { type: string; id?: string } & Record<string, unknown>;
 
 const inTable = (block: Block): boolean => block.table !== undefined;
 
@@ -554,10 +554,14 @@ export const coreBatch = (operations: readonly Operation[], mode: Mode) => ({
   version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   mode,
   operations: operations.map((operation, index) => ({
-    id: `op-${index + 1}`,
     ...operation,
+    id: operation.id ?? `op-${index + 1}`,
   })),
 });
+
+export type AppliedOperation = ReturnType<
+  typeof coreBatch
+>["operations"][number];
 
 // ---------------------------------------------------------------------------
 // Collisions

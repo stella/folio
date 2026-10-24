@@ -35,6 +35,7 @@ import {
 } from "../support/known-issues.ts";
 import { captureLinks, comparePreservedLinks } from "../support/link-oracle.ts";
 import {
+  type AppliedOperation,
   type Block,
   COLLISIONS,
   type Mode,
@@ -86,6 +87,94 @@ describe("the requested-outcome oracle", () => {
     for (const operation of operations) expectOperation(model, operation);
     return model;
   };
+
+  test("range formatting exempts only the paragraph it changed from style checks", () => {
+    const target = row("target", "😀xx", {
+      styleId: "Normal",
+      previewRuns: [{ text: "😀xx", bold: false }],
+    });
+    const heading = row("heading", "Heading", {
+      kind: "heading",
+      headingLevel: 2,
+      styleId: "Heading2",
+      previewRuns: [{ text: "Heading", bold: false }],
+    });
+    const formatted = modelOf([target, heading]);
+    formatted.mode = "tracked-changes";
+    expectOperation(formatted, {
+      type: "formatRange",
+      range: {
+        type: "textRange",
+        story: "main",
+        blockId: target.id,
+        startOffset: 0,
+        endOffset: 2,
+      },
+      formatting: { bold: true },
+    });
+    expectOperation(formatted, {
+      type: "setBlockParagraphProperties",
+      blockId: target.id,
+      properties: { styleId: "Heading2" },
+    });
+    assert.deepEqual(
+      compareWithModel(formatted, [
+        row("target", "😀xx", {
+          kind: "heading",
+          headingLevel: 2,
+          styleId: "Heading2",
+          previewRuns: [
+            { text: "😀", bold: true, directFormatting: { bold: true } },
+            { text: "xx", bold: false },
+          ],
+        }),
+        heading,
+      ]),
+      [],
+    );
+
+    const other = row("other", "x", {
+      styleId: "Normal",
+      previewRuns: [{ text: "x", bold: false }],
+    });
+    const unrelatedFormat = modelOf([target, other, heading]);
+    unrelatedFormat.mode = "tracked-changes";
+    expectOperation(unrelatedFormat, {
+      type: "formatRange",
+      range: {
+        type: "textRange",
+        story: "main",
+        blockId: other.id,
+        startOffset: 0,
+        endOffset: 1,
+      },
+      formatting: { bold: true },
+    });
+    expectOperation(unrelatedFormat, {
+      type: "setBlockParagraphProperties",
+      blockId: target.id,
+      properties: { styleId: "Heading2" },
+    });
+    assert.ok(
+      compareWithModel(unrelatedFormat, [
+        row("target", "😀xx", {
+          kind: "heading",
+          headingLevel: 2,
+          styleId: "Heading2",
+          previewRuns: [{ text: "😀xx", bold: true }],
+        }),
+        row("other", "x", {
+          styleId: "Normal",
+          previewRuns: [
+            { text: "x", bold: true, directFormatting: { bold: true } },
+          ],
+        }),
+        heading,
+      ]).some((problem) =>
+        problem.includes("effective bold differs from style Heading2"),
+      ),
+    );
+  });
 
   test("notices a payload the engine dropped or put on the wrong block", () => {
     const replace = {
@@ -156,7 +245,7 @@ describe("the requested-outcome oracle", () => {
       blockId: "anchor",
       text: "Inserted.",
     };
-    const check = (operations: Operation[], actual: Row[]) => {
+    const check = (operations: AppliedOperation[], actual: Row[]) => {
       const model = modelOf(beforeRows);
       for (const group of sequentialGroups({
         applied: operations,
@@ -369,7 +458,7 @@ describe("the requested-outcome oracle", () => {
     };
     const applyOrdered = (
       model: ReturnType<typeof modelOf>,
-      operations: Operation[],
+      operations: AppliedOperation[],
     ) => {
       for (const group of sequentialGroups({
         applied: operations,

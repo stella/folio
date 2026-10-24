@@ -6,10 +6,10 @@ import {
 } from "@stll/docx-core/ops";
 import type { FolioDocumentOperation } from "@stll/folio-core/server";
 
-import type { Mode } from "./operations.ts";
+import type { AppliedOperation, Mode } from "./operations.ts";
 import type { Row } from "./oracle.ts";
 
-type AnyOperation = { id: string; type: string } & Record<string, unknown>;
+type AnyOperation = AppliedOperation;
 type Handle = { blockId: string; startOffset: number; endOffset: number };
 
 const INSERTIONS = new Set([
