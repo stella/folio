@@ -199,7 +199,7 @@ test.each(["accept", "reject"] as const)(
           host?.children.some(
             (child) =>
               child.type.name === "rangeAnchor" &&
-              child.attrs["start"]?.id === 37,
+              readRangeAnchorAttrs(child.attrs).start?.id === 37,
           ),
         ).toBe(true);
       }
