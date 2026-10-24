@@ -144,6 +144,36 @@ describe("CommentReferenceExtension editing integrity", () => {
 
     expect(referenceIds(applied.state.doc)).toEqual([11]);
   });
+
+  test.each(["pair", "end"] as const)(
+    "repairs a reference after the final explicit %s boundary",
+    (kind) => {
+      const boundary = (type: "commentRangeStart" | "commentRangeEnd") =>
+        schema.node("commentRangeBoundary", { marker: { type, id: 11 } });
+      const points =
+        kind === "pair"
+          ? [boundary("commentRangeStart"), boundary("commentRangeEnd")]
+          : [boundary("commentRangeEnd")];
+      const state = stateWith(points);
+      const applied = state.applyTransaction(state.tr.insertText("x", 1));
+      const paragraph = applied.state.doc.child(0);
+
+      expect(referenceIds(applied.state.doc)).toEqual([11]);
+      expect(paragraph.childCount).toBe(points.length + 2);
+      expect(paragraph.lastChild?.type.name).toBe("commentReference");
+      expect(paragraph.child(paragraph.childCount - 2).attrs["marker"]).toEqual(
+        {
+          type: "commentRangeEnd",
+          id: 11,
+        },
+      );
+      const fixed = applied.state.applyTransaction(
+        applied.state.tr.insertText("y", 1),
+      );
+      expect(fixed.transactions).toHaveLength(1);
+      expect(referenceIds(fixed.state.doc)).toEqual([11]);
+    },
+  );
 });
 
 type CommentRangeInertAtom = {
