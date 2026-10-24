@@ -217,5 +217,6 @@ export {
   freshCommentId,
   isCommentExhausted,
   survivingComments,
+  withoutCommentThreads,
   type CommentExhaustionInput,
 } from "./comments";

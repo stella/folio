@@ -162,21 +162,51 @@ export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
   });
 };
 
-/** Comment definitions whose root range still has content, including their replies. */
-export const survivingComments = (document: Document): Comment[] => {
+/** Comment definitions whose root remains covered or projected, with replies. */
+export const survivingComments = (
+  document: Document,
+  projectedRootIds: ReadonlySet<number> = new Set(),
+): Comment[] => {
   const comments = document.package.document.comments ?? [];
-  const exhausted = new Set(
+  const exhaustedRootIds = new Set(
     comments
-      .filter(({ id }) =>
-        isCommentExhausted({ type: "document", document, id }),
+      .filter(
+        ({ id, parentId }) =>
+          parentId === undefined &&
+          !projectedRootIds.has(id) &&
+          isCommentExhausted({ type: "document", document, id }),
       )
       .map(({ id }) => id),
   );
-  return comments.filter(
-    ({ id, parentId }) =>
-      !exhausted.has(id) &&
-      (parentId === undefined || !exhausted.has(parentId)),
-  );
+  return withoutCommentThreads(comments, exhaustedRootIds);
+};
+
+/** Remove each supplied root and its recursive replies, preserving input order. */
+export const withoutCommentThreads = (
+  comments: readonly Comment[],
+  removedRootIds: ReadonlySet<number>,
+): Comment[] => {
+  if (removedRootIds.size === 0) return [...comments];
+
+  const repliesByParent = new Map<number, number[]>();
+  for (const comment of comments) {
+    if (comment.parentId === undefined) continue;
+    const replies = repliesByParent.get(comment.parentId) ?? [];
+    replies.push(comment.id);
+    repliesByParent.set(comment.parentId, replies);
+  }
+
+  const removedIds = new Set(removedRootIds);
+  const queue = [...removedRootIds];
+  for (const parentId of queue) {
+    for (const replyId of repliesByParent.get(parentId) ?? []) {
+      if (removedIds.has(replyId)) continue;
+      removedIds.add(replyId);
+      queue.push(replyId);
+    }
+  }
+
+  return comments.filter(({ id }) => !removedIds.has(id));
 };
 
 /**

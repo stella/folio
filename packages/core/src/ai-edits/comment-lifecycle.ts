@@ -20,7 +20,10 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import { isCommentAnchorCarrierType } from "@stll/docx-core/ops";
+import {
+  isCommentAnchorCarrierType,
+  withoutCommentThreads,
+} from "@stll/docx-core/ops";
 
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
 import { readCommentReferenceAttrs } from "../prosemirror/commentReferenceAttrs";
@@ -150,32 +153,15 @@ export const withoutLostCommentThreads = (
     anchoredNow,
   }: { anchoredBefore: ReadonlySet<number>; anchoredNow: ReadonlySet<number> },
 ): Comment[] => {
-  const dropped = new Set<number>();
+  const droppedRootIds = new Set<number>();
   for (const comment of comments) {
     if (
       comment.parentId === undefined &&
       anchoredBefore.has(comment.id) &&
       !anchoredNow.has(comment.id)
     ) {
-      dropped.add(comment.id);
+      droppedRootIds.add(comment.id);
     }
   }
-  if (dropped.size === 0) {
-    return [...comments];
-  }
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const comment of comments) {
-      if (
-        !dropped.has(comment.id) &&
-        comment.parentId !== undefined &&
-        dropped.has(comment.parentId)
-      ) {
-        dropped.add(comment.id);
-        grew = true;
-      }
-    }
-  }
-  return comments.filter((comment) => !dropped.has(comment.id));
+  return withoutCommentThreads(comments, droppedRootIds);
 };

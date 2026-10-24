@@ -1094,12 +1094,7 @@ export function fromProseDoc(
       for (const commentId of getCommentMarkIds(node.marks))
         projectedCommentIds.add(commentId);
     });
-    const survivingCommentIds = new Set(
-      survivingComments(updatedDocument).map(({ id }) => id),
-    );
-    const comments = (updatedDocument.package.document.comments ?? []).filter(
-      ({ id }) => survivingCommentIds.has(id) || projectedCommentIds.has(id),
-    );
+    const comments = survivingComments(updatedDocument, projectedCommentIds);
     const keptIds = new Set(comments.map(({ id }) => id));
     const retiredIds = new Set(
       (updatedDocument.package.document.comments ?? [])

@@ -1212,7 +1212,7 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
-export const survivingComments: (document: Document_2) => Comment_2[];
+export const survivingComments: (document: Document_2, projectedRootIds?: ReadonlySet<number>) => Comment_2[];
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;
@@ -1272,6 +1272,9 @@ export type WellFormedRangePlan = {
 
 // @public
 export const withBodyContent: (body: DocumentBody, content: BlockContent[]) => DocumentBody;
+
+// @public
+export const withoutCommentThreads: (comments: readonly Comment_2[], removedRootIds: ReadonlySet<number>) => Comment_2[];
 
 // @public
 export type ZeroWidthItem = keyof typeof ZERO_WIDTH_ITEMS_HOLD_CONTENT;
