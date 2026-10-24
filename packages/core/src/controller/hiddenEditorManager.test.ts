@@ -2,7 +2,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
 import { describe, expect, spyOn, test } from "bun:test";
 import fc from "fast-check";
-import { Fragment, Slice } from "prosemirror-model";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import {
   AllSelection,
   type Command,
@@ -25,9 +25,12 @@ import {
 import { parseShapeDocument } from "../__tests__/editorHarness";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import type { FolioDocumentOperationStory } from "../document-operations";
+import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { withCanonicalCommand } from "../prosemirror/canonicalCommands";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
+import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import {
@@ -38,7 +41,7 @@ import { singletonManager } from "../prosemirror/schema";
 import { FolioYjsNoteReferenceSchemaError } from "../prosemirror/yjsDocumentMetadata";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "../types/canonicalComments";
-import type { Paragraph } from "../types/document";
+import type { Paragraph, ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { resolveCanonicalReviewRange } from "./canonicalReview";
 import { loadCollaborationModules } from "./collaborationModules";
@@ -126,6 +129,17 @@ const makeDeps = (
   };
 
   return { deps, spies };
+};
+
+const commentRangeBoundaryIds = (doc: PMNode): number[] => {
+  const ids: number[] = [];
+  doc.descendants((node) => {
+    if (node.type.name === "commentRangeBoundary") {
+      ids.push(expectCommentRangeBoundaryAttrs(node).marker.id);
+    }
+    return true;
+  });
+  return ids;
 };
 
 const sourceWithNoteReference = async () => {
@@ -803,6 +817,71 @@ test("canonical comment mutation results isolate committed snapshots and history
       expect(manager.api.redo()).toBe(true);
       assertExactModel(manager.api.getCanonicalDocument(), committed);
     }
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("canonical thread deletion removes existing SDT boundary points", async () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument();
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+  paragraph.paraId = "12345678";
+  const textRun = (text: string): ParagraphContent => ({
+    type: "run",
+    content: [{ type: "text", text }],
+  });
+  paragraph.content = [
+    { type: "commentRangeStart", id: 9 },
+    textRun("before"),
+    {
+      type: "inlineSdt",
+      properties: { sdtType: "richText", id: 42 },
+      content: [textRun("inside"), { type: "commentRangeEnd", id: 9 }],
+    },
+    { type: "commentRangeStart", id: 10 },
+    textRun("other"),
+    { type: "commentRangeEnd", id: 10 },
+  ];
+  source.package.document.comments = [
+    { id: 9, author: "Reviewer", content: [] },
+    { id: 10, author: "Reviewer", content: [] },
+  ];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected canonical editor view");
+    expect(commentRangeBoundaryIds(view.state.doc)).toEqual([9, 9, 10, 10]);
+
+    expect(
+      manager.api.applyCanonicalComment({ type: "delete", id: 9 }),
+    ).toMatchObject({
+      status: "applied",
+    });
+    expect(commentRangeBoundaryIds(view.state.doc)).toEqual([10, 10]);
+
+    const committed = manager.api.getCanonicalDocument();
+    if (!committed) panic("Expected committed canonical document");
+    const reopened = await parseDocx(await createDocx(committed), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(reopened.package.document.comments?.map(({ id }) => id)).toEqual([
+      10,
+    ]);
+    expect(commentRangeBoundaryIds(toProseDoc(reopened))).toEqual([10, 10]);
   } finally {
     manager.destroyView();
     host.remove();

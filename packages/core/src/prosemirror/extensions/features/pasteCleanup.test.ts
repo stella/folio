@@ -369,6 +369,7 @@ describe("cleanPastedHtml — range carriers", () => {
       "data-docx-range-anchor",
       '{"start":{"type":"commentRangeStart","id":7},"end":{"type":"commentRangeEnd","id":7}}',
     ],
+    ["data-docx-comment-range-boundary", '{"type":"commentRangeStart","id":7}'],
     ["data-docx-move-range-boundary", '{"type":"moveFromRangeEnd","id":7}'],
   ] as const;
 

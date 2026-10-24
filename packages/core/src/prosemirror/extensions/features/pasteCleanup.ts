@@ -203,6 +203,8 @@ const BOOKMARK_BOUNDARY_ATTR =
   /\s+data-docx-bookmark-(?:boundary|id|name|col-first|col-last)(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 const RANGE_ANCHOR_ATTR =
   /\s+data-docx-range-anchor(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
+const COMMENT_RANGE_BOUNDARY_ATTR =
+  /\s+data-docx-comment-range-boundary(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 const MOVE_RANGE_BOUNDARY_ATTR =
   /\s+data-docx-move-range-boundary(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 const STRUCTURED_FIELD_ATTR =
@@ -253,6 +255,7 @@ function stripForeignRangeCarriers(html: string, internal: boolean): string {
   }
   return html
     .replace(RANGE_ANCHOR_ATTR, "")
+    .replace(COMMENT_RANGE_BOUNDARY_ATTR, "")
     .replace(MOVE_RANGE_BOUNDARY_ATTR, "");
 }
 
@@ -275,7 +278,7 @@ function stripEmptySpans(html: string, preserveInternalAtoms: boolean): string {
     const next = current.replace(EMPTY_SPAN, (span) => {
       if (
         preserveInternalAtoms &&
-        /\bdata-docx-(?:bookmark-boundary|textbox-anchor|range-anchor|move-range-boundary)\s*=/i.test(
+        /\bdata-docx-(?:bookmark-boundary|textbox-anchor|range-anchor|comment-range-boundary|move-range-boundary)\s*=/i.test(
           span,
         )
       ) {
