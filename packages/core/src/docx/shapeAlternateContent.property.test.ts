@@ -28,7 +28,9 @@ import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import type { Document, Paragraph, ShapeContent } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
+  cloneWithXmlnsDeclarations,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -53,6 +55,9 @@ const NAMESPACES = {
 const ROOT_NAMESPACES = Object.entries(NAMESPACES)
   .map(([prefix, uri]) => ` xmlns:${prefix}="${uri}"`)
   .join("");
+const ROOT_NAMESPACE_BINDINGS = Object.fromEntries(
+  Object.entries(NAMESPACES).map(([prefix, uri]) => [`xmlns:${prefix}`, uri]),
+);
 
 const anchor = (id: number, name: string, graphic: string): string =>
   '<w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" ' +
@@ -109,6 +114,16 @@ const documentXml = (runContent: string): string =>
   `${XML_DECLARATION}<w:document${ROOT_NAMESPACES}><w:body>` +
   `<w:p w14:paraId="${HOST_PARA_ID}"><w:r><w:t>Host</w:t></w:r><w:r>${runContent}</w:r></w:p>` +
   '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>';
+
+const selfContainedAlternateContent = (xml: string): string => {
+  const alternateContent = parseXmlDocument(xml);
+  if (alternateContent === null) {
+    throw new Error("expected valid AlternateContent XML");
+  }
+  return captureVerbatimXml(
+    cloneWithXmlnsDeclarations(alternateContent, ROOT_NAMESPACE_BINDINGS),
+  );
+};
 
 const open = async (xml: string): Promise<Document> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
@@ -249,9 +264,11 @@ describe("a shape read from mc:AlternateContent", () => {
           const alternateContent = textBoxAlternateContent(text);
           const parsed = await open(documentXml(alternateContent));
 
-          expect(await savedDocumentPart(parsed)).toContain(alternateContent);
+          expect(await savedDocumentPart(parsed)).toContain(
+            selfContainedAlternateContent(alternateContent),
+          );
           expect(await savedDocumentPart(throughEditor(parsed))).toContain(
-            alternateContent,
+            selfContainedAlternateContent(alternateContent),
           );
         }),
         propertyConfig({ numRuns: 20 }),
@@ -330,7 +347,9 @@ describe("a shape read from mc:AlternateContent", () => {
             typeInEditor(parsed, "host", typed),
           );
 
-          expect(saved).toContain(alternateContent);
+          expect(saved).toContain(
+            selfContainedAlternateContent(alternateContent),
+          );
           expect(textOf(saved)).toBe(`${typed}Host${text}${text}`);
         }),
         propertyConfig({ numRuns: 20 }),
@@ -342,10 +361,10 @@ describe("a shape read from mc:AlternateContent", () => {
   test("a shape without a text body keeps its Fallback until it is edited", async () => {
     const parsed = await open(documentXml(CONNECTOR_ALTERNATE_CONTENT));
     expect(await savedDocumentPart(parsed)).toContain(
-      CONNECTOR_ALTERNATE_CONTENT,
+      selfContainedAlternateContent(CONNECTOR_ALTERNATE_CONTENT),
     );
     expect(await savedDocumentPart(throughEditor(parsed))).toContain(
-      CONNECTOR_ALTERNATE_CONTENT,
+      selfContainedAlternateContent(CONNECTOR_ALTERNATE_CONTENT),
     );
 
     const connector = shapesOf(parsed).at(0);
@@ -366,6 +385,7 @@ describe("a shape read from mc:AlternateContent", () => {
       "http://purl.oclc.org/ooxml/wordprocessingml/main";
     const sourceXml = documentXml(textBoxAlternateContent("Before"))
       .replaceAll("w:", "q:")
+      .replaceAll("xmlns:w=", "xmlns:q=")
       .replaceAll(NAMESPACES.w, strictWordNamespace);
     const parsed = await open(sourceXml);
     editTextBoxInModel(parsed, "After");
@@ -411,6 +431,43 @@ describe("a shape read from mc:AlternateContent", () => {
       expect(
         branchText(alternateContentsOf(saved).at(0) ?? "", branchName),
       ).not.toContain("Before");
+    }
+  });
+
+  test("run-scoped namespace bindings survive textbox edits without shadowing Choice bindings", async () => {
+    const strictWordNamespace =
+      "http://purl.oclc.org/ooxml/wordprocessingml/main";
+    for (const wordNamespace of [NAMESPACES.w, strictWordNamespace]) {
+      const alternateContent = textBoxAlternateContent("Before")
+        .replaceAll("w:", "q:")
+        .replace(
+          '<mc:Choice Requires="wps">',
+          '<mc:Choice xmlns:x="urn:choice" Requires="wps">',
+        )
+        .replace(
+          '<wps:cNvSpPr txBox="1"/>',
+          '<wps:cNvSpPr txBox="1"><x:metadata/></wps:cNvSpPr>',
+        );
+      const sourceXml = documentXml(alternateContent)
+        .replace(
+          `<w:r>${alternateContent}</w:r>`,
+          `<w:r xmlns:q="${wordNamespace}" xmlns:x="urn:run">${alternateContent}</w:r>`,
+        )
+        .replaceAll(NAMESPACES.w, wordNamespace);
+      const parsed = await open(sourceXml);
+      editTextBoxInModel(parsed, "After");
+      const saved = await savedDocumentPart(parsed);
+
+      expect(branchText(alternateContentsOf(saved).at(0) ?? "", "Choice")).toBe(
+        "After",
+      );
+      const parsedOutput = parseXmlDocument(saved);
+      expect(parsedOutput).not.toBeNull();
+      const metadata = descendants(parsedOutput ?? { elements: [] }).find(
+        (element) => getLocalName(element.name ?? "") === "metadata",
+      );
+      expect(metadata).toBeDefined();
+      expect(getNamespaceUri(metadata ?? { name: "" })).toBe("urn:choice");
     }
   });
 

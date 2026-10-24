@@ -6789,6 +6789,39 @@ function convertPMTextBox(
     attrs._docxTextBodyContentState,
     childBlocks,
   );
+  const margins: NonNullable<NonNullable<Shape["textBody"]>["margins"]> = {};
+  if (typeof attrs.marginTop === "number") {
+    margins.top = emuFromPixels(
+      attrs.marginTop,
+      "marginTop",
+      authoredEmu,
+      emuToPixels,
+    );
+  }
+  if (typeof attrs.marginBottom === "number") {
+    margins.bottom = emuFromPixels(
+      attrs.marginBottom,
+      "marginBottom",
+      authoredEmu,
+      emuToPixels,
+    );
+  }
+  if (typeof attrs.marginLeft === "number") {
+    margins.left = emuFromPixels(
+      attrs.marginLeft,
+      "marginLeft",
+      authoredEmu,
+      emuToPixels,
+    );
+  }
+  if (typeof attrs.marginRight === "number") {
+    margins.right = emuFromPixels(
+      attrs.marginRight,
+      "marginRight",
+      authoredEmu,
+      emuToPixels,
+    );
+  }
 
   // Build shape with text body
   const shape: Shape = {
@@ -6809,47 +6842,7 @@ function convertPMTextBox(
       ...(attrs.autoFit !== undefined ? { autoFit: attrs.autoFit } : {}),
       ...(attrs.textWrap !== undefined ? { textWrap: attrs.textWrap } : {}),
       ...(verticalAlign !== undefined ? { anchor: verticalAlign } : {}),
-      margins: (() => {
-        const m: {
-          top?: number;
-          bottom?: number;
-          left?: number;
-          right?: number;
-        } = {};
-        if (typeof attrs.marginTop === "number") {
-          m.top = emuFromPixels(
-            attrs.marginTop,
-            "marginTop",
-            authoredEmu,
-            emuToPixels,
-          );
-        }
-        if (typeof attrs.marginBottom === "number") {
-          m.bottom = emuFromPixels(
-            attrs.marginBottom,
-            "marginBottom",
-            authoredEmu,
-            emuToPixels,
-          );
-        }
-        if (typeof attrs.marginLeft === "number") {
-          m.left = emuFromPixels(
-            attrs.marginLeft,
-            "marginLeft",
-            authoredEmu,
-            emuToPixels,
-          );
-        }
-        if (typeof attrs.marginRight === "number") {
-          m.right = emuFromPixels(
-            attrs.marginRight,
-            "marginRight",
-            authoredEmu,
-            emuToPixels,
-          );
-        }
-        return m;
-      })(),
+      ...(Object.keys(margins).length > 0 ? { margins } : {}),
     },
   };
 
