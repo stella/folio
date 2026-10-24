@@ -521,6 +521,51 @@ for (const tableDeletion of ["deleteTable", "deleteTableRow"] as const) {
   });
 }
 
+test("reject removes tables inserted around an inserted terminal paragraph", async () => {
+  const original = read(await open());
+  const edit = async (mode: Mode) => {
+    const reviewer = await open();
+    const anchor = reviewer
+      .getContent()
+      .find(({ text }) => text === "Signed in two copies.");
+    if (!anchor) throw new Error("Missing terminal paragraph anchor");
+    for (const operation of [
+      {
+        type: "insertTable",
+        blockId: anchor.id,
+        rows: [["Term", "Value"]],
+      },
+      {
+        type: "insertAfterBlock",
+        blockId: anchor.id,
+        text: "Inserted clause.",
+      },
+      {
+        type: "insertTable",
+        blockId: anchor.id,
+        rows: [["Term", "Value"]],
+      },
+    ] satisfies Operation[]) {
+      expect(apply(reviewer, mode, operation)).toBe(true);
+    }
+    return reviewer;
+  };
+
+  const direct = await edit("direct");
+  const tracked = await edit("tracked-changes");
+  const savedPending = await reopen(tracked);
+  tracked.rejectAll();
+  expect(read(tracked)).toEqual(original);
+  expect(read(await reopen(tracked))).toEqual(original);
+  savedPending.rejectAll();
+  expect(read(savedPending)).toEqual(original);
+
+  const accepting = await edit("tracked-changes");
+  accepting.acceptAll();
+  expect(read(accepting)).toEqual(read(direct));
+  expect(read(await reopen(accepting))).toEqual(read(direct));
+});
+
 describe("resolving random tracked work", () => {
   test("reject restores, accept equals direct, and both survive a save", async () => {
     const original = read(await open());
