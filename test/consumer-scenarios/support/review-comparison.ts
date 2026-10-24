@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 
+import type { Document } from "@stll/docx-core/model";
+import { visitDocxParagraphs } from "@stll/folio-core/docx/paragraphTraversal";
+import { consolidateParagraphContent } from "@stll/folio-core/docx/runConsolidator";
+
 import { openReviewer } from "./documents.ts";
 import { canonicalFieldModel } from "./field-model.ts";
 import { projectContentPair } from "./identity.ts";
@@ -240,6 +244,26 @@ export const canonicalReviewModel = (
   return project(model, "");
 };
 
+export const canonicalResolvedReviewModel = (
+  model: Document,
+  aliases: ReadonlyMap<string, string> = new Map(),
+): unknown => {
+  const normalized = structuredClone(model);
+  visitDocxParagraphs(
+    {
+      documentBody: normalized.package.document,
+      headers: normalized.package.headers,
+      footers: normalized.package.footers,
+      footnotes: normalized.package.footnotes,
+      endnotes: normalized.package.endnotes,
+    },
+    (paragraph) => {
+      paragraph.content = consolidateParagraphContent(paragraph.content);
+    },
+  );
+  return canonicalReviewModel(normalized, aliases);
+};
+
 type ReviewRoundTripOptions = {
   live: ReviewSource;
   reopened: ReviewSource;
@@ -269,8 +293,8 @@ export const assertReviewRoundTrip = ({
       const left = live.toResolvedDocument(decision);
       const right = reopened.toResolvedDocument(decision);
       assert.deepEqual(
-        canonicalReviewModel(right, identities.rightAliases),
-        canonicalReviewModel(left, identities.leftAliases),
+        canonicalResolvedReviewModel(right, identities.rightAliases),
+        canonicalResolvedReviewModel(left, identities.leftAliases),
         `${context}: ${decision}-all document differs after save`,
       );
     }

@@ -1,8 +1,15 @@
+import { panic } from "better-result";
 import JSZip from "jszip";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { ComplexField, SimpleField } from "@stll/docx-core/model";
+import type {
+  ComplexField,
+  Document,
+  ParagraphContent,
+  Run,
+  SimpleField,
+} from "@stll/docx-core/model";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { createDocx, paragraph } from "@stll/folio-core/server";
 
@@ -10,6 +17,7 @@ import { openReviewer } from "../support/documents.ts";
 import {
   assertReviewRoundTrip,
   assertRevisionCoverage,
+  canonicalResolvedReviewModel,
   canonicalReviewModel,
   revisionCoverage,
 } from "../support/review-comparison.ts";
@@ -23,6 +31,108 @@ const revision = {
   text: "A👍🏽B",
   blockId: "412DDC7F",
 } as const satisfies Change;
+
+const reviewDocumentWithContent = (content: ParagraphContent[]): Document => {
+  const document = fromMarkdown("Alpha beta");
+  const first = document.package.document.content.at(0);
+  if (first?.type !== "paragraph") panic("Expected paragraph");
+  first.content = content;
+  return document;
+};
+
+const textRun = (text: string, fields: Partial<Run> = {}): Run => ({
+  type: "run",
+  ...fields,
+  content: [{ type: "text", text }],
+});
+
+test("model comparison normalizes only safely mergeable adjacent runs", () => {
+  const merged = reviewDocumentWithContent([textRun("Alpha beta")]);
+  const segmented = reviewDocumentWithContent([
+    textRun("Alpha "),
+    textRun("beta"),
+  ]);
+
+  assert.notDeepEqual(
+    canonicalReviewModel(segmented),
+    canonicalReviewModel(merged),
+  );
+  assert.deepEqual(
+    canonicalResolvedReviewModel(segmented),
+    canonicalResolvedReviewModel(merged),
+  );
+
+  const controls: ParagraphContent[][] = [
+    [textRun("Alpha "), textRun("gamma")],
+    [textRun("Alpha "), textRun("beta", { formatting: { bold: true } })],
+    [
+      textRun("Alpha "),
+      textRun("beta", {
+        propertyChanges: [
+          {
+            type: "runPropertyChange",
+            info: { id: 8, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+            previousFormatting: { italic: true },
+          },
+        ],
+      }),
+    ],
+    [
+      textRun("Alpha "),
+      textRun("beta", {
+        preservedAttributes: [{ name: "rsidR", value: "00ABCDEF" }],
+      }),
+    ],
+    [
+      textRun("Alpha "),
+      textRun("beta", {
+        formatting: {
+          preserved: { children: [{ index: 1, xml: "<w:spacing/>" }] },
+        },
+      }),
+    ],
+    [
+      textRun("Alpha "),
+      { type: "run", content: [{ type: "tab" }] },
+      textRun("beta"),
+    ],
+    [
+      textRun("Alpha "),
+      { type: "bookmarkStart", id: 9, name: "range" },
+      textRun("beta"),
+    ],
+    [
+      textRun("Alpha "),
+      { type: "bookmarkEnd", id: 9, copyOriginAncestors: [0] },
+      textRun("beta"),
+    ],
+    [
+      textRun("Alpha "),
+      {
+        type: "moveToRangeStart",
+        id: 9,
+        name: "move",
+        author: "Reviewer",
+      },
+      textRun("beta"),
+    ],
+    [
+      textRun("Alpha "),
+      {
+        type: "insertion",
+        info: { id: 8, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+        content: [textRun("beta")],
+      },
+    ],
+  ];
+
+  for (const content of controls) {
+    assert.notDeepEqual(
+      canonicalResolvedReviewModel(reviewDocumentWithContent(content)),
+      canonicalResolvedReviewModel(merged),
+    );
+  }
+});
 
 test("revision comparison preserves character order across adjacent run groups", () => {
   const fragments = [...revision.text].map((text, index) =>
