@@ -43,7 +43,10 @@ import {
   recreateProseNodeWithParagraphPropertySource,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
-import { visitInlineContentSlots } from "../../docx/paragraphTraversal";
+import {
+  visitInlineContentSlots,
+  visitInlineContentSlotsInContent,
+} from "../../docx/paragraphTraversal";
 import type { ParseContext } from "../../docx/parseContext";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import { replayableShapeAlternateContent } from "../../docx/shapeAlternateContent";
@@ -1483,11 +1486,16 @@ function convertTrackedChange(
   // wrapper: the caller marks what this returns, and `wrappedBy` reaches only
   // the leaves no caller can still see, those inside a content control.
   const stacked = withInlineWrapperStacks(change.content);
-  const containsInlineSdt = stacked.some(
-    ({ content }) => content.type === "inlineSdt",
-  );
+  let containsInlineSdt = false;
+  if (options.preserveSdtBoundaryOccurrences === undefined) {
+    visitInlineContentSlotsInContent(change.content, ({ item }) => {
+      if (item.type === "inlineSdt") {
+        containsInlineSdt = true;
+      }
+    });
+  }
   const preserveBoundaryOccurrences =
-    options.preserveSdtBoundaryOccurrences === true || containsInlineSdt;
+    options.preserveSdtBoundaryOccurrences ?? containsInlineSdt;
   const emptyRanges = planEmptyRanges(stacked.map(({ content }) => content));
   for (const [index, { content: item, stack }] of stacked.entries()) {
     if (!isTrackedChangeWrapperChild(item)) {
@@ -3080,7 +3088,7 @@ function convertField(
               textBoxAnchors,
               [],
               openCommentIds,
-              false,
+              { preserveParentBoundaryOwnership: false },
             ),
           );
           commentsAlreadyApplied = true;

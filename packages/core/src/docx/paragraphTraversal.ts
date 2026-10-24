@@ -114,9 +114,16 @@ export const visitInlineContentSlots = (
   paragraph: Paragraph,
   visit: (slot: InlineContentSlot) => void,
 ): void => {
-  const visitContent = (content: ParagraphContent[]): void => {
-    for (const [index, item] of content.entries()) {
-      visit({ content, index, item });
+  visitInlineContentSlotsInContent(paragraph.content, visit);
+};
+
+export const visitInlineContentSlotsInContent = (
+  content: ParagraphContent[],
+  visit: (slot: InlineContentSlot) => void,
+): void => {
+  const visitContent = (items: ParagraphContent[]): void => {
+    for (const [index, item] of items.entries()) {
+      visit({ content: items, index, item });
       switch (item.type) {
         case "hyperlink":
           visitContent(item.children);
@@ -154,7 +161,7 @@ export const visitInlineContentSlots = (
     }
   };
 
-  visitContent(paragraph.content);
+  visitContent(content);
 };
 
 /** What the walk does below a record it has just visited. */
