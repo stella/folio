@@ -437,10 +437,11 @@ export const storyLifecycleEdit = (
       },
     ],
     touched: {
+      // A paragraph is touched when its record is replaced, even by an equal
+      // one: callers keep every untouched record and reuse no replaced one.
       modified: [...newIds].filter(
         (id) =>
-          oldIds.has(id) &&
-          !structurallyEqual(oldParagraphs.get(id), newParagraphs.get(id)),
+          oldIds.has(id) && oldParagraphs.get(id) !== newParagraphs.get(id),
       ),
       inserted: [...newIds].filter((id) => !oldIds.has(id)),
       removed: [...oldIds].filter((id) => !newIds.has(id)),

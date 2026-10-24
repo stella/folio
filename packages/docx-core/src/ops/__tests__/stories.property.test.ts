@@ -896,6 +896,64 @@ describe("all-story operation laws", () => {
     );
   });
 
+  test("a final-reference removal reports every replaced paragraph record as touched", () => {
+    const survivor: Paragraph = {
+      type: "paragraph",
+      paraId: "00000001",
+      content: [],
+    };
+    const referencing: Paragraph = {
+      type: "paragraph",
+      paraId: "00000002",
+      content: [
+        {
+          type: "hyperlink",
+          rId: "rId9",
+          href: "https://example.org",
+          children: [
+            {
+              type: "inlineWrapper",
+              kind: "bidi",
+              control: "embedding",
+              content: [
+                { type: "run", content: [{ type: "footnoteRef", id: 2 }] },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const untouched = paragraph("00000003", "after");
+    const document: Document = {
+      package: {
+        document: { content: [survivor, referencing, untouched] },
+        footnotes: [
+          {
+            type: "footnote",
+            id: 2,
+            content: [{ type: "paragraph", paraId: "7FFFFFF1", content: [] }],
+          },
+        ],
+      },
+    };
+    // The replacement is an equal but distinct record of the first paragraph.
+    const applied = expectExact(document, {
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: "main",
+      expected: [survivor, referencing],
+      blocks: [{ ...survivor }],
+    });
+    const [first, second] = applied.document.package.document.content;
+    expect(first).not.toBe(survivor);
+    expect(second).toBe(untouched);
+    expect(applied.document.package.footnotes).toEqual([]);
+    expect(applied.touched).toEqual({
+      modified: ["00000001"],
+      inserted: [],
+      removed: ["00000002", "7FFFFFF1"],
+    });
+  });
+
   test("missing stories and stale note references refuse atomically", () => {
     const document = normalizeForOps(seedDocument("body"));
     const story: OpStory = { kind: "header", rId: "missing" };
