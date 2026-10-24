@@ -25,10 +25,12 @@ import type {
 import { parseParagraph } from "./paragraphParser";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
+  parseCopyOriginAncestors,
   parseParagraphMarkResolutionJoin,
   parseResolutionJoins,
   ReviewResolutionProvenanceError,
   serializeBoundaryJoins,
+  serializeCopyOriginAncestors,
   serializeParagraphMarkResolutionJoin,
   serializeResolutionJoins,
 } from "./reviewResolutionProvenance";
@@ -332,6 +334,50 @@ test("paragraph cut provenance validates private envelopes and typed projection 
     const parsed = readParagraphAttrs(node);
     expect(parsed.ok).toBe(false);
   }
+});
+
+test("copy-origin ancestry uses the bounded versioned private envelope", () => {
+  const encoded = serializeCopyOriginAncestors([0, 2, 4]);
+  expect(encoded).toBe(JSON.stringify({ version: 1, value: [0, 2, 4] }));
+  expect(
+    parseCopyOriginAncestors(
+      element(
+        `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:copyOriginAncestors="${escapeXmlAttribute(encoded ?? "")}"/>`,
+      ),
+    ),
+  ).toEqual([0, 2, 4]);
+  expect(
+    parseCopyOriginAncestors(
+      element(
+        '<r xmlns:history="urn:unrelated" history:copyOriginAncestors="invalid"/>',
+      ),
+    ),
+  ).toBeUndefined();
+
+  const invalidEnvelopes = [
+    "not-json",
+    JSON.stringify({ version: 2, value: [0] }),
+    JSON.stringify({ version: 1, value: [] }),
+    JSON.stringify({ version: 1, value: [0, 0] }),
+    JSON.stringify({ version: 1, value: [1, 0] }),
+    JSON.stringify({ version: 1, value: [Number.MAX_SAFE_INTEGER + 1] }),
+    JSON.stringify({
+      version: 1,
+      value: Array.from({ length: 257 }, (_, index) => index),
+    }),
+    " ".repeat(32_769),
+  ];
+  for (const invalid of invalidEnvelopes) {
+    const node = element(
+      `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:copyOriginAncestors="${escapeXmlAttribute(invalid)}"/>`,
+    );
+    expect(() => parseCopyOriginAncestors(node)).toThrow(
+      ReviewResolutionProvenanceError,
+    );
+  }
+  expect(() => serializeCopyOriginAncestors([])).toThrow(
+    ReviewResolutionProvenanceError,
+  );
 });
 
 test("save refuses provenance requiring unsupported hyperlink repartition", () => {

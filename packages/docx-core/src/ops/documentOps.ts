@@ -1,4 +1,12 @@
 export { reconcileDocumentPartRelationships } from "./comments";
+export {
+  addCopyOriginAncestor,
+  acceptCopyOriginAncestors,
+  type CopyOriginAncestorList,
+  isCopyOriginAncestors,
+  rejectCopyOriginAncestors,
+  shiftCopyOriginAncestors,
+} from "./copyOriginAncestors";
 export { noteUsesCustomMark } from "./noteMarks";
 export { sectionPropertiesAt } from "./storyLifecycle";
 export {

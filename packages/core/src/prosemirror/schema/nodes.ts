@@ -8,6 +8,7 @@
 
 import type { FloatingTableProperties, TableLook } from "../../types";
 import type {
+  BookmarkEnd,
   BorderSpec,
   CounterFormat,
   DisplacedByCustomXml,
@@ -141,6 +142,7 @@ export type BookmarkBoundaryAttrs =
       type: "start";
       id: number;
       name: string;
+      copyOriginAncestors?: NonNullable<BookmarkEnd["copyOriginAncestors"]>;
       colFirst?: number;
       colLast?: number;
       displacedByCustomXml?: DisplacedByCustomXml;
@@ -148,6 +150,7 @@ export type BookmarkBoundaryAttrs =
   | {
       type: "end";
       id: number;
+      copyOriginAncestors?: NonNullable<BookmarkEnd["copyOriginAncestors"]>;
       displacedByCustomXml?: DisplacedByCustomXml;
     };
 

@@ -1,6 +1,8 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
+import { isCopyOriginAncestors } from "@stll/docx-core/ops";
+
 import type { DisplacedByCustomXml, ParagraphContent } from "../types/document";
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 
@@ -29,6 +31,32 @@ const isNonNegativeSafeInteger = (value: unknown): value is number =>
 
 const displacementOf = (value: unknown): DisplacedByCustomXml | undefined =>
   value === "next" || value === "prev" ? value : undefined;
+
+export const withoutUntrustedCopyOrigin = (value: unknown): unknown => {
+  if (!isRecord(value)) return value;
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value)) {
+    if (key !== "copyOriginAncestors") sanitized[key] = field;
+  }
+  return sanitized;
+};
+
+export const moveRangeMarkerForDom = (
+  marker: MoveRangeMarker,
+  internalClipboardToken: string | undefined,
+): MoveRangeMarker => {
+  if (
+    internalClipboardToken !== undefined ||
+    marker.copyOriginAncestors === undefined
+  ) {
+    return marker;
+  }
+  const {
+    copyOriginAncestors: _copyOriginAncestors,
+    ...markerWithoutCopyOrigin
+  } = marker;
+  return markerWithoutCopyOrigin;
+};
 
 /** Read one hidden move-range boundary from an untyped editor or clipboard attribute. */
 export const readMoveRangeMarker = (
@@ -77,6 +105,16 @@ export const readMoveRangeMarker = (
   const date = value["date"];
   const colFirst = value["colFirst"];
   const colLast = value["colLast"];
+  const copyOriginAncestors = value["copyOriginAncestors"];
+  if (
+    copyOriginAncestors !== undefined &&
+    !isCopyOriginAncestors(copyOriginAncestors)
+  ) {
+    issues.push({
+      path: `${path}.copyOriginAncestors`,
+      message: "Expected a sorted, unique list of safe non-negative ordinals.",
+    });
+  }
   if (isStart) {
     if (typeof name !== "string" || name.trim().length === 0) {
       issues.push({
@@ -115,8 +153,13 @@ export const readMoveRangeMarker = (
   }
   const displacement =
     displacedByCustomXml === undefined ? {} : { displacedByCustomXml };
+  const copyOrigin =
+    copyOriginAncestors !== undefined &&
+    isCopyOriginAncestors(copyOriginAncestors)
+      ? { copyOriginAncestors }
+      : {};
   if (type === "moveFromRangeEnd" || type === "moveToRangeEnd") {
-    return { ok: true, value: { type, id, ...displacement } };
+    return { ok: true, value: { type, id, ...copyOrigin, ...displacement } };
   }
   if (
     (type !== "moveFromRangeStart" && type !== "moveToRangeStart") ||
@@ -135,6 +178,7 @@ export const readMoveRangeMarker = (
       ...(typeof date === "string" ? { date } : {}),
       ...(typeof colFirst === "number" ? { colFirst } : {}),
       ...(typeof colLast === "number" ? { colLast } : {}),
+      ...copyOrigin,
       ...displacement,
     },
   };

@@ -20,6 +20,12 @@ import {
   type TrackedChangeInfo,
   type TrackedRunContent,
 } from "../model/document";
+import {
+  acceptCopyOriginAncestor,
+  addCopyOriginAncestorsInNodes,
+  addCopyOriginToExistingAncestor,
+  isTrackedRunContent,
+} from "./copyOriginAncestors";
 import { structurallyEqual } from "./equality";
 import { IDENTITY_SPACES, slotKey } from "./ids";
 import {
@@ -355,6 +361,7 @@ type WrapState = {
   stamp: RevisionStamp;
   /** The wrappers the wrap created and has not merged away. */
   created: Set<InlineNode>;
+  copiedBoundaries: Set<InlineNode>;
   /** Whether the wrap recorded anything: a wrapper created, or merged into a neighbour. */
   recorded: boolean;
   refusal: DocumentOpRefusalReason | undefined;
@@ -436,11 +443,30 @@ const groupCovered = (
   let stretch: Entry[] = [];
   const flush = (): boolean => {
     if (stretch.length === 0) return true;
-    const content = trackedContent(
+    let content = trackedContent(
       stretch.map(({ node }) => node),
       state,
     );
     if (content === undefined) return false;
+    if (state.kind === WRAP_KINDS.INSERTION) {
+      const adjusted = addCopyOriginAncestorsInNodes(
+        content,
+        state.copiedBoundaries,
+      );
+      if (adjusted === undefined) {
+        state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+        return false;
+      }
+      const adjustedContent: TrackedRunContent[] = [];
+      for (const node of adjusted) {
+        if (!isTrackedRunContent(node)) {
+          state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+          return false;
+        }
+        adjustedContent.push(node);
+      }
+      content = adjustedContent;
+    }
     const info = stampInfo(state.stamp);
     const wrapper: InlineNode =
       state.kind === WRAP_KINDS.INSERTION
@@ -509,12 +535,39 @@ const wrapList = (
   cursor: Cursor,
   state: WrapState,
 ): InlineNode[] | undefined => {
+  const retainSameStampCopyOwner = (
+    node: InlineNode,
+  ): InlineNode | undefined => {
+    if (
+      state.kind !== WRAP_KINDS.INSERTION ||
+      !isTrackedWrapper(node) ||
+      !isAddedRevision(node) ||
+      !carriesStamp(node.info, state.stamp)
+    )
+      return node;
+    const copied = addCopyOriginToExistingAncestor(
+      node.content,
+      state.copiedBoundaries,
+    );
+    if (copied === undefined) {
+      state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+      return undefined;
+    }
+    const same =
+      copied.length === node.content.length &&
+      copied.every((child, index) => child === node.content[index]);
+    if (same) return node;
+    state.recorded = true;
+    return rebuildNode(node, copied);
+  };
   const entries: Entry[] = [];
   for (const node of nodes) {
     const start: Cursor = { ...cursor };
     const measured = partitionNode(node, state.gaps, cursor);
     if (measured.min === measured.max) {
-      entries.push({ node, covered: measured.min === 1 });
+      const retained = retainSameStampCopyOwner(node);
+      if (retained === undefined) return undefined;
+      entries.push({ node: retained, covered: measured.min === 1 });
       continue;
     }
     const action = spanningAction(node, state.kind, state.stamp);
@@ -523,7 +576,9 @@ const wrapList = (
         state.refusal = DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION;
         return undefined;
       case "keep":
-        entries.push({ node, covered: false });
+        const retained = retainSameStampCopyOwner(node);
+        if (retained === undefined) return undefined;
+        entries.push({ node: retained, covered: false });
         break;
       case "descend": {
         const end: Cursor = { ...cursor };
@@ -545,7 +600,12 @@ const wrapList = (
             region === 1 &&
             state.kind === WRAP_KINDS.INSERTION &&
             isTrackedWrapper(piece);
-          for (const part of unwrap ? (childNodes(piece) ?? []) : [piece]) {
+          const unwrapped = unwrap ? (childNodes(piece) ?? []) : [piece];
+          const parts =
+            unwrap && isAddedRevision(piece)
+              ? acceptCopyOriginAncestor(unwrapped, state.copiedBoundaries)
+              : unwrapped;
+          for (const part of parts) {
             const localGap = (gap: Gap): Gap => ({
               offset: gap.offset - start.position,
               zeroWidthBefore:
@@ -604,6 +664,7 @@ export type WrapOptions = {
   stamp: RevisionStamp;
   /** Exact top-level cut depth restored when this wrapper content is removed. */
   resolutionJoin?: number;
+  copiedBoundaries?: ReadonlySet<InlineNode>;
 };
 
 export type WrapOutcome =
@@ -624,6 +685,7 @@ export const wrapTracked = ({
   stamp,
   resolutionJoin,
   acceptance,
+  copiedBoundaries,
 }: WrapOptions): WrapOutcome => {
   const state: WrapState = {
     gaps: [from, to],
@@ -633,6 +695,7 @@ export const wrapTracked = ({
     kind,
     stamp,
     created: new Set(),
+    copiedBoundaries: new Set(copiedBoundaries),
     recorded: false,
     refusal: undefined,
   };

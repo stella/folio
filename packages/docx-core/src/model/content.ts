@@ -371,6 +371,14 @@ export type MarkupRangeMarker = {
   displacedByCustomXml?: DisplacedByCustomXml;
 };
 
+/** Added-revision ancestors that own a copied bookmark or move boundary. */
+type CopyOriginAncestorOrdinals = readonly [number, ...number[]];
+
+type CopyOriginMarker = {
+  /** Nearest added revision ancestor is ordinal 0. */
+  copyOriginAncestors?: CopyOriginAncestorOrdinals;
+};
+
 /** `CT_Bookmark`: a named range, optionally scoped to table columns. */
 export type BookmarkRangeMarker = MarkupRangeMarker & {
   name: string;
@@ -396,12 +404,14 @@ export type MoveBookmarkMarker = BookmarkRangeMarker & {
 /**
  * Bookmark start marker (w:bookmarkStart)
  */
-export type BookmarkStart = { type: "bookmarkStart" } & BookmarkRangeMarker;
+export type BookmarkStart = { type: "bookmarkStart" } & BookmarkRangeMarker &
+  CopyOriginMarker;
 
 /**
  * Bookmark end marker (w:bookmarkEnd)
  */
-export type BookmarkEnd = { type: "bookmarkEnd" } & MarkupRangeMarker;
+export type BookmarkEnd = { type: "bookmarkEnd" } & MarkupRangeMarker &
+  CopyOriginMarker;
 
 /**
  * A bookmark marker standing between a container's own children.
@@ -1824,12 +1834,16 @@ export type InlineWrapper =
  */
 export type MoveFromRangeStart = {
   type: "moveFromRangeStart";
-} & MoveBookmarkMarker;
+} & MoveBookmarkMarker &
+  CopyOriginMarker;
 
 /**
  * Move-from range end marker (w:moveFromRangeEnd)
  */
-export type MoveFromRangeEnd = { type: "moveFromRangeEnd" } & MarkupRangeMarker;
+export type MoveFromRangeEnd = {
+  type: "moveFromRangeEnd";
+} & MarkupRangeMarker &
+  CopyOriginMarker;
 
 /**
  * Move-to range start marker (w:moveToRangeStart) — ECMA-376 §17.13.5.24
@@ -1837,12 +1851,14 @@ export type MoveFromRangeEnd = { type: "moveFromRangeEnd" } & MarkupRangeMarker;
  */
 export type MoveToRangeStart = {
   type: "moveToRangeStart";
-} & MoveBookmarkMarker;
+} & MoveBookmarkMarker &
+  CopyOriginMarker;
 
 /**
  * Move-to range end marker (w:moveToRangeEnd)
  */
-export type MoveToRangeEnd = { type: "moveToRangeEnd" } & MarkupRangeMarker;
+export type MoveToRangeEnd = { type: "moveToRangeEnd" } & MarkupRangeMarker &
+  CopyOriginMarker;
 
 /**
  * Run-level tracked wrappers represented in WordprocessingML.

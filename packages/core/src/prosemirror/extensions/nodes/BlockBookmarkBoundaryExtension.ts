@@ -28,25 +28,40 @@ import {
   parseBookmarkBoundaryDom,
 } from "./bookmarkBoundaryDom";
 
+type BlockBookmarkBoundaryOptions = {
+  getInternalClipboardToken?: () => string;
+};
+
 /** The node name, for callers asking what a block container holds. */
 export const BLOCK_BOOKMARK_BOUNDARY_NODE_NAME = "blockBookmarkBoundary";
 
-export const BlockBookmarkBoundaryExtension = createNodeExtension({
-  name: BLOCK_BOOKMARK_BOUNDARY_NODE_NAME,
-  schemaNodeName: BLOCK_BOOKMARK_BOUNDARY_NODE_NAME,
-  nodeSpec: {
-    group: "block",
-    atom: true,
-    selectable: false,
-    attrs: bookmarkBoundaryAttrSpec,
-    parseDOM: [
-      {
-        tag: "div[data-docx-bookmark-boundary]",
-        getAttrs: parseBookmarkBoundaryDom,
+export const BlockBookmarkBoundaryExtension =
+  createNodeExtension<BlockBookmarkBoundaryOptions>({
+    name: BLOCK_BOOKMARK_BOUNDARY_NODE_NAME,
+    schemaNodeName: BLOCK_BOOKMARK_BOUNDARY_NODE_NAME,
+    nodeSpec: (options) => ({
+      group: "block",
+      atom: true,
+      selectable: false,
+      attrs: bookmarkBoundaryAttrSpec,
+      parseDOM: [
+        {
+          tag: "div[data-docx-bookmark-boundary]",
+          getAttrs: (dom) =>
+            parseBookmarkBoundaryDom(
+              dom,
+              options.getInternalClipboardToken?.(),
+            ),
+        },
+      ],
+      toDOM(node) {
+        return [
+          "div",
+          bookmarkBoundaryDomAttributes(
+            node,
+            options.getInternalClipboardToken?.(),
+          ),
+        ];
       },
-    ],
-    toDOM(node) {
-      return ["div", bookmarkBoundaryDomAttributes(node)];
-    },
-  },
-});
+    }),
+  });

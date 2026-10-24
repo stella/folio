@@ -14,6 +14,11 @@ import {
   expectBookmarkBoundaryAttrs,
   isDisplacedByCustomXml,
 } from "../../bookmarkBoundaryAttrs";
+import {
+  copyOriginAncestorsFromInternalDom,
+  copyOriginDomAttribute,
+  INTERNAL_CLIPBOARD_TOKEN_ATTRIBUTE,
+} from "../../copyOriginDom";
 
 const readNonnegativeInteger = (value: string | null): number | false => {
   if (value === null || !/^(?:0|[1-9]\d*)$/.test(value)) {
@@ -38,11 +43,13 @@ export const bookmarkBoundaryAttrSpec = {
   colFirst: { default: null },
   colLast: { default: null },
   displacedByCustomXml: { default: null },
+  copyOriginAncestors: { default: null },
 };
 
 /** `false` when the element does not describe a boundary ProseMirror can hold. */
 export const parseBookmarkBoundaryDom = (
   dom: HTMLElement | string,
+  internalClipboardToken?: string,
 ): Record<string, unknown> | false => {
   if (typeof dom === "string") {
     return false;
@@ -61,6 +68,11 @@ export const parseBookmarkBoundaryDom = (
   if (colFirst === false || colLast === false) {
     return false;
   }
+  const copyOriginAncestors = copyOriginAncestorsFromInternalDom(
+    dom,
+    internalClipboardToken,
+  );
+  if (copyOriginAncestors === false) return false;
   const displaced = dom.getAttribute("data-docx-bookmark-displaced");
   return {
     type,
@@ -68,6 +80,7 @@ export const parseBookmarkBoundaryDom = (
     ...(name ? { name } : {}),
     ...(colFirst !== undefined ? { colFirst } : {}),
     ...(colLast !== undefined ? { colLast } : {}),
+    ...(copyOriginAncestors === undefined ? {} : { copyOriginAncestors }),
     ...(isDisplacedByCustomXml(displaced)
       ? { displacedByCustomXml: displaced }
       : {}),
@@ -94,11 +107,17 @@ export const bookmarkBoundaryDomAttributes = (
     ...(attrs.displacedByCustomXml !== undefined
       ? { "data-docx-bookmark-displaced": attrs.displacedByCustomXml }
       : {}),
+    ...copyOriginDomAttribute(
+      attrs.copyOriginAncestors,
+      internalClipboardToken,
+    ),
     "aria-hidden": "true",
     contenteditable: "false",
     style: "display: none;",
     ...(internalClipboardToken === undefined
       ? {}
-      : { "data-docx-internal-clipboard": internalClipboardToken }),
+      : {
+          [INTERNAL_CLIPBOARD_TOKEN_ATTRIBUTE]: internalClipboardToken,
+        }),
   };
 };

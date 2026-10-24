@@ -122,6 +122,7 @@ import {
 } from "../attrs";
 import { authoredTransformAttrs } from "../authoredTransformAttrs";
 import { setAutospacingBaseValue } from "../autospacingBase";
+import { bookmarkBoundaryAttrsFromMarker } from "../bookmarkBoundaryAttrs";
 import {
   type TrackedCommentBoundary,
   trackedCommentBoundaryOwner,
@@ -701,20 +702,7 @@ function convertBlockBookmarkBoundary(
 ): PMNode {
   return schema.node(
     "blockBookmarkBoundary",
-    block.type === "bookmarkStart"
-      ? {
-          type: "start",
-          id: block.id,
-          name: block.name,
-          colFirst: block.colFirst,
-          colLast: block.colLast,
-          displacedByCustomXml: block.displacedByCustomXml,
-        }
-      : {
-          type: "end",
-          id: block.id,
-          displacedByCustomXml: block.displacedByCustomXml,
-        },
+    bookmarkBoundaryAttrsFromMarker(block),
   );
 }
 
@@ -1244,16 +1232,15 @@ function convertParagraph(
         emitInlineNode(convertMathEquation(content));
         break;
       case "bookmarkStart":
-        if (pairedBookmarkIds.has(content.id)) {
+        if (
+          pairedBookmarkIds.has(content.id) ||
+          content.copyOriginAncestors !== undefined
+        ) {
           emitInlineNode(
-            schema.node("bookmarkBoundary", {
-              type: "start",
-              id: content.id,
-              name: content.name,
-              colFirst: content.colFirst,
-              colLast: content.colLast,
-              displacedByCustomXml: content.displacedByCustomXml,
-            }),
+            schema.node(
+              "bookmarkBoundary",
+              bookmarkBoundaryAttrsFromMarker(content),
+            ),
           );
           break;
         }
@@ -1265,13 +1252,15 @@ function convertParagraph(
         bookmarksArr.push({ id: content.id, name: content.name });
         break;
       case "bookmarkEnd":
-        if (pairedBookmarkIds.has(content.id)) {
+        if (
+          pairedBookmarkIds.has(content.id) ||
+          content.copyOriginAncestors !== undefined
+        ) {
           emitInlineNode(
-            schema.node("bookmarkBoundary", {
-              type: "end",
-              id: content.id,
-              displacedByCustomXml: content.displacedByCustomXml,
-            }),
+            schema.node(
+              "bookmarkBoundary",
+              bookmarkBoundaryAttrsFromMarker(content),
+            ),
           );
         }
         // An unpaired end has no node: the legacy paragraph attr records the
@@ -1569,22 +1558,11 @@ function convertTrackedChange(
       commentsAlreadyApplied = true;
     } else if (item.type === "bookmarkStart") {
       itemNodes.push(
-        schema.node("bookmarkBoundary", {
-          type: "start",
-          id: item.id,
-          name: item.name,
-          colFirst: item.colFirst,
-          colLast: item.colLast,
-          displacedByCustomXml: item.displacedByCustomXml,
-        }),
+        schema.node("bookmarkBoundary", bookmarkBoundaryAttrsFromMarker(item)),
       );
     } else if (item.type === "bookmarkEnd") {
       itemNodes.push(
-        schema.node("bookmarkBoundary", {
-          type: "end",
-          id: item.id,
-          displacedByCustomXml: item.displacedByCustomXml,
-        }),
+        schema.node("bookmarkBoundary", bookmarkBoundaryAttrsFromMarker(item)),
       );
     } else if (
       item.type === "moveFromRangeStart" ||
@@ -3435,23 +3413,18 @@ function convertInlineSdt(
       // unconditionally for the same reason.
       case "bookmarkStart":
         itemNodes.push(
-          schema.node("bookmarkBoundary", {
-            type: "start",
-            id: content.id,
-            name: content.name,
-            colFirst: content.colFirst,
-            colLast: content.colLast,
-            displacedByCustomXml: content.displacedByCustomXml,
-          }),
+          schema.node(
+            "bookmarkBoundary",
+            bookmarkBoundaryAttrsFromMarker(content),
+          ),
         );
         break;
       case "bookmarkEnd":
         itemNodes.push(
-          schema.node("bookmarkBoundary", {
-            type: "end",
-            id: content.id,
-            displacedByCustomXml: content.displacedByCustomXml,
-          }),
+          schema.node(
+            "bookmarkBoundary",
+            bookmarkBoundaryAttrsFromMarker(content),
+          ),
         );
         break;
       case "moveFromRangeStart":

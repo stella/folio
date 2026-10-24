@@ -18,13 +18,9 @@
  * - a second round trip changes nothing;
  * - an edit elsewhere in the paragraph leaves the anchor where it was.
  *
- * The containers are the inline ones the container census measures. The
- * revision wrappers and the inline content control are not among them by
- * construction rather than by omission: `TRACKED_CHANGE_WRAPPER_CONTENT` and
- * `INLINE_SDT_CONTENT` admit neither half of a range, so the parser lifts a
- * marker out to the paragraph and the model has no state where one sits
- * inside. The census, which builds those packages for real, is what checks
- * that lifting.
+ * The containers are the inline ones this property matrix measures. It does
+ * not cover markers nested in tracked-revision wrappers or inline content
+ * controls; those paths have separate parser and resolution contracts.
  */
 
 import { describe, expect, test } from "bun:test";

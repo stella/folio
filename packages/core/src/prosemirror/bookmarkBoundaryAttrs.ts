@@ -1,6 +1,8 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
+import { isCopyOriginAncestors } from "@stll/docx-core/ops";
+
 import type {
   BookmarkEnd,
   BookmarkStart,
@@ -27,6 +29,13 @@ export const bookmarkBoundaryDisplacement = (
     ? {}
     : { displacedByCustomXml: attrs.displacedByCustomXml };
 
+const bookmarkBoundaryCopyOrigin = (
+  attrs: BookmarkBoundaryAttrs,
+): { copyOriginAncestors?: NonNullable<BookmarkEnd["copyOriginAncestors"]> } =>
+  attrs.copyOriginAncestors === undefined
+    ? {}
+    : { copyOriginAncestors: attrs.copyOriginAncestors };
+
 /**
  * The model marker a boundary node carries, at either level.
  *
@@ -42,6 +51,7 @@ export const bookmarkMarkerFromAttrs = (
         type: "bookmarkStart",
         id: attrs.id,
         name: attrs.name,
+        ...bookmarkBoundaryCopyOrigin(attrs),
         ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
         ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
         ...bookmarkBoundaryDisplacement(attrs),
@@ -49,7 +59,36 @@ export const bookmarkMarkerFromAttrs = (
     : {
         type: "bookmarkEnd",
         id: attrs.id,
+        ...bookmarkBoundaryCopyOrigin(attrs),
         ...bookmarkBoundaryDisplacement(attrs),
+      };
+
+export const bookmarkBoundaryAttrsFromMarker = (
+  marker: BookmarkStart | BookmarkEnd,
+): BookmarkBoundaryAttrs =>
+  marker.type === "bookmarkStart"
+    ? {
+        type: "start",
+        id: marker.id,
+        name: marker.name,
+        ...(marker.copyOriginAncestors === undefined
+          ? {}
+          : { copyOriginAncestors: marker.copyOriginAncestors }),
+        ...(marker.colFirst === undefined ? {} : { colFirst: marker.colFirst }),
+        ...(marker.colLast === undefined ? {} : { colLast: marker.colLast }),
+        ...(marker.displacedByCustomXml === undefined
+          ? {}
+          : { displacedByCustomXml: marker.displacedByCustomXml }),
+      }
+    : {
+        type: "end",
+        id: marker.id,
+        ...(marker.copyOriginAncestors === undefined
+          ? {}
+          : { copyOriginAncestors: marker.copyOriginAncestors }),
+        ...(marker.displacedByCustomXml === undefined
+          ? {}
+          : { displacedByCustomXml: marker.displacedByCustomXml }),
       };
 
 export const readBookmarkBoundaryAttrs = (
@@ -125,12 +164,30 @@ export const readBookmarkBoundaryAttrs = (
     });
   }
 
+  const copyOriginAncestors = node.attrs["copyOriginAncestors"];
+  if (
+    copyOriginAncestors !== undefined &&
+    copyOriginAncestors !== null &&
+    !isCopyOriginAncestors(copyOriginAncestors)
+  ) {
+    issues.push({
+      path: "bookmarkBoundary.attrs.copyOriginAncestors",
+      message: "Expected a sorted, unique list of safe non-negative ordinals.",
+    });
+  }
+
   if (issues.length > 0 || typeof id !== "number") {
     return { ok: false, issues };
   }
   const displacement = isDisplacedByCustomXml(displaced)
     ? { displacedByCustomXml: displaced }
     : {};
+  const copyOrigin =
+    copyOriginAncestors === undefined ||
+    copyOriginAncestors === null ||
+    !isCopyOriginAncestors(copyOriginAncestors)
+      ? {}
+      : { copyOriginAncestors };
   if (type === "start" && typeof name === "string") {
     return {
       ok: true,
@@ -138,13 +195,17 @@ export const readBookmarkBoundaryAttrs = (
         type,
         id,
         name,
+        ...copyOrigin,
         ...(typeof colFirst === "number" ? { colFirst } : {}),
         ...(typeof colLast === "number" ? { colLast } : {}),
         ...displacement,
       },
     };
   }
-  return { ok: true, value: { type: "end", id, ...displacement } };
+  return {
+    ok: true,
+    value: { type: "end", id, ...copyOrigin, ...displacement },
+  };
 };
 
 export const expectBookmarkBoundaryAttrs = (

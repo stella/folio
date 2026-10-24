@@ -29,6 +29,7 @@ import type {
   Paragraph,
   PositionedBookmarkMarker,
 } from "../model/document";
+import { rejectCopyOriginAncestorsInNodes } from "./copyOriginAncestors";
 import {
   childNodes,
   type InlineNode,
@@ -316,9 +317,11 @@ export const insertsInvertedRange = ({
  */
 export const paragraphRemains = (
   content: readonly InlineNode[],
-): { blocks: BlockBoundary[]; comments: CommentAnchor[] } => {
-  const boundaries = rangeBoundariesIn(content);
+): { all: Boundary[]; blocks: BlockBoundary[]; comments: CommentAnchor[] } => {
+  const detached = rejectCopyOriginAncestorsInNodes(content, 0);
+  const boundaries = rangeBoundariesIn(detached);
   return {
+    all: boundaries,
     blocks: boundaries.filter(
       (boundary): boundary is BlockBoundary => !isCommentAnchor(boundary),
     ),
@@ -351,10 +354,13 @@ export const planParagraphBoundaryRemoval = ({
   const paragraph = blocks[index];
   if (paragraph?.type !== "paragraph")
     return panic("Only a paragraph leaves its range boundaries.");
-  const { blocks: boundaries, comments } = paragraphRemains(paragraph.content);
+  const {
+    all,
+    blocks: boundaries,
+    comments,
+  } = paragraphRemains(paragraph.content);
   const between = place === "blocks" ? boundaries : [];
-  const toPrevious =
-    place === "blocks" ? comments : rangeBoundariesIn(paragraph.content);
+  const toPrevious = place === "blocks" ? comments : all;
   const remaining = [
     ...blocks.slice(0, index),
     ...between,
