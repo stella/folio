@@ -108,6 +108,7 @@ import {
   prepareCanonicalCommands,
 } from "./canonicalStructure";
 import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
+import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
 
 export class CanonicalSessionRefusalError extends TaggedError(
   "CanonicalSessionRefusalError",
@@ -1216,6 +1217,9 @@ export const createHiddenEditorManager = (
       },
       // Intercept key events before ProseMirror processes them
       handleKeyDown: (pmView: EditorView, event: KeyboardEvent): boolean => {
+        if (deps.getReadOnly() && handleReadOnlySelectionKeyDown(pmView, event))
+          return true;
+
         if (deps.getReadOnly() && isReadOnlyEditKey(event)) {
           deps.onReadOnlyEditAttempt();
           event.preventDefault();
