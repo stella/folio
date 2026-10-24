@@ -324,7 +324,12 @@ export const targetFeatureSignature = (
     if (feature === "none") continue;
     const disposition = TARGET_FEATURE_DISPOSITIONS[feature];
     if (disposition === null) continue;
-    if (feature === "noteReference" && story !== "body") continue;
+    if (
+      feature === "noteReference" &&
+      story !== "body" &&
+      story !== "tableCell"
+    )
+      continue;
     found.add(disposition);
   }
   if (story === "footnote") found.add("footnote");

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { fromMarkdown } from "@stll/folio-core/markdown";
-import { paragraph, run } from "@stll/folio-core/server";
+import { paragraph, run, table } from "@stll/folio-core/server";
 
 import { openReviewer, packDocument } from "./documents.ts";
 import {
@@ -93,11 +93,26 @@ test("body note references are a distinct target feature", async () => {
   document.package.footnotes = [
     { type: "footnote", id: noteId, content: [paragraph("Footnote.")] },
   ];
+  const endnoteId = 38;
+  document.package.endnotes = [
+    { type: "endnote", id: endnoteId, content: [paragraph("Endnote.")] },
+  ];
+  const noteTable = table({ rows: [["Referenced table cell"]] });
+  const noteCell = noteTable.rows.at(0)?.cells.at(0);
+  assert.ok(noteCell);
+  noteCell.content = [
+    paragraph([
+      run("Referenced table cell "),
+      { type: "run", content: [{ type: "endnoteRef", id: endnoteId }] },
+    ]),
+  ];
   document.package.document.content.push(
     paragraph([
       run("Referenced body text "),
       { type: "run", content: [{ type: "footnoteRef", id: noteId }] },
     ]),
+    noteTable,
+    paragraph("Trailing body text."),
   );
 
   const reviewer = await openReviewer(await packDocument(document));
@@ -105,16 +120,20 @@ test("body note references are a distinct target feature", async () => {
   const referenceBlocks = reviewer
     .getContent()
     .filter((block) => index.features.get(block.id)?.has("noteReference"));
-  assert.equal(referenceBlocks.length, 1);
-  const referenceBlock = referenceBlocks[0];
-  assert.ok(referenceBlock);
-  assert.ok(
-    targetFeatureSignature(
-      referenceBlock,
-      index.features.get(referenceBlock.id) ?? new Set(),
-      storyKindOf(index, referenceBlock),
-    ).includes("note-reference"),
+  assert.equal(referenceBlocks.length, 2);
+  assert.deepEqual(
+    new Set(referenceBlocks.map((block) => storyKindOf(index, block))),
+    new Set(["body", "tableCell"]),
   );
+  for (const referenceBlock of referenceBlocks) {
+    assert.ok(
+      targetFeatureSignature(
+        referenceBlock,
+        index.features.get(referenceBlock.id) ?? new Set(),
+        storyKindOf(index, referenceBlock),
+      ).includes("note-reference"),
+    );
+  }
 
   const ordinaryBlock = reviewer
     .getContent()
