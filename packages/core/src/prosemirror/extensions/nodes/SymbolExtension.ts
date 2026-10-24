@@ -1,6 +1,6 @@
 import { isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 
-import { decodeOoxmlSymbolCharacter } from "../../../utils/ooxmlSymbol";
+import { displayOoxmlSymbolCharacter } from "../../../utils/ooxmlSymbol";
 import { expectSymbolAttrs } from "../../attrs";
 import { createNodeExtension } from "../create";
 
@@ -48,13 +48,13 @@ export const SymbolExtension = createNodeExtension({
     ],
     toDOM(node) {
       const { font, char } = expectSymbolAttrs(node);
-      const decoded = decodeOoxmlSymbolCharacter(char);
+      const decoded = displayOoxmlSymbolCharacter(font, char);
       return [
         "span",
         {
           "data-docx-symbol-char": char,
           "data-docx-symbol-font": font,
-          style: `font-family: "${escapeCssString(font)}";`,
+          style: `font-family: "${escapeCssString(font)}", sans-serif;`,
         },
         decoded ?? "\uFFFD",
       ];
