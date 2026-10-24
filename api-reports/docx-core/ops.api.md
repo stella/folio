@@ -837,7 +837,7 @@ export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
 // @public
 export const paragraphRemains: (content: readonly InlineNode[]) => {
-    all: Boundary[];
+    all: (Boundary | CommentAnchor$1)[];
     blocks: BlockBoundary[];
     comments: CommentAnchor$1[];
 };
