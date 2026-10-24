@@ -32,6 +32,7 @@ import {
   recreateProseNodeWithParagraphPropertySource as rebuild,
 } from "../docx/paragraphPropertySource";
 import { expectParagraphAttrs } from "./attrs";
+import { paragraphRemainsOf } from "./keptRangeBoundaries";
 import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
 import {
   paragraphRunStyleContext,
@@ -90,6 +91,20 @@ type RunParagraphIntoTableOptions = {
   removedMark?: MarkType | undefined;
 };
 
+const paragraphAfterContentRemoval = (
+  paragraph: PMNode,
+  removedMark: MarkType | undefined,
+) =>
+  removedMark
+    ? paragraph.copy(
+        Fragment.fromArray(
+          paragraph.children.filter(
+            (child) => !removedMark.isInSet(child.marks),
+          ),
+        ),
+      )
+    : paragraph;
+
 /**
  * Run the paragraph at `paragraphPos` on into the table right after it.
  * Returns where the paragraph that took its words now starts and the
@@ -110,16 +125,13 @@ export const runParagraphIntoTable = ({
   if (paragraph?.type.name !== "paragraph") return null;
   if (expectParagraphAttrs(paragraph)._sectionProperties !== undefined)
     return null;
-  const left = removedMark
-    ? paragraph.copy(
-        Fragment.fromArray(
-          paragraph.children.filter(
-            (child) => !removedMark.isInSet(child.marks),
-          ),
-        ),
-      )
-    : paragraph;
-  if (!paragraphContentOf(left)) return null;
+  const left = paragraphAfterContentRemoval(paragraph, removedMark);
+  const remains = paragraphRemainsOf(left);
+  if (
+    !paragraphContentOf(left) &&
+    (remains.blocks.length > 0 || remains.comments.length === 0)
+  )
+    return null;
   const tablePos = paragraphPos + paragraph.nodeSize;
   const target = runInTarget(tr.doc, tablePos);
   if (!target) return null;
@@ -191,11 +203,19 @@ const markGoes = (paragraph: PMNode, mode: "accept" | "reject"): boolean => {
  * Whether resolving every change in `mode` runs `paragraph` on into `next`:
  * its mark goes and `next` is a table.
  */
-export const runsIntoFollowingTable = (
-  paragraph: PMNode,
-  next: PMNode | null | undefined,
-  mode: "accept" | "reject",
-): boolean => {
+type RunsIntoFollowingTableOptions = {
+  parent: PMNode;
+  index: number;
+  mode: "accept" | "reject";
+};
+
+export const runsIntoFollowingTable = ({
+  parent,
+  index,
+  mode,
+}: RunsIntoFollowingTableOptions): boolean => {
+  const paragraph = parent.child(index);
+  const next = parent.maybeChild(index + 1);
   if (
     paragraph.type.name !== "paragraph" ||
     next?.type.spec["tableRole"] !== "table" ||
@@ -203,10 +223,38 @@ export const runsIntoFollowingTable = (
   ) {
     return false;
   }
+  const remains = paragraphRemainsOf(paragraph);
+  const holdsContent = paragraphContentOf(paragraph);
+  const needsCommentHost =
+    !holdsContent && remains.blocks.length === 0 && remains.comments.length > 0;
+  const removedMark =
+    paragraph.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
+  let hasPrecedingCommentHost = false;
+  for (
+    let previousIndex = needsCommentHost ? index - 1 : -1;
+    previousIndex >= 0;
+    previousIndex -= 1
+  ) {
+    const previous = parent.child(previousIndex);
+    if (previous.type.name !== "paragraph") break;
+    if (
+      !markGoes(previous, mode) ||
+      expectParagraphAttrs(previous)._sectionProperties !== undefined
+    ) {
+      hasPrecedingCommentHost = true;
+      break;
+    }
+    const retained = paragraphAfterContentRemoval(previous, removedMark);
+    if (paragraphContentOf(retained)) break;
+    if (paragraphRemainsOf(retained).blocks.length > 0) {
+      hasPrecedingCommentHost = true;
+      break;
+    }
+  }
   return (
     paragraphMarkOutcome({
       follows: "table",
-      holdsContent: paragraphContentOf(paragraph),
+      holdsContent,
       markWasAdded:
         expectParagraphAttrs(paragraph).pPrMark?.kind === "ins" ||
         expectParagraphAttrs(paragraph).pPrMark?.kind === "moveTo",
@@ -214,6 +262,7 @@ export const runsIntoFollowingTable = (
       followingTableCanReceiveRunIn:
         expectParagraphAttrs(paragraph)._sectionProperties === undefined &&
         !runInCellPending(next),
+      needsFollowingCommentHost: needsCommentHost && !hasPrecedingCommentHost,
     }).kind === "run-in"
   );
 };
@@ -243,8 +292,15 @@ export const runParagraphsIntoTables = (
     let candidate: number | null = null;
     tr.doc.descendants((node, pos, parent, index) => {
       if (node.type.name !== "paragraph") return !node.isTextblock;
-      const next = parent?.maybeChild(index + 1);
-      if (runsIntoFollowingTable(node, next, mode) && !tried.has(pos)) {
+      if (
+        parent &&
+        runsIntoFollowingTable({
+          parent,
+          index,
+          mode,
+        }) &&
+        !tried.has(pos)
+      ) {
         candidate = pos;
       }
       return false;

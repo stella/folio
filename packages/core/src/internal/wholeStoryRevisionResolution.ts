@@ -98,7 +98,11 @@ const resolveProperties = ({
     if (!runsIntoTable && !node.isTextblock) {
       for (let index = 0; index + 1 < node.childCount; index++) {
         if (
-          runsIntoFollowingTable(node.child(index), node.child(index + 1), mode)
+          runsIntoFollowingTable({
+            parent: node,
+            index,
+            mode,
+          })
         ) {
           runsIntoTable = true;
           break;

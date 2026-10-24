@@ -98,6 +98,7 @@ export const paragraphMarkOutcome = ({
   markWasAdded,
   containerStillEndsWithParagraph,
   followingTableCanReceiveRunIn,
+  needsFollowingCommentHost = false,
   tableRemovalIsTrackable = true,
   removedSectionProperties = false,
   precedingSectionOwner = "unavailable",
@@ -114,6 +115,7 @@ export const paragraphMarkOutcome = ({
    */
   containerStillEndsWithParagraph: boolean;
   followingTableCanReceiveRunIn: boolean;
+  needsFollowingCommentHost?: boolean;
   tableRemovalIsTrackable?: boolean;
   removedSectionProperties?: boolean;
   precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
@@ -148,8 +150,10 @@ export const paragraphMarkOutcome = ({
           sectionDestination,
         };
       if (!holdsContent) {
-        return removalWouldDropSection
-          ? { kind: "keep", sectionDestination: "none" }
+        if (removalWouldDropSection)
+          return { kind: "keep", sectionDestination: "none" };
+        return needsFollowingCommentHost && followingTableCanReceiveRunIn
+          ? { kind: "run-in", sectionDestination }
           : { kind: "remove", sectionDestination };
       }
       return followingTableCanReceiveRunIn
