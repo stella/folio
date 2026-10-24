@@ -44,7 +44,7 @@ import { applyCommentOp } from "./comments";
  * | ------------------- | --------------------------------------------------------- |
  * | `insertText`        | `deleteRange` (its `join` merges a run the text cut)      |
  * | `insertContent`     | `deleteRange` (its `join` merges the records the cut left) |
- * | `deleteRange`       | `insertContent` with the removed slice                    |
+ * | `deleteRange`       | `insertContent`, or `replaceInline` for noninsertable source |
  * | `splitInline`       | `joinInline`                                              |
  * | `joinInline`        | `splitInline`                                             |
  * | `setRunProps`       | `setRunProps` per stretch of prior values, joining cuts   |
@@ -137,6 +137,7 @@ import {
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
 import { priorValues } from "./patch";
+import { insertsInvertedRange } from "./rangeBoundaries";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
@@ -875,6 +876,20 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
       `The slice's open ends do not fit ${op.at.offset} in ${op.at.blockId}.`,
     );
   }
+  if (
+    insertsInvertedRange({
+      body: storyBody(document, op.at.story),
+      paragraph: location.paragraph,
+      candidateContent: content,
+      incomingContent: slice.content,
+    })
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "The insertion would create a range whose end precedes its start.",
+    );
+  }
   return inserted({
     document,
     op,
@@ -1074,6 +1089,12 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
         cutHasResolutionProvenance({
           content: paragraph.content,
           gaps: [from, to],
+        }) ||
+        insertsInvertedRange({
+          body: storyBody(document, story),
+          paragraph,
+          candidateContent: paragraph.content,
+          incomingContent: removed.content,
         })
       )
         return Result.ok([contentRestoring(story, result, paragraph)]);
