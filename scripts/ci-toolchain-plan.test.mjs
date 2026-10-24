@@ -96,7 +96,7 @@ describe("shared toolchain CI selection", () => {
         run: 'bun scripts/ci-plan.ts --base "$TYPECHECK_BASE" --head "$GITHUB_SHA"',
         env: {
           TYPECHECK_BASE:
-            "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}",
+            "${{ (github.event_name == 'workflow_dispatch' && '0000000000000000000000000000000000000000') || github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}",
           TYPECHECK_PUSH: "${{ github.event_name == 'push' }}",
         },
       },
