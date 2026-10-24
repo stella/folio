@@ -37,6 +37,7 @@ import { panic } from "better-result";
 import { writeCommentAnchorIds } from "../../render-dom/commentAnchorAttributes";
 import { bytesToDataUrl } from "../../utils/base64";
 import { imageLuminanceFilter } from "../../utils/imageLuminance";
+import { applyTextAdvanceGaps } from "../../utils/textAdvanceGapsDom";
 import { anchorTargetAttrs } from "../../utils/urlSecurity";
 import {
   DOUBLE_STROKE_GAP_FACTOR,
@@ -578,6 +579,7 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   // cursive positional form. Placing code points independently would override
   // all three to buy a sub-pixel advance nobody sees.
   span.textContent = run.text;
+  applyTextAdvanceGaps(span, run.adjustments?.automaticTextSpacingGaps ?? []);
 
   context.parent.append(span);
 };

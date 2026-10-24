@@ -148,6 +148,15 @@ export default library({
       },
     },
     {
+      files: [
+        "packages/core/src/display-list/build/glyphs.ts",
+        "packages/core/src/layout-bridge/engine/clickToPosition.ts",
+        "packages/core/src/layout-bridge/engine/selectionRects.ts",
+        "test/__fixtures__/positioned-advance.*.ts",
+      ],
+      rules: { "folio-painted-text/positioned-advance-owner": "error" },
+    },
+    {
       files: ["packages/*/src/**/*.{ts,tsx,js,jsx,vue}"],
       rules: {
         "utf8-boundaries/no-string-zip-entry": [

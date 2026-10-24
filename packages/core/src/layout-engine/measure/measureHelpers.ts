@@ -75,7 +75,7 @@ function capsStyleOf(
  * and size fallbacks for runs that declare neither.
  */
 export function buildRunFontStyle(
-  run: RunFormatting,
+  run: RunFormatting & { templatePreview?: "highlighted" | "plain" },
   fallbackFontFamily: string,
   fallbackFontSize: number,
 ): FontStyle {
@@ -87,6 +87,23 @@ export function buildRunFontStyle(
   const horizontalScale = normalizeHorizontalScalePercent(run.horizontalScale);
   return {
     fontFamily: run.fontFamily ?? fallbackFontFamily,
+    ...(run.automaticTextSpacing === undefined ||
+    run.rtl ||
+    run.bidiWrapper !== undefined ||
+    run.hidden ||
+    run.superscript ||
+    run.subscript ||
+    (run.positionPx ?? 0) !== 0 ||
+    run.footnoteRefId !== undefined ||
+    run.endnoteRefId !== undefined ||
+    run.templatePreview !== undefined
+      ? {}
+      : {
+          automaticTextSpacing: {
+            ...run.automaticTextSpacing,
+            reverseFontFamily: run.fontFamily ?? null,
+          },
+        }),
     ...(run.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap }
       : {}),
