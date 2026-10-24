@@ -53,6 +53,9 @@ describe("attr-schema version marker", () => {
     ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 13);
 
     expect(applyAttrSchemaMigrations(ydoc, fragment, 13)).toBe(0);
+    expect(ydoc.getMap(METADATA_MAP_NAME).get(ATTR_SCHEMA_VERSION_KEY)).toBe(
+      FOLIO_YJS_ATTR_SCHEMA_VERSION,
+    );
     const restored = initProseMirrorDoc(fragment, schema).doc;
     const link = restored.firstChild?.firstChild?.marks.find(
       (mark) => mark.type.name === "hyperlink",

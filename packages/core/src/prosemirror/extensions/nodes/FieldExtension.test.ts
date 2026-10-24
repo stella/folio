@@ -258,6 +258,11 @@ describe("FieldExtension", () => {
         ({ type }) => type.name,
       ),
     ).toEqual(["bold"]);
+    expect(
+      parsed.firstChild?.firstChild?.content.content
+        .at(1)
+        ?.marks.map(({ type }) => type.name),
+    ).toEqual(["italic"]);
   });
 
   test("preserves structured simple result formatting without a hyperlink", () => {
