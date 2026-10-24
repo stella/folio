@@ -9,6 +9,7 @@ import type { EditorView } from "prosemirror-view";
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
 import type { Comment } from "../types/content";
+import { expectCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
 import {
   maxAnnotationIdInDoc,
   seedRevisionIdsAbove,
@@ -98,6 +99,9 @@ export function seedCommentAllocator(
         if (attrs.ok && attrs.value.start.type === "commentRangeStart") {
           allocator.seedAbove(attrs.value.start.id);
         }
+      }
+      if (node.type.name === "commentRangeBoundary") {
+        allocator.seedAbove(expectCommentRangeBoundaryAttrs(node).marker.id);
       }
     });
     max = Math.max(max, maxAnnotationIdInDoc(view.state.doc));

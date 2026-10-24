@@ -26,7 +26,9 @@ import {
 } from "@stll/docx-core/ops";
 
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
+import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
 import { readCommentReferenceAttrs } from "../prosemirror/commentReferenceAttrs";
+import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../prosemirror/extensions/nodes/CommentRangeBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "../prosemirror/extensions/nodes/CommentReferenceExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnchorExtension";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
@@ -42,6 +44,8 @@ export const commentAnchorIdsForNode = (node: PMNode): readonly number[] => {
     const attrs = readRangeAnchorAttrs(node);
     if (attrs.ok && attrs.value.start.type === "commentRangeStart")
       ids.push(attrs.value.start.id);
+  } else if (node.type.name === COMMENT_RANGE_BOUNDARY_NODE_NAME) {
+    ids.push(expectCommentRangeBoundaryAttrs(node).marker.id);
   }
   for (const mark of node.marks) {
     const commentId = mark.attrs["commentId"];
@@ -56,6 +60,7 @@ export const isCommentAnchorCarrier = (node: PMNode): boolean => {
   let type = node.type.name;
   if (type === RANGE_ANCHOR_NODE_NAME) type = "commentRangeStart";
   if (type === COMMENT_REFERENCE_NODE_NAME) type = "commentReference";
+  if (type === COMMENT_RANGE_BOUNDARY_NODE_NAME) type = "commentRangeStart";
   return isCommentAnchorCarrierType(type);
 };
 

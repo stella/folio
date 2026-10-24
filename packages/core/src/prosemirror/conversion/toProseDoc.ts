@@ -43,6 +43,10 @@ import {
   recreateProseNodeWithParagraphPropertySource,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
+import {
+  visitInlineContentSlots,
+  visitInlineContentSlotsInContent,
+} from "../../docx/paragraphTraversal";
 import type { ParseContext } from "../../docx/parseContext";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import { replayableShapeAlternateContent } from "../../docx/shapeAlternateContent";
@@ -136,6 +140,7 @@ import {
   textFormattingToMarks,
 } from "../extensions/marks/markUtils";
 import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/BlockMoveRangeBoundaryExtension";
+import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/CommentRangeBoundaryExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
@@ -939,6 +944,7 @@ function convertParagraph(
   // paragraph's content is the only writer, and it sets this before entering
   // the switch, so every node the switch emits gets the item's own stack.
   let wrapperStack: readonly InlineWrapperLayer[] = [];
+  let paragraphContainsInlineSdt = false;
   const emitInlineNodes = (
     nodes: PMNode[],
     commentsAlreadyApplied = false,
@@ -1089,12 +1095,18 @@ function convertParagraph(
         textBoxAnchors,
         wrapperStack,
         openCommentIds,
+        {
+          preserveSdtBoundaryOccurrences: paragraphContainsInlineSdt,
+        },
       ),
       true,
     );
   };
 
   const stacked = withInlineWrapperStacks(paragraph.content);
+  visitInlineContentSlots(paragraph, ({ item }) => {
+    if (item.type === "inlineSdt") paragraphContainsInlineSdt = true;
+  });
   const emptyRanges = planEmptyRanges(stacked.map((item) => item.content));
   for (const [index, { content, stack }] of stacked.entries()) {
     wrapperStack = stack;
@@ -1111,9 +1123,29 @@ function convertParagraph(
     switch (content.type) {
       case "commentRangeStart":
         openCommentIds.add(content.id);
+        if (paragraphContainsInlineSdt) {
+          emitInlineNodes(
+            [
+              schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, {
+                marker: content,
+              }),
+            ],
+            true,
+          );
+        }
         break;
       case "commentRangeEnd":
         openCommentIds.delete(content.id);
+        if (paragraphContainsInlineSdt) {
+          emitInlineNodes(
+            [
+              schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, {
+                marker: content,
+              }),
+            ],
+            true,
+          );
+        }
         break;
       case "commentReference":
         // A reference whose own range exists already has its highlight;
@@ -1403,6 +1435,11 @@ const withTrackedRunMark = (
  * Convert tracked change (insertion or deletion) content to PM nodes with
  * an insertion/deletion mark applied.
  */
+type ConvertTrackedChangeOptions = {
+  preserveParentBoundaryOwnership?: boolean;
+  preserveSdtBoundaryOccurrences?: boolean;
+};
+
 function convertTrackedChange(
   change: Insertion | Deletion | MoveFrom | MoveTo,
   markType: "insertion" | "deletion",
@@ -1414,9 +1451,11 @@ function convertTrackedChange(
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined,
   wrappedBy: readonly InlineWrapperLayer[],
   openCommentIds: Set<number>,
-  preserveParentBoundaryOwnership = true,
+  options: ConvertTrackedChangeOptions = {},
 ): PMNode[] {
   const nodes: PMNode[] = [];
+  const preserveParentBoundaryOwnership =
+    options.preserveParentBoundaryOwnership ?? true;
   const commentRangeBoundaries: TrackedCommentBoundary[] = [];
   const commentsOpenBeforeRevision = new Set(openCommentIds);
   const recordCommentBoundary = (
@@ -1447,6 +1486,16 @@ function convertTrackedChange(
   // wrapper: the caller marks what this returns, and `wrappedBy` reaches only
   // the leaves no caller can still see, those inside a content control.
   const stacked = withInlineWrapperStacks(change.content);
+  let containsInlineSdt = false;
+  if (options.preserveSdtBoundaryOccurrences === undefined) {
+    visitInlineContentSlotsInContent(change.content, ({ item }) => {
+      if (item.type === "inlineSdt") {
+        containsInlineSdt = true;
+      }
+    });
+  }
+  const preserveBoundaryOccurrences =
+    options.preserveSdtBoundaryOccurrences ?? containsInlineSdt;
   const emptyRanges = planEmptyRanges(stacked.map(({ content }) => content));
   for (const [index, { content: item, stack }] of stacked.entries()) {
     if (!isTrackedChangeWrapperChild(item)) {
@@ -1461,10 +1510,24 @@ function convertTrackedChange(
       continue;
     } else if (item.type === "commentRangeStart") {
       openCommentIds.add(item.id);
-      recordCommentBoundary("start", item.id, "revision");
+      if (preserveBoundaryOccurrences) {
+        itemNodes.push(
+          schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, { marker: item }),
+        );
+        commentsAlreadyApplied = true;
+      } else {
+        recordCommentBoundary("start", item.id, "revision");
+      }
     } else if (item.type === "commentRangeEnd") {
       openCommentIds.delete(item.id);
-      recordCommentBoundary("end", item.id, "revision");
+      if (preserveBoundaryOccurrences) {
+        itemNodes.push(
+          schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, { marker: item }),
+        );
+        commentsAlreadyApplied = true;
+      } else {
+        recordCommentBoundary("end", item.id, "revision");
+      }
     } else if (item.type === "commentReference") {
       itemNodes.push(schema.node("commentReference", { commentId: item.id }));
     } else if (item.type === "run") {
@@ -1530,7 +1593,10 @@ function convertTrackedChange(
           textBoxAnchors,
           [...wrappedBy, ...stack],
           openCommentIds,
-          preserveParentBoundaryOwnership,
+          {
+            preserveParentBoundaryOwnership,
+            preserveSdtBoundaryOccurrences: preserveBoundaryOccurrences,
+          },
         ),
       );
       // The nested conversion applies comment ranges at each marker position.
@@ -3022,7 +3088,7 @@ function convertField(
               textBoxAnchors,
               [],
               openCommentIds,
-              false,
+              { preserveParentBoundaryOwnership: false },
             ),
           );
           commentsAlreadyApplied = true;
@@ -3315,6 +3381,25 @@ function convertInlineSdt(
       continue;
     }
     switch (content.type) {
+      case "commentRangeStart":
+        openCommentIds.add(content.id);
+        itemNodes.push(
+          schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, { marker: content }),
+        );
+        commentsAlreadyApplied = true;
+        break;
+      case "commentRangeEnd":
+        openCommentIds.delete(content.id);
+        itemNodes.push(
+          schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, { marker: content }),
+        );
+        commentsAlreadyApplied = true;
+        break;
+      case "commentReference":
+        itemNodes.push(
+          schema.node("commentReference", { commentId: content.id }),
+        );
+        break;
       case "run":
         itemNodes.push(
           ...convertRun(
@@ -3393,7 +3478,10 @@ function convertInlineSdt(
             textBoxAnchors,
             stack,
             openCommentIds,
-            false,
+            {
+              preserveParentBoundaryOwnership: false,
+              preserveSdtBoundaryOccurrences: true,
+            },
           ),
         );
         commentsAlreadyApplied = true;

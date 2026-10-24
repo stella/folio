@@ -26,7 +26,9 @@ import {
   type ZeroWidthItem,
 } from "@stll/docx-core/ops";
 
+import { expectCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
+import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/CommentRangeBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
@@ -41,6 +43,7 @@ import { TEXT_BOX_ANCHOR_NODE_NAME } from "./extensions/nodes/TextBoxAnchorExten
 const ANCHOR_ITEMS = new Map<string, ZeroWidthItem | "unit">([
   [BOOKMARK_BOUNDARY_NODE_NAME, "bookmarkStart"],
   [COMMENT_REFERENCE_NODE_NAME, "unit"],
+  [COMMENT_RANGE_BOUNDARY_NODE_NAME, "commentRangeStart"],
   [MOVE_RANGE_BOUNDARY_NODE_NAME, "moveFromRangeStart"],
   [RANGE_ANCHOR_NODE_NAME, "commentRangeStart"],
   [RENDERED_PAGE_BREAK_NODE_NAME, "renderedPageBreak"],
@@ -56,17 +59,26 @@ export const isZeroWidthAnchor = (node: PMNode): boolean =>
  * control) counts its children in place, and an anchor counts as the engine
  * item it stands for, which for a zero-width item is no width.
  */
-const engineWidth = (node: PMNode): number => {
+const collectParagraphContent = (
+  node: PMNode,
+  zeroWidthItems: ZeroWidthItem[],
+): number => {
+  if (node.type.name === COMMENT_RANGE_BOUNDARY_NODE_NAME) {
+    zeroWidthItems.push(expectCommentRangeBoundaryAttrs(node).marker.type);
+    return 0;
+  }
   const item = ANCHOR_ITEMS.get(node.type.name);
   if (item !== undefined) {
-    return item === "unit" ? 1 : 0;
+    if (item === "unit") return 1;
+    zeroWidthItems.push(item);
+    return 0;
   }
   if (node.isAtom || node.isLeaf) {
     return 1;
   }
   let width = 0;
   node.forEach((child) => {
-    width += engineWidth(child);
+    width += collectParagraphContent(child, zeroWidthItems);
   });
   return width;
 };
@@ -80,12 +92,7 @@ export const paragraphContentOf = (block: PMNode): ParagraphContentVerdict => {
   let width = 0;
   const zeroWidthItems: ZeroWidthItem[] = [];
   block.forEach((child) => {
-    const item = ANCHOR_ITEMS.get(child.type.name);
-    if (item !== undefined && item !== "unit") {
-      zeroWidthItems.push(item);
-    } else {
-      width += engineWidth(child);
-    }
+    width += collectParagraphContent(child, zeroWidthItems);
   });
   return paragraphContentVerdict({ width, zeroWidthItems });
 };

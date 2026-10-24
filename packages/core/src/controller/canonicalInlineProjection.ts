@@ -14,7 +14,9 @@ import {
   bookmarkMarkerFromAttrs,
   readBookmarkBoundaryAttrs,
 } from "../prosemirror/bookmarkBoundaryAttrs";
+import { readCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
 import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
+import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../prosemirror/extensions/nodes/CommentRangeBoundaryExtension";
 import { readMoveRangeBoundaryAttrs } from "../prosemirror/moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { PRESERVED_XML_LEVELS } from "../prosemirror/schema/nodes";
@@ -73,6 +75,7 @@ type NativePolicy =
 export const CANONICAL_NATIVE_INLINE_POLICIES = {
   text: "text",
   bookmarkBoundary: "markers",
+  commentRangeBoundary: "markers",
   moveRangeBoundary: "markers",
   rangeAnchor: "markers",
   noteMarker: "noteMarker",
@@ -279,6 +282,20 @@ export const canonicalNativeCells = (
             to,
             node,
           });
+        } else if (node.type.name === "commentRangeBoundary") {
+          const attrs = readCommentRangeBoundaryAttrs(node);
+          if (!attrs.ok) {
+            issue =
+              "Canonical editing requires valid comment range boundary attributes.";
+            return;
+          }
+          cells.push({
+            type: "zeroWidth",
+            sources: [attrs.value.marker],
+            from,
+            to,
+            node,
+          });
         } else {
           const attrs = readRangeAnchorAttrs(node);
           if (!attrs.ok) {
@@ -388,15 +405,18 @@ type CanonicalInlineProjectionArgs = {
 
 type CommentTransition = { starts: Set<number>; ends: Set<number> };
 
+type CommentMarkTransitionsArgs = Pick<
+  CanonicalInlineProjectionArgs,
+  "source" | "paragraph" | "commentContext"
+> & { explicitCommentIds: ReadonlySet<number> };
+
 /** Marks carry nonempty ranges; explicit range anchors carry empty ranges. */
 const commentMarkTransitions = ({
   source,
   paragraph,
   commentContext,
-}: Pick<
-  CanonicalInlineProjectionArgs,
-  "source" | "paragraph" | "commentContext"
->) => {
+  explicitCommentIds,
+}: CommentMarkTransitionsArgs) => {
   const spans = inlineLeafSpans(source.content);
   const rangedIds = new Set(commentContext?.rangedIds);
   const pointIds = new Set(commentContext?.pointIds);
@@ -409,7 +429,11 @@ const commentMarkTransitions = ({
     if (node.type === "commentRangeEnd") finalIds.delete(node.id);
   }
   const transitions = new Map<number, CommentTransition>();
-  let previous = new Set(commentContext?.openIds);
+  let previous = new Set(
+    [...(commentContext?.openIds ?? [])].filter(
+      (id) => !explicitCommentIds.has(id),
+    ),
+  );
   let issue: string | undefined;
   const record = (position: number, current: Set<number>) => {
     const starts = new Set([...current].filter((id) => !previous.has(id)));
@@ -429,8 +453,9 @@ const commentMarkTransitions = ({
         return;
       }
       const id = attrs.value.commentId;
-      if (rangedIds.has(id)) current.add(id);
-      else if (!pointIds.has(id)) {
+      if (rangedIds.has(id)) {
+        if (!explicitCommentIds.has(id)) current.add(id);
+      } else if (!pointIds.has(id)) {
         issue =
           "Canonical editing cannot attribute a comment mark to its source.";
         return;
@@ -439,7 +464,10 @@ const commentMarkTransitions = ({
     record(position, current);
   });
   // A range may continue into the next paragraph, whose marks verify this context.
-  record(paragraph.content.size, finalIds);
+  record(
+    paragraph.content.size,
+    new Set([...finalIds].filter((id) => !explicitCommentIds.has(id))),
+  );
   return issue === undefined ? Result.ok(transitions) : refuse(issue);
 };
 
@@ -455,9 +483,30 @@ export const projectCanonicalInline = ({
 > => {
   const native = canonicalNativeCells(paragraph);
   if (native.isErr()) return native;
+  const explicitCommentIds = new Set<number>();
+  for (const cell of native.value) {
+    if (
+      cell.type !== "zeroWidth" ||
+      cell.node.type.name !== COMMENT_RANGE_BOUNDARY_NODE_NAME
+    )
+      continue;
+    for (const marker of cell.sources) {
+      if (
+        marker.type === "commentRangeStart" ||
+        marker.type === "commentRangeEnd"
+      )
+        explicitCommentIds.add(marker.id);
+    }
+  }
+  const openExplicitCommentIds = new Set(
+    [...(commentContext?.openIds ?? [])].filter((id) =>
+      explicitCommentIds.has(id),
+    ),
+  );
   const comments = commentMarkTransitions({
     source,
     paragraph,
+    explicitCommentIds,
     ...(commentContext === undefined ? {} : { commentContext }),
   });
   if (comments.isErr()) return comments;
@@ -516,7 +565,11 @@ export const projectCanonicalInline = ({
       offsets?.start !== undefined &&
       offsets.end !== undefined &&
       offsets.start === offsets.end;
-    if (!collapsed && markedCommentIds.has(node.id))
+    if (
+      !collapsed &&
+      markedCommentIds.has(node.id) &&
+      !explicitCommentIds.has(node.id)
+    )
       erasedCommentMarkers.add(node);
   }
   const text = paragraphLogicalText(source);
@@ -548,7 +601,8 @@ export const projectCanonicalInline = ({
         position !== null &&
         span &&
         (span.node.type === "commentRangeStart" ||
-          span.node.type === "commentRangeEnd")
+          span.node.type === "commentRangeEnd") &&
+        !explicitCommentIds.has(span.node.id)
       ) {
         const transition = comments.value.get(position);
         const ids =
@@ -590,6 +644,28 @@ export const projectCanonicalInline = ({
         ? span.before
         : { offset: span.before.offset + consumed, zeroWidthBefore: 0 },
     );
+    if (cell.type !== "zeroWidth" && explicitCommentIds.size > 0) {
+      const coveredExplicitCommentIds = new Set<number>();
+      for (const mark of cell.node.marks) {
+        if (mark.type.name !== "comment") continue;
+        const attrs = readCommentMarkAttrs(mark);
+        if (!attrs.ok)
+          return refuse(
+            "Canonical editing requires valid comment mark attributes.",
+          );
+        if (explicitCommentIds.has(attrs.value.commentId))
+          coveredExplicitCommentIds.add(attrs.value.commentId);
+      }
+      if (
+        coveredExplicitCommentIds.size !== openExplicitCommentIds.size ||
+        [...coveredExplicitCommentIds].some(
+          (id) => !openExplicitCommentIds.has(id),
+        )
+      )
+        return refuse(
+          "Canonical comment marks do not match their explicit source boundaries.",
+        );
+    }
     switch (cell.type) {
       case "zeroWidth":
         for (const marker of cell.sources) {
@@ -604,6 +680,16 @@ export const projectCanonicalInline = ({
             return refuse(
               `Canonical editing cannot preserve ${marker.type} source boundary positions.`,
             );
+          if (
+            marker.type === "commentRangeStart" &&
+            explicitCommentIds.has(marker.id)
+          )
+            openExplicitCommentIds.add(marker.id);
+          if (
+            marker.type === "commentRangeEnd" &&
+            explicitCommentIds.has(marker.id)
+          )
+            openExplicitCommentIds.delete(marker.id);
           index += 1;
         }
         if (!span)

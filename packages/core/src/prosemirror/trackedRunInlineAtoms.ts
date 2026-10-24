@@ -22,6 +22,7 @@ export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   // The paragraph-level record stands for its w:r carrier, which can remain
   // in the CT_RunTrackChange that owns its authored position.
   commentReference: "carry",
+  commentRangeBoundary: "carry",
   field: "field-carrier",
   hardBreak: "carry",
   image: "carry",
