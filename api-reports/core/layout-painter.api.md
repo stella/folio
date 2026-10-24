@@ -4,6 +4,7 @@
 
 ```ts
 
+import { FontInfo } from '@stll/docx-core/model';
 import { ImagePosition } from '@stll/docx-core/model';
 import { ImageWrap } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';

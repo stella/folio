@@ -4,6 +4,7 @@
 
 ```ts
 
+import { FontInfo } from '@stll/docx-core/model';
 import { ImagePosition } from '@stll/docx-core/model';
 import { ImageWrap } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
@@ -476,7 +477,7 @@ export type LineBreakRun = {
 };
 
 // @public (undocumented)
-export type ListMarkerFormatting = Pick<RunFormatting, "embeddedFontFamilyMap" | "fontFamily" | "alternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript" | "color">;
+export type ListMarkerFormatting = Pick<RunFormatting, "embeddedFontFamilyMap" | "documentFontFacts" | "fontFamily" | "alternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript" | "color">;
 
 // @public
 export type MathRun = RunFormatting & {
@@ -642,6 +643,7 @@ export type PaginatorOptions = {
 // @public
 export type ParagraphAttrs = {
     embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+    documentFontFacts?: DocumentFontFacts;
     alignment?: "left" | "center" | "right" | "justify";
     justificationCompatibility?: {
         type: "legacy";
@@ -801,6 +803,7 @@ export type Run = TextRun | TabRun | ImageRun | LineBreakRun | RenderedPageBreak
 // @public
 export type RunFormatting = {
     embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+    documentFontFacts?: DocumentFontFacts;
     bold?: boolean;
     italic?: boolean;
     underline?: boolean | {
