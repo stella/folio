@@ -83,8 +83,9 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
  * does not model, and the bidirectional controls directly inside
  * `<w:sdtContent>`.
  *
- * The bookmark boundaries are admitted for the reason the revision wrapper
- * admits them: `CT_SdtContentRun` reaches `EG_RangeMarkupElements` through
+ * The bookmark and comment boundaries are admitted for the reason the
+ * revision wrapper admits them: `CT_SdtContentRun` reaches
+ * `EG_RangeMarkupElements` through
  * `EG_RunLevelElts`, so the marker is valid where Word wrote it, and lifting
  * it out changes what the bookmark covers. A range whose extent was the
  * control's content comes back covering the control plus whatever follows, so
@@ -93,8 +94,9 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
  * Move-range boundaries stay where the source put them. The editor has
  * zero-width boundary nodes for them, so lifting one beside the control would
  * change which content the tracked move covers without any representational
- * need. Comment ranges remain paragraph-level because the editor projects
- * them as marks shared across the whole story rather than boundary atoms.
+ * need. Comment range boundaries are paragraph-position markers in the editor,
+ * but `CT_SdtContentRun` also admits them as direct children. Keeping them
+ * here preserves the authored container when neighboring wrappers collapse.
  */
 export const INLINE_SDT_CONTENT = {
   inlineWrapper: true,
@@ -111,8 +113,8 @@ export const INLINE_SDT_CONTENT = {
   preservedInline: true,
   run: true,
   simpleField: true,
-  commentRangeEnd: false,
-  commentRangeStart: false,
+  commentRangeEnd: true,
+  commentRangeStart: true,
   commentReference: false,
   moveFromRangeEnd: true,
   moveFromRangeStart: true,

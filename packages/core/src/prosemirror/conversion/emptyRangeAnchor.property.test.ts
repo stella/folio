@@ -18,15 +18,17 @@
  * - a second round trip changes nothing;
  * - an edit elsewhere in the paragraph leaves the anchor where it was.
  *
- * The containers are the inline ones this property matrix measures. It does
- * not cover markers nested in tracked-revision wrappers or inline content
- * controls; those paths have separate parser and resolution contracts.
+ * The containers are the inline ones this census measures. Inline content
+ * controls admit comment anchors, and the census checks that their position is
+ * retained through the editor projection. Tracked-change wrappers are covered
+ * by the tracked wrapper boundary tests.
  */
 
 import { describe, expect, test } from "bun:test";
 
 import type {
   Document,
+  InlineSdt,
   InlineWrapper,
   Paragraph,
   ParagraphContent,
@@ -70,11 +72,15 @@ const EMPTY_RANGES = {
 type RangeKind = keyof typeof EMPTY_RANGES;
 
 /**
- * Where the pair sits: directly in the paragraph, or inside one of the four
- * transparent inline wrappers the projection lifts.
+ * Where the pair sits: directly in the paragraph, in an inline content
+ * control, or inside one of the four transparent inline wrappers.
  */
 const CONTAINERS = {
   "w:p": null,
+  "w:sdt": {
+    type: "inlineSdt",
+    properties: { sdtType: "richText", id: 9, tag: "range" },
+  },
   "w:bdo": {
     type: "inlineWrapper",
     kind: "bidi",
@@ -88,7 +94,10 @@ const CONTAINERS = {
     kind: "customXml",
     element: "tagged",
   },
-} as const satisfies Record<string, Omit<InlineWrapper, "content"> | null>;
+} as const satisfies Record<
+  string,
+  Omit<InlineSdt, "content"> | Omit<InlineWrapper, "content"> | null
+>;
 
 type ContainerName = keyof typeof CONTAINERS;
 

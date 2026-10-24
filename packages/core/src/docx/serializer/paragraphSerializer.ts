@@ -891,6 +891,9 @@ function serializeInlineSdt(
           return serializeBookmarkMarker(item);
         case "bookmarkEnd":
           return serializeBookmarkMarker(item);
+        case "commentRangeStart":
+        case "commentRangeEnd":
+          return serializeParagraphContent(item, disposition);
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":

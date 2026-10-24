@@ -3315,6 +3315,12 @@ function convertInlineSdt(
       continue;
     }
     switch (content.type) {
+      case "commentRangeStart":
+        openCommentIds.add(content.id);
+        break;
+      case "commentRangeEnd":
+        openCommentIds.delete(content.id);
+        break;
       case "run":
         itemNodes.push(
           ...convertRun(
