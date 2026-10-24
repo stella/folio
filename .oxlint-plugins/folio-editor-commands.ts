@@ -7,10 +7,7 @@ type RuleContext = {
   report: (descriptor: {
     node: unknown;
     messageId:
-      | "rawCommand"
-      | "foreignOwner"
-      | "rawRunFormattingCommand"
-      | "resizeOwner";
+      "rawCommand" | "foreignOwner" | "rawRunFormattingCommand" | "resizeOwner";
   }) => void;
 };
 const isNode = (value: unknown): value is AstNode =>
