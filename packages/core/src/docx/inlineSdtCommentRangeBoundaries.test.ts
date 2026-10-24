@@ -6,6 +6,7 @@ import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseParagraph } from "./paragraphParser";
+import { visitInlineContentSlotsInContent } from "./paragraphTraversal";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -108,6 +109,43 @@ describe("comment range boundaries in inline content controls", () => {
     expect(reparsed.content).toEqual(paragraph.content);
 
     const source = documentWithCommentParagraph(paragraph);
+    expect(roundTrip(source).package.document.content).toEqual(
+      source.package.document.content,
+    );
+  });
+
+  test("tracked field content keeps comment boundaries inside nested controls", () => {
+    const paragraph = paragraphFromXml(
+      `<w:p xmlns:w="${W}"><w:fldSimple w:instr="PAGE">` +
+        `<w:ins w:id="14" w:author="Reviewer">` +
+        `<w:sdt><w:sdtPr/><w:sdtContent>` +
+        `<w:commentRangeStart w:id="9"/><w:r><w:t>inside</w:t></w:r>` +
+        `<w:commentRangeEnd w:id="9"/></w:sdtContent></w:sdt>` +
+        `</w:ins></w:fldSimple><w:r><w:commentReference w:id="9"/></w:r></w:p>`,
+    );
+    let inlineSdtCount = 0;
+    const boundaryIds: number[] = [];
+    const textParts: string[] = [];
+    visitInlineContentSlotsInContent(paragraph.content, ({ item }) => {
+      if (item.type === "inlineSdt") inlineSdtCount += 1;
+      if (
+        item.type === "commentRangeStart" ||
+        item.type === "commentRangeEnd"
+      ) {
+        boundaryIds.push(item.id);
+      }
+      if (item.type === "run") {
+        for (const part of item.content) {
+          if (part.type === "text") textParts.push(part.text);
+        }
+      }
+    });
+    expect(inlineSdtCount).toBe(1);
+    expect(boundaryIds).toEqual([9, 9]);
+    expect(textParts.join("")).toContain("inside");
+
+    const source = documentWithCommentParagraph(paragraph);
+
     expect(roundTrip(source).package.document.content).toEqual(
       source.package.document.content,
     );
