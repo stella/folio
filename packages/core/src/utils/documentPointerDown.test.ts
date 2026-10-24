@@ -1,10 +1,13 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { afterAll, beforeAll, expect, mock, spyOn, test } from "bun:test";
 
-if (!GlobalRegistrator.isRegistered) GlobalRegistrator.register();
-
-import { expect, mock, spyOn, test } from "bun:test";
-
+import { acquireHarnessDom } from "../../../../test/harnessDom";
 import { onDocumentPointerDown } from "./documentPointerDown";
+
+let releaseDom: ReturnType<typeof acquireHarnessDom>;
+beforeAll(() => {
+  releaseDom = acquireHarnessDom();
+});
+afterAll(() => releaseDom());
 
 test.each(["mouse", "touch", "pen"])(
   "captures a canceled %s press before the editor stops propagation",
