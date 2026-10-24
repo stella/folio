@@ -387,7 +387,9 @@ export const markdownViews = (
         return;
       }
       case "paragraph": {
-        appendParagraphs(tokenText(token), { kind: "paragraph" });
+        const rendered = tokenText(token);
+        if (!isFolioAIContentBlock({ text: rendered })) return;
+        appendParagraphs(rendered, { kind: "paragraph" });
         return;
       }
       case "list": {

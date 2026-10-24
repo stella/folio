@@ -250,6 +250,12 @@ test("ignores opaque images and compares visible link text", () => {
     markdownViews(markdown, paragraphs(["Text  visible text"])),
     [{ text: "Text  visible text", kind: "paragraph" }],
   );
+  assert.deepEqual(markdownViews("![diagram](./images/diagram.png)", []), []);
+  assert.throws(
+    () => markdownViews("Unexpected paragraph", []),
+    /more text blocks/u,
+  );
+  assert.throws(() => markdownViews("#", []), /more text blocks/u);
 });
 
 test("keeps a numbered table cell label in the Markdown comparison", async () => {
