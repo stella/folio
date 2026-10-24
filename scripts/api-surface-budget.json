@@ -14,8 +14,8 @@
   "core": {
     "reportBytes": 352432,
     "reportLines": 11250,
-    "declarationBytes": 2643835,
-    "declarationLines": 53579
+    "declarationBytes": 2643873,
+    "declarationLines": 53580
   },
   "react": {
     "reportBytes": 57073,
