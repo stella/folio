@@ -3321,6 +3321,11 @@ function convertInlineSdt(
       case "commentRangeEnd":
         openCommentIds.delete(content.id);
         break;
+      case "commentReference":
+        itemNodes.push(
+          schema.node("commentReference", { commentId: content.id }),
+        );
+        break;
       case "run":
         itemNodes.push(
           ...convertRun(
