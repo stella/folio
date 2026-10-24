@@ -136,7 +136,8 @@ const assertResize = ({
           widths.slice(column, end).reduce((total, value) => total + value, 0),
         );
         expect(attrs.widthType).toBe("dxa");
-        expect(attrs.colwidth).toBeNull();
+        expect(attrs.colwidth).toBeUndefined();
+        expect(cell.attrs["colwidth"]).toBeNull();
       } else expect(cell).toBe(original);
       expect(attrs.colspan).toBe(originalAttrs.colspan);
       expect(attrs._omittedGridSlot).toBe(originalAttrs._omittedGridSlot);
