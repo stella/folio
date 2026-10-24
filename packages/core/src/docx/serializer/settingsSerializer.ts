@@ -23,17 +23,30 @@ const FIRST_MODERN_COMPATIBILITY_MODE = 15;
 const compatSettingXml = (name: string, val: number): string =>
   `<w:compatSetting w:name="${name}" w:uri="${COMPAT_SETTING_URI}" w:val="${intAttr(val)}"/>`;
 
-const serializeCompat = (compatibilityMode: number | undefined): string => {
-  if (compatibilityMode === undefined) {
-    return "";
+const serializeCompat = (settings: DocumentSettings): string => {
+  const compatSettings: string[] = [];
+  const compatibilityMode = settings.compatibilityMode;
+  if (compatibilityMode !== undefined) {
+    compatSettings.push(
+      compatSettingXml("compatibilityMode", compatibilityMode),
+    );
   }
-  const settings = [compatSettingXml("compatibilityMode", compatibilityMode)];
-  if (compatibilityMode >= FIRST_MODERN_COMPATIBILITY_MODE) {
+  if (
+    compatibilityMode !== undefined &&
+    compatibilityMode >= FIRST_MODERN_COMPATIBILITY_MODE
+  ) {
     for (const name of MODERN_COMPAT_SETTINGS) {
-      settings.push(compatSettingXml(name, 1));
+      compatSettings.push(compatSettingXml(name, 1));
     }
   }
-  return `<w:compat>${settings.join("")}</w:compat>`;
+  const noColumnBalance = serializeOnOffElement(
+    settings.noColumnBalance,
+    "noColumnBalance",
+  );
+  if (compatSettings.length === 0 && noColumnBalance === "") {
+    return "";
+  }
+  return `<w:compat>${[...compatSettings, noColumnBalance].join("")}</w:compat>`;
 };
 
 export const serializeSettingsXml = (settings: DocumentSettings): string => {
@@ -41,7 +54,7 @@ export const serializeSettingsXml = (settings: DocumentSettings): string => {
     `<w:defaultTabStop w:val="${intAttr(settings.defaultTabStop)}"/>`,
     serializeOnOffElement(settings.evenAndOddHeaders, "evenAndOddHeaders"),
     serializeOnOffElement(settings.updateFields, "updateFields"),
-    serializeCompat(settings.compatibilityMode),
+    serializeCompat(settings),
   ];
   if (settings.themeFontLang) {
     const attrs: string[] = [];

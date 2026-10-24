@@ -152,6 +152,58 @@ describe("continuous section break geometry", () => {
     expect(secondColumn?.map(({ y }) => y)).toEqual([150, 250]);
   });
 
+  test("keeps natural column flow when noColumnBalance is enabled", () => {
+    const intro = paragraph("intro", 100);
+    const firstBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "first-break",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    };
+    const entries = ["first", "second", "third", "fourth"].map((id) =>
+      paragraph(id, 100),
+    );
+    const secondBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "second-break",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      columns: { count: 2, gap: 20 },
+    };
+    const outro = paragraph("outro", 100);
+    const blocks: FlowBlock[] = [
+      intro.block,
+      firstBreak,
+      ...entries.map(({ block }) => block),
+      secondBreak,
+      outro.block,
+    ];
+    const measures = [
+      intro.measure,
+      { kind: "sectionBreak" },
+      ...entries.map(({ measure }) => measure),
+      { kind: "sectionBreak" },
+      outro.measure,
+    ] satisfies Measure[];
+
+    const result = layoutDocument(blocks, measures, {
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      finalPageSize: { w: 800, h: 1000 },
+      finalMargins: { top: 50, right: 50, bottom: 50, left: 50 },
+      columnBalancing: "natural",
+    });
+
+    const columnFragments = result.pages[0]?.fragments.filter(
+      (fragment) =>
+        fragment.kind === "paragraph" &&
+        ["first", "second", "third", "fourth"].includes(fragment.blockId),
+    );
+    expect(columnFragments?.map(({ x }) => x)).toEqual([50, 50, 50, 50]);
+  });
+
   test("a final multi-column section keeps a forced column break on the current page", () => {
     const first = paragraph("a", 100);
     const sectionBreak: SectionBreakBlock = {

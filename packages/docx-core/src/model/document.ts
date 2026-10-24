@@ -403,6 +403,8 @@ export type DocumentSettings = {
    * `w:compat/w:compatSetting[@w:name="compatibilityMode"]`.
    */
   compatibilityMode?: number;
+  /** `w:compat/w:noColumnBalance` requests natural fill-first columns in legacy modes. */
+  noColumnBalance?: boolean;
   /**
    * `w:defaultTabStop` (§17.6.13) — interval in twips between default
    * tab stops applied when a paragraph has no custom `w:tabs`. Word
