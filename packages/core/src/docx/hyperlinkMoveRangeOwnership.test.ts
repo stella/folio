@@ -59,6 +59,19 @@ const rangeFacts = (document: Document) =>
     );
   });
 
+const hyperlinkChildTypes = (document: Document): string[][] => {
+  const links: string[][] = [];
+  for (const paragraph of document.package.document.content) {
+    if (paragraph.type !== "paragraph") continue;
+    visitInlineContentSlots(paragraph, ({ item }) => {
+      if (item.type === "hyperlink") {
+        links.push(item.children.map((child) => child.type));
+      }
+    });
+  }
+  return links;
+};
+
 const expectedFacts = (text: string) => [
   {
     type: "moveFromRangeStart",
@@ -189,6 +202,60 @@ test("hyperlink move starts retain their authored move-bookmark attributes", asy
         author: "Reviewer",
         date: "2026-01-01T00:00:00Z",
       },
+    ]);
+  }
+});
+
+test("empty move ranges stay in their indexed hyperlink beside same-href links", async () => {
+  const source = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body>
+<w:p w14:paraId="00000001"><w:bookmarkStart w:id="1" w:name="target"/><w:r><w:t>target</w:t></w:r><w:bookmarkEnd w:id="1"/></w:p>
+<w:p w14:paraId="00000002"><w:hyperlink w:anchor="target"><w:moveFromRangeStart w:id="4" w:name="emptyFrom" ${AUTHORED}/><w:moveFromRangeEnd w:id="4" ${AUTHORED}/><w:r><w:t>untracked</w:t></w:r></w:hyperlink><w:hyperlink w:anchor="target"><w:r><w:t>neighbor</w:t></w:r></w:hyperlink></w:p>
+<w:p w14:paraId="00000003"><w:ins w:id="20" ${AUTHORED}><w:hyperlink w:anchor="target"><w:moveToRangeStart w:id="5" w:name="emptyTo" ${AUTHORED}/><w:moveToRangeEnd w:id="5" ${AUTHORED}/></w:hyperlink></w:ins><w:hyperlink w:anchor="target"><w:r><w:t>trackedNeighbor</w:t></w:r></w:hyperlink></w:p>
+<w:sectPr/></w:body></w:document>`;
+  const parsed = await parseSource(source);
+  const edited = fromProseDoc(toProseDoc(parsed), parsed, {
+    stylesheetSource: { type: "package" },
+  });
+  const reopened = await roundtrip(edited);
+  const expectedRangeFacts = [
+    {
+      type: "moveFromRangeStart",
+      id: 4,
+      paragraph: "00000002",
+      offset: 0,
+      linked: true,
+    },
+    {
+      type: "moveFromRangeEnd",
+      id: 4,
+      paragraph: "00000002",
+      offset: 0,
+      linked: true,
+    },
+    {
+      type: "moveToRangeStart",
+      id: 5,
+      paragraph: "00000003",
+      offset: 0,
+      linked: true,
+    },
+    {
+      type: "moveToRangeEnd",
+      id: 5,
+      paragraph: "00000003",
+      offset: 0,
+      linked: true,
+    },
+  ];
+  for (const document of [parsed, edited, reopened]) {
+    expect(validateFolioDocumentModel(document).valid).toBe(true);
+    expect(rangeFacts(document)).toEqual(expectedRangeFacts);
+    expect(hyperlinkChildTypes(document)).toEqual([
+      ["moveFromRangeStart", "moveFromRangeEnd", "run"],
+      ["run"],
+      ["moveToRangeStart", "moveToRangeEnd"],
+      ["run"],
     ]);
   }
 });
