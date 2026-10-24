@@ -105,6 +105,7 @@ import {
   retainedTrackedRevisionMark,
   trackedRevisionPathOf,
 } from "../trackedRevisionPath";
+import { extractTrackedChanges } from "../utils/extractTrackedChanges";
 import { paragraphContentOf } from "../zeroWidthAnchors";
 import {
   hasSerializableParagraphPropertyChange,
@@ -3373,6 +3374,51 @@ type ChangeRange = {
   type: "insertion" | "deletion";
 };
 
+type PairedReplacementRange = { from: number; to: number };
+const pairedReplacementRangesByDoc = new WeakMap<
+  PMNode,
+  readonly PairedReplacementRange[]
+>();
+
+const pairedReplacementRanges = (state: EditorState) => {
+  const cached = pairedReplacementRangesByDoc.get(state.doc);
+  if (cached) return cached;
+
+  const ranges: PairedReplacementRange[] = [];
+  const { entries } = extractTrackedChanges(state);
+  for (const entry of entries) {
+    if (entry.type !== "replacement" || entry.insertionRevisionId === undefined)
+      continue;
+    ranges.push({ from: entry.from, to: entry.to });
+  }
+  pairedReplacementRangesByDoc.set(state.doc, ranges);
+  return ranges;
+};
+
+type PairedReplacementRangeAtOptions = {
+  ranges: readonly PairedReplacementRange[];
+  from: number;
+  to: number;
+};
+
+const pairedReplacementRangeAt = ({
+  ranges,
+  from,
+  to,
+}: PairedReplacementRangeAtOptions): PairedReplacementRange | undefined => {
+  let low = 0;
+  let high = ranges.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (ranges[middle]!.from <= from) low = middle + 1;
+    else high = middle;
+  }
+  const candidate = ranges[low - 1];
+  return candidate && from >= candidate.from && to <= candidate.to
+    ? candidate
+    : undefined;
+};
+
 /**
  * Find the tracked change mark range at a given cursor position.
  * If the cursor is inside a tracked change, returns the full extent
@@ -3549,6 +3595,7 @@ export function findNextChange(
     return null;
   }
 
+  const replacementRanges = pairedReplacementRanges(state);
   const result = { value: null as ChangeRange | null };
 
   state.doc.descendants((node, pos) => {
@@ -3573,12 +3620,14 @@ export function findNextChange(
         // returned range must see the whole revision — clamping `from`
         // up to `startPos` truncates the earlier portion of the same
         // change and leaves orphaned marks behind after accept.
-        const expanded = expandTrackedChangeRange(
-          state,
-          mark,
-          pos,
-          pos + node.nodeSize,
-        );
+        const paired = pairedReplacementRangeAt({
+          ranges: replacementRanges,
+          from: pos,
+          to: pos + node.nodeSize,
+        });
+        const expanded =
+          paired ??
+          expandTrackedChangeRange(state, mark, pos, pos + node.nodeSize);
         result.value = {
           from: expanded.from,
           to: expanded.to,
@@ -3613,6 +3662,7 @@ export function findPreviousChange(
     return null;
   }
 
+  const replacementRanges = pairedReplacementRanges(state);
   const result = { value: null as ChangeRange | null };
   // Remember the specific mark instance that produced the kept result, so
   // the walk can skip later text nodes covered by the same expansion
@@ -3648,12 +3698,14 @@ export function findPreviousChange(
 
     for (const mark of node.marks) {
       if (mark.type === insertionType || mark.type === deletionType) {
-        const expanded = expandTrackedChangeRange(
-          state,
-          mark,
-          pos,
-          pos + node.nodeSize,
-        );
+        const paired = pairedReplacementRangeAt({
+          ranges: replacementRanges,
+          from: pos,
+          to: pos + node.nodeSize,
+        });
+        const expanded =
+          paired ??
+          expandTrackedChangeRange(state, mark, pos, pos + node.nodeSize);
         result.value = {
           from: expanded.from,
           to: expanded.to,
