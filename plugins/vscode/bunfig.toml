@@ -10,5 +10,6 @@ minimumReleaseAge = 432_000
 minimumReleaseAgeExcludes = [
   # bun-types ships only declarations and must match the pinned Bun runtime.
   "bun-types", # quarantine-expires: 2026-10-27T10:17:50.170Z
+  "fast-uri", # quarantine-expires: 2026-10-24T23:05:26.357Z
   "@stll/fuzzy-search-wasm",
 ]
