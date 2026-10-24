@@ -684,18 +684,21 @@ describe("field and native text search projection parity", () => {
           "complexDigit",
           "simpleString",
           "complexString",
-          "simpleHyphens",
-          "complexHyphens",
-          "complexTokens",
-          "opaqueRun",
         ].includes(name)
       ) {
         expect(pmDoc.child(0).child(1).type.name).toBe("field");
       }
       if (
-        ["simpleTokens", "transparent", "hyperlink", "opaqueInline"].includes(
-          name,
-        )
+        [
+          "simpleTokens",
+          "complexTokens",
+          "simpleHyphens",
+          "complexHyphens",
+          "opaqueRun",
+          "transparent",
+          "hyperlink",
+          "opaqueInline",
+        ].includes(name)
       ) {
         expect(pmDoc.child(0).child(1).type.name).toBe("structuredField");
       }

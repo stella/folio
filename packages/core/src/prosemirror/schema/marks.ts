@@ -412,12 +412,7 @@ export type CharacterStyleAttrs = {
 /**
  * Hyperlink mark attributes
  */
-export type HyperlinkAttrs = {
+export type HyperlinkAttrs = Omit<Hyperlink, "type" | "children" | "href"> & {
   href: string;
-  tooltip?: string;
-  rId?: string;
-  target?: Hyperlink["target"];
-  history?: Hyperlink["history"];
-  docLocation?: Hyperlink["docLocation"];
   _docxHyperlinkIndex?: number;
 };

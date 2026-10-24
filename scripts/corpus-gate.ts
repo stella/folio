@@ -239,7 +239,7 @@ type CorpusFileEntry = CorpusTask & { duplicateOf: string | null };
  * a shard sees the same files however many shards there are, and a duplicate is
  * counted by whichever shard owns it rather than run again.
  */
-const buildFileList = async (
+export const buildFileList = async (
   tiers: readonly CorpusTier[],
 ): Promise<{
   entries: CorpusFileEntry[];

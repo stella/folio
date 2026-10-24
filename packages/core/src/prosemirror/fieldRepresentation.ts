@@ -1,25 +1,41 @@
-import type { Node as PMNode } from "prosemirror-model";
+import { Mark, type Node as PMNode } from "prosemirror-model";
 
 import { INLINE_WRAPPER_MARK_NAME } from "./extensions/marks/InlineWrapperExtension";
 import { getInlineDisplayText } from "./inlineDisplayText";
+import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
+import type { FieldAttrs } from "./schema/nodes";
+
+const FIELD_COMMENT_COVERAGE = {
+  simple: "children",
+  complex: "field",
+} as const satisfies Record<FieldAttrs["fieldKind"], "children" | "field">;
+
+export const fieldCommentCoverage = (
+  fieldKind: FieldAttrs["fieldKind"],
+): "children" | "field" => FIELD_COMMENT_COVERAGE[fieldKind];
 
 /** Current children alone decide whether a field needs editable structural content. */
 export const fieldRequiresStructuredContent = (
   children: readonly PMNode[],
-): boolean =>
-  children.some(
+): boolean => {
+  const first = children.at(0);
+  return children.some(
     (child) =>
       !child.isText ||
+      (first !== undefined && !Mark.sameSet(first.marks, child.marks)) ||
       child.marks.some(
         (mark) =>
+          mark.type.name === RUN_IDENTITY_MARK_NAME ||
+          mark.type.name === "footnoteRef" ||
           mark.type.name === "hyperlink" ||
           mark.type.name === INLINE_WRAPPER_MARK_NAME ||
           mark.type.name === "insertion" ||
           mark.type.name === "deletion",
       ),
   );
+};
 
-/** Resolution returns text-only fields to the same atom representation as initial conversion. */
+/** Resolution collapses a field only when the atom can retain its result. */
 export const canonicalFieldNode = (node: PMNode): PMNode => {
   if (node.type.name !== "structuredField") return node;
   const displayText = getInlineDisplayText(node);

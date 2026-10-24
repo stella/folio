@@ -221,6 +221,7 @@ import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExten
 import { textFormattingToMarks } from "../extensions/marks/markUtils";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
+import { fieldCommentCoverage } from "../fieldRepresentation";
 import {
   inlineWrapperMember,
   inlineWrapperStackKey,
@@ -2116,10 +2117,8 @@ function replaceTextBoxAnchorInBlocks(
  * The inline list a text-box anchor run can be spliced out of, or nothing when
  * the item holds no such list.
  *
- * A complex field keeps its runs in `fieldCode`/`fieldResult`, two arrays
- * rather than one, and an anchor has never been placed in either; splicing one
- * would have to pick a side. The marker stays where it is and
- * `removeUnresolvedTextBoxAnchors` leaves it, as before.
+ * Only a complex field's displayed result is projected into the editor, so
+ * its anchors belong to `fieldResult`; its instruction runs stay untouched.
  */
 const textBoxAnchorHost = (
   item: ParagraphContent,
@@ -2129,6 +2128,8 @@ const textBoxAnchorHost = (
       return item.children;
     case "simpleField":
       return item.content;
+    case "complexField":
+      return item.fieldResult;
     case "inlineSdt":
     case "insertion":
     case "deletion":
@@ -2137,7 +2138,6 @@ const textBoxAnchorHost = (
     case "inlineWrapper":
       return item.content;
     case "run":
-    case "complexField":
     case "bookmarkStart":
     case "bookmarkEnd":
     case "commentRangeStart":
@@ -2162,10 +2162,16 @@ function editTextBoxAnchorInContent(
   marker: Run,
   replacement?: Run,
 ): boolean {
+  const anchorSlot = marker.content.at(0);
+  if (!anchorSlot) return false;
   for (const [index, item] of content.entries()) {
-    if (item === marker) {
-      content.splice(index, 1, ...(replacement ? [replacement] : []));
-      return true;
+    if (item.type === "run") {
+      const slotIndex = item.content.indexOf(anchorSlot);
+      if (slotIndex >= 0) {
+        item.content.splice(slotIndex, 1, ...(replacement?.content ?? []));
+        if (item.content.length === 0) content.splice(index, 1);
+        return true;
+      }
     }
     const nestedContent = textBoxAnchorHost(item);
     if (!nestedContent) {
@@ -2173,7 +2179,13 @@ function editTextBoxAnchorInContent(
     }
     const hadContent = nestedContent.length > 0;
     if (editTextBoxAnchorInContent(nestedContent, marker, replacement)) {
-      if (!replacement && hadContent && nestedContent.length === 0) {
+      if (
+        !replacement &&
+        hadContent &&
+        nestedContent.length === 0 &&
+        item.type !== "simpleField" &&
+        item.type !== "complexField"
+      ) {
         content.splice(index, 1);
       }
       return true;
@@ -3577,8 +3589,14 @@ function extractParagraphContent(
   };
 
   const syncCommentRanges = (node: PMNode, offset: number) => {
+    // Simple field results and SDTs carry comments on their children. Complex
+    // field results are Run[] and cannot carry range boundaries themselves, so
+    // the field node owns the comment mark like the atomic field did.
     const ownsStructuredCommentCoverage =
-      (node.type.name === "structuredField" || node.type.name === "sdt") &&
+      ((node.type.name === "structuredField" &&
+        fieldCommentCoverage(expectFieldAttrs(node).fieldKind) ===
+          "children") ||
+        node.type.name === "sdt") &&
       node.childCount > 0;
     const nodeCommentIds = ownsStructuredCommentCoverage
       ? getCommentMarkIds(node.child(0).marks)
@@ -3669,9 +3687,12 @@ function extractParagraphContent(
     ) {
       return;
     }
-    const finalCommentIds = getCommentMarkIds(
-      node.child(node.childCount - 1).marks,
-    );
+    const commentOwner =
+      node.type.name === "structuredField" &&
+      fieldCommentCoverage(expectFieldAttrs(node).fieldKind) === "field"
+        ? node
+        : node.child(node.childCount - 1);
+    const finalCommentIds = getCommentMarkIds(commentOwner.marks);
     openedComments.clear();
     for (const commentId of finalCommentIds) openedComments.add(commentId);
   };
@@ -3789,66 +3810,37 @@ function extractParagraphContent(
     if (!insertionMark && !deletionMark) {
       currentTrackedChange = undefined;
     }
+    let anchorRun: Run | undefined;
     if (node.type.name === "textBoxAnchor") {
-      flushCurrentInline();
-      currentTrackedChange = undefined;
       if (!textBoxAnchorMarkers) {
+        flushCurrentInline();
+        currentTrackedChange = undefined;
         return;
       }
       const { anchorId } = expectTextBoxAnchorAttrs(node);
-      const marker: Run = { type: "run", content: [] };
       if (textBoxAnchorMarkers.has(anchorId)) {
+        flushCurrentInline();
+        currentTrackedChange = undefined;
         return;
       }
-      textBoxAnchorMarkers.set(anchorId, marker);
-      const anchoredContent: Run | Hyperlink = linkMark
-        ? createIndexedHyperlink(linkMark)
-        : marker;
-      if (anchoredContent.type === "hyperlink") {
-        anchoredContent.children.push(marker);
-      }
-      const changeMark = insertionMark ?? deletionMark;
-      if (!changeMark) {
-        content.push(anchoredContent);
-        return;
-      }
-      const changeAttrs = expectTrackedChangeMarkAttrs(changeMark);
-      const info: TrackedChangeInfo = {
-        id: changeAttrs.revisionId,
-        author: changeAttrs.author || "Unknown",
-        ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
-        ...(changeAttrs.utcDate
-          ? {
-              utcDate: {
-                attribute: DATE_UTC_ATTRIBUTE,
-                value: changeAttrs.utcDate,
-              },
-            }
-          : {}),
-        ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
+      // The unique slot is consumed before serialization and prevents text
+      // coalescing from crossing the pending text-box position.
+      const anchorSlot = {
+        type: "preservedXml" as const,
+        xml: "",
+        text: "",
       };
-      let type: TrackedRunWrapper["type"];
-      if (insertionMark) {
-        type = changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion";
-      } else {
-        type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
+      const marker: Run = { type: "run", content: [anchorSlot] };
+      const formatting = getAtomRunFormattingFromMarks(
+        node.marks,
+        formattingContext,
+      );
+      if (formatting) {
+        marker.formatting = formatting;
       }
-      const wrapper = createTrackedRunWrapper({
-        type,
-        info,
-        child: anchoredContent,
-        resolutionJoins: changeAttrs._docxResolutionJoins ?? undefined,
-      });
-      revisionOuterWrapperCounts.set(
-        wrapper,
-        changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length,
-      );
-      revisionAncestorsByWrapper.set(
-        wrapper,
-        changeAttrs._docxRevisionAncestors ?? [],
-      );
-      content.push(wrapper);
-      return;
+      restoreRunRecord(marker, node.marks);
+      textBoxAnchorMarkers.set(anchorId, marker);
+      anchorRun = marker;
     }
     if (insertionMark || deletionMark) {
       // Finish any current content
@@ -3954,11 +3946,13 @@ function extractParagraphContent(
           );
           return;
         }
-        const run = createTrackedChangeRun({
-          ...formattingContext,
-          marks: otherMarks,
-          node,
-        });
+        const run =
+          anchorRun ??
+          createTrackedChangeRun({
+            ...formattingContext,
+            marks: otherMarks,
+            node,
+          });
         if (run) {
           appendRunToHyperlink(
             currentTrackedChange.hyperlink,
@@ -4021,11 +4015,13 @@ function extractParagraphContent(
         currentTrackedChange.wrapper.content.push(createPreservedInline(node));
         return;
       }
-      const run = createTrackedChangeRun({
-        ...formattingContext,
-        marks: otherMarks,
-        node,
-      });
+      const run =
+        anchorRun ??
+        createTrackedChangeRun({
+          ...formattingContext,
+          marks: otherMarks,
+          node,
+        });
       if (run) {
         appendRunToTrackedWrapper(
           currentTrackedChange.wrapper,
@@ -4037,14 +4033,16 @@ function extractParagraphContent(
       return;
     }
 
-    const ownedRun =
-      linkMark || runIdentityId(node) === undefined
-        ? null
-        : createTrackedChangeRun({
-            ...formattingContext,
-            marks: node.marks,
-            node,
-          });
+    const ownedRun = linkMark
+      ? null
+      : (anchorRun ??
+        (runIdentityId(node) === undefined
+          ? null
+          : createTrackedChangeRun({
+              ...formattingContext,
+              marks: node.marks,
+              node,
+            })));
     if (ownedRun) {
       appendDirectRun(node, ownedRun, node.isText);
       return;
@@ -4081,12 +4079,21 @@ function extractParagraphContent(
         currentHyperlink = createIndexedHyperlink(linkMark);
         currentHyperlinkKey = linkKey;
       }
-      addNodeToHyperlink({
-        ...formattingContext,
-        hyperlink: currentHyperlink,
-        node,
-        sourceRunOwners,
-      });
+      if (anchorRun) {
+        appendRunToHyperlink(
+          currentHyperlink,
+          anchorRun,
+          node,
+          sourceRunOwners,
+        );
+      } else {
+        addNodeToHyperlink({
+          ...formattingContext,
+          hyperlink: currentHyperlink,
+          node,
+          sourceRunOwners,
+        });
+      }
       return;
     }
 
@@ -4396,16 +4403,7 @@ function buildDocumentTrackedChangeCounts(pmDoc: PMNode): TrackedChangeCounts {
  * Create a unique key for a link mark
  */
 function getLinkKey(mark: Mark): string {
-  const attrs = expectHyperlinkMarkAttrs(mark);
-  return [
-    attrs.href,
-    attrs.rId ?? "",
-    attrs.tooltip ?? "",
-    attrs.target ?? "",
-    attrs.history === undefined ? "" : String(attrs.history),
-    attrs.docLocation ?? "",
-    attrs._docxHyperlinkIndex ?? "",
-  ].join("\u0000");
+  return JSON.stringify(expectHyperlinkMarkAttrs(mark));
 }
 
 /**
@@ -4449,6 +4447,7 @@ function createHyperlink(linkMark: Mark): Hyperlink {
   const hyperlink: Hyperlink = {
     type: "hyperlink",
     href,
+    ...(attrs.anchor === undefined ? {} : { anchor: attrs.anchor }),
     ...metadata,
     children: [],
   };
@@ -5130,7 +5129,7 @@ function createFieldFromNode(
     content: [{ type: "text" as const, text: displayText }],
     ...(formatting && Object.keys(formatting).length > 0 ? { formatting } : {}),
   };
-  if (marks && node.type.name === "field") {
+  if (marks) {
     restoreRunRecord(displayRun, marks);
   }
   const fieldContent =
