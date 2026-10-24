@@ -17,8 +17,8 @@
     "@stll/utf8-boundaries": "workspace:*",
     "prosemirror-history": "^1.5.1",
     "prosemirror-state": "^1.4.4",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "use-intl": "^4.14.9"
   },
   "devDependencies": {
