@@ -3,7 +3,7 @@ import {
   recordMeasureBlock,
   recordMeasureBlockError,
 } from "../layoutInstrumentation";
-import { isParagraphFrameTextBox } from "../paragraphFrame";
+import { getParagraphFrame, isParagraphFrameTextBox } from "../paragraphFrame";
 import { resolveTableSpacing } from "../paragraphSpacing";
 import { sectionStartAdvanceOf } from "../section-breaks";
 import type { SectionStartAdvance } from "../section-breaks";
@@ -1152,11 +1152,18 @@ function projectFloatingTablePageRect({
   const topY = rect.pageTop - contentTop;
   const bottomY = rect.pageBottom - contentTop;
   if (rectRight <= 0 || rectLeft >= contentWidth) {
-    return { leftMargin: 0, rightMargin: 0, topY, bottomY };
+    return {
+      source: "floatingTable",
+      leftMargin: 0,
+      rightMargin: 0,
+      topY,
+      bottomY,
+    };
   }
 
   if (rectLeft < contentWidth / 2) {
     return {
+      source: "floatingTable",
       leftMargin: Math.max(0, Math.min(rectRight, contentWidth)),
       rightMargin: 0,
       topY,
@@ -1165,11 +1172,30 @@ function projectFloatingTablePageRect({
   }
 
   return {
+    source: "floatingTable",
     leftMargin: 0,
     rightMargin: Math.max(0, Math.min(contentWidth - rectLeft, contentWidth)),
     topY,
     bottomY,
   };
+}
+
+function isUndecoratedParagraphMark(block: FlowBlock): boolean {
+  if (block.kind !== "paragraph") return false;
+  const attrs = block.attrs;
+  return (
+    block.runs.every((run) => run.kind === "text" && run.text.length === 0) &&
+    attrs?.listMarker === undefined &&
+    attrs?.listIsBullet !== true &&
+    attrs?.listMarkerHidden !== true &&
+    attrs?.numPr === undefined &&
+    attrs?.listMarkerFormatting === undefined &&
+    attrs?.borders === undefined &&
+    attrs?.shading === undefined &&
+    attrs?.pageBreakBefore !== true &&
+    attrs?.renderedPageBreakBefore !== true &&
+    getParagraphFrame(block) === undefined
+  );
 }
 
 function activateFloatingTablePageRect(
@@ -1590,10 +1616,13 @@ export function measureBlocks(
         : undefined;
 
     try {
+      const blockZones = isUndecoratedParagraphMark(block)
+        ? zones?.filter((zone) => zone.source !== "floatingTable")
+        : zones;
       const measure = measureBlock(
         block,
         blockWidth,
-        zones,
+        blockZones,
         cumulativeY,
         fieldValues,
         options,
