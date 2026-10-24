@@ -2,4 +2,4 @@
 "@stll/docx-core": patch
 ---
 
-Share range multiplicity classification with revision invariants and index range normalization linearly.
+Share linear range multiplicity classification and preserve source ownership when rejecting revisions around range boundaries.

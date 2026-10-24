@@ -250,6 +250,81 @@ const assertSourceOwnership = ({
 
 const standing = { type: "bookmarkEnd", id: 3 } satisfies ParagraphContent;
 
+test.each(["insert-before-delete", "delete-before-insert"] as const)(
+  "batch rejection restores a bookmark's cut hyperlink after %s",
+  (order) => {
+    const adjacent = {
+      type: "hyperlink",
+      href: "https://example.org",
+      children: [{ type: "run", content: [{ type: "text", text: "z" }] }],
+    } satisfies ParagraphContent;
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                {
+                  type: "hyperlink",
+                  href: "https://example.org",
+                  children: [
+                    { type: "run", content: [{ type: "text", text: "aa" }] },
+                  ],
+                },
+                adjacent,
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const marker = {
+      type: "bookmarkStart",
+      id: 1,
+      name: "_Ref1",
+    } satisfies ParagraphContent;
+    const insert = {
+      type: "insertContent",
+      at: { story: "main", blockId: "00000001", offset: 1 },
+      slice: { content: [marker], openStart: 0, openEnd: 0 },
+      revision: { id: 2, author: "C", date: FIRST_DATE },
+      newIds: { revision: [100, 101, 102, 103] },
+    } satisfies DocumentOp;
+    const remove = {
+      type: "deleteRange",
+      from: { story: "main", blockId: "00000001", offset: 0 },
+      to: { story: "main", blockId: "00000001", offset: 2 },
+      revision: { id: 3, author: "C", date: SECOND_DATE },
+      newIds: { revision: [200, 201, 202, 203] },
+    } satisfies DocumentOp;
+    const operations =
+      order === "insert-before-delete" ? [insert, remove] : [remove, insert];
+    const applied = applyDocumentOps(source, operations);
+    if (applied.isErr()) throw applied.error;
+    const groups = operations.map(({ revision }) =>
+      idsForDate(applied.value.document, revision.date ?? ""),
+    );
+    expect(groups.every((group) => group.length > 0)).toBe(true);
+    const batch = reject(applied.value.document, groups.flat());
+    let sequential = applied.value.document;
+    for (const group of groups.toReversed())
+      sequential = reject(sequential, group);
+    expect(projectReview({ document: batch, projection: "π′" })).toEqual(
+      projectReview({ document: sequential, projection: "π′" }),
+    );
+    const content = paragraphOf(batch).content;
+    expect(content).toHaveLength(2);
+    const link = content.at(0);
+    expect(link?.type).toBe("hyperlink");
+    if (link?.type !== "hyperlink") panic("The source hyperlink survives.");
+    expect(rangeBoundariesIn(link.children)).toContainEqual(marker);
+    expect(content.at(1)).toStrictEqual(adjacent);
+    expect(paragraphText(batch)).toBe("aaz");
+  },
+);
+
 const foreignShapes = [
   {
     type: "insertion",

@@ -1160,7 +1160,7 @@ const resolveList = (
         plainSeams.add(out.length);
         plainSeams.add(out.length + content.length);
       }
-      appendUnowned(content);
+      for (const child of content) appendSource(child, index);
       if (resolved.edges?.last !== undefined)
         recordSourceSeam(out.length, resolved.edges.last);
       if (node.resolutionJoins === undefined) seams.push(out.length);
