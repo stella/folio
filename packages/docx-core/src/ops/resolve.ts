@@ -920,16 +920,42 @@ const carryResolutionState = (
     resolution.acceptedClosed.last.add(to);
 };
 
+type SourceOwner = { mergedInto?: SourceOwner };
+type SourceOccurrence = { node: InlineNode; owner: SourceOwner | undefined };
+
+const sourceOwnerRoot = (owner: SourceOwner): SourceOwner => {
+  let root = owner;
+  while (root.mergedInto !== undefined) root = root.mergedInto;
+  let current = owner;
+  while (current.mergedInto !== undefined) {
+    const next = current.mergedInto;
+    current.mergedInto = root;
+    current = next;
+  }
+  return root;
+};
+
 const resolveList = (
   nodes: readonly InlineNode[],
   resolution: Resolution,
 ): ResolvedList => {
-  const out: InlineNode[] = [];
+  const out: SourceOccurrence[] = [];
   const seams: number[] = [];
   const plainSeams = new Set<number>();
   const exactSeams = new Map<number, number>();
   const sourceEdges = new Map<number, number>();
   const pending = [...nodes];
+  const sourceOwners = nodes.map((): SourceOwner => ({}));
+  const appendSource = (node: InlineNode, index: number): void => {
+    out.push({
+      node,
+      owner:
+        sourceOwners.at(index) ?? panic("A source occurrence has an owner."),
+    });
+  };
+  const appendUnowned = (items: readonly InlineNode[]): void => {
+    out.push(...items.map((node) => ({ node, owner: undefined })));
+  };
   const recordExactSeam = (index: number, depth: number): void => {
     if (depth > 0)
       exactSeams.set(index, Math.max(exactSeams.get(index) ?? 0, depth));
@@ -942,7 +968,15 @@ const resolveList = (
   /** Seams beside an emptied container, where only its fold happens. */
   const folds: number[] = [];
   /** Boundaries kept from removed content just before a seam, and its depth. */
-  const floating = new Map<number, { count: number; depth: number }>();
+  const floating = new Map<
+    number,
+    {
+      count: number;
+      depth: number;
+      before: SourceOwner | undefined;
+      after: SourceOwner | undefined;
+    }
+  >();
   let changed = false;
   for (const [index, node] of pending.entries()) {
     if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
@@ -954,14 +988,28 @@ const resolveList = (
           // references follow the fragment whose identity returned.
           const prefixLength = out.length;
           const restored = restoreRetainedIdentities({
-            nodes: out.concat(pending.slice(index + 1)),
+            nodes: out
+              .map(({ node: previous }) => previous)
+              .concat(pending.slice(index + 1)),
             transfers,
             resolution,
           });
           // Restoring source IDs can make a previously unselected blocker
           // selected; recompute deferred facts against those actual identities.
           const prepared = prepareDeferredRemovals(restored, resolution);
-          out.splice(0, out.length, ...prepared.slice(0, prefixLength));
+          out.splice(
+            0,
+            out.length,
+            ...prepared.slice(0, prefixLength).map((next, prefixIndex) => ({
+              node: next,
+              owner: (
+                out.at(prefixIndex) ??
+                panic(
+                  "Restoring source identities preserves every output occurrence.",
+                )
+              ).owner,
+            })),
+          );
           pending.splice(
             index + 1,
             pending.length - index - 1,
@@ -974,7 +1022,7 @@ const resolveList = (
           pairedComments: resolution.pairedComments,
           relocated: resolution.relocated,
         });
-        out.push(...kept);
+        appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are
         // resolved; the join then places them inside the piece it joins.
         if (
@@ -985,6 +1033,8 @@ const resolveList = (
           floating.set(out.length, {
             count: kept.length,
             depth: node.resolutionJoins?.remove ?? 0,
+            before: index > 0 ? sourceOwners.at(index - 1) : undefined,
+            after: sourceOwners.at(index + 1),
           });
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordSourceSeam(out.length, node.resolutionJoins.remove);
@@ -1016,7 +1066,7 @@ const resolveList = (
         plainSeams.add(out.length);
         plainSeams.add(out.length + content.length);
       }
-      out.push(...content);
+      appendUnowned(content);
       if (resolved.edges?.last !== undefined)
         recordSourceSeam(out.length, resolved.edges.last);
       if (node.resolutionJoins === undefined) seams.push(out.length);
@@ -1047,14 +1097,14 @@ const resolveList = (
         )
           seams.push(out.length + 1);
       }
-      out.push(run);
+      appendSource(run, index);
       continue;
     }
     const children = childNodes(node);
     const inner =
       children === undefined ? undefined : resolveList(children, resolution);
     if (children === undefined || inner === undefined || !inner.changed) {
-      out.push(node);
+      appendSource(node, index);
       continue;
     }
     changed = true;
@@ -1122,16 +1172,16 @@ const resolveList = (
       if (inner.edges.last !== undefined) edges.last = inner.edges.last + 1;
       resolution.cutEdges.set(rebuilt, edges);
     }
-    out.push(rebuilt);
+    appendSource(rebuilt, index);
   }
   // An inner cut can meet the edge of a container while its other fragment
   // remains beyond a pending insertion. Preserve that exact seam on its
   // actual blocker; accepting the payload cancels it, rejecting restores it.
-  for (const [index, node] of out.entries()) {
+  for (const [index, { node, owner }] of out.entries()) {
     if (!isAddedRevision(node) || node.resolutionJoins === undefined) continue;
     if (node.resolutionJoins.remove === 0) continue;
-    const left = out.at(index - 1);
-    const right = out.at(index + 1);
+    const left = out.at(index - 1)?.node;
+    const right = out.at(index + 1)?.node;
     const depths = [
       index > 0 && left !== undefined
         ? resolution.cutEdges.get(left)?.last
@@ -1144,15 +1194,16 @@ const resolveList = (
     }
     if (groups.length === (node.resolutionJoins.deferredRemove?.length ?? 0))
       continue;
-    out[index] = Object.assign({}, node, {
+    const deferred = Object.assign({}, node, {
       resolutionJoins: Object.assign({}, node.resolutionJoins, {
         deferredRemove: canonicalDeferredGroups(groups),
       }),
     });
+    out[index] = { node: deferred, owner };
     changed = true;
   }
   if (!changed) {
-    return { nodes: out, changed };
+    return { nodes: out.map(({ node }) => node), changed };
   }
   const edges: CutEdges = {};
   const firstDepth = sourceEdges.get(0);
@@ -1160,8 +1211,8 @@ const resolveList = (
   if (firstDepth !== undefined) edges.first = firstDepth;
   if (lastDepth !== undefined) edges.last = lastDepth;
   for (const seam of plainSeams) {
-    const left = out.at(seam - 1);
-    const right = out.at(seam);
+    const left = out.at(seam - 1)?.node;
+    const right = out.at(seam)?.node;
     if (
       seam > 0 &&
       left?.type === "run" &&
@@ -1179,29 +1230,59 @@ const resolveList = (
     let seam = recorded;
     const kept = floating.get(recorded);
     if (kept !== undefined) {
-      const boundaries = out.slice(seam - kept.count, seam);
-      const before = out[seam - kept.count - 1];
-      const after = out[seam];
+      const boundaries = out
+        .slice(seam - kept.count, seam)
+        .map(({ node }) => node);
+      const beforeOccurrence = out[seam - kept.count - 1];
+      const afterOccurrence = out[seam];
+      const before = beforeOccurrence?.node;
+      const after = afterOccurrence?.node;
+      const belongsTo = ({
+        owner,
+        source,
+      }: {
+        owner: SourceOwner | undefined;
+        source: SourceOwner | undefined;
+      }): boolean => {
+        return (
+          owner !== undefined &&
+          source !== undefined &&
+          sourceOwnerRoot(owner) === sourceOwnerRoot(source)
+        );
+      };
+      const beforeOwner = beforeOccurrence?.owner;
+      const afterOwner = afterOccurrence?.owner;
       const intoAfter =
-        after === undefined
+        after === undefined ||
+        !belongsTo({ owner: afterOwner, source: kept.after })
           ? undefined
           : withBoundariesAtEdge(after, boundaries, kept.depth, "start");
       const intoBefore =
-        intoAfter !== undefined || before === undefined
+        intoAfter !== undefined ||
+        before === undefined ||
+        !belongsTo({ owner: beforeOwner, source: kept.before })
           ? undefined
           : withBoundariesAtEdge(before, boundaries, kept.depth, "end");
       if (intoAfter !== undefined && after !== undefined) {
         carryResolutionState(resolution, after, intoAfter);
-        out.splice(seam - kept.count, kept.count + 1, intoAfter);
+        out.splice(seam - kept.count, kept.count + 1, {
+          node: intoAfter,
+          owner: afterOwner,
+        });
         seam -= kept.count;
       } else if (intoBefore !== undefined && before !== undefined) {
         carryResolutionState(resolution, before, intoBefore);
-        out.splice(seam - kept.count - 1, kept.count + 1, intoBefore);
+        out.splice(seam - kept.count - 1, kept.count + 1, {
+          node: intoBefore,
+          owner: beforeOwner,
+        });
         seam -= kept.count;
       }
     }
-    const left = out[seam - 1];
-    const right = out[seam];
+    const leftOccurrence = out[seam - 1];
+    const rightOccurrence = out[seam];
+    const left = leftOccurrence?.node;
+    const right = rightOccurrence?.node;
     if (left === undefined || right === undefined) continue;
     let exactDepth = exactSeams.get(recorded);
     if (exactDepth !== undefined) {
@@ -1245,11 +1326,32 @@ const resolveList = (
       if (first !== undefined) outerEdges.first = first;
       if (last !== undefined) outerEdges.last = last;
       resolution.cutEdges.set(merged, outerEdges);
+      const leftOwner = leftOccurrence?.owner;
+      const rightOwner = rightOccurrence?.owner;
+      if (leftOwner !== undefined && rightOwner !== undefined) {
+        const leftRoot = sourceOwnerRoot(leftOwner);
+        const rightRoot = sourceOwnerRoot(rightOwner);
+        if (leftRoot !== rightRoot) rightRoot.mergedInto = leftRoot;
+      }
+      const owner = leftOwner ?? rightOwner;
+      out.splice(seam - 1, 2, { node: merged, owner });
+    } else {
+      if (met.length !== 2)
+        panic("A seam retains two roots or joins them into one.");
+      const metLeft =
+        met.at(0) ?? panic("An unjoined seam retains its left root.");
+      const metRight =
+        met.at(1) ?? panic("An unjoined seam retains its right root.");
+      out.splice(
+        seam - 1,
+        2,
+        { node: metLeft, owner: leftOccurrence?.owner },
+        { node: metRight, owner: rightOccurrence?.owner },
+      );
     }
-    out.splice(seam - 1, 2, ...met);
   }
-  const first = out.at(0);
-  const last = out.at(-1);
+  const first = out.at(0)?.node;
+  const last = out.at(-1)?.node;
   const nestedFirst =
     first === undefined ? undefined : resolution.cutEdges.get(first)?.first;
   const nestedLast =
@@ -1258,7 +1360,7 @@ const resolveList = (
     edges.first = Math.max(edges.first ?? 0, nestedFirst);
   if (nestedLast !== undefined)
     edges.last = Math.max(edges.last ?? 0, nestedLast);
-  return { nodes: out, changed, edges };
+  return { nodes: out.map(({ node }) => node), changed, edges };
 };
 
 /** A paragraph's review fields once its property changes and mark are resolved; `undefined` when unchanged. */
