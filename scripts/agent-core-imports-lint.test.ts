@@ -4,7 +4,7 @@ import path from "node:path";
 
 setDefaultTimeout(30_000);
 
-const lintFixture = (fixture: string): number => {
+const lintFixture = (fixture: string) => {
   const result = Bun.spawnSync(
     [
       "bun",

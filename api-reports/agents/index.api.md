@@ -14,7 +14,7 @@ import { FolioAIEditSnapshot } from '@stll/folio-core/server';
 import { FolioAIParagraphBlock } from '@stll/folio-core/server';
 import { FolioAITextRangeHandle } from '@stll/folio-core/server';
 import { FolioBlockDiff } from '@stll/folio-core/server';
-import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
+import { FolioCommentAnchor } from '@stll/folio-core/ai-edits/read';
 import { FolioCompareDocxVersionsOptions } from '@stll/folio-core/server';
 import { FolioDocumentNavigationTarget } from '@stll/folio-core/server';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
@@ -31,10 +31,9 @@ import { FolioDocumentSectionHandle } from '@stll/folio-core/server';
 import { FolioDocumentStory } from '@stll/folio-core/server';
 import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
-import { FolioReviewChange } from '@stll/folio-core/ai-edits';
-import { FolioReviewChange as FolioReviewChange_2 } from '@stll/folio-core/server';
+import { FolioReviewChange } from '@stll/folio-core/server';
 import { FolioRevisionStamp } from '@stll/folio-core/server';
-import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
+import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits/apply';
 import { FolioVersionDiff } from '@stll/folio-core/server';
 import { FolioVersionDiffSegment } from '@stll/folio-core/server';
 import { GenerateRedlineDocxOptions } from '@stll/folio-core/server';
@@ -170,7 +169,7 @@ export type FolioAgentBridge = {
 // @public
 export type FolioAgentChange = {
     id: string;
-    type: FolioReviewChange_2["type"];
+    type: FolioReviewChange["type"];
     author: string;
     text: string;
     blockId: string | null;
