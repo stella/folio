@@ -276,6 +276,7 @@ import { textBoxHostParagraph } from "../textBoxHostParagraph";
 import {
   enclosingInsertionAncestors,
   inlineWrapperStackOf,
+  trackedRevisionLayerOf,
 } from "../trackedRevisionPath";
 import { assertValidProseMirrorDocument } from "../validation";
 import { hasSinkChildren } from "./preservedSinkCarriers";
@@ -3934,13 +3935,29 @@ function extractParagraphContent(
       // insertion) is a deletion inside the insertion: `w:ins > w:del`, the
       // shape the parser reads back as a deletion whose ancestor is the
       // insertion. Written as the insertion alone, the deletion would be lost.
-      const changeMark = deletionMark ?? insertionMark;
+      const deletionLayer = deletionMark
+        ? trackedRevisionLayerOf(deletionMark, node)
+        : undefined;
+      const insertionAttrs = insertionMark
+        ? expectTrackedChangeMarkAttrs(insertionMark)
+        : undefined;
+      const insertionIsNestedInDeletion =
+        deletionLayer !== undefined &&
+        insertionAttrs?._docxRevisionAncestors?.some(
+          ({ revisionId, type }) =>
+            revisionId === deletionLayer.revisionId &&
+            type === deletionLayer.type,
+        ) === true;
+      const changeMark =
+        insertionIsNestedInDeletion && insertionMark
+          ? insertionMark
+          : (deletionMark ?? insertionMark);
       if (!changeMark) {
         return;
       }
       const changeAttrs = expectTrackedChangeMarkAttrs(changeMark);
       const revisionAncestors = enclosingInsertionAncestors({
-        insertionMark: deletionMark ? insertionMark : undefined,
+        insertionMark: changeMark === deletionMark ? insertionMark : undefined,
         ancestors: changeAttrs._docxRevisionAncestors ?? [],
         node,
       });

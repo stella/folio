@@ -15,10 +15,10 @@
 
 import { Plugin } from "prosemirror-state";
 
-import { prepareClipboardTrackedRevisions } from "./clipboardTrackedRevisions";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { Priority } from "../types";
+import { prepareClipboardTrackedRevisions } from "./clipboardTrackedRevisions";
 
 /**
  * Parse a CSS rule's style declarations into a Record<property, value>.

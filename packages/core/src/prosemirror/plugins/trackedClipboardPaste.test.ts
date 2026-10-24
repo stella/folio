@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { DOMParser, type Mark, type Node as PmNode } from "prosemirror-model";
+import {
+  DOMParser,
+  Fragment,
+  type Mark,
+  type Node as PmNode,
+} from "prosemirror-model";
 import {
   EditorState,
   TextSelection,
@@ -8,10 +13,12 @@ import {
 
 import { acquireHarnessDom } from "../../../../../test/harnessDom";
 import { fromMarkdown } from "../../markdown/fromMarkdown";
+import { expectTrackedChangeMarkAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
 import { transformPastedHTML } from "../extensions/features/PasteStyleInlinerExtension";
 import { schema } from "../schema";
+import { enclosingInsertionAncestors } from "../trackedRevisionPath";
 import { mintRevisionId } from "./revisionIds";
 import {
   createSuggestionModePlugin,
@@ -39,6 +46,39 @@ const revisionMarkForText = (
     found = node.marks.find((mark) => mark.type.name === type);
   });
   return found;
+};
+
+const withSharedRevisionId = (
+  paragraph: PmNode,
+  revisionId: number,
+): PmNode => {
+  const children: PmNode[] = [];
+  paragraph.forEach((child) => {
+    if (!child.isText) {
+      children.push(child);
+      return;
+    }
+    const marks = child.marks.map((mark) => {
+      if (mark.type.name !== "insertion" && mark.type.name !== "deletion") {
+        return mark;
+      }
+      const ancestors = expectTrackedChangeMarkAttrs(
+        mark,
+      )._docxRevisionAncestors?.map((ancestor) => ({
+        ...ancestor,
+        revisionId,
+      }));
+      return schema.mark(mark.type.name, {
+        ...mark.attrs,
+        revisionId,
+        ...(ancestors === undefined
+          ? {}
+          : { _docxRevisionAncestors: ancestors }),
+      });
+    });
+    children.push(child.mark(marks));
+  });
+  return paragraph.copy(Fragment.fromArray(children));
 };
 
 const parseClipboardHtml = (html: string) => {
@@ -250,11 +290,7 @@ test("schema-only native parsing remints reused DOM without inferring ancestry",
   }
   const parseDirectly = () => {
     const slice = DOMParser.fromSchema(schema).parseSlice(container);
-    return revisionMarkForText(
-      slice.content.firstChild,
-      "nested",
-      "insertion",
-    );
+    return revisionMarkForText(slice.content.firstChild, "nested", "insertion");
   };
 
   const first = parseDirectly();
@@ -318,11 +354,9 @@ test.each([
     ]);
 
     const source = fromMarkdown("source");
-    const saved = fromProseDoc(
-      schema.node("doc", null, [paragraph]),
-      source,
-      { stylesheetSource: { type: "package" } },
-    );
+    const saved = fromProseDoc(schema.node("doc", null, [paragraph]), source, {
+      stylesheetSource: { type: "package" },
+    });
     const reopened = toProseDoc(saved);
     expect(
       revisionMarkForText(reopened, "outer ", outerType)?.attrs,
@@ -341,6 +375,87 @@ test.each([
     });
   },
 );
+
+test.each([
+  {
+    outerTag: "ins",
+    innerTag: "del",
+    outerType: "insertion",
+    innerType: "deletion",
+  },
+  {
+    outerTag: "del",
+    innerTag: "ins",
+    outerType: "deletion",
+    innerType: "insertion",
+  },
+] as const)(
+  "native nested tracked changes preserve shared revision IDs",
+  ({ outerTag, innerTag, outerType, innerType }) => {
+    const html =
+      "<p><" +
+      outerTag +
+      ' cite="mailto:Outer reviewer" datetime="2026-10-20T10:00:00Z">outer <' +
+      innerTag +
+      ' cite="mailto:Inner reviewer" datetime="2026-10-21T11:00:00Z">nested</' +
+      innerTag +
+      "> after</" +
+      outerTag +
+      "></p>";
+    const slice = parseClipboardHtml(html);
+    const paragraph = slice.content.firstChild;
+    if (paragraph === null) {
+      throw new Error("The pasted paragraph is missing");
+    }
+    const collidingParagraph = withSharedRevisionId(paragraph, 19);
+    const source = fromMarkdown("source");
+    const saved = fromProseDoc(
+      schema.node("doc", null, [collidingParagraph]),
+      source,
+      { stylesheetSource: { type: "package" } },
+    );
+    const reopened = toProseDoc(saved);
+
+    expect(
+      revisionMarkForText(reopened, "outer ", outerType)?.attrs,
+    ).toMatchObject({
+      revisionId: 19,
+      author: "Outer reviewer",
+    });
+    expect(
+      revisionMarkForText(reopened, "nested", innerType)?.attrs,
+    ).toMatchObject({
+      revisionId: 19,
+      author: "Inner reviewer",
+    });
+  },
+);
+
+test("revision ancestry distinguishes equal IDs by tracked-change type", () => {
+  const revisionId = 19;
+  const insertion = schema.marks["insertion"]!.create({
+    revisionId,
+    author: "Reviewer",
+  });
+  const node = schema.text("nested", [insertion]);
+  const ancestors = enclosingInsertionAncestors({
+    insertionMark: insertion,
+    ancestors: [
+      {
+        type: "deletion",
+        revisionId,
+        author: "Reviewer",
+        outerWrapperCount: 0,
+      },
+    ],
+    node,
+  });
+
+  expect(ancestors.map(({ revisionId: id, type }) => ({ id, type }))).toEqual([
+    { id: revisionId, type: "insertion" },
+    { id: revisionId, type: "deletion" },
+  ]);
+});
 
 test.each([
   {
@@ -390,11 +505,9 @@ test.each([
     ]);
 
     const source = fromMarkdown("source");
-    const saved = fromProseDoc(
-      schema.node("doc", null, [paragraph]),
-      source,
-      { stylesheetSource: { type: "package" } },
-    );
+    const saved = fromProseDoc(schema.node("doc", null, [paragraph]), source, {
+      stylesheetSource: { type: "package" },
+    });
     const reopened = toProseDoc(saved);
     expect(
       revisionMarkForText(reopened, "outer ", outerType)?.attrs,
