@@ -232,6 +232,7 @@ const paragraph = (
         ]
       : []),
     schema.text(` anchor-${index} `, [comment]),
+    schema.nodes.commentReference.create({ commentId: seed * 100 + index }),
     ...(index === 0
       ? [schema.nodes.bookmarkBoundary.create({ type: "end", id: seed })]
       : []),

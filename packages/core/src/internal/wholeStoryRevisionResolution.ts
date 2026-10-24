@@ -936,7 +936,7 @@ const resolveStoryRevisions = ({
       doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"],
   });
   const inlineResolved = inline?.resolved ?? properties;
-  const comments = resolveCommentReferences(inlineResolved);
+  const comments = inline ? resolveCommentReferences(inlineResolved) : null;
   const context: StructuralContext = {
     mode,
     styleResolver,

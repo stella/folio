@@ -18,6 +18,50 @@ const deletedParagraphMark = {
   info: { id: 7, author: "Reviewer", date: "2026-10-19" },
 } as const;
 
+test.each(["accept", "reject"] as const)(
+  "a no-op %s story preserves identity, maps and traversal count",
+  (mode) => {
+    for (const kind of ["plain", "commented"] as const) {
+      const commentId = 7;
+      const content =
+        kind === "plain"
+          ? [schema.text("Unchanged.")]
+          : [
+              schema.text("Unchanged.", [
+                schema.marks.comment.create({ commentId }),
+              ]),
+              schema.nodes.commentReference.create({ commentId }),
+            ];
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", null, content),
+      ]);
+      const descendants = doc.descendants.bind(doc);
+      let traversals = 0;
+      Object.defineProperty(doc, "descendants", {
+        configurable: true,
+        value: (callback: Parameters<PMNode["descendants"]>[0]) => {
+          traversals++;
+          return descendants(callback);
+        },
+      });
+      const result = resolveWholeStory({
+        doc,
+        mode,
+        styleResolver: null,
+        numbering: null,
+      });
+      expect(traversals).toBe(0);
+      expect(result.resolved).toBe(doc);
+      expect(result.steps).toEqual([]);
+      for (let position = 0; position <= doc.content.size; position++) {
+        for (const association of [-1, 1] as const) {
+          expect(result.mapping.map(position, association)).toBe(position);
+        }
+      }
+    }
+  },
+);
+
 const paragraphPosition = (doc: PMNode, text: string): number => {
   let found: number | null = null;
   doc.descendants((node, position) => {
