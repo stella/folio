@@ -14,6 +14,7 @@ import {
   bookmarkMarkerFromAttrs,
   readBookmarkBoundaryAttrs,
 } from "../prosemirror/bookmarkBoundaryAttrs";
+import { readCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
 import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
 import { readMoveRangeBoundaryAttrs } from "../prosemirror/moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
@@ -73,6 +74,7 @@ type NativePolicy =
 export const CANONICAL_NATIVE_INLINE_POLICIES = {
   text: "text",
   bookmarkBoundary: "markers",
+  commentRangeBoundary: "markers",
   moveRangeBoundary: "markers",
   rangeAnchor: "markers",
   noteMarker: "noteMarker",
@@ -275,6 +277,20 @@ export const canonicalNativeCells = (
           cells.push({
             type: "zeroWidth",
             sources: [attrs.value],
+            from,
+            to,
+            node,
+          });
+        } else if (node.type.name === "commentRangeBoundary") {
+          const attrs = readCommentRangeBoundaryAttrs(node);
+          if (!attrs.ok) {
+            issue =
+              "Canonical editing requires valid comment range boundary attributes.";
+            return;
+          }
+          cells.push({
+            type: "zeroWidth",
+            sources: [attrs.value.marker],
             from,
             to,
             node,

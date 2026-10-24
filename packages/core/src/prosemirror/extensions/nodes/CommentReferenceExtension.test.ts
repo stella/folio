@@ -134,6 +134,16 @@ describe("CommentReferenceExtension editing integrity", () => {
 
     expect(referenceIds(again.state.doc)).toEqual([9]);
   });
+
+  test("keeps a reference anchored by an explicit comment-range start", () => {
+    const boundary = schema.node("commentRangeBoundary", {
+      marker: { type: "commentRangeStart", id: 11 },
+    });
+    const state = stateWith([boundary, reference(11)]);
+    const applied = state.applyTransaction(state.tr.insertText("x", 1));
+
+    expect(referenceIds(applied.state.doc)).toEqual([11]);
+  });
 });
 
 type CommentRangeInertAtom = {
@@ -145,6 +155,10 @@ type CommentRangeInertAtom = {
 }[keyof typeof COMMENT_RANGE_INLINE_ATOM_PARTICIPATION];
 const inertAtoms = {
   commentReference: () => reference(7),
+  commentRangeBoundary: () =>
+    schema.node("commentRangeBoundary", {
+      marker: { type: "commentRangeStart", id: 7 },
+    }),
   rangeAnchor: () =>
     schema.node("rangeAnchor", {
       start: { type: "commentRangeStart", id: 7 },
@@ -153,7 +167,6 @@ const inertAtoms = {
   renderedPageBreak: () => schema.node("renderedPageBreak"),
 } satisfies Record<CommentRangeInertAtom, () => PMNode>;
 
-// Comment ranges over marker atoms were not part of the editing-integrity fixture.
 for (const [name, create] of Object.entries(inertAtoms)) {
   test(`inert ${name} cannot keep another comment range alive`, () => {
     const state = stateWith([
