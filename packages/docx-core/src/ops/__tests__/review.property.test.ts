@@ -77,6 +77,7 @@ import {
   paragraphLogicalText,
 } from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
+import { planParagraphBoundaryRemoval } from "../rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   isAddedRevision,
@@ -1117,6 +1118,24 @@ describe("tracked operations and their resolution", () => {
               mark !== undefined &&
               ids.includes(mark.info.id) &&
               markWasAdded !== (decision === REVISION_DECISIONS.ACCEPT);
+            const blocks = blockListAt(
+              document.package.document.content,
+              location.list,
+            );
+            const followingBlock = blocks.at(location.index + 1);
+            if (
+              markGoes &&
+              (followingBlock === undefined || followingBlock.type === "table")
+            ) {
+              const removal = planParagraphBoundaryRemoval({
+                blocks,
+                index: location.index,
+                place: followingBlock === undefined ? "previous" : "blocks",
+              });
+              if (removal.type === "removed")
+                for (const { receiver } of removal.effects)
+                  holding.add(idKey(receiver.paraId ?? ""));
+            }
             if (
               markGoes &&
               paragraphMarkOutcome({

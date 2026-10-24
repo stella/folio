@@ -21,7 +21,9 @@
  * nearest paragraph that stays.
  */
 
-import type { BlockContent } from "../model/document";
+import { panic } from "better-result";
+
+import type { BlockContent, Paragraph } from "../model/document";
 import {
   childNodes,
   type InlineNode,
@@ -151,6 +153,52 @@ export const paragraphRemains = (
       (boundary): boundary is BlockBoundary => !isCommentAnchor(boundary),
     ),
     comments: boundaries.filter(isCommentAnchor),
+  };
+};
+
+type ParagraphBoundaryRemovalOptions = {
+  blocks: readonly BlockContent[];
+  index: number;
+  place: "blocks" | "previous";
+};
+
+type ParagraphBoundaryRemovalPlan =
+  | { type: "blocked" }
+  | {
+      type: "removed";
+      blocks: BlockContent[];
+      effects: readonly {
+        type: "retained-range-boundaries";
+        receiver: Paragraph;
+      }[];
+    };
+
+export const planParagraphBoundaryRemoval = ({
+  blocks,
+  index,
+  place,
+}: ParagraphBoundaryRemovalOptions): ParagraphBoundaryRemovalPlan => {
+  const paragraph = blocks[index];
+  if (paragraph?.type !== "paragraph")
+    return panic("Only a paragraph leaves its range boundaries.");
+  const { blocks: boundaries, comments } = paragraphRemains(paragraph.content);
+  const between = place === "blocks" ? boundaries : [];
+  const toPrevious =
+    place === "blocks" ? comments : rangeBoundariesIn(paragraph.content);
+  const remaining = [
+    ...blocks.slice(0, index),
+    ...between,
+    ...blocks.slice(index + 1),
+  ];
+  if (toPrevious.length === 0)
+    return { type: "removed", blocks: remaining, effects: [] };
+  const host = remaining[index - 1];
+  if (host?.type !== "paragraph") return { type: "blocked" };
+  remaining[index - 1] = { ...host, content: [...host.content, ...toPrevious] };
+  return {
+    type: "removed",
+    blocks: remaining,
+    effects: [{ type: "retained-range-boundaries", receiver: host }],
   };
 };
 
