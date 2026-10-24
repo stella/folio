@@ -3,17 +3,16 @@
  *
  * Bookmark and move-range boundaries, range and text-box anchors, comment
  * references, and Word's cached pagination boundaries all exist so a position
- * survives an edit. None of them is content:
- * a reader sees no character where one sits, none carries a revision of its
- * own, and the format has no way to say one was inserted or deleted outside a
- * hyperlink.
+ * survives an edit. None of them is paragraph content for paragraph-mark
+ * retention; comment references still occupy one logical offset unit.
  *
  * - *Does deleting this block have to mark it?* No — marking it produces a
  *   document the serializer refuses.
  * - *Does it keep a paragraph whose mark goes?* That is the engine's one
  *   paragraph-content rule (`paragraphContentVerdict` in
- *   `@stll/docx-core/ops`): a range boundary or comment reference does, so its
- *   bookmark, comment or move survives the mark; a cached page break does not.
+ *   `@stll/docx-core/ops`): range boundaries survive as carriers, while a
+ *   comment reference transfers to a surviving paragraph; a cached page break
+ *   does not.
  *   Each anchor names the engine item it stands for, so the editor and the
  *   engine decide every paragraph-mark outcome alike.
  */
@@ -34,13 +33,12 @@ import { RENDERED_PAGE_BREAK_NODE_NAME } from "./extensions/nodes/RenderedPageBr
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "./extensions/nodes/TextBoxAnchorExtension";
 
 /**
- * The engine item each anchor stands for: a zero-width item the content rule
- * classifies, or one unit of width (a comment reference is an atom, a text box
- * anchor stands for its drawing in the run stream).
+ * The engine item each anchor stands for in paragraph retention. Logical
+ * offsets count comment references separately.
  */
 const ANCHOR_ITEMS = new Map<string, ZeroWidthItem | "unit">([
   [BOOKMARK_BOUNDARY_NODE_NAME, "bookmarkStart"],
-  [COMMENT_REFERENCE_NODE_NAME, "unit"],
+  [COMMENT_REFERENCE_NODE_NAME, "commentReference"],
   [MOVE_RANGE_BOUNDARY_NODE_NAME, "moveFromRangeStart"],
   [RANGE_ANCHOR_NODE_NAME, "commentRangeStart"],
   [RENDERED_PAGE_BREAK_NODE_NAME, "renderedPageBreak"],

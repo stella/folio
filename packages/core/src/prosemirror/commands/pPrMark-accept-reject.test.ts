@@ -7,6 +7,8 @@ import {
   getTrackedSectionEndpointRemoval,
   ParagraphChangeTrackerExtension,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { paragraphRemainsOf } from "../keptRangeBoundaries";
+import { paragraphContentOf } from "../zeroWidthAnchors";
 import {
   acceptAIEditRevision,
   acceptAllChanges,
@@ -52,6 +54,12 @@ const schema = new Schema({
       attrs: BOOKMARK_ATTRS,
     },
     textBoxAnchor: { inline: true, group: "inline", atom: true },
+    commentReference: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      attrs: { commentId: { default: 0 } },
+    },
   },
   marks: {
     insertion: {
@@ -298,6 +306,68 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
     expect(view.state.doc.childCount).toBe(1);
     expect(view.state.doc.child(0).textContent).toBe("first");
+  });
+
+  test("rejectAll transfers a reference-only inserted paragraph to its prior host", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, schema.text("first")),
+        schema.node(
+          "paragraph",
+          { pPrMark: insMark({ id: 1 }) },
+          schema.node("commentReference", { commentId: 7 }),
+        ),
+      ]),
+    });
+    const view = dispatcher(state);
+    expect(
+      paragraphRemainsOf(view.state.doc.child(1)).comments.map(
+        ({ type }) => type.name,
+      ),
+    ).toEqual(["commentReference"]);
+
+    rejectAllChanges()(view.state, view.dispatch);
+
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.child(0).textContent).toBe("first");
+    expect(view.state.doc.child(0).lastChild?.type.name).toBe(
+      "commentReference",
+    );
+  });
+
+  test("a comment reference alone does not count as paragraph content", () => {
+    const reference = schema.node("commentReference", { commentId: 7 });
+    const referenceOnly = schema.node("paragraph", null, reference);
+    const textAndReference = schema.node("paragraph", null, [
+      schema.text("kept"),
+      reference,
+    ]);
+
+    expect(paragraphContentOf(referenceOnly)).toBe(false);
+    expect(paragraphContentOf(textAndReference)).toBe(true);
+  });
+
+  test("a reference-only paragraph with no previous host stays in place", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          { pPrMark: insMark({ id: 1 }) },
+          schema.node("commentReference", { commentId: 7 }),
+        ),
+      ]),
+    });
+    const view = dispatcher(state);
+
+    rejectAllChanges()(view.state, view.dispatch);
+
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.child(0).attrs["pPrMark"]).toBeNull();
+    expect(view.state.doc.child(0).firstChild?.type.name).toBe(
+      "commentReference",
+    );
   });
 
   // Whether an emptied paragraph stays is the engine's one paragraph-content
