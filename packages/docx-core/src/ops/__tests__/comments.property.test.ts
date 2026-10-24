@@ -23,6 +23,8 @@ import {
   commentDocumentIssue,
   freshCommentId,
   orphanRootCommentIds,
+  survivingComments,
+  withoutCommentThreads,
 } from "../comments";
 import { contractViolation } from "../contract";
 import { isCommentAnchor, leafSpans } from "../leaves";
@@ -117,6 +119,116 @@ const COMMANDS = {
   deleteComment: "author",
   restoreCommentState: "inverse",
 } as const satisfies Record<CommentOp["type"], "author" | "inverse">;
+
+test("thread closure removes descendants in order without mutating definitions", () => {
+  const comments = [
+    comment(1, "00000001", "root"),
+    { ...comment(2, "00000002", "reply"), parentId: 1 },
+    { ...comment(3, "00000003", "nested reply"), parentId: 2 },
+    comment(10, "00000010", "unrelated root"),
+    { ...comment(11, "00000011", "unrelated reply"), parentId: 10 },
+  ];
+  const original = structuredClone(comments);
+
+  const kept = withoutCommentThreads(comments, new Set([1]));
+
+  expect(kept.map(({ id }) => id)).toEqual([10, 11]);
+  expect(comments).toEqual(original);
+  const keptIds = new Set(kept.map(({ id }) => id));
+  expect(
+    kept.every(
+      ({ parentId }) => parentId === undefined || keptIds.has(parentId),
+    ),
+  ).toBe(true);
+});
+
+test("thread closure preserves every unrelated generated reply tree", () => {
+  assertProperty(
+    fc.property(
+      fc.array(fc.nat({ max: 1_000 }), { maxLength: 16 }),
+      (parentChoices) => {
+        const comments = [
+          comment(0, "00000000", "removed root"),
+          comment(100, "00000100", "retained root"),
+        ];
+        for (const [index, parentChoice] of parentChoices.entries()) {
+          const parent = comments.at(parentChoice % comments.length);
+          if (!parent) throw new Error("Expected a comment parent");
+          comments.push({
+            ...comment(
+              index + 1,
+              (index + 1).toString(16).padStart(8, "0"),
+              "reply",
+            ),
+            parentId: parent.id,
+          });
+        }
+        const original = structuredClone(comments);
+        const byId = new Map(comments.map((entry) => [entry.id, entry]));
+        const rootIdOf = (commentId: number): number => {
+          let current = byId.get(commentId);
+          while (current?.parentId !== undefined) {
+            current = byId.get(current.parentId);
+          }
+          if (!current) throw new Error("Expected a comment root");
+          return current.id;
+        };
+        const expected = comments.filter(({ id }) => rootIdOf(id) !== 0);
+
+        const kept = withoutCommentThreads(comments, new Set([0]));
+
+        expect(kept).toEqual(expected);
+        expect(comments).toEqual(original);
+      },
+    ),
+    {
+      numRuns: 40,
+      id: "comment-thread-closure-preserves-unrelated-generated-reply-trees",
+    },
+  );
+});
+
+test("surviving comment roots preserve covered ranges, points and projected roots", () => {
+  const comments: Comment[] = [
+    { ...comment(1, "00000001", "covered root"), anchorKind: "range" },
+    { ...comment(2, "00000002", "covered reply"), parentId: 1 },
+    { ...comment(3, "00000003", "point root"), anchorKind: "point" },
+    { ...comment(4, "00000004", "point reply"), parentId: 3 },
+    { ...comment(5, "00000005", "empty root"), anchorKind: "range" },
+    { ...comment(6, "00000006", "empty reply"), parentId: 5 },
+  ];
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              { type: "commentRangeStart", id: 1 },
+              { type: "run", content: [{ type: "text", text: "covered" }] },
+              { type: "commentRangeEnd", id: 1 },
+              { type: "commentReference", id: 1 },
+              { type: "commentReference", id: 3 },
+              { type: "commentRangeStart", id: 5 },
+              { type: "commentRangeEnd", id: 5 },
+              { type: "commentReference", id: 5 },
+            ],
+          },
+        ],
+        comments,
+      },
+    },
+  };
+
+  expect(survivingComments(document).map(({ id }) => id)).toEqual([1, 2, 3, 4]);
+  expect(survivingComments(document, new Set([5])).map(({ id }) => id)).toEqual(
+    [1, 2, 3, 4, 5, 6],
+  );
+  expect(survivingComments(document, new Set([6])).map(({ id }) => id)).toEqual(
+    [1, 2, 3, 4],
+  );
+});
 
 test("generated comment histories preserve exact state, declaration order, opaque markup and owned anchors", () => {
   const seen = new Set<string>();

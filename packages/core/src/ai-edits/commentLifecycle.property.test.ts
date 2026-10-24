@@ -450,6 +450,49 @@ const expectPackageConsistent = async (
 };
 
 describe("live comment threads match the saved package after every step", () => {
+  test("deleting a replied-to paragraph retires its entire thread", async () => {
+    const comments: GeneratedComment[] = [
+      { story: "body", first: 1, last: 1, text: "A" },
+      { story: "body", first: 0, last: 0, text: "A" },
+    ];
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(buildDocument(comments)),
+      { author: "Editor" },
+    );
+
+    const expectSavedRoots = async (expectedRootIds: number[]) => {
+      const saved = await reviewer.toBuffer();
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        author: "Editor",
+      });
+      const persisted = reopened.toDocument().package.document.comments ?? [];
+      const persistedIds = new Set(persisted.map(({ id }) => id));
+      expect(
+        persisted.every(
+          ({ parentId }) =>
+            parentId === undefined || persistedIds.has(parentId),
+        ),
+      ).toBe(true);
+      expect(reopened.getComments().map(({ id }) => id)).toEqual(
+        expectedRootIds,
+      );
+      await expectPackageConsistent(saved, reopened.getComments());
+    };
+
+    expect(reviewer.replyTo(0, { text: "Session reply." })).not.toBeNull();
+    await expectSavedRoots([0, 1]);
+    applyStep(reviewer, {
+      type: "edit",
+      story: "body",
+      kind: "deleteBlock",
+      mode: "direct",
+      pick: 7,
+    });
+    await expectSavedRoots([1]);
+    applyStep(reviewer, { type: "resolveAll", how: "accept" });
+    await expectSavedRoots([1]);
+  });
+
   test(
     "over generated sessions across a table and a note",
     async () => {
