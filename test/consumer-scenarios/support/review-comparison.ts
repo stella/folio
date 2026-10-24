@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
 
+import type {
+  Document,
+  Paragraph,
+  ParagraphContent,
+} from "@stll/docx-core/model";
+import { visitDocxParagraphs } from "@stll/folio-core/docx/paragraphTraversal";
+import { consolidateParagraphContent } from "@stll/folio-core/docx/runConsolidator";
+
 import { openReviewer } from "./documents.ts";
 import { canonicalFieldModel } from "./field-model.ts";
 import { projectContentPair } from "./identity.ts";
@@ -135,11 +143,18 @@ const hasModeledComments = (value: object): boolean => {
   );
 };
 
+type CanonicalReviewModelOptions = {
+  model: unknown;
+  aliases?: ReadonlyMap<string, string>;
+  paragraphContentOverrides?: WeakMap<object, ParagraphContent[]>;
+};
+
 /** One strict modeled-document projection, including nested part collections. */
-export const canonicalReviewModel = (
-  model: unknown,
-  aliases: ReadonlyMap<string, string> = new Map(),
-): unknown => {
+const projectCanonicalReviewModel = ({
+  model,
+  aliases = new Map(),
+  paragraphContentOverrides,
+}: CanonicalReviewModelOptions): unknown => {
   const project = (current: unknown, modelPath: string): unknown => {
     const value = current;
     if (Array.isArray(value))
@@ -216,11 +231,17 @@ export const canonicalReviewModel = (
         entries.push([key, project(meaningful, `${modelPath}/${key}`)]);
         continue;
       }
+      const originalProjection = project(entry, `${modelPath}/${key}`);
+      const paragraphContentOverride = paragraphContentOverrides?.get(value);
+      const projectedEntry =
+        key === "content" && paragraphContentOverride !== undefined
+          ? project(paragraphContentOverride, `${modelPath}/${key}`)
+          : originalProjection;
       entries.push([
         key,
-        key === "paraId" && typeof entry === "string"
-          ? (aliases.get(entry) ?? entry)
-          : project(entry, `${modelPath}/${key}`),
+        key === "paraId" && typeof projectedEntry === "string"
+          ? (aliases.get(projectedEntry) ?? projectedEntry)
+          : projectedEntry,
       ]);
     }
     const projected = canonicalFieldModel(Object.fromEntries(entries));
@@ -238,6 +259,52 @@ export const canonicalReviewModel = (
     return projected;
   };
   return project(model, "");
+};
+
+export const canonicalReviewModel = (
+  model: unknown,
+  aliases: ReadonlyMap<string, string> = new Map(),
+): unknown => projectCanonicalReviewModel({ model, aliases });
+
+export const canonicalResolvedReviewModel = (
+  model: Document,
+  aliases: ReadonlyMap<string, string> = new Map(),
+): unknown => {
+  const paragraphContentOverrides = new WeakMap<object, ParagraphContent[]>();
+  const seenParagraphs = new WeakSet<Paragraph>();
+  const visitParagraph = (paragraph: Paragraph): void => {
+    if (seenParagraphs.has(paragraph)) return;
+    seenParagraphs.add(paragraph);
+    paragraphContentOverrides.set(
+      paragraph,
+      consolidateParagraphContent(paragraph.content),
+    );
+  };
+  visitDocxParagraphs(
+    {
+      documentBody: model.package.document,
+      headers: model.package.headers,
+      footers: model.package.footers,
+      footnotes: model.package.footnotes,
+      endnotes: model.package.endnotes,
+    },
+    visitParagraph,
+  );
+  for (const section of model.package.document.sections ?? []) {
+    visitDocxParagraphs(
+      {
+        documentBody: { content: [] },
+        headers: section.headers,
+        footers: section.footers,
+      },
+      visitParagraph,
+    );
+  }
+  return projectCanonicalReviewModel({
+    model,
+    aliases,
+    paragraphContentOverrides,
+  });
 };
 
 type ReviewRoundTripOptions = {
@@ -269,8 +336,8 @@ export const assertReviewRoundTrip = ({
       const left = live.toResolvedDocument(decision);
       const right = reopened.toResolvedDocument(decision);
       assert.deepEqual(
-        canonicalReviewModel(right, identities.rightAliases),
-        canonicalReviewModel(left, identities.leftAliases),
+        canonicalResolvedReviewModel(right, identities.rightAliases),
+        canonicalResolvedReviewModel(left, identities.leftAliases),
         `${context}: ${decision}-all document differs after save`,
       );
     }
