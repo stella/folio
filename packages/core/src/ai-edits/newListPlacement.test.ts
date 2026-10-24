@@ -189,6 +189,64 @@ const anchorInheritanceProjection = (
 };
 
 describe("new-list placement", () => {
+  for (const mode of ["direct", "tracked-changes"] as const) {
+    test(`${mode} preserves insertion gaps after the batch removes their anchor`, async () => {
+      const source = await anchorInheritanceDocx();
+      const outcomes: ReturnType<typeof lists>[] = [];
+      for (const order of [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+      ] as const) {
+        const reviewer = await open(source);
+        expect(
+          apply(reviewer, "tracked-changes", [
+            {
+              id: "split",
+              type: "splitBlock",
+              blockId: idOf(reviewer, "Anchor sentence."),
+              offset: 6,
+            },
+          ]).skipped,
+        ).toEqual([]);
+        const blockId = idOf(reviewer, "Anchor");
+        const operations = [
+          {
+            id: "table",
+            type: "insertTable",
+            blockId,
+            rows: [["Term", "Value"]],
+          },
+          {
+            id: "before",
+            type: "insertBeforeBlock",
+            blockId,
+            text: "Before.",
+          },
+          { id: "delete", type: "deleteBlock", blockId },
+        ] satisfies FolioDocumentOperation[];
+        const result = apply(
+          reviewer,
+          mode,
+          order.map((index) => operations[index]),
+        );
+        expect(result.skipped).toEqual([]);
+        expect(result.applied).toHaveLength(3);
+        reviewer.acceptAll();
+        expect(
+          reviewer.getContent().some(({ text }) => text === "Before."),
+        ).toBe(true);
+        outcomes.push(lists(reviewer));
+      }
+      for (const outcome of outcomes.slice(1)) {
+        expect(outcome).toEqual(outcomes.at(0));
+      }
+    });
+  }
+
   for (const { label, story } of [
     { label: "main", story: { type: "main" } as const },
     { label: "footnote", story: { type: "footnote", noteId: 1 } as const },

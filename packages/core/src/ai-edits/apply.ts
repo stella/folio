@@ -5062,6 +5062,7 @@ const applyFolioAIEditOperationsInternal = ({
       }
       const liveCandidate = insertionWithLiveAnchor(candidate, insertionState);
       if (!liveCandidate) {
+        if (!isSuggested) return [candidate];
         if (candidate.operation.moveId !== undefined) {
           refusedMoveIds.add(candidate.operation.moveId);
         }
