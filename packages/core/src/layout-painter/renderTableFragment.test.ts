@@ -3,12 +3,15 @@ import { describe, expect, test } from "bun:test";
 import { withFakeTextMeasure } from "../layout-engine/measure/__tests__/fakeTextMeasure";
 import type {
   ImageRun,
+  ParagraphBlock,
+  ParagraphMeasure,
   TableBlock,
   TableCell,
   TableFragment,
   TableMeasure,
 } from "../layout-engine/types";
 import type { PageGeometry } from "./anchoredImagePosition";
+import { PARAGRAPH_CLASS_NAMES } from "./renderParagraph";
 import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
 
@@ -385,6 +388,111 @@ describe("renderTableFragment continuation row boundaries", () => {
 });
 
 describe("renderTableFragment split-row cell content", () => {
+  test("lets inline picture extent reach the cell edge before cell clipping", () => {
+    const picture: ImageRun = {
+      kind: "image",
+      src: "data:image/png;base64,",
+      width: 300,
+      height: 30,
+      pmStart: 1,
+      pmEnd: 2,
+    };
+    const paragraph: ParagraphBlock = {
+      kind: "paragraph",
+      id: "picture-paragraph",
+      runs: [picture],
+    };
+    const paragraphMeasure: ParagraphMeasure = {
+      kind: "paragraph",
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 1,
+          width: 300,
+          ascent: 30,
+          descent: 0,
+          lineHeight: 30,
+        },
+      ],
+      totalHeight: 30,
+    };
+    const block: TableBlock = {
+      kind: "table",
+      id: "picture-table",
+      columnWidths: [200],
+      rows: [
+        {
+          id: "picture-row",
+          cells: [
+            {
+              id: "picture-cell",
+              padding: { top: 0, right: 36, bottom: 0, left: 36 },
+              blocks: [paragraph],
+            },
+          ],
+        },
+      ],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      columnWidths: [200],
+      totalWidth: 200,
+      totalHeight: 30,
+      rows: [
+        {
+          height: 30,
+          cells: [{ blocks: [paragraphMeasure], width: 200, height: 30 }],
+        },
+      ],
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "picture-table",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 30,
+      fromRow: 0,
+      toRow: 1,
+    };
+
+    let table = fakeDocument.createElement("div") as unknown as FakeElement;
+    withFakeTextMeasure(() => {
+      table = renderTableFragment(fragment, block, measure, renderContext, {
+        document: fakeDocument,
+      }) as unknown as FakeElement;
+    });
+    const cell = findByClass(table, TABLE_CLASS_NAMES.cell)[0];
+    const image = findByClass(table, PARAGRAPH_CLASS_NAMES.image)[0];
+
+    expect(cell?.style["width"]).toBe("200px");
+    expect(cell?.style["overflow"]).toBe("hidden");
+    expect(image?.style["width"]).toBe("300px");
+    expect(image?.style["maxWidth"]).toBeFalsy();
+
+    block.rows[0]!.cells[0]!.textDirection = "btLr";
+    let rotatedTable = fakeDocument.createElement(
+      "div",
+    ) as unknown as FakeElement;
+    withFakeTextMeasure(() => {
+      rotatedTable = renderTableFragment(
+        fragment,
+        block,
+        measure,
+        renderContext,
+        { document: fakeDocument },
+      ) as unknown as FakeElement;
+    });
+    const rotatedImage = findByClass(
+      rotatedTable,
+      PARAGRAPH_CLASS_NAMES.image,
+    )[0];
+
+    expect(rotatedImage?.style["maxWidth"]).toBe("100%");
+  });
+
   test("projects the split row bottom border onto the fragment edge", () => {
     const block: TableBlock = {
       kind: "table",

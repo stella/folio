@@ -85,6 +85,86 @@ function emptyParagraph({
 }
 
 describe("continuous section break geometry", () => {
+  test("keeps each shared-page paragraph's inline-picture viewport from its section", () => {
+    const before: ParagraphBlock = {
+      kind: "paragraph",
+      id: "before-columns",
+      pmStart: 0,
+      pmEnd: 1,
+      runs: [
+        {
+          kind: "image",
+          src: "picture.png",
+          width: 700,
+          height: 30,
+          pmStart: 0,
+          pmEnd: 1,
+        },
+      ],
+    };
+    const after = paragraph("after-columns", 30);
+    const sectionBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "columns-break",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    };
+    const imageMeasure: ParagraphMeasure = {
+      kind: "paragraph",
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 1,
+          width: 700,
+          ascent: 30,
+          descent: 0,
+          lineHeight: 30,
+        },
+      ],
+      totalHeight: 30,
+    };
+    const blocks: FlowBlock[] = [before, sectionBreak, after.block];
+    const measures = [
+      imageMeasure,
+      { kind: "sectionBreak" },
+      after.measure,
+    ] satisfies Measure[];
+
+    const layout = layoutDocument(blocks, measures, {
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      finalColumns: { count: 2, gap: 20 },
+    });
+    const page = layout.pages.at(0);
+    const beforeFragment = page?.fragments.find(
+      (fragment) => fragment.blockId === "before-columns",
+    );
+    const afterFragment = page?.fragments.find(
+      (fragment) => fragment.blockId === "after-columns",
+    );
+
+    expect(page?.columns?.count).toBe(2);
+    expect(beforeFragment?.kind).toBe("paragraph");
+    expect(afterFragment?.kind).toBe("paragraph");
+    if (
+      beforeFragment?.kind !== "paragraph" ||
+      afterFragment?.kind !== "paragraph"
+    ) {
+      throw new Error("Expected paragraph fragments on the shared page");
+    }
+    expect(beforeFragment.inlinePictureViewport).toEqual({
+      left: 0,
+      right: 800,
+    });
+    expect(afterFragment.inlinePictureViewport).toEqual({
+      left: 0,
+      right: 400,
+    });
+  });
+
   test("balances a short paragraph-only multi-column section", () => {
     const intro = paragraph("intro", 100);
     const firstBreak: SectionBreakBlock = {

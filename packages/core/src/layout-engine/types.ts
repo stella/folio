@@ -1262,6 +1262,8 @@ export type FragmentBase = {
  */
 export type ParagraphFragment = FragmentBase & {
   kind: "paragraph";
+  /** Paper/gap clip bounds captured from the section active when this fragment was placed. */
+  inlinePictureViewport?: { left: number; right: number };
   /** Structural PM carrier that must not make an otherwise blank page visible. */
   paginationRole?: "empty-carrier";
   /** First line index (inclusive) from the measure. */

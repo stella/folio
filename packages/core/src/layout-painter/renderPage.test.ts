@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
+import { withFakeTextMeasure as withFakeCanvasTextMeasure } from "../layout-engine/measure/__tests__/fakeTextMeasure";
 import { clearAllCaches } from "../layout-engine/measure/cache";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
 import type {
   FieldRun,
   HeaderFooterContent,
+  ImageRun,
   Page,
   ParagraphBlock,
   ParagraphMeasure,
@@ -32,6 +34,7 @@ import {
   renderFootnoteArea,
   renderPage,
 } from "./renderPage";
+import { PARAGRAPH_CLASS_NAMES } from "./renderParagraph";
 
 describe("floating table wrap zones", () => {
   test("reserves a top-and-bottom band when neither side can hold text", () => {
@@ -56,6 +59,122 @@ describe("floating table wrap zones", () => {
   });
 });
 
+describe("header/footer inline picture paper clipping", () => {
+  test("lets an oversized header picture reach paper before clipping", () => {
+    const image: ImageRun = {
+      kind: "image",
+      src: "data:image/png;base64,",
+      width: 800,
+      height: 30,
+      pmStart: 1,
+      pmEnd: 2,
+    };
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "wide-header-picture",
+      runs: [image],
+    };
+    const measure: ParagraphMeasure = {
+      kind: "paragraph",
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 1,
+          width: 800,
+          ascent: 30,
+          descent: 0,
+          lineHeight: 30,
+        },
+      ],
+      totalHeight: 30,
+    };
+    const pageElement = renderPage(
+      { ...page, fragments: [] },
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      {
+        document: fakeDocument,
+        headerContent: { blocks: [block], measures: [measure], height: 30 },
+      },
+    ) as unknown as FakeElement;
+    const header = findByClass(pageElement, "layout-page-header");
+    if (header === undefined) {
+      throw new Error("Expected header container");
+    }
+    const imageElement = findByClass(header, PARAGRAPH_CLASS_NAMES.image);
+
+    expect(header?.style.overflow).not.toBe("clip");
+    expect(imageElement?.style.width).toBe("800px");
+    expect(imageElement?.parent?.style.clipPath).toBe(
+      "inset(0px 56px 0px 0px)",
+    );
+  });
+
+  test("clips negative-indent body pictures at the physical paper edges", () => {
+    const image: ImageRun = {
+      kind: "image",
+      src: "data:image/png;base64,",
+      width: 900,
+      height: 30,
+      pmStart: 1,
+      pmEnd: 2,
+    };
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "wide-body-picture",
+      attrs: { alignment: "center", indent: { left: -100 } },
+      runs: [image],
+    };
+    const measure: ParagraphMeasure = {
+      kind: "paragraph",
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 1,
+          width: 900,
+          ascent: 30,
+          descent: 0,
+          lineHeight: 30,
+        },
+      ],
+      totalHeight: 30,
+    };
+    const bodyPage: Page = {
+      ...page,
+      fragments: [
+        {
+          kind: "paragraph",
+          blockId: block.id,
+          x: page.margins.left,
+          y: page.margins.top,
+          width: page.size.w - page.margins.left - page.margins.right,
+          height: 30,
+          fromLine: 0,
+          toLine: 1,
+        },
+      ],
+    };
+    const pageElement = renderPage(
+      bodyPage,
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      {
+        document: fakeDocument,
+        blockLookup: new Map([[String(block.id), { block, measure }]]),
+      },
+    ) as unknown as FakeElement;
+    const imageElement = findByClass(pageElement, PARAGRAPH_CLASS_NAMES.image);
+
+    expect(pageElement.style.overflow).toBe("hidden");
+    expect(imageElement?.style.width).toBe("900px");
+    expect(imageElement?.parent?.style.clipPath).toBe(
+      "inset(0px 56px 0px 28px)",
+    );
+  });
+});
+
 function withFakeTextMeasure(runTest: () => void): void {
   const originalDocument = globalThis.document;
   Object.defineProperty(globalThis, "document", {
@@ -66,7 +185,7 @@ function withFakeTextMeasure(runTest: () => void): void {
   resetCanvasContext();
 
   try {
-    runTest();
+    withFakeCanvasTextMeasure(runTest);
   } finally {
     resetCanvasContext();
     clearAllCaches();

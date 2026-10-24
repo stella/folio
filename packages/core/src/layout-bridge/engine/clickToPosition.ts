@@ -29,6 +29,7 @@ import type {
 } from "../../layout-engine/types";
 import {
   type PhysicalParagraphInlineLayout,
+  resolveParagraphLineGeometryForBlock,
   resolvePhysicalParagraphInlineLayout,
 } from "../../utils/paragraphInlineLayout";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
@@ -466,21 +467,25 @@ export function clickToPositionInParagraph(
     return null;
   }
 
-  // Calculate available width (accounting for indentation)
-  const { alignment, indentLeft, indentRight } =
-    resolvePhysicalParagraphInlineLayout(paragraphBlock);
-  const availableWidth = Math.max(0, fragment.width - indentLeft - indentRight);
-
-  // Adjust X for left indent
-  const adjustedX = localX - indentLeft;
+  const lineGeometry = resolveParagraphLineGeometryForBlock({
+    fragment: paragraphFragment,
+    block: paragraphBlock,
+    line,
+    lineTopYPx: 0,
+    isFirstLine: lineIndex === 0 && !paragraphFragment.continuesFromPrev,
+  });
+  const availableWidth = Math.max(
+    0,
+    lineGeometry.layoutRightEdgeXPx - lineGeometry.layoutStartXPx,
+  );
 
   // Find character at X position
   const { charOffset, pmPosition } = findCharacterInLine({
     block: paragraphBlock,
     line,
-    x: adjustedX,
+    x: localX - (lineGeometry.paintStartXPx - paragraphFragment.x),
     availableWidth,
-    alignment,
+    alignment: "left",
   });
 
   return {

@@ -179,6 +179,7 @@ function renderCellContent({
   // clipping issues (especially for nested tables).
   const contentWidth =
     contentWidthOverride ?? getTableCellContentWidth(cell, cellMeasure);
+  const cellPadding = resolveTableCellPadding(cell);
   contentEl.style.width = `${contentWidth}px`;
 
   // Extract floating images from cell paragraphs
@@ -323,7 +324,23 @@ function renderCellContent({
           : undefined;
       const nextBorders =
         nextBlock?.kind === "paragraph" ? nextBlock.attrs?.borders : undefined;
-      const cellContext = { ...context, insideTableCell: true as const };
+      const inlinePictureSizing =
+        cell.textDirection === "btLr"
+          ? ("textColumnFit" as const)
+          : ("authoredExtent" as const);
+      const cellContext = {
+        ...context,
+        insideTableCell: true as const,
+        inlinePictureOriginX: 0,
+        inlinePictureViewport:
+          cell.textDirection === "btLr"
+            ? { left: 0, right: contentWidth }
+            : {
+                left: -cellPadding.left,
+                right: contentWidth + cellPadding.right,
+              },
+        inlinePictureSizing,
+      };
       const fragEl = renderParagraphFragment(
         syntheticFragment,
         paragraphBlock,
