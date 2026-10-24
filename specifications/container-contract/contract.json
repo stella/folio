@@ -7615,12 +7615,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
-      "disposition": "dropped",
-      "reason": "parsedNotSerialized"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentRun/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "modelled"
