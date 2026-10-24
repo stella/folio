@@ -37,6 +37,7 @@
  *   ids are gone.
  */
 
+import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
@@ -893,7 +894,7 @@ describe("tracked operations and their resolution", () => {
       if (applied.isErr()) throw applied.error;
       const stamp = stampOf(op);
       if (stamp === undefined)
-        throw new Error("Tracked operation has no revision stamp.");
+        panic("Tracked operation has no revision stamp.");
       stamps.push(stamp);
       current = applied.value.document;
     }
@@ -918,12 +919,20 @@ describe("tracked operations and their resolution", () => {
     );
     expectRestores(rejectedAtOnce.value, current);
 
-    const originalRejected = resolvedAll(source, REVISION_DECISIONS.REJECT);
-    if (originalRejected === undefined) {
-      throw new Error("The source revisions must be resolvable.");
-    }
     expectRejectedTo({
       rejected: rejectedAtOnce.value.document,
+      tracked: current,
+      ids: allIds,
+      expected: source,
+      projection: "π′",
+    });
+    const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
+    const originalRejected = resolvedAll(source, REVISION_DECISIONS.REJECT);
+    if (allRejected === undefined || originalRejected === undefined) {
+      panic("The fixture revisions must be resolvable.");
+    }
+    expectRejectedTo({
+      rejected: allRejected,
       tracked: current,
       ids: allIds,
       expected: originalRejected,
