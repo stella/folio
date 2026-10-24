@@ -3403,19 +3403,21 @@ export class FolioDocxReviewer {
       ...(document.package.document.comments ?? []),
       ...snapshot.createdComments,
     ];
-    const kept = this.keptCommentThreads(
-      definitions,
-      snapshot.mainState,
-      snapshot.secondaryStoryStates,
+    const knownDefinitions = [
+      ...(this.baseDocument.package.document.comments ?? []),
+      ...snapshot.createdComments,
+    ];
+    const keptThreadIds = new Set(
+      this.keptCommentThreads(
+        knownDefinitions,
+        snapshot.mainState,
+        snapshot.secondaryStoryStates,
+      ).map(({ id }) => id),
     );
+    const kept = definitions.filter(({ id }) => keptThreadIds.has(id));
     const keptIds = new Set(kept.map(({ id }) => id));
     const retiredCommentIds = new Set(
-      [
-        ...(this.baseDocument.package.document.comments ?? []),
-        ...snapshot.createdComments,
-      ]
-        .filter(({ id }) => !keptIds.has(id))
-        .map(({ id }) => id),
+      knownDefinitions.filter(({ id }) => !keptIds.has(id)).map(({ id }) => id),
     );
     const modelStories = [
       document.package.document,
