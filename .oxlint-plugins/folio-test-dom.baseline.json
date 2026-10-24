@@ -7,7 +7,7 @@
   "packages/core/src/controller/canonicalStoryEditor.test.ts": 2,
   "packages/core/src/controller/contentControlWidgetController.test.ts": 2,
   "packages/core/src/controller/headerFooterEditorManager.test.ts": 2,
-  "packages/core/src/controller/hiddenEditorManager.test.ts": 48,
+  "packages/core/src/controller/hiddenEditorManager.test.ts": 50,
   "packages/core/src/controller/storyEditorManagers.lifecycle.property.test.ts": 4,
   "packages/core/src/docx/tableCellStatedWidth.property.test.ts": 2,
   "packages/core/src/paged-layout/editorScrollRoot.test.ts": 2,

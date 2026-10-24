@@ -18,7 +18,6 @@ import * as documentOps from "@stll/docx-core/ops";
 import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
-import { acquireHarnessDom } from "../../../../test/harnessDom";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -2206,7 +2205,7 @@ test("committed version keys survive composition and distinguish document loads"
 });
 
 test("read-only switches synchronize DOM editability without changing the authored state", () => {
-  const releaseDom = acquireHarnessDom();
+  GlobalRegistrator.register();
   let readOnly = false;
   const host = document.createElement("div");
   const source = createEmptyDocument({ initialText: "Read-only state" });
@@ -2231,6 +2230,6 @@ test("read-only switches synchronize DOM editability without changing the author
     }
   } finally {
     manager.destroyView();
-    releaseDom();
+    GlobalRegistrator.unregister();
   }
 });
