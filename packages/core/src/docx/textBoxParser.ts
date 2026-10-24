@@ -56,7 +56,6 @@ import type { ParseContext } from "./parseContext";
 import type { PreviewLedger } from "./previewBudget";
 import type { StyleMap } from "./styleParser";
 import {
-  findByFullName,
   findChildByLocalName,
   findChildByNamespaceUri,
   findChildrenByLocalName,
@@ -67,6 +66,7 @@ import {
   getLocalName,
   parseNumericAttribute,
   parseOnOffAttribute,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -339,24 +339,40 @@ export function isTextBoxDrawing(drawingEl: XmlElement): boolean {
     return false;
   }
 
-  const graphic = findByFullName(container, "a:graphic");
+  const graphic = findChildByNamespaceUri(
+    container,
+    DRAWINGML_MAIN_NAMESPACE_URIS,
+    "graphic",
+  );
   if (!graphic) {
     return false;
   }
 
-  const graphicData = findByFullName(graphic, "a:graphicData");
+  const graphicData = findChildByNamespaceUri(
+    graphic,
+    DRAWINGML_MAIN_NAMESPACE_URIS,
+    "graphicData",
+  );
   if (!graphicData) {
     return false;
   }
 
   // Check for wps:wsp (shape) with text box content
-  const wsp = findByFullName(graphicData, "wps:wsp");
+  const wsp = findChildByNamespaceUri(
+    graphicData,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "wsp",
+  );
   if (!wsp) {
     return false;
   }
 
   // Check for text box element
-  const txbx = findByFullName(wsp, "wps:txbx");
+  const txbx = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "txbx",
+  );
   return txbx !== null;
 }
 
@@ -364,7 +380,11 @@ export function isTextBoxDrawing(drawingEl: XmlElement): boolean {
  * Check if a wps:wsp element is a text box
  */
 export function isShapeTextBox(wsp: XmlElement): boolean {
-  const txbx = findByFullName(wsp, "wps:txbx");
+  const txbx = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "txbx",
+  );
   return txbx !== null;
 }
 
@@ -397,32 +417,50 @@ export function parseTextBox(
   const isAnchor = getLocalName(container.name) === "anchor";
 
   // Navigate to graphic data
-  const graphic = findByFullName(container, "a:graphic");
+  const graphic = findChildByNamespaceUri(
+    container,
+    DRAWINGML_MAIN_NAMESPACE_URIS,
+    "graphic",
+  );
   if (!graphic) {
     return null;
   }
 
-  const graphicData = findByFullName(graphic, "a:graphicData");
+  const graphicData = findChildByNamespaceUri(
+    graphic,
+    DRAWINGML_MAIN_NAMESPACE_URIS,
+    "graphicData",
+  );
   if (!graphicData) {
     return null;
   }
 
   // Check for wps:wsp (shape)
-  const wsp = findByFullName(graphicData, "wps:wsp");
+  const wsp = findChildByNamespaceUri(
+    graphicData,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "wsp",
+  );
   if (!wsp) {
     return null;
   }
 
   // Check for text box
-  const txbx = findByFullName(wsp, "wps:txbx");
+  const txbx = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "txbx",
+  );
   if (!txbx) {
     return null;
   }
 
-  const wspChildren = getChildElements(wsp);
-
   // Get shape properties
-  const spPr = wspChildren.find((el) => el.name === "wps:spPr");
+  const spPr = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "spPr",
+  );
 
   // Get body properties
   const bodyPr = findChildByNamespaceUri(
@@ -432,13 +470,21 @@ export function parseTextBox(
   );
 
   // Parse size from extent
-  const extent = findByFullName(container, "wp:extent");
+  const extent = findChildByNamespaceUri(
+    container,
+    WORDPROCESSING_DRAWING_NAMESPACE_URIS,
+    "extent",
+  );
   const cx = parseNumericAttribute(extent, null, "cx") ?? 0;
   const cy = parseNumericAttribute(extent, null, "cy") ?? 0;
   const size: ImageSize = { width: cx, height: cy };
 
   // Get document properties
-  const docPr = findByFullName(container, "wp:docPr");
+  const docPr = findChildByNamespaceUri(
+    container,
+    WORDPROCESSING_DRAWING_NAMESPACE_URIS,
+    "docPr",
+  );
   const id = docPr ? (getAttribute(docPr, null, "id") ?? undefined) : undefined;
   const names = parseNonVisualDrawingNames(docPr);
 
@@ -514,12 +560,20 @@ export function parseTextBox(
  * @returns The w:txbxContent element or null
  */
 export function getTextBoxContentElement(wsp: XmlElement): XmlElement | null {
-  const txbx = findByFullName(wsp, "wps:txbx");
+  const txbx = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "txbx",
+  );
   if (!txbx) {
     return null;
   }
 
-  return findByFullName(txbx, "w:txbxContent");
+  return findChildByNamespaceUri(
+    txbx,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "txbxContent",
+  );
 }
 
 /**
@@ -532,15 +586,21 @@ export function parseTextBoxFromShape(
   position?: ImagePosition,
   wrap?: ImageWrap,
 ): TextBox | null {
-  const txbx = findByFullName(wsp, "wps:txbx");
+  const txbx = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "txbx",
+  );
   if (!txbx) {
     return null;
   }
 
-  const wspChildren = getChildElements(wsp);
-
   // Get shape properties
-  const spPr = wspChildren.find((el) => el.name === "wps:spPr");
+  const spPr = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "spPr",
+  );
 
   // Get body properties
   const bodyPr = findChildByNamespaceUri(
@@ -550,7 +610,11 @@ export function parseTextBoxFromShape(
   );
 
   // Get non-visual properties for ID
-  const cNvPr = wspChildren.find((el) => el.name === "wps:cNvPr");
+  const cNvPr = findChildByNamespaceUri(
+    wsp,
+    WORDPROCESSING_SHAPE_NAMESPACE_URIS,
+    "cNvPr",
+  );
   const id = cNvPr ? (getAttribute(cNvPr, null, "id") ?? undefined) : undefined;
   const names = parseNonVisualDrawingNames(cNvPr);
 

@@ -9,7 +9,7 @@
  * Two laws, over arbitrary text-box text and an optional edit, through the
  * model and through the editor projection:
  * - an unedited shape writes its element back whole;
- * - no save writes a Fallback whose text disagrees with its Choice.
+ * - a text-only edit updates both branches; structural edits do not replay stale fallback markup.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -28,6 +28,15 @@ import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import type { Document, Paragraph, ShapeContent } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
+import { captureVerbatimXml } from "./verbatimCapture";
+import {
+  cloneWithXmlnsDeclarations,
+  getChildElements,
+  getLocalName,
+  getNamespaceUri,
+  parseXmlDocument,
+  type XmlElement,
+} from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -46,6 +55,9 @@ const NAMESPACES = {
 const ROOT_NAMESPACES = Object.entries(NAMESPACES)
   .map(([prefix, uri]) => ` xmlns:${prefix}="${uri}"`)
   .join("");
+const ROOT_NAMESPACE_BINDINGS = Object.fromEntries(
+  Object.entries(NAMESPACES).map(([prefix, uri]) => [`xmlns:${prefix}`, uri]),
+);
 
 const anchor = (id: number, name: string, graphic: string): string =>
   '<w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" ' +
@@ -102,6 +114,16 @@ const documentXml = (runContent: string): string =>
   `${XML_DECLARATION}<w:document${ROOT_NAMESPACES}><w:body>` +
   `<w:p w14:paraId="${HOST_PARA_ID}"><w:r><w:t>Host</w:t></w:r><w:r>${runContent}</w:r></w:p>` +
   '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>';
+
+const selfContainedAlternateContent = (xml: string): string => {
+  const alternateContent = parseXmlDocument(xml);
+  if (alternateContent === null) {
+    throw new Error("expected valid AlternateContent XML");
+  }
+  return captureVerbatimXml(
+    cloneWithXmlnsDeclarations(alternateContent, ROOT_NAMESPACE_BINDINGS),
+  );
+};
 
 const open = async (xml: string): Promise<Document> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
@@ -161,6 +183,18 @@ const expectFallbacksAgree = (xml: string): void => {
       branchText(alternateContent, "Choice"),
     );
   }
+};
+
+const descendants = (root: XmlElement): XmlElement[] => {
+  const result: XmlElement[] = [];
+  const visit = (element: XmlElement): void => {
+    for (const child of getChildElements(element)) {
+      result.push(child);
+      visit(child);
+    }
+  };
+  visit(root);
+  return result;
 };
 
 /** Replace the text of the first text box's first run, the way an edit to the model would. */
@@ -230,9 +264,11 @@ describe("a shape read from mc:AlternateContent", () => {
           const alternateContent = textBoxAlternateContent(text);
           const parsed = await open(documentXml(alternateContent));
 
-          expect(await savedDocumentPart(parsed)).toContain(alternateContent);
+          expect(await savedDocumentPart(parsed)).toContain(
+            selfContainedAlternateContent(alternateContent),
+          );
           expect(await savedDocumentPart(throughEditor(parsed))).toContain(
-            alternateContent,
+            selfContainedAlternateContent(alternateContent),
           );
         }),
         propertyConfig({ numRuns: 20 }),
@@ -242,7 +278,7 @@ describe("a shape read from mc:AlternateContent", () => {
   );
 
   test(
-    "an edited text box is regenerated without the stale Fallback",
+    "a text-only model edit updates the VML fallback",
     async () => {
       await fc.assert(
         fc.asyncProperty(safeText, safeText, async (original, replacement) => {
@@ -251,11 +287,21 @@ describe("a shape read from mc:AlternateContent", () => {
             documentXml(textBoxAlternateContent(original)),
           );
           editTextBoxInModel(parsed, replacement);
+          const shape = shapesOf(parsed).at(0)?.shape;
+          const beforeSave = shape ? structuredClone(shape) : undefined;
           const saved = await savedDocumentPart(parsed);
 
-          expect(saved).not.toContain("mc:Fallback");
-          expect(textOf(saved)).toBe(`Host${replacement}`);
+          const alternateContent = alternateContentsOf(saved).at(0);
+          expect(alternateContent).toBeDefined();
+          expect(branchText(alternateContent ?? "", "Choice")).toBe(
+            replacement,
+          );
+          expect(branchText(alternateContent ?? "", "Fallback")).toBe(
+            replacement,
+          );
           expectFallbacksAgree(saved);
+          expect(shape).toEqual(beforeSave);
+          expect(await savedDocumentPart(parsed)).toBe(saved);
         }),
         propertyConfig({ numRuns: 20 }),
       );
@@ -264,7 +310,7 @@ describe("a shape read from mc:AlternateContent", () => {
   );
 
   test(
-    "typing into a text box in the editor drops the stale Fallback",
+    "typing into a text box in the editor updates the VML fallback",
     async () => {
       await fc.assert(
         fc.asyncProperty(safeText, safeText, async (original, typed) => {
@@ -275,8 +321,13 @@ describe("a shape read from mc:AlternateContent", () => {
             typeInEditor(parsed, "textBox", typed),
           );
 
-          expect(saved).not.toContain("mc:Fallback");
-          expect(textOf(saved)).toBe(`Host${typed}${original}`);
+          const alternateContent = alternateContentsOf(saved).at(0) ?? "";
+          expect(branchText(alternateContent, "Choice")).toBe(
+            `${typed}${original}`,
+          );
+          expect(branchText(alternateContent, "Fallback")).toBe(
+            `${typed}${original}`,
+          );
           expectFallbacksAgree(saved);
         }),
         propertyConfig({ numRuns: 20 }),
@@ -296,7 +347,9 @@ describe("a shape read from mc:AlternateContent", () => {
             typeInEditor(parsed, "host", typed),
           );
 
-          expect(saved).toContain(alternateContent);
+          expect(saved).toContain(
+            selfContainedAlternateContent(alternateContent),
+          );
           expect(textOf(saved)).toBe(`${typed}Host${text}${text}`);
         }),
         propertyConfig({ numRuns: 20 }),
@@ -308,10 +361,10 @@ describe("a shape read from mc:AlternateContent", () => {
   test("a shape without a text body keeps its Fallback until it is edited", async () => {
     const parsed = await open(documentXml(CONNECTOR_ALTERNATE_CONTENT));
     expect(await savedDocumentPart(parsed)).toContain(
-      CONNECTOR_ALTERNATE_CONTENT,
+      selfContainedAlternateContent(CONNECTOR_ALTERNATE_CONTENT),
     );
     expect(await savedDocumentPart(throughEditor(parsed))).toContain(
-      CONNECTOR_ALTERNATE_CONTENT,
+      selfContainedAlternateContent(CONNECTOR_ALTERNATE_CONTENT),
     );
 
     const connector = shapesOf(parsed).at(0);
@@ -325,6 +378,97 @@ describe("a shape read from mc:AlternateContent", () => {
     const saved = await savedDocumentPart(parsed);
     expect(saved).not.toContain("mc:AlternateContent");
     expect(saved).toContain('<wp:extent cx="3657600"');
+  });
+
+  test("strict source markup is canonically transitional in both synchronized branches", async () => {
+    const strictWordNamespace =
+      "http://purl.oclc.org/ooxml/wordprocessingml/main";
+    const sourceXml = documentXml(textBoxAlternateContent("Before"))
+      .replaceAll("w:", "q:")
+      .replaceAll("xmlns:w=", "xmlns:q=")
+      .replaceAll(NAMESPACES.w, strictWordNamespace);
+    const parsed = await open(sourceXml);
+    editTextBoxInModel(parsed, "After");
+    const saved = await savedDocumentPart(parsed);
+
+    expectFallbacksAgree(saved);
+    const parsedOutput = parseXmlDocument(saved);
+    expect(parsedOutput).not.toBeNull();
+    const alternateContent = descendants(parsedOutput ?? { elements: [] }).find(
+      (element) =>
+        getNamespaceUri(element) === NAMESPACES.mc &&
+        getLocalName(element.name ?? "") === "AlternateContent",
+    ) ?? { elements: [] };
+    for (const branchName of ["Choice", "Fallback"] as const) {
+      const branch = getChildElements(alternateContent).find(
+        (element) =>
+          getNamespaceUri(element) === NAMESPACES.mc &&
+          getLocalName(element.name ?? "") === branchName,
+      );
+      const bodies = branch
+        ? descendants(branch).filter(
+            (element) =>
+              getLocalName(element.name ?? "") === "txbxContent" &&
+              getNamespaceUri(element) === NAMESPACES.w,
+          )
+        : [];
+      const paragraphs = branch
+        ? descendants(branch).filter(
+            (element) => getLocalName(element.name ?? "") === "p",
+          )
+        : [];
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]?.name).toBe("w:txbxContent");
+      expect(paragraphs).toHaveLength(1);
+      expect(
+        paragraphs.every(
+          (element) => getNamespaceUri(element) === NAMESPACES.w,
+        ),
+      ).toBe(true);
+      expect(
+        branchText(alternateContentsOf(saved).at(0) ?? "", branchName),
+      ).toBe("After");
+      expect(
+        branchText(alternateContentsOf(saved).at(0) ?? "", branchName),
+      ).not.toContain("Before");
+    }
+  });
+
+  test("run-scoped namespace bindings survive textbox edits without shadowing Choice bindings", async () => {
+    const strictWordNamespace =
+      "http://purl.oclc.org/ooxml/wordprocessingml/main";
+    for (const wordNamespace of [NAMESPACES.w, strictWordNamespace]) {
+      const alternateContent = textBoxAlternateContent("Before")
+        .replaceAll("w:", "q:")
+        .replace(
+          '<mc:Choice Requires="wps">',
+          '<mc:Choice xmlns:x="urn:choice" Requires="wps">',
+        )
+        .replace(
+          '<wps:cNvSpPr txBox="1"/>',
+          '<wps:cNvSpPr txBox="1"><x:metadata/></wps:cNvSpPr>',
+        );
+      const sourceXml = documentXml(alternateContent)
+        .replace(
+          `<w:r>${alternateContent}</w:r>`,
+          `<w:r xmlns:q="${wordNamespace}" xmlns:x="urn:run">${alternateContent}</w:r>`,
+        )
+        .replaceAll(NAMESPACES.w, wordNamespace);
+      const parsed = await open(sourceXml);
+      editTextBoxInModel(parsed, "After");
+      const saved = await savedDocumentPart(parsed);
+
+      expect(branchText(alternateContentsOf(saved).at(0) ?? "", "Choice")).toBe(
+        "After",
+      );
+      const parsedOutput = parseXmlDocument(saved);
+      expect(parsedOutput).not.toBeNull();
+      const metadata = descendants(parsedOutput ?? { elements: [] }).find(
+        (element) => getLocalName(element.name ?? "") === "metadata",
+      );
+      expect(metadata).toBeDefined();
+      expect(getNamespaceUri(metadata ?? { name: "" })).toBe("urn:choice");
+    }
   });
 
   test("a branch holding more than the shape is not replayed in its place", async () => {

@@ -851,12 +851,15 @@ export type BlockCustomXmlAttrs = {
 
 /**
  * The `mc:AlternateContent` a shape or text box was read from, with a
- * fingerprint of the node it was attached to. `fromProseDoc` hands the element
- * back to the model only while the node still matches the fingerprint.
+ * fingerprint of the node it was attached to. A text-only edit retains the
+ * source element so its VML fallback can be synchronized during serialization.
  */
 export type AlternateContentAttrs = {
   xml: string;
   fingerprint: string;
+  attributesFingerprint?: string;
+  shapeFingerprint?: string;
+  structureFingerprint?: string;
 };
 
 /**
