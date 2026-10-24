@@ -374,7 +374,9 @@ test("completes a missing reference inside its hyperlink source host", () => {
       `<w:commentReference w:id="43"/></w:r><w:r><w:t>after</w:t></w:r></w:hyperlink>` +
       `<w:hyperlink w:anchor="target"><w:r><w:t>neighbor</w:t></w:r></w:hyperlink>`,
   );
-  const reopenedRoot = parseXmlDocument(serialized);
+  const reopenedRoot = parseXmlDocument(
+    serialized.replace("<w:p", `<w:p xmlns:w="${WORDPROCESSING_NAMESPACE}"`),
+  );
   if (!reopenedRoot) throw new Error("Failed to reparse saved hyperlink XML");
   const reopenedParagraph = parseParagraph(reopenedRoot, null, null, null);
   expect(

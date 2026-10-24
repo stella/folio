@@ -143,7 +143,7 @@ export const HYPERLINK_CONTENT = {
   bookmarkStart: true,
   commentRangeEnd: true,
   commentRangeStart: true,
-  commentReference: false,
+  commentReference: true,
   inlineWrapper: true,
   preservedInline: true,
   run: true,
