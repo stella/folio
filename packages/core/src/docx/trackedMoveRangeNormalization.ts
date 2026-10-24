@@ -1,16 +1,19 @@
+import { panic } from "better-result";
+
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type {
+  BlockContent,
   DocumentBody,
   Endnote,
   Footnote,
   HeaderFooter,
-  ParagraphContent,
 } from "../types/document";
+import { buildSections } from "./documentParser";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 import {
-  visitDocxParagraphs,
-  visitInlineContentSlots,
+  type DocxContentSlot,
+  visitDocxContentSlots,
 } from "./paragraphTraversal";
 
 /** The code this normalisation is reported under, owned here, not at the caller. */
@@ -30,8 +33,7 @@ type NormalizeTrackedMoveRangesResult = {
 };
 
 type MoveRangeMarkerRef = {
-  content: ParagraphContent[];
-  index: number;
+  slot: DocxContentSlot;
   id: number;
   kind: "moveFrom" | "moveTo";
   side: "start" | "end";
@@ -46,27 +48,28 @@ export const normalizeTrackedMoveRanges = ({
 }: NormalizeTrackedMoveRangesInput): NormalizeTrackedMoveRangesResult => {
   const rangeMarkers: MoveRangeMarkerRef[] = [];
 
-  visitDocxParagraphs(
+  visitDocxContentSlots(
     { documentBody, headers, footers, footnotes, endnotes },
-    (paragraph) => {
-      visitInlineContentSlots(paragraph, ({ content, index, item }) => {
-        const marker = toMoveRangeMarkerRef(content, index, item);
-        if (marker) {
-          rangeMarkers.push(marker);
-        }
-      });
+    (slot) => {
+      const marker = toMoveRangeMarkerRef(slot);
+      if (marker) {
+        rangeMarkers.push(marker);
+      }
     },
   );
 
-  return {
-    removedUnbalancedMoveRangeMarkers:
-      removeUnbalancedMoveRangeMarkers(rangeMarkers),
-  };
+  return removeUnbalancedMoveRangeMarkers({ rangeMarkers, documentBody });
 };
 
-const removeUnbalancedMoveRangeMarkers = (
-  rangeMarkers: readonly MoveRangeMarkerRef[],
-): number => {
+type RemoveUnbalancedMoveRangeMarkersOptions = {
+  rangeMarkers: readonly MoveRangeMarkerRef[];
+  documentBody: DocumentBody;
+};
+
+const removeUnbalancedMoveRangeMarkers = ({
+  rangeMarkers,
+  documentBody,
+}: RemoveUnbalancedMoveRangeMarkersOptions): NormalizeTrackedMoveRangesResult => {
   const byRange = new Map<string, MoveRangeMarkerRef[]>();
   for (const marker of rangeMarkers) {
     const key = `${marker.kind}:${marker.id}`;
@@ -79,8 +82,28 @@ const removeUnbalancedMoveRangeMarkers = (
   }
 
   const removals = new InlineContentRemovals();
-  const markForRemoval = (marker: MoveRangeMarkerRef): void => {
-    removals.mark(marker);
+  const blockRemovals = new Map<BlockContent[], Set<number>>();
+  const markForRemoval = ({ slot }: MoveRangeMarkerRef): void => {
+    switch (slot.type) {
+      case "inline":
+        removals.mark(slot);
+        return;
+      case "block": {
+        const indexes = blockRemovals.get(slot.content);
+        if (indexes) {
+          indexes.add(slot.index);
+          return;
+        }
+        blockRemovals.set(slot.content, new Set([slot.index]));
+        return;
+      }
+      default: {
+        const unsupported: never = slot;
+        panic(
+          `Unsupported move range ownership: ${JSON.stringify(unsupported)}`,
+        );
+      }
+    }
   };
 
   for (const markers of byRange.values()) {
@@ -107,18 +130,41 @@ const removeUnbalancedMoveRangeMarkers = (
     }
   }
 
-  return removals.apply();
+  let removedUnbalancedMoveRangeMarkers = removals.apply();
+  for (const [content, indexes] of blockRemovals) {
+    const kept = content.filter((_, index) => !indexes.has(index));
+    removedUnbalancedMoveRangeMarkers += content.length - kept.length;
+    content.length = 0;
+    content.push(...kept);
+  }
+
+  if (blockRemovals.has(documentBody.content) && documentBody.sections) {
+    const rebuiltSections = buildSections(
+      documentBody.content,
+      documentBody.finalSectionProperties,
+    );
+    if (rebuiltSections.length !== documentBody.sections.length) {
+      panic("Removing move range markers changed the document section count");
+    }
+    for (const [index, section] of documentBody.sections.entries()) {
+      const rebuilt = rebuiltSections.at(index);
+      if (!rebuilt) {
+        panic("Missing rebuilt section after move range normalization");
+      }
+      section.content = rebuilt.content;
+    }
+  }
+
+  return { removedUnbalancedMoveRangeMarkers };
 };
 
 const toMoveRangeMarkerRef = (
-  content: ParagraphContent[],
-  index: number,
-  marker: ParagraphContent,
+  slot: DocxContentSlot,
 ): MoveRangeMarkerRef | null => {
+  const marker = slot.item;
   if (marker.type === "moveFromRangeStart") {
     return {
-      content,
-      index,
+      slot,
       id: marker.id,
       kind: "moveFrom",
       side: "start",
@@ -126,8 +172,7 @@ const toMoveRangeMarkerRef = (
   }
   if (marker.type === "moveFromRangeEnd") {
     return {
-      content,
-      index,
+      slot,
       id: marker.id,
       kind: "moveFrom",
       side: "end",
@@ -135,8 +180,7 @@ const toMoveRangeMarkerRef = (
   }
   if (marker.type === "moveToRangeStart") {
     return {
-      content,
-      index,
+      slot,
       id: marker.id,
       kind: "moveTo",
       side: "start",
@@ -144,8 +188,7 @@ const toMoveRangeMarkerRef = (
   }
   if (marker.type === "moveToRangeEnd") {
     return {
-      content,
-      index,
+      slot,
       id: marker.id,
       kind: "moveTo",
       side: "end",
