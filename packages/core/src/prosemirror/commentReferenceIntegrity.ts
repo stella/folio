@@ -2,8 +2,10 @@ import { panic } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { type Step, type StepMap, Transform } from "prosemirror-transform";
 
+import { readCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
 import { isCommentRangeInertAtom } from "./commentRangeInlineAtoms";
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
+import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/CommentRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 
@@ -86,6 +88,17 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
       const attrs = readRangeAnchorAttrs(node);
       if (attrs.ok && attrs.value.start.type === "commentRangeStart") {
         const { id } = attrs.value.start;
+        markEnds.set(
+          id,
+          Math.max(markEnds.get(id) ?? 0, position + node.nodeSize),
+        );
+      }
+      return false;
+    }
+    if (node.type.name === COMMENT_RANGE_BOUNDARY_NODE_NAME) {
+      const attrs = readCommentRangeBoundaryAttrs(node);
+      if (attrs.ok) {
+        const { id } = attrs.value.marker;
         markEnds.set(
           id,
           Math.max(markEnds.get(id) ?? 0, position + node.nodeSize),

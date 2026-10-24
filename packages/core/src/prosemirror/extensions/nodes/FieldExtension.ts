@@ -183,7 +183,7 @@ export const StructuredFieldExtension = createNodeExtension<FieldOptions>({
     inline: true,
     group: "inline",
     content:
-      "(text | bookmarkBoundary | commentReference | rangeAnchor | tab | symbol | hardBreak | pageBreakRun | image | shape | renderedPageBreak | textBoxAnchor | preservedXml)+",
+      "(text | bookmarkBoundary | commentRangeBoundary | commentReference | rangeAnchor | tab | symbol | hardBreak | pageBreakRun | image | shape | renderedPageBreak | textBoxAnchor | preservedXml | sdt)+",
     atom: true,
     selectable: true,
     attrs: createFieldAttrs(),

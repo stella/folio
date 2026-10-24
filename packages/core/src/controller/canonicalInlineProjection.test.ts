@@ -119,6 +119,52 @@ const documentFor = (paragraph: Paragraph) =>
     },
   }) satisfies Document;
 
+test("explicit comment boundaries retain gap ordinals and validate mark coverage", () => {
+  const [start, end] = PAIRS.commentRangeStart;
+  const source = {
+    type: "paragraph",
+    paraId: "12345678",
+    content: [start, run("AB"), end, run("R")],
+  } satisfies Paragraph;
+  const original = toProseDoc(documentFor(source)).child(0);
+  const schema = original.type.schema;
+  const comment = schema.mark("comment", { commentId: 1 });
+  const nativeParagraph = (coverage: "exact" | "missing" | "outside") =>
+    schema.node("paragraph", original.attrs, [
+      schema.node("commentRangeBoundary", { marker: start }),
+      schema.text("AB", coverage === "missing" ? [] : [comment]),
+      schema.node("commentRangeBoundary", { marker: end }),
+      schema.text("R", coverage === "outside" ? [comment] : []),
+    ]);
+  const project = (coverage: "exact" | "missing" | "outside") =>
+    projectCanonicalInline({
+      source,
+      paragraph: nativeParagraph(coverage),
+      pairedBookmarkIds: new Set(),
+    });
+
+  const mapped = project("exact").unwrap();
+  expect(mapped.text).toBe("ABR");
+  expect(mapped.boundaries).toEqual([
+    [
+      { position: 0, zeroWidthBefore: 0 },
+      { position: 1, zeroWidthBefore: 1 },
+    ],
+    [{ position: 2, zeroWidthBefore: 0 }],
+    [
+      { position: 3, zeroWidthBefore: 0 },
+      { position: 4, zeroWidthBefore: 1 },
+    ],
+    [{ position: 5, zeroWidthBefore: 0 }],
+  ]);
+  for (const coverage of ["missing", "outside"] as const) {
+    const rejected = project(coverage);
+    expect(rejected.isErr()).toBe(true);
+    if (rejected.isErr())
+      expect(rejected.error.message).toContain("explicit source boundaries");
+  }
+});
+
 test("generated collapsed and paired markers retain exact source gap ordinals", () => {
   const check = (pairs: (typeof PAIRS)[RangeStart][]) => {
     const content: ParagraphContent[] = [run("L")];

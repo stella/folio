@@ -22,6 +22,7 @@ import {
 
 import type { ParagraphContent } from "../types/document";
 import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
+import { expectCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
 import {
   copyOriginBoundaryAfterRemovingAddedAncestors,
   copyOriginBoundaryAfterResolution,
@@ -29,6 +30,7 @@ import {
 import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockBookmarkBoundaryExtension";
 import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockMoveRangeBoundaryExtension";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
+import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/CommentRangeBoundaryExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import {
@@ -64,13 +66,14 @@ const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
   "deletion",
 ]);
 
-/** Every editor node that carries range boundaries. Comment ranges carried as marks are the comment's. */
+/** Every editor node that carries range boundaries; comment marks carry span coverage. */
 type BoundaryNodeName =
   | typeof BOOKMARK_BOUNDARY_NODE_NAME
   | typeof BLOCK_BOOKMARK_BOUNDARY_NODE_NAME
   | typeof MOVE_RANGE_BOUNDARY_NODE_NAME
   | typeof BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME
-  | typeof RANGE_ANCHOR_NODE_NAME;
+  | typeof RANGE_ANCHOR_NODE_NAME
+  | typeof COMMENT_RANGE_BOUNDARY_NODE_NAME;
 
 const bookmarkItems = (node: PMNode): BoundaryItem[] => {
   const attrs = expectBookmarkBoundaryAttrs(node);
@@ -114,6 +117,9 @@ const BOUNDARY_ITEMS: Record<
     const { start, end } = expectRangeAnchorAttrs(node);
     return [start, end];
   },
+  [COMMENT_RANGE_BOUNDARY_NODE_NAME]: (node) => [
+    expectCommentRangeBoundaryAttrs(node).marker,
+  ],
 };
 
 const isBoundaryNodeName = (name: string): name is BoundaryNodeName =>

@@ -73,7 +73,9 @@ import {
   expectTableCellAttrs,
   expectTableRowAttrs,
 } from "./attrs";
+import { expectCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
+import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/CommentRangeBoundaryExtension";
 import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
@@ -243,6 +245,7 @@ export const resolvedCommentPoints = ({
 /** Anchors an edit must put back, and where relative to the replacement. */
 const ANCHOR_PLACEMENT = {
   [COMMENT_REFERENCE_NODE_NAME]: "after",
+  [COMMENT_RANGE_BOUNDARY_NODE_NAME]: "byCommentRangeBoundaryType",
   [RANGE_ANCHOR_NODE_NAME]: "after",
   [TEXT_BOX_ANCHOR_NODE_NAME]: "after",
   [BOOKMARK_BOUNDARY_NODE_NAME]: "byBoundaryType",
@@ -257,6 +260,11 @@ const anchorPlacement = (node: PMNode): AnchorPlacement | undefined =>
 const opensRange = (node: PMNode, placement: AnchorPlacement): boolean => {
   if (placement === "byBoundaryType") {
     return node.attrs["type"] === "start";
+  }
+  if (placement === "byCommentRangeBoundaryType") {
+    return (
+      expectCommentRangeBoundaryAttrs(node).marker.type === "commentRangeStart"
+    );
   }
   if (placement !== "byMoveBoundaryType") {
     return false;

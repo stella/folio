@@ -44,6 +44,7 @@ import {
   readUnderlineMarkAttrs,
 } from "./attrs";
 import { readBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
+import { readCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { fieldRequiresStructuredContent } from "./fieldRepresentation";
 import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
@@ -403,6 +404,10 @@ const validateNodeAttrs = (
 
     case "commentReference":
       appendAttrIssues(path, readCommentReferenceAttrs(node), issues);
+      return;
+
+    case "commentRangeBoundary":
+      appendAttrIssues(path, readCommentRangeBoundaryAttrs(node), issues);
       return;
 
     case "rangeAnchor":

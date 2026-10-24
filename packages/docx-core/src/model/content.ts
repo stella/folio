@@ -2171,7 +2171,9 @@ export type SdtEndProperties = {
  * sibling of the control has changed extent or ownership. A bookmark that
  * covered the control's content ends up covering the control and whatever
  * follows it; a tracked move can stop covering the marker that identifies its
- * source or destination.
+ * source or destination. Comment range boundaries are also members of
+ * `EG_RangeMarkupElements` and retain their authored position inside the
+ * control when the editor resolves nearby content.
  */
 export type InlineSdt = {
   type: "inlineSdt";
@@ -2183,6 +2185,9 @@ export type InlineSdt = {
     | Hyperlink
     | BookmarkStart
     | BookmarkEnd
+    | CommentRangeStart
+    | CommentRangeEnd
+    | CommentReference
     | MoveFromRangeStart
     | MoveFromRangeEnd
     | MoveToRangeStart
