@@ -23,7 +23,12 @@
 
 import { panic } from "better-result";
 
-import type { BlockContent, Paragraph } from "../model/document";
+import type {
+  BlockContent,
+  DocumentBody,
+  Paragraph,
+  PositionedBookmarkMarker,
+} from "../model/document";
 import {
   childNodes,
   type InlineNode,
@@ -44,6 +49,11 @@ const BOUNDARY_SIDES = {
 
 type BoundaryType = keyof typeof BOUNDARY_SIDES;
 type Boundary = Extract<InlineNode, { type: BoundaryType }>;
+type CommentAnchor = Extract<
+  Boundary,
+  { type: "commentRangeStart" | "commentRangeEnd" }
+>;
+type OrderedBoundary = Exclude<Boundary, CommentAnchor>;
 
 const isBoundary = (node: InlineNode): node is Boundary =>
   Object.hasOwn(BOUNDARY_SIDES, node.type);
@@ -119,11 +129,6 @@ export const removedContentBoundaries = ({
     });
   });
 
-type CommentAnchor = Extract<
-  Boundary,
-  { type: "commentRangeStart" | "commentRangeEnd" }
->;
-
 /** A boundary a block list holds between its blocks. */
 export type BlockBoundary = Exclude<Boundary, CommentAnchor>;
 
@@ -136,6 +141,171 @@ export const rangeBoundariesIn = (content: readonly InlineNode[]): Boundary[] =>
   content.flatMap((node) =>
     isBoundary(node) ? [node] : rangeBoundariesIn(childNodes(node) ?? []),
   );
+
+type OrderedOccurrence = {
+  key: string;
+  side: "start" | "end";
+  node: OrderedBoundary;
+};
+
+const isOrderedBoundary = (
+  node: InlineNode | BlockContent,
+): node is OrderedBoundary =>
+  Object.hasOwn(BOUNDARY_SIDES, node.type) &&
+  node.type !== "commentRangeStart" &&
+  node.type !== "commentRangeEnd";
+
+const orderedKey = (node: OrderedBoundary): string =>
+  `${BOUNDARY_SIDES[node.type].family}:${node.id}`;
+
+const orderedOccurrence = (node: OrderedBoundary): OrderedOccurrence => ({
+  key: orderedKey(node),
+  side: BOUNDARY_SIDES[node.type].side,
+  node,
+});
+
+const bookmarkPositions = (
+  markers: readonly PositionedBookmarkMarker[] | undefined,
+  siblingCount: number,
+): ReadonlyMap<number, readonly PositionedBookmarkMarker[]> => {
+  const positions = new Map<number, PositionedBookmarkMarker[]>();
+  for (const marker of markers ?? []) {
+    if (
+      !Number.isInteger(marker.index) ||
+      marker.index < 0 ||
+      marker.index > siblingCount
+    )
+      continue;
+    const atPosition = positions.get(marker.index) ?? [];
+    atPosition.push(marker);
+    positions.set(marker.index, atPosition);
+  }
+  return positions;
+};
+
+const bookmarkMarkersAt = (
+  positions: ReadonlyMap<number, readonly PositionedBookmarkMarker[]>,
+  index: number,
+): readonly PositionedBookmarkMarker[] => positions.get(index) ?? [];
+
+type InsertsInvertedRangeOptions = {
+  body: DocumentBody;
+  paragraph: Paragraph;
+  candidateContent: readonly InlineNode[];
+  incomingContent: readonly InlineNode[];
+};
+
+export const insertsInvertedRange = ({
+  body,
+  paragraph,
+  candidateContent,
+  incomingContent,
+}: InsertsInvertedRangeOptions): boolean => {
+  const incoming = new WeakSet<OrderedBoundary>();
+  const incomingKeys = new Set<string>();
+  const occurrences: OrderedOccurrence[] = [];
+  const rememberBoundary = (node: OrderedBoundary): void => {
+    incomingKeys.add(orderedKey(node));
+    incoming.add(node);
+  };
+  const rememberIncoming = (nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (isOrderedBoundary(node)) rememberBoundary(node);
+      rememberIncoming(childNodes(node) ?? []);
+    }
+  };
+  rememberIncoming(incomingContent);
+  if (incomingKeys.size === 0) return false;
+
+  const appendBoundary = (node: OrderedBoundary): void => {
+    const occurrence = orderedOccurrence(node);
+    if (incomingKeys.has(occurrence.key)) occurrences.push(occurrence);
+  };
+  const visitInline = (nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (isOrderedBoundary(node)) appendBoundary(node);
+      visitInline(childNodes(node) ?? []);
+    }
+  };
+  const visitBlocks = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      if (isOrderedBoundary(block)) {
+        appendBoundary(block);
+        continue;
+      }
+      switch (block.type) {
+        case "paragraph":
+          visitInline(block === paragraph ? candidateContent : block.content);
+          break;
+        case "table": {
+          const tableBookmarkPositions = bookmarkPositions(
+            block.bookmarks,
+            block.rows.length,
+          );
+          for (let rowIndex = 0; rowIndex <= block.rows.length; rowIndex += 1) {
+            for (const positioned of bookmarkMarkersAt(
+              tableBookmarkPositions,
+              rowIndex,
+            ))
+              appendBoundary(positioned.marker);
+            if (rowIndex === block.rows.length) break;
+            const row = block.rows[rowIndex];
+            if (row === undefined) continue;
+            const rowBookmarkPositions = bookmarkPositions(
+              row.bookmarks,
+              row.cells.length,
+            );
+            for (
+              let cellIndex = 0;
+              cellIndex <= row.cells.length;
+              cellIndex += 1
+            ) {
+              for (const positioned of bookmarkMarkersAt(
+                rowBookmarkPositions,
+                cellIndex,
+              ))
+                appendBoundary(positioned.marker);
+              const cell = row.cells[cellIndex];
+              if (cell !== undefined) visitBlocks(cell.content);
+            }
+          }
+          break;
+        }
+        case "blockSdt":
+        case "blockCustomXml":
+          visitBlocks(block.content);
+          break;
+        case "preservedBlock":
+          break;
+        default: {
+          const unreachable: never = block;
+          return unreachable;
+        }
+      }
+    }
+  };
+  visitBlocks(body.content);
+
+  const byKey = new Map<string, OrderedOccurrence[]>();
+  for (const occurrence of occurrences) {
+    const group = byKey.get(occurrence.key) ?? [];
+    group.push(occurrence);
+    byKey.set(occurrence.key, group);
+  }
+  for (const group of byKey.values()) {
+    if (group.length !== 2) continue;
+    const start = group.findIndex(({ side }) => side === "start");
+    const end = group.findIndex(({ side }) => side === "end");
+    if (
+      start >= 0 &&
+      end >= 0 &&
+      end < start &&
+      group.some(({ node }) => incoming.has(node))
+    )
+      return true;
+  }
+  return false;
+};
 
 /**
  * What a paragraph that goes whole leaves where it was: every bookmark and

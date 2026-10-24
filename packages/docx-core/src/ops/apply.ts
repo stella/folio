@@ -137,6 +137,7 @@ import {
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
 import { priorValues } from "./patch";
+import { insertsInvertedRange } from "./rangeBoundaries";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
@@ -873,6 +874,20 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       `The slice's open ends do not fit ${op.at.offset} in ${op.at.blockId}.`,
+    );
+  }
+  if (
+    insertsInvertedRange({
+      body: storyBody(document, op.at.story),
+      paragraph: location.paragraph,
+      candidateContent: content,
+      incomingContent: slice.content,
+    })
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "The insertion would create a range whose end precedes its start.",
     );
   }
   return inserted({
