@@ -440,7 +440,7 @@ export const withBoundariesOutsideDeletion = (
 const HOLDS: Partial<
   Record<InlineNode["type"], (boundary: Boundary) => boolean>
 > = {
-  inlineSdt: (boundary) => !isCommentAnchor(boundary),
+  inlineSdt: () => true,
   hyperlink: (boundary) =>
     boundary.type === "bookmarkStart" || boundary.type === "bookmarkEnd",
   inlineWrapper: () => true,

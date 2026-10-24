@@ -920,6 +920,104 @@ describe("tracked operations and their resolution", () => {
     });
   });
 
+  test("L2 rejects an inherited cut containing an inline SDT comment boundary", () => {
+    const original: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                {
+                  type: "inlineSdt",
+                  properties: { sdtType: "richText", id: 1, tag: "clause" },
+                  content: [
+                    {
+                      type: "hyperlink",
+                      rId: "rId9",
+                      href: "https://example.org",
+                      children: [
+                        {
+                          type: "inlineWrapper",
+                          kind: "bidi",
+                          control: "embedding",
+                          content: [{ type: "commentRangeEnd", id: 1 }],
+                        },
+                      ],
+                    },
+                    {
+                      type: "hyperlink",
+                      rId: "rId9",
+                      href: "https://example.org",
+                      children: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "aa" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            { type: "paragraph", paraId: "00000002", content: [] },
+          ],
+        },
+      },
+    };
+    const seed = {
+      kind: 8,
+      block: 0,
+      first: 12_958_492,
+      second: 0,
+      third: 0,
+      zeroWidth: undefined,
+      depth: 1,
+      text: "x",
+      formatting: {},
+      inherit: true,
+      runPatch: {},
+      paragraphPatch: {},
+      newParagraph: undefined,
+      content: [],
+      fresh: 268_435_456,
+    } satisfies OpSeed;
+    const op = trackedOpFor(original, seed);
+    expect(op.type).toBe(DOCUMENT_OP_TYPES.INSERT_CONTENT);
+    if (op.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT)
+      panic("Expected inherited content insertion.");
+    expect(JSON.stringify(op.slice)).toContain('"commentRangeEnd"');
+
+    const tracked = applyDocumentOp(original, op);
+    if (tracked.isErr()) throw tracked.error;
+    const rejected = applyDocumentOp(
+      tracked.value.document,
+      resolveOp(tracked.value.revisions, REVISION_DECISIONS.REJECT),
+    );
+    if (rejected.isErr()) throw rejected.error;
+    expectRejectedTo({
+      rejected: rejected.value.document,
+      tracked: tracked.value.document,
+      ids: tracked.value.revisions,
+      expected: original,
+      projection: "π",
+    });
+
+    const rejectionUndone = applyDocumentOps(
+      rejected.value.document,
+      rejected.value.inverse,
+    );
+    if (rejectionUndone.isErr()) throw rejectionUndone.error;
+    assertExactModel(rejectionUndone.value.document, tracked.value.document);
+    const insertionUndone = applyDocumentOps(
+      tracked.value.document,
+      tracked.value.inverse,
+    );
+    if (insertionUndone.isErr()) throw insertionUndone.error;
+    assertExactModel(insertionUndone.value.document, original);
+  });
+
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {
     const tally: Tally = new Map();
     assertProperty(
