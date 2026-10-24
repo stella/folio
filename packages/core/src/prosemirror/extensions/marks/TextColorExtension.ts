@@ -6,15 +6,12 @@ import { panic } from "better-result";
 
 import { textToStyle } from "../../../utils/formatToStyle";
 import { expectTextColorMarkAttrs } from "../../attrs";
-import {
-  canonicalRunFormatting,
-  withCanonicalCommand,
-} from "../../canonicalCommands";
+import { canonicalRunFormatting } from "../../canonicalCommands";
 import { clearRunColor } from "../../clearRunColor";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { setMark } from "./markUtils";
+import { setMark, withRunFormattingLock } from "./markUtils";
 
 export const TextColorExtension = createMarkExtension({
   name: "textColor",
@@ -59,17 +56,17 @@ export const TextColorExtension = createMarkExtension({
       commands: {
         setTextColor: (attrs: TextColorAttrs) => {
           if (!attrs.rgb && !attrs.themeColor) {
-            return withCanonicalCommand(clearRunColor(), (state) =>
+            return withRunFormattingLock(clearRunColor(), (state) =>
               canonicalRunFormatting(state, { color: null }),
             );
           }
-          return withCanonicalCommand(
+          return withRunFormattingLock(
             setMark(textColorType, attrs as Record<string, unknown>),
             (state) => canonicalRunFormatting(state, { color: attrs }),
           );
         },
         clearTextColor: () =>
-          withCanonicalCommand(clearRunColor(), (state) =>
+          withRunFormattingLock(clearRunColor(), (state) =>
             canonicalRunFormatting(state, { color: null }),
           ),
       },

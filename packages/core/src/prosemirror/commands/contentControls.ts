@@ -23,6 +23,7 @@ import {
   ContentControlLockedError,
   ContentControlTypeError,
 } from "../../content-controls/errors";
+import { isContentLocked } from "../../content-controls/mutateContentControls";
 import { formatDate } from "../../docx/fieldParser";
 import {
   preservedSdtChild,
@@ -229,7 +230,7 @@ function ensureContentNotLocked(node: PMNode, options: ForceOption): void {
     return;
   }
   const lock = node.attrs["lock"];
-  if (lock === "contentLocked" || lock === "sdtContentLocked") {
+  if (isContentLocked(lock)) {
     throwLockedNode(node, lock);
   }
 }

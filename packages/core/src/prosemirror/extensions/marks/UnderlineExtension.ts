@@ -11,7 +11,6 @@ import {
   underlineStyleFromCssDecoration,
 } from "../../../utils/formatToStyle";
 import { expectUnderlineMarkAttrs } from "../../attrs";
-import { withCanonicalCommand } from "../../canonicalCommands";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
@@ -19,6 +18,7 @@ import {
   canonicalSetMarkFormatting,
   setMark,
   toggleUnderlineMark,
+  withRunFormattingLock,
 } from "./markUtils";
 
 /** `w:u w:val="none"`: the token that cancels an inherited underline. */
@@ -81,7 +81,7 @@ export const UnderlineExtension = createMarkExtension({
       commands: {
         toggleUnderline: () => toggleUnderlineMark(underlineType),
         setUnderlineStyle: (style: UnderlineStyle, color?: TextColorAttrs) =>
-          withCanonicalCommand(
+          withRunFormattingLock(
             setMark(underlineType, { style, color }),
             (state) =>
               canonicalSetMarkFormatting({
