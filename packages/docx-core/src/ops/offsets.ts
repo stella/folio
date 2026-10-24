@@ -264,6 +264,9 @@ const HYPERLINK_CHILD_TYPES = {
   run: true,
   bookmarkStart: true,
   bookmarkEnd: true,
+  commentRangeStart: true,
+  commentRangeEnd: true,
+  commentReference: true,
   inlineWrapper: true,
   preservedInline: true,
 } as const satisfies Record<HyperlinkChild["type"], true>;

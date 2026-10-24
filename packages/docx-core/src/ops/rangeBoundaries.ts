@@ -444,7 +444,9 @@ const HOLDS: Partial<
 > = {
   inlineSdt: () => true,
   hyperlink: (boundary) =>
-    boundary.type === "bookmarkStart" || boundary.type === "bookmarkEnd",
+    boundary.type === "bookmarkStart" ||
+    boundary.type === "bookmarkEnd" ||
+    isCommentAnchor(boundary),
   inlineWrapper: () => true,
   insertion: () => true,
   deletion: () => true,

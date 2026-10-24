@@ -1052,6 +1052,23 @@ const validateHyperlinkChild = (
     return;
   }
 
+  if (child.type === "commentRangeStart") {
+    increment(ctx.commentRangeStarts, child.id);
+    recordPath(ctx.referencedCommentIds, child.id, path);
+    return;
+  }
+
+  if (child.type === "commentRangeEnd") {
+    increment(ctx.commentRangeEnds, child.id);
+    recordPath(ctx.referencedCommentIds, child.id, path);
+    return;
+  }
+
+  if (child.type === "commentReference") {
+    recordPath(ctx.referencedCommentIds, child.id, path);
+    return;
+  }
+
   // A capture is opaque markup: it pairs no bookmark and carries no id the
   // validator could count.
   if (child.type === "preservedInline") {
@@ -1065,7 +1082,13 @@ const validateHyperlinkChild = (
     return;
   }
 
-  increment(ctx.bookmarkEnds, child.id);
+  if (child.type === "bookmarkEnd") {
+    increment(ctx.bookmarkEnds, child.id);
+    return;
+  }
+
+  const unsupported: never = child;
+  panic(`Unsupported hyperlink child: ${JSON.stringify(unsupported)}`);
 };
 
 const validateTrackedRunChange = (
