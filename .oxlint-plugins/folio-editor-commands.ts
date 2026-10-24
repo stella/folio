@@ -6,7 +6,8 @@ type RuleContext = {
   filename: string;
   report: (descriptor: {
     node: unknown;
-    messageId: "rawCommand" | "foreignOwner" | "rawRunFormattingCommand";
+    messageId:
+      "rawCommand" | "foreignOwner" | "rawRunFormattingCommand" | "resizeOwner";
   }) => void;
 };
 const isNode = (value: unknown): value is AstNode =>
@@ -57,6 +58,56 @@ const VUE = [
 export default {
   meta: { name: "folio-editor-commands" },
   rules: {
+    "table-resize-owner": {
+      meta: {
+        type: "problem",
+        messages: {
+          resizeOwner:
+            "Commit table resize gestures through core tableResize helpers so every adapter preserves the same grid and spanning-cell widths.",
+        },
+      },
+      create(context: RuleContext) {
+        const filename = context.filename.replaceAll("\\", "/");
+        const react = filename.endsWith(
+          "packages/react/src/paged-editor/PagedEditor.tsx",
+        );
+        const vue = filename.endsWith(
+          "packages/vue/src/composables/useTableResize.ts",
+        );
+        let resizeDepth = 0;
+        const entersResize = (node: unknown) =>
+          isNode(node) &&
+          ((react && named(node.id, "handleMouseUp")) ||
+            (vue && named(node.id, "handleUp")));
+        const enter = (node: unknown) => {
+          if (entersResize(node)) resizeDepth++;
+        };
+        const leave = (node: unknown) => {
+          if (entersResize(node)) resizeDepth--;
+        };
+        return {
+          VariableDeclarator: enter,
+          "VariableDeclarator:exit": leave,
+          FunctionDeclaration: enter,
+          "FunctionDeclaration:exit": leave,
+          CallExpression: (node: unknown) => {
+            if (resizeDepth === 0 || !isNode(node) || !isNode(node.callee))
+              return;
+            const callee = node.callee;
+            if (callee.type !== "MemberExpression") return;
+            const property = callee.property;
+            if (
+              named(property, "setNodeMarkup") ||
+              (isNode(property) &&
+                property.type === "Literal" &&
+                property.value === "setNodeMarkup")
+            ) {
+              context.report({ node, messageId: "resizeOwner" });
+            }
+          },
+        };
+      },
+    },
     "command-owner-boundary": {
       meta: {
         type: "problem",

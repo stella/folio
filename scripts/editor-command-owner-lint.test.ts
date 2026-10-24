@@ -4,7 +4,7 @@ import path from "node:path";
 setDefaultTimeout(30_000);
 const ROOT = path.resolve(import.meta.dir, "..");
 const MARKER = "folio-editor-commands(command-owner-boundary)";
-const lintFixture = (fixture: string) => {
+const lintFixture = (fixture: string, marker = MARKER) => {
   const result = Bun.spawnSync(
     [
       "bun",
@@ -20,7 +20,7 @@ const lintFixture = (fixture: string) => {
   const output = `${result.stdout.toString()}${result.stderr.toString()}`;
   expect(output).not.toContain("Failed to load");
   expect(output).not.toContain("Failed to parse");
-  return output.split(MARKER).length - 1;
+  return output.split(marker).length - 1;
 };
 
 test("editor command owner lint covers adapter dispatch and owner registration", () => {
@@ -38,5 +38,27 @@ test("editor command owner lint covers adapter dispatch and owner registration",
   ).toBe(0);
   expect(
     lintFixture("valid/packages/core/src/controller/hiddenEditorManager.ts"),
+  ).toBe(0);
+});
+
+test("table resize commits remain owned by core across adapters", () => {
+  const marker = "folio-editor-commands(table-resize-owner)";
+  expect(
+    lintFixture(
+      "invalid/packages/react/src/paged-editor/PagedEditor.tsx",
+      marker,
+    ),
+  ).toBe(2);
+  expect(
+    lintFixture(
+      "invalid/packages/vue/src/composables/useTableResize.ts",
+      marker,
+    ),
+  ).toBe(1);
+  expect(
+    lintFixture(
+      "valid/packages/react/src/paged-editor/PagedEditor.tsx",
+      marker,
+    ),
   ).toBe(0);
 });
