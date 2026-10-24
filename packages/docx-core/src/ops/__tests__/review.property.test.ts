@@ -848,7 +848,6 @@ describe("tracked operations and their resolution", () => {
     });
   });
 
-
   test("L3: copied bookmark boundaries keep their source position across rejection order", () => {
     const source = normalizeForOps({
       package: {
