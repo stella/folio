@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: '["ubuntu-24.04"]'
+      bun-roots:
+        description: "Newline- or space-separated Bun install roots; empty = the repository root when it has a tracked bun.lock"
+        required: false
+        type: string
+        default: ""
     secrets:
       CHANGELOG_APP_ID:
         description: GitHub App ID used to maintain the removal PR.
@@ -34,6 +39,7 @@ jobs:
     uses: ./.github/workflows/quarantine-policy.yml
     with:
       runs-on: ${{ inputs.runs-on }}
+      bun-roots: ${{ inputs.bun-roots }}
 
   prepare:
     name: Prepare expired exception removal
@@ -46,6 +52,8 @@ jobs:
       changed: ${{ steps.prune.outputs.changed }}
       patch: ${{ steps.patch.outputs.patch }}
       source-sha: ${{ steps.source.outputs.sha }}
+      prune-paths: ${{ steps.bun-roots.outputs.prune-paths }}
+      allowed-path-regex: ${{ steps.bun-roots.outputs.allowed-path-regex }}
     steps:
       - name: Checkout caller default branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,12 +72,21 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.1"
+      - name: Resolve Bun roots
+        id: bun-roots
+        env:
+          BUN_ROOTS: ${{ inputs.bun-roots }}
+        run: bun .quarantine-policy/.github/actions/quarantine-policy/check.ts --bun-roots-output
       - name: Prune expired exceptions
         id: prune
+        env:
+          BUN_ROOTS: ${{ inputs.bun-roots }}
+          QUARANTINE_PATHS: ${{ steps.bun-roots.outputs.prune-paths }}
         run: |
           set -euo pipefail
+          mapfile -t quarantine_paths <<< "$QUARANTINE_PATHS"
           bun .quarantine-policy/.github/actions/quarantine-policy/check.ts --prune
-          if git diff --quiet -- bunfig.toml pnpm-workspace.yaml .cargo/quarantine.toml; then
+          if git diff --quiet -- "${quarantine_paths[@]}"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -77,7 +94,7 @@ jobs:
           bun .quarantine-policy/.github/actions/quarantine-policy/check.ts \
             "${{ job.workflow_sha }}" \
             "${{ github.repository }}"
-          git diff --binary -- bunfig.toml pnpm-workspace.yaml .cargo/quarantine.toml > "$RUNNER_TEMP/quarantine.patch"
+          git diff --binary -- "${quarantine_paths[@]}" > "$RUNNER_TEMP/quarantine.patch"
       - name: Encode exact removal patch
         id: patch
         if: steps.prune.outputs.changed == 'true'
@@ -122,6 +139,9 @@ jobs:
           set -euo pipefail
           printf '%s' "$PATCH" | base64 --decode > "$RUNNER_TEMP/quarantine.patch"
       - name: Validate exact removal
+        env:
+          BUN_ROOTS: ${{ inputs.bun-roots }}
+          ALLOWED_PATH_REGEX: ${{ needs.prepare.outputs.allowed-path-regex }}
         run: |
           set -euo pipefail
           git apply --check "$RUNNER_TEMP/quarantine.patch"
@@ -130,7 +150,7 @@ jobs:
             "${{ job.workflow_sha }}" \
             "${{ github.repository }}"
           test -n "$(git diff --name-only)"
-          test -z "$(git diff --name-only | grep -Ev '^(bunfig.toml|pnpm-workspace.yaml|.cargo/quarantine.toml)$')"
+          test -z "$(git diff --name-only | grep -Ev "$ALLOWED_PATH_REGEX")"
           git diff --check
       - name: Mint narrow release app token
         id: app-token
@@ -149,7 +169,7 @@ jobs:
           mode: refresh-pr
           branch: ${{ env.PRUNE_BRANCH }}
           base: ${{ github.event.repository.default_branch }}
-          paths: bunfig.toml pnpm-workspace.yaml .cargo/quarantine.toml
+          paths: ${{ needs.prepare.outputs.prune-paths }}
           commit-message: "chore(deps): remove expired quarantine excludes"
           pr-title: "chore(deps): remove expired quarantine excludes"
           pr-body: "Expired temporary exceptions are removed once the ecosystem's normal five-day release-age gate admits the pinned versions."

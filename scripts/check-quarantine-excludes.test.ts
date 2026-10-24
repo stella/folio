@@ -15,6 +15,10 @@ import {
   pruneExpiredExcludes,
   quarantineInstallRoots,
 } from "./check-quarantine-excludes";
+import {
+  workflowFixturePath,
+  workflowReference,
+} from "./lib/reusable-workflow-permissions";
 
 const SCRIPT_PATH = "scripts/check-quarantine-excludes.ts";
 
@@ -375,6 +379,51 @@ describe("quarantine exclude wiring", () => {
       CHANGELOG_APP_ID: "${{ secrets.CHANGELOG_APP_ID }}",
       CHANGELOG_APP_PRIVATE_KEY: "${{ secrets.CHANGELOG_APP_PRIVATE_KEY }}",
     });
+  });
+
+  test("the pinned prune prepares from the default branch and proposes signed changes from that exact source", async () => {
+    const caller = await readWorkflow("quarantine-prune.yml");
+    const reference = workflowReference(caller.jobs.prune.uses);
+    expect(reference?.type).toBe("remote");
+    if (reference?.type !== "remote") return;
+    const fixture = Bun.YAML.parse(
+      await Bun.file(
+        workflowFixturePath(join(import.meta.dirname, ".."), reference),
+      ).text(),
+    );
+    expect(fixture.jobs.prepare.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Checkout caller default branch",
+          with: expect.objectContaining({
+            ref: "${{ github.event.repository.default_branch }}",
+            "persist-credentials": false,
+          }),
+        }),
+      ]),
+    );
+    expect(fixture.jobs.prepare.outputs["source-sha"]).toBe(
+      "${{ steps.source.outputs.sha }}",
+    );
+    expect(fixture.jobs.propose.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Checkout exact reviewed source",
+          with: expect.objectContaining({
+            ref: "${{ needs.prepare.outputs.source-sha }}",
+            "persist-credentials": false,
+          }),
+        }),
+        expect.objectContaining({
+          uses: "./.quarantine-policy/.github/actions/signed-commit",
+          with: expect.objectContaining({
+            mode: "refresh-pr",
+            base: "${{ github.event.repository.default_branch }}",
+            paths: "${{ needs.prepare.outputs.prune-paths }}",
+          }),
+        }),
+      ]),
+    );
   });
 });
 

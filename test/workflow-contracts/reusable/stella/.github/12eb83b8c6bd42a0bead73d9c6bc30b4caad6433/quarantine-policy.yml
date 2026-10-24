@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: '["ubuntu-24.04"]'
+      bun-roots:
+        description: "Newline- or space-separated Bun install roots; empty = the repository root when it has a tracked bun.lock"
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: quarantine-policy-${{ github.workflow }}-${{ (github.event_name == 'pull_request') && format('pr-{0}', github.event.pull_request.number || github.ref) || format('run-{0}', github.run_id) }}
@@ -27,28 +32,12 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      BUN_ROOTS: ${{ inputs.bun-roots }}
     steps:
       - name: Checkout caller
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
-      - name: Checkout trusted target base
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          path: .quarantine-base
-          sparse-checkout: |
-            bun.lock
-            bunfig.toml
-            package.json
-            pnpm-lock.yaml
-            pnpm-workspace.yaml
-            .npmrc
-            .cargo/quarantine.toml
-            .cargo/config.toml
-            **/Cargo.lock
-          sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Checkout immutable policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,6 +49,25 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.1"
+      - name: Resolve Bun roots
+        id: bun-roots
+        run: bun .quarantine-policy/.github/actions/quarantine-policy/check.ts --bun-roots-output
+      - name: Checkout trusted target base
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          path: .quarantine-base
+          sparse-checkout: |
+            ${{ steps.bun-roots.outputs.sparse-checkout }}
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            .npmrc
+            .cargo/quarantine.toml
+            .cargo/config.toml
+            **/Cargo.lock
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Enforce package quarantine
         run: >-
           bun .quarantine-policy/.github/actions/quarantine-policy/check.ts

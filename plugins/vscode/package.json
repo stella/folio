@@ -142,5 +142,6 @@
       "supported": "limited",
       "description": "The editor opens files on a virtual file system read-only (Save As still works). The MCP server needs workspace folders on disk."
     }
-  }
+  },
+  "trustedDependencies": []
 }
