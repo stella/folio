@@ -1,17 +1,27 @@
-import { expect, test } from "bun:test";
+import { beforeAll, expect, test } from "bun:test";
 
 import { compareDocx } from "@stll/folio-core";
 
 import { buildDocumentPackage } from "./documents";
 import { checkInvariants } from "./invariants";
 import { zipPackage } from "./package-xml";
-import { resolvePackageValidator } from "./validator";
+import { type PackageValidator, resolvePackageValidator } from "./validator";
 import { applyVariant } from "./variants";
 
 const OPTIONS = {
   author: "folio compare benchmark",
   timestamp: "2000-01-01T00:00:00.000Z",
 };
+
+let validate: PackageValidator | null = null;
+beforeAll(async () => {
+  validate = resolvePackageValidator();
+  if (validate === null) return;
+  const input = await zipPackage(
+    buildDocumentPackage({ documentClass: "notes", size: "s" }),
+  );
+  expect(validate(input)).toEqual([]);
+}, 120_000);
 
 test.each(["notes", "everywhere"] as const)(
   "generated notes survive %s accept and reject round trips",
@@ -36,7 +46,7 @@ test.each(["notes", "everywhere"] as const)(
       unsupported: compared.value.unsupported.map(({ reason }) => reason),
       expectation: "different",
       options: OPTIONS,
-      validate: resolvePackageValidator(),
+      validate,
     });
     expect(result.outcomes.filter(({ status }) => status === "failed")).toEqual(
       [],
