@@ -38,6 +38,15 @@ export type Block =
 
 export type Operation = { type: string; id?: string } & Record<string, unknown>;
 
+export const identifyOperation = <OperationInput extends Operation>(
+  operation: OperationInput,
+  index: number,
+  prefix = "op",
+): OperationInput & { id: string } => ({
+  ...operation,
+  id: operation.id ?? `${prefix}-${index + 1}`,
+});
+
 const inTable = (block: Block): boolean => block.table !== undefined;
 
 /**
@@ -553,10 +562,9 @@ export const undefinedNumbering = (blocks: readonly Block[]) => {
 export const coreBatch = (operations: readonly Operation[], mode: Mode) => ({
   version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   mode,
-  operations: operations.map((operation, index) => ({
-    ...operation,
-    id: operation.id ?? `op-${index + 1}`,
-  })),
+  operations: operations.map((operation, index) =>
+    identifyOperation(operation, index),
+  ),
 });
 
 export type AppliedOperation = ReturnType<

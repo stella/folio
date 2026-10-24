@@ -73,10 +73,12 @@ import {
 import { LARGE_DOCUMENT_FIXTURE, largeDocument } from "./large-document.ts";
 import { startRelations } from "./metamorphic.ts";
 import {
+  type AppliedOperation,
   type Block,
   COLLISIONS,
   coreBatch,
   GENERATORS,
+  identifyOperation,
   MISTAKES,
   type Mode,
   MODES,
@@ -314,9 +316,28 @@ const tool = (flow: Flow, name: string, args: unknown) => {
 
 type Receipt = { applied: readonly { id: string }[] };
 
+const isOperation = (value: unknown): value is Operation =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  "type" in value &&
+  typeof value.type === "string" &&
+  (!("id" in value) || typeof value.id === "string");
+
+const identifySuggestedOperations = (
+  input: unknown,
+): AppliedOperation[] | null => {
+  if (!Array.isArray(input)) return null;
+  return input.map((candidate: unknown, index) => {
+    if (!isOperation(candidate))
+      throw new TypeError("suggest_changes received a malformed operation");
+    return identifyOperation(candidate, index, "s");
+  });
+};
+
 /** The operations a receipt says applied, in request order. */
 const appliedOf = (
-  operations: readonly Operation[],
+  operations: readonly AppliedOperation[],
   receipt: Receipt | null,
 ) => {
   const ids = new Set(receipt?.applied.map(({ id }) => id));
@@ -335,15 +356,8 @@ const suggestChecked = async (
   args: { operations: unknown },
   entry: string,
 ): Promise<number> => {
-  const operations = Array.isArray(args.operations)
-    ? (args.operations as unknown[]).map((operation, index) =>
-        typeof operation === "object" &&
-        operation !== null &&
-        !("id" in operation)
-          ? Object.assign({ id: `s-${index + 1}` }, operation)
-          : operation,
-      )
-    : args.operations;
+  const asked = identifySuggestedOperations(args.operations);
+  const operations = asked ?? args.operations;
   const done = record(
     flow,
     `${entry} ${JSON.stringify({ ...args, operations })}`,
@@ -356,9 +370,8 @@ const suggestChecked = async (
       ? `applied ${receipt.applied.length}`
       : `refused: ${result.ok ? "" : result.error}`,
   );
-  const asked = Array.isArray(operations) ? (operations as Operation[]) : [];
-  touch(flow, asked);
-  const outcome = appliedOf(asked, receipt);
+  touch(flow, asked ?? []);
+  const outcome = appliedOf(asked ?? [], receipt);
   const expectedApplied = flow.planned?.expectedApplied;
   if (
     expectedApplied !== undefined &&
