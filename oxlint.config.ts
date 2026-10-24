@@ -98,6 +98,7 @@ export default library({
     "./.oxlint-plugins/folio-layer-boundaries.ts",
     "./.oxlint-plugins/folio-canonical-load.ts",
     "./.oxlint-plugins/folio-asset-urls.ts",
+    "./.oxlint-plugins/folio-page-resources.ts",
     "./.oxlint-plugins/folio-base64.ts",
     "./.oxlint-plugins/folio-editor-commands.ts",
     "./.oxlint-plugins/folio-deletion-marks.ts",
@@ -118,6 +119,7 @@ export default library({
     "./.oxlint-plugins/folio-relationship-ids.ts",
     "./.oxlint-plugins/folio-typecheck-proofs.ts",
     "./.oxlint-plugins/folio-harness-workspaces.ts",
+    "./.oxlint-plugins/folio-test-dom.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -361,6 +363,17 @@ export default library({
       ],
       rules: {
         "folio-layer-boundaries/no-upstream-import": "error",
+      },
+    },
+    {
+      files: [
+        "packages/core/src/layout-painter/**/*.{ts,tsx}",
+        "packages/react/src/paged-editor/PagedEditor.tsx",
+        "packages/vue/src/composables/useDocxEditor.ts",
+        "test/__fixtures__/page-resources.*.ts",
+      ],
+      rules: {
+        "folio-page-resources/release-before-page-removal": "error",
       },
     },
     {
@@ -644,6 +657,13 @@ export default library({
       rules: {
         "folio-layer-boundaries/agents-contract-import": "error",
       },
+    },
+    {
+      files: [
+        "packages/core/src/**/*.test.{ts,tsx}",
+        "test/__fixtures__/test-dom*.ts",
+      ],
+      rules: { "folio-test-dom/dom-lease-owner": "error" },
     },
     nonReactPackageOverride,
   ],

@@ -1,0 +1,23 @@
+{
+  "packages/core/src/__tests__/canonicalHarnessDom.property.test.ts": 2,
+  "packages/core/src/controller/canonicalComposition.property.test.ts": 2,
+  "packages/core/src/controller/canonicalInput.test.ts": 2,
+  "packages/core/src/controller/canonicalNativeFinal.property.test.ts": 2,
+  "packages/core/src/controller/canonicalSections.test.ts": 4,
+  "packages/core/src/controller/canonicalStoryEditor.test.ts": 2,
+  "packages/core/src/controller/contentControlWidgetController.test.ts": 2,
+  "packages/core/src/controller/headerFooterEditorManager.test.ts": 2,
+  "packages/core/src/controller/hiddenEditorManager.test.ts": 48,
+  "packages/core/src/controller/storyEditorManagers.lifecycle.property.test.ts": 4,
+  "packages/core/src/docx/tableCellStatedWidth.property.test.ts": 2,
+  "packages/core/src/paged-layout/editorScrollRoot.test.ts": 2,
+  "packages/core/src/prosemirror/extensions/core/HistoryExtension.test.ts": 2,
+  "packages/core/src/prosemirror/extensions/features/pastedHtmlLists.test.ts": 2,
+  "packages/core/src/prosemirror/imageCommit.test.ts": 2,
+  "packages/core/src/prosemirror/plugins/suggestionCaretDeletion.property.test.ts": 2,
+  "packages/core/src/prosemirror/plugins/suggestionHistoryRoundTrip.test.ts": 2,
+  "packages/core/src/prosemirror/plugins/suggestionNestedListPaste.test.ts": 2,
+  "packages/core/src/prosemirror/textInput.test.ts": 2,
+  "packages/core/src/render-dom/commentAnchorAttributes.test.ts": 2,
+  "packages/core/src/utils/findMatchView.test.ts": 2
+}

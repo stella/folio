@@ -12,10 +12,10 @@
     "declarationLines": 7150
   },
   "core": {
-    "reportBytes": 352392,
-    "reportLines": 11249,
-    "declarationBytes": 2641770,
-    "declarationLines": 53544
+    "reportBytes": 352486,
+    "reportLines": 11252,
+    "declarationBytes": 2642235,
+    "declarationLines": 53549
   },
   "react": {
     "reportBytes": 57073,

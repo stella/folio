@@ -105,7 +105,10 @@ import type {
   Layout,
   Measure,
 } from "@stll/folio-core/layout-engine/types";
-import { LayoutPainter } from "@stll/folio-core/layout-painter";
+import {
+  LayoutPainter,
+  releaseDisplayPageResources,
+} from "@stll/folio-core/layout-painter";
 import type { FootnoteRenderItem } from "@stll/folio-core/layout-painter/renderPage";
 import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
@@ -1616,6 +1619,9 @@ export function useDocxEditor(
 
   function destroy(): void {
     destroyed = true;
+    if (pagesContainer.value) {
+      releaseDisplayPageResources(pagesContainer.value);
+    }
     initialFontWaitId += 1;
     initialFontWaitPending = false;
     scheduler.dispose();
