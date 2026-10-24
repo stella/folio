@@ -87,7 +87,7 @@ const schema = new Schema({
         plainText: { default: "" },
       },
     },
-    bookmarkBoundary: { inline: true, group: "inline", atom: true },
+    bookmarkBoundary: editorSchema.nodes.bookmarkBoundary.spec,
     table: {
       content: "tableRow+",
       group: "block",
@@ -6448,7 +6448,7 @@ describe("deleteBlock over inline content that is not text", () => {
 
   test("leaves a bookmark boundary unmarked and still removes the paragraph", () => {
     const view = deleteFirstBlock([
-      schema.node("bookmarkBoundary"),
+      schema.node("bookmarkBoundary", { type: "start", id: 0, name: "_Ref0" }),
       schema.text("words"),
     ]);
 
