@@ -83,7 +83,7 @@ test("model comparison normalizes only safely mergeable adjacent runs", () => {
         preservedAttributes: [
           {
             name: "rsidR",
-            namespaceUri:
+            namespace:
               "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
             value: "00ABCDEF",
           },
@@ -330,12 +330,11 @@ test("resolved projection preserves source metadata checks without mutation", ()
   const model = reviewDocumentWithContent([textRun("Alpha "), textRun("beta")]);
   const sourceParagraph = model.package.document.content.at(0);
   if (sourceParagraph?.type !== "paragraph") panic("Expected paragraph");
-  const originalContent = sourceParagraph.content;
+  const originalProjection = canonicalReviewModel(model);
   const firstProjection = canonicalResolvedReviewModel(model);
 
   assert.deepEqual(canonicalResolvedReviewModel(model), firstProjection);
-  assert.equal(sourceParagraph.content, originalContent);
-  assert.deepEqual(sourceParagraph.content, originalContent);
+  assert.deepEqual(canonicalReviewModel(model), originalProjection);
 
   Object.defineProperty(sourceParagraph, Symbol("unclassifiedCapture"), {
     enumerable: true,
@@ -371,6 +370,41 @@ test("resolved projection preserves source metadata checks without mutation", ()
   assert.deepEqual(
     canonicalResolvedReviewModel(sourceHandleModel),
     canonicalResolvedReviewModel(reviewDocumentWithContent([textRun("Alpha")])),
+  );
+});
+
+test("resolved projection rejects metadata on runs removed by consolidation", () => {
+  for (const enumerable of [true, false]) {
+    const model = reviewDocumentWithContent([
+      textRun("Alpha "),
+      textRun("beta"),
+    ]);
+    const sourceParagraph = model.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") panic("Expected paragraph");
+    const secondRun = sourceParagraph.content.at(1);
+    if (secondRun?.type !== "run") panic("Expected second run");
+    Object.defineProperty(secondRun, Symbol("unclassifiedCapture"), {
+      enumerable,
+      value: {},
+    });
+    assert.throws(
+      () => canonicalResolvedReviewModel(model),
+      /Unclassified model capture symbol/,
+    );
+  }
+
+  const model = reviewDocumentWithContent([textRun("Alpha "), textRun("beta")]);
+  const remainingParagraph = model.package.document.content.at(0);
+  if (remainingParagraph?.type !== "paragraph") panic("Expected paragraph");
+  const remainingSecondRun = remainingParagraph.content.at(1);
+  if (remainingSecondRun?.type !== "run") panic("Expected second run");
+  Object.defineProperty(remainingSecondRun, "sourceCaptureNew", {
+    enumerable: true,
+    value: {},
+  });
+  assert.throws(
+    () => canonicalResolvedReviewModel(model),
+    /Unclassified model capture field/,
   );
 });
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import type { Document } from "@stll/docx-core/model";
+import type { Document, ParagraphContent } from "@stll/docx-core/model";
 import { visitDocxParagraphs } from "@stll/folio-core/docx/paragraphTraversal";
 import { consolidateParagraphContent } from "@stll/folio-core/docx/runConsolidator";
 
@@ -142,7 +142,7 @@ const hasModeledComments = (value: object): boolean => {
 type CanonicalReviewModelOptions = {
   model: unknown;
   aliases?: ReadonlyMap<string, string>;
-  paragraphContentOverrides?: WeakMap<object, unknown>;
+  paragraphContentOverrides?: WeakMap<object, ParagraphContent[]>;
 };
 
 /** One strict modeled-document projection, including nested part collections. */
@@ -227,15 +227,17 @@ const projectCanonicalReviewModel = ({
         entries.push([key, project(meaningful, `${modelPath}/${key}`)]);
         continue;
       }
+      const originalProjection = project(entry, `${modelPath}/${key}`);
+      const paragraphContentOverride = paragraphContentOverrides?.get(value);
       const projectedEntry =
-        key === "content" && paragraphContentOverrides?.has(value)
-          ? paragraphContentOverrides.get(value)
-          : entry;
+        key === "content" && paragraphContentOverride !== undefined
+          ? project(paragraphContentOverride, `${modelPath}/${key}`)
+          : originalProjection;
       entries.push([
         key,
         key === "paraId" && typeof projectedEntry === "string"
           ? (aliases.get(projectedEntry) ?? projectedEntry)
-          : project(projectedEntry, `${modelPath}/${key}`),
+          : projectedEntry,
       ]);
     }
     const projected = canonicalFieldModel(Object.fromEntries(entries));
@@ -264,7 +266,7 @@ export const canonicalResolvedReviewModel = (
   model: Document,
   aliases: ReadonlyMap<string, string> = new Map(),
 ): unknown => {
-  const paragraphContentOverrides = new WeakMap<object, unknown>();
+  const paragraphContentOverrides = new WeakMap<object, ParagraphContent[]>();
   visitDocxParagraphs(
     {
       documentBody: model.package.document,
