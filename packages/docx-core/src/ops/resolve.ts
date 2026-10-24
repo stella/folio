@@ -923,19 +923,76 @@ const carryResolutionState = (
     resolution.acceptedClosed.last.add(to);
 };
 
-type SourceOwner = { mergedInto?: SourceOwner };
+type SourceOwnerSide = "before" | "after";
+type SourceOwnerRoute = { owner: SourceOwner; depth: number };
+type SourceOwnerRoutes = Record<SourceOwnerSide, SourceOwnerRoute | undefined>;
+type SourceOwnerState =
+  | { type: "source" }
+  | { type: "merged"; into: SourceOwner }
+  | { type: "removed"; routes: SourceOwnerRoutes };
+type SourceOwner = { state: SourceOwnerState };
 type SourceOccurrence = { node: InlineNode; owner: SourceOwner | undefined };
 
 const sourceOwnerRoot = (owner: SourceOwner): SourceOwner => {
   let root = owner;
-  while (root.mergedInto !== undefined) root = root.mergedInto;
+  while (root.state.type === "merged") {
+    root = root.state.into;
+  }
   let current = owner;
-  while (current.mergedInto !== undefined) {
-    const next = current.mergedInto;
-    current.mergedInto = root;
+  while (current.state.type === "merged") {
+    const next = current.state.into;
+    current.state = { type: "merged", into: root };
     current = next;
   }
   return root;
+};
+
+const sourceOwnerDepthAt = ({
+  owner,
+  source,
+  side,
+  depth,
+}: {
+  owner: SourceOwner | undefined;
+  source: SourceOwner | undefined;
+  side: SourceOwnerSide;
+  depth: number;
+}): number | undefined => {
+  if (owner === undefined || source === undefined) return undefined;
+  const ownerRoot = sourceOwnerRoot(owner);
+  const visited = new Set<SourceOwner>();
+  let current: SourceOwner | undefined = source;
+  const path: { owner: SourceOwner; depth: number }[] = [];
+  const compress = (target: SourceOwner): number => {
+    let routeDepth = Number.POSITIVE_INFINITY;
+    for (const entry of path.toReversed()) {
+      routeDepth = Math.min(routeDepth, entry.depth);
+      if (entry.owner.state.type !== "removed")
+        panic("Only removed source owners have directional routes.");
+      entry.owner.state.routes[side] = { owner: target, depth: routeDepth };
+    }
+    return routeDepth;
+  };
+  while (current !== undefined) {
+    if (visited.has(current))
+      panic("Directional source-owner routes are acyclic.");
+    if (sourceOwnerRoot(current) === ownerRoot) {
+      return Math.min(depth, compress(current));
+    }
+    visited.add(current);
+    if (current.state.type !== "removed") {
+      compress(current);
+      return undefined;
+    }
+    const route: SourceOwnerRoute | undefined = current.state.routes[side];
+    if (route === undefined) {
+      compress(current);
+      return undefined;
+    }
+    path.push({ owner: current, depth: route.depth });
+    current = route.owner;
+  }
+  return undefined;
 };
 
 const resolveList = (
@@ -948,7 +1005,9 @@ const resolveList = (
   const exactSeams = new Map<number, number>();
   const sourceEdges = new Map<number, number>();
   const pending = [...nodes];
-  const sourceOwners = nodes.map((): SourceOwner => ({}));
+  const sourceOwners = nodes.map((): SourceOwner => ({
+    state: { type: "source" },
+  }));
   const appendSource = (node: InlineNode, index: number): void => {
     out.push({
       node,
@@ -985,6 +1044,35 @@ const resolveList = (
     if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
       changed = true;
       if (removesContent(node, resolution.decision)) {
+        const removedOwner =
+          sourceOwners.at(index) ??
+          panic("A removed source occurrence has an owner.");
+        const removedDepth = node.resolutionJoins?.remove ?? 0;
+        if (
+          resolution.decision === REVISION_DECISIONS.REJECT &&
+          isAddedRevision(node) &&
+          removedDepth > 0
+        ) {
+          const before =
+            index === 0
+              ? undefined
+              : (sourceOwners.at(index - 1) ??
+                panic("A preceding source occurrence has an owner."));
+          const after = sourceOwners.at(index + 1);
+          removedOwner.state = {
+            type: "removed",
+            routes: {
+              before:
+                before === undefined
+                  ? undefined
+                  : { owner: before, depth: removedDepth },
+              after:
+                after === undefined
+                  ? undefined
+                  : { owner: after, depth: removedDepth },
+            },
+          };
+        }
         const transfers = node.resolutionJoins?.retainedAfter ?? [];
         if (transfers.length > 0) {
           // Restore before resolving later wrappers, so their own source
@@ -1249,32 +1337,39 @@ const resolveList = (
       const afterOccurrence = out[seam];
       const before = beforeOccurrence?.node;
       const after = afterOccurrence?.node;
-      const belongsTo = ({
+      const ownerDepth = ({
         owner,
         source,
+        side,
       }: {
         owner: SourceOwner | undefined;
         source: SourceOwner | undefined;
-      }): boolean => {
-        return (
-          owner !== undefined &&
-          source !== undefined &&
-          sourceOwnerRoot(owner) === sourceOwnerRoot(source)
-        );
+        side: SourceOwnerSide;
+      }): number | undefined => {
+        return sourceOwnerDepthAt({ owner, source, side, depth: kept.depth });
       };
       const beforeOwner = beforeOccurrence?.owner;
       const afterOwner = afterOccurrence?.owner;
+      const beforeDepth = ownerDepth({
+        owner: beforeOwner,
+        source: kept.before,
+        side: "before",
+      });
+      const afterDepth = ownerDepth({
+        owner: afterOwner,
+        source: kept.after,
+        side: "after",
+      });
       const intoAfter =
-        after === undefined ||
-        !belongsTo({ owner: afterOwner, source: kept.after })
+        after === undefined || afterDepth === undefined
           ? undefined
-          : withBoundariesAtEdge(after, boundaries, kept.depth, "start");
+          : withBoundariesAtEdge(after, boundaries, afterDepth, "start");
       const intoBefore =
         intoAfter !== undefined ||
         before === undefined ||
-        !belongsTo({ owner: beforeOwner, source: kept.before })
+        beforeDepth === undefined
           ? undefined
-          : withBoundariesAtEdge(before, boundaries, kept.depth, "end");
+          : withBoundariesAtEdge(before, boundaries, beforeDepth, "end");
       if (intoAfter !== undefined && after !== undefined) {
         carryResolutionState(resolution, after, intoAfter);
         out.splice(seam - kept.count, kept.count + 1, {
@@ -1343,7 +1438,14 @@ const resolveList = (
       if (leftOwner !== undefined && rightOwner !== undefined) {
         const leftRoot = sourceOwnerRoot(leftOwner);
         const rightRoot = sourceOwnerRoot(rightOwner);
-        if (leftRoot !== rightRoot) rightRoot.mergedInto = leftRoot;
+        if (leftRoot !== rightRoot) {
+          if (
+            leftRoot.state.type !== "source" ||
+            rightRoot.state.type !== "source"
+          )
+            panic("Only source owners can merge.");
+          rightRoot.state = { type: "merged", into: leftRoot };
+        }
       }
       const owner = leftOwner ?? rightOwner;
       out.splice(seam - 1, 2, { node: merged, owner });
