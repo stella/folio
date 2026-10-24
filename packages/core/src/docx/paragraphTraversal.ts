@@ -6,13 +6,11 @@ import type {
   Endnote,
   Footnote,
   HeaderFooter,
-  InlineSdt,
   Paragraph,
   ParagraphContent,
   Run,
   Table,
   TableRow,
-  TrackedRunContent,
 } from "../types/document";
 
 export type DocxParagraphSurfaces = {
@@ -23,67 +21,35 @@ export type DocxParagraphSurfaces = {
   endnotes?: readonly Endnote[] | undefined;
 };
 
+const visitDirectParagraphRuns = (
+  content: ParagraphContent,
+  visit: (run: Run) => void,
+): void => {
+  switch (content.type) {
+    case "run":
+      visit(content);
+      return;
+    case "complexField":
+      for (const run of content.fieldCode) {
+        visit(run);
+      }
+      for (const run of content.fieldResult) {
+        visit(run);
+      }
+      return;
+    default:
+      return;
+  }
+};
+
 /** Visit every run directly owned by a paragraph's inline-content tree. */
 export const visitParagraphRuns = (
   paragraph: Paragraph,
   visit: (run: Run) => void,
 ): void => {
-  type ParagraphRunTreeNode =
-    ParagraphContent | TrackedRunContent | InlineSdt["content"][number];
-
-  const visitParagraphContent = (content: ParagraphRunTreeNode): void => {
-    switch (content.type) {
-      case "run":
-        visit(content);
-        return;
-      case "hyperlink":
-        for (const child of content.children) {
-          visitParagraphContent(child);
-        }
-        return;
-      case "simpleField":
-      case "insertion":
-      case "deletion":
-      case "moveFrom":
-      case "moveTo":
-      case "inlineSdt":
-      // Transparent: the runs inside a bidirectional wrapper are the
-      // paragraph's runs, laid out differently.
-      case "inlineWrapper":
-        for (const child of content.content) {
-          visitParagraphContent(child);
-        }
-        return;
-      case "complexField":
-        for (const run of content.fieldCode) {
-          visit(run);
-        }
-        for (const run of content.fieldResult) {
-          visit(run);
-        }
-        return;
-      case "bookmarkStart":
-      case "bookmarkEnd":
-      case "commentRangeStart":
-      case "commentRangeEnd":
-      case "commentReference":
-      case "moveFromRangeStart":
-      case "moveFromRangeEnd":
-      case "moveToRangeStart":
-      case "moveToRangeEnd":
-      case "mathEquation":
-      case "preservedInline":
-        return;
-      default: {
-        const unsupported: never = content;
-        return unsupported;
-      }
-    }
-  };
-
-  for (const content of paragraph.content) {
-    visitParagraphContent(content);
-  }
+  visitInlineContentSlots(paragraph, ({ item }) => {
+    visitDirectParagraphRuns(item, visit);
+  });
 };
 
 /**
@@ -173,6 +139,69 @@ export const BLOCK_TREE_DESCENT = {
 export type BlockTreeDescent =
   (typeof BLOCK_TREE_DESCENT)[keyof typeof BLOCK_TREE_DESCENT];
 
+type VisitBlockChildrenOptions = {
+  block: BlockContent;
+  visitRecord: (record: Paragraph | Table | TableRow) => BlockTreeDescent;
+  visitBlocks: (blocks: BlockContent[]) => void;
+};
+
+const visitRunBlockChildren = (
+  run: Run,
+  visitBlocks: (blocks: BlockContent[]) => void,
+): void => {
+  for (const content of run.content) {
+    if (content.type === "shape" && content.shape.textBody) {
+      visitBlocks(content.shape.textBody.content);
+    }
+  }
+};
+
+const visitBlockChildren = ({
+  block,
+  visitRecord,
+  visitBlocks,
+}: VisitBlockChildrenOptions): void => {
+  switch (block.type) {
+    case "paragraph":
+      if (visitRecord(block) === BLOCK_TREE_DESCENT.prune) {
+        return;
+      }
+      visitParagraphRuns(block, (run) => {
+        visitRunBlockChildren(run, visitBlocks);
+      });
+      return;
+    case "table":
+      if (visitRecord(block) === BLOCK_TREE_DESCENT.prune) {
+        return;
+      }
+      for (const row of block.rows) {
+        if (visitRecord(row) === BLOCK_TREE_DESCENT.prune) {
+          continue;
+        }
+        for (const cell of row.cells) {
+          visitBlocks(cell.content);
+        }
+      }
+      return;
+    case "blockSdt":
+    case "blockCustomXml":
+      visitBlocks(block.content);
+      return;
+    case "preservedBlock":
+    case "bookmarkStart":
+    case "bookmarkEnd":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
+      return;
+    default: {
+      const unsupported: never = block;
+      panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
+    }
+  }
+};
+
 /**
  * Every record a block tree owns in document order: a paragraph, table, and
  * table row. These are the records that carry authored state by identity.
@@ -186,63 +215,16 @@ export const visitBlockTreeRecords = (
   blocks: readonly BlockContent[],
   visit: (record: Paragraph | Table | TableRow) => BlockTreeDescent,
 ): void => {
-  const visitParagraph = (paragraph: Paragraph): void => {
-    if (visit(paragraph) === BLOCK_TREE_DESCENT.prune) {
-      return;
-    }
-    visitParagraphRuns(paragraph, (run) => {
-      for (const content of run.content) {
-        if (content.type === "shape" && content.shape.textBody) {
-          visitBlocks(content.shape.textBody.content);
-        }
-      }
-    });
-  };
-
   const visitBlocks = (nested: readonly BlockContent[]): void => {
     for (const block of nested) {
-      switch (block.type) {
-        case "paragraph":
-          visitParagraph(block);
-          break;
-        case "table":
-          if (visit(block) === BLOCK_TREE_DESCENT.prune) {
-            break;
-          }
-          for (const row of block.rows) {
-            if (visit(row) === BLOCK_TREE_DESCENT.prune) {
-              continue;
-            }
-            for (const cell of row.cells) {
-              visitBlocks(cell.content);
-            }
-          }
-          break;
-        case "blockSdt":
-        case "blockCustomXml":
-          visitBlocks(block.content);
-          break;
-        // Opaque markup: folio models nothing inside it, so it owns no record.
-        case "preservedBlock":
-        case "bookmarkStart":
-        case "bookmarkEnd":
-        case "moveFromRangeStart":
-        case "moveFromRangeEnd":
-        case "moveToRangeStart":
-        case "moveToRangeEnd":
-          break;
-        default: {
-          const unsupported: never = block;
-          panic(`Unsupported block content: ${JSON.stringify(unsupported)}`);
-        }
-      }
+      visitBlockChildren({ block, visitRecord: visit, visitBlocks });
     }
   };
 
   visitBlocks(blocks);
 };
 
-export const visitDocxParagraphs = (
+const visitDocxBlockSurfaces = (
   {
     documentBody,
     headers,
@@ -250,6 +232,34 @@ export const visitDocxParagraphs = (
     footnotes,
     endnotes,
   }: DocxParagraphSurfaces,
+  visitBlocks: (
+    blocks: BlockContent[],
+    surface: "canonical" | "section",
+  ) => void,
+): void => {
+  visitBlocks(documentBody.content, "canonical");
+  for (const section of documentBody.sections ?? []) {
+    visitBlocks(section.content, "section");
+  }
+  for (const header of headers?.values() ?? []) {
+    visitBlocks(header.content, "canonical");
+  }
+  for (const footer of footers?.values() ?? []) {
+    visitBlocks(footer.content, "canonical");
+  }
+  for (const footnote of footnotes ?? []) {
+    visitBlocks(footnote.content, "canonical");
+  }
+  for (const endnote of endnotes ?? []) {
+    visitBlocks(endnote.content, "canonical");
+  }
+  for (const comment of documentBody.comments ?? []) {
+    visitBlocks(comment.content, "canonical");
+  }
+};
+
+export const visitDocxParagraphs = (
+  surfaces: DocxParagraphSurfaces,
   visit: (paragraph: Paragraph) => void,
 ): void => {
   const seenParagraphs = new WeakSet<Paragraph>();
@@ -278,23 +288,54 @@ export const visitDocxParagraphs = (
     });
   };
 
-  visitBlocks(documentBody.content);
-  for (const section of documentBody.sections ?? []) {
-    visitBlocks(section.content);
-  }
-  for (const header of headers?.values() ?? []) {
-    visitBlocks(header.content);
-  }
-  for (const footer of footers?.values() ?? []) {
-    visitBlocks(footer.content);
-  }
-  for (const footnote of footnotes ?? []) {
-    visitBlocks(footnote.content);
-  }
-  for (const endnote of endnotes ?? []) {
-    visitBlocks(endnote.content);
-  }
-  for (const comment of documentBody.comments ?? []) {
-    visitBlocks(comment.content);
-  }
+  visitDocxBlockSurfaces(surfaces, visitBlocks);
+};
+
+export type DocxContentSlot =
+  | {
+      type: "block";
+      content: BlockContent[];
+      index: number;
+      item: BlockContent;
+    }
+  | ({ type: "inline" } & InlineContentSlot);
+
+export const visitDocxContentSlots = (
+  surfaces: DocxParagraphSurfaces,
+  visit: (slot: DocxContentSlot) => void,
+): void => {
+  const previousSurfaceBlocks = new WeakSet<BlockContent>();
+
+  visitDocxBlockSurfaces(surfaces, (blocks, surface) => {
+    const surfaceBlocks = new Set<BlockContent>();
+    const visitBlocks = (content: BlockContent[]): void => {
+      for (const [index, item] of content.entries()) {
+        if (surface === "section" && previousSurfaceBlocks.has(item)) {
+          continue;
+        }
+        surfaceBlocks.add(item);
+        visit({ type: "block", content, index, item });
+        visitBlockChildren({
+          block: item,
+          visitBlocks,
+          visitRecord: (record) => {
+            if (record.type === "paragraph") {
+              visitInlineContentSlots(record, (slot) => {
+                visit({ type: "inline", ...slot });
+                visitDirectParagraphRuns(slot.item, (run) => {
+                  visitRunBlockChildren(run, visitBlocks);
+                });
+              });
+              return BLOCK_TREE_DESCENT.prune;
+            }
+            return BLOCK_TREE_DESCENT.descend;
+          },
+        });
+      }
+    };
+    visitBlocks(blocks);
+    for (const block of surfaceBlocks) {
+      previousSurfaceBlocks.add(block);
+    }
+  });
 };
