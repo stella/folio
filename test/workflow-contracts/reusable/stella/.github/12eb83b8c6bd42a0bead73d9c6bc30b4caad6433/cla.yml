@@ -1,0 +1,467 @@
+name: CLA Assistant (Reusable)
+
+# SECURITY INVARIANT — DO NOT BREAK.
+# pull_request_target executes trusted base-repository workflow code with secrets.
+# Never check out PR head code, build or install it, or interpolate PR data into
+# executable code. This workflow is limited to API calls in pinned actions;
+# head SHAs are data for the Checks API, never executable input.
+
+on:
+  workflow_call:
+    inputs:
+      app-id:
+        description: "GitHub App ID for CLA bot"
+        required: false
+        type: string
+        default: "2871141"
+      allowlist:
+        description: "Comma-separated list of GitHub usernames or bot patterns to skip CLA check"
+        required: false
+        type: string
+        default: "dependabot[bot],renovate[bot],github-actions[bot],stella-provenance-updater[bot]"
+    secrets:
+      CLA_APP_PRIVATE_KEY:
+        required: true
+
+permissions:
+  contents: read
+  checks: write # Reports cla on the verified PR or merge-group SHA.
+  issues: write # Maintains the signing prompt for unsigned contributors.
+  pull-requests: read
+
+jobs:
+  cla:
+    if: (github.event_name != 'pull_request_target' || github.event.action != 'closed') && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Select signature credentials
+        id: credentials
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            if (context.eventName !== "pull_request_target") {
+              core.setOutput("store_required", "true");
+              return;
+            }
+            const pulls = [(await github.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
+              owner, repo, pull_number: context.payload.pull_request.number,
+            })).data];
+            const candidates = pulls.filter((pull) => pull.state === "open" &&
+              pull.base.repo.full_name === `${owner}/${repo}`);
+            let storeRequired = false;
+            for (const listed of candidates) {
+              const pull = listed;
+              if (pull.user.type !== "Bot") storeRequired = true;
+              const commits = await github.paginate("GET /repos/{owner}/{repo}/pulls/{pull_number}/commits", {
+                owner, repo, pull_number: pull.number, per_page: 100,
+              });
+              if (!commits.length || commits.length > 250 || commits.length !== pull.commits) throw new Error("CLA_INCOMPLETE_COMMIT_LIST");
+              for (const commit of commits) {
+                const response = await github.graphql(`query($owner:String!, $repo:String!, $oid:GitObjectID!) {
+                  repository(owner:$owner,name:$repo) { object(oid:$oid) { ... on Commit {
+                    oid authors(first:100) { nodes { user { databaseId login } } pageInfo { hasNextPage } }
+                  } } }
+                }`, { owner, repo, oid: commit.sha });
+                const object = response.repository?.object;
+                if (object?.oid !== commit.sha || !Array.isArray(object.authors?.nodes)) throw new Error("CLA_INVALID_AUTHOR_LIST");
+                if (object.authors.pageInfo?.hasNextPage || object.authors.nodes.some(({ user }) =>
+                  !user || user.databaseId !== pull.user.id || pull.user.type !== "Bot")) storeRequired = true;
+              }
+            }
+            core.setOutput("store_required", String(storeRequired));
+
+      - name: Signature store token
+        id: store-token
+        if: steps.credentials.outputs.store_required == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v2
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.CLA_APP_PRIVATE_KEY }}
+          owner: stella
+          repositories: cla
+          permission-contents: write # Records contributor signatures.
+          permission-members: read # Recognizes active organization members.
+
+      - name: Verify contributor signatures
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          CLA_STORE_TOKEN: ${{ steps.store-token.outputs.token }}
+          CLA_ALLOWLIST: ${{ inputs.allowlist }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const SENTENCE = "I have read the CLA Document and I hereby sign the CLA";
+            const DOCUMENT = "https://github.com/stella/cla/blob/main/CLA.md";
+            const PROMPT_MARKER = "<!-- stella-cla-signature -->";
+            const ALLOWLIST = (process.env.CLA_ALLOWLIST ?? "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+            const allowlisted = (login) => ALLOWLIST.some((pattern) => {
+              const expression = pattern.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join(".*");
+              return new RegExp(`^${expression}$`, "u").test(login.toLowerCase());
+            });
+            const STORE = { owner: "stella", repo: "cla", path: "signatures/cla.json" };
+            const BRANCH = "cla-signatures";
+            const MAX_WRITE_ATTEMPTS = 3;
+            const MAX_API_ATTEMPTS = 3;
+            const API_BACKOFF_MS = 2000;
+            const TIMEOUT_CODES = new Set([
+              "ETIMEDOUT", "ESOCKETTIMEDOUT", "UND_ERR_CONNECT_TIMEOUT",
+              "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
+            ]);
+            const MAX_PULL_COMMITS = 250;
+            const MAX_COMMIT_AUTHORS = 1000;
+            const { owner, repo } = context.repo;
+            const api = github;
+            const store = process.env.CLA_STORE_TOKEN ? new github.constructor({ auth: process.env.CLA_STORE_TOKEN }) : api;
+            const checks = new Set();
+            const fail = (code) => {
+              const error = new Error(code);
+              error.name = "ClaPolicyError";
+              throw error;
+            };
+            const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
+            const validSha = (value) => typeof value === "string" && /^[0-9a-f]{40}$/u.test(value);
+            const retryApi = async (operation) => {
+              for (let attempt = 1; ; attempt++) {
+                try {
+                  return await operation();
+                } catch (error) {
+                  const timeout = error.name === "TimeoutError" || TIMEOUT_CODES.has(error.code) || TIMEOUT_CODES.has(error.cause?.code);
+                  const transient = error.status === 429 || (error.status >= 500 && error.status <= 599) ||
+                    (error.status == null && timeout);
+                  if (!transient || error.name === "ClaPolicyError") throw error;
+                  if (attempt === MAX_API_ATTEMPTS) {
+                    const unavailable = new Error(`CLA_API_UNAVAILABLE status=${error.status ?? "TIMEOUT"} attempts=${attempt}`);
+                    unavailable.name = "ClaInfrastructureError";
+                    throw unavailable;
+                  }
+                  await new Promise((resolve) => setTimeout(resolve, API_BACKOFF_MS * 2 ** (attempt - 1)));
+                }
+              }
+            };
+            // Only reads are replayed: a lost write response may already have committed.
+            const request = (route, params) => route.startsWith("GET ")
+              ? retryApi(() => api.request(route, { owner, repo, ...params }))
+              : api.request(route, { owner, repo, ...params });
+            const list = (route, params, limit = Infinity) => retryApi(async () => {
+              const items = [];
+              for await (const response of api.paginate.iterator(route, { owner, repo, per_page: 100, ...params })) {
+                if (!Array.isArray(response.data)) fail("CLA_INVALID_API_LIST");
+                items.push(...response.data);
+                if (items.length > limit) fail("CLA_COMMIT_LIMIT_EXCEEDED");
+              }
+              return items;
+            });
+            const readSignatures = async () => {
+              const { data } = await retryApi(() => store.request("GET /repos/{owner}/{repo}/contents/{path}", { ...STORE, ref: BRANCH }));
+              if (data.type !== "file" || data.encoding !== "base64" || !validSha(data.sha) || typeof data.content !== "string") {
+                fail("CLA_INVALID_SIGNATURE_FILE");
+              }
+              const signatures = JSON.parse(Buffer.from(data.content, "base64").toString("utf8"));
+              if (!signatures || Array.isArray(signatures) || !Array.isArray(signatures.signedContributors) ||
+                  signatures.signedContributors.some((record) => !record || !positiveInteger(record.id))) {
+                fail("CLA_INVALID_SIGNATURE_RECORDS");
+              }
+              return { signatures, sha: data.sha };
+            };
+            const recordSignature = async (signature) => {
+              for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
+                const { signatures, sha } = await readSignatures();
+                if (signatures.signedContributors.some(({ id }) => id === signature.id)) return;
+                signatures.signedContributors.push(signature);
+                const outcome = await store.request("PUT /repos/{owner}/{repo}/contents/{path}", {
+                  ...STORE, branch: BRANCH, sha, message: "chore: record CLA signature",
+                  content: Buffer.from(`${JSON.stringify(signatures, null, 2)}\n`).toString("base64"),
+                }).then(() => "saved", (error) => {
+                  if (error.status === 409) return "conflict";
+                  throw error;
+                });
+                if (outcome === "saved") return;
+              }
+              fail("CLA_SIGNATURE_WRITE_CONFLICT");
+            };
+            const accounts = new Map();
+            const account = async (user) => {
+              if (!positiveInteger(user?.databaseId) || typeof user.login !== "string") fail("CLA_INVALID_AUTHOR");
+              if (!accounts.has(user.databaseId)) {
+                const { data } = await retryApi(() => api.request("GET /users/{username}", { username: user.login }));
+                if (data.id !== user.databaseId || data.login !== user.login || !["User", "Bot"].includes(data.type)) fail("CLA_AUTHOR_IDENTITY_CHANGED");
+                accounts.set(user.databaseId, data);
+              }
+              return accounts.get(user.databaseId);
+            };
+            const exempt = async (author) => {
+              if (!positiveInteger(author?.id) || typeof author.login !== "string") fail("CLA_INVALID_AUTHOR");
+              if (author.type === "Bot" || allowlisted(author.login)) return true;
+              const membership = await retryApi(() => store.request("GET /orgs/{org}/memberships/{username}", {
+                org: owner, username: author.login,
+              })).then(({ data }) => data, (error) => {
+                if (error.status === 404) return null;
+                throw error;
+              });
+              return membership?.state === "active" && (membership.role === "member" || membership.role === "admin");
+            };
+            const startCheck = async (sha, name = "cla") => {
+              if (!validSha(sha)) fail("CLA_INVALID_HEAD");
+              const { data } = await request("POST /repos/{owner}/{repo}/check-runs", {
+                name, head_sha: sha, status: "in_progress",
+                output: { title: "CLA_CHECKING", summary: "Verifying contributor signatures." },
+              });
+              if (!positiveInteger(data.id)) fail("CLA_INVALID_CHECK_RUN");
+              checks.add(data.id);
+              return data.id;
+            };
+            const completeCheck = async (id, conclusion, title, summary) => {
+              await request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
+                check_run_id: id, status: "completed", conclusion, completed_at: new Date().toISOString(),
+                output: { title, summary },
+              });
+              checks.delete(id);
+            };
+            const readPull = async (number) => {
+              if (!positiveInteger(number)) fail("CLA_INVALID_PULL_NUMBER");
+              const { data } = await request("GET /repos/{owner}/{repo}/pulls/{pull_number}", { pull_number: number });
+              if (data.number !== number || data.base?.repo?.full_name?.toLowerCase() !== `${owner}/${repo}`.toLowerCase() ||
+                  !validSha(data.head?.sha) || !validSha(data.base?.sha)) fail("CLA_INVALID_PULL_REQUEST");
+              return data;
+            };
+            const prompt = async (pull, comments, logins) => {
+              const existing = comments.find((comment) => comment.user?.type === "Bot" &&
+                comment.user.login === "github-actions[bot]" && typeof comment.body === "string" && comment.body.startsWith(PROMPT_MARKER));
+              const body = `${PROMPT_MARKER}\nPlease read the [Contributor License Agreement](${DOCUMENT}), then each unsigned contributor (${logins.join(", ")}) must post this exact sentence from their own linked GitHub account:\n\n\`${SENTENCE}\`\n\nSigning once covers future contributions. Active organization members and exempt bots do not need to sign.`;
+              if (existing) {
+                if (existing.body !== body) await request("PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}", { comment_id: existing.id, body });
+                return;
+              }
+              await request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", { issue_number: pull.number, body });
+            };
+            const verifyPull = async (pull, groupEntry, includeOpener = true) => {
+              if (!positiveInteger(pull.commits) || pull.commits > MAX_PULL_COMMITS) fail("CLA_COMMIT_LIMIT_EXCEEDED");
+              const commits = await list("GET /repos/{owner}/{repo}/pulls/{pull_number}/commits", {
+                pull_number: pull.number,
+              }, MAX_PULL_COMMITS);
+              if (commits.length !== pull.commits) fail("CLA_INCOMPLETE_COMMIT_LIST");
+              const commitShas = new Set(commits.map(({ sha }) => sha));
+              if (commitShas.size !== commits.length) fail("CLA_DUPLICATE_COMMIT");
+              const { data: comparison } = await request("GET /repos/{owner}/{repo}/compare/{basehead}", {
+                basehead: `${pull.base.sha}...${pull.head.sha}`,
+              });
+              if (comparison.total_commits !== pull.commits || !Array.isArray(comparison.commits) ||
+                  comparison.commits.length !== pull.commits || comparison.commits.some(({ sha }) => !commitShas.has(sha)) ||
+                  new Set(comparison.commits.map(({ sha }) => sha)).size !== pull.commits) fail("CLA_COMMIT_SNAPSHOT_CHANGED");
+              if (groupEntry) {
+                // The queue squashes: each entry adds exactly one commit on its
+                // predecessor, so the PR head is never an ancestor of the entry. GitHub
+                // dequeues a PR whose head moves, and the re-read below confirms the
+                // verified head did not. Any other shape fails closed.
+                const { data: added } = await request("GET /repos/{owner}/{repo}/compare/{basehead}", {
+                  basehead: `${groupEntry.baseCommit.oid}...${groupEntry.headCommit.oid}`,
+                });
+                const squash = Array.isArray(added.commits) && added.commits.length === 1 ? added.commits[0] : undefined;
+                if (added.total_commits !== 1 || squash?.sha !== groupEntry.headCommit.oid || !Array.isArray(squash.parents) ||
+                    squash.parents.length !== 1 || squash.parents[0]?.sha !== groupEntry.baseCommit.oid) fail("CLA_UNEXPECTED_GROUP_COMMIT");
+              }
+              const current = await readPull(pull.number);
+              if (current.head.sha !== pull.head.sha || current.commits !== pull.commits) fail("CLA_PULL_CHANGED");
+              const authors = new Map(includeOpener ? [[pull.user.id, pull.user]] : []);
+              const unlinked = [];
+              for (const commit of commits) {
+                if (!validSha(commit.sha)) fail("CLA_INVALID_COMMIT");
+                let cursor = null;
+                const seen = new Set();
+                let total;
+                let count = 0;
+                do {
+                  const result = await retryApi(() => api.graphql(`query($owner:String!, $repo:String!, $oid:GitObjectID!, $cursor:String) {
+                    repository(owner:$owner,name:$repo) { object(oid:$oid) { ... on Commit {
+                      oid authors(first:100,after:$cursor) {
+                        totalCount nodes { user { databaseId login __typename } }
+                        pageInfo { hasNextPage endCursor }
+                      }
+                    } } }
+                  }`, { owner, repo, oid: commit.sha, cursor }));
+                  const object = result.repository?.object;
+                  const page = object?.authors;
+                  if (object?.oid !== commit.sha || !Array.isArray(page?.nodes) || !positiveInteger(page.totalCount) ||
+                      page.totalCount > MAX_COMMIT_AUTHORS || typeof page.pageInfo?.hasNextPage !== "boolean") fail("CLA_INVALID_AUTHOR_LIST");
+                  total ??= page.totalCount;
+                  if (total !== page.totalCount || !page.nodes.length) fail("CLA_AUTHOR_SNAPSHOT_CHANGED");
+                  count += page.nodes.length;
+                  if (count > total) fail("CLA_AUTHOR_SNAPSHOT_CHANGED");
+                  for (const { user } of page.nodes) {
+                    if (!positiveInteger(user?.databaseId) || typeof user.login !== "string") {
+                      unlinked.push(commit.sha);
+                      continue;
+                    }
+                    authors.set(user.databaseId, await account(user));
+                  }
+                  cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+                  if (page.pageInfo.hasNextPage && (typeof cursor !== "string" || seen.has(cursor))) fail("CLA_INVALID_AUTHOR_CURSOR");
+                  seen.add(cursor);
+                } while (cursor !== null);
+                if (count !== total) fail("CLA_INCOMPLETE_AUTHOR_LIST");
+              }
+              let signatures;
+              let comments;
+              const unsigned = [];
+              for (const author of authors.values()) {
+                if (await exempt(author)) continue;
+                signatures ??= (await readSignatures()).signatures;
+                if (signatures.signedContributors.some(({ id }) => id === author.id)) continue;
+                comments ??= await list("GET /repos/{owner}/{repo}/issues/{issue_number}/comments", { issue_number: pull.number });
+                const signingComment = comments.find((comment) => comment.user?.id === author.id && comment.body === SENTENCE);
+                if (!signingComment) {
+                  unsigned.push(author.login);
+                  continue;
+                }
+                if (!positiveInteger(signingComment.id) || typeof signingComment.created_at !== "string" || !positiveInteger(pull.base.repo.id)) {
+                  fail("CLA_INVALID_SIGNING_COMMENT");
+                }
+                await recordSignature({
+                  name: author.login, id: author.id, comment_id: signingComment.id,
+                  created_at: signingComment.created_at, repoId: pull.base.repo.id, pullRequestNo: pull.number,
+                });
+              }
+              if (unsigned.length) await prompt(pull, comments, unsigned);
+              return { unsigned, unlinked };
+            };
+            const finishVerification = async (id, unsigned, unlinked) => {
+              const failed = unsigned.length > 0 || unlinked.length > 0;
+              const title = unlinked.length ? "CLA_UNLINKED_AUTHOR" : unsigned.length ? "CLA_UNSIGNED" : "CLA_VERIFIED";
+              // Existing callers can require the reusable cla job as well as the SHA check.
+              if (failed) core.setFailed(title);
+              const details = [];
+              if (unlinked.length) details.push(`Commit authors have no linked GitHub account: ${unlinked.join(", ")}. Link the author identity to a GitHub account before verification.`);
+              if (unsigned.length) details.push(`Unsigned contributors: ${unsigned.join(", ")}. Read [the CLA](${DOCUMENT}) and each contributor must post exactly: ${SENTENCE}`);
+              await completeCheck(id, failed ? "failure" : "success", title,
+                failed ? details.join("\n\n") : "Every contributor covered by this check is signed or exempt.");
+            };
+            const verifyNumber = async (number) => {
+              const pull = await readPull(number);
+              const id = await startCheck(pull.head.sha);
+              // Shared-head checks cover immutable contributors, never unrelated openers.
+              const contributors = await verifyPull(pull, undefined, false);
+              await finishVerification(id, contributors.unsigned, contributors.unlinked);
+              const scoped = await startCheck(pull.head.sha, `cla/pr-${number}`);
+              const verdict = await verifyPull(pull);
+              await finishVerification(scoped, verdict.unsigned, verdict.unlinked);
+            };
+            const readQueueEntries = async (baseRef) => {
+              const entries = new Map();
+              const cursors = new Set();
+              let cursor = null;
+              do {
+                const result = await retryApi(() => api.graphql(`query($owner: String!, $repo: String!, $branch: String!, $cursor: String) {
+                  repository(owner: $owner, name: $repo) {
+                    mergeQueue(branch: $branch) {
+                      entries(first: 100, after: $cursor) {
+                        nodes { baseCommit { oid } headCommit { oid } pullRequest { number } }
+                        pageInfo { hasNextPage endCursor }
+                      }
+                    }
+                  }
+                }`, { owner, repo, branch: baseRef, cursor }));
+                const page = result.repository?.mergeQueue?.entries;
+                if (!Array.isArray(page?.nodes) || typeof page.pageInfo?.hasNextPage !== "boolean") fail("CLA_INVALID_QUEUE_RESPONSE");
+                for (const entry of page.nodes) {
+                  // Entries without both commits (not built yet, or unmergeable after a
+                  // rebuild) cannot link a chain; a group that needs one fails as incomplete.
+                  if (entry.headCommit === null || entry.baseCommit === null) continue;
+                  if (!validSha(entry.headCommit?.oid) || !validSha(entry.baseCommit?.oid) || !positiveInteger(entry.pullRequest?.number)) fail("CLA_INVALID_QUEUE_ENTRY");
+                  if (entries.has(entry.headCommit.oid)) fail("CLA_AMBIGUOUS_GROUP_CHAIN");
+                  entries.set(entry.headCommit.oid, entry);
+                }
+                cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+                if (page.pageInfo.hasNextPage && (typeof cursor !== "string" || cursors.has(cursor))) fail("CLA_INVALID_QUEUE_CURSOR");
+                cursors.add(cursor);
+              } while (cursor !== null);
+              return entries;
+            };
+            // GitHub rebuilds a group when a member leaves or joins the queue. The old
+            // head can then never merge and the rebuilt group runs its own check, so a
+            // verification that a membership change broke ends neutral, but only after
+            // observing the transition: the first snapshot held this head and a later
+            // one does not. A head never seen (lagging or unbuilt entry) or still
+            // queued fails as before.
+            const GROUP_CHANGE_CODES = new Set(["CLA_GROUP_PULL_CHANGED", "CLA_INCOMPLETE_MERGE_GROUP",
+              "CLA_PULL_CHANGED", "CLA_COMMIT_SNAPSHOT_CHANGED"]);
+            const verifyGroup = async (group) => {
+              const id = await startCheck(group?.head_sha);
+              if (!validSha(group.base_sha) || typeof group.base_ref !== "string" || typeof group.head_ref !== "string") fail("CLA_INVALID_MERGE_GROUP");
+              const anchor = group.head_ref.match(/\/pr-(\d+)-[0-9a-f]+$/u);
+              if (!anchor || !positiveInteger(Number(anchor[1]))) fail("CLA_INVALID_QUEUE_REF");
+              const baseRef = group.base_ref.replace(/^refs\/heads\//u, "");
+              const entries = await readQueueEntries(baseRef);
+              try {
+                await verifyGroupChain({ id, group, baseRef, entries, anchor: Number(anchor[1]) });
+              } catch (error) {
+                if (error.name !== "ClaPolicyError" || !GROUP_CHANGE_CODES.has(error.message) || !entries.has(group.head_sha)) throw error;
+                if ((await readQueueEntries(baseRef)).has(group.head_sha)) throw error;
+                await completeCheck(id, "neutral", "CLA_GROUP_SUPERSEDED",
+                  `The merge group changed during verification (${error.message}); the rebuilt group is verified by its own run.`);
+              }
+            };
+            const verifyGroupChain = async ({ id, group, baseRef, entries, anchor }) => {
+              // Queue entries link each cumulative head to its predecessor. Follow that
+              // complete chain to the webhook base; commit-to-PR associations can omit
+              // synthetic commits and therefore cannot prove group membership.
+              const numbers = new Set();
+              const groupedEntries = new Map();
+              const visited = new Set();
+              let head = group.head_sha;
+              while (head !== group.base_sha) {
+                if (visited.has(head)) fail("CLA_AMBIGUOUS_GROUP_CHAIN");
+                visited.add(head);
+                const entry = entries.get(head);
+                if (!entry) fail("CLA_INCOMPLETE_MERGE_GROUP");
+                numbers.add(entry.pullRequest.number);
+                groupedEntries.set(entry.pullRequest.number, entry);
+                head = entry.baseCommit.oid;
+              }
+              if (entries.get(group.head_sha)?.pullRequest.number !== anchor) fail("CLA_INCOMPLETE_MERGE_GROUP");
+              const unsigned = [];
+              const unlinked = [];
+              for (const number of numbers) {
+                const pull = await readPull(number);
+                if (pull.state !== "open" || pull.base.ref !== baseRef) fail("CLA_GROUP_PULL_CHANGED");
+                const verdict = await verifyPull(pull, groupedEntries.get(number));
+                unsigned.push(...verdict.unsigned.map((login) => `${login} (#${number})`));
+                unlinked.push(...verdict.unlinked.map((sha) => `${sha} (#${number})`));
+              }
+              await finishVerification(id, unsigned, unlinked);
+            };
+            try {
+              switch (context.eventName) {
+                case "pull_request_target":
+                  await verifyNumber(context.payload.pull_request.number);
+                  break;
+                case "issue_comment":
+                  if (!context.payload.issue.pull_request) break;
+                  await verifyNumber(context.payload.issue.number);
+                  break;
+                case "merge_group":
+                  await verifyGroup(context.payload.merge_group);
+                  break;
+                case "workflow_dispatch": {
+                  const input = context.payload.inputs?.pull_requests;
+                  if (typeof input !== "string" || !/^\d+(?:[\s,]+\d+)*$/u.test(input.trim())) fail("CLA_INVALID_DISPATCH_INPUT");
+                  const numbers = new Set(input.trim().split(/[\s,]+/u).map(Number));
+                  for (const number of numbers) await verifyNumber(number);
+                  break;
+                }
+                default:
+                  fail("CLA_UNSUPPORTED_EVENT");
+              }
+            } catch (error) {
+              const infrastructure = error.name === "ClaInfrastructureError";
+              const code = infrastructure || error.name === "ClaPolicyError" ? error.message : `CLA_API_ERROR_${error.status ?? "UNKNOWN"}`;
+              if (infrastructure) core.error(code, { title: "signature-service-unavailable" });
+              core.setFailed(code);
+              for (const id of checks) {
+                await completeCheck(id, "failure", infrastructure ? "CLA_API_UNAVAILABLE" : "CLA_ERROR",
+                  `Verification failed (${code}). Check workflow permissions and rerun.`).catch((reportError) => {
+                    core.error(`CLA_CHECK_REPORT_ERROR_${reportError.status ?? "UNKNOWN"}`, { title: "signature-check-report-failed" });
+                  });
+              }
+            }

@@ -15,6 +15,11 @@ permissions:
 
 jobs:
   cla:
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+      pull-requests: read
     if: >-
       !github.event.repository.private
       && (
