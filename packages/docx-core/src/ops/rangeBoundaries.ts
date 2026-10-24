@@ -48,6 +48,8 @@ const BOUNDARY_SIDES = {
   moveToRangeEnd: { family: "moveTo", side: "end" },
 } as const satisfies Record<string, { family: string; side: "start" | "end" }>;
 
+export const rangeBoundaryDefinitions = () => BOUNDARY_SIDES;
+
 type BoundaryType = keyof typeof BOUNDARY_SIDES;
 type Boundary = Extract<InlineNode, { type: BoundaryType }>;
 type CommentAnchor = Extract<
@@ -552,6 +554,41 @@ export type WellFormedRangePlan = {
   moved: { moving: number; anchor: number; side: "before" | "after" }[];
 };
 
+type RangeMultiplicity =
+  | { type: "unpaired" }
+  | { type: "ambiguous" }
+  | { type: "pair"; start: number; end: number };
+
+export const classifyRangeMultiplicity = (
+  occurrences: readonly BoundaryOccurrence[],
+  dropped: ReadonlySet<number> = new Set(),
+): ReadonlyMap<string, RangeMultiplicity> => {
+  const grouped = new Map<string, { starts: number[]; ends: number[] }>();
+  for (const [index, occurrence] of occurrences.entries()) {
+    if (dropped.has(index)) continue;
+    let group = grouped.get(occurrence.range);
+    if (group === undefined) {
+      group = { starts: [], ends: [] };
+      grouped.set(occurrence.range, group);
+    }
+    const side = occurrence.side === "start" ? group.starts : group.ends;
+    side.push(index);
+  }
+  const classified = new Map<string, RangeMultiplicity>();
+  for (const [range, { starts, ends }] of grouped) {
+    const start = starts.at(0);
+    const end = ends.at(0);
+    if (starts.length > 1 || ends.length > 1) {
+      classified.set(range, { type: "ambiguous" });
+    } else if (start === undefined || end === undefined) {
+      classified.set(range, { type: "unpaired" });
+    } else {
+      classified.set(range, { type: "pair", start, end });
+    }
+  }
+  return classified;
+};
+
 /**
  * The one rule that makes every range a rejection kept boundaries of
  * well-formed, for the engine's model and the editor's document alike. A
@@ -570,8 +607,10 @@ export const planWellFormedRanges = (
   );
   const copies = new Map<string, number[]>();
   for (const [index, { boundary, range }] of occurrences.entries()) {
-    if (ranges.has(range))
-      copies.set(boundary, [...(copies.get(boundary) ?? []), index]);
+    if (!ranges.has(range)) continue;
+    const group = copies.get(boundary);
+    if (group === undefined) copies.set(boundary, [index]);
+    else group.push(index);
   }
   const dropped = new Set<number>();
   for (const group of copies.values()) {
@@ -583,19 +622,12 @@ export const planWellFormedRanges = (
       dropped.add(member);
   }
   const moved: WellFormedRangePlan["moved"] = [];
+  const multiplicities = classifyRangeMultiplicity(occurrences, dropped);
   for (const range of ranges) {
-    const sides = (wanted: "start" | "end") =>
-      occurrences.flatMap((occurrence, index) =>
-        occurrence.range === range &&
-        occurrence.side === wanted &&
-        !dropped.has(index)
-          ? [index]
-          : [],
-      );
-    const [start, ...moreStarts] = sides("start");
-    const [end, ...moreEnds] = sides("end");
-    if (start === undefined || end === undefined) continue;
-    if (moreStarts.length > 0 || moreEnds.length > 0 || end > start) continue;
+    const multiplicity = multiplicities.get(range);
+    if (multiplicity?.type !== "pair") continue;
+    const { start, end } = multiplicity;
+    if (end > start) continue;
     if (occurrences[end]?.kept === true)
       moved.push({ moving: end, anchor: start, side: "after" });
     else if (occurrences[start]?.kept === true)

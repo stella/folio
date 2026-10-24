@@ -73,6 +73,10 @@ import {
 } from "../leaves";
 import { paragraphLength, paragraphLogicalText } from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
+import {
+  classifyRangeMultiplicity,
+  rangeBoundaryDefinitions,
+} from "../rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { planRevisionResolution } from "../resolve";
 import {
@@ -154,27 +158,21 @@ const expectEquivalent = (
 // Range boundaries kept by rejection
 // ---------------------------------------------------------------------------
 
-const RANGE_BOUNDARY_PAIRS = {
-  bookmarkStart: "bookmark",
-  bookmarkEnd: "bookmark",
-  commentRangeStart: "comment",
-  commentRangeEnd: "comment",
-  moveFromRangeStart: "moveFrom",
-  moveFromRangeEnd: "moveFrom",
-  moveToRangeStart: "moveTo",
-  moveToRangeEnd: "moveTo",
-} as const satisfies Record<string, string>;
+type RangeBoundary = { type: keyof typeof BOUNDARY_SIDES; id: number };
 
-type RangeBoundary = { type: keyof typeof RANGE_BOUNDARY_PAIRS; id: number };
+const BOUNDARY_SIDES = rangeBoundaryDefinitions();
+
+const isRangeBoundaryType = (type: string): type is RangeBoundary["type"] =>
+  Object.hasOwn(BOUNDARY_SIDES, type);
 
 const asRangeBoundary = (value: unknown): RangeBoundary | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
   const type: unknown = Reflect.get(value, "type");
   const id: unknown = Reflect.get(value, "id");
   return typeof type === "string" &&
-    Object.hasOwn(RANGE_BOUNDARY_PAIRS, type) &&
+    isRangeBoundaryType(type) &&
     typeof id === "number"
-    ? { type: type as RangeBoundary["type"], id }
+    ? { type, id }
     : undefined;
 };
 
@@ -236,7 +234,7 @@ const boundariesKeptByRejecting = (
       held.push(
         ...inside.filter(
           ({ type: kind, id: range }) =>
-            RANGE_BOUNDARY_PAIRS[kind] !== "comment" || !whole.has(range),
+            BOUNDARY_SIDES[kind].family !== "comment" || !whole.has(range),
         ),
       );
       return;
@@ -284,31 +282,30 @@ const withoutBoundaries = (
   return copy;
 };
 
-/** Every range a kept boundary belongs to starts before it ends. */
 const expectWellFormedRanges = (
   document: Document,
   kept: readonly RangeBoundary[],
 ): void => {
   const order = boundariesBelow(document.package.document.content);
+  const multiplicities = classifyRangeMultiplicity(
+    order.map(({ type, id }) => ({
+      boundary: `${type}:${id}`,
+      range: `${BOUNDARY_SIDES[type].family}:${id}`,
+      side: BOUNDARY_SIDES[type].side,
+      kept: false,
+    })),
+  );
   for (const { type, id } of kept) {
-    const pair = RANGE_BOUNDARY_PAIRS[type];
-    const start = order.findIndex(
-      (boundary) =>
-        RANGE_BOUNDARY_PAIRS[boundary.type] === pair &&
-        boundary.id === id &&
-        boundary.type.endsWith("Start"),
-    );
-    const end = order.findIndex(
-      (boundary) =>
-        RANGE_BOUNDARY_PAIRS[boundary.type] === pair &&
-        boundary.id === id &&
-        boundary.type.endsWith("End"),
-    );
-    if (start !== -1 && end !== -1)
-      expect({ range: `${pair}:${id}`, startsFirst: start < end }).toEqual({
-        range: `${pair}:${id}`,
-        startsFirst: true,
-      });
+    const range = `${BOUNDARY_SIDES[type].family}:${id}`;
+    const multiplicity = multiplicities.get(range);
+    if (multiplicity?.type !== "pair") continue;
+    expect({
+      range,
+      startsFirst: multiplicity.start < multiplicity.end,
+    }).toEqual({
+      range,
+      startsFirst: true,
+    });
   }
 };
 
