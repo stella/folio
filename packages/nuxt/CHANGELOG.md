@@ -1,5 +1,16 @@
 # @stll/folio-nuxt
 
+## 0.4.3
+
+### Patch Changes
+
+- [#1973](https://github.com/stella/folio/pull/1973) [`f64a269`](https://github.com/stella/folio/commit/f64a26912cbf8807ae5f561a129d7d1cf667ac1b) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update runtime dependencies.
+
+- [#2045](https://github.com/stella/folio/pull/2045) [`33e359b`](https://github.com/stella/folio/commit/33e359b3393d23e4449787f1495185ca581eedfd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Require Nuxt 4.6.2 or later.
+- Updated dependencies [[`f64a269`](https://github.com/stella/folio/commit/f64a26912cbf8807ae5f561a129d7d1cf667ac1b), [`d22d507`](https://github.com/stella/folio/commit/d22d507e44ab28d088ca9a8e1e6b2407f5699b11), [`afa6257`](https://github.com/stella/folio/commit/afa62578002fd5ee8ffcb5ea02cc5be31cea936f), [`cc75df8`](https://github.com/stella/folio/commit/cc75df8d249a182573f300b3756696c686430936), [`bb348b9`](https://github.com/stella/folio/commit/bb348b9a32bcc24d4013c581958ab93742f579dd), [`baf7372`](https://github.com/stella/folio/commit/baf7372c8d5be0ad5ec4ced556cb963d1557a251), [`20ee7f4`](https://github.com/stella/folio/commit/20ee7f4e19b0d4e3f47a8d72351ea9d288a5dcb2)]:
+  - @stll/folio-vue@0.26.1
+  - @stll/utf8-boundaries@0.1.1
+
 ## 0.4.2
 
 ### Patch Changes
