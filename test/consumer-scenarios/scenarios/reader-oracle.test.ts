@@ -18,26 +18,39 @@ import { assertReadersAgree } from "../support/invariants.ts";
 import { createRandom } from "../support/random.ts";
 import { contentView, markdownViews, readAll } from "../support/readers.ts";
 
-test("loose list whitespace preserves empty nested items and rejects heading reclassification", () => {
-  const expected = [
-    { text: "Parent", kind: "listItem", number: "(bullet)" },
+test("loose list separators preserve empty and populated nested items", () => {
+  const parent = {
+    text: "Parent",
+    kind: "listItem",
+    number: "(bullet)",
+  } as const;
+  const emptyNested = [
+    parent,
     { text: "", kind: "listItem", number: "(bullet)" },
   ] as const;
-  assert.deepEqual(markdownViews("- Parent\n\n  -", expected), expected);
+  assert.deepEqual(markdownViews("- Parent\n\n  -", emptyNested), emptyNested);
+  const nestedBullet = [
+    parent,
+    { text: "Child", kind: "listItem", number: "(bullet)" },
+  ] as const;
+  assert.deepEqual(
+    markdownViews("- Parent\n\n  - Child", nestedBullet),
+    nestedBullet,
+  );
+  const nestedOrdered = [
+    parent,
+    { text: "Child", kind: "listItem", number: "1." },
+  ] as const;
+  assert.deepEqual(
+    markdownViews("- Parent\n\n  1. Child", nestedOrdered),
+    nestedOrdered,
+  );
   assert.throws(
-    () => markdownViews("- Parent\n  -", expected),
+    () => markdownViews("- Parent\n  -", emptyNested),
     /Unsupported list item Markdown token: heading/u,
   );
   assert.throws(
-    () => markdownViews("- Parent\n\n\n  -", expected),
-    /Unsupported list item Markdown token: space/u,
-  );
-  assert.throws(
-    () =>
-      markdownViews("- Parent\n\n  - Child", [
-        expected[0],
-        { ...expected[1], text: "Child" },
-      ]),
+    () => markdownViews("- Parent\n\n\n  -", emptyNested),
     /Unsupported list item Markdown token: space/u,
   );
 });
