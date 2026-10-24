@@ -4,6 +4,7 @@ import {
   getLineBreakProvider,
   gluePermitsBreakBefore,
   isNonBreakingGlue,
+  unicodeLineBoundaryPermitsBreak,
 } from "./lineBreakProvider";
 import type { LineBreakPolicy } from "./lineBreakProvider";
 
@@ -66,5 +67,9 @@ export function isBreakBetween(
   previous: string | undefined,
   next: string | undefined,
 ): boolean {
-  return isBreakChar(previous) && gluePermitsBreakBefore(previous, next);
+  return (
+    isBreakChar(previous) &&
+    gluePermitsBreakBefore(previous, next) &&
+    unicodeLineBoundaryPermitsBreak({ previous, next })
+  );
 }

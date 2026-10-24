@@ -135,11 +135,11 @@ function admitFinalCandidate(
   };
 }
 
-export function trimTrailingSpacesAndTabs(text: string): string {
+export function trimLineEndWhitespace(text: string): string {
   let end = text.length;
   while (end > 0) {
     const char = text[end - 1];
-    if (char !== " " && char !== "\t") {
+    if (char !== " " && char !== "\t" && char !== "\u200B") {
       break;
     }
     end--;
@@ -151,7 +151,7 @@ export function measureWordWithTrailingWhitespace(
   word: string,
   style: FontStyle,
 ): { measuredWord: string; wordWidth: number; fullWordWidth: number } {
-  const measuredWord = trimTrailingSpacesAndTabs(word);
+  const measuredWord = trimLineEndWhitespace(word);
   const wordWidth = measureTextWidth(measuredWord, style);
   const trailingWhitespace = word.slice(measuredWord.length);
   if (trailingWhitespace.length === 0) {

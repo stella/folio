@@ -8,7 +8,7 @@ import type { ParagraphBlock, TextRun } from "../types";
 import { resolveEffectiveLineBreakPolicy } from "./effectiveLineBreakPolicy";
 import { MAX_HYPHENATION_WORD_LENGTH } from "./lineBreakProvider";
 import { findHyphenationBreaks, findWordBreaks } from "./lineBreaks";
-import { trimTrailingSpacesAndTabs } from "./lineFitting";
+import { trimLineEndWhitespace } from "./lineFitting";
 import { measureTextWidth } from "./measureProvider";
 import type { FontStyle } from "./measureTypes";
 import {
@@ -50,7 +50,7 @@ export function computeTrailingGlueWidths(block: ParagraphBlock): number[] {
     const leading =
       firstBreak === undefined
         ? text
-        : trimTrailingSpacesAndTabs(text.slice(0, firstBreak));
+        : trimLineEndWhitespace(text.slice(0, firstBreak));
     widths[index] =
       measureTextWidth(leading, style) +
       (firstBreak === undefined ? (widths[index + 1] ?? 0) : 0);
@@ -235,7 +235,7 @@ export function collectCrossRunWord({
       boundedRemainder,
       resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run }).provider,
     ).at(0);
-    const segmentText = trimTrailingSpacesAndTabs(
+    const segmentText = trimLineEndWhitespace(
       firstBreak === undefined
         ? boundedRemainder
         : boundedRemainder.slice(0, firstBreak),
