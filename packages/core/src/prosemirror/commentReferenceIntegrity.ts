@@ -53,9 +53,7 @@ type CommentReferenceSurvey = {
   unanchoredMarks: { position: number; size: number; mark: Mark }[];
 };
 
-export const surveyCommentReferences = (
-  doc: PMNode,
-): CommentReferenceSurvey => {
+const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
   const references: CommentReferenceOccurrence[] = [];
   const markEnds = new Map<number, number>();
   const unanchoredMarks: CommentReferenceSurvey["unanchoredMarks"] = [];
