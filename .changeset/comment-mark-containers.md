@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Preserve comment-range boundaries inside hyperlinks and inline content controls.
+Preserve comment-range boundaries and point references inside hyperlinks and inline content controls.

@@ -392,6 +392,7 @@ export const collectPairedBookmarkIds = (
           break;
         case "commentRangeStart":
         case "commentRangeEnd":
+        case "commentReference":
           break;
         case "run":
           visitRun(child);
@@ -3329,6 +3330,11 @@ function convertInlineSdt(
       case "commentRangeEnd":
         openCommentIds.delete(content.id);
         break;
+      case "commentReference":
+        itemNodes.push(
+          schema.node("commentReference", { commentId: content.id }),
+        );
+        break;
       case "run":
         itemNodes.push(
           ...convertRun(
@@ -4955,7 +4961,11 @@ function convertHyperlink(
     if (anchored) {
       nodes.push(
         ...withInlineWrapperMark(
-          [schema.node(RANGE_ANCHOR_NODE_NAME, anchored)],
+          [
+            schema.node(RANGE_ANCHOR_NODE_NAME, anchored, undefined, [
+              linkMark,
+            ]),
+          ],
           stack,
           { hyperlinkIndex, stackStart: 0 },
         ),
@@ -4970,6 +4980,13 @@ function convertHyperlink(
         break;
       case "commentRangeEnd":
         openCommentIds.delete(child.id);
+        break;
+      case "commentReference":
+        childNodes.push(
+          schema.node("commentReference", { commentId: child.id }, undefined, [
+            linkMark,
+          ]),
+        );
         break;
       case "bookmarkStart":
         childNodes.push(

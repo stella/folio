@@ -76,6 +76,7 @@ test("removeCommentMarkers visits markers inside hyperlinks and inline controls"
             { type: "commentRangeStart", id: 21 },
             { type: "run", content: [{ type: "text", text: "linked" }] },
             { type: "commentRangeEnd", id: 21 },
+            { type: "commentReference", id: 21 },
           ],
         },
         {
@@ -85,6 +86,7 @@ test("removeCommentMarkers visits markers inside hyperlinks and inline controls"
             { type: "commentRangeStart", id: 22 },
             { type: "run", content: [{ type: "text", text: "controlled" }] },
             { type: "commentRangeEnd", id: 22 },
+            { type: "commentReference", id: 22 },
           ],
         },
       ],
@@ -94,7 +96,7 @@ test("removeCommentMarkers visits markers inside hyperlinks and inline controls"
 
   visitCommentMarkers(blocks, ({ item }) => markerIds.push(item.id));
 
-  expect(markerIds).toEqual([21, 21, 22, 22]);
+  expect(markerIds).toEqual([21, 21, 21, 22, 22, 22]);
   const withoutMarkers = removeCommentMarkers(blocks, new Set([21, 22]));
   const remaining: number[] = [];
   visitCommentMarkers(withoutMarkers, ({ item }) => remaining.push(item.id));

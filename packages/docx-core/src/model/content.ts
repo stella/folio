@@ -352,6 +352,7 @@ export type Hyperlink = {
     | CommentRangeStart
     | CommentRangeEnd
     | InlineWrapper
+    | CommentReference
     | PreservedInline
   )[];
 };
@@ -2191,6 +2192,7 @@ export type InlineSdt = {
     | BookmarkEnd
     | CommentRangeStart
     | CommentRangeEnd
+    | CommentReference
     | MoveFromRangeStart
     | MoveFromRangeEnd
     | MoveToRangeStart

@@ -266,6 +266,7 @@ const HYPERLINK_CHILD_TYPES = {
   bookmarkEnd: true,
   commentRangeStart: true,
   commentRangeEnd: true,
+  commentReference: true,
   inlineWrapper: true,
   preservedInline: true,
 } as const satisfies Record<HyperlinkChild["type"], true>;
@@ -303,6 +304,7 @@ const INLINE_SDT_CHILD_TYPES = {
   bookmarkEnd: true,
   commentRangeStart: true,
   commentRangeEnd: true,
+  commentReference: true,
   moveFromRangeStart: true,
   moveFromRangeEnd: true,
   moveToRangeStart: true,

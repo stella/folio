@@ -15,6 +15,8 @@
  * Internal links use w:anchor to reference a bookmark in the same document
  */
 
+import { isValidOoxmlNumericId } from "@stll/docx-core";
+
 import type {
   BookmarkEnd,
   BookmarkStart,
@@ -27,6 +29,7 @@ import type {
   Theme,
 } from "../types/document";
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
+import { getCommentReferenceId } from "./commentReferenceCarrier";
 import {
   CAPTURE,
   type ChildHandlers,
@@ -38,6 +41,7 @@ import {
 import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
+import { parseMarkupRangeMarker } from "./markupRangeMarker";
 import {
   preservedInlineCapture,
   preserveInlineChild,
@@ -266,6 +270,19 @@ const linkedInlineWrapper =
     context.push(parseLinkedInlineWrapper(element, child, context));
   };
 
+const linkedCommentRange =
+  (
+    type: "commentRangeStart" | "commentRangeEnd",
+  ): ChildReader<HyperlinkChildContext> =>
+  (child, { push }) => {
+    const id = getAttribute(child, "w", "id");
+    if (id === null || !isValidOoxmlNumericId(id)) {
+      push(preserveInlineChild(child));
+      return;
+    }
+    push({ type, ...parseMarkupRangeMarker(child) });
+  };
+
 /**
  * What a `w:hyperlink` does with every child its content model declares.
  *
@@ -297,6 +314,9 @@ export const HYPERLINK_CHILD_HANDLERS = {
     if (runHoldsPayload(run)) {
       push(run);
     }
+    const commentReferenceId = getCommentReferenceId(child);
+    if (commentReferenceId !== null)
+      push({ type: "commentReference", id: commentReferenceId });
   },
   bookmarkStart: (child, { push }) => {
     push(parseBookmarkStart(child));
@@ -321,8 +341,8 @@ export const HYPERLINK_CHILD_HANDLERS = {
   moveFrom: CAPTURE,
   moveTo: CAPTURE,
 
-  commentRangeEnd: CAPTURE,
-  commentRangeStart: CAPTURE,
+  commentRangeEnd: linkedCommentRange("commentRangeEnd"),
+  commentRangeStart: linkedCommentRange("commentRangeStart"),
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,

@@ -52,6 +52,7 @@ import {
   imageRawXmlFingerprint,
 } from "../../docx/imageRawXml";
 import {
+  isHyperlinkContent,
   isInlineSdtContent,
   isSimpleFieldContent,
 } from "../../docx/inlineWrapperContent";
@@ -3733,10 +3734,10 @@ function extractParagraphContent(
 
     syncCommentRanges(node, offset);
 
-    // A comment reference is paragraph content in the model, so it never joins
-    // a run, a hyperlink or a tracked wrapper: it is emitted where the editor
-    // holds it, right after the range ends `syncCommentRanges` just wrote.
-    if (node.type.name === "commentReference") {
+    if (
+      node.type.name === "commentReference" &&
+      !node.marks.some((mark) => mark.type.name === "hyperlink")
+    ) {
       establishTrackedBoundaryOwner(node);
       flushCurrentInline();
       const reference = {
@@ -3762,7 +3763,10 @@ function extractParagraphContent(
     // anchor's own position. They are cloned because the attrs hold them for as
     // long as the editor state does, and the rebuilt document must not share a
     // record with it.
-    if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+    if (
+      node.type.name === RANGE_ANCHOR_NODE_NAME &&
+      !node.marks.some((mark) => mark.type.name === "hyperlink")
+    ) {
       establishTrackedBoundaryOwner(node);
       flushCurrentInline();
       const { start, end } = expectRangeAnchorAttrs(node);
@@ -3935,7 +3939,11 @@ function extractParagraphContent(
         if (currentTrackedChange.type !== "hyperlink") {
           panic("A tracked hyperlink lost its serialization parent");
         }
-        if (node.type.name === "bookmarkBoundary") {
+        if (
+          node.type.name === "bookmarkBoundary" ||
+          node.type.name === "commentReference" ||
+          node.type.name === RANGE_ANCHOR_NODE_NAME
+        ) {
           addNodeToHyperlink({
             ...formattingContext,
             hyperlink: currentTrackedChange.hyperlink,
@@ -4477,6 +4485,22 @@ function addNodeToHyperlink({
   sourceRunOwners,
   styleResolver,
 }: AddNodeToHyperlinkOptions): void {
+  if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+    const { start, end } = expectRangeAnchorAttrs(node);
+    if (!isHyperlinkContent(start) || !isHyperlinkContent(end))
+      panic(
+        "A linked range anchor must contain boundaries its hyperlink admits.",
+      );
+    hyperlink.children.push({ ...start }, { ...end });
+    return;
+  }
+  if (node.type.name === "commentReference") {
+    hyperlink.children.push({
+      type: "commentReference",
+      id: expectCommentReferenceAttrs(node).commentId,
+    });
+    return;
+  }
   if (node.type.name === "bookmarkBoundary") {
     hyperlink.children.push(
       bookmarkMarkerFromAttrs(expectBookmarkBoundaryAttrs(node)),

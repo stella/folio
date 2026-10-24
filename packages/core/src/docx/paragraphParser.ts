@@ -47,6 +47,7 @@ import {
   parseBookmarkEnd as parseBookmarkEndFromModule,
   parseBookmarkStart as parseBookmarkStartFromModule,
 } from "./bookmarkParser";
+import { getCommentReferenceId } from "./commentReferenceCarrier";
 import {
   CAPTURE,
   type ChildHandlers,
@@ -2351,19 +2352,6 @@ function parseParagraphContents(
   return withPreservedChildren(contents, preserved, preservedInlineCapture);
 }
 
-function getCommentReferenceId(runElement: XmlElement): number | null {
-  const commentReference = findChild(runElement, "w", "commentReference");
-  if (!commentReference) {
-    return null;
-  }
-
-  const id = Number.parseInt(
-    getAttribute(commentReference, "w", "id") ?? "",
-    10,
-  );
-  return Number.isFinite(id) ? id : null;
-}
-
 // ============================================================================
 // MAIN PARAGRAPH PARSER
 // ============================================================================
@@ -2820,6 +2808,7 @@ const getHyperlinkText = (hyperlink: Hyperlink): string =>
         case "bookmarkEnd":
         case "commentRangeStart":
         case "commentRangeEnd":
+        case "commentReference":
           return "";
         // Opaque markup contributes whatever it puts on the line, which is
         // nothing except for a transparent wrapper such as `w:customXml`.
