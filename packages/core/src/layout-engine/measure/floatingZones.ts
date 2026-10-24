@@ -41,6 +41,8 @@ export type FloatingExclusionRect = {
  * correct widths.
  */
 export type FloatingImageZone = {
+  /** The exclusion is produced by an anchored table rather than a drawing. */
+  source?: "floatingTable";
   /** Left margin reduction (pixels from left edge). */
   leftMargin: number;
   /** Right margin reduction (pixels from right edge). */
