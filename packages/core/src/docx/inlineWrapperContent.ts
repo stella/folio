@@ -91,12 +91,15 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
  * control's content comes back covering the control plus whatever follows, so
  * a `REF` field or a link to it resolves to the wrong text.
  *
- * Move-range boundaries stay where the source put them. The editor has
- * zero-width boundary nodes for them, so lifting one beside the control would
- * change which content the tracked move covers without any representational
- * need. Comment range boundaries are paragraph-position markers in the editor,
- * but `CT_SdtContentRun` also admits them as direct children. Keeping them
- * here preserves the authored container when neighboring wrappers collapse.
+ * Point comment references are lifted from their required run carrier and
+ * rebuilt as a run by the serializer; they are not emitted as direct
+ * `<w:sdtContent>` children. Move-range boundaries stay where the source put
+ * them. The editor has zero-width boundary nodes for them, so lifting one
+ * beside the control would change which content the tracked move covers
+ * without any representational need. Comment range boundaries are
+ * paragraph-position markers in the editor, but `CT_SdtContentRun` also
+ * admits them as direct children. Keeping them here preserves the authored
+ * container when neighboring wrappers collapse.
  */
 export const INLINE_SDT_CONTENT = {
   inlineWrapper: true,
@@ -115,7 +118,7 @@ export const INLINE_SDT_CONTENT = {
   simpleField: true,
   commentRangeEnd: true,
   commentRangeStart: true,
-  commentReference: false,
+  commentReference: true,
   moveFromRangeEnd: true,
   moveFromRangeStart: true,
   moveToRangeEnd: true,

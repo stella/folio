@@ -894,6 +894,8 @@ function serializeInlineSdt(
         case "commentRangeStart":
         case "commentRangeEnd":
           return serializeParagraphContent(item, disposition);
+        case "commentReference":
+          return serializeCommentReferenceRun(item.id);
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":

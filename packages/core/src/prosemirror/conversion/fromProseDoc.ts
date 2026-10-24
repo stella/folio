@@ -3316,6 +3316,13 @@ const nestInlineWrapperGroups = (
   return coalesced;
 };
 
+type StructuredCommentRangeScope = {
+  openedBefore: ReadonlySet<number>;
+  openedAfter: ReadonlySet<number>;
+  paragraphOffsetBase: number;
+  lastOffsetByCommentId: ReadonlyMap<number, number>;
+};
+
 function extractParagraphContent(
   originalParagraph: PMNode,
   // Parameter retained for signature compatibility with the call sites
@@ -3327,6 +3334,7 @@ function extractParagraphContent(
   textBoxAnchorMarkers?: Map<string, Run>,
   skipLeadingRenderedPageBreak = false,
   inheritedFormattingOverride?: RunFormattingContext,
+  structuredCommentRangeScope?: StructuredCommentRangeScope,
 ): ParagraphContent[] {
   const paragraph = coalesceNoteReferenceOccurrences(originalParagraph);
   const content: ParagraphContent[] = [];
@@ -3388,7 +3396,9 @@ function extractParagraphContent(
     TrackedRunWrapper,
     readonly TrackedRevisionAncestor[]
   >();
-  const openedComments = new Set<number>();
+  const openedComments = new Set(
+    structuredCommentRangeScope?.openedBefore ?? [],
+  );
   // A boundary has no ProseMirror node of its own. Keep the source revision's
   // ownership record until the following node gives us its save position.
   let precedingTrackedCommentRangeBoundaries:
@@ -3411,12 +3421,26 @@ function extractParagraphContent(
   // split into several ranges for one id — invalid OOXML that Word rejects as
   // unreadable content (eigenpal/docx-editor#927).
   const commentLastOffset = new Map<number, number>();
-  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+  let hasInlineSdt = false;
   paragraph.forEach((node, offset) => {
+    hasInlineSdt ||= node.type.name === "sdt";
     for (const commentId of getCommentMarkIds(node.marks)) {
       commentLastOffset.set(commentId, offset);
     }
   });
+  let structuredCommentLastOffset =
+    structuredCommentRangeScope?.lastOffsetByCommentId ??
+    new Map<number, number>();
+  if (!structuredCommentRangeScope && hasInlineSdt) {
+    const lastOffsetByCommentId = new Map<number, number>();
+    paragraph.descendants((node, offset) => {
+      for (const commentId of getCommentMarkIds(node.marks)) {
+        lastOffsetByCommentId.set(commentId, offset);
+      }
+      return true;
+    });
+    structuredCommentLastOffset = lastOffsetByCommentId;
+  }
 
   const flushCurrentInline = () => {
     if (currentRun) {
@@ -3657,16 +3681,43 @@ function extractParagraphContent(
     }
   };
 
-  const syncStructuredCommentExit = (node: PMNode): void => {
+  const commentsAfterStructuredNode = (node: PMNode, offset: number) => {
+    const candidates = new Set(openedComments);
+    for (const commentId of getCommentMarkIds(node.marks)) {
+      candidates.add(commentId);
+    }
+    node.descendants((descendant) => {
+      for (const commentId of getCommentMarkIds(descendant.marks)) {
+        candidates.add(commentId);
+      }
+      return true;
+    });
+    const after = new Set<number>();
+    for (const commentId of candidates) {
+      const lastOffset = structuredCommentLastOffset.get(commentId);
+      const paragraphOffsetBase =
+        structuredCommentRangeScope?.paragraphOffsetBase ?? 0;
+      if (
+        lastOffset !== undefined &&
+        lastOffset >= paragraphOffsetBase + offset + node.nodeSize
+      ) {
+        after.add(commentId);
+      }
+    }
+    return after;
+  };
+
+  const syncStructuredCommentExit = (node: PMNode, offset: number): void => {
     if (
       (node.type.name !== "structuredField" && node.type.name !== "sdt") ||
       node.childCount === 0
     ) {
       return;
     }
-    const finalCommentIds = getCommentMarkIds(
-      node.child(node.childCount - 1).marks,
-    );
+    const finalCommentIds =
+      node.type.name === "sdt"
+        ? commentsAfterStructuredNode(node, offset)
+        : getCommentMarkIds(node.child(node.childCount - 1).marks);
     openedComments.clear();
     for (const commentId of finalCommentIds) openedComments.add(commentId);
   };
@@ -3726,7 +3777,9 @@ function extractParagraphContent(
     leadingRenderedPageBreakPending = false;
     enterWrapperGroup(node);
 
-    syncCommentRanges(node, offset);
+    if (node.type.name !== "sdt" || node.childCount === 0) {
+      syncCommentRanges(node, offset);
+    }
 
     // A comment reference is paragraph content in the model, so it never joins
     // a run, a hyperlink or a tracked wrapper: it is emitted where the editor
@@ -4168,14 +4221,25 @@ function extractParagraphContent(
           textBoxAnchorMarkers,
         }),
       );
-      syncStructuredCommentExit(node);
+      syncStructuredCommentExit(node, offset);
     } else if (node.type.name === "sdt") {
       // SDT ends current run and emits an InlineSdt content item
       flushCurrentInline();
       content.push(
-        createInlineSdtFromNode(node, textBoxAnchorMarkers, formattingContext),
+        createInlineSdtFromNode({
+          node,
+          paragraphOffsetBase:
+            (structuredCommentRangeScope?.paragraphOffsetBase ?? 0) +
+            offset +
+            1,
+          lastOffsetByCommentId: structuredCommentLastOffset,
+          textBoxAnchorMarkers,
+          formattingContext,
+          openedBefore: openedComments,
+          openedAfter: commentsAfterStructuredNode(node, offset),
+        }),
       );
-      syncStructuredCommentExit(node);
+      syncStructuredCommentExit(node, offset);
     } else if (node.type.name === "math") {
       // Math ends current run and emits a MathEquation content item
       flushCurrentInline();
@@ -4222,6 +4286,9 @@ function extractParagraphContent(
   // Don't forget the last run/hyperlink
   flushCurrentInline();
   for (const commentId of byCommentId(openedComments)) {
+    if (structuredCommentRangeScope?.openedAfter.has(commentId)) {
+      continue;
+    }
     const closingBoundaryOwner =
       currentTrackedChange?.type === "direct" &&
       trackedCommentBoundaryOwner({
@@ -5375,11 +5442,25 @@ const hoistUniformRevision = (
 /**
  * Create an InlineSdt from a PM sdt node
  */
-function createInlineSdtFromNode(
-  node: PMNode,
-  textBoxAnchorMarkers?: Map<string, Run>,
-  formattingContext?: RunFormattingContext,
-): InlineSdt | TrackedRunWrapper {
+type CreateInlineSdtFromNodeOptions = {
+  node: PMNode;
+  paragraphOffsetBase: number;
+  lastOffsetByCommentId: ReadonlyMap<number, number>;
+  textBoxAnchorMarkers?: Map<string, Run>;
+  formattingContext?: RunFormattingContext;
+  openedBefore: ReadonlySet<number>;
+  openedAfter: ReadonlySet<number>;
+};
+
+function createInlineSdtFromNode({
+  node,
+  paragraphOffsetBase,
+  lastOffsetByCommentId,
+  textBoxAnchorMarkers,
+  formattingContext,
+  openedBefore,
+  openedAfter,
+}: CreateInlineSdtFromNodeOptions): InlineSdt | TrackedRunWrapper {
   const attrs = expectSdtAttrs(node);
   const properties = sdtPropertiesFromAttrs(attrs);
 
@@ -5395,6 +5476,14 @@ function createInlineSdtFromNode(
     textBoxAnchorMarkers,
     false,
     formattingContext,
+    node.childCount === 0
+      ? undefined
+      : {
+          openedBefore,
+          openedAfter,
+          paragraphOffsetBase,
+          lastOffsetByCommentId,
+        },
   ).filter(isInlineSdtContent);
 
   return hoistUniformRevision(

@@ -2187,6 +2187,7 @@ export type InlineSdt = {
     | BookmarkEnd
     | CommentRangeStart
     | CommentRangeEnd
+    | CommentReference
     | MoveFromRangeStart
     | MoveFromRangeEnd
     | MoveToRangeStart

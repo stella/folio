@@ -275,6 +275,7 @@ const TRACKED_CHILD_TYPES = {
   bookmarkEnd: true,
   commentRangeStart: true,
   commentRangeEnd: true,
+  commentReference: true,
   moveFromRangeStart: true,
   moveFromRangeEnd: true,
   moveToRangeStart: true,
