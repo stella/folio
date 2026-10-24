@@ -1,4 +1,5 @@
 {
+  "packages/core/src/__tests__/canonicalHarnessDom.property.test.ts": 2,
   "packages/core/src/controller/canonicalComposition.property.test.ts": 2,
   "packages/core/src/controller/canonicalInput.test.ts": 2,
   "packages/core/src/controller/canonicalNativeFinal.property.test.ts": 2,
