@@ -353,6 +353,10 @@ export type Hyperlink = {
     | CommentRangeEnd
     | InlineWrapper
     | CommentReference
+    | MoveFromRangeStart
+    | MoveFromRangeEnd
+    | MoveToRangeStart
+    | MoveToRangeEnd
     | PreservedInline
   )[];
 };

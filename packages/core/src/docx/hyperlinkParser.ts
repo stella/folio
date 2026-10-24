@@ -41,7 +41,10 @@ import {
 import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
-import { parseMarkupRangeMarker } from "./markupRangeMarker";
+import {
+  parseMarkupRangeMarker,
+  parseMoveBookmarkMarker,
+} from "./markupRangeMarker";
 import {
   preservedInlineCapture,
   preserveInlineChild,
@@ -272,10 +275,13 @@ const linkedInlineWrapper =
     context.push(parseLinkedInlineWrapper(element, child, context));
   };
 
-const linkedCommentRange =
-  (
-    type: "commentRangeStart" | "commentRangeEnd",
-  ): ChildReader<HyperlinkChildContext> =>
+type LinkedRangeMarker = Extract<
+  Hyperlink["children"][number],
+  { type: `${"comment" | "moveFrom" | "moveTo"}Range${"Start" | "End"}` }
+>;
+
+const linkedRangeMarker =
+  (type: LinkedRangeMarker["type"]): ChildReader<HyperlinkChildContext> =>
   (child, { push }) => {
     const id = getAttributeByNamespaceUri(
       child,
@@ -286,10 +292,25 @@ const linkedCommentRange =
       push(preserveInlineChild(child));
       return;
     }
-    push({
-      type,
-      ...parseMarkupRangeMarker(child, { id: Number.parseInt(id, 10) }),
-    });
+    switch (type) {
+      case "moveFromRangeStart":
+      case "moveToRangeStart":
+        push({ type, ...parseMoveBookmarkMarker(child) });
+        return;
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "moveFromRangeEnd":
+      case "moveToRangeEnd":
+        push({
+          type,
+          ...parseMarkupRangeMarker(child, { id: Number.parseInt(id, 10) }),
+        });
+        return;
+      default: {
+        const unsupported: never = type;
+        return unsupported;
+      }
+    }
   };
 
 /**
@@ -350,8 +371,8 @@ export const HYPERLINK_CHILD_HANDLERS = {
   moveFrom: CAPTURE,
   moveTo: CAPTURE,
 
-  commentRangeEnd: linkedCommentRange("commentRangeEnd"),
-  commentRangeStart: linkedCommentRange("commentRangeStart"),
+  commentRangeEnd: linkedRangeMarker("commentRangeEnd"),
+  commentRangeStart: linkedRangeMarker("commentRangeStart"),
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,
@@ -366,10 +387,10 @@ export const HYPERLINK_CHILD_HANDLERS = {
   hyperlink: (child, { push }) => {
     push(preserveInlineChild(child));
   },
-  moveFromRangeEnd: CAPTURE,
-  moveFromRangeStart: CAPTURE,
-  moveToRangeEnd: CAPTURE,
-  moveToRangeStart: CAPTURE,
+  moveFromRangeEnd: linkedRangeMarker("moveFromRangeEnd"),
+  moveFromRangeStart: linkedRangeMarker("moveFromRangeStart"),
+  moveToRangeEnd: linkedRangeMarker("moveToRangeEnd"),
+  moveToRangeStart: linkedRangeMarker("moveToRangeStart"),
   permEnd: CAPTURE,
   permStart: CAPTURE,
   proofErr: CAPTURE,

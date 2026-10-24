@@ -272,6 +272,10 @@ export const removeCommentMarkers = (
       case "commentRangeStart":
       case "commentRangeEnd":
       case "commentReference":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
       case "preservedInline":
         return item;
     }

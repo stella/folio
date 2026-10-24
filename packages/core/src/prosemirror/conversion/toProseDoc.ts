@@ -393,6 +393,10 @@ export const collectPairedBookmarkIds = (
         case "commentRangeStart":
         case "commentRangeEnd":
         case "commentReference":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           break;
         case "run":
           visitRun(child);
@@ -4986,6 +4990,19 @@ function convertHyperlink(
           schema.node("commentReference", { commentId: child.id }, undefined, [
             linkMark,
           ]),
+        );
+        break;
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        childNodes.push(
+          schema.node(
+            MOVE_RANGE_BOUNDARY_NODE_NAME,
+            { marker: child },
+            undefined,
+            [linkMark],
+          ),
         );
         break;
       case "bookmarkStart":

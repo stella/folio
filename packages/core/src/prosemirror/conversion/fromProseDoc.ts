@@ -3942,6 +3942,7 @@ function extractParagraphContent(
         if (
           node.type.name === "bookmarkBoundary" ||
           node.type.name === "commentReference" ||
+          node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME ||
           node.type.name === RANGE_ANCHOR_NODE_NAME
         ) {
           addNodeToHyperlink({
@@ -4058,7 +4059,7 @@ function extractParagraphContent(
       return;
     }
 
-    if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
+    if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME && !linkMark) {
       flushCurrentInline();
       currentTrackedChange = undefined;
       content.push({ ...expectMoveRangeBoundaryAttrs(node) });
@@ -4485,6 +4486,10 @@ function addNodeToHyperlink({
   sourceRunOwners,
   styleResolver,
 }: AddNodeToHyperlinkOptions): void {
+  if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
+    hyperlink.children.push({ ...expectMoveRangeBoundaryAttrs(node) });
+    return;
+  }
   if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
     const { start, end } = expectRangeAnchorAttrs(node);
     if (!isHyperlinkContent(start) || !isHyperlinkContent(end))
