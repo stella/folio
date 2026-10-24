@@ -42,6 +42,16 @@ test.each([{ [FILE]: 1.5 }, { [FILE]: 0 }, { "../new.test.ts": 1 }])(
   },
 );
 
+test("invalid current paths fail before Git or filesystem inspection", () => {
+  expect(() =>
+    checkTestDomBaseline({
+      root: REPO_ROOT,
+      current: { "../new.test.ts": 1 },
+      requestedBase: "not-a-commit",
+    }),
+  ).toThrow("Invalid DOM baseline entry");
+});
+
 const BOOTSTRAP_CASES = {
   unchanged: { before: "existing source", now: "existing source", failures: 0 },
   changed: {

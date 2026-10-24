@@ -84,7 +84,7 @@ const mutationsWithoutAdjacentRelease = (source: string): string[] => {
         ts.isBlock(block) || ts.isSourceFile(block) ? block.statements : [];
       if (statements.length > 0) {
         const index = statements.indexOf(node.parent);
-        const previous = statements.at(index - 1);
+        const previous = index > 0 ? statements.at(index - 1) : undefined;
         const expression =
           previous !== undefined && ts.isExpressionStatement(previous)
             ? previous.expression
@@ -237,6 +237,14 @@ test("the page disposal guard rejects missing or mismatched owners", () => {
         "releaseDisplayPageResources(other);",
         "page.remove();",
       ].join("\n"),
+    ),
+  ).toEqual(["page.remove()"]);
+});
+
+test("a release after the first statement does not satisfy disposal ordering", () => {
+  expect(
+    mutationsWithoutAdjacentRelease(
+      "page.remove(); releaseDisplayPageResources(page);",
     ),
   ).toEqual(["page.remove()"]);
 });

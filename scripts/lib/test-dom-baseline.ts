@@ -122,6 +122,7 @@ export const checkTestDomBaseline = ({
   current,
   requestedBase = process.env.TOOLCHAIN_BASE,
 }: CheckTestDomBaselineOptions): CheckTestDomBaselineResult => {
+  current = validateTestDomBaseline(current);
   const baseSha =
     requestedBase === undefined ||
     requestedBase === "unavailable-toolchain-base"
