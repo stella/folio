@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { LayoutPainter } from "../../layout-painter";
 import { UNDERLINE_STROKES } from "../build/strokes";
 import { underlineThicknessPx } from "../build/textDecorations";
+import { releaseDisplayPageResources } from "../pageResourceOwnership";
 import { DISPLAY_PRIMITIVE_KINDS } from "../primitives";
 import type {
   DisplayFontFace,
@@ -16,7 +17,6 @@ import type {
   DisplayStrokePattern,
 } from "../types";
 import {
-  releaseDisplayPageResources,
   renderDisplayListToDom,
   renderDisplayPageToDom,
 } from "./renderDisplayListToDom";
