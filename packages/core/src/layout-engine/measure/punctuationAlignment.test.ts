@@ -27,7 +27,11 @@ describe("punctuation overflow follows paragraph alignment", () => {
                     language: { val: "ja-JP", eastAsia: "ja-JP" },
                   },
                 ],
-                attrs: { alignment, overflowPunctuation },
+                attrs: {
+                  alignment,
+                  overflowPunctuation,
+                  defaultEastAsiaFontFamily: "MS Mincho",
+                },
               } as const satisfies ParagraphBlock;
 
               const measure = measureParagraph(block, LINE_WIDTH);
@@ -48,4 +52,36 @@ describe("punctuation overflow follows paragraph alignment", () => {
       { charWidth: fixedCharWidth(10) },
     );
   });
+});
+
+test("hanging requires an authored East Asian document-default face", () => {
+  withFakeTextMeasure(
+    () => {
+      for (const defaultEastAsiaFontFamily of [
+        undefined,
+        "Arial",
+        "MS Mincho",
+      ]) {
+        for (const text of ["天地。", "AB,"]) {
+          const block = {
+            kind: "paragraph",
+            id: "default-font-hanging",
+            runs: [
+              {
+                kind: "text",
+                text,
+                language: { eastAsia: "ja-JP", val: "ja-JP" },
+              },
+            ],
+            attrs: { alignment: "justify", defaultEastAsiaFontFamily },
+          } as const satisfies ParagraphBlock;
+          const measure = measureParagraph(block, LINE_WIDTH);
+          expect(measure.lines).toHaveLength(
+            defaultEastAsiaFontFamily === "MS Mincho" ? 1 : 2,
+          );
+        }
+      }
+    },
+    { charWidth: fixedCharWidth(10) },
+  );
 });

@@ -517,6 +517,7 @@ export type ParagraphAttrs = {
   kinsoku?: boolean;
   /** Hanging punctuation (`w:overflowPunct`); defaults to enabled when omitted. */
   overflowPunctuation?: boolean;
+  defaultEastAsiaFontFamily?: string;
   /** Exempt this paragraph from document automatic hyphenation. */
   suppressAutoHyphens?: boolean;
   /** Document-wide automatic hyphenation controls retained for line layout. */

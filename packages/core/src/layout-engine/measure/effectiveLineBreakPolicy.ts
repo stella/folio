@@ -1,3 +1,4 @@
+import { isCjkFont } from "../../utils/fontResolver";
 import { hasCjk } from "../../utils/scriptSegments";
 import type { ParagraphAttrs, TextRun } from "../types";
 import type { LineBreakPolicy } from "./lineBreakProvider";
@@ -58,7 +59,10 @@ export const resolveEffectiveLineBreakPolicy = ({
   return {
     provider,
     hangingPunctuation:
-      attrs?.alignment === "justify" && attrs.overflowPunctuation !== false,
+      attrs?.alignment === "justify" &&
+      attrs.overflowPunctuation !== false &&
+      attrs.defaultEastAsiaFontFamily !== undefined &&
+      isCjkFont(attrs.defaultEastAsiaFontFamily),
     automaticHyphenation: resolveAutomaticHyphenation(attrs),
   };
 };
@@ -68,6 +72,9 @@ export const lineBreakPolicyCacheParts = (
   attrs: ParagraphAttrs,
 ): readonly string[] => {
   const parts: string[] = [];
+  if (attrs.defaultEastAsiaFontFamily !== undefined) {
+    parts.push(`default-east-asia-font:${attrs.defaultEastAsiaFontFamily}`);
+  }
   if (attrs.kinsoku !== undefined) {
     parts.push(`kinsoku:${attrs.kinsoku}`);
   }

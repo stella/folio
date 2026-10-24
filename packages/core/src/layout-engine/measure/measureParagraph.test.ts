@@ -2312,6 +2312,7 @@ describe("measureParagraph justified shrink tolerance", () => {
           ],
           attrs: {
             alignment: "justify",
+            defaultEastAsiaFontFamily: "MS Mincho",
             listMarker: "1.",
             indent: { left: 36, hanging: 18 },
             overflowPunctuation,
@@ -3472,7 +3473,11 @@ describe("CJK line breaking", () => {
           runs: [
             { kind: "text", text: "中文。", language: { eastAsia: "zh-CN" } },
           ],
-          attrs: { alignment: "justify", overflowPunctuation },
+          attrs: {
+            alignment: "justify",
+            overflowPunctuation,
+            defaultEastAsiaFontFamily: "MS Mincho",
+          },
         });
 
         expect(measureParagraph(paragraph(false), 20).lines).toHaveLength(2);
@@ -3495,7 +3500,11 @@ describe("CJK line breaking", () => {
           kind: "paragraph",
           id: "latin-overflow-punctuation",
           runs: [{ kind: "text", text: "AB,", language: { val: "en-US" } }],
-          attrs: { alignment: "justify", overflowPunctuation: true },
+          attrs: {
+            alignment: "justify",
+            overflowPunctuation: true,
+            defaultEastAsiaFontFamily: "MS Mincho",
+          },
         };
 
         const measure = measureParagraph(paragraph, 20);
@@ -3516,7 +3525,11 @@ describe("CJK line breaking", () => {
           runs: [
             { kind: "text", text: "中文（", language: { eastAsia: "zh-CN" } },
           ],
-          attrs: { alignment: "justify", overflowPunctuation: true },
+          attrs: {
+            alignment: "justify",
+            overflowPunctuation: true,
+            defaultEastAsiaFontFamily: "MS Mincho",
+          },
         };
 
         expect(measureParagraph(paragraph, 20).lines.length).toBeGreaterThan(1);
@@ -3536,6 +3549,7 @@ describe("CJK line breaking", () => {
           ],
           attrs: {
             alignment: "justify",
+            defaultEastAsiaFontFamily: "MS Mincho",
             overflowPunctuation: true,
             lineBreakRules: {
               noLineBreaksBefore: { language: "zh-CN", characters: "※" },
@@ -3565,7 +3579,11 @@ describe("CJK line breaking", () => {
             kind: "paragraph",
             id: "custom-multi-code-point-hanging-punctuation",
             runs: [{ kind: "text", text }],
-            attrs: { alignment: "justify", overflowPunctuation: true },
+            attrs: {
+              alignment: "justify",
+              overflowPunctuation: true,
+              defaultEastAsiaFontFamily: "MS Mincho",
+            },
           };
 
           const measure = measureParagraph(paragraph, 20);

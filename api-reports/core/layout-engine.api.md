@@ -647,6 +647,7 @@ export type ParagraphAttrs = {
     };
     kinsoku?: boolean;
     overflowPunctuation?: boolean;
+    defaultEastAsiaFontFamily?: string;
     suppressAutoHyphens?: boolean;
     automaticHyphenation?: {
         enabled: true;
