@@ -271,8 +271,8 @@ const withoutNoteTrailer = (markdown: string): string => {
 const isListTextToken = ({ type }: Token) =>
   type === "text" || type === "paragraph";
 
-/** The exporter inserts exactly one blank line before an empty nested list item. */
-const isEmptyListItemSeparator = (
+/** The exporter inserts one blank line before a nested list item. */
+const isNestedListSeparator = (
   tokens: readonly Token[],
   index: number,
 ): boolean => {
@@ -289,8 +289,7 @@ const isEmptyListItemSeparator = (
   ) {
     return false;
   }
-  const first = next.items.at(0);
-  return first !== undefined && !first.tokens.some(isListTextToken);
+  return true;
 };
 
 /**
@@ -388,7 +387,9 @@ export const markdownViews = (
         return;
       }
       case "paragraph": {
-        appendParagraphs(tokenText(token), { kind: "paragraph" });
+        const rendered = tokenText(token);
+        if (!isFolioAIContentBlock({ text: rendered })) return;
+        appendParagraphs(rendered, { kind: "paragraph" });
         return;
       }
       case "list": {
@@ -408,7 +409,7 @@ export const markdownViews = (
             });
           }
           for (const [index, child] of item.tokens.entries()) {
-            if (isEmptyListItemSeparator(item.tokens, index)) continue;
+            if (isNestedListSeparator(item.tokens, index)) continue;
             if (child.type === "list") {
               walk(child);
               continue;
