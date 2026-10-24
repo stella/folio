@@ -8,13 +8,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type {
-  FolioCommentAnchor,
-  FolioReviewChange,
-} from "@stll/folio-core/ai-edits";
+import type { FolioCommentAnchor } from "@stll/folio-core/ai-edits/read";
 import type {
   FolioAIEditApplyResult,
   FolioAIEditSnapshot,
+  FolioReviewChange,
 } from "@stll/folio-core/server";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
 import type { Comment } from "@stll/folio-core/types/content";

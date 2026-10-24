@@ -1,8 +1,5 @@
-import type {
-  FolioCommentAnchor,
-  FolioReviewChange,
-  FolioUndefinedReferencePolicy,
-} from "@stll/folio-core/ai-edits";
+import type { FolioUndefinedReferencePolicy } from "@stll/folio-core/ai-edits/apply";
+import type { FolioCommentAnchor } from "@stll/folio-core/ai-edits/read";
 import { createReply } from "@stll/folio-core/docx/replyToComment";
 import type {
   FolioAIEditApplyMode,
@@ -14,6 +11,7 @@ import type {
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
+  FolioReviewChange,
 } from "@stll/folio-core/server";
 import {
   assertSupportedFolioDocumentOperationVersion,
