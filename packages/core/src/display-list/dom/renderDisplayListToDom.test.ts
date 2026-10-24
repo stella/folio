@@ -1,6 +1,6 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describe, expect, test } from "bun:test";
 
+import { acquireHarnessDom } from "../../../../../test/harnessDom";
 import { LayoutPainter } from "../../layout-painter";
 import { UNDERLINE_STROKES } from "../build/strokes";
 import { underlineThicknessPx } from "../build/textDecorations";
@@ -923,25 +923,26 @@ describe("renderDisplayListToDom", () => {
   });
 
   test("LayoutPainter unmount releases resources owned by mounted display pages", () => {
-    GlobalRegistrator.register();
+    const originalDocument = globalThis.document;
+    const releaseDom = acquireHarnessDom();
     const created: string[] = [];
     const revoked: string[] = [];
     const originalCreate = URL.createObjectURL;
     const originalRevoke = URL.revokeObjectURL;
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: () => {
-        const url = `blob:display-unmount-${created.length}`;
-        created.push(url);
-        return url;
-      },
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: (url: string) => revoked.push(url),
-    });
-
     try {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: () => {
+          const url = `blob:display-unmount-${created.length}`;
+          created.push(url);
+          return url;
+        },
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: (url: string) => revoked.push(url),
+      });
+
       const container = document.createElement("div");
       const painter = new LayoutPainter({ document });
       painter.mount(container);
@@ -965,6 +966,8 @@ describe("renderDisplayListToDom", () => {
         configurable: true,
         value: originalRevoke,
       });
+      releaseDom();
     }
+    expect(globalThis.document).toBe(originalDocument);
   });
 });
