@@ -86,6 +86,12 @@ describe("CommentReferenceExtension editing integrity", () => {
     expect(getAttrs(element)).toEqual({ commentId: -7 });
   });
 
+  test("writes a signed comment identity to editor DOM", () => {
+    expect(
+      schema.nodes.commentReference?.spec.toDOM?.(reference(-7)),
+    ).toMatchObject(["span", { "data-docx-comment-reference": "-7" }]);
+  });
+
   test("gives a comment mark with no reference one after its last marked node", () => {
     const state = stateWith([schema.text("alpha")]);
     const applied = state.applyTransaction(

@@ -181,7 +181,7 @@ export const planCommentReferenceRepairs = ({
 type CommentReferenceResolution = {
   doc: PMNode;
   steps: Step[];
-  positionMaps: StepMap[];
+  positionMaps: readonly StepMap[];
 };
 
 export const resolveCommentReferences = (
@@ -195,13 +195,15 @@ export const resolveCommentReferences = (
   for (const { position, size, mark } of survey.unanchoredMarks)
     transform.removeMark(position, position + size, mark);
   const referenceType = doc.type.schema.nodes[COMMENT_REFERENCE_NODE_NAME];
-  if (!referenceType && repairs.some(({ type }) => type === "insert"))
-    return panic("Comment reference repairs require a commentReference node.");
   for (const repair of repairs) {
     if (repair.type === "delete") {
       transform.delete(repair.position, repair.position + repair.size);
       continue;
     }
+    if (!referenceType)
+      return panic(
+        "Comment reference repairs require a commentReference node.",
+      );
     transform.insert(
       transform.mapping.map(repair.position),
       referenceType.create({ commentId: repair.commentId }),

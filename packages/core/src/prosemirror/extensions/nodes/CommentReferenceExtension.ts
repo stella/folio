@@ -2,6 +2,7 @@
 
 import { Plugin } from "prosemirror-state";
 
+import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
 import {
   COMMENT_REFERENCE_NODE_NAME,
   resolveCommentReferences,
