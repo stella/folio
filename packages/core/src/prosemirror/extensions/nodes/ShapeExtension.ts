@@ -598,6 +598,12 @@ export const ShapeExtension = createNodeExtension({
           const position = parseShapePosition(d["position"]);
           const outlineHeadEnd = parseShapeLineEnd(d["outlineHeadEnd"]);
           const outlineTailEnd = parseShapeLineEnd(d["outlineTailEnd"]);
+          const outlineJoin =
+            d["outlineJoin"] === "bevel" ||
+            d["outlineJoin"] === "miter" ||
+            d["outlineJoin"] === "round"
+              ? d["outlineJoin"]
+              : undefined;
           return {
             shapeType: d["shapeType"] || "rect",
             ...(d["geometryAdjustments"]
@@ -641,6 +647,7 @@ export const ShapeExtension = createNodeExtension({
                   >,
                 }
               : {}),
+            ...(outlineJoin ? { outlineJoin } : {}),
             ...(outlineHeadEnd ? { outlineHeadEnd } : {}),
             ...(outlineTailEnd ? { outlineTailEnd } : {}),
             ...(d["transform"] ? { transform: d["transform"] } : {}),
@@ -736,6 +743,9 @@ export const ShapeExtension = createNodeExtension({
       }
       if (attrs.outlineCap) {
         domAttrs["data-outline-cap"] = attrs.outlineCap;
+      }
+      if (attrs.outlineJoin) {
+        domAttrs["data-outline-join"] = attrs.outlineJoin;
       }
       if (attrs.outlineHeadEnd) {
         domAttrs["data-outline-head-end"] = JSON.stringify(
@@ -903,6 +913,15 @@ export const ShapeExtension = createNodeExtension({
         h,
         geometryAdjustments,
       );
+      if (attrs.outlineCap) {
+        shapeEl.setAttribute(
+          "stroke-linecap",
+          attrs.outlineCap === "flat" ? "butt" : attrs.outlineCap,
+        );
+      }
+      if (attrs.outlineJoin && attrs.outlineJoin !== "miter") {
+        shapeEl.setAttribute("stroke-linejoin", attrs.outlineJoin);
+      }
       const strokeDasharray = strokeDashArrayForOutlineStyle(
         attrs.outlineStyle,
       );

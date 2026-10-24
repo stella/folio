@@ -7,6 +7,7 @@ import { parseXmlDocument } from "../../../docx/xmlParser";
 import { ShapeExtension } from "./ShapeExtension";
 
 const EMU_PER_PIXEL = 9525;
+const OOXML_CAPS = { flat: "flat", round: "rnd", square: "sq" } as const;
 const originalDocument = globalThis.document;
 const window = new Window();
 const shapeSpec = ShapeExtension().config.nodeSpec;
@@ -32,16 +33,24 @@ type RenderShapeOptions = {
   width: number;
   height: number;
   preset: "line" | "straightConnector1" | "rect";
+  cap?: "flat" | "round" | "square";
+  join?: "bevel" | "miter" | "round";
 };
 
-const renderShape = ({ width, height, preset }: RenderShapeOptions) => {
+const renderShape = ({
+  width,
+  height,
+  preset,
+  cap,
+  join,
+}: RenderShapeOptions) => {
   const xml = parseXmlDocument(`
     <wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
       xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
       <wps:spPr>
         <a:xfrm><a:ext cx="${width * EMU_PER_PIXEL}" cy="${height * EMU_PER_PIXEL}"/></a:xfrm>
         <a:prstGeom prst="${preset}"><a:avLst/></a:prstGeom>
-        <a:noFill/><a:ln w="57150"/>
+        <a:noFill/><a:ln w="57150"${cap ? ` cap="${OOXML_CAPS[cap]}"` : ""}>${join ? `<a:${join}/>` : ""}</a:ln>
       </wps:spPr>
     </wps:wsp>
   `);
@@ -52,6 +61,8 @@ const renderShape = ({ width, height, preset }: RenderShapeOptions) => {
     width: shape.size.width / EMU_PER_PIXEL,
     height: shape.size.height / EMU_PER_PIXEL,
     outlineWidth: (shape.outline?.width ?? 0) / EMU_PER_PIXEL,
+    ...(shape.outline?.cap ? { outlineCap: shape.outline.cap } : {}),
+    ...(shape.outline?.join ? { outlineJoin: shape.outline.join } : {}),
     fillType: "none",
   });
   const output = shapeSpec.toDOM?.(node);
@@ -98,5 +109,21 @@ describe("straight shape paint bounds", () => {
     expect(svg?.getAttribute("viewBox")).toBe("0 0 63 87");
     expect(wrapper.style.width).toBe("63px");
     expect(wrapper.style.height).toBe("87px");
+  });
+
+  test("paints authored round caps and bevel joins on the SVG outline", () => {
+    const wrapper = renderShape({
+      width: 63,
+      height: 87,
+      preset: "line",
+      cap: "round",
+      join: "bevel",
+    });
+    const shape = wrapper.querySelector("svg line");
+
+    expect(shape?.getAttribute("stroke-linecap")).toBe("round");
+    expect(shape?.getAttribute("stroke-linejoin")).toBe("bevel");
+    expect(wrapper.getAttribute("data-outline-cap")).toBe("round");
+    expect(wrapper.getAttribute("data-outline-join")).toBe("bevel");
   });
 });
