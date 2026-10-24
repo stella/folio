@@ -1863,7 +1863,7 @@ const joinOps = (
         outcome.sectionDestination === "preceding" &&
         preceding?.type === "paragraph"
       ) {
-        replacementBlocks[location.index - 1] = {
+        const survivor = {
           ...preceding,
           sectionProperties: paragraph.sectionProperties,
         };
@@ -1871,6 +1871,18 @@ const joinOps = (
         if (receiver?.type !== "paragraph")
           panic("A section transfer retains its preceding paragraph.");
         receiverEffects.push({ type: "section-transfer", receiver });
+        return paragraphMarkPlan(
+          [
+            {
+              type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+              story,
+              expected: [receiver, paragraph],
+              blocks: [survivor],
+              sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+            },
+          ],
+          receiverEffects,
+        );
       }
       return paragraphMarkPlan(
         [
