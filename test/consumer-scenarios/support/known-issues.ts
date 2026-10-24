@@ -115,6 +115,9 @@ export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
 export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   Record<string, readonly number[]>
 > = {
+  // These recorded operations are refused; the final numbering edit is the
+  // reader disagreement this flow guards.
+  "1770-tracked-list-reader-agreement.json": [1, 2, 5],
   // The recorded reply step finds no unresolved comment; the later list edits
   // and rejection are the behavior this flow guards.
   "issue-1770-list-review-sequence.json": [4],

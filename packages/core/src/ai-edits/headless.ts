@@ -7,6 +7,7 @@ import type { Command, Plugin, Transaction } from "prosemirror-state";
 
 import {
   finalizeParagraphFormatting,
+  numberingLevelEntries,
   REVIEW_CARRIERS,
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
@@ -141,6 +142,7 @@ import {
 } from "../prosemirror/noteReferenceReview";
 import {
   createDocumentNumberingPlugin,
+  getDocumentNumbering,
   withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
 import {
@@ -675,6 +677,8 @@ type ApplyDocumentOperationsInternalOptions = {
   replacementBackground?: FolioReplacementBackground;
   undefinedReferences: FolioUndefinedReferencePolicy;
   createUndoEntry: boolean;
+  /** The batch restages suggestions that already carry their ids. */
+  restagesSuggestions?: boolean;
 };
 
 type FolioDocxComparisonProjectionMode =
@@ -732,35 +736,16 @@ const numberingLevelsOf = (
   numbering: NumberingDefinitions | null | undefined,
 ): FolioNumberingLevel[] => {
   if (!numbering) return [];
-  const levelsByAbstractId = new Map(
-    numbering.abstractNums.map((abstractNum) => [
-      abstractNum.abstractNumId,
-      abstractNum.levels,
-    ]),
-  );
-  const levels: FolioNumberingLevel[] = [];
-  for (const instance of numbering.nums) {
-    const overrides = new Map(
-      (instance.levelOverrides ?? []).map((override) => [
-        override.ilvl,
-        override,
-      ]),
-    );
-    for (const level of levelsByAbstractId.get(instance.abstractNumId) ?? []) {
-      const override = overrides.get(level.ilvl);
-      const resolved = override?.lvl ?? level;
-      levels.push({
-        numId: instance.numId,
-        level: resolved.ilvl,
-        format: resolved.numFmt,
-        levelText: resolved.lvlText,
-        ...((override?.startOverride ?? resolved.start) !== undefined
-          ? { start: override?.startOverride ?? resolved.start }
-          : {}),
-      });
-    }
-  }
-  return levels;
+  return numberingLevelEntries(numbering).map(({ numId, ilvl, level }) => {
+    const entry: FolioNumberingLevel = {
+      numId,
+      level: ilvl,
+      format: level.numFmt,
+      levelText: level.lvlText,
+    };
+    if (level.start !== undefined) entry.start = level.start;
+    return entry;
+  });
 };
 
 type ReferencedNumberingLevelsOptions = {
@@ -1026,6 +1011,7 @@ const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>
   createFolioAIEditSnapshotWithStyleResolver(
     state.doc,
     getDocumentStyleResolver(state),
+    getDocumentNumbering(state),
   );
 
 const formatStorySnapshotForLLM = (
@@ -1705,8 +1691,8 @@ export class FolioDocxReviewer {
     return createStateSnapshot(this.state);
   }
 
-  /** Export staged AI operations for storage by the host, outside the DOCX. */
-  exportPendingSuggestions(): FolioPendingSuggestionRecord[] {
+  /** Every suggestion id the document's stories still carry. */
+  private activeSuggestionIds(): Set<string> {
     const active = new Set(
       getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
     );
@@ -1714,6 +1700,12 @@ export class FolioDocxReviewer {
       for (const { suggestionId } of getSuggestions(entry.state))
         active.add(suggestionId);
     }
+    return active;
+  }
+
+  /** Export staged AI operations for storage by the host, outside the DOCX. */
+  exportPendingSuggestions(): FolioPendingSuggestionRecord[] {
+    const active = this.activeSuggestionIds();
     return this.pendingSuggestions.exportPendingSuggestions({
       activeSuggestionIds: active,
       snapshotForStory: (story, commentIds) => {
@@ -1741,6 +1733,7 @@ export class FolioDocxReviewer {
       apply: (record, snapshot) => {
         const result = this.applyDocumentOperationsInternal({
           undefinedReferences: "refuse",
+          restagesSuggestions: true,
           story: record.story,
           batch: {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -2088,6 +2081,7 @@ export class FolioDocxReviewer {
     replacementBackground,
     undefinedReferences,
     createUndoEntry,
+    restagesSuggestions,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
     const operationAuthor = author ?? this.author;
@@ -2111,6 +2105,9 @@ export class FolioDocxReviewer {
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
       undefinedReferences,
+      ...(restagesSuggestions === true
+        ? { restagesSuggestions }
+        : { pendingSuggestionIds: this.activeSuggestionIds() }),
       createCommentId: (text) => {
         const comment = createReviewerComment({
           id: this.nextCommentId(),
@@ -3181,6 +3178,7 @@ export class FolioDocxReviewer {
       };
       const result = applyFolioDocumentOperations({
         undefinedReferences: "refuse",
+        restagesSuggestions: true,
         view,
         snapshot,
         batch: {

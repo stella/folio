@@ -45,6 +45,7 @@ import type {
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
 import { LIST_KINDS, type ListKind } from "./docx/listNumberingInstances";
+import { getSuggestions } from "./prosemirror/commands/comments";
 import { completeNumberingForDoc } from "./prosemirror/listInstanceReferences";
 import { outlineLevelFromAttrValue } from "./prosemirror/outlineLevelAttr";
 import { getStatedDocumentNumbering } from "./prosemirror/plugins/documentNumbering";
@@ -2317,6 +2318,65 @@ export type ApplyFolioDocumentOperationsOptions = {
   replacementBackground?: FolioReplacementBackground;
   /** Required policy for undefined style and numbering references. */
   undefinedReferences: FolioUndefinedReferencePolicy;
+  /**
+   * Suggestion ids pending in the document's other stories. A suggested
+   * operation without a `suggestionId` whose id names a pending suggestion
+   * (in this story or one of these) gets a distinct suggestion id, reported
+   * in its receipt, so it never folds into that earlier suggestion.
+   */
+  pendingSuggestionIds?: ReadonlySet<string>;
+  /**
+   * Keep every operation's suggestion id as given: the batch restages
+   * suggestions that already carry their ids.
+   */
+  restagesSuggestions?: boolean;
+};
+
+/**
+ * A suggested operation without a `suggestionId` is its own suggestion, named
+ * by its id. An id a still pending suggestion already carries would fold the
+ * two into one (accepted, rejected and exported together), so such an
+ * operation gets a distinct id, and an operation of the batch grouping with it
+ * by that id follows it.
+ */
+const withDistinctSuggestionIds = (
+  batch: FolioDocumentOperationBatch,
+  pending: ReadonlySet<string>,
+): FolioDocumentOperationBatch => {
+  if (batch.mode !== "suggested" || pending.size === 0) return batch;
+  const taken = new Set(pending);
+  for (const operation of batch.operations) {
+    if ("suggestionId" in operation && operation.suggestionId !== undefined)
+      taken.add(operation.suggestionId);
+  }
+  const renamed = new Map<string, string>();
+  for (const operation of batch.operations) {
+    if (
+      operation.type === "commentOnRange" ||
+      ("suggestionId" in operation && operation.suggestionId !== undefined) ||
+      !pending.has(operation.id)
+    )
+      continue;
+    let ordinal = 2;
+    while (taken.has(`${operation.id}#${String(ordinal)}`)) ordinal += 1;
+    const suggestionId = `${operation.id}#${String(ordinal)}`;
+    taken.add(suggestionId);
+    renamed.set(operation.id, suggestionId);
+  }
+  if (renamed.size === 0) return batch;
+  return {
+    ...batch,
+    operations: batch.operations.map((operation) => {
+      if (operation.type === "commentOnRange") return operation;
+      const grouped =
+        "suggestionId" in operation && operation.suggestionId !== undefined
+          ? renamed.get(operation.suggestionId)
+          : renamed.get(operation.id);
+      return grouped === undefined
+        ? operation
+        : { ...operation, suggestionId: grouped };
+    }),
+  };
 };
 
 /** One run of the applier whose result has not reached the caller's view yet. */
@@ -2363,8 +2423,22 @@ export const applyFolioDocumentOperations = ({
   tableTemplates,
   replacementBackground,
   undefinedReferences,
+  pendingSuggestionIds,
+  restagesSuggestions,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
-  const parsedBatch = parseFolioDocumentOperationBatch(batch);
+  const validatedBatch = parseFolioDocumentOperationBatch(batch);
+  const parsedBatch =
+    restagesSuggestions === true
+      ? validatedBatch
+      : withDistinctSuggestionIds(
+          validatedBatch,
+          new Set([
+            ...getSuggestions(view.state).map(
+              ({ suggestionId }) => suggestionId,
+            ),
+            ...(pendingSuggestionIds ?? []),
+          ]),
+        );
   const isAtomic = parsedBatch.atomic === true;
   const beforeDoc = view.state.doc;
   // The package's own definitions, before the batch. A run's result can carry

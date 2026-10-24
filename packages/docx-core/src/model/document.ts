@@ -212,6 +212,15 @@ export type {
   ListRendering,
   NumberingDefinitions,
 } from "./lists";
+export {
+  levelShowsMarker,
+  numberingLevelHasMarkerSlot,
+  numberingInstanceResolves,
+  numberingLevelEntries,
+  resolveNumberingLevel,
+  type NumberingLevelEntry,
+  type NumberingLevelResolution,
+} from "./numberingLevels";
 
 // Content Model — shared values
 export {

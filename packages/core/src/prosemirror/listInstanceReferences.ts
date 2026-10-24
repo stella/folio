@@ -47,7 +47,7 @@ const collectReference = (
   if (numbering === undefined || sink.isDefined(numbering.numId)) {
     return;
   }
-  if (!hasListRendering(attrs)) {
+  if (attrs.listMarkerHidden === true || !hasListRendering(attrs)) {
     return;
   }
   sink.references.push({

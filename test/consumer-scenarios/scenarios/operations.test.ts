@@ -411,7 +411,8 @@ describe("list labels after an operation", () => {
       numId: 7,
       ilvl: 8,
     });
-    assert.deepEqual(unmarked?.listReference, { numId: 7, level: 8 });
+    // `listReference` is the list a shown label is counted in: none here.
+    assert.equal(unmarked?.listReference, undefined);
     await assertHealthy(reviewer, "undefined level");
   });
 });

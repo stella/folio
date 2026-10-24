@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "direct",
+  "seed": 787497556,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 787497556,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "31617F9A",
+          "properties": {
+            "styleId": null,
+            "numbering": {
+              "kind": "inherit"
+            }
+          }
+        },
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "31617F9A",
+            "startOffset": 0,
+            "endOffset": 11,
+            "selectedTextHash": "hmk415m"
+          },
+          "comment": {
+            "text": "Clause goods warranty agreement buyer warranty."
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 787497556",
+  "title": "PINNED #1811, reported seed 787497556: a heading restyled off its numbered style reads the same label before and after save"
+}

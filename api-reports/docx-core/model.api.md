@@ -804,6 +804,9 @@ export type LevelOverride = {
 };
 
 // @public
+export const levelShowsMarker: (definitions: NumberingDefinitions, numId: number, ilvl: number) => boolean;
+
+// @public
 export type LevelSuffix = "tab" | "space" | "nothing";
 
 // @public
@@ -1000,6 +1003,32 @@ export type NumberingInstance = {
     levelOverrides?: LevelOverride[];
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
+};
+
+// @public
+export const numberingInstanceResolves: (definitions: NumberingDefinitions, numId: number) => boolean;
+
+// @public
+export const numberingLevelEntries: (definitions: NumberingDefinitions) => NumberingLevelEntry[];
+
+// @public (undocumented)
+export type NumberingLevelEntry = {
+    numId: number;
+    ilvl: number;
+    level: ListLevel;
+};
+
+// @public
+export const numberingLevelHasMarkerSlot: (level: Pick<ListLevel, "numFmt">) => boolean;
+
+// @public (undocumented)
+export type NumberingLevelResolution = {
+    kind: "level";
+    level: ListLevel;
+    source: "abstract" | "override" | "styleLink";
+} | {
+    kind: "undefined";
+    reason: "levelOutOfRange" | "noInstance" | "noAbstract" | "unresolvedStyleLink" | "levelNotDefined";
 };
 
 // @public
@@ -1385,6 +1414,9 @@ export type ResolvedParagraphNumbering = {
 } | (ParagraphNumberingReference & {
     readonly ilvl: number;
 });
+
+// @public
+export const resolveNumberingLevel: (definitions: NumberingDefinitions, numId: number, ilvl: number) => NumberingLevelResolution;
 
 // @public
 export const resolveParagraphNumbering: (numbering: ParagraphNumberingOverride | undefined) => ResolvedParagraphNumbering;

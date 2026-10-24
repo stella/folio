@@ -7,12 +7,17 @@
  */
 
 import { createBuiltInStyleIndex } from "../docx/builtInStyles";
+import { getCachedNumberingMap } from "../docx/numberingParser";
 import { createListLabelCounter } from "../prosemirror/listLabels";
 import {
   createStyleResolver,
   resolveStyleParagraphNumbering,
 } from "../prosemirror/styles/styleResolver";
-import type { ParagraphFormatting, StyleDefinitions } from "../types/document";
+import type {
+  NumberingDefinitions,
+  ParagraphFormatting,
+  StyleDefinitions,
+} from "../types/document";
 import {
   createNoteReferenceNumbering,
   type NoteReferenceKind,
@@ -32,6 +37,7 @@ import type { MarkdownOptions, RenderContext } from "./types";
 export function newContext(
   opts: MarkdownOptions = {},
   styles?: StyleDefinitions | undefined,
+  numberingDefinitions?: NumberingDefinitions | undefined,
 ): RenderContext {
   const resolver = createStyleResolver(styles);
   const numbering = new Map<string | undefined, ParagraphFormatting["numPr"]>();
@@ -64,7 +70,9 @@ export function newContext(
     commentRefs: [],
     hyperlinkRefs: [],
     imageCounter: 0,
-    nextListLabel: createListLabelCounter(),
+    nextListLabel: createListLabelCounter(
+      numberingDefinitions ? getCachedNumberingMap(numberingDefinitions) : null,
+    ),
     listIndentWidths: [],
   };
 }

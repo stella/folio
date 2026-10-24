@@ -95,6 +95,47 @@ describe("normalizeNumberingReferences", () => {
     });
   });
 
+  test("keeps a reference whose full level override stands without its abstract", () => {
+    const documentBody: DocumentBody = {
+      content: [
+        {
+          type: "paragraph",
+          formatting: { numPr: { kind: "reference", numId: 8, ilvl: 0 } },
+          content: [],
+        },
+      ],
+    };
+
+    const result = normalizeNumberingReferences({
+      documentBody,
+      numbering: createNumberingMap({
+        ...NUMBERING,
+        nums: [
+          ...NUMBERING.nums,
+          {
+            numId: 8,
+            abstractNumId: 9,
+            levelOverrides: [
+              {
+                ilvl: 0,
+                lvl: { ilvl: 0, numFmt: "decimal", lvlText: "%1." },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    // The numbering owner resolves the override as a level of its own, so the
+    // parse boundary must not unnumber what every reader shows as a list.
+    expect(result).toEqual({ unnumberedDanglingReferences: 0 });
+    expect(documentBody.content.at(0)?.formatting?.numPr).toEqual({
+      kind: "reference",
+      numId: 8,
+      ilvl: 0,
+    });
+  });
+
   test("leaves the no-numbering sentinel untouched", () => {
     const documentBody: DocumentBody = {
       content: [

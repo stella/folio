@@ -47,58 +47,68 @@ const completedState = (
   };
 };
 
-/** Steps that can change a paragraph's attrs or bring paragraphs in, by what they replace. */
 const isReplace = (step: Step): step is ReplaceStep | ReplaceAroundStep =>
   step instanceof ReplaceStep || step instanceof ReplaceAroundStep;
 
-/** Steps that change nothing a numbering reference lives in. */
-const leavesParagraphAttrs = (step: Step): boolean =>
+const leavesNumberingUnchanged = (step: Step): boolean =>
   step instanceof AddMarkStep ||
   step instanceof RemoveMarkStep ||
   step instanceof DocAttrStep;
 
-/**
- * Whether `tr` may have introduced a reference `map` does not define. Only the
- * ranges its steps replaced are read, so typing costs one paragraph, not the
- * document. A step that changes attrs in place (not by replacement) is not
- * localised and answers yes.
- */
-const mayReferenceUnknownInstance = (
-  tr: Transaction,
-  map: NumberingMap | null,
+const containsNumberedParagraph = (
+  node: PMNode,
+  from: number,
+  to: number,
 ): boolean => {
-  const ranges: { from: number; to: number }[] = [];
-  for (const [index, step] of tr.steps.entries()) {
-    if (leavesParagraphAttrs(step)) {
-      continue;
+  let found = false;
+  node.nodesBetween(from, to, (child, pos) => {
+    if (
+      child.type.name !== "paragraph" ||
+      pos < from ||
+      pos + child.nodeSize > to ||
+      paragraphListReferences(child).length === 0
+    ) {
+      return !found;
     }
-    if (!isReplace(step)) {
-      return true;
-    }
-    const later = tr.mapping.slice(index + 1);
-    step.getMap().forEach((_oldStart, _oldEnd, newStart, newEnd) => {
-      ranges.push({ from: later.map(newStart, -1), to: later.map(newEnd, 1) });
-    });
-  }
-  const size = tr.doc.content.size;
-  const isUnknown = (numId: number): boolean =>
-    !(map?.hasNumbering(numId) ?? false);
-  return ranges.some(({ from, to }) => {
-    let unknown = false;
-    const start = Math.min(Math.max(0, from), size);
-    tr.doc.nodesBetween(start, Math.min(Math.max(start, to), size), (node) => {
-      if (unknown) {
-        return false;
-      }
-      if (node.type.name !== "paragraph") {
-        return true;
-      }
-      unknown = paragraphListReferences(node).some(isUnknown);
+    found = true;
+    return false;
+  });
+  return found;
+};
+
+/**
+ * Whether a transaction can change a paragraph-level numbering source. Text
+ * and mark edits do not; paragraph attrs and structural replacements do. The
+ * latter are inspected in the step-local document rather than by walking the
+ * completed document.
+ */
+const changesNumberingInputs = (tr: Transaction): boolean =>
+  tr.steps.some((step, index) => {
+    if (leavesNumberingUnchanged(step)) return false;
+    if (!isReplace(step)) return true;
+
+    let insertsNumberedParagraph = false;
+    step.slice.content.descendants((node) => {
+      if (paragraphListReferences(node).length === 0)
+        return !insertsNumberedParagraph;
+      insertsNumberedParagraph = true;
       return false;
     });
-    return unknown;
+    if (insertsNumberedParagraph) return true;
+
+    const before = tr.docs[index];
+    if (before === undefined) return true;
+    const fromParent = before.resolve(step.from).parent;
+    const toParent = before.resolve(step.to).parent;
+    if (
+      fromParent !== toParent &&
+      (paragraphListReferences(fromParent).length > 0 ||
+        paragraphListReferences(toParent).length > 0)
+    ) {
+      return true;
+    }
+    return containsNumberedParagraph(before, step.from, step.to);
   });
-};
 
 export const createDocumentNumberingPlugin = (
   definitions: NumberingDefinitions | null | undefined,
@@ -108,7 +118,7 @@ export const createDocumentNumberingPlugin = (
     state: {
       init: (_config, state) => completedState(definitions ?? null, state.doc),
       apply: (tr, current, _oldState, state) =>
-        tr.docChanged && mayReferenceUnknownInstance(tr, current.map)
+        tr.docChanged && changesNumberingInputs(tr)
           ? completedState(current.definitions, state.doc)
           : current,
     },
@@ -116,6 +126,18 @@ export const createDocumentNumberingPlugin = (
 
 /** Numbering for states without the plugin, one per document node. */
 const untrackedNumbering = new WeakMap<PMNode, DocumentNumberingState>();
+
+/** Numbering derived from a document when no editor plugin owns package definitions. */
+export const getDocumentNumberingForDoc = (
+  doc: PMNode,
+): NumberingMap | null => {
+  let untracked = untrackedNumbering.get(doc);
+  if (!untracked) {
+    untracked = completedState(null, doc);
+    untrackedNumbering.set(doc, untracked);
+  }
+  return untracked.map;
+};
 
 /**
  * The numbering the document's paragraphs resolve against: the package's
@@ -132,12 +154,7 @@ export const getDocumentNumbering = (
   }
   // A state without the plugin knows no package numbering; its paragraphs
   // still define the lists commands started in it.
-  let untracked = untrackedNumbering.get(state.doc);
-  if (!untracked) {
-    untracked = completedState(null, state.doc);
-    untrackedNumbering.set(state.doc, untracked);
-  }
-  return untracked.map;
+  return getDocumentNumberingForDoc(state.doc);
 };
 
 /** The package's own definitions, without the instances the document defines. */

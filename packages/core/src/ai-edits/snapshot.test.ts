@@ -714,16 +714,15 @@ describe("createFolioAIEditSnapshot", () => {
         kind: "heading",
         headingLevel: 2,
         displayLabel: undefined,
-        listReference: { numId: 5, level: 0 },
+        listReference: null,
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
-      // Numbered in the package, no number on the page: prose that keeps its level.
       {
         text: "Hidden marker",
         kind: "paragraph",
         headingLevel: undefined,
         displayLabel: undefined,
-        listReference: { numId: 5, level: 0 },
+        listReference: null,
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
       {
@@ -743,6 +742,62 @@ describe("createFolioAIEditSnapshot", () => {
         statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
     ]);
+  });
+
+  test("honors a hidden projected list marker when called with a document", () => {
+    const numbered = paragraphNumberingFromSlots({ numId: 5, ilvl: 0 });
+    const doc = folioSchema.node("doc", null, [
+      folioSchema.node(
+        "paragraph",
+        { numPr: numbered, listMarker: "1.", listMarkerHidden: true },
+        [folioSchema.text("Hidden marker")],
+      ),
+    ]);
+
+    const block = expectParagraphBlock(
+      createFolioAIEditSnapshot(doc).blocks.at(0),
+    );
+    expect(block).toMatchObject({
+      kind: "paragraph",
+      statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
+    });
+    expect(block).not.toHaveProperty("listReference");
+    expect(block).not.toHaveProperty("displayLabel");
+  });
+
+  test("uses the pending paragraph-property level when it hides a marker", () => {
+    const visible = paragraphNumberingFromSlots({ numId: 5, ilvl: 0 });
+    const hidden = paragraphNumberingFromSlots({ numId: 5, ilvl: 1 });
+    const doc = folioSchema.node("doc", null, [
+      folioSchema.node(
+        "paragraph",
+        {
+          numPr: hidden,
+          listMarker: "a.",
+          listMarkerHidden: true,
+          _propertyChanges: [
+            {
+              type: "paragraphPropertyChange",
+              info: { id: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+              previousFormatting: { numPr: visible, listMarker: "1." },
+            },
+          ],
+        },
+        [folioSchema.text("Hidden pending level")],
+      ),
+    ]);
+
+    const block = expectParagraphBlock(
+      createFolioAIEditSnapshot(doc).blocks.at(0),
+    );
+    expect(block.kind).toBe("paragraph");
+    expect(block.statedNumbering).toEqual({
+      kind: "reference",
+      numId: 5,
+      ilvl: 1,
+    });
+    expect(block).not.toHaveProperty("listReference");
+    expect(block).not.toHaveProperty("displayLabel");
   });
 });
 

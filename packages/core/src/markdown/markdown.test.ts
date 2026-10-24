@@ -100,8 +100,46 @@ const doc = (
   package: { document: { content }, styles },
 });
 
-const md = (content: BlockContent[], opts?: MarkdownOptions): string =>
-  toMarkdown(doc(content), opts);
+const md = (content: BlockContent[], opts?: MarkdownOptions): string => {
+  const document = doc(content);
+  const renderings = content.flatMap((block) =>
+    block.type === "paragraph" && block.listRendering
+      ? [block.listRendering]
+      : [],
+  );
+  if (renderings.length > 0) {
+    const levels = [...new Set(renderings.map(({ level }) => level))].map(
+      (level) => {
+        const rendering = renderings.find(
+          (candidate) => candidate.level === level,
+        )!;
+        const resolvedLevel = {
+          ilvl: level,
+          numFmt: rendering.isBullet
+            ? ("bullet" as const)
+            : ("decimal" as const),
+          lvlText: /^\d{1,9}([.)])$/u.test(rendering.marker)
+            ? `%${level + 1}${rendering.marker.slice(-1)}`
+            : rendering.marker,
+        };
+        if (rendering.markerHidden) {
+          return {
+            ilvl: resolvedLevel.ilvl,
+            numFmt: resolvedLevel.numFmt,
+            lvlText: resolvedLevel.lvlText,
+            rPr: { hidden: true },
+          };
+        }
+        return resolvedLevel;
+      },
+    );
+    document.package.numbering = {
+      abstractNums: [{ abstractNumId: 1, levels }],
+      nums: [{ numId: 1, abstractNumId: 1 }],
+    };
+  }
+  return toMarkdown(document, opts);
+};
 
 const list = (
   level: number,
@@ -564,6 +602,64 @@ describe("toMarkdown — block structure", () => {
       para([run("b")], { listRendering: list(0, false, "2.") }),
     ]);
     expect(ordered).toBe("1. a\n2. b");
+  });
+
+  test("valid numbering renders a list item without a cached projection", () => {
+    const document = doc([
+      {
+        type: "paragraph",
+        formatting: {
+          numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+        },
+        content: [run("first")],
+      },
+    ]);
+    document.package.numbering = {
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
+      ],
+      nums: [{ numId: 1, abstractNumId: 1 }],
+    };
+
+    expect(toMarkdown(document)).toBe("1. first");
+  });
+
+  test("a stale cached projection without paragraph or style numbering exports as plain prose", () => {
+    const document = doc([
+      {
+        type: "paragraph",
+        content: [run("text")],
+        listRendering: list(0, false, "1."),
+      },
+    ]);
+    document.package.numbering = {
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
+      ],
+      nums: [{ numId: 1, abstractNumId: 1 }],
+    };
+
+    expect(toMarkdown(document)).toBe("text");
+  });
+
+  test("a package-free paragraph carrying only its list projection exports as a list", () => {
+    expect(
+      toMarkdown(
+        doc([
+          {
+            type: "paragraph",
+            content: [run("text")],
+            listRendering: list(0, false, "1."),
+          },
+        ]),
+      ),
+    ).toBe("1. text");
   });
 
   test("a hidden list marker (w:vanish) exports as plain prose", () => {

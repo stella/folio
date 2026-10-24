@@ -10,6 +10,7 @@ import {
   EMPTY_BUILT_IN_STYLE_INDEX,
   resolveHeadingLevel,
 } from "../docx/builtInStyles";
+import type { NumberingMap } from "../docx/numberingParser";
 import {
   isOpaqueNestedRowMarkup,
   OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
@@ -25,9 +26,7 @@ import {
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
 import {
-  effectiveParagraphNumberingReference,
   paragraphNumberingAttr,
-  paragraphNumberingSourcesFromBoundary,
   readParagraphNumberingAttr,
 } from "../prosemirror/numberingAttr";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
@@ -808,6 +807,7 @@ const createFolioAIEditSnapshotInternal = (
   doc: PMNode,
   styleResolver: RunStyleResolver | null,
   noteReferenceLabels?: NoteReferenceLabels,
+  numbering?: NumberingMap | null,
 ): FolioAIEditSnapshot => {
   // Resolved once: the walk below classifies every block, and the index is
   // what lets a localized heading style reach the model as a heading.
@@ -830,7 +830,7 @@ const createFolioAIEditSnapshotInternal = (
   // Labels are counted in this walk from the document as it stands, not read
   // from the markers the parser resolved at open: those go stale with the
   // first list edit.
-  const nextListLabel = createListLabelCounter();
+  const nextListLabel = createListLabelCounter(numbering ?? null);
   const tables: FolioStoryTable[] = [];
   const tableIndexByStart = new Map<number, number>();
   // The containers enclosing the node being visited, innermost last. Kept in
@@ -981,26 +981,31 @@ const createFolioAIEditSnapshotInternal = (
     }
     usedBlockIds.add(id);
     const headingLevel = getHeadingLevel(node, builtInStyles);
-    const visibleList =
+    const listAttrs =
       node.type.name === "paragraph"
-        ? nextListLabel(expectParagraphAttrs(node))
+        ? snapshotListAttrs(expectParagraphAttrs(node), styleResolver)
         : undefined;
+    const visibleList =
+      listAttrs === undefined ? undefined : nextListLabel(listAttrs);
     const listLabel = visibleList?.label;
-    const kind = getBlockKind(headingLevel, listLabel);
+    const kind = getBlockKind(headingLevel, visibleList?.kind === "marker");
     const displayLabel = getDisplayLabel(node, listLabel, kind === "heading");
     const styleId = getStyleId(node);
     const directOutlineLevel =
       node.type.name === "paragraph"
         ? expectParagraphAttrs(node)._originalFormatting?.outlineLevel
         : undefined;
+    const numberedListReference = visibleList?.numbering;
     const listReference =
-      visibleList?.numbering === undefined
+      visibleList?.kind !== "marker" || numberedListReference === undefined
         ? undefined
         : {
-            numId: visibleList.numbering.numId,
-            level: visibleList.numbering.ilvl,
+            numId: numberedListReference.numId,
+            level: numberedListReference.ilvl,
           };
-    const numberingReferenceKey = getNumberingReferenceKey(node);
+    const numberingReferenceKey = listReference
+      ? `${String(listReference.numId)}:${String(listReference.level)}`
+      : null;
     if (numberingReferenceKey) {
       numberingReferenceKeys.add(numberingReferenceKey);
     }
@@ -1108,7 +1113,9 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot =>
 export const createFolioAIEditSnapshotWithStyleResolver = (
   doc: PMNode,
   styleResolver: RunStyleResolver | null,
-): FolioAIEditSnapshot => createFolioAIEditSnapshotInternal(doc, styleResolver);
+  numbering?: NumberingMap | null,
+): FolioAIEditSnapshot =>
+  createFolioAIEditSnapshotInternal(doc, styleResolver, undefined, numbering);
 
 /**
  * What a reader sees the block as, heading first: a numbered heading (`1.
@@ -1117,17 +1124,81 @@ export const createFolioAIEditSnapshotWithStyleResolver = (
  * `listReference`. A paragraph is a list item when it shows a marker, which is
  * when it has a label. One whose numbering shows none (a `w:vanish` level, a
  * level its list does not define, or `w:numId="0"` cancelling its style's
- * numbering) reads as prose and is a paragraph, keeping its `statedNumbering` and
- * effective `listReference`.
+ * numbering) reads as prose and is a paragraph, keeping its `statedNumbering`
+ * without claiming effective list membership.
  */
 const getBlockKind = (
   headingLevel: number | undefined,
-  listLabel: string | undefined,
+  showsMarker: boolean,
 ) => {
   if (headingLevel !== undefined) {
     return "heading";
   }
-  return listLabel === undefined ? "paragraph" : "listItem";
+  return showsMarker ? "listItem" : "paragraph";
+};
+
+/** Rebind cached style numbering to the current style before the owner reads it. */
+const snapshotListAttrs = (
+  attrs: Readonly<ReturnType<typeof expectParagraphAttrs>>,
+  styleResolver: RunStyleResolver | null,
+) => {
+  if (styleResolver === null) return attrs;
+  const needsStyleNumbering =
+    typeof attrs.styleId === "string" ||
+    (attrs.numPrFromStyle !== null && attrs.numPrFromStyle !== undefined) ||
+    attrs.numPr?.kind === "levelOnly" ||
+    attrs._propertyChanges?.some(
+      ({ previousFormatting }) =>
+        previousFormatting !== undefined &&
+        (typeof previousFormatting.styleId === "string" ||
+          (previousFormatting.numPrFromStyle !== null &&
+            previousFormatting.numPrFromStyle !== undefined) ||
+          previousFormatting.numPr?.kind === "levelOnly"),
+    ) === true;
+  if (!needsStyleNumbering) return attrs;
+  const styleNumbering = (styleId: unknown) =>
+    styleResolver.resolveParagraphStyle(
+      typeof styleId === "string" ? styleId : null,
+    ).paragraphFormatting?.numPr;
+  const styleNumberingAttr = (styleId: unknown) => {
+    const numbering = styleNumbering(styleId);
+    return numbering === undefined ? null : paragraphNumberingAttr(numbering);
+  };
+  const currentStyleNumbering = styleNumberingAttr(attrs.styleId);
+  const currentAttrs = { ...attrs };
+  delete currentAttrs.numPrFromStyle;
+  const cancelsStaleStyleNumbering =
+    (attrs.numPr === null || attrs.numPr === undefined) &&
+    currentStyleNumbering === null &&
+    attrs._propertyChanges !== null &&
+    attrs._propertyChanges !== undefined &&
+    attrs._propertyChanges.length > 0;
+  return {
+    ...currentAttrs,
+    ...(cancelsStaleStyleNumbering
+      ? { numPr: paragraphNumberingAttr({ kind: "none" }) }
+      : {}),
+    ...(currentStyleNumbering === null
+      ? {}
+      : { numPrFromStyle: currentStyleNumbering }),
+    ...(attrs._propertyChanges === null || attrs._propertyChanges === undefined
+      ? {}
+      : {
+          _propertyChanges: attrs._propertyChanges.map((change) => ({
+            ...change,
+            ...(change.previousFormatting === undefined
+              ? {}
+              : {
+                  previousFormatting: {
+                    ...change.previousFormatting,
+                    numPrFromStyle: styleNumberingAttr(
+                      change.previousFormatting.styleId,
+                    ),
+                  },
+                }),
+          })),
+        }),
+  };
 };
 
 /** The block's 1-based heading level, as {@link resolveHeadingLevel} classifies it. */
@@ -1167,18 +1238,6 @@ const getDisplayLabel = (
   }
 
   return undefined;
-};
-
-const getNumberingReferenceKey = (node: PMNode): string | null => {
-  const numbering = effectiveParagraphNumberingReference(
-    paragraphNumberingSourcesFromBoundary({
-      numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
-      numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
-    }),
-  );
-  return numbering
-    ? `${String(numbering.numId)}:${String(numbering.ilvl)}`
-    : null;
 };
 
 const getStyleId = (node: PMNode): string | undefined => {

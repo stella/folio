@@ -402,10 +402,14 @@ slowTest(MARKER_VISIBILITY_TEST, async () => {
             assert.equal(target.kind, expectedKind, context);
             assert.deepEqual(
               target.listReference,
-              { numId: 5, level },
+              visible ? { numId: 5, level } : undefined,
               context,
             );
-            assert.equal(target.listLevel, level, context);
+            assert.equal(
+              target.listLevel,
+              visible ? level : undefined,
+              context,
+            );
             assert.deepEqual(compareWithModel(model, rows), [], context);
             assert.match(
               compareWithModel(
@@ -1265,7 +1269,10 @@ slowTest(HIDDEN_LEVELS_TEST, async () => {
           const row = rows.find((candidate) => candidate.text === text);
           assert.ok(row);
           assert.equal(row.kind, level % 3 === 0 ? "listItem" : "paragraph");
-          assert.deepEqual(row.listReference, { numId: 7, level });
+          assert.deepEqual(
+            row.listReference,
+            level % 3 === 0 ? { numId: 7, level } : undefined,
+          );
           const model = modelOf(anchors);
           model.numberingFacts = facts;
           // Sensitivity: the oracle must reject both a spurious list and lost list classification.

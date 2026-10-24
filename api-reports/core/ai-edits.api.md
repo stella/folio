@@ -33,6 +33,8 @@ export type ApplyFolioDocumentOperationsOptions = {
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
     undefinedReferences: FolioUndefinedReferencePolicy;
+    pendingSuggestionIds?: ReadonlySet<string>;
+    restagesSuggestions?: boolean;
 };
 
 // @public (undocumented)
@@ -48,7 +50,7 @@ export function clampRangeToDocSize(docSize: number, range: DocPositionRange): D
 export const createFolioAIEditSnapshot: (doc: Node_2) => FolioAIEditSnapshot;
 
 // @internal
-export const createFolioAIEditSnapshotWithStyleResolver: (doc: Node_2, styleResolver: RunStyleResolver | null) => FolioAIEditSnapshot;
+export const createFolioAIEditSnapshotWithStyleResolver: (doc: Node_2, styleResolver: RunStyleResolver | null, numbering?: NumberingMap | null) => FolioAIEditSnapshot;
 
 // @public (undocumented)
 export const createFolioAITextRangeHandle: (input: CreateFolioAITextRangeHandleOptions) => FolioAITextRangeHandle | null;

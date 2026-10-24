@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 787497633,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 787497633,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "1BF99289"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "7B806329",
+          "text": "Payment schedule supplier delivery payment written term.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "79D25458"
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 787497633",
+  "title": "PINNED #1738, reported seed 787497633: a new list inserted before deleted closing paragraphs is that list once accepted"
+}

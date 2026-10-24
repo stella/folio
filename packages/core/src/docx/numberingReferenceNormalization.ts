@@ -14,7 +14,10 @@
  * shows no number would come back numbered.
  */
 
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import {
+  numberingInstanceResolves,
+  PARSE_WARNING_CODES,
+} from "@stll/docx-core/model";
 
 import type {
   DocumentBody,
@@ -31,22 +34,17 @@ import {
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
 /**
- * Whether a `w:numId` still reaches a level definition: a `w:num` that names a
- * `w:abstractNum` the numbering part defines. Both hops can dangle, and a
- * `w:num` with no `w:abstractNum` numbers nothing just as a missing one does.
+ * Whether a `w:numId` still reaches a level definition, as the numbering owner
+ * decides it: a `w:num` naming a `w:abstractNum` the part defines, or one whose
+ * full level override defines a level itself. A `w:num` with neither numbers
+ * nothing just as a missing one does.
  */
 const resolvesNumbering = (
   numId: number,
   numbering: NumberingMap | undefined,
-): boolean => {
-  if (!numbering) {
-    return false;
-  }
-  const abstractNumId = numbering.getAbstractNumId(numId);
-  return (
-    abstractNumId !== null && numbering.getAbstract(abstractNumId) !== null
-  );
-};
+): boolean =>
+  numbering !== undefined &&
+  numberingInstanceResolves(numbering.definitions, numId);
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
 export const UNNUMBERED_PARAGRAPH_WARNING =

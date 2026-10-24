@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "suggested",
+  "seed": 787497614,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 787497614,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "0C0A0460",
+          "text": "Schedule delivery delivery clause warranty term warranty.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        },
+        {
+          "type": "insertTableColumn",
+          "blockId": "7B806329",
+          "position": "after"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "6FFB97E7"
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 787497614",
+  "title": "PINNED #1356, reported seed 787497614: a new list inserted after a table keeps its own break when the batch empties the closing paragraph"
+}

@@ -2246,6 +2246,7 @@ const batchClaimOf = ({
         block,
         next: item.blockTo,
         joinsNow: !producesTrackedChanges,
+        setsProperties: item.operation.mergedParagraphProperties !== undefined,
       };
     case "deleteBlock": {
       // The same test the deletion itself makes: see its case in the applier.
@@ -3168,6 +3169,13 @@ type BatchParagraphPosition = { position: number; mappedFrom: number };
 /** A container-ending paragraph a tracked `deleteBlock` emptied, as it recorded it. */
 type DeletedFinalParagraph = BatchParagraphPosition & {
   operationId: string;
+  /**
+   * Whether a paragraph preceded the emptied one when the deletion ran. One
+   * that nothing preceded (a table, or its container's start) stays emptied,
+   * as the deletion alone leaves it: a paragraph this batch inserts before it
+   * lands afterwards and keeps its own break.
+   */
+  precededWhenDeleted: boolean;
   revisionExtras: {
     initials?: string;
     provenance?: "suggested";
@@ -3228,6 +3236,19 @@ const finalParagraphPredecessor = (doc: PMNode, at: number) => {
   return null;
 };
 
+/**
+ * The paragraph whose break a recorded final deletion retires, if any. A
+ * deletion that nothing preceded when it ran keeps its paragraph emptied, as
+ * the deletion alone does: a paragraph the batch places before it afterwards
+ * (an insertion after a table, a deleted table's predecessor) lands after the
+ * deletion and keeps its own break.
+ */
+const retiredFinalBreak = (
+  doc: PMNode,
+  at: number,
+  deletion: Pick<DeletedFinalParagraph, "precededWhenDeleted">,
+) => (deletion.precededWhenDeleted ? finalParagraphPredecessor(doc, at) : null);
+
 type CrossesBatchDeletionOptions = {
   doc: PMNode;
   /** Where the predecessor `finalParagraphPredecessor` found ends. */
@@ -3287,7 +3308,7 @@ const pendingRemovedFinalBreakPositions = (
   const positions = new Set<number>();
   for (const deletion of deletions) {
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
-    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
     if (!predecessor || predecessor.node.attrs["pPrMark"] != null) continue;
     positions.add(predecessor.position);
   }
@@ -3366,7 +3387,7 @@ const hasDeferredParagraphPropertyWrite = ({
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
     const target = tr.doc.nodeAt(at);
     if (!target) continue;
-    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
     if (!predecessor) continue;
     const mark: unknown = predecessor.node.attrs["pPrMark"];
     if (
@@ -3448,7 +3469,7 @@ const paragraphPropertyRevisionTargets = ({
   // in preflight without changing the established deferred mutation order.
   for (const deletion of deletedFinalParagraphs) {
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
-    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
     if (
       !predecessor ||
       addedBreakRevisionId(predecessor.node.attrs["pPrMark"]) === null
@@ -3521,15 +3542,13 @@ const withRetiredFinalParagraphs = ({
     }))
     // A retraction joins two paragraphs: the last one first keeps the others' positions.
     .toSorted((left, right) => right.at - left.at);
-  for (const {
-    deletion: { operationId, revisionExtras },
-    at,
-  } of located) {
+  for (const { deletion, at } of located) {
+    const { operationId, revisionExtras } = deletion;
     const emptied = tr.doc.nodeAt(at);
     if (emptied?.type.name !== "paragraph") {
       continue;
     }
-    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
     if (!predecessor) continue;
     const { node: previous, position } = predecessor;
     const mark: unknown = previous.attrs["pPrMark"];
@@ -3602,15 +3621,26 @@ const withRetiredFinalParagraphs = ({
       // deletion applied directly leaves them, but for what this batch set
       // on the emptied one. A pending change the emptied paragraph already
       // had records what rejecting puts back; otherwise this change does.
+      // When the paragraph it joined has its own break pending deletion
+      // (a wholly deleted paragraph the predecessor search looked past),
+      // accepting leaves the paragraph after that break: that one carries
+      // the words, so it takes the added paragraph's properties.
+      const carryPosition = isDeletedPPrMark(
+        tr.doc.nodeAt(position)?.attrs["pPrMark"],
+      )
+        ? (paragraphLeftAfter({ doc: tr.doc, paragraphPos: position }) ??
+          position)
+        : position;
+      const carryTarget = tr.doc.nodeAt(carryPosition) ?? following;
       const revisionId = nextRevisionId;
       const carried = carryParagraphProperties({
         tr,
-        position,
+        position: carryPosition,
         source: previous,
         styleResolver,
         numbering,
         revision: { id: revisionId, author, date, ...revisionExtras },
-        keep: propertiesSetInBatch(following, batchRevisionIds),
+        keep: propertiesSetInBatch(carryTarget, batchRevisionIds),
       });
       if (carried.tracked) {
         nextRevisionId++;
@@ -6145,6 +6175,8 @@ const applyFolioAIEditOperationsInternal = ({
             // settled only once the batch is: see `withRetiredFinalParagraphs`.
             deletedFinalParagraphs.push({
               operationId: item.operation.id,
+              precededWhenDeleted:
+                finalParagraphPredecessor(tr.doc, markPosition) !== null,
               position: markPosition,
               mappedFrom: tr.mapping.maps.length,
               revisionExtras: trackedRevisionExtras,
@@ -6165,6 +6197,7 @@ const applyFolioAIEditOperationsInternal = ({
             if (finalPosition !== null) {
               deletedFinalParagraphs.push({
                 operationId: item.operation.id,
+                precededWhenDeleted: true,
                 position: finalPosition,
                 mappedFrom: tr.mapping.maps.length,
                 revisionExtras: trackedRevisionExtras,
@@ -6573,6 +6606,8 @@ const applyFolioAIEditOperationsInternal = ({
         let mergedPropertiesAt = blockFrom;
         // Set when a property change already records what the paragraph had.
         let mergedPropertiesRecorded = false;
+        // Set once `mergedParagraphProperties` are on the paragraph they name.
+        let mergedPropertiesApplied = false;
         const second = join.next;
         // A comment running from one paragraph into the next runs across the
         // separator too, or it would cover two stretches.
@@ -6667,6 +6702,22 @@ const applyFolioAIEditOperationsInternal = ({
             joined &&
             (endingMark?.kind === "del" || endingMark?.kind === "moveFrom")
           ) {
+            // The joined paragraph takes the requested properties before its
+            // pending removed mark hands its properties on to the paragraph
+            // accepting leaves, as the same merge tracked and accepted does.
+            if (item.operation.mergedParagraphProperties) {
+              // Read again: the joined node now carries the second's mark.
+              const ending = tr.doc.nodeAt(blockFrom) ?? joined;
+              tr = applyBlockParagraphProperties({
+                tr,
+                position: blockFrom,
+                node: ending,
+                properties: item.operation.mergedParagraphProperties,
+                styleResolver,
+                numbering,
+              }).tr;
+              mergedPropertiesApplied = true;
+            }
             const survivor = paragraphLeftAfter({
               doc: tr.doc,
               paragraphPos: blockFrom,
@@ -6675,7 +6726,7 @@ const applyFolioAIEditOperationsInternal = ({
               tr = carryParagraphProperties({
                 tr,
                 position: survivor,
-                source: joined,
+                source: tr.doc.nodeAt(blockFrom) ?? joined,
                 styleResolver,
                 numbering,
                 revision: endingMark.info,
@@ -6808,7 +6859,10 @@ const applyFolioAIEditOperationsInternal = ({
           }
         }
 
-        if (item.operation.mergedParagraphProperties) {
+        if (
+          item.operation.mergedParagraphProperties &&
+          !mergedPropertiesApplied
+        ) {
           const mergedParagraph = tr.doc.nodeAt(mergedPropertiesAt);
           if (!mergedParagraph) {
             panic("A resolved merge did not produce a paragraph");

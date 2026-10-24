@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "direct",
+  "seed": 222413411,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 222413411,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "bullet"
+            }
+          }
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "none"
+            }
+          }
+        },
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 222413411",
+  "title": "PINNED #1817, reported seed 222413411: a merge that sets the merged paragraph's numbering claims it against another property edit"
+}

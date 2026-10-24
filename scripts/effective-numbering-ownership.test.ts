@@ -17,6 +17,93 @@ const EFFECTIVE_READERS = new Set([
   "effectiveParagraphNumbering",
   "effectiveParagraphNumberingReference",
 ]);
+const LEVEL_OWNER_ALLOWLIST = new Set([
+  "packages/core/src/prosemirror/paragraphList.ts",
+  "packages/core/src/docx/numberingParser.ts",
+  "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
+  "packages/core/src/prosemirror/listInstanceReferences.ts",
+  "packages/core/src/prosemirror/listMarker.ts",
+  "packages/core/src/prosemirror/commands/propertyChangeScope.ts",
+  "packages/core/src/ai-edits/apply.ts",
+  "packages/core/src/ai-edits/headless.ts",
+  "packages/core/src/controller/canonicalStructure.ts",
+  "packages/core/src/docx/listMarkerComputation.ts",
+  "packages/core/src/docx/listModelNormalization.ts",
+  "packages/core/src/docx/listRendering.ts",
+  "packages/core/src/docx/paragraphParser.ts",
+  "packages/core/src/prosemirror/listNumbering.ts",
+  "packages/core/src/prosemirror/listState.ts",
+  "packages/core/src/prosemirror/storyListNumbering.ts",
+  "packages/core/src/prosemirror/styles/resolvedStyleAttrs.ts",
+]);
+
+const levelOwnerViolations = (source: string): string[] => {
+  const file = ts.createSourceFile(
+    "fixture.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const found: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ((ts.isIdentifier(node.expression) &&
+        node.expression.text === "hasListRendering") ||
+        (ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === "getLevel"))
+    ) {
+      found.push(node.getText(file));
+    }
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === "levels" &&
+      ts.isElementAccessExpression(node.expression) &&
+      node.expression.argumentExpression?.getText(file).includes("abstractNum")
+    ) {
+      found.push(node.getText(file));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+};
+
+const cachedRenderingDecisionViolations = (source: string): string[] => {
+  if (
+    !source.includes("resolveParagraphList") ||
+    !source.includes("listRendering")
+  )
+    return [];
+  const file = ts.createSourceFile(
+    "fixture.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const found: string[] = [];
+  const decisionScope = (node: ts.Node): ts.Node => {
+    let scope = node.parent;
+    while (scope && !ts.isFunctionLike(scope) && !ts.isSourceFile(scope))
+      scope = scope.parent;
+    return scope ?? file;
+  };
+  const visit = (node: ts.Node): void => {
+    if (
+      ((ts.isPropertyAccessExpression(node) &&
+        node.name.text === "listRendering") ||
+        (ts.isElementAccessExpression(node) &&
+          ts.isStringLiteral(node.argumentExpression) &&
+          node.argumentExpression.text === "listRendering")) &&
+      decisionScope(node).getText(file).includes("resolveParagraphList(")
+    ) {
+      found.push(node.getText(file));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+};
 
 /** Follow local aliases so membership cannot accidentally read only the authored slot. */
 const violations = (source: string): string[] => {
@@ -236,6 +323,65 @@ test("production membership readers never consume the authored slot alone", () =
     violations(readFileSync(path.join(ROOT, file), "utf8")).map(
       (entry) => `${file}: ${entry}`,
     ),
+  );
+  expect(found).toEqual([]);
+});
+
+test("numbering level decisions stay in explicitly owned bridges", () => {
+  expect(
+    levelOwnerViolations("const shown = hasListRendering(attrs)"),
+  ).toHaveLength(1);
+  expect(
+    levelOwnerViolations("const level = numbering.getLevel(2, 1)"),
+  ).toHaveLength(1);
+  expect(
+    levelOwnerViolations("resolveParagraphList(sources, numbering)"),
+  ).toEqual([]);
+
+  const files = execFileSync("git", ["ls-files", "packages/core/src"], {
+    cwd: ROOT,
+  })
+    .toString()
+    .trim()
+    .split("\n")
+    .filter(
+      (file) =>
+        file.endsWith(".ts") &&
+        !file.endsWith(".test.ts") &&
+        !file.includes("/layout-bridge/") &&
+        !LEVEL_OWNER_ALLOWLIST.has(file),
+    );
+  const found = files.flatMap((file) =>
+    levelOwnerViolations(readFileSync(path.join(ROOT, file), "utf8")).map(
+      (entry) => `${file}: ${entry}`,
+    ),
+  );
+  expect(found).toEqual([]);
+});
+
+test("paragraph list readers do not decide rendering from the cached projection", () => {
+  expect(
+    cachedRenderingDecisionViolations(
+      "const list = resolveParagraphList(sources, numbering); return paragraph.listRendering;",
+    ),
+  ).toHaveLength(1);
+  expect(
+    cachedRenderingDecisionViolations(
+      "const list = resolveParagraphList(sources, numbering); return list.rendering;",
+    ),
+  ).toEqual([]);
+
+  const files = execFileSync("git", ["ls-files", "packages/core/src"], {
+    cwd: ROOT,
+  })
+    .toString()
+    .trim()
+    .split("\n")
+    .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
+  const found = files.flatMap((file) =>
+    cachedRenderingDecisionViolations(
+      readFileSync(path.join(ROOT, file), "utf8"),
+    ).map((entry) => `${file}: ${entry}`),
   );
   expect(found).toEqual([]);
 });

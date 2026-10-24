@@ -296,7 +296,9 @@ test("style rebinding then numbering remapping applies source ids once", async (
             remapped.blocks.find(({ text }) => text === paragraph.paraId),
           );
           expect(block.statedNumbering).toEqual(expectedStated);
-          expect(block.listReference).toEqual(expectedEffective);
+          expect(block.listReference).toEqual(
+            block.displayLabel === undefined ? undefined : expectedEffective,
+          );
         }
       }
     }),

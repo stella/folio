@@ -677,6 +677,24 @@ const fieldsOf = (row: Row): Fields => {
   return fields;
 };
 
+/**
+ * The fields a new paragraph copies from the block it is inserted beside. It
+ * copies that block's current properties: a list marker the block shows only
+ * through a pending property change (what rejecting restores) numbers
+ * nothing it copies.
+ */
+const inheritedListFields = (model: Model, row: Row): Fields => {
+  const fields = fieldsOf(row);
+  if (row.kind !== "listItem" || !model.numberingFacts) return fields;
+  const numbering = requestedStyleNumbering(model, row.styleId ?? null, row);
+  if (
+    numbering === UNKNOWN_NUMBERING ||
+    numberingKind(model, numbering) === "listItem"
+  )
+    return fields;
+  return { ...fields, kind: "paragraph", listLevel: undefined };
+};
+
 const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => ({
   ...(pre ? { pre } : {}),
   text,
@@ -951,12 +969,10 @@ const requestedStyleNumbering = (
       return UNKNOWN_NUMBERING;
     }
     direct = facts.direct.get(row.id);
-  } else if (row.listReference) {
-    direct = {
-      kind: "reference",
-      numId: row.listReference.numId,
-      ilvl: row.listReference.level,
-    };
+  } else if (row.statedNumbering?.kind === "reference") {
+    direct = row.statedNumbering;
+  } else if (row.statedNumbering?.kind === "none") {
+    direct = row.statedNumbering;
   }
   return numberingOver(style, direct);
 };
@@ -970,7 +986,10 @@ const numberingFields = (
   if (numbering === UNKNOWN_NUMBERING) return { listLevel: ANY };
   return {
     listLevel:
-      numbering?.kind === "reference" ? (numbering.ilvl ?? 0) : undefined,
+      numbering?.kind === "reference" &&
+      numberingKind(model, numbering) === "listItem"
+        ? (numbering.ilvl ?? 0)
+        : undefined,
   };
 };
 
@@ -1156,15 +1175,19 @@ const paragraphRequest = (
       fields.listLevel = ANY;
     } else if (numbering["kind"] === "inherit") {
       const effective = styleNumbering;
-      fields.listLevel =
-        effective?.kind === "reference" ? (effective.ilvl ?? 0) : undefined;
+      const reference =
+        effective?.kind === "reference" &&
+        numberingKind(model, effective) === "listItem"
+          ? { numId: effective.numId, level: effective.ilvl ?? 0 }
+          : undefined;
+      fields.listLevel = reference?.level;
       if ((pre ?? inherited) && preKind !== "heading")
         fields.kind = numberingKind(model, effective);
       checks.push((row) => {
-        if (effective?.kind === "reference") {
-          return row.listReference?.numId === effective.numId
+        if (reference) {
+          return row.listReference?.numId === reference.numId
             ? null
-            : `style numbering ${effective.numId} was lost or changed`;
+            : `style numbering ${reference.numId} was lost or changed`;
         }
         return row.listReference === undefined
           ? null
@@ -1212,7 +1235,8 @@ const paragraphRequest = (
           : {}),
       });
       const reference =
-        effective?.kind === "reference"
+        effective?.kind === "reference" &&
+        numberingKind(model, effective) === "listItem"
           ? { numId: effective.numId, level: effective.ilvl ?? 0 }
           : undefined;
       fields.listLevel = reference?.level;
@@ -1231,7 +1255,8 @@ const paragraphRequest = (
         ilvl: numbering["ilvl"] as number,
       });
       const reference =
-        effective?.kind === "reference"
+        effective?.kind === "reference" &&
+        numberingKind(model, effective) === "listItem"
           ? { numId: effective.numId, level: effective.ilvl ?? 0 }
           : undefined;
       fields.listLevel = reference?.level;
@@ -1352,7 +1377,10 @@ const insertBlock =
       undefined,
       inherited,
     );
-    const fields = { ...(inherited ? fieldsOf(inherited) : {}), ...requested };
+    const fields = {
+      ...(inherited ? inheritedListFields(model, inherited) : {}),
+      ...requested,
+    };
     const scope = operation["formattingScope"] ?? "firstParagraph";
     const texts =
       operation["lineBreakMode"] === "inline"
@@ -2498,6 +2526,8 @@ export const assertRequestedOutcome = async (
   if (
     outcome.applied.some(
       (operation) =>
+        operation.type === "insertAfterBlock" ||
+        operation.type === "insertBeforeBlock" ||
         "styleId" in operation ||
         "numbering" in operation ||
         [

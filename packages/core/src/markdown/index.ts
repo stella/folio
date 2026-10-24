@@ -65,7 +65,7 @@ function renderDocument(
   opts: MarkdownOptions = {},
 ): MarkdownResult {
   doc = withoutExhaustedComments(doc);
-  const ctx = newContext(opts, doc.package.styles);
+  const ctx = newContext(opts, doc.package.styles, doc.package.numbering);
   const body = renderBlocks(ctx, doc.package, doc.package.document.content);
   const markdown = appendTrailers(ctx, doc, body);
   if (doc.warnings) {

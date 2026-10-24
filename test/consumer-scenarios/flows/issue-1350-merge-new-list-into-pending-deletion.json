@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 787497573,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 787497573,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "numbered"
+            }
+          }
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 787497573",
+  "title": "PINNED #1350, reported seed 787497573: a merge into a paragraph pending deletion keeps the new list it asks for, directly as tracked"
+}

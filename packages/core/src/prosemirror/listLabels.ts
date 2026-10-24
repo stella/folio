@@ -11,25 +11,33 @@
  * until something reads the document.
  */
 
+import { panic } from "better-result";
+
 import type { ResolvedParagraphNumbering } from "@stll/docx-core/model";
 
 import {
   bulletMarkerFontName,
   convertBulletToUnicode,
 } from "../docx/bulletMarkers";
+import type { NumberingMap } from "../docx/numberingParser";
 import type { ListRendering } from "../types/document";
 import {
   advanceVisibleListMarker,
+  CLEARED_LIST_RENDERING_ATTRS,
   createListCounterState,
   type ListCounterStreams,
 } from "./listMarker";
-import { hasListRendering } from "./listRenderingAttrs";
+import {
+  listRenderingAttrPatch,
+  listRenderingFromAttrs,
+} from "./listRenderingAttrs";
 import {
   effectiveParagraphNumberingReference,
   paragraphNumberingAttr,
   type ParagraphNumberingSources,
   paragraphNumberingSourcesFromBoundary,
 } from "./numberingAttr";
+import { resolveParagraphList } from "./paragraphList";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /**
@@ -67,8 +75,7 @@ const visibleLabel = (
   counterAttrs: Readonly<ParagraphAttrs>,
   marker: string | null,
 ): string | undefined => {
-  if (counterAttrs.listMarkerHidden === true || !hasListRendering(counterAttrs))
-    return undefined;
+  if (counterAttrs.listMarkerHidden === true) return undefined;
   const counted = marker?.trim();
   if (counted) {
     return `${counted}${foldedFieldSuffix(counterAttrs)}`;
@@ -117,7 +124,9 @@ export const listLabelAttrsFromRendering = (
 };
 
 type VisibleListLabel = {
+  kind: "none" | "markerless" | "marker";
   label: string | undefined;
+  /** The revision-selected reference whose marker was counted for display. */
   numbering:
     Extract<ResolvedParagraphNumbering, { kind: "reference" }> | undefined;
 };
@@ -128,6 +137,7 @@ type VisibleListLabel = {
  */
 export type ListLabelCounter = (
   attrs: Readonly<ParagraphAttrs>,
+  standaloneRendering?: ListRendering,
 ) => VisibleListLabel;
 
 /**
@@ -135,22 +145,175 @@ export type ListLabelCounter = (
  * paragraph, numbered or not: whether a list continues depends on what stands
  * between its items.
  */
-export const createListLabelCounter =
-  (
-    streams: ListCounterStreams = {
-      final: createListCounterState(),
-      original: createListCounterState(),
-    },
-  ): ListLabelCounter =>
-  (attrs) => {
-    const { counterAttrs, marker } = advanceVisibleListMarker(attrs, streams);
-    return {
-      label: visibleLabel(counterAttrs, marker),
-      numbering: effectiveParagraphNumberingReference(
-        paragraphNumberingSourcesFromBoundary({
-          numPr: counterAttrs.numPr,
-          numPrFromStyle: counterAttrs.numPrFromStyle,
-        }),
-      ),
+export const createListLabelCounter = (
+  numberingOrStreams: NumberingMap | ListCounterStreams | null = null,
+  suppliedStreams?: ListCounterStreams,
+): ListLabelCounter => {
+  const numbering =
+    numberingOrStreams && "definitions" in numberingOrStreams
+      ? numberingOrStreams
+      : null;
+  const readsProjectedStreams =
+    numberingOrStreams !== null && !("definitions" in numberingOrStreams);
+  const streams =
+    suppliedStreams ??
+    (numberingOrStreams && !("definitions" in numberingOrStreams)
+      ? numberingOrStreams
+      : {
+          final: createListCounterState(),
+          original: createListCounterState(),
+        });
+  return (attrs, standaloneRendering) => {
+    const sources = paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    });
+    const effective = effectiveParagraphNumberingReference(sources);
+    const projectedRendering =
+      standaloneRendering ??
+      (attrs.listMarker != null ||
+      attrs.listIsBullet === true ||
+      attrs.listNumFmt != null
+        ? listRenderingFromAttrs({ attrs, numId: effective?.numId ?? 1 })
+        : undefined);
+    // A level-only override names no instance of its own: its style supplies
+    // the numId or nothing does (ECMA-376 §17.9.19). A tracked predecessor's
+    // reference is what rejecting restores, never the current list.
+    const list = resolveParagraphList(sources, numbering, projectedRendering);
+    const counterInput: ParagraphAttrs = { ...attrs };
+    Object.assign(counterInput, CLEARED_LIST_RENDERING_ATTRS);
+    const contentDerived = {
+      listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances,
+      listMarkerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips,
+      listFoldedMarkerSuffix: attrs.listFoldedMarkerSuffix,
     };
+    if (list.kind === "marker") {
+      Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
+    } else if (list.kind === "markerless" && list.rendering !== undefined) {
+      Object.assign(counterInput, listRenderingAttrPatch(list.rendering));
+    } else if (
+      list.kind === "markerless" &&
+      projectedRendering?.markerHidden === true
+    ) {
+      Object.assign(counterInput, listRenderingAttrPatch(projectedRendering));
+    }
+    Object.assign(
+      counterInput,
+      Object.fromEntries(
+        Object.entries(contentDerived).filter(
+          ([, value]) => value !== undefined,
+        ),
+      ),
+    );
+    if (counterInput._propertyChanges) {
+      counterInput._propertyChanges = counterInput._propertyChanges.map(
+        (change) => {
+          const previous = change.previousFormatting;
+          if (!previous) return change;
+          const previousSources = paragraphNumberingSourcesFromBoundary({
+            numPr: previous.numPr,
+            numPrFromStyle: previous.numPrFromStyle,
+          });
+          const previousReference =
+            effectiveParagraphNumberingReference(previousSources);
+          const previousProjected =
+            previous.listMarker != null ||
+            previous.listIsBullet === true ||
+            previous.listNumFmt != null
+              ? listRenderingFromAttrs({
+                  attrs: previous,
+                  numId: previousReference?.numId ?? 1,
+                })
+              : undefined;
+          const previousList = resolveParagraphList(
+            previousSources,
+            numbering,
+            previousProjected,
+          );
+          const previousFormatting = { ...previous };
+          Object.assign(previousFormatting, CLEARED_LIST_RENDERING_ATTRS);
+          if (
+            previousList.kind === "marker" ||
+            (previousList.kind === "markerless" &&
+              previousList.rendering !== undefined)
+          ) {
+            const rendering = previousList.rendering;
+            if (rendering)
+              Object.assign(
+                previousFormatting,
+                listRenderingAttrPatch(rendering),
+              );
+          } else if (previousProjected?.markerHidden === true) {
+            Object.assign(
+              previousFormatting,
+              listRenderingAttrPatch(previousProjected),
+            );
+          }
+          return { ...change, previousFormatting };
+        },
+      );
+    }
+    const { counterAttrs, marker } = advanceVisibleListMarker(
+      counterInput,
+      streams,
+    );
+    const projectedLabel = visibleLabel(counterAttrs, marker);
+    if (readsProjectedStreams && projectedLabel !== undefined) {
+      return {
+        kind: "marker",
+        label: projectedLabel,
+        numbering: effective,
+      };
+    }
+    const countedSources = paragraphNumberingSourcesFromBoundary({
+      numPr: counterAttrs.numPr,
+      numPrFromStyle: counterAttrs.numPrFromStyle,
+    });
+    const countedNumbering =
+      effectiveParagraphNumberingReference(countedSources);
+    const revisionSelectedRendering =
+      counterInput._propertyChanges?.length &&
+      counterAttrs !== counterInput &&
+      numbering === null
+        ? listRenderingFromAttrs({
+            attrs: counterAttrs,
+            numId: countedNumbering?.numId ?? 1,
+          })
+        : undefined;
+    const countedList = resolveParagraphList(
+      countedSources,
+      numbering,
+      revisionSelectedRendering ?? projectedRendering,
+    );
+    switch (countedList.kind) {
+      case "none":
+        return {
+          kind: "none",
+          label: undefined,
+          numbering: undefined,
+        };
+      case "markerless":
+        return {
+          kind: "markerless",
+          label: undefined,
+          numbering:
+            countedList.source === "authored"
+              ? countedList.reference
+              : undefined,
+        };
+      case "marker":
+        return {
+          kind: "marker",
+          label: projectedLabel,
+          numbering:
+            countedList.source === "authored"
+              ? countedList.reference
+              : undefined,
+        };
+      default: {
+        const unhandled: never = countedList;
+        return panic(`Unhandled paragraph list ${JSON.stringify(unhandled)}`);
+      }
+    }
   };
+};

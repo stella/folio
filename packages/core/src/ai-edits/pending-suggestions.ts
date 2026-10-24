@@ -329,10 +329,16 @@ export class FolioPendingSuggestionRegistry {
         operation.type === "replaceRange" || operation.type === "formatRange"
           ? operation.range
           : null;
+      // An operation the applier gave a distinct suggestion id restages under
+      // that id, so the record states it.
+      const recorded =
+        outcome.suggestionId === (operation.suggestionId ?? operation.id)
+          ? operation
+          : { ...operation, suggestionId: outcome.suggestionId };
       const record: FolioPendingSuggestionRecord = {
         version: FOLIO_PENDING_SUGGESTION_VERSION,
         suggestionId: outcome.suggestionId,
-        operation: structuredClone(operation),
+        operation: structuredClone(recorded),
         story: structuredClone(story),
         anchor: {
           blockId,
