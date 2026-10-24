@@ -1,100 +1,17 @@
 /** Zero-width `w:commentReference`: where a comment's visible mark is painted. */
 
-import type { Mark, Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 
-import { isCommentRangeInertAtom } from "../../commentRangeInlineAtoms";
-import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
 import {
-  type CommentMarkExtent,
-  type CommentReferenceOccurrence,
-  planCommentReferenceRepairs,
+  COMMENT_REFERENCE_NODE_NAME,
+  resolveCommentReferences,
 } from "../../commentReferenceIntegrity";
-import { readRangeAnchorAttrs } from "../../rangeAnchorAttrs";
 import { createNodeExtension } from "../create";
-import { RANGE_ANCHOR_NODE_NAME } from "./RangeAnchorExtension";
+
+export { COMMENT_REFERENCE_NODE_NAME };
 
 type CommentReferenceOptions = {
   getInternalClipboardToken?: () => string;
-};
-
-/** The node name, for callers asking whether a paragraph holds any content. */
-export const COMMENT_REFERENCE_NODE_NAME = "commentReference";
-
-type CommentReferenceSurvey = {
-  references: CommentReferenceOccurrence[];
-  markExtents: CommentMarkExtent[];
-  unanchoredMarks: { position: number; size: number; mark: Mark }[];
-};
-
-const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
-  const references: CommentReferenceOccurrence[] = [];
-  const markEnds = new Map<number, number>();
-  const unanchoredMarks: CommentReferenceSurvey["unanchoredMarks"] = [];
-
-  doc.descendants((node, position) => {
-    const inert = isCommentRangeInertAtom(node);
-    if (inert) {
-      for (const mark of node.marks) {
-        if (mark.type.name === "comment")
-          unanchoredMarks.push({ position, size: node.nodeSize, mark });
-      }
-    }
-    if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
-      const attrs = readCommentReferenceAttrs(node);
-      references.push(
-        attrs.ok
-          ? {
-              status: "valid",
-              commentId: attrs.value.commentId,
-              position,
-              size: node.nodeSize,
-            }
-          : { status: "malformed", position, size: node.nodeSize },
-      );
-      return false;
-    }
-    // A point comment's range spans no content, so no `comment` mark names it
-    // and the anchor is the only thing that does. Without this the reference
-    // would read as an orphan and be deleted the moment the document loaded.
-    // Counting the anchor's far edge is also where the corpus puts a missing
-    // reference: adjacent, right after the range's end.
-    if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
-      const attrs = readRangeAnchorAttrs(node);
-      if (attrs.ok && attrs.value.start.type === "commentRangeStart") {
-        const { id } = attrs.value.start;
-        markEnds.set(
-          id,
-          Math.max(markEnds.get(id) ?? 0, position + node.nodeSize),
-        );
-      }
-      return false;
-    }
-    if (inert) return false;
-    if (!node.isInline) {
-      return true;
-    }
-    for (const mark of node.marks) {
-      if (mark.type.name !== "comment") {
-        continue;
-      }
-      const commentId = mark.attrs["commentId"];
-      if (typeof commentId !== "number") {
-        continue;
-      }
-      markEnds.set(
-        commentId,
-        Math.max(markEnds.get(commentId) ?? 0, position + node.nodeSize),
-      );
-    }
-    return true;
-  });
-
-  return {
-    references,
-    unanchoredMarks,
-    markExtents: [...markEnds].map(([commentId, end]) => ({ commentId, end })),
-  };
 };
 
 export const CommentReferenceExtension =
@@ -151,35 +68,10 @@ export const CommentReferenceExtension =
             if (!transactions.some(({ docChanged }) => docChanged)) {
               return null;
             }
-            const referenceType =
-              newState.schema.nodes[COMMENT_REFERENCE_NODE_NAME];
-            if (!referenceType) {
-              return null;
-            }
-
-            const survey = surveyCommentReferences(newState.doc);
-            const repairs = planCommentReferenceRepairs(survey);
-            if (repairs.length === 0 && survey.unanchoredMarks.length === 0) {
-              return null;
-            }
-
+            const resolution = resolveCommentReferences(newState.doc);
+            if (!resolution) return null;
             const transaction = newState.tr;
-            for (const { position, size, mark } of survey.unanchoredMarks) {
-              transaction.removeMark(position, position + size, mark);
-            }
-            for (const repair of repairs) {
-              if (repair.type === "delete") {
-                transaction.delete(
-                  repair.position,
-                  repair.position + repair.size,
-                );
-                continue;
-              }
-              transaction.insert(
-                transaction.mapping.map(repair.position),
-                referenceType.create({ commentId: repair.commentId }),
-              );
-            }
+            for (const step of resolution.steps) transaction.step(step);
             return transaction;
           },
         }),

@@ -100,7 +100,7 @@ export const finalRevisionParagraphRanges = (result: Resolution): Range[] => {
     table.parent = tableStack.at(-1) ?? null;
     tableStack.push(table);
   }
-  const mapInline = indexedPositionMap(result.inlineMap);
+  const mapPreStructure = indexedPositionMap(result.preStructureMap);
   const mapStructure = indexedPositionMap(result.structuralMap);
   const finalRanges: Range[] = [];
 
@@ -166,8 +166,8 @@ export const finalRevisionParagraphRanges = (result: Resolution): Range[] => {
 
   for (const range of result.changedRanges) {
     mapAfterInlineRange({
-      from: mapInline(range.from, 1),
-      to: mapInline(range.to, -1),
+      from: mapPreStructure(range.from, 1),
+      to: mapPreStructure(range.to, -1),
     });
   }
   for (const range of result.structuralRanges) {
