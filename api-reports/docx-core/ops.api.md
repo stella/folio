@@ -814,6 +814,7 @@ export const paragraphMarkOutcome: (input: {
     markWasAdded: boolean;
     containerStillEndsWithParagraph: boolean;
     followingTableCanReceiveRunIn: boolean;
+    needsFollowingCommentHost?: boolean;
     tableRemovalIsTrackable?: boolean;
     removedSectionProperties?: boolean;
     precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
