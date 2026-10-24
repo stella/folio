@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 
-import type { Document, ParagraphContent } from "@stll/docx-core/model";
+import type {
+  Document,
+  Paragraph,
+  ParagraphContent,
+} from "@stll/docx-core/model";
 import { visitDocxParagraphs } from "@stll/folio-core/docx/paragraphTraversal";
 import { consolidateParagraphContent } from "@stll/folio-core/docx/runConsolidator";
 
@@ -267,6 +271,15 @@ export const canonicalResolvedReviewModel = (
   aliases: ReadonlyMap<string, string> = new Map(),
 ): unknown => {
   const paragraphContentOverrides = new WeakMap<object, ParagraphContent[]>();
+  const seenParagraphs = new WeakSet<Paragraph>();
+  const visitParagraph = (paragraph: Paragraph): void => {
+    if (seenParagraphs.has(paragraph)) return;
+    seenParagraphs.add(paragraph);
+    paragraphContentOverrides.set(
+      paragraph,
+      consolidateParagraphContent(paragraph.content),
+    );
+  };
   visitDocxParagraphs(
     {
       documentBody: model.package.document,
@@ -275,13 +288,18 @@ export const canonicalResolvedReviewModel = (
       footnotes: model.package.footnotes,
       endnotes: model.package.endnotes,
     },
-    (paragraph) => {
-      paragraphContentOverrides.set(
-        paragraph,
-        consolidateParagraphContent(paragraph.content),
-      );
-    },
+    visitParagraph,
   );
+  for (const section of model.package.document.sections ?? []) {
+    visitDocxParagraphs(
+      {
+        documentBody: { content: [] },
+        headers: section.headers,
+        footers: section.footers,
+      },
+      visitParagraph,
+    );
+  }
   return projectCanonicalReviewModel({
     model,
     aliases,

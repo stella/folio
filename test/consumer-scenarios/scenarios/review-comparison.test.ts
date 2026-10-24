@@ -6,6 +6,7 @@ import { test } from "node:test";
 import type {
   ComplexField,
   Document,
+  HeaderFooter,
   ParagraphContent,
   Run,
   SimpleField,
@@ -45,6 +46,57 @@ const textRun = (text: string, fields: Partial<Run> = {}): Run => ({
   ...fields,
   content: [{ type: "text", text }],
 });
+
+const documentWithSectionStories = (
+  headerContent: ParagraphContent[],
+  footerContent: ParagraphContent[],
+): Document => {
+  const document = reviewDocumentWithContent([textRun("Body")]);
+  const packageHeader: HeaderFooter = {
+    type: "header",
+    hdrFtrType: "default",
+    content: [paragraph("Package header")],
+  };
+  const packageFooter: HeaderFooter = {
+    type: "footer",
+    hdrFtrType: "default",
+    content: [paragraph("Package footer")],
+  };
+  const sectionHeader: HeaderFooter = {
+    type: "header",
+    hdrFtrType: "default",
+    content: [
+      {
+        type: "paragraph",
+        content: headerContent,
+      },
+    ],
+  };
+  const sectionFooter: HeaderFooter = {
+    type: "footer",
+    hdrFtrType: "default",
+    content: [
+      {
+        type: "paragraph",
+        content: footerContent,
+      },
+    ],
+  };
+  document.package.headers = new Map([["rIdHeader", packageHeader]]);
+  document.package.footers = new Map([["rIdFooter", packageFooter]]);
+  document.package.document.sections = [
+    {
+      properties: {
+        headerReferences: [{ type: "default", rId: "rIdHeader" }],
+        footerReferences: [{ type: "default", rId: "rIdFooter" }],
+      },
+      content: [],
+      headers: new Map([["default", sectionHeader]]),
+      footers: new Map([["default", sectionFooter]]),
+    },
+  ];
+  return document;
+};
 
 test("model comparison normalizes only safely mergeable adjacent runs", () => {
   const merged = reviewDocumentWithContent([textRun("Alpha beta")]);
@@ -140,6 +192,56 @@ test("model comparison normalizes only safely mergeable adjacent runs", () => {
       canonicalResolvedReviewModel(merged),
     );
   }
+});
+
+test("resolved projection visits section-local headers and footers without relaxing run formatting or metadata", () => {
+  const segmented = documentWithSectionStories(
+    [textRun("Section "), textRun("header")],
+    [textRun("Section "), textRun("footer")],
+  );
+  const merged = documentWithSectionStories(
+    [textRun("Section header")],
+    [textRun("Section footer")],
+  );
+
+  assert.notDeepEqual(
+    canonicalReviewModel(segmented),
+    canonicalReviewModel(merged),
+  );
+  assert.deepEqual(
+    canonicalResolvedReviewModel(segmented),
+    canonicalResolvedReviewModel(merged),
+  );
+
+  const formatted = documentWithSectionStories(
+    [textRun("Section "), textRun("header", { formatting: { bold: true } })],
+    [textRun("Section footer")],
+  );
+  assert.notDeepEqual(
+    canonicalResolvedReviewModel(formatted),
+    canonicalResolvedReviewModel(merged),
+  );
+
+  const metadata = documentWithSectionStories(
+    [textRun("Section header")],
+    [
+      textRun("Section "),
+      textRun("footer", {
+        preservedAttributes: [
+          {
+            name: "rsidR",
+            namespace:
+              "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            value: "00ABCDEF",
+          },
+        ],
+      }),
+    ],
+  );
+  assert.notDeepEqual(
+    canonicalResolvedReviewModel(metadata),
+    canonicalResolvedReviewModel(merged),
+  );
 });
 
 test("revision comparison preserves character order across adjacent run groups", () => {
