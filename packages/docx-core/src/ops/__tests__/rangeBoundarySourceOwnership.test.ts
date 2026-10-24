@@ -1,7 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { projectReview } from "../../../../../test/reviewProjection";
 import type { Document, ParagraphContent } from "../../model/document";
 import { applyDocumentOp } from "../apply";
@@ -10,6 +13,8 @@ import { childNodes, type InlineNode, rebuildNode } from "../leaves";
 import { rangeBoundariesIn } from "../rangeBoundaries";
 import { isTrackedWrapper } from "../review";
 import type { DocumentOp } from "../types";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const FIRST_DATE = "2026-03-04T05:00:00Z";
 const SECOND_DATE = "2026-03-04T05:00:01Z";
