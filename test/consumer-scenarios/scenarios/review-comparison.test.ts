@@ -113,6 +113,16 @@ test("model comparison normalizes only safely mergeable adjacent runs", () => {
     canonicalResolvedReviewModel(segmented),
     canonicalResolvedReviewModel(merged),
   );
+  assert.deepEqual(
+    canonicalResolvedReviewModel(
+      reviewDocumentWithContent([
+        textRun("Alpha "),
+        textRun(""),
+        textRun("beta"),
+      ]),
+    ),
+    canonicalResolvedReviewModel(merged),
+  );
 
   const controls: ParagraphContent[][] = [
     [textRun("Alpha "), textRun("gamma")],
@@ -142,7 +152,7 @@ test("model comparison normalizes only safely mergeable adjacent runs", () => {
         ],
       }),
     ],
-    [textRun("Alpha "), textRun(""), textRun("beta")],
+    [textRun("Alpha "), { type: "run", content: [] }, textRun("beta")],
     [
       textRun("Alpha "),
       textRun("beta", {
@@ -190,6 +200,7 @@ test("model comparison normalizes only safely mergeable adjacent runs", () => {
     assert.notDeepEqual(
       canonicalResolvedReviewModel(reviewDocumentWithContent(content)),
       canonicalResolvedReviewModel(merged),
+      `Normalization merged a semantic boundary: ${JSON.stringify(content)}`,
     );
   }
 });
