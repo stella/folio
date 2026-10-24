@@ -984,7 +984,7 @@ const sourceOwnerDepthAt = ({
       compress(current);
       return undefined;
     }
-    const route = current.state.routes[side];
+    const route: SourceOwnerRoute | undefined = current.state.routes[side];
     if (route === undefined) {
       compress(current);
       return undefined;

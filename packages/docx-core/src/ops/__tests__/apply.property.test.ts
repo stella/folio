@@ -390,7 +390,6 @@ const expectRestores = (
   }
   expect(restored.value.document).toStrictEqual(original);
   expect(contractViolation(restored.value.document)).toBeUndefined();
-  // SAFETY: operations are plain data; this is the journal's round-trip.
   const replayed = JSON.parse(JSON.stringify(applied.inverse)) as DocumentOp[];
   expect(applyAll(applied.document, replayed)).toStrictEqual(original);
   expect(

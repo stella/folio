@@ -1,3 +1,4 @@
+---
 "@stll/docx-core": patch
 ---
 
