@@ -39,11 +39,13 @@ import type { TableParserFn } from "./textBoxParser";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import {
   findChildByLocalName,
+  findChildByNamespaceUri,
   findDeep,
   findWordprocessingChild,
   getAttribute,
   getChildElements,
   getLocalName,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 
@@ -787,7 +789,11 @@ const parseVmlTextBoxShape = (
 ): Shape | null => {
   const shapeEl = findDeep(pictEl, "v", "shape");
   const textBoxEl = shapeEl ? findDeep(shapeEl, "v", "textbox") : null;
-  const contentEl = textBoxEl ? findDeep(textBoxEl, "w", "txbxContent") : null;
+  const contentEl = findChildByNamespaceUri(
+    textBoxEl,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "txbxContent",
+  );
   if (!shapeEl || !textBoxEl || !contentEl) {
     return null;
   }

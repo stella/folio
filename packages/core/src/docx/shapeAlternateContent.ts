@@ -11,6 +11,7 @@ import {
   isSafeCapturedXmlDocument,
 } from "./verbatimCapture";
 import {
+  cloneWithXmlnsDeclarations,
   getChildElements,
   getLocalName,
   getNamespacePrefix,
@@ -74,8 +75,12 @@ export const captureShapeAlternateContent = ({
   if (!isSoleBranchChild(branch, drawing)) {
     return undefined;
   }
+  const selfContainedAlternateContent = cloneWithXmlnsDeclarations(
+    alternateContent,
+    {},
+  );
   return {
-    verbatimXml: captureVerbatimXml(alternateContent),
+    verbatimXml: captureVerbatimXml(selfContainedAlternateContent),
     verbatimFingerprint: shapeFingerprint(shape),
     verbatimStructureFingerprint: shapeStructureFingerprint(shape),
   };
