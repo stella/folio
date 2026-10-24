@@ -77,6 +77,7 @@ import {
   BOUNDARY_SIDES,
   classifyRangeMultiplicity,
   planParagraphBoundaryRemoval,
+  rangeBoundaryDefinitions,
 } from "../rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { planRevisionResolution } from "../resolve";
@@ -160,6 +161,8 @@ const expectEquivalent = (
 // ---------------------------------------------------------------------------
 
 type RangeBoundary = { type: keyof typeof BOUNDARY_SIDES; id: number };
+
+const BOUNDARY_SIDES = rangeBoundaryDefinitions();
 
 const isRangeBoundaryType = (type: string): type is RangeBoundary["type"] =>
   Object.hasOwn(BOUNDARY_SIDES, type);

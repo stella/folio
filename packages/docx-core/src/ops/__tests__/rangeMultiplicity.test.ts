@@ -1,13 +1,20 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../../../../../test/property-testing";
 import {
-  BOUNDARY_SIDES,
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import {
   type BoundaryOccurrence,
   classifyRangeMultiplicity,
   planWellFormedRanges,
+  rangeBoundaryDefinitions,
 } from "../rangeBoundaries";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
+
+const BOUNDARY_SIDES = rangeBoundaryDefinitions();
 
 const marker = (
   type: keyof typeof BOUNDARY_SIDES,

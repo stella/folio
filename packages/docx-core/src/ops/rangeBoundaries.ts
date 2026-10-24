@@ -37,7 +37,7 @@ import {
   rebuildNode,
 } from "./leaves";
 
-export const BOUNDARY_SIDES = {
+const BOUNDARY_SIDES = {
   bookmarkStart: { family: "bookmark", side: "start" },
   bookmarkEnd: { family: "bookmark", side: "end" },
   commentRangeStart: { family: "comment", side: "start" },
@@ -47,6 +47,8 @@ export const BOUNDARY_SIDES = {
   moveToRangeStart: { family: "moveTo", side: "start" },
   moveToRangeEnd: { family: "moveTo", side: "end" },
 } as const satisfies Record<string, { family: string; side: "start" | "end" }>;
+
+export const rangeBoundaryDefinitions = () => BOUNDARY_SIDES;
 
 type BoundaryType = keyof typeof BOUNDARY_SIDES;
 type Boundary = Extract<InlineNode, { type: BoundaryType }>;
