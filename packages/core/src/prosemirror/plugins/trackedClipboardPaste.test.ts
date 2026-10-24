@@ -1,4 +1,3 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { DOMParser } from "prosemirror-model";
 import {
@@ -7,6 +6,7 @@ import {
   type Transaction,
 } from "prosemirror-state";
 
+import { acquireHarnessDom } from "../../../../../test/harnessDom";
 import { schema } from "../schema";
 import {
   createSuggestionModePlugin,
@@ -14,17 +14,13 @@ import {
   suggestionModeKey,
 } from "./suggestionMode";
 
-let ownsDomRegistration = false;
+let releaseDom: ReturnType<typeof acquireHarnessDom>;
 
 beforeAll(() => {
-  if (GlobalRegistrator.isRegistered) return;
-  GlobalRegistrator.register();
-  ownsDomRegistration = true;
+  releaseDom = acquireHarnessDom();
 });
 
-afterAll(() => {
-  if (ownsDomRegistration) GlobalRegistrator.unregister();
-});
+afterAll(() => releaseDom());
 
 const copiedWordHtml =
   '<p>keep <ins cite="mailto:Ann%20Author" datetime="2026-10-22T14:18">added</ins> ' +
