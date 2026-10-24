@@ -424,7 +424,7 @@ export const addCopyOriginToExistingAncestor = (
           return undefined;
         if (
           !copiedBoundaries.has(node) ||
-          origins.includes(nestedAddedAncestors)
+          origins.some((origin) => origin === nestedAddedAncestors)
         ) {
           out.push(node);
           continue;

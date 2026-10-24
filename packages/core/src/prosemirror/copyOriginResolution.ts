@@ -137,7 +137,9 @@ const withRangeAnchorCopyOrigins = ({
   endOrigins,
 }: WithRangeAnchorCopyOriginsOptions): PMNode => {
   const { start, end } = expectRangeAnchorAttrs(node);
-  if (start.type === "commentRangeStart") return node;
+  if (start.type === "commentRangeStart" || end.type === "commentRangeEnd") {
+    return node;
+  }
   return node.type.create(
     {
       ...node.attrs,
@@ -239,7 +241,9 @@ export const copyOriginBoundaryAfterResolution = (
 ): PMNode | null => {
   if (node.type.name === "rangeAnchor") {
     const { start, end } = expectRangeAnchorAttrs(node);
-    if (start.type === "commentRangeStart") return node;
+    if (start.type === "commentRangeStart" || end.type === "commentRangeEnd") {
+      return node;
+    }
     const path = trackedRevisionPathForBoundary(node);
     const startResult = copyOriginAfterResolution({
       origins: start.copyOriginAncestors,
@@ -305,7 +309,9 @@ export const copyOriginBoundaryAfterRemovingAddedAncestors = (
 ): PMNode | null => {
   if (node.type.name === "rangeAnchor") {
     const { start, end } = expectRangeAnchorAttrs(node);
-    if (start.type === "commentRangeStart") return node;
+    if (start.type === "commentRangeStart" || end.type === "commentRangeEnd") {
+      return node;
+    }
     const addedAncestors =
       trackedRevisionPathForBoundary(node).filter(isAddedLayer).length;
     const remove = (origins: CopyOriginAncestorList | undefined) => {

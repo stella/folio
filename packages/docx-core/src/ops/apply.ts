@@ -718,7 +718,9 @@ const inserted = (options: InsertedOptions): Applied => {
       stamp: revision,
       resolutionJoin:
         inverse.join + spanningRecords(content, [start, end], 0, 2).length,
-      copiedBoundaries: options.copiedBoundaries,
+      ...(options.copiedBoundaries === undefined
+        ? {}
+        : { copiedBoundaries: options.copiedBoundaries }),
       ...(op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT &&
       op.seamPolicy !== undefined
         ? { acceptance: op.seamPolicy }
