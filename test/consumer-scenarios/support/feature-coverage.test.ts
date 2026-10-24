@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { fromMarkdown } from "@stll/folio-core/markdown";
+import { paragraph, run } from "@stll/folio-core/server";
+
+import { openReviewer, packDocument } from "./documents.ts";
 import {
   addFeatureHit,
   emptyFeatureCells,
   emptyFeatureCoverage,
+  featureCoverageWeight,
   gapWeight,
   generatedSelection,
   operationSelection,
@@ -14,8 +19,28 @@ import {
   weightedChoice,
 } from "./feature-coverage.ts";
 import { createRandom } from "./random.ts";
+import { featureIndex, storyKindOf } from "./targets.ts";
+import type { Feature } from "./targets.ts";
 
 test("feature signature distinguishes structure at the touched target", () => {
+  const featureSignature = targetFeatureSignature(
+    undefined,
+    new Set<Feature>(["field", "commentAnchor", "pendingRevision"]),
+    "body",
+  );
+  assert.deepEqual(
+    targetFeatureSignature(
+      undefined,
+      new Set<Feature>(["pendingRevision", "commentAnchor", "field"]),
+      "body",
+    ),
+    featureSignature,
+  );
+  assert.deepEqual(featureSignature, [
+    "field",
+    "comment-anchor",
+    "tracked-change",
+  ]);
   assert.deepEqual(
     targetFeatureSignature(
       {
@@ -24,7 +49,7 @@ test("feature signature distinguishes structure at the touched target", () => {
         displayLabel: "3.2",
         table: { outerTableIndex: 0, tableIndex: 1, columnSpan: 2, rowSpan: 1 },
       },
-      new Set(["field", "commentAnchor", "pendingRevision"]),
+      new Set<Feature>(["field", "commentAnchor", "pendingRevision"]),
       "body",
     ),
     [
@@ -44,6 +69,63 @@ test("feature signature distinguishes structure at the touched target", () => {
   assert.deepEqual(shapeFeatureSignature(["list-decimal", "list-bullet"]), [
     "none",
   ]);
+  assert.deepEqual(
+    targetFeatureSignature(
+      undefined,
+      new Set<Feature>(["noteReference"]),
+      "footnote",
+    ),
+    ["footnote"],
+  );
+  assert.deepEqual(
+    targetFeatureSignature(
+      undefined,
+      new Set<Feature>(["noteReference"]),
+      "endnote",
+    ),
+    ["endnote"],
+  );
+});
+
+test("body note references are a distinct target feature", async () => {
+  const document = fromMarkdown("Ordinary body text.");
+  const noteId = 37;
+  document.package.footnotes = [
+    { type: "footnote", id: noteId, content: [paragraph("Footnote.")] },
+  ];
+  document.package.document.content.push(
+    paragraph([
+      run("Referenced body text "),
+      { type: "run", content: [{ type: "footnoteRef", id: noteId }] },
+    ]),
+  );
+
+  const reviewer = await openReviewer(await packDocument(document));
+  const index = featureIndex(reviewer);
+  const referenceBlocks = reviewer
+    .getContent()
+    .filter((block) => index.features.get(block.id)?.has("noteReference"));
+  assert.equal(referenceBlocks.length, 1);
+  const referenceBlock = referenceBlocks[0];
+  assert.ok(referenceBlock);
+  assert.ok(
+    targetFeatureSignature(
+      referenceBlock,
+      index.features.get(referenceBlock.id) ?? new Set(),
+      storyKindOf(index, referenceBlock),
+    ).includes("note-reference"),
+  );
+
+  const ordinaryBlock = reviewer
+    .getContent()
+    .find((block) => block.text === "Ordinary body text.");
+  assert.ok(ordinaryBlock);
+  const ordinaryFeatures = targetFeatureSignature(
+    ordinaryBlock,
+    index.features.get(ordinaryBlock.id) ?? new Set(),
+    storyKindOf(index, ordinaryBlock),
+  );
+  assert.deepEqual(ordinaryFeatures, ["none"]);
 });
 
 test("selection signatures retain whole-document and cell selections", () => {
@@ -82,4 +164,45 @@ test("rare cells receive bounded deterministic steering and empty cells remain v
   };
   assert.deepEqual(draw(107), draw(107));
   assert.ok(draw(107).filter((choice) => choice === "empty").length > 70);
+});
+
+test("coverage weights steer each operation toward under-hit body note references", () => {
+  const coverage = emptyFeatureCoverage();
+  for (const operation of ["replaceRange", "formatRange"]) {
+    for (let hit = 0; hit < 100; hit += 1) {
+      addFeatureHit(coverage, {
+        operation,
+        feature: "none",
+        selection: "paragraph-range",
+      });
+    }
+  }
+  for (let hit = 0; hit < 8; hit += 1) {
+    addFeatureHit(coverage, {
+      operation: "replaceRange",
+      feature: "note-reference",
+      selection: "paragraph-range",
+    });
+  }
+
+  const noteReference = {
+    kind: "paragraph",
+    headingLevel: undefined,
+    listReference: undefined,
+    displayLabel: undefined,
+  };
+  const weight = (operation: string, known: ReadonlySet<Feature>) =>
+    featureCoverageWeight({
+      operation,
+      target: noteReference,
+      known,
+      story: "body",
+      selection: "paragraph-range",
+      coverage,
+    });
+
+  assert.equal(weight("replaceRange", new Set<Feature>(["noteReference"])), 1);
+  assert.equal(weight("formatRange", new Set<Feature>(["noteReference"])), 9);
+  assert.equal(weight("replaceRange", new Set<Feature>()), 1);
+  assert.equal(weight("formatRange", new Set<Feature>()), 1);
 });
