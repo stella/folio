@@ -80,9 +80,17 @@ test("model comparison normalizes only safely mergeable adjacent runs", () => {
     [
       textRun("Alpha "),
       textRun("beta", {
-        preservedAttributes: [{ name: "rsidR", value: "00ABCDEF" }],
+        preservedAttributes: [
+          {
+            name: "rsidR",
+            namespaceUri:
+              "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            value: "00ABCDEF",
+          },
+        ],
       }),
     ],
+    [textRun("Alpha "), textRun(""), textRun("beta")],
     [
       textRun("Alpha "),
       textRun("beta", {
@@ -315,6 +323,54 @@ test("round-trip comparison preserves table formatting in resolved models", asyn
       context: "changed table formatting",
     }),
     /accept-all document differs/,
+  );
+});
+
+test("resolved projection preserves source metadata checks without mutation", () => {
+  const model = reviewDocumentWithContent([textRun("Alpha "), textRun("beta")]);
+  const sourceParagraph = model.package.document.content.at(0);
+  if (sourceParagraph?.type !== "paragraph") panic("Expected paragraph");
+  const originalContent = sourceParagraph.content;
+  const firstProjection = canonicalResolvedReviewModel(model);
+
+  assert.deepEqual(canonicalResolvedReviewModel(model), firstProjection);
+  assert.equal(sourceParagraph.content, originalContent);
+  assert.deepEqual(sourceParagraph.content, originalContent);
+
+  Object.defineProperty(sourceParagraph, Symbol("unclassifiedCapture"), {
+    enumerable: true,
+    value: {},
+  });
+  assert.throws(
+    () => canonicalResolvedReviewModel(model),
+    /Unclassified model capture symbol/,
+  );
+
+  const unknownFieldModel = reviewDocumentWithContent([textRun("Alpha")]);
+  const unknownFieldParagraph =
+    unknownFieldModel.package.document.content.at(0);
+  if (unknownFieldParagraph?.type !== "paragraph") panic("Expected paragraph");
+  Object.defineProperty(unknownFieldParagraph, "sourceCaptureNew", {
+    enumerable: true,
+    value: {},
+  });
+  assert.throws(
+    () => canonicalResolvedReviewModel(unknownFieldModel),
+    /Unclassified model capture field/,
+  );
+
+  const sourceHandleModel = reviewDocumentWithContent([textRun("Alpha")]);
+  const sourceHandleParagraph =
+    sourceHandleModel.package.document.content.at(0);
+  if (sourceHandleParagraph?.type !== "paragraph") panic("Expected paragraph");
+  Object.defineProperty(
+    sourceHandleParagraph,
+    Symbol("paragraphPropertyCapture"),
+    { enumerable: true, value: {} },
+  );
+  assert.deepEqual(
+    canonicalResolvedReviewModel(sourceHandleModel),
+    canonicalResolvedReviewModel(reviewDocumentWithContent([textRun("Alpha")])),
   );
 });
 

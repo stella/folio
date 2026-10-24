@@ -139,11 +139,18 @@ const hasModeledComments = (value: object): boolean => {
   );
 };
 
+type CanonicalReviewModelOptions = {
+  model: unknown;
+  aliases?: ReadonlyMap<string, string>;
+  paragraphContentOverrides?: WeakMap<object, unknown>;
+};
+
 /** One strict modeled-document projection, including nested part collections. */
-export const canonicalReviewModel = (
-  model: unknown,
-  aliases: ReadonlyMap<string, string> = new Map(),
-): unknown => {
+const projectCanonicalReviewModel = ({
+  model,
+  aliases = new Map(),
+  paragraphContentOverrides,
+}: CanonicalReviewModelOptions): unknown => {
   const project = (current: unknown, modelPath: string): unknown => {
     const value = current;
     if (Array.isArray(value))
@@ -220,11 +227,15 @@ export const canonicalReviewModel = (
         entries.push([key, project(meaningful, `${modelPath}/${key}`)]);
         continue;
       }
+      const projectedEntry =
+        key === "content" && paragraphContentOverrides?.has(value)
+          ? paragraphContentOverrides.get(value)
+          : entry;
       entries.push([
         key,
-        key === "paraId" && typeof entry === "string"
-          ? (aliases.get(entry) ?? entry)
-          : project(entry, `${modelPath}/${key}`),
+        key === "paraId" && typeof projectedEntry === "string"
+          ? (aliases.get(projectedEntry) ?? projectedEntry)
+          : project(projectedEntry, `${modelPath}/${key}`),
       ]);
     }
     const projected = canonicalFieldModel(Object.fromEntries(entries));
@@ -244,24 +255,36 @@ export const canonicalReviewModel = (
   return project(model, "");
 };
 
+export const canonicalReviewModel = (
+  model: unknown,
+  aliases: ReadonlyMap<string, string> = new Map(),
+): unknown => projectCanonicalReviewModel({ model, aliases });
+
 export const canonicalResolvedReviewModel = (
   model: Document,
   aliases: ReadonlyMap<string, string> = new Map(),
 ): unknown => {
-  const normalized = structuredClone(model);
+  const paragraphContentOverrides = new WeakMap<object, unknown>();
   visitDocxParagraphs(
     {
-      documentBody: normalized.package.document,
-      headers: normalized.package.headers,
-      footers: normalized.package.footers,
-      footnotes: normalized.package.footnotes,
-      endnotes: normalized.package.endnotes,
+      documentBody: model.package.document,
+      headers: model.package.headers,
+      footers: model.package.footers,
+      footnotes: model.package.footnotes,
+      endnotes: model.package.endnotes,
     },
     (paragraph) => {
-      paragraph.content = consolidateParagraphContent(paragraph.content);
+      paragraphContentOverrides.set(
+        paragraph,
+        consolidateParagraphContent(paragraph.content),
+      );
     },
   );
-  return canonicalReviewModel(normalized, aliases);
+  return projectCanonicalReviewModel({
+    model,
+    aliases,
+    paragraphContentOverrides,
+  });
 };
 
 type ReviewRoundTripOptions = {
