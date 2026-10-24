@@ -60,6 +60,7 @@ import {
   isBlockBoundary,
   noRelocatedBoundaries,
   pairedCommentRanges,
+  paragraphRemains,
   planParagraphBoundaryRemoval,
   type RelocatedBoundaries,
   removedContentBoundaries,
@@ -1860,6 +1861,7 @@ const joinOps = (
     next?.type === "table"
       ? paragraphTableRunInTarget(paragraph, next)
       : undefined;
+  const remains = paragraphRemains(paragraph.content);
   const outcome = paragraphMarkOutcome({
     follows: next?.type === "table" ? "table" : "nothing",
     holdsContent: paragraphHoldsContent(paragraph),
@@ -1872,6 +1874,11 @@ const joinOps = (
           !cellFinal &&
           blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn: tableTarget !== undefined,
+    needsFollowingCommentHost:
+      next?.type === "table" &&
+      previous?.type !== "paragraph" &&
+      remains.blocks.length === 0 &&
+      remains.comments.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
       (blocks.at(-1)?.type === "paragraph" && tableTarget !== undefined),

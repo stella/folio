@@ -1,9 +1,16 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
+import { EditorState } from "prosemirror-state";
+import { Step, Transform } from "prosemirror-transform";
 
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+} from "../prosemirror/commands/comments";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { schema } from "../prosemirror/schema";
+import { runParagraphIntoTable } from "../prosemirror/tableRunIn";
 import { resolveWholeStory } from "./wholeStoryRevisionResolution";
 
 const paragraph = (text: string) =>
@@ -101,6 +108,104 @@ const textPosition = (doc: PMNode, text: string): number => {
   return found;
 };
 
+const anchorPosition = (doc: PMNode, commentId: number): number => {
+  let found: number | null = null;
+  doc.descendants((node, position) => {
+    if (node.type.name !== "rangeAnchor") return true;
+    const attrs = readRangeAnchorAttrs(node);
+    if (attrs.ok && attrs.value.start.id === commentId) {
+      found = position;
+      return false;
+    }
+    return true;
+  });
+  if (found === null) panic(`Missing comment anchor: ${commentId}`);
+  return found;
+};
+
+type ResolveRevisionOptions = {
+  state: EditorState;
+  revisionId: number;
+  mode: "accept" | "reject";
+};
+
+const resolveRevision = ({
+  state,
+  revisionId,
+  mode,
+}: ResolveRevisionOptions): EditorState => {
+  let next: EditorState | undefined;
+  const command =
+    mode === "accept"
+      ? acceptAIEditRevision(revisionId)
+      : rejectAIEditRevision(revisionId);
+  const accepted = command(state, (transaction) => {
+    next = state.apply(transaction);
+  });
+  if (!accepted || next === undefined)
+    panic(`Could not accept revision ${revisionId}`);
+  return next;
+};
+
+test.each(["accept", "reject"] as const)(
+  "%s resolves comment hosts across retiring predecessor chains",
+  (mode) => {
+    for (const text of ["", "kept"]) {
+      for (const precedingHost of [false, true]) {
+        const comment = schema.node("rangeAnchor", {
+          start: { type: "commentRangeStart", id: 37 },
+          end: { type: "commentRangeEnd", id: 37 },
+        });
+        const mark = (id: number) => ({
+          pPrMark: {
+            kind: mode === "accept" ? "del" : "ins",
+            info: { id, author: "Reviewer" },
+          },
+        });
+        const doc = schema.node("doc", null, [
+          ...(precedingHost ? [paragraph("lead")] : []),
+          schema.node("paragraph", mark(1), text ? [schema.text(text)] : []),
+          schema.node("paragraph", mark(2), [comment]),
+          table([row([cell("cell")])]),
+          paragraph("tail"),
+        ]);
+        const wholeStory = resolveWholeStory({
+          doc,
+          mode,
+          styleResolver: null,
+          numbering: null,
+        });
+        expect(wholeStory.failed).toBe(false);
+        for (const order of [
+          [1, 2],
+          [2, 1],
+        ]) {
+          let state = EditorState.create({ schema, doc });
+          for (const revisionId of order) {
+            state = resolveRevision({ state, revisionId, mode });
+          }
+          expect(state.doc.eq(wholeStory.resolved)).toBe(true);
+        }
+        const receivesOutside = precedingHost && text.length === 0;
+        const host = receivesOutside
+          ? wholeStory.resolved.firstChild
+          : wholeStory.resolved.child(precedingHost ? 1 : 0).firstChild
+              ?.firstChild?.firstChild;
+        expect(host?.textContent).toBe(
+          receivesOutside ? "lead" : `${text}cell`,
+        );
+        expect(
+          host?.children.some((child) => {
+            if (child.type.name !== "rangeAnchor") return false;
+            const attrs = readRangeAnchorAttrs(child);
+            return attrs.ok && attrs.value.start.id === 37;
+          }),
+        ).toBe(true);
+      }
+    }
+  },
+);
+
 test("row marker clearance leaves table positions unchanged", () => {
   const doc = schema.node("doc", null, [
     table([
@@ -189,6 +294,119 @@ test("accepting an empty paragraph-mark deletion removes the paragraph before a 
 
   expect(result.failed).toBe(false);
   expect(result.resolved.content.content).toEqual([following]);
+});
+
+test("an unhosted point comment runs into the first cell and preserves transaction mapping and inversion", () => {
+  const comment = schema.node("rangeAnchor", {
+    start: { type: "commentRangeStart", id: 19 },
+    end: { type: "commentRangeEnd", id: 19 },
+  });
+  const cellParagraph = schema.node("paragraph", { paraId: "10000002" }, [
+    schema.text("cell"),
+  ]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", { pPrMark: deletedParagraphMark }, [comment]),
+    table([row([schema.node("tableCell", null, [cellParagraph])])]),
+    paragraph("tail"),
+  ]);
+  const transform = new Transform(doc);
+  const runIn = runParagraphIntoTable({
+    tr: transform,
+    paragraphPos: 0,
+    styleResolver: null,
+  });
+  if (runIn === null) panic("The unhosted point comment must run in.");
+  const step = transform.steps.at(0);
+  if (step === undefined) panic("The run-in must produce a step.");
+  expect(
+    Step.fromJSON(schema, step.toJSON()).apply(doc).doc?.eq(transform.doc),
+  ).toBe(true);
+  expect(step.invert(doc).apply(transform.doc).doc?.eq(doc)).toBe(true);
+  const sourceCell = paragraphPosition(doc, "cell");
+  const finalCell = paragraphPosition(transform.doc, "cell");
+  expect(runIn.position).toBe(finalCell);
+  expect(transform.mapping.map(sourceCell + 1, 1)).toBe(finalCell + 2);
+
+  const result = resolveWholeStory({
+    doc,
+    mode: "accept",
+    styleResolver: null,
+    numbering: null,
+  });
+  expect(result.failed).toBe(false);
+  expect(result.resolved.childCount).toBe(2);
+  const receiver =
+    result.resolved.firstChild?.firstChild?.firstChild?.firstChild;
+  expect(receiver?.attrs["paraId"]).toBe("10000002");
+  expect(receiver?.textContent).toBe("cell");
+  expect(receiver?.firstChild?.attrs).toEqual(comment.attrs);
+  expect(result.mapping.map(anchorPosition(doc, 19), 1)).toBe(
+    anchorPosition(result.resolved, 19),
+  );
+});
+
+test("whole-story acceptance matches accepting adjacent paragraph marks in turn", () => {
+  const comment = schema.node("rangeAnchor", {
+    start: { type: "commentRangeStart", id: 29 },
+    end: { type: "commentRangeEnd", id: 29 },
+  });
+  const cellParagraph = schema.node("paragraph", { paraId: "10000003" }, [
+    schema.text("cell"),
+  ]);
+  const insertionMark = schema.marks["insertion"];
+  if (insertionMark === undefined) panic("The schema has an insertion mark.");
+  const doc = schema.node("doc", null, [
+    schema.node(
+      "paragraph",
+      {
+        pPrMark: {
+          kind: "del",
+          info: { id: 2, author: "Reviewer", date: "2026-10-19" },
+        },
+      },
+      [comment, schema.node("commentReference", { commentId: 29 })],
+    ),
+    schema.node(
+      "paragraph",
+      {
+        pPrMark: {
+          kind: "del",
+          info: { id: 1, author: "Reviewer", date: "2026-10-19" },
+        },
+      },
+      [
+        schema.text("x", [
+          insertionMark.create({
+            revisionId: 3,
+            author: "Reviewer",
+            date: "2026-10-19",
+          }),
+        ]),
+      ],
+    ),
+    table([row([schema.node("tableCell", null, [cellParagraph])])]),
+    paragraph("tail"),
+  ]);
+  const wholeStory = resolveWholeStory({
+    doc,
+    mode: "accept",
+    styleResolver: null,
+    numbering: null,
+  });
+  let incremental = EditorState.create({ schema, doc });
+  for (const revisionId of [2, 3, 1])
+    incremental = resolveRevision({
+      state: incremental,
+      revisionId,
+      mode: "accept",
+    });
+  expect(wholeStory.failed).toBe(false);
+  expect(incremental.doc.toJSON()).toStrictEqual(wholeStory.resolved.toJSON());
+  const receiver =
+    wholeStory.resolved.firstChild?.firstChild?.firstChild?.firstChild;
+  expect(receiver?.attrs["paraId"]).toBe("10000003");
+  expect(receiver?.textContent).toBe("xcell");
+  expect(receiver?.firstChild?.attrs).toEqual(comment.attrs);
 });
 
 test("accepting a non-empty paragraph-mark deletion runs its content into the table", () => {

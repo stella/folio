@@ -156,7 +156,7 @@ test("accepting a mark deletion before a table leaves the bookmark the paragraph
   ]);
 });
 
-test("accepting a mark deletion before a table keeps a paragraph whose comment anchor has no paragraph before it to go to", () => {
+test("accepting a mark deletion before a table hosts an unhosted comment anchor in its first cell", () => {
   const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
   const paragraph: Paragraph = {
     type: "paragraph",
@@ -167,8 +167,6 @@ test("accepting a mark deletion before a table keeps a paragraph whose comment a
   const document: Document = {
     package: { document: { content: [paragraph, table, finalParagraph] } },
   };
-  // A range boundary is no content: the paragraph would go, but its comment
-  // anchor only a paragraph can hold, and none comes before it.
   expect(paragraphHoldsContent(paragraph)).toBe(false);
 
   const applied = applyDocumentOp(document, {
@@ -178,10 +176,27 @@ test("accepting a mark deletion before a table keeps a paragraph whose comment a
     decision: REVISION_DECISIONS.ACCEPT,
   });
   if (applied.isErr()) throw applied.error;
-  const { pPrMark: _accepted, ...kept } = paragraph;
   expect(applied.value.document.package.document.content).toEqual([
-    kept,
-    table,
+    {
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000002",
+                  content: [{ type: "commentRangeEnd", id: 1 }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
     finalParagraph,
   ]);
 });
@@ -453,6 +468,15 @@ describe("paragraphMarkOutcome", () => {
       containerStillEndsWithParagraph: true,
       followingTableCanReceiveRunIn: true,
       expected: "remove",
+    },
+    {
+      follows: "table",
+      holdsContent: false,
+      markWasAdded: false,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: true,
+      needsFollowingCommentHost: true,
+      expected: "run-in",
     },
     {
       follows: "table",
