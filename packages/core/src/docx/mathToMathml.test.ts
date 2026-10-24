@@ -338,6 +338,16 @@ describe("ommlToMathml — delimiters, matrices, accents", () => {
     expect(mml).toContain('<mover accent="true">');
   });
 
+  test("defaults an unpositioned bar below its body", () => {
+    const omml = parse(`
+      <m:oMath ${MATH_NS}>
+        <m:bar><m:e><m:r><m:t>x</m:t></m:r></m:e></m:bar>
+      </m:oMath>
+    `);
+
+    expect(ommlToMathml(omml)).toContain("<munder>");
+  });
+
   test("defaults top group characters to the overbrace glyph", () => {
     const omml = parse(`
       <m:oMath ${MATH_NS}>
@@ -378,6 +388,70 @@ describe("ommlToMathml — graceful degradation", () => {
     // `<m:rPr>` should not bleed into MathML output.
     expect(mml).not.toContain("rPr");
     expect(mml).not.toContain("<nor");
-    expect(mml).toContain("<mi>k</mi>");
+    expect(mml).toContain('<mi mathvariant="normal">k</mi>');
+  });
+
+  test("preserves explicit OMML run styles", () => {
+    const omml = parse(`
+      <m:oMath ${MATH_NS}>
+        <m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>x</m:t></m:r>
+        <m:r><m:rPr><m:sty m:val="b"/></m:rPr><m:t>y</m:t></m:r>
+        <m:r><m:rPr><m:sty m:val="bi"/></m:rPr><m:t>z</m:t></m:r>
+      </m:oMath>
+    `);
+    const mml = ommlToMathml(omml);
+    expect(mml).toContain('<mi mathvariant="normal">x</mi>');
+    expect(mml).toContain('<mi mathvariant="bold">y</mi>');
+    expect(mml).toContain('<mi mathvariant="bold-italic">z</mi>');
+  });
+
+  test("preserves normal OMML run styling", () => {
+    const omml = parse(`
+      <m:oMath ${MATH_NS}>
+        <m:r><m:rPr><m:nor/></m:rPr><m:t>k</m:t></m:r>
+      </m:oMath>
+    `);
+    expect(ommlToMathml(omml)).toContain('<mi mathvariant="normal">k</mi>');
+  });
+
+  test("applies run styles to numbers and operators", () => {
+    const omml = parse(`
+      <m:oMath ${MATH_NS}>
+        <m:r><m:rPr><m:sty m:val="b"/></m:rPr><m:t>x+2</m:t></m:r>
+      </m:oMath>
+    `);
+    const mathml = ommlToMathml(omml);
+    expect(mathml).toContain('<mi mathvariant="bold">x</mi>');
+    expect(mathml).toContain('<mo mathvariant="bold">+</mo>');
+    expect(mathml).toContain('<mn mathvariant="bold">2</mn>');
+  });
+
+  test("ignores a normal-style property explicitly disabled by value", () => {
+    const omml = parse(`
+      <m:oMath ${MATH_NS}>
+        <m:r><m:rPr><m:nor m:val="0"/></m:rPr><m:t>k</m:t></m:r>
+      </m:oMath>
+    `);
+    expect(ommlToMathml(omml)).toContain("<mi>k</mi>");
+    expect(ommlToMathml(omml)).not.toContain('mathvariant="normal"');
+  });
+
+  test("a disabled normal-text switch keeps the explicit math style", () => {
+    const omml = parse(`
+      <m:oMath ${MATH_NS}>
+        <m:r><m:rPr><m:nor m:val="0"/><m:sty m:val="b"/></m:rPr><m:t>k</m:t></m:r>
+      </m:oMath>
+    `);
+    expect(ommlToMathml(omml)).toContain('<mi mathvariant="bold">k</mi>');
+  });
+
+  test("ignores same-named run properties from a foreign namespace", () => {
+    const omml = parse(`
+      <m:oMath ${MATH_NS} xmlns:x="urn:foreign">
+        <m:r><m:rPr><x:sty m:val="p"/></m:rPr><m:t>k</m:t></m:r>
+      </m:oMath>
+    `);
+    expect(ommlToMathml(omml)).toContain("<mi>k</mi>");
+    expect(ommlToMathml(omml)).not.toContain('mathvariant="normal"');
   });
 });
