@@ -32,7 +32,9 @@ import type {
 import { rejectCopyOriginAncestorsInNodes } from "./copyOriginAncestors";
 import {
   childNodes,
+  type CommentAnchorCarrier,
   type InlineNode,
+  isCommentAnchor,
   isEmptyRecord,
   rebuildNode,
 } from "./leaves";
@@ -52,10 +54,7 @@ export const rangeBoundaryDefinitions = () => BOUNDARY_SIDES;
 
 type BoundaryType = keyof typeof BOUNDARY_SIDES;
 type Boundary = Extract<InlineNode, { type: BoundaryType }>;
-type CommentAnchor = Extract<
-  Boundary,
-  { type: "commentRangeStart" | "commentRangeEnd" }
->;
+type CommentAnchor = CommentAnchorCarrier;
 type OrderedBoundary = Exclude<Boundary, CommentAnchor>;
 
 const isBoundary = (node: InlineNode): node is Boundary =>
@@ -64,13 +63,6 @@ const isBoundary = (node: InlineNode): node is Boundary =>
 /** The range a boundary belongs to: its family and id. */
 const rangeKey = (boundary: Boundary): string =>
   `${BOUNDARY_SIDES[boundary.type].family}:${boundary.id}`;
-
-const isCommentAnchor = (
-  node: InlineNode,
-): node is Extract<
-  Boundary,
-  { type: "commentRangeStart" | "commentRangeEnd" }
-> => node.type === "commentRangeStart" || node.type === "commentRangeEnd";
 
 /** Comment ids with both a start and an end among `nodes`. */
 export const pairedCommentRanges = (
@@ -144,6 +136,31 @@ export const rangeBoundariesIn = (content: readonly InlineNode[]): Boundary[] =>
   content.flatMap((node) =>
     isBoundary(node) ? [node] : rangeBoundariesIn(childNodes(node) ?? []),
   );
+
+const collectParagraphBoundaryCarriers = (
+  content: readonly InlineNode[],
+  carriers: (Boundary | CommentAnchor)[],
+): void => {
+  for (const node of content) {
+    if (isCommentAnchor(node)) {
+      carriers.push(node);
+      continue;
+    }
+    if (isBoundary(node)) {
+      carriers.push(node);
+      continue;
+    }
+    collectParagraphBoundaryCarriers(childNodes(node) ?? [], carriers);
+  }
+};
+
+const paragraphBoundaryCarriersIn = (
+  content: readonly InlineNode[],
+): (Boundary | CommentAnchor)[] => {
+  const carriers: (Boundary | CommentAnchor)[] = [];
+  collectParagraphBoundaryCarriers(content, carriers);
+  return carriers;
+};
 
 type OrderedOccurrence = {
   key: string;
@@ -319,15 +336,20 @@ export const insertsInvertedRange = ({
  */
 export const paragraphRemains = (
   content: readonly InlineNode[],
-): { all: Boundary[]; blocks: BlockBoundary[]; comments: CommentAnchor[] } => {
+): {
+  all: (Boundary | CommentAnchor)[];
+  blocks: BlockBoundary[];
+  comments: CommentAnchor[];
+} => {
   const detached = rejectCopyOriginAncestorsInNodes(content, 0);
-  const boundaries = rangeBoundariesIn(detached);
+  const carriers = paragraphBoundaryCarriersIn(detached);
   return {
-    all: boundaries,
-    blocks: boundaries.filter(
-      (boundary): boundary is BlockBoundary => !isCommentAnchor(boundary),
+    all: carriers,
+    blocks: carriers.filter(
+      (carrier): carrier is BlockBoundary =>
+        isBoundary(carrier) && !isCommentAnchor(carrier),
     ),
-    comments: boundaries.filter(isCommentAnchor),
+    comments: carriers.filter(isCommentAnchor),
   };
 };
 

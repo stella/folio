@@ -31,6 +31,7 @@ import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockBookm
 import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockMoveRangeBoundaryExtension";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/CommentRangeBoundaryExtension";
+import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import {
@@ -267,6 +268,7 @@ export const blockBoundariesOf = (nodes: readonly PMNode[]): PMNode[] =>
 
 /** Whether `node` holds a comment's anchor, which only a paragraph holds. */
 export const carriesCommentAnchor = (node: PMNode): boolean =>
+  node.type.name === COMMENT_REFERENCE_NODE_NAME ||
   rangeBoundaryItemsOf(node).some(isComment);
 
 /** Whether `node` is a range boundary standing between blocks. */
@@ -313,7 +315,11 @@ export const paragraphRemainsOf = (
       carried.length > 0
         ? copyOriginBoundaryAfterRemovingAddedAncestors(node)
         : node;
-    if (carried.length > 0 && remains !== null) inline.push(remains);
+    if (
+      (carried.length > 0 || node.type.name === COMMENT_REFERENCE_NODE_NAME) &&
+      remains !== null
+    )
+      inline.push(remains);
     if (carriesCommentAnchor(node)) comments.push(node);
     if (remains !== null) items.push(...rangeBoundaryItemsOf(remains));
     return true;
