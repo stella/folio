@@ -38,6 +38,7 @@ import {
   expectRunPropertyChangeMarkAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../attrs";
+import { readCommentRangeBoundaryAttrs } from "../commentRangeBoundaryAttrs";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
@@ -1025,6 +1026,14 @@ function resolveChange(
           ) {
             carriers.push({ position, size: node.nodeSize });
             return false;
+          }
+          if (node.type.name === "commentRangeBoundary") {
+            const attrs = readCommentRangeBoundaryAttrs(node);
+            if (attrs.ok && doomed.has(attrs.value.marker.id)) {
+              carriers.push({ position, size: node.nodeSize });
+              return false;
+            }
+            return true;
           }
           if (node.type.name !== "rangeAnchor") return true;
           const attrs = readRangeAnchorAttrs(node);
