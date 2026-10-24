@@ -106,11 +106,13 @@ test("an empty level marker remains an empty marker through layout conversion", 
     level: 0,
     numId: 1,
     isBullet: false,
+    isLegal: true,
     numFmt: "none",
     marker: "",
     markerTemplate: "",
     markerSuffix: "tab",
   } as const satisfies Parameters<typeof listRenderingAttrPatch>[0];
+  const ordinaryNone = { ...rendering, isLegal: false };
   const doc = schema.node("doc", null, [
     schema.node(
       "paragraph",
@@ -120,13 +122,24 @@ test("an empty level marker remains an empty marker through layout conversion", 
       },
       schema.text("first"),
     ),
+    schema.node(
+      "paragraph",
+      {
+        numPr,
+        ...listRenderingAttrPatch({ ...ordinaryNone, marker: "" }),
+      },
+      schema.text("ordinary none"),
+    ),
   ]);
 
-  const paragraph = toFlowBlocks(doc).find(
+  const paragraphs = toFlowBlocks(doc).filter(
     (block) => block.kind === "paragraph",
   );
-  expect(paragraph?.attrs?.listMarker).toBe("");
-  expect(paragraph?.attrs?.listMarkerSuffix).toBe("tab");
+  expect(paragraphs.map((paragraph) => paragraph.attrs?.listMarker)).toEqual([
+    "",
+    undefined,
+  ]);
+  expect(paragraphs.at(0)?.attrs?.listMarkerSuffix).toBe("tab");
 });
 
 test("none numbering renders only for a legal-numbering level", () => {
