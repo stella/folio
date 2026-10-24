@@ -824,7 +824,7 @@ test("canonical comment mutation results isolate committed snapshots and history
   }
 });
 
-test("canonical thread deletion removes existing SDT boundary points", async () => {
+test("canonical thread deletion removes explicit boundary points beside a field SDT", async () => {
   GlobalRegistrator.register();
   const host = document.createElement("div");
   document.body.append(host);
@@ -839,10 +839,24 @@ test("canonical thread deletion removes existing SDT boundary points", async () 
   paragraph.content = [
     { type: "commentRangeStart", id: 9 },
     textRun("before"),
+    { type: "commentRangeEnd", id: 9 },
     {
-      type: "inlineSdt",
-      properties: { sdtType: "richText", id: 42 },
-      content: [textRun("inside"), { type: "commentRangeEnd", id: 9 }],
+      type: "simpleField",
+      instruction: "PAGE",
+      fieldType: "PAGE",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 14, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+          content: [
+            {
+              type: "inlineSdt",
+              properties: { sdtType: "richText", id: 42 },
+              content: [textRun("inside")],
+            },
+          ],
+        },
+      ],
     },
     { type: "commentRangeStart", id: 10 },
     textRun("other"),
@@ -882,6 +896,28 @@ test("canonical thread deletion removes existing SDT boundary points", async () 
       10,
     ]);
     expect(commentRangeBoundaryIds(toProseDoc(reopened))).toEqual([10, 10]);
+    const savedParagraph = reopened.package.document.content.at(0);
+    if (savedParagraph?.type !== "paragraph") panic("Expected saved paragraph");
+    expect(
+      savedParagraph.content.find(({ type }) => type === "simpleField"),
+    ).toMatchObject({
+      instruction: "PAGE",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 14 },
+          content: [
+            {
+              type: "inlineSdt",
+              properties: { id: 42 },
+              content: [
+                { type: "run", content: [{ type: "text", text: "inside" }] },
+              ],
+            },
+          ],
+        },
+      ],
+    });
   } finally {
     manager.destroyView();
     host.remove();
