@@ -104,6 +104,7 @@ import {
   findChild,
   findChildren,
   getAttribute,
+  getAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -479,12 +480,20 @@ const readLanguage = (
   lang: XmlElement,
   formatting: TextFormatting,
 ): boolean => {
-  const val = truncateLanguageTag(getAttribute(lang, "w", "val") || undefined);
+  const val = truncateLanguageTag(
+    getAttributeByNamespaceUri(lang, WORDPROCESSINGML_NAMESPACE_URIS, "val") ||
+      undefined,
+  );
   const eastAsia = truncateLanguageTag(
-    getAttribute(lang, "w", "eastAsia") || undefined,
+    getAttributeByNamespaceUri(
+      lang,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "eastAsia",
+    ) || undefined,
   );
   const bidi = truncateLanguageTag(
-    getAttribute(lang, "w", "bidi") || undefined,
+    getAttributeByNamespaceUri(lang, WORDPROCESSINGML_NAMESPACE_URIS, "bidi") ||
+      undefined,
   );
   if (!val && !eastAsia && !bidi) {
     return false;
