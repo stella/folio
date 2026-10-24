@@ -242,6 +242,7 @@ export function layoutTable(
     if (
       !row ||
       !sourceRow ||
+      sourceRow.heightRule === "exact" ||
       sourceRow.isHeader ||
       verticallyMergedRows.has(rowIndex)
     ) {
@@ -258,11 +259,7 @@ export function layoutTable(
       // w:cantSplit (§17.4.6) keeps the row on one page only while a page can
       // hold it. A taller row first moves to a fresh flow region and splits
       // there; an exact w:trHeight row keeps its fixed box and never splits.
-      return (
-        oversized &&
-        sourceRow.heightRule !== "exact" &&
-        rowOpensFlowRegion(rowIndex, state)
-      );
+      return oversized && rowOpensFlowRegion(rowIndex, state);
     }
     if (
       !oversized &&
@@ -497,6 +494,7 @@ export function layoutTable(
     // Calculate how many rows fit (excluding header rows which are prepended separately)
     let rowsHeight = 0;
     let fittingRows = 0;
+    let exactRowBottomClip: number | undefined;
     const pageFootnoteIds = new Set(state.page.footnoteIds ?? []);
     const fragmentFootnoteIds: number[] = [];
     let fragmentFootnoteHeight = 0;
@@ -550,7 +548,19 @@ export function layoutTable(
           state.cursorY === state.topMargin &&
           state.page.fragments.length === 0;
         if (isFreshFlowRegion) {
-          rowsHeight += rowHeight;
+          const exactRowClip =
+            block.rows[j]?.heightRule === "exact" &&
+            rowHeight + normalHeaderOverhead + footnoteGrowth > availableHeight;
+          const rowBand = exactRowClip
+            ? Math.max(
+                0,
+                availableHeight - normalHeaderOverhead - footnoteGrowth,
+              )
+            : rowHeight;
+          rowsHeight += rowBand;
+          if (exactRowClip) {
+            exactRowBottomClip = rowBand;
+          }
           fragmentFootnoteHeight += rowFootnoteHeight;
           fittingRows++;
           break;
@@ -592,6 +602,9 @@ export function layoutTable(
       ...(!isFirstFragment ? { continuesFromPrev: true } : {}),
       ...(!isLastFragment ? { continuesOnNext: true } : {}),
       ...(repeatHeaderRowsForNormalFragment ? { headerRowCount } : {}),
+      ...(exactRowBottomClip !== undefined
+        ? { bottomClip: exactRowBottomClip }
+        : {}),
       ...(block.sdtGroups ? { sdtGroups: block.sdtGroups } : {}),
     };
 
