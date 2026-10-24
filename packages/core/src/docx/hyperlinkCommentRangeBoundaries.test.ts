@@ -263,6 +263,55 @@ test("keeps child-specific hyperlink coverage in every container", () => {
   }
 });
 
+test("keeps comment endpoints in their tracked hyperlink source host", () => {
+  const wrappers = {
+    ins: "insertion",
+    del: "deletion",
+    moveFrom: "moveFrom",
+    moveTo: "moveTo",
+  } as const;
+  for (const [wrapper, type] of Object.entries(wrappers)) {
+    for (const referenceHost of ["hyperlink", "paragraph"] as const) {
+      const reference = `<w:r><w:commentReference w:id="72"/></w:r>`;
+      const textTag =
+        type === "deletion" || type === "moveFrom" ? "delText" : "t";
+      const paragraph = paragraphFromXml(
+        `<w:p xmlns:w="${WORDPROCESSING_NAMESPACE}">` +
+          `<w:${wrapper} w:id="71" w:author="Reviewer"><w:hyperlink w:anchor="target">` +
+          `<w:r><w:${textTag}>before</w:${textTag}></w:r><w:commentRangeStart w:id="72"/>` +
+          `<w:r><w:${textTag}>covered</w:${textTag}></w:r><w:commentRangeEnd w:id="72"/>` +
+          (referenceHost === "hyperlink" ? reference : "") +
+          `<w:r><w:${textTag}>after</w:${textTag}></w:r></w:hyperlink>` +
+          `<w:hyperlink w:anchor="target"><w:r><w:${textTag}>neighbor</w:${textTag}></w:r></w:hyperlink></w:${wrapper}>` +
+          (referenceHost === "paragraph" ? reference : "") +
+          `</w:p>`,
+      );
+      const saved = roundTripParagraph(paragraph);
+      const hyperlinks = saved.content.flatMap((item) =>
+        item.type === type
+          ? item.content.filter((child) => child.type === "hyperlink")
+          : [],
+      );
+      expect(
+        hyperlinks.map((link) => link.children.map((child) => child.type)),
+      ).toEqual([
+        [
+          "run",
+          "commentRangeStart",
+          "run",
+          "commentRangeEnd",
+          ...(referenceHost === "hyperlink" ? ["commentReference"] : []),
+          "run",
+        ],
+        ["run"],
+      ]);
+      expect(hyperlinks.at(1)?.children).toMatchObject([
+        { type: "run", content: [{ type: "text", text: "neighbor" }] },
+      ]);
+    }
+  }
+});
+
 test("completes a missing reference inside its hyperlink source host", () => {
   const paragraph = paragraphFromXml(
     `<w:p xmlns:w="${WORDPROCESSING_NAMESPACE}"><w:hyperlink w:anchor="target">` +

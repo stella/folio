@@ -3581,7 +3581,12 @@ function extractParagraphContent(
     };
   };
 
-  const establishTrackedBoundaryOwner = (node: PMNode): void => {
+  type TrackedBoundarySourceHost = "revision" | "indexed-hyperlink";
+
+  const establishTrackedBoundaryOwner = (
+    node: PMNode,
+    sourceHost: TrackedBoundarySourceHost = "revision",
+  ): void => {
     const boundary = trackedBoundary(node);
     if (!boundary) return;
     flushCurrentInline();
@@ -3593,20 +3598,45 @@ function extractParagraphContent(
       revisionAncestors,
       type,
     } = boundary;
+    const linkMark =
+      sourceHost === "indexed-hyperlink"
+        ? node.marks.find((mark) => mark.type.name === "hyperlink")
+        : undefined;
     if (
+      linkMark &&
+      currentTrackedChange?.type === "hyperlink" &&
+      currentTrackedChange.key === key &&
+      currentTrackedChange.hyperlinkKey === getLinkKey(linkMark)
+    ) {
+      return;
+    }
+    if (
+      !linkMark &&
       currentTrackedChange?.type === "direct" &&
       currentTrackedChange.key === key
     ) {
       return;
     }
+    const hyperlink = linkMark ? createIndexedHyperlink(linkMark) : undefined;
     const wrapper = createTrackedRunWrapper({
       type,
       info,
+      ...(hyperlink ? { child: hyperlink } : {}),
       resolutionJoins: changeAttrs._docxResolutionJoins ?? undefined,
     });
     revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
     revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
     content.push(wrapper);
+    if (hyperlink && linkMark) {
+      currentTrackedChange = {
+        type: "hyperlink",
+        key,
+        wrapper,
+        hyperlink,
+        hyperlinkKey: getLinkKey(linkMark),
+      };
+      return;
+    }
     currentTrackedChange = { type: "direct", key, wrapper };
   };
 
@@ -3821,8 +3851,10 @@ function extractParagraphContent(
       );
       if (tracked) {
         flushCurrentInline();
-        establishTrackedBoundaryOwner(node);
-        if (currentTrackedChange) {
+        establishTrackedBoundaryOwner(node, "indexed-hyperlink");
+        if (currentTrackedChange?.type === "hyperlink") {
+          currentTrackedChange.hyperlink.children.push(marker);
+        } else if (currentTrackedChange) {
           currentTrackedChange.wrapper.content.push(marker);
         } else {
           content.push(marker);
@@ -3850,7 +3882,7 @@ function extractParagraphContent(
     }
 
     if (node.type.name === "commentReference") {
-      establishTrackedBoundaryOwner(node);
+      establishTrackedBoundaryOwner(node, "indexed-hyperlink");
       const reference = {
         type: "commentReference" as const,
         id: expectCommentReferenceAttrs(node).commentId,
@@ -3861,7 +3893,11 @@ function extractParagraphContent(
       );
       if (tracked && currentTrackedChange) {
         flushCurrentInline();
-        currentTrackedChange.wrapper.content.push(reference);
+        if (currentTrackedChange.type === "hyperlink") {
+          currentTrackedChange.hyperlink.children.push(reference);
+        } else {
+          currentTrackedChange.wrapper.content.push(reference);
+        }
       } else if (linkMark && !tracked) {
         currentTrackedChange = undefined;
         const linkKey = getLinkKey(linkMark);
