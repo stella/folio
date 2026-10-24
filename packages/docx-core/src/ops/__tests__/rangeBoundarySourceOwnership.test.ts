@@ -18,6 +18,82 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 
 const FIRST_DATE = "2026-03-04T05:00:00Z";
 const SECOND_DATE = "2026-03-04T05:00:01Z";
+const THIRD_DATE = "2026-03-04T05:00:02Z";
+
+type RangeBoundary = Extract<
+  ParagraphContent,
+  {
+    type:
+      | "bookmarkStart"
+      | "bookmarkEnd"
+      | "moveFromRangeStart"
+      | "moveFromRangeEnd"
+      | "moveToRangeStart"
+      | "moveToRangeEnd";
+  }
+>;
+
+type BoundaryPair = {
+  insertedSide: "start" | "end";
+  inserted: RangeBoundary;
+  standing: RangeBoundary;
+};
+
+const boundaryPairs = [
+  {
+    insertedSide: "end",
+    inserted: { type: "bookmarkEnd", id: 9 },
+    standing: { type: "bookmarkStart", id: 9, name: "_Ref9" },
+  },
+  {
+    insertedSide: "start",
+    inserted: { type: "bookmarkStart", id: 9, name: "_Ref9" },
+    standing: { type: "bookmarkEnd", id: 9 },
+  },
+  {
+    insertedSide: "end",
+    inserted: {
+      type: "moveFromRangeEnd",
+      id: 9,
+    },
+    standing: {
+      type: "moveFromRangeStart",
+      id: 9,
+      name: "_MoveFrom9",
+      author: "A",
+    },
+  },
+  {
+    insertedSide: "start",
+    inserted: {
+      type: "moveFromRangeStart",
+      id: 9,
+      name: "_MoveFrom9",
+      author: "A",
+    },
+    standing: { type: "moveFromRangeEnd", id: 9 },
+  },
+  {
+    insertedSide: "end",
+    inserted: { type: "moveToRangeEnd", id: 9 },
+    standing: {
+      type: "moveToRangeStart",
+      id: 9,
+      name: "_MoveTo9",
+      author: "A",
+    },
+  },
+  {
+    insertedSide: "start",
+    inserted: {
+      type: "moveToRangeStart",
+      id: 9,
+      name: "_MoveTo9",
+      author: "A",
+    },
+    standing: { type: "moveToRangeEnd", id: 9 },
+  },
+] satisfies readonly BoundaryPair[];
 
 const apply = (document: Document, operation: DocumentOp) => {
   const result = applyDocumentOp(document, operation);
@@ -30,6 +106,52 @@ const paragraphOf = (document: Document) => {
   if (paragraph?.type !== "paragraph")
     throw new TypeError("Expected the fixture paragraph.");
   return paragraph;
+};
+
+const boundaryOffsets = (
+  document: Document,
+  target: RangeBoundary,
+): number[] => {
+  const offsets: number[] = [];
+  let textOffset = 0;
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "text") {
+        textOffset += node.text.length;
+        continue;
+      }
+      if (
+        node.type === "bookmarkStart" ||
+        node.type === "bookmarkEnd" ||
+        node.type === "moveFromRangeStart" ||
+        node.type === "moveFromRangeEnd" ||
+        node.type === "moveToRangeStart" ||
+        node.type === "moveToRangeEnd"
+      ) {
+        if (node.type === target.type && node.id === target.id)
+          offsets.push(textOffset);
+        continue;
+      }
+      visit(childNodes(node) ?? []);
+    }
+  };
+  visit(paragraphOf(document).content);
+  return offsets;
+};
+
+const paragraphText = (document: Document): string => {
+  let text = "";
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "text") {
+        text += node.text;
+        continue;
+      }
+      visit(childNodes(node) ?? []);
+    }
+  };
+  visit(paragraphOf(document).content);
+  return text;
 };
 
 const idsForDate = (document: Document, date: string) => {
@@ -235,6 +357,115 @@ test("batch rejection keeps an authored start before a foreign bidi comment carr
     projectReview({ document: reverse, projection: "π′" }),
   );
   expect(paragraphOf(batch).content).toEqual([marker, foreign]);
+});
+
+type AdjacentRejectionOptions = {
+  pair: BoundaryPair;
+  text: string;
+  offset: number;
+  nested: boolean;
+};
+
+const assertAdjacentRejectionPreservesBoundary = ({
+  pair,
+  text,
+  offset,
+  nested,
+}: AdjacentRejectionOptions): void => {
+  const run = {
+    type: "run",
+    content: [{ type: "text", text }],
+  } satisfies ParagraphContent;
+  const sourceContent: ParagraphContent[] =
+    pair.insertedSide === "end" ? [pair.standing, run] : [run, pair.standing];
+  const sourceContentNodes = nested
+    ? [
+        {
+          type: "inlineWrapper",
+          kind: "bidi",
+          control: "embedding",
+          content: sourceContent,
+        } satisfies ParagraphContent,
+      ]
+    : sourceContent;
+  const source: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: sourceContentNodes,
+          },
+        ],
+      },
+    },
+  };
+  const inserted = apply(source, {
+    type: "insertContent",
+    at: { story: "main", blockId: "00000001", offset },
+    slice: { content: [pair.inserted], openStart: 0, openEnd: 0 },
+    revision: { id: 2, author: "C", date: SECOND_DATE },
+    newIds: { revision: [100, 101, 102, 103] },
+  });
+  const deleted = apply(inserted, {
+    type: "deleteRange",
+    from: { story: "main", blockId: "00000001", offset },
+    to: { story: "main", blockId: "00000001", offset: offset + 1 },
+    revision: { id: 3, author: "C", date: THIRD_DATE },
+    newIds: { revision: [200, 201, 202, 203] },
+  });
+  const addedIds = idsForDate(deleted, SECOND_DATE);
+  const deletedIds = idsForDate(deleted, THIRD_DATE);
+  expect(addedIds.length).toBeGreaterThan(0);
+  expect(deletedIds.length).toBeGreaterThan(0);
+  const batch = reject(deleted, [...addedIds, ...deletedIds]);
+  const afterAdded = reject(deleted, addedIds);
+  const afterDeleted = reject(deleted, deletedIds);
+  const rejectAddedFirst = reject(reject(deleted, addedIds), deletedIds);
+  const rejectDeletedFirst = reject(reject(deleted, deletedIds), addedIds);
+  for (const result of [
+    batch,
+    afterAdded,
+    afterDeleted,
+    rejectAddedFirst,
+    rejectDeletedFirst,
+  ]) {
+    expect(paragraphText(result)).toBe(text);
+    expect(boundaryOffsets(result, pair.standing)).toEqual([
+      pair.insertedSide === "end" ? 0 : text.length,
+    ]);
+    expect(boundaryOffsets(result, pair.inserted)).toEqual([offset]);
+  }
+  expect(projectReview({ document: batch, projection: "π′" })).toEqual(
+    projectReview({ document: rejectAddedFirst, projection: "π′" }),
+  );
+  expect(projectReview({ document: batch, projection: "π′" })).toEqual(
+    projectReview({ document: rejectDeletedFirst, projection: "π′" }),
+  );
+};
+
+test("adjacent tracked insertions and deletions preserve range boundaries", () => {
+  assertProperty(
+    fc.property(
+      fc.constantFrom(...boundaryPairs),
+      fc.constantFrom("é漢abc", "Ж字def"),
+      fc.integer({ min: 1, max: 4 }),
+      fc.boolean(),
+      (pair, text, offset, nested) => {
+        assertAdjacentRejectionPreservesBoundary({
+          pair,
+          text,
+          offset,
+          nested,
+        });
+      },
+    ),
+    {
+      numRuns: 60,
+      id: "adjacent tracked insertions and deletions preserve range boundaries",
+    },
+  );
 });
 
 test("retained boundary attachment belongs to surviving source occurrences, never merely compatible neighbors", () => {
