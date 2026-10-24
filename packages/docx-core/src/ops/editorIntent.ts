@@ -22,6 +22,7 @@ import { applyDocumentOp, applyDocumentOps } from "./apply";
 import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
 import { createCensusReader } from "./editorIntentCensus";
 import { structurallyEqual } from "./equality";
+import { resolveGap } from "./gaps";
 /** One editor intent, compiled to direct or tracked document operations. */
 import {
   compileHyperlinkIntent,
@@ -47,6 +48,7 @@ import {
   isEmptyRecord,
   isParagraphContent,
   leafSpans,
+  partitionContent,
   rebuildNode,
   spanningRecords,
   zeroWidthLeavesAt,
@@ -1044,6 +1046,30 @@ const replacementSourceRunEnd = (
   )
     return undefined;
   return { ...op.at, ...gapAfterInserted(at, op.slice.content) };
+};
+
+type ReplacementPreservesOutsideContentOptions = {
+  paragraph: Paragraph;
+  from: TextPosition;
+  to: TextPosition;
+};
+
+const replacementPreservesOutsideContent = ({
+  paragraph,
+  from,
+  to,
+}: ReplacementPreservesOutsideContentOptions): boolean => {
+  const start = resolveGap({ paragraph, position: from, fallback: "afterAll" });
+  const end = resolveGap({ paragraph, position: to, fallback: "beforeAll" });
+  if (typeof start === "string" || typeof end === "string") return false;
+  const [before = [], , after = []] = partitionContent(paragraph.content, [
+    start,
+    end,
+  ]);
+  const preserved = (node: InlineNode) =>
+    isParagraphContent(node) &&
+    (isRangeBoundary(node) || node.type === "commentReference");
+  return before.every(preserved) && after.every(preserved);
 };
 
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
@@ -2238,6 +2264,7 @@ export const compileEditorIntent = (
         paragraphLength(paragraph) > 0 &&
         text.length > 0 &&
         (from.zeroWidthBefore ?? 0) > 0 &&
+        replacementPreservesOutsideContent({ paragraph, from, to }) &&
         !(document.package.document.comments ?? []).some(
           ({ parentId, anchorKind }) =>
             parentId === undefined && anchorKind !== "range",

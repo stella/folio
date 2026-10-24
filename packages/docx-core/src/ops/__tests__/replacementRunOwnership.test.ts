@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
@@ -23,6 +24,7 @@ import {
   compileEditorIntent,
   type EditorIntent,
 } from "../editorIntent";
+import { resolveGap } from "../gaps";
 import { paragraphLength } from "../offsets";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
@@ -117,13 +119,33 @@ const fixture = ({
     type: "paragraph",
     content: [run(selected)],
   });
+  const intent = {
+    type: "replaceText",
+    from,
+    to: { ...from, offset: prefix.length + width },
+    text: "edited",
+  } as const satisfies EditorIntent;
+  const start = resolveGap({
+    paragraph,
+    position: intent.from,
+    fallback: "afterAll",
+  });
+  const end = resolveGap({
+    paragraph,
+    position: intent.to,
+    fallback: "beforeAll",
+  });
+  if (typeof start === "string" || typeof end === "string") {
+    panic("A replacement fixture has valid canonical endpoint gaps.");
+  }
   return {
     document,
-    intent: {
+    intent,
+    explicitIntent: {
       type: "replaceText",
-      from,
-      to: { ...from, offset: prefix.length + width, zeroWidthBefore: 0 },
-      text: "edited",
+      from: { ...intent.from, ...start },
+      to: { ...intent.to, ...end },
+      text: intent.text,
     } as const satisfies EditorIntent,
   };
 };
@@ -143,8 +165,10 @@ const assertUndo = (edit: AppliedDocumentOp, original: Document) => {
   assertExactModel(redone.document, edit.document);
 };
 
-const assertReplacement = (options: FixtureOptions) => {
-  const { document, intent } = fixture(options);
+const assertCompiledReplacement = (
+  document: Document,
+  intent: Extract<EditorIntent, { type: "replaceText" }>,
+) => {
   const before = structuredClone(document);
   const allocation = allocateEditorIntentIds(document, intent);
   const direct = compileEditorIntent(document, {
@@ -191,7 +215,34 @@ const assertReplacement = (options: FixtureOptions) => {
   return { direct: directEdit.document, accepted: accepted.document };
 };
 
+const assertReplacement = (options: FixtureOptions) => {
+  const { document, intent, explicitIntent } = fixture(options);
+  const implicit = assertCompiledReplacement(document, intent);
+  const explicit = assertCompiledReplacement(document, explicitIntent);
+  assertExactModel(explicit.direct, implicit.direct);
+  assertExactModel(explicit.accepted, implicit.accepted);
+  return implicit;
+};
+
 describe("replacement source-run ownership", () => {
+  test("explicit equivalent endpoint gaps retain cached breaks outside a full-text replacement", () => {
+    const { document, intent, explicitIntent } = fixture({
+      leadingBreaks: 1,
+      trailingBreaks: 1,
+      prefix: "",
+      suffix: "",
+      payload: PAYLOADS.tab,
+      layout: "shared",
+      fields: "plain",
+    });
+    expect(explicitIntent.from.zeroWidthBefore).toBe(1);
+    expect(explicitIntent.to.zeroWidthBefore).toBe(0);
+    const implicit = assertCompiledReplacement(document, intent);
+    const explicit = assertCompiledReplacement(document, explicitIntent);
+    assertExactModel(explicit.direct, implicit.direct);
+    assertExactModel(explicit.accepted, implicit.accepted);
+  });
+
   test("rejoins the source run cut around a selected tab and cached breaks", () => {
     const result = assertReplacement({
       leadingBreaks: 1,
