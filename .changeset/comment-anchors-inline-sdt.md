@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Preserve comment markers and references inside inline content controls.
+Preserve comment endpoint ownership across inline content controls.

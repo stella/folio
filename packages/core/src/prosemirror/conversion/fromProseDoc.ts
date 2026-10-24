@@ -209,6 +209,7 @@ import {
   removeParagraphPropertyChanges,
 } from "../commands/propertyChangeScope";
 import { trackedCommentBoundaryOwner } from "../commentBoundaryOwnership";
+import { expectCommentRangeBoundaryAttrs } from "../commentRangeBoundaryAttrs";
 import { expectCommentReferenceAttrs } from "../commentReferenceAttrs";
 import { enclosingRevisionIds } from "../contentControlRevisions";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
@@ -219,6 +220,7 @@ import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExten
 // references, so there is no initialization-order hazard.
 // oxlint-disable-next-line import/no-cycle
 import { textFormattingToMarks } from "../extensions/marks/markUtils";
+import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/CommentRangeBoundaryExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
 import {
@@ -3399,8 +3401,9 @@ function extractParagraphContent(
   const openedComments = new Set(
     structuredCommentRangeScope?.openedBefore ?? [],
   );
-  // A boundary has no ProseMirror node of its own. Keep the source revision's
-  // ownership record until the following node gives us its save position.
+  // A mark-derived boundary has no ProseMirror node of its own. Keep the
+  // source revision's ownership record until the following node gives us its
+  // save position.
   let precedingTrackedCommentRangeBoundaries:
     | NonNullable<TrackedChangeMarkAttrs["_docxCommentRangeBoundaries"]>
     | null
@@ -3777,8 +3780,39 @@ function extractParagraphContent(
     leadingRenderedPageBreakPending = false;
     enterWrapperGroup(node);
 
-    if (node.type.name !== "sdt" || node.childCount === 0) {
+    if (
+      node.type.name !== COMMENT_RANGE_BOUNDARY_NODE_NAME &&
+      (node.type.name !== "sdt" || node.childCount === 0)
+    ) {
       syncCommentRanges(node, offset);
+    }
+
+    if (node.type.name === COMMENT_RANGE_BOUNDARY_NODE_NAME) {
+      flushCurrentInline();
+      const { marker } = expectCommentRangeBoundaryAttrs(node);
+      precedingTrackedCommentRangeBoundaries =
+        trackedBoundary(node)?.changeAttrs._docxCommentRangeBoundaries;
+      const tracked = node.marks.some(
+        (mark) =>
+          mark.type.name === "insertion" || mark.type.name === "deletion",
+      );
+      if (tracked) {
+        establishTrackedBoundaryOwner(node);
+        if (currentTrackedChange) {
+          currentTrackedChange.wrapper.content.push(marker);
+        } else {
+          content.push(marker);
+        }
+      } else {
+        currentTrackedChange = undefined;
+        content.push(marker);
+      }
+      if (marker.type === "commentRangeStart") {
+        openedComments.add(marker.id);
+      } else {
+        openedComments.delete(marker.id);
+      }
+      return;
     }
 
     // A comment reference is paragraph content in the model, so it never joins
@@ -4233,7 +4267,9 @@ function extractParagraphContent(
             offset +
             1,
           lastOffsetByCommentId: structuredCommentLastOffset,
-          textBoxAnchorMarkers,
+          ...(textBoxAnchorMarkers === undefined
+            ? {}
+            : { textBoxAnchorMarkers }),
           formattingContext,
           openedBefore: openedComments,
           openedAfter: commentsAfterStructuredNode(node, offset),

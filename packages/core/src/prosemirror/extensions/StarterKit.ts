@@ -40,6 +40,7 @@ import { BlockCustomXmlExtension } from "./nodes/BlockCustomXmlExtension";
 import { BlockMoveRangeBoundaryExtension } from "./nodes/BlockMoveRangeBoundaryExtension";
 import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
 import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
+import { CommentRangeBoundaryExtension } from "./nodes/CommentRangeBoundaryExtension";
 import { CommentReferenceExtension } from "./nodes/CommentReferenceExtension";
 import {
   FieldExtension,
@@ -144,6 +145,10 @@ export function createStarterKit(
   add(
     "commentReference",
     CommentReferenceExtension({ getInternalClipboardToken }),
+  );
+  add(
+    "commentRangeBoundary",
+    CommentRangeBoundaryExtension({ getInternalClipboardToken }),
   );
   add(
     "moveRangeBoundary",

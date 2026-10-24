@@ -21,6 +21,7 @@ export type CommentRangeInlineAtomParticipation = "extends" | "inert";
 export const COMMENT_RANGE_INLINE_ATOM_PARTICIPATION = Object.freeze({
   bookmarkBoundary: "extends",
   commentReference: "inert",
+  commentRangeBoundary: "inert",
   field: "extends",
   hardBreak: "extends",
   image: "extends",
