@@ -54,8 +54,7 @@ import {
   applyDocumentOps,
   stampOf,
 } from "../apply";
-import { paragraphMarkOutcome } from "../blockDeletion";
-import { blockListAt, storyParagraphs, withBodyContent } from "../blocks";
+import { storyParagraphs, withBodyContent } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
 import {
   IDENTITY_SPACES,
@@ -72,14 +71,10 @@ import {
   isCommentAnchor,
   leafSpans,
 } from "../leaves";
-import {
-  paragraphHoldsContent,
-  paragraphLength,
-  paragraphLogicalText,
-} from "../offsets";
+import { paragraphLength, paragraphLogicalText } from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
-import { planParagraphBoundaryRemoval } from "../rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import { planRevisionResolution } from "../resolve";
 import {
   isAddedRevision,
   isTrackedWrapper,
@@ -91,6 +86,7 @@ import {
   type DocumentOp,
   type DocumentOpType,
   OP_STORIES,
+  type ResolveRevisionOp,
   REVISION_DECISIONS,
   type RevisionDecision,
   type RevisionStamp,
@@ -348,7 +344,7 @@ const expectRejectedTo = ({
 const resolveOp = (
   ids: readonly number[],
   decision: RevisionDecision,
-): DocumentOp => ({
+): ResolveRevisionOp => ({
   type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
   story: OP_STORIES.MAIN,
   revisionIds: ids,
@@ -451,22 +447,6 @@ const follower = (document: Document, id: string): Paragraph | undefined => {
       candidate.index === at.index + 1 &&
       JSON.stringify(candidate.list) === JSON.stringify(at.list),
   )?.paragraph;
-};
-
-/** The first cell paragraph that can receive a paragraph retired before a table. */
-const tableRunInReceiver = (
-  document: Document,
-  id: string,
-): Paragraph | undefined => {
-  const body = document.package.document;
-  const at = storyParagraphs(body).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(id),
-  );
-  if (at === undefined) return undefined;
-  let next = blockListAt(body.content, at.list).at(at.index + 1);
-  while (next?.type === "table")
-    next = next.rows.at(0)?.cells.at(0)?.content.at(0);
-  return next?.type === "paragraph" ? next : undefined;
 };
 
 /** The leaves of a paragraph between two gaps. */
@@ -1275,54 +1255,17 @@ describe("tracked operations and their resolution", () => {
             }
             const next = follower(document, paragraph.paraId ?? "");
             if (next !== undefined) holding.add(idKey(next.paraId ?? ""));
-            const mark = paragraph.pPrMark;
-            const markWasAdded =
-              mark?.kind === "ins" || mark?.kind === "moveTo";
-            const markGoes =
-              mark !== undefined &&
-              ids.includes(mark.info.id) &&
-              markWasAdded !== (decision === REVISION_DECISIONS.ACCEPT);
-            const blocks = blockListAt(
-              document.package.document.content,
-              location.list,
-            );
-            const followingBlock = blocks.at(location.index + 1);
-            if (
-              markGoes &&
-              (followingBlock === undefined || followingBlock.type === "table")
-            ) {
-              const removal = planParagraphBoundaryRemoval({
-                blocks,
-                index: location.index,
-                place: followingBlock === undefined ? "previous" : "blocks",
-              });
-              if (removal.type === "removed")
-                for (const { receiver } of removal.effects)
-                  holding.add(idKey(receiver.paraId ?? ""));
-            }
-            if (
-              markGoes &&
-              paragraphMarkOutcome({
-                follows: "table",
-                holdsContent: paragraphHoldsContent(paragraph),
-                markWasAdded,
-                containerStillEndsWithParagraph:
-                  blockListAt(
-                    document.package.document.content,
-                    location.list,
-                  ).at(-1)?.type === "paragraph",
-                followingTableCanReceiveRunIn: true,
-              }).kind === "run-in"
-            ) {
-              const receiver = tableRunInReceiver(
-                document,
-                paragraph.paraId ?? "",
-              );
-              if (receiver !== undefined)
-                holding.add(idKey(receiver.paraId ?? ""));
-            }
           }
-          cases.push([resolveOp(ids, decision), holding]);
+          const resolutionOp = resolveOp(ids, decision);
+          const planned = planRevisionResolution({
+            document,
+            op: resolutionOp,
+            applyOps: applyDocumentOps,
+          });
+          if (planned.isOk())
+            for (const { receiver } of planned.value.receiverEffects)
+              holding.add(idKey(receiver.paraId ?? ""));
+          cases.push([resolutionOp, holding]);
           for (const [candidate, named] of cases) {
             const applied = applyDocumentOp(document, candidate);
             if (applied.isErr()) continue;
