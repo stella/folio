@@ -347,6 +347,57 @@ describe("an unbalanced inline range marker never refuses the document", () => {
     expect(occurrences(saved, '<w:commentReference w:id="0"/>')).toBe(0);
   });
 
+  test.each(Object.entries(WORD_NAMESPACE_PROFILES))(
+    "hyperlink comment IDs resolve by namespace URI under alternate prefixes (%s)",
+    async (_profile, namespace) => {
+      const parsed = await parseDocx(
+        await buildDocx(
+          POINT_HOSTS.hyperlink(
+            `${run("left")}<w:commentRangeStart w:id="1"/><w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r>${run("right")}`,
+          ),
+          { namespace, prefix: "word" },
+        ),
+        { preloadFonts: false },
+      );
+      const { owned } = ownedContentOf(parsed, "hyperlink");
+
+      expect(
+        owned
+          .filter((item) => item.type === "commentRangeStart")
+          .map((item) => item.id),
+      ).toEqual([1]);
+      expect(
+        owned
+          .filter((item) => item.type === "commentRangeEnd")
+          .map((item) => item.id),
+      ).toEqual([1]);
+      expect(
+        owned
+          .filter((item) => item.type === "commentReference")
+          .map((item) => item.id),
+      ).toEqual([1]);
+    },
+  );
+
+  test("hyperlink comment IDs ignore same-named attributes in foreign namespaces", async () => {
+    const parsed = await parseDocx(
+      await buildDocx(
+        POINT_HOSTS.hyperlink(
+          `${run("left")}<w:commentRangeEnd xmlns:x="urn:opaque" x:id="1"/>${run("right")}`,
+        ),
+      ),
+      { preloadFonts: false },
+    );
+    const { owned } = ownedContentOf(parsed, "hyperlink");
+
+    expect(
+      owned.some(
+        (item) =>
+          item.type === "preservedInline" && item.xml.includes('x:id="1"'),
+      ),
+    ).toBe(true);
+  });
+
   test.each(["not-an-id", "0suffix", "1.5"])(
     "an invalid comment marker id %s retains its captured writer error",
     async (id) => {

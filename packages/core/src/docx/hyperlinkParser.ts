@@ -53,9 +53,11 @@ import { runHoldsPayload } from "./runPayload";
 import type { StyleMap } from "./styleParser";
 import {
   getAttribute,
+  getAttributeByNamespaceUri,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
   parseOnOffAttribute,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -275,12 +277,19 @@ const linkedCommentRange =
     type: "commentRangeStart" | "commentRangeEnd",
   ): ChildReader<HyperlinkChildContext> =>
   (child, { push }) => {
-    const id = getAttribute(child, "w", "id");
+    const id = getAttributeByNamespaceUri(
+      child,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "id",
+    );
     if (id === null || !isValidOoxmlNumericId(id)) {
       push(preserveInlineChild(child));
       return;
     }
-    push({ type, ...parseMarkupRangeMarker(child) });
+    push({
+      type,
+      ...parseMarkupRangeMarker(child, { id: Number.parseInt(id, 10) }),
+    });
   };
 
 /**

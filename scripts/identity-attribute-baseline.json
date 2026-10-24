@@ -7,7 +7,6 @@
   "packages/core/src/docx/hyperlinkParser.ts": 4,
   "packages/core/src/docx/imageParser.ts": 2,
   "packages/core/src/docx/markupRangeMarker.ts": 2,
-  "packages/core/src/docx/paragraphParser.ts": 1,
   "packages/core/src/docx/rezip.ts": 1,
   "packages/core/src/docx/runParser.ts": 2,
   "packages/core/src/docx/sectionParser.ts": 1,

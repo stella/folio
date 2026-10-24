@@ -1,12 +1,24 @@
-import { findChild, getAttribute, type XmlElement } from "./xmlParser";
+import {
+  findWordprocessingChild,
+  getAttributeByNamespaceUri,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
+} from "./xmlParser";
 
 export const getCommentReferenceId = (
   runElement: XmlElement,
 ): number | null => {
-  const commentReference = findChild(runElement, "w", "commentReference");
+  const commentReference = findWordprocessingChild(
+    runElement,
+    "commentReference",
+  );
   if (!commentReference) return null;
   const id = Number.parseInt(
-    getAttribute(commentReference, "w", "id") ?? "",
+    getAttributeByNamespaceUri(
+      commentReference,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "id",
+    ) ?? "",
     10,
   );
   return Number.isFinite(id) ? id : null;
