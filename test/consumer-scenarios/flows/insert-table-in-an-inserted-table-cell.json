@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 694343127,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2620907330,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "412DDC7F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1261502035,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "@2",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from swap+insert of a258cc6935e7de95 (#1376)"
+}

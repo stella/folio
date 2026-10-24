@@ -613,6 +613,8 @@ type ModelRow = {
    * the table's own blocks and this one, whatever the batch order.
    */
   besideTable?: boolean;
+  /** A block of a table row the batch deletes, rather than one emptied alone. */
+  rowDeleted?: boolean;
   before: ModelRow[];
   after: ModelRow[];
   /** Formatting that must hold over `[start, end)` of the result's text. */
@@ -1363,10 +1365,9 @@ const insertBlock =
         row.fields = fields;
         row.checks = checks;
       }
-      if (named.pre?.table) row.besideTable = true;
       return row;
     });
-    gapOf(model, anchor, position).push(...rows);
+    pushBesideBlocks(model, anchor, position, rows);
     addComment(model, operation);
   };
 
@@ -1406,6 +1407,26 @@ const gapOf = (
   if (position === "after") return row.after;
   const previous = model.rows[model.rows.indexOf(row) - 1];
   return previous && !previous.pendingJoin ? previous.after : row.before;
+};
+
+/**
+ * Put `rows`, blocks inserted outside every table, in the gap on `position`'s
+ * side of `anchor`. When a table's own block borders that gap, they are
+ * beside the table: rows and cells the batch adds to it stay nearer it.
+ */
+const pushBesideBlocks = (
+  model: Model,
+  anchor: ModelRow,
+  position: "before" | "after",
+  rows: readonly ModelRow[],
+) => {
+  const gap = gapOf(model, anchor, position);
+  const previous = model.rows[model.rows.indexOf(anchor) - 1];
+  const bordering =
+    position === "after" || gap === anchor.before ? anchor : previous;
+  const nearTable = bordering?.pre?.table !== undefined;
+  for (const row of rows) if (nearTable) row.besideTable = true;
+  gap.push(...rows);
 };
 
 const rangeOf = (
@@ -1578,19 +1599,27 @@ export const EXPECTATIONS = {
   insertTable: (model, operation) => {
     const position = operation["position"] === "before" ? "before" : "after";
     const named = target(model, operation["blockId"], { adjacent: true });
-    const anchor = position === "after" ? pastTextBoxes(model, named) : named;
+    // A whole table is a peer of the outermost table its anchor sits in.
+    const anchor = insertionAnchor(model, named, position);
     const rows = operation["rows"] as string[][];
     // A cell's line break starts a paragraph there; a blank one stays blank.
     const texts = rows.flatMap((cells) =>
       cells.flatMap((cell) => cell.split(/\r\n|\r|\n/u)),
     );
-    gapOf(model, anchor, position).push(...texts.map((text) => modelRow(text)));
+    pushBesideBlocks(
+      model,
+      anchor,
+      position,
+      texts.map((text) => modelRow(text)),
+    );
   },
   deleteTable: (model, operation) => {
     const { tableIndex } = tableOf(
       tableRemovalTarget(model, operation["blockId"]),
     );
-    removeTableRows(model, tableRows(model, tableIndex));
+    const rows = tableRows(model, tableIndex);
+    for (const row of rows) row.rowDeleted = true;
+    removeTableRows(model, rows);
   },
   insertTableRow: (model, operation) => {
     // A row may go in beside one the batch deletes.
@@ -1618,12 +1647,11 @@ export const EXPECTATIONS = {
     const anchor = tableOf(tableRemovalTarget(model, operation["blockId"]));
     if (hasMergedCells(model, anchor.tableIndex))
       throw new Unmodelled("merged cells");
-    removeTableRows(
-      model,
-      tableRows(model, anchor.tableIndex).filter(
-        (row) => row.pre?.table?.rowIndex === anchor.rowIndex,
-      ),
+    const rows = tableRows(model, anchor.tableIndex).filter(
+      (row) => row.pre?.table?.rowIndex === anchor.rowIndex,
     );
+    for (const row of rows) row.rowDeleted = true;
+    removeTableRows(model, rows);
   },
   insertTableColumn: (model, operation) => {
     const anchor = tableOf(target(model, operation["blockId"]));
@@ -1643,6 +1671,18 @@ export const EXPECTATIONS = {
       // The new cell follows the anchor's column (or precedes it) in each row.
       const column = anchor.gridColumnIndex;
       const cell = modelRow(text);
+      // A row pending deletion keeps its place in the live table and takes
+      // its new cell along: accepting the deletion removes the row. Emptied
+      // cells alone do not make one; a row stays with every cell retired.
+      if (
+        inRow.length > 0 &&
+        inRow.every(
+          (row) =>
+            row.outsidePreState === true ||
+            (model.mode !== "direct" && row.rowDeleted === true),
+        )
+      )
+        cell.removed = true;
       const lastBefore = inRow.findLast((row) =>
         after
           ? (row.pre?.table?.gridColumnIndex ?? 0) <= column
@@ -1680,12 +1720,12 @@ export const EXPECTATIONS = {
     });
     // Like a block, a signature table anchored in a cell lands beside the
     // outermost table, so rows the batch adds to that table stay nearer it.
-    const rows = texts.map((text) => {
-      const row = modelRow(text);
-      if (named.pre?.table) row.besideTable = true;
-      return row;
-    });
-    gapOf(model, anchor, position).push(...rows);
+    pushBesideBlocks(
+      model,
+      anchor,
+      position,
+      texts.map((text) => modelRow(text)),
+    );
     addComment(model, operation);
   },
   mergeTableCells: null,

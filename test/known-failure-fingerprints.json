@@ -454,58 +454,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "10dd71b2cc19d187",
-      "issueOrPr": "#1360",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1376,
-        "primary": "ad8a804ccdd560a4",
-        "title": "consumer flow emoji / tracked-changes: saved block text differs from the requested result",
-        "flow": {
-          "version": 1,
-          "kind": "random",
-          "generation": "targeted",
-          "fixture": "emoji",
-          "mode": "tracked-changes",
-          "seed": 694343127,
-          "steps": [
-            {
-              "action": "suggest_changes",
-              "seed": 2620907330,
-              "operations": [
-                {
-                  "type": "insertTable",
-                  "blockId": "412DDC7F",
-                  "rows": [
-                    ["Term", "Value"],
-                    ["Period", "12 months"]
-                  ]
-                }
-              ]
-            },
-            {
-              "action": "story batch",
-              "seed": 1261502035,
-              "operations": [
-                {
-                  "type": "insertTable",
-                  "blockId": "@2",
-                  "rows": [
-                    ["Term", "Value"],
-                    ["Period", "12 months"]
-                  ]
-                }
-              ]
-            }
-          ],
-          "origin": "shrunk from swap+insert of a258cc6935e7de95"
-        },
-        "type": "consumer",
-        "reportSeed": 1785651658,
-        "reportSeeds": [1785651658]
-      }
-    },
-    {
       "fingerprint": "d876dace7b458a5e",
       "issueOrPr": "#1353",
       "firstSeen": "2026-10-02"

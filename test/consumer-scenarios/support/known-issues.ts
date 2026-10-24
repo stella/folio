@@ -28,8 +28,6 @@ export const FINDINGS = {
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
     "#1408 (closed, still reproduces): a suggested paragraph inserted after a table cell's paragraph and a suggested deletion of the paragraph holding a comment's range end: accepted, the comment's anchored text takes in the inserted paragraph, which direct editing leaves out",
-  COLUMN_CELL_IN_ROW_PENDING_DELETION:
-    "#1415: insertTableColumn on a table whose header row has a pending tracked deletion: the oracle expects the new column's cell in that row to be listed, the reader leaves it out with the row",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -95,9 +93,6 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
     /accepting glues the inserted paragraph onto the merged one/u,
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
     /\[directTracked\] the flow's batches replayed tracked and accepted read otherwise than replayed direct[^\n]*\n\s*\{"type":"main"\}: \.comments\[\d+\]: /u,
-  // The expected texts list the new cell; the reader's do not.
-  COLUMN_CELL_IN_ROW_PENDING_DELETION:
-    /not what was asked \(insertTableColumn\):\n\s*block texts differ:\n\s*expected \[[^\n]*"Column cell 1"[^\n]*\n\s*got +\[(?![^\n]*"Column cell 1")/u,
 };
 
 /**
@@ -108,8 +103,6 @@ export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
   {
     "suggested-story-insert-and-delete.json":
       "COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT",
-    "tracked-story-row-delete-and-column-insert.json":
-      "COLUMN_CELL_IN_ROW_PENDING_DELETION",
   };
 
 /**
