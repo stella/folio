@@ -117,7 +117,7 @@ const CASES = {
   },
 };
 
-test("image resize ownership covers both production adapter paths and bypass forms", () => {
+test("image resize ownership covers React and Vue adapter paths and bypass forms", () => {
   const fixtureRoot = path.join(
     REPOSITORY_ROOT,
     "test",

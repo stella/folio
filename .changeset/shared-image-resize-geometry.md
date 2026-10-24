@@ -1,7 +1,7 @@
 ---
-"@stll/folio-core": patch
-"@stll/folio-react": patch
+"@stll/folio-core": minor
+"@stll/folio-react": minor
 "@stll/folio-vue": patch
 ---
 
-Use one core image-resize geometry implementation across adapters, preserving aspect ratios and dominant-axis shrinking.
+Move image-resize helpers to core utils/imageResize with named options; both adapters use shared aspect-ratio geometry.

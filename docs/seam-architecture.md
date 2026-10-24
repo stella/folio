@@ -143,10 +143,15 @@ the dominant drag axis and clamp one common scale; edge handles leave the
 other dimension unchanged. Adapter code retains coordinate-space conversion,
 preview placement, lifecycle, and chrome.
 
+Deep-import consumers migrate from `prosemirror/imageCommit`'s positional resize
+helper or React's `calculateNewDimensions` to
+`@stll/folio-core/utils/imageResize`'s named-options helper. The old calculation
+exports are removed rather than retaining a second adapter entry point.
+
 `folio-geometry-owners/image-resize-owner` requires each adapter's resize
 handler to call the core owner. It rejects local min/max bounds (including
 aliases), conditional clamps of its result, and duplicate handle unions. Its
-fixtures exercise both production adapter paths. New geometry ownership slices
+fixtures exercise both React and Vue adapter paths. New geometry ownership slices
 should migrate their call sites
 and add an equivalent guard, not add another adapter-local implementation.
 
