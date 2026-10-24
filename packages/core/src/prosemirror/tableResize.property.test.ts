@@ -1,4 +1,3 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import fc from "fast-check";
@@ -6,6 +5,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
+import { acquireHarnessDom } from "../../../../test/harnessDom";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -16,8 +16,11 @@ import { tableAttrsToFormatting } from "./conversion/fromProseDoc";
 import { schema } from "./schema";
 import { commitColumnResize, commitRightEdgeResize } from "./tableResize";
 
-beforeAll(() => GlobalRegistrator.register());
-afterAll(() => GlobalRegistrator.unregister());
+let releaseDom: ReturnType<typeof acquireHarnessDom>;
+beforeAll(() => {
+  releaseDom = acquireHarnessDom();
+});
+afterAll(() => releaseDom());
 
 const partitions = (cuts: readonly boolean[]) => {
   const spans: number[] = [];
@@ -148,89 +151,86 @@ const assertResize = ({
   });
 };
 
-for (const type of ["pair", "rightEdge"] as const) {
-  test(
-    `${type} resize preserves every cell's covered grid width`,
-    () => {
-      assertProperty(
-        fc.property(
-          resizeCase,
-          ({ widths, cuts, column, newLeft, newRight }) => {
-            const before = tableDocument(widths, partitions(cuts));
-            let dispatches = 0;
-            const view = new EditorView(document.createElement("div"), {
-              state: EditorState.create({ doc: before }),
-              dispatchTransaction(transaction) {
-                dispatches++;
-                view.updateState(view.state.apply(transaction));
-              },
-            });
-            try {
-              const expected = [...widths];
-              const firstColumn = type === "pair" ? column : widths.length - 1;
-              const lastColumn = type === "pair" ? column + 1 : firstColumn;
-              expected[firstColumn] = newLeft;
-              switch (type) {
-                case "pair":
-                  expected[lastColumn] = newRight;
-                  commitColumnResize(view, {
-                    pmStart: 0,
-                    colIdx: column,
-                    newLeft,
-                    newRight,
-                  });
-                  break;
-                case "rightEdge":
-                  commitRightEdgeResize(view, {
-                    pmStart: 0,
-                    colIdx: firstColumn,
-                    newWidth: newLeft,
-                  });
-                  break;
-                default: {
-                  const exhaustive: never = type;
-                  panic(`Unknown resize type ${exhaustive}`);
-                }
+test(
+  "column resizing preserves every cell's covered grid width",
+  () => {
+    assertProperty(
+      fc.property(resizeCase, ({ widths, cuts, column, newLeft, newRight }) => {
+        for (const type of ["pair", "rightEdge"] as const) {
+          const before = tableDocument(widths, partitions(cuts));
+          let dispatches = 0;
+          const view = new EditorView(document.createElement("div"), {
+            state: EditorState.create({ doc: before }),
+            dispatchTransaction(transaction) {
+              dispatches++;
+              view.updateState(view.state.apply(transaction));
+            },
+          });
+          try {
+            const expected = [...widths];
+            const firstColumn = type === "pair" ? column : widths.length - 1;
+            const lastColumn = type === "pair" ? column + 1 : firstColumn;
+            expected[firstColumn] = newLeft;
+            switch (type) {
+              case "pair":
+                expected[lastColumn] = newRight;
+                commitColumnResize(view, {
+                  pmStart: 0,
+                  colIdx: column,
+                  newLeft,
+                  newRight,
+                });
+                break;
+              case "rightEdge":
+                commitRightEdgeResize(view, {
+                  pmStart: 0,
+                  colIdx: firstColumn,
+                  newWidth: newLeft,
+                });
+                break;
+              default: {
+                const exhaustive: never = type;
+                panic(`Unknown resize type ${exhaustive}`);
               }
-              expect(dispatches).toBe(1);
-              assertResize({
-                before,
-                after: view.state.doc,
-                widths: expected,
-                firstColumn,
-                lastColumn,
-              });
-            } finally {
-              view.destroy();
             }
-          },
-        ),
-        {
-          id: `${type} resize preserves every cell's covered grid width`,
-          numRuns: 80,
-          examples: [
-            [
-              {
-                widths: [1000, 1000, 1000],
-                cuts: [false, true],
-                column: 1,
-                newLeft: 1200,
-                newRight: 800,
-              },
-            ],
-            [
-              {
-                widths: [1000, 1000, 1000],
-                cuts: [false, true],
-                column: 0,
-                newLeft: 1200,
-                newRight: 800,
-              },
-            ],
+            expect(dispatches).toBe(1);
+            assertResize({
+              before,
+              after: view.state.doc,
+              widths: expected,
+              firstColumn,
+              lastColumn,
+            });
+          } finally {
+            view.destroy();
+          }
+        }
+      }),
+      {
+        id: "column resizing preserves every cell's covered grid width",
+        numRuns: 80,
+        examples: [
+          [
+            {
+              widths: [1000, 1000, 1000],
+              cuts: [false, true],
+              column: 1,
+              newLeft: 1200,
+              newRight: 800,
+            },
           ],
-        },
-      );
-    },
-    propertyTestTimeout(20_000),
-  );
-}
+          [
+            {
+              widths: [1000, 1000, 1000],
+              cuts: [false, true],
+              column: 0,
+              newLeft: 1200,
+              newRight: 800,
+            },
+          ],
+        ],
+      },
+    );
+  },
+  propertyTestTimeout(20_000),
+);
