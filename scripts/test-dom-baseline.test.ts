@@ -34,6 +34,14 @@ test("committed baselines permit only per-file shrinkage", () => {
   ).toHaveLength(1);
 });
 
+test.each([{ [FILE]: 1.5 }, { [FILE]: 0 }, { "../new.test.ts": 1 }])(
+  "malformed current allowance fails closed: %o",
+  (current) => {
+    const base = { type: "committed", baseline: { [FILE]: 2 } } as const;
+    expect(() => compareTestDomBaseline({ current, base })).toThrow();
+  },
+);
+
 const BOOTSTRAP_CASES = {
   unchanged: { before: "existing source", now: "existing source", failures: 0 },
   changed: {

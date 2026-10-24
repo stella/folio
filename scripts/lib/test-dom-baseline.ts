@@ -7,8 +7,7 @@ export const TEST_DOM_BASELINE_PATH =
   ".oxlint-plugins/folio-test-dom.baseline.json";
 type DomBaseline = Readonly<Record<string, number>>;
 
-export const parseTestDomBaseline = (source: string): DomBaseline => {
-  const value: unknown = JSON.parse(source);
+const validateTestDomBaseline = (value: unknown): DomBaseline => {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     panic("DOM baseline must be a JSON object");
   const parsed: Record<string, number> = {};
@@ -25,6 +24,9 @@ export const parseTestDomBaseline = (source: string): DomBaseline => {
   }
   return parsed;
 };
+
+export const parseTestDomBaseline = (source: string): DomBaseline =>
+  validateTestDomBaseline(JSON.parse(source));
 
 type DomBaselineBase =
   | { type: "committed"; baseline: DomBaseline }
@@ -44,7 +46,9 @@ export const compareTestDomBaseline = ({
   base,
 }: CompareTestDomBaselineOptions): string[] => {
   const problems: string[] = [];
-  for (const [file, count] of Object.entries(current)) {
+  for (const [file, count] of Object.entries(
+    validateTestDomBaseline(current),
+  )) {
     switch (base.type) {
       case "committed":
         if (count > (base.baseline[file] ?? 0))

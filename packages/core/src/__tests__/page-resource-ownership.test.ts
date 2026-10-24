@@ -85,7 +85,10 @@ const mutationsWithoutAdjacentRelease = (source: string): string[] => {
       if (statements.length > 0) {
         const index = statements.indexOf(node.parent);
         const previous = statements.at(index - 1);
-        const expression = previous?.expression;
+        const expression =
+          previous !== undefined && ts.isExpressionStatement(previous)
+            ? previous.expression
+            : undefined;
         const release =
           expression !== undefined && ts.isCallExpression(expression)
             ? expression
