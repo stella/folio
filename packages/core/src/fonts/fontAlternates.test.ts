@@ -19,6 +19,22 @@ describe("font alternates", () => {
     expect(getFontAlternate("Brand Sans", alternates)).toBe("Name A, Name B");
   });
 
+  test("ignores alternate family names longer than the substitution limit", () => {
+    const maxLength = "A".repeat(31);
+    const tooLong = "A".repeat(32);
+
+    expect(
+      buildFontAlternates({
+        fonts: [{ name: "Boundary", altName: maxLength }],
+      }).get("boundary"),
+    ).toBe(maxLength);
+    expect(
+      buildFontAlternates({
+        fonts: [{ name: "Boundary", altName: tooLong }],
+      }).has("boundary"),
+    ).toBe(false);
+  });
+
   test("ignores empty and self-referential alternate names", () => {
     const alternates = buildFontAlternates({
       fonts: [
