@@ -26,6 +26,7 @@ import {
   setContentControlValueTr,
 } from "../commands/contentControls";
 import { createPluginKeyOwner } from "../pluginKeyOwner";
+import { selectLockedInlineControl } from "./lockedControlKeyHandling";
 
 export type ContentControlWidgetAnchor = {
   getBoundingClientRect: () => { bottom: number; left: number };
@@ -289,6 +290,9 @@ export function createContentControlWidgetsPlugin(
   return new Plugin({
     key: contentControlWidgetsPluginKey.createKey(),
     props: {
+      handleKeyDown(view, event) {
+        return selectLockedInlineControl(view, event);
+      },
       handleDOMEvents: {
         click(view, event) {
           return handleContentControlWidgetClick({

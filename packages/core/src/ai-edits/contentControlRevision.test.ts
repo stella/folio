@@ -14,6 +14,7 @@ import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import {
   EditorState,
+  NodeSelection,
   TextSelection,
   type Transaction,
 } from "prosemirror-state";
@@ -24,6 +25,7 @@ import {
   acceptAllChanges,
   rejectAllChanges,
 } from "../prosemirror/commands/comments";
+import { createContentControlWidgetsPlugin } from "../prosemirror/plugins/contentControlWidgets";
 import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMode";
 import { schema } from "../prosemirror/schema";
 import { FolioDocxReviewer } from "./headless";
@@ -219,10 +221,12 @@ describe("a tracked deletion typed in the editor", () => {
   const CONTROL_TEXT = "John";
 
   /** `Name: [John] pays.` with suggestion mode on; returns the control's position. */
-  const editorState = () => {
-    const control = schema.node("sdt", { sdtType: "richText", tag: "bound" }, [
-      schema.text(CONTROL_TEXT),
-    ]);
+  const editorState = (lock?: "contentLocked") => {
+    const control = schema.node(
+      "sdt",
+      { sdtType: "richText", tag: "bound", ...(lock ? { lock } : {}) },
+      [schema.text(CONTROL_TEXT)],
+    );
     const paragraph = schema.node("paragraph", null, [
       schema.text("Name: "),
       control,
@@ -231,20 +235,17 @@ describe("a tracked deletion typed in the editor", () => {
     const state = EditorState.create({
       schema,
       doc: schema.node("doc", null, [paragraph]),
-      plugins: [createSuggestionModePlugin(true, "Reviewer")],
+      plugins: [
+        createSuggestionModePlugin(true, "Reviewer"),
+        createContentControlWidgetsPlugin(),
+      ],
     });
     const controlPos = 1 + "Name: ".length;
     return { state, controlPos, controlEnd: controlPos + control.nodeSize };
   };
 
-  const backspaceOver = (
-    state: EditorState,
-    from: number,
-    to: number,
-  ): EditorState => {
-    let next = state.apply(
-      state.tr.setSelection(TextSelection.create(state.doc, from, to)),
-    );
+  const pressKey = (state: EditorState, key: "Backspace" | "Delete") => {
+    let next = state;
     const view = {
       get state() {
         return next;
@@ -256,14 +257,28 @@ describe("a tracked deletion typed in the editor", () => {
     // SAFETY: the suggestion-mode key handler reads only the view's `state`
     // and `dispatch`, and only the event's `key`.
     const editorView = view as unknown as EditorView;
-    const event = { key: "Backspace" } as KeyboardEvent;
-    const handled = next.plugins
-      .map((plugin) =>
-        plugin.props.handleKeyDown?.call(plugin, editorView, event),
-      )
-      .some(Boolean);
-    expect(handled).toBe(true);
-    return next;
+    const event = { key } as KeyboardEvent;
+    let handled = false;
+    for (const plugin of next.plugins) {
+      if (plugin.props.handleKeyDown?.call(plugin, editorView, event)) {
+        handled = true;
+        break;
+      }
+    }
+    return { handled, state: next };
+  };
+
+  const backspaceOver = (
+    state: EditorState,
+    from: number,
+    to: number,
+  ): EditorState => {
+    const selected = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, from, to)),
+    );
+    const result = pressKey(selected, "Backspace");
+    expect(result.handled).toBe(true);
+    return result.state;
   };
 
   const resolve = (
@@ -309,4 +324,27 @@ describe("a tracked deletion typed in the editor", () => {
       CONTROL_TEXT,
     ]);
   });
+
+  test.each(["Backspace", "Delete"] as const)(
+    "%s selects a content-locked control before a tracked whole-control deletion",
+    (key) => {
+      const { state, controlPos, controlEnd } = editorState("contentLocked");
+      const caret = key === "Backspace" ? controlEnd : controlPos;
+      const atEdge = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, caret)),
+      );
+
+      const selected = pressKey(atEdge, key);
+      expect(selected.handled).toBe(true);
+      expect(selected.state.selection).toBeInstanceOf(NodeSelection);
+      expect(selected.state.doc.eq(state.doc)).toBe(true);
+
+      const deleted = pressKey(selected.state, key);
+      expect(deleted.handled).toBe(true);
+      expect(controlsIn(resolve(deleted.state, acceptAllChanges))).toEqual([]);
+      expect(controlsIn(resolve(deleted.state, rejectAllChanges))).toEqual([
+        CONTROL_TEXT,
+      ]);
+    },
+  );
 });
