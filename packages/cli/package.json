@@ -57,7 +57,7 @@
     "@fontsource/source-sans-3": "^5.3.1",
     "@fontsource/tinos": "^5.2.7",
     "@modelcontextprotocol/server": "2.3.1",
-    "@stll/agent-input": "0.1.4",
+    "@stll/agent-input": "0.1.6",
     "@stll/folio-agents": "workspace:^",
     "@stll/folio-core": "workspace:^",
     "@stll/fuzzy-search": "1.1.5",

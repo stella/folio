@@ -98,7 +98,7 @@
         "@fontsource/source-sans-3": "^5.3.1",
         "@fontsource/tinos": "^5.2.7",
         "@modelcontextprotocol/server": "2.3.1",
-        "@stll/agent-input": "0.1.4",
+        "@stll/agent-input": "0.1.6",
         "@stll/folio-agents": "workspace:^",
         "@stll/folio-core": "workspace:^",
         "@stll/fuzzy-search": "1.1.5",
@@ -932,7 +932,7 @@
 
     "@speed-highlight/core": ["@speed-highlight/core@1.2.17", "", {}, "sha512-Z92FwKpCtfaW1V0jTU/fh3QzYEZN8wDwrzRIBoADCJfn4mJCNcJN/XegifX7BDrQ8/h9Xh/JnbyMchL0FqXrkg=="],
 
-    "@stll/agent-input": ["@stll/agent-input@0.1.4", "", { "dependencies": { "@stll/country-codes": "^0.2.0", "@stll/template-conditions": "^0.6.3", "@stll/text-normalize": "^0.1.1", "@stll/time": "^0.3.0", "better-result": "3.0.1" } }, "sha512-ZgXrVKS49zIWeLmevNdTm6x+w+XCToYM8u0fwCrmDXrhtom5yEugjlS4mp9LrIinqc1sTsj6vIsbmv2CWI4q7w=="],
+    "@stll/agent-input": ["@stll/agent-input@0.1.6", "", { "dependencies": { "@stll/country-codes": "^0.2.0", "@stll/fuzzy-search": "1.1.5", "@stll/template-conditions": "^0.6.4", "@stll/text-normalize": "^0.3.0", "@stll/time": "^0.3.0", "better-result": "3.0.1" } }, "sha512-1glzZXxfl1hyI3DlgmX+rtrKTQq9P9DjG7eS/jk5gByDolhS2GCesVvzojRJmZxebDjOQFbVhHY5PCrjfHuSLA=="],
 
     "@stll/aho-corasick": ["@stll/aho-corasick@1.0.4", "", { "optionalDependencies": { "@stll/aho-corasick-darwin-arm64": "1.0.4", "@stll/aho-corasick-darwin-x64": "1.0.4", "@stll/aho-corasick-linux-arm64-gnu": "1.0.4", "@stll/aho-corasick-linux-x64-gnu": "1.0.4", "@stll/aho-corasick-wasm32-wasi": "1.0.4", "@stll/aho-corasick-win32-x64-msvc": "1.0.4" } }, "sha512-TY1CgNtWGLCTa/JnTHYlkAFA/1t4Y0DOJejAFyLuf4CDL+ZeExG17iZFH+PTDEX8zzxWmTXkE7VMPRpNV4ZVoA=="],
 
@@ -1006,7 +1006,7 @@
 
     "@stll/template-conditions": ["@stll/template-conditions@0.6.4", "", { "dependencies": { "@stll/conditions": "^0.4.0", "better-result": "3.0.1", "temporal-polyfill": "1.0.5" } }, "sha512-ZPzvLEdnwzq3bdYF7RsqBQhZJ6uvyCS2pe9mh6D+oK2i2H83n9Y+x5ay2kH5kIIkW9RnUt2BEcnqL6FAeT9XGA=="],
 
-    "@stll/text-normalize": ["@stll/text-normalize@0.1.1", "", {}, "sha512-Cc5VF8zwl9InDKv66Fg7lxLhV0shWNbDWrBxep6DWnZmjHBnkSv5AXERtRggQjw0y0oO76eLKUbtZ5idBHZY0w=="],
+    "@stll/text-normalize": ["@stll/text-normalize@0.3.0", "", {}, "sha512-GuRhAXZvA2pCWguq1de9i6uYzZ1zjHAk1bEZil3CaznlBCjpqBYhwIBPwssMpn6o4PDEe+YPAuKXY5t4UhoV7w=="],
 
     "@stll/time": ["@stll/time@0.3.0", "", { "dependencies": { "better-result": "3.0.1", "temporal-polyfill": "1.0.5" } }, "sha512-fnSIJp4fRDcNdleUUgQDSKrAilgDH0DIiQMfNK4pzrmGUlFtetmgI3TC4WCn1jSVqV9wEiCL/sDkXFUJB75wzg=="],
 
