@@ -13,6 +13,9 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 
+const CLI_TIMEOUT_MS = 30_000;
+const CLI_CLEANUP_GRACE_MS = 5_000;
+
 const fixtureDirectories: string[] = [];
 afterEach(() => {
   for (const directory of fixtureDirectories.splice(0))
@@ -33,26 +36,35 @@ describe("dependency-cruiser coverage", () => {
     );
   });
 
-  test("a successful tiny cruise is a failure (positive control)", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "folio-cruise-floor-"));
-    fixtureDirectories.push(directory);
-    const entry = path.join(directory, "entry.js");
-    writeFileSync(entry, "export const value = 1;\n");
-    const result = Bun.spawnSync(
-      [
-        path.resolve(import.meta.dirname, "../node_modules/.bin/depcruise"),
-        "--no-config",
-        "--output-type",
-        "err",
-        entry,
-      ],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    expect(result.exitCode).toBe(0);
-    expect(dependencyCruiseOutputIssue(result.stdout.toString())).toContain(
-      "cruised 1 modules; expected at least",
-    );
-  });
+  test(
+    "a successful tiny cruise is a failure (positive control)",
+    () => {
+      const directory = mkdtempSync(path.join(tmpdir(), "folio-cruise-floor-"));
+      fixtureDirectories.push(directory);
+      const entry = path.join(directory, "entry.js");
+      writeFileSync(entry, "export const value = 1;\n");
+      const result = Bun.spawnSync(
+        [
+          path.resolve(import.meta.dirname, "../node_modules/.bin/depcruise"),
+          "--no-config",
+          "--output-type",
+          "err",
+          entry,
+        ],
+        {
+          stdout: "pipe",
+          stderr: "pipe",
+          timeout: CLI_TIMEOUT_MS,
+          killSignal: "SIGKILL",
+        },
+      );
+      expect(result.exitCode).toBe(0);
+      expect(dependencyCruiseOutputIssue(result.stdout.toString())).toContain(
+        "cruised 1 modules; expected at least",
+      );
+    },
+    CLI_TIMEOUT_MS + CLI_CLEANUP_GRACE_MS,
+  );
 
   test("accepts the recorded full-graph summary and summaries with violations", () => {
     expect(
