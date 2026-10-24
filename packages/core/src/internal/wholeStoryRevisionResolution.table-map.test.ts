@@ -111,10 +111,9 @@ const textPosition = (doc: PMNode, text: string): number => {
 const anchorPosition = (doc: PMNode, commentId: number): number => {
   let found: number | null = null;
   doc.descendants((node, position) => {
-    if (
-      node.type.name === "rangeAnchor" &&
-      readRangeAnchorAttrs(node.attrs).start?.id === commentId
-    ) {
+    if (node.type.name !== "rangeAnchor") return true;
+    const attrs = readRangeAnchorAttrs(node);
+    if (attrs.ok && attrs.value.start.id === commentId) {
       found = position;
       return false;
     }
@@ -196,11 +195,11 @@ test.each(["accept", "reject"] as const)(
           receivesOutside ? "lead" : `${text}cell`,
         );
         expect(
-          host?.children.some(
-            (child) =>
-              child.type.name === "rangeAnchor" &&
-              readRangeAnchorAttrs(child.attrs).start?.id === 37,
-          ),
+          host?.children.some((child) => {
+            if (child.type.name !== "rangeAnchor") return false;
+            const attrs = readRangeAnchorAttrs(child);
+            return attrs.ok && attrs.value.start.id === 37;
+          }),
         ).toBe(true);
       }
     }
@@ -365,7 +364,7 @@ test("whole-story acceptance matches accepting adjacent paragraph marks in turn"
           info: { id: 2, author: "Reviewer", date: "2026-10-19" },
         },
       },
-      [comment],
+      [comment, schema.node("commentReference", { commentId: 29 })],
     ),
     schema.node(
       "paragraph",
@@ -402,7 +401,7 @@ test("whole-story acceptance matches accepting adjacent paragraph marks in turn"
       mode: "accept",
     });
   expect(wholeStory.failed).toBe(false);
-  expect(incremental.doc.eq(wholeStory.resolved)).toBe(true);
+  expect(incremental.doc.toJSON()).toStrictEqual(wholeStory.resolved.toJSON());
   const receiver =
     wholeStory.resolved.firstChild?.firstChild?.firstChild?.firstChild;
   expect(receiver?.attrs["paraId"]).toBe("10000003");
