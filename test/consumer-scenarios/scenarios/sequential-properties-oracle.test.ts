@@ -7,8 +7,8 @@ import {
   type FolioDocumentOperation,
 } from "@stll/folio-core/server";
 
+import { sequentialGroups } from "../support/batch-replay-order.ts";
 import { openReviewer, packDocument } from "../support/documents.ts";
-import { sequentialGroups } from "../support/metamorphic.ts";
 import { type Row } from "../support/oracle.ts";
 
 const paragraphRows = (count: number): Row[] =>

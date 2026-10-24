@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
+import { sequentialGroups } from "../support/batch-replay-order.ts";
 import { FIXTURES, openReviewer } from "../support/documents.ts";
-import { sequentialGroups } from "../support/metamorphic.ts";
 import {
   coreBatch,
   GENERATORS,

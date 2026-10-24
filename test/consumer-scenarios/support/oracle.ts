@@ -31,6 +31,7 @@ import {
   parseDocx,
 } from "@stll/folio-core/server";
 
+import { sequentialGroups } from "./batch-replay-order.ts";
 import { recordFeatureHit, recordHit, type StepKind } from "./coverage.ts";
 import { openReviewer, toArrayBuffer } from "./documents.ts";
 import {
@@ -402,6 +403,37 @@ type Fields = {
     Row[Key] | typeof ANY;
 };
 
+type ListLineage =
+  | {
+      type: "reference";
+      numId: number;
+      source: "document" | "operation";
+      basis: "direct" | "style";
+    }
+  | { type: "newList"; operationId: string }
+  | {
+      type: "none";
+      source: "document" | "operation";
+      basis: "direct" | "style";
+    }
+  | { type: "unknown"; source: "document" | "operation" };
+
+const hasDirectNumbering = (lineage: ListLineage): boolean => {
+  switch (lineage.type) {
+    case "newList":
+      return true;
+    case "reference":
+    case "none":
+      return lineage.basis === "direct";
+    case "unknown":
+      return false;
+    default: {
+      const unhandled: never = lineage;
+      throw new Error(`Unhandled list lineage ${JSON.stringify(unhandled)}`);
+    }
+  }
+};
+
 type Story = FolioDocumentStoryHandle;
 const MAIN: Story = { type: "main" };
 type NoteStory = Extract<Story, { type: "footnote" | "endnote" }>;
@@ -582,6 +614,7 @@ type ModelRow = {
   pre?: Row;
   text: string;
   fields: Fields;
+  listLineage: ListLineage;
   /** Extra checks on the result's block: a message when it fails. */
   checks: ((row: Row) => string | null)[];
   /** Text edits in the pre-state text's coordinates. */
@@ -674,17 +707,67 @@ const fieldsOf = (row: Row): Fields => {
   const fields: Fields = {};
   for (const key of KEPT_FIELDS)
     (fields as Record<string, unknown>)[key] = row[key];
+  if (row.directAlignment !== undefined)
+    fields.directAlignment = row.directAlignment;
   return fields;
 };
 
+const listLineageOf = (
+  numbering: Numbering | typeof UNKNOWN_NUMBERING,
+  source: "document" | "operation",
+  basis: "direct" | "style",
+): ListLineage => {
+  if (numbering === UNKNOWN_NUMBERING) return { type: "unknown", source };
+  if (numbering?.kind === "reference")
+    return { type: "reference", numId: numbering.numId, source, basis };
+  if (numbering?.kind === "none") return { type: "none", source, basis };
+  return { type: "unknown", source };
+};
+
+type StyleListLineageOptions = {
+  model: Model;
+  styleId: string | null;
+  source: ModelRow;
+};
+
+const styleListLineage = ({
+  model,
+  styleId,
+  source,
+}: StyleListLineageOptions): ListLineage => {
+  const numbering = requestedStyleNumbering(
+    model,
+    styleId,
+    liveParagraph(source) ?? source.pre,
+  );
+  if (numbering === undefined && model.numberingFacts !== undefined)
+    return { type: "none", source: "operation", basis: "style" };
+  return listLineageOf(numbering, "operation", "style");
+};
+
 /**
- * The fields a new paragraph copies from the block it is inserted beside. It
- * copies that block's current properties: a list marker the block shows only
- * through a pending property change (what rejecting restores) numbers
- * nothing it copies.
+ * Untouched pre-state rows need style facts to distinguish inherited list
+ * markers from direct numbering. Operation-written lineage already describes
+ * the current paragraph and must not be recomputed from its pre-state.
  */
 const inheritedListFields = (model: Model, row: Row): Fields => {
   const fields = fieldsOf(row);
+  const current = model.rows.find((candidate) => candidate.pre?.id === row.id);
+  if (current) {
+    switch (current.listLineage.type) {
+      case "newList":
+        return fields;
+      case "reference":
+      case "none":
+      case "unknown":
+        if (current.listLineage.source === "operation") return fields;
+        break;
+      default: {
+        const unhandled: never = current.listLineage;
+        throw new Error(`Unhandled list lineage ${JSON.stringify(unhandled)}`);
+      }
+    }
+  }
   if (row.kind !== "listItem" || !model.numberingFacts) return fields;
   const numbering = requestedStyleNumbering(model, row.styleId ?? null, row);
   if (
@@ -695,18 +778,34 @@ const inheritedListFields = (model: Model, row: Row): Fields => {
   return { ...fields, kind: "paragraph", listLevel: undefined };
 };
 
-const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => ({
-  ...(pre ? { pre } : {}),
-  text,
-  fields,
-  checks: [],
-  edits: [],
-  splits: [],
-  removed: false,
-  before: [],
-  after: [],
-  formats: [],
-});
+const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => {
+  let listLineage: ListLineage = { type: "unknown", source: "document" };
+  if (pre?.listReference) {
+    listLineage = {
+      type: "reference",
+      numId: pre.listReference.numId,
+      source: "document",
+      basis: pre.statedNumbering?.kind === "inherit" ? "style" : "direct",
+    };
+  } else if (pre?.statedNumbering?.kind === "none") {
+    listLineage = { type: "none", source: "document", basis: "direct" };
+  } else if (pre?.statedNumbering?.kind === "inherit") {
+    listLineage = { type: "none", source: "document", basis: "style" };
+  }
+  return {
+    ...(pre ? { pre } : {}),
+    text,
+    fields,
+    listLineage,
+    checks: [],
+    edits: [],
+    splits: [],
+    removed: false,
+    before: [],
+    after: [],
+    formats: [],
+  };
+};
 
 /**
  * The model of `rows`. `live`, the reviewer's own blocks, adds the blocks a
@@ -977,6 +1076,82 @@ const requestedStyleNumbering = (
   return numberingOver(style, direct);
 };
 
+type OperationListLineageOptions = {
+  model: Model;
+  request: Record<string, unknown>;
+  operationId: string;
+  source: ModelRow;
+  inheritsFormatting: boolean;
+};
+
+const operationListLineage = ({
+  model,
+  request,
+  operationId,
+  source,
+  inheritsFormatting,
+}: OperationListLineageOptions): ListLineage => {
+  const numbering = request["numbering"];
+  if ("numbering" in request) {
+    assert.ok(
+      numbering !== null && typeof numbering === "object",
+      "An applied numbering request must be an object",
+    );
+    assert.ok(
+      "kind" in numbering,
+      "An applied numbering request must name a kind",
+    );
+    switch (numbering["kind"]) {
+      case "newList":
+        return { type: "newList", operationId };
+      case "none":
+        return { type: "none", source: "operation", basis: "direct" };
+      case "reference":
+        assert.ok(
+          "numId" in numbering && typeof numbering["numId"] === "number",
+          "An applied reference request must name a numeric list id",
+        );
+        return {
+          type: "reference",
+          numId: numbering["numId"],
+          source: "operation",
+          basis: "direct",
+        };
+      case "inherit": {
+        const styleId = request["styleId"];
+        if (typeof styleId === "string" || styleId === null) {
+          return styleListLineage({ model, styleId, source });
+        }
+        return styleListLineage({
+          model,
+          styleId:
+            typeof source.fields.styleId === "string"
+              ? source.fields.styleId
+              : (source.pre?.styleId ?? null),
+          source,
+        });
+      }
+      default:
+        assert.fail(
+          `Unexpected applied numbering kind ${JSON.stringify(numbering["kind"])}`,
+        );
+    }
+  }
+  if ("styleId" in request) {
+    const styleId = request["styleId"];
+    assert.ok(
+      typeof styleId === "string" || styleId === null,
+      "An applied style id must be a string or null",
+    );
+    if (hasDirectNumbering(source.listLineage)) {
+      return source.listLineage;
+    }
+    return styleListLineage({ model, styleId, source });
+  }
+  if (inheritsFormatting) return source.listLineage;
+  return { type: "none", source: "operation", basis: "direct" };
+};
+
 const numberingFields = (
   model: Model,
   styleId: string | null,
@@ -1073,20 +1248,33 @@ const isBullet = (label: string | undefined): boolean =>
 
 type ParagraphRequest = Record<string, unknown>;
 
+type ParagraphRequestOptions = {
+  model: Model;
+  request: ParagraphRequest;
+  pre: Row | undefined;
+  inherited?: Row;
+  numbering: "deriveStyle" | "preserveDirect";
+};
+
 /** Fields and checks for the paragraph properties an operation sets on `pre` (absent: a new block). */
-const paragraphRequest = (
-  model: Model,
-  request: ParagraphRequest,
-  pre: Row | undefined,
-  inherited?: Row,
-): { fields: Fields; checks: ModelRow["checks"] } => {
+const paragraphRequest = ({
+  model,
+  request,
+  pre,
+  inherited,
+  numbering: numberingMode,
+}: ParagraphRequestOptions): { fields: Fields; checks: ModelRow["checks"] } => {
   const fields: Fields = {};
   const checks: ModelRow["checks"] = [];
   if ("styleId" in request) {
     const styleId = request["styleId"] as string | null;
     Object.assign(fields, styleFields(model, styleId, pre, inherited));
     const numbering = requestedStyleNumbering(model, styleId, pre ?? inherited);
-    if (!("numbering" in request) && numbering !== UNKNOWN_NUMBERING) {
+    if (
+      numberingMode === "deriveStyle" &&
+      !("numbering" in request) &&
+      numbering !== UNKNOWN_NUMBERING
+    ) {
       checks.push((row) => {
         if (numbering?.kind === "reference") {
           return row.listReference?.numId === numbering.numId
@@ -1364,19 +1552,62 @@ const insertionAnchor = (
   return (position === "before" ? rows[0] : rows.at(-1)) ?? row;
 };
 
+const liveParagraph = (row: ModelRow): Row | undefined => {
+  if (!row.pre) return undefined;
+  const live = { ...row.pre };
+  for (const [key, value] of Object.entries(row.fields)) {
+    if (value !== ANY) Object.assign(live, { [key]: value });
+  }
+  return live;
+};
+
+type LiveParagraphRequestOptions = {
+  model: Model;
+  request: ParagraphRequest;
+  row: ModelRow;
+  inherited?: Row;
+};
+
+const paragraphRequestForLiveRow = ({
+  model,
+  request,
+  row,
+  inherited,
+}: LiveParagraphRequestOptions): ReturnType<typeof paragraphRequest> => {
+  const live = liveParagraph(row);
+  const preserveDirect =
+    "styleId" in request &&
+    !("numbering" in request) &&
+    hasDirectNumbering(row.listLineage);
+  const result = paragraphRequest({
+    model,
+    request,
+    pre: live,
+    inherited,
+    numbering: preserveDirect ? "preserveDirect" : "deriveStyle",
+  });
+  if (preserveDirect && live) {
+    result.fields.kind = live.kind;
+    result.fields.listLevel = live.listLevel;
+  }
+  return result;
+};
+
 const insertBlock =
   (position: "before" | "after"): Expect =>
   (model, operation) => {
     const named = target(model, operation["blockId"], { adjacent: true });
     const anchor = insertionAnchor(model, named, position);
     const inherited =
-      operation["inheritFormatting"] === false ? undefined : named.pre;
-    const { fields: requested, checks } = paragraphRequest(
+      operation["inheritFormatting"] === false
+        ? undefined
+        : liveParagraph(named);
+    const { fields: requested, checks } = paragraphRequestForLiveRow({
       model,
-      operation,
-      undefined,
+      request: operation,
+      row: named,
       inherited,
-    );
+    });
     const fields = {
       ...(inherited ? inheritedListFields(model, inherited) : {}),
       ...requested,
@@ -1392,6 +1623,13 @@ const insertBlock =
       if (index === 0 || scope === "allParagraphs") {
         row.fields = fields;
         row.checks = checks;
+        row.listLineage = operationListLineage({
+          model,
+          request: operation,
+          operationId: String(operation["id"]),
+          source: named,
+          inheritsFormatting: operation["inheritFormatting"] !== false,
+        });
       }
       return row;
     });
@@ -1547,11 +1785,18 @@ export const EXPECTATIONS = {
       replace: String(operation["text"]),
     });
     if ("styleId" in operation) {
-      const { fields, checks } = paragraphRequest(
+      row.listLineage = operationListLineage({
         model,
-        { styleId: operation["styleId"] },
-        row.pre,
-      );
+        request: operation,
+        operationId: String(operation["id"]),
+        source: row,
+        inheritsFormatting: true,
+      });
+      const { fields, checks } = paragraphRequestForLiveRow({
+        model,
+        request: { styleId: operation["styleId"] },
+        row,
+      });
       Object.assign(row.fields, fields);
       row.checks.push(...checks);
     }
@@ -1574,8 +1819,22 @@ export const EXPECTATIONS = {
       ParagraphRequest | undefined;
     const second = operation["secondParagraphProperties"] as
       ParagraphRequest | undefined;
+    if (
+      (first && ("styleId" in first || "numbering" in first)) ||
+      (second && ("styleId" in second || "numbering" in second))
+    ) {
+      row.listLineage = { type: "unknown", source: "operation" };
+    }
     if (first)
-      Object.assign(row.fields, paragraphRequest(model, first, row.pre).fields);
+      Object.assign(
+        row.fields,
+        paragraphRequest({
+          model,
+          request: first,
+          pre: liveParagraph(row),
+          numbering: "deriveStyle",
+        }).fields,
+      );
     row.splits.push({
       offset,
       consumed: separator.length,
@@ -1583,7 +1842,12 @@ export const EXPECTATIONS = {
         ? {
             second: {
               ...row.fields,
-              ...paragraphRequest(model, second, row.pre).fields,
+              ...paragraphRequest({
+                model,
+                request: second,
+                pre: liveParagraph(row),
+                numbering: "deriveStyle",
+              }).fields,
             },
           }
         : {}),
@@ -1608,19 +1872,39 @@ export const EXPECTATIONS = {
       typeof operation["separator"] === "string" ? operation["separator"] : "";
     const merged = operation["mergedParagraphProperties"] as
       ParagraphRequest | undefined;
-    if (merged)
+    if (merged) {
+      if ("styleId" in merged || "numbering" in merged) {
+        row.listLineage = operationListLineage({
+          model,
+          request: merged,
+          operationId: String(operation["id"]),
+          source: row,
+          inheritsFormatting: true,
+        });
+      }
       Object.assign(
         row.fields,
-        paragraphRequest(model, merged, row.pre).fields,
+        paragraphRequestForLiveRow({ model, request: merged, row }).fields,
       );
+    }
   },
   setBlockParagraphProperties: (model, operation) => {
     const row = target(model, operation["blockId"]);
-    const { fields, checks } = paragraphRequest(
+    const properties = operation["properties"];
+    if (properties !== null && typeof properties === "object") {
+      row.listLineage = operationListLineage({
+        model,
+        request: properties,
+        operationId: String(operation["id"]),
+        source: row,
+        inheritsFormatting: true,
+      });
+    }
+    const { fields, checks } = paragraphRequestForLiveRow({
       model,
-      operation["properties"] as ParagraphRequest,
-      row.pre,
-    );
+      request: operation["properties"] as ParagraphRequest,
+      row,
+    });
     Object.assign(row.fields, fields);
     row.checks.push(...checks);
   },
@@ -1826,6 +2110,7 @@ type Expected = {
   formats: ModelRow["formats"];
   /** The pre-state block, while its text is unchanged: formatting outside a range keeps. */
   pre?: Row;
+  listLineage: ListLineage;
 };
 
 const applyEdits = (
@@ -1910,6 +2195,7 @@ const materialize = (model: Model): Expected[] => {
               index === 0 ? row.fields : (segment.split?.second ?? row.fields),
             checks: row.checks,
             formats: whole ? row.formats : [],
+            listLineage: row.listLineage,
             ...(whole && row.pre ? { pre: row.pre } : {}),
           },
           row.pre?.table,
@@ -2026,6 +2312,62 @@ export const compareWithModel = (
       }
     }
   });
+  const newListIds = new Map<string, number>();
+  const referenceIds = new Set<number>();
+  for (const entry of expected) {
+    if (entry.listLineage.type === "reference")
+      referenceIds.add(entry.listLineage.numId);
+  }
+  expected.forEach((entry, index) => {
+    const row = got[index];
+    if (!row) return;
+    switch (entry.listLineage.type) {
+      case "reference":
+        if (row.listReference?.numId !== entry.listLineage.numId) {
+          problems.push(
+            `"${row.text}": list reference ${JSON.stringify(row.listReference)} differs from modeled reference ${entry.listLineage.numId}`,
+          );
+        }
+        break;
+      case "none":
+        if (row.listReference !== undefined) {
+          problems.push(
+            `"${row.text}": unexpected list reference ${JSON.stringify(row.listReference)}`,
+          );
+        }
+        break;
+      case "newList": {
+        const numId = row.listReference?.numId;
+        if (numId === undefined) {
+          problems.push(`"${row.text}": new list has no list reference`);
+          break;
+        }
+        const previous = newListIds.get(entry.listLineage.operationId);
+        if (previous !== undefined && previous !== numId) {
+          problems.push(
+            `"${row.text}": new list ${entry.listLineage.operationId} has inconsistent references ${previous} and ${numId}`,
+          );
+        }
+        newListIds.set(entry.listLineage.operationId, numId);
+        break;
+      }
+      case "unknown":
+        break;
+      default: {
+        const unhandled: never = entry.listLineage;
+        throw new Error(`Unhandled list lineage ${JSON.stringify(unhandled)}`);
+      }
+    }
+  });
+  const claimedNewListIds = new Set<number>();
+  for (const [operationId, numId] of newListIds) {
+    if (referenceIds.has(numId) || claimedNewListIds.has(numId)) {
+      problems.push(
+        `new list ${operationId} aliases another modeled list reference ${numId}`,
+      );
+    }
+    claimedNewListIds.add(numId);
+  }
   return problems;
 };
 
@@ -2577,7 +2919,13 @@ export const assertRequestedOutcome = async (
   const noteReferences = new Map<string, readonly FolioDocumentStoryHandle[]>(
     pre.targets.noteReferences,
   );
-  for (const [index, operation] of outcome.applied.entries()) {
+  const replayOperations = sequentialGroups({
+    applied: outcome.applied,
+    preRows: pre.rows,
+    mode: pre.mode,
+  }).flat();
+  for (const operation of replayOperations) {
+    const index = outcome.applied.findIndex(({ id }) => id === operation.id);
     const range = operation["range"];
     const targetBlockId =
       typeof range === "object" && range !== null && "blockId" in range
