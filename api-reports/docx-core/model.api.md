@@ -714,7 +714,7 @@ export type ImportedIdCollisionKind = (typeof IMPORTED_ID_COLLISION_KINDS)[keyof
 export type InlineSdt = {
     type: "inlineSdt";
     properties: SdtProperties;
-    content: (Run | Hyperlink | BookmarkStart | BookmarkEnd | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | SimpleField | ComplexField | InlineSdt | InlineWrapper | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
+    content: (Run | Hyperlink | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | SimpleField | ComplexField | InlineSdt | InlineWrapper | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
 };
 
 // @public

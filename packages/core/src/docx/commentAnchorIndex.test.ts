@@ -63,3 +63,42 @@ test("removeCommentMarkers rebuilds nested marker paths without changing its inp
   visitCommentMarkers(rebuilt, ({ item }) => markers.push(item.id));
   expect(markers).toEqual([]);
 });
+
+test("removeCommentMarkers removes direct inline SDT range anchors", () => {
+  const blocks: BlockContent[] = [
+    {
+      type: "paragraph",
+      content: [
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "group" },
+          content: [
+            { type: "commentRangeStart", id: 12 },
+            { type: "run", content: [{ type: "text", text: "Clause" }] },
+            { type: "commentRangeEnd", id: 12 },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const rebuilt = removeCommentMarkers(blocks, new Set([12]));
+
+  expect(rebuilt).toEqual([
+    {
+      type: "paragraph",
+      content: [
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "group" },
+          content: [
+            { type: "run", content: [{ type: "text", text: "Clause" }] },
+          ],
+        },
+      ],
+    },
+  ]);
+  const remaining: number[] = [];
+  visitCommentMarkers(rebuilt, ({ item }) => remaining.push(item.id));
+  expect(remaining).toEqual([]);
+});
