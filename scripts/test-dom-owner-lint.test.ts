@@ -2,6 +2,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
 import baseline from "../.oxlint-plugins/folio-test-dom.baseline.json";
+import { checkTestDomBaseline } from "./lib/test-dom-baseline";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_MARKER = "folio-test-dom(dom-lease-owner)";
@@ -81,6 +82,20 @@ describe("test DOM lease ownership", () => {
     expect(Object.values(baseline).every((count) => count > 0)).toBe(true);
     const result = lint({ files: Object.keys(baseline) });
     expect(result.exitCode, result.output).toBe(0);
+  });
+
+  test("existing canonical harness observations have exact counts and unchanged bootstrap source", () => {
+    const file =
+      "packages/core/src/__tests__/canonicalHarnessDom.property.test.ts";
+    const result = checkTestDomBaseline({
+      root: REPO_ROOT,
+      current: { [file]: baseline[file] },
+    });
+    expect(result.problems).toEqual([]);
+    if (result.type === "bootstrap")
+      expect(result.verifiedSources).toEqual([file]);
+    const lintResult = lint({ files: [file] });
+    expect(lintResult.exitCode, lintResult.output).toBe(0);
   });
 
   test.each([
