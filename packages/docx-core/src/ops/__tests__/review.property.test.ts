@@ -75,7 +75,6 @@ import { paragraphLength, paragraphLogicalText } from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import {
   classifyRangeMultiplicity,
-  planParagraphBoundaryRemoval,
   rangeBoundaryDefinitions,
 } from "../rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
