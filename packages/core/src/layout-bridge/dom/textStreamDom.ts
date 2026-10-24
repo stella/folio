@@ -30,6 +30,25 @@ export const totalTextLength = (nodes: readonly Text[]): number => {
   return length;
 };
 
+type PaintedTextOffsetOptions = {
+  pmStart: number;
+  pmEnd: number;
+  pmPosition: number;
+  textLength: number;
+};
+
+export const paintedTextOffset = ({
+  pmStart,
+  pmEnd,
+  pmPosition,
+  textLength,
+}: PaintedTextOffsetOptions): number => {
+  if (pmEnd - pmStart === 1) {
+    return pmPosition >= pmEnd ? textLength : 0;
+  }
+  return Math.max(0, Math.min(textLength, pmPosition - pmStart));
+};
+
 export const textBoundaryAt = (
   nodes: readonly Text[],
   offset: number,
@@ -112,8 +131,19 @@ export const measurePaintedSpanRange = (
   }
 
   const textNodes = descendantTextNodes(element);
-  const startOffset = Math.max(0, from - pmStart);
-  const endOffset = Math.min(totalTextLength(textNodes), to - pmStart);
+  const textLength = totalTextLength(textNodes);
+  const startOffset = paintedTextOffset({
+    pmStart,
+    pmEnd,
+    pmPosition: from,
+    textLength,
+  });
+  const endOffset = paintedTextOffset({
+    pmStart,
+    pmEnd,
+    pmPosition: to,
+    textLength,
+  });
   if (startOffset >= endOffset) return { type: "outside" };
 
   const range = createTextStreamRange(element, startOffset, endOffset);
