@@ -502,7 +502,10 @@ test("embedded font cache identity is content-based and stores each map once per
   const firstKey = hashParagraphBlock(paragraph(first));
   expect(firstKey).toBe(hashParagraphBlock(paragraph(equal)));
   expect(firstKey).not.toBe(hashParagraphBlock(paragraph(different)));
-  expect(firstKey.split("folio-embedded-one-Calibri")).toHaveLength(2);
+  expect(JSON.parse(firstKey)).toHaveProperty("fontContexts", [
+    expect.any(String),
+  ]);
+  expect(firstKey).not.toContain("folio-embedded-one-Calibri");
 });
 
 test("document font facts cache keys use content fingerprints", () => {

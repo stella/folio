@@ -165,12 +165,10 @@ describe("fontResolver — alternate families", () => {
       fonts: [{ name: "LedgerFace", family: "roman", pitch: "fixed" }],
     });
 
-    expect(
-      parseFontFamilyList(
-        resolveFontFamily("LedgerFace", { documentFontFacts: romanFacts })
-          .cssFallback,
-      ),
-    ).toEqual([
+    const romanFallback = resolveFontFamily("LedgerFace", {
+      documentFontFacts: romanFacts,
+    }).cssFallback;
+    expect(parseFontFamilyList(romanFallback)).toEqual([
       "LedgerFace",
       "Times New Roman",
       "Times",
@@ -178,15 +176,24 @@ describe("fontResolver — alternate families", () => {
       "serif",
     ]);
     expect(
-      resolveFontFamily("LedgerFace", { documentFontFacts: fixedFacts })
-        .cssFallback,
-    ).toContain("Courier New, Courier, monospace");
+      parseFontFamilyList(
+        resolveFontFamily("LedgerFace", { documentFontFacts: fixedFacts })
+          .cssFallback,
+      ),
+    ).toEqual([
+      "LedgerFace",
+      "Courier New",
+      "Courier",
+      "Noto Sans Arabic",
+      "monospace",
+    ]);
+    const fontString = buildFontString({
+      fontFamily: "LedgerFace",
+      documentFontFacts: romanFacts,
+    });
     expect(
-      buildFontString({
-        fontFamily: "LedgerFace",
-        documentFontFacts: romanFacts,
-      }),
-    ).toContain('"Times New Roman", Times, serif');
+      parseFontFamilyList(fontString.slice(fontString.indexOf("px ") + 3)),
+    ).toEqual(parseFontFamilyList(romanFallback));
   });
 
   test("tries an alternate immediately after a mapped primary", () => {
