@@ -1,6 +1,8 @@
+import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 
+import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { schema } from "../prosemirror/schema";
 import { resolveWholeStory } from "./wholeStoryRevisionResolution";
 
@@ -16,6 +18,50 @@ const deletedParagraphMark = {
   info: { id: 7, author: "Reviewer", date: "2026-10-19" },
 } as const;
 
+test.each(["accept", "reject"] as const)(
+  "a no-op %s story preserves identity, maps and traversal count",
+  (mode) => {
+    for (const kind of ["plain", "commented"] as const) {
+      const commentId = 7;
+      const content =
+        kind === "plain"
+          ? [schema.text("Unchanged.")]
+          : [
+              schema.text("Unchanged.", [
+                schema.marks.comment.create({ commentId }),
+              ]),
+              schema.nodes.commentReference.create({ commentId }),
+            ];
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", null, content),
+      ]);
+      const descendants = doc.descendants.bind(doc);
+      let traversals = 0;
+      Object.defineProperty(doc, "descendants", {
+        configurable: true,
+        value: (callback: Parameters<PMNode["descendants"]>[0]) => {
+          traversals++;
+          return descendants(callback);
+        },
+      });
+      const result = resolveWholeStory({
+        doc,
+        mode,
+        styleResolver: null,
+        numbering: null,
+      });
+      expect(traversals).toBe(0);
+      expect(result.resolved).toBe(doc);
+      expect(result.steps).toEqual([]);
+      for (let position = 0; position <= doc.content.size; position++) {
+        for (const association of [-1, 1] as const) {
+          expect(result.mapping.map(position, association)).toBe(position);
+        }
+      }
+    }
+  },
+);
+
 const paragraphPosition = (doc: PMNode, text: string): number => {
   let found: number | null = null;
   doc.descendants((node, position) => {
@@ -26,6 +72,32 @@ const paragraphPosition = (doc: PMNode, text: string): number => {
     return true;
   });
   if (found === null) throw new Error(`Missing paragraph: ${text}`);
+  return found;
+};
+
+const nodePosition = (doc: PMNode, typeName: string): number => {
+  let found: number | null = null;
+  doc.descendants((node, position) => {
+    if (node.type.name === typeName) {
+      found = position;
+      return false;
+    }
+    return true;
+  });
+  if (found === null) throw new Error(`Missing node: ${typeName}`);
+  return found;
+};
+
+const textPosition = (doc: PMNode, text: string): number => {
+  let found: number | null = null;
+  doc.descendants((node, position) => {
+    if (node.isText && node.text === text) {
+      found = position;
+      return false;
+    }
+    return true;
+  });
+  if (found === null) throw new Error(`Missing text: ${text}`);
   return found;
 };
 
@@ -172,6 +244,87 @@ test("rejecting an empty inserted final paragraph after a table keeps it as the 
   expect(result.failed).toBe(false);
   expect(result.resolved.childCount).toBe(3);
   expect(result.resolved.lastChild?.type.name).toBe("paragraph");
+});
+
+test("reject removes orphan comment references before resolving paragraph marks", () => {
+  const liveCommentId = 44;
+  const liveComment = schema.node("paragraph", null, [
+    schema.text("live", [schema.mark("comment", { commentId: liveCommentId })]),
+    schema.node("rangeAnchor", {
+      start: { type: "commentRangeStart", id: liveCommentId },
+      end: { type: "commentRangeEnd", id: liveCommentId },
+    }),
+    schema.node("commentReference", { commentId: liveCommentId }),
+  ]);
+  const removedCommentId = 45;
+  const inserted = schema.node(
+    "paragraph",
+    { pPrMark: insertedParagraphMark },
+    [
+      schema.text("discarded", [
+        schema.mark("insertion"),
+        schema.mark("comment", { commentId: removedCommentId }),
+      ]),
+      schema.node("commentReference", { commentId: removedCommentId }),
+    ],
+  );
+  const followingTable = table([row([cell("cell")])]);
+  const followingParagraph = paragraph("following");
+  const doc = schema.node("doc", null, [
+    paragraph("before"),
+    liveComment,
+    inserted,
+    followingTable,
+    followingParagraph,
+  ]);
+
+  const result = resolveWholeStory({
+    doc,
+    mode: "reject",
+    styleResolver: null,
+    numbering: null,
+  });
+  const tableSource = nodePosition(doc, "table");
+  const paragraphSource = paragraphPosition(doc, "following");
+  const tableFinal = nodePosition(result.resolved, "table");
+  const cellTextSource = textPosition(doc, "cell");
+  const cellTextFinal = textPosition(result.resolved, "cell");
+  const paragraphFinal = paragraphPosition(result.resolved, "following");
+  const commentReferences: number[] = [];
+  const rangeAnchorIds: number[] = [];
+  result.resolved.descendants((node) => {
+    if (node.type.name === "commentReference")
+      commentReferences.push(node.attrs["commentId"]);
+    if (node.type.name === "rangeAnchor") {
+      const attrs = readRangeAnchorAttrs(node);
+      if (attrs.ok) rangeAnchorIds.push(attrs.value.start.id);
+    }
+    return true;
+  });
+
+  expect(result.failed).toBe(false);
+  expect(result.resolved.childCount).toBe(4);
+  expect(result.resolved.child(2)?.type.name).toBe("table");
+  expect(tableFinal).toBeLessThan(tableSource);
+  expect(result.mapping.map(cellTextSource, 1)).toBe(cellTextFinal);
+  expect(result.mapping.map(paragraphSource, 1)).toBe(paragraphFinal);
+  expect(commentReferences).toEqual([liveCommentId]);
+  expect(rangeAnchorIds).toEqual([liveCommentId]);
+  let replay = doc;
+  for (const step of result.steps) {
+    const applied = step.apply(replay);
+    if (!applied.doc) return panic(applied.failed ?? "Resolution step failed");
+    replay = applied.doc;
+  }
+  expect(replay.eq(result.resolved)).toBe(true);
+  const fixedPoint = resolveWholeStory({
+    doc: result.resolved,
+    mode: "reject",
+    styleResolver: null,
+    numbering: null,
+  });
+  expect(fixedPoint.steps).toHaveLength(0);
+  expect(fixedPoint.resolved.eq(result.resolved)).toBe(true);
 });
 
 test("rejecting an inserted boundary after a table keeps its section on the joined paragraph", () => {

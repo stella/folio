@@ -24,6 +24,7 @@ import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin
 import { resolveAllTableChanges } from "../prosemirror/commands/resolveAllTableChanges";
 import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
 import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
+import { resolveCommentReferences } from "../prosemirror/commentReferenceIntegrity";
 import {
   isBlockBoundaryNode,
   paragraphRemainsOf,
@@ -934,6 +935,8 @@ const resolveStoryRevisions = ({
     removeType:
       doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"],
   });
+  const inlineResolved = inline?.resolved ?? properties;
+  const comments = inline ? resolveCommentReferences(inlineResolved) : null;
   const context: StructuralContext = {
     mode,
     styleResolver,
@@ -949,16 +952,17 @@ const resolveStoryRevisions = ({
     removedEndpointCount: propertyResult.removedEndpointCount,
     removedReferences: [...propertyResult.removedReferences],
     droppedTextBoxAnchors: inline
-      ? droppedTextBoxAnchorIds(properties, inline.resolved)
+      ? droppedTextBoxAnchorIds(properties, inlineResolved)
       : new Set<string>(),
   };
   const resolved =
     resolveStructure({
-      node: inline?.resolved ?? properties,
+      node: comments?.doc ?? inlineResolved,
       position: -1,
       context,
     }) ?? doc;
   if (inline) steps.push(...inline.steps);
+  if (comments) steps.push(...comments.steps);
   steps.push(...context.steps);
   const replacements = [
     ...context.replacements,
@@ -976,8 +980,11 @@ const resolveStoryRevisions = ({
   });
   for (const { from, to, slice } of replacements.toReversed())
     steps.push(new ReplaceStep(from, to, slice));
+  let preStructureMap = inline?.positionMap ?? StepMap.empty;
+  for (const map of comments?.positionMaps ?? [])
+    preStructureMap = composeRevisionResolutionMaps(preStructureMap, map);
   const positionMap = composeRevisionResolutionMaps(
-    inline?.positionMap ?? StepMap.empty,
+    preStructureMap,
     structuralMap,
   );
   const mapping = new Mapping([positionMap]);
@@ -988,7 +995,7 @@ const resolveStoryRevisions = ({
     positionMap,
     steps,
     changedRanges,
-    inlineMap: inline?.positionMap ?? StepMap.empty,
+    preStructureMap,
     tableRanges: context.tableRanges,
     transfers: context.transfers,
     structuralRanges: context.changedRanges,
