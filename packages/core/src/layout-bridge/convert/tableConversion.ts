@@ -194,6 +194,7 @@ function convertTableCell(
   const attrs = expectTableCellAttrs(node);
   if (
     attrs.hideMark &&
+    blocks.length > 1 &&
     trailingBlock?.kind === "paragraph" &&
     trailingBlock.runs.every(
       (run) => run.kind === "text" && run.text.length === 0,
