@@ -74,7 +74,6 @@ import {
 import { paragraphLength, paragraphLogicalText } from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import {
-  BOUNDARY_SIDES,
   classifyRangeMultiplicity,
   planParagraphBoundaryRemoval,
   rangeBoundaryDefinitions,

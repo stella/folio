@@ -41,6 +41,12 @@
   ],
   "L2: rejecting a tracked operation's revisions gives the document back": [
     {
+      "seed": -571720836,
+      "path": "356:0:0:0:0:0:0:0:0:3:2:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:7:4:6:7:4:4:7:4:4:6:4:7:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:10:9:9:9:9:9:9:9:9:9:9:9:9",
+      "note": "Rejecting an authored bookmark start preserves ambiguous foreign bookmark ends without selecting an arbitrary pair.",
+      "date": "2026-10-24"
+    },
+    {
       "seed": -1426848857,
       "path": "379:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:6:0:19:0:3:10:5:3:4:5:3:3:3:4:5:3:4:4:4:4:3:3:3:3:3:3:3:3:3:3:3:3:3:5:3:3:3:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4",
       "note": "Shared review projection must treat optional undefined formatting fields as absent",
