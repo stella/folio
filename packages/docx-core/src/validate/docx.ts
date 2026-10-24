@@ -1086,6 +1086,15 @@ const validateHyperlinkChild = (
     increment(ctx.bookmarkEnds, child.id);
     return;
   }
+  if (
+    child.type === "moveFromRangeStart" ||
+    child.type === "moveFromRangeEnd" ||
+    child.type === "moveToRangeStart" ||
+    child.type === "moveToRangeEnd"
+  ) {
+    validateParagraphContent(child, path, ctx);
+    return;
+  }
   const unsupported: never = child;
   panic(`Unsupported hyperlink child: ${JSON.stringify(unsupported)}`);
 };

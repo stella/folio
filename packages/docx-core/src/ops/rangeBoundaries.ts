@@ -36,6 +36,7 @@ import {
   isEmptyRecord,
   rebuildNode,
 } from "./leaves";
+import { isHyperlinkChild } from "./offsets";
 
 const BOUNDARY_SIDES = {
   bookmarkStart: { family: "bookmark", side: "start" },
@@ -441,10 +442,7 @@ const HOLDS: Partial<
   Record<InlineNode["type"], (boundary: Boundary) => boolean>
 > = {
   inlineSdt: () => true,
-  hyperlink: (boundary) =>
-    boundary.type === "bookmarkStart" ||
-    boundary.type === "bookmarkEnd" ||
-    isCommentAnchor(boundary),
+  hyperlink: isHyperlinkChild,
   inlineWrapper: () => true,
   insertion: () => true,
   deletion: () => true,

@@ -571,7 +571,7 @@ export type Hyperlink = {
     target?: string;
     history?: boolean;
     docLocation?: string;
-    children: (Run | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | InlineWrapper | CommentReference | PreservedInline)[];
+    children: (Run | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | InlineWrapper | CommentReference | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | PreservedInline)[];
 };
 
 // @public
