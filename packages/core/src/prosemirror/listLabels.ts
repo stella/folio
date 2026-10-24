@@ -30,6 +30,7 @@ import {
 import {
   listRenderingAttrPatch,
   listRenderingFromAttrs,
+  type ListRenderingSourceAttrs,
 } from "./listRenderingAttrs";
 import {
   effectiveParagraphNumberingReference,
@@ -92,7 +93,7 @@ const visibleLabel = (
 };
 
 const projectedListRendering = (
-  attrs: Readonly<ParagraphAttrs>,
+  attrs: ListRenderingSourceAttrs,
   numId: number,
 ): ListRendering | undefined =>
   attrs.listMarker != null ||

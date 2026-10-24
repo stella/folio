@@ -1019,7 +1019,9 @@ export type NumberingLevelEntry = {
 };
 
 // @public
-export const numberingLevelHasMarkerSlot: (level: Pick<ListLevel, "numFmt">) => boolean;
+export const numberingLevelHasMarkerSlot: (level: {
+    numFmt: CounterFormat;
+}, isLegal?: boolean) => boolean;
 
 // @public (undocumented)
 export type NumberingLevelResolution = {
