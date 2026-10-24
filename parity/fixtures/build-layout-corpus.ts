@@ -3,6 +3,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import { panic } from "better-result";
 import JSZip from "jszip";
 
 import {
@@ -215,8 +216,11 @@ const matrixTypography = ({ typography, id }: LayoutInteractionCase): string => 
       return `<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="2160"/><w:tab w:val="decimal" w:pos="7200"/></w:tabs></w:pPr><w:r><w:t>Item ${id}</w:t><w:tab/><w:t>Fictional service</w:t><w:tab/><w:t>7,531.42</w:t></w:r></w:p>`;
     case "numbering":
       return `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>${id} numbered synthetic clause.</w:t></w:r></w:p>`;
+    default:
+      return panic("Unknown layout typography", {
+        typography: typography satisfies never,
+      });
   }
-  typography satisfies never;
 };
 
 const matrixTable = ({ table, id }: LayoutInteractionCase): string => {

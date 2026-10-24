@@ -21,6 +21,7 @@
         "@stll/fuzzy-search": "1.2.0",
         "@stll/oxlint-config": "1.7.0",
         "@stll/regex-set": "1.0.5",
+        "@stll/typescript-config": "0.9.0",
         "@stll/utf8-boundaries": "workspace:*",
         "@types/babel__core": "^7.20.5",
         "@types/node": "^26.6.5",
@@ -1010,6 +1011,8 @@
     "@stll/text-normalize": ["@stll/text-normalize@0.3.0", "", {}, "sha512-GuRhAXZvA2pCWguq1de9i6uYzZ1zjHAk1bEZil3CaznlBCjpqBYhwIBPwssMpn6o4PDEe+YPAuKXY5t4UhoV7w=="],
 
     "@stll/time": ["@stll/time@0.3.0", "", { "dependencies": { "better-result": "3.0.1", "temporal-polyfill": "1.0.5" } }, "sha512-fnSIJp4fRDcNdleUUgQDSKrAilgDH0DIiQMfNK4pzrmGUlFtetmgI3TC4WCn1jSVqV9wEiCL/sDkXFUJB75wzg=="],
+
+    "@stll/typescript-config": ["@stll/typescript-config@0.9.0", "", { "peerDependencies": { "typescript": ">=6.0.3 <8" } }, "sha512-sApAM8Pbh/SO/+nJT/I+xX4/ZLKi7C5KBnpTInGDyYX+yMGDAyogJM0QZP4RDFhNJZWS9WjNtFe51haat4TpIQ=="],
 
     "@stll/utf8-boundaries": ["@stll/utf8-boundaries@workspace:packages/utf8-boundaries"],
 
