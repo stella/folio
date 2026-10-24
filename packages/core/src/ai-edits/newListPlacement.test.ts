@@ -13,7 +13,13 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown";
-import { FolioDocxReviewer } from "./headless";
+import type { Footnote, Paragraph } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
+import {
+  FolioDocxReviewer,
+  type FolioEditableDocumentStoryHandle,
+} from "./headless";
+import { createFolioAITextRangeHandle } from "./snapshot";
 
 const AUTHOR = "Reviewer";
 
@@ -99,7 +105,179 @@ const withPendingDeletion = async (): Promise<ArrayBuffer> => {
   return reviewer.toBuffer();
 };
 
+const anchorInheritanceDocx = async (): Promise<ArrayBuffer> => {
+  type ParagraphOptions = { text: string; paraId: string };
+  const paragraph = ({ text, paraId }: ParagraphOptions) =>
+    ({
+      type: "paragraph",
+      paraId,
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    }) satisfies Paragraph;
+  const document = createEmptyDocument();
+  document.package.document.content = [
+    paragraph({ text: "Anchor sentence.", paraId: "61000001" }),
+    paragraph({ text: "Unrelated body.", paraId: "61000002" }),
+    {
+      ...paragraph({ text: "Note reference.", paraId: "61000003" }),
+      content: [
+        {
+          type: "run",
+          content: [
+            { type: "text", text: "Note reference." },
+            { type: "footnoteRef", id: 1 },
+          ],
+        },
+      ],
+    },
+  ];
+  document.package.footnotes = [
+    {
+      type: "footnote",
+      id: 1,
+      noteType: "normal",
+      content: [
+        paragraph({ text: "Anchor sentence.", paraId: "62000001" }),
+        paragraph({ text: "Unrelated note.", paraId: "62000002" }),
+      ],
+    } satisfies Footnote,
+  ];
+  const bytes = (
+    await ensureParaIds(new Uint8Array(await createDocx(document)))
+  ).docx;
+  return Uint8Array.from(bytes).buffer;
+};
+
+type ApplyToStoryOptions = {
+  reviewer: Reviewer;
+  story: FolioEditableDocumentStoryHandle;
+  operations: FolioDocumentOperation[];
+};
+
+const applyToStory = ({ reviewer, story, operations }: ApplyToStoryOptions) =>
+  reviewer.applyDocumentOperationsToStory({
+    undefinedReferences: "refuse",
+    story,
+    batch: {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations,
+    },
+  });
+
+const anchorInheritanceProjection = (
+  reviewer: Reviewer,
+  story: FolioEditableDocumentStoryHandle,
+) => {
+  const snapshot = reviewer.snapshotStory(story);
+  if (!snapshot) throw new Error(`missing story ${JSON.stringify(story)}`);
+  return snapshot.blocks
+    .filter(({ text }) =>
+      [
+        "Inserted paragraph.",
+        "Anchor sentence.",
+        "Unrelated body.",
+        "Unrelated note.",
+      ].includes(text),
+    )
+    .map(({ text, kind, statedNumbering, listReference, displayLabel }) => ({
+      text,
+      kind,
+      statedNumbering,
+      listReference,
+      displayLabel,
+    }));
+};
+
 describe("new-list placement", () => {
+  for (const { label, story } of [
+    { label: "main", story: { type: "main" } as const },
+    { label: "footnote", story: { type: "footnote", noteId: 1 } as const },
+  ]) {
+    for (const inheritFormatting of [true, false]) {
+      test(`${label} insertion matches ordered new-list properties (inheritFormatting: ${inheritFormatting})`, async () => {
+        const buffer = await anchorInheritanceDocx();
+        const batchReviewer = await open(buffer);
+        const sequentialReviewer = await open(buffer);
+        const target = batchReviewer
+          .snapshotStory(story)
+          ?.blocks.find(({ text }) => text === "Anchor sentence.");
+        if (!target) throw new Error(`missing anchor in ${label}`);
+        const range = createFolioAITextRangeHandle({
+          blockId: target.id,
+          text: target.text,
+          startOffset: 0,
+          endOffset: 6,
+        });
+        if (!range) throw new Error(`missing range in ${label}`);
+        const insert = {
+          id: "insert-before-anchor",
+          type: "insertBeforeBlock",
+          blockId: target.id,
+          text: "Inserted paragraph.",
+          inheritFormatting,
+        } satisfies FolioDocumentOperation;
+        const format = {
+          id: "format-anchor",
+          type: "formatRange",
+          range,
+          formatting: { bold: true },
+        } satisfies FolioDocumentOperation;
+        const number = {
+          id: "number-anchor",
+          type: "setBlockParagraphProperties",
+          blockId: target.id,
+          properties: {
+            numbering: { kind: "newList", format: "bullet" },
+          },
+        } satisfies FolioDocumentOperation;
+        const before = anchorInheritanceProjection(batchReviewer, story);
+
+        const batchResult = applyToStory({
+          reviewer: batchReviewer,
+          story,
+          operations: [insert, format, number],
+        });
+        expect(batchResult.skipped).toEqual([]);
+        for (const operation of [format, number, insert]) {
+          expect(
+            applyToStory({
+              reviewer: sequentialReviewer,
+              story,
+              operations: [operation],
+            }).skipped,
+          ).toEqual([]);
+        }
+
+        const batchProjection = anchorInheritanceProjection(
+          batchReviewer,
+          story,
+        );
+        const sequentialProjection = anchorInheritanceProjection(
+          sequentialReviewer,
+          story,
+        );
+        expect(batchProjection).toEqual(sequentialProjection);
+        const numberedAnchor = batchProjection.find(
+          ({ text }) => text === "Anchor sentence.",
+        );
+        expect(numberedAnchor?.listReference).toBeDefined();
+        const inserted = batchProjection.find(
+          ({ text }) => text === "Inserted paragraph.",
+        );
+        if (!inserted) throw new Error(`missing insertion in ${label}`);
+        expect(inserted.listReference !== undefined).toBe(inheritFormatting);
+        if (inheritFormatting) {
+          expect(inserted.listReference).toEqual(numberedAnchor?.listReference);
+        }
+        const unrelatedText =
+          story.type === "main" ? "Unrelated body." : "Unrelated note.";
+        expect(
+          batchProjection.find(({ text }) => text === unrelatedText),
+        ).toEqual(before.find(({ text }) => text === unrelatedText));
+      });
+    }
+  }
+
   test("a direct merge into a pending-deleted list paragraph keeps the requested list once accepted", async () => {
     const source = await withPendingDeletion();
     const outcomes = await Promise.all(
