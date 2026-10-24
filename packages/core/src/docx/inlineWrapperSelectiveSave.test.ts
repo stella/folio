@@ -21,6 +21,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { parseDocx } from "./parser";
 import { attemptSelectiveSave } from "./selectiveSave";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
 
 const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -70,12 +71,17 @@ const DOCUMENT = `${XML_DECLARATION}
   </w:body>
 </w:document>`;
 
-const fixture = async (): Promise<ArrayBuffer> => {
+const DOCUMENT_WITH_INLINE_SDT_COMMENT = DOCUMENT.replace(
+  `<w:p w14:paraId="${UNTOUCHED_PARAGRAPH_ID}"><w:r><w:t>untouched</w:t></w:r></w:p>`,
+  `<w:p w14:paraId="${UNTOUCHED_PARAGRAPH_ID}"><w:r><w:t>before</w:t></w:r><w:sdt><w:sdtPr><w:id w:val="23"/><w:tag w:val="clause"/></w:sdtPr><w:sdtContent><w:commentRangeStart w:id="1"/><w:r><w:t>inside</w:t></w:r><w:commentRangeEnd w:id="1"/></w:sdtContent></w:sdt><w:r><w:t>after</w:t></w:r></w:p>`,
+);
+
+const fixture = async (documentXml = DOCUMENT): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   zip.file("[Content_Types].xml", CONTENT_TYPES);
   zip.file("_rels/.rels", PACKAGE_RELS);
   zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
-  zip.file("word/document.xml", DOCUMENT);
+  zip.file("word/document.xml", documentXml);
   zip.file("word/comments.xml", COMMENTS);
   zip.file("docProps/core.xml", CORE_PROPERTIES);
   return zip.generateAsync({ type: "arraybuffer" });
@@ -108,6 +114,34 @@ const rangeOfText = (
 };
 
 describe("a selective save of an edit inside a bidirectional wrapper", () => {
+  test("parses and serializes comment ranges inside inline content controls", async () => {
+    const parsed = await parseDocx(
+      await fixture(DOCUMENT_WITH_INLINE_SDT_COMMENT),
+      { preloadFonts: false },
+    );
+    const paragraph = parsed.package.document.content.find(
+      (block) =>
+        block.type === "paragraph" && block.paraId === UNTOUCHED_PARAGRAPH_ID,
+    );
+    if (!paragraph || paragraph.type !== "paragraph") {
+      throw new Error("The inline control paragraph was not parsed");
+    }
+    const control = paragraph.content.find((item) => item.type === "inlineSdt");
+    if (!control || control.type !== "inlineSdt") {
+      throw new Error("The inline content control was not parsed");
+    }
+    expect(control.content.map((item) => item.type)).toEqual([
+      "commentRangeStart",
+      "run",
+      "commentRangeEnd",
+    ]);
+
+    const xml = serializeParagraph(paragraph);
+    expect(xml).toContain(
+      '<w:sdtContent><w:commentRangeStart w:id="1"/><w:r><w:t>inside</w:t></w:r><w:commentRangeEnd w:id="1"/></w:sdtContent>',
+    );
+  });
+
   test("patches the paragraph with the wrapper still around the edited text", async () => {
     const buffer = await fixture();
     const parsed = await parseDocx(buffer, { preloadFonts: false });

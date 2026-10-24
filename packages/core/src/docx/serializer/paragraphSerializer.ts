@@ -613,6 +613,10 @@ function serializeHyperlinkChild(
       return serializeBookmarkMarker(child);
     case "bookmarkEnd":
       return serializeBookmarkMarker(child);
+    case "commentRangeStart":
+    case "commentRangeEnd":
+    case "commentReference":
+      return serializeParagraphContent(child, disposition);
     // A transparent wrapper the link was authored around, written where the
     // author put it and carrying the link's disposition down to its runs.
     case "inlineWrapper":
@@ -891,6 +895,10 @@ function serializeInlineSdt(
           return serializeBookmarkMarker(item);
         case "bookmarkEnd":
           return serializeBookmarkMarker(item);
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "commentReference":
+          return serializeParagraphContent(item, disposition);
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":

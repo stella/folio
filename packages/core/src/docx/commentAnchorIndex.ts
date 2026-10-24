@@ -165,6 +165,9 @@ export const removeCommentMarkers = (
       case "complexField":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -266,6 +269,9 @@ export const removeCommentMarkers = (
       case "run":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
       case "preservedInline":
         return item;
     }

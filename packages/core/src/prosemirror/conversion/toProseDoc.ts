@@ -390,6 +390,10 @@ export const collectPairedBookmarkIds = (
         case "bookmarkEnd":
           countBoundary(child.id, "end");
           break;
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "commentReference":
+          break;
         case "run":
           visitRun(child);
           break;
@@ -1150,6 +1154,7 @@ function convertParagraph(
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
           runScope,
+          openCommentIds,
         });
         if (linkNodes.length === 0) {
           const emptyWrapperStacks = emptyInlineWrapperStacks(content.children);
@@ -1175,7 +1180,7 @@ function convertParagraph(
           });
           break;
         }
-        emitInlineNodes(linkNodes);
+        emitInlineNodes(linkNodes, true);
         break;
       }
       case "simpleField":
@@ -1486,8 +1491,10 @@ function convertTrackedChange(
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
           runScope,
+          openCommentIds,
         }),
       );
+      commentsAlreadyApplied = true;
     } else if (item.type === "simpleField" || item.type === "complexField") {
       const fieldNode = convertField(item, {
         getInheritedRunFormatting: getTrackedRunFormatting,
@@ -2995,8 +3002,10 @@ function convertField(
               hyperlinkIndex: nextHyperlinkInstanceIndex(),
               textBoxAnchors,
               runScope,
+              openCommentIds,
             }),
           );
+          commentsAlreadyApplied = true;
           break;
         case "insertion":
         case "deletion":
@@ -3315,6 +3324,17 @@ function convertInlineSdt(
       continue;
     }
     switch (content.type) {
+      case "commentRangeStart":
+        openCommentIds.add(content.id);
+        break;
+      case "commentRangeEnd":
+        openCommentIds.delete(content.id);
+        break;
+      case "commentReference":
+        itemNodes.push(
+          schema.node("commentReference", { commentId: content.id }),
+        );
+        break;
       case "run":
         itemNodes.push(
           ...convertRun(
@@ -3335,8 +3355,10 @@ function convertInlineSdt(
             hyperlinkIndex: currentHyperlinkIndex,
             textBoxAnchors,
             runScope,
+            openCommentIds,
           }),
         );
+        commentsAlreadyApplied = true;
         break;
       }
       case "simpleField":
@@ -4899,6 +4921,7 @@ type ConvertHyperlinkOptions = {
   hyperlinkIndex: number;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
   runScope: RunConversionScope;
+  openCommentIds: Set<number>;
 };
 
 function convertHyperlink(
@@ -4909,6 +4932,7 @@ function convertHyperlink(
     hyperlinkIndex,
     textBoxAnchors,
     runScope,
+    openCommentIds,
   }: ConvertHyperlinkOptions,
 ): PMNode[] {
   const nodes: PMNode[] = [];
@@ -4930,11 +4954,40 @@ function convertHyperlink(
   // mark. Its provenance says which suffix of the wrapper stack belongs below
   // this link, so a wrapper around a link remains distinct from a link around
   // a wrapper when the save leg rebuilds the model.
-  for (const { content: child, stack } of withInlineWrapperStacks(
-    hyperlink.children,
-  )) {
+  const stacked = withInlineWrapperStacks(hyperlink.children);
+  const emptyRanges = planEmptyRanges(stacked.map(({ content }) => content));
+  for (const [index, { content: child, stack }] of stacked.entries()) {
+    const anchored = emptyRanges.anchorAt.get(index);
+    if (anchored) {
+      nodes.push(
+        ...withInlineWrapperMark(
+          [
+            schema.node(RANGE_ANCHOR_NODE_NAME, anchored, undefined, [
+              linkMark,
+            ]),
+          ],
+          stack,
+          { hyperlinkIndex, stackStart: 0 },
+        ),
+      );
+      continue;
+    }
+    if (emptyRanges.closedAt.has(index)) continue;
     const childNodes: PMNode[] = [];
     switch (child.type) {
+      case "commentRangeStart":
+        openCommentIds.add(child.id);
+        break;
+      case "commentRangeEnd":
+        openCommentIds.delete(child.id);
+        break;
+      case "commentReference":
+        childNodes.push(
+          schema.node("commentReference", { commentId: child.id }, undefined, [
+            linkMark,
+          ]),
+        );
+        break;
       case "bookmarkStart":
         childNodes.push(
           schema.node(
@@ -5020,12 +5073,11 @@ function convertHyperlink(
       default:
         break;
     }
-    nodes.push(
-      ...withInlineWrapperMark(childNodes, stack, {
-        hyperlinkIndex,
-        stackStart: 0,
-      }),
-    );
+    const wrappedNodes = withInlineWrapperMark(childNodes, stack, {
+      hyperlinkIndex,
+      stackStart: 0,
+    });
+    nodes.push(...applyCommentMarks(wrappedNodes, openCommentIds));
   }
 
   return nodes;

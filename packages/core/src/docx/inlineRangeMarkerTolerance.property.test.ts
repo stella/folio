@@ -24,10 +24,16 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
+import { InvalidOoxmlNumericIdError } from "@stll/docx-core";
+import { paragraphLogicalText } from "@stll/docx-core/ops";
+
 import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseDocx } from "./parser";
@@ -39,6 +45,10 @@ const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const W_NAMESPACE =
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const WORD_NAMESPACE_PROFILES = {
+  transitional: W_NAMESPACE,
+  strict: "http://purl.oclc.org/ooxml/wordprocessingml/main",
+} as const;
 const AUTHORED = 'w:author="A" w:date="2024-01-01T00:00:00Z"';
 
 const MARKERS = {
@@ -121,6 +131,26 @@ type Host = keyof typeof HOSTS;
 
 const HOST_NAMES = Object.keys(HOSTS) as Host[];
 
+const POINT_HOSTS = {
+  inlineSdt: HOSTS.inlineSdt,
+  hyperlink: (inner: string) =>
+    `<w:p><w:hyperlink w:anchor="target">${inner}</w:hyperlink></w:p>`,
+} as const;
+
+const POINT_HOST_NAMES = Object.keys(POINT_HOSTS).filter(
+  (name): name is keyof typeof POINT_HOSTS => Object.hasOwn(POINT_HOSTS, name),
+);
+
+const POINT_CASES = Object.values(WORD_NAMESPACE_PROFILES).flatMap(
+  (namespace) =>
+    ["w", "word"].flatMap((prefix) =>
+      [
+        '<w:commentRangeEnd w:id="0"/>',
+        '<w:r><w:commentReference w:id="0"/></w:r>',
+      ].map((point) => ({ namespace, prefix, point })),
+    ),
+);
+
 /**
  * A package that already carries `word/comments.xml`, so a comment range in
  * the fixture names a comment that exists: a marker whose comment is missing
@@ -166,11 +196,16 @@ const basePackage = (): Promise<ArrayBuffer> => {
   return commentBearingPackage;
 };
 
-const buildDocx = async (body: string): Promise<ArrayBuffer> => {
+const buildDocx = async (
+  body: string,
+  options = { namespace: W_NAMESPACE, prefix: "w" },
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await basePackage());
+  const { namespace, prefix } = options;
+  const source = body.replaceAll("w:", `${prefix}:`);
   zip.file(
     "word/document.xml",
-    `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body>${body}<w:sectPr/></w:body></w:document>`,
+    `${XML_DECLARATION}<${prefix}:document xmlns:${prefix}="${namespace}"><${prefix}:body>${source}<${prefix}:sectPr/></${prefix}:body></${prefix}:document>`,
   );
   return zip.generateAsync({ type: "arraybuffer" });
 };
@@ -202,7 +237,192 @@ const openAndSave = async (body: string): Promise<Outcome> => {
 const occurrences = (xml: string, needle: string): number =>
   xml.split(needle).length - 1;
 
+const ownedContentOf = (document: Document, host: keyof typeof POINT_HOSTS) => {
+  const paragraph = document.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph")
+    throw new TypeError("Expected the point-comment paragraph.");
+  expect(paragraph.content).toHaveLength(1);
+  const container = paragraph.content.at(0);
+  expect(container?.type).toBe(host);
+  if (container?.type !== "hyperlink" && container?.type !== "inlineSdt")
+    throw new TypeError("Expected the original point-comment container.");
+  const owned =
+    container.type === "hyperlink" ? container.children : container.content;
+  return { paragraph, owned };
+};
+
+const expectPointOwner = (
+  document: Document,
+  host: keyof typeof POINT_HOSTS,
+): void => {
+  const { paragraph, owned } = ownedContentOf(document, host);
+  const pointIndex = owned.findIndex(
+    (item) => item.type === "commentReference",
+  );
+  expect(pointIndex).toBeGreaterThanOrEqual(0);
+  expect(owned.at(pointIndex)).toEqual({ type: "commentReference", id: 0 });
+  expect(
+    paragraphLogicalText({ ...paragraph, content: owned.slice(0, pointIndex) }),
+  ).toBe("left");
+  expect(paragraphLogicalText(paragraph)).toBe("left\uFFFCright");
+  expect(validateFolioDocumentModel(document).valid).toBe(true);
+};
+
 describe("an unbalanced inline range marker never refuses the document", () => {
+  test.each(POINT_HOST_NAMES)(
+    "point comments retain their offset and %s ownership through normalization, editor projection and save",
+    async (host) => {
+      for (const { namespace, prefix, point } of POINT_CASES) {
+        const parsed = await parseDocx(
+          await buildDocx(
+            POINT_HOSTS[host](`${run("left")}${point}${run("right")}`),
+            { namespace, prefix },
+          ),
+          { preloadFonts: false },
+        );
+        expectPointOwner(parsed, host);
+        const rebuilt = fromProseDoc(toProseDoc(parsed), parsed, {
+          stylesheetSource: { type: "package" },
+        });
+        expectPointOwner(rebuilt, host);
+        const saved = await repackDocx(rebuilt, { updateModifiedDate: false });
+        expect(
+          occurrences(
+            await savedDocumentXml(saved),
+            '<w:commentReference w:id="0"/>',
+          ),
+        ).toBe(1);
+        expectPointOwner(await parseDocx(saved, { preloadFonts: false }), host);
+      }
+    },
+  );
+
+  test.each(POINT_HOST_NAMES)(
+    "an empty comment range remains inside its %s owner through editor projection",
+    async (host) => {
+      const parsed = await parseDocx(
+        await buildDocx(
+          POINT_HOSTS[host](
+            `${run("left")}<w:commentRangeStart w:id="0"/><w:commentRangeEnd w:id="0"/>${run("right")}`,
+          ),
+        ),
+        { preloadFonts: false },
+      );
+      const rebuilt = fromProseDoc(toProseDoc(parsed), parsed, {
+        stylesheetSource: { type: "package" },
+      });
+      const saved = await repackDocx(rebuilt, { updateModifiedDate: false });
+      for (const document of [
+        parsed,
+        rebuilt,
+        await parseDocx(saved, { preloadFonts: false }),
+      ]) {
+        const { paragraph, owned } = ownedContentOf(document, host);
+        const start = owned.findIndex(
+          (item) => item.type === "commentRangeStart",
+        );
+        const end = owned.findIndex((item) => item.type === "commentRangeEnd");
+        expect(start).toBeGreaterThanOrEqual(0);
+        expect(end).toBe(start + 1);
+        expect(
+          paragraphLogicalText({
+            ...paragraph,
+            content: owned.slice(0, start),
+          }),
+        ).toBe("left");
+        expect(validateFolioDocumentModel(document).valid).toBe(true);
+      }
+    },
+  );
+
+  test("an unrecognized namespace marker stays opaque inside a hyperlink", async () => {
+    const { saved, savedIsValid } = await openAndSave(
+      POINT_HOSTS.hyperlink(
+        `${run("left")}<x:commentRangeEnd xmlns:x="urn:opaque" w:id="0"/>${run("right")}`,
+      ),
+    );
+    expect(savedIsValid).toBe(true);
+    expect(saved).toContain("<x:commentRangeEnd");
+    expect(saved).toContain("urn:opaque");
+    expect(occurrences(saved, '<w:commentReference w:id="0"/>')).toBe(0);
+  });
+
+  test.each(Object.entries(WORD_NAMESPACE_PROFILES))(
+    "hyperlink comment IDs resolve by namespace URI under alternate prefixes (%s)",
+    async (_profile, namespace) => {
+      const parsed = await parseDocx(
+        await buildDocx(
+          POINT_HOSTS.hyperlink(
+            `${run("left")}<w:commentRangeStart w:id="1"/><w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r>${run("right")}`,
+          ),
+          { namespace, prefix: "word" },
+        ),
+        { preloadFonts: false },
+      );
+      const { owned } = ownedContentOf(parsed, "hyperlink");
+
+      expect(
+        owned
+          .filter((item) => item.type === "commentRangeStart")
+          .map((item) => item.id),
+      ).toEqual([1]);
+      expect(
+        owned
+          .filter((item) => item.type === "commentRangeEnd")
+          .map((item) => item.id),
+      ).toEqual([1]);
+      expect(
+        owned
+          .filter((item) => item.type === "commentReference")
+          .map((item) => item.id),
+      ).toEqual([1]);
+    },
+  );
+
+  test("hyperlink comment IDs ignore same-named attributes in foreign namespaces", async () => {
+    const parsed = await parseDocx(
+      await buildDocx(
+        POINT_HOSTS.hyperlink(
+          `${run("left")}<w:commentRangeEnd xmlns:x="urn:opaque" x:id="1"/>${run("right")}`,
+        ),
+      ),
+      { preloadFonts: false },
+    );
+    const { owned } = ownedContentOf(parsed, "hyperlink");
+
+    expect(
+      owned.some(
+        (item) =>
+          item.type === "preservedInline" && item.xml.includes('x:id="1"'),
+      ),
+    ).toBe(true);
+  });
+
+  test.each(["not-an-id", "0suffix", "1.5"])(
+    "an invalid comment marker id %s retains its captured writer error",
+    async (id) => {
+      const parsed = await parseDocx(
+        await buildDocx(
+          POINT_HOSTS.hyperlink(
+            `${run("left")}<w:commentRangeEnd w:id="${id}"/>${run("right")}`,
+          ),
+        ),
+        { preloadFonts: false },
+      );
+      const { owned } = ownedContentOf(parsed, "hyperlink");
+      expect(
+        owned.some(
+          (item) =>
+            item.type === "preservedInline" &&
+            item.xml.includes(`w:id="${id}"`),
+        ),
+      ).toBe(true);
+      await expect(
+        repackDocx(parsed, { updateModifiedDate: false }),
+      ).rejects.toBeInstanceOf(InvalidOoxmlNumericIdError);
+    },
+  );
+
   test("every marker kind, in every wrapper, in every balance, opens and re-saves", async () => {
     await assertProperty(
       fc.asyncProperty(

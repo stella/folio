@@ -346,7 +346,14 @@ export type Hyperlink = {
    * save leg writes the canonical order, wrapper outside the link.
    */
   children: (
-    Run | BookmarkStart | BookmarkEnd | InlineWrapper | PreservedInline
+    | Run
+    | BookmarkStart
+    | BookmarkEnd
+    | CommentRangeStart
+    | CommentRangeEnd
+    | InlineWrapper
+    | CommentReference
+    | PreservedInline
   )[];
 };
 
@@ -2183,6 +2190,9 @@ export type InlineSdt = {
     | Hyperlink
     | BookmarkStart
     | BookmarkEnd
+    | CommentRangeStart
+    | CommentRangeEnd
+    | CommentReference
     | MoveFromRangeStart
     | MoveFromRangeEnd
     | MoveToRangeStart

@@ -37,9 +37,14 @@ const parseDisplacedByCustomXml = (
     : undefined;
 };
 
-export const parseMarkupRangeMarker = (node: XmlElement): MarkupRangeMarker => {
+type ParseMarkupRangeMarkerOptions = { id?: number };
+
+export const parseMarkupRangeMarker = (
+  node: XmlElement,
+  { id }: ParseMarkupRangeMarkerOptions = {},
+): MarkupRangeMarker => {
   const marker: MarkupRangeMarker = {
-    id: parseNumericAttribute(node, "w", "id") ?? 0,
+    id: id ?? parseNumericAttribute(node, "w", "id") ?? 0,
   };
   const displacedByCustomXml = parseDisplacedByCustomXml(node);
   if (displacedByCustomXml !== undefined) {
