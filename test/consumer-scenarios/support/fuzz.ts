@@ -322,17 +322,17 @@ const isOperation = (value: unknown): value is Operation =>
   !Array.isArray(value) &&
   "type" in value &&
   typeof value.type === "string" &&
-  (!("id" in value) || typeof value.id === "string");
+  (!("id" in value) || typeof value.id === "string" || value.id === undefined);
 
 const identifySuggestedOperations = (
   input: unknown,
 ): AppliedOperation[] | null => {
   if (!Array.isArray(input)) return null;
-  return input.map((candidate: unknown, index) => {
-    if (!isOperation(candidate))
-      throw new TypeError("suggest_changes received a malformed operation");
-    return identifyOperation(candidate, index, "s");
-  });
+  const candidates: unknown[] = input;
+  if (!candidates.every(isOperation)) return null;
+  return candidates.map((operation, index) =>
+    identifyOperation(operation, `s-${index + 1}`),
+  );
 };
 
 /** The operations a receipt says applied, in request order. */
@@ -370,6 +370,8 @@ const suggestChecked = async (
       ? `applied ${receipt.applied.length}`
       : `refused: ${result.ok ? "" : result.error}`,
   );
+  if (asked === null && (receipt?.applied.length ?? 0) > 0)
+    throw new Error("suggest_changes applied a malformed operation request");
   touch(flow, asked ?? []);
   const outcome = appliedOf(asked ?? [], receipt);
   const expectedApplied = flow.planned?.expectedApplied;
