@@ -124,7 +124,14 @@ export function createPaginator(options: PaginatorOptions): {
     getContentHeight: () => number;
     getContentWidth: () => number;
     fits: (height: number) => boolean;
-    ensureFits: (height: number) => PageState;
+    ensureFits: {
+        (height: number): PageState;
+        (options: {
+            requiredHeight: number;
+            freshColumnHeight?: number;
+        }): PageState;
+    };
+    isAtFreshColumnRegion: () => boolean;
     addFragment: (fragment: Fragment, height: number, spaceBefore?: number, spaceAfter?: number) => {
         state: PageState;
         x: number;
