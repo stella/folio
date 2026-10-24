@@ -101,6 +101,50 @@ const keyedResult = (queryKey: string, result: FindResult) => ({
   result,
 });
 const noop = () => {};
+
+test("a canceled document pointer press dismisses the hyperlink popup", async () => {
+  const container = document.createElement("div");
+  const editor = document.createElement("div");
+  const anchorEl = document.createElement("a");
+  document.body.append(container, editor, anchorEl);
+  const root = createRoot(container);
+  const onClose = mock(noop);
+  editor.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  try {
+    await act(async () =>
+      root.render(
+        wrap(
+          <HyperlinkPopup
+            data={popupData(anchorEl, "selected")}
+            onNavigate={noop}
+            onCopy={noop}
+            onEdit={noop}
+            onRemove={noop}
+            onClose={onClose}
+          />,
+        ),
+      ),
+    );
+    await act(async () => {
+      editor.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    editor.remove();
+    anchorEl.remove();
+  }
+});
+
 const noMatch = () => null;
 const wrap = (children: ReactNode) => (
   <IntlProvider locale="en" timeZone="UTC" messages={messages}>
