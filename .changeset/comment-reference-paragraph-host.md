@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Retain comment references as paragraph carriers without changing their logical offsets.
+Retain comment references as paragraph carriers and preserve mixed carrier order when removing a paragraph.

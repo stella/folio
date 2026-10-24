@@ -14,10 +14,7 @@ import type {
 } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { paragraphHoldsContent } from "../offsets";
-import {
-  planParagraphBoundaryRemoval,
-  rangeBoundariesIn,
-} from "../rangeBoundaries";
+import { planParagraphBoundaryRemoval } from "../rangeBoundaries";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -96,6 +93,16 @@ const BOUNDARIES = [
   { type: "moveToRangeEnd", id: 11 },
 ] satisfies ParagraphContent[];
 
+const retainedCarriersIn = (
+  value: unknown,
+  retained: ReadonlySet<object>,
+): object[] => {
+  if (value === null || typeof value !== "object") return [];
+  if (retained.has(value)) return [value];
+  const children = Array.isArray(value) ? value : Object.values(value);
+  return children.flatMap((child) => retainedCarriersIn(child, retained));
+};
+
 const PREFIXES = {
   host: [host],
   table: [table],
@@ -134,6 +141,12 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
                 : payload,
           } satisfies Paragraph;
           const prefix = PREFIXES[fixture.prefix];
+          const hasCommentCarrier = payload.some(
+            (node) => node.type === "commentRangeEnd",
+          );
+          const placedInPrevious =
+            payload.length > 0 &&
+            (fixture.context === "terminal" || hasCommentCarrier);
           const blocks: BlockContent[] = [
             ...prefix,
             retired,
@@ -147,40 +160,39 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
             place: fixture.context === "before-table" ? "blocks" : "previous",
           });
           expect(blocks.at(prefix.length)).toBe(retired);
-          expect(rangeBoundariesIn(retired.content)).toEqual(payload);
           if (plan.type === "blocked") {
             expect(fixture.expected).toBe("blocked");
             continue;
           }
           expect(fixture.expected).not.toBe("blocked");
           expect(plan.blocks).not.toContain(retired);
-          const transferred =
-            fixture.context === "terminal"
-              ? payload
-              : payload.filter((node) => node.type === "commentRangeEnd");
           const between =
-            fixture.context === "terminal"
-              ? []
-              : payload.filter((node) => node.type !== "commentRangeEnd");
+            fixture.context === "before-table" && !hasCommentCarrier
+              ? payload
+              : [];
+          expect(
+            retainedCarriersIn(plan.blocks, new Set<object>(payload)),
+          ).toEqual(payload);
           expect(
             plan.blocks.filter(
               (block) =>
                 block.type === "bookmarkEnd" || block.type === "moveToRangeEnd",
             ),
           ).toEqual(between);
-          if (fixture.expected === "none") {
+          if (!placedInPrevious) {
+            expect(fixture.expected).toBe("none");
             expect(plan.effects).toEqual([]);
+            expect(plan.blocks.includes(host)).toBe(fixture.prefix === "host");
             for (const block of plan.blocks)
               expect(blocks.includes(block)).toBe(true);
             continue;
           }
-          expect(plan.effects).toEqual([
-            { type: "retained-range-boundaries", receiver: host },
-          ]);
+          expect(fixture.expected).toBe("receiver");
           expect(plan.effects.at(0)?.receiver).toBe(host);
+          expect(plan.effects).toHaveLength(1);
           expect(plan.blocks.at(0)).toEqual({
             ...host,
-            content: [...host.content, ...transferred],
+            content: [...host.content, ...payload],
           });
           for (const block of plan.blocks.slice(1))
             expect(
@@ -196,6 +208,39 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
     },
   );
   expect([...exercised].sort()).toEqual(Object.keys(REMOVAL_CASES).sort());
+});
+
+test("bookmark-only paragraph carriers remain between blocks", () => {
+  const bookmarkStart = {
+    type: "bookmarkStart",
+    id: 15,
+    name: "_Ref15",
+  } as const;
+  const bookmarkEnd = { type: "bookmarkEnd", id: 15 } as const;
+  const retired = {
+    type: "paragraph",
+    paraId: "00000002",
+    content: [bookmarkStart, bookmarkEnd],
+  } satisfies Paragraph;
+  const blocks: BlockContent[] = [host, retired, table, finalParagraph];
+
+  const plan = planParagraphBoundaryRemoval({
+    blocks,
+    index: 1,
+    place: "blocks",
+  });
+
+  expect(plan).toEqual({
+    type: "removed",
+    blocks: [host, bookmarkStart, bookmarkEnd, table, finalParagraph],
+    effects: [],
+  });
+  expect(
+    retainedCarriersIn(
+      plan.type === "removed" ? plan.blocks : [],
+      new Set<object>([bookmarkStart, bookmarkEnd]),
+    ),
+  ).toEqual([bookmarkStart, bookmarkEnd]);
 });
 
 test.each(["anchor-only", "tracked-material"] as const)(

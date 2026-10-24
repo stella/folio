@@ -8,6 +8,7 @@ import {
   ParagraphChangeTrackerExtension,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { paragraphRemainsOf } from "../keptRangeBoundaries";
+import { schema as documentSchema } from "../schema";
 import { paragraphContentOf } from "../zeroWidthAnchors";
 import {
   acceptAIEditRevision,
@@ -369,6 +370,85 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       "commentReference",
     );
   });
+
+  for (const [order, nodes] of [
+    [
+      "bookmark before reference",
+      [
+        documentSchema.node("bookmarkBoundary", {
+          type: "start",
+          id: 8,
+          name: "kept",
+        }),
+        documentSchema.node("commentReference", { commentId: 9 }),
+      ],
+    ],
+    [
+      "reference before bookmark",
+      [
+        documentSchema.node("commentReference", { commentId: 9 }),
+        documentSchema.node("bookmarkBoundary", {
+          type: "start",
+          id: 8,
+          name: "kept",
+        }),
+      ],
+    ],
+  ] as const) {
+    for (const resolution of ["accept", "reject"] as const) {
+      test(`single ${resolution} preserves ${order} before a table`, () => {
+        const state = EditorState.create({
+          schema: documentSchema,
+          doc: documentSchema.node("doc", null, [
+            documentSchema.node(
+              "paragraph",
+              null,
+              documentSchema.text("before"),
+            ),
+            documentSchema.node(
+              "paragraph",
+              {
+                pPrMark:
+                  resolution === "accept"
+                    ? delMark({ id: 8 })
+                    : insMark({ id: 8 }),
+              },
+              nodes,
+            ),
+            documentSchema.node("table", null, [
+              documentSchema.node("tableRow", null, [
+                documentSchema.node("tableCell", null, [
+                  documentSchema.node(
+                    "paragraph",
+                    null,
+                    documentSchema.text("cell"),
+                  ),
+                ]),
+              ]),
+            ]),
+          ]),
+        });
+        const view = dispatcher(state);
+
+        const resolve = resolution === "accept" ? acceptChange : rejectChange;
+        const targetPosition = view.state.doc.child(0).nodeSize;
+        resolve(
+          targetPosition,
+          targetPosition + view.state.doc.child(1).nodeSize,
+        )(view.state, view.dispatch);
+
+        expect(view.state.doc.childCount).toBe(2);
+        const host = view.state.doc.child(0);
+        expect(host.content.content.map((node) => node.type.name)).toEqual([
+          "text",
+          ...nodes.map((node) => node.type.name),
+        ]);
+        expect(host.child(1).attrs).toEqual(nodes[0]?.attrs);
+        expect(host.child(2).attrs).toEqual(nodes[1]?.attrs);
+        expect(view.state.doc.child(1).type.name).toBe("table");
+      });
+    }
+  }
 
   // Whether an emptied paragraph stays is the engine's one paragraph-content
   // rule, the same in the editor: a cached page break is not content, so the
