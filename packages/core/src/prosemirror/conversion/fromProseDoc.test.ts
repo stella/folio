@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import {
@@ -41,6 +42,82 @@ import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 describe("fromProseDoc", () => {
+  test.each(["simple", "complex"] as const)(
+    "retains a %s field when its sole text-box anchor is removed",
+    async (fieldKind) => {
+      const document = documentWithTextBoxParagraph({ includeText: false });
+      const sourceParagraph = document.package.document.content.at(0);
+      if (sourceParagraph?.type !== "paragraph")
+        panic("Expected source paragraph");
+      const resultRun = sourceParagraph.content.at(0);
+      if (resultRun?.type !== "run") panic("Expected source text-box run");
+      const fieldCode = [
+        {
+          type: "run",
+          formatting: { italic: true },
+          content: [{ type: "instrText", text: " PAGE " }],
+        },
+      ] satisfies Run[];
+      const sourceField =
+        fieldKind === "complex"
+          ? {
+              type: "complexField" as const,
+              instruction: " PAGE ",
+              fieldType: "PAGE" as const,
+              fieldCode,
+              fieldResult: [resultRun],
+            }
+          : {
+              type: "simpleField" as const,
+              instruction: " PAGE ",
+              fieldType: "PAGE" as const,
+              content: [resultRun],
+            };
+      sourceParagraph.content = [sourceField];
+      const proseDocument = toProseDoc(document);
+      const fieldParagraph = proseDocument.firstChild;
+      if (!fieldParagraph) panic("Expected projected field paragraph");
+      let saved = fromProseDoc(
+        schema.node("doc", null, [fieldParagraph]),
+        document,
+        {
+          stylesheetSource: { type: "package" },
+        },
+      );
+      const expectedField =
+        sourceField.type === "complexField"
+          ? { ...sourceField, fieldResult: [] }
+          : { ...sourceField, content: [] };
+      const savedParagraph = saved.package.document.content.at(0);
+      expect(
+        savedParagraph?.type === "paragraph"
+          ? savedParagraph.content
+          : undefined,
+      ).toEqual([expectedField]);
+      for (let cycle = 0; cycle < 2; cycle += 1) {
+        const reopened = await parseDocx(await createDocx(saved), {
+          detectVariables: false,
+          preloadFonts: false,
+        });
+        const paragraph = reopened.package.document.content.at(0);
+        const field =
+          paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+        expect(field?.type).toBe(sourceField.type);
+        if (field?.type !== "simpleField" && field?.type !== "complexField")
+          panic("Expected retained field");
+        expect(field.instruction).toBe(sourceField.instruction);
+        expect(
+          field.type === "complexField" ? field.fieldResult : field.content,
+        ).toEqual([]);
+        if (field.type === "complexField")
+          expect(field.fieldCode).toMatchObject(fieldCode);
+        saved = fromProseDoc(toProseDoc(reopened), reopened, {
+          stylesheetSource: { type: "package" },
+        });
+      }
+    },
+  );
+
   test.each([
     {
       name: "paragraph style",
