@@ -17,7 +17,7 @@
  *
  * An expiry is a wall-clock instant, so failing at that instant turns every
  * open branch red at once for a change nobody made. Removal is automatic
- * instead: `quarantine-prune.yml` runs `--prune` hourly and opens the PR that
+ * instead: `quarantine-prune.yml` runs the shared prune daily and opens the PR that
  * deletes the entry. An expired entry is therefore only a warning while that
  * PR waits to be merged, and fails once it has been ignored past the window.
  * It has to fail eventually: a stale exclude is not inert, because the next

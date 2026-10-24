@@ -15,8 +15,19 @@ import {
   pruneExpiredExcludes,
   quarantineInstallRoots,
 } from "./check-quarantine-excludes";
+import {
+  workflowFixturePath,
+  workflowReference,
+} from "./lib/reusable-workflow-permissions";
 
 const SCRIPT_PATH = "scripts/check-quarantine-excludes.ts";
+
+const readWorkflow = async (file: string) =>
+  Bun.YAML.parse(
+    await Bun.file(
+      join(import.meta.dirname, "../.github/workflows", file),
+    ).text(),
+  );
 
 // Shaped like folio's real lockfile: a first-party package pulled from the
 // registry, next to a workspace member that never reaches it.
@@ -330,28 +341,89 @@ describe("quarantine exclude wiring", () => {
     expect(ci).toContain("bun run check:quarantine-excludes");
   });
 
-  test("the prune workflow runs this guard in both modes", async () => {
-    const workflow = await Bun.file(
-      join(import.meta.dirname, "../.github/workflows/quarantine-prune.yml"),
-    ).text();
+  test("the prune caller shares the policy pin and runs once daily", async () => {
+    const workflow = await readWorkflow("quarantine-prune.yml");
+    const policy = await readWorkflow("quarantine-policy.yml");
 
-    expect(workflow).toContain(`bun ${SCRIPT_PATH} --prune`);
-    expect(workflow).toContain(`bun ${SCRIPT_PATH}\n`);
+    expect(workflow.jobs.prune.uses).toMatch(
+      /^stella\/\.github\/\.github\/workflows\/quarantine-prune\.yml@[a-f0-9]{40}$/u,
+    );
+    expect(policy.jobs.enforce.uses).toBe(
+      workflow.jobs.prune.uses.replace(
+        "quarantine-prune.yml@",
+        "quarantine-policy.yml@",
+      ),
+    );
+    expect(workflow.on.schedule).toEqual([{ cron: "11 4 * * *" }]);
+    expect(policy.on.schedule).toBeUndefined();
   });
 
-  test("the prune workflow commits every install root through the signed commit API", async () => {
-    const workflow = await Bun.file(
-      join(import.meta.dirname, "../.github/workflows/quarantine-prune.yml"),
-    ).text();
+  test("both shared callers cover every independent install root", async () => {
+    const nested = quarantineInstallRoots.filter((root) => root !== ".");
 
-    // The default branch accepts only signed commits; a pushed local commit is unsigned.
-    expect(workflow).toContain("createCommitOnBranch");
-    expect(workflow).not.toMatch(/\bgit (?:commit|push)\b/u);
-    for (const directory of quarantineInstallRoots) {
-      const path =
-        directory === "." ? "bunfig.toml" : `${directory}/bunfig.toml`;
-      expect(workflow).toContain(`{ path: "${path}", contents: `);
+    for (const file of ["quarantine-policy.yml", "quarantine-prune.yml"]) {
+      const workflow = await readWorkflow(file);
+      const job = workflow.jobs.enforce ?? workflow.jobs.prune;
+      expect(job.with["bun-roots"].split(/\s+/u).filter(Boolean)).toEqual(
+        nested,
+      );
     }
+  });
+
+  test("the prune caller grants read access and passes only the changelog app secrets", async () => {
+    const workflow = await readWorkflow("quarantine-prune.yml");
+
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.jobs.prune.permissions).toEqual({ contents: "read" });
+    expect(workflow.jobs.prune.secrets).toEqual({
+      CHANGELOG_APP_ID: "${{ secrets.CHANGELOG_APP_ID }}",
+      CHANGELOG_APP_PRIVATE_KEY: "${{ secrets.CHANGELOG_APP_PRIVATE_KEY }}",
+    });
+  });
+
+  test("the pinned prune prepares from the default branch and proposes signed changes from that exact source", async () => {
+    const caller = await readWorkflow("quarantine-prune.yml");
+    const reference = workflowReference(caller.jobs.prune.uses);
+    expect(reference?.type).toBe("remote");
+    if (reference?.type !== "remote") return;
+    const fixture = Bun.YAML.parse(
+      await Bun.file(
+        workflowFixturePath(join(import.meta.dirname, ".."), reference),
+      ).text(),
+    );
+    expect(fixture.jobs.prepare.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Checkout caller default branch",
+          with: expect.objectContaining({
+            ref: "${{ github.event.repository.default_branch }}",
+            "persist-credentials": false,
+          }),
+        }),
+      ]),
+    );
+    expect(fixture.jobs.prepare.outputs["source-sha"]).toBe(
+      "${{ steps.source.outputs.sha }}",
+    );
+    expect(fixture.jobs.propose.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Checkout exact reviewed source",
+          with: expect.objectContaining({
+            ref: "${{ needs.prepare.outputs.source-sha }}",
+            "persist-credentials": false,
+          }),
+        }),
+        expect.objectContaining({
+          uses: "./.quarantine-policy/.github/actions/signed-commit",
+          with: expect.objectContaining({
+            mode: "refresh-pr",
+            base: "${{ github.event.repository.default_branch }}",
+            paths: "${{ needs.prepare.outputs.prune-paths }}",
+          }),
+        }),
+      ]),
+    );
   });
 });
 

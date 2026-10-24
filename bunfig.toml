@@ -5,7 +5,7 @@ linker = "isolated"
 globalStore = true
 # 5-day quarantine: reject package versions published
 # less than 5 days ago to mitigate supply chain attacks.
-minimumReleaseAge = 432_000
+minimumReleaseAge = 432000
 # First-party @stll packages folio consumes from public npm. They share a
 # release cadence and would otherwise be blocked on every publish cycle.
 # folio's own published packages are absent on purpose: they resolve through
