@@ -129,7 +129,19 @@ class FakeElement {
   className = "";
   dataset: Record<string, string> = {};
   innerHTML = "";
-  style: Record<string, string> = {};
+  style = new Proxy<Record<string, string>>(
+    {},
+    {
+      get: (properties, property) => {
+        if (property === "setProperty") {
+          return (name: string, value: string) => {
+            properties[name] = value;
+          };
+        }
+        return typeof property === "string" ? properties[property] : undefined;
+      },
+    },
+  );
   children: FakeElement[] = [];
   classList = {
     add: (...tokens: string[]) => {
