@@ -1,6 +1,12 @@
 {
   "reject restores, accept equals direct, and both survive a save": [
     {
+      "seed": -1577470563,
+      "path": "16:7:10:8:10:12:12:13:17:1:4:6:6:6:6:6:6:7",
+      "note": "Rejecting two inserted paragraphs before a table, with a real comment on the first, restores the original block sequence.",
+      "date": "2026-10-24"
+    },
+    {
       "seed": -425480671,
       "note": "#1189: moved from the test file's own seed list",
       "date": "2026-09-28"
