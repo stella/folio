@@ -79,15 +79,16 @@ const definedFields = (
 
 /**
  * Editor attrs carrying `rendering`. A falsy marker, flag or format is left
- * unset: the editor treats `null` and absent alike for those, and the parser
- * never authors them as `false` or `""` deliberately.
+ * unset: the editor treats `null` and absent alike for those. An empty marker
+ * is distinct from an absent one: it keeps a numbered paragraph a list item
+ * while reserving the marker suffix's body spacing.
  */
 export const listRenderingAttrPatch = (
   rendering: ListRendering,
 ): Partial<ParagraphAttrs> => {
   const patch: ListRenderingAttrPatch = {
-    listMarker: rendering.marker || undefined,
-    listMarkerTemplate: rendering.markerTemplate || undefined,
+    listMarker: rendering.marker ?? undefined,
+    listMarkerTemplate: rendering.markerTemplate ?? undefined,
     listFoldedMarkerSuffix: rendering.foldedMarkerSuffix,
     listIsBullet: rendering.isBullet || undefined,
     listIsLegal: rendering.isLegal || undefined,
@@ -117,11 +118,26 @@ export const listRenderingAttrPatch = (
  * names a level nothing defines: Word paints no marker for it.
  */
 export const hasListRendering = (
-  attrs: Pick<ParagraphAttrs, "listMarker" | "listIsBullet" | "listNumFmt">,
-): boolean =>
-  attrs.listMarker != null ||
-  attrs.listIsBullet === true ||
-  attrs.listNumFmt != null;
+  attrs: Pick<
+    ParagraphAttrs,
+    | "listMarker"
+    | "listMarkerTemplate"
+    | "listIsBullet"
+    | "listIsLegal"
+    | "listNumFmt"
+  >,
+): boolean => {
+  if (attrs.listNumFmt === "none" && attrs.listIsLegal !== true) {
+    return false;
+  }
+
+  return (
+    attrs.listMarker != null ||
+    attrs.listMarkerTemplate != null ||
+    attrs.listIsBullet === true ||
+    attrs.listNumFmt != null
+  );
+};
 
 /** The attrs a rendering is read back from: a paragraph's, or a recorded previous state's. */
 export type ListRenderingSourceAttrs = Pick<

@@ -1,4 +1,4 @@
-import type { ListLevel, NumberingDefinitions } from "./lists";
+import type { CounterFormat, ListLevel, NumberingDefinitions } from "./lists";
 
 const MIN_NUMBERING_LEVEL = 0;
 const MAX_NUMBERING_LEVEL = 8;
@@ -27,8 +27,9 @@ export type NumberingLevelEntry = {
 
 /** Whether a numbering level reserves space for a visible marker. */
 export const numberingLevelHasMarkerSlot = (
-  level: Pick<ListLevel, "numFmt">,
-): boolean => level.numFmt !== "none";
+  level: { numFmt: CounterFormat },
+  isLegal = false,
+): boolean => isLegal || level.numFmt !== "none";
 
 const firstById = <Value>(
   values: readonly Value[],
@@ -181,7 +182,7 @@ export const levelShowsMarker = (
     return false;
   const { level } = resolution;
   if (level.lvlText.length === 0)
-    return level.isLgl === true || numberingLevelHasMarkerSlot(level);
+    return numberingLevelHasMarkerSlot(level, level.isLgl);
 
   const rendered = level.lvlText.replace(
     /%([1-9])/gu,
@@ -192,8 +193,7 @@ export const levelShowsMarker = (
         Number.parseInt(ordinal, 10) - 1,
       );
       if (referenced.kind === "undefined") return "";
-      return level.isLgl === true ||
-        numberingLevelHasMarkerSlot(referenced.level)
+      return numberingLevelHasMarkerSlot(referenced.level, level.isLgl)
         ? "x"
         : "";
     },
