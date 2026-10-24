@@ -11,9 +11,7 @@ import {
   type EditorIntent,
 } from "../editorIntent";
 import { paragraphLogicalText } from "../offsets";
-import { validateDocumentBatch } from "../sequencing/envelope";
 import {
-  DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   OP_STORIES,
@@ -146,20 +144,7 @@ const resolveRevision = ({
 const restoreThroughJson = (
   document: Document,
   inverse: readonly DocumentOp[],
-) => {
-  const batch = validateDocumentBatch(
-    JSON.parse(
-      JSON.stringify({
-        schema: DOCUMENT_OP_SCHEMA_VERSION,
-        opId: "inverse-round-trip",
-        actor: "test",
-        baseRev: 0,
-        ops: inverse,
-      }),
-    ),
-  ).unwrap();
-  return applyDocumentOps(document, batch.ops).unwrap();
-};
+) => applyDocumentOps(document, JSON.parse(JSON.stringify(inverse))).unwrap();
 
 const compactOperations = (ops: readonly DocumentOp[]) =>
   JSON.stringify(ops, [

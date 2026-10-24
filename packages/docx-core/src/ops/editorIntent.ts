@@ -41,12 +41,14 @@ import {
   childNodes,
   compareGaps,
   defaultInsertionGap,
+  type Gap,
   type InlineNode,
   isCommentAnchor,
   isEmptyRecord,
   isParagraphContent,
   leafSpans,
   rebuildNode,
+  spanningRecords,
   zeroWidthLeavesAt,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
@@ -84,6 +86,7 @@ import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   EMPTY_PROPERTY_SETS,
+  type InsertContentOp,
   type NewIds,
   type OpStory,
   type ParagraphPropsPatch,
@@ -972,16 +975,31 @@ const joinParagraphPropertyAlignment = ({
   } as const;
 };
 
-/** Join only plain runs meeting at an edited seam, within the same container. */
-const textSeamDepth = (paragraph: Paragraph, offset: number): number => {
+const RUN_SEAM_POLICIES = {
+  plain: "plain",
+  sourceCut: "sourceCut",
+} as const;
+
+type RunSeamDepthOptions = {
+  paragraph: Paragraph;
+  at: Gap;
+  policy: (typeof RUN_SEAM_POLICIES)[keyof typeof RUN_SEAM_POLICIES];
+};
+
+/** Join runs meeting at an edited gap under its consolidation policy. */
+const runSeamDepth = ({
+  paragraph,
+  at,
+  policy,
+}: RunSeamDepthOptions): number => {
   const spans = leafSpans(paragraph.content);
   for (const [index, right] of spans.entries()) {
     const left = spans.at(index - 1);
     if (
       index === 0 ||
       left === undefined ||
-      left.after.offset !== offset ||
-      right.before.offset !== offset
+      compareGaps(left.after, at) !== 0 ||
+      compareGaps(right.before, at) !== 0
     )
       continue;
     const leftRun = left.ancestors.at(-1);
@@ -998,12 +1016,34 @@ const textSeamDepth = (paragraph: Paragraph, offset: number): number => {
         .every(
           (parent, parentIndex) => parent === right.ancestors[parentIndex],
         ) ||
-      !runsMergeable(leftRun, rightRun)
+      (policy === RUN_SEAM_POLICIES.plain && !runsMergeable(leftRun, rightRun))
     )
       continue;
     return alikeDepth(leftRun, rightRun);
   }
   return 0;
+};
+
+const replacementSourceRunEnd = (
+  document: Document,
+  op: InsertContentOp,
+): TextPosition | undefined => {
+  const paragraph = paragraphAt(document, op.at);
+  if (paragraph === undefined)
+    panic("An accepted replacement insertion has its source paragraph.");
+  const at = {
+    offset: op.at.offset,
+    zeroWidthBefore:
+      op.at.zeroWidthBefore ??
+      defaultInsertionGap(paragraph.content, op.at.offset).zeroWidthBefore,
+  };
+  if (
+    !spanningRecords(paragraph.content, [at], 0, 1).some(
+      (node) => node.type === "run",
+    )
+  )
+    return undefined;
+  return { ...op.at, ...gapAfterInserted(at, op.slice.content) };
 };
 
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
@@ -2493,6 +2533,10 @@ export const compileEditorIntent = (
     const compact: DocumentOp[] = [];
     const takenRevision = new Set<number>();
     const takenControl = new Set<number>();
+    const sourceRunSeams: TextPosition[] = [];
+    const replacesSourceContent =
+      intent.type === "replaceText" &&
+      ops.some((op) => op.type === DOCUMENT_OP_TYPES.DELETE_RANGE);
     const { story } = intentEndpoints(intent);
     for (const input of ops) {
       const op = filterNewIds(
@@ -2504,6 +2548,10 @@ export const compileEditorIntent = (
       );
       const applied = applyDocumentOp(current, op);
       if (applied.isErr()) return Result.err(applied.error);
+      const sourceRunEnd =
+        replacesSourceContent && op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT
+          ? replacementSourceRunEnd(current, op)
+          : undefined;
       const trimmed = trimAppliedNewIds({
         before: current,
         op,
@@ -2516,6 +2564,7 @@ export const compileEditorIntent = (
       }
       compact.push(trimmed);
       current = applied.value.document;
+      if (sourceRunEnd !== undefined) sourceRunSeams.push(sourceRunEnd);
     }
     if (intent.type === "joinParagraphs") {
       const alignment = joinParagraphPropertyAlignment({
@@ -2540,12 +2589,37 @@ export const compileEditorIntent = (
         if (offset >= 0) editedSeams.push({ ...selection, offset });
     }
     // Merge only the edited seams, keeping every authored interior run boundary.
-    for (const at of editedSeams) {
+    const plannedSeams = new Map<string, { at: TextPosition; depth: number }>();
+    const seams = [
+      ...editedSeams.map((at) => ({ at, policy: RUN_SEAM_POLICIES.plain })),
+      ...sourceRunSeams.map((at) => ({
+        at,
+        policy: RUN_SEAM_POLICIES.sourceCut,
+      })),
+    ];
+    for (const { at, policy } of seams) {
       const paragraph = paragraphAt(current, at);
       if (paragraph === undefined)
         panic("An edited paragraph must exist at its seam.");
-      const depth = textSeamDepth(paragraph, at.offset);
+      const depth = runSeamDepth({
+        paragraph,
+        at: { offset: at.offset, zeroWidthBefore: at.zeroWidthBefore ?? 0 },
+        policy,
+      });
       if (depth === 0) continue;
+      const key = JSON.stringify([
+        at.story,
+        idKey(at.blockId),
+        at.offset,
+        at.zeroWidthBefore ?? 0,
+      ]);
+      plannedSeams.set(key, { at, depth });
+    }
+    for (const { at, depth } of [...plannedSeams.values()].toSorted(
+      (left, right) =>
+        right.at.offset - left.at.offset ||
+        (right.at.zeroWidthBefore ?? 0) - (left.at.zeroWidthBefore ?? 0),
+    )) {
       const join = { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth } as const;
       const joined = applyDocumentOp(current, join);
       if (joined.isErr()) return Result.err(joined.error);
