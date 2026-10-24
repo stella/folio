@@ -8,6 +8,8 @@ import type {
   TableCell,
   Theme,
 } from "../../types/document";
+import { expectCommentMarkAttrs } from "../attrs";
+import { expectRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -2465,7 +2467,7 @@ describe("toProseDoc", () => {
                 },
                 {
                   type: "hyperlink",
-                  href: "https://stella.law",
+                  href: "https://example.org",
                   children: [
                     {
                       type: "run",
@@ -2535,6 +2537,113 @@ describe("toProseDoc", () => {
     ]);
     // All emitted carriers sit inside the same source range, including atoms.
     expect(commentMarkedNodeTypes).toHaveLength(paragraph?.childCount ?? 0);
+  });
+
+  test("round-trips comment ranges and points inside links and content controls", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "before" }],
+                },
+                {
+                  type: "hyperlink",
+                  href: "https://stella.law",
+                  children: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "link-before" }],
+                    },
+                    { type: "commentRangeStart", id: 101 },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "link-inside" }],
+                    },
+                    { type: "commentRangeEnd", id: 101 },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "link-after" }],
+                    },
+                    { type: "commentRangeStart", id: 102 },
+                    { type: "commentRangeEnd", id: 102 },
+                  ],
+                },
+                {
+                  type: "inlineSdt",
+                  properties: { sdtType: "richText", id: 1, tag: "clause" },
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "control-before" }],
+                    },
+                    { type: "commentRangeStart", id: 103 },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "control-inside" }],
+                    },
+                    { type: "commentRangeEnd", id: 103 },
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "control-after" }],
+                    },
+                    { type: "commentRangeStart", id: 104 },
+                    { type: "commentRangeEnd", id: 104 },
+                  ],
+                },
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "after" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const project = (source: Document): string[][] => {
+      const marked: string[][] = [];
+      toProseDoc(source).descendants((node) => {
+        if (!node.isText) return;
+        const ids = node.marks
+          .filter((mark) => mark.type.name === "comment")
+          .map((mark) => expectCommentMarkAttrs(mark).commentId);
+        marked.push([node.text ?? "", ...ids.map(String)]);
+      });
+      return marked;
+    };
+    const pointIds = (source: Document): number[] => {
+      const ids: number[] = [];
+      toProseDoc(source).descendants((node) => {
+        if (node.type.name !== "rangeAnchor") return;
+        const { start, end } = expectRangeAnchorAttrs(node);
+        ids.push(start.id, end.id);
+      });
+      return ids;
+    };
+    const prose = toProseDoc(document);
+
+    expect(pointIds(document)).toEqual([102, 102, 104, 104]);
+    expect(project(document)).toEqual([
+      ["before"],
+      ["link-before"],
+      ["link-inside", "101"],
+      ["link-after"],
+      ["control-before"],
+      ["control-inside", "103"],
+      ["control-after"],
+      ["after"],
+    ]);
+
+    const saved = fromProseDoc(prose, document, {
+      stylesheetSource: { type: "package" },
+    });
+    expect(project(saved)).toEqual(project(document));
+    expect(pointIds(saved)).toEqual([102, 102, 104, 104]);
   });
 
   test("keeps a comment range out of a text box, and a text box's out of the body", () => {

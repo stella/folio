@@ -17,8 +17,8 @@
  *
  * A paragraph that goes whole takes none of its boundaries with it
  * ({@link paragraphRemains}): bookmarks and move ranges stand between blocks
- * where it was, and comment anchors, which only a paragraph holds, go to the
- * nearest paragraph that stays.
+ * where it was, while comment anchors move to a surviving paragraph when
+ * their owning paragraph is removed.
  */
 
 import { panic } from "better-result";
@@ -440,9 +440,11 @@ export const withBoundariesOutsideDeletion = (
 const HOLDS: Partial<
   Record<InlineNode["type"], (boundary: Boundary) => boolean>
 > = {
-  inlineSdt: (boundary) => !isCommentAnchor(boundary),
+  inlineSdt: () => true,
   hyperlink: (boundary) =>
-    boundary.type === "bookmarkStart" || boundary.type === "bookmarkEnd",
+    boundary.type === "bookmarkStart" ||
+    boundary.type === "bookmarkEnd" ||
+    isCommentAnchor(boundary),
   inlineWrapper: () => true,
   insertion: () => true,
   deletion: () => true,

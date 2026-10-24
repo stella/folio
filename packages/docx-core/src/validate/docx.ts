@@ -1052,6 +1052,18 @@ const validateHyperlinkChild = (
     return;
   }
 
+  if (child.type === "commentRangeStart") {
+    increment(ctx.commentRangeStarts, child.id);
+    recordPath(ctx.referencedCommentIds, child.id, path);
+    return;
+  }
+
+  if (child.type === "commentRangeEnd") {
+    increment(ctx.commentRangeEnds, child.id);
+    recordPath(ctx.referencedCommentIds, child.id, path);
+    return;
+  }
+
   // A capture is opaque markup: it pairs no bookmark and carries no id the
   // validator could count.
   if (child.type === "preservedInline") {

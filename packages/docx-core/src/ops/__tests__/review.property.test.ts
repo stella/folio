@@ -777,6 +777,78 @@ const TRACKING_REFUSALS: readonly string[] = [
 // ---------------------------------------------------------------------------
 
 describe("tracked operations and their resolution", () => {
+  test("L2 rejects a source-derived insertion without orphaning its comment boundary", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                {
+                  type: "inlineSdt",
+                  properties: { sdtType: "richText", id: 1, tag: "clause" },
+                  content: [
+                    {
+                      type: "hyperlink",
+                      rId: "rId9",
+                      href: "https://example.org",
+                      children: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "aaa" }],
+                        },
+                        {
+                          type: "inlineWrapper",
+                          kind: "bidi",
+                          control: "embedding",
+                          content: [{ type: "commentRangeEnd", id: 1 }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const seed = {
+      kind: 1_356_576_348,
+      block: 0,
+      first: 1_855_347_801,
+      second: 918_349_035,
+      third: 1_916_669_317,
+      zeroWidth: { first: 0, second: 401_201_505 },
+      depth: 1,
+      text: "x",
+      formatting: {},
+      inherit: true,
+      runPatch: {},
+      paragraphPatch: {},
+      newParagraph: undefined,
+      content: [],
+      fresh: 268_435_456,
+    } satisfies OpSeed;
+    const tracked = applyDocumentOp(document, trackedOpFor(document, seed));
+    if (tracked.isErr()) throw tracked.error;
+    const rejected = resolved(
+      tracked.value.document,
+      tracked.value.revisions,
+      REVISION_DECISIONS.REJECT,
+    );
+    expectRejectedTo({
+      rejected,
+      tracked: tracked.value.document,
+      ids: tracked.value.revisions,
+      expected: document,
+      projection: "π",
+    });
+  });
+
+
   test("L3: copied bookmark boundaries keep their source position across rejection order", () => {
     const source = normalizeForOps({
       package: {

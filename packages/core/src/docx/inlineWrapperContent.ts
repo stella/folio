@@ -93,8 +93,8 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
  * Move-range boundaries stay where the source put them. The editor has
  * zero-width boundary nodes for them, so lifting one beside the control would
  * change which content the tracked move covers without any representational
- * need. Comment ranges remain paragraph-level because the editor projects
- * them as marks shared across the whole story rather than boundary atoms.
+ * need. Comment boundaries are also valid children of `w:sdtContent` and keep
+ * their authored positions there.
  */
 export const INLINE_SDT_CONTENT = {
   inlineWrapper: true,
@@ -111,8 +111,8 @@ export const INLINE_SDT_CONTENT = {
   preservedInline: true,
   run: true,
   simpleField: true,
-  commentRangeEnd: false,
-  commentRangeStart: false,
+  commentRangeEnd: true,
+  commentRangeStart: true,
   commentReference: false,
   moveFromRangeEnd: true,
   moveFromRangeStart: true,
@@ -123,8 +123,8 @@ export const INLINE_SDT_CONTENT = {
 /**
  * What a `w:hyperlink` keeps inside itself (CT_Hyperlink).
  *
- * Runs, the bookmark boundaries a link's target sits on, markup folio does not
- * model, and the four transparent wrappers: `CT_Hyperlink` is `EG_PContent`,
+ * Runs, bookmark and comment boundaries, markup folio does not model, and the
+ * four transparent wrappers: `CT_Hyperlink` is `EG_PContent`,
  * which declares `w:bdo`, `w:dir`, `w:smartTag` and the run-level
  * `w:customXml`, so `w:hyperlink > w:bdo > w:r` is a link an author may write
  * and folio reads it as authored.
@@ -136,11 +136,11 @@ export const INLINE_SDT_CONTENT = {
 export const HYPERLINK_CONTENT = {
   bookmarkEnd: true,
   bookmarkStart: true,
+  commentRangeEnd: true,
+  commentRangeStart: true,
   inlineWrapper: true,
   preservedInline: true,
   run: true,
-  commentRangeEnd: false,
-  commentRangeStart: false,
   commentReference: false,
   complexField: false,
   deletion: false,
