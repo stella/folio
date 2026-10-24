@@ -2940,6 +2940,12 @@ function runContentKey(run: Run): string {
   if (run.alternateFontFamily) {
     parts.push(`ff-alt:${run.alternateFontFamily}`);
   }
+  if (run.hAnsiFontFamily) {
+    parts.push(`hAnsi:${run.hAnsiFontFamily}`);
+  }
+  if (run.hAnsiAlternateFontFamily) {
+    parts.push(`hAnsi-alt:${run.hAnsiAlternateFontFamily}`);
+  }
   if (run.complexScriptFontFamily) {
     parts.push(`cs:${run.complexScriptFontFamily}`);
   }

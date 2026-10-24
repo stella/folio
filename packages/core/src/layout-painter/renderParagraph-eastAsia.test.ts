@@ -17,6 +17,22 @@ const textRun = (over: Partial<TextRun> & { text: string }): TextRun => ({
 });
 
 describe("splitTextRunsByEastAsia", () => {
+  test("paints non-ASCII western text and unhinted punctuation with hAnsi", () => {
+    const run = textRun({
+      text: "é—漢",
+      fontFamily: "Ascii",
+      hAnsiFontFamily: "HAnsi",
+      eastAsiaFontFamily: "Mincho",
+      pmStart: 4,
+      pmEnd: 7,
+    });
+
+    expect(splitTextRunsByEastAsia([run])).toMatchObject([
+      { text: "é—", fontFamily: "HAnsi", pmStart: 4, pmEnd: 6 },
+      { text: "漢", fontFamily: "Mincho", pmStart: 6, pmEnd: 7 },
+    ]);
+  });
+
   test("splits a mixed run into per-script sub-runs with the EA font on CJK", () => {
     const run = textRun({
       text: "AB世界CD",

@@ -44,6 +44,8 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   fontFamily: string;
   alternateFontFamily?: string;
+  hAnsiFontFamily?: string;
+  hAnsiAlternateFontFamily?: string;
   fontSize: number;
   bold?: boolean;
   italic?: boolean;
@@ -64,6 +66,14 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
       : {}),
     fontFamily,
     ...(alternateFontFamily !== undefined ? { alternateFontFamily } : {}),
+    ...(markerFormatting?.hAnsiFontFamily === undefined
+      ? {}
+      : { hAnsiFontFamily: markerFormatting.hAnsiFontFamily }),
+    ...(markerFormatting?.hAnsiAlternateFontFamily === undefined
+      ? {}
+      : {
+          hAnsiAlternateFontFamily: markerFormatting.hAnsiAlternateFontFamily,
+        }),
     fontSize:
       markerFormatting?.fontSize ?? attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE,
     ...(markerFormatting?.bold !== undefined

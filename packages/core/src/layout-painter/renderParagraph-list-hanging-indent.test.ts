@@ -273,6 +273,20 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
     expect(line.style.textIndent).toBe("0");
   });
 
+  test("paints a distinct hAnsi marker slot on its own text span", () => {
+    const { marker } = renderListItem({
+      indent: { left: 48, hanging: 24 },
+      marker: "é.",
+      markerFormatting: {
+        fontFamily: "Arial",
+        hAnsiFontFamily: "Times New Roman",
+      },
+    });
+
+    expect(marker?.children).toHaveLength(2);
+    expect(marker?.children[0]?.style.fontFamily).toContain("Times New Roman");
+  });
+
   test("left == 0 with hanging: marker hangs left and body stays at the content edge", () => {
     const { line, marker } = renderListItem({
       indent: { left: 0, hanging: 24 },
