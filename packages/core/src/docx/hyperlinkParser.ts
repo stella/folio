@@ -304,7 +304,7 @@ const linkedRangeMarker =
       case "moveToRangeEnd":
         push({
           type,
-          ...parseMarkupRangeMarker(child, { id: Number.parseInt(id, 10) }),
+          ...parseMarkupRangeMarker(child),
         });
         return;
       default: {

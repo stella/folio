@@ -3984,8 +3984,8 @@ function extractParagraphContent(
         );
       }
       const tracked = node.marks.some(
-          (mark) =>
-            mark.type.name === "insertion" || mark.type.name === "deletion",
+        (mark) =>
+          mark.type.name === "insertion" || mark.type.name === "deletion",
       );
       if (tracked) {
         establishTrackedBoundaryOwner(node, "indexed-hyperlink");
