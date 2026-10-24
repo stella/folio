@@ -214,75 +214,78 @@ type CollectedTransportEvidenceOptions = {
   frameId: string;
 };
 
+const PROTOCOL_EVIDENCE_FLUSH_TIMEOUT_MS = 5_000;
+
 const assertCollectedTransportEvidence = ({
   path,
   frameId,
-}: CollectedTransportEvidenceOptions) => {
-  const events = readFileSync(path, "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => {
-      const event: unknown = JSON.parse(line);
-      if (!isProtocolRecord(event))
-        throw new TypeError("Malformed canonical protocol evidence");
-      return event;
-    });
-  const sessions = new Set(
-    events.flatMap((event) => {
-      const params = event["params"];
-      if (
-        event["method"] !== "Runtime.executionContextCreated" ||
-        !isProtocolRecord(params)
-      )
-        return [];
-      const context = params["context"];
-      if (!isProtocolRecord(context)) return [];
-      const auxiliary = context["auxData"];
+}: CollectedTransportEvidenceOptions) =>
+  expect(() => {
+    const events = readFileSync(path, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const event: unknown = JSON.parse(line);
+        if (!isProtocolRecord(event))
+          throw new TypeError("Malformed canonical protocol evidence");
+        return event;
+      });
+    const sessions = new Set(
+      events.flatMap((event) => {
+        const params = event["params"];
+        if (
+          event["method"] !== "Runtime.executionContextCreated" ||
+          !isProtocolRecord(params)
+        )
+          return [];
+        const context = params["context"];
+        if (!isProtocolRecord(context)) return [];
+        const auxiliary = context["auxData"];
+        const sessionId = event["sessionId"];
+        return isProtocolRecord(auxiliary) &&
+          auxiliary["frameId"] === frameId &&
+          typeof sessionId === "string"
+          ? [sessionId]
+          : [];
+      }),
+    );
+    expect(
+      sessions.size,
+      "protocol evidence must identify this test frame",
+    ).toBeGreaterThan(0);
+    const errors = events.filter((event) => {
       const sessionId = event["sessionId"];
-      return isProtocolRecord(auxiliary) &&
-        auxiliary["frameId"] === frameId &&
-        typeof sessionId === "string"
-        ? [sessionId]
-        : [];
-    }),
-  );
-  expect(
-    sessions.size,
-    "protocol evidence must identify this test frame",
-  ).toBeGreaterThan(0);
-  const errors = events.filter((event) => {
-    const sessionId = event["sessionId"];
-    return (
-      typeof sessionId === "string" &&
-      sessions.has(sessionId) &&
-      event["error"] !== undefined
-    );
-  });
-  expect(
-    errors,
-    "both unrooted calls must produce correlated raw CDP failures",
-  ).toHaveLength(2);
-  const methods = [];
-  for (const error of errors) {
-    expect(error["error"]).toEqual({
-      code: -32000,
-      message: "Promise was collected",
+      return (
+        typeof sessionId === "string" &&
+        sessions.has(sessionId) &&
+        event["error"] !== undefined
+      );
     });
-    const requests = events.filter(
-      (event) =>
-        event["id"] === error["id"] &&
-        event["sessionId"] === error["sessionId"] &&
-        event["method"] !== undefined,
-    );
-    expect(requests).toHaveLength(1);
-    expect(requests.at(0)).toMatchObject({ awaitPromise: true });
-    methods.push(requests.at(0)?.["method"]);
-  }
-  expect(methods.sort()).toEqual([
-    "Runtime.callFunctionOn",
-    "Runtime.evaluate",
-  ]);
-};
+    expect(
+      errors,
+      "both unrooted calls must produce correlated raw CDP failures",
+    ).toHaveLength(2);
+    const methods = [];
+    for (const error of errors) {
+      expect(error["error"]).toEqual({
+        code: -32000,
+        message: "Promise was collected",
+      });
+      const requests = events.filter(
+        (event) =>
+          event["id"] === error["id"] &&
+          event["sessionId"] === error["sessionId"] &&
+          event["method"] !== undefined,
+      );
+      expect(requests).toHaveLength(1);
+      expect(requests.at(0)).toMatchObject({ awaitPromise: true });
+      methods.push(requests.at(0)?.["method"]);
+    }
+    expect(methods.sort()).toEqual([
+      "Runtime.callFunctionOn",
+      "Runtime.evaluate",
+    ]);
+  }).toPass({ timeout: PROTOCOL_EVIDENCE_FLUSH_TIMEOUT_MS });
 
 test("canonical load roots the awaited transport promise across forced collection", async ({
   page,
@@ -401,7 +404,7 @@ test("canonical load roots the awaited transport promise across forced collectio
       expect(result.isOk()).toBe(true);
       if (result.isOk()) expect(result.value).toBe(true);
     }
-    assertCollectedTransportEvidence({
+    await assertCollectedTransportEvidence({
       path: protocolPath,
       frameId: frameTree.frame.id,
     });
