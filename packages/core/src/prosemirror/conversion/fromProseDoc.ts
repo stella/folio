@@ -2179,7 +2179,13 @@ function editTextBoxAnchorInContent(
     }
     const hadContent = nestedContent.length > 0;
     if (editTextBoxAnchorInContent(nestedContent, marker, replacement)) {
-      if (!replacement && hadContent && nestedContent.length === 0) {
+      if (
+        !replacement &&
+        hadContent &&
+        nestedContent.length === 0 &&
+        item.type !== "simpleField" &&
+        item.type !== "complexField"
+      ) {
         content.splice(index, 1);
       }
       return true;
