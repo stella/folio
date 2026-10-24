@@ -52,6 +52,7 @@ import {
   imageRawXmlFingerprint,
 } from "../../docx/imageRawXml";
 import {
+  isHyperlinkContent,
   isInlineSdtContent,
   isSimpleFieldContent,
 } from "../../docx/inlineWrapperContent";
@@ -3933,23 +3934,82 @@ function extractParagraphContent(
       return;
     }
 
+    if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
+      const marker = expectMoveRangeBoundaryAttrs(node);
+      const tracked = node.marks.some(
+        (mark) =>
+          mark.type.name === "insertion" || mark.type.name === "deletion",
+      );
+      if (linkMark && !isHyperlinkContent(marker)) {
+        panic("A linked move boundary is not admitted by its hyperlink.");
+      }
+      if (tracked) {
+        establishTrackedBoundaryOwner(node, "indexed-hyperlink");
+        if (currentTrackedChange?.type === "hyperlink") {
+          currentTrackedChange.hyperlink.children.push(marker);
+        } else if (currentTrackedChange) {
+          currentTrackedChange.wrapper.content.push(marker);
+        } else {
+          content.push(marker);
+        }
+      } else if (linkMark) {
+        currentTrackedChange = undefined;
+        const linkKey = getLinkKey(linkMark);
+        if (!currentHyperlink || currentHyperlinkKey !== linkKey) {
+          flushCurrentInline();
+          currentHyperlink = createIndexedHyperlink(linkMark);
+          currentHyperlinkKey = linkKey;
+        }
+        currentHyperlink.children.push(marker);
+      } else {
+        flushCurrentInline();
+        currentTrackedChange = undefined;
+        content.push(marker);
+      }
+      return;
+    }
+
     // A range that spans no content: its two markers go back adjacent, at the
     // anchor's own position. They are cloned because the attrs hold them for as
     // long as the editor state does, and the rebuilt document must not share a
     // record with it.
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
-      establishTrackedBoundaryOwner(node);
-      flushCurrentInline();
       const { start, end } = expectRangeAnchorAttrs(node);
       if (
-        currentTrackedChange &&
-        node.marks.some(
+        linkMark &&
+        (!isHyperlinkContent(start) || !isHyperlinkContent(end))
+      ) {
+        panic(
+          "A linked range anchor must contain boundaries its hyperlink admits.",
+        );
+      }
+      const tracked = node.marks.some(
           (mark) =>
             mark.type.name === "insertion" || mark.type.name === "deletion",
-        )
-      ) {
-        currentTrackedChange.wrapper.content.push({ ...start }, { ...end });
+      );
+      if (tracked) {
+        establishTrackedBoundaryOwner(node, "indexed-hyperlink");
+        if (currentTrackedChange?.type === "hyperlink") {
+          currentTrackedChange.hyperlink.children.push(
+            { ...start },
+            { ...end },
+          );
+        } else if (currentTrackedChange) {
+          currentTrackedChange.wrapper.content.push({ ...start }, { ...end });
+        } else {
+          content.push({ ...start }, { ...end });
+        }
+      } else if (linkMark) {
+        currentTrackedChange = undefined;
+        const linkKey = getLinkKey(linkMark);
+        if (!currentHyperlink || currentHyperlinkKey !== linkKey) {
+          flushCurrentInline();
+          currentHyperlink = createIndexedHyperlink(linkMark);
+          currentHyperlinkKey = linkKey;
+        }
+        currentHyperlink.children.push({ ...start }, { ...end });
       } else {
+        flushCurrentInline();
         currentTrackedChange = undefined;
         content.push({ ...start }, { ...end });
       }
@@ -4157,12 +4217,6 @@ function extractParagraphContent(
         );
         return;
       }
-      if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
-        currentTrackedChange.wrapper.content.push({
-          ...expectMoveRangeBoundaryAttrs(node),
-        });
-        return;
-      }
       if (node.type.name === "field" || node.type.name === "structuredField") {
         currentTrackedChange.wrapper.content.push(
           createFieldFromNode(node, {
@@ -4213,13 +4267,6 @@ function extractParagraphContent(
             })));
     if (ownedRun) {
       appendDirectRun(node, ownedRun, node.isText);
-      return;
-    }
-
-    if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
-      flushCurrentInline();
-      currentTrackedChange = undefined;
-      content.push({ ...expectMoveRangeBoundaryAttrs(node) });
       return;
     }
 

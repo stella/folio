@@ -15,11 +15,11 @@
  * Internal links use w:anchor to reference a bookmark in the same document
  */
 
+import { isValidOoxmlNumericId } from "@stll/docx-core";
+
 import type {
   BookmarkEnd,
   BookmarkStart,
-  CommentRangeEnd,
-  CommentRangeStart,
   CommentReference,
   Hyperlink,
   InlineWrapper,
@@ -41,7 +41,10 @@ import {
 import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
-import { parseMarkupRangeMarker } from "./markupRangeMarker";
+import {
+  parseMarkupRangeMarker,
+  parseMoveBookmarkMarker,
+} from "./markupRangeMarker";
 import {
   preservedInlineCapture,
   preserveInlineChild,
@@ -273,6 +276,44 @@ const linkedInlineWrapper =
     context.push(parseLinkedInlineWrapper(element, child, context));
   };
 
+type LinkedRangeMarker = Extract<
+  Hyperlink["children"][number],
+  { type: `${"comment" | "moveFrom" | "moveTo"}Range${"Start" | "End"}` }
+>;
+
+const linkedRangeMarker =
+  (type: LinkedRangeMarker["type"]): ChildReader<HyperlinkChildContext> =>
+  (child, { push }) => {
+    const id = getAttributeByNamespaceUri(
+      child,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "id",
+    );
+    if (id === null || !isValidOoxmlNumericId(id)) {
+      push(preserveInlineChild(child));
+      return;
+    }
+    switch (type) {
+      case "moveFromRangeStart":
+      case "moveToRangeStart":
+        push({ type, ...parseMoveBookmarkMarker(child) });
+        return;
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "moveFromRangeEnd":
+      case "moveToRangeEnd":
+        push({
+          type,
+          ...parseMarkupRangeMarker(child, { id: Number.parseInt(id, 10) }),
+        });
+        return;
+      default: {
+        const unsupported: never = type;
+        return unsupported;
+      }
+    }
+  };
+
 /**
  * What a `w:hyperlink` does with every child its content model declares.
  *
@@ -348,18 +389,8 @@ export const HYPERLINK_CHILD_HANDLERS = {
   moveFrom: CAPTURE,
   moveTo: CAPTURE,
 
-  commentRangeEnd: (child, { push }) => {
-    push({
-      type: "commentRangeEnd",
-      ...parseMarkupRangeMarker(child),
-    } satisfies CommentRangeEnd);
-  },
-  commentRangeStart: (child, { push }) => {
-    push({
-      type: "commentRangeStart",
-      ...parseMarkupRangeMarker(child),
-    } satisfies CommentRangeStart);
-  },
+  commentRangeEnd: linkedRangeMarker("commentRangeEnd"),
+  commentRangeStart: linkedRangeMarker("commentRangeStart"),
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,
@@ -374,10 +405,10 @@ export const HYPERLINK_CHILD_HANDLERS = {
   hyperlink: (child, { push }) => {
     push(preserveInlineChild(child));
   },
-  moveFromRangeEnd: CAPTURE,
-  moveFromRangeStart: CAPTURE,
-  moveToRangeEnd: CAPTURE,
-  moveToRangeStart: CAPTURE,
+  moveFromRangeEnd: linkedRangeMarker("moveFromRangeEnd"),
+  moveFromRangeStart: linkedRangeMarker("moveFromRangeStart"),
+  moveToRangeEnd: linkedRangeMarker("moveToRangeEnd"),
+  moveToRangeStart: linkedRangeMarker("moveToRangeStart"),
   permEnd: CAPTURE,
   permStart: CAPTURE,
   proofErr: CAPTURE,
