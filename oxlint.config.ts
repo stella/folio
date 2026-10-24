@@ -636,6 +636,15 @@ export default library({
       ],
       rules: { "folio-find-navigation/navigation-owner": "error" },
     },
+    {
+      files: [
+        "packages/agents/src/**/*.ts",
+        "test/__fixtures__/agent-core-imports.*.ts",
+      ],
+      rules: {
+        "folio-layer-boundaries/agents-contract-import": "error",
+      },
+    },
     nonReactPackageOverride,
   ],
 });

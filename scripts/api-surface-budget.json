@@ -7,15 +7,15 @@
   },
   "docx-core": {
     "reportBytes": 138453,
-    "reportLines": 4305,
+    "reportLines": 4324,
     "declarationBytes": 327497,
     "declarationLines": 7150
   },
   "core": {
-    "reportBytes": 352184,
-    "reportLines": 11247,
-    "declarationBytes": 2638879,
-    "declarationLines": 53512
+    "reportBytes": 352392,
+    "reportLines": 11249,
+    "declarationBytes": 2641770,
+    "declarationLines": 53544
   },
   "react": {
     "reportBytes": 57073,
@@ -27,7 +27,7 @@
     "reportBytes": 13003,
     "reportLines": 401,
     "declarationBytes": 66793,
-    "declarationLines": 1392
+    "declarationLines": 1448
   },
   "cli": {
     "reportBytes": 4487,

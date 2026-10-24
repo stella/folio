@@ -5,6 +5,7 @@ import {
   isOoxmlSymbolCharacter,
   THEME_COLORS,
 } from "@stll/docx-core/model";
+import { isCopyOriginAncestors } from "@stll/docx-core/ops";
 import {
   isSafePreservedChildXml,
   isWithinPreservedMarkupBudget,
@@ -4373,6 +4374,17 @@ const optionalPositionedBookmarks = (
     );
     if (type === "bookmarkStart") {
       requiredString(marker, "name", `${entryPath}.marker.name`, issues);
+    }
+    const copyOriginAncestors = marker["copyOriginAncestors"];
+    if (
+      copyOriginAncestors !== undefined &&
+      !isCopyOriginAncestors(copyOriginAncestors)
+    ) {
+      issues.push({
+        path: `${entryPath}.marker.copyOriginAncestors`,
+        message:
+          "Expected a sorted, unique list of safe non-negative ordinals.",
+      });
     }
     optionalContentControls(entry, `${entryPath}.contentControls`, issues);
   }

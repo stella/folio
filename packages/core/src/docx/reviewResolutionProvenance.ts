@@ -2,7 +2,12 @@ import { Result, TaggedError } from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
+import {
+  type CopyOriginAncestorList,
+  isCopyOriginAncestors,
+} from "@stll/docx-core/ops";
 
+import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../reviewHistoryLimits";
 import type {
   Insertion,
   ParagraphMarkChange,
@@ -15,7 +20,6 @@ const NAMESPACES: ReadonlySet<string> = new Set([
   FOLIO_REVIEW_HISTORY_NAMESPACE,
 ]);
 const VERSION = 1;
-const MAX_ATTRIBUTE_LENGTH = 32_768;
 type ResolutionJoins = NonNullable<Insertion["resolutionJoins"]>;
 type DeferredRemoval = NonNullable<ResolutionJoins["deferredRemove"]>[number];
 type BoundaryJoins = NonNullable<RunPropertyChange["boundaryJoins"]>;
@@ -181,7 +185,7 @@ const parseAttribute = <Value>({
       message: `Invalid or unsupported ${attribute} review provenance.`,
       reason,
     });
-  if (encoded.length > MAX_ATTRIBUTE_LENGTH) throw failed();
+  if (encoded.length > MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH) throw failed();
   const parsed = Result.try({
     try: (): unknown => JSON.parse(encoded),
     catch: () => failed(),
@@ -218,7 +222,7 @@ const encodeAttribute = ({
     });
   }
   const encoded = JSON.stringify({ version: VERSION, value });
-  if (encoded.length > MAX_ATTRIBUTE_LENGTH) {
+  if (encoded.length > MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH) {
     throw new ReviewResolutionProvenanceError({
       attribute,
       reason: "invalid",
@@ -247,6 +251,14 @@ export const parseBoundaryJoins = (
   node: XmlElement,
 ): BoundaryJoins | undefined =>
   parseAttribute({ node, attribute: "boundaryJoins", valid: isBoundaryJoins });
+export const parseCopyOriginAncestors = (
+  node: XmlElement,
+): CopyOriginAncestorList | undefined =>
+  parseAttribute({
+    node,
+    attribute: "copyOriginAncestors",
+    valid: isCopyOriginAncestors,
+  });
 export const serializeResolutionJoins = (
   value: Insertion["resolutionJoins"],
 ): string =>
@@ -262,6 +274,14 @@ export const serializeBoundaryJoins = (
     attribute: "boundaryJoins",
     value,
     valid: isBoundaryJoins,
+  });
+export const serializeCopyOriginAncestors = (
+  value: CopyOriginAncestorList | undefined,
+): string | undefined =>
+  encodeAttribute({
+    attribute: "copyOriginAncestors",
+    value,
+    valid: isCopyOriginAncestors,
   });
 
 /** Null carries an owned undefined depth; a missing attribute carries no field. */

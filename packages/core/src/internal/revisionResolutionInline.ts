@@ -19,6 +19,7 @@ import {
   resolutionRemovesControl,
   withoutResolvedEnclosures,
 } from "../prosemirror/contentControlRevisions";
+import { copyOriginBoundaryAttrsAfterResolution } from "../prosemirror/copyOriginResolution";
 import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
@@ -205,6 +206,16 @@ const resolveInlineNode = ({
     marks = marks.filter((mark) => mark.type !== context.keepType);
   }
   if (attrs === node.attrs) attrs = resolvedPreservedXmlAttrs(node, marks);
+  const resolvedAttrs = copyOriginBoundaryAttrsAfterResolution({
+    source: node,
+    current: node,
+    baseAttrs: attrs,
+    selection: everyRevision(context.mode),
+  });
+  if (resolvedAttrs === null) {
+    return panic("A copied boundary owner cannot be rejected outside removal.");
+  }
+  attrs = resolvedAttrs;
   if (attrs !== node.attrs)
     return rebuildNode(node, attrs, node.content, marks);
   return marksEqual(marks, node.marks) ? node : node.mark(marks);

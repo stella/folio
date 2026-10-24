@@ -37,6 +37,7 @@
  *   ids are gone.
  */
 
+import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
@@ -55,7 +56,7 @@ import {
 } from "../apply";
 import { paragraphMarkOutcome } from "../blockDeletion";
 import { blockListAt, storyParagraphs, withBodyContent } from "../blocks";
-import { contractViolation } from "../contract";
+import { contractViolation, normalizeForOps } from "../contract";
 import {
   IDENTITY_SPACES,
   identityKeysIn,
@@ -776,6 +777,169 @@ const TRACKING_REFUSALS: readonly string[] = [
 // ---------------------------------------------------------------------------
 
 describe("tracked operations and their resolution", () => {
+  test("L3: copied bookmark boundaries keep their source position across rejection order", () => {
+    const source = normalizeForOps({
+      package: {
+        document: {
+          content: [
+            {
+              type: "blockSdt",
+              properties: { sdtType: "group", id: 1 },
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000001",
+                  content: [
+                    {
+                      type: "insertion",
+                      info: { id: 1, author: "A" },
+                      content: [
+                        {
+                          type: "deletion",
+                          info: {
+                            id: 5000,
+                            author: "B",
+                            date: "2026-01-02T03:04:05Z",
+                          },
+                          content: [
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: "😀" }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    { type: "run", content: [{ type: "tab" }] },
+                    {
+                      type: "insertion",
+                      info: { id: 2, author: "A" },
+                      content: [
+                        {
+                          type: "mathEquation",
+                          display: "inline",
+                          ommlXml:
+                            '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" />',
+                        },
+                        { type: "bookmarkEnd", id: 3 },
+                      ],
+                    },
+                  ],
+                },
+                { type: "paragraph", paraId: "00000002", content: [] },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const seeds = [
+      {
+        kind: 139698728,
+        block: 0,
+        first: 250843144,
+        second: 0,
+        third: 0,
+        zeroWidth: { first: 0, second: 511108161 },
+        depth: 1,
+        text: "x",
+        formatting: {},
+        inherit: true,
+        runPatch: {},
+        paragraphPatch: {},
+        newParagraph: undefined,
+        content: [],
+        fresh: 268435456,
+      } satisfies OpSeed,
+      {
+        kind: 0,
+        block: 0,
+        first: 0,
+        second: 0,
+        third: 0,
+        zeroWidth: undefined,
+        depth: 1,
+        text: "x",
+        formatting: {},
+        inherit: false,
+        runPatch: {},
+        paragraphPatch: {},
+        newParagraph: undefined,
+        content: [],
+        fresh: 268435456,
+      } satisfies OpSeed,
+      {
+        kind: 0,
+        block: 0,
+        first: 0,
+        second: 0,
+        third: 0,
+        zeroWidth: undefined,
+        depth: 1,
+        text: "x",
+        formatting: {},
+        inherit: false,
+        runPatch: {},
+        paragraphPatch: {},
+        newParagraph: undefined,
+        content: [{ type: "commentRangeEnd", id: 1 }],
+        fresh: 268435456,
+      } satisfies OpSeed,
+    ];
+    let current = source;
+    const stamps: RevisionStamp[] = [];
+    for (const [index, seed] of seeds.entries()) {
+      const op = trackedOpFor(current, seed, index);
+      const applied = applyDocumentOp(current, op);
+      if (applied.isErr()) throw applied.error;
+      const stamp = stampOf(op);
+      if (stamp === undefined)
+        panic("Tracked operation has no revision stamp.");
+      stamps.push(stamp);
+      current = applied.value.document;
+    }
+
+    const perOperationIds = stamps.map((stamp) => stampedIds(current, [stamp]));
+    expect(perOperationIds.every((ids) => ids.length > 0)).toBe(true);
+    const allIds = perOperationIds.flat();
+    const rejectedAtOnce = applyDocumentOp(
+      current,
+      resolveOp(allIds, REVISION_DECISIONS.REJECT),
+    );
+    if (rejectedAtOnce.isErr()) throw rejectedAtOnce.error;
+    const rejectedInTurn = resolvedInTurn(
+      current,
+      perOperationIds.toReversed(),
+      REVISION_DECISIONS.REJECT,
+    );
+
+    assertExactModel(
+      projected(rejectedAtOnce.value.document, "π′"),
+      projected(rejectedInTurn, "π′"),
+    );
+    expectRestores(rejectedAtOnce.value, current);
+
+    expectRejectedTo({
+      rejected: rejectedAtOnce.value.document,
+      tracked: current,
+      ids: allIds,
+      expected: source,
+      projection: "π′",
+    });
+    const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
+    const originalRejected = resolvedAll(source, REVISION_DECISIONS.REJECT);
+    if (allRejected === undefined || originalRejected === undefined) {
+      panic("The fixture revisions must be resolvable.");
+    }
+    expectRejectedTo({
+      rejected: allRejected,
+      tracked: current,
+      ids: allIds,
+      expected: originalRejected,
+      projection: "π′",
+    });
+  });
+
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {
     const tally: Tally = new Map();
     assertProperty(

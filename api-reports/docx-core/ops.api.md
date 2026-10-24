@@ -8,6 +8,12 @@ import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
 
 // @public (undocumented)
+export const acceptCopyOriginAncestors: (origins: CopyOriginAncestorList | undefined, acceptedOrdinal: number) => CopyOriginAncestorList | undefined;
+
+// @public (undocumented)
+export const addCopyOriginAncestor: (origins: CopyOriginAncestorList | undefined, addedOrdinal: number) => CopyOriginAncestorList | undefined;
+
+// @public (undocumented)
 export type AddNoteOp = {
     type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
     at: TextPosition;
@@ -176,6 +182,9 @@ export const compileEditorIntent: (document: Document_2, input: CompileEditorInt
 export const contentRank: (operation: ContentRankOperation, target: {
     hasDeletedSplit: boolean;
 }) => number;
+
+// @public (undocumented)
+export type CopyOriginAncestorList = NonNullable<BookmarkEnd["copyOriginAncestors"]>;
 
 // @public
 export const createClient: (document: Document_2) => {
@@ -636,6 +645,9 @@ export const isCommentAnchorCarrierType: (type: string) => boolean;
 // @public
 export const isCommentExhausted: (input: CommentExhaustionInput) => boolean;
 
+// @public (undocumented)
+export const isCopyOriginAncestors: (value: unknown) => value is CopyOriginAncestorList;
+
 // @public
 export function isTextOnlyRun(run: Run): boolean;
 
@@ -824,6 +836,7 @@ export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
 // @public
 export const paragraphRemains: (content: readonly InlineNode[]) => {
+    all: Boundary[];
     blocks: BlockBoundary[];
     comments: CommentAnchor$1[];
 };
@@ -886,6 +899,9 @@ export const reconcileDocumentPartRelationships: (document: Document_2) => Docum
 
 // @public
 export const registerParagraphPropertySnapshot: (input: RegisterParagraphPropertySnapshotOptions) => void;
+
+// @public (undocumented)
+export const rejectCopyOriginAncestors: (origins: CopyOriginAncestorList | undefined, removedAddedAncestors: number) => RejectedCopyOriginAncestors;
 
 // @public (undocumented)
 export type RemoveHeaderFooterOp = {
@@ -1148,6 +1164,9 @@ export type SetTableRowsOp = {
     expected: readonly TableRow[];
     rows: readonly TableRow[];
 };
+
+// @public (undocumented)
+export const shiftCopyOriginAncestors: (origins: CopyOriginAncestorList | undefined, insertedOrdinal: number) => CopyOriginAncestorList | undefined;
 
 // @public
 export const SPLIT_HALVES: Readonly<{

@@ -130,7 +130,11 @@ export const BookmarkBoundaryExtension =
       parseDOM: [
         {
           tag: "span[data-docx-bookmark-boundary]",
-          getAttrs: parseBookmarkBoundaryDom,
+          getAttrs: (dom) =>
+            parseBookmarkBoundaryDom(
+              dom,
+              options.getInternalClipboardToken?.(),
+            ),
         },
       ],
       toDOM(node) {

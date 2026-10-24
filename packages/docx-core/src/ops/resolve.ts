@@ -35,6 +35,10 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { isCommentExhausted } from "./comments";
+import {
+  acceptCopyOriginAncestor,
+  rejectCopyOriginAncestorsInNodes,
+} from "./copyOriginAncestors";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { canonicalDeferredGroups } from "./identity";
@@ -1015,8 +1019,13 @@ const resolveList = (
             ...prepared.slice(prefixLength),
           );
         }
+        const removalContent =
+          resolution.decision === REVISION_DECISIONS.REJECT &&
+          isAddedRevision(node)
+            ? rejectCopyOriginAncestorsInNodes(node.content, 1)
+            : node.content;
         const kept = removedContentBoundaries({
-          nodes: node.content,
+          nodes: removalContent,
           rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
           pairedComments: resolution.pairedComments,
           relocated: resolution.relocated,
@@ -1042,7 +1051,11 @@ const resolveList = (
       if (node.resolutionJoins === undefined) seams.push(out.length);
       else recordSourceSeam(out.length, node.resolutionJoins.before);
       const resolved = resolveList(node.content, resolution);
-      const content = resolved.nodes;
+      const content =
+        isAddedRevision(node) &&
+        resolution.decision === REVISION_DECISIONS.ACCEPT
+          ? acceptCopyOriginAncestor(resolved.nodes)
+          : resolved.nodes;
       if (resolved.edges?.first !== undefined)
         recordSourceSeam(out.length, resolved.edges.first);
       if (

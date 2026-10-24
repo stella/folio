@@ -30,6 +30,7 @@ import type {
  * values, never modified in place.
  */
 import { sectionsInStep, storyParagraphs, withBodyContent } from "./blocks";
+import { hasValidCopyOriginAncestorsInBlocks } from "./copyOriginAncestors";
 import {
   countIds,
   countKeys,
@@ -132,6 +133,19 @@ const violation = (
       reason: DOCUMENT_OP_REFUSAL_REASONS.MISSING_BLOCK_ID,
       message:
         "A story paragraph has no paraId; ensureParaIds establishes one.",
+    });
+  }
+  if (
+    documentStories(document).some(
+      (story) =>
+        !hasValidCopyOriginAncestorsInBlocks(
+          storyBody(document, story).content,
+        ),
+    )
+  ) {
+    return new DocumentOpsContractError({
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: "A copied range boundary has invalid added-revision ancestry.",
     });
   }
   for (const notes of [document.package.footnotes, document.package.endnotes]) {

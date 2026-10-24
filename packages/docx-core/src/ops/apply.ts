@@ -74,6 +74,12 @@ import {
   meetsContract,
   validateOpsDocument,
 } from "./contract";
+import {
+  cloneIncomingCopyBoundaries,
+  copyOriginBoundaryKey,
+  copyOriginBoundaryKeysInBlocks,
+  hasValidCopyOriginAncestors,
+} from "./copyOriginAncestors";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
@@ -137,7 +143,7 @@ import {
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
 import { priorValues } from "./patch";
-import { insertsInvertedRange } from "./rangeBoundaries";
+import { insertsInvertedRange, rangeBoundariesIn } from "./rangeBoundaries";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
@@ -636,6 +642,7 @@ type InsertedOptions = {
   end: Gap;
   newIds: NewIds | undefined;
   revision: RevisionStamp | undefined;
+  copiedBoundaries?: ReadonlySet<InlineNode>;
 };
 
 type Wrapped = Result<Paragraph["content"] | undefined, DocumentOpRefusal>;
@@ -654,6 +661,7 @@ const wrappedContent = (
     stamp: RevisionStamp;
     resolutionJoin?: number;
     acceptance?: NonNullable<Insertion["resolutionJoins"]>["acceptance"];
+    copiedBoundaries?: ReadonlySet<InlineNode>;
   },
 ): Wrapped => {
   const wrapped = wrapTracked(options);
@@ -710,6 +718,9 @@ const inserted = (options: InsertedOptions): Applied => {
       stamp: revision,
       resolutionJoin:
         inverse.join + spanningRecords(content, [start, end], 0, 2).length,
+      ...(options.copiedBoundaries === undefined
+        ? {}
+        : { copiedBoundaries: options.copiedBoundaries }),
       ...(op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT &&
       op.seamPolicy !== undefined
         ? { acceptance: op.seamPolicy }
@@ -833,6 +844,13 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
       "The slice holds nothing, or an empty run, text node, or revision wrapper.",
     );
   }
+  if (!hasValidCopyOriginAncestors(slice.content)) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "The slice carries invalid copied-boundary ancestry.",
+    );
+  }
   if (
     !Number.isInteger(slice.openStart) ||
     !Number.isInteger(slice.openEnd) ||
@@ -868,7 +886,29 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
     return Result.err(located.error);
   }
   const { location, gap } = located.value;
-  const content = insertSliceAt(location.paragraph.content, gap, slice);
+  const incomingBoundaryKeys = new Set(
+    rangeBoundariesIn(slice.content)
+      .map(copyOriginBoundaryKey)
+      .filter((key): key is string => key !== undefined),
+  );
+  const copiedSlice =
+    op.revision === undefined || incomingBoundaryKeys.size === 0
+      ? { content: slice.content, copiedBoundaries: new Set<InlineNode>() }
+      : cloneIncomingCopyBoundaries(
+          slice.content,
+          new Set(
+            [
+              ...copyOriginBoundaryKeysInBlocks(
+                storyBody(document, op.at.story).content,
+              ),
+            ].filter((key) => incomingBoundaryKeys.has(key)),
+          ),
+        );
+  const copiedBoundaries = copiedSlice.copiedBoundaries;
+  const content = insertSliceAt(location.paragraph.content, gap, {
+    ...slice,
+    content: copiedSlice.content,
+  });
   if (content === undefined) {
     return refuse(
       op,
@@ -900,6 +940,7 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
     end: gapAfterInserted(gap, slice.content),
     newIds: op.newIds,
     revision: op.revision,
+    copiedBoundaries,
   });
 };
 

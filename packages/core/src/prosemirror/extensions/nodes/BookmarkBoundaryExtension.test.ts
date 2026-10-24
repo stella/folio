@@ -6,8 +6,13 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../../test/property-testing";
+import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../../../reviewHistoryLimits";
 import { schema } from "../../schema";
 import { validateProseMirrorDocument } from "../../validation";
+import {
+  bookmarkBoundaryDomAttributes,
+  parseBookmarkBoundaryDom,
+} from "./bookmarkBoundaryDom";
 import { BookmarkBoundaryExtension } from "./BookmarkBoundaryExtension";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
@@ -71,6 +76,60 @@ const expectValidBoundaryStructure = (state: EditorState): void => {
 };
 
 describe("BookmarkBoundaryExtension DOM round-trip", () => {
+  test("copy provenance survives internal clipboard DOM but not external HTML", () => {
+    const attrs = {
+      type: "start",
+      id: 12,
+      name: "clause",
+      copyOriginAncestors: [0, 2],
+    } as const;
+    const boundary = schema.node("bookmarkBoundary", attrs);
+    const internalToken = "internal-token";
+    const internalDom = bookmarkBoundaryDomAttributes(boundary, internalToken);
+
+    expect(internalDom["data-docx-copy-origin-ancestors"]).toBe("[0,2]");
+    expect(
+      parseBookmarkBoundaryDom(
+        new FakeHTMLElement(internalDom) as unknown as HTMLElement,
+        internalToken,
+      ),
+    ).toEqual(attrs);
+    expect(
+      parseBookmarkBoundaryDom(
+        new FakeHTMLElement(internalDom) as unknown as HTMLElement,
+        "another-editor-token",
+      ),
+    ).not.toHaveProperty("copyOriginAncestors");
+    expect(
+      parseBookmarkBoundaryDom(
+        new FakeHTMLElement({
+          ...internalDom,
+          "data-docx-internal-clipboard": "forged",
+        }) as unknown as HTMLElement,
+        internalToken,
+      ),
+    ).not.toHaveProperty("copyOriginAncestors");
+  });
+
+  test("rejects oversized internal copy provenance before parsing", () => {
+    const attrs = {
+      "data-docx-bookmark-boundary": "start",
+      "data-docx-bookmark-id": "12",
+      "data-docx-bookmark-name": "clause",
+      "data-docx-internal-clipboard": "internal-token",
+      "data-docx-copy-origin-ancestors": " ".repeat(
+        MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH + 1,
+      ),
+    };
+
+    expect(
+      parseBookmarkBoundaryDom(
+        new FakeHTMLElement(attrs) as unknown as HTMLElement,
+        "internal-token",
+      ),
+    ).toBe(false);
+  });
+
   test("preserves table-column bookmark bounds", () => {
     const attrs = {
       type: "start",

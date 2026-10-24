@@ -278,6 +278,7 @@ export type ExhaustiveHyperlinkReserved = ExhaustiveFields<
 
 export const BOOKMARK_START_RESERVED = {
   type: NO_RESERVED_VALUE,
+  copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   name: NO_RESERVED_VALUE,
   colFirst: NO_RESERVED_VALUE,
@@ -292,6 +293,7 @@ export type ExhaustiveBookmarkStartReserved = ExhaustiveFields<
 
 export const BOOKMARK_END_RESERVED = {
   type: NO_RESERVED_VALUE,
+  copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof BookmarkEnd, ReservedValueDisposition>;
@@ -1018,6 +1020,7 @@ export type ExhaustiveMoveToReserved = ExhaustiveFields<
 
 export const MOVE_FROM_RANGE_START_RESERVED = {
   type: NO_RESERVED_VALUE,
+  copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   name: NO_RESERVED_VALUE,
   author: NO_RESERVED_VALUE,
@@ -1034,6 +1037,7 @@ export type ExhaustiveMoveFromRangeStartReserved = ExhaustiveFields<
 
 export const MOVE_FROM_RANGE_END_RESERVED = {
   type: NO_RESERVED_VALUE,
+  copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof MoveFromRangeEnd, ReservedValueDisposition>;
@@ -1045,6 +1049,7 @@ export type ExhaustiveMoveFromRangeEndReserved = ExhaustiveFields<
 
 export const MOVE_TO_RANGE_START_RESERVED = {
   type: NO_RESERVED_VALUE,
+  copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   name: NO_RESERVED_VALUE,
   author: NO_RESERVED_VALUE,
@@ -1061,6 +1066,7 @@ export type ExhaustiveMoveToRangeStartReserved = ExhaustiveFields<
 
 export const MOVE_TO_RANGE_END_RESERVED = {
   type: NO_RESERVED_VALUE,
+  copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
 } satisfies Record<keyof MoveToRangeEnd, ReservedValueDisposition>;

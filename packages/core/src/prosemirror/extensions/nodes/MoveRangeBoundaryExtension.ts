@@ -1,8 +1,14 @@
 /** Hidden boundary for one non-empty tracked-move range. */
 
 import {
+  INTERNAL_CLIPBOARD_TOKEN_ATTRIBUTE,
+  isInternalClipboardDom,
+} from "../../copyOriginDom";
+import {
   expectMoveRangeBoundaryAttrs,
+  moveRangeMarkerForDom,
   readMoveRangeMarker,
+  withoutUntrustedCopyOrigin,
 } from "../../moveRangeBoundaryAttrs";
 import { createNodeExtension } from "../create";
 
@@ -35,7 +41,13 @@ export const MoveRangeBoundaryExtension =
             }
             try {
               const marker: unknown = JSON.parse(raw);
-              const result = readMoveRangeMarker(marker);
+              const markerForRead = isInternalClipboardDom(
+                dom,
+                options.getInternalClipboardToken?.(),
+              )
+                ? marker
+                : withoutUntrustedCopyOrigin(marker);
+              const result = readMoveRangeMarker(markerForRead);
               return result.ok ? { marker: result.value } : false;
             } catch {
               return false;
@@ -44,7 +56,11 @@ export const MoveRangeBoundaryExtension =
         },
       ],
       toDOM(node) {
-        const marker = expectMoveRangeBoundaryAttrs(node);
+        const internalClipboardToken = options.getInternalClipboardToken?.();
+        const marker = moveRangeMarkerForDom(
+          expectMoveRangeBoundaryAttrs(node),
+          internalClipboardToken,
+        );
         return [
           "span",
           {
@@ -52,10 +68,9 @@ export const MoveRangeBoundaryExtension =
             "aria-hidden": "true",
             contenteditable: "false",
             style: "display: none;",
-            ...(options.getInternalClipboardToken
+            ...(internalClipboardToken
               ? {
-                  "data-docx-internal-clipboard":
-                    options.getInternalClipboardToken(),
+                  [INTERNAL_CLIPBOARD_TOKEN_ATTRIBUTE]: internalClipboardToken,
                 }
               : {}),
           },

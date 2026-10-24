@@ -48,12 +48,14 @@ export type BookmarkBoundaryAttrs = {
     type: "start";
     id: number;
     name: string;
+    copyOriginAncestors?: NonNullable<import__stll_docx_core_model.BookmarkEnd["copyOriginAncestors"]>;
     colFirst?: number;
     colLast?: number;
     displacedByCustomXml?: import__stll_docx_core_model.DisplacedByCustomXml;
 } | {
     type: "end";
     id: number;
+    copyOriginAncestors?: NonNullable<import__stll_docx_core_model.BookmarkEnd["copyOriginAncestors"]>;
     displacedByCustomXml?: import__stll_docx_core_model.DisplacedByCustomXml;
 };
 

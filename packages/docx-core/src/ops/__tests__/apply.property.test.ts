@@ -196,7 +196,7 @@ const INVERSE_KINDS = {
   setTableRows: ["setTableRows"],
   insertText: ["deleteRange", "restoreStoryParts"],
   insertContent: ["deleteRange", "restoreStoryParts"],
-  deleteRange: ["insertContent", "restoreStoryParts"],
+  deleteRange: ["insertContent", "replaceInline", "restoreStoryParts"],
   splitInline: ["joinInline", "restoreStoryParts"],
   joinInline: ["splitInline", "restoreStoryParts"],
   setRunProps: ["setRunProps"],

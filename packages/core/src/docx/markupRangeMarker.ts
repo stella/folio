@@ -11,11 +11,12 @@
 
 import type {
   BlockContent,
-  BookmarkRangeMarker,
+  BookmarkStart,
   DisplacedByCustomXml,
   MarkupRangeMarker,
-  MoveBookmarkMarker,
+  MoveFromRangeStart,
 } from "../types/document";
+import { parseCopyOriginAncestors } from "./reviewResolutionProvenance";
 import {
   getAttribute,
   parseNumericAttribute,
@@ -47,11 +48,19 @@ export const parseMarkupRangeMarker = (node: XmlElement): MarkupRangeMarker => {
   return marker;
 };
 
+export const parseCopyOriginMarker = (
+  node: XmlElement,
+): Pick<BookmarkStart, "copyOriginAncestors"> => {
+  const copyOriginAncestors = parseCopyOriginAncestors(node);
+  return copyOriginAncestors === undefined ? {} : { copyOriginAncestors };
+};
+
 export const parseBookmarkRangeMarker = (
   node: XmlElement,
-): BookmarkRangeMarker => {
-  const marker: BookmarkRangeMarker = {
+): Omit<BookmarkStart, "type"> => {
+  const marker: Omit<BookmarkStart, "type"> = {
     ...parseMarkupRangeMarker(node),
+    ...parseCopyOriginMarker(node),
     name: getAttribute(node, "w", "name") ?? "",
   };
   const colFirst = parseNumericAttribute(node, "w", "colFirst");
@@ -74,9 +83,9 @@ export const parseBookmarkRangeMarker = (
  */
 export const parseMoveBookmarkMarker = (
   node: XmlElement,
-): MoveBookmarkMarker => {
+): Omit<MoveFromRangeStart, "type"> => {
   const author = (getAttribute(node, "w", "author") ?? "").trim();
-  const marker: MoveBookmarkMarker = {
+  const marker: Omit<MoveFromRangeStart, "type"> = {
     ...parseBookmarkRangeMarker(node),
     author: author.length > 0 ? author : "Unknown",
   };
@@ -122,6 +131,7 @@ export const BLOCK_MOVE_RANGE_MARKER_HANDLERS: BlockMoveRangeMarkerHandlers = {
     modelled.push({
       type: "moveFromRangeEnd",
       ...parseMarkupRangeMarker(child),
+      ...parseCopyOriginMarker(child),
     });
   },
   moveToRangeStart: (
@@ -137,6 +147,10 @@ export const BLOCK_MOVE_RANGE_MARKER_HANDLERS: BlockMoveRangeMarkerHandlers = {
     child: XmlElement,
     { modelled }: { modelled: BlockContent[] },
   ): void => {
-    modelled.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
+    modelled.push({
+      type: "moveToRangeEnd",
+      ...parseMarkupRangeMarker(child),
+      ...parseCopyOriginMarker(child),
+    });
   },
 };

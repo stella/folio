@@ -16,6 +16,7 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Plugin } from "prosemirror-state";
 
+import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../../../reviewHistoryLimits";
 import { schema } from "../../schema";
 import { CommentReferenceExtension } from "./CommentReferenceExtension";
 import {
@@ -148,6 +149,39 @@ describe("RangeAnchorExtension DOM boundary", () => {
       end: { type: "commentRangeEnd", id: COMMENT_ID },
     };
     expect(parseRangeAnchor(JSON.stringify(attrs))).toEqual(attrs);
+  });
+
+  test("does not trust copy ownership from external marker HTML", () => {
+    const attrs = {
+      start: {
+        type: "moveToRangeStart",
+        id: 19,
+        name: "move",
+        author: "Reviewer",
+        copyOriginAncestors: [0],
+      },
+      end: {
+        type: "moveToRangeEnd",
+        id: 19,
+        copyOriginAncestors: [0],
+      },
+    };
+
+    expect(parseRangeAnchor(JSON.stringify(attrs))).toEqual({
+      start: {
+        type: "moveToRangeStart",
+        id: 19,
+        name: "move",
+        author: "Reviewer",
+      },
+      end: { type: "moveToRangeEnd", id: 19 },
+    });
+  });
+
+  test("rejects oversized marker data before parsing", () => {
+    expect(
+      parseRangeAnchor(" ".repeat(MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH + 1)),
+    ).toBe(false);
   });
 
   test.each([

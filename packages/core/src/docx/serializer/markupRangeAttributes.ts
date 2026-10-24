@@ -8,36 +8,51 @@
  */
 
 import { escapeXmlAttribute } from "@stll/docx-core";
+import type { CopyOriginAncestorList } from "@stll/docx-core/ops";
 
 import type {
   BookmarkEnd,
   BookmarkRangeMarker,
   BookmarkStart,
   MarkupRangeMarker,
-  MoveBookmarkMarker,
   MoveFromRangeEnd,
   MoveFromRangeStart,
   MoveToRangeEnd,
   MoveToRangeStart,
 } from "../../types/document";
+import { serializeCopyOriginAncestors } from "../reviewResolutionProvenance";
 
 const attribute = (name: string, value: string | number): string =>
   `${name}="${escapeXmlAttribute(String(value))}"`;
 
-export const markupRangeAttributes = (marker: MarkupRangeMarker): string[] => {
+export const markupRangeAttributes = (
+  marker: MarkupRangeMarker,
+  copyOriginAncestors?: CopyOriginAncestorList,
+): string[] => {
   const attributes = [attribute("w:id", marker.id)];
   if (marker.displacedByCustomXml !== undefined) {
     attributes.push(
       attribute("w:displacedByCustomXml", marker.displacedByCustomXml),
     );
   }
+  attributes.push(...copyOriginAttributes(copyOriginAncestors));
   return attributes;
+};
+
+const copyOriginAttributes = (
+  value: CopyOriginAncestorList | undefined,
+): string[] => {
+  const encoded = serializeCopyOriginAncestors(value);
+  return encoded === undefined
+    ? []
+    : [attribute("folio:copyOriginAncestors", encoded)];
 };
 
 export const bookmarkRangeAttributes = (
   marker: BookmarkRangeMarker,
+  copyOriginAncestors?: CopyOriginAncestorList,
 ): string[] => {
-  const attributes = markupRangeAttributes(marker);
+  const attributes = markupRangeAttributes(marker, copyOriginAncestors);
   if (marker.colFirst !== undefined) {
     attributes.push(attribute("w:colFirst", marker.colFirst));
   }
@@ -59,14 +74,17 @@ export const serializeBookmarkMarker = (
   marker: BookmarkStart | BookmarkEnd,
 ): string =>
   marker.type === "bookmarkStart"
-    ? `<w:bookmarkStart ${bookmarkRangeAttributes(marker).join(" ")}/>`
-    : `<w:bookmarkEnd ${markupRangeAttributes(marker).join(" ")}/>`;
+    ? `<w:bookmarkStart ${bookmarkRangeAttributes(marker, marker.copyOriginAncestors).join(" ")}/>`
+    : `<w:bookmarkEnd ${markupRangeAttributes(marker, marker.copyOriginAncestors).join(" ")}/>`;
 
 /** `w:author` is required, so it is always written; `w:date` only when known. */
 export const moveBookmarkAttributes = (
-  marker: MoveBookmarkMarker,
+  marker: MoveFromRangeStart | MoveToRangeStart,
 ): string[] => {
-  const attributes = bookmarkRangeAttributes(marker);
+  const attributes = bookmarkRangeAttributes(
+    marker,
+    marker.copyOriginAncestors,
+  );
   attributes.push(attribute("w:author", marker.author.trim() || "Unknown"));
   if (marker.date !== undefined && marker.date.trim().length > 0) {
     attributes.push(attribute("w:date", marker.date.trim()));
@@ -88,7 +106,7 @@ export const serializeMoveRangeMarker = (
       return `<w:${marker.type} ${moveBookmarkAttributes(marker).join(" ")}/>`;
     case "moveFromRangeEnd":
     case "moveToRangeEnd":
-      return `<w:${marker.type} ${markupRangeAttributes(marker).join(" ")}/>`;
+      return `<w:${marker.type} ${markupRangeAttributes(marker, marker.copyOriginAncestors).join(" ")}/>`;
     default: {
       const unwritten: never = marker;
       return unwritten;

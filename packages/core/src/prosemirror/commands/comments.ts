@@ -47,6 +47,7 @@ import {
   resolutionRemovesControl,
   withoutResolvedEnclosures,
 } from "../contentControlRevisions";
+import { copyOriginBoundaryAttrsAfterResolution } from "../copyOriginResolution";
 import { resolveEmptyFieldResultRuns } from "../emptyFieldResultRuns";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import {
@@ -294,6 +295,22 @@ function resolveChange(
           removals: [removed],
         });
       };
+      const resolveCopyOriginAttrs = (source: PMNode, position: number) => {
+        const current = tr.doc.nodeAt(position);
+        if (!current) return;
+        const attrs = copyOriginBoundaryAttrsAfterResolution({
+          source,
+          current,
+          baseAttrs: current.attrs,
+          selection,
+        });
+        if (attrs === null) {
+          panic("A copied boundary owner cannot be rejected outside removal.");
+        }
+        if (attrs !== current.attrs) {
+          tr.setNodeMarkup(position, undefined, attrs);
+        }
+      };
       /** Where resolved inline content began and ended, in `state.doc`. */
       const resolvedBoundaries: number[] = [];
       const pPrMarkOps: PPrMarkOp[] = [];
@@ -534,6 +551,7 @@ function resolveChange(
           const path = trackedRevisionPathOf(nestedMark);
           const selected = (layer: TrackedRevisionAncestor): boolean =>
             revisionSet === null || revisionSet.has(layer.revisionId);
+          let nestedContentRemoved = false;
           if (path.some(selected)) {
             if (
               path.some(
@@ -546,6 +564,7 @@ function resolveChange(
                 rangeTo,
                 removeResolvedSubtree(node, selection),
               );
+              nestedContentRemoved = true;
               // The removal answers for everything inside the node.
               if (!node.isLeaf) return false;
             } else {
@@ -562,6 +581,7 @@ function resolveChange(
             const attrs = resolvedPreservedXmlAttrs(node, current.marks);
             if (attrs !== node.attrs) tr.setNodeMarkup(pos, undefined, attrs);
           }
+          if (!nestedContentRemoved) resolveCopyOriginAttrs(node, pos);
           return true;
         }
 
@@ -596,6 +616,7 @@ function resolveChange(
             }
           }
         }
+        if (!removesNode) resolveCopyOriginAttrs(node, pos);
         return true;
       });
 

@@ -22,6 +22,10 @@ import {
 
 import type { ParagraphContent } from "../types/document";
 import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
+import {
+  copyOriginBoundaryAfterRemovingAddedAncestors,
+  copyOriginBoundaryAfterResolution,
+} from "./copyOriginResolution";
 import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockBookmarkBoundaryExtension";
 import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockMoveRangeBoundaryExtension";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
@@ -71,8 +75,25 @@ type BoundaryNodeName =
 const bookmarkItems = (node: PMNode): BoundaryItem[] => {
   const attrs = expectBookmarkBoundaryAttrs(node);
   return attrs.type === "start"
-    ? [{ type: "bookmarkStart", id: attrs.id, name: attrs.name }]
-    : [{ type: "bookmarkEnd", id: attrs.id }];
+    ? [
+        {
+          type: "bookmarkStart",
+          id: attrs.id,
+          name: attrs.name,
+          ...(attrs.copyOriginAncestors === undefined
+            ? {}
+            : { copyOriginAncestors: attrs.copyOriginAncestors }),
+        },
+      ]
+    : [
+        {
+          type: "bookmarkEnd",
+          id: attrs.id,
+          ...(attrs.copyOriginAncestors === undefined
+            ? {}
+            : { copyOriginAncestors: attrs.copyOriginAncestors }),
+        },
+      ];
 };
 
 /** The boundaries each node carries, in document order. A missing kind fails to type-check. */
@@ -204,8 +225,21 @@ const boundaryNode = (
   if (item.type === "bookmarkStart" || item.type === "bookmarkEnd") {
     const attrs =
       item.type === "bookmarkStart"
-        ? { type: "start", id: item.id, name: item.name }
-        : { type: "end", id: item.id };
+        ? {
+            type: "start",
+            id: item.id,
+            name: item.name,
+            ...(item.copyOriginAncestors === undefined
+              ? {}
+              : { copyOriginAncestors: item.copyOriginAncestors }),
+          }
+        : {
+            type: "end",
+            id: item.id,
+            ...(item.copyOriginAncestors === undefined
+              ? {}
+              : { copyOriginAncestors: item.copyOriginAncestors }),
+          };
     return schema.nodes[
       inline ? BOOKMARK_BOUNDARY_NODE_NAME : BLOCK_BOOKMARK_BOUNDARY_NODE_NAME
     ]?.create(attrs);
@@ -269,9 +303,13 @@ export const paragraphRemainsOf = (
   const inline: PMNode[] = [];
   paragraph.descendants((node) => {
     const carried = rangeBoundaryItemsOf(node);
-    if (carried.length > 0) inline.push(node);
+    const remains =
+      carried.length > 0
+        ? copyOriginBoundaryAfterRemovingAddedAncestors(node)
+        : node;
+    if (carried.length > 0 && remains !== null) inline.push(remains);
     if (carriesCommentAnchor(node)) comments.push(node);
-    items.push(...carried);
+    if (remains !== null) items.push(...rangeBoundaryItemsOf(remains));
     return true;
   });
   const blocks = paragraphRemains(items).blocks.flatMap((item) => {
@@ -464,8 +502,13 @@ export const removeResolvedSubtree = (
   const landing = landingMarks(node, selection);
   const visit = (candidate: PMNode): void => {
     if (keepsRangeBoundary(candidate)) {
+      const withResolvedCopyOrigin = copyOriginBoundaryAfterResolution(
+        candidate,
+        selection,
+      );
+      if (withResolvedCopyOrigin === null) return;
       kept.push(
-        candidate.type.create(candidate.attrs, null, [
+        withResolvedCopyOrigin.type.create(withResolvedCopyOrigin.attrs, null, [
           ...candidate.marks.filter(
             (mark) =>
               !REVISION_MARK_NAMES.has(mark.type.name) &&

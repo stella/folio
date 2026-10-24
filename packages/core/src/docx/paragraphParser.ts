@@ -81,6 +81,7 @@ import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
 import {
+  parseCopyOriginMarker,
   parseMarkupRangeMarker,
   parseMoveBookmarkMarker,
 } from "./markupRangeMarker";
@@ -2238,6 +2239,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     contents.push({
       type: "moveFromRangeEnd",
       ...parseMarkupRangeMarker(child),
+      ...parseCopyOriginMarker(child),
     });
   },
   moveToRangeStart: (child, { contents }) => {
@@ -2247,7 +2249,11 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     });
   },
   moveToRangeEnd: (child, { contents }) => {
-    contents.push({ type: "moveToRangeEnd", ...parseMarkupRangeMarker(child) });
+    contents.push({
+      type: "moveToRangeEnd",
+      ...parseMarkupRangeMarker(child),
+      ...parseCopyOriginMarker(child),
+    });
   },
 
   commentRangeStart: (child, { contents }) => {

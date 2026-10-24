@@ -19,6 +19,7 @@
 import type { BookmarkEnd, BookmarkStart } from "../types/document";
 import {
   parseBookmarkRangeMarker,
+  parseCopyOriginMarker,
   parseMarkupRangeMarker,
 } from "./markupRangeMarker";
 import type { XmlElement } from "./xmlParser";
@@ -34,7 +35,11 @@ export function parseBookmarkStart(node: XmlElement): BookmarkStart {
 
 /** Parse a bookmark end element (w:bookmarkEnd, CT_MarkupRange). */
 export function parseBookmarkEnd(node: XmlElement): BookmarkEnd {
-  return { type: "bookmarkEnd", ...parseMarkupRangeMarker(node) };
+  return {
+    type: "bookmarkEnd",
+    ...parseMarkupRangeMarker(node),
+    ...parseCopyOriginMarker(node),
+  };
 }
 
 // ============================================================================

@@ -133,8 +133,14 @@ export function createStarterKit(
     "bookmarkBoundary",
     BookmarkBoundaryExtension({ getInternalClipboardToken }),
   );
-  add("blockBookmarkBoundary", BlockBookmarkBoundaryExtension());
-  add("blockMoveRangeBoundary", BlockMoveRangeBoundaryExtension());
+  add(
+    "blockBookmarkBoundary",
+    BlockBookmarkBoundaryExtension({ getInternalClipboardToken }),
+  );
+  add(
+    "blockMoveRangeBoundary",
+    BlockMoveRangeBoundaryExtension({ getInternalClipboardToken }),
+  );
   add(
     "commentReference",
     CommentReferenceExtension({ getInternalClipboardToken }),

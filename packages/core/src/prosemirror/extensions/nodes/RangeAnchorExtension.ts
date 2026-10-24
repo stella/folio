@@ -1,5 +1,11 @@
 /** Zero-width comment or tracked-move range that spans no content. */
 
+import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../../../reviewHistoryLimits";
+import {
+  INTERNAL_CLIPBOARD_TOKEN_ATTRIBUTE,
+  isInternalClipboardDom,
+} from "../../copyOriginDom";
+import { withoutUntrustedCopyOrigin } from "../../moveRangeBoundaryAttrs";
 import {
   readRangeAnchorAttrs,
   readRangeAnchorValues,
@@ -37,33 +43,54 @@ export const RangeAnchorExtension = createNodeExtension<RangeAnchorOptions>({
         tag: `span[${RANGE_ANCHOR_DOM_ATTRIBUTE}]`,
         getAttrs(dom) {
           const raw = dom.getAttribute(RANGE_ANCHOR_DOM_ATTRIBUTE);
-          if (raw === null) {
+          if (
+            raw === null ||
+            raw.length > MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH
+          ) {
             return false;
           }
           const parsed = parseMarkers(raw);
           if (parsed === null) {
             return false;
           }
-          const result = readRangeAnchorValues(parsed.start, parsed.end);
+          const markers = isInternalClipboardDom(
+            dom,
+            options.getInternalClipboardToken?.(),
+          )
+            ? parsed
+            : {
+                start: withoutUntrustedCopyOrigin(parsed.start),
+                end: withoutUntrustedCopyOrigin(parsed.end),
+              };
+          const result = readRangeAnchorValues(markers.start, markers.end);
           return result.ok ? result.value : false;
         },
       },
     ],
     toDOM(node) {
       const attrs = readRangeAnchorAttrs(node);
+      const internalClipboardToken = options.getInternalClipboardToken?.();
+      let serializedMarkers = "";
+      if (attrs.ok) {
+        const markers =
+          internalClipboardToken === undefined
+            ? {
+                start: withoutUntrustedCopyOrigin(attrs.value.start),
+                end: withoutUntrustedCopyOrigin(attrs.value.end),
+              }
+            : attrs.value;
+        serializedMarkers = JSON.stringify(markers);
+      }
       return [
         "span",
         {
-          [RANGE_ANCHOR_DOM_ATTRIBUTE]: attrs.ok
-            ? JSON.stringify(attrs.value)
-            : "",
+          [RANGE_ANCHOR_DOM_ATTRIBUTE]: serializedMarkers,
           "aria-hidden": "true",
           contenteditable: "false",
           style: "display: none;",
-          ...(options.getInternalClipboardToken
+          ...(internalClipboardToken
             ? {
-                "data-docx-internal-clipboard":
-                  options.getInternalClipboardToken(),
+                [INTERNAL_CLIPBOARD_TOKEN_ATTRIBUTE]: internalClipboardToken,
               }
             : {}),
         },

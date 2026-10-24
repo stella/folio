@@ -149,7 +149,8 @@ type RuleContext = {
       | "engineImportsRuntime"
       | "projectionBoundaryImport"
       | "generatedKernelImport"
-      | "paintBackendValueImport";
+      | "paintBackendValueImport"
+      | "agentsContractImport";
   }) => void;
 };
 
@@ -668,9 +669,40 @@ const checkPaintBackendSeam = (context: RuleContext, node: AstNode): void => {
   context.report({ node, messageId: "paintBackendValueImport" });
 };
 
+const AGENTS_CORE_FACADE = "@stll/folio-core/ai-edits";
+
 export default {
   meta: { name: "folio-layer-boundaries" },
   rules: {
+    "agents-contract-import": {
+      meta: {
+        type: "problem",
+        messages: {
+          agentsContractImport:
+            "Use the server contract or the defining core leaf module so agent declarations have one import owner.",
+        },
+      },
+      create(context: RuleContext) {
+        const handle = (node: unknown) => {
+          if (!isAstNode(node)) return;
+          const specifier = importSpecifierOf(node);
+          if (
+            specifier === AGENTS_CORE_FACADE ||
+            specifier === `${AGENTS_CORE_FACADE}/index`
+          ) {
+            context.report({ node, messageId: "agentsContractImport" });
+          }
+        };
+        return {
+          ImportDeclaration: handle,
+          ImportExpression: handle,
+          CallExpression: handle,
+          ExportNamedDeclaration: handle,
+          ExportAllDeclaration: handle,
+          TSImportType: handle,
+        };
+      },
+    },
     "paint-backend-seam": {
       meta: {
         type: "problem",
