@@ -49,13 +49,11 @@ import {
 } from "./documents.ts";
 import { normalizeAssertion } from "./failure-fingerprints.ts";
 import {
-  featureCellKey,
   type FeatureCoverage,
+  featureCoverageWeight,
   featureOperationHits,
-  gapWeight,
   generatedSelection,
   parseFeatureCoverage,
-  targetFeatureSignature,
 } from "./feature-coverage.ts";
 import {
   type Action,
@@ -162,24 +160,14 @@ const pickerFor = (
     biasedPicker(flow.random, {
       ...options,
       coverageWeight: (block) => {
-        const features = targetFeatureSignature(
-          block,
-          index.features.get(block.id) ?? new Set(),
-          storyKindOf(index, block),
-        );
-        return Math.max(
-          ...features.map((feature) =>
-            gapWeight(
-              coverageWeights.cells[
-                featureCellKey({
-                  operation,
-                  feature,
-                  selection: generatedSelection(operation),
-                })
-              ] ?? 0,
-            ),
-          ),
-        );
+        return featureCoverageWeight({
+          operation,
+          target: block,
+          known: index.features.get(block.id) ?? new Set(),
+          story: storyKindOf(index, block),
+          selection: generatedSelection(operation),
+          coverage: coverageWeights,
+        });
       },
     });
 };

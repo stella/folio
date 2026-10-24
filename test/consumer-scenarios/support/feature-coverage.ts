@@ -3,6 +3,8 @@
 
 import type { FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
+import type { Feature } from "./targets.ts";
+
 export const DOCUMENT_FEATURES = [
   "plain-table",
   "merged-cells",
@@ -12,6 +14,7 @@ export const DOCUMENT_FEATURES = [
   "multi-level-list",
   "field",
   "content-control",
+  "note-reference",
   "footnote",
   "endnote",
   "comment-anchor",
@@ -263,10 +266,26 @@ type TargetSignature = Pick<
   table?: unknown;
 };
 
+const TARGET_FEATURE_DISPOSITIONS = {
+  sectionCarrier: "section-break",
+  listItem: null,
+  tableEdge: null,
+  inlineObject: null,
+  pendingRevision: "tracked-change",
+  commentAnchor: "comment-anchor",
+  field: "field",
+  hyperlink: null,
+  noteReference: "note-reference",
+  contentControl: "content-control",
+  formatBoundary: null,
+  storyEdge: null,
+  surrogateBoundary: null,
+} as const satisfies Record<Feature, DocumentFeature | null>;
+
 /** Classify only features observable at the touched target. */
 export const targetFeatureSignature = (
   target: TargetSignature | undefined,
-  known: ReadonlySet<string>,
+  known: ReadonlySet<Feature | "none">,
   story: string,
 ): DocumentFeature[] => {
   const found = new Set<DocumentFeature>();
@@ -301,13 +320,47 @@ export const targetFeatureSignature = (
     if (target.kind === "heading" || target.headingLevel !== undefined)
       found.add("heading");
   }
-  if (known.has("field")) found.add("field");
-  if (known.has("contentControl")) found.add("content-control");
+  for (const feature of known) {
+    if (feature === "none") continue;
+    const disposition = TARGET_FEATURE_DISPOSITIONS[feature];
+    if (disposition === null) continue;
+    if (
+      feature === "noteReference" &&
+      story !== "body" &&
+      story !== "tableCell"
+    )
+      continue;
+    found.add(disposition);
+  }
   if (story === "footnote") found.add("footnote");
   if (story === "endnote") found.add("endnote");
-  if (known.has("commentAnchor")) found.add("comment-anchor");
-  if (known.has("pendingRevision")) found.add("tracked-change");
-  if (known.has("sectionCarrier")) found.add("section-break");
   if (story === "header" || story === "footer") found.add("header-footer");
-  return found.size > 0 ? [...found] : ["none"];
+  return found.size > 0
+    ? DOCUMENT_FEATURES.filter((feature) => found.has(feature))
+    : ["none"];
 };
+
+type FeatureCoverageWeightOptions = {
+  operation: string;
+  target: TargetSignature | undefined;
+  known: ReadonlySet<Feature | "none">;
+  story: string;
+  selection: SelectionType;
+  coverage: FeatureCoverage;
+};
+
+export const featureCoverageWeight = ({
+  operation,
+  target,
+  known,
+  story,
+  selection,
+  coverage,
+}: FeatureCoverageWeightOptions): number =>
+  Math.max(
+    ...targetFeatureSignature(target, known, story).map((feature) =>
+      gapWeight(
+        coverage.cells[featureCellKey({ operation, feature, selection })] ?? 0,
+      ),
+    ),
+  );
