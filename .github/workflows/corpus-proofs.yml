@@ -2,12 +2,20 @@ name: Corpus proofs
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Census the full invariant set or only editor round-trip
+        type: choice
+        options: [all, editor-round-trip]
+        default: all
+        required: true
 
 permissions: {}
 
 jobs:
   shard:
     name: Corpus invariants (shard ${{ matrix.shard }}/4)
+    if: inputs.scope != 'editor-round-trip'
     runs-on: ubuntu-24.04
     # Eight more invariants per file than the gate shipped with, over a corpus
     # that has grown: a shard is now most of an hour rather than minutes.
@@ -79,8 +87,74 @@ jobs:
           name: corpus-census-${{ matrix.shard }}
           path: census-${{ matrix.shard }}.json
 
+  editor-round-trip:
+    name: Editor round-trip census (shard ${{ matrix.shard }}/4)
+    if: inputs.scope == 'editor-round-trip'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Point the corpus cache outside the checkout
+        run: echo "FOLIO_CORPUS_CACHE=$RUNNER_TEMP/folio-corpus" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@12eb83b8c6bd42a0bead73d9c6bc30b4caad6433
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Editor round-trip regressions
+        if: matrix.shard == 1
+        working-directory: packages/core
+        run: >-
+          bun test
+          ./src/prosemirror/conversion/fieldResultRunMetadataRoundtrip.test.ts
+          ./src/prosemirror/conversion/fromProseDoc.test.ts
+          ./src/prosemirror/conversion/hyperlinkDestinationRoundtrip.property.test.ts
+          ./src/prosemirror/conversion/pageBreakRunFieldOwnership.test.ts
+          ./src/prosemirror/extensions/nodes/FieldExtension.test.ts
+          ./src/prosemirror/extensions/features/pasteCleanup.test.ts
+          ./src/prosemirror/validation.test.ts
+          ./src/prosemirror/yjsDocumentMetadata.test.ts
+
+      - name: Editor census and run-record guards
+        if: matrix.shard == 1
+        run: >-
+          bun test
+          ./scripts/corpus-editor-round-trip-census.test.ts
+          ./scripts/corpus-editor-round-trip.test.ts
+          ./scripts/run-record-lint.test.ts
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FOLIO_CORPUS_CACHE }}
+          key: folio-corpus-${{ hashFiles('corpus/sources.lock.json') }}
+
+      - name: Fetch the corpus
+        run: bun run corpus:fetch
+
+      - name: Editor round-trip invariant
+        run: bun scripts/corpus-editor-round-trip.ts --shard ${{ matrix.shard }}/4 --out editor-round-trip-census-${{ matrix.shard }}.json
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: editor-round-trip-census-${{ matrix.shard }}
+          path: editor-round-trip-census-${{ matrix.shard }}.json
+
   tier2:
     name: Corpus invariants, tier 2 (shard ${{ matrix.shard }}/4)
+    if: inputs.scope != 'editor-round-trip'
     runs-on: ubuntu-24.04
     # Tier 2 more than doubles the corpus, so a shard runs longer than a
     # tier-1 one.
@@ -126,6 +200,7 @@ jobs:
 
   ratchet:
     name: Corpus baseline ratchet
+    if: inputs.scope != 'editor-round-trip'
     needs: shard
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -40,6 +40,32 @@ const seededDocument = () => {
 };
 
 describe("attr-schema version marker", () => {
+  test("older hyperlink snapshots keep an absent bookmark target absent", () => {
+    const ydoc = new Y.Doc();
+    const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+    const paragraph = new Y.XmlElement("paragraph");
+    const text = new Y.XmlText();
+    fragment.insert(0, [paragraph]);
+    paragraph.insert(0, [text]);
+    text.insert(0, "Link", {
+      hyperlink: { href: "https://example.test/document.docx" },
+    });
+    ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 13);
+
+    expect(applyAttrSchemaMigrations(ydoc, fragment, 13)).toBe(0);
+    expect(ydoc.getMap(METADATA_MAP_NAME).get(ATTR_SCHEMA_VERSION_KEY)).toBe(
+      FOLIO_YJS_ATTR_SCHEMA_VERSION,
+    );
+    const restored = initProseMirrorDoc(fragment, schema).doc;
+    const link = restored.firstChild?.firstChild?.marks.find(
+      (mark) => mark.type.name === "hyperlink",
+    );
+    expect(link).toBeDefined();
+    expect(link?.attrs["anchor"]).toBeNull();
+    expect(link?.attrs["href"]).toBe("https://example.test/document.docx");
+    ydoc.destroy();
+  });
+
   test("seeding writes the marker this build reads", () => {
     const { ydoc } = seededDocument();
 
@@ -484,28 +510,36 @@ describe("stated numbering source schema cutover", () => {
     },
   );
 
-  test("current snapshots preserve authored references regardless of the style value", () => {
-    for (const numId of [7, 8]) {
-      const ydoc = new Y.Doc();
-      const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
-      const paragraph = schema.node("paragraph", {
-        numPr: { kind: "reference", numId, ilvl: 2 },
-        numPrFromStyle: { kind: "reference", numId: 7, ilvl: 0 },
-      });
-      prosemirrorToYXmlFragment(
-        schema.node("doc", null, [paragraph]),
-        fragment,
-      );
-      const before = Y.encodeStateAsUpdate(ydoc);
-      expect(
-        applyAttrSchemaMigrations(
-          ydoc,
-          fragment,
+  test.each([13, FOLIO_YJS_ATTR_SCHEMA_VERSION] as const)(
+    "schema %s preserves authored references regardless of the style value",
+    (version) => {
+      for (const numId of [7, 8]) {
+        const ydoc = new Y.Doc();
+        const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+        const paragraph = schema.node(
+          "paragraph",
+          {
+            numPr: { kind: "reference", numId, ilvl: 2 },
+            numPrFromStyle: { kind: "reference", numId: 7, ilvl: 0 },
+          },
+          schema.text("Unsaved collaboration edit"),
+        );
+        const document = schema.node("doc", null, [paragraph]);
+        prosemirrorToYXmlFragment(document, fragment);
+        ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, version);
+        const before = Y.encodeStateAsUpdate(ydoc);
+        expect(applyAttrSchemaMigrations(ydoc, fragment, version)).toBe(0);
+        expect(readYjsAttrSchemaVersion(ydoc).unwrap()).toBe(
           FOLIO_YJS_ATTR_SCHEMA_VERSION,
-        ),
-      ).toBe(0);
-      expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
-      ydoc.destroy();
-    }
-  });
+        );
+        expect(initProseMirrorDoc(fragment, schema).doc.eq(document)).toBe(
+          true,
+        );
+        if (version === FOLIO_YJS_ATTR_SCHEMA_VERSION) {
+          expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
+        }
+        ydoc.destroy();
+      }
+    },
+  );
 });

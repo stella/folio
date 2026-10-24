@@ -297,6 +297,21 @@ describe("cleanPastedHtml — bookmark boundaries", () => {
     expect(external).toContain("Clause");
   });
 
+  test("keeps structured complex fields only with an internal token", () => {
+    const html =
+      '<span class="docx-field" data-field-kind="complex" data-field-structured="true" data-docx-internal-clipboard="test-capability">Clause</span>';
+
+    const internal = cleanPastedHtml(html, {
+      internalClipboardToken: "test-capability",
+    });
+    const external = cleanPastedHtml(html);
+
+    expect(internal).toContain('data-field-structured="true"');
+    expect(internal).not.toContain("data-docx-internal-clipboard");
+    expect(external).not.toContain("data-field-structured");
+    expect(external).toContain("Clause");
+  });
+
   test("preserves structured-field boundaries only for the internal clipboard capability", () => {
     const html =
       '<span class="docx-field" data-field-type="REF" data-field-kind="simple" data-field-structured="true"><a href="https://example.test"><span data-docx-bookmark-boundary="start" data-docx-bookmark-id="12" data-docx-bookmark-name="clause" data-docx-internal-clipboard="test-capability"></span>Clause<span data-docx-bookmark-boundary="end" data-docx-bookmark-id="12" data-docx-internal-clipboard="test-capability"></span></a></span>';

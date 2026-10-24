@@ -3190,6 +3190,7 @@ export const readHyperlinkMarkAttrs = (
   expectMarkType(mark, "hyperlink", issues);
 
   requiredString(attrs, "href", "hyperlink.attrs.href", issues);
+  optionalString(attrs, "anchor", "hyperlink.attrs.anchor", issues);
   optionalString(attrs, "tooltip", "hyperlink.attrs.tooltip", issues);
   optionalString(attrs, "rId", "hyperlink.attrs.rId", issues);
   optionalString(attrs, "target", "hyperlink.attrs.target", issues);

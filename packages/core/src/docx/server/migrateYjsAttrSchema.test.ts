@@ -657,7 +657,7 @@ describe("migrateFolioYjsSnapshot refuses ambiguous version-7 numbering", () => 
     expect(error).toBeInstanceOf(FolioYjsSnapshotMigrationError);
     expect(error.code).toBe("unsupported_version");
     expect(error.message).toBe(
-      `Yjs schema 7 has ambiguous numbering ownership; schema ${FOLIO_YJS_ATTR_SCHEMA_VERSION} requires stated numbering overrides. Rebuild the collaboration state from the saved DOCX.`,
+      "Yjs schema 7 has ambiguous numbering ownership; schema 13 requires stated numbering overrides. Rebuild the collaboration state from the saved DOCX.",
     );
     expect([...update]).toEqual(originalBytes);
     expect(paragraphAttributes(update)).toEqual(originalAttributes);

@@ -41,10 +41,49 @@ counts, so `--only` refuses `--check` and `--shard`, and a baseline is never
 written from one: measure the subset before and after a fix, then shrink the
 affected family's baseline by the difference.
 
-The gate is nightly (`.github/workflows/nightly-corpus-gate.yml`) and on
-`workflow_dispatch`. It is not part of PR CI: it downloads a hundred megabytes
-and takes the better part of an hour. Tier 1 is what the baseline ratchet runs;
-tier 2 runs in a job of its own that keeps its census in the job.
+The full invariant proof is manual (`.github/workflows/corpus-proofs.yml`).
+It is not part of PR CI: it downloads a hundred megabytes and takes the better
+part of an hour. Tier 1 is what the baseline ratchet runs; tier 2 runs in a job
+of its own that keeps its census in the job. The nightly
+`nightly-corpus-gate.yml` runs edit fuzz instead.
+
+For an editor-only census, select `scope: editor-round-trip` in the Corpus
+proofs workflow, or run one complete shard from a clean tracked checkout:
+
+```sh
+gh workflow run corpus-proofs.yml --ref BRANCH -f scope=editor-round-trip
+bun scripts/corpus-editor-round-trip.ts --shard 1/1 --out editor-census.json
+```
+
+The scoped artifact records the measured HEAD, corpus and report-only digests,
+and per-file signatures usable by `corpus-diff.ts`. `baseline.files` follows
+the family census's count of all checked results; `editorEvaluatedFiles`
+counts those that reached the editor. Parser refusals are recorded separately,
+and a budget stop or unexplained missing check makes the artifact incomplete.
+After merging every complete shard, refresh
+`baselines/editor-round-trip.json` and derive the aggregate baseline's
+`editor-round-trip` rows from those same entries (without `producers`). Keep
+other families' rows and the aggregate `failedFiles` total from the last full
+census: a scoped run cannot recompute the union of files failing all families.
+The consistency check binds shared row counts across the two files. Scoped
+artifacts cannot certify other families and must not be passed to the full
+gate's `check` or `write-baseline`.
+
+The 2026-10-23 editor-only measurement used the same pinned corpus and
+report-only list on both sides:
+
+| Editor source                                                                        | Files with findings | Checked results | Signatures |
+| ------------------------------------------------------------------------------------ | ------------------: | --------------: | ---------: |
+| Main `bfb7f2da` ([census](https://github.com/stella/folio/actions/runs/39996748496)) |                 377 |           1,946 |        256 |
+| Fix `17e006c6` ([census](https://github.com/stella/folio/actions/runs/39996754047))  |                 318 |           1,946 |        224 |
+
+Both censuses completed all four shards. Of the 1,946 checked results, 1,942
+reached the editor and four were parser refusals, identical on both sides.
+Per-file comparison found 59 files whose editor findings cleared and no newly
+failing files. Two deeper underline-property signatures became visible in a
+file that already failed; they remain recorded. These are model differences,
+not a count of unusable documents. The aggregate `failedFiles: 646` remains
+the older all-family measurement; this editor-only refresh did not remeasure it.
 
 ## Edit fuzz corpus run
 
@@ -79,10 +118,11 @@ finding rather than a lost run. The deadline expiring is recorded under
 `performance` instead: a watchdog cannot tell a hung worker from a slow
 machine.
 
-Those five keep `corpus/baseline.json`. The rest own one baseline file each under
-`corpus/baselines/`, so re-measuring one never rewrites another's findings —
-except `performance` and `editor-projection`, which are measured and reported
-but not ratcheted:
+`corpus/baseline.json` aggregates gating signatures, including those five.
+The remaining gating families also own one baseline file each under
+`corpus/baselines/`; re-measuring one updates its own rows in both files.
+`performance` and `editor-projection` are measured and reported but not
+ratcheted:
 
 | Invariant             | What must hold                                                                                                                                                                                                                                                                                  |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

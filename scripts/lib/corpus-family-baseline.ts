@@ -3,10 +3,10 @@
  *
  * The ratchet rule is the one `corpus-baseline.ts` states, and the reasons are
  * the same. What changes here is ownership: a family that gains or loses
- * findings rewrites its own file and no other, so re-measuring the schema
- * validator cannot conflict with a branch re-measuring parse tolerance, and an
- * invariant added later arrives as a new file rather than a rewrite of a shared
- * one.
+ * findings owns a separate file. The aggregate baseline also holds its
+ * signature rows; a scoped refresh derives those rows from the family file
+ * while retaining other families and the last full-census failed-file total.
+ * An invariant added later gets its own file as well as aggregate rows.
  *
  * Each file is bound to the tier-scoped digest of the corpus it was measured
  * over, so running a different tier selection is a refusal rather than a

@@ -690,7 +690,7 @@ const renamePageBreakRunOwnerMarkAttr: AttrSchemaMigrationStep = (fragment) => {
 
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
 const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
 ] as const;
 
 /** An attr-schema version this build can read. */
@@ -723,7 +723,9 @@ const ATTR_SCHEMA_MIGRATIONS = {
   11: stampMarkerOnly,
   // Inherited numbering ownership is a cutover, never inferred from values.
   12: stampMarkerOnly,
-  13: "current",
+  // Hyperlink bookmark targets are additive; absent targets stay absent.
+  13: stampMarkerOnly,
+  14: "current",
 } as const satisfies Record<
   FolioYjsAttrSchemaVersion,
   AttrSchemaMigrationStep | "current"
@@ -742,7 +744,10 @@ type CurrentAttrSchemaVersion = {
  * so the constant and the map cannot disagree.
  */
 export const FOLIO_YJS_ATTR_SCHEMA_VERSION =
-  13 satisfies CurrentAttrSchemaVersion;
+  14 satisfies CurrentAttrSchemaVersion;
+
+const STATED_NUMBERING_SOURCE_SCHEMA_VERSION =
+  13 satisfies FolioYjsAttrSchemaVersion;
 
 export class FolioYjsNoteReferenceSchemaError extends TaggedError(
   "FolioYjsNoteReferenceSchemaError",
@@ -765,7 +770,7 @@ const requireStatedNumberingSources = (
   fragment: Y.XmlFragment,
   schemaVersion: FolioYjsAttrSchemaVersion,
 ): void => {
-  if (schemaVersion === FOLIO_YJS_ATTR_SCHEMA_VERSION) return;
+  if (schemaVersion >= STATED_NUMBERING_SOURCE_SCHEMA_VERSION) return;
   const pending: unknown[] = [];
   const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
     if ("getAttributes" in node) pending.push(node.getAttributes());
@@ -794,8 +799,8 @@ const requireStatedNumberingSources = (
     ) {
       throw new FolioYjsNumberingSourceSchemaError({
         schemaVersion,
-        requiredSchemaVersion: FOLIO_YJS_ATTR_SCHEMA_VERSION,
-        message: `Yjs schema ${schemaVersion} has ambiguous numbering ownership; schema ${FOLIO_YJS_ATTR_SCHEMA_VERSION} requires stated numbering overrides. Rebuild the collaboration state from the saved DOCX.`,
+        requiredSchemaVersion: STATED_NUMBERING_SOURCE_SCHEMA_VERSION,
+        message: `Yjs schema ${schemaVersion} has ambiguous numbering ownership; schema ${STATED_NUMBERING_SOURCE_SCHEMA_VERSION} requires stated numbering overrides. Rebuild the collaboration state from the saved DOCX.`,
       });
     }
     for (const entry of Object.values(value)) pending.push(entry);

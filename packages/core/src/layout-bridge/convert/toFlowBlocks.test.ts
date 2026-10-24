@@ -3100,6 +3100,7 @@ describe("toFlowBlocks hyperlink identity", () => {
     // Every payload attribute needs a negative boundary case when the mark grows.
     const changedAttributes = {
       href: { href: "https://example.test/changed" },
+      anchor: { anchor: "ChangedBookmark" },
       tooltip: { tooltip: "changed" },
       rId: { rId: "rId2" },
       target: { target: "_blank" },

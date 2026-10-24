@@ -151,13 +151,8 @@ export type HighlightAttrs = {
 };
 
 // @public
-export type HyperlinkAttrs = {
+export type HyperlinkAttrs = Omit<import__stll_docx_core_model.Hyperlink, "type" | "children" | "href"> & {
     href: string;
-    tooltip?: string;
-    rId?: string;
-    target?: import__stll_docx_core_model.Hyperlink["target"];
-    history?: import__stll_docx_core_model.Hyperlink["history"];
-    docLocation?: import__stll_docx_core_model.Hyperlink["docLocation"];
     _docxHyperlinkIndex?: number;
 };
 
