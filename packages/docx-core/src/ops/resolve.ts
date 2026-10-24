@@ -60,6 +60,7 @@ import {
   isBlockBoundary,
   noRelocatedBoundaries,
   pairedCommentRanges,
+  paragraphRemains,
   planParagraphBoundaryRemoval,
   type RelocatedBoundaries,
   removedContentBoundaries,
@@ -1731,6 +1732,7 @@ const joinOps = (
   // A cell-ending mark describes the terminator, not a paragraph to retire.
   const cellFinal =
     containerFinal && location.list.some((step) => step.kind === "tableCell");
+  const remains = paragraphRemains(paragraph.content);
   const outcome = paragraphMarkOutcome({
     follows: next?.type === "table" ? "table" : "nothing",
     holdsContent: paragraphHoldsContent(paragraph),
@@ -1744,6 +1746,11 @@ const joinOps = (
           blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn:
       next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
+    needsFollowingCommentHost:
+      next?.type === "table" &&
+      previous?.type !== "paragraph" &&
+      remains.blocks.length === 0 &&
+      remains.comments.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
       (blocks.at(-1)?.type === "paragraph" &&

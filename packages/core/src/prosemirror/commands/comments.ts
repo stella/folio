@@ -825,6 +825,7 @@ function resolveChange(
             precedingSectionOwner = "same";
           else precedingSectionOwner = "occupied";
         }
+        const retainedBoundaries = paragraphRemainsOf(paragraph);
         const outcome = paragraphMarkOutcome({
           follows,
           holdsContent: paragraphContentOf(paragraph),
@@ -840,6 +841,11 @@ function resolveChange(
               (position) => tr.mapping.map(position) === nextPos,
             ) &&
             !ownsSectionEndpoint(paragraph),
+          needsFollowingCommentHost:
+            follows === "table" &&
+            preceding?.type.name !== "paragraph" &&
+            retainedBoundaries.blocks.length === 0 &&
+            retainedBoundaries.comments.length > 0,
           removedSectionProperties:
             op.markWasAdded && sectionProperties != null,
           precedingSectionOwner,
