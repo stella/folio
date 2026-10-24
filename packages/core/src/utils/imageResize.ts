@@ -1,4 +1,4 @@
-export const IMAGE_RESIZE_HANDLES = [
+const IMAGE_RESIZE_HANDLE_VALUES = [
   "nw",
   "ne",
   "se",
@@ -9,7 +9,10 @@ export const IMAGE_RESIZE_HANDLES = [
   "w",
 ] as const;
 
-export type ImageResizeHandle = (typeof IMAGE_RESIZE_HANDLES)[number];
+export type ImageResizeHandle = (typeof IMAGE_RESIZE_HANDLE_VALUES)[number];
+
+export const IMAGE_RESIZE_HANDLES: readonly ImageResizeHandle[] =
+  IMAGE_RESIZE_HANDLE_VALUES;
 
 const MIN_IMAGE_PX = 20;
 const MAX_IMAGE_PX = 2000;
