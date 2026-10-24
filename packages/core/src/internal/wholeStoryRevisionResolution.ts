@@ -465,6 +465,14 @@ const resolveStructure = ({
   let chain: ParagraphChain | null = null;
   let pendingBookmarks: PMNode[] = [];
   let followingContainerChild = false;
+  const precedingParagraphs: boolean[] = [];
+  let previousSurvivorIsParagraph = false;
+  for (const { node: child } of entries) {
+    precedingParagraphs.push(previousSurvivorIsParagraph);
+    if (child !== null && !isBlockBoundaryNode(child)) {
+      previousSurvivorIsParagraph = child.type.name === "paragraph";
+    }
+  }
   const flush = (): void => {
     if (!chain) return;
     let final = chain.node;
@@ -647,8 +655,7 @@ const resolveStructure = ({
       containerStillEndsWithParagraph =
         node.lastChild?.type.name === "paragraph";
     } else if (follows === "nothing") {
-      containerStillEndsWithParagraph =
-        entries[index - 1]?.original.type.name === "paragraph";
+      containerStillEndsWithParagraph = precedingParagraphs[index] === true;
     }
     const outcome = paragraphMarkOutcome({
       follows,
