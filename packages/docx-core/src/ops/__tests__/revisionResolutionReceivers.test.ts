@@ -34,6 +34,14 @@ const accept = (revisionIds: readonly number[]) =>
     decision: "accept",
   }) as const satisfies ResolveRevisionOp;
 
+const reject = (revisionIds: readonly number[]) =>
+  ({
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds,
+    decision: "reject",
+  }) as const satisfies ResolveRevisionOp;
+
 const resolveWithReceivers = (document: Document, op: ResolveRevisionOp) => {
   const before = structuredClone(document);
   const planned = planRevisionResolution({
@@ -172,6 +180,53 @@ test("resolution declares the transitive table receiver after retiring an empty 
   expect(paragraphAt(applied.document, tail.paraId)).toBe(
     paragraphAt(document, tail.paraId),
   );
+});
+
+test("resolution declares a paragraph receiving a relocated bookmark boundary", () => {
+  const document = normalizeForOps({
+    package: {
+      document: {
+        content: [
+          {
+            type: "blockSdt",
+            properties: { sdtType: "group", id: 1 },
+            content: [
+              {
+                type: "paragraph",
+                paraId: "00000001",
+                content: [
+                  {
+                    type: "insertion",
+                    info: { id: 1, author: "A" },
+                    content: [{ type: "bookmarkEnd", id: 3 }],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: "paragraph",
+            paraId: "00000002",
+            content: [{ type: "bookmarkStart", id: 3, name: "_Ref3" }],
+            sectionProperties: { pageWidth: 11906 },
+          },
+        ],
+      },
+    },
+  });
+  const operation = reject([1]);
+  const { applied, effects } = resolveWithReceivers(document, operation);
+  const receiver = paragraphAt(document, "00000002");
+  expect(effects).toContainEqual({
+    type: "retained-range-boundaries",
+    receiver,
+  });
+
+  expect(applied.touched.modified).toContain("00000002");
+  expect(paragraphAt(applied.document, "00000002").content).toEqual([
+    { type: "bookmarkStart", id: 3, name: "_Ref3" },
+    { type: "bookmarkEnd", id: 3 },
+  ]);
 });
 
 const CONTAINERS = {

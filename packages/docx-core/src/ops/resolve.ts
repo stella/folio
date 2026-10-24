@@ -2189,6 +2189,7 @@ export const planRevisionResolution = ({
 
   const inline: DocumentOp[] = [];
   const joins: JoinPlan[] = [];
+  const receiverEffects: ResolutionReceiverEffect[] = [];
   const emptiedEnds: EmptiedEndsById = new Map();
   const resolvedContents = new Map<string, readonly InlineNode[]>();
   const resolvedCutEdges = new Map<string, CutEdges>();
@@ -2217,15 +2218,23 @@ export const planRevisionResolution = ({
       resolvedChanged.add(idKey(paraId));
   }
   // Boundaries kept from removed content can leave a range ending before it starts.
-  for (const [key, content] of wellFormedRanges({
+  const normalizedRangeContents = wellFormedRanges({
     contents: resolvedContents,
     order: preparedContents.map(({ paragraph }) =>
       idKey(paragraph.paraId ?? ""),
     ),
     relocated: resolution.relocated,
-  })) {
+  });
+  for (const { paragraph } of preparedContents) {
+    const key = idKey(paragraph.paraId ?? "");
+    const content = normalizedRangeContents.get(key);
+    if (content === undefined) continue;
     resolvedContents.set(key, content);
     resolvedChanged.add(key);
+    receiverEffects.push({
+      type: "retained-range-boundaries",
+      receiver: paragraph,
+    });
   }
   for (const { paragraph } of preparedContents) {
     const paraId = paragraph.paraId ?? "";
@@ -2383,7 +2392,6 @@ export const planRevisionResolution = ({
   if (rows.isErr()) return Result.err(rows.error);
   const removedParagraphs = new Set(rows.value.touched.removed.map(idKey));
   const edits: DocumentEdit[] = [staged.value, rows.value];
-  const receiverEffects: ResolutionReceiverEffect[] = [];
   let current = rows.value.document;
   for (const join of joins.toReversed()) {
     if (removedParagraphs.has(idKey(join.paraId))) continue;

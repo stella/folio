@@ -478,6 +478,12 @@
       "path": "906:0:0:0:0:0:0:0:0:0:6:5:4:5:5:6:5:5:5:5:7:7:7:8:7:7:7:7:8:7:7:8:7:7:7:7:7:10:10:10:11:10:11:10:10:10:10:10:14:14:14:14:14:2:11:11:11:11:11:11:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:11:7:7:7:13:7:7:7:7:10:7:15:14:13:16:16:15:14:13:13:13:16:13:13:14:13:15:13:13:13:15:13:14:14:13:13:14:14:14:14:13:13:16:14:14:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13",
       "note": "Resolving adjacent selected paragraph marks declares the exact transitive first-cell receiver without allowing unrelated section-owned paragraphs.",
       "date": "2026-10-24"
+    },
+    {
+      "seed": 97719801,
+      "path": "390:4:3:3:3:3:3:3:3:4:6:5:6:6:6:6:6:5:5:5:5:5:5:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36:36",
+      "note": "Archived CI failure: rejecting a selected insertion relocates a bookmark boundary into an external paragraph receiver.",
+      "date": "2026-10-24"
     }
   ],
   "L7: no tracked operation marks a paragraph that ends its container": [
