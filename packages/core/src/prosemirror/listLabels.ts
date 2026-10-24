@@ -91,6 +91,17 @@ const visibleLabel = (
   return staticMarker(counterAttrs);
 };
 
+const projectedListRendering = (
+  attrs: Readonly<ParagraphAttrs>,
+  numId: number,
+): ListRendering | undefined =>
+  attrs.listMarker != null ||
+  attrs.listMarkerTemplate != null ||
+  attrs.listIsBullet === true ||
+  attrs.listNumFmt != null
+    ? listRenderingFromAttrs({ attrs, numId })
+    : undefined;
+
 /**
  * The attrs the counter reads for a paragraph of the document model, as
  * `toProseDoc` projects them (`listRenderingAttrPatch`), without the layout
@@ -177,11 +188,7 @@ export const createListLabelCounter = (
     const effective = effectiveParagraphNumberingReference(sources);
     const projectedRendering =
       standaloneRendering ??
-      (attrs.listMarker != null ||
-      attrs.listIsBullet === true ||
-      attrs.listNumFmt != null
-        ? listRenderingFromAttrs({ attrs, numId: effective?.numId ?? 1 })
-        : undefined);
+      projectedListRendering(attrs, effective?.numId ?? 1);
     // A level-only override names no instance of its own: its style supplies
     // the numId or nothing does (ECMA-376 §17.9.19). A tracked predecessor's
     // reference is what rejecting restores, never the current list.
@@ -222,15 +229,10 @@ export const createListLabelCounter = (
           });
           const previousReference =
             effectiveParagraphNumberingReference(previousSources);
-          const previousProjected =
-            previous.listMarker != null ||
-            previous.listIsBullet === true ||
-            previous.listNumFmt != null
-              ? listRenderingFromAttrs({
-                  attrs: previous,
-                  numId: previousReference?.numId ?? 1,
-                })
-              : undefined;
+          const previousProjected = projectedListRendering(
+            previous,
+            previousReference?.numId ?? 1,
+          );
           const previousList = resolveParagraphList(
             previousSources,
             numbering,
