@@ -1,4 +1,4 @@
-import { IMAGE_RESIZE_HANDLES } from "../packages/core/src/utils/imageResize";
+import { IMAGE_RESIZE_HANDLES } from "../packages/core/src/utils/imageResize.ts";
 
 export const IMAGE_RESIZE_ADAPTERS = {
   react: {
