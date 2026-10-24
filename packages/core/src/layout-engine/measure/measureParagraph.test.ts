@@ -167,6 +167,102 @@ describe("script measurement", () => {
       buildRunFontStyle({ superscript: true }, "Calibri", 11).fontSize,
     ).toBe(7);
   });
+
+  test.each(["superscript", "subscript"] as const)(
+    "full-size %s metrics follow the consumed text across wrapped lines",
+    (script) => {
+      withFakeTextMeasure(() => {
+        const fullSize = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "full-size-script-reference",
+            runs: [{ kind: "text", text: "x", fontSize: 18 }],
+          },
+          200,
+        );
+        const halfSize = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "half-size-script-reference",
+            runs: [{ kind: "text", text: "x", fontSize: 12 }],
+          },
+          200,
+        );
+        const scriptedBlock: ParagraphBlock = {
+          kind: "paragraph",
+          id: "full-size-script-line",
+          runs: [
+            { kind: "text", text: "xxxxxx", fontSize: 12 },
+            {
+              kind: "text",
+              text: "abcdefghijkl",
+              fontSize: 18,
+              [script]: true,
+            },
+            { kind: "lineBreak" },
+            { kind: "text", text: "x", fontSize: 12 },
+          ],
+        };
+        const scripted = measureParagraph(scriptedBlock, 30);
+
+        expect(scripted.lines).toHaveLength(4);
+        const sourceOffset = ({
+          runIndex,
+          characterIndex,
+        }: {
+          runIndex: number;
+          characterIndex: number;
+        }): number => {
+          const precedingTextLength = scriptedBlock.runs
+            .slice(0, runIndex)
+            .reduce(
+              (length, run) =>
+                length + (run.kind === "text" ? run.text.length : 0),
+              0,
+            );
+          const currentRun = scriptedBlock.runs[runIndex];
+          return (
+            precedingTextLength +
+            (currentRun?.kind === "text" ? characterIndex : 0)
+          );
+        };
+        expect(
+          scripted.lines.map((line) => ({
+            from: sourceOffset({
+              runIndex: line.fromRun,
+              characterIndex: line.fromChar,
+            }),
+            to: sourceOffset({
+              runIndex: line.toRun,
+              characterIndex: line.toChar,
+            }),
+          })),
+        ).toEqual([
+          { from: 0, to: 6 },
+          { from: 6, to: 12 },
+          { from: 12, to: 18 },
+          { from: 18, to: 19 },
+        ]);
+        const halfSizeLine = halfSize.lines.at(0);
+        if (halfSizeLine === undefined) {
+          throw new Error("Expected a measured half-size reference line");
+        }
+        for (const line of [scripted.lines.at(0), scripted.lines.at(3)]) {
+          expect(line?.lineHeight).toBeCloseTo(halfSizeLine.lineHeight, 5);
+          expect(line?.ascent).toBeCloseTo(halfSizeLine.ascent, 5);
+          expect(line?.descent).toBeCloseTo(halfSizeLine.descent, 5);
+        }
+        for (const line of scripted.lines.slice(1, 3)) {
+          expect(line.lineHeight).toBeCloseTo(
+            fullSize.lines.at(0)!.lineHeight,
+            5,
+          );
+          expect(line.ascent).toBeCloseTo(fullSize.lines.at(0)!.ascent, 5);
+          expect(line.descent).toBeCloseTo(fullSize.lines.at(0)!.descent, 5);
+        }
+      }, fakeMeasure);
+    },
+  );
 });
 
 describe("run kerning threshold", () => {
