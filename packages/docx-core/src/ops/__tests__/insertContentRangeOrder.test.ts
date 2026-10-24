@@ -112,7 +112,125 @@ for (const [incomingType, existingType] of cases) {
       );
     expect(document).toStrictEqual(before);
   });
+
+  for (const placement of ["paragraph", "table"] as const) {
+    test(`deleting ${incomingType} from an imported inverted range in a ${placement} undoes exactly`, () => {
+      const incomingIsEnd =
+        incomingType === "bookmarkEnd" ||
+        incomingType === "moveFromRangeEnd" ||
+        incomingType === "moveToRangeEnd";
+      const ending = paragraph("00000001", [
+        marker(incomingIsEnd ? incomingType : existingType, 7),
+      ]);
+      const starting = paragraph("00000002", [
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText" },
+          content: incomingType.startsWith("bookmark")
+            ? [
+                {
+                  type: "hyperlink",
+                  href: "https://example.org",
+                  children: [{ type: "bookmarkStart", id: 7, name: "_Ref7" }],
+                },
+              ]
+            : [marker(incomingIsEnd ? existingType : incomingType, 7)],
+        },
+      ]);
+      const document =
+        placement === "paragraph"
+          ? documentOf(ending, starting)
+          : documentOf(
+              {
+                type: "table",
+                rows: [
+                  {
+                    type: "tableRow",
+                    cells: [{ type: "tableCell", content: [ending] }],
+                  },
+                  {
+                    type: "tableRow",
+                    cells: [
+                      {
+                        type: "tableCell",
+                        content: [paragraph("00000003", [])],
+                      },
+                    ],
+                  },
+                ],
+              },
+              starting,
+            );
+      const original = structuredClone(document);
+      const blockId = incomingIsEnd ? "00000001" : "00000002";
+      const deleted = applyDocumentOp(document, {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: { ...at(blockId), zeroWidthBefore: 0 },
+        to: { ...at(blockId), zeroWidthBefore: 1 },
+      });
+      expect(deleted.isOk()).toBe(true);
+      if (deleted.isErr()) return;
+      expect(deleted.value.inverse.at(0)?.type).toBe(
+        DOCUMENT_OP_TYPES.REPLACE_INLINE,
+      );
+      const restored = applyDocumentOps(
+        deleted.value.document,
+        JSON.parse(JSON.stringify(deleted.value.inverse)),
+      );
+      expect(restored.isOk()).toBe(true);
+      if (restored.isOk())
+        expect(restored.value.document).toStrictEqual(original);
+      expect(document).toStrictEqual(original);
+
+      const changed = applyDocumentOp(deleted.value.document, {
+        type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+        at: at(blockId),
+        text: "changed",
+        runProps: {},
+      });
+      expect(changed.isOk()).toBe(true);
+      if (changed.isErr()) return;
+      const stale = applyDocumentOps(
+        changed.value.document,
+        deleted.value.inverse,
+      );
+      expect(stale.isErr()).toBe(true);
+      if (stale.isErr())
+        expect(stale.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+    });
+  }
 }
+
+test("ordinary deletions retain compact slice inverses", () => {
+  for (const content of [
+    [marker("bookmarkEnd", 7)],
+    [marker("bookmarkStart", 7), marker("bookmarkEnd", 7)],
+    [
+      marker("bookmarkEnd", 7),
+      marker("bookmarkEnd", 7),
+      marker("bookmarkStart", 7),
+    ],
+  ]) {
+    const document = documentOf(paragraph("00000001", content));
+    const deleted = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: { ...at("00000001"), zeroWidthBefore: 0 },
+      to: { ...at("00000001"), zeroWidthBefore: 1 },
+    });
+    expect(deleted.isOk()).toBe(true);
+    if (deleted.isErr()) continue;
+    expect(deleted.value.inverse.at(0)?.type).toBe(
+      DOCUMENT_OP_TYPES.INSERT_CONTENT,
+    );
+    const restored = applyDocumentOps(
+      deleted.value.document,
+      deleted.value.inverse,
+    );
+    expect(restored.isOk()).toBe(true);
+    if (restored.isOk())
+      expect(restored.value.document).toStrictEqual(document);
+  }
+});
 
 test("a block-level range marker participates in insertion order", () => {
   const document = documentOf(
