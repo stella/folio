@@ -113,25 +113,59 @@ const precedingSectionOwner = (
     : "occupied";
 };
 
-/** Prepends a retired paragraph's content to the paragraph in a table's first cell. */
-const runParagraphIntoTable = (
+type TableRunInTarget = {
+  receiver: Paragraph;
+  tables: readonly Table[];
+};
+
+const paragraphTableRunInTarget = (
   paragraph: Paragraph,
   table: Table,
-): Table | undefined => {
-  const row = table.rows.at(0);
-  const cell = row?.cells.at(0);
-  const target = cell?.content.at(0);
-  if (!row || !cell || !target) return undefined;
-  if (target.type === "table") {
-    const nested = runParagraphIntoTable(paragraph, target);
-    if (!nested) return undefined;
-    return {
+): TableRunInTarget | undefined => {
+  if (paragraph.sectionProperties !== undefined) return undefined;
+  const tables: Table[] = [];
+  let current = table;
+  for (;;) {
+    const row = current.rows.at(0);
+    const cell = row?.cells.at(0);
+    if (!row || !cell) return undefined;
+    if (
+      row.structuralChange?.type === "tableRowInsertion" ||
+      row.structuralChange?.type === "tableRowDeletion" ||
+      cell.structuralChange !== undefined
+    ) {
+      return undefined;
+    }
+    tables.push(current);
+    const target = cell.content.at(0);
+    if (target?.type === "paragraph")
+      return target.sectionProperties === undefined
+        ? { receiver: target, tables }
+        : undefined;
+    if (target?.type !== "table") return undefined;
+    current = target;
+  }
+};
+
+const runParagraphIntoTable = (
+  paragraph: Paragraph,
+  target: TableRunInTarget,
+): Table => {
+  let replacement: Paragraph | Table = {
+    ...target.receiver,
+    content: joinParagraphSeam(paragraph.content, target.receiver.content),
+  };
+  for (const table of target.tables.toReversed()) {
+    const row = table.rows.at(0);
+    const cell = row?.cells.at(0);
+    if (!row || !cell) panic("A validated table receiver retains its path.");
+    replacement = {
       ...table,
       rows: [
         {
           ...row,
           cells: [
-            { ...cell, content: [nested, ...cell.content.slice(1)] },
+            { ...cell, content: [replacement, ...cell.content.slice(1)] },
             ...row.cells.slice(1),
           ],
         },
@@ -139,49 +173,9 @@ const runParagraphIntoTable = (
       ],
     };
   }
-  if (target.type !== "paragraph") return undefined;
-  const survivor = {
-    ...target,
-    content: joinParagraphSeam(paragraph.content, target.content),
-  };
-  return {
-    ...table,
-    rows: [
-      {
-        ...row,
-        cells: [
-          { ...cell, content: [survivor, ...cell.content.slice(1)] },
-          ...row.cells.slice(1),
-        ],
-      },
-      ...table.rows.slice(1),
-    ],
-  };
-};
-
-const tableCanReceiveParagraphRunIn = (
-  paragraph: Paragraph,
-  table: Table,
-): boolean => {
-  if (paragraph.sectionProperties !== undefined) return false;
-  let current = table;
-  for (;;) {
-    const row = current.rows.at(0);
-    const cell = row?.cells.at(0);
-    if (!row || !cell) return false;
-    if (
-      row.structuralChange?.type === "tableRowInsertion" ||
-      row.structuralChange?.type === "tableRowDeletion" ||
-      cell.structuralChange !== undefined
-    ) {
-      return false;
-    }
-    const target = cell.content.at(0);
-    if (target?.type === "paragraph")
-      return target.sectionProperties === undefined;
-    if (target?.type !== "table") return false;
-    current = target;
-  }
+  if (replacement.type !== "table")
+    panic("A table receiver has a nonempty table path.");
+  return replacement;
 };
 
 /** Whether a decision removes the content of a tracked change of this kind. */
@@ -1702,11 +1696,30 @@ const deferSplitSeam = ({
   return { left, right };
 };
 
+type ResolutionReceiverEffect = {
+  type:
+    | "paragraph-join"
+    | "table-run-in"
+    | "retained-range-boundaries"
+    | "section-transfer";
+  receiver: Paragraph;
+};
+
+type ParagraphMarkPlan = {
+  ops: readonly DocumentOp[];
+  receiverEffects: readonly ResolutionReceiverEffect[];
+};
+
+const paragraphMarkPlan = (
+  ops: DocumentOp[],
+  receiverEffects: ResolutionReceiverEffect[] = [],
+) => Result.ok({ ops, receiverEffects });
+
 const joinOps = (
   document: Document,
   { op, story, paraId, added, depth }: JoinPlan,
   ends: EmptiedEndsById,
-): Result<DocumentOp[], DocumentOpRefusal> => {
+): Result<ParagraphMarkPlan, DocumentOpRefusal> => {
   const body = storyBody(document, story);
   const location = storyParagraphs(body).find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(paraId),
@@ -1798,24 +1811,34 @@ const joinOps = (
     const transfersToPrevious =
       outcome.sectionDestination === "preceding" &&
       previous?.type === "paragraph";
-    return Result.ok([
-      {
-        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-        story,
-        expected: transfersToPrevious
-          ? [previous, paragraph, next]
-          : [paragraph, next],
-        blocks: transfersToPrevious
-          ? [
-              { ...previous, sectionProperties: paragraph.sectionProperties },
-              survivor,
-            ]
-          : [survivor],
-        ...(paragraph.sectionProperties === undefined
-          ? {}
-          : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),
-      },
-    ]);
+    const receiverEffects: ResolutionReceiverEffect[] = [
+      { type: "paragraph-join", receiver: next },
+    ];
+    if (transfersToPrevious)
+      receiverEffects.push({ type: "section-transfer", receiver: previous });
+    if (receivesSection)
+      receiverEffects.push({ type: "section-transfer", receiver: next });
+    return paragraphMarkPlan(
+      [
+        {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story,
+          expected: transfersToPrevious
+            ? [previous, paragraph, next]
+            : [paragraph, next],
+          blocks: transfersToPrevious
+            ? [
+                { ...previous, sectionProperties: paragraph.sectionProperties },
+                survivor,
+              ]
+            : [survivor],
+          ...(paragraph.sectionProperties === undefined
+            ? {}
+            : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),
+        },
+      ],
+      receiverEffects,
+    );
   }
   // Fail closed: content resolved across a range boundary standing between
   // blocks would move into or out of its range.
@@ -1833,6 +1856,10 @@ const joinOps = (
   // A cell-ending mark describes the terminator, not a paragraph to retire.
   const cellFinal =
     containerFinal && location.list.some((step) => step.kind === "tableCell");
+  const tableTarget =
+    next?.type === "table"
+      ? paragraphTableRunInTarget(paragraph, next)
+      : undefined;
   const outcome = paragraphMarkOutcome({
     follows: next?.type === "table" ? "table" : "nothing",
     holdsContent: paragraphHoldsContent(paragraph),
@@ -1844,12 +1871,10 @@ const joinOps = (
           containerFinal &&
           !cellFinal &&
           blocks.at(location.index - 1)?.type === "paragraph",
-    followingTableCanReceiveRunIn:
-      next?.type === "table" && tableCanReceiveParagraphRunIn(paragraph, next),
+    followingTableCanReceiveRunIn: tableTarget !== undefined,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
-      (blocks.at(-1)?.type === "paragraph" &&
-        tableCanReceiveParagraphRunIn(paragraph, next)),
+      (blocks.at(-1)?.type === "paragraph" && tableTarget !== undefined),
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),
@@ -1889,38 +1914,37 @@ const joinOps = (
         place: "blocks",
       });
       if (removal.type === "removed")
-        return Result.ok([
+        return paragraphMarkPlan(
+          [
+            {
+              type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+              story,
+              blockId: anchor.paraId ?? "",
+              expected: blocks,
+              blocks: removal.blocks,
+            },
+          ],
+          [...removal.effects],
+        );
+    } else {
+      if (tableTarget === undefined)
+        panic("An eligible table run-in has a validated receiver.");
+      const replacement = runParagraphIntoTable(paragraph, tableTarget);
+      return paragraphMarkPlan(
+        [
           {
             type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
             story,
             blockId: anchor.paraId ?? "",
             expected: blocks,
-            blocks: removal.blocks,
+            blocks: blocks.flatMap((block, index) => {
+              if (index === location.index) return [];
+              return index === location.index + 1 ? [replacement] : [block];
+            }),
           },
-        ]);
-    } else {
-      const replacement = runParagraphIntoTable(paragraph, next);
-      if (replacement === undefined) {
-        return Result.err(
-          refusal(
-            op,
-            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            `Resolving the mark of ${paraId} cannot run into the table's first cell paragraph.`,
-          ),
-        );
-      }
-      return Result.ok([
-        {
-          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-          story,
-          blockId: anchor.paraId ?? "",
-          expected: blocks,
-          blocks: blocks.flatMap((block, index) => {
-            if (index === location.index) return [];
-            return index === location.index + 1 ? [replacement] : [block];
-          }),
-        },
-      ]);
+        ],
+        [{ type: "table-run-in", receiver: tableTarget.receiver }],
+      );
     }
   }
   if (outcome.kind === "remove" && blocks.length > 1) {
@@ -1936,29 +1960,49 @@ const joinOps = (
     if (anchor !== undefined && removal.type === "removed") {
       const replacementBlocks = removal.blocks;
       const preceding = replacementBlocks[location.index - 1];
+      const receiverEffects: ResolutionReceiverEffect[] = [...removal.effects];
       if (
         outcome.sectionDestination === "preceding" &&
         preceding?.type === "paragraph"
       ) {
-        replacementBlocks[location.index - 1] = {
+        const survivor = {
           ...preceding,
           sectionProperties: paragraph.sectionProperties,
         };
+        const receiver = blocks[location.index - 1];
+        if (receiver?.type !== "paragraph")
+          panic("A section transfer retains its preceding paragraph.");
+        receiverEffects.push({ type: "section-transfer", receiver });
+        return paragraphMarkPlan(
+          [
+            {
+              type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+              story,
+              expected: [receiver, paragraph],
+              blocks: [survivor],
+              sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+            },
+          ],
+          receiverEffects,
+        );
       }
-      return Result.ok([
-        {
-          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-          story,
-          blockId: anchor.paraId ?? "",
-          expected: blocks,
-          blocks: replacementBlocks,
-        },
-      ]);
+      return paragraphMarkPlan(
+        [
+          {
+            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+            story,
+            blockId: anchor.paraId ?? "",
+            expected: blocks,
+            blocks: replacementBlocks,
+          },
+        ],
+        receiverEffects,
+      );
     }
   }
   const review = reviewFieldsOf(paragraph);
   delete review.pPrMark;
-  return Result.ok([
+  return paragraphMarkPlan([
     {
       type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
       story,
@@ -2011,17 +2055,31 @@ const acceptedClosedBoundary = ({
   return undefined;
 };
 
+type RevisionResolutionPlan = {
+  edit: DocumentEdit;
+  receiverEffects: readonly ResolutionReceiverEffect[];
+};
+
+type RevisionResolutionPlanOptions = {
+  document: Document;
+  op: ResolveRevisionOp;
+  applyOps: ApplyOps;
+};
+
 /**
  * Resolve tracked changes by revision id, applied as the primitive
  * operations it expands to. An id no record in the story carries is
  * skipped; one carried by a record resolution does not reach yet (a table,
  * cell or section change, a record inside a field) is refused.
  */
-export const resolveRevision = (
-  document: Document,
-  op: ResolveRevisionOp,
-  applyOps: ApplyOps,
-): Result<DocumentEdit, DocumentOpRefusal> => {
+export const planRevisionResolution = ({
+  document,
+  op,
+  applyOps,
+}: RevisionResolutionPlanOptions): Result<
+  RevisionResolutionPlan,
+  DocumentOpRefusal
+> => {
   if (!Object.values(REVISION_DECISIONS).includes(op.decision)) {
     return Result.err(
       refusal(
@@ -2048,9 +2106,12 @@ export const resolveRevision = (
   );
   if (ids.size === 0) {
     return Result.ok({
-      document,
-      inverse: [],
-      touched: { modified: [], inserted: [], removed: [] },
+      edit: {
+        document,
+        inverse: [],
+        touched: { modified: [], inserted: [], removed: [] },
+      },
+      receiverEffects: [],
     });
   }
   const resolution: Resolution = {
@@ -2322,6 +2383,7 @@ export const resolveRevision = (
   if (rows.isErr()) return Result.err(rows.error);
   const removedParagraphs = new Set(rows.value.touched.removed.map(idKey));
   const edits: DocumentEdit[] = [staged.value, rows.value];
+  const receiverEffects: ResolutionReceiverEffect[] = [];
   let current = rows.value.document;
   for (const join of joins.toReversed()) {
     if (removedParagraphs.has(idKey(join.paraId))) continue;
@@ -2329,7 +2391,8 @@ export const resolveRevision = (
     if (planned.isErr()) {
       return Result.err(planned.error);
     }
-    const joined = applyOps(current, planned.value);
+    receiverEffects.push(...planned.value.receiverEffects);
+    const joined = applyOps(current, planned.value.ops);
     if (joined.isErr()) {
       return Result.err(joined.error);
     }
@@ -2391,6 +2454,17 @@ export const resolveRevision = (
   }
   // A removed note changes story parts; one lifecycle edit captures them and
   // the retired comments together.
-  if (notesRemoved) return storyLifecycleEdit(document, current, op, true);
-  return Result.ok(combineEdits(document, edits));
+  if (notesRemoved)
+    return storyLifecycleEdit(document, current, op, true).map((edit) => ({
+      edit,
+      receiverEffects,
+    }));
+  return Result.ok({ edit: combineEdits(document, edits), receiverEffects });
 };
+
+export const resolveRevision = (
+  document: Document,
+  op: ResolveRevisionOp,
+  applyOps: ApplyOps,
+): Result<DocumentEdit, DocumentOpRefusal> =>
+  planRevisionResolution({ document, op, applyOps }).map(({ edit }) => edit);
