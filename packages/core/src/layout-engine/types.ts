@@ -515,6 +515,8 @@ export type ParagraphAttrs = {
   justificationCompatibility?: { type: "legacy" };
   /** East Asian first/last-character restrictions (`w:kinsoku`). */
   kinsoku?: boolean;
+  autoSpaceDE?: boolean;
+  autoSpaceDN?: boolean;
   /** Hanging punctuation (`w:overflowPunct`); defaults to enabled when omitted. */
   overflowPunctuation?: boolean;
   defaultEastAsiaFontFamily?: string;
@@ -1513,6 +1515,8 @@ export type LayoutOptions = {
   sectionVerticalAlignments?: readonly (VerticalAlign | undefined)[];
   /** Column configuration. */
   columns?: ColumnLayout;
+  /** Column balancing policy after applying document compatibility settings. */
+  columnBalancing?: "balanced" | "natural";
   /** Gap between rendered pages (for UI). */
   pageGap?: number;
   /** Default line height multiplier. */

@@ -162,6 +162,20 @@ describe("parseSettings — document line-breaking rules", () => {
   });
 });
 
+describe("parseSettings — w:noColumnBalance", () => {
+  test("preserves the enabled and disabled states from w:compat", () => {
+    expect(
+      parseSettings(wrap(`<w:compat><w:noColumnBalance/></w:compat>`))
+        .noColumnBalance,
+    ).toBe(true);
+    expect(
+      parseSettings(wrap(`<w:compat><w:noColumnBalance w:val="0"/></w:compat>`))
+        .noColumnBalance,
+    ).toBe(false);
+    expect(parseSettings(wrap(`<w:compat/>`)).noColumnBalance).toBeUndefined();
+  });
+});
+
 describe("parseSettings — application compatibility generation", () => {
   test("parses the named compatibilityMode setting", () => {
     expect(

@@ -1,8 +1,16 @@
+import { panic } from "better-result";
 import JSZip from "jszip";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { ComplexField, SimpleField } from "@stll/docx-core/model";
+import type {
+  ComplexField,
+  Document,
+  HeaderFooter,
+  ParagraphContent,
+  Run,
+  SimpleField,
+} from "@stll/docx-core/model";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { createDocx, paragraph } from "@stll/folio-core/server";
 
@@ -10,6 +18,7 @@ import { openReviewer } from "../support/documents.ts";
 import {
   assertReviewRoundTrip,
   assertRevisionCoverage,
+  canonicalResolvedReviewModel,
   canonicalReviewModel,
   revisionCoverage,
 } from "../support/review-comparison.ts";
@@ -23,6 +32,228 @@ const revision = {
   text: "A👍🏽B",
   blockId: "412DDC7F",
 } as const satisfies Change;
+
+const reviewDocumentWithContent = (content: ParagraphContent[]): Document => {
+  const document = fromMarkdown("Alpha beta");
+  const first = document.package.document.content.at(0);
+  if (first?.type !== "paragraph") panic("Expected paragraph");
+  first.content = content;
+  return document;
+};
+
+const textRun = (text: string, fields: Partial<Run> = {}): Run => ({
+  type: "run",
+  ...fields,
+  content: [{ type: "text", text }],
+});
+
+const documentWithSectionStories = (
+  headerContent: ParagraphContent[],
+  footerContent: ParagraphContent[],
+): Document => {
+  const document = reviewDocumentWithContent([textRun("Body")]);
+  const packageHeader: HeaderFooter = {
+    type: "header",
+    hdrFtrType: "default",
+    content: [paragraph("Package header")],
+  };
+  const packageFooter: HeaderFooter = {
+    type: "footer",
+    hdrFtrType: "default",
+    content: [paragraph("Package footer")],
+  };
+  const sectionHeader: HeaderFooter = {
+    type: "header",
+    hdrFtrType: "default",
+    content: [
+      {
+        type: "paragraph",
+        content: headerContent,
+      },
+    ],
+  };
+  const sectionFooter: HeaderFooter = {
+    type: "footer",
+    hdrFtrType: "default",
+    content: [
+      {
+        type: "paragraph",
+        content: footerContent,
+      },
+    ],
+  };
+  document.package.headers = new Map([["rIdHeader", packageHeader]]);
+  document.package.footers = new Map([["rIdFooter", packageFooter]]);
+  document.package.document.sections = [
+    {
+      properties: {
+        headerReferences: [{ type: "default", rId: "rIdHeader" }],
+        footerReferences: [{ type: "default", rId: "rIdFooter" }],
+      },
+      content: [],
+      headers: new Map([["default", sectionHeader]]),
+      footers: new Map([["default", sectionFooter]]),
+    },
+  ];
+  return document;
+};
+
+test("model comparison normalizes only safely mergeable adjacent runs", () => {
+  const merged = reviewDocumentWithContent([textRun("Alpha beta")]);
+  const segmented = reviewDocumentWithContent([
+    textRun("Alpha "),
+    textRun("beta"),
+  ]);
+
+  assert.notDeepEqual(
+    canonicalReviewModel(segmented),
+    canonicalReviewModel(merged),
+  );
+  assert.deepEqual(
+    canonicalResolvedReviewModel(segmented),
+    canonicalResolvedReviewModel(merged),
+  );
+  assert.deepEqual(
+    canonicalResolvedReviewModel(
+      reviewDocumentWithContent([
+        textRun("Alpha "),
+        textRun(""),
+        textRun("beta"),
+      ]),
+    ),
+    canonicalResolvedReviewModel(merged),
+  );
+
+  const controls: ParagraphContent[][] = [
+    [textRun("Alpha "), textRun("gamma")],
+    [textRun("Alpha "), textRun("beta", { formatting: { bold: true } })],
+    [
+      textRun("Alpha "),
+      textRun("beta", {
+        propertyChanges: [
+          {
+            type: "runPropertyChange",
+            info: { id: 8, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+            previousFormatting: { italic: true },
+          },
+        ],
+      }),
+    ],
+    [
+      textRun("Alpha "),
+      textRun("beta", {
+        preservedAttributes: [
+          {
+            name: "rsidR",
+            namespace:
+              "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            value: "00ABCDEF",
+          },
+        ],
+      }),
+    ],
+    [textRun("Alpha "), { type: "run", content: [] }, textRun("beta")],
+    [
+      textRun("Alpha "),
+      textRun("beta", {
+        formatting: {
+          preserved: { children: [{ index: 1, xml: "<w:spacing/>" }] },
+        },
+      }),
+    ],
+    [
+      textRun("Alpha "),
+      { type: "run", content: [{ type: "tab" }] },
+      textRun("beta"),
+    ],
+    [
+      textRun("Alpha "),
+      { type: "bookmarkStart", id: 9, name: "range" },
+      textRun("beta"),
+    ],
+    [
+      textRun("Alpha "),
+      { type: "bookmarkEnd", id: 9, copyOriginAncestors: [0] },
+      textRun("beta"),
+    ],
+    [
+      textRun("Alpha "),
+      {
+        type: "moveToRangeStart",
+        id: 9,
+        name: "move",
+        author: "Reviewer",
+      },
+      textRun("beta"),
+    ],
+    [
+      textRun("Alpha "),
+      {
+        type: "insertion",
+        info: { id: 8, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+        content: [textRun("beta")],
+      },
+    ],
+  ];
+
+  for (const content of controls) {
+    assert.notDeepEqual(
+      canonicalResolvedReviewModel(reviewDocumentWithContent(content)),
+      canonicalResolvedReviewModel(merged),
+      `Normalization merged a semantic boundary: ${JSON.stringify(content)}`,
+    );
+  }
+});
+
+test("resolved projection visits section-local headers and footers without relaxing run formatting or metadata", () => {
+  const segmented = documentWithSectionStories(
+    [textRun("Section "), textRun("header")],
+    [textRun("Section "), textRun("footer")],
+  );
+  const merged = documentWithSectionStories(
+    [textRun("Section header")],
+    [textRun("Section footer")],
+  );
+
+  assert.notDeepEqual(
+    canonicalReviewModel(segmented),
+    canonicalReviewModel(merged),
+  );
+  assert.deepEqual(
+    canonicalResolvedReviewModel(segmented),
+    canonicalResolvedReviewModel(merged),
+  );
+
+  const formatted = documentWithSectionStories(
+    [textRun("Section "), textRun("header", { formatting: { bold: true } })],
+    [textRun("Section footer")],
+  );
+  assert.notDeepEqual(
+    canonicalResolvedReviewModel(formatted),
+    canonicalResolvedReviewModel(merged),
+  );
+
+  const metadata = documentWithSectionStories(
+    [textRun("Section header")],
+    [
+      textRun("Section "),
+      textRun("footer", {
+        preservedAttributes: [
+          {
+            name: "rsidR",
+            namespace:
+              "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            value: "00ABCDEF",
+          },
+        ],
+      }),
+    ],
+  );
+  assert.notDeepEqual(
+    canonicalResolvedReviewModel(metadata),
+    canonicalResolvedReviewModel(merged),
+  );
+});
 
 test("revision comparison preserves character order across adjacent run groups", () => {
   const fragments = [...revision.text].map((text, index) =>
@@ -205,6 +436,88 @@ test("round-trip comparison preserves table formatting in resolved models", asyn
       context: "changed table formatting",
     }),
     /accept-all document differs/,
+  );
+});
+
+test("resolved projection preserves source metadata checks without mutation", () => {
+  const model = reviewDocumentWithContent([textRun("Alpha "), textRun("beta")]);
+  const sourceParagraph = model.package.document.content.at(0);
+  if (sourceParagraph?.type !== "paragraph") panic("Expected paragraph");
+  const originalProjection = canonicalReviewModel(model);
+  const firstProjection = canonicalResolvedReviewModel(model);
+
+  assert.deepEqual(canonicalResolvedReviewModel(model), firstProjection);
+  assert.deepEqual(canonicalReviewModel(model), originalProjection);
+
+  Object.defineProperty(sourceParagraph, Symbol("unclassifiedCapture"), {
+    enumerable: true,
+    value: {},
+  });
+  assert.throws(
+    () => canonicalResolvedReviewModel(model),
+    /Unclassified model capture symbol/,
+  );
+
+  const unknownFieldModel = reviewDocumentWithContent([textRun("Alpha")]);
+  const unknownFieldParagraph =
+    unknownFieldModel.package.document.content.at(0);
+  if (unknownFieldParagraph?.type !== "paragraph") panic("Expected paragraph");
+  Object.defineProperty(unknownFieldParagraph, "sourceCaptureNew", {
+    enumerable: true,
+    value: {},
+  });
+  assert.throws(
+    () => canonicalResolvedReviewModel(unknownFieldModel),
+    /Unclassified model capture field/,
+  );
+
+  const sourceHandleModel = reviewDocumentWithContent([textRun("Alpha")]);
+  const sourceHandleParagraph =
+    sourceHandleModel.package.document.content.at(0);
+  if (sourceHandleParagraph?.type !== "paragraph") panic("Expected paragraph");
+  Object.defineProperty(
+    sourceHandleParagraph,
+    Symbol("paragraphPropertyCapture"),
+    { enumerable: true, value: {} },
+  );
+  assert.deepEqual(
+    canonicalResolvedReviewModel(sourceHandleModel),
+    canonicalResolvedReviewModel(reviewDocumentWithContent([textRun("Alpha")])),
+  );
+});
+
+test("resolved projection rejects metadata on runs removed by consolidation", () => {
+  for (const enumerable of [true, false]) {
+    const model = reviewDocumentWithContent([
+      textRun("Alpha "),
+      textRun("beta"),
+    ]);
+    const sourceParagraph = model.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") panic("Expected paragraph");
+    const secondRun = sourceParagraph.content.at(1);
+    if (secondRun?.type !== "run") panic("Expected second run");
+    Object.defineProperty(secondRun, Symbol("unclassifiedCapture"), {
+      enumerable,
+      value: {},
+    });
+    assert.throws(
+      () => canonicalResolvedReviewModel(model),
+      /Unclassified model capture symbol/,
+    );
+  }
+
+  const model = reviewDocumentWithContent([textRun("Alpha "), textRun("beta")]);
+  const remainingParagraph = model.package.document.content.at(0);
+  if (remainingParagraph?.type !== "paragraph") panic("Expected paragraph");
+  const remainingSecondRun = remainingParagraph.content.at(1);
+  if (remainingSecondRun?.type !== "run") panic("Expected second run");
+  Object.defineProperty(remainingSecondRun, "sourceCaptureNew", {
+    enumerable: true,
+    value: {},
+  });
+  assert.throws(
+    () => canonicalResolvedReviewModel(model),
+    /Unclassified model capture field/,
   );
 });
 

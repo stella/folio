@@ -65,6 +65,42 @@ const readNumberingXml = async (buf: ArrayBuffer): Promise<string> => {
   return xml;
 };
 
+test("automatic spacing toggles keep absence, explicit off, and on in standalone output", async () => {
+  for (const autoSpaceDE of [undefined, false, true]) {
+    for (const autoSpaceDN of [undefined, false, true]) {
+      const document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [],
+                formatting: {
+                  ...(autoSpaceDE === undefined ? {} : { autoSpaceDE }),
+                  ...(autoSpaceDN === undefined ? {} : { autoSpaceDN }),
+                },
+              },
+            ],
+          },
+        },
+      } as const satisfies Document;
+      const xml = await readDocumentXml(
+        await serializeDocumentToDocx(document),
+      );
+      for (const [name, value] of Object.entries({
+        autoSpaceDE,
+        autoSpaceDN,
+      })) {
+        if (value === undefined) expect(xml).not.toContain(`<w:${name}`);
+        else
+          expect(xml).toContain(
+            value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`,
+          );
+      }
+    }
+  }
+});
+
 test("the standalone DOCX writer refuses overflowing replayed identifiers", async () => {
   const document: Document = {
     package: {

@@ -206,7 +206,10 @@ export function layoutParagraph({
         collapsedLead + firstLineHeight > availableHeight &&
         spaceBefore + firstLineHeight <= columnCapacity
       ) {
-        paginator.ensureFits(collapsedLead + firstLineHeight);
+        paginator.ensureFits({
+          requiredHeight: collapsedLead + firstLineHeight,
+          freshColumnHeight: firstLineHeight,
+        });
         continue;
       }
     }
@@ -235,7 +238,10 @@ export function layoutParagraph({
         spaceBefore + wholeHeight <= columnCapacity
       ) {
         keepLinesMoveAttempted = true;
-        paginator.ensureFits(collapsedLead + wholeHeight);
+        paginator.ensureFits({
+          requiredHeight: collapsedLead + wholeHeight,
+          freshColumnHeight: wholeHeight,
+        });
         continue;
       }
     }
@@ -261,13 +267,13 @@ export function layoutParagraph({
     // `addFragment` collapses `spaceBefore` with the previous block's trailing
     // spacing, so the fit loop must reserve the same amount; otherwise a large
     // preceding `spaceAfter` repeats the same over-count (eigenpal/docx-editor#782).
-    const firstFragmentSpaceBefore =
-      currentLineIndex === 0
-        ? collapseParagraphSpacing({
-            before: spaceBefore,
-            after: state.trailingSpacing,
-          })
-        : 0;
+    let firstFragmentSpaceBefore = 0;
+    if (currentLineIndex === 0 && !paginator.isAtFreshColumnRegion()) {
+      firstFragmentSpaceBefore = collapseParagraphSpacing({
+        before: spaceBefore,
+        after: state.trailingSpacing,
+      });
+    }
 
     for (let j = currentLineIndex; j < lines.length; j++) {
       const line = lines[j]!; // SAFETY: j < lines.length
@@ -399,21 +405,26 @@ export function layoutParagraph({
     //    a retry floor may already cover some or all of it.
     if (linesFnHeight > 0) {
       const stateBefore = paginator.getCurrentState();
-      paginator.ensureFits(
-        effectiveSpaceBefore +
-          linesHeight +
-          projectedFootnoteReserveGrowth(stateBefore, linesFnHeight),
+      const firstPassFootnoteGrowth = projectedFootnoteReserveGrowth(
+        stateBefore,
+        linesFnHeight,
       );
+      paginator.ensureFits({
+        requiredHeight:
+          effectiveSpaceBefore + linesHeight + firstPassFootnoteGrowth,
+        freshColumnHeight: linesHeight + firstPassFootnoteGrowth,
+      });
       const stateAfter = paginator.getCurrentState();
       if (stateAfter.footnoteDemandHeight === 0) {
-        paginator.ensureFits(
-          effectiveSpaceBefore +
-            linesHeight +
-            projectedFootnoteReserveGrowth(
-              stateAfter,
-              linesFnHeight + FOOTNOTE_SEPARATOR_HEIGHT,
-            ),
+        const freshColumnFootnoteGrowth = projectedFootnoteReserveGrowth(
+          stateAfter,
+          linesFnHeight + FOOTNOTE_SEPARATOR_HEIGHT,
         );
+        paginator.ensureFits({
+          requiredHeight:
+            effectiveSpaceBefore + linesHeight + freshColumnFootnoteGrowth,
+          freshColumnHeight: linesHeight + freshColumnFootnoteGrowth,
+        });
       }
     }
 
@@ -445,7 +456,9 @@ export function layoutParagraph({
       } else if (forceBreakAfterFragment) {
         paginator.forceColumnBreak();
       } else {
-        paginator.ensureFits(measuredLineAdvance(lines[currentLineIndex]!)); // SAFETY: guarded by length check
+        paginator.ensureFits({
+          requiredHeight: measuredLineAdvance(lines[currentLineIndex]!), // SAFETY: guarded by length check
+        });
       }
     }
   }

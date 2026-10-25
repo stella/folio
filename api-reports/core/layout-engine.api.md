@@ -124,7 +124,14 @@ export function createPaginator(options: PaginatorOptions): {
     getContentHeight: () => number;
     getContentWidth: () => number;
     fits: (height: number) => boolean;
-    ensureFits: (height: number) => PageState;
+    ensureFits: {
+        (height: number): PageState;
+        (options: {
+            requiredHeight: number;
+            freshColumnHeight?: number;
+        }): PageState;
+    };
+    isAtFreshColumnRegion: () => boolean;
     addFragment: (fragment: Fragment, height: number, spaceBefore?: number, spaceAfter?: number) => {
         state: PageState;
         x: number;
@@ -454,6 +461,7 @@ export type LayoutOptions = {
     finalPageNumbering?: SectionPageNumbering;
     sectionVerticalAlignments?: readonly (VerticalAlign | undefined)[];
     columns?: ColumnLayout;
+    columnBalancing?: "balanced" | "natural";
     pageGap?: number;
     defaultLineHeight?: number;
     headerContentHeights?: HeaderFooterContentHeights;
@@ -646,6 +654,8 @@ export type ParagraphAttrs = {
         type: "legacy";
     };
     kinsoku?: boolean;
+    autoSpaceDE?: boolean;
+    autoSpaceDN?: boolean;
     overflowPunctuation?: boolean;
     defaultEastAsiaFontFamily?: string;
     suppressAutoHyphens?: boolean;

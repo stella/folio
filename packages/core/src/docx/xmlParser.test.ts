@@ -101,6 +101,51 @@ describe("OOXML parsing", () => {
     expect(serialized).toContain(`xmlns:v="${NAMESPACES.v}"`);
     expect(serialized).toContain(`xmlns:r="${NAMESPACES.r}"`);
   });
+
+  test("uses source namespace scope before fallback bindings when detaching", () => {
+    const document = parseXmlDocument(
+      '<root xmlns:q="urn:source"><q:captured><q:child/></q:captured></root>',
+    );
+    const captured = document?.elements?.at(0);
+    const detached = captured
+      ? cloneWithXmlnsDeclarations(captured, { "xmlns:q": "urn:fallback" })
+      : null;
+
+    expect(detached?.attributes?.["xmlns:q"]).toBe("urn:source");
+    expect(detached ? elementToXml(detached) : "").toBe(
+      '<q:captured xmlns:q="urn:source"><q:child/></q:captured>',
+    );
+  });
+
+  test("keeps local namespace shadowing and inherited default undeclarations", () => {
+    const shadowedDocument = parseXmlDocument(
+      '<root xmlns:q="urn:outer"><q:captured xmlns:q="urn:choice"><q:child/></q:captured></root>',
+    );
+    const shadowed = shadowedDocument?.elements?.at(0);
+    const detachedShadowed = shadowed
+      ? cloneWithXmlnsDeclarations(shadowed, { "xmlns:q": "urn:fallback" })
+      : null;
+    expect(detachedShadowed?.attributes?.["xmlns:q"]).toBe("urn:choice");
+
+    const defaultDocument = parseXmlDocument(
+      '<root xmlns="urn:root"><wrapper xmlns=""><child/></wrapper></root>',
+    );
+    const defaultChild = defaultDocument?.elements?.at(0)?.elements?.at(0);
+    const detachedDefault = defaultChild
+      ? cloneWithXmlnsDeclarations(defaultChild, { xmlns: "urn:fallback" })
+      : null;
+    expect(detachedDefault?.attributes?.xmlns).toBe("");
+    expect(detachedDefault ? elementToXml(detachedDefault) : "").toBe(
+      '<child xmlns=""/>',
+    );
+  });
+
+  test("does not add a redundant reserved xml namespace declaration", () => {
+    const document = parseXmlDocument("<xml:lang>en</xml:lang>");
+    const detached = document ? cloneWithXmlnsDeclarations(document, {}) : null;
+
+    expect(detached?.attributes?.["xmlns:xml"]).toBeUndefined();
+  });
 });
 
 describe("ST_OnOff values", () => {

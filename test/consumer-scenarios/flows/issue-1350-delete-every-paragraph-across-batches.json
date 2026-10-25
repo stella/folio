@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 1576447506,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3280130925,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3216189728,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1064917930,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        }
+      ]
+    }
+  ],
+  "title": "PINNED #1350, reported seed 1576447506: deleting every paragraph over three batches keeps the first one's properties, directly as tracked"
+}

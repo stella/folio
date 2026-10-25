@@ -32,7 +32,9 @@ import type {
 import { rejectCopyOriginAncestorsInNodes } from "./copyOriginAncestors";
 import {
   childNodes,
+  type CommentAnchorCarrier,
   type InlineNode,
+  isCommentAnchor,
   isEmptyRecord,
   rebuildNode,
 } from "./leaves";
@@ -52,10 +54,7 @@ export const rangeBoundaryDefinitions = () => BOUNDARY_SIDES;
 
 type BoundaryType = keyof typeof BOUNDARY_SIDES;
 type Boundary = Extract<InlineNode, { type: BoundaryType }>;
-type CommentAnchor = Extract<
-  Boundary,
-  { type: "commentRangeStart" | "commentRangeEnd" }
->;
+type CommentAnchor = CommentAnchorCarrier;
 type OrderedBoundary = Exclude<Boundary, CommentAnchor>;
 
 const isBoundary = (node: InlineNode): node is Boundary =>
@@ -64,13 +63,6 @@ const isBoundary = (node: InlineNode): node is Boundary =>
 /** The range a boundary belongs to: its family and id. */
 const rangeKey = (boundary: Boundary): string =>
   `${BOUNDARY_SIDES[boundary.type].family}:${boundary.id}`;
-
-const isCommentAnchor = (
-  node: InlineNode,
-): node is Extract<
-  Boundary,
-  { type: "commentRangeStart" | "commentRangeEnd" }
-> => node.type === "commentRangeStart" || node.type === "commentRangeEnd";
 
 /** Comment ids with both a start and an end among `nodes`. */
 export const pairedCommentRanges = (
@@ -144,6 +136,31 @@ export const rangeBoundariesIn = (content: readonly InlineNode[]): Boundary[] =>
   content.flatMap((node) =>
     isBoundary(node) ? [node] : rangeBoundariesIn(childNodes(node) ?? []),
   );
+
+const collectParagraphBoundaryCarriers = (
+  content: readonly InlineNode[],
+  carriers: (Boundary | CommentAnchor)[],
+): void => {
+  for (const node of content) {
+    if (isCommentAnchor(node)) {
+      carriers.push(node);
+      continue;
+    }
+    if (isBoundary(node)) {
+      carriers.push(node);
+      continue;
+    }
+    collectParagraphBoundaryCarriers(childNodes(node) ?? [], carriers);
+  }
+};
+
+const paragraphBoundaryCarriersIn = (
+  content: readonly InlineNode[],
+): (Boundary | CommentAnchor)[] => {
+  const carriers: (Boundary | CommentAnchor)[] = [];
+  collectParagraphBoundaryCarriers(content, carriers);
+  return carriers;
+};
 
 type OrderedOccurrence = {
   key: string;
@@ -313,21 +330,30 @@ export const insertsInvertedRange = ({
 /**
  * What a paragraph that goes whole leaves where it was: every bookmark and
  * move range boundary it holds, at any depth, as blocks in its place, and its
- * comment anchors, in document order, for the nearest paragraph that stays to
- * take. A comment with both anchors there becomes a point there, so the
+ * comment anchors for the nearest paragraph that stays to take. When a
+ * comment needs that host, every carrier travels there together in source
+ * order. A comment with both anchors there becomes a point there, so the
  * comment and its anchor survive the paragraph.
  */
 export const paragraphRemains = (
   content: readonly InlineNode[],
-): { all: Boundary[]; blocks: BlockBoundary[]; comments: CommentAnchor[] } => {
+): {
+  all: (Boundary | CommentAnchor)[];
+  blocks: BlockBoundary[];
+  comments: CommentAnchor[];
+  placement: "blocks" | "previous";
+} => {
   const detached = rejectCopyOriginAncestorsInNodes(content, 0);
-  const boundaries = rangeBoundariesIn(detached);
+  const carriers = paragraphBoundaryCarriersIn(detached);
+  const comments = carriers.filter(isCommentAnchor);
   return {
-    all: boundaries,
-    blocks: boundaries.filter(
-      (boundary): boundary is BlockBoundary => !isCommentAnchor(boundary),
+    all: carriers,
+    blocks: carriers.filter(
+      (carrier): carrier is BlockBoundary =>
+        isBoundary(carrier) && !isCommentAnchor(carrier),
     ),
-    comments: boundaries.filter(isCommentAnchor),
+    comments,
+    placement: comments.length > 0 ? "previous" : "blocks",
   };
 };
 
@@ -359,10 +385,11 @@ export const planParagraphBoundaryRemoval = ({
   const {
     all,
     blocks: boundaries,
-    comments,
+    placement,
   } = paragraphRemains(paragraph.content);
-  const between = place === "blocks" ? boundaries : [];
-  const toPrevious = place === "blocks" ? comments : all;
+  const destination = place === "previous" ? place : placement;
+  const between = destination === "blocks" ? boundaries : [];
+  const toPrevious = destination === "previous" ? all : [];
   const remaining = [
     ...blocks.slice(0, index),
     ...between,

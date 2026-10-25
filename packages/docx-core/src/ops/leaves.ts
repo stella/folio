@@ -48,12 +48,18 @@ const COMMENT_ANCHOR_TYPES = {
 
 const COMMENT_ANCHORS = new Set(Object.keys(COMMENT_ANCHOR_TYPES));
 
+export type CommentAnchorCarrier = Extract<
+  InlineNode,
+  { type: keyof typeof COMMENT_ANCHOR_TYPES }
+>;
+
 /** Whether a leaf carries an anchor rather than content covered by its range. */
 export const isCommentAnchorCarrierType = (type: string): boolean =>
   COMMENT_ANCHORS.has(type);
 
-export const isCommentAnchor = (node: InlineNode): boolean =>
-  isCommentAnchorCarrierType(node.type);
+export const isCommentAnchor = (
+  node: InlineNode,
+): node is CommentAnchorCarrier => isCommentAnchorCarrierType(node.type);
 
 const RUN_CONTENT_TYPES = {
   text: true,

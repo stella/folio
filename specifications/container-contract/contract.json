@@ -2472,10 +2472,10 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}autoSpaceDE|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}autoSpaceDN|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}b|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_OnOff@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val": {
       "disposition": "modelled"
@@ -6148,10 +6148,10 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}autoSpaceDE": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}autoSpaceDN": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bidi": {
       "disposition": "modelled"
@@ -6256,10 +6256,10 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}autoSpaceDE": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}autoSpaceDN": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_PPrBase/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}bidi": {
       "disposition": "modelled"

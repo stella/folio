@@ -408,6 +408,56 @@ test("whole-story acceptance matches accepting adjacent paragraph marks in turn"
   expect(receiver?.textContent).toBe("xcell");
   expect(receiver?.firstChild?.attrs).toEqual(comment.attrs);
 });
+for (const [order, nodes] of [
+  [
+    "bookmark before reference",
+    [
+      schema.node("bookmarkBoundary", {
+        type: "start",
+        id: 8,
+        name: "kept",
+      }),
+      schema.node("commentReference", { commentId: 9 }),
+    ],
+  ],
+  [
+    "reference before bookmark",
+    [
+      schema.node("commentReference", { commentId: 9 }),
+      schema.node("bookmarkBoundary", {
+        type: "start",
+        id: 8,
+        name: "kept",
+      }),
+    ],
+  ],
+] as const) {
+  test(`whole-story accept preserves ${order} before a table`, () => {
+    const doc = schema.node("doc", null, [
+      paragraph("before"),
+      schema.node("paragraph", { pPrMark: deletedParagraphMark }, nodes),
+      table([row([cell("cell")])]),
+    ]);
+
+    const result = resolveWholeStory({
+      doc,
+      mode: "accept",
+      styleResolver: null,
+      numbering: null,
+    });
+
+    expect(result.failed).toBe(false);
+    expect(result.resolved.childCount).toBe(2);
+    const host = result.resolved.firstChild;
+    expect(host?.content.content.map((node) => node.type.name)).toEqual([
+      "text",
+      ...nodes.map((node) => node.type.name),
+    ]);
+    expect(host?.child(1).attrs).toEqual(nodes[0]?.attrs);
+    expect(host?.child(2).attrs).toEqual(nodes[1]?.attrs);
+    expect(result.resolved.child(1)?.type.name).toBe("table");
+  });
+}
 
 test("accepting a non-empty paragraph-mark deletion runs its content into the table", () => {
   const cellParagraph = paragraph("cell");

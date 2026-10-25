@@ -38,6 +38,8 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
   alignment: { kind: "direct-provenance" },
   bidi: { kind: "style-resolved-attr", attr: "direction" },
   kinsoku: { kind: "style-resolved-attr", attr: "kinsoku" },
+  autoSpaceDE: { kind: "style-resolved-attr", attr: "autoSpaceDE" },
+  autoSpaceDN: { kind: "style-resolved-attr", attr: "autoSpaceDN" },
   overflowPunctuation: {
     kind: "style-resolved-attr",
     attr: "overflowPunctuation",

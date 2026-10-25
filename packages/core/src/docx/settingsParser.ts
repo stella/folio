@@ -131,6 +131,16 @@ export function parseSettings(xml: string | null): DocumentSettings {
   if (compatibilityMode !== undefined) {
     settings.compatibilityMode = compatibilityMode;
   }
+  const noColumnBalance = compat
+    ? findChildByNamespaceUri(
+        compat,
+        WORDPROCESSINGML_NAMESPACE_URIS,
+        "noColumnBalance",
+      )
+    : null;
+  if (noColumnBalance !== null) {
+    settings.noColumnBalance = parseBooleanElement(noColumnBalance);
+  }
   const splitPageBreakAndParagraphMark = compat
     ? findChild(compat, "w", "splitPgBreakAndParaMark")
     : null;

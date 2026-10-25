@@ -104,6 +104,8 @@ const statedFormatting = (attrs: ParagraphAttrs): ParagraphFormatting => {
   copy("shading");
   copy("tabs");
   copy("kinsoku");
+  copy("autoSpaceDE");
+  copy("autoSpaceDN");
   copy("overflowPunctuation");
   copy("suppressAutoHyphens");
   copy("pageBreakBefore");
@@ -211,6 +213,8 @@ const cascadePatch = (
     "shading",
     "tabs",
     "kinsoku",
+    "autoSpaceDE",
+    "autoSpaceDN",
     "overflowPunctuation",
     "suppressAutoHyphens",
     "pageBreakBefore",

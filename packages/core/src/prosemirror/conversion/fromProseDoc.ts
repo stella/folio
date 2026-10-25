@@ -165,7 +165,10 @@ import { presetDashForCssBorderStyle } from "../../utils/borderCss";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { emuToPixels, emuToStrokePixels, pixelsToEmu } from "../../utils/units";
-import { unchangedAlternateContentXml } from "../alternateContentAttrs";
+import {
+  editedAlternateContent,
+  unchangedAlternateContentXml,
+} from "../alternateContentAttrs";
 import {
   expectBlockCustomXmlAttrs,
   expectBlockSdtAttrs,
@@ -276,6 +279,7 @@ import { textBoxHostParagraph } from "../textBoxHostParagraph";
 import {
   enclosingInsertionAncestors,
   inlineWrapperStackOf,
+  trackedRevisionLayerOf,
 } from "../trackedRevisionPath";
 import { assertValidProseMirrorDocument } from "../validation";
 import { hasSinkChildren } from "./preservedSinkCarriers";
@@ -2492,6 +2496,8 @@ type BooleanToggleKey = Extract<
   | "runInWithNext"
   | "snapToGrid"
   | "kinsoku"
+  | "autoSpaceDE"
+  | "autoSpaceDN"
   | "overflowPunctuation"
   | "suppressAutoHyphens"
 >;
@@ -2742,6 +2748,8 @@ function paragraphAttrsToFormatting(
     assignBooleanToggle(result, attrs, orig, "runInWithNext");
     assignBooleanToggle(result, attrs, orig, "snapToGrid");
     assignBooleanToggle(result, attrs, orig, "kinsoku");
+    assignBooleanToggle(result, attrs, orig, "autoSpaceDE");
+    assignBooleanToggle(result, attrs, orig, "autoSpaceDN");
     assignBooleanToggle(result, attrs, orig, "overflowPunctuation");
     assignBooleanToggle(result, attrs, orig, "suppressAutoHyphens");
     if (attrs.spacingExplicit !== orig.spacingExplicit) {
@@ -2822,6 +2830,8 @@ function paragraphAttrsToFormatting(
   const keepLines = authored("keepLines", attrs.keepLines);
   const runInWithNext = authored("runInWithNext", attrs.runInWithNext);
   const kinsoku = authored("kinsoku", attrs.kinsoku);
+  const autoSpaceDE = authored("autoSpaceDE", attrs.autoSpaceDE);
+  const autoSpaceDN = authored("autoSpaceDN", attrs.autoSpaceDN);
   const overflowPunctuation = authored(
     "overflowPunctuation",
     attrs.overflowPunctuation,
@@ -2861,6 +2871,8 @@ function paragraphAttrsToFormatting(
     keepLines != null ||
     runInWithNext != null ||
     kinsoku != null ||
+    autoSpaceDE != null ||
+    autoSpaceDN != null ||
     overflowPunctuation != null ||
     suppressAutoHyphens != null;
 
@@ -2954,6 +2966,12 @@ function paragraphAttrsToFormatting(
   }
   if (kinsoku != null) {
     f.kinsoku = kinsoku;
+  }
+  if (autoSpaceDE != null) {
+    f.autoSpaceDE = autoSpaceDE;
+  }
+  if (autoSpaceDN != null) {
+    f.autoSpaceDN = autoSpaceDN;
   }
   if (overflowPunctuation != null) {
     f.overflowPunctuation = overflowPunctuation;
@@ -3934,13 +3952,29 @@ function extractParagraphContent(
       // insertion) is a deletion inside the insertion: `w:ins > w:del`, the
       // shape the parser reads back as a deletion whose ancestor is the
       // insertion. Written as the insertion alone, the deletion would be lost.
-      const changeMark = deletionMark ?? insertionMark;
+      const deletionLayer = deletionMark
+        ? trackedRevisionLayerOf(deletionMark, node)
+        : undefined;
+      const insertionAttrs = insertionMark
+        ? expectTrackedChangeMarkAttrs(insertionMark)
+        : undefined;
+      const insertionIsNestedInDeletion =
+        deletionLayer !== undefined &&
+        insertionAttrs?._docxRevisionAncestors?.some(
+          ({ revisionId, type }) =>
+            revisionId === deletionLayer.revisionId &&
+            type === deletionLayer.type,
+        ) === true;
+      const changeMark =
+        insertionIsNestedInDeletion && insertionMark
+          ? insertionMark
+          : (deletionMark ?? insertionMark);
       if (!changeMark) {
         return;
       }
       const changeAttrs = expectTrackedChangeMarkAttrs(changeMark);
       const revisionAncestors = enclosingInsertionAncestors({
-        insertionMark: deletionMark ? insertionMark : undefined,
+        insertionMark: changeMark === deletionMark ? insertionMark : undefined,
         ancestors: changeAttrs._docxRevisionAncestors ?? [],
         node,
       });
@@ -5830,12 +5864,25 @@ const shapeContentFromNode = ({
   captured,
 }: ShapeContentFromNodeOptions): ShapeContent => {
   const xml = unchangedAlternateContentXml(node, captured);
-  return xml === undefined
+  if (xml !== undefined) {
+    return {
+      type: "shape",
+      shape,
+      alternateContent: refingerprintShapeAlternateContent(shape, xml),
+    };
+  }
+  const editedCapture = editedAlternateContent(node, captured);
+  return editedCapture?.shapeFingerprint === undefined ||
+    editedCapture.structureFingerprint === undefined
     ? { type: "shape", shape }
     : {
         type: "shape",
         shape,
-        alternateContent: refingerprintShapeAlternateContent(shape, xml),
+        alternateContent: {
+          verbatimXml: editedCapture.xml,
+          verbatimFingerprint: editedCapture.shapeFingerprint,
+          verbatimStructureFingerprint: editedCapture.structureFingerprint,
+        },
       };
 };
 
@@ -6894,6 +6941,39 @@ function convertPMTextBox(
     attrs._docxTextBodyContentState,
     childBlocks,
   );
+  const margins: NonNullable<NonNullable<Shape["textBody"]>["margins"]> = {};
+  if (typeof attrs.marginTop === "number") {
+    margins.top = emuFromPixels(
+      attrs.marginTop,
+      "marginTop",
+      authoredEmu,
+      emuToPixels,
+    );
+  }
+  if (typeof attrs.marginBottom === "number") {
+    margins.bottom = emuFromPixels(
+      attrs.marginBottom,
+      "marginBottom",
+      authoredEmu,
+      emuToPixels,
+    );
+  }
+  if (typeof attrs.marginLeft === "number") {
+    margins.left = emuFromPixels(
+      attrs.marginLeft,
+      "marginLeft",
+      authoredEmu,
+      emuToPixels,
+    );
+  }
+  if (typeof attrs.marginRight === "number") {
+    margins.right = emuFromPixels(
+      attrs.marginRight,
+      "marginRight",
+      authoredEmu,
+      emuToPixels,
+    );
+  }
 
   // Build shape with text body
   const shape: Shape = {
@@ -6914,47 +6994,7 @@ function convertPMTextBox(
       ...(attrs.autoFit !== undefined ? { autoFit: attrs.autoFit } : {}),
       ...(attrs.textWrap !== undefined ? { textWrap: attrs.textWrap } : {}),
       ...(verticalAlign !== undefined ? { anchor: verticalAlign } : {}),
-      margins: (() => {
-        const m: {
-          top?: number;
-          bottom?: number;
-          left?: number;
-          right?: number;
-        } = {};
-        if (typeof attrs.marginTop === "number") {
-          m.top = emuFromPixels(
-            attrs.marginTop,
-            "marginTop",
-            authoredEmu,
-            emuToPixels,
-          );
-        }
-        if (typeof attrs.marginBottom === "number") {
-          m.bottom = emuFromPixels(
-            attrs.marginBottom,
-            "marginBottom",
-            authoredEmu,
-            emuToPixels,
-          );
-        }
-        if (typeof attrs.marginLeft === "number") {
-          m.left = emuFromPixels(
-            attrs.marginLeft,
-            "marginLeft",
-            authoredEmu,
-            emuToPixels,
-          );
-        }
-        if (typeof attrs.marginRight === "number") {
-          m.right = emuFromPixels(
-            attrs.marginRight,
-            "marginRight",
-            authoredEmu,
-            emuToPixels,
-          );
-        }
-        return m;
-      })(),
+      ...(Object.keys(margins).length > 0 ? { margins } : {}),
     },
   };
 

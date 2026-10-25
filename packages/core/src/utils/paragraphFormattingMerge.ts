@@ -7,6 +7,8 @@ const PARAGRAPH_REPLACE_KEYS = [
   "alignment",
   "bidi",
   "kinsoku",
+  "autoSpaceDE",
+  "autoSpaceDN",
   "overflowPunctuation",
   "spaceBefore",
   "spaceAfter",

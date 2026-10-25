@@ -60,11 +60,13 @@ import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
 import {
   afterNativeCompositionFlush,
+  formattingMarksBesideLockedControl,
   handleEditorBeforeInput,
 } from "../textInput";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { getDocumentNumbering } from "./documentNumbering";
 import { documentStylesKey, getDocumentStyleResolver } from "./documentStyles";
+import { selectLockedInlineControl } from "./lockedControlKeyHandling";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
 export const suggestionModeKey =
@@ -369,7 +371,7 @@ function markRangeAsInserted(
     }
     if (
       node.marks.some(
-        (m) => m.type === insertionType || m.type === deletionType,
+        (mark) => mark.type === insertionType || mark.type === deletionType,
       )
     ) {
       return;
@@ -436,7 +438,7 @@ function markRangeAsInserted(
  * (eigenpal/docx-editor#784).
  */
 export function handleSuggestionPaste(
-  view: EditorView,
+  view: Pick<EditorView, "dispatch" | "state">,
   slice: Slice,
   pluginState: SuggestionModeState,
 ): boolean {
@@ -1036,6 +1038,14 @@ function applySuggestionInsert(
   }
 
   const insertAt = tr.mapping.map(to);
+  const formattingMarks = formattingMarksBesideLockedControl({
+    state: view.state,
+    from,
+    to,
+  });
+  if (formattingMarks !== undefined) {
+    tr.setStoredMarks(formattingMarks);
+  }
   tr.insertText(text, insertAt, insertAt);
 
   // Strip inherited deletion marks — new text must never be marked as deleted.
@@ -1995,6 +2005,9 @@ export function createSuggestionModePlugin(
         const pluginState = suggestionModeKey.getState(view.state);
         if (!pluginState?.active) {
           return false;
+        }
+        if (selectLockedInlineControl(view, event)) {
+          return true;
         }
 
         // Only a plain Enter ends a paragraph: Shift-Enter breaks the line and

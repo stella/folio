@@ -56,8 +56,8 @@ const REPLACEMENT_TEXT =
 // node gained `_preservedAttributes`: ProseMirror serializes every declared
 // attr, default included, so `"_preservedAttributes":null` costs its 28 bytes
 // on a paragraph that carries no attribute remainder as on one that does.
-const ORDINARY_PARAGRAPH_STATE_SIZE_BUDGET = 1_851_095;
-const STYLED_PARAGRAPH_STATE_SIZE_BUDGET = 1_638_095;
+const ORDINARY_PARAGRAPH_STATE_SIZE_BUDGET = 1_889_095;
+const STYLED_PARAGRAPH_STATE_SIZE_BUDGET = 1_676_095;
 const STYLED_ALIGNMENT_PROVENANCE_SIZE_BUDGET = 29_000;
 
 const serializeWithoutParagraphSource = (

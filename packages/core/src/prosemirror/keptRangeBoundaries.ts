@@ -20,9 +20,10 @@ import {
   planWellFormedRanges,
 } from "@stll/docx-core/ops";
 
-import type { ParagraphContent } from "../types/document";
+import type { CommentReference, ParagraphContent } from "../types/document";
 import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { expectCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
+import { expectCommentReferenceAttrs } from "./commentReferenceAttrs";
 import {
   copyOriginBoundaryAfterRemovingAddedAncestors,
   copyOriginBoundaryAfterResolution,
@@ -31,6 +32,7 @@ import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockBookm
 import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockMoveRangeBoundaryExtension";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/CommentRangeBoundaryExtension";
+import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import {
@@ -267,6 +269,7 @@ export const blockBoundariesOf = (nodes: readonly PMNode[]): PMNode[] =>
 
 /** Whether `node` holds a comment's anchor, which only a paragraph holds. */
 export const carriesCommentAnchor = (node: PMNode): boolean =>
+  node.type.name === COMMENT_REFERENCE_NODE_NAME ||
   rangeBoundaryItemsOf(node).some(isComment);
 
 /** Whether `node` is a range boundary standing between blocks. */
@@ -296,16 +299,16 @@ export const inlineBoundariesOf = (
 /**
  * What `paragraph` leaves where it was when it goes whole, by the engine's
  * own rule (`paragraphRemains`): before a table, its bookmark and move range
- * boundaries as block nodes in its place (`blocks`) and the nodes holding its
- * comment anchors (`comments`) for the paragraph before it; ending its
+ * boundaries as block nodes in its place (`blocks`), unless a comment needs
+ * the paragraph before it, which takes every carrier in source order
+ * (`comments`); ending its
  * container, every node carrying a boundary (`inline`), for the paragraph
  * before it.
  */
 export const paragraphRemainsOf = (
   paragraph: PMNode,
 ): { blocks: PMNode[]; comments: PMNode[]; inline: PMNode[] } => {
-  const items: BoundaryItem[] = [];
-  const comments: PMNode[] = [];
+  const items: (BoundaryItem | CommentReference)[] = [];
   const inline: PMNode[] = [];
   paragraph.descendants((node) => {
     const carried = rangeBoundaryItemsOf(node);
@@ -313,16 +316,27 @@ export const paragraphRemainsOf = (
       carried.length > 0
         ? copyOriginBoundaryAfterRemovingAddedAncestors(node)
         : node;
-    if (carried.length > 0 && remains !== null) inline.push(remains);
-    if (carriesCommentAnchor(node)) comments.push(node);
+    if (
+      (carried.length > 0 || node.type.name === COMMENT_REFERENCE_NODE_NAME) &&
+      remains !== null
+    )
+      inline.push(remains);
     if (remains !== null) items.push(...rangeBoundaryItemsOf(remains));
+    if (node.type.name === COMMENT_REFERENCE_NODE_NAME)
+      items.push({
+        type: "commentReference",
+        id: expectCommentReferenceAttrs(node).commentId,
+      });
     return true;
   });
-  const blocks = paragraphRemains(items).blocks.flatMap((item) => {
+  const remains = paragraphRemains(items);
+  if (remains.placement === "previous")
+    return { blocks: [], comments: inline, inline };
+  const blocks = remains.blocks.flatMap((item) => {
     const block = boundaryNode(item, paragraph.type.schema, false);
     return block === undefined ? [] : [block];
   });
-  return { blocks, comments, inline };
+  return { blocks, comments: [], inline };
 };
 
 /** The revision marks of `anchor`, with the other marks of `node`. */

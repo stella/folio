@@ -73,6 +73,7 @@ import { collectRequestedHyphenationDictionaries } from "./layout-engine/measure
 import { preloadHyphenationDictionaries } from "./layout-engine/measure/hyphenationPreload";
 import { measureBlocks } from "./layout-engine/measure/measureBlocks";
 import { getMeasureProvider } from "./layout-engine/measure/measureProvider";
+import { columnBalancingForCompatibility } from "./layout-engine/noColumnBalanceCompatibility";
 import { FOOTNOTE_ENTRY_MARGIN_BOTTOM } from "./layout-engine/types";
 import type {
   FlowBlock,
@@ -637,6 +638,10 @@ export const layoutDocxHeadless = async (
         evenAndOddHeaders:
           document.package.settings?.evenAndOddHeaders === true,
         mirrorMargins: readsMirrorMargins(document.package.settings),
+        columnBalancing: columnBalancingForCompatibility(
+          document.package.settings?.noColumnBalance,
+          document.package.settings?.compatibilityMode,
+        ),
         ...(footnoteHeightById.size === 0 ? {} : { footnoteHeightById }),
         ...(sectionHeaderFooterRefs === undefined
           ? {}

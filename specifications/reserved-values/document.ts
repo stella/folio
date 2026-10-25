@@ -15,6 +15,7 @@ import {
 export const DOCUMENT_SETTINGS_RESERVED = {
   compatibilityMode: NO_RESERVED_VALUE,
   defaultTabStop: NO_RESERVED_VALUE,
+  noColumnBalance: NO_RESERVED_VALUE,
   evenAndOddHeaders: toggle("w:evenAndOddHeaders@val"),
   mirrorMargins: toggle("w:mirrorMargins@val"),
   adjustLineHeightInTable: toggle("w:adjustLineHeightInTable@val"),

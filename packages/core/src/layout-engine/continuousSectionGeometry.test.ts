@@ -152,6 +152,108 @@ describe("continuous section break geometry", () => {
     expect(secondColumn?.map(({ y }) => y)).toEqual([150, 250]);
   });
 
+  test("keeps natural column flow when noColumnBalance is enabled", () => {
+    const intro = paragraph("intro", 100);
+    const firstBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "first-break",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    };
+    const entries = ["first", "second", "third", "fourth"].map((id) =>
+      paragraph(id, 100),
+    );
+    const secondBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "second-break",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      columns: { count: 2, gap: 20 },
+    };
+    const outro = paragraph("outro", 100);
+    const blocks: FlowBlock[] = [
+      intro.block,
+      firstBreak,
+      ...entries.map(({ block }) => block),
+      secondBreak,
+      outro.block,
+    ];
+    const measures = [
+      intro.measure,
+      { kind: "sectionBreak" },
+      ...entries.map(({ measure }) => measure),
+      { kind: "sectionBreak" },
+      outro.measure,
+    ] satisfies Measure[];
+
+    const result = layoutDocument(blocks, measures, {
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      finalPageSize: { w: 800, h: 1000 },
+      finalMargins: { top: 50, right: 50, bottom: 50, left: 50 },
+      columnBalancing: "natural",
+    });
+
+    const columnFragments = result.pages[0]?.fragments.filter(
+      (fragment) =>
+        fragment.kind === "paragraph" &&
+        ["first", "second", "third", "fourth"].includes(fragment.blockId),
+    );
+    expect(columnFragments?.map(({ x }) => x)).toEqual([50, 50, 50, 50]);
+  });
+
+  test("suppresses space before at the opening of a later column region", () => {
+    const intro = paragraph("intro", 50);
+    const sectionBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "section-break",
+      type: "continuous",
+      pageSize: { w: 200, h: 100 },
+      margins: { top: 10, right: 10, bottom: 10, left: 10 },
+    };
+    const firstColumn = paragraph("first-column", 20);
+    const secondColumn = paragraph("second-column", 20);
+    secondColumn.block.attrs.spacing = { before: 13 };
+    const occupiedColumn = paragraph("occupied-column", 5);
+    occupiedColumn.block.attrs.spacing = { before: 5 };
+    const blocks: FlowBlock[] = [
+      intro.block,
+      sectionBreak,
+      firstColumn.block,
+      secondColumn.block,
+      occupiedColumn.block,
+    ];
+    const measures = [
+      intro.measure,
+      { kind: "sectionBreak" },
+      firstColumn.measure,
+      secondColumn.measure,
+      occupiedColumn.measure,
+    ] satisfies Measure[];
+
+    const result = layoutDocument(blocks, measures, {
+      pageSize: { w: 200, h: 100 },
+      margins: { top: 10, right: 10, bottom: 10, left: 10 },
+      finalPageSize: { w: 200, h: 100 },
+      finalMargins: { top: 10, right: 10, bottom: 10, left: 10 },
+      finalColumns: { count: 2, gap: 20 },
+    });
+    const fragments = result.pages.at(0)?.fragments;
+    const moved = fragments?.find(
+      (fragment) =>
+        fragment.kind === "paragraph" && fragment.blockId === "second-column",
+    );
+    const following = fragments?.find(
+      (fragment) =>
+        fragment.kind === "paragraph" && fragment.blockId === "occupied-column",
+    );
+
+    expect(moved).toMatchObject({ x: 110, y: 60 });
+    expect(following).toMatchObject({ x: 110, y: 85 });
+  });
+
   test("a final multi-column section keeps a forced column break on the current page", () => {
     const first = paragraph("a", 100);
     const sectionBreak: SectionBreakBlock = {
@@ -603,6 +705,42 @@ describe("continuous section break geometry", () => {
     expect(result.pages[0]?.size.w).toBe(800);
     const lastPage = result.pages.at(-1);
     expect(lastPage?.size).toEqual({ w: 1200, h: 700 });
+  });
+
+  test("continued section advances to a fresh page when no column fits its first line", () => {
+    const host = paragraph("host", 890);
+    const sectionBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "continued-section",
+      type: "continuous",
+    };
+    const first = paragraph("first-line", 20);
+
+    const result = layoutDocument(
+      [host.block, sectionBreak, first.block],
+      [
+        host.measure,
+        { kind: "sectionBreak" },
+        first.measure,
+      ] satisfies Measure[],
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+        finalPageSize: { w: 800, h: 1000 },
+        finalMargins: { top: 50, right: 50, bottom: 50, left: 50 },
+        finalColumns: { count: 2, gap: 20 },
+      },
+    );
+
+    const firstLine = result.pages
+      .at(-1)
+      ?.fragments.find(
+        (fragment) =>
+          fragment.kind === "paragraph" && fragment.blockId === "first-line",
+      );
+    expect(result.pages).toHaveLength(2);
+    expect(firstLine?.y).toBe(50);
+    expect(firstLine?.x).toBe(50);
   });
 
   test("orientation-changing continuous break is promoted to a page break", () => {
