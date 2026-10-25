@@ -1104,13 +1104,10 @@ const statedNumId = (numbering: object): number => {
   return numbering["numId"];
 };
 
-const statedLevel = (numbering: object): number => {
-  assert.ok(
-    "ilvl" in numbering && typeof numbering["ilvl"] === "number",
-    "An applied level request must name a numeric level",
-  );
-  return numbering["ilvl"];
-};
+const statedLevel = (numbering: object): number | undefined =>
+  "ilvl" in numbering && typeof numbering.ilvl === "number"
+    ? numbering.ilvl
+    : undefined;
 
 /** A reference whose level shows no marker numbers nothing, however it is stated. */
 const renderedLineage = (model: Model, numbering: Numbering): ListLineage => {
@@ -1188,16 +1185,18 @@ const operationListLineage = ({
         return { type: "none", source: "operation", basis: "direct" };
       case "reference":
       case "levelOnly": {
-        const stated: Numbering =
-          numbering["kind"] === "reference"
-            ? {
-                kind: "reference",
-                numId: statedNumId(numbering),
-                ...(typeof numbering["ilvl"] === "number"
-                  ? { ilvl: numbering["ilvl"] }
-                  : {}),
-              }
-            : { kind: "levelOnly", ilvl: statedLevel(numbering) };
+        const level = statedLevel(numbering);
+        let stated: Numbering;
+        if (numbering["kind"] === "reference") {
+          stated = {
+            kind: "reference",
+            numId: statedNumId(numbering),
+            ...(level === undefined ? {} : { ilvl: level }),
+          };
+        } else {
+          assert.ok(level !== undefined, "A level request must name a level");
+          stated = { kind: "levelOnly", ilvl: level };
+        }
         const base = baseNumbering({
           model,
           request,
