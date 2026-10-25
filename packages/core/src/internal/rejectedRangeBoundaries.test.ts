@@ -155,39 +155,31 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     ]);
   });
 
-  test("of a kept start and end out of order, the later revision's moves, in both", () => {
-    // An earlier, undated insertion holds a bookmark's end; the run inserts
-    // its start after it. Rejecting both keeps both out of order, and the
-    // start, kept from the later revision, moves before the end.
+  test("of a kept start and end out of order, the editor moves the later revision's", () => {
+    // An earlier, undated insertion holds a move range's end; a later one
+    // holds its start after it. Rejecting both keeps both out of order: the
+    // editor hands the planner each boundary's revision date, as the engine
+    // does, so the start, kept from the later revision, moves before the end.
     const earlier = { id: 1, author: "A" };
     const document = documentWith([
       {
         type: "insertion",
         info: earlier,
-        content: [{ type: "bookmarkEnd", id: 3 }],
+        content: [{ type: "moveToRangeEnd", id: 6 }],
       },
       { type: "run", content: [{ type: "text", text: "one " }] },
       {
         type: "insertion",
         info: insertion,
-        content: [{ type: "bookmarkStart", id: 3, name: "_Link" }],
+        content: [
+          { type: "moveToRangeStart", id: 6, name: "move6", author: "A" },
+        ],
       },
       { type: "run", content: [{ type: "text", text: "two" }] },
     ]);
-    const engine = applyDocumentOp(document, {
-      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-      story: OP_STORIES.MAIN,
-      revisionIds: [earlier.id, insertion.id],
-      decision: REVISION_DECISIONS.REJECT,
-    });
-    if (engine.isErr()) throw engine.error;
-    const editor = outline(rejectInEditor(document));
-    expect(editor).toEqual(
-      outline(firstParagraphContent(engine.value.document)),
-    );
-    expect(editor).toEqual([
-      "type:bookmarkStart,id:3",
-      "type:bookmarkEnd,id:3",
+    expect(outline(rejectInEditor(document))).toEqual([
+      "type:moveToRangeStart,id:6",
+      "type:moveToRangeEnd,id:6",
       "text:one two",
     ]);
   });

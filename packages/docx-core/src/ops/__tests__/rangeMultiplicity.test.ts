@@ -132,3 +132,25 @@ test("normalization preserves standing occurrences, retained quotas, and reaches
     },
   );
 });
+
+test("of a kept start and end out of order, the one kept from the later revision moves", () => {
+  const dated = (
+    type: keyof typeof BOUNDARY_SIDES,
+    keptFrom: string,
+  ): BoundaryOccurrence => ({ ...marker(type, true), keptFrom });
+  // The start came from the later revision: it moves before the end.
+  expect(
+    planWellFormedRanges([
+      dated("bookmarkEnd", ""),
+      dated("bookmarkStart", "2026-03-04T05:00:00Z"),
+    ]).moved,
+  ).toEqual([{ moving: 1, anchor: 0, side: "before" }]);
+  // The end came from the later revision, or both are as old: it moves after the start.
+  for (const endFrom of ["2026-03-04T05:00:00Z", ""])
+    expect(
+      planWellFormedRanges([
+        dated("bookmarkEnd", endFrom),
+        dated("bookmarkStart", ""),
+      ]).moved,
+    ).toEqual([{ moving: 0, anchor: 1, side: "after" }]);
+});
