@@ -546,7 +546,7 @@ export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?:
 export const freshCommentId: (document: Document_2) => Result<number, DocumentOpRefusal>;
 
 // @public
-export const groupInsertionRuns: <T>(operations: readonly T[], insertionPositionOf: (operation: T) => number | null) => T[][];
+export const groupInsertionRuns: <T>(operations: readonly T[], insertionPositionOf: (operation: T) => number | null, keepsGap?: (operation: T) => boolean) => T[][];
 
 // @public
 export type HeaderFooterStory = {
