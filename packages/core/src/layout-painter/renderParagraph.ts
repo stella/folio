@@ -5,6 +5,8 @@
  * Handles text formatting, alignment, and positioning.
  */
 
+import { panic } from "better-result";
+
 import { ommlToMathml } from "../docx/mathToMathml";
 import { parseXmlDocument } from "../docx/xmlParser";
 import { evaluateFieldInstruction } from "../fields/evaluateField";
@@ -2545,9 +2547,12 @@ export function renderLine(
   const trailingAutomaticSpacing = new Map(
     runsForLine.map((run, index) => [
       run,
-      automaticRunGap(run, runsForLine[index + 1]),
+      automaticRunGap(run, runsForLine.at(index + 1)),
     ]),
   );
+  const trailingAutomaticSpacingOf = (run: TextRun): number =>
+    trailingAutomaticSpacing.get(run) ??
+    panic("Missing automatic spacing for a run on this line.");
   const collapsedSpaceMeasureText = hasCollapsedLineEdgeSpaceRuns
     ? createTextMeasurer(doc)
     : undefined;
@@ -2593,7 +2598,7 @@ export function renderLine(
         ? LEFT_TO_RIGHT_DIRECTION
         : undefined;
     const runEl = renderTextRun(run, doc, {
-      trailingAutomaticSpacingPx: trailingAutomaticSpacing.get(run) ?? 0,
+      trailingAutomaticSpacingPx: trailingAutomaticSpacingOf(run),
       ...(hyperlinkDirection !== undefined ? { hyperlinkDirection } : {}),
       ...(visualSpaceContractionPx !== undefined
         ? { visualSpaceContractionPx }
@@ -3143,7 +3148,7 @@ export function renderLine(
           ? { visualSpaceContractionPx: runContractionPx }
           : {}),
       });
-      currentX += trailingAutomaticSpacing.get(run) ?? 0;
+      currentX += trailingAutomaticSpacingOf(run);
     } else if (isImageRun(run)) {
       // Skip floating images - they're rendered separately at page level.
       // Exception: inside table cells, floating images must render in-flow
