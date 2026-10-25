@@ -506,4 +506,21 @@ describe("resolveListMarkerFont", () => {
     });
     expect(resolveListMarkerFont(block).alternateFontFamily).toBeUndefined();
   });
+
+  test("preserves an independent hAnsi marker font slot", () => {
+    const block = listBlock({
+      listMarker: "é.",
+      listMarkerFormatting: {
+        fontFamily: "Arial",
+        hAnsiFontFamily: "Times New Roman",
+        hAnsiAlternateFontFamily: "Liberation Serif",
+      },
+    });
+
+    expect(resolveListMarkerFont(block)).toMatchObject({
+      fontFamily: "Arial",
+      hAnsiFontFamily: "Times New Roman",
+      hAnsiAlternateFontFamily: "Liberation Serif",
+    });
+  });
 });

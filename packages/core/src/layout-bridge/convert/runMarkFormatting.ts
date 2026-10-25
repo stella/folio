@@ -49,6 +49,7 @@ import {
   isAutomaticTextColorValue,
   resolveComplexScriptThemeFont,
   resolveEastAsiaThemeFont,
+  resolveHAnsiThemeFont,
   resolveWesternThemeFont,
 } from "./textFormattingConversion";
 
@@ -259,6 +260,12 @@ export function extractRunFormatting(
           if (alternate) {
             formatting.alternateFontFamily = alternate;
           }
+        }
+        const hAnsiFont = resolveHAnsiThemeFont(attrs, theme);
+        if (hAnsiFont) {
+          formatting.hAnsiFontFamily = hAnsiFont;
+          const alternate = getFontAlternate(hAnsiFont, fontAlternates);
+          if (alternate) formatting.hAnsiAlternateFontFamily = alternate;
         }
         const eastAsiaFont = resolveEastAsiaThemeFont(attrs, theme);
         if (eastAsiaFont) {

@@ -73,6 +73,10 @@ export type RunFormatting = {
   fontFamily?: string;
   /** OOXML `w:altName` fallback for `fontFamily`, used only when the primary face is absent. */
   alternateFontFamily?: string;
+  /** Resolved `w:hAnsi` face for non-ASCII western text and unhinted punctuation. */
+  hAnsiFontFamily?: string;
+  /** OOXML `w:altName` fallback for `hAnsiFontFamily`. */
+  hAnsiAlternateFontFamily?: string;
   /**
    * Resolved East-Asian font (`w:eastAsia` / `eastAsiaTheme`). CJK code points
    * in this run measure and paint with this font; non-CJK keeps `fontFamily`
@@ -206,6 +210,8 @@ export type ListMarkerFormatting = Pick<
   | "documentFontFacts"
   | "fontFamily"
   | "alternateFontFamily"
+  | "hAnsiFontFamily"
+  | "hAnsiAlternateFontFamily"
   | "eastAsiaFontFamily"
   | "eastAsiaAlternateFontFamily"
   | "complexScriptFontFamily"

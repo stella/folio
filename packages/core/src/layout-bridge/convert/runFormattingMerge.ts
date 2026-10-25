@@ -79,6 +79,12 @@ export function mergeRunFormatting(
     delete merged.eastAsiaAlternateFontFamily;
   }
   if (
+    formatting.hAnsiFontFamily !== undefined &&
+    formatting.hAnsiAlternateFontFamily === undefined
+  ) {
+    delete merged.hAnsiAlternateFontFamily;
+  }
+  if (
     formatting.complexScriptFontFamily !== undefined &&
     formatting.complexScriptAlternateFontFamily === undefined
   ) {

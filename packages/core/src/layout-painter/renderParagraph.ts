@@ -81,7 +81,9 @@ import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import {
   eastAsiaHintApplies,
   hasComplexScript,
+  hasDistinctHAnsiFont,
   hasEastAsiaSlotText,
+  hasHAnsiSlotText,
   SCRIPT_CLASS,
   type ScriptClass,
   segmentByScript,
@@ -1609,10 +1611,10 @@ function renderFieldRun(
       horizontalScale: _horizontalScale,
       ...segmentBase
     } = resolvedRun;
-    for (const segment of segmentByScript(
-      text,
-      eastAsiaHintApplies(resolvedRun),
-    )) {
+    for (const segment of segmentByScript(text, {
+      eastAsiaHint: eastAsiaHintApplies(resolvedRun),
+      hasHAnsiFont: hasDistinctHAnsiFont(resolvedRun),
+    })) {
       const segmentRun = formatTextRunForScript(
         {
           ...segmentBase,
@@ -1868,6 +1870,14 @@ const formatTextRunForScript = (run: TextRun, script: ScriptClass): TextRun => {
     }
     return result;
   }
+  if (script === SCRIPT_CLASS.hAnsi && run.hAnsiFontFamily !== undefined) {
+    const result = { ...run, fontFamily: run.hAnsiFontFamily };
+    delete result.alternateFontFamily;
+    if (run.hAnsiAlternateFontFamily !== undefined) {
+      result.alternateFontFamily = run.hAnsiAlternateFontFamily;
+    }
+    return result;
+  }
   return run;
 };
 
@@ -1882,6 +1892,14 @@ const needsPerScriptSpans = (run: TextRun): boolean => {
   if (
     run.eastAsiaFontFamily !== undefined &&
     hasEastAsiaSlotText(run.text, eastAsiaHintApplies(run))
+  ) {
+    return true;
+  }
+  if (
+    hasDistinctHAnsiFont(run) &&
+    hasHAnsiSlotText(run.text, {
+      eastAsiaHint: eastAsiaHintApplies(run),
+    })
   ) {
     return true;
   }
@@ -1915,7 +1933,10 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
     }
 
     let offset = 0;
-    for (const segment of segmentByScript(run.text, eastAsiaHintApplies(run))) {
+    for (const segment of segmentByScript(run.text, {
+      eastAsiaHint: eastAsiaHintApplies(run),
+      hasHAnsiFont: hasDistinctHAnsiFont(run),
+    })) {
       result.push(
         formatTextRunForScript(
           {
@@ -2407,6 +2428,8 @@ type TextMeasureStyle = {
   letterSpacing?: number;
   smallCaps?: boolean;
   alternateFontFamily?: string;
+  hAnsiFontFamily?: string;
+  hAnsiAlternateFontFamily?: string;
   /** EA font for CJK code points; segments the measured text by script when set
    * (and the run has no letter spacing), mirroring measureContainer. */
   eastAsiaFontFamily?: string;
@@ -2511,10 +2534,15 @@ function createTextMeasurer(
       !style.letterSpacing &&
       ((style.eastAsiaFontFamily &&
         hasEastAsiaSlotText(text, style.eastAsiaHint)) ||
+        (hasDistinctHAnsiFont(style) &&
+          hasHAnsiSlotText(text, { eastAsiaHint: style.eastAsiaHint })) ||
         (hasComplexScriptFormatting(style) && hasComplexScript(text)))
     ) {
       let segmentedWidth = 0;
-      for (const segment of segmentByScript(text, style.eastAsiaHint)) {
+      for (const segment of segmentByScript(text, {
+        eastAsiaHint: style.eastAsiaHint,
+        hasHAnsiFont: hasDistinctHAnsiFont(style),
+      })) {
         if (
           segment.script === SCRIPT_CLASS.eastAsia &&
           style.eastAsiaFontFamily
@@ -2525,6 +2553,17 @@ function createTextMeasurer(
             style.bold,
             style.italic,
             style.eastAsiaAlternateFontFamily,
+          );
+        } else if (
+          segment.script === SCRIPT_CLASS.hAnsi &&
+          style.hAnsiFontFamily
+        ) {
+          ctx.font = fontString(
+            style.hAnsiFontFamily,
+            fontSize,
+            style.bold,
+            style.italic,
+            style.hAnsiAlternateFontFamily,
           );
         } else if (segment.script === SCRIPT_CLASS.complex) {
           ctx.font = complexFont;
@@ -3926,6 +3965,26 @@ function renderListMarker({
   if (formatting.rtl !== undefined) {
     span.dir = formatting.rtl ? "rtl" : "ltr";
   }
+  const appendMarkerText = (container: HTMLElement, text: string): void => {
+    if (!hasDistinctHAnsiFont(formatting)) {
+      container.textContent = text;
+      return;
+    }
+    for (const segment of segmentByScript(text, { hasHAnsiFont: true })) {
+      const part = doc.createElement("span");
+      if (segment.script === SCRIPT_CLASS.hAnsi) {
+        part.style.fontFamily = resolveFontFamily(
+          formatting.hAnsiFontFamily ?? formatting.fontFamily,
+          {
+            alternateFontName: formatting.hAnsiAlternateFontFamily,
+            embeddedFontFamilyMap: formatting.embeddedFontFamilyMap,
+          },
+        ).cssFallback;
+      }
+      part.textContent = segment.text;
+      container.append(part);
+    }
+  };
   const markerColor = revision
     ? undefined
     : getRenderableListMarkerColor(formatting.color);
@@ -3987,10 +4046,10 @@ function renderListMarker({
   const tabIdx = marker.indexOf("\t");
   if (tabIdx !== -1 && secondSlotOffsetTwips !== undefined) {
     const firstSlot = doc.createElement("span");
-    firstSlot.textContent = marker.slice(0, tabIdx);
+    appendMarkerText(firstSlot, marker.slice(0, tabIdx));
     firstSlot.style.display = "inline-block";
     const secondSlot = doc.createElement("span");
-    secondSlot.textContent = marker.slice(tabIdx + 1);
+    appendMarkerText(secondSlot, marker.slice(tabIdx + 1));
     secondSlot.style.display = "inline-block";
     // Position the second slot via absolute offset inside a relative
     // container so its left edge sits at the desired column regardless of
@@ -4007,6 +4066,6 @@ function renderListMarker({
     return span;
   }
 
-  span.textContent = marker;
+  appendMarkerText(span, marker);
   return span;
 }

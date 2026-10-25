@@ -218,3 +218,24 @@ describe('w:hint="eastAsia" in advance composition', () => {
     });
   });
 });
+
+describe("independent hAnsi font slot in advance composition", () => {
+  test("measures accented Latin and punctuation in hAnsi beside Han text", () => {
+    const advanceOf = advanceOfFrom((_char, font) => {
+      if (font.includes("HAnsi")) return 20;
+      if (font.includes("Mincho")) return 30;
+      return 5;
+    });
+    expect(
+      composeTextWidth({
+        text: "é—漢",
+        style: {
+          fontFamily: "Ascii",
+          hAnsiFontFamily: "HAnsi",
+          eastAsiaFontFamily: "Mincho",
+        },
+        advanceOf,
+      }),
+    ).toBe(70);
+  });
+});

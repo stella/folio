@@ -88,6 +88,12 @@ import type {
   ParagraphLineGeometry,
 } from "../../utils/paragraphInlineLayout";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
+import {
+  hasDistinctHAnsiFont,
+  SCRIPT_CLASS,
+  type ScriptSegment,
+  segmentByScript,
+} from "../../utils/scriptSegments";
 import { sanitizeExternalUrl } from "../../utils/urlSecurity";
 import {
   DOUBLE_STROKE_GAP_FACTOR,
@@ -1206,42 +1212,55 @@ const paintLine = ({
         break;
       }
       case "field": {
-        const style = runFontStyle(run);
-        const glyphs = buildGlyphs({
-          text: paintableText(run, context),
-          style,
-          allCaps: run.allCaps === true,
-          spaceDeltaPx,
-          collapsed: false,
-        });
+        const text = paintableText(run, context);
+        const textRun = { ...run, kind: "text" as const, text };
+        let textOffset = 0;
         // A field result carries the field run's whole `w:rPr`; painting it
         // through the text path is what keeps a footer page number in the
         // footer's font rather than the document default.
-        emitGlyphRun({
-          sink,
-          context,
-          run: { ...run, kind: "text", text: glyphs.text },
-          ...(run.pmStart === undefined ||
-          run.pmEnd === undefined ||
-          resolveFieldText(run, context) !== run.fallback
-            ? {}
-            : {
-                decorationRange: {
-                  start: run.pmStart,
-                  end: run.pmEnd,
-                  story: context.story,
-                  textOffset: 0,
-                },
-              }),
-          glyphs,
-          style,
-          paintXPx: paintXOf(),
-          baselineYPx: geometry.baselineYPx,
-          lineTopYPx: geometry.lineTopYPx,
-          lineHeightPx: line.lineHeight,
-          isRtl,
-        });
-        layoutXPx += glyphs.widthPx;
+        for (const segment of splitTextRunsByEastAsia([textRun])) {
+          if (segment.kind !== "text") continue;
+          const fieldSegment = {
+            ...segment,
+            ...(run.pmStart === undefined || run.pmEnd === undefined
+              ? {}
+              : { pmStart: run.pmStart, pmEnd: run.pmEnd }),
+          };
+          const style = runFontStyle(fieldSegment);
+          const glyphs = buildGlyphs({
+            text: segment.text,
+            style,
+            allCaps: run.allCaps === true,
+            spaceDeltaPx,
+            collapsed: false,
+          });
+          emitGlyphRun({
+            sink,
+            context,
+            run: fieldSegment,
+            ...(run.pmStart === undefined ||
+            run.pmEnd === undefined ||
+            resolveFieldText(run, context) !== run.fallback
+              ? {}
+              : {
+                  decorationRange: {
+                    start: run.pmStart,
+                    end: run.pmEnd,
+                    story: context.story,
+                    textOffset,
+                  },
+                }),
+            glyphs,
+            style,
+            paintXPx: paintXOf(),
+            baselineYPx: geometry.baselineYPx,
+            lineTopYPx: geometry.lineTopYPx,
+            lineHeightPx: line.lineHeight,
+            isRtl,
+          });
+          layoutXPx += glyphs.widthPx;
+          textOffset += segment.text.length;
+        }
         break;
       }
       case "math": {
@@ -1397,16 +1416,13 @@ const paintListMarker = ({
   }
   const formatting = resolveListMarkerFont(block);
   const style: FontStyle = formatting;
+  const baseFontFamily = formatting.fontFamily;
   // A folded LISTNUM marker carries both slots separated by a tab; without the
   // second-slot offset there is nothing to align it to, so paint it as one run.
   const text = toPaintedText(marker.replaceAll("\t", " "));
-  const glyphs = buildGlyphs({
-    text,
-    style,
-    allCaps: false,
-    spaceDeltaPx: 0,
-    collapsed: false,
-  });
+  const segments: ScriptSegment[] = hasDistinctHAnsiFont(style)
+    ? segmentByScript(text, { hasHAnsiFont: true })
+    : [{ text, script: SCRIPT_CLASS.western }];
 
   const revision = block.attrs?.listMarkerRevision;
   const color = revision
@@ -1414,27 +1430,50 @@ const paintListMarker = ({
     : (parseMarkerColor(getRenderableListMarkerColor(formatting.color)) ??
       DOC_CANVAS_TEXT);
 
-  const font = context.fonts.intern({
-    fontFamily: formatting.fontFamily,
-    ...(formatting.alternateFontFamily === undefined
-      ? {}
-      : { alternateFontFamily: formatting.alternateFontFamily }),
-    ...(formatting.bold === undefined ? {} : { bold: formatting.bold }),
-    ...(formatting.italic === undefined ? {} : { italic: formatting.italic }),
-    measureStyle: style,
-  });
-
   const fontSizePx = ptToPx(formatting.fontSize);
-  sink.glyphs.push({
-    kind: "glyphRun",
-    font,
-    fontSizePx,
-    color,
-    xPx: paintXPx,
-    baselineYPx,
-    ...glyphRunText(glyphs),
-    direction: (formatting.rtl ?? isRtl) ? "rtl" : "ltr",
-  });
+  let segmentXPx = paintXPx;
+  let markerWidthPx = 0;
+  for (const segment of segments) {
+    let segmentStyle = style;
+    if (segment.script === SCRIPT_CLASS.hAnsi) {
+      segmentStyle = {
+        ...style,
+        fontFamily: formatting.hAnsiFontFamily ?? formatting.fontFamily,
+      };
+      delete segmentStyle.alternateFontFamily;
+      if (formatting.hAnsiAlternateFontFamily !== undefined) {
+        segmentStyle.alternateFontFamily = formatting.hAnsiAlternateFontFamily;
+      }
+    }
+    const glyphs = buildGlyphs({
+      text: segment.text,
+      style: segmentStyle,
+      allCaps: false,
+      spaceDeltaPx: 0,
+      collapsed: false,
+    });
+    const font = context.fonts.intern({
+      fontFamily: segmentStyle.fontFamily ?? baseFontFamily,
+      ...(segmentStyle.alternateFontFamily === undefined
+        ? {}
+        : { alternateFontFamily: segmentStyle.alternateFontFamily }),
+      ...(formatting.bold === undefined ? {} : { bold: formatting.bold }),
+      ...(formatting.italic === undefined ? {} : { italic: formatting.italic }),
+      measureStyle: segmentStyle,
+    });
+    sink.glyphs.push({
+      kind: "glyphRun",
+      font,
+      fontSizePx,
+      color,
+      xPx: segmentXPx,
+      baselineYPx,
+      ...glyphRunText(glyphs),
+      direction: (formatting.rtl ?? isRtl) ? "rtl" : "ltr",
+    });
+    segmentXPx += glyphs.widthPx;
+    markerWidthPx += glyphs.widthPx;
+  }
 
   if (revision) {
     const stroke: DisplayStroke = {
@@ -1446,13 +1485,13 @@ const paintListMarker = ({
       revision.kind === "ins"
         ? horizontalLine(
             paintXPx,
-            glyphs.widthPx,
+            markerWidthPx,
             underlineCenterYPx(baselineYPx, fontSizePx),
             stroke,
           )
         : horizontalLine(
             paintXPx,
-            glyphs.widthPx,
+            markerWidthPx,
             strikethroughCenterYPx(baselineYPx, fontSizePx),
             stroke,
           ),

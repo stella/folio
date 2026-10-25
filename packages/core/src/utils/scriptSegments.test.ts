@@ -9,7 +9,9 @@ import { describe, expect, test } from "bun:test";
 import {
   eastAsiaHintApplies,
   hasCjk,
+  hasDistinctHAnsiFont,
   hasEastAsiaSlotText,
+  hasHAnsiSlotText,
   isCjkCodePoint,
   isEastAsiaHintCodePoint,
   scriptClassOf,
@@ -64,6 +66,53 @@ describe("segmentByScript", () => {
     expect(segmentByScript("日本語")).toEqual([
       { text: "日本語", script: "eastAsia" },
     ]);
+  });
+
+  test("selects hAnsi for non-ASCII western text and unhinted punctuation", () => {
+    expect(segmentByScript("é—漢", { hasHAnsiFont: true })).toEqual([
+      { text: "é—", script: "hAnsi" },
+      { text: "漢", script: "eastAsia" },
+    ]);
+    expect(segmentByScript("é—漢")).toEqual([
+      { text: "é—", script: "western" },
+      { text: "漢", script: "eastAsia" },
+    ]);
+    expect(
+      segmentByScript("é—", { eastAsiaHint: true, hasHAnsiFont: true }),
+    ).toEqual([
+      { text: "é", script: "hAnsi" },
+      { text: "—", script: "eastAsia" },
+    ]);
+    expect(hasHAnsiSlotText("é—漢")).toBe(true);
+    expect(hasHAnsiSlotText("漢")).toBe(false);
+    expect(segmentByScript("A\u00a0B", { hasHAnsiFont: true })).toEqual([
+      { text: "A", script: "western" },
+      { text: "\u00a0", script: "hAnsi" },
+      { text: "B", script: "western" },
+    ]);
+    expect(
+      segmentByScript("A\u202fB", {
+        eastAsiaHint: true,
+        hasHAnsiFont: true,
+      }),
+    ).toEqual([
+      { text: "A", script: "western" },
+      { text: "\u202f", script: "hAnsi" },
+      { text: "B", script: "western" },
+    ]);
+    expect(
+      hasDistinctHAnsiFont({
+        fontFamily: "Arial",
+        hAnsiFontFamily: "Arial",
+      }),
+    ).toBe(false);
+    expect(
+      hasDistinctHAnsiFont({
+        fontFamily: "Arial",
+        hAnsiFontFamily: "Arial",
+        alternateFontFamily: "Arial Unicode",
+      }),
+    ).toBe(true);
   });
 
   // Word routes Arabic, Hebrew and the Indic scripts through the `w:cs` slot,
@@ -139,10 +188,12 @@ describe('w:rFonts w:hint="eastAsia"', () => {
       0x0416, // Cyrillic capital zhe
       0xe000, // private use
     ]) {
-      expect({ cp, hinted: scriptClassOf(cp, true) }).toEqual({
-        cp,
-        hinted: "eastAsia",
-      });
+      expect({ cp, hinted: scriptClassOf(cp, { eastAsiaHint: true }) }).toEqual(
+        {
+          cp,
+          hinted: "eastAsia",
+        },
+      );
       expect({ cp, plain: scriptClassOf(cp) }).toEqual({
         cp,
         plain: "western",
@@ -157,6 +208,7 @@ describe('w:rFonts w:hint="eastAsia"', () => {
       0x2e, // full stop
       0x22, // quotation mark
       0xa0, // no-break space
+      0x202f, // narrow no-break space
       0xa9, // copyright sign
       0xc9, // E with acute
       0xe9, // e with acute
@@ -168,20 +220,24 @@ describe('w:rFonts w:hint="eastAsia"', () => {
         cp,
         eastAsia: false,
       });
-      expect({ cp, hinted: scriptClassOf(cp, true) }).toEqual({
-        cp,
-        hinted: "western",
-      });
+      expect({ cp, hinted: scriptClassOf(cp, { eastAsiaHint: true }) }).toEqual(
+        {
+          cp,
+          hinted: "western",
+        },
+      );
     }
   });
 
   test("does not move complex-script code points", () => {
-    expect(scriptClassOf(0x05d0, true)).toBe("complex"); // Hebrew alef
-    expect(scriptClassOf(0x0627, true)).toBe("complex"); // Arabic alef
+    expect(scriptClassOf(0x05d0, { eastAsiaHint: true })).toBe("complex"); // Hebrew alef
+    expect(scriptClassOf(0x0627, { eastAsiaHint: true })).toBe("complex"); // Arabic alef
   });
 
   test("segments hinted text by the slot each character selects", () => {
-    expect(segmentByScript("A\u201cB\u201d\u00b7", true)).toEqual([
+    expect(
+      segmentByScript("A\u201cB\u201d\u00b7", { eastAsiaHint: true }),
+    ).toEqual([
       { text: "A", script: "western" },
       { text: "\u201c", script: "eastAsia" },
       { text: "B", script: "western" },

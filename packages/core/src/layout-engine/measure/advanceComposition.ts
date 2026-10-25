@@ -15,7 +15,9 @@
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import {
   hasComplexScript,
+  hasDistinctHAnsiFont,
   hasEastAsiaSlotText,
+  hasHAnsiSlotText,
   SCRIPT_CLASS,
   scriptClassOf,
   segmentByScript,
@@ -77,6 +79,15 @@ export const scriptStyle = (
     }
     return result;
   }
+  if (script === SCRIPT_CLASS.hAnsi) {
+    if (style.hAnsiFontFamily === undefined) return style;
+    const result = { ...style, fontFamily: style.hAnsiFontFamily };
+    delete result.alternateFontFamily;
+    if (style.hAnsiAlternateFontFamily !== undefined) {
+      result.alternateFontFamily = style.hAnsiAlternateFontFamily;
+    }
+    return result;
+  }
   if (script === SCRIPT_CLASS.complex) {
     return applyComplexScriptFormatting(style, style);
   }
@@ -117,6 +128,8 @@ export const glyphAdvanceStyle = (style: FontStyle): FontStyle => {
 const needsPerScriptFonts = (style: FontStyle, text: string): boolean =>
   (style.eastAsiaFontFamily !== undefined &&
     hasEastAsiaSlotText(text, style.eastAsiaHint)) ||
+  (hasDistinctHAnsiFont(style) &&
+    hasHAnsiSlotText(text, { eastAsiaHint: style.eastAsiaHint })) ||
   (hasComplexScriptFormatting(style) && hasComplexScript(text));
 
 /**
@@ -147,7 +160,10 @@ const smallCapsGlyphWidth = (
   for (const segment of smallCapsSegments(text)) {
     const activeStyle = segment.small ? smallSegmentStyle : segmentStyle;
     total += needsPerScriptFonts(activeStyle, segment.text)
-      ? segmentByScript(segment.text, activeStyle.eastAsiaHint).reduce(
+      ? segmentByScript(segment.text, {
+          eastAsiaHint: activeStyle.eastAsiaHint,
+          hasHAnsiFont: hasDistinctHAnsiFont(activeStyle),
+        }).reduce(
           (sum, scriptSegment) =>
             sum +
             advanceOf(
@@ -185,7 +201,10 @@ const glyphWidthOf = ({
     !letterSpacing &&
     needsPerScriptFonts(style, transformed)
   ) {
-    return segmentByScript(transformed, style.eastAsiaHint).reduce(
+    return segmentByScript(transformed, {
+      eastAsiaHint: style.eastAsiaHint,
+      hasHAnsiFont: hasDistinctHAnsiFont(style),
+    }).reduce(
       (sum, segment) =>
         sum +
         advanceOf(
@@ -302,7 +321,13 @@ export const composeRunMeasurement = ({
     const cp = char.codePointAt(0)!;
     const isSmallCap = smallCapsAt?.[codePointIndex] ?? false;
     const scriptedStyle = perScript
-      ? scriptStyle(style, scriptClassOf(cp, style.eastAsiaHint))
+      ? scriptStyle(
+          style,
+          scriptClassOf(cp, {
+            eastAsiaHint: style.eastAsiaHint,
+            hasHAnsiFont: hasDistinctHAnsiFont(style),
+          }),
+        )
       : style;
     // Measured at the literal, smaller font size a synthesized small cap
     // draws at (see smallCapsCasing.ts) — not the full-size advance scaled by

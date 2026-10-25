@@ -97,6 +97,12 @@ export function buildRunFontStyle(
     ...(run.alternateFontFamily !== undefined
       ? { alternateFontFamily: run.alternateFontFamily }
       : {}),
+    ...(run.hAnsiFontFamily !== undefined
+      ? { hAnsiFontFamily: run.hAnsiFontFamily }
+      : {}),
+    ...(run.hAnsiAlternateFontFamily !== undefined
+      ? { hAnsiAlternateFontFamily: run.hAnsiAlternateFontFamily }
+      : {}),
     ...(run.eastAsiaFontFamily !== undefined
       ? { eastAsiaFontFamily: run.eastAsiaFontFamily }
       : {}),
