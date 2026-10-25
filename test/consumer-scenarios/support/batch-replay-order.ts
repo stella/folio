@@ -274,7 +274,7 @@ export const sequentialGroups = ({
       const retires = mode === "tracked-changes" && uncarriedFinals.has(id);
       return deleted.has(id) && !retires ? id : undefined;
     }
-    if (operation.type !== "insertAfterBlock" || mode !== "suggested") {
+    if (operation.type !== "insertAfterBlock" || mode === "direct") {
       return undefined;
     }
     const index = preRows.findIndex((row) => row.id === id);
