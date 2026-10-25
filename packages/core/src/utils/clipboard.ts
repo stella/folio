@@ -1116,10 +1116,15 @@ export function createClipboardHandlers(options: {
   onCut?: () => { runs: Run[] } | null;
   onPaste?: (content: ParsedClipboardContent) => void;
   clipboardOptions?: ClipboardOptions;
-}) {
+}): {
+  handleCopy: (event: ClipboardEvent) => Promise<void>;
+  handleCut: (event: ClipboardEvent) => Promise<void>;
+  handlePaste: (event: ClipboardEvent) => void;
+  handleKeyDown: (event: KeyboardEvent) => Promise<void>;
+} {
   const { onCopy, onCut, onPaste, clipboardOptions = {} } = options;
 
-  const handleCopy = async (event: ClipboardEvent) => {
+  const handleCopy = async (event: ClipboardEvent): Promise<void> => {
     if (!onCopy) {
       return;
     }
@@ -1141,7 +1146,7 @@ export function createClipboardHandlers(options: {
     }
   };
 
-  const handleCut = async (event: ClipboardEvent) => {
+  const handleCut = async (event: ClipboardEvent): Promise<void> => {
     if (!onCut) {
       return;
     }
@@ -1163,7 +1168,7 @@ export function createClipboardHandlers(options: {
     }
   };
 
-  const handlePaste = (event: ClipboardEvent) => {
+  const handlePaste = (event: ClipboardEvent): void => {
     if (!onPaste) {
       return;
     }
@@ -1176,7 +1181,7 @@ export function createClipboardHandlers(options: {
     }
   };
 
-  const handleKeyDown = async (event: KeyboardEvent) => {
+  const handleKeyDown = async (event: KeyboardEvent): Promise<void> => {
     const isCtrlOrMeta = event.ctrlKey || event.metaKey;
 
     // Ctrl+C / Cmd+C
@@ -1206,7 +1211,17 @@ export function createClipboardHandlers(options: {
   };
 }
 
-export default {
+const _default_1: {
+  copyRuns: typeof copyRuns;
+  copyParagraphs: typeof copyParagraphs;
+  readFromClipboard: typeof readFromClipboard;
+  handlePasteEvent: typeof handlePasteEvent;
+  htmlToRuns: typeof htmlToRuns;
+  cleanWordHtml: typeof cleanWordHtml;
+  isWordHtml: typeof isWordHtml;
+  isEditorHtml: typeof isEditorHtml;
+  createClipboardHandlers: typeof createClipboardHandlers;
+} = {
   copyRuns,
   copyParagraphs,
   readFromClipboard,
@@ -1217,3 +1232,4 @@ export default {
   isEditorHtml,
   createClipboardHandlers,
 };
+export default _default_1;

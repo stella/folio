@@ -29,7 +29,7 @@ import { errnoCode } from "./file-system";
 import { inspectPath, readSidecarFile, writeNewSidecarFile } from "./sidecar";
 
 /** How long a command-line transaction's lease lasts without renewal. */
-export const TRANSACTION_LEASE_MS = 5 * 60 * 1000;
+export const TRANSACTION_LEASE_MS: number = 5 * 60 * 1000;
 
 /** The owner a lease records when the caller names none. */
 export const DEFAULT_LEASE_OWNER = "folio-cli";

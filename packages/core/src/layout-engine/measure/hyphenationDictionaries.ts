@@ -17,7 +17,7 @@
  * adapters' type checks; the preload boundary converts.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import { recordHyphenationDictionaryError } from "../layoutInstrumentation";
 
@@ -43,9 +43,10 @@ const HYPHENATION_DICTIONARY_LOADERS = {
 let dictionaryLoaders: HyphenationDictionaryLoaders =
   HYPHENATION_DICTIONARY_LOADERS;
 
-export class HyphenationDictionaryError extends TaggedError(
-  "HyphenationDictionaryError",
-)<{
+const HyphenationDictionaryErrorBase: TaggedErrorClass<"HyphenationDictionaryError"> =
+  TaggedError("HyphenationDictionaryError");
+
+export class HyphenationDictionaryError extends HyphenationDictionaryErrorBase<{
   message: string;
   dictionary: HyphenationDictionaryId;
   cause: unknown;

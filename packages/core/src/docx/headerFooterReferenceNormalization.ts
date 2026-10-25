@@ -9,9 +9,9 @@ import type {
 } from "../types/document";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
-export const DANGLING_HEADER_REFERENCE_WARNING =
+export const DANGLING_HEADER_REFERENCE_WARNING: "dangling-header-reference" =
   PARSE_WARNING_CODES.danglingHeaderReference;
-export const DANGLING_FOOTER_REFERENCE_WARNING =
+export const DANGLING_FOOTER_REFERENCE_WARNING: "dangling-footer-reference" =
   PARSE_WARNING_CODES.danglingFooterReference;
 
 type NormalizeHeaderFooterReferencesInput = {

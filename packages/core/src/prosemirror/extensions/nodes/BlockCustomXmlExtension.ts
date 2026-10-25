@@ -1,7 +1,10 @@
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 /** An editable block sequence inside an authored custom XML wrapper. */
-export const BlockCustomXmlExtension = createNodeExtension({
+export const BlockCustomXmlExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "blockCustomXml",
   schemaNodeName: "blockCustomXml",
   nodeSpec: {

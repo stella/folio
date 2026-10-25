@@ -1,4 +1,9 @@
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type * as Y from "yjs";
 
@@ -16,6 +21,9 @@ import {
 } from "../docx/paragraphPropertySource";
 import { isNoteReferenceOccurrenceId } from "./noteReferenceOccurrenceId";
 import { mintSectionProperties, parseSectionBreakType } from "./sectionCarrier";
+
+const FolioYjsAttrSchemaVersionErrorBase: TaggedErrorClass<"FolioYjsAttrSchemaVersionError"> =
+  TaggedError("FolioYjsAttrSchemaVersionError");
 
 /**
  * Folio's own keys inside a collaboration document: one map, two independent
@@ -743,23 +751,25 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION =
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION: 14 =
   14 satisfies CurrentAttrSchemaVersion;
 
 const STATED_NUMBERING_SOURCE_SCHEMA_VERSION =
   13 satisfies FolioYjsAttrSchemaVersion;
 
-export class FolioYjsNoteReferenceSchemaError extends TaggedError(
-  "FolioYjsNoteReferenceSchemaError",
-)<{
+const FolioYjsNoteReferenceSchemaErrorBase: TaggedErrorClass<"FolioYjsNoteReferenceSchemaError"> =
+  TaggedError("FolioYjsNoteReferenceSchemaError");
+
+export class FolioYjsNoteReferenceSchemaError extends FolioYjsNoteReferenceSchemaErrorBase<{
   message: string;
   schemaVersion: FolioYjsAttrSchemaVersion;
   requiredSchemaVersion: FolioYjsAttrSchemaVersion;
 }> {}
 
-export class FolioYjsNumberingSourceSchemaError extends TaggedError(
-  "FolioYjsNumberingSourceSchemaError",
-)<{
+const FolioYjsNumberingSourceSchemaErrorBase: TaggedErrorClass<"FolioYjsNumberingSourceSchemaError"> =
+  TaggedError("FolioYjsNumberingSourceSchemaError");
+
+export class FolioYjsNumberingSourceSchemaError extends FolioYjsNumberingSourceSchemaErrorBase<{
   message: string;
   schemaVersion: FolioYjsAttrSchemaVersion;
   requiredSchemaVersion: FolioYjsAttrSchemaVersion;
@@ -891,9 +901,7 @@ export const applyAttrSchemaMigrations = (
 };
 
 /** Raised when a snapshot's attr-schema marker is ahead of the running code. */
-export class FolioYjsAttrSchemaVersionError extends TaggedError(
-  "FolioYjsAttrSchemaVersionError",
-)<{
+export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionErrorBase<{
   message: string;
   /** The marker exactly as stored, so the host can log what it refused. */
   marker: unknown;

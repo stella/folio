@@ -6,13 +6,19 @@ import { panic } from "better-result";
 
 import { expectFontSizeMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type {
+  ExtensionContext,
+  ExtensionRuntime,
+  MarkExtension,
+} from "../types";
 import {
   clearFontSizeForAllScripts,
   setFontSizeForAllScripts,
 } from "./markUtils";
 
-export const FontSizeExtension = createMarkExtension({
+export const FontSizeExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "fontSize",
   schemaMarkName: "fontSize",
   markSpec: {

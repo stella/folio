@@ -1,4 +1,4 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import { XMLParser } from "fast-xml-parser";
 
 import { MAX_REVISION_ID } from "../model/content";
@@ -31,10 +31,11 @@ const STRING_ID_ELEMENTS = new Set(["permStart", "permEnd"]);
 const MAX_UNSIGNED_ID = 0xffff_ffff;
 const MIN_SIGNED_ID = -0x8000_0000;
 
+const InvalidOoxmlNumericIdErrorBase: TaggedErrorClass<"InvalidOoxmlNumericIdError"> =
+  TaggedError("InvalidOoxmlNumericIdError");
+
 /** A writer would emit an identifier outside its OOXML schema's numeric domain. */
-export class InvalidOoxmlNumericIdError extends TaggedError(
-  "InvalidOoxmlNumericIdError",
-)<{
+export class InvalidOoxmlNumericIdError extends InvalidOoxmlNumericIdErrorBase<{
   message: string;
   partPath: string;
   elementName: string;

@@ -77,7 +77,16 @@ const FIRST_PAGE_INDEX = 0;
  * their gaps are reported per page from the layout rather than from a
  * document-wide flag the caller would have to remember to set.
  */
-const DOCUMENT_FEATURE_GAPS = [
+const DOCUMENT_FEATURE_GAPS: readonly [
+  readonly [
+    "pageBorders",
+    "w:pgBorders reach the painter through render options, not through Layout, and none were supplied to the builder",
+  ],
+  readonly [
+    "watermark",
+    "watermarks reach the painter through render options, not through Layout, and none was supplied to the builder",
+  ],
+] = [
   [
     "pageBorders",
     "w:pgBorders reach the painter through render options, not through Layout, and none were supplied to the builder",

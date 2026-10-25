@@ -17,7 +17,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import type { EditorState } from "prosemirror-state";
+import type { EditorState, Plugin, PluginKey } from "prosemirror-state";
 
 import {
   assertNever,
@@ -214,7 +214,17 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
   return ranges;
 };
 
-export const templateDirectivesKey =
+export const templateDirectivesKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<DocScanState<undefined, DirectiveRange>>;
+  owns: (plugin: Plugin<DocScanState<undefined, DirectiveRange>>) => boolean;
+  get: (
+    state: EditorState,
+  ) => Plugin<DocScanState<undefined, DirectiveRange>> | undefined;
+  getState: (
+    state: EditorState,
+  ) => DocScanState<undefined, DirectiveRange> | undefined;
+}> =
   createPluginKeyOwner<DocScanState<undefined, DirectiveRange>>(
     "templateDirectives",
   );
@@ -225,7 +235,9 @@ export type TemplateDirectivesPluginOptions = {
 
 export const createTemplateDirectivesPlugin = ({
   onRangesChange,
-}: TemplateDirectivesPluginOptions = {}) =>
+}: TemplateDirectivesPluginOptions = {}): Plugin<
+  DocScanState<undefined, DirectiveRange>
+> =>
   createDocScanPlugin<undefined, DirectiveRange>({
     key: templateDirectivesKey,
     initialConfig: undefined,

@@ -11,7 +11,7 @@ export default defineConfig({
   ],
   format: ["esm"],
   platform: "neutral",
-  dts: true,
+  dts: { generator: "oxc" },
   outDir: "dist",
   clean: true,
   copy: [{ from: "src/generated/docx_kernel_bg.wasm", to: "dist" }],

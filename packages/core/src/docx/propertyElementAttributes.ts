@@ -67,7 +67,12 @@ type IndentationField = Extract<
  * `w:ind`. `hangingIndent` is the sign of `indentFirstLine` rather than a
  * value of its own, so both name the attribute pair that carries it.
  */
-export const INDENTATION_ATTRIBUTES = {
+export const INDENTATION_ATTRIBUTES: {
+  readonly indentLeft: readonly ["left", "start"];
+  readonly indentRight: readonly ["right", "end"];
+  readonly indentFirstLine: readonly ["firstLine", "hanging"];
+  readonly hangingIndent: "hanging";
+} = {
   indentLeft: ["left", "start"],
   indentRight: ["right", "end"],
   indentFirstLine: ["firstLine", "hanging"],
@@ -89,7 +94,15 @@ type SpacingField = Extract<
  * `w:spacing`. `spacingExplicit` records which of the two sides the paragraph
  * stated itself; it is derived from them and reads no attribute of its own.
  */
-export const SPACING_ATTRIBUTES = {
+export const SPACING_ATTRIBUTES: {
+  readonly spaceBefore: "before";
+  readonly spaceAfter: "after";
+  readonly lineSpacing: "line";
+  readonly lineSpacingRule: "lineRule";
+  readonly beforeAutospacing: "beforeAutospacing";
+  readonly afterAutospacing: "afterAutospacing";
+  readonly spacingExplicit: readonly [];
+} = {
   spaceBefore: "before",
   spaceAfter: "after",
   lineSpacing: "line",
@@ -99,7 +112,21 @@ export const SPACING_ATTRIBUTES = {
   spacingExplicit: [],
 } as const satisfies ModelledAttributes<SpacingField>;
 
-export const FRAME_ATTRIBUTES = {
+export const FRAME_ATTRIBUTES: {
+  readonly dropCap: "dropCap";
+  readonly lines: "lines";
+  readonly width: "w";
+  readonly height: "h";
+  readonly hSpace: "hSpace";
+  readonly vSpace: "vSpace";
+  readonly hAnchor: "hAnchor";
+  readonly vAnchor: "vAnchor";
+  readonly x: "x";
+  readonly y: "y";
+  readonly xAlign: "xAlign";
+  readonly yAlign: "yAlign";
+  readonly wrap: "wrap";
+} = {
   dropCap: "dropCap",
   lines: "lines",
   width: "w",
@@ -117,7 +144,11 @@ export const FRAME_ATTRIBUTES = {
   AttributeFields<NonNullable<ParagraphFormatting["frame"]>>
 >;
 
-export const TAB_STOP_ATTRIBUTES = {
+export const TAB_STOP_ATTRIBUTES: {
+  readonly position: "pos";
+  readonly alignment: "val";
+  readonly leader: "leader";
+} = {
   position: "pos",
   alignment: "val",
   leader: "leader",
@@ -128,7 +159,19 @@ export const TAB_STOP_ATTRIBUTES = {
  * namespace; the remainder decides on the local name, so naming them here
  * keeps a `r:topLeft` out of it.
  */
-export const BORDER_ATTRIBUTES = {
+export const BORDER_ATTRIBUTES: {
+  readonly style: "val";
+  readonly color: readonly ["color", "themeColor", "themeTint", "themeShade"];
+  readonly size: "sz";
+  readonly space: "space";
+  readonly shadow: "shadow";
+  readonly frame: "frame";
+  readonly artRelationshipId: "id";
+  readonly topLeftArtRelationshipId: "topLeft";
+  readonly topRightArtRelationshipId: "topRight";
+  readonly bottomLeftArtRelationshipId: "bottomLeft";
+  readonly bottomRightArtRelationshipId: "bottomRight";
+} = {
   style: "val",
   color: ["color", "themeColor", "themeTint", "themeShade"],
   size: "sz",
@@ -143,7 +186,16 @@ export const BORDER_ATTRIBUTES = {
 } as const satisfies ModelledAttributes<AttributeFields<BorderSpec>>;
 
 /** `CT_Shd`: direct, theme, modifier, and pattern attributes all have model fields. */
-export const SHADING_ATTRIBUTES = {
+export const SHADING_ATTRIBUTES: {
+  readonly color: readonly ["color", "themeColor", "themeTint", "themeShade"];
+  readonly fill: readonly [
+    "fill",
+    "themeFill",
+    "themeFillTint",
+    "themeFillShade",
+  ];
+  readonly pattern: "val";
+} = {
   color: ["color", "themeColor", "themeTint", "themeShade"],
   fill: ["fill", "themeFill", "themeFillTint", "themeFillShade"],
   pattern: "val",
@@ -158,7 +210,66 @@ export const SHADING_ATTRIBUTES = {
  * is has to come from the model rather than from a list in the census. The
  * first entry is the one it picks.
  */
-export const PROPERTY_ELEMENT_ATTRIBUTES = {
+export const PROPERTY_ELEMENT_ATTRIBUTES: {
+  readonly CT_Ind: {
+    readonly indentLeft: readonly ["left", "start"];
+    readonly indentRight: readonly ["right", "end"];
+    readonly indentFirstLine: readonly ["firstLine", "hanging"];
+    readonly hangingIndent: "hanging";
+  };
+  readonly CT_Spacing: {
+    readonly spaceBefore: "before";
+    readonly spaceAfter: "after";
+    readonly lineSpacing: "line";
+    readonly lineSpacingRule: "lineRule";
+    readonly beforeAutospacing: "beforeAutospacing";
+    readonly afterAutospacing: "afterAutospacing";
+    readonly spacingExplicit: readonly [];
+  };
+  readonly CT_FramePr: {
+    readonly dropCap: "dropCap";
+    readonly lines: "lines";
+    readonly width: "w";
+    readonly height: "h";
+    readonly hSpace: "hSpace";
+    readonly vSpace: "vSpace";
+    readonly hAnchor: "hAnchor";
+    readonly vAnchor: "vAnchor";
+    readonly x: "x";
+    readonly y: "y";
+    readonly xAlign: "xAlign";
+    readonly yAlign: "yAlign";
+    readonly wrap: "wrap";
+  };
+  readonly CT_TabStop: {
+    readonly position: "pos";
+    readonly alignment: "val";
+    readonly leader: "leader";
+  };
+  readonly CT_Border: {
+    readonly style: "val";
+    readonly color: readonly ["color", "themeColor", "themeTint", "themeShade"];
+    readonly size: "sz";
+    readonly space: "space";
+    readonly shadow: "shadow";
+    readonly frame: "frame";
+    readonly artRelationshipId: "id";
+    readonly topLeftArtRelationshipId: "topLeft";
+    readonly topRightArtRelationshipId: "topRight";
+    readonly bottomLeftArtRelationshipId: "bottomLeft";
+    readonly bottomRightArtRelationshipId: "bottomRight";
+  };
+  readonly CT_Shd: {
+    readonly color: readonly ["color", "themeColor", "themeTint", "themeShade"];
+    readonly fill: readonly [
+      "fill",
+      "themeFill",
+      "themeFillTint",
+      "themeFillShade",
+    ];
+    readonly pattern: "val";
+  };
+} = {
   CT_Ind: INDENTATION_ATTRIBUTES,
   CT_Spacing: SPACING_ATTRIBUTES,
   CT_FramePr: FRAME_ATTRIBUTES,

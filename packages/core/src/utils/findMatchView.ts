@@ -198,7 +198,17 @@ const clipPaintedRects = (source: HTMLElement, rects: readonly DOMRect[]) => {
 };
 
 /** Paint search geometry over the existing page DOM, without changing editor state. */
-export const createFindMatchView = (options: FindMatchViewOptions) => {
+export const createFindMatchView = (
+  options: FindMatchViewOptions,
+): {
+  paint: (index: number) => void;
+  reveal: (index: number) => boolean;
+  navigate: (
+    index: number,
+    activateComment?: (commentId: number) => void,
+  ) => void;
+  destroy: () => void;
+} => {
   const { container } = options;
   const ranges = resolveDocumentFindRanges(options);
   const overlay = container.ownerDocument.createElement("div");
@@ -478,7 +488,7 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
   for (const target of scrollTargets)
     target.addEventListener("scroll", schedule, true);
   repaint();
-  const paint = (index: number) => {
+  const paint = (index: number): void => {
     currentIndex = index;
     if (pendingReveal !== index) pendingReveal = null;
     emphasize();
@@ -546,7 +556,7 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
         ),
       );
     },
-    destroy: () => {
+    destroy: (): void => {
       observer.disconnect();
       resize.disconnect();
       for (const target of scrollTargets)

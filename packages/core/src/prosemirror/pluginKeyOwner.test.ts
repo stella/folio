@@ -4,8 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { EditorState, Plugin, PluginKey } from "prosemirror-state";
-import ts from "typescript";
 
+import {
+  type Node,
+  parseSourceModule,
+  walkAst,
+} from "../../../../scripts/lib/oxc-ast";
 import { AutoBidiDetectionExtension } from "./extensions/features/AutoBidiDetectionExtension";
 import { EmptyParagraphFormatExtension } from "./extensions/features/EmptyParagraphFormatExtension";
 import { ImageDragExtension } from "./extensions/features/ImageDragExtension";
@@ -46,40 +50,28 @@ import { schema } from "./schema";
 // body a distinct file, while preserving the original imports and shared peers.
 const importRepeatedPlugin = async (name: string) => {
   const filename = path.join(import.meta.dir, "plugins", `${name}.ts`);
-  const source = ts.createSourceFile(
+  const { program, text } = parseSourceModule(
     filename,
     readFileSync(filename, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
   );
-  const copiedSource = ts.factory.updateSourceFile(
-    source,
-    source.statements.map((statement) => {
-      if (
-        !ts.isImportDeclaration(statement) ||
-        !ts.isStringLiteral(statement.moduleSpecifier)
-      ) {
-        return statement;
-      }
-      const specifier = statement.moduleSpecifier.text;
-      const resolved = specifier.startsWith(".")
-        ? path.resolve(path.dirname(filename), specifier)
-        : import.meta.resolve(specifier);
-      return ts.factory.updateImportDeclaration(
-        statement,
-        statement.modifiers,
-        statement.importClause,
-        ts.factory.createStringLiteral(resolved),
-        statement.attributes,
-      );
-    }),
-  );
+  let copiedSource = "";
+  let copied = 0;
+  for (const statement of program.body) {
+    if (statement.type !== "ImportDeclaration") continue;
+    const specifier = statement.source.value;
+    const resolved = specifier.startsWith(".")
+      ? path.resolve(path.dirname(filename), specifier)
+      : import.meta.resolve(specifier);
+    copiedSource += `${text.slice(copied, statement.source.start)}${JSON.stringify(resolved)}`;
+    copied = statement.source.end;
+  }
+  copiedSource += text.slice(copied);
   const directory = mkdtempSync(
     path.join(tmpdir(), "folio-plugin-evaluation-"),
   );
   try {
     const copy = path.join(directory, `${name}.ts`);
-    writeFileSync(copy, ts.createPrinter().printFile(copiedSource));
+    writeFileSync(copy, copiedSource);
     return await import(pathToFileURL(copy).href);
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -122,6 +114,26 @@ const FACTORIES = {
   runIdentityStrip: [() => extensionPlugin(RunIdentityExtension())],
 };
 
+// Functions, methods, accessors and signatures: everything that owns parameters.
+const FUNCTION_LIKE = new Set<Node["type"]>([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "MethodDefinition",
+  "TSAbstractMethodDefinition",
+  "TSCallSignatureDeclaration",
+  "TSConstructSignatureDeclaration",
+  "TSConstructorType",
+  "TSDeclareFunction",
+  "TSEmptyBodyFunctionExpression",
+  "TSFunctionType",
+  "TSIndexSignature",
+  "TSMethodSignature",
+]);
+const isFunctionLike = (node: Node): boolean =>
+  FUNCTION_LIKE.has(node.type) ||
+  (node.type === "Property" && (node.method || node.kind !== "init"));
+
 const declaredOwners = (): string[] => {
   const owners: string[] = [];
   const sourceRoot = path.resolve(import.meta.dir, "..");
@@ -129,36 +141,33 @@ const declaredOwners = (): string[] => {
     cwd: sourceRoot,
   })) {
     if (/\.test\.|(?:^|\/)(?:__tests__|typecheck)\//u.test(filename)) continue;
-    const source = ts.createSourceFile(
+    const { program } = parseSourceModule(
       filename,
       readFileSync(path.join(sourceRoot, filename), "utf8"),
-      ts.ScriptTarget.Latest,
-      true,
     );
-    const visit = (node: ts.Node): void => {
+    walkAst(program, (node, ancestors) => {
       if (
-        ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === "createPluginKeyOwner"
+        node.type === "CallExpression" &&
+        node.callee.type === "Identifier" &&
+        node.callee.name === "createPluginKeyOwner"
       ) {
         const name = node.arguments.at(0);
-        expect(name && ts.isStringLiteral(name)).toBe(true);
-        if (name && ts.isStringLiteral(name)) owners.push(name.text);
+        const owner =
+          name?.type === "Literal" && typeof name.value === "string"
+            ? name.value
+            : undefined;
+        expect(owner !== undefined).toBe(true);
+        if (owner !== undefined) owners.push(owner);
       }
       if (
-        ts.isNewExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === "PluginKey" &&
+        node.type === "NewExpression" &&
+        node.callee.type === "Identifier" &&
+        node.callee.name === "PluginKey" &&
         filename !== "prosemirror/pluginKeyOwner.ts"
       ) {
-        let ancestor: ts.Node | undefined = node.parent;
-        while (ancestor && !ts.isFunctionLike(ancestor))
-          ancestor = ancestor.parent;
-        expect(ancestor).toBeDefined();
+        expect(ancestors.findLast(isFunctionLike)).toBeDefined();
       }
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
+    });
   }
   return owners.sort();
 };

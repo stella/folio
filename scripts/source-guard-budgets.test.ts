@@ -1,9 +1,16 @@
 /** Repository source guards that walk files or start processes state a scaled budget. */
 import { expect, setDefaultTimeout, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  type Node,
+  parseSourceModule,
+  type Program,
+  staticMemberName,
+  walkAst,
+} from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BUDGET_HELPERS = new Set(["propertyTestTimeout", "scanTestTimeout"]);
@@ -25,9 +32,12 @@ const SUBPROCESS_METHODS = new Set([
 
 setDefaultTimeout(scanTestTimeout(10_000));
 
+const readSource = (file: string): string | undefined =>
+  existsSync(file) ? readFileSync(file, "utf8") : undefined;
+
 const sourceGuardFiles = (): string[] => {
   const manifest = JSON.parse(
-    ts.sys.readFile(path.join(REPO_ROOT, "package.json")) ?? "{}",
+    readSource(path.join(REPO_ROOT, "package.json")) ?? "{}",
   ) as {
     scripts?: Record<string, string>;
   };
@@ -36,47 +46,35 @@ const sourceGuardFiles = (): string[] => {
     .filter((part) => /\.test\.(?:ts|mjs)$/u.test(part));
 };
 
-const callName = (expression: ts.Expression): string | undefined => {
-  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
-  if (
-    ts.isElementAccessExpression(expression) &&
-    ts.isStringLiteral(expression.argumentExpression)
-  )
-    return expression.argumentExpression.text;
-  return ts.isIdentifier(expression) ? expression.text : undefined;
-};
+const callName = (expression: Node): string | undefined =>
+  staticMemberName(expression) ??
+  (expression.type === "Identifier" ? expression.name : undefined);
 
-const callsAny = (
-  sourceFile: ts.SourceFile,
-  names: ReadonlySet<string>,
-): boolean => {
+const callsAny = (program: Program, names: ReadonlySet<string>): boolean => {
   let found = false;
-  const visit = (node: ts.Node): void => {
-    if (found) return;
-    if (ts.isCallExpression(node) || ts.isTaggedTemplateExpression(node)) {
+  walkAst(program, (node) => {
+    if (found) return false;
+    if (
+      node.type === "CallExpression" ||
+      node.type === "TaggedTemplateExpression"
+    ) {
       const name = callName(
-        ts.isCallExpression(node) ? node.expression : node.tag,
+        node.type === "CallExpression" ? node.callee : node.tag,
       );
       if (name !== undefined && names.has(name)) {
         found = true;
-        return;
+        return false;
       }
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
+    return true;
+  });
   return found;
 };
 
 const missingBudgets = (sources: ReadonlyMap<string, string>): string[] =>
   [...sources]
     .filter(([file, source]) => {
-      const parsed = ts.createSourceFile(
-        file,
-        source,
-        ts.ScriptTarget.Latest,
-        true,
-      );
+      const parsed = parseSourceModule(file, source).program;
       return (
         (callsAny(parsed, WALK_METHODS) ||
           callsAny(parsed, SUBPROCESS_METHODS)) &&
@@ -90,7 +88,7 @@ test("repository-walking source guards declare a shared scaled budget", () => {
   const sources = new Map(
     sourceGuardFiles().map((file) => [
       file,
-      ts.sys.readFile(path.join(REPO_ROOT, file)) ?? "",
+      readSource(path.join(REPO_ROOT, file)) ?? "",
     ]),
   );
   expect(missingBudgets(sources)).toEqual([]);

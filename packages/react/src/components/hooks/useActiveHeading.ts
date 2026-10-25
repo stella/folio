@@ -14,7 +14,8 @@ import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 const MANUAL_ACTIVE_LOCK_MS = 900;
 
 /** Outline item id for a heading: its ProseMirror position. */
-export const headingId = (heading: HeadingInfo) => String(heading.pmPos);
+export const headingId = (heading: HeadingInfo): string =>
+  String(heading.pmPos);
 
 type ActiveHeading = {
   activeId: string | null;

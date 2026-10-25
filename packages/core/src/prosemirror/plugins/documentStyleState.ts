@@ -1,4 +1,4 @@
-import type { EditorState } from "prosemirror-state";
+import type { EditorState, Plugin, PluginKey } from "prosemirror-state";
 
 import {
   type BuiltInStyleIndex,
@@ -8,9 +8,13 @@ import type { Style } from "../../types/document";
 import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { StyleResolver } from "../styles/styleResolver";
 
-export const documentStylesKey = createPluginKeyOwner<StyleResolver | null>(
-  "documentStyles",
-);
+export const documentStylesKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<StyleResolver | null>;
+  owns: (plugin: Plugin<StyleResolver | null>) => boolean;
+  get: (state: EditorState) => Plugin<StyleResolver | null> | undefined;
+  getState: (state: EditorState) => StyleResolver | null | undefined;
+}> = createPluginKeyOwner<StyleResolver | null>("documentStyles");
 
 /** Read the document's StyleResolver, or null when the plugin isn't installed. */
 export function getDocumentStyleResolver(

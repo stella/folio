@@ -19,7 +19,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
-import type { EditorState, PluginSpec } from "prosemirror-state";
+import type { EditorState, PluginKey, PluginSpec } from "prosemirror-state";
 
 import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 import { collectBlockChunks, joinChunks, offsetToDocPos } from "./pmTextScan";
@@ -49,10 +49,15 @@ type AnonymizationDecorationState = {
   matches: readonly AnonymizationMatch[];
 };
 
-export const anonymizationDecorationsKey =
-  createPluginKeyOwner<AnonymizationDecorationState>(
-    "anonymizationDecorations",
-  );
+export const anonymizationDecorationsKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<AnonymizationDecorationState>;
+  owns: (plugin: Plugin<AnonymizationDecorationState>) => boolean;
+  get: (state: EditorState) => Plugin<AnonymizationDecorationState> | undefined;
+  getState: (state: EditorState) => AnonymizationDecorationState | undefined;
+}> = createPluginKeyOwner<AnonymizationDecorationState>(
+  "anonymizationDecorations",
+);
 
 export const slugAnonymizationLabel = (label: string): string =>
   label.toLowerCase().replace(/[^a-z0-9]+/gu, "-");

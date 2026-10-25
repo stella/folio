@@ -27,7 +27,14 @@ import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
 export const FOLIO_DOCX_CONFORMANCE_REPORT_VERSION = 1 as const;
 export const FOLIO_DOCX_CONFORMANCE_PROFILE = "folio-supported-v1" as const;
 
-export const FOLIO_DOCX_CONFORMANCE_CHECKS = Object.freeze([
+export const FOLIO_DOCX_CONFORMANCE_CHECKS: readonly [
+  "archive-safety",
+  "required-parts",
+  "xml-well-formedness",
+  "package-roots",
+  "conformance-class",
+  "canonical-model",
+] = Object.freeze([
   "archive-safety",
   "required-parts",
   "xml-well-formedness",
@@ -36,7 +43,29 @@ export const FOLIO_DOCX_CONFORMANCE_CHECKS = Object.freeze([
   "canonical-model",
 ] as const);
 
-export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES = Object.freeze([
+export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES: readonly [
+  "archive-load-failed",
+  "archive-invalid-options",
+  "archive-input-too-large",
+  "archive-too-many-entries",
+  "archive-entry-too-large",
+  "archive-total-too-large",
+  "archive-compression-ratio-exceeded",
+  "required-part-missing",
+  "xml-doctype-forbidden",
+  "xml-not-well-formed",
+  "xml-read-failed",
+  "required-xml-unreadable",
+  "package-root-invalid",
+  "conformance-class-unknown",
+  "model-invalid",
+  "model-warning",
+  "parser-recovery",
+  "parser-unsupported",
+  "parser-failed",
+  "encrypted-container",
+  "container-not-zip",
+] = Object.freeze([
   "archive-load-failed",
   "archive-invalid-options",
   "archive-input-too-large",

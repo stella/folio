@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import ts from "typescript";
+import type { ObjectExpression } from "oxc-parser";
 
 import { TRANSACTION_LAYOUT_TIMING } from "../packages/core/src/controller/layoutScheduler";
+import { parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 const ADAPTER_FILES = [
   "packages/react/src/paged-editor/PagedEditor.tsx",
@@ -24,61 +25,56 @@ describe("adapter transaction layout timing", () => {
 
   for (const file of ADAPTER_FILES) {
     test(`${file} uses the core timing in its scheduler`, () => {
-      const source = ts.createSourceFile(
+      const { program } = parseSourceModule(
         file,
         readFileSync(join(import.meta.dir, "..", file), "utf8"),
-        ts.ScriptTarget.Latest,
-        true,
       );
-      const importsTiming = source.statements.some(
+      const importsTiming = program.body.some(
         (statement) =>
-          ts.isImportDeclaration(statement) &&
-          ts.isStringLiteral(statement.moduleSpecifier) &&
-          statement.moduleSpecifier.text === SCHEDULER_MODULE &&
-          statement.importClause?.namedBindings !== undefined &&
-          ts.isNamedImports(statement.importClause.namedBindings) &&
-          statement.importClause.namedBindings.elements.some(
-            (element) => element.name.text === TIMING_NAME,
+          statement.type === "ImportDeclaration" &&
+          statement.source.value === SCHEDULER_MODULE &&
+          statement.specifiers.some(
+            (element) =>
+              element.type === "ImportSpecifier" &&
+              element.local.name === TIMING_NAME,
           ),
       );
       expect(importsTiming).toBe(true);
 
-      const schedulerConfigs: ts.ObjectLiteralExpression[] = [];
-      const visit = (node: ts.Node): void => {
-        const config = ts.isCallExpression(node)
-          ? node.arguments.at(0)
-          : undefined;
+      const schedulerConfigs: ObjectExpression[] = [];
+      walkAst(program, (node) => {
+        const config =
+          node.type === "CallExpression" ? node.arguments.at(0) : undefined;
         if (
-          ts.isCallExpression(node) &&
-          ts.isIdentifier(node.expression) &&
-          node.expression.text === "createLayoutScheduler" &&
+          node.type === "CallExpression" &&
+          node.callee.type === "Identifier" &&
+          node.callee.name === "createLayoutScheduler" &&
           node.arguments.length === 1 &&
-          config !== undefined &&
-          ts.isObjectLiteralExpression(config)
+          config?.type === "ObjectExpression"
         ) {
           schedulerConfigs.push(config);
         }
-        ts.forEachChild(node, visit);
-      };
-      visit(source);
+      });
       expect(schedulerConfigs).toHaveLength(1);
 
       const properties = schedulerConfigs[0]?.properties ?? [];
       expect(
         properties.filter(
           (property) =>
-            ts.isSpreadAssignment(property) &&
-            ts.isIdentifier(property.expression) &&
-            property.expression.text === TIMING_NAME,
+            property.type === "SpreadElement" &&
+            property.argument.type === "Identifier" &&
+            property.argument.name === TIMING_NAME,
         ),
       ).toHaveLength(1);
       expect(
         properties.filter(
           (property) =>
-            (ts.isPropertyAssignment(property) ||
-              ts.isShorthandPropertyAssignment(property)) &&
-            ts.isIdentifier(property.name) &&
-            TIMING_PROPERTIES.has(property.name.text),
+            property.type === "Property" &&
+            property.kind === "init" &&
+            !property.method &&
+            !property.computed &&
+            property.key.type === "Identifier" &&
+            TIMING_PROPERTIES.has(property.key.name),
         ),
       ).toHaveLength(0);
     });

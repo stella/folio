@@ -1460,7 +1460,9 @@ function buildFootnoteRenderItems(
 /**
  * PagedEditor - Main paginated editing component.
  */
-export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
+export const PagedEditor: React.ForwardRefExoticComponent<
+  PagedEditorProps & React.RefAttributes<PagedEditorRef>
+> = forwardRef<PagedEditorRef, PagedEditorProps>(
   // eslint-disable-next-line prefer-arrow-callback -- preserve the component name in React DevTools without reindenting this large component.
   function PagedEditor(props, ref) {
     const {

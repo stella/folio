@@ -1,4 +1,4 @@
-import type { Node as ProseMirrorNode } from "prosemirror-model";
+import type { Mark, Node as ProseMirrorNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import {
   AllSelection,
@@ -44,7 +44,7 @@ export const formattingMarksBesideLockedControl = ({
   state,
   from,
   to,
-}: FormattingMarksBesideLockedControlOptions) => {
+}: FormattingMarksBesideLockedControlOptions): Mark[] | undefined => {
   if (from !== to || state.storedMarks !== null) return undefined;
   const $from = state.doc.resolve(from);
   const { parent } = $from;
@@ -76,7 +76,7 @@ export const dispatchEditorTextInput = <
 >(
   view: TView,
   input: string | TextInput,
-) => {
+): void => {
   const { from, to } = typeof input === "string" ? view.state.selection : input;
   const text = typeof input === "string" ? input : input.text;
   const defaultTransaction = () => {
@@ -135,7 +135,10 @@ export const dispatchEditorTextInput = <
 export const getEditorInputTargetRange = (
   view: EditorView,
   event: InputEvent,
-) => {
+): {
+  from: number;
+  to: number;
+} | null => {
   if (typeof event.getTargetRanges !== "function") return null;
   const ranges = event.getTargetRanges();
   if (ranges.length !== 1) return null;
@@ -202,7 +205,7 @@ export const afterNativeCompositionFlush = (callback: () => void): void => {
 };
 
 /** Route committed text through the model before the browser mutates mark spans. */
-export const createTextInputPlugin = () => {
+export const createTextInputPlugin = (): Plugin => {
   // PM can clear view.composing before its final DOM flush. Keep that commit
   // native through the end-of-composition microtask, just like suggestion mode.
   // Key by view because a plugin can be shared by multiple editor states/views.

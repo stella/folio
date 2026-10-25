@@ -1,8 +1,18 @@
 import { parse } from "@vue/compiler-sfc";
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+
+import {
+  createLineIndex,
+  declaresBindings,
+  type Node,
+  nodeText,
+  parseSourceModule,
+  staticMemberName,
+  walkAst,
+} from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const HEX_ID_ALLOCATOR = "packages/core/src/utils/hexId.ts";
@@ -25,41 +35,84 @@ const isNumericIdName = (name: string): boolean =>
     ALLOCATOR_NAME.test(name) ||
     OOXML_ID_NAME.test(name));
 
-const propertyName = (node: ts.Node): string | undefined => {
-  if (ts.isIdentifier(node) || ts.isStringLiteral(node)) return node.text;
-  if (ts.isPropertyAccessExpression(node)) return node.name.text;
-  if (
-    ts.isElementAccessExpression(node) &&
-    ts.isStringLiteral(node.argumentExpression)
-  ) {
-    return node.argumentExpression.text;
-  }
-  return undefined;
+const stringValue = (node: Node): string | undefined => {
+  if (node.type !== "Literal") return undefined;
+  const { value } = node;
+  return typeof value === "string" ? value : undefined;
 };
 
-const isClockOrRandom = (node: ts.Node): boolean => {
-  if (!ts.isPropertyAccessExpression(node)) return false;
-  if (node.name.text === "getTime") {
+const propertyName = (node: Node): string | undefined => {
+  if (node.type === "Identifier") return node.name;
+  return stringValue(node) ?? staticMemberName(node);
+};
+
+/** The written name of a property key; a computed key has none. */
+const keyName = (node: { computed: boolean; key: Node }) =>
+  node.computed || node.key.type === "PrivateIdentifier"
+    ? undefined
+    : propertyName(node.key);
+
+/** A `.name` member access, as opposed to `[name]`. */
+const dotAccess = (node: Node) =>
+  node.type === "MemberExpression" && !node.computed ? node : undefined;
+
+const isClockOrRandom = (text: string, node: Node): boolean => {
+  const access = dotAccess(node);
+  if (access === undefined) return false;
+  const name = staticMemberName(access);
+  if (name === "getTime") {
     return (
-      ts.isNewExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "Date"
+      access.object.type === "NewExpression" &&
+      access.object.callee.type === "Identifier" &&
+      access.object.callee.name === "Date"
     );
   }
-  const owner = node.expression.getText();
+  const owner = nodeText(text, access.object);
   return (
-    (node.name.text === "now" &&
+    (name === "now" &&
       [
         "Date",
         "performance",
         "window.performance",
         "globalThis.performance",
       ].includes(owner)) ||
-    (node.name.text === "random" && owner === "Math")
+    (name === "random" && owner === "Math")
   );
 };
 
-type Binding = { declaration: ts.Node; values: ts.Node[] };
+// Functions and signatures: what TypeScript calls function-like.
+const FUNCTION_LIKE_NODES = new Set([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "TSCallSignatureDeclaration",
+  "TSConstructSignatureDeclaration",
+  "TSConstructorType",
+  "TSDeclareFunction",
+  "TSEmptyBodyFunctionExpression",
+  "TSFunctionType",
+  "TSIndexSignature",
+  "TSMethodSignature",
+]);
+// A binding belongs to the nearest block, function or the module.
+const SCOPE_NODES = new Set([
+  ...FUNCTION_LIKE_NODES,
+  "BlockStatement",
+  "Program",
+  "StaticBlock",
+]);
+/** Whether any direct child satisfies `predicate`, in source order. */
+const someChild = (node: Node, predicate: (child: Node) => boolean) => {
+  let found = false;
+  walkAst(node, (child) => {
+    if (child === node) return true;
+    if (!found && predicate(child)) found = true;
+    return false;
+  });
+  return found;
+};
+
+type Binding = { declaration: Node; values: Node[] };
 
 const scriptSource = (file: string, sourceText: string): string => {
   if (!file.endsWith(".vue")) return sourceText;
@@ -87,103 +140,108 @@ const forbiddenAllocationSites = (
 ): string[] => {
   // OOXML hexadecimal rsid/paraId values have a separate, bounded allocator.
   if (file === HEX_ID_ALLOCATOR) return [];
-  const source = ts.createSourceFile(
-    file,
-    scriptSource(file, sourceText),
-    ts.ScriptTarget.Latest,
-    true,
+  const text = scriptSource(file, sourceText);
+  // Vue scripts are TypeScript-shaped; parse them as TypeScript.
+  const { program } = parseSourceModule(
+    file.endsWith(".vue") ? `${file}.ts` : file,
+    text,
   );
-  const scopes = new Map<ts.Node, Map<string, Binding>>();
+  const lineOf = createLineIndex(text);
+  const parents = new Map<Node, Node>();
+  walkAst(program, (node, ancestors) => {
+    const parent = ancestors.at(-1);
+    if (parent !== undefined) parents.set(node, parent);
+  });
+  const scopes = new Map<Node, Map<string, Binding>>();
   const bindings: Binding[] = [];
-  const scopeOf = (node: ts.Node): ts.Node => {
-    let scope = node.parent;
-    while (
-      !ts.isSourceFile(scope) &&
-      !ts.isBlock(scope) &&
-      !ts.isFunctionLike(scope)
-    ) {
-      scope = scope.parent;
+  const scopeOf = (node: Node): Node => {
+    let scope = parents.get(node);
+    while (scope !== undefined && !SCOPE_NODES.has(scope.type)) {
+      scope = parents.get(scope);
     }
-    return scope;
+    return scope ?? program;
   };
-  const resolve = (node: ts.Identifier): Binding | undefined => {
-    let scope: ts.Node | undefined = node;
+  const resolve = (node: Node, name: string): Binding | undefined => {
+    let scope: Node | undefined = node;
     while (scope !== undefined) {
-      const binding = scopes.get(scope)?.get(node.text);
+      const binding = scopes.get(scope)?.get(name);
       if (binding !== undefined) return binding;
-      scope = scope.parent;
+      scope = parents.get(scope);
     }
     return undefined;
   };
-  const collect = (node: ts.Node): void => {
-    if (
-      (ts.isVariableDeclaration(node) || ts.isFunctionDeclaration(node)) &&
-      node.name !== undefined &&
-      ts.isIdentifier(node.name)
-    ) {
-      const scope = scopeOf(node);
-      const names = scopes.get(scope) ?? new Map<string, Binding>();
-      const value = ts.isVariableDeclaration(node) ? node.initializer : node;
-      const binding = {
-        declaration: node,
-        values: value === undefined ? [] : [value],
-      };
-      names.set(node.name.text, binding);
-      scopes.set(scope, names);
-      bindings.push(binding);
-    }
-    ts.forEachChild(node, collect);
+  const declare = (declaration: Node, name: string, values: Node[]) => {
+    const scope = scopeOf(declaration);
+    const names = scopes.get(scope) ?? new Map<string, Binding>();
+    const binding = { declaration, values };
+    names.set(name, binding);
+    scopes.set(scope, names);
+    bindings.push(binding);
   };
-  collect(source);
-  const collectAssignments = (node: ts.Node): void => {
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
-      ts.isIdentifier(node.left)
+  walkAst(program, (node) => {
+    if (node.type === "VariableDeclarator" && node.id.type === "Identifier") {
+      declare(node, node.id.name, node.init === null ? [] : [node.init]);
+    } else if (
+      (node.type === "FunctionDeclaration" ||
+        node.type === "TSDeclareFunction") &&
+      node.id !== null
     ) {
-      resolve(node.left)?.values.push(node.right);
+      declare(node, node.id.name, [node]);
+    } else if (
+      node.type === "CatchClause" &&
+      node.param?.type === "Identifier"
+    ) {
+      // A catch variable is a declaration without a value.
+      declare(node.param, node.param.name, []);
     }
-    ts.forEachChild(node, collectAssignments);
-  };
-  collectAssignments(source);
-  const tainted = new Set<ts.Node>();
-  const containsSource = (node: ts.Node): boolean => {
+  });
+  walkAst(program, (node) => {
     if (
-      ts.isArrowFunction(node) ||
-      ts.isFunctionExpression(node) ||
-      ts.isFunctionDeclaration(node)
+      node.type === "AssignmentExpression" &&
+      node.left.type === "Identifier"
     ) {
-      if (node.body === undefined) return false;
-      if (!ts.isBlock(node.body)) return containsSource(node.body);
-      const returnsSource = (child: ts.Node): boolean => {
-        if (ts.isFunctionLike(child)) return false;
-        if (ts.isReturnStatement(child)) {
-          return (
-            child.expression !== undefined && containsSource(child.expression)
-          );
-        }
-        return (
-          ts.forEachChild(
-            child,
-            (nested) => returnsSource(nested) || undefined,
-          ) === true
-        );
-      };
+      resolve(node.left, node.left.name)?.values.push(node.right);
+    }
+  });
+  const tainted = new Set<Node>();
+  // ESTree wraps a method's body in a function value; the method is not a
+  // function expression a value can hold.
+  const isMethodValue = (node: Node): boolean => {
+    const parent = parents.get(node);
+    return (
+      parent?.type === "MethodDefinition" ||
+      parent?.type === "TSAbstractMethodDefinition" ||
+      (parent?.type === "Property" && (parent.method || parent.kind !== "init"))
+    );
+  };
+  const returnsSource = (child: Node): boolean => {
+    if (FUNCTION_LIKE_NODES.has(child.type)) return false;
+    if (child.type === "ReturnStatement") {
+      return child.argument !== null && containsSource(child.argument);
+    }
+    return someChild(child, returnsSource);
+  };
+  const containsSource = (node: Node): boolean => {
+    if (
+      node.type === "ArrowFunctionExpression" ||
+      node.type === "FunctionDeclaration" ||
+      node.type === "TSDeclareFunction" ||
+      (node.type === "FunctionExpression" && !isMethodValue(node))
+    ) {
+      if (!node.body) return false;
+      if (node.body.type !== "BlockStatement") return containsSource(node.body);
       return returnsSource(node.body);
     }
-    if (isClockOrRandom(node)) return true;
-    if (ts.isIdentifier(node)) {
-      const binding = resolve(node);
+    if (isClockOrRandom(text, node)) return true;
+    if (node.type === "Identifier") {
+      const binding = resolve(node, node.name);
       return binding !== undefined && tainted.has(binding.declaration);
     }
-    if (ts.isPropertyAssignment(node)) return containsSource(node.initializer);
-    if (ts.isPropertyAccessExpression(node))
-      return containsSource(node.expression);
-    return (
-      ts.forEachChild(node, (child) => containsSource(child) || undefined) ===
-      true
-    );
+    if (node.type === "Property" && node.kind === "init" && !node.method)
+      return containsSource(node.value);
+    const access = dotAccess(node);
+    if (access !== undefined) return containsSource(access.object);
+    return someChild(node, containsSource);
   };
   let changed = true;
   while (changed) {
@@ -194,102 +252,127 @@ const forbiddenAllocationSites = (
       changed = true;
     }
   }
-  const isStringOutput = (
-    node: ts.Node,
-    visited = new Set<ts.Node>(),
-  ): boolean => {
+  const isStringOutput = (node: Node, visited = new Set<Node>()): boolean => {
     if (visited.has(node)) return false;
     visited.add(node);
-    if (
-      ts.isTemplateExpression(node) ||
-      ts.isNoSubstitutionTemplateLiteral(node) ||
-      ts.isStringLiteral(node)
-    )
+    if (node.type === "TemplateLiteral" || stringValue(node) !== undefined)
       return true;
-    if (ts.isIdentifier(node)) {
-      const values = resolve(node)?.values;
+    if (node.type === "Identifier") {
+      const values = resolve(node, node.name)?.values;
       return (
         values !== undefined &&
         values.length > 0 &&
         values.every((value) => isStringOutput(value, visited))
       );
     }
+    // An optional chain is the call or access it wraps.
     if (
-      ts.isParenthesizedExpression(node) ||
-      ts.isAsExpression(node) ||
-      ts.isNonNullExpression(node)
+      node.type === "ParenthesizedExpression" ||
+      node.type === "TSAsExpression" ||
+      node.type === "TSNonNullExpression" ||
+      node.type === "ChainExpression"
     )
       return isStringOutput(node.expression, visited);
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.PlusToken
-    ) {
+    if (node.type === "BinaryExpression" && node.operator === "+") {
       return (
         isStringOutput(node.left, visited) ||
         isStringOutput(node.right, visited)
       );
     }
-    if (!ts.isCallExpression(node)) return false;
-    if (ts.isIdentifier(node.expression) && node.expression.text === "String")
+    if (node.type !== "CallExpression") return false;
+    if (node.callee.type === "Identifier" && node.callee.name === "String")
       return true;
-    if (!ts.isPropertyAccessExpression(node.expression)) return false;
+    const access = dotAccess(node.callee);
+    if (access === undefined) return false;
     return (
-      STRING_METHODS.has(node.expression.name.text) ||
-      isStringOutput(node.expression.expression, visited)
+      STRING_METHODS.has(staticMemberName(access) ?? "") ||
+      isStringOutput(access.object, visited)
     );
   };
   const sites: string[] = [];
   const report = (
-    node: ts.Node,
+    node: Node,
     name: string | undefined,
-    value: ts.Node | undefined,
+    value: Node | null | undefined,
   ): void => {
-    if (name === undefined || value === undefined || !isNumericIdName(name))
+    if (
+      name === undefined ||
+      value === undefined ||
+      value === null ||
+      !isNumericIdName(name)
+    )
       return;
     // Generic application string ids are allowed; OOXML decimal/hexadecimal
     // sinks retain clock taint through string coercion and local aliases.
     if (!OOXML_ID_NAME.test(name) && isStringOutput(value)) return;
     if (!containsSource(value)) return;
-    const { line } = source.getLineAndCharacterOfPosition(
-      node.getStart(source),
-    );
+    const { line } = lineOf(node.start);
     sites.push(`${file}:${String(line + 1)} (${name})`);
   };
-  const visit = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) || ts.isPropertyDeclaration(node)) {
-      report(node, propertyName(node.name), node.initializer);
-    } else if (ts.isPropertyAssignment(node)) {
-      report(node, propertyName(node.name), node.initializer);
-    } else if (ts.isShorthandPropertyAssignment(node)) {
-      report(node, node.name.text, node.name);
+  walkAst(program, (node, ancestors) => {
+    if (node.type === "VariableDeclarator") {
+      report(
+        node,
+        node.id.type === "Identifier" ? node.id.name : undefined,
+        node.init,
+      );
     } else if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      node.type === "PropertyDefinition" ||
+      node.type === "TSAbstractPropertyDefinition" ||
+      node.type === "AccessorProperty" ||
+      node.type === "TSAbstractAccessorProperty"
     ) {
+      report(node, keyName(node), node.value);
+    } else if (
+      node.type === "Property" &&
+      // Destructuring that declares bindings has no property assignments.
+      (ancestors.at(-1)?.type === "ObjectExpression" ||
+        !declaresBindings(ancestors))
+    ) {
+      if (node.shorthand) {
+        report(
+          node,
+          keyName(node),
+          node.value.type === "AssignmentPattern"
+            ? node.value.left
+            : node.value,
+        );
+      } else if (node.kind === "init" && !node.method) {
+        report(node, keyName(node), node.value);
+      }
+    } else if (node.type === "AssignmentExpression") {
       report(node, propertyName(node.left), node.right);
-    } else if (ts.isFunctionDeclaration(node)) {
-      report(node, node.name?.text, node);
+    } else if (
+      node.type === "FunctionDeclaration" ||
+      node.type === "TSDeclareFunction"
+    ) {
+      report(node, node.id?.name, node);
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  });
   return sites;
 };
 
 const sourceFiles = (): string[] =>
-  ts.sys
-    .readDirectory(
-      path.join(REPO_ROOT, "packages"),
-      [".ts", ".tsx", ".vue", ".js", ".jsx"],
-      ["**/node_modules/**"],
-    )
-    .map((file) => path.relative(REPO_ROOT, file).replaceAll("\\", "/"))
+  [
+    ...new Bun.Glob("*/src/**/*.{ts,tsx,vue,js,jsx}").scanSync({
+      cwd: path.join(REPO_ROOT, "packages"),
+      dot: true,
+      onlyFiles: true,
+    }),
+  ]
+    .map((file) => `packages/${file.replaceAll("\\", "/")}`)
+    .filter((file) => !/(?:^|\/)node_modules\//.test(file))
     .filter(
       (file) =>
         /^packages\/[^/]+\/src\//.test(file) && !/\.test\.tsx?$/.test(file),
     )
     .toSorted();
+
+const readSource = (file: string): string | undefined =>
+  existsSync(file)
+    ? // A byte-order mark is not source text.
+      readFileSync(file, "utf8").replace(/^\uFEFF/u, "")
+    : undefined;
 
 describe("numeric OOXML id allocation", () => {
   test.each([
@@ -348,7 +431,7 @@ describe("numeric OOXML id allocation", () => {
       forbiddenAllocationSites(HEX_ID_ALLOCATOR, "const id = Math.random();"),
     ).toEqual([]);
     const forbidden = files.flatMap((file) => {
-      const source = ts.sys.readFile(path.join(REPO_ROOT, file));
+      const source = readSource(path.join(REPO_ROOT, file));
       if (source === undefined) panic(`Cannot read ${file}.`);
       return forbiddenAllocationSites(file, source);
     });

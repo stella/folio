@@ -382,7 +382,10 @@ function applyHorizontalScaleTransform(
  * Both painters write the keyword from here, so the DOM painter and the
  * display list cannot spell the pair differently.
  */
-export const UNICODE_BIDI_BY_WRAPPER_CONTROL = {
+export const UNICODE_BIDI_BY_WRAPPER_CONTROL: {
+  readonly override: "bidi-override";
+  readonly embedding: "embed";
+} = {
   override: "bidi-override",
   embedding: "embed",
 } as const satisfies Record<

@@ -28,7 +28,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties } from "react";
+import type {
+  CSSProperties,
+  ForwardRefExoticComponent,
+  RefAttributes,
+} from "react";
 
 import { redo, undo } from "prosemirror-history";
 import type { EditorView } from "prosemirror-view";
@@ -114,7 +118,7 @@ const labelStyle: CSSProperties = {
 // ============================================================================
 
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools without reindenting the implementation. */
-export const InlineHeaderFooterEditor = forwardRef<
+const InlineHeaderFooterEditorComponent = forwardRef<
   InlineHeaderFooterEditorRef,
   InlineHeaderFooterEditorProps
 >(function InlineHeaderFooterEditor(
@@ -322,6 +326,10 @@ export const InlineHeaderFooterEditor = forwardRef<
   );
 });
 /* eslint-enable prefer-arrow-callback */
+
+export const InlineHeaderFooterEditor: ForwardRefExoticComponent<
+  InlineHeaderFooterEditorProps & RefAttributes<InlineHeaderFooterEditorRef>
+> = InlineHeaderFooterEditorComponent;
 
 // ============================================================================
 // OPTIONS MENU SUB-COMPONENT

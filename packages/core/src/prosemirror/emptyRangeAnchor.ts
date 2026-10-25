@@ -42,7 +42,11 @@ type RangeEndType = Extract<ParagraphContent["type"], `${string}RangeEnd`>;
  * listed, so a `…RangeStart` added to `ParagraphContent` fails this
  * `satisfies` until somebody has said what closes it.
  */
-export const RANGE_END_FOR_START = {
+export const RANGE_END_FOR_START: {
+  readonly commentRangeStart: "commentRangeEnd";
+  readonly moveFromRangeStart: "moveFromRangeEnd";
+  readonly moveToRangeStart: "moveToRangeEnd";
+} = {
   commentRangeStart: "commentRangeEnd",
   moveFromRangeStart: "moveFromRangeEnd",
   moveToRangeStart: "moveToRangeEnd",

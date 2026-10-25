@@ -23,7 +23,12 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import type { EditorState, PluginSpec, Transaction } from "prosemirror-state";
+import type {
+  EditorState,
+  PluginKey,
+  PluginSpec,
+  Transaction,
+} from "prosemirror-state";
 import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
@@ -54,10 +59,19 @@ type ConsumeMeta = { type: "consume"; requestId: string; consumed: string };
 type ClearMeta = { type: "clear" };
 type Meta = StartMeta | TokenMeta | FinishMeta | ConsumeMeta | ClearMeta;
 
-export const autocompleteSuggestionKey =
-  createPluginKeyOwner<AutocompleteSuggestionPluginState>(
-    "autocompleteSuggestion",
-  );
+export const autocompleteSuggestionKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<AutocompleteSuggestionPluginState>;
+  owns: (plugin: Plugin<AutocompleteSuggestionPluginState>) => boolean;
+  get: (
+    state: EditorState,
+  ) => Plugin<AutocompleteSuggestionPluginState> | undefined;
+  getState: (
+    state: EditorState,
+  ) => AutocompleteSuggestionPluginState | undefined;
+}> = createPluginKeyOwner<AutocompleteSuggestionPluginState>(
+  "autocompleteSuggestion",
+);
 
 type AutocompleteSuggestionPluginState = {
   suggestion: AutocompleteSuggestionState;

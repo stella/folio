@@ -1,4 +1,5 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
+import type { JSX } from "react/jsx-runtime";
 
 import { cn } from "../../lib/utils";
 import type {
@@ -20,14 +21,14 @@ import type {
  * prop.
  */
 
-function DefaultMenuRoot(props: FolioMenuRootProps) {
+function DefaultMenuRoot(props: FolioMenuRootProps): JSX.Element {
   return <MenuPrimitive.Root {...props} />;
 }
 
 function DefaultMenuTrigger({
   nativeButton = true,
   ...props
-}: FolioMenuTriggerProps) {
+}: FolioMenuTriggerProps): JSX.Element {
   return <MenuPrimitive.Trigger nativeButton={nativeButton} {...props} />;
 }
 
@@ -39,7 +40,7 @@ function DefaultMenuPopup({
   sideOffset = 4,
   alignOffset,
   ...props
-}: FolioMenuPopupProps) {
+}: FolioMenuPopupProps): JSX.Element {
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner
@@ -63,7 +64,10 @@ function DefaultMenuPopup({
   );
 }
 
-function DefaultMenuItem({ className, ...props }: FolioMenuItemProps) {
+function DefaultMenuItem({
+  className,
+  ...props
+}: FolioMenuItemProps): JSX.Element {
   return (
     <MenuPrimitive.Item
       className={cn("folio-default-menu-item", className)}
@@ -76,7 +80,7 @@ function DefaultMenuCheckboxItem({
   className,
   children,
   ...props
-}: FolioMenuCheckboxItemProps) {
+}: FolioMenuCheckboxItemProps): JSX.Element {
   return (
     <MenuPrimitive.CheckboxItem
       className={cn("folio-default-menu-checkbox-item", className)}
@@ -103,14 +107,14 @@ function DefaultMenuCheckboxItem({
   );
 }
 
-function DefaultMenuGroup(props: FolioMenuGroupProps) {
+function DefaultMenuGroup(props: FolioMenuGroupProps): JSX.Element {
   return <MenuPrimitive.Group {...props} />;
 }
 
 function DefaultMenuGroupLabel({
   className,
   ...props
-}: FolioMenuGroupLabelProps) {
+}: FolioMenuGroupLabelProps): JSX.Element {
   return (
     <MenuPrimitive.GroupLabel
       className={cn("folio-default-menu-group-label", className)}
@@ -122,7 +126,7 @@ function DefaultMenuGroupLabel({
 function DefaultMenuSeparator({
   className,
   ...props
-}: FolioMenuSeparatorProps) {
+}: FolioMenuSeparatorProps): JSX.Element {
   return (
     <MenuPrimitive.Separator
       className={cn("folio-default-menu-separator", className)}
@@ -131,7 +135,16 @@ function DefaultMenuSeparator({
   );
 }
 
-export const DefaultMenu = {
+export const DefaultMenu: {
+  Root: typeof DefaultMenuRoot;
+  Trigger: typeof DefaultMenuTrigger;
+  Popup: typeof DefaultMenuPopup;
+  Item: typeof DefaultMenuItem;
+  CheckboxItem: typeof DefaultMenuCheckboxItem;
+  Group: typeof DefaultMenuGroup;
+  GroupLabel: typeof DefaultMenuGroupLabel;
+  Separator: typeof DefaultMenuSeparator;
+} = {
   Root: DefaultMenuRoot,
   Trigger: DefaultMenuTrigger,
   Popup: DefaultMenuPopup,

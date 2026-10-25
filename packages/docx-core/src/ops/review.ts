@@ -299,7 +299,10 @@ export const withReviewFields = (
 // ---------------------------------------------------------------------------
 
 /** Which tracked change a wrap records. */
-export const WRAP_KINDS = Object.freeze({
+export const WRAP_KINDS: Readonly<{
+  readonly INSERTION: "insertion";
+  readonly DELETION: "deletion";
+}> = Object.freeze({
   INSERTION: "insertion",
   DELETION: "deletion",
 } as const);

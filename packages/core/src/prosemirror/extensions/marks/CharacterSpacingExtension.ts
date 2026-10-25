@@ -15,12 +15,15 @@ import {
 import { formatPx, twipsToPixels } from "../../../utils/units";
 import { expectCharacterSpacingMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
 function halfPointsToPixels(halfPoints: number): number {
   return (halfPoints / 2) * (96 / 72);
 }
 
-export const CharacterSpacingExtension = createMarkExtension({
+export const CharacterSpacingExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "characterSpacing",
   schemaMarkName: "characterSpacing",
   markSpec: {

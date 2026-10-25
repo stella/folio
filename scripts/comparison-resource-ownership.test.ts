@@ -2,7 +2,15 @@ import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+
+import {
+  declaresBindings,
+  type Node,
+  nodeText,
+  parseSourceModule,
+  staticMemberName,
+  walkAst,
+} from "./lib/oxc-ast";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const OWNERS = new Set([
@@ -17,31 +25,26 @@ const IMPORT_STEPS = new Set([
 
 const violations = (source: string): string[] => {
   if (![...IMPORT_STEPS].some((name) => source.includes(name))) return [];
-  const file = ts.createSourceFile(
-    "fixture.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule("fixture.ts", source);
   const found: string[] = [];
-  const memberName = (node: ts.Node) => {
-    if (ts.isPropertyAccessExpression(node)) return node.name.text;
+  const memberName = (node: Node, ancestors: readonly Node[]) => {
+    const accessed = staticMemberName(node);
+    if (accessed !== undefined) return accessed;
     if (
-      ts.isElementAccessExpression(node) &&
-      ts.isStringLiteral(node.argumentExpression)
+      ancestors.at(-1)?.type !== "ObjectPattern" ||
+      !declaresBindings(ancestors)
     )
-      return node.argumentExpression.text;
-    if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent))
-      return (node.propertyName ?? node.name).getText(file);
+      return undefined;
+    if (node.type === "Property")
+      return node.computed ? undefined : nodeText(source, node.key);
+    if (node.type === "RestElement") return nodeText(source, node.argument);
     return undefined;
   };
-  const visit = (node: ts.Node): void => {
-    const member = memberName(node);
+  walkAst(program, (node, ancestors) => {
+    const member = memberName(node, ancestors);
     if (member !== undefined && IMPORT_STEPS.has(member))
-      found.push(node.getText(file));
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+      found.push(nodeText(source, node));
+  });
   return found;
 };
 

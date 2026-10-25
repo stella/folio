@@ -11,7 +11,10 @@ type MintNumberingIdOptions = {
 export const createNumberingIdAllocator = (
   kind: NumberingKind,
   existingIds: Iterable<number>,
-) => {
+): {
+  reserve: (ids: Iterable<number>) => void;
+  next: () => number;
+} => {
   const allocator = createNumericIdAllocator({
     space: kind === "num" ? "numbering instance" : "abstract numbering",
     firstId: kind === "num" ? 1 : 0,

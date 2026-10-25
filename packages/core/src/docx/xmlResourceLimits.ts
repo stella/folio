@@ -1,6 +1,9 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 const MEBIBYTE = 1024 * 1024;
+
+const XmlResourceLimitErrorBase: TaggedErrorClass<"XmlResourceLimitError"> =
+  TaggedError("XmlResourceLimitError");
 
 /**
  * Shared bounds for XML parts parsed by Folio.
@@ -40,7 +43,18 @@ const MEBIBYTE = 1024 * 1024;
  * ceiling of 250 MiB, ~37M elements and well past 1.8 GB of tree while passing
  * every bound. Lower these to trade format reach for a smaller ceiling.
  */
-export const FOLIO_XML_RESOURCE_LIMITS = {
+export const FOLIO_XML_RESOURCE_LIMITS: {
+  readonly maxBytes: number;
+  readonly maxDepth: 100;
+  /** 1.68x the corpus maximum (596,668). Unchanged; a shipped bound is not loosened. */
+  readonly maxElementsPerPart: 1000000;
+  /** 3.97x the corpus maximum (630,374). */
+  readonly maxAttributesPerPart: 2500000;
+  /** 4.15x the corpus maximum (602,212). */
+  readonly maxElementsPerPackage: 2500000;
+  /** 4.69x the corpus maximum (639,110). */
+  readonly maxAttributesPerPackage: 3000000;
+} = {
   maxBytes: 128 * MEBIBYTE,
   maxDepth: 100,
   /** 1.68x the corpus maximum (596,668). Unchanged; a shipped bound is not loosened. */
@@ -72,9 +86,7 @@ type XmlResourceLimitKind =
   | "syntax";
 
 /** XML input exceeded a parser resource bound or could not be scanned safely. */
-export class XmlResourceLimitError extends TaggedError(
-  "XmlResourceLimitError",
-)<{
+export class XmlResourceLimitError extends XmlResourceLimitErrorBase<{
   message: string;
   limit: XmlResourceLimitKind;
   /** The package part being scanned, when the caller named one. */

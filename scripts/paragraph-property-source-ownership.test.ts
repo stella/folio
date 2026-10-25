@@ -2,8 +2,32 @@
 
 import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+import {
+  type CallExpression,
+  getTokenPosOfNode,
+  isCallExpression,
+  isIdentifier,
+  isPropertyAccessExpression,
+  isSpreadAssignment,
+  type Node as CompilerNode,
+  type SourceFile,
+} from "tsrs/unstable/ast";
+import {
+  API,
+  type Checker,
+  type Type,
+  TypeFlags,
+  type UnionOrIntersectionType,
+} from "tsrs/unstable/async";
+
+import {
+  createLineIndex,
+  type Node,
+  parseSourceModule,
+  walkAst,
+} from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const OWNER = "packages/core/src/docx/paragraphPropertySource.ts";
@@ -36,51 +60,59 @@ const CONTRACT_OWNER_FILES = new Set([
 ]);
 
 /**
- * `ts.sys.readDirectory` deduplicates by real path, so the workspace symlinks
- * under `packages/<name>/node_modules/@stll` shadow the packages they point at
- * and every real source is skipped as already visited. Exclude them during the
- * walk: filtering the results afterwards leaves nothing to scan.
+ * Package sources outside `node_modules`, in a stable order. The workspace
+ * symlinks under `packages/<name>/node_modules/@stll` point back at the
+ * packages, so a real path is listed once.
  */
-const packageSources = (extensions: readonly string[]): string[] =>
-  ts.sys.readDirectory(
-    path.join(REPO_ROOT, "packages"),
-    [...extensions],
-    ["**/node_modules/**"],
-  );
-
-const relativePath = (sourceFile: ts.SourceFile): string =>
-  path.relative(REPO_ROOT, sourceFile.fileName).replaceAll("\\", "/");
-
-const containsParagraph = (
-  type: ts.Type,
-  location: ts.Node,
-  checker: ts.TypeChecker,
-): boolean => {
-  if (type.isUnionOrIntersection()) {
-    return type.types.some((part) =>
-      containsParagraph(part, location, checker),
-    );
+const packageSources = (extensions: readonly string[]): string[] => {
+  const root = path.join(REPO_ROOT, "packages");
+  const seen = new Set<string>();
+  const sources: string[] = [];
+  const pattern = `**/*{${extensions.join(",")}}`;
+  for (const file of new Bun.Glob(pattern).scanSync({ cwd: root })) {
+    if (file.split("/").includes("node_modules")) continue;
+    const absolute = path.join(root, file);
+    const real = realpathSync(absolute);
+    if (seen.has(real)) continue;
+    seen.add(real);
+    sources.push(absolute);
   }
-  const discriminator = type.getProperty("type");
+  return sources.toSorted();
+};
+
+const relativePath = (fileName: string): string =>
+  path.relative(REPO_ROOT, fileName).replaceAll("\\", "/");
+
+const isUnionOrIntersection = (type: Type): type is UnionOrIntersectionType =>
+  (type.flags & (TypeFlags.Union | TypeFlags.Intersection)) !== 0;
+
+const containsParagraph = async (
+  type: Type,
+  checker: Checker,
+): Promise<boolean> => {
+  if (isUnionOrIntersection(type)) {
+    for (const part of await type.getTypes()) {
+      if (await containsParagraph(part, checker)) return true;
+    }
+    return false;
+  }
+  const discriminator = await type.getProperty("type");
   if (!discriminator) {
     return false;
   }
-  const discriminatorType = checker.getTypeOfSymbolAtLocation(
-    discriminator,
-    location,
-  );
+  const discriminatorType = await checker.getTypeOfSymbol(discriminator);
   return (
-    discriminatorType.isStringLiteral() &&
-    discriminatorType.value === "paragraph"
+    (discriminatorType.flags & TypeFlags.StringLiteral) !== 0 &&
+    Reflect.get(discriminatorType, "value") === "paragraph"
   );
 };
 
 type ParagraphProvenanceRebuild = "copy" | "setNodeMarkup" | "type.create";
 
 const paragraphProvenanceRebuild = (
-  node: ts.CallExpression,
+  node: CallExpression,
 ): ParagraphProvenanceRebuild | null => {
-  if (!ts.isPropertyAccessExpression(node.expression)) {
+  if (!isPropertyAccessExpression(node.expression)) {
     return null;
   }
   if (
@@ -93,28 +125,27 @@ const paragraphProvenanceRebuild = (
     return null;
   }
   const owner = node.expression.expression;
-  return ts.isPropertyAccessExpression(owner) && owner.name.text === "type"
+  return isPropertyAccessExpression(owner) && owner.name.text === "type"
     ? "type.create"
     : null;
 };
 
-const containsDocument = (
-  type: ts.Type,
-  location: ts.Node,
-  checker: ts.TypeChecker,
-): boolean => {
-  if (type.isUnionOrIntersection()) {
-    return type.types.some((part) => containsDocument(part, location, checker));
+const containsDocument = async (
+  type: Type,
+  checker: Checker,
+): Promise<boolean> => {
+  if (isUnionOrIntersection(type)) {
+    for (const part of await type.getTypes()) {
+      if (await containsDocument(part, checker)) return true;
+    }
+    return false;
   }
-  const packageProperty = type.getProperty("package");
+  const packageProperty = await type.getProperty("package");
   if (!packageProperty) {
     return false;
   }
-  const packageType = checker.getTypeOfSymbolAtLocation(
-    packageProperty,
-    location,
-  );
-  return packageType.getProperty("document") !== undefined;
+  const packageType = await checker.getTypeOfSymbol(packageProperty);
+  return (await packageType.getProperty("document")) !== undefined;
 };
 
 const isProductionSource = (file: string): boolean =>
@@ -134,35 +165,36 @@ type ProseDocToBlocksBindings = {
 };
 
 const importsProseDocToBlocks = (
-  sourceFile: ts.SourceFile,
+  file: string,
+  statements: readonly Node[],
 ): ProseDocToBlocksBindings => {
   const direct = new Set<string>();
   const namespaces = new Set<string>();
-  if (
-    relativePath(sourceFile).endsWith("/prosemirror/conversion/fromProseDoc.ts")
-  ) {
+  if (file.endsWith("/prosemirror/conversion/fromProseDoc.ts")) {
     direct.add("proseDocToBlocks");
   }
-  for (const statement of sourceFile.statements) {
+  for (const statement of statements) {
     if (
-      !ts.isImportDeclaration(statement) ||
-      !ts.isStringLiteral(statement.moduleSpecifier) ||
-      (!statement.moduleSpecifier.text.endsWith("/fromProseDoc") &&
-        !statement.moduleSpecifier.text.endsWith("/prosemirror/conversion"))
+      statement.type !== "ImportDeclaration" ||
+      (!statement.source.value.endsWith("/fromProseDoc") &&
+        !statement.source.value.endsWith("/prosemirror/conversion"))
     ) {
       continue;
     }
-    const namedBindings = statement.importClause?.namedBindings;
-    if (!namedBindings) {
-      continue;
-    }
-    if (ts.isNamespaceImport(namedBindings)) {
-      namespaces.add(namedBindings.name.text);
-      continue;
-    }
-    for (const element of namedBindings.elements) {
-      if ((element.propertyName ?? element.name).text === "proseDocToBlocks") {
-        direct.add(element.name.text);
+    for (const specifier of statement.specifiers) {
+      if (specifier.type === "ImportNamespaceSpecifier") {
+        namespaces.add(specifier.local.name);
+        continue;
+      }
+      if (specifier.type !== "ImportSpecifier") {
+        continue;
+      }
+      const imported =
+        specifier.imported.type === "Identifier"
+          ? specifier.imported.name
+          : specifier.imported.value;
+      if (imported === "proseDocToBlocks") {
+        direct.add(specifier.local.name);
       }
     }
   }
@@ -177,135 +209,134 @@ const proseConversionViolations = (): string[] => {
     if (!isProductionSource(file)) {
       continue;
     }
-    const sourceText = ts.sys.readFile(sourcePath);
-    if (sourceText === undefined) {
-      panic(`Cannot read ${file}.`);
-    }
+    const sourceText = readFileSync(sourcePath, "utf8");
     if (!sourceText.includes("proseDocToBlocks")) {
       continue;
     }
-    const sourceFile = ts.createSourceFile(
-      sourcePath,
-      sourceText,
-      ts.ScriptTarget.Latest,
-      true,
-      sourcePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    const { program } = parseSourceModule(sourcePath, sourceText);
+    const proseDocToBlocksBindings = importsProseDocToBlocks(
+      file,
+      program.body,
     );
-    const proseDocToBlocksBindings = importsProseDocToBlocks(sourceFile);
     if (
       proseDocToBlocksBindings.direct.size === 0 &&
       proseDocToBlocksBindings.namespaces.size === 0
     ) {
       continue;
     }
-    const visit = (node: ts.Node): void => {
+    const lineAt = createLineIndex(sourceText);
+    walkAst(program, (node) => {
+      if (node.type !== "CallExpression") return;
+      const callee = node.callee;
       const callsDirectBinding =
-        ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        proseDocToBlocksBindings.direct.has(node.expression.text);
+        callee.type === "Identifier" &&
+        proseDocToBlocksBindings.direct.has(callee.name);
       const callsNamespaceBinding =
-        ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === "proseDocToBlocks" &&
-        ts.isIdentifier(node.expression.expression) &&
-        proseDocToBlocksBindings.namespaces.has(
-          node.expression.expression.text,
-        );
+        callee.type === "MemberExpression" &&
+        !callee.computed &&
+        callee.property.type === "Identifier" &&
+        callee.property.name === "proseDocToBlocks" &&
+        callee.object.type === "Identifier" &&
+        proseDocToBlocksBindings.namespaces.has(callee.object.name);
       if (
-        ts.isCallExpression(node) &&
         (callsDirectBinding || callsNamespaceBinding) &&
         node.arguments.length < 2
       ) {
-        const { line } = sourceFile.getLineAndCharacterOfPosition(
-          node.getStart(sourceFile),
-        );
+        const { line } = lineAt(node.start);
         violations.push(
           `${file}:${String(line + 1)} converts a story without its property-source base`,
         );
       }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
+    });
   }
   return violations;
 };
 
-const cloneOwnershipViolations = (): string[] => {
+const forEachNode = async (
+  node: CompilerNode,
+  visit: (node: CompilerNode) => Promise<void>,
+): Promise<void> => {
+  await visit(node);
+  const children: CompilerNode[] = [];
+  node.forEachChild((child) => {
+    children.push(child);
+  });
+  for (const child of children) await forEachNode(child, visit);
+};
+
+const cloneOwnershipViolations = async (): Promise<string[]> => {
   const violations = new Set<string>();
   const visited = new Set<string>();
+  const api = new API({ cwd: REPO_ROOT });
+  try {
+    for (const relativeConfigPath of TYPECHECK_CONFIGS) {
+      const configPath = path.join(REPO_ROOT, relativeConfigPath);
+      const snapshot = await api.createSnapshot({
+        openProjects: [configPath],
+      });
+      const project =
+        snapshot.getConfiguredProject(configPath) ??
+        panic(`Cannot open ${relativeConfigPath}.`);
+      const { checker, program } = project;
 
-  for (const relativeConfigPath of TYPECHECK_CONFIGS) {
-    const configPath = path.join(REPO_ROOT, relativeConfigPath);
-    const config = ts.readConfigFile(configPath, ts.sys.readFile);
-    if (config.error) {
-      panic(ts.flattenDiagnosticMessageText(config.error.messageText, "\n"));
-    }
-    const parsed = ts.parseJsonConfigFileContent(
-      config.config,
-      ts.sys,
-      path.dirname(configPath),
-    );
-    const program = ts.createProgram({
-      options: parsed.options,
-      rootNames: parsed.fileNames,
-    });
-    const checker = program.getTypeChecker();
-
-    for (const sourceFile of program.getSourceFiles()) {
-      const file = relativePath(sourceFile);
-      if (visited.has(file) || file === OWNER || !isProductionSource(file)) {
-        continue;
-      }
-      visited.add(file);
-      const visit = (node: ts.Node): void => {
-        if (
-          file.startsWith("packages/core/src/") &&
-          ts.isSpreadAssignment(node) &&
-          containsParagraph(
-            checker.getTypeAtLocation(node.expression),
-            node.expression,
-            checker,
-          )
-        ) {
-          const { line } = sourceFile.getLineAndCharacterOfPosition(
-            node.getStart(sourceFile),
-          );
-          violations.add(`${file}:${String(line + 1)} spreads a Paragraph`);
+      for (const fileName of await program.getSourceFileNames()) {
+        const file = relativePath(fileName);
+        if (visited.has(file) || file === OWNER || !isProductionSource(file)) {
+          continue;
         }
-        if (
-          ts.isCallExpression(node) &&
-          ts.isIdentifier(node.expression) &&
-          node.expression.text === "structuredClone" &&
-          node.arguments.some((argument) =>
-            containsDocument(
-              checker.getTypeAtLocation(argument),
-              argument,
+        visited.add(file);
+        const sourceFile: SourceFile =
+          (await program.getSourceFile(fileName)) ??
+          panic(`Cannot read ${file}.`);
+        const lineOf = (node: CompilerNode) =>
+          sourceFile.getLineAndCharacterOfPosition(
+            getTokenPosOfNode(node, sourceFile),
+          ).line;
+        await forEachNode(sourceFile, async (node) => {
+          if (
+            file.startsWith("packages/core/src/") &&
+            isSpreadAssignment(node) &&
+            (await containsParagraph(
+              await checker.getTypeAtLocation(node.expression),
               checker,
-            ),
-          )
-        ) {
-          const { line } = sourceFile.getLineAndCharacterOfPosition(
-            node.getStart(sourceFile),
-          );
-          violations.add(
-            `${file}:${String(line + 1)} calls structuredClone on a Document`,
-          );
-        }
-        const provenanceRebuild = ts.isCallExpression(node)
-          ? paragraphProvenanceRebuild(node)
-          : null;
-        if (provenanceRebuild && PM_PARAGRAPH_PROVENANCE_FILES.has(file)) {
-          const { line } = sourceFile.getLineAndCharacterOfPosition(
-            node.getStart(sourceFile),
-          );
-          violations.add(
-            `${file}:${String(line + 1)} calls PM ${provenanceRebuild} directly`,
-          );
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(sourceFile);
+            ))
+          ) {
+            violations.add(
+              `${file}:${String(lineOf(node) + 1)} spreads a Paragraph`,
+            );
+          }
+          if (
+            isCallExpression(node) &&
+            isIdentifier(node.expression) &&
+            node.expression.text === "structuredClone"
+          ) {
+            for (const argument of node.arguments) {
+              if (
+                await containsDocument(
+                  await checker.getTypeAtLocation(argument),
+                  checker,
+                )
+              ) {
+                violations.add(
+                  `${file}:${String(lineOf(node) + 1)} calls structuredClone on a Document`,
+                );
+                break;
+              }
+            }
+          }
+          const provenanceRebuild = isCallExpression(node)
+            ? paragraphProvenanceRebuild(node)
+            : null;
+          if (provenanceRebuild && PM_PARAGRAPH_PROVENANCE_FILES.has(file)) {
+            violations.add(
+              `${file}:${String(lineOf(node) + 1)} calls PM ${provenanceRebuild} directly`,
+            );
+          }
+        });
+      }
     }
+  } finally {
+    await api.close();
   }
   return [...violations].toSorted();
 };
@@ -342,10 +373,7 @@ const scanPackageSources = (): { contract: string[]; token: string[] } => {
   const sourcePaths = packageSources([".ts", ".tsx", ".vue"]);
   for (const sourcePath of sourcePaths) {
     const file = path.relative(REPO_ROOT, sourcePath).replaceAll("\\", "/");
-    const sourceText = ts.sys.readFile(sourcePath);
-    if (sourceText === undefined) {
-      panic(`Cannot read ${file}.`);
-    }
+    const sourceText = readFileSync(sourcePath, "utf8");
     const tokenViolation = tokenOwnershipViolation(file, sourceText);
     if (tokenViolation) {
       token.push(tokenViolation);
@@ -370,7 +398,7 @@ describe("paragraph property source ownership", () => {
       ...CONTRACT_OWNER_FILES,
     ];
     expect(
-      named.filter((file) => !ts.sys.fileExists(path.join(REPO_ROOT, file))),
+      named.filter((file) => !existsSync(path.join(REPO_ROOT, file))),
     ).toEqual([]);
 
     const scanned = packageSources([".ts", ".tsx", ".vue"]).map((absolute) =>
@@ -384,40 +412,41 @@ describe("paragraph property source ownership", () => {
     ).toBeGreaterThan(100);
   });
 
-  test("recognizes every direct ProseMirror paragraph reconstruction form", () => {
-    const sourceFile = ts.createSourceFile(
-      "probe.ts",
-      [
-        "node.copy(content);",
-        "transaction.setNodeMarkup(position, undefined, attrs);",
-        "node.type.create(attrs, content, marks);",
-        "node.create(attrs);",
-      ].join("\n"),
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
-    );
-    const rebuilds: ParagraphProvenanceRebuild[] = [];
-    const visit = (node: ts.Node): void => {
-      if (ts.isCallExpression(node)) {
-        const rebuild = paragraphProvenanceRebuild(node);
-        if (rebuild) {
-          rebuilds.push(rebuild);
+  test("recognizes every direct ProseMirror paragraph reconstruction form", async () => {
+    const api = new API({ cwd: REPO_ROOT });
+    try {
+      const probe = await api.createSourceFile(
+        "probe.ts",
+        [
+          "node.copy(content);",
+          "transaction.setNodeMarkup(position, undefined, attrs);",
+          "node.type.create(attrs, content, marks);",
+          "node.create(attrs);",
+        ].join("\n"),
+      );
+      const rebuilds: ParagraphProvenanceRebuild[] = [];
+      await forEachNode(probe.sourceFile, async (node) => {
+        if (isCallExpression(node)) {
+          const rebuild = paragraphProvenanceRebuild(node);
+          if (rebuild) {
+            rebuilds.push(rebuild);
+          }
         }
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
+      });
+      await probe.dispose();
 
-    expect(rebuilds).toEqual(["copy", "setNodeMarkup", "type.create"]);
+      expect(rebuilds).toEqual(["copy", "setNodeMarkup", "type.create"]);
+    } finally {
+      await api.close();
+    }
   });
 
   test("every production story save supplies its property-source base", () => {
     expect(proseConversionViolations()).toEqual([]);
   });
 
-  test("every typed clone and paragraph markup rebuild keeps an explicit source owner", () => {
-    expect(cloneOwnershipViolations()).toEqual([]);
+  test("every typed clone and paragraph markup rebuild keeps an explicit source owner", async () => {
+    expect(await cloneOwnershipViolations()).toEqual([]);
   });
 
   test("only the provenance kernel and lifecycle boundary can reference source metadata", () => {

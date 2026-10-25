@@ -471,7 +471,11 @@ export const createTrackedPlan = ({
   document,
   revision,
   newIds,
-}: TrackedPlanOptions) => {
+}: TrackedPlanOptions): {
+  append: (input: PlannedReviewOp) => Result<void, DocumentOpRefusal>;
+  document: () => Document;
+  ops: DocumentOp[];
+} => {
   const used = usedIds(document, IDENTITY_SPACES.REVISION);
   const pool = [...new Set(newIds?.revision ?? [])].filter(
     (id) => !used.has(id) && id !== revision.id,
@@ -541,7 +545,7 @@ export const createTrackedPlan = ({
     ops.push(trimAppliedNewIds({ before, op, applied: applied.value, story }));
     return Result.ok(undefined);
   };
-  return { append, document: () => current, ops };
+  return { append, document: (): Document => current, ops };
 };
 
 type TrackedPlan = ReturnType<typeof createTrackedPlan>;

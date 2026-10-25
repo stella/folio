@@ -61,7 +61,38 @@ type NativeProposal =
 /** Native changes require a preceding, classified input event at the same state. */
 export const createCanonicalInputBoundary = (
   options: CanonicalInputOptions,
-) => {
+): {
+  reset: () => void;
+  readonly isComposing: boolean;
+  acceptComposition: (view: EditorView, transaction: Transaction) => boolean;
+  handleTextInput: (
+    view: EditorView,
+    from: number,
+    to: number,
+    text: string,
+  ) => boolean;
+  handleKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
+  handleDOMEvents: {
+    keydown: (view: EditorView, event: KeyboardEvent) => boolean;
+    compositionstart: (view: EditorView) => boolean;
+    compositionend: (view: EditorView, event: Event) => boolean;
+    mousedown: (view: EditorView) => boolean;
+    blur: (view: EditorView) => boolean;
+    beforeinput: (view: EditorView, event: InputEvent) => boolean;
+    // A native DOM proposal is valid only until this event's observer flush.
+    input: (view: EditorView) => boolean;
+    paste: (_view: EditorView, event: Event) => boolean;
+    cut: (view: EditorView, event: ClipboardEvent) => boolean;
+    drop: (_view: EditorView, event: Event) => boolean;
+  };
+  /** Returns a classified intent only; the proposed PM document is never authoritative. */
+  takeNativeProposal: (
+    state: EditorState,
+    transaction: Transaction,
+  ) => ReplaceTextInput | null;
+  refuseNativeMutation: (view: EditorView) => void;
+  commitNativeProposal: (view: EditorView, transaction: Transaction) => boolean;
+} => {
   const composition = createCanonicalComposition({
     begin: () => options.beginComposition?.() ?? true,
     end: () => options.endComposition?.(),
@@ -103,7 +134,7 @@ export const createCanonicalInputBoundary = (
     return true;
   };
 
-  const refuseNativeMutation = (view: EditorView) => {
+  const refuseNativeMutation = (view: EditorView): void => {
     if (!composition.active && proposal.type !== "refused") {
       options.refuse(
         "Unclassified native text is unavailable in this session.",
@@ -143,12 +174,12 @@ export const createCanonicalInputBoundary = (
   };
 
   return {
-    reset: () => {
+    reset: (): void => {
       proposal = { type: "idle" };
       authorizedInput = null;
       composition.reset();
     },
-    get isComposing() {
+    get isComposing(): boolean {
       return composition.active;
     },
     acceptComposition: composition.accept,
@@ -157,7 +188,7 @@ export const createCanonicalInputBoundary = (
       from: number,
       to: number,
       text: string,
-    ) => {
+    ): boolean => {
       if (composition.active || composition.pendingFinal) return false;
       const pending = proposal;
       if (
@@ -181,7 +212,7 @@ export const createCanonicalInputBoundary = (
       refuseNativeMutation(view);
       return true;
     },
-    handleKeyDown: (view: EditorView, event: KeyboardEvent) => {
+    handleKeyDown: (view: EditorView, event: KeyboardEvent): boolean => {
       if (event.isComposing || event.keyCode === 229) return false;
       beginGesture();
       if (composition.active) {
@@ -331,7 +362,7 @@ export const createCanonicalInputBoundary = (
       return true;
     },
     handleDOMEvents: {
-      keydown: (view: EditorView, event: KeyboardEvent) => {
+      keydown: (view: EditorView, event: KeyboardEvent): boolean => {
         // Mark native IME keys handled without preventing their browser default;
         // they must not fall through to PM or extension keyboard shortcuts.
         if (event.isComposing || event.keyCode === 229) return true;
@@ -367,7 +398,7 @@ export const createCanonicalInputBoundary = (
         repaint(view);
         return false;
       },
-      beforeinput: (view: EditorView, event: InputEvent) => {
+      beforeinput: (view: EditorView, event: InputEvent): boolean => {
         beginGesture(
           event.inputType === "insertFromComposition"
             ? "compositionFinal"
@@ -563,7 +594,7 @@ export const createCanonicalInputBoundary = (
         );
       },
       // A native DOM proposal is valid only until this event's observer flush.
-      input: (view: EditorView) => {
+      input: (view: EditorView): boolean => {
         if (composition.active || composition.pendingFinal) {
           composition.flushed(view);
           return false;
@@ -577,7 +608,7 @@ export const createCanonicalInputBoundary = (
         });
         return false;
       },
-      paste: (_view: EditorView, event: Event) => {
+      paste: (_view: EditorView, event: Event): boolean => {
         beginGesture();
         closeGroup();
         if (composition.active)
@@ -587,7 +618,7 @@ export const createCanonicalInputBoundary = (
           );
         return false;
       },
-      cut: (view: EditorView, event: ClipboardEvent) => {
+      cut: (view: EditorView, event: ClipboardEvent): boolean => {
         beginGesture();
         if (composition.active)
           return refuseClipboardGesture(
@@ -603,7 +634,7 @@ export const createCanonicalInputBoundary = (
           "The canonical clipboard owner is unavailable.",
         );
       },
-      drop: (_view: EditorView, event: Event) => {
+      drop: (_view: EditorView, event: Event): boolean => {
         beginGesture();
         closeGroup();
         if (composition.active)
@@ -617,7 +648,10 @@ export const createCanonicalInputBoundary = (
     /** Returns a classified intent only; the proposed PM document is never authoritative. */
     takeNativeProposal,
     refuseNativeMutation,
-    commitNativeProposal: (view: EditorView, transaction: Transaction) => {
+    commitNativeProposal: (
+      view: EditorView,
+      transaction: Transaction,
+    ): boolean => {
       const input = takeNativeProposal(view.state, transaction);
       if (!input) return false;
       options.replace(input);

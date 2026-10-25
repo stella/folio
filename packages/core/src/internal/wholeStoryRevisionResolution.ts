@@ -873,7 +873,42 @@ export const resolveWholeStory = ({
   mode,
   styleResolver,
   numbering,
-}: ResolveWholeStoryOptions) => {
+}: ResolveWholeStoryOptions): {
+  resolved: PMNode;
+  mapping: Mapping;
+  positionMap: StepMap;
+  steps: Step[];
+  changedRanges: {
+    from: number;
+    to: number;
+  }[];
+  preStructureMap: StepMap;
+  tableRanges: {
+    node: PMNode;
+    inputNode: PMNode;
+    sourceNodeSize: number;
+    position: number;
+    inputMap: StepMap;
+    positionMap: StepMap;
+    ranges: readonly { from: number; to: number }[];
+    paragraphOffsets: readonly { source: number; final: number }[];
+  }[];
+  transfers: {
+    displacedToken: string | null;
+    selectedToken: string | null;
+  }[];
+  structuralRanges: {
+    from: number;
+    to: number;
+  }[];
+  structuralMap: StepMap;
+  structural: boolean;
+  failed: boolean;
+  removedEndpointCount: number;
+  removedReferences: RemovedSectionReference[];
+  /** The boundaries removed content left standing, for the range repair. */
+  keptBoundaries: Set<PMNode>;
+} => {
   const { runsIntoTable, ...direct } = resolveStoryRevisions({
     doc,
     mode,

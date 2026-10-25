@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import { stripTypeScriptTypes } from "node:module";
 
 import { assertCanonicalInputTimersSettled, test } from "./canonicalTimerProbe";
 
@@ -9,7 +9,9 @@ import { assertCanonicalInputTimersSettled, test } from "./canonicalTimerProbe";
 const bootstrapURL = "http://localhost:4200/timer-probe";
 const bootstrapScriptURL = "http://localhost:4200/assets/bootstrap-123.js";
 const ownerURL = "http://localhost:4200/assets/input-timer-456.js";
-const ownerModule = ts.transpileModule(
+// The module uses erasable TypeScript only, so stripping types yields the
+// browser module.
+const ownerModule = stripTypeScriptTypes(
   readFileSync(
     new URL(
       "../../packages/core/src/controller/canonicalInputTimer.ts",
@@ -17,13 +19,7 @@ const ownerModule = ts.transpileModule(
     ),
     "utf8",
   ),
-  {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-  },
-).outputText;
+);
 
 test("the first assertion sees timers scheduled during document startup and reload", async ({
   page,

@@ -18,8 +18,11 @@
 
 import { onOffFromDataset } from "../../conversion/sdtAttrs";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
-export const BlockSdtExtension = createNodeExtension({
+export const BlockSdtExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "blockSdt",
   schemaNodeName: "blockSdt",
   nodeSpec: {

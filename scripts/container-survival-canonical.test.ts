@@ -10,8 +10,15 @@
  * loss for the neighbouring spelling folio really does drop.
  */
 
-import { describe, expect, test } from "bun:test";
-import ts from "typescript";
+import { afterAll, describe, expect, test } from "bun:test";
+import {
+  isIdentifier,
+  isVariableStatement,
+  type Node,
+  type SourceFile,
+  SyntaxKind,
+} from "tsrs/unstable/ast";
+import { API } from "tsrs/unstable/async";
 
 import { allSubjects } from "./container-survival-census";
 import {
@@ -124,57 +131,69 @@ describe("every canonical spelling is one a pair exercises", () => {
   });
 });
 
-const codeTokens = (source: string): string => {
-  const parsed = ts.createSourceFile(
-    "citation.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const tokens: string[] = [];
-  const visit = (node: ts.Node): void => {
-    const children = node.getChildren(parsed);
-    if (children.length > 0) {
-      for (const child of children) visit(child);
-      return;
-    }
-    if (
-      node.kind !== ts.SyntaxKind.EndOfFileToken &&
-      node.getWidth(parsed) > 0
-    ) {
-      tokens.push(node.getText(parsed));
-    }
-  };
-  visit(parsed);
-  return tokens.join("\0");
+// Citations are code fragments, not whole programs: they are tokenized with
+// the TypeScript parser's error recovery rather than parsed strictly.
+let compilerApi: API | undefined;
+afterAll(async () => {
+  await compilerApi?.close();
+});
+
+const withSourceFile = async <T>(
+  fileName: string,
+  source: string,
+  read: (parsed: SourceFile) => T,
+): Promise<T> => {
+  compilerApi ??= new API({ cwd: import.meta.dir });
+  const retained = await compilerApi.createSourceFile(fileName, source);
+  try {
+    return read(retained.sourceFile);
+  } finally {
+    await retained.dispose();
+  }
 };
 
-const citationMatches = (
+const codeTokens = (source: string): Promise<string> =>
+  withSourceFile("citation.ts", source, (parsed) => {
+    const tokens: string[] = [];
+    const visit = (node: Node): void => {
+      const children = node.getChildren(parsed);
+      if (children.length > 0) {
+        for (const child of children) visit(child);
+        return;
+      }
+      if (
+        node.kind !== SyntaxKind.EndOfFileToken &&
+        node.getWidth(parsed) > 0
+      ) {
+        tokens.push(node.getText(parsed));
+      }
+    };
+    visit(parsed);
+    return tokens.join("\0");
+  });
+
+const citationMatches = async (
   source: string,
   { declaration, writes }: { declaration: string; writes: string },
-): boolean => {
-  const parsed = ts.createSourceFile(
-    "serializer.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const declarations = parsed.statements.flatMap((statement) =>
-    ts.isVariableStatement(statement)
-      ? [...statement.declarationList.declarations]
-      : [],
-  );
-  const owner = declarations.find(
-    (node) => ts.isIdentifier(node.name) && node.name.text === declaration,
-  );
-  if (owner === undefined) return false;
-  return `\0${codeTokens(owner.getText(parsed))}\0`.includes(
-    `\0${codeTokens(writes)}\0`,
+): Promise<boolean> => {
+  const ownerText = await withSourceFile("serializer.ts", source, (parsed) => {
+    const declarations = parsed.statements.flatMap((statement) =>
+      isVariableStatement(statement)
+        ? [...statement.declarationList.declarations]
+        : [],
+    );
+    return declarations
+      .find((node) => isIdentifier(node.name) && node.name.text === declaration)
+      ?.getText(parsed);
+  });
+  if (ownerText === undefined) return false;
+  return `\0${await codeTokens(ownerText)}\0`.includes(
+    `\0${await codeTokens(writes)}\0`,
   );
 };
 
 describe("every canonical spelling cites the declaration that performs it", () => {
-  test("citations survive formatting and reject a different writer or commented-out write", () => {
+  test("citations survive formatting and reject a different writer or commented-out write", async () => {
     const citation = {
       declaration: "INDENT_LEFT",
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
@@ -187,19 +206,25 @@ describe("every canonical spelling cites the declaration that performs it", () =
       for (const spacing of ["", " ", "\n  ", "/* spacing */"]) {
         const write = `TRANSITIONAL_NAME_BY_STRICT_NAME${spacing}[${spacing}"CT_Ind @start"${spacing}]`;
         expect(
-          citationMatches(`${prefix}const INDENT_LEFT = ${write};`, citation),
+          await citationMatches(
+            `${prefix}const INDENT_LEFT = ${write};`,
+            citation,
+          ),
         ).toBe(true);
         expect(
-          citationMatches(`${prefix}const INDENT_RIGHT = ${write};`, citation),
+          await citationMatches(
+            `${prefix}const INDENT_RIGHT = ${write};`,
+            citation,
+          ),
         ).toBe(false);
         expect(
-          citationMatches(
+          await citationMatches(
             `${prefix}const INDENT_LEFT = "left"; // ${write}`,
             citation,
           ),
         ).toBe(false);
         expect(
-          citationMatches(
+          await citationMatches(
             `${prefix}const INDENT_LEFT = /* ${write} */ "left";`,
             citation,
           ),
@@ -207,7 +232,7 @@ describe("every canonical spelling cites the declaration that performs it", () =
       }
     }
     expect(
-      citationMatches(
+      await citationMatches(
         'const INDENT_LEFT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"];',
         citation,
       ),
@@ -217,13 +242,13 @@ describe("every canonical spelling cites the declaration that performs it", () =
       writes: "return value ? `<w:${name}/>`",
     };
     expect(
-      citationMatches(
+      await citationMatches(
         'const serializeOnOffElement = (value, name) => { return value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`; };',
         templateCitation,
       ),
     ).toBe(true);
     expect(
-      citationMatches(
+      await citationMatches(
         'const serializeOnOffElement = (value, name) => { return value ? `<w:${name} w:val="0"/>` : `<w:${name}/>`; };',
         templateCitation,
       ),
@@ -238,7 +263,7 @@ describe("every canonical spelling cites the declaration that performs it", () =
         const source = await Bun.file(
           new URL(`../${file}`, import.meta.url),
         ).text();
-        if (!citationMatches(source, { declaration, writes })) {
+        if (!(await citationMatches(source, { declaration, writes }))) {
           stale.push(
             `${describeEntry(entry)}: ${file}:${declaration} does not write ${writes}`,
           );

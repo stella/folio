@@ -7,7 +7,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties } from "react";
+import type {
+  CSSProperties,
+  ForwardRefExoticComponent,
+  RefAttributes,
+} from "react";
 
 import { panic } from "better-result";
 /**
@@ -171,10 +175,9 @@ const HIDDEN_HOST_STYLES: CSSProperties = {
 /**
  * HiddenProseMirror - Off-screen ProseMirror editor for keyboard input
  */
-export const HiddenProseMirror = forwardRef<
-  HiddenProseMirrorRef,
-  HiddenProseMirrorProps
->((props, ref) => {
+export const HiddenProseMirror: ForwardRefExoticComponent<
+  HiddenProseMirrorProps & RefAttributes<HiddenProseMirrorRef>
+> = forwardRef<HiddenProseMirrorRef, HiddenProseMirrorProps>((props, ref) => {
   const {
     document,
     documentIdentity,

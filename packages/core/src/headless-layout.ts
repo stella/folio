@@ -30,7 +30,7 @@
  * wrong provider produces a plausible layout that is wrong everywhere.
  */
 
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 import { createHash } from "node:crypto";
 import type { Node as PMNode } from "prosemirror-model";
 
@@ -128,7 +128,10 @@ export type HeadlessLayoutGap = {
   readonly detail: string;
 };
 
-export class HeadlessLayoutError extends TaggedError("HeadlessLayoutError")<{
+const HeadlessLayoutErrorBase: TaggedErrorClass<"HeadlessLayoutError"> =
+  TaggedError("HeadlessLayoutError");
+
+export class HeadlessLayoutError extends HeadlessLayoutErrorBase<{
   message: string;
   cause?: unknown;
 }> {}

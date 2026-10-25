@@ -1,4 +1,11 @@
-import { panic, Result, TaggedError } from "better-result";
+import {
+  type Err,
+  type Ok,
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import {
   AllSelection,
@@ -75,6 +82,7 @@ import {
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import type {
   BlockContent,
+  Comment,
   Document,
   Paragraph,
   StyleDefinitions,
@@ -89,9 +97,10 @@ import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import { mapTocSelection } from "./canonicalTocSelection";
 
-export class CanonicalSessionError extends TaggedError(
-  "CanonicalSessionError",
-)<{
+const CanonicalSessionErrorBase: TaggedErrorClass<"CanonicalSessionError"> =
+  TaggedError("CanonicalSessionError");
+
+export class CanonicalSessionError extends CanonicalSessionErrorBase<{
   message: string;
   gap: CanonicalGap;
   reason: "refused" | "noChange";
@@ -901,7 +910,15 @@ export const publishCanonicalProjection = ({
   state,
   commit,
   session,
-}: PublishCanonicalProjectionOptions) => {
+}: PublishCanonicalProjectionOptions):
+  | Err<never, CanonicalSessionError>
+  | Ok<
+      {
+        state: EditorState;
+        transactions: readonly Transaction[];
+      },
+      never
+    > => {
   if (!isCanonicalProjectionTransaction(commit.transaction, session))
     return refuse("The staged canonical projection is unauthorized.");
   const applied = Result.try({
@@ -1028,7 +1045,7 @@ class CanonicalSession {
   }
 
   /** Render only the committed comment projection while provisional IME blocks document snapshots. */
-  getCommittedComments() {
+  getCommittedComments(): Comment[] {
     return structuredClone(survivingComments(this.currentDocument));
   }
 

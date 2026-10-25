@@ -1,10 +1,11 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
-class OoxmlIdSpaceExhaustedError extends TaggedError(
-  "OoxmlIdSpaceExhaustedError",
-)<{
+const OoxmlIdSpaceExhaustedErrorBase: TaggedErrorClass<"OoxmlIdSpaceExhaustedError"> =
+  TaggedError("OoxmlIdSpaceExhaustedError");
+
+class OoxmlIdSpaceExhaustedError extends OoxmlIdSpaceExhaustedErrorBase<{
   message: string;
   space: string;
 }> {}

@@ -677,7 +677,7 @@ export type UnderlineDecorationCss = {
  * It is also what an underline CSS cannot spell parses back as; see
  * `underlineStyleFromCssDecoration`.
  */
-export const PLAIN_UNDERLINE = "single" satisfies UnderlineStyle;
+export const PLAIN_UNDERLINE: "single" = "single" satisfies UnderlineStyle;
 
 /**
  * Every `ST_Underline` member's CSS line. The one table: the ProseMirror mark's
@@ -698,7 +698,26 @@ export const PLAIN_UNDERLINE = "single" satisfies UnderlineStyle;
  * weight only, which the thickness carries, so the line they name is their
  * plain counterpart's.
  */
-export const UNDERLINE_DECORATION_STYLES = {
+export const UNDERLINE_DECORATION_STYLES: {
+  readonly none: undefined;
+  readonly single: "solid";
+  readonly words: "solid";
+  readonly double: "double";
+  readonly thick: "solid";
+  readonly dotted: "dotted";
+  readonly dottedHeavy: "dotted";
+  readonly dash: "dashed";
+  readonly dashedHeavy: "dashed";
+  readonly dashLong: "dashed";
+  readonly dashLongHeavy: "dashed";
+  readonly dotDash: "dashed";
+  readonly dashDotHeavy: "dashed";
+  readonly dotDotDash: "dashed";
+  readonly dashDotDotHeavy: "dashed";
+  readonly wave: "wavy";
+  readonly wavyHeavy: "wavy";
+  readonly wavyDouble: "double";
+} = {
   none: undefined,
   single: "solid",
   words: "solid",

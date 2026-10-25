@@ -1,7 +1,10 @@
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
 import type { PublicFlushRequest } from "./editor-lease";
 import type { PublicLockHolder } from "./lock";
+
+const FolioCliErrorBase: TaggedErrorClass<"FolioCliError"> =
+  TaggedError("FolioCliError");
 
 /**
  * Process exit classes. The numbers match the stella command line's table so
@@ -112,7 +115,7 @@ export type PublicErrorDetails = {
  * step (re-read, pass a flag); `details` carries structured context such as
  * the skipped operations of a refused batch.
  */
-export class FolioCliError extends TaggedError("FolioCliError")<{
+export class FolioCliError extends FolioCliErrorBase<{
   code: FolioCliErrorCode;
   message: string;
   hint?: string;

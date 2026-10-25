@@ -1,3 +1,6 @@
+const SectionViewErrorBase: TaggedErrorClass<"SectionViewError"> =
+  TaggedError("SectionViewError");
+
 /**
  * Finding and replacing paragraphs in a story.
  *
@@ -7,7 +10,12 @@
  * on the path to it, so every other block is `===` to its input.
  */
 
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 
 import type {
   BlockContent,
@@ -322,7 +330,7 @@ const deriveSections = (
 };
 
 /** A section edit that cannot preserve the canonical section contract. */
-export class SectionViewError extends TaggedError("SectionViewError")<{
+export class SectionViewError extends SectionViewErrorBase<{
   message: string;
   reason:
     | typeof DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY

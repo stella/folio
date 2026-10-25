@@ -2,8 +2,8 @@ import { Result, TaggedError } from "better-result";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
 
+import { parseSourceModule, walkAst } from "../scripts/lib/oxc-ast";
 import type { PinnedSeed } from "./property-testing";
 
 /**
@@ -119,23 +119,23 @@ export const parseSeedTitles = (source: string, file: string): SeedRegistry => {
   const result = Result.try(() => JSON.parse(source));
   if (result.isErr()) return invalid(`Invalid seed JSON in ${file}`);
   const parsed: unknown = result.value;
-  const ast = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.JSON,
-  );
-  const visit = (node: ts.Node): void => {
-    if (ts.isObjectLiteralExpression(node)) {
+  // Valid JSON is a valid parenthesized JavaScript expression.
+  const { program } = parseSourceModule(file, `(${source})`);
+  walkAst(program, (node) => {
+    if (node.type === "ObjectExpression") {
       const keys = new Set<string>();
       for (const property of node.properties) {
         if (
-          !ts.isPropertyAssignment(property) ||
-          !ts.isStringLiteral(property.name)
+          property.type !== "Property" ||
+          property.kind !== "init" ||
+          property.method ||
+          property.shorthand ||
+          property.computed ||
+          property.key.type !== "Literal" ||
+          typeof property.key.value !== "string"
         )
           return invalid(`Invalid seed object in ${file}`);
-        const key = property.name.text;
+        const key = property.key.value;
         if (keys.has(key))
           return invalid(
             `Duplicate seed key ${JSON.stringify(key)} in ${file}`,
@@ -143,9 +143,7 @@ export const parseSeedTitles = (source: string, file: string): SeedRegistry => {
         keys.add(key);
       }
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(ast);
+  });
   if (!isRecord(parsed))
     return invalid(`Seed titles must be an object in ${file}`);
   const entries: [string, readonly PinnedSeed[]][] = [];

@@ -15,10 +15,12 @@ import { Plugin } from "prosemirror-state";
 import { singletonManager } from "../../schema";
 import { createExtension } from "../create";
 import { Priority } from "../types";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
 import { createBidiShortcutController } from "./bidiShortcutController";
 
-export const BidiShortcutExtension = createExtension({
+export const BidiShortcutExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => Extension = createExtension({
   name: "bidiShortcut",
   priority: Priority.High,
   onSchemaReady(_ctx: ExtensionContext): ExtensionRuntime {

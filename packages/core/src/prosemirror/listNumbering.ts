@@ -585,7 +585,7 @@ export const setNumberingValue = (value: number): Command =>
   );
 
 /** *Restart at 1*: the selected item starts its list over at one. */
-export const restartNumbering = withCanonicalCommand(
+export const restartNumbering: Command = withCanonicalCommand(
   (state, dispatch) => setNumberingValue(1)(state, dispatch),
   () => [{ type: "restartNumbering" }],
 );
@@ -624,7 +624,7 @@ const previousListOfKind = (
  * join the nearest earlier list of the same kind, so their numbers carry on
  * from it. Not applicable when no such list precedes the item.
  */
-export const continueNumbering = withCanonicalCommand(
+export const continueNumbering: Command = withCanonicalCommand(
   (state, dispatch) => {
     const selected = selectedListParagraph(state);
     const numbering = getDocumentNumbering(state);
@@ -660,7 +660,9 @@ export type ListNumberingMenuState =
   | { readonly type: "none" }
   | { readonly type: "listItem"; readonly canContinue: boolean };
 
-export const NO_LIST_NUMBERING_MENU = {
+export const NO_LIST_NUMBERING_MENU: {
+  readonly type: "none";
+} = {
   type: "none",
 } as const satisfies ListNumberingMenuState;
 

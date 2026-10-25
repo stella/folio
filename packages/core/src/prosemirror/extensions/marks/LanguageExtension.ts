@@ -1,8 +1,11 @@
 import { expectLanguageMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
 /** Preserve OOXML `w:lang` and expose its primary language to the editing DOM. */
-export const LanguageExtension = createMarkExtension({
+export const LanguageExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "language",
   schemaMarkName: "language",
   markSpec: {

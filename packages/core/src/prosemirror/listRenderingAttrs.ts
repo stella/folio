@@ -22,7 +22,26 @@ export type ListRenderingAttrField = Exclude<
   "level" | "numId"
 >;
 
-export const LIST_RENDERING_ATTR_BY_FIELD = {
+export const LIST_RENDERING_ATTR_BY_FIELD: {
+  readonly marker: "listMarker";
+  readonly markerTemplate: "listMarkerTemplate";
+  readonly foldedMarkerSuffix: "listFoldedMarkerSuffix";
+  readonly isBullet: "listIsBullet";
+  readonly isLegal: "listIsLegal";
+  readonly numFmt: "listNumFmt";
+  readonly markerHidden: "listMarkerHidden";
+  readonly markerFormatting: "listMarkerFormatting";
+  readonly markerAlignment: "listMarkerAlignment";
+  readonly markerAllCaps: "listMarkerAllCaps";
+  readonly markerSuffix: "listMarkerSuffix";
+  readonly levelTabs: "listLevelTabs";
+  readonly levelNumFmts: "listLevelNumFmts";
+  readonly levelStarts: "listLevelStarts";
+  readonly abstractNumId: "listAbstractNumId";
+  readonly startOverride: "listStartOverride";
+  readonly implicitChildLevelAdvances: "listImplicitChildLevelAdvances";
+  readonly markerSecondSlotOffsetTwips: "listMarkerSecondSlotOffsetTwips";
+} = {
   marker: "listMarker",
   markerTemplate: "listMarkerTemplate",
   foldedMarkerSuffix: "listFoldedMarkerSuffix",

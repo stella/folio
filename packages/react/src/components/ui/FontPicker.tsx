@@ -3,7 +3,7 @@
  * Each item rendered in its own font for preview.
  */
 
-import { useCallback, useMemo } from "react";
+import { type JSX, useCallback, useMemo } from "react";
 
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -105,7 +105,7 @@ export function FontPicker({
   disabled = false,
   placeholder = "Font",
   width = 100,
-}: FontPickerProps) {
+}: FontPickerProps): JSX.Element {
   const {
     Root: Select,
     Trigger: SelectTrigger,

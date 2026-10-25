@@ -64,7 +64,7 @@ export function Toolbar({
   onInsertTOC,
   onRefocusEditor,
   ...restProps
-}: ToolbarProps) {
+}: ToolbarProps): React.JSX.Element {
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const handleToolbarMouseDown = useCallback((e: React.MouseEvent) => {

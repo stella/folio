@@ -22,7 +22,7 @@
  * omission.
  */
 
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { survivingComments } from "@stll/docx-core/ops";
 
@@ -50,7 +50,10 @@ import { writePdf } from "./pdf/writePdf";
 import type { PdfSubstitution, PdfUnencodable } from "./pdf/writePdf";
 import type { DocxInput } from "./utils/docxInput";
 
-export class ExportPdfError extends TaggedError("ExportPdfError")<{
+const ExportPdfErrorBase: TaggedErrorClass<"ExportPdfError"> =
+  TaggedError("ExportPdfError");
+
+export class ExportPdfError extends ExportPdfErrorBase<{
   message: string;
   cause?: unknown;
 }> {}

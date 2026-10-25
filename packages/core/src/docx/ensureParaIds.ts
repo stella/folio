@@ -1,3 +1,6 @@
+const EnsureParaIdsErrorBase: TaggedErrorClass<"EnsureParaIdsError"> =
+  TaggedError("EnsureParaIdsError");
+
 /**
  * Headless `w14:paraId` normalization for a `.docx` buffer.
  *
@@ -53,7 +56,7 @@
  *   When normalization would rewrite the package, it fails unless the caller
  *   explicitly allows signature invalidation after warning the user.
  */
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import JSZip from "jszip";
 
 import { writeZipPart } from "@stll/docx-core/zip";
@@ -84,7 +87,7 @@ export const ENSURE_PARA_IDS_REASONS = {
 } as const;
 
 /** A malformed or unsupported package prevented paragraph-ID normalization. */
-export class EnsureParaIdsError extends TaggedError("EnsureParaIdsError")<{
+export class EnsureParaIdsError extends EnsureParaIdsErrorBase<{
   message: string;
   reason: (typeof ENSURE_PARA_IDS_REASONS)[keyof typeof ENSURE_PARA_IDS_REASONS];
   cause?: unknown;

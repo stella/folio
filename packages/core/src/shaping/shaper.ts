@@ -18,7 +18,7 @@
  * line into runs that each read one way is what shaping needs first.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import initializeShaper, {
   resolveBidi as resolveBidiInWasm,
@@ -112,7 +112,10 @@ export type Shaper = {
   readonly resolveBidi: (request: ResolveBidiRequest) => BidiLine;
 };
 
-export class ShaperError extends TaggedError("ShaperError")<{
+const ShaperErrorBase: TaggedErrorClass<"ShaperError"> =
+  TaggedError("ShaperError");
+
+export class ShaperError extends ShaperErrorBase<{
   message: string;
   cause?: unknown;
 }> {}

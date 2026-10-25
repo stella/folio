@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 import { createHash } from "node:crypto";
 
 import { decodeText } from "../../utils/textEncoding";
@@ -11,13 +11,26 @@ import type { DocxArchiveEntry, DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
 
 export const FOLIO_DOCX_PACKAGE_INSPECTION_VERSION = 1 as const;
-export const FOLIO_DOCX_PACKAGE_INSPECTION_DEFAULTS = Object.freeze({
+export const FOLIO_DOCX_PACKAGE_INSPECTION_DEFAULTS: Readonly<{
+  readonly maxXmlParts: 16;
+  readonly maxXmlPartBytes: number;
+  readonly maxXmlTotalBytes: number;
+}> = Object.freeze({
   maxXmlParts: 16,
   maxXmlPartBytes: 8 * 1024 * 1024,
   maxXmlTotalBytes: 16 * 1024 * 1024,
 } as const);
 
-export const FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES = Object.freeze([
+export const FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES: readonly [
+  "invalid-limits",
+  "too-many-xml-parts",
+  "duplicate-xml-part",
+  "part-not-found",
+  "part-not-xml",
+  "xml-part-too-large",
+  "xml-total-too-large",
+  "xml-decode-failed",
+] = Object.freeze([
   "invalid-limits",
   "too-many-xml-parts",
   "duplicate-xml-part",
@@ -31,9 +44,10 @@ export const FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES = Object.freeze([
 export type FolioDocxPackageInspectionErrorCode =
   (typeof FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES)[number];
 
-export class FolioDocxPackageInspectionError extends TaggedError(
-  "FolioDocxPackageInspectionError",
-)<{
+const FolioDocxPackageInspectionErrorBase: TaggedErrorClass<"FolioDocxPackageInspectionError"> =
+  TaggedError("FolioDocxPackageInspectionError");
+
+export class FolioDocxPackageInspectionError extends FolioDocxPackageInspectionErrorBase<{
   message: string;
   code: FolioDocxPackageInspectionErrorCode;
   part?: string;

@@ -1,7 +1,22 @@
 /** DOM scroll writes belong to the shared editor scroll-root boundary. */
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import ts from "typescript";
+import type { TSType } from "oxc-parser";
+
+import {
+  bindingElements,
+  collectSyntaxTree,
+  createLineIndex,
+  isBlock,
+  isFunctionLike,
+  type Node,
+  nodeText,
+  parameterParts,
+  parametersOf,
+  parseLikeTypeScript,
+  propertyNameText,
+  walkAst,
+} from "./lib/oxc-ast";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const SCROLL_WRITER = "packages/core/src/paged-layout/editorScrollRoot.ts";
@@ -27,51 +42,41 @@ const parseSource = (file: string, text: string) => {
             : match.replace(/[^\n]/gu, " "),
       )
     : text;
-  return ts.createSourceFile(
+  const { program } = parseLikeTypeScript(
     file,
     script,
-    ts.ScriptTarget.Latest,
-    true,
-    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    file.endsWith(".tsx") ? "tsx" : "ts",
   );
+  return { program, text: script, ...collectSyntaxTree(program) };
 };
+type Source = ReturnType<typeof parseSource>;
 
-const propertyName = (node: ts.Node): string | undefined => {
-  if (ts.isPropertyAccessExpression(node)) return node.name.text;
+const propertyName = (node: Node): string | undefined => {
+  if (node.type !== "MemberExpression") return undefined;
+  if (!node.computed)
+    return node.property.type === "PrivateIdentifier"
+      ? `#${node.property.name}`
+      : node.property.name;
   if (
-    ts.isElementAccessExpression(node) &&
-    ts.isStringLiteral(node.argumentExpression)
-  ) {
-    return node.argumentExpression.text;
-  }
+    node.property.type === "Literal" &&
+    typeof node.property.value === "string"
+  )
+    return node.property.value;
   return undefined;
 };
 
-const receiver = (node: ts.Node): ts.Expression | undefined =>
-  ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)
-    ? node.expression
-    : undefined;
+const receiver = (node: Node): Node | undefined =>
+  node.type === "MemberExpression" ? node.object : undefined;
 
-const scopeOf = (node: ts.Node): ts.Node => {
-  let scope = node.parent;
-  while (
-    !ts.isSourceFile(scope) &&
-    !ts.isBlock(scope) &&
-    !ts.isFunctionLike(scope)
-  ) {
-    scope = scope.parent;
-  }
-  return scope;
-};
-
-const ancestors = (node: ts.Node): ts.Node[] => {
-  const result: ts.Node[] = [];
-  let current: ts.Node | undefined = node;
-  while (current) {
-    result.push(current);
-    current = current.parent;
-  }
-  return result;
+/** A TypeScript variable, parameter or binding element with an identifier name. */
+type Binding = {
+  readonly kind: "variable" | "parameter" | "element";
+  readonly node: Node;
+  readonly name: string;
+  readonly type: TSType | undefined;
+  readonly initializer: Node | undefined;
+  /** An element's written key, as TypeScript's `propertyName.getText()`. */
+  readonly key: string | undefined;
 };
 
 type ScrollScanOptions = {
@@ -87,86 +92,139 @@ const scrollViolations = ({
 }: ScrollScanOptions) => {
   if (file === SCROLL_WRITER) return { violations: [], outlineWrites: 0 };
   const source = parseSource(file, text);
-  const bindings: Array<
-    ts.VariableDeclaration | ts.ParameterDeclaration | ts.BindingElement
-  > = [];
-  const collect = (node: ts.Node): void => {
-    if (
-      ts.isVariableDeclaration(node) ||
-      ts.isParameter(node) ||
-      ts.isBindingElement(node)
-    )
-      bindings.push(node);
-    ts.forEachChild(node, collect);
+  const { nodes, parentOf } = source;
+  const lineOf = createLineIndex(source.text);
+  const scopeOf = (node: Node): Node => {
+    let scope = parentOf(node);
+    while (
+      scope !== undefined &&
+      scope.type !== "Program" &&
+      !isBlock(scope) &&
+      !isFunctionLike(scope)
+    ) {
+      scope = parentOf(scope);
+    }
+    return scope ?? source.program;
   };
-  collect(source);
+  const ancestors = (node: Node): Node[] => {
+    const result: Node[] = [];
+    let current: Node | undefined = node;
+    while (current) {
+      result.push(current);
+      current = parentOf(current);
+    }
+    return result;
+  };
 
-  const bindingOf = (node: ts.Identifier) => {
+  const bindings: Binding[] = [];
+  const bindPattern = (pattern: Node): void => {
+    for (const element of bindingElements(pattern)) {
+      if (element.name.type === "Identifier")
+        bindings.push({
+          kind: "element",
+          node: element.node,
+          name: element.name.name,
+          type: undefined,
+          initializer: element.initializer,
+          key: propertyNameText(source.text, element),
+        });
+      else bindPattern(element.name);
+    }
+  };
+  const bind = (
+    kind: "variable" | "parameter",
+    node: Node,
+    declared: { name: Node; type: TSType | undefined },
+    initializer: Node | undefined,
+  ): void => {
+    if (declared.name.type === "Identifier")
+      bindings.push({
+        kind,
+        node,
+        name: declared.name.name,
+        type: declared.type,
+        initializer,
+        key: undefined,
+      });
+    else bindPattern(declared.name);
+  };
+  for (const node of nodes) {
+    if (node.type === "VariableDeclarator")
+      bind("variable", node, parameterParts(node.id), node.init ?? undefined);
+    // TypeScript declares a catch clause's variable like any other.
+    if (node.type === "CatchClause" && node.param)
+      bind("variable", node.param, parameterParts(node.param), undefined);
+    if (isFunctionLike(node))
+      for (const parameter of parametersOf(node)) {
+        const parts = parameterParts(parameter);
+        bind("parameter", parameter, parts, parts.initializer);
+      }
+  }
+
+  const bindingOf = (node: Node & { name: string }) => {
     const scopes = ancestors(node);
     return bindings
       .filter(
         (candidate) =>
-          ts.isIdentifier(candidate.name) &&
-          candidate.name.text === node.text &&
-          candidate.pos < node.pos &&
-          scopes.includes(scopeOf(candidate)),
+          candidate.name === node.name &&
+          candidate.node.start < node.start &&
+          scopes.includes(scopeOf(candidate.node)),
       )
       .sort(
         (left, right) =>
-          scopes.indexOf(scopeOf(left)) - scopes.indexOf(scopeOf(right)) ||
-          right.pos - left.pos,
+          scopes.indexOf(scopeOf(left.node)) -
+            scopes.indexOf(scopeOf(right.node)) ||
+          right.node.start - left.node.start,
       )
       .at(0);
   };
-  const hasTransactionReturn = (node: ts.Node): boolean => {
-    if (ts.isFunctionTypeNode(node))
-      return node.type.getText(source) === "Transaction";
-    return (
-      ts.forEachChild(
-        node,
-        (child) => hasTransactionReturn(child) || undefined,
-      ) ?? false
-    );
+  const hasTransactionReturn = (type: Node): boolean => {
+    let found = false;
+    walkAst(type, (node) => {
+      if (found) return false;
+      if (node.type !== "TSFunctionType") return true;
+      found =
+        nodeText(source.text, node.returnType.typeAnnotation) === "Transaction";
+      return false;
+    });
+    return found;
   };
-  const isTransaction = (
-    node: ts.Expression,
-    seen = new Set<ts.Node>(),
-  ): boolean => {
+  const isTransaction = (node: Node, seen = new Set<Node>()): boolean => {
     if (seen.has(node)) return false;
     seen.add(node);
-    if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) {
+    if (
+      node.type === "ParenthesizedExpression" ||
+      node.type === "TSNonNullExpression"
+    ) {
       return isTransaction(node.expression, seen);
     }
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
-    ) {
+    if (node.type === "LogicalExpression" && node.operator === "??") {
       return isTransaction(node.left, seen) && isTransaction(node.right, seen);
     }
     if (propertyName(node) === "tr") return true;
-    if (ts.isCallExpression(node)) {
-      const object = receiver(node.expression);
+    if (node.type === "CallExpression") {
+      const object = receiver(node.callee);
       if (object) return isTransaction(object, seen);
-      if (!ts.isIdentifier(node.expression)) return false;
-      if (transactionFunctions.has(node.expression.text)) return true;
-      const binding = bindingOf(node.expression);
+      if (node.callee.type !== "Identifier") return false;
+      if (transactionFunctions.has(node.callee.name)) return true;
+      const binding = bindingOf(node.callee);
       return (
         binding !== undefined &&
-        !ts.isBindingElement(binding) &&
+        binding.kind !== "element" &&
         binding.type !== undefined &&
         hasTransactionReturn(binding.type)
       );
     }
-    if (!ts.isIdentifier(node)) return false;
+    if (node.type !== "Identifier") return false;
     const binding = bindingOf(node);
     if (!binding) return false;
-    if (ts.isBindingElement(binding)) {
-      return (
-        (binding.propertyName?.getText(source) ??
-          binding.name.getText(source)) === "tr"
-      );
+    if (binding.kind === "element") {
+      return (binding.key ?? binding.name) === "tr";
     }
-    if (binding.type && /\bTransaction\b/u.test(binding.type.getText(source)))
+    if (
+      binding.type &&
+      /\bTransaction\b/u.test(nodeText(source.text, binding.type))
+    )
       return true;
     return (
       binding.initializer !== undefined &&
@@ -174,94 +232,94 @@ const scrollViolations = ({
     );
   };
 
-  const isOutlineListWrite = (node: ts.BinaryExpression): boolean => {
+  const isOutlineListWrite = (
+    node: Node & { type: "AssignmentExpression" },
+  ): boolean => {
     if (!(file in OUTLINE_LISTS) || propertyName(node.left) !== "scrollTop")
       return false;
     const expectedRef = Object.entries(OUTLINE_LISTS)
       .find(([name]) => name === file)
       ?.at(1);
     const object = receiver(node.left);
-    if (!object || object.getText(source) !== "list") return false;
+    if (!object || nodeText(source.text, object) !== "list") return false;
     if (
       ![
         "list.scrollTop = top",
         "list.scrollTop = bottom - list.clientHeight",
-      ].includes(node.getText(source))
+      ].includes(nodeText(source.text, node))
     ) {
       return false;
     }
-    const callback = ancestors(node).find((ancestor) =>
-      ts.isArrowFunction(ancestor),
+    const callback = ancestors(node).find(
+      (ancestor) => ancestor.type === "ArrowFunctionExpression",
     );
     if (
       !callback ||
-      !ts.isArrowFunction(callback) ||
-      !ts.isBlock(callback.body)
+      callback.type !== "ArrowFunctionExpression" ||
+      callback.body.type !== "BlockStatement"
     )
       return false;
-    const call = callback.parent;
-    if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression))
+    const call = parentOf(callback);
+    if (call?.type !== "CallExpression" || call.callee.type !== "Identifier")
       return false;
+    const argumentText = (index: number) => {
+      const argument = call.arguments.at(index);
+      return argument === undefined
+        ? undefined
+        : nodeText(source.text, argument);
+    };
     const isReact =
-      call.expression.text === "useEffect" &&
-      call.arguments.at(1)?.getText(source) === "[activeIndex, presentation]";
+      call.callee.name === "useEffect" &&
+      argumentText(1) === "[activeIndex, presentation]";
     const isVue =
-      call.expression.text === "watch" &&
-      call.arguments.at(0)?.getText(source) ===
-        "[activeIndex, () => props.presentation]";
+      call.callee.name === "watch" &&
+      argumentText(0) === "[activeIndex, () => props.presentation]";
     if (!isReact && !isVue) return false;
-    return callback.body.statements.some(
+    return callback.body.body.some(
       (statement) =>
-        ts.isVariableStatement(statement) &&
-        statement.declarationList.declarations.some(
+        statement.type === "VariableDeclaration" &&
+        statement.declarations.some(
           (declaration) =>
-            ts.isIdentifier(declaration.name) &&
-            declaration.name.text === "list" &&
-            declaration.initializer?.getText(source) === expectedRef,
+            declaration.id.type === "Identifier" &&
+            declaration.id.name === "list" &&
+            declaration.init !== null &&
+            nodeText(source.text, declaration.init) === expectedRef,
         ),
     );
   };
 
   const violations: string[] = [];
   let outlineWrites = 0;
-  const report = (node: ts.Node): void => {
-    const { line } = source.getLineAndCharacterOfPosition(
-      node.getStart(source),
-    );
-    violations.push(`${file}:${line + 1}: ${node.getText(source)}`);
+  const report = (node: Node): void => {
+    const { line } = lineOf(node.start);
+    violations.push(`${file}:${line + 1}: ${nodeText(source.text, node)}`);
   };
-  const visit = (node: ts.Node): void => {
+  for (const node of nodes) {
     if (
-      ts.isCallExpression(node) &&
-      METHODS.has(propertyName(node.expression) ?? "")
+      node.type === "CallExpression" &&
+      METHODS.has(propertyName(node.callee) ?? "")
     ) {
-      const object = receiver(node.expression);
+      const object = receiver(node.callee);
       const transactionScroll =
-        propertyName(node.expression) === "scrollIntoView" &&
+        propertyName(node.callee) === "scrollIntoView" &&
         node.arguments.length === 0 &&
         object !== undefined &&
         isTransaction(object);
       if (!transactionScroll) report(node);
     }
     if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      node.type === "AssignmentExpression" &&
       COORDINATES.has(propertyName(node.left) ?? "")
     ) {
       if (isOutlineListWrite(node)) outlineWrites += 1;
       else report(node);
     }
     if (
-      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
-      (node.operator === ts.SyntaxKind.PlusPlusToken ||
-        node.operator === ts.SyntaxKind.MinusMinusToken) &&
-      COORDINATES.has(propertyName(node.operand) ?? "")
+      node.type === "UpdateExpression" &&
+      COORDINATES.has(propertyName(node.argument) ?? "")
     )
       report(node);
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  }
   return { violations, outlineWrites };
 };
 
@@ -270,27 +328,29 @@ const isProductionSource = (file: string): boolean =>
   !/(?:^|\/)(?:__tests__|__fixtures__|test|tests)\//u.test(file) &&
   !/\.(?:test|spec|typecheck)\.[^.]+$/u.test(file);
 
-const transactionReturningFunctions = (source: ts.SourceFile): Set<string> => {
+const transactionReturningFunctions = (source: Source): Set<string> => {
   const names = new Set<string>();
-  const visit = (node: ts.Node): void => {
+  const returnsTransaction = (returnType: { typeAnnotation: Node } | null) =>
+    returnType !== null &&
+    nodeText(source.text, returnType.typeAnnotation) === "Transaction";
+  for (const node of source.nodes) {
     if (
-      ts.isFunctionDeclaration(node) &&
-      node.name &&
-      node.type?.getText(source) === "Transaction"
+      (node.type === "FunctionDeclaration" ||
+        node.type === "TSDeclareFunction") &&
+      node.id &&
+      returnsTransaction(node.returnType ?? null)
     ) {
-      names.add(node.name.text);
+      names.add(node.id.name);
     }
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      ts.isArrowFunction(node.initializer) &&
-      node.initializer.type?.getText(source) === "Transaction"
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
+      node.init &&
+      node.init.type === "ArrowFunctionExpression" &&
+      returnsTransaction(node.init.returnType ?? null)
     )
-      names.add(node.name.text);
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+      names.add(node.id.name);
+  }
   return names;
 };
 
@@ -302,19 +362,19 @@ const importedTransactionFunctions = async (
 ): Promise<Set<string>> => {
   const source = parseSource(file, text);
   const names = transactionReturningFunctions(source);
-  for (const statement of source.statements) {
+  for (const statement of source.program.body) {
     if (
-      !ts.isImportDeclaration(statement) ||
-      !ts.isStringLiteral(statement.moduleSpecifier) ||
-      !statement.moduleSpecifier.text.startsWith(".") ||
-      !statement.importClause?.namedBindings ||
-      !ts.isNamedImports(statement.importClause.namedBindings)
+      statement.type !== "ImportDeclaration" ||
+      !statement.source.value.startsWith(".") ||
+      !statement.specifiers.some(
+        (specifier) => specifier.type === "ImportSpecifier",
+      )
     )
       continue;
     const importedFile = path.resolve(
       ROOT,
       path.dirname(file),
-      `${statement.moduleSpecifier.text}.ts`,
+      `${statement.source.value}.ts`,
     );
     if (!(await Bun.file(importedFile).exists())) continue;
     const importedText = await Bun.file(importedFile).text();
@@ -322,9 +382,13 @@ const importedTransactionFunctions = async (
     const exported = transactionReturningFunctions(
       parseSource(importedFile, importedText),
     );
-    for (const binding of statement.importClause.namedBindings.elements) {
-      if (exported.has(binding.propertyName?.text ?? binding.name.text))
-        names.add(binding.name.text);
+    for (const binding of statement.specifiers) {
+      if (binding.type !== "ImportSpecifier") continue;
+      const imported =
+        binding.imported.type === "Literal"
+          ? binding.imported.value
+          : binding.imported.name;
+      if (exported.has(imported)) names.add(binding.local.name);
     }
   }
   return names;

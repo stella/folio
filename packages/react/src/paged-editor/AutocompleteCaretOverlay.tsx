@@ -64,7 +64,7 @@ export const AutocompleteCaretOverlay = ({
   caret,
   text,
   isStreaming,
-}: AutocompleteCaretOverlayProps) => {
+}: AutocompleteCaretOverlayProps): React.JSX.Element | null => {
   if (!caret || text.length === 0) {
     return null;
   }

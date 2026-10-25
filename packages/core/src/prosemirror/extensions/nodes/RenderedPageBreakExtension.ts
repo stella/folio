@@ -1,6 +1,7 @@
 /** Zero-width cached pagination boundary preserved from DOCX. */
 
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 /**
  * The node name, for callers that have to ask whether anything is LEFT in a
@@ -9,7 +10,9 @@ import { createNodeExtension } from "../create";
  */
 export const RENDERED_PAGE_BREAK_NODE_NAME = "renderedPageBreak";
 
-export const RenderedPageBreakExtension = createNodeExtension({
+export const RenderedPageBreakExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: RENDERED_PAGE_BREAK_NODE_NAME,
   schemaNodeName: RENDERED_PAGE_BREAK_NODE_NAME,
   nodeSpec: {

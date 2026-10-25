@@ -14,7 +14,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin } from "prosemirror-state";
+import { type EditorState, Plugin, type PluginKey } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
 import type {
@@ -23,8 +23,15 @@ import type {
 } from "../../ai-suggestions/types";
 import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 
-export const aiSuggestionDecorationsKey =
-  createPluginKeyOwner<AISuggestionDecorationState>("aiSuggestionDecorations");
+export const aiSuggestionDecorationsKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<AISuggestionDecorationState>;
+  owns: (plugin: Plugin<AISuggestionDecorationState>) => boolean;
+  get: (state: EditorState) => Plugin<AISuggestionDecorationState> | undefined;
+  getState: (state: EditorState) => AISuggestionDecorationState | undefined;
+}> = createPluginKeyOwner<AISuggestionDecorationState>(
+  "aiSuggestionDecorations",
+);
 
 const SET_META = "set";
 const FOCUS_META = "focus";

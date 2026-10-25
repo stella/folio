@@ -47,9 +47,10 @@ const resolvesNumbering = (
   numberingInstanceResolves(numbering.definitions, numId);
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
-export const UNNUMBERED_PARAGRAPH_WARNING =
+export const UNNUMBERED_PARAGRAPH_WARNING: "unnumbered-paragraph" =
   PARSE_WARNING_CODES.unnumberedParagraph;
-export const UNNUMBERED_STYLE_WARNING = PARSE_WARNING_CODES.unnumberedStyle;
+export const UNNUMBERED_STYLE_WARNING: "unnumbered-style" =
+  PARSE_WARNING_CODES.unnumberedStyle;
 
 type NormalizeNumberingReferencesInput = {
   documentBody: DocumentBody;

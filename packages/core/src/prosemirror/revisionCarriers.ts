@@ -61,7 +61,60 @@ type PropertyRevisionSite =
       range: "paragraph-boundary";
     };
 
-export const PROPERTY_REVISION_SITES = {
+export const PROPERTY_REVISION_SITES: {
+  readonly runPropertyChange: {
+    readonly kind: "runPropertyChange";
+    readonly resolution: "inline-mark";
+  };
+  readonly paragraphPropertyChange: {
+    readonly kind: "paragraphPropertyChange";
+    readonly resolution: "paragraph-pass";
+    readonly nodeTypes: readonly ["paragraph"];
+    readonly path: readonly ["_propertyChanges"];
+    readonly carrier: "paragraphPropertiesChanged";
+    readonly range: "paragraph-boundary";
+  };
+  readonly sectionPropertyChange: {
+    readonly kind: "sectionPropertyChange";
+    readonly resolution: "paragraph-pass";
+    readonly nodeTypes: readonly ["paragraph"];
+    readonly path: readonly ["_sectionProperties", "propertyChanges"];
+    readonly carrier: "sectionPropertiesChanged";
+    readonly range: "paragraph-boundary";
+  };
+  readonly tablePropertyChange: {
+    readonly kind: "tablePropertyChange";
+    readonly resolution: "node-attrs";
+    readonly nodeTypes: readonly ["table"];
+    readonly attr: "tblPrChange";
+    readonly carrier: "tablePropertiesChanged";
+    readonly range: "whole-node";
+  };
+  readonly tablePropertyExceptionChange: {
+    readonly kind: "tablePropertyExceptionChange";
+    readonly resolution: "node-attrs";
+    readonly nodeTypes: readonly ["tableRow"];
+    readonly attr: "tblPrExChange";
+    readonly carrier: "tablePropertyExceptionsChanged";
+    readonly range: "whole-node";
+  };
+  readonly tableRowPropertyChange: {
+    readonly kind: "tableRowPropertyChange";
+    readonly resolution: "node-attrs";
+    readonly nodeTypes: readonly ["tableRow"];
+    readonly attr: "trPrChange";
+    readonly carrier: "rowPropertiesChanged";
+    readonly range: "whole-node";
+  };
+  readonly tableCellPropertyChange: {
+    readonly kind: "tableCellPropertyChange";
+    readonly resolution: "node-attrs";
+    readonly nodeTypes: readonly ["tableCell", "tableHeader"];
+    readonly attr: "tcPrChange";
+    readonly carrier: "cellPropertiesChanged";
+    readonly range: "whole-node";
+  };
+} = {
   runPropertyChange: { kind: "runPropertyChange", resolution: "inline-mark" },
   paragraphPropertyChange: {
     kind: "paragraphPropertyChange",

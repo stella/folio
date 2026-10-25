@@ -67,7 +67,7 @@ test(
         path.join(editor, "index.d.ts"),
         'export type { Model } from "model/private";',
       );
-      expect(check().map(({ code }) => code)).toContain(2307);
+      expect((await check()).map(({ code }) => code)).toContain(2307);
       const checker = path.join(
         import.meta.dir,
         "lib",
@@ -83,17 +83,17 @@ test(
         path.join(editor, "index.d.ts"),
         'export type { Missing } from "model";',
       );
-      expect(check().map(({ code }) => code)).toContain(2305);
+      expect((await check()).map(({ code }) => code)).toContain(2305);
       await writeFile(
         path.join(editor, "index.d.ts"),
         'export type { Model } from "model";',
       );
-      expect(check()).toEqual([]);
+      expect(await check()).toEqual([]);
       await writeFile(
         path.join(editor, "index.d.ts"),
         'import type { Buffer } from "node:buffer"; export type Model = Buffer;',
       );
-      expect(check()).toEqual([]);
+      expect(await check()).toEqual([]);
       await writeFile(
         path.join(editor, "index.d.ts"),
         'export type { Model } from "model";',
@@ -103,17 +103,17 @@ test(
         path.join(model, "index.d.ts"),
         'export type Model = import("third-party/private").Model;',
       );
-      expect(check()).toEqual([]);
+      expect(await check()).toEqual([]);
       await writeFile(
         path.join(editor, "index.d.ts"),
         'import type { Component } from "./Component.vue"; export type Model = Component;',
       );
-      expect(check().map(({ code }) => code)).toContain(2307);
+      expect((await check()).map(({ code }) => code)).toContain(2307);
       await writeFile(
         path.join(editor, "Component.vue.d.ts"),
         "export type Component = { value: string };\n",
       );
-      expect(check()).toEqual([]);
+      expect(await check()).toEqual([]);
     } finally {
       await rm(consumer, { recursive: true, force: true });
     }

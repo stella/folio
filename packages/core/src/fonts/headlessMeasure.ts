@@ -15,7 +15,7 @@
  * beside this file and by the paint-equivalence harness.
  */
 
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import {
   composeRunMeasurement,
@@ -77,7 +77,10 @@ export type HeadlessFontSubstitution = {
   readonly reason: string;
 };
 
-export class HeadlessMeasureError extends TaggedError("HeadlessMeasureError")<{
+const HeadlessMeasureErrorBase: TaggedErrorClass<"HeadlessMeasureError"> =
+  TaggedError("HeadlessMeasureError");
+
+export class HeadlessMeasureError extends HeadlessMeasureErrorBase<{
   message: string;
 }> {}
 

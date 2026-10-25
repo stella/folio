@@ -37,7 +37,11 @@ export type Gap = { offset: number; zeroWidthBefore: number };
 export type InlineNode = ParagraphContent | RunContent;
 
 /** Comment anchors are preserved by planned deletion and cannot be wrapped. */
-const COMMENT_ANCHOR_TYPES = {
+const COMMENT_ANCHOR_TYPES: {
+  readonly commentRangeStart: true;
+  readonly commentRangeEnd: true;
+  readonly commentReference: true;
+} = {
   commentRangeStart: true,
   commentRangeEnd: true,
   commentReference: true,
@@ -721,7 +725,13 @@ export const leafSpans = (items: readonly InlineNode[]): LeafSpan[] => {
 };
 
 /** Source leaf coordinates without the ancestry needed by edit planning. */
-export const inlineLeafSpans = (items: readonly InlineNode[]) =>
+export const inlineLeafSpans = (
+  items: readonly InlineNode[],
+): {
+  node: InlineNode;
+  before: Gap;
+  after: Gap;
+}[] =>
   leafSpans(items).map(({ node, before, after }) => ({ node, before, after }));
 
 /** Gaps in document order: by offset, then by the zero-width leaves before them. */

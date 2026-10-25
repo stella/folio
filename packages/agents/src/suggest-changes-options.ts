@@ -1,3 +1,6 @@
+const InvalidFolioSuggestChangesOptionsErrorBase: TaggedErrorClass<"InvalidFolioSuggestChangesOptionsError"> =
+  TaggedError("InvalidFolioSuggestChangesOptionsError");
+
 /**
  * Host-facing configuration of the `suggest_changes` tool. One resolved
  * options object drives the tool's JSON Schema (`tools.ts`), its parser
@@ -6,7 +9,7 @@
  * contract.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
@@ -75,9 +78,7 @@ export const DEFAULT_MAX_OPERATIONS_PER_CALL = 50;
 export const MAX_OPERATIONS_PER_CALL_LIMIT = 200;
 
 /** Programmer misuse of {@link FolioSuggestChangesOptions}; never reaches the model. */
-export class InvalidFolioSuggestChangesOptionsError extends TaggedError(
-  "InvalidFolioSuggestChangesOptionsError",
-)<{
+export class InvalidFolioSuggestChangesOptionsError extends InvalidFolioSuggestChangesOptionsErrorBase<{
   message: string;
   option: keyof FolioSuggestChangesOptions;
 }> {}

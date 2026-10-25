@@ -5,8 +5,11 @@
 import type { PositionalTab } from "../../../types/document";
 import { expectTabAttrs } from "../../attrs";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
-export const TabExtension = createNodeExtension({
+export const TabExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "tab",
   schemaNodeName: "tab",
   nodeSpec: {

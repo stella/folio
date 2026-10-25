@@ -13,12 +13,15 @@
 import { ensureHexPrefix } from "../../../utils/colorResolver";
 import { expectRunShadingMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 import {
   normalizeCssColorKey,
   parseDOMHighlightColor,
 } from "./HighlightExtension";
 
-export const RunShadingExtension = createMarkExtension({
+export const RunShadingExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "runShading",
   schemaMarkName: "runShading",
   markSpec: {

@@ -1,5 +1,11 @@
 /** The one semantic compiler for canonical sidebar, controlled and public comments. */
-import { Result, TaggedError } from "better-result";
+import {
+  type Err,
+  type Ok,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 
 import {
   allocateCommentAnchorIds,
@@ -16,9 +22,10 @@ import type { Comment } from "../types/content";
 import type { Document } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 
-export class CanonicalCommentError extends TaggedError(
-  "CanonicalCommentError",
-)<{
+const CanonicalCommentErrorBase: TaggedErrorClass<"CanonicalCommentError"> =
+  TaggedError("CanonicalCommentError");
+
+export class CanonicalCommentError extends CanonicalCommentErrorBase<{
   message: string;
   gap: typeof CANONICAL_GAP.comments;
 }> {}
@@ -47,7 +54,16 @@ type CompileCanonicalCommentsOptions = {
 export const compileCanonicalComments = ({
   document,
   command,
-}: CompileCanonicalCommentsOptions) => {
+}: CompileCanonicalCommentsOptions):
+  | Err<never, CanonicalCommentError>
+  | Ok<
+      {
+        ops: DocumentOp[];
+        document: Document;
+        commentId: number | undefined;
+      },
+      never
+    > => {
   const current = document.package.document.comments ?? [];
   const byId = new Map(current.map((comment) => [comment.id, comment]));
   const ops: DocumentOp[] = [];

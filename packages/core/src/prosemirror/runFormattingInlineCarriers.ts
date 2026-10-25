@@ -30,7 +30,27 @@ export type RunFormattingInlineAtomDisposition =
  * marks do not serialize as run properties. The runtime fixed-point test binds
  * this map to the complete schema atom set.
  */
-export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS = Object.freeze({
+export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS: Readonly<{
+  readonly bookmarkBoundary: "not-a-run";
+  readonly commentRangeBoundary: "not-a-run";
+  readonly commentReference: "not-a-run";
+  readonly field: "field-run";
+  readonly hardBreak: "break-run";
+  readonly image: "not-a-run";
+  readonly math: "not-a-run";
+  readonly moveRangeBoundary: "not-a-run";
+  readonly noteMarker: "note-marker-run";
+  readonly pageBreakRun: "page-break-carrier";
+  readonly preservedXml: "preserved-xml-run";
+  readonly rangeAnchor: "not-a-run";
+  readonly renderedPageBreak: "not-a-run";
+  readonly shape: "not-a-run";
+  readonly structuredField: "structured-field";
+  readonly symbol: "symbol-run";
+  readonly tab: "tab-run";
+  readonly text: "text-run";
+  readonly textBoxAnchor: "not-a-run";
+}> = Object.freeze({
   bookmarkBoundary: "not-a-run",
   commentRangeBoundary: "not-a-run",
   commentReference: "not-a-run",

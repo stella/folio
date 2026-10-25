@@ -18,7 +18,7 @@ import {
   suggestRangeDeletion,
 } from "../../plugins/suggestionMode";
 import { createMarkExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { ExtensionRuntime, MarkExtension } from "../types";
 import {
   expandNoteReferenceDeletionRange,
   noteReferenceRanges,
@@ -38,7 +38,9 @@ const noteRefAttrsFromDom = (
   ...(vertAlign ? { vertAlign } : {}),
 });
 
-export const FootnoteRefExtension = createMarkExtension({
+export const FootnoteRefExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "footnoteRef",
   schemaMarkName: "footnoteRef",
   markSpec: {

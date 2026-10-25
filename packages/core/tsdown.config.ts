@@ -70,5 +70,5 @@ export default defineConfig([
     clean: false,
     plugins: [stableRelativeImportOrder()],
   },
-  { ...shared, dts: { emitDtsOnly: true }, clean: false },
+  { ...shared, dts: { generator: "oxc", emitDtsOnly: true }, clean: false },
 ]);

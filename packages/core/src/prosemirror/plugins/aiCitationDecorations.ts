@@ -12,13 +12,18 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin } from "prosemirror-state";
+import { type EditorState, Plugin, type PluginKey } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
 import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 
-export const aiCitationDecorationsKey =
-  createPluginKeyOwner<AICitationDecorationState>("aiCitationDecorations");
+export const aiCitationDecorationsKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<AICitationDecorationState>;
+  owns: (plugin: Plugin<AICitationDecorationState>) => boolean;
+  get: (state: EditorState) => Plugin<AICitationDecorationState> | undefined;
+  getState: (state: EditorState) => AICitationDecorationState | undefined;
+}> = createPluginKeyOwner<AICitationDecorationState>("aiCitationDecorations");
 
 const SET_META = "set";
 const ACTIVE_META = "active";

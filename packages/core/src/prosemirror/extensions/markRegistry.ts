@@ -51,7 +51,107 @@ import {
 import { UnderlineExtension } from "./marks/UnderlineExtension";
 import type { MarkExtension } from "./types";
 
-export const MARK_EXTENSIONS = {
+export const MARK_EXTENSIONS: {
+  readonly bold: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly italic: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly underline: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly strike: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly textColor: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly runShading: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly highlight: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly fontSize: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly fontFamily: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly language: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly superscript: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly subscript: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly hyperlink: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly allCaps: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly smallCaps: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly footnoteRef: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly characterSpacing: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly emboss: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly imprint: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly hidden: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly textShadow: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly emphasisMark: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly textOutline: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly rtl: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly textEffect: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly runFormattingOverride: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly characterStyle: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly runIdentity: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly comment: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly insertion: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly deletion: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly runPropertyChange: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+  readonly inlineWrapper: (
+    options?: Partial<Record<string, unknown>> | undefined,
+  ) => MarkExtension;
+} = {
   bold: BoldExtension,
   italic: ItalicExtension,
   underline: UnderlineExtension,
@@ -115,7 +215,41 @@ const markNestingOrder = <const Names extends readonly SchemaMarkName[]>(
  * own in OOXML, so the save leg ranks it against nothing and its place here is
  * a presentation decision.
  */
-export const MARK_NESTING_ORDER = markNestingOrder([
+export const MARK_NESTING_ORDER: readonly [
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+  "textColor",
+  "runShading",
+  "highlight",
+  "fontSize",
+  "fontFamily",
+  "language",
+  "superscript",
+  "subscript",
+  "allCaps",
+  "smallCaps",
+  "footnoteRef",
+  "characterSpacing",
+  "emboss",
+  "imprint",
+  "hidden",
+  "textShadow",
+  "emphasisMark",
+  "textOutline",
+  "rtl",
+  "textEffect",
+  "runFormattingOverride",
+  "characterStyle",
+  "comment",
+  "inlineWrapper",
+  "insertion",
+  "deletion",
+  "hyperlink",
+  "runPropertyChange",
+  "runIdentity",
+] = markNestingOrder([
   "bold",
   "italic",
   "underline",

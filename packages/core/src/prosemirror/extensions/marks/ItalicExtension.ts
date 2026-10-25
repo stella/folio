@@ -5,10 +5,16 @@
 import { panic } from "better-result";
 
 import { createMarkExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type {
+  ExtensionContext,
+  ExtensionRuntime,
+  MarkExtension,
+} from "../types";
 import { toggleMarkForAllScripts } from "./markUtils";
 
-export const ItalicExtension = createMarkExtension({
+export const ItalicExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "italic",
   schemaMarkName: "italic",
   markSpec: {

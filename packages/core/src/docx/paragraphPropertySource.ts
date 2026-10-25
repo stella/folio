@@ -1,4 +1,4 @@
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 import type {
   Fragment,
   Mark,
@@ -31,11 +31,11 @@ import { parseXmlDocument } from "./xmlParser";
 
 // The private symbol makes a source factory-only at the type boundary. Keep it
 // enumerable so sanctioned immutable object copies retain the exact fingerprint.
-const paragraphPropertySourceEmissionFingerprint = Symbol(
+const paragraphPropertySourceEmissionFingerprint: unique symbol = Symbol(
   "paragraphPropertySourceEmissionFingerprint",
 );
 
-const paragraphPropertySourceIndentationBaseline = Symbol(
+const paragraphPropertySourceIndentationBaseline: unique symbol = Symbol(
   "paragraphPropertySourceIndentationBaseline",
 );
 const INDENTATION_FIELDS = [
@@ -332,9 +332,10 @@ export const TABLE_CELL_PARAGRAPH_SOURCE_PAYLOAD_ERROR_CLASSIFICATIONS = [
 export type TableCellParagraphSourcePayloadErrorClassification =
   (typeof TABLE_CELL_PARAGRAPH_SOURCE_PAYLOAD_ERROR_CLASSIFICATIONS)[number];
 
-export class ParagraphPropertySourceValidationError extends TaggedError(
-  "ParagraphPropertySourceValidationError",
-)<{
+const ParagraphPropertySourceValidationErrorBase: TaggedErrorClass<"ParagraphPropertySourceValidationError"> =
+  TaggedError("ParagraphPropertySourceValidationError");
+
+export class ParagraphPropertySourceValidationError extends ParagraphPropertySourceValidationErrorBase<{
   code: ParagraphPropertySourceValidationCode;
   classification?: TableCellParagraphSourcePayloadErrorClassification;
   message: string;
@@ -1444,7 +1445,7 @@ function visitDecodedTableCellLeafBlock(
   }
 }
 
-const decodedTableCellParagraphSourcePayloadBrand = Symbol(
+const decodedTableCellParagraphSourcePayloadBrand: unique symbol = Symbol(
   "decodedTableCellParagraphSourcePayload",
 );
 

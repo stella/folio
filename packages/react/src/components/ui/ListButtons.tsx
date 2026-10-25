@@ -8,6 +8,7 @@ import {
   ListIcon,
   ListOrderedIcon,
 } from "lucide-react";
+import type { JSX } from "react/jsx-runtime";
 import { useTranslations } from "use-intl";
 
 import {
@@ -60,7 +61,7 @@ export function ListButtons({
   showIndentButtons = true,
   compact = false,
   hasIndent = false,
-}: ListButtonsProps) {
+}: ListButtonsProps): JSX.Element {
   const t = useTranslations("folio");
   const isBullet = listState?.type === "bullet";
   const isNumbered = listState?.type === "numbered";

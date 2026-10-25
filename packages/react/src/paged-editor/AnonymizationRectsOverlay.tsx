@@ -80,7 +80,7 @@ export const AnonymizationRectsOverlay = ({
   onTermClick,
   selectedCanonical = null,
   selectionSeq,
-}: AnonymizationRectsOverlayProps) => {
+}: AnonymizationRectsOverlayProps): React.JSX.Element | null => {
   // All spans grouped by canonical. Repeated sidebar selections
   // of the same canonical advance through `spansByCanonical`,
   // wrapping at the end, so the user isn't stuck on the first

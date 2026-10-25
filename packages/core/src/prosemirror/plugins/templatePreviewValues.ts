@@ -23,7 +23,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin } from "prosemirror-state";
+import { type EditorState, Plugin, type PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
@@ -148,8 +148,13 @@ const ORIGINAL_CLASS = "folio-template-preview-original";
 /** Hides a conditional block the host reported as not applying. */
 const HIDDEN_CLASS = "folio-template-preview-hidden";
 
-export const templatePreviewValuesKey =
-  createPluginKeyOwner<TemplatePreviewState>("templatePreviewValues");
+export const templatePreviewValuesKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<TemplatePreviewState>;
+  owns: (plugin: Plugin<TemplatePreviewState>) => boolean;
+  get: (state: EditorState) => Plugin<TemplatePreviewState> | undefined;
+  getState: (state: EditorState) => TemplatePreviewState | undefined;
+}> = createPluginKeyOwner<TemplatePreviewState>("templatePreviewValues");
 
 /** A rich span as DOM: text wrapped in `<em>` / `<strong>` per its flags. */
 function buildSpanNode(span: TemplatePreviewSpan): Node {

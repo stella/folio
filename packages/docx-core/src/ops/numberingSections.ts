@@ -1,10 +1,27 @@
-import { Result } from "better-result";
+import { type Ok, Result } from "better-result";
 
 import {
+  type BlockContent,
+  type Comment,
   type Document,
+  type DocumentBackground,
   type DocumentBody,
+  type DocumentSettings,
+  type DocxConformanceClass,
+  type Endnote,
+  type FontTable,
+  type Footnote,
+  type HeaderFooter,
   MAX_REVISION_ID,
+  type MediaFile,
+  type NumberingDefinitions,
   type Paragraph,
+  type ParseWarning,
+  type RelationshipMap,
+  type Section,
+  type SectionProperties,
+  type StyleDefinitions,
+  type Theme,
 } from "../model/document";
 import {
   isNumberingReference,
@@ -517,7 +534,58 @@ export const applyNumberingSectionOp = (
     | CreateNumberingInstanceOp
     | DeleteNumberingInstanceOp
     | SetSectionEndpointOp,
-) => {
+):
+  | Result<DocumentEdit, DocumentOpRefusal>
+  | Ok<
+      {
+        document: {
+          package: {
+            document: {
+              content: BlockContent[];
+              background?: DocumentBackground;
+              sections?: Section[] | undefined;
+              finalSectionProperties?: SectionProperties | undefined;
+              comments?: Comment[];
+            };
+            conformanceClass?: DocxConformanceClass;
+            settings?: DocumentSettings;
+            styles?: StyleDefinitions | undefined;
+            theme?: Theme;
+            numbering?: NumberingDefinitions | undefined;
+            fontTable?: FontTable;
+            footnotes?: Footnote[];
+            endnotes?: Endnote[];
+            headers?: Map<string, HeaderFooter>;
+            footers?: Map<string, HeaderFooter>;
+            relationships?: RelationshipMap | undefined;
+            media?: Map<string, MediaFile> | undefined;
+            properties?: {
+              title?: string;
+              subject?: string;
+              creator?: string;
+              keywords?: string;
+              description?: string;
+              lastModifiedBy?: string;
+              revision?: number;
+              created?: Date;
+              modified?: Date;
+            };
+          };
+          originalBuffer?: ArrayBuffer;
+          templateVariables?: string[];
+          requiredFonts?: string[];
+          warnings?: string[];
+          parseWarnings?: ParseWarning[];
+        };
+        inverse: SetSectionEndpointOp[];
+        touched: {
+          modified: string[];
+          inserted: never[];
+          removed: never[];
+        };
+      },
+      never
+    > => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
       return applyCreateNumberingInstance(document, op);

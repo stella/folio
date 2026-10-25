@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { type JSX, useCallback, useMemo } from "react";
 
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { useTranslations } from "use-intl";
@@ -30,7 +30,7 @@ export function DefaultColorPicker({
   presets = EMPTY_PRESETS,
   columns = 8,
   children,
-}: FolioColorPickerProps) {
+}: FolioColorPickerProps): JSX.Element {
   const t = useTranslations("folio");
   const trigger = useMemo(
     () => <div className="folio-default-color-picker-trigger" />,

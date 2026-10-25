@@ -1,3 +1,6 @@
+const InvalidFolioReportBuilderOptionsErrorBase: TaggedErrorClass<"InvalidFolioReportBuilderOptionsError"> =
+  TaggedError("InvalidFolioReportBuilderOptionsError");
+
 /**
  * Headless document builders.
  *
@@ -7,7 +10,7 @@
  * serializer owns the OOXML.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import {
   assertValidOoxmlNumericId,
@@ -66,9 +69,7 @@ const TOC_LEVEL_MAX = 9;
  * a negative column width, a reversed TOC range). Thrown at the boundary so
  * the invalid value never reaches the serializer.
  */
-export class InvalidFolioReportBuilderOptionsError extends TaggedError(
-  "InvalidFolioReportBuilderOptionsError",
-)<{
+export class InvalidFolioReportBuilderOptionsError extends InvalidFolioReportBuilderOptionsErrorBase<{
   message: string;
   path: string;
 }> {}

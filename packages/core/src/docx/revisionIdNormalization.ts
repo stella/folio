@@ -1,7 +1,7 @@
 // PARSE-WARNING-EXEMPT: renumbers revision save ids, which carry no authored
 // meaning and are regenerated on every save.
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import { rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
 import {
@@ -16,6 +16,9 @@ import {
   XmlResourceLimitError,
 } from "./xmlResourceLimits";
 
+const RevisionIdCollisionErrorBase: TaggedErrorClass<"RevisionIdCollisionError"> =
+  TaggedError("RevisionIdCollisionError");
+
 /**
  * Two revision elements in one package claimed the same `w:id`.
  *
@@ -24,15 +27,13 @@ import {
  * normalization below hands every id it emits to one choke point, which throws
  * this rather than letting the duplicate reach the ZIP.
  */
-export class RevisionIdCollisionError extends TaggedError(
-  "RevisionIdCollisionError",
-)<{
+export class RevisionIdCollisionError extends RevisionIdCollisionErrorBase<{
   message: string;
   revisionId: number;
   part: string;
 }> {}
 
-export const REVISION_ELEMENT_NAMES = new Set([
+export const REVISION_ELEMENT_NAMES: Set<string> = new Set([
   "cellDel",
   "cellIns",
   "cellMerge",

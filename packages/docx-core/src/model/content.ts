@@ -2018,7 +2018,15 @@ export type PropertyRevisionKind = PropertyChange["type"];
  * (`satisfies Record<PropertyRevisionKind, …>`), so a revision the model gains
  * is a compile error at each of those sites rather than a branch nobody wrote.
  */
-export const PROPERTY_REVISION_KINDS = Object.freeze({
+export const PROPERTY_REVISION_KINDS: Readonly<{
+  readonly runPropertyChange: "runPropertyChange";
+  readonly paragraphPropertyChange: "paragraphPropertyChange";
+  readonly sectionPropertyChange: "sectionPropertyChange";
+  readonly tablePropertyChange: "tablePropertyChange";
+  readonly tablePropertyExceptionChange: "tablePropertyExceptionChange";
+  readonly tableRowPropertyChange: "tableRowPropertyChange";
+  readonly tableCellPropertyChange: "tableCellPropertyChange";
+}> = Object.freeze({
   runPropertyChange: "runPropertyChange",
   paragraphPropertyChange: "paragraphPropertyChange",
   sectionPropertyChange: "sectionPropertyChange",
@@ -2331,12 +2339,12 @@ export type ParagraphContent =
  * together — but they are not those kinds: writing `w:del` on a moved
  * paragraph's mark reports the relocation as a deletion as well.
  */
-export const PARAGRAPH_MARK_CHANGE_KINDS = Object.freeze([
+export const PARAGRAPH_MARK_CHANGE_KINDS: readonly [
   "moveFrom",
   "moveTo",
   "ins",
   "del",
-] as const);
+] = Object.freeze(["moveFrom", "moveTo", "ins", "del"] as const);
 
 /** One of {@link PARAGRAPH_MARK_CHANGE_KINDS}. */
 export type ParagraphMarkChangeKind =

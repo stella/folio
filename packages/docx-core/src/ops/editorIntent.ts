@@ -277,7 +277,17 @@ const leafRevisionDemand = (ancestorCount: number) => 4 * (1 + ancestorCount);
 /** Cache only immutable document versions; never retain a retired version strongly. */
 export const createEditorIntentIdAllocator = () => {
   const readCensus = createCensusReader();
-  return (document: Document, intent: EditorIntentAllocation) => {
+  return (
+    document: Document,
+    intent: EditorIntentAllocation,
+  ): {
+    revisionId: number;
+    newBlockId: string;
+    newIds: {
+      revision: number[];
+      control: number[];
+    };
+  } => {
     const census = readCensus(document);
     const { story, fromId, toId, fromOffset, toOffset } =
       intentEndpoints(intent);
@@ -413,7 +423,17 @@ export const createEditorIntentIdAllocator = () => {
 };
 
 /** Fresh identities bounded by the edit, with one package census per document version. */
-export const allocateEditorIntentIds = createEditorIntentIdAllocator();
+export const allocateEditorIntentIds: (
+  document: Document,
+  intent: EditorIntentAllocation,
+) => {
+  revisionId: number;
+  newBlockId: string;
+  newIds: {
+    revision: number[];
+    control: number[];
+  };
+} = createEditorIntentIdAllocator();
 
 /** Accepted-view text without changing the canonical paragraph or its offset space. */
 export const paragraphVisibleText = (paragraph: Paragraph): string => {
@@ -467,7 +487,14 @@ const visibleOffsetAtPhysicalOffset = (
 };
 
 /** Deleted paragraph marks concatenate physical paragraphs in the editing view. */
-export const editorParagraphGroups = (document: Document, story: OpStory) => {
+export const editorParagraphGroups = (
+  document: Document,
+  story: OpStory,
+): {
+  blockId: string;
+  paragraphs: Paragraph[];
+  text: string;
+}[] => {
   const groups: { blockId: string; paragraphs: Paragraph[]; text: string }[] =
     [];
   let pending: Paragraph[] = [];

@@ -24,6 +24,10 @@ import {
   parseFolioDocumentOperationBatch,
   UnsupportedFolioDocumentOperationVersionError,
 } from "@stll/folio-core/server";
+import type {
+  LineSpacingRule,
+  ParagraphAlignment,
+} from "@stll/folio-core/types/document";
 
 /** Compact public shape for the runtime JSON Schema projections. */
 export type FolioJsonSchema = {
@@ -173,7 +177,17 @@ const blockIdProperty = {
   description: "Id of the target block, from a prior document read.",
 } as const;
 
-export const FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA = {
+export const FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA: {
+  readonly oneOf: readonly [
+    {
+      readonly type: "string";
+    },
+    {
+      readonly type: "null";
+    },
+  ];
+  readonly description: string;
+} = {
   oneOf: [{ type: "string" }, { type: "null" }],
   description:
     "Paragraph style id; it must name a paragraph style the document defines, or the operation " +
@@ -206,7 +220,39 @@ export const FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA: FolioJsonSchema = {
 };
 
 /** Complete direct `w:ind` attributes, or null to restore style inheritance. */
-export const FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA = {
+export const FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA: {
+  readonly oneOf: readonly [
+    {
+      readonly type: "object";
+      readonly properties: {
+        readonly indentLeft: {
+          readonly type: "integer";
+          readonly minimum: number;
+          readonly maximum: number;
+        };
+        readonly indentRight: {
+          readonly type: "integer";
+          readonly minimum: number;
+          readonly maximum: number;
+        };
+        readonly indentFirstLine: {
+          readonly type: "integer";
+          readonly minimum: number;
+          readonly maximum: number;
+        };
+        readonly hangingIndent: {
+          readonly type: "boolean";
+        };
+      };
+      readonly minProperties: 1;
+      readonly additionalProperties: false;
+    },
+    {
+      readonly type: "null";
+    },
+  ];
+  readonly description: "Complete direct paragraph indentation (`w:ind`); null removes the direct child and restores style inheritance.";
+} = {
   oneOf: [
     {
       type: "object",
@@ -237,7 +283,11 @@ export const FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA = {
     "Complete direct paragraph indentation (`w:ind`); null removes the direct child and restores style inheritance.",
 } as const satisfies FolioJsonSchema;
 
-export const FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA = {
+export const FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA: {
+  readonly type: "string";
+  readonly enum: readonly ["firstParagraph", "allParagraphs"];
+  readonly description: string;
+} = {
   type: "string",
   enum: ["firstParagraph", "allParagraphs"],
   description:
@@ -246,7 +296,90 @@ export const FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA = {
     "`allParagraphs` formats every paragraph alike, for several list items in one operation.",
 } as const satisfies FolioJsonSchema;
 
-export const FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA = {
+export const FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA: {
+  readonly oneOf: readonly [
+    {
+      readonly type: "object";
+      readonly properties: {
+        readonly kind: {
+          readonly type: "string";
+          readonly enum: readonly ["none"];
+        };
+      };
+      readonly required: readonly ["kind"];
+      readonly additionalProperties: false;
+    },
+    {
+      readonly type: "object";
+      readonly properties: {
+        readonly kind: {
+          readonly type: "string";
+          readonly enum: readonly ["inherit"];
+        };
+      };
+      readonly required: readonly ["kind"];
+      readonly additionalProperties: false;
+    },
+    {
+      readonly type: "object";
+      readonly properties: {
+        readonly kind: {
+          readonly type: "string";
+          readonly enum: readonly ["levelOnly"];
+        };
+        readonly ilvl: {
+          readonly type: "integer";
+          readonly minimum: 0;
+          readonly maximum: 8;
+        };
+      };
+      readonly required: readonly ["kind", "ilvl"];
+      readonly additionalProperties: false;
+    },
+    {
+      readonly type: "object";
+      readonly properties: {
+        readonly kind: {
+          readonly type: "string";
+          readonly enum: readonly ["reference"];
+        };
+        readonly numId: {
+          readonly type: "integer";
+          readonly minimum: 1;
+          readonly maximum: number;
+        };
+        readonly ilvl: {
+          readonly type: "integer";
+          readonly minimum: 0;
+          readonly maximum: 8;
+        };
+      };
+      readonly required: readonly ["kind", "numId"];
+      readonly additionalProperties: false;
+    },
+    {
+      readonly type: "object";
+      readonly properties: {
+        readonly kind: {
+          readonly type: "string";
+          readonly enum: readonly ["newList"];
+        };
+        readonly format: {
+          readonly type: "string";
+          readonly enum: readonly ["bullet", "numbered"];
+        };
+        readonly level: {
+          readonly type: "integer";
+          readonly minimum: 0;
+          readonly maximum: 8;
+        };
+      };
+      readonly required: readonly ["kind", "format"];
+      readonly additionalProperties: false;
+    },
+  ];
+  readonly description: string;
+} = {
   oneOf: [
     {
       type: "object",
@@ -305,7 +438,17 @@ export const FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA = {
     "the requested format.",
 } as const satisfies FolioJsonSchema;
 
-export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA = {
+export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA: {
+  readonly type: "object";
+  readonly properties: {
+    readonly clear: {
+      readonly type: "string";
+      readonly enum: readonly ["none", "left", "right", "all"];
+    };
+  };
+  readonly additionalProperties: false;
+  readonly description: "Insert an empty hard page-break run; it cannot be combined with text, pageBreakBefore, or lineBreakMode.";
+} = {
   type: "object",
   properties: {
     clear: { type: "string", enum: FOLIO_PAGE_BREAK_CLEAR_VALUES },
@@ -335,7 +478,52 @@ export const FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT: Pick<
 };
 
 /** Complete direct `w:spacing` attributes, or null to restore style inheritance. */
-export const FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA = {
+export const FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA: {
+  readonly oneOf: readonly [
+    {
+      readonly type: "object";
+      readonly properties: {
+        readonly spaceBefore: {
+          readonly type: "integer";
+          readonly minimum: 0;
+          readonly maximum: number;
+          readonly description: "Non-negative space before, in twips.";
+        };
+        readonly spaceAfter: {
+          readonly type: "integer";
+          readonly minimum: 0;
+          readonly maximum: number;
+          readonly description: "Non-negative space after, in twips.";
+        };
+        readonly lineSpacing: {
+          readonly type: "integer";
+          readonly minimum: number;
+          readonly maximum: number;
+          readonly description: "Signed line spacing: 240ths of a line with the auto rule, otherwise twips.";
+        };
+        readonly lineSpacingRule: {
+          readonly type: "string";
+          readonly enum: readonly LineSpacingRule[];
+          readonly description: "How `lineSpacing` is interpreted.";
+        };
+        readonly beforeAutospacing: {
+          readonly type: "boolean";
+          readonly description: "Whether the application determines spacing before automatically.";
+        };
+        readonly afterAutospacing: {
+          readonly type: "boolean";
+          readonly description: "Whether the application determines spacing after automatically.";
+        };
+      };
+      readonly minProperties: 1;
+      readonly additionalProperties: false;
+    },
+    {
+      readonly type: "null";
+    },
+  ];
+  readonly description: "Complete direct paragraph spacing (`w:spacing`); omitted attributes stay absent, while zero and false remain explicit. Null removes the direct spacing child and restores style inheritance.";
+} = {
   oneOf: [
     {
       type: "object",
@@ -384,7 +572,201 @@ export const FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA = {
     "Complete direct paragraph spacing (`w:spacing`); omitted attributes stay absent, while zero and false remain explicit. Null removes the direct spacing child and restores style inheritance.",
 } as const satisfies FolioJsonSchema;
 
-export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA = {
+export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA: {
+  readonly type: "object";
+  readonly description: "The paragraph properties to set; at least one.";
+  readonly properties: {
+    readonly styleId: {
+      readonly oneOf: readonly [
+        {
+          readonly type: "string";
+        },
+        {
+          readonly type: "null";
+        },
+      ];
+      readonly description: string;
+    };
+    readonly outlineLevel: FolioJsonSchema;
+    readonly numbering: {
+      readonly oneOf: readonly [
+        {
+          readonly type: "object";
+          readonly properties: {
+            readonly kind: {
+              readonly type: "string";
+              readonly enum: readonly ["none"];
+            };
+          };
+          readonly required: readonly ["kind"];
+          readonly additionalProperties: false;
+        },
+        {
+          readonly type: "object";
+          readonly properties: {
+            readonly kind: {
+              readonly type: "string";
+              readonly enum: readonly ["inherit"];
+            };
+          };
+          readonly required: readonly ["kind"];
+          readonly additionalProperties: false;
+        },
+        {
+          readonly type: "object";
+          readonly properties: {
+            readonly kind: {
+              readonly type: "string";
+              readonly enum: readonly ["levelOnly"];
+            };
+            readonly ilvl: {
+              readonly type: "integer";
+              readonly minimum: 0;
+              readonly maximum: 8;
+            };
+          };
+          readonly required: readonly ["kind", "ilvl"];
+          readonly additionalProperties: false;
+        },
+        {
+          readonly type: "object";
+          readonly properties: {
+            readonly kind: {
+              readonly type: "string";
+              readonly enum: readonly ["reference"];
+            };
+            readonly numId: {
+              readonly type: "integer";
+              readonly minimum: 1;
+              readonly maximum: number;
+            };
+            readonly ilvl: {
+              readonly type: "integer";
+              readonly minimum: 0;
+              readonly maximum: 8;
+            };
+          };
+          readonly required: readonly ["kind", "numId"];
+          readonly additionalProperties: false;
+        },
+        {
+          readonly type: "object";
+          readonly properties: {
+            readonly kind: {
+              readonly type: "string";
+              readonly enum: readonly ["newList"];
+            };
+            readonly format: {
+              readonly type: "string";
+              readonly enum: readonly ["bullet", "numbered"];
+            };
+            readonly level: {
+              readonly type: "integer";
+              readonly minimum: 0;
+              readonly maximum: 8;
+            };
+          };
+          readonly required: readonly ["kind", "format"];
+          readonly additionalProperties: false;
+        },
+      ];
+      readonly description: string;
+    };
+    readonly indentation: {
+      readonly oneOf: readonly [
+        {
+          readonly type: "object";
+          readonly properties: {
+            readonly indentLeft: {
+              readonly type: "integer";
+              readonly minimum: number;
+              readonly maximum: number;
+            };
+            readonly indentRight: {
+              readonly type: "integer";
+              readonly minimum: number;
+              readonly maximum: number;
+            };
+            readonly indentFirstLine: {
+              readonly type: "integer";
+              readonly minimum: number;
+              readonly maximum: number;
+            };
+            readonly hangingIndent: {
+              readonly type: "boolean";
+            };
+          };
+          readonly minProperties: 1;
+          readonly additionalProperties: false;
+        },
+        {
+          readonly type: "null";
+        },
+      ];
+      readonly description: "Complete direct paragraph indentation (`w:ind`); null removes the direct child and restores style inheritance.";
+    };
+    readonly alignment: {
+      readonly oneOf: readonly [
+        {
+          readonly type: "string";
+          readonly enum: readonly ParagraphAlignment[];
+        },
+        {
+          readonly type: "null";
+        },
+      ];
+      readonly description: "Direct paragraph alignment; null restores style inheritance.";
+    };
+    readonly spacing: {
+      readonly oneOf: readonly [
+        {
+          readonly type: "object";
+          readonly properties: {
+            readonly spaceBefore: {
+              readonly type: "integer";
+              readonly minimum: 0;
+              readonly maximum: number;
+              readonly description: "Non-negative space before, in twips.";
+            };
+            readonly spaceAfter: {
+              readonly type: "integer";
+              readonly minimum: 0;
+              readonly maximum: number;
+              readonly description: "Non-negative space after, in twips.";
+            };
+            readonly lineSpacing: {
+              readonly type: "integer";
+              readonly minimum: number;
+              readonly maximum: number;
+              readonly description: "Signed line spacing: 240ths of a line with the auto rule, otherwise twips.";
+            };
+            readonly lineSpacingRule: {
+              readonly type: "string";
+              readonly enum: readonly LineSpacingRule[];
+              readonly description: "How `lineSpacing` is interpreted.";
+            };
+            readonly beforeAutospacing: {
+              readonly type: "boolean";
+              readonly description: "Whether the application determines spacing before automatically.";
+            };
+            readonly afterAutospacing: {
+              readonly type: "boolean";
+              readonly description: "Whether the application determines spacing after automatically.";
+            };
+          };
+          readonly minProperties: 1;
+          readonly additionalProperties: false;
+        },
+        {
+          readonly type: "null";
+        },
+      ];
+      readonly description: "Complete direct paragraph spacing (`w:spacing`); omitted attributes stay absent, while zero and false remain explicit. Null removes the direct spacing child and restores style inheritance.";
+    };
+  };
+  readonly minProperties: 1;
+  readonly additionalProperties: false;
+} = {
   type: "object",
   description: "The paragraph properties to set; at least one.",
   properties: {

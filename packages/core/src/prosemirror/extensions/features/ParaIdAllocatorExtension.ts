@@ -1,7 +1,7 @@
 import { panic } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { Plugin, Transaction } from "prosemirror-state";
-import type { EditorState } from "prosemirror-state";
+import type { EditorState, PluginKey } from "prosemirror-state";
 
 import {
   getExplicitParagraphPropertySourceTransfers,
@@ -54,7 +54,7 @@ import { deterministicHexId, generateHexId } from "../../../utils/hexId";
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { type PositionQuery, sweepPositions } from "../../positionSweep";
 import { createExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { Extension, ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
 
 type ParagraphPropertySourceSeed = {
@@ -62,8 +62,13 @@ type ParagraphPropertySourceSeed = {
   tokens: ReadonlySet<string>;
 };
 
-export const paraIdAllocatorKey =
-  createPluginKeyOwner<ParagraphPropertySourceSeed>("paraIdAllocator");
+export const paraIdAllocatorKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<ParagraphPropertySourceSeed>;
+  owns: (plugin: Plugin<ParagraphPropertySourceSeed>) => boolean;
+  get: (state: EditorState) => Plugin<ParagraphPropertySourceSeed> | undefined;
+  getState: (state: EditorState) => ParagraphPropertySourceSeed | undefined;
+}> = createPluginKeyOwner<ParagraphPropertySourceSeed>("paraIdAllocator");
 
 /**
  * Transaction meta asking this plugin to derive the ids it mints from a
@@ -593,7 +598,9 @@ const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
     },
   });
 
-export const ParaIdAllocatorExtension = createExtension({
+export const ParaIdAllocatorExtension: (
+  options?: Partial<{}> | undefined,
+) => Extension = createExtension({
   name: "paraIdAllocator",
   defaultOptions: {},
   onSchemaReady(): ExtensionRuntime {

@@ -7,7 +7,9 @@
  * depend on its document-build pipeline.
  */
 import {
+  type Dispatch,
   type RefObject,
+  type SetStateAction,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -112,7 +114,55 @@ export function useFolioComments({
   commentsProp,
   onCommentsChange,
   committedComments,
-}: UseFolioCommentsOptions) {
+}: UseFolioCommentsOptions): {
+  comments: Comment[];
+  setComments: (
+    next: Comment[] | ((prev: Comment[]) => Comment[]),
+  ) => undefined;
+  createComment: (text: string, author: string, parentId?: number) => Comment;
+  isControlledComments: boolean;
+  commentsRef: Readonly<RefObject<Comment[]>>;
+  getCommentsDirty: () => boolean;
+  setCommentsDirty: (dirty: boolean) => void;
+  resetLoadedComments: () => void;
+  showCommentsSidebar: boolean;
+  setShowCommentsSidebar: Dispatch<SetStateAction<boolean>>;
+  setVisibleCommentAuthors: Dispatch<SetStateAction<Set<string> | null>>;
+  activeCommentId: number | null;
+  setActiveCommentId: Dispatch<SetStateAction<number | null>>;
+  isAddingComment: boolean;
+  setIsAddingComment: Dispatch<SetStateAction<boolean>>;
+  commentSelectionRange: {
+    from: number;
+    to: number;
+  } | null;
+  setCommentSelectionRange: Dispatch<
+    SetStateAction<{
+      from: number;
+      to: number;
+    } | null>
+  >;
+  addCommentYPosition: number | null;
+  setAddCommentYPosition: Dispatch<SetStateAction<number | null>>;
+  floatingCommentBtn: {
+    top: number;
+    left: number;
+    from: number;
+    to: number;
+  } | null;
+  setFloatingCommentBtn: Dispatch<
+    SetStateAction<{
+      top: number;
+      left: number;
+      from: number;
+      to: number;
+    } | null>
+  >;
+  commentAuthors: string[];
+  visibleCommentAuthorSet: Set<string>;
+  visibleComments: Comment[];
+  syncCommentHighlightStyles: () => void;
+} {
   const [showCommentsSidebar, setShowCommentsSidebar] = useState(false);
   const [visibleCommentAuthors, setVisibleCommentAuthors] =
     useState<Set<string> | null>(null);
@@ -141,8 +191,11 @@ export function useFolioComments({
   }, [comments, doc]);
 
   const commentsDirtyRef = useRef(false);
-  const getCommentsDirty = useCallback(() => commentsDirtyRef.current, []);
-  const setCommentsDirty = useCallback((dirty: boolean) => {
+  const getCommentsDirty = useCallback(
+    (): boolean => commentsDirtyRef.current,
+    [],
+  );
+  const setCommentsDirty = useCallback((dirty: boolean): void => {
     commentsDirtyRef.current = dirty;
   }, []);
   // Controlled mirrors follow committed props only. Uncontrolled setters also
@@ -159,7 +212,7 @@ export function useFolioComments({
   }, [onCommentsChange]);
 
   const createComment = useCallback(
-    (text: string, author: string, parentId?: number) => {
+    (text: string, author: string, parentId?: number): Comment => {
       for (const { id } of doc?.package.document.comments ?? []) {
         seedCommentIdAbove(id);
       }
@@ -172,7 +225,7 @@ export function useFolioComments({
   );
 
   const setComments = useCallback(
-    (next: Comment[] | ((prev: Comment[]) => Comment[])) => {
+    (next: Comment[] | ((prev: Comment[]) => Comment[])): undefined => {
       const resolved =
         typeof next === "function"
           ? (next as (prev: Comment[]) => Comment[])(commentsRef.current)
@@ -223,7 +276,10 @@ export function useFolioComments({
   const [loadedCommentsNotification, setLoadedCommentsNotification] = useState<{
     comments: Comment[];
   } | null>(null);
-  const resetLoadedComments = useCallback(() => setCommentsLoaded(false), []);
+  const resetLoadedComments = useCallback(
+    (): void => setCommentsLoaded(false),
+    [],
+  );
   const bodyComments = committedComments ?? doc?.package.document.comments;
   if (
     !commentsLoaded &&
@@ -324,7 +380,7 @@ export function useFolioComments({
     setActiveCommentId(null);
   }
 
-  const syncCommentHighlightStyles = useCallback(() => {
+  const syncCommentHighlightStyles = useCallback((): void => {
     const root = editorContentRef.current;
     if (!root) {
       return;

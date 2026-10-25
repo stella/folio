@@ -27,7 +27,11 @@ export const BUILT_IN_DEFAULT_PARAGRAPH_STYLE_ID = "Normal";
  * renders as though it declared this, so anything that mints the missing
  * default has to mint the formatting with it.
  */
-export const BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING = {
+export const BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING: {
+  spaceAfter: number;
+  lineSpacing: number;
+  lineSpacingRule: "auto";
+} = {
   spaceAfter: 160,
   lineSpacing: 259,
   lineSpacingRule: "auto",

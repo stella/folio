@@ -159,7 +159,33 @@ export const removeParagraphPropertyChanges = (
  *   `alignmentFromStyle`, `spacingFromDocDefaults`, and resolved style-spacing
  *   provenance in `spacingFromImplicitDefaultStyle`
  */
-export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
+export const PPR_CHANGE_SCOPED_ATTR_KEYS: readonly [
+  "styleId",
+  "numPr",
+  "alignment",
+  "spaceBefore",
+  "spaceAfter",
+  "lineSpacing",
+  "lineSpacingRule",
+  "lineSpacingExplicit",
+  "snapToGrid",
+  "spacingExplicit",
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+  "hangingIndent",
+  "borders",
+  "shading",
+  "tabs",
+  "pageBreakBefore",
+  "keepNext",
+  "keepLines",
+  "widowControl",
+  "contextualSpacing",
+  "outlineLevel",
+  "direction",
+  "_autospacingBase",
+] = [
   "styleId",
   "numPr",
   "alignment",

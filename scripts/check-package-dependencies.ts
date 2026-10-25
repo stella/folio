@@ -3,8 +3,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import path from "node:path";
-import ts from "typescript";
 
+import {
+  moduleReferences,
+  parseSourceModule,
+  type SourceModule,
+} from "./lib/oxc-ast";
 import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 
 export type DependencyManifest = {
@@ -20,6 +24,34 @@ type PackageImport = { specifier: string; typeOnly: boolean };
 const BUILTINS = new Set(
   builtinModules.flatMap((name) => [name, `node:${name}`]),
 );
+
+// TypeScript reads `/// <reference types="…" />` only from the comments
+// before the first statement; `no-default-lib="true"` takes precedence.
+const TRIPLE_SLASH_DIRECTIVE = /^\/\/\/\s*<(\S+)\s.*?\/>/mu;
+const directiveArgument = (directive: string, name: string) => {
+  const match = new RegExp(
+    String.raw`(\s${name}\s*=\s*)(?:(?:'([^']*)')|(?:"([^"]*)"))`,
+    "imu",
+  ).exec(directive);
+  return match?.at(2) ?? match?.at(3);
+};
+
+const typeReferenceDirectives = ({
+  text,
+  program,
+  comments,
+}: SourceModule): string[] => {
+  const firstStatement = program.body.at(0)?.start ?? text.length;
+  return comments.flatMap((comment) => {
+    if (comment.type !== "Line" || comment.end > firstStatement) return [];
+    const directive = `//${comment.value}`;
+    const name = TRIPLE_SLASH_DIRECTIVE.exec(directive)?.at(1);
+    if (name?.toLowerCase() !== "reference") return [];
+    if (directiveArgument(directive, "no-default-lib") === "true") return [];
+    const types = directiveArgument(directive, "types");
+    return types === undefined ? [] : [types];
+  });
+};
 
 export const importedPackages = (
   source: string,
@@ -41,66 +73,15 @@ export const importedPackages = (
         .map((match) => match.at(1) ?? "")
         .join("\n")
     : source;
-  const scriptKind = /\.[jt]sx$/u.test(fileName)
-    ? ts.ScriptKind.TSX
-    : ts.ScriptKind.TS;
-  const file = ts.createSourceFile(
-    fileName,
+  // Every script parses as TypeScript, with JSX only in .jsx and .tsx files.
+  const language = /\.[jt]sx$/u.test(fileName) ? ".tsx" : ".ts";
+  const parsed = parseSourceModule(
+    fileName.endsWith(language) ? fileName : `${fileName}${language}`,
     content,
-    ts.ScriptTarget.Latest,
-    true,
-    scriptKind,
   );
-  const add = (node: ts.Node, typeOnly: boolean) => {
-    if (ts.isStringLiteralLike(node))
-      imports.push({ specifier: node.text, typeOnly });
-  };
-  const visit = (node: ts.Node) => {
-    if (ts.isImportDeclaration(node)) {
-      const clause = node.importClause;
-      const bindings = clause?.namedBindings;
-      const typeOnly =
-        clause?.isTypeOnly === true ||
-        (clause !== undefined &&
-          clause.name === undefined &&
-          bindings !== undefined &&
-          ts.isNamedImports(bindings) &&
-          bindings.elements.length > 0 &&
-          bindings.elements.every((element) => element.isTypeOnly));
-      add(node.moduleSpecifier, typeOnly);
-    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
-      const typeOnly =
-        node.isTypeOnly ||
-        (node.exportClause !== undefined &&
-          ts.isNamedExports(node.exportClause) &&
-          node.exportClause.elements.length > 0 &&
-          node.exportClause.elements.every((element) => element.isTypeOnly));
-      add(node.moduleSpecifier, typeOnly);
-    } else if (
-      ts.isImportEqualsDeclaration(node) &&
-      ts.isExternalModuleReference(node.moduleReference)
-    ) {
-      if (node.moduleReference.expression)
-        add(node.moduleReference.expression, node.isTypeOnly);
-    } else if (
-      ts.isImportTypeNode(node) &&
-      ts.isLiteralTypeNode(node.argument)
-    ) {
-      add(node.argument.literal, true);
-    } else if (
-      ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) &&
-          node.expression.text === "require"))
-    ) {
-      const argument = node.arguments.at(0);
-      if (argument) add(argument, false);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
-  for (const reference of file.typeReferenceDirectives) {
-    imports.push({ specifier: reference.fileName, typeOnly: true });
+  imports.push(...moduleReferences(parsed.program));
+  for (const specifier of typeReferenceDirectives(parsed)) {
+    imports.push({ specifier, typeOnly: true });
   }
   return imports;
 };

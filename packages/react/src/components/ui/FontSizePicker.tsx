@@ -3,7 +3,7 @@
  * Values are points; internally the editor stores half-points (OOXML w:sz).
  */
 
-import { useCallback, useMemo } from "react";
+import { type JSX, useCallback, useMemo } from "react";
 
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -52,7 +52,7 @@ export function FontSizePicker({
   placeholder = "",
   ariaLabel,
   width = 56,
-}: FontSizePickerProps) {
+}: FontSizePickerProps): JSX.Element {
   const {
     Root: Select,
     Trigger: SelectTrigger,

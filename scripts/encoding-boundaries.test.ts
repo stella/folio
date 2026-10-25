@@ -1,8 +1,21 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
-import ts from "typescript";
+import type { TSType } from "oxc-parser";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  bindingElements,
+  collectSyntaxTree,
+  createLineIndex,
+  isBlock,
+  isFunctionLike,
+  type Node,
+  nodeText,
+  parameterParts,
+  parametersOf,
+  parseLikeTypeScript,
+  propertyNameText,
+} from "./lib/oxc-ast";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -28,16 +41,24 @@ const SOURCE_FILES = [...new Bun.Glob(SOURCE_GLOB).scanSync({ cwd: PACKAGES })];
 
 type Violation = { line: number; reason: string };
 
-const property = (node: ts.Expression): string | undefined => {
-  if (ts.isPropertyAccessExpression(node)) return node.name.text;
+const property = (node: Node): string | undefined => {
+  if (node.type !== "MemberExpression") return undefined;
+  if (!node.computed)
+    return node.property.type === "PrivateIdentifier"
+      ? `#${node.property.name}`
+      : node.property.name;
   if (
-    ts.isElementAccessExpression(node) &&
-    node.argumentExpression &&
-    ts.isStringLiteral(node.argumentExpression)
+    node.property.type === "Literal" &&
+    typeof node.property.value === "string"
   )
-    return node.argumentExpression.text;
+    return node.property.value;
   return undefined;
 };
+
+const isStringLiteral = (
+  node: Node | undefined,
+): node is Node & { type: "Literal"; value: string } =>
+  node?.type === "Literal" && typeof node.value === "string";
 
 const scriptText = (source: string, file: string): string =>
   file.endsWith(".vue")
@@ -46,16 +67,25 @@ const scriptText = (source: string, file: string): string =>
         .join("\n")
     : source;
 
+/** A TypeScript parameter or variable declaration. */
+type Declaration = {
+  readonly kind: "parameter" | "variable";
+  /** Stands where TypeScript's declaration node does, under the same parent. */
+  readonly node: Node;
+  readonly name: Node;
+  readonly type: TSType | undefined;
+  readonly initializer: Node | undefined;
+};
+
 const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
-  const source = ts.createSourceFile(
+  const script = scriptText(text, file);
+  const { program } = parseLikeTypeScript(
     file,
-    scriptText(text, file),
-    ts.ScriptTarget.Latest,
-    true,
-    file.endsWith(".tsx") || file.endsWith(".jsx")
-      ? ts.ScriptKind.TSX
-      : ts.ScriptKind.TS,
+    script,
+    file.endsWith(".tsx") || file.endsWith(".jsx") ? "tsx" : "ts",
   );
+  const { nodes, parentOf } = collectSyntaxTree(program);
+  const lineOf = createLineIndex(script);
   const violations: Violation[] = [];
   const codecs = new Set(["TextEncoder", "TextDecoder"]);
   const decoders = new Set(["decodeText"]);
@@ -64,20 +94,40 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
   const bufferFactories = new Set<string>();
   const binaryCodecs = new Set(["atob", "btoa"]);
   const textNames = new Set<string>();
-  const nodes: ts.Node[] = [];
-  const collect = (node: ts.Node): void => {
-    nodes.push(node);
-    ts.forEachChild(node, collect);
-  };
-  collect(source);
+  const declarations: Declaration[] = [];
   for (const node of nodes) {
-    if (ts.isImportSpecifier(node)) {
-      const imported = node.propertyName?.text ?? node.name.text;
-      if (decoders.has(imported)) decoders.add(node.name.text);
-      if (encoders.has(imported)) encoders.add(node.name.text);
-      if (buffers.has(imported)) buffers.add(node.name.text);
-      if (binaryCodecs.has(imported)) binaryCodecs.add(node.name.text);
+    if (node.type === "ImportSpecifier") {
+      const imported =
+        node.imported.type === "Literal"
+          ? node.imported.value
+          : node.imported.name;
+      if (decoders.has(imported)) decoders.add(node.local.name);
+      if (encoders.has(imported)) encoders.add(node.local.name);
+      if (buffers.has(imported)) buffers.add(node.local.name);
+      if (binaryCodecs.has(imported)) binaryCodecs.add(node.local.name);
     }
+    if (node.type === "VariableDeclarator")
+      declarations.push({
+        kind: "variable",
+        node,
+        ...parameterParts(node.id),
+        initializer: node.init ?? undefined,
+      });
+    // TypeScript declares a catch clause's variable like any other.
+    if (node.type === "CatchClause" && node.param)
+      declarations.push({
+        kind: "variable",
+        node: node.param,
+        ...parameterParts(node.param),
+        initializer: undefined,
+      });
+    if (isFunctionLike(node))
+      for (const parameter of parametersOf(node))
+        declarations.push({
+          kind: "parameter",
+          node: parameter,
+          ...parameterParts(parameter),
+        });
   }
   // Follow aliases to a fixed point so an extra assignment cannot open a bypass.
   let changed = true;
@@ -88,24 +138,24 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
   };
   while (changed) {
     changed = false;
-    for (const node of nodes) {
+    for (const declaration of declarations) {
+      const { name, initializer } = declaration;
       if (
-        (ts.isParameter(node) || ts.isVariableDeclaration(node)) &&
-        ts.isIdentifier(node.name) &&
-        node.type?.kind === ts.SyntaxKind.StringKeyword
+        name.type === "Identifier" &&
+        declaration.type?.type === "TSStringKeyword"
       )
-        alias(textNames, node.name.text);
-      if (!ts.isVariableDeclaration(node) || !node.initializer) continue;
-      if (ts.isIdentifier(node.name)) {
+        alias(textNames, name.name);
+      if (declaration.kind !== "variable" || !initializer) continue;
+      if (name.type === "Identifier") {
         if (
-          ts.isStringLiteral(node.initializer) ||
-          ts.isTemplateExpression(node.initializer) ||
-          ts.isNoSubstitutionTemplateLiteral(node.initializer)
+          isStringLiteral(initializer) ||
+          initializer.type === "TemplateLiteral"
         )
-          alias(textNames, node.name.text);
-        const target = ts.isIdentifier(node.initializer)
-          ? node.initializer.text
-          : property(node.initializer);
+          alias(textNames, name.name);
+        const target =
+          initializer.type === "Identifier"
+            ? initializer.name
+            : property(initializer);
         if (target)
           for (const set of [
             decoders,
@@ -115,115 +165,109 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
             binaryCodecs,
             textNames,
           ])
-            if (set.has(target)) alias(set, node.name.text);
+            if (set.has(target)) alias(set, name.name);
         if (
-          property(node.initializer) === "from" &&
-          ts.isPropertyAccessExpression(node.initializer) &&
-          ts.isIdentifier(node.initializer.expression) &&
-          buffers.has(node.initializer.expression.text)
+          property(initializer) === "from" &&
+          initializer.type === "MemberExpression" &&
+          !initializer.computed &&
+          initializer.object.type === "Identifier" &&
+          buffers.has(initializer.object.name)
         )
-          alias(bufferFactories, node.name.text);
+          alias(bufferFactories, name.name);
       }
-      if (!ts.isObjectBindingPattern(node.name)) continue;
-      for (const element of node.name.elements) {
-        if (!ts.isIdentifier(element.name)) continue;
+      if (name.type !== "ObjectPattern") continue;
+      for (const element of bindingElements(name)) {
+        if (element.name.type !== "Identifier") continue;
         const target =
-          element.propertyName?.getText(source).replace(/["']/gu, "") ??
-          element.name.text;
+          propertyNameText(script, element)?.replace(/["']/gu, "") ??
+          element.name.name;
         for (const set of [decoders, encoders, buffers, binaryCodecs])
-          if (set.has(target)) alias(set, element.name.text);
+          if (set.has(target)) alias(set, element.name.name);
         if (
           target === "from" &&
-          ts.isIdentifier(node.initializer) &&
-          buffers.has(node.initializer.text)
+          initializer.type === "Identifier" &&
+          buffers.has(initializer.name)
         )
-          alias(bufferFactories, element.name.text);
+          alias(bufferFactories, element.name.name);
       }
     }
   }
-  const add = (node: ts.Node, reason: string): void => {
+  const add = (node: Node, reason: string): void => {
     violations.push({
-      line:
-        source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+      line: lineOf(node.start).line + 1,
       reason,
     });
   };
-  const loopAncestor = (node: ts.Node): boolean => {
-    for (let parent = node.parent; parent; parent = parent.parent) {
+  const loopAncestor = (node: Node): boolean => {
+    for (let parent = parentOf(node); parent; parent = parentOf(parent)) {
       if (
-        ts.isForStatement(parent) ||
-        ts.isForOfStatement(parent) ||
-        ts.isForInStatement(parent) ||
-        ts.isWhileStatement(parent) ||
-        ts.isDoStatement(parent)
+        parent.type === "ForStatement" ||
+        parent.type === "ForOfStatement" ||
+        parent.type === "ForInStatement" ||
+        parent.type === "WhileStatement" ||
+        parent.type === "DoWhileStatement"
       )
         return true;
     }
     return false;
   };
-  const localScope = (node: ts.Node | undefined): ts.Node => {
-    for (let current = node; current; current = current.parent) {
+  const localScope = (node: Node | undefined): Node => {
+    for (let current = node; current; current = parentOf(current)) {
       if (
-        ts.isBlock(current) ||
-        ts.isFunctionLike(current) ||
-        ts.isForStatement(current) ||
-        ts.isForOfStatement(current) ||
-        ts.isForInStatement(current) ||
-        ts.isSourceFile(current)
+        isBlock(current) ||
+        isFunctionLike(current) ||
+        current.type === "ForStatement" ||
+        current.type === "ForOfStatement" ||
+        current.type === "ForInStatement" ||
+        current.type === "Program"
       )
         return current;
     }
-    return source;
+    return program;
   };
-  const localBindings = new Map<
-    ts.Node,
-    Map<string, ts.ParameterDeclaration | ts.VariableDeclaration>
-  >();
-  for (const candidate of nodes) {
-    if (
-      !(ts.isParameter(candidate) || ts.isVariableDeclaration(candidate)) ||
-      !ts.isIdentifier(candidate.name)
-    )
-      continue;
-    const scope = localScope(candidate.parent);
-    let declarations = localBindings.get(scope);
-    if (!declarations) {
-      declarations = new Map();
-      localBindings.set(scope, declarations);
+  const localBindings = new Map<Node, Map<string, Declaration>>();
+  for (const candidate of declarations) {
+    if (candidate.name.type !== "Identifier") continue;
+    const scope = localScope(parentOf(candidate.node));
+    let scoped = localBindings.get(scope);
+    if (!scoped) {
+      scoped = new Map();
+      localBindings.set(scope, scoped);
     }
-    declarations.set(candidate.name.text, candidate);
+    scoped.set(candidate.name.name, candidate);
   }
-  const localDeclaration = (identifier: ts.Identifier) => {
+  const localDeclaration = (identifier: Node & { name: string }) => {
     for (
-      let scope: ts.Node | undefined = localScope(identifier.parent);
+      let scope: Node | undefined = localScope(parentOf(identifier));
       scope;
-      scope = scope === source ? undefined : localScope(scope.parent)
+      scope = scope === program ? undefined : localScope(parentOf(scope))
     ) {
-      const declaration = localBindings.get(scope)?.get(identifier.text);
+      const declaration = localBindings.get(scope)?.get(identifier.name);
       if (declaration) return declaration;
     }
     return undefined;
   };
   const chunkOrigin = (
-    expression: ts.Expression,
-    seen = new Set<ts.Node>(),
+    expression: Node,
+    seen = new Set<Node | Declaration>(),
   ): boolean => {
     if (seen.has(expression)) return false;
     seen.add(expression);
     if (
-      ts.isParenthesizedExpression(expression) ||
-      ts.isAsExpression(expression) ||
-      ts.isNonNullExpression(expression)
+      expression.type === "ParenthesizedExpression" ||
+      expression.type === "TSAsExpression" ||
+      expression.type === "TSNonNullExpression"
     )
       return chunkOrigin(expression.expression, seen);
-    if (ts.isIdentifier(expression)) {
+    if (expression.type === "Identifier") {
       const declaration = localDeclaration(expression);
       if (!declaration || seen.has(declaration)) return false;
       seen.add(declaration);
-      if (ts.isVariableDeclaration(declaration)) {
+      if (declaration.kind === "variable") {
+        const list = parentOf(declaration.node);
         if (
-          ts.isVariableDeclarationList(declaration.parent) &&
-          ts.isForOfStatement(declaration.parent.parent)
+          list?.type === "VariableDeclaration" &&
+          parentOf(list)?.type === "ForOfStatement"
         )
           return true;
         return (
@@ -231,39 +275,40 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
           chunkOrigin(declaration.initializer, seen)
         );
       }
-      const callback = declaration.parent.parent;
+      const owner = parentOf(declaration.node);
+      const callback = owner === undefined ? undefined : parentOf(owner);
       if (
-        !ts.isCallExpression(callback) ||
-        property(callback.expression) !== "on"
+        callback?.type !== "CallExpression" ||
+        property(callback.callee) !== "on"
       )
         return false;
       const event = callback.arguments.at(0);
-      return (
-        event !== undefined &&
-        ts.isStringLiteral(event) &&
-        event.text === "data"
-      );
+      return isStringLiteral(event) && event.value === "data";
     }
-    if (ts.isCallExpression(expression)) {
-      const method = property(expression.expression);
+    if (expression.type === "CallExpression") {
+      const callee = expression.callee;
+      const method = property(callee);
       // A Map key selects a complete stored value; its bytes do not flow into that value.
       if (
         method === "get" &&
-        ts.isPropertyAccessExpression(expression.expression) &&
-        ts.isIdentifier(expression.expression.expression)
+        callee.type === "MemberExpression" &&
+        !callee.computed &&
+        callee.object.type === "Identifier"
       ) {
-        const declaration = localDeclaration(expression.expression.expression);
+        const declaration = localDeclaration(callee.object);
+        const initializer = declaration?.initializer;
         if (
           declaration &&
           ((declaration.type &&
-            /^(?:Readonly)?Map\s*</u.test(declaration.type.getText(source))) ||
-            (ts.isVariableDeclaration(declaration) &&
-              declaration.initializer &&
-              ts.isNewExpression(declaration.initializer) &&
-              ts.isIdentifier(declaration.initializer.expression) &&
-              declaration.initializer.expression.text === "Map" &&
-              localDeclaration(declaration.initializer.expression) ===
-                undefined))
+            /^(?:Readonly)?Map\s*</u.test(
+              nodeText(script, declaration.type),
+            )) ||
+            (declaration.kind === "variable" &&
+              initializer &&
+              initializer.type === "NewExpression" &&
+              initializer.callee.type === "Identifier" &&
+              initializer.callee.name === "Map" &&
+              localDeclaration(initializer.callee) === undefined))
         )
           return false;
       }
@@ -272,73 +317,72 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
         loopAncestor(expression)
       )
         return true;
-      if (
-        ts.isPropertyAccessExpression(expression.expression) ||
-        ts.isElementAccessExpression(expression.expression)
-      ) {
-        if (chunkOrigin(expression.expression.expression, seen)) return true;
+      if (callee.type === "MemberExpression") {
+        if (chunkOrigin(callee.object, seen)) return true;
       }
       return expression.arguments.some((argument) =>
         chunkOrigin(argument, seen),
       );
     }
-    if (ts.isConditionalExpression(expression))
+    if (expression.type === "ConditionalExpression")
       return (
-        chunkOrigin(expression.whenTrue, seen) ||
-        chunkOrigin(expression.whenFalse, seen)
+        chunkOrigin(expression.consequent, seen) ||
+        chunkOrigin(expression.alternate, seen)
       );
     return false;
   };
-  const chunkConsumer = (
-    node: ts.Node,
-    first: ts.Expression | undefined,
-  ): boolean => {
+  const chunkConsumer = (node: Node, first: Node | undefined): boolean => {
     if (first && chunkOrigin(first)) return true;
-    for (let parent = node.parent; parent; parent = parent.parent) {
+    for (let parent = parentOf(node); parent; parent = parentOf(parent)) {
       if (
-        ts.isForOfStatement(parent) &&
+        parent.type === "ForOfStatement" &&
         first &&
-        ts.isIdentifier(first) &&
-        ts.isVariableDeclarationList(parent.initializer) &&
-        parent.initializer.declarations.some(
-          ({ name }) => ts.isIdentifier(name) && name.text === first.text,
+        first.type === "Identifier" &&
+        parent.left.type === "VariableDeclaration" &&
+        parent.left.declarations.some(
+          ({ id }) => id.type === "Identifier" && id.name === first.name,
         )
       )
         return true;
-      if (ts.isCallExpression(parent) && property(parent.expression) === "on") {
+      if (
+        parent.type === "CallExpression" &&
+        property(parent.callee) === "on"
+      ) {
         const event = parent.arguments.at(0);
-        if (event && ts.isStringLiteral(event) && event.text === "data")
-          return true;
+        if (isStringLiteral(event) && event.value === "data") return true;
       }
     }
     return false;
   };
+  const isTextual = (first: Node | undefined): boolean =>
+    first !== undefined &&
+    (isStringLiteral(first) ||
+      first.type === "TemplateLiteral" ||
+      (first.type === "Identifier" && textNames.has(first.name)));
   for (const node of nodes) {
-    if (ts.isIdentifier(node) && codecs.has(node.text))
+    if (node.type === "Identifier" && codecs.has(node.name))
       add(node, "raw text codec reference");
-    if (
-      (ts.isPropertyAccessExpression(node) ||
-        ts.isElementAccessExpression(node)) &&
-      codecs.has(property(node) ?? "")
-    )
+    if (node.type === "MemberExpression" && codecs.has(property(node) ?? ""))
       add(node, "raw text codec property");
-    if (!ts.isCallExpression(node)) continue;
-    const method = property(node.expression);
+    if (node.type !== "CallExpression") continue;
+    const method = property(node.callee);
     const first = node.arguments.at(0);
-    const name = ts.isIdentifier(node.expression)
-      ? node.expression.text
-      : method;
-    const argument = first?.getText(source) ?? "";
+    const name = node.callee.type === "Identifier" ? node.callee.name : method;
+    const argument = first === undefined ? "" : nodeText(script, first);
     const options = node.arguments.at(1);
     const binaryField =
       options &&
-      ts.isObjectLiteralExpression(options) &&
+      options.type === "ObjectExpression" &&
       options.properties.some(
         (option) =>
-          ts.isPropertyAssignment(option) &&
-          option.name.getText(source) === "encoding" &&
-          ts.isStringLiteral(option.initializer) &&
-          option.initializer.text === "binary",
+          option.type === "Property" &&
+          option.kind === "init" &&
+          !option.method &&
+          !option.shorthand &&
+          !option.computed &&
+          nodeText(script, option.key) === "encoding" &&
+          isStringLiteral(option.value) &&
+          option.value.value === "binary",
       );
     if (name && binaryCodecs.has(name))
       add(node, "binary string codec must use the encoding owner");
@@ -347,24 +391,23 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
         add(node, "manual byte-to-text codec");
     }
     if (method === "charCodeAt") {
-      for (let parent = node.parent; parent; parent = parent.parent) {
+      for (let parent = parentOf(node); parent; parent = parentOf(parent)) {
         if (
-          ts.isCallExpression(parent) &&
-          ((property(parent.expression) === "from" &&
-            /Uint8Array/u.test(parent.expression.getText(source))) ||
-            /^set(?:Int|Uint)(?:8|16|32)$/u.test(
-              property(parent.expression) ?? "",
-            ))
+          parent.type === "CallExpression" &&
+          ((property(parent.callee) === "from" &&
+            /Uint8Array/u.test(nodeText(script, parent.callee))) ||
+            /^set(?:Int|Uint)(?:8|16|32)$/u.test(property(parent.callee) ?? ""))
         ) {
           add(node, "manual binary string-to-byte codec");
           break;
         }
         if (
-          ts.isBinaryExpression(parent) &&
-          parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-          ts.isElementAccessExpression(parent.left) &&
+          parent.type === "AssignmentExpression" &&
+          parent.operator === "=" &&
+          parent.left.type === "MemberExpression" &&
+          parent.left.computed &&
           /bytes|buffer|view|encoded/iu.test(
-            parent.left.expression.getText(source),
+            nodeText(script, parent.left.object),
           )
         ) {
           add(node, "manual binary string-to-byte codec");
@@ -392,36 +435,23 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
     if (
       method === "toString" &&
       first &&
-      (!ts.isStringLiteral(first) || first.text !== "hex") &&
-      !ts.isNumericLiteral(first)
+      (!isStringLiteral(first) || first.value !== "hex") &&
+      !(first.type === "Literal" && typeof first.value === "number")
     )
       add(node, "textual Buffer.toString encoding");
     if (
       method === "from" &&
-      (ts.isPropertyAccessExpression(node.expression) ||
-        ts.isElementAccessExpression(node.expression)) &&
-      ts.isIdentifier(node.expression.expression) &&
-      buffers.has(node.expression.expression.text)
+      node.callee.type === "MemberExpression" &&
+      node.callee.object.type === "Identifier" &&
+      buffers.has(node.callee.object.name)
     ) {
-      if (
-        node.arguments.length > 1 ||
-        (first &&
-          (ts.isStringLiteral(first) ||
-            ts.isTemplateExpression(first) ||
-            ts.isNoSubstitutionTemplateLiteral(first) ||
-            (ts.isIdentifier(first) && textNames.has(first.text))))
-      )
+      if (node.arguments.length > 1 || isTextual(first))
         add(node, "textual Buffer.from encoding");
     }
     if (
       name &&
       bufferFactories.has(name) &&
-      (node.arguments.length > 1 ||
-        (first &&
-          (ts.isStringLiteral(first) ||
-            ts.isTemplateExpression(first) ||
-            ts.isNoSubstitutionTemplateLiteral(first) ||
-            (ts.isIdentifier(first) && textNames.has(first.text)))))
+      (node.arguments.length > 1 || isTextual(first))
     )
       add(node, "aliased textual Buffer.from encoding");
   }
@@ -430,30 +460,22 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
 
 /** wasm-bindgen decodes one complete allocation, never independent transport chunks. */
 const generatedViolations = (text: string, file: string): string[] => {
-  const source = ts.createSourceFile(
-    file,
-    text,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.JS,
-  );
+  const { program } = parseLikeTypeScript(file, text, "jsx");
   const problems: string[] = [];
   let decoderConstructions = 0;
   let encoderConstructions = 0;
   let decodes = 0;
   let encodes = 0;
   let encodeInto = 0;
-  const compact = (node: ts.Node): string =>
-    node.getText(source).replace(/\s+/gu, "");
-  const visit = (node: ts.Node): void => {
-    if (ts.isNewExpression(node)) {
-      if (node.expression.getText(source) === "TextDecoder")
-        decoderConstructions++;
-      if (node.expression.getText(source) === "TextEncoder")
-        encoderConstructions++;
+  const compact = (node: Node): string =>
+    nodeText(text, node).replace(/\s+/gu, "");
+  for (const node of collectSyntaxTree(program).nodes) {
+    if (node.type === "NewExpression") {
+      if (nodeText(text, node.callee) === "TextDecoder") decoderConstructions++;
+      if (nodeText(text, node.callee) === "TextEncoder") encoderConstructions++;
     }
-    if (ts.isCallExpression(node)) {
-      const method = property(node.expression);
+    if (node.type === "CallExpression") {
+      const method = property(node.callee);
       if (method === "decode") {
         decodes++;
         const args = node.arguments.map(compact);
@@ -484,9 +506,7 @@ const generatedViolations = (text: string, file: string): string[] => {
           problems.push("encodeInto argument changed");
       }
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  }
   const detected = findViolations(text, file);
   const rawReferences = detected.filter(({ reason }) =>
     reason.startsWith("raw text codec"),
@@ -506,10 +526,19 @@ const generatedViolations = (text: string, file: string): string[] => {
   }
   if (encoderConstructions !== 1 || encodes !== 2 || encodeInto !== 1)
     problems.push("generated shaper encoder shape changed");
-  const passString = source.statements.find(
-    (node) =>
-      ts.isFunctionDeclaration(node) && node.name?.text === "passStringToWasm0",
-  );
+  // TypeScript's statement is the whole `export function`, keyword included.
+  const passString = program.body.find((statement) => {
+    const declaration =
+      (statement.type === "ExportNamedDeclaration" ||
+        statement.type === "ExportDefaultDeclaration") &&
+      statement.declaration
+        ? statement.declaration
+        : statement;
+    return (
+      declaration.type === "FunctionDeclaration" &&
+      declaration.id?.name === "passStringToWasm0"
+    );
+  });
   const body = passString ? compact(passString) : "";
   // The ASCII-only prefix stops before any surrogate. The remainder is encoded
   // once into a buffer with three bytes per UTF-16 unit, sufficient even for pairs.

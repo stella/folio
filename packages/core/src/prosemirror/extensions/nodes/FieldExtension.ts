@@ -17,6 +17,7 @@ import {
 } from "../../attrs";
 import { RUN_CONTENT_INLINE_NODE_NAMES } from "../../runContentProjection";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 type FieldOptions = {
   getInternalClipboardToken?: () => string;
@@ -141,7 +142,9 @@ const getFieldVisibleText = (node: PMNode): string => {
   }
 };
 
-export const FieldExtension = createNodeExtension<FieldOptions>({
+export const FieldExtension: (
+  options?: Partial<FieldOptions> | undefined,
+) => NodeExtension = createNodeExtension<FieldOptions>({
   name: "field",
   schemaNodeName: "field",
   nodeSpec: (options) => ({
@@ -177,7 +180,9 @@ export const FieldExtension = createNodeExtension<FieldOptions>({
   }),
 });
 
-export const StructuredFieldExtension = createNodeExtension<FieldOptions>({
+export const StructuredFieldExtension: (
+  options?: Partial<FieldOptions> | undefined,
+) => NodeExtension = createNodeExtension<FieldOptions>({
   name: "structuredField",
   schemaNodeName: "structuredField",
   nodeSpec: (options) => ({

@@ -43,7 +43,10 @@ type InsertTableRowOperation = Extract<
 >;
 type TableRowPosition = NonNullable<InsertTableRowOperation["position"]>;
 
-export const EDIT_SCRIPT_TABLE_ROW_POSITION = {
+export const EDIT_SCRIPT_TABLE_ROW_POSITION: {
+  readonly after: "after";
+  readonly before: "before";
+} = {
   after: "after",
   before: "before",
 } as const satisfies Record<TableRowPosition, TableRowPosition>;
@@ -76,7 +79,14 @@ export type EditScriptStep =
 
 export type EditScript = readonly EditScriptStep[];
 
-export const EDIT_SCRIPT_UNRESOLVED_REASONS = Object.freeze([
+export const EDIT_SCRIPT_UNRESOLVED_REASONS: readonly [
+  "block-out-of-range",
+  "block-not-in-table",
+  "range-out-of-bounds",
+  "text-not-found",
+  "no-paragraph-boundary",
+  "refused",
+] = Object.freeze([
   "block-out-of-range",
   "block-not-in-table",
   "range-out-of-bounds",

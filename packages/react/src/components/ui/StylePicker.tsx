@@ -143,7 +143,7 @@ export function StylePicker({
   disabled = false,
   className,
   width = 140,
-}: StylePickerProps) {
+}: StylePickerProps): React.JSX.Element {
   const {
     Root: Select,
     Trigger: SelectTrigger,

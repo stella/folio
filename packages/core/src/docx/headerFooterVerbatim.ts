@@ -1,6 +1,12 @@
 import { panic, Result } from "better-result";
 
-import type { BlockContent, Document, HeaderFooter } from "../types/document";
+import type {
+  BlockContent,
+  Document,
+  HeaderFooter,
+  Style,
+  StyleDefinitions,
+} from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 
 const fingerprintBaselines = new WeakMap<
@@ -365,7 +371,20 @@ const readDocumentSourceCapture = (document: Document) => {
 export const getDocumentSourceStyles = (
   document: Document,
   liveStyles?: Document["package"]["styles"],
-) => {
+):
+  | {
+      readonly type: "missing";
+      readonly baseline?: never;
+    }
+  | {
+      readonly type: "mismatch";
+      readonly baseline?: never;
+    }
+  | {
+      readonly type: "captured";
+      readonly styles: Readonly<StyleDefinitions> | undefined;
+      readonly additions: Style[];
+    } => {
   const source = readDocumentSourceCapture(document);
   if (source.type !== "captured") return source;
   const additions =

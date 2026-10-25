@@ -1,4 +1,4 @@
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 import JSZip from "jszip";
 import { createHash } from "node:crypto";
 
@@ -113,16 +113,18 @@ export type FolioDocxXmlPatchApplication =
       readonly bytes: Uint8Array;
     };
 
-export class UnsupportedFolioDocxXmlPatchApplicationProfileError extends TaggedError(
-  "UnsupportedFolioDocxXmlPatchApplicationProfileError",
-)<{
+const UnsupportedFolioDocxXmlPatchApplicationProfileErrorBase: TaggedErrorClass<"UnsupportedFolioDocxXmlPatchApplicationProfileError"> =
+  TaggedError("UnsupportedFolioDocxXmlPatchApplicationProfileError");
+
+export class UnsupportedFolioDocxXmlPatchApplicationProfileError extends UnsupportedFolioDocxXmlPatchApplicationProfileErrorBase<{
   message: string;
   profile: unknown;
 }> {}
 
-export class FolioDocxXmlPatchApplicationError extends TaggedError(
-  "FolioDocxXmlPatchApplicationError",
-)<{
+const FolioDocxXmlPatchApplicationErrorBase: TaggedErrorClass<"FolioDocxXmlPatchApplicationError"> =
+  TaggedError("FolioDocxXmlPatchApplicationError");
+
+export class FolioDocxXmlPatchApplicationError extends FolioDocxXmlPatchApplicationErrorBase<{
   message: string;
   stage: "verify" | "load" | "replace" | "generate";
   part?: string;

@@ -2,7 +2,8 @@ import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import ts from "typescript";
+
+import { importedModuleNames, parseSourceModule } from "./lib/oxc-ast";
 
 const REPOSITORY_ROOT = path.join(import.meta.dir, "..");
 
@@ -92,9 +93,9 @@ describe("Rust boundary modules stay thin", () => {
   for (const { label, module, imports, forbidden } of RUST_BOUNDARIES) {
     test(`the ${label} boundary imports only its artifact`, async () => {
       const source = await readFile(path.join(REPOSITORY_ROOT, module), "utf8");
-      const importedModules = ts
-        .preProcessFile(source)
-        .importedFiles.map(({ fileName }) => fileName);
+      const importedModules = importedModuleNames(
+        parseSourceModule(module, source),
+      );
 
       expect(importedModules).toEqual([...imports]);
       for (const name of forbidden) {

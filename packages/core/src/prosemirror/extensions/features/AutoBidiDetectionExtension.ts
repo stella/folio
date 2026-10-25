@@ -1,6 +1,6 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
-import type { EditorState } from "prosemirror-state";
+import type { EditorState, PluginKey } from "prosemirror-state";
 
 import { setProseParagraphMarkupWithPropertySource } from "../../../docx/paragraphPropertySource";
 import type { DirtyRange } from "../../../paged-layout/incrementalMeasure";
@@ -45,10 +45,16 @@ import type { ParagraphDirection } from "../../paragraphDirection";
  */
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { createExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { Extension, ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
 
-export const autoBidiDetectionKey = createPluginKeyOwner("autoBidiDetection");
+export const autoBidiDetectionKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<unknown>;
+  owns: (plugin: Plugin<unknown>) => boolean;
+  get: (state: EditorState) => Plugin<unknown> | undefined;
+  getState: (state: EditorState) => unknown;
+}> = createPluginKeyOwner("autoBidiDetection");
 
 type BidiUpdate = {
   pos: number;
@@ -218,7 +224,9 @@ const createAutoBidiDetectionPlugin = (): Plugin =>
     },
   });
 
-export const AutoBidiDetectionExtension = createExtension({
+export const AutoBidiDetectionExtension: (
+  options?: Partial<{}> | undefined,
+) => Extension = createExtension({
   name: "autoBidiDetection",
   defaultOptions: {},
   onSchemaReady(): ExtensionRuntime {

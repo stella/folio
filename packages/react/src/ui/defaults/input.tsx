@@ -1,4 +1,5 @@
 import { Input as InputPrimitive } from "@base-ui/react/input";
+import type { JSX } from "react/jsx-runtime";
 
 import { cn } from "../../lib/utils";
 import type { FolioInputProps } from "../folio-ui";
@@ -16,7 +17,7 @@ export function DefaultInput({
   size = "default",
   nativeInput = false,
   ...props
-}: FolioInputProps) {
+}: FolioInputProps): JSX.Element {
   const inputClassName = cn("folio-default-input", className);
   const numericSize = typeof size === "number" ? size : undefined;
 

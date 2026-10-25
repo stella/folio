@@ -33,7 +33,14 @@ export const TABLE_LOOK_FLAGS = [
 export type TableLookFlag = (typeof TABLE_LOOK_FLAGS)[number];
 
 /** The bit of `w:val` each flag restates (ECMA-376 §17.4.57). */
-export const TABLE_LOOK_BITS = {
+export const TABLE_LOOK_BITS: {
+  readonly firstRow: 32;
+  readonly lastRow: 64;
+  readonly firstColumn: 128;
+  readonly lastColumn: 256;
+  readonly noHBand: 512;
+  readonly noVBand: 1024;
+} = {
   firstRow: 0x00_20,
   lastRow: 0x00_40,
   firstColumn: 0x00_80,

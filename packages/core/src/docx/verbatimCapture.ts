@@ -1,3 +1,6 @@
+const UntranslatableStrictNamespaceErrorBase: TaggedErrorClass<"UntranslatableStrictNamespaceError"> =
+  TaggedError("UntranslatableStrictNamespaceError");
+
 /**
  * The one way to turn parsed markup into a string a rebuilt part replays.
  *
@@ -16,7 +19,7 @@
  * and a fragment that carries no Strict namespace passes through byte for byte.
  */
 
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 
@@ -53,9 +56,7 @@ import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { getDocxXmlSafetyIssue } from "./xmlSafety";
 
 /** A Strict fragment uses a namespace that has no Transitional counterpart. */
-export class UntranslatableStrictNamespaceError extends TaggedError(
-  "UntranslatableStrictNamespaceError",
-)<{
+export class UntranslatableStrictNamespaceError extends UntranslatableStrictNamespaceErrorBase<{
   message: string;
   uri: string;
 }> {}

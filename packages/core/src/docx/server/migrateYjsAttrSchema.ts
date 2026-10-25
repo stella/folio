@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 import * as Y from "yjs";
 
 import {
@@ -14,6 +14,9 @@ import {
   FOLIO_YJS_UPDATE_MAX_BYTES,
 } from "./materializeYjsDocx";
 
+const FolioYjsSnapshotMigrationErrorBase: TaggedErrorClass<"FolioYjsSnapshotMigrationError"> =
+  TaggedError("FolioYjsSnapshotMigrationError");
+
 /** Stable failure codes returned by an offline snapshot migration. */
 export const FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES = [
   "invalid_update",
@@ -26,9 +29,7 @@ export type FolioYjsSnapshotMigrationErrorCode =
   (typeof FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES)[number];
 
 /** Typed failure raised when a collaboration snapshot cannot be migrated. */
-export class FolioYjsSnapshotMigrationError extends TaggedError(
-  "FolioYjsSnapshotMigrationError",
-)<{
+export class FolioYjsSnapshotMigrationError extends FolioYjsSnapshotMigrationErrorBase<{
   code: FolioYjsSnapshotMigrationErrorCode;
   message: string;
   cause?: unknown;

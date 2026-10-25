@@ -3,10 +3,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import ts from "typescript";
+import type { StringLiteral } from "oxc-parser";
 
 import { getFolioMessages } from "../packages/core/src/i18n/messages";
 import { FOLIO_LOCALES } from "../packages/core/src/i18n/messages/locales";
+import { type Node, nodeText, parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 const root = path.resolve(import.meta.dir, "..");
 const packages = ["core", "react", "vue"] as const;
@@ -15,58 +16,50 @@ const localeFilename = (packageName: string, locale: string) =>
 const messagesDirectory = (packageName: string) =>
   path.join(root, "packages", packageName, "src/i18n/messages");
 
+const isStringLiteral = (node: Node): node is StringLiteral =>
+  node.type === "Literal" && typeof node.value === "string";
+
 const runtimeSpecifiers = (file: string) => {
-  const source = ts.createSourceFile(
-    file,
-    readFileSync(file, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule(file, readFileSync(file, "utf8"));
   const specifiers: string[] = [];
-  const visit = (node: ts.Node) => {
-    if (
-      ts.isImportDeclaration(node) &&
-      ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      const clause = node.importClause;
-      const bindings = clause?.namedBindings;
+  walkAst(program, (node) => {
+    if (node.type === "ImportDeclaration") {
       const onlyTypes =
-        clause?.isTypeOnly ||
-        (!clause?.name &&
-          bindings &&
-          ts.isNamedImports(bindings) &&
-          bindings.elements.length > 0 &&
-          bindings.elements.every((binding) => binding.isTypeOnly));
-      if (!onlyTypes) specifiers.push(node.moduleSpecifier.text);
+        node.importKind === "type" ||
+        (node.specifiers.length > 0 &&
+          node.specifiers.every(
+            (binding) =>
+              binding.type === "ImportSpecifier" &&
+              binding.importKind === "type",
+          ));
+      if (!onlyTypes) specifiers.push(node.source.value);
     }
     if (
-      ts.isExportDeclaration(node) &&
-      node.moduleSpecifier &&
-      ts.isStringLiteral(node.moduleSpecifier) &&
-      !node.isTypeOnly
+      (node.type === "ExportNamedDeclaration" ||
+        node.type === "ExportAllDeclaration") &&
+      node.source &&
+      node.exportKind !== "type"
     ) {
       const onlyTypes =
-        node.exportClause &&
-        ts.isNamedExports(node.exportClause) &&
-        node.exportClause.elements.length > 0 &&
-        node.exportClause.elements.every((binding) => binding.isTypeOnly);
-      if (!onlyTypes) specifiers.push(node.moduleSpecifier.text);
+        node.type === "ExportNamedDeclaration" &&
+        node.specifiers.length > 0 &&
+        node.specifiers.every((binding) => binding.exportKind === "type");
+      if (!onlyTypes) specifiers.push(node.source.value);
     }
     if (
-      ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) &&
-          node.expression.text === "require"))
+      node.type === "ImportExpression" ||
+      (node.type === "CallExpression" &&
+        node.callee.type === "Identifier" &&
+        node.callee.name === "require")
     ) {
-      const argument = node.arguments.at(0);
+      const argument =
+        node.type === "ImportExpression" ? node.source : node.arguments.at(0);
       // A computed dependency defeats this source graph's isolation proof.
-      expect(argument && ts.isStringLiteral(argument)).toBe(true);
-      if (argument && ts.isStringLiteral(argument))
-        specifiers.push(argument.text);
+      expect(argument && isStringLiteral(argument)).toBe(true);
+      if (argument && isStringLiteral(argument))
+        specifiers.push(argument.value);
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  });
   return specifiers;
 };
 
@@ -252,20 +245,19 @@ test("build configurations include locale-derived entries and the discovery modu
     expect(imports.some((specifier) => specifier.startsWith("../core/"))).toBe(
       false,
     );
-    const source = ts.createSourceFile(
+    const { program, text } = parseSourceModule(
       configFile,
       readFileSync(configFile, "utf8"),
-      ts.ScriptTarget.Latest,
-      true,
     );
     const prefix = packageName === "react" ? "i18n/messages" : "messages";
     const entrySpreads: string[] = [];
-    const visit = (node: ts.Node) => {
-      if (ts.isSpreadAssignment(node))
-        entrySpreads.push(node.expression.getText(source));
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
+    walkAst(program, (node, ancestors) => {
+      if (
+        node.type === "SpreadElement" &&
+        ancestors.at(-1)?.type === "ObjectExpression"
+      )
+        entrySpreads.push(nodeText(text, node.argument));
+    });
     expect(
       entrySpreads.some(
         (expression) =>
@@ -276,8 +268,8 @@ test("build configurations include locale-derived entries and the discovery modu
       ),
     ).toBe(true);
     // The discovery entry may be explicitly declared or included in the mapped names.
-    const runtimeText = source.statements
-      .map((statement) => statement.getText(source))
+    const runtimeText = program.body
+      .map((statement) => nodeText(text, statement))
       .join("\n");
     expect(runtimeText).toContain("locales");
   }

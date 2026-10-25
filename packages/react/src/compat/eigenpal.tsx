@@ -1,4 +1,10 @@
-import { forwardRef, type ReactNode } from "react";
+import {
+  forwardRef,
+  type ForwardRefExoticComponent,
+  type JSX,
+  type ReactNode,
+  type RefAttributes,
+} from "react";
 
 import { IntlProvider, useTranslations } from "use-intl";
 
@@ -77,15 +83,33 @@ export type LegacyDocxEditorProps = DocxEditorProps & {
 export type { CreateEmptyDocumentOptions, DocxEditorRef };
 export { createDocumentWithText, createEmptyDocument };
 
-export const en = { _lang: "en" } satisfies LegacyTranslations;
-export const de = { _lang: "de" } satisfies LegacyTranslations;
-export const fr = { _lang: "fr" } satisfies LegacyTranslations;
-export const he = { _lang: "he" } satisfies LegacyTranslations;
-export const hi = { _lang: "hi" } satisfies LegacyTranslations;
-export const pl = { _lang: "pl" } satisfies LegacyTranslations;
-export const ptBR = { _lang: "pt-BR" } satisfies LegacyTranslations;
-export const tr = { _lang: "tr" } satisfies LegacyTranslations;
-export const zhCN = { _lang: "zh-CN" } satisfies LegacyTranslations;
+export const en: {
+  _lang: string;
+} = { _lang: "en" } satisfies LegacyTranslations;
+export const de: {
+  _lang: string;
+} = { _lang: "de" } satisfies LegacyTranslations;
+export const fr: {
+  _lang: string;
+} = { _lang: "fr" } satisfies LegacyTranslations;
+export const he: {
+  _lang: string;
+} = { _lang: "he" } satisfies LegacyTranslations;
+export const hi: {
+  _lang: string;
+} = { _lang: "hi" } satisfies LegacyTranslations;
+export const pl: {
+  _lang: string;
+} = { _lang: "pl" } satisfies LegacyTranslations;
+export const ptBR: {
+  _lang: string;
+} = { _lang: "pt-BR" } satisfies LegacyTranslations;
+export const tr: {
+  _lang: string;
+} = { _lang: "tr" } satisfies LegacyTranslations;
+export const zhCN: {
+  _lang: string;
+} = { _lang: "zh-CN" } satisfies LegacyTranslations;
 export const locales: Record<LocaleCode, LegacyTranslations> = {
   en,
   de,
@@ -102,7 +126,7 @@ export const LocaleProvider = ({
   children,
   i18n,
   locale,
-}: LocaleProviderProps) => {
+}: LocaleProviderProps): JSX.Element => {
   const resolvedLocale = resolveLocale(locale, i18n);
   return (
     <IntlProvider
@@ -119,7 +143,38 @@ export const useTranslation = (): { t: TFunction } => {
   return { t: t as unknown as TFunction };
 };
 
-export const DocxEditor = forwardRef<DocxEditorRef, LegacyDocxEditorProps>(
+export const DocxEditor: ForwardRefExoticComponent<
+  DocxEditorProps & {
+    agentPanel?: unknown;
+    colorMode?: "light" | "dark" | "system";
+    commentsSidebarOpen?: boolean;
+    disableFindReplaceShortcuts?: boolean;
+    documentName?: string;
+    documentNameEditable?: boolean;
+    externalContent?: boolean;
+    externalPlugins?: unknown[];
+    i18n?: LegacyTranslations;
+    locale?: string;
+    onCommentAdd?: unknown;
+    onCommentDelete?: unknown;
+    onCommentReply?: unknown;
+    onCommentResolve?: unknown;
+    onCommentsSidebarOpenChange?: unknown;
+    onDocumentNameChange?: unknown;
+    onOpen?: unknown;
+    onRenderedDomContextReady?: unknown;
+    pluginOverlays?: ReactNode;
+    pluginRenderedDomContext?: unknown;
+    pluginSidebarItems?: unknown[];
+    printOptions?: unknown;
+    renderLogo?: unknown;
+    renderTitleBarRight?: unknown;
+    showFileOpen?: boolean;
+    showHelpMenu?: boolean;
+    showOutlineButton?: boolean;
+    watermarkPresets?: readonly string[];
+  } & RefAttributes<DocxEditorRef>
+> = forwardRef<DocxEditorRef, LegacyDocxEditorProps>(
   (
     {
       agentPanel: _agentPanel,

@@ -2,10 +2,13 @@
 
 import { expectPageBreakRunAttrs } from "../../attrs";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 const PAGE_BREAK_RUN_NODE_NAME = "pageBreakRun";
 
-export const PageBreakRunExtension = createNodeExtension({
+export const PageBreakRunExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: PAGE_BREAK_RUN_NODE_NAME,
   schemaNodeName: PAGE_BREAK_RUN_NODE_NAME,
   nodeSpec: {

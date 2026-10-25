@@ -172,7 +172,10 @@ export const isParaId = (id: string): boolean =>
   PARA_ID_PATTERN.test(id) && !RESERVED_PARA_ID_PATTERN.test(id);
 
 /** The id spaces of revisions and content controls. */
-export const IDENTITY_SPACES = Object.freeze({
+export const IDENTITY_SPACES: Readonly<{
+  readonly REVISION: "revision";
+  readonly CONTROL: "control";
+}> = Object.freeze({
   REVISION: "revision",
   CONTROL: "control",
 } as const);

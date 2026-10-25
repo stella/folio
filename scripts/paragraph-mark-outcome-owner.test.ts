@@ -1,8 +1,9 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import { parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 setDefaultTimeout(scanTestTimeout(10_000));
 
@@ -15,25 +16,21 @@ const EXPECTED_CALLS = new Map([
   ["packages/core/src/prosemirror/commands/comments.ts", 1],
 ]);
 
+const readSource = (file: string): string =>
+  existsSync(file) ? readFileSync(file, "utf8") : "";
+
 const outcomeCalls = (file: string, sourceText: string): number => {
-  const source = ts.createSourceFile(
-    file,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule(file, sourceText);
   let calls = 0;
-  const visit = (node: ts.Node): void => {
+  walkAst(program, (node) => {
     if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "paragraphMarkOutcome"
+      node.type === "CallExpression" &&
+      node.callee.type === "Identifier" &&
+      node.callee.name === "paragraphMarkOutcome"
     ) {
       calls++;
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  });
   return calls;
 };
 
@@ -49,7 +46,7 @@ test("every paragraph-mark resolver delegates its structural decision to the own
   const sources = new Map(
     [...EXPECTED_CALLS.keys()].map((file) => [
       file,
-      ts.sys.readFile(path.join(REPO_ROOT, file)) ?? "",
+      readSource(path.join(REPO_ROOT, file)),
     ]),
   );
   expect(violations(sources)).toEqual([]);

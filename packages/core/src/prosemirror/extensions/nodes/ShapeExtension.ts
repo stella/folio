@@ -13,6 +13,7 @@ import type {
 } from "../../schema/nodes";
 import { parseShapeGeometryAdjustments } from "../../shapeGeometryAdjustments";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 export type ShapeAttrs = SchemaShapeAttrs;
 
@@ -520,7 +521,9 @@ function createGradientElement(
   return grad;
 }
 
-export const ShapeExtension = createNodeExtension({
+export const ShapeExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "shape",
   schemaNodeName: "shape",
   nodeSpec: {

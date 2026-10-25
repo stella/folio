@@ -15,7 +15,13 @@ const isCompatibilityElement = (element: XmlElement, name: string) =>
 export const scanSelectedStreamingXmlElements = (
   xml: string,
   visitor: Parameters<typeof scanStreamingXmlElements>[1],
-) => {
+):
+  | {
+      status: "unsupported";
+    }
+  | {
+      status: "scanned";
+    } => {
   if (!xml.includes("AlternateContent"))
     return scanStreamingXmlElements(xml, visitor);
   const alternatives = new Map<number, XmlElement>();

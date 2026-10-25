@@ -30,7 +30,7 @@ export const onDocumentPointerDown = (
   const registration = existing;
   const callback = (event: PointerEvent) => listener(event);
   registration.listeners.add(callback);
-  return () => {
+  return (): void => {
     if (!registration.listeners.delete(callback)) return;
     if (registration.listeners.size > 0) return;
     registration.detach();

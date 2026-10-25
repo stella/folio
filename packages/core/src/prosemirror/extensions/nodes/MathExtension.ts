@@ -8,8 +8,11 @@
 
 import { expectMathAttrs } from "../../attrs";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
-export const MathExtension = createNodeExtension({
+export const MathExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "math",
   schemaNodeName: "math",
   nodeSpec: {

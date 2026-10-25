@@ -1,5 +1,5 @@
 // A compile-time claim in a test file is checked by nothing. Every package's
-// `typecheck` runs `tsc` over `tsconfig.build.json`, which excludes
+// `typecheck` runs `bun check` over `tsconfig.build.json`, which excludes
 // `**/*.test.ts`, so a `@ts-expect-error` there is read by no compiler: the
 // claim it makes can stop holding and no check reports it, and the directive
 // itself can go stale without the usual "unused '@ts-expect-error'" error.

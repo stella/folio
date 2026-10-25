@@ -1,4 +1,4 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import JSZip from "jszip";
 
 import { writeZipPart } from "@stll/docx-core/zip";
@@ -12,7 +12,17 @@ import {
 } from "./archiveInflation";
 import { elementToXml, getLocalName, parseXmlDocument } from "./xmlParser";
 
-export const FOLIO_DOCUMENT_METADATA_PROPERTIES = Object.freeze([
+export const FOLIO_DOCUMENT_METADATA_PROPERTIES: readonly [
+  "title",
+  "subject",
+  "creator",
+  "keywords",
+  "description",
+  "lastModifiedBy",
+  "revision",
+  "created",
+  "modified",
+] = Object.freeze([
   "title",
   "subject",
   "creator",
@@ -32,7 +42,11 @@ const isFolioDocumentMetadataProperty = (
 ): value is FolioDocumentMetadataProperty =>
   FOLIO_DOCUMENT_METADATA_PROPERTIES.some((property) => property === value);
 
-export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS = Object.freeze([
+export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly [
+  "remove-attribution",
+  "remove-timestamps",
+  "remove-descriptive-metadata",
+] = Object.freeze([
   "remove-attribution",
   "remove-timestamps",
   "remove-descriptive-metadata",
@@ -60,16 +74,18 @@ export type RewriteDocxMetadataPrivacyResult = {
   privacyReport: FolioDocumentPrivacyReport;
 };
 
-export class InvalidFolioDocumentPrivacyOptionsError extends TaggedError(
-  "InvalidFolioDocumentPrivacyOptionsError",
-)<{
+const InvalidFolioDocumentPrivacyOptionsErrorBase: TaggedErrorClass<"InvalidFolioDocumentPrivacyOptionsError"> =
+  TaggedError("InvalidFolioDocumentPrivacyOptionsError");
+
+export class InvalidFolioDocumentPrivacyOptionsError extends InvalidFolioDocumentPrivacyOptionsErrorBase<{
   message: string;
   receivedValue: unknown;
 }> {}
 
-export class FolioDocumentPrivacyArchiveError extends TaggedError(
-  "FolioDocumentPrivacyArchiveError",
-)<{
+const FolioDocumentPrivacyArchiveErrorBase: TaggedErrorClass<"FolioDocumentPrivacyArchiveError"> =
+  TaggedError("FolioDocumentPrivacyArchiveError");
+
+export class FolioDocumentPrivacyArchiveError extends FolioDocumentPrivacyArchiveErrorBase<{
   message: string;
   reason:
     | "input-too-large"
@@ -79,7 +95,16 @@ export class FolioDocumentPrivacyArchiveError extends TaggedError(
   cause?: unknown;
 }> {}
 
-export const PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM = {
+export const PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM: {
+  readonly "remove-attribution": readonly ["creator", "lastModifiedBy"];
+  readonly "remove-timestamps": readonly ["created", "modified"];
+  readonly "remove-descriptive-metadata": readonly [
+    "title",
+    "subject",
+    "keywords",
+    "description",
+  ];
+} = {
   "remove-attribution": ["creator", "lastModifiedBy"],
   "remove-timestamps": ["created", "modified"],
   "remove-descriptive-metadata": [

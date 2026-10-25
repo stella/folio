@@ -34,7 +34,9 @@ export type ListState =
 export type ListType = ListState["type"];
 
 /** The selection is in no list. */
-export const NO_LIST_STATE = { type: "none" } as const satisfies ListState;
+export const NO_LIST_STATE: {
+  readonly type: "none";
+} = { type: "none" } as const satisfies ListState;
 
 /** A selection that is in a list, so it has a level. */
 export type ActiveListState = Exclude<ListState, { type: "none" }>;

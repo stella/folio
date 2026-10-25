@@ -58,7 +58,7 @@
  * `unchanged` rather than misattribute properties.
  */
 
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { folioAIBlockIdStability } from "./ai-edits/block-identity";
 import {
@@ -104,11 +104,11 @@ import {
 export type FolioVersionDiffSegment = WordDiffSegment;
 
 /** Independently selectable comparison scopes. */
-export const FOLIO_VERSION_COMPARISON_SCOPES = Object.freeze([
+export const FOLIO_VERSION_COMPARISON_SCOPES: readonly [
   "text",
   "formatting",
   "metadata",
-] as const);
+] = Object.freeze(["text", "formatting", "metadata"] as const);
 
 export type FolioVersionComparisonScope =
   (typeof FOLIO_VERSION_COMPARISON_SCOPES)[number];
@@ -125,9 +125,10 @@ export type FolioCompareDocxVersionsOptions = {
   privacy?: FolioVersionDiffPrivacyOptions;
 };
 
-export class InvalidFolioVersionComparisonOptionsError extends TaggedError(
-  "InvalidFolioVersionComparisonOptionsError",
-)<{
+const InvalidFolioVersionComparisonOptionsErrorBase: TaggedErrorClass<"InvalidFolioVersionComparisonOptionsError"> =
+  TaggedError("InvalidFolioVersionComparisonOptionsError");
+
+export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsErrorBase<{
   message: string;
   option: "include" | "privacy.transforms";
   receivedValue: unknown;
@@ -143,8 +144,11 @@ export type FolioMetadataDiff = {
   revisedValue: FolioDocumentMetadataValue;
 };
 
-export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS =
-  FOLIO_DOCUMENT_PRIVACY_TRANSFORMS;
+export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS: readonly [
+  "remove-attribution",
+  "remove-timestamps",
+  "remove-descriptive-metadata",
+] = FOLIO_DOCUMENT_PRIVACY_TRANSFORMS;
 
 export type FolioVersionComparisonPrivacyTransform =
   FolioDocumentPrivacyTransform;
@@ -159,7 +163,15 @@ export type FolioVersionDiffPrivacyOptions = FolioDocumentPrivacyOptions;
 export type FolioVersionDiffPrivacyReport = FolioDocumentPrivacyReport;
 
 /** Inline formatting properties compared for `formatChanged` detection. */
-const INLINE_FORMAT_PROPERTIES = {
+const INLINE_FORMAT_PROPERTIES: {
+  readonly bold: true;
+  readonly italic: true;
+  readonly underline: true;
+  readonly strike: true;
+  readonly fontFamily: true;
+  readonly fontSizePt: true;
+  readonly color: true;
+} = {
   bold: true,
   italic: true,
   underline: true,
@@ -169,7 +181,14 @@ const INLINE_FORMAT_PROPERTIES = {
   color: true,
 } as const satisfies Record<keyof FolioContentInlineFormattingPatch, true>;
 
-const PARAGRAPH_FORMAT_PROPERTIES = {
+const PARAGRAPH_FORMAT_PROPERTIES: {
+  readonly indentation: true;
+  readonly styleId: true;
+  readonly outlineLevel: true;
+  readonly numbering: true;
+  readonly alignment: true;
+  readonly spacing: true;
+} = {
   indentation: true,
   styleId: true,
   outlineLevel: true,
@@ -178,7 +197,11 @@ const PARAGRAPH_FORMAT_PROPERTIES = {
   spacing: true,
 } as const satisfies Record<keyof FolioContentParagraphFormattingPatch, true>;
 
-const BLOCK_PROPERTIES = {
+const BLOCK_PROPERTIES: {
+  readonly kind: true;
+  readonly headingLevel: true;
+  readonly displayLabel: true;
+} = {
   kind: true,
   headingLevel: true,
   displayLabel: true,
@@ -287,7 +310,10 @@ export type FolioVersionDiff = {
   summaryCounts: FolioVersionDiffSummaryCounts;
 };
 
-export const exceedsLcsBudget = exceedsFolioContentLcsBudget;
+export const exceedsLcsBudget: (
+  baseCount: number,
+  revisedCount: number,
+) => boolean = exceedsFolioContentLcsBudget;
 
 export type FolioVersionComparisonLcsBudget = { remainingCells: number };
 

@@ -23,7 +23,11 @@ import {
 import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
 import type { HyperlinkAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type {
+  ExtensionContext,
+  ExtensionRuntime,
+  MarkExtension,
+} from "../types";
 import { isMarkActive } from "./markUtils";
 
 const DOCX_HYPERLINK_INDEX_ATTRIBUTE = "data-docx-hyperlink-index";
@@ -133,7 +137,9 @@ export function getSelectedText(state: EditorState): string {
 // EXTENSION
 // ============================================================================
 
-export const HyperlinkExtension = createMarkExtension({
+export const HyperlinkExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "hyperlink",
   schemaMarkName: "hyperlink",
   markSpec: {

@@ -88,7 +88,32 @@ export const normalizeStyleName = (name: string): string =>
  * {@link normalizeStyleName} makes matching tolerant of all of it; this map is
  * about what folio *writes*.
  */
-export const BUILT_IN_STYLE_NAME = {
+export const BUILT_IN_STYLE_NAME: {
+  /** 4,515 Word occurrences against 3 lowercase. */
+  readonly normal: "Normal";
+  readonly bodyText: "Body Text";
+  readonly title: "Title";
+  readonly subtitle: "Subtitle";
+  readonly quote: "Quote";
+  readonly intenseQuote: "Intense Quote";
+  readonly listParagraph: "List Paragraph";
+  readonly tocHeading: "TOC Heading";
+  readonly caption: "caption";
+  readonly header: "header";
+  readonly footer: "footer";
+  readonly footnoteText: "footnote text";
+  readonly commentReference: "annotation reference";
+  readonly footnoteReference: "footnote reference";
+  readonly footnoteTextChar: "Footnote Text Char";
+  readonly endnoteText: "endnote text";
+  readonly endnoteReference: "endnote reference";
+  readonly endnoteTextChar: "Endnote Text Char";
+  readonly hyperlink: "Hyperlink";
+  readonly defaultParagraphFont: "Default Paragraph Font";
+  readonly noList: "No List";
+  readonly normalTable: "Normal Table";
+  readonly tableGrid: "Table Grid";
+} = {
   /** 4,515 Word occurrences against 3 lowercase. */
   normal: BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
   bodyText: "Body Text",

@@ -34,7 +34,7 @@ const hasSameSelectionRect = (previous: SelectionRect, next: SelectionRect) =>
 export const retainRemoteSelectionGeometry = (
   previous: RemoteSelectionGeometry | null,
   next: RemoteSelectionGeometry,
-) => {
+): RemoteSelectionGeometry => {
   if (
     previous === null ||
     !hasSameCaretPosition(previous.caretPosition, next.caretPosition) ||

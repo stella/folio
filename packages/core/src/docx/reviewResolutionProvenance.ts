@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
@@ -159,9 +159,10 @@ export const isBoundaryJoins = (value: unknown): value is BoundaryJoins =>
   new Set(value).size === value.length &&
   value.every((side: unknown) => side === "before" || side === "after");
 
-export class ReviewResolutionProvenanceError extends TaggedError(
-  "ReviewResolutionProvenanceError",
-)<{
+const ReviewResolutionProvenanceErrorBase: TaggedErrorClass<"ReviewResolutionProvenanceError"> =
+  TaggedError("ReviewResolutionProvenanceError");
+
+export class ReviewResolutionProvenanceError extends ReviewResolutionProvenanceErrorBase<{
   message: string;
   attribute: string;
   reason: "invalid" | "unsupportedVersion" | "unrepresentable";

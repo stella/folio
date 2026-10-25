@@ -10,7 +10,12 @@ export const reserveBookmarkIds = (ids: Iterable<number>): void =>
   getAllocator().reserve(ids);
 export const mintBookmarkId = (): number => getAllocator().next();
 
-export const createBookmarkIdAllocator = (existingIds: Iterable<number>) => {
+export const createBookmarkIdAllocator = (
+  existingIds: Iterable<number>,
+): {
+  reserve: (ids: Iterable<number>) => void;
+  next: () => number;
+} => {
   const scopedAllocator = createNumericIdAllocator({
     space: "bookmark",
     firstId: 0,

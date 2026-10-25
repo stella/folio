@@ -9,7 +9,7 @@
  */
 
 import { Plugin } from "prosemirror-state";
-import type { EditorState } from "prosemirror-state";
+import type { EditorState, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { ParagraphFormatting, TextFormatting } from "../../types/document";
@@ -47,8 +47,13 @@ export type SelectionContext = {
 /**
  * Plugin key for accessing selection tracker state
  */
-export const selectionTrackerKey =
-  createPluginKeyOwner<SelectionContext>("selectionTracker");
+export const selectionTrackerKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<SelectionContext>;
+  owns: (plugin: Plugin<SelectionContext>) => boolean;
+  get: (state: EditorState) => Plugin<SelectionContext> | undefined;
+  getState: (state: EditorState) => SelectionContext | undefined;
+}> = createPluginKeyOwner<SelectionContext>("selectionTracker");
 
 /**
  * Callback type for selection changes

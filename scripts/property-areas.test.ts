@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 
 import { seedFileFor } from "../test/seed-registry";
+import { parseSourceModule, walkAst } from "./lib/oxc-ast";
 import {
   areaOf,
   propertyBatches,
@@ -36,35 +36,38 @@ const actualPropertyDrivers = (
 ): string[] => {
   const root = path.resolve(import.meta.dir, "..");
   const files = roots.flatMap((dir) =>
-    ts.sys.readDirectory(
-      path.join(root, dir),
-      [".ts", ".tsx"],
-      ["**/node_modules/**"],
+    [
+      ...new Bun.Glob("**/*.{ts,tsx}").scanSync({
+        cwd: path.join(root, dir),
+        absolute: true,
+      }),
+    ].filter(
+      (file) =>
+        !path.relative(root, file).split(path.sep).includes("node_modules"),
     ),
   );
   return files
     .filter((file) => /\.test\.tsx?$/.test(file))
     .filter((file) => {
-      const source = ts.createSourceFile(
-        file,
-        readFileSync(file, "utf8"),
-        ts.ScriptTarget.Latest,
-        true,
-      );
+      const { program } = parseSourceModule(file, readFileSync(file, "utf8"));
       let drives = false;
-      const visit = (node: ts.Node): void => {
-        if (ts.isCallExpression(node)) {
-          const callee = node.expression;
-          drives ||=
-            (ts.isIdentifier(callee) && callee.text === "assertProperty") ||
-            (ts.isPropertyAccessExpression(callee) &&
-              ts.isIdentifier(callee.expression) &&
-              callee.expression.text === "fc" &&
-              (callee.name.text === "assert" || callee.name.text === "check"));
+      walkAst(program, (node) => {
+        if (drives) return false;
+        if (node.type === "CallExpression") {
+          const { callee } = node;
+          drives =
+            (callee.type === "Identifier" &&
+              callee.name === "assertProperty") ||
+            (callee.type === "MemberExpression" &&
+              !callee.computed &&
+              callee.object.type === "Identifier" &&
+              callee.object.name === "fc" &&
+              callee.property.type === "Identifier" &&
+              (callee.property.name === "assert" ||
+                callee.property.name === "check"));
         }
-        if (!drives) ts.forEachChild(node, visit);
-      };
-      visit(source);
+        return !drives;
+      });
       return drives;
     })
     .map((file) => path.relative(root, file).replaceAll("\\", "/"))

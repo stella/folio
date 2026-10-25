@@ -1,4 +1,4 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 /** Machine-readable codes for password-protected OOXML failures. */
 export const DOCX_ENCRYPTION_ERROR_CODES = {
@@ -11,7 +11,10 @@ export const DOCX_ENCRYPTION_ERROR_CODES = {
 export type DocxEncryptionErrorCode =
   (typeof DOCX_ENCRYPTION_ERROR_CODES)[keyof typeof DOCX_ENCRYPTION_ERROR_CODES];
 
-export class DocxEncryptionError extends TaggedError("DocxEncryptionError")<{
+const DocxEncryptionErrorBase: TaggedErrorClass<"DocxEncryptionError"> =
+  TaggedError("DocxEncryptionError");
+
+export class DocxEncryptionError extends DocxEncryptionErrorBase<{
   message: string;
   code: DocxEncryptionErrorCode;
   cause?: unknown;

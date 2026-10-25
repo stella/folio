@@ -526,7 +526,7 @@ export function renderNestedTable(
   measure: TableMeasure,
   context: RenderContext,
   doc: Document,
-  frameWidth = context.contentWidth ?? measure.totalWidth,
+  frameWidth: number = context.contentWidth ?? measure.totalWidth,
 ): HTMLElement {
   const tableEl = doc.createElement("div");
   tableEl.className = `${TABLE_CLASS_NAMES.table} layout-nested-table`;

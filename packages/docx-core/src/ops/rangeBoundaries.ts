@@ -40,7 +40,40 @@ import {
 } from "./leaves";
 import { isHyperlinkChild } from "./offsets";
 
-const BOUNDARY_SIDES = {
+const BOUNDARY_SIDES: {
+  readonly bookmarkStart: {
+    readonly family: "bookmark";
+    readonly side: "start";
+  };
+  readonly bookmarkEnd: {
+    readonly family: "bookmark";
+    readonly side: "end";
+  };
+  readonly commentRangeStart: {
+    readonly family: "comment";
+    readonly side: "start";
+  };
+  readonly commentRangeEnd: {
+    readonly family: "comment";
+    readonly side: "end";
+  };
+  readonly moveFromRangeStart: {
+    readonly family: "moveFrom";
+    readonly side: "start";
+  };
+  readonly moveFromRangeEnd: {
+    readonly family: "moveFrom";
+    readonly side: "end";
+  };
+  readonly moveToRangeStart: {
+    readonly family: "moveTo";
+    readonly side: "start";
+  };
+  readonly moveToRangeEnd: {
+    readonly family: "moveTo";
+    readonly side: "end";
+  };
+} = {
   bookmarkStart: { family: "bookmark", side: "start" },
   bookmarkEnd: { family: "bookmark", side: "end" },
   commentRangeStart: { family: "comment", side: "start" },
@@ -51,7 +84,40 @@ const BOUNDARY_SIDES = {
   moveToRangeEnd: { family: "moveTo", side: "end" },
 } as const satisfies Record<string, { family: string; side: "start" | "end" }>;
 
-export const rangeBoundaryDefinitions = () => BOUNDARY_SIDES;
+export const rangeBoundaryDefinitions = (): {
+  readonly bookmarkStart: {
+    readonly family: "bookmark";
+    readonly side: "start";
+  };
+  readonly bookmarkEnd: {
+    readonly family: "bookmark";
+    readonly side: "end";
+  };
+  readonly commentRangeStart: {
+    readonly family: "comment";
+    readonly side: "start";
+  };
+  readonly commentRangeEnd: {
+    readonly family: "comment";
+    readonly side: "end";
+  };
+  readonly moveFromRangeStart: {
+    readonly family: "moveFrom";
+    readonly side: "start";
+  };
+  readonly moveFromRangeEnd: {
+    readonly family: "moveFrom";
+    readonly side: "end";
+  };
+  readonly moveToRangeStart: {
+    readonly family: "moveTo";
+    readonly side: "start";
+  };
+  readonly moveToRangeEnd: {
+    readonly family: "moveTo";
+    readonly side: "end";
+  };
+} => BOUNDARY_SIDES;
 
 type BoundaryType = keyof typeof BOUNDARY_SIDES;
 type Boundary = Extract<InlineNode, { type: BoundaryType }>;

@@ -140,7 +140,30 @@ const matchesNativeReplacement = ({
 };
 
 /** Native IME owns the provisional view; the captured canonical projection stays unchanged. */
-export const createCanonicalComposition = (options: CompositionOptions) => {
+export const createCanonicalComposition = (
+  options: CompositionOptions,
+): {
+  readonly status: CompositionState["type"];
+  readonly active: boolean;
+  matchesCancellationRange: (
+    view: EditorView,
+    range: { from: number; to: number },
+  ) => boolean;
+  start: (view: EditorView) => void;
+  ended: (view: EditorView, data: string | null) => void;
+  forgetCompleted: () => void;
+  readonly pendingFinal: boolean;
+  authorizeLateFinal: (view: EditorView, text: string | null) => boolean;
+  authorizeNative: (
+    view: EditorView,
+    completion: CompositionCompletionEvidence,
+  ) => void;
+  flushed: (view: EditorView) => void;
+  recover: (view: EditorView) => CompositionFinish;
+  cancel: (view: EditorView) => CompositionFinish;
+  reset: () => void;
+  accept: (view: EditorView, transaction: Transaction) => boolean;
+} => {
   let state: CompositionState = { type: "committed" };
   let authorizedNativeState: EditorState | null = null;
   let completed: CompletedComposition = { type: "idle" };

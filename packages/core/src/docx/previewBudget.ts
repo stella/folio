@@ -75,7 +75,47 @@ const MEBIBYTE = 1024 * 1024;
  */
 const SVG_PREVIEW_PACKAGE_CHARACTERS = 8 * MEBIBYTE;
 
-const PREVIEW_KINDS = {
+const PREVIEW_KINDS: {
+  /** A VML shape folio renders rather than projects (`v:shape`, `v:rect`, ...). */
+  readonly vmlShape: {
+    readonly backing: "source";
+    readonly mimeType: "image/svg+xml";
+    readonly filename: "vml-shape-preview.svg";
+    readonly srcPrefix: "data:image/svg+xml;charset=utf-8,";
+    readonly maxPackageCharacters: number;
+  };
+  /**
+   * A WordprocessingGroup (`wpg:wgp`) folio renders rather than projects.
+   *
+   * The group's shapes, their text and any picture they carry are drawn into
+   * one SVG, so a package with many groups retains as much generated text as a
+   * package of VML shapes does, from a producer bounded per drawing the same
+   * way. It was once missing from this table, which was not a preview with a
+   * generous cap but a preview with none: the budget never recognized it, so
+   * no package was ever charged for one.
+   */
+  readonly wpGroup: {
+    readonly backing: "source";
+    readonly mimeType: "image/svg+xml";
+    readonly filename: "wordprocessing-group.svg";
+    readonly srcPrefix: "data:image/svg+xml;charset=utf-8,";
+    readonly maxPackageCharacters: number;
+  };
+  /**
+   * A SmartArt diagram: its extent filled with one flat rectangle per shape.
+   *
+   * It used to be a raster in `src`, because the display list decoded only
+   * base64 PNG and JPEG and a vector preview would have been missing from
+   * every backend but the DOM. That cost 7.3 MB of data URL per diagram
+   * whatever the package weighed, up to 51.3 MB in one corpus package, because
+   * it followed the extent the author chose rather than anything the drawing
+   * contained. It is a `PreviewDescriptor` now, which both backends draw, and
+   * the bound on it is the shape cap the parse applies to the description.
+   */
+  readonly smartArt: {
+    readonly backing: "descriptor";
+  };
+} = {
   /** A VML shape folio renders rather than projects (`v:shape`, `v:rect`, ...). */
   vmlShape: {
     backing: "source",

@@ -2,63 +2,66 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 
 import playwright from "../playwright.config";
+import { type Node, nodeText, parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const PROPERTY_FILE = "test/canonical-session.fuzz.ts";
 const BROWSER_FILE = "canonical-browser-input-fuzz.interactions.spec.ts";
+/** The written name of a key; a computed key keeps its brackets. */
+const keyText = (text: string, node: Node): string | undefined => {
+  if (node.type !== "Property" && node.type !== "TSPropertySignature")
+    return undefined;
+  const key = nodeText(text, node.key);
+  return node.computed ? `[${key}]` : key;
+};
+
 const replayCallDefects = (text: string) => {
-  const source = ts.createSourceFile(
-    "replay.ts",
-    text,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule("replay.ts", text);
   const required = new Set<string>();
-  const calls: ts.CallExpression[] = [];
-  const visit = (node: ts.Node): void => {
+  const calls: Node[] = [];
+  walkAst(program, (node) => {
     if (
-      ts.isTypeAliasDeclaration(node) &&
-      node.name.text === "RunFuzzOptions"
+      node.type === "TSTypeAliasDeclaration" &&
+      node.id.name === "RunFuzzOptions"
     ) {
-      if (!ts.isTypeLiteralNode(node.type))
+      if (node.typeAnnotation.type !== "TSTypeLiteral")
         throw new TypeError("Missing replay options fields.");
-      for (const member of node.type.members) {
-        if (ts.isPropertySignature(member) && !member.questionToken)
-          required.add(member.name.getText(source));
+      for (const member of node.typeAnnotation.members) {
+        if (member.type === "TSPropertySignature" && !member.optional)
+          required.add(keyText(text, member) ?? "");
       }
     }
     if (
-      ts.isCallExpression(node) &&
-      node.expression.getText(source) === "runMode"
+      node.type === "CallExpression" &&
+      nodeText(text, node.callee) === "runMode"
     )
       calls.push(node);
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  });
   if (required.size === 0 || calls.length === 0)
     throw new TypeError("Missing replay contract.");
   return calls.flatMap((call) => {
+    if (call.type !== "CallExpression") return [];
     const options = call.arguments.at(0);
     if (
       call.arguments.length !== 1 ||
       !options ||
-      !ts.isObjectLiteralExpression(options)
+      options.type !== "ObjectExpression"
     )
-      return [call.getText(source)];
+      return [nodeText(text, call)];
     const keys = new Set(
       options.properties.flatMap((property) =>
-        ts.isPropertyAssignment(property) ||
-        ts.isShorthandPropertyAssignment(property)
-          ? [property.name.getText(source)]
+        property.type === "Property" &&
+        property.kind === "init" &&
+        !property.method
+          ? [keyText(text, property) ?? ""]
           : [],
       ),
     );
     return [...required].every((key) => keys.has(key))
       ? []
-      : [call.getText(source)];
+      : [nodeText(text, call)];
   });
 };
 

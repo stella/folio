@@ -1,4 +1,5 @@
 import {
+  afterAll,
   afterEach,
   beforeEach,
   describe,
@@ -27,8 +28,9 @@ import path from "node:path";
 import { commitSeed, hash32 } from "../test/commit-seed";
 import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
+  closePropertyDriverAnalysis,
   duplicatePropertyDriverIds,
-  propertyDriverAnalysis,
+  propertyDriverAnalyses,
   propertyDriverFiles,
   propertyDriverIds,
   propertyDriverReferenceProblems,
@@ -56,28 +58,44 @@ import {
 import { parseFailureRecord } from "./fuzz-failure-issues";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
+afterAll(closePropertyDriverAnalysis);
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const registryDriverProblems = (
+const registryDriverProblems = async (
   registry: ReturnType<typeof readPinnedSeeds>,
   readSource = (file: string) =>
     readFileSync(path.join(REPO_ROOT, file), "utf8"),
-): string[] => {
+): Promise<string[]> => {
   const problems: string[] = [];
-  const analyses = new Map<string, ReturnType<typeof propertyDriverAnalysis>>();
+  const fileOf = (key: string) => key.slice(0, key.indexOf("::"));
+  const sources = new Map<string, string>();
+  for (const key of Object.keys(registry)) {
+    const file = fileOf(key);
+    if (sources.has(file)) continue;
+    try {
+      sources.set(file, readSource(file));
+    } catch {
+      // Reported per entry below.
+    }
+  }
+  const inputs = [...sources].map(([file, text]) => ({ file, text }));
+  const analyses = new Map(
+    (await propertyDriverAnalyses(inputs)).map((analysis, index) => [
+      inputs[index]?.file,
+      analysis,
+    ]),
+  );
+  const reported = new Set<string>();
   for (const [key, entries] of Object.entries(registry)) {
-    const separator = key.indexOf("::");
-    const file = key.slice(0, separator);
-    const id = key.slice(separator + 2);
-    let analysis = analyses.get(file);
+    const file = fileOf(key);
+    const id = key.slice(key.indexOf("::") + 2);
+    const analysis = analyses.get(file);
     if (analysis === undefined) {
-      try {
-        analysis = propertyDriverAnalysis(readSource(file), file);
-      } catch {
-        problems.push(`${key}: no such file`);
-        continue;
-      }
-      analyses.set(file, analysis);
+      problems.push(`${key}: no such file`);
+      continue;
+    }
+    if (!reported.has(file)) {
+      reported.add(file);
       problems.push(
         ...analysis.problems.map((problem) => `${file}::${problem}`),
       );
@@ -890,8 +908,8 @@ describe("pinned regression seeds", () => {
     expect(after).toBe(2);
   });
 
-  test(`every ${PROPERTY_SEEDS_FILE} entry names a test that asserts through a registry driver`, () => {
-    expect(registryDriverProblems(readPinnedSeeds())).toEqual([]);
+  test(`every ${PROPERTY_SEEDS_FILE} entry names a test that asserts through a registry driver`, async () => {
+    expect(await registryDriverProblems(readPinnedSeeds())).toEqual([]);
   });
 
   test("property-driver discovery includes source roots and excludes generated or compile-only files", () => {
@@ -932,17 +950,20 @@ describe("pinned regression seeds", () => {
     }
   });
 
-  test("every imported property driver declares a literal ID in its options", () => {
+  test("every imported property driver declares a literal ID in its options", async () => {
     // Verify discovery works without executables on PATH.
     const previousPath = process.env["PATH"];
     process.env["PATH"] = "";
     try {
       const files = propertyDriverFiles(REPO_ROOT);
-      const calls = files.flatMap((file) => {
-        const analysis = propertyDriverAnalysis(
-          readFileSync(path.join(REPO_ROOT, file), "utf8"),
+      const analyses = await propertyDriverAnalyses(
+        files.map((file) => ({
+          text: readFileSync(path.join(REPO_ROOT, file), "utf8"),
           file,
-        );
+        })),
+      );
+      const calls = files.flatMap((file, index) => {
+        const analysis = analyses[index] ?? { calls: [], problems: [] };
         expect(analysis.problems).toEqual([]);
         expect(duplicatePropertyDriverIds(analysis.calls)).toEqual([]);
         return analysis.calls.map(({ id, argumentCount }) => ({
@@ -1087,16 +1108,16 @@ describe("per-test-file seed registry", () => {
     }
   });
 
-  test("driver guards reject absent files and orphan property IDs", () => {
+  test("driver guards reject absent files and orphan property IDs", async () => {
     const entries = [{ seed: 7, note: "sample", date: "2026-10-03" }];
     const registry = { "scripts/probe.test.ts::title": entries };
     expect(
-      registryDriverProblems(registry, () => {
+      await registryDriverProblems(registry, () => {
         throw new TypeError("missing");
       }),
     ).toContain("scripts/probe.test.ts::title: no such file");
     expect(
-      registryDriverProblems(
+      await registryDriverProblems(
         registry,
         () =>
           'import { assertProperty } from "../test/property-testing"; test("title", () => { assertProperty(p, { id: "other" }); });',
@@ -1105,7 +1126,7 @@ describe("per-test-file seed registry", () => {
       "scripts/probe.test.ts::title: property ID must select exactly one registry driver",
     );
     expect(
-      registryDriverProblems(
+      await registryDriverProblems(
         registry,
         () =>
           'import { assertProperty } from "../test/property-testing"; describe("outer", () => { test("different display", () => { assertProperty(p, { id: "title" }); }); });',
@@ -1113,7 +1134,7 @@ describe("per-test-file seed registry", () => {
     ).toEqual([]);
   });
 
-  test("driver guards reject duplicate IDs across driver kinds and import forms", () => {
+  test("driver guards reject duplicate IDs across driver kinds and import forms", async () => {
     const prefix =
       'import { assertProperty as check } from "../test/property-testing";\nimport * as properties from "../test/property-testing";\n';
     for (const driver of [
@@ -1126,11 +1147,11 @@ describe("per-test-file seed registry", () => {
         `check(p, { id: "stable" });\nproperties.${driver}(p, { id: "stable" });`;
       expect(
         duplicatePropertyDriverIds(
-          propertyDriverIds(source, "scripts/probe.test.ts"),
+          await propertyDriverIds(source, "scripts/probe.test.ts"),
         ),
       ).toEqual(["stable: duplicate property ID at lines 3 and 4"]);
       expect(
-        registryDriverProblems(
+        await registryDriverProblems(
           {
             "scripts/probe.test.ts::stable": [
               { seed: 7, note: "sample", date: "2026-10-03" },
@@ -1143,7 +1164,7 @@ describe("per-test-file seed registry", () => {
       ]);
       expect(
         duplicatePropertyDriverIds(
-          propertyDriverIds(
+          await propertyDriverIds(
             source.replace(
               'id: "stable" });\nproperties.',
               'id: "distinct" });\nproperties.',
@@ -1155,7 +1176,7 @@ describe("per-test-file seed registry", () => {
     }
   });
 
-  test("driver guards reject escaped values while respecting lexical scope and type references", () => {
+  test("driver guards reject escaped values while respecting lexical scope and type references", async () => {
     const prefix =
       'import { assertProperty as check } from "../test/property-testing";\nimport * as properties from "../test/property-testing";\n';
     const direct = 'check(p, { id: "stable" });';
@@ -1171,16 +1192,18 @@ describe("per-test-file seed registry", () => {
     ]) {
       const source = prefix + direct + escaped;
       expect(
-        propertyDriverReferenceProblems(source, "scripts/probe.test.ts"),
+        await propertyDriverReferenceProblems(source, "scripts/probe.test.ts"),
       ).toHaveLength(1);
       expect(
-        registryDriverProblems(
-          {
-            "scripts/probe.test.ts::stable": [
-              { seed: 7, note: "sample", date: "2026-10-03" },
-            ],
-          },
-          () => source,
+        (
+          await registryDriverProblems(
+            {
+              "scripts/probe.test.ts::stable": [
+                { seed: 7, note: "sample", date: "2026-10-03" },
+              ],
+            },
+            () => source,
+          )
         ).length,
       ).toBeGreaterThan(0);
     }
@@ -1197,14 +1220,16 @@ describe("per-test-file seed registry", () => {
       }
     `;
     expect(
-      propertyDriverReferenceProblems(source, "scripts/probe.test.ts"),
+      await propertyDriverReferenceProblems(source, "scripts/probe.test.ts"),
     ).toEqual([]);
     expect(
-      propertyDriverIds(source, "scripts/probe.test.ts").map(({ id }) => id),
+      (await propertyDriverIds(source, "scripts/probe.test.ts")).map(
+        ({ id }) => id,
+      ),
     ).toEqual(["stable", "pinned"]);
   });
 
-  test("ID discovery follows imported aliases and ignores strings, declarations and unrelated functions", () => {
+  test("ID discovery follows imported aliases and ignores strings, declarations and unrelated functions", async () => {
     const source = `
       import { assertProperty as check } from "../test/property-testing";
       import * as properties from "../test/property-testing";
@@ -1215,14 +1240,16 @@ describe("per-test-file seed registry", () => {
       assertProperty(p);
     `;
     expect(
-      propertyDriverIds(source, "probe.test.ts").map(({ id }) => id),
+      (await propertyDriverIds(source, "probe.test.ts")).map(({ id }) => id),
     ).toEqual(["aliased", "pinned"]);
     const prefix =
       'import { assertProperty } from "../test/property-testing"; ';
     expect(
-      propertyDriverIds(
-        prefix + 'assertProperty(p, { ...parameters, "id": "final" })',
-        "probe.test.ts",
+      (
+        await propertyDriverIds(
+          prefix + 'assertProperty(p, { ...parameters, "id": "final" })',
+          "probe.test.ts",
+        )
       ).at(0)?.id,
     ).toBe("final");
     for (const call of [
@@ -1235,7 +1262,7 @@ describe("per-test-file seed registry", () => {
       'assertProperty(p, { id: "first", [key]: "override" })',
     ])
       expect(
-        propertyDriverIds(prefix + call, "probe.test.ts").at(0)?.id,
+        (await propertyDriverIds(prefix + call, "probe.test.ts")).at(0)?.id,
       ).toBeUndefined();
   });
 });

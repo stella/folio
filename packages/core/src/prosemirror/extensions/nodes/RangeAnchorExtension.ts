@@ -11,6 +11,7 @@ import {
   readRangeAnchorValues,
 } from "../../rangeAnchorAttrs";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 type RangeAnchorOptions = {
   getInternalClipboardToken?: () => string;
@@ -22,7 +23,9 @@ export const RANGE_ANCHOR_NODE_NAME = "rangeAnchor";
 /** The attribute the DOM spelling carries both markers in. */
 export const RANGE_ANCHOR_DOM_ATTRIBUTE = "data-docx-range-anchor";
 
-export const RangeAnchorExtension = createNodeExtension<RangeAnchorOptions>({
+export const RangeAnchorExtension: (
+  options?: Partial<RangeAnchorOptions> | undefined,
+) => NodeExtension = createNodeExtension<RangeAnchorOptions>({
   name: RANGE_ANCHOR_NODE_NAME,
   schemaNodeName: RANGE_ANCHOR_NODE_NAME,
   nodeSpec: (options) => ({

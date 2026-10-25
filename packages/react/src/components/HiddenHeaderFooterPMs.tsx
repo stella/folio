@@ -7,7 +7,7 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, NamedExoticComponent, RefAttributes } from "react";
 
 import type { EditorView } from "prosemirror-view";
 
@@ -25,6 +25,7 @@ import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorAp
 import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
   Document,
+  HeaderFooter,
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
@@ -58,8 +59,16 @@ export type HiddenHeaderFooterPMsProps = {
   ) => void;
 };
 
-export const enumerateHfSlotsFromParts = enumerateHeaderFooterParts;
-export const enumerateHfSlots = enumerateDocumentHeaderFooterParts;
+export const enumerateHfSlotsFromParts: ({
+  headers,
+  footers,
+}: {
+  headers: Map<string, HeaderFooter> | undefined;
+  footers: Map<string, HeaderFooter> | undefined;
+}) => HeaderFooterPartKey[] = enumerateHeaderFooterParts;
+export const enumerateHfSlots: (
+  document: Document | null,
+) => HeaderFooterPartKey[] = enumerateDocumentHeaderFooterParts;
 
 const HOST_STYLES: CSSProperties = {
   position: "fixed",
@@ -71,7 +80,9 @@ const HOST_STYLES: CSSProperties = {
 };
 
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools. */
-export const HiddenHeaderFooterPMs = memo(
+export const HiddenHeaderFooterPMs: NamedExoticComponent<
+  HiddenHeaderFooterPMsProps & RefAttributes<HiddenHeaderFooterPMsRef>
+> = memo(
   forwardRef<HiddenHeaderFooterPMsRef, HiddenHeaderFooterPMsProps>(
     function HiddenHeaderFooterPMs(
       {

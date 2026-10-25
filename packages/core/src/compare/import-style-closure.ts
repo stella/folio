@@ -8,6 +8,7 @@ import {
 } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import type { ImportReferencedStyleDefinitionsResult } from "./style-resources";
 
 type ImportStyleClosureWithNumberingOptions = {
   destination: FolioDocxReviewer;
@@ -24,7 +25,11 @@ export const importStyleClosureWithNumbering = ({
   snapshots,
   importedHeaderFooterSnapshots,
   numberingReferences,
-}: ImportStyleClosureWithNumberingOptions) => {
+}: ImportStyleClosureWithNumberingOptions): {
+  styleImport: ImportReferencedStyleDefinitionsResult;
+  numberingStage: "unchanged" | "staged" | "conflict";
+  snapshots: FolioAIEditSnapshot[];
+} => {
   const access = getFolioDocxComparisonAccess(destination);
   const numbering = getFolioDocxComparisonAccess(source).numberingDefinitions();
   const numberingReferenceMap = access.planTargetNumberingReferences(

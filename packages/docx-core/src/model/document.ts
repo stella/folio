@@ -468,7 +468,11 @@ export type DocumentSettings = {
 };
 
 /** DOCX package conformance classes. */
-export const DOCX_CONFORMANCE_CLASSES = Object.freeze({
+export const DOCX_CONFORMANCE_CLASSES: Readonly<{
+  readonly STRICT: "strict";
+  readonly TRANSITIONAL: "transitional";
+  readonly UNKNOWN: "unknown";
+}> = Object.freeze({
   STRICT: "strict",
   TRANSITIONAL: "transitional",
   UNKNOWN: "unknown",

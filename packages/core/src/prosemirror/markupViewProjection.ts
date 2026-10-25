@@ -17,11 +17,12 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, Selection } from "prosemirror-state";
-import type { StepMap } from "prosemirror-transform";
+import type { Mapping, Step, StepMap } from "prosemirror-transform";
 
 import { indexedPositionMap } from "../internal/indexedPositionMap";
 import type { RevisionResolutionMode } from "../internal/revisionResolutionInline";
 import { finalRevisionParagraphRanges } from "../internal/revisionResolutionTracking";
+import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import type { NumberingDefinitions, StyleDefinitions } from "../types/document";
@@ -36,7 +37,47 @@ import { getDocumentStyleResolver } from "./plugins/documentStyleState";
 export const resolveStateStory = (
   state: EditorState,
   mode: RevisionResolutionMode,
-) =>
+): {
+  resolved: PMNode;
+  mapping: Mapping;
+  positionMap: StepMap;
+  steps: Step[];
+  changedRanges: {
+    from: number;
+    to: number;
+  }[];
+  preStructureMap: StepMap;
+  tableRanges: {
+    node: PMNode;
+    inputNode: PMNode;
+    sourceNodeSize: number;
+    position: number;
+    inputMap: StepMap;
+    positionMap: StepMap;
+    ranges: readonly {
+      from: number;
+      to: number;
+    }[];
+    paragraphOffsets: readonly {
+      source: number;
+      final: number;
+    }[];
+  }[];
+  transfers: {
+    displacedToken: string | null;
+    selectedToken: string | null;
+  }[];
+  structuralRanges: {
+    from: number;
+    to: number;
+  }[];
+  structuralMap: StepMap;
+  structural: boolean;
+  failed: boolean;
+  removedEndpointCount: number;
+  removedReferences: RemovedSectionReference[];
+  keptBoundaries: Set<PMNode>;
+} =>
   resolveWholeStory({
     doc: state.doc,
     mode,
@@ -205,7 +246,7 @@ export const projectStoryMarkupView = ({
   markupView,
   styles,
   numbering,
-}: ProjectStoryMarkupViewOptions) => {
+}: ProjectStoryMarkupViewOptions): MarkupViewProjection => {
   if (markupView === "all-markup") return AUTHORED;
   const cached = storyProjectionStates.get(doc);
   if (cached && cached.styles === styles && cached.numbering === numbering) {

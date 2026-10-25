@@ -3,6 +3,7 @@ import { isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 import { displayOoxmlSymbolCharacter } from "../../../utils/ooxmlSymbol";
 import { expectSymbolAttrs } from "../../attrs";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 const escapeCssString = (value: string): string =>
   value
@@ -12,7 +13,9 @@ const escapeCssString = (value: string): string =>
     .replaceAll("\r", "\\d ")
     .replaceAll("\f", "\\c ");
 
-export const SymbolExtension = createNodeExtension({
+export const SymbolExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "symbol",
   schemaNodeName: "symbol",
   nodeSpec: {

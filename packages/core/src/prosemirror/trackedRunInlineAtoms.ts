@@ -17,7 +17,30 @@ export type TrackedRunInlineAtomDisposition =
  * to its complete inline-atom set. The lookup also panics on a missing entry:
  * a new atom cannot silently lose revision ownership before that test runs.
  */
-export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
+export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS: Readonly<{
+  readonly bookmarkBoundary: "carry";
+  // The paragraph-level record stands for its w:r carrier, which can remain
+  // in the CT_RunTrackChange that owns its authored position.
+  readonly commentReference: "carry";
+  readonly commentRangeBoundary: "carry";
+  readonly field: "field-carrier";
+  readonly hardBreak: "carry";
+  readonly image: "carry";
+  readonly math: "carry";
+  readonly moveRangeBoundary: "carry";
+  readonly noteMarker: "carry";
+  readonly pageBreakRun: "page-break-carrier";
+  readonly preservedXml: "carry";
+  // A zero-width range owns its authored position inside the revision.
+  readonly rangeAnchor: "carry";
+  readonly renderedPageBreak: "carry";
+  readonly shape: "carry";
+  readonly structuredField: "carry";
+  readonly symbol: "carry";
+  readonly tab: "carry";
+  readonly text: "text-carrier";
+  readonly textBoxAnchor: "carry";
+}> = Object.freeze({
   bookmarkBoundary: "carry",
   // The paragraph-level record stands for its w:r carrier, which can remain
   // in the CT_RunTrackChange that owns its authored position.

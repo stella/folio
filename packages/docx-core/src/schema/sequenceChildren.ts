@@ -17,7 +17,7 @@
  * put `w:sz` and `w:highlight` before `w:rFonts`.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 
 import { OOXML_NS } from "@stll/docx-utils";
@@ -73,9 +73,10 @@ const preservedChildParser = new XMLParser({
   htmlEntities: false,
 });
 
-class InvalidPreservedChildXmlError extends TaggedError(
-  "InvalidPreservedChildXmlError",
-)<{
+const InvalidPreservedChildXmlErrorBase: TaggedErrorClass<"InvalidPreservedChildXmlError"> =
+  TaggedError("InvalidPreservedChildXmlError");
+
+class InvalidPreservedChildXmlError extends InvalidPreservedChildXmlErrorBase<{
   message: string;
   index: number;
 }> {}

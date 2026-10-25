@@ -1,82 +1,76 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+
+import { type Node, nodeText, parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 const parse = (source: string) =>
-  ts.createSourceFile(
-    "authority.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
+  parseSourceModule("authority.ts", source).program;
 
-const fixedAuthority = (call: ts.CallExpression, authority: string) => {
+const fixedAuthority = (call: Node, authority: string) => {
+  if (call.type !== "CallExpression") return false;
   const options = call.arguments.at(0);
-  if (!options || !ts.isObjectLiteralExpression(options)) return false;
+  if (options?.type !== "ObjectExpression") return false;
   const property = options.properties.at(-1);
   return (
-    property !== undefined &&
-    ts.isPropertyAssignment(property) &&
-    ts.isIdentifier(property.name) &&
-    property.name.text === "authority" &&
-    ts.isStringLiteral(property.initializer) &&
-    property.initializer.text === authority
+    property?.type === "Property" &&
+    property.kind === "init" &&
+    !property.method &&
+    !property.shorthand &&
+    !property.computed &&
+    property.key.type === "Identifier" &&
+    property.key.name === "authority" &&
+    property.value.type === "Literal" &&
+    property.value.value === authority
   );
 };
 
 const standingFactoryIsCanonical = (source: string) => {
   let found = false;
-  const visit = (node: ts.Node) => {
+  walkAst(parse(source), (node) => {
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === "runConformanceCase"
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
+      node.id.name === "runConformanceCase"
     ) {
-      const factory = node.initializer;
+      const factory = node.init;
       found = Boolean(
         factory &&
-        ts.isArrowFunction(factory) &&
-        factory.parameters.length === 1 &&
-        ts.isCallExpression(factory.body) &&
-        ts.isIdentifier(factory.body.expression) &&
-        factory.body.expression.text === "runCaseWithAuthority" &&
+        factory.type === "ArrowFunctionExpression" &&
+        factory.params.length === 1 &&
+        factory.body.type === "CallExpression" &&
+        factory.body.callee.type === "Identifier" &&
+        factory.body.callee.name === "runCaseWithAuthority" &&
         fixedAuthority(factory.body, "canonical"),
       );
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(parse(source));
+  });
   return found;
 };
 
 const randomBrowserAuthorityProblems = (source: string) => {
   const problems: string[] = [];
   let calls = 0;
-  const visit = (node: ts.Node, randomLane = false) => {
-    const inLane =
-      randomLane ||
-      (ts.isForOfStatement(node) &&
-        node.expression.getText() === "config.seeds");
-    if (inLane && ts.isCallExpression(node)) {
-      if (
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === "runMode"
-      ) {
+  walkAst(parse(source), (node, ancestors) => {
+    const inLane = [...ancestors, node].some(
+      (lane) =>
+        lane.type === "ForOfStatement" &&
+        nodeText(source, lane.right) === "config.seeds",
+    );
+    if (inLane && node.type === "CallExpression") {
+      if (node.callee.type === "Identifier" && node.callee.name === "runMode") {
         calls += 1;
         if (!fixedAuthority(node, "canonical"))
           problems.push("random browser authority");
       }
       if (
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.getText() === "test.fail"
+        node.callee.type === "MemberExpression" &&
+        !node.callee.computed &&
+        nodeText(source, node.callee) === "test.fail"
       )
         problems.push("canonical random lane accepts a legacy failure");
     }
-    ts.forEachChild(node, (child) => visit(child, inLane));
-  };
-  visit(parse(source));
+  });
   if (calls === 0) problems.push("missing standing browser calls");
   return problems;
 };
@@ -212,34 +206,36 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
 ]);
 
 const expectationImportProblems = (source: string, owner: string) =>
-  parse(source).statements.flatMap((node) => {
-    if (
-      !ts.isImportDeclaration(node) ||
-      !ts.isStringLiteral(node.moduleSpecifier)
-    )
-      return [];
-    const clause = node.importClause;
-    if (clause?.isTypeOnly) return [];
-    const module = node.moduleSpecifier.text;
+  parse(source).body.flatMap((node) => {
+    if (node.type !== "ImportDeclaration") return [];
+    if (node.importKind === "type") return [];
+    const module = node.source.value;
     if (!module.startsWith(".") && !module.startsWith("@stll/")) return [];
     const resolved = path.posix.normalize(
       path.posix.join(path.posix.dirname(owner), module),
     );
     if (!resolved.startsWith("packages/") && !module.startsWith("@stll/"))
       return [];
-    if (!clause) return [`${module}: side-effect import`];
+    // `import {} from` still has an import clause; only `import "x"` has none.
+    const hasClause =
+      node.specifiers.length > 0 ||
+      source.slice(node.start, node.source.start).includes("{");
+    if (!hasClause) return [`${module}: side-effect import`];
     const allowed = CONFORMANCE_PRODUCTION_IMPORTS.get(resolved) ?? [];
     const problems: string[] = [];
-    if (clause.name) problems.push(`${module}: default import`);
-    const bindings = clause.namedBindings;
-    if (bindings && ts.isNamespaceImport(bindings))
-      problems.push(`${module}: namespace import`);
-    if (bindings && ts.isNamedImports(bindings))
-      for (const binding of bindings.elements) {
-        if (binding.isTypeOnly) continue;
-        const name = (binding.propertyName ?? binding.name).text;
-        if (!allowed.includes(name)) problems.push(`${module}: ${name}`);
-      }
+    for (const binding of node.specifiers) {
+      if (binding.type === "ImportDefaultSpecifier")
+        problems.push(`${module}: default import`);
+      if (binding.type === "ImportNamespaceSpecifier")
+        problems.push(`${module}: namespace import`);
+      if (binding.type !== "ImportSpecifier" || binding.importKind === "type")
+        continue;
+      const name =
+        binding.imported.type === "Identifier"
+          ? binding.imported.name
+          : binding.imported.value;
+      if (!allowed.includes(name)) problems.push(`${module}: ${name}`);
+    }
     return problems;
   });
 

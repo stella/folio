@@ -1,4 +1,4 @@
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 import JSZip from "jszip";
 import { Fragment } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
@@ -417,18 +417,16 @@ export type FolioGetContentAsTextOptions = {
   annotated?: boolean;
 };
 
-export const FOLIO_REVIEWED_VIEWS = Object.freeze([
+export const FOLIO_REVIEWED_VIEWS: readonly [
   "original",
   "current-markup",
   "final",
-] as const);
+] = Object.freeze(["original", "current-markup", "final"] as const);
 
 export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 
-export const FOLIO_RESOLVED_REVIEWED_VIEWS = Object.freeze([
-  "original",
-  "final",
-] as const);
+export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"] =
+  Object.freeze(["original", "final"] as const);
 
 export type FolioResolvedReviewedView =
   (typeof FOLIO_RESOLVED_REVIEWED_VIEWS)[number];
@@ -487,16 +485,18 @@ export type FolioReviewedStory = {
   changes: FolioReviewChange[];
 };
 
-export class UnsupportedFolioReviewedViewError extends TaggedError(
-  "UnsupportedFolioReviewedViewError",
-)<{
+const UnsupportedFolioReviewedViewErrorBase: TaggedErrorClass<"UnsupportedFolioReviewedViewError"> =
+  TaggedError("UnsupportedFolioReviewedViewError");
+
+export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewErrorBase<{
   message: string;
   receivedView: unknown;
 }> {}
 
-export class FolioDocumentStoryNotFoundError extends TaggedError(
-  "FolioDocumentStoryNotFoundError",
-)<{
+const FolioDocumentStoryNotFoundErrorBase: TaggedErrorClass<"FolioDocumentStoryNotFoundError"> =
+  TaggedError("FolioDocumentStoryNotFoundError");
+
+export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundErrorBase<{
   message: string;
   story: FolioEditableDocumentStoryHandle;
 }> {}
@@ -511,9 +511,10 @@ const FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES = Object.freeze({
 type FolioResolvedStorySerializationMismatch =
   (typeof FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES)[keyof typeof FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES];
 
-class FolioResolvedStorySerializationError extends TaggedError(
-  "FolioResolvedStorySerializationError",
-)<{
+const FolioResolvedStorySerializationErrorBase: TaggedErrorClass<"FolioResolvedStorySerializationError"> =
+  TaggedError("FolioResolvedStorySerializationError");
+
+class FolioResolvedStorySerializationError extends FolioResolvedStorySerializationErrorBase<{
   message: string;
   story: FolioEditableDocumentStoryHandle;
   mismatches: readonly FolioResolvedStorySerializationMismatch[];

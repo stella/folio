@@ -7,7 +7,11 @@ import { panic } from "better-result";
 import { expectFontFamilyMarkAttrs } from "../../attrs";
 import { canonicalRunFormatting } from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type {
+  ExtensionContext,
+  ExtensionRuntime,
+  MarkExtension,
+} from "../types";
 import {
   canonicalSetMarkFormatting,
   removeMark,
@@ -15,7 +19,9 @@ import {
   withRunFormattingLock,
 } from "./markUtils";
 
-export const FontFamilyExtension = createMarkExtension({
+export const FontFamilyExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "fontFamily",
   schemaMarkName: "fontFamily",
   markSpec: {

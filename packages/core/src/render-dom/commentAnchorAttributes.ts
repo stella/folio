@@ -19,7 +19,7 @@ const PRIMARY_ATTRIBUTE = "data-comment-id";
 const MEMBERSHIP_ATTRIBUTE = "data-comment-ids";
 
 /** The painted anchors inside a container, whichever comment they belong to. */
-export const COMMENT_ANCHOR_SELECTOR = `[${PRIMARY_ATTRIBUTE}]`;
+export const COMMENT_ANCHOR_SELECTOR: "[data-comment-id]" = `[${PRIMARY_ATTRIBUTE}]`;
 
 /** What a painter, a reader and their test fakes all offer. */
 type CommentAnchor = { dataset: Record<string, string | undefined> };

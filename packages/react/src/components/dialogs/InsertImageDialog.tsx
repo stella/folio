@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -30,7 +30,9 @@ export type InsertImageDialogProps = {
   accept?: string;
 };
 
-export function InsertImageDialog(props: InsertImageDialogProps) {
+export function InsertImageDialog(
+  props: InsertImageDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

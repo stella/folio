@@ -7,7 +7,7 @@
  * - Distance from text (top/bottom/left/right)
  */
 
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -46,7 +46,9 @@ export type ImagePositionDialogProps = {
 // COMPONENT
 // ============================================================================
 
-export function ImagePositionDialog(props: ImagePositionDialogProps) {
+export function ImagePositionDialog(
+  props: ImagePositionDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

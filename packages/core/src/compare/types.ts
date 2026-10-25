@@ -1,9 +1,21 @@
+const CompareDocxFinalParagraphMarkErrorBase: TaggedErrorClass<"CompareDocxFinalParagraphMarkError"> =
+  TaggedError("CompareDocxFinalParagraphMarkError");
+
+const CompareDocxOperationLimitErrorBase: TaggedErrorClass<"CompareDocxOperationLimitError"> =
+  TaggedError("CompareDocxOperationLimitError");
+
+const CompareDocxRoundTripErrorBase: TaggedErrorClass<"CompareDocxRoundTripError"> =
+  TaggedError("CompareDocxRoundTripError");
+
+const CompareDocxApplyErrorBase: TaggedErrorClass<"CompareDocxApplyError"> =
+  TaggedError("CompareDocxApplyError");
+
 /**
  * Public vocabulary of {@link ./compare.compareDocx}: the change list, the
  * options that pin its output, and the failures it reports.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import type {
   FolioDocumentStoryHandle,
@@ -258,7 +270,12 @@ export type CompareChange =
     };
 
 /** Why a part of the package is absent from `changes`. */
-export const COMPARE_UNSUPPORTED_REASONS = Object.freeze([
+export const COMPARE_UNSUPPORTED_REASONS: readonly [
+  "story-missing-in-base",
+  "story-missing-in-target",
+  "story-not-editable",
+  "unsupported-content",
+] = Object.freeze([
   /** The story exists only in the target package; creating a part is not a text edit. */
   "story-missing-in-base",
   /** The story exists only in the base package. */
@@ -315,17 +332,19 @@ export type CompareResult = {
   unsupported: readonly CompareUnsupportedPart[];
 };
 
-export class InvalidCompareDocxOptionsError extends TaggedError(
-  "InvalidCompareDocxOptionsError",
-)<{
+const InvalidCompareDocxOptionsErrorBase: TaggedErrorClass<"InvalidCompareDocxOptionsError"> =
+  TaggedError("InvalidCompareDocxOptionsError");
+
+export class InvalidCompareDocxOptionsError extends InvalidCompareDocxOptionsErrorBase<{
   message: string;
   option: "timestamp" | "revisionFormat";
   receivedValue: unknown;
 }> {}
 
-export class CompareDocxParseError extends TaggedError(
-  "CompareDocxParseError",
-)<{
+const CompareDocxParseErrorBase: TaggedErrorClass<"CompareDocxParseError"> =
+  TaggedError("CompareDocxParseError");
+
+export class CompareDocxParseError extends CompareDocxParseErrorBase<{
   message: string;
   side: "base" | "target";
   cause: unknown;
@@ -336,9 +355,7 @@ export class CompareDocxParseError extends TaggedError(
  * would not reproduce the target. Reported instead of returning a package that
  * silently under-represents the difference.
  */
-export class CompareDocxApplyError extends TaggedError(
-  "CompareDocxApplyError",
-)<{
+export class CompareDocxApplyError extends CompareDocxApplyErrorBase<{
   message: string;
   skipped: readonly FolioAIEditSkippedOperation[];
 }> {}
@@ -349,9 +366,7 @@ export class CompareDocxApplyError extends TaggedError(
  * quietly loses part of the difference is worse than no redline, so the
  * mismatch is surfaced instead of the document.
  */
-export class CompareDocxRoundTripError extends TaggedError(
-  "CompareDocxRoundTripError",
-)<{
+export class CompareDocxRoundTripError extends CompareDocxRoundTripErrorBase<{
   message: string;
   story: FolioDocumentStoryHandle;
   /** The invariant that did not hold, and what diverged under it. */
@@ -367,16 +382,15 @@ export class CompareDocxRoundTripError extends TaggedError(
 }> {}
 
 /** The difference needs more operations than the engine will generate. */
-export class CompareDocxOperationLimitError extends TaggedError(
-  "CompareDocxOperationLimitError",
-)<{
+export class CompareDocxOperationLimitError extends CompareDocxOperationLimitErrorBase<{
   message: string;
   limit: number;
 }> {}
 
-export class CompareDocxSerializeError extends TaggedError(
-  "CompareDocxSerializeError",
-)<{
+const CompareDocxSerializeErrorBase: TaggedErrorClass<"CompareDocxSerializeError"> =
+  TaggedError("CompareDocxSerializeError");
+
+export class CompareDocxSerializeError extends CompareDocxSerializeErrorBase<{
   message: string;
   cause: unknown;
 }> {}
@@ -408,9 +422,7 @@ export const compareDocxSerializeError = (
  * under either `onUnverified` setting: there is no redline to emit when a
  * consumer refuses the file.
  */
-export class CompareDocxFinalParagraphMarkError extends TaggedError(
-  "CompareDocxFinalParagraphMarkError",
-)<{
+export class CompareDocxFinalParagraphMarkError extends CompareDocxFinalParagraphMarkErrorBase<{
   message: string;
   /** Every container that carries one, each named structurally. */
   revisions: readonly FinalParagraphMarkRevision[];

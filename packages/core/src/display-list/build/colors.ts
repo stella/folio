@@ -16,8 +16,8 @@ import type { DisplayColor } from "../types";
  * `--suggestion-color` the AI-proposal hue (`renderParagraph.ts`'s
  * `SUGGESTION_COLOR_CSS` fallback).
  */
-export const DOC_CANVAS = WHITE;
-export const DOC_CANVAS_TEXT = BLACK;
+export const DOC_CANVAS: DisplayColor = WHITE;
+export const DOC_CANVAS_TEXT: DisplayColor = BLACK;
 export const SUGGESTION_COLOR: DisplayColor = {
   r: 0x6d,
   g: 0x3b,

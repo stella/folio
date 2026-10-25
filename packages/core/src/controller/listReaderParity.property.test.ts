@@ -4,10 +4,14 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Fragment } from "prosemirror-model";
-import ts from "typescript";
 
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 
+import {
+  type Node,
+  parseSourceModule,
+  walkAst,
+} from "../../../../scripts/lib/oxc-ast";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -81,98 +85,100 @@ const COUNTER_OWNERS = new Set([
   "createListLabelCounter",
   "listLabelAttrsFromRendering",
 ]);
-const producerFunctions = (source: string): string[] => {
-  const file = ts.createSourceFile(
-    "producer.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+const isFunctionValue = (node: Node | null | undefined): boolean =>
+  node?.type === "ArrowFunctionExpression" ||
+  node?.type === "FunctionExpression";
+// The name a producer function is declared under, if `node` declares one.
+const producerName = (node: Node): string | undefined => {
+  if (
+    node.type === "Property" &&
+    node.kind === "init" &&
+    !node.method &&
+    !node.computed &&
+    node.key.type === "Identifier" &&
+    isFunctionValue(node.value)
+  )
+    return node.key.name;
+  if (
+    (node.type === "FunctionDeclaration" ||
+      node.type === "TSDeclareFunction") &&
+    node.id
+  )
+    return node.id.name;
+  if (
+    node.type === "VariableDeclarator" &&
+    node.id.type === "Identifier" &&
+    isFunctionValue(node.init)
+  )
+    return node.id.name;
+  return undefined;
+};
+const producerFunctions = (file: string, source: string): string[] => {
+  // The file name selects the dialect: declaration files have no bodies.
+  const { program } = parseSourceModule(file, source);
   const owners = new Set<string>();
   const namespaces = new Set<string>();
-  for (const statement of file.statements) {
-    if (
-      !ts.isImportDeclaration(statement) ||
-      !ts.isStringLiteral(statement.moduleSpecifier)
-    )
-      continue;
+  for (const statement of program.body) {
+    if (statement.type !== "ImportDeclaration") continue;
     if (
       !/\/(?:listMarker|listLabels|listMarkerComputation)(?:\.[cm]?ts|\.js)?$/u.test(
-        statement.moduleSpecifier.text,
+        statement.source.value,
       )
     )
       continue;
-    const bindings = statement.importClause?.namedBindings;
-    if (!bindings) continue;
-    if (ts.isNamespaceImport(bindings)) {
-      namespaces.add(bindings.name.text);
+    const namespace = statement.specifiers.find(
+      (specifier) => specifier.type === "ImportNamespaceSpecifier",
+    );
+    if (namespace) {
+      namespaces.add(namespace.local.name);
       continue;
     }
-    for (const binding of bindings.elements) {
-      if (COUNTER_OWNERS.has((binding.propertyName ?? binding.name).text))
-        owners.add(binding.name.text);
+    for (const binding of statement.specifiers) {
+      if (binding.type !== "ImportSpecifier") continue;
+      const imported =
+        binding.imported.type === "Identifier"
+          ? binding.imported.name
+          : binding.imported.value;
+      if (COUNTER_OWNERS.has(imported)) owners.add(binding.local.name);
     }
   }
   const functions = new Set<string>();
-  const visit = (node: ts.Node): void => {
+  walkAst(program, (node, ancestors) => {
     if (
-      ts.isFunctionDeclaration(node) &&
-      node.name?.text === "advanceVisibleListMarker"
+      (node.type === "FunctionDeclaration" ||
+        node.type === "TSDeclareFunction") &&
+      node.id?.name === "advanceVisibleListMarker"
     )
-      functions.add(node.name.text);
+      functions.add(node.id.name);
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
       ["listLabelAttrsFromRendering", "computeListMarker"].includes(
-        node.name.text,
+        node.id.name,
       )
     )
-      functions.add(node.name.text);
+      functions.add(node.id.name);
     if (
-      ts.isCallExpression(node) &&
-      ((ts.isIdentifier(node.expression) && owners.has(node.expression.text)) ||
-        (ts.isPropertyAccessExpression(node.expression) &&
-          ts.isIdentifier(node.expression.expression) &&
-          namespaces.has(node.expression.expression.text) &&
-          COUNTER_OWNERS.has(node.expression.name.text)))
+      node.type === "CallExpression" &&
+      ((node.callee.type === "Identifier" && owners.has(node.callee.name)) ||
+        (node.callee.type === "MemberExpression" &&
+          !node.callee.computed &&
+          node.callee.object.type === "Identifier" &&
+          namespaces.has(node.callee.object.name) &&
+          node.callee.property.type === "Identifier" &&
+          COUNTER_OWNERS.has(node.callee.property.name)))
     ) {
-      let ancestor: ts.Node | undefined = node.parent;
-      while (ancestor) {
-        if (
-          ts.isPropertyAssignment(ancestor) &&
-          ts.isIdentifier(ancestor.name) &&
-          (ts.isArrowFunction(ancestor.initializer) ||
-            ts.isFunctionExpression(ancestor.initializer))
-        ) {
-          functions.add(ancestor.name.text);
-          break;
-        }
-        if (ts.isFunctionDeclaration(ancestor) && ancestor.name) {
-          functions.add(ancestor.name.text);
-          break;
-        }
-        if (
-          ts.isVariableDeclaration(ancestor) &&
-          ts.isIdentifier(ancestor.name) &&
-          ancestor.initializer &&
-          (ts.isArrowFunction(ancestor.initializer) ||
-            ts.isFunctionExpression(ancestor.initializer))
-        ) {
-          functions.add(ancestor.name.text);
-          break;
-        }
-        ancestor = ancestor.parent;
-      }
-      if (!ancestor) functions.add("<module>");
+      const owner = ancestors
+        .map(producerName)
+        .findLast((name) => name !== undefined);
+      functions.add(owner ?? "<module>");
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+  });
   return [...functions];
 };
 const discoveredProducers = (sources: ReadonlyMap<string, string>): string[] =>
   [...sources].flatMap(([file, source]) =>
-    producerFunctions(source).map((name) => `${file}::${name}`),
+    producerFunctions(file, source).map((name) => `${file}::${name}`),
   );
 const unregisteredProducers = (
   sources: ReadonlyMap<string, string>,
@@ -219,7 +225,7 @@ test(
       Object.keys(PRODUCER_READERS).sort(),
     );
   },
-  // This structural guard parses every production source file with TypeScript.
+  // This structural guard parses every production source file.
   propertyTestTimeout(10_000),
 );
 

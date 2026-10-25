@@ -11,11 +11,14 @@
 import { expectPreservedXmlAttrs } from "../../attrs";
 import { PRESERVED_XML_LEVELS } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 /** The node name, for callers asking what a paragraph holds. */
 export const PRESERVED_XML_NODE_NAME = "preservedXml";
 
-export const PreservedXmlExtension = createNodeExtension({
+export const PreservedXmlExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: PRESERVED_XML_NODE_NAME,
   schemaNodeName: PRESERVED_XML_NODE_NAME,
   nodeSpec: {

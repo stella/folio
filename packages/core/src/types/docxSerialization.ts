@@ -1,6 +1,9 @@
 import type { SaveDiagnosticOptions } from "../docx/saveDiagnostics";
 
-export const FOLIO_DOCX_SERIALIZATION_MODE = Object.freeze({
+export const FOLIO_DOCX_SERIALIZATION_MODE: Readonly<{
+  readonly full: "full";
+  readonly preferSelective: "prefer-selective";
+}> = Object.freeze({
   full: "full",
   preferSelective: "prefer-selective",
 } as const);

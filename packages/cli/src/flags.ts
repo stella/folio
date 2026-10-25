@@ -15,7 +15,7 @@ import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import type { JsonObjectSchema } from "./registry";
 
 /** Largest `--input` document accepted. */
-export const MAX_INPUT_BYTES = 16 * 1024 * 1024;
+export const MAX_INPUT_BYTES: number = 16 * 1024 * 1024;
 
 export type FlagValueType =
   "boolean" | "integer" | "number" | "string" | "strings" | "json";

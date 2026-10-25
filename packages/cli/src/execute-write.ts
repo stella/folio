@@ -82,7 +82,7 @@ export type WriteOptions = {
 /** How a transaction's bytes were produced. */
 export type SaveStrategy = "selective" | "full-repack" | "redline";
 
-export const TX_ID_PATTERN = /^[\w.-]{1,128}$/u;
+export const TX_ID_PATTERN: RegExp = /^[\w.-]{1,128}$/u;
 
 const invalidInput = (message: string, hint?: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.invalidInput, message, hint });

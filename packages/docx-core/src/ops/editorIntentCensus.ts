@@ -1,7 +1,7 @@
 import { panic } from "better-result";
 
 import type { Document, Paragraph } from "../model/document";
-import { type storyParagraphs } from "./blocks";
+import { type ParagraphLocation, type storyParagraphs } from "./blocks";
 import {
   countKeys,
   IDENTITY_SPACES,
@@ -98,7 +98,14 @@ export const createCensusReader = () => {
     }
     return keys;
   };
-  return (document: Document) => {
+  return (
+    document: Document,
+  ): {
+    revisions: Set<number>;
+    controls: Set<number>;
+    paragraphs: Set<string>;
+    stories: Map<OpStory, ParagraphLocation[]>;
+  } => {
     const cached = versions.get(document);
     if (cached !== undefined) {
       latest = cached;

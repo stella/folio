@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 /**
  * A self-contained TrueType/OpenType (sfnt) reader.
  *
@@ -68,7 +68,10 @@ export type SfntGlyphBounds = {
   readonly yMax: number;
 };
 
-export class SfntParseError extends TaggedError("SfntParseError")<{
+const SfntParseErrorBase: TaggedErrorClass<"SfntParseError"> =
+  TaggedError("SfntParseError");
+
+export class SfntParseError extends SfntParseErrorBase<{
   message: string;
 }> {}
 

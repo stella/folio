@@ -15,8 +15,11 @@
 
 import { expectCharacterStyleMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
-export const CharacterStyleExtension = createMarkExtension({
+export const CharacterStyleExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "characterStyle",
   schemaMarkName: "characterStyle",
   markSpec: {

@@ -2,6 +2,9 @@ import {
   FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   type FolioDocumentOperationType,
+  type FolioDocumentSectionHandle,
+  type FolioDocumentStory,
+  type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
 import {
@@ -32,12 +35,22 @@ import {
 } from "./suggest-changes-options";
 import { defineFolioAgentToolDefinition } from "./tool-contract";
 import type {
+  FolioAgentFindTextScope,
+  FolioAgentShowInDocumentArgs,
   FolioAgentToolInputByName,
   FolioAgentToolOutputByName,
 } from "./tool-contract";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
+  FolioAgentApplyOperationsSummary,
+  FolioAgentBlock,
+  FolioAgentChange,
+  FolioAgentComment,
+  FolioAgentCommentFilter,
+  FolioAgentDocumentOutline,
   FolioAgentJsonObjectSchema,
+  FolioAgentScopedFindTextResult,
+  FolioAgentSectionRead,
   FolioAgentToolDefinition,
   FolioAgentToolName,
   FolioAgentTypedToolDefinition,
@@ -486,7 +499,137 @@ const definitionsFromRegistry = (
  * mutation (`add_comment`, `suggest_changes`) becomes a tracked change or
  * comment pending human review; nothing is silently finalized.
  */
-export const FOLIO_AGENT_TOOL_REGISTRY = {
+export const FOLIO_AGENT_TOOL_REGISTRY: {
+  readonly read_document: FolioAgentTypedToolDefinition<
+    "read_document",
+    Readonly<Record<string, never>>,
+    FolioAgentBlock[]
+  >;
+  readonly get_document_outline: FolioAgentTypedToolDefinition<
+    "get_document_outline",
+    {
+      maxDepth?: number;
+    },
+    FolioAgentDocumentOutline
+  >;
+  readonly read_section: FolioAgentTypedToolDefinition<
+    "read_section",
+    {
+      handle: FolioDocumentSectionHandle;
+      maxBlocks?: number;
+      afterBlockId?: string;
+    },
+    FolioAgentSectionRead
+  >;
+  readonly list_stories: FolioAgentTypedToolDefinition<
+    "list_stories",
+    Readonly<Record<string, never>>,
+    FolioDocumentStory[]
+  >;
+  readonly read_story: FolioAgentTypedToolDefinition<
+    "read_story",
+    {
+      handle: FolioDocumentStoryHandle;
+    },
+    FolioDocumentStory
+  >;
+  readonly find_text: FolioAgentTypedToolDefinition<
+    "find_text",
+    {
+      query: string;
+      matchCase?: boolean;
+      wholeWord?: boolean;
+      scope?: FolioAgentFindTextScope;
+    },
+    FolioAgentScopedFindTextResult
+  >;
+  readonly read_comments: FolioAgentTypedToolDefinition<
+    "read_comments",
+    {
+      filter?: FolioAgentCommentFilter;
+    },
+    FolioAgentComment[]
+  >;
+  readonly read_changes: FolioAgentTypedToolDefinition<
+    "read_changes",
+    Readonly<Record<string, never>>,
+    FolioAgentChange[]
+  >;
+  readonly add_comment: FolioAgentTypedToolDefinition<
+    "add_comment",
+    {
+      blockId: string;
+      quote?: string;
+      text: string;
+      precondition?: {
+        blockTextHash: string;
+      };
+    },
+    FolioAgentApplyOperationsSummary
+  >;
+  readonly suggest_changes: FolioAgentTypedToolDefinition<
+    "suggest_changes",
+    {
+      operations: unknown[];
+      documentVersion?: string;
+    },
+    FolioAgentApplyOperationsSummary
+  >;
+  readonly reply_comment: FolioAgentTypedToolDefinition<
+    "reply_comment",
+    {
+      commentId: string;
+      text: string;
+    },
+    {
+      replied: true;
+    }
+  >;
+  readonly resolve_comment: FolioAgentTypedToolDefinition<
+    "resolve_comment",
+    {
+      commentId: string;
+      reopen?: boolean;
+    },
+    {
+      resolved: boolean;
+    }
+  >;
+  readonly read_page: FolioAgentTypedToolDefinition<
+    "read_page",
+    {
+      page: number;
+    },
+    {
+      page: number;
+      totalPages?: number;
+      text: string;
+    }
+  >;
+  readonly read_selection: FolioAgentTypedToolDefinition<
+    "read_selection",
+    Readonly<Record<string, never>>,
+    {
+      text: string;
+    }
+  >;
+  readonly show_in_document: FolioAgentTypedToolDefinition<
+    "show_in_document",
+    FolioAgentShowInDocumentArgs,
+    {
+      shown: boolean;
+    }
+  >;
+  readonly scroll_to_block: FolioAgentTypedToolDefinition<
+    "scroll_to_block",
+    {
+      blockId: string;
+    },
+    {
+      scrolled: boolean;
+    }
+  >;
+} = {
   [FOLIO_AGENT_TOOL_NAMES.readDocument]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readDocument,
     description:
@@ -780,9 +923,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
   }),
 } as const satisfies FolioAgentToolRegistry;
 
-export const FOLIO_AGENT_TOOLS = definitionsFromRegistry(
-  FOLIO_AGENT_TOOL_REGISTRY,
-);
+export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] =
+  definitionsFromRegistry(FOLIO_AGENT_TOOL_REGISTRY);
 
 /**
  * The tool definitions this package exposes. Without options this is

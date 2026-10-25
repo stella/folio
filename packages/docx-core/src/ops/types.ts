@@ -119,7 +119,9 @@ export const DOCUMENT_OP_SCHEMA_VERSION = 10;
  * The main story has a fixed address; other editable parts use their stable
  * relationship id or note id. Comment bodies are not yet editable stories.
  */
-export const OP_STORIES = Object.freeze({ MAIN: "main" } as const);
+export const OP_STORIES: Readonly<{
+  readonly MAIN: "main";
+}> = Object.freeze({ MAIN: "main" } as const);
 
 /** The stable identity of an independently editable package story. */
 export type HeaderFooterStory = { kind: "header" | "footer"; rId: string };
@@ -165,7 +167,10 @@ export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
  * empty set. The two state the same thing; the choice is how an inverse
  * gives back a record in the spelling it had.
  */
-export const EMPTY_PROPERTY_SETS = Object.freeze({
+export const EMPTY_PROPERTY_SETS: Readonly<{
+  readonly OMIT: "omit";
+  readonly KEEP: "keep";
+}> = Object.freeze({
   OMIT: "omit",
   KEEP: "keep",
 } as const);
@@ -237,13 +242,62 @@ export type SplitParagraphFields = Omit<
 >;
 
 /** Explicit structural and review policies for editor intent compilation. */
-export const SECTION_BOUNDARY_POLICIES = Object.freeze({
+export const SECTION_BOUNDARY_POLICIES: Readonly<{
+  readonly REMOVE: "remove";
+  readonly REPLACE: "replace";
+}> = Object.freeze({
   REMOVE: "remove",
   REPLACE: "replace",
 } as const);
 
 /** The operation kinds of schema version 10. */
-export const DOCUMENT_OP_TYPES = Object.freeze({
+export const DOCUMENT_OP_TYPES: Readonly<{
+  readonly CREATE_COMMENT: "createComment";
+  readonly UPDATE_COMMENT_CONTENT: "updateCommentContent";
+  readonly SET_COMMENT_RESOLUTION: "setCommentResolution";
+  readonly DELETE_COMMENT: "deleteComment";
+  readonly RESTORE_COMMENT_STATE: "restoreCommentState";
+  readonly CREATE_HEADER_FOOTER: "createHeaderFooter";
+  readonly REMOVE_HEADER_FOOTER: "removeHeaderFooter";
+  readonly ADD_NOTE: "addNote";
+  readonly REMOVE_NOTE: "removeNote";
+  readonly SET_SECTION_PROPS: "setSectionProps";
+  readonly RESTORE_STORY_PARTS: "restoreStoryParts";
+  readonly DELETE_BLOCKS: "deleteBlocks";
+  readonly INSERT_BLOCKS: "insertBlocks";
+  readonly INSERT_TEXT: "insertText";
+  readonly INSERT_CONTENT: "insertContent";
+  readonly DELETE_RANGE: "deleteRange";
+  readonly SPLIT_INLINE: "splitInline";
+  readonly JOIN_INLINE: "joinInline";
+  readonly SET_RUN_PROPS: "setRunProps";
+  readonly SET_PARAGRAPH_PROPS: "setParagraphProps";
+  readonly SPLIT_BLOCK: "splitBlock";
+  readonly JOIN_BLOCKS: "joinBlocks";
+  readonly REPLACE_BLOCKS: "replaceBlocks";
+  readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
+  readonly REPLACE_INLINE: "replaceInline";
+  readonly RESOLVE_REVISION: "resolveRevision";
+  readonly INSERT_TABLE: "insertTable";
+  readonly DELETE_TABLE: "deleteTable";
+  readonly SET_CONTAINER_BLOCKS: "setContainerBlocks";
+  readonly INSERT_ROW: "insertRow";
+  readonly DELETE_ROW: "deleteRow";
+  readonly SET_TABLE_ROWS: "setTableRows";
+  readonly INSERT_COLUMN: "insertColumn";
+  readonly DELETE_COLUMN: "deleteColumn";
+  readonly MERGE_CELLS: "mergeCells";
+  readonly SPLIT_CELL: "splitCell";
+  readonly SET_TABLE_GRID: "setTableGrid";
+  readonly SET_CELL_PROPS: "setCellProps";
+  readonly SET_ROW_PROPS: "setRowProps";
+  readonly SET_TABLE_PROPS: "setTableProps";
+  readonly SET_TABLE: "setTable";
+  readonly CREATE_NUMBERING_INSTANCE: "createNumberingInstance";
+  readonly DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance";
+  readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
+  readonly SET_PACKAGE_RESOURCES: "setPackageResources";
+}> = Object.freeze({
   CREATE_COMMENT: "createComment",
   UPDATE_COMMENT_CONTENT: "updateCommentContent",
   SET_COMMENT_RESOLUTION: "setCommentResolution",
@@ -400,7 +454,9 @@ export type JoinInlineOp = {
 };
 
 /** Whether a tracked run patch appends an independently rejectable review. */
-export const PROPERTY_REVIEW_POLICIES = Object.freeze({
+export const PROPERTY_REVIEW_POLICIES: Readonly<{
+  readonly APPEND: "append";
+}> = Object.freeze({
   APPEND: "append",
 } as const);
 
@@ -465,13 +521,19 @@ export type SetParagraphPropsOp = {
  * (`w:pPr/w:rPr`) rather than to the paragraph properties a `w:pPrChange`
  * records.
  */
-export const PARAGRAPH_MARK_FORMATTING_KEYS = Object.freeze([
+export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly [
+  "runProperties",
+  "runInWithNext",
+] = Object.freeze([
   "runProperties",
   "runInWithNext",
 ] as const satisfies readonly (keyof ParagraphFormatting)[]);
 
 /** Which half of a split, or of a join, a rule applies to. */
-export const SPLIT_HALVES = Object.freeze({
+export const SPLIT_HALVES: Readonly<{
+  readonly FIRST: "first";
+  readonly SECOND: "second";
+}> = Object.freeze({
   FIRST: "first",
   SECOND: "second",
 } as const);
@@ -664,7 +726,10 @@ export type ReplaceInlineOp = {
 };
 
 /** What resolving a tracked change does with it. */
-export const REVISION_DECISIONS = Object.freeze({
+export const REVISION_DECISIONS: Readonly<{
+  readonly ACCEPT: "accept";
+  readonly REJECT: "reject";
+}> = Object.freeze({
   ACCEPT: "accept",
   REJECT: "reject",
 } as const);

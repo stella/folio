@@ -28,6 +28,7 @@ import { mergeParagraphNumbering } from "../../docx/numberingReference";
 import type {
   DocDefaults,
   ParagraphFormatting,
+  ParagraphNumberingOverride,
   Style,
   StyleDefinitions,
   TextFormatting,
@@ -434,7 +435,7 @@ const paragraphFormattingLayers = ({
 export const resolveStyleParagraphNumbering = (
   resolver: StyleResolver,
   styleId: string | undefined | null,
-) => {
+): ParagraphNumberingOverride | undefined => {
   let numbering: ParagraphFormatting["numPr"];
   for (const layer of paragraphNumberingLayers(resolver, styleId)) {
     numbering = mergeParagraphNumbering(numbering, layer?.numPr);

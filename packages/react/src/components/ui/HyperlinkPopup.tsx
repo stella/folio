@@ -5,6 +5,7 @@
  */
 
 import {
+  type JSX,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -52,7 +53,7 @@ export type HyperlinkPopupProps = {
   readOnly?: boolean;
 };
 
-export function HyperlinkPopup(props: HyperlinkPopupProps) {
+export function HyperlinkPopup(props: HyperlinkPopupProps): JSX.Element | null {
   if (!props.data) {
     return null;
   }

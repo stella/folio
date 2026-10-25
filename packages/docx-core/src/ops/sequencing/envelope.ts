@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { encodeUtf8 } from "@stll/utf8-boundaries";
 
@@ -62,7 +62,10 @@ export const BATCH_REJECTION_REASONS = {
 export type BatchRejectionReason =
   (typeof BATCH_REJECTION_REASONS)[keyof typeof BATCH_REJECTION_REASONS];
 
-export class BatchRejection extends TaggedError("BatchRejection")<{
+const BatchRejectionBase: TaggedErrorClass<"BatchRejection"> =
+  TaggedError("BatchRejection");
+
+export class BatchRejection extends BatchRejectionBase<{
   message: string;
   reason: BatchRejectionReason;
   opId?: string;
@@ -71,7 +74,23 @@ export class BatchRejection extends TaggedError("BatchRejection")<{
 }> {}
 
 /** Table edits and their structural inverses require exclusive editing until transforms exist. */
-export const TABLE_EXCLUSIVE_OP_TYPES = {
+export const TABLE_EXCLUSIVE_OP_TYPES: {
+  readonly insertTable: true;
+  readonly deleteTable: true;
+  readonly setContainerBlocks: true;
+  readonly insertRow: true;
+  readonly deleteRow: true;
+  readonly setTableRows: true;
+  readonly insertColumn: true;
+  readonly deleteColumn: true;
+  readonly mergeCells: true;
+  readonly splitCell: true;
+  readonly setTableGrid: true;
+  readonly setCellProps: true;
+  readonly setRowProps: true;
+  readonly setTableProps: true;
+  readonly setTable: true;
+} = {
   insertTable: true,
   deleteTable: true,
   setContainerBlocks: true,
@@ -449,7 +468,7 @@ const operationFields = {
   setTable: undefined,
 } satisfies Record<DocumentOpType, Fields | undefined>;
 
-export const BATCH_WIRE_OP_TYPES = Object.freeze(
+export const BATCH_WIRE_OP_TYPES: readonly string[] = Object.freeze(
   Object.entries(operationFields)
     .filter(([, fields]) => fields !== undefined)
     .map(([type]) => type),
@@ -469,7 +488,7 @@ const isDocumentOp = (value: unknown): value is DocumentOp => {
 };
 
 /** Bound recursion and refuse values except JSON data and absent object fields. */
-export const MAX_BATCH_WIRE_BYTES = 256 * 1024;
+export const MAX_BATCH_WIRE_BYTES: number = 256 * 1024;
 
 type JsonDataOptions = {
   value: unknown;

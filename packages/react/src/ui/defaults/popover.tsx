@@ -1,4 +1,5 @@
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
+import type { JSX } from "react/jsx-runtime";
 
 import { cn } from "../../lib/utils";
 import type {
@@ -16,11 +17,11 @@ import type {
  * prop.
  */
 
-function DefaultPopoverRoot(props: FolioPopoverRootProps) {
+function DefaultPopoverRoot(props: FolioPopoverRootProps): JSX.Element {
   return <PopoverPrimitive.Root {...props} />;
 }
 
-function DefaultPopoverTrigger(props: FolioPopoverTriggerProps) {
+function DefaultPopoverTrigger(props: FolioPopoverTriggerProps): JSX.Element {
   return <PopoverPrimitive.Trigger {...props} />;
 }
 
@@ -32,7 +33,7 @@ function DefaultPopoverPopup({
   sideOffset = 4,
   alignOffset = 0,
   ...props
-}: FolioPopoverPopupProps) {
+}: FolioPopoverPopupProps): JSX.Element {
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner
@@ -56,11 +57,16 @@ function DefaultPopoverPopup({
   );
 }
 
-function DefaultPopoverClose(props: FolioPopoverCloseProps) {
+function DefaultPopoverClose(props: FolioPopoverCloseProps): JSX.Element {
   return <PopoverPrimitive.Close {...props} />;
 }
 
-export const DefaultPopover = {
+export const DefaultPopover: {
+  Root: typeof DefaultPopoverRoot;
+  Trigger: typeof DefaultPopoverTrigger;
+  Popup: typeof DefaultPopoverPopup;
+  Close: typeof DefaultPopoverClose;
+} = {
   Root: DefaultPopoverRoot,
   Trigger: DefaultPopoverTrigger,
   Popup: DefaultPopoverPopup,

@@ -134,7 +134,8 @@ const nativeToBase64 =
     : undefined;
 
 /** Encode bytes as canonical, padded, standard-alphabet base64. */
-export const bytesToBase64 = nativeToBase64 ?? encodeBase64Portable;
+export const bytesToBase64: (bytes: Uint8Array) => string =
+  nativeToBase64 ?? encodeBase64Portable;
 
 /** Decode standard or URL-safe base64 into bytes. */
 export const base64ToBytes = (text: string): Uint8Array<ArrayBuffer> =>

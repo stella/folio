@@ -37,7 +37,29 @@ type InlineKind =
   "run" | "container" | "atom" | "opaque" | "openingMarker" | "closingMarker";
 
 /** How each paragraph child takes part in the offset space. */
-const INLINE_KINDS = {
+const INLINE_KINDS: {
+  readonly run: "run";
+  readonly hyperlink: "container";
+  readonly insertion: "container";
+  readonly deletion: "container";
+  readonly moveFrom: "container";
+  readonly moveTo: "container";
+  readonly inlineSdt: "container";
+  readonly inlineWrapper: "container";
+  readonly simpleField: "atom";
+  readonly complexField: "atom";
+  readonly mathEquation: "atom";
+  readonly commentReference: "atom";
+  readonly preservedInline: "opaque";
+  readonly bookmarkStart: "openingMarker";
+  readonly commentRangeStart: "openingMarker";
+  readonly moveFromRangeStart: "openingMarker";
+  readonly moveToRangeStart: "openingMarker";
+  readonly bookmarkEnd: "closingMarker";
+  readonly commentRangeEnd: "closingMarker";
+  readonly moveFromRangeEnd: "closingMarker";
+  readonly moveToRangeEnd: "closingMarker";
+} = {
   run: "run",
   hyperlink: "container",
   insertion: "container",
@@ -102,7 +124,19 @@ type RangeBoundaryType = {
  * but moves as an anchor when its paragraph goes. A cached page break and a
  * note's own marker mark nothing a reader placed.
  */
-const ZERO_WIDTH_ITEMS_HOLD_CONTENT = {
+const ZERO_WIDTH_ITEMS_HOLD_CONTENT: {
+  readonly commentReference: false;
+  readonly bookmarkStart: false;
+  readonly bookmarkEnd: false;
+  readonly commentRangeStart: false;
+  readonly commentRangeEnd: false;
+  readonly moveFromRangeStart: false;
+  readonly moveFromRangeEnd: false;
+  readonly moveToRangeStart: false;
+  readonly moveToRangeEnd: false;
+  readonly renderedPageBreak: false;
+  readonly noteMarker: false;
+} = {
   commentReference: false,
   bookmarkStart: false,
   bookmarkEnd: false,

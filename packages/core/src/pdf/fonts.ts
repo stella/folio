@@ -1,4 +1,9 @@
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 /**
  * Font embedding.
  *
@@ -45,7 +50,10 @@ import {
 } from "./objects";
 import type { PdfUnencodable } from "./writePdf";
 
-class PdfFontError extends TaggedError("PdfFontError")<{ message: string }> {}
+const PdfFontErrorBase: TaggedErrorClass<"PdfFontError"> =
+  TaggedError("PdfFontError");
+
+class PdfFontError extends PdfFontErrorBase<{ message: string }> {}
 
 export type PdfFontSource = {
   /**

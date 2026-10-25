@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -32,7 +32,9 @@ type WatermarkMode = "none" | "text" | "picture";
 
 const DEFAULT_TEXT_COLOR = "#C0C0C0";
 
-export function WatermarkDialog(props: WatermarkDialogProps) {
+export function WatermarkDialog(
+  props: WatermarkDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

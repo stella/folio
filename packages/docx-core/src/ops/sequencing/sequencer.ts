@@ -24,7 +24,14 @@ export type BatchReject = {
 export type BatchSubmission = BatchAck | BatchReject;
 
 /** Deterministic append-only authority; the caller supplies delivery and storage. */
-export const createSequencer = (document: Document) => {
+export const createSequencer = (
+  document: Document,
+): {
+  submit: (batch: DocumentBatch) => BatchSubmission;
+  readonly document: Document;
+  readonly headRev: number;
+  readonly broadcasts: readonly SequencedBatch[];
+} => {
   const valid = validateOpsDocument(document);
   if (valid.isErr()) {
     throw valid.error;
@@ -135,10 +142,10 @@ export const createSequencer = (document: Document) => {
 
   return {
     submit,
-    get document() {
+    get document(): Document {
       return current;
     },
-    get headRev() {
+    get headRev(): number {
       return journal.length;
     },
     get broadcasts(): readonly SequencedBatch[] {

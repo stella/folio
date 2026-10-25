@@ -84,7 +84,7 @@ const insertPageBreakCommand: Command = (state, dispatch) => {
  * position among neighbouring run content. Block-level `pageBreak` remains a
  * legacy input boundary and is never emitted by this command.
  */
-export const insertPageBreak = withCanonicalCommand(
+export const insertPageBreak: Command = withCanonicalCommand(
   insertPageBreakCommand,
   (state) =>
     !(state.selection instanceof CellSelection) && insertPageBreakCommand(state)

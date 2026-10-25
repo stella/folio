@@ -17,8 +17,11 @@
  */
 
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
-export const HiddenTextExtension = createMarkExtension({
+export const HiddenTextExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "hidden",
   schemaMarkName: "hidden",
   markSpec: {

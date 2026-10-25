@@ -8,7 +8,7 @@
  * it structurally impossible for the two paths to drift and let a formatting
  * mark survive a revert.
  */
-export const RUN_FORMATTING_MARK_NAMES = new Set([
+export const RUN_FORMATTING_MARK_NAMES: Set<string> = new Set([
   "bold",
   "italic",
   "underline",

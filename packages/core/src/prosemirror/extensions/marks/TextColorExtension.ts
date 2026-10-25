@@ -10,10 +10,16 @@ import { canonicalRunFormatting } from "../../canonicalCommands";
 import { clearRunColor } from "../../clearRunColor";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type {
+  ExtensionContext,
+  ExtensionRuntime,
+  MarkExtension,
+} from "../types";
 import { setMark, withRunFormattingLock } from "./markUtils";
 
-export const TextColorExtension = createMarkExtension({
+export const TextColorExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "textColor",
   schemaMarkName: "textColor",
   markSpec: {

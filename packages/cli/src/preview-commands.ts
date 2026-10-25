@@ -91,7 +91,7 @@ const positiveInteger = (
     : Result.err(usageError(`${flag} expects a whole number from 1.`));
 };
 
-export const RENDER_HELP = [
+export const RENDER_HELP: string = [
   "Usage: folio render <file> -o <out.pdf|out.png|out.html> [--page <n>]",
   "",
   "Render the document with folio's layout: a PDF of every page (or --page n), an HTML",
@@ -246,7 +246,7 @@ const render = async ({
   });
 };
 
-export const SERVE_HELP = [
+export const SERVE_HELP: string = [
   "Usage: folio serve <file> [--port <n>]",
   "",
   "Serve a read-only live preview of the document on 127.0.0.1. The page follows the file:",

@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -49,7 +49,9 @@ const PASTE_MODES: Array<{
   },
 ];
 
-export function PasteSpecialDialog(props: PasteSpecialDialogProps) {
+export function PasteSpecialDialog(
+  props: PasteSpecialDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

@@ -1,4 +1,4 @@
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 import { createHash } from "node:crypto";
 
 import { encodeUtf8 } from "../../utils/textEncoding";
@@ -14,13 +14,34 @@ import {
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION = 1 as const;
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE =
   "folio-xml-patch-proposal-v1" as const;
-export const FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS = Object.freeze({
+export const FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS: Readonly<{
+  readonly maxReplacements: 16;
+  readonly maxPartBytes: number;
+  readonly maxTotalBytes: number;
+}> = Object.freeze({
   maxReplacements: 16,
   maxPartBytes: 8 * 1024 * 1024,
   maxTotalBytes: 16 * 1024 * 1024,
 } as const);
 
-export const FOLIO_DOCX_XML_PATCH_PROPOSAL_ISSUE_CODES = Object.freeze([
+export const FOLIO_DOCX_XML_PATCH_PROPOSAL_ISSUE_CODES: readonly [
+  "invalid-proposal",
+  "unsupported-version",
+  "too-many-replacements",
+  "duplicate-part",
+  "invalid-part-path",
+  "invalid-base-sha256",
+  "part-not-allowed",
+  "part-not-found",
+  "part-not-xml",
+  "replacement-too-large",
+  "replacements-too-large",
+  "xml-doctype-forbidden",
+  "xml-not-well-formed",
+  "xml-encoding-mismatch",
+  "base-hash-mismatch",
+  "package-inspection-failed",
+] = Object.freeze([
   "invalid-proposal",
   "unsupported-version",
   "too-many-replacements",
@@ -131,17 +152,19 @@ export type FolioDocxXmlPatchProposalEvaluation =
       readonly limits: Required<FolioDocxXmlPatchProposalLimits>;
     };
 
-export class InvalidFolioDocxXmlPatchProposalError extends TaggedError(
-  "InvalidFolioDocxXmlPatchProposalError",
-)<{
+const InvalidFolioDocxXmlPatchProposalErrorBase: TaggedErrorClass<"InvalidFolioDocxXmlPatchProposalError"> =
+  TaggedError("InvalidFolioDocxXmlPatchProposalError");
+
+export class InvalidFolioDocxXmlPatchProposalError extends InvalidFolioDocxXmlPatchProposalErrorBase<{
   message: string;
   path: string;
   reason: string;
 }> {}
 
-export class InvalidFolioDocxXmlPatchProposalOptionsError extends TaggedError(
-  "InvalidFolioDocxXmlPatchProposalOptionsError",
-)<{
+const InvalidFolioDocxXmlPatchProposalOptionsErrorBase: TaggedErrorClass<"InvalidFolioDocxXmlPatchProposalOptionsError"> =
+  TaggedError("InvalidFolioDocxXmlPatchProposalOptionsError");
+
+export class InvalidFolioDocxXmlPatchProposalOptionsError extends InvalidFolioDocxXmlPatchProposalOptionsErrorBase<{
   message: string;
   path: string;
 }> {}

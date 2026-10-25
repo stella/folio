@@ -17,7 +17,8 @@ import type { ListRequest } from "./listNumbering";
  * A marker plus the space that triggers the conversion. The text before the
  * caret must be exactly this, so a marker typed mid-paragraph never matches.
  */
-export const LIST_MARKER_PATTERN = /^(?:[-*]|\d{1,3}[.)]|[A-Za-z]+[.)]) $/u;
+export const LIST_MARKER_PATTERN: RegExp =
+  /^(?:[-*]|\d{1,3}[.)]|[A-Za-z]+[.)]) $/u;
 
 const BULLET_PATTERN = /^[-*] $/u;
 const NUMBER_PATTERN = /^(?<value>\d{1,3})(?<punctuation>[.)]) $/u;

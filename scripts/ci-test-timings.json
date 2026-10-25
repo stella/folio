@@ -1509,7 +1509,6 @@
   "scripts/sync-plugin-cli-version.test.ts": 4,
   "scripts/text-truncation.test.ts": 2127,
   "scripts/typecheck-proofs-lint.test.ts": 224,
-  "scripts/typescript-api.test.ts": 208,
   "scripts/union-dispatch-lint.test.ts": 258,
   "scripts/verbatim-capture-lint.test.ts": 234,
   "scripts/vscode-release-assets.test.ts": 16,

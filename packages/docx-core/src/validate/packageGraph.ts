@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 
 import { createXmlEntityDecoder } from "./xmlEntityDecoder";
@@ -78,7 +78,10 @@ const relationshipSource = (path: string): string | null => {
   const match = /^(.*\/)?_rels\/([^/]+)\.rels$/u.exec(path);
   return match ? `${match.at(1) ?? ""}${match.at(2) ?? ""}` : null;
 };
-class PackageUriError extends TaggedError("PackageUriError")<{
+const PackageUriErrorBase: TaggedErrorClass<"PackageUriError"> =
+  TaggedError("PackageUriError");
+
+class PackageUriError extends PackageUriErrorBase<{
   message: string;
 }> {}
 

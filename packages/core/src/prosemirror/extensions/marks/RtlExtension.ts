@@ -6,8 +6,11 @@
 // direction flips, matching Word's behaviour for mixed-direction lines.
 
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
-export const RtlExtension = createMarkExtension({
+export const RtlExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "rtl",
   schemaMarkName: "rtl",
   markSpec: {

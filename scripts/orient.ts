@@ -3,7 +3,8 @@
 import { TaggedError } from "better-result";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+
+import { moduleReferences, parseLikeTypeScript } from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const REPORT_VERSION = 1;
@@ -334,45 +335,18 @@ type ImportGraph = {
   readonly importedBy: ReadonlyMap<string, readonly string[]>;
 };
 
-const importSpecifiers = (file: string, source: string): string[] => {
-  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest);
-  const specifiers: string[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier &&
-      ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      specifiers.push(node.moduleSpecifier.text);
-    } else if (
-      ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) &&
-          node.expression.text === "require"))
-    ) {
-      const argument = node.arguments.at(0);
-      // A fixed template (`./module`) names a module as plainly as a string.
-      if (argument && ts.isStringLiteralLike(argument))
-        specifiers.push(argument.text);
-    } else if (
-      ts.isImportEqualsDeclaration(node) &&
-      ts.isExternalModuleReference(node.moduleReference) &&
-      node.moduleReference.expression &&
-      ts.isStringLiteral(node.moduleReference.expression)
-    ) {
-      specifiers.push(node.moduleReference.expression.text);
-    } else if (
-      ts.isImportTypeNode(node) &&
-      ts.isLiteralTypeNode(node.argument) &&
-      ts.isStringLiteral(node.argument.literal)
-    ) {
-      specifiers.push(node.argument.literal.text);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(parsed);
-  return specifiers;
-};
+// A fixed template (`./module`) in `import()` or `require()` names a module as
+// plainly as a string.
+// TypeScript read type syntax in JavaScript files too, so JavaScript is parsed
+// with the TypeScript grammar (JSX included, as JavaScript allows it).
+const importSpecifiers = (file: string, source: string): string[] =>
+  moduleReferences(
+    parseLikeTypeScript(
+      file,
+      source,
+      /\.(?:ts|mts|cts)$/u.test(file) ? "ts" : "tsx",
+    ).program,
+  ).map(({ specifier }) => specifier);
 
 export const buildImportGraph = (
   repoRoot: string,

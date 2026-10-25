@@ -37,7 +37,19 @@ export type ClientNotice = {
 };
 
 /** Optimistic state with ordered authoritative replay and one causal submission in flight. */
-export const createClient = (document: Document) => {
+export const createClient = (
+  document: Document,
+): {
+  enqueue: (batch: DocumentBatch) => Result<DocumentBatch, BatchRejection>;
+  nextSubmission: () => DocumentBatch | undefined;
+  receiveAck: (ack: BatchAck) => void;
+  receiveReject: (rejection: BatchReject) => void;
+  receiveBroadcast: (batch: SequencedBatch) => Result<void, BatchRejection>;
+  readonly document: Document;
+  readonly headRev: number;
+  readonly pending: readonly DocumentBatch[];
+  readonly notices: readonly ClientNotice[];
+} => {
   const valid = validateOpsDocument(document);
   if (valid.isErr()) {
     throw valid.error;
@@ -396,10 +408,10 @@ export const createClient = (document: Document) => {
     receiveAck,
     receiveReject,
     receiveBroadcast,
-    get document() {
+    get document(): Document {
       return current;
     },
-    get headRev() {
+    get headRev(): number {
       return headRev;
     },
     get pending(): readonly DocumentBatch[] {

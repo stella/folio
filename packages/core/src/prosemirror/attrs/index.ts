@@ -770,9 +770,10 @@ const readParagraphAttrsUncached = (
   return attrsResult(attrs, issues);
 };
 
-export const readParagraphAttrs = memoizeNodeAttrsReader(
-  readParagraphAttrsUncached,
-);
+export const readParagraphAttrs: (
+  node: PMNode,
+) => ReadProseMirrorAttrsResult<Readonly<ParagraphAttrs>> =
+  memoizeNodeAttrsReader(readParagraphAttrsUncached);
 
 export const expectParagraphAttrs = (node: PMNode): Readonly<ParagraphAttrs> =>
   expectAttrs(readParagraphAttrs(node), "paragraph attrs");
@@ -1064,7 +1065,11 @@ const readTableAttrsUncached = (
   return attrsResult(attrs, issues);
 };
 
-export const readTableAttrs = memoizeNodeAttrsReader(readTableAttrsUncached);
+export const readTableAttrs: (
+  node: PMNode,
+) => ReadProseMirrorAttrsResult<Readonly<TableAttrs>> = memoizeNodeAttrsReader(
+  readTableAttrsUncached,
+);
 
 export const expectTableAttrs = (node: PMNode): Readonly<TableAttrs> =>
   expectAttrs(readTableAttrs(node), "table attrs");
@@ -1137,9 +1142,10 @@ const readTableRowAttrsUncached = (
   return attrsResult(attrs, issues);
 };
 
-export const readTableRowAttrs = memoizeNodeAttrsReader(
-  readTableRowAttrsUncached,
-);
+export const readTableRowAttrs: (
+  node: PMNode,
+) => ReadProseMirrorAttrsResult<Readonly<TableRowAttrs>> =
+  memoizeNodeAttrsReader(readTableRowAttrsUncached);
 
 export const expectTableRowAttrs = (node: PMNode): Readonly<TableRowAttrs> =>
   expectAttrs(readTableRowAttrs(node), "table row attrs");

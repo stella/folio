@@ -1,6 +1,10 @@
 import type { NonVisualDrawingNames } from "../types/document";
 
-export const PICTURE_NAME_DOM_ATTRIBUTES = {
+export const PICTURE_NAME_DOM_ATTRIBUTES: {
+  readonly name: "data-picture-name";
+  readonly alt: "data-picture-alt";
+  readonly title: "data-picture-title";
+} = {
   name: "data-picture-name",
   alt: "data-picture-alt",
   title: "data-picture-title",

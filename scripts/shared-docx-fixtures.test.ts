@@ -2,7 +2,6 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import ts from "typescript";
 
 import { scanTestTimeout } from "../test/scan-timeout";
 import {
@@ -19,6 +18,14 @@ import {
   generateDocxFixture,
   validateDocxFixture,
 } from "../tests/support/validatedDocxFixture";
+import {
+  declaresBindings,
+  type Node,
+  nodeText,
+  parseSourceModule,
+  staticMemberName,
+  walkAst,
+} from "./lib/oxc-ast";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -50,54 +57,67 @@ const fixtureCases = [
   ),
 ];
 
+/** The written property (or name) a destructured binding reads. */
+const bindingElementName = (
+  text: string,
+  node: Node,
+  ancestors: readonly Node[],
+) => {
+  const parent = ancestors.at(-1);
+  if (parent?.type !== "ObjectPattern" && parent?.type !== "ArrayPattern")
+    return undefined;
+  if (!declaresBindings(ancestors)) return undefined;
+  if (node.type === "Property")
+    return node.computed ? undefined : nodeText(text, node.key);
+  if (node.type === "RestElement") return nodeText(text, node.argument);
+  if (
+    parent.type !== "ArrayPattern" ||
+    !parent.elements.some((element) => element === node)
+  )
+    return undefined;
+  return nodeText(text, node.type === "AssignmentPattern" ? node.left : node);
+};
+
 const packageCalls = (text: string) => {
-  const source = ts.createSourceFile(
-    "fixture.ts",
-    text,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule("fixture.ts", text);
   const serializers = new Set(["createDocx"]);
-  for (const statement of source.statements) {
-    if (!ts.isImportDeclaration(statement)) continue;
-    const bindings = statement.importClause?.namedBindings;
-    if (!bindings || !ts.isNamedImports(bindings)) continue;
-    for (const binding of bindings.elements) {
-      if ((binding.propertyName ?? binding.name).text === "createDocx")
-        serializers.add(binding.name.text);
+  for (const statement of program.body) {
+    if (statement.type !== "ImportDeclaration") continue;
+    for (const binding of statement.specifiers) {
+      if (binding.type !== "ImportSpecifier") continue;
+      const imported =
+        binding.imported.type === "Identifier"
+          ? binding.imported.name
+          : binding.imported.value;
+      if (imported === "createDocx") serializers.add(binding.local.name);
     }
   }
   const calls: string[] = [];
-  const memberName = (node: ts.Node) => {
-    if (ts.isPropertyAccessExpression(node)) return node.name.text;
-    if (
-      ts.isElementAccessExpression(node) &&
-      ts.isStringLiteral(node.argumentExpression)
-    )
-      return node.argumentExpression.text;
-    return undefined;
-  };
-  const visit = (node: ts.Node): void => {
-    const member = memberName(node);
+  // A shorthand property or export carries its name twice; count it once.
+  const serializerReferences = new Set<number>();
+  walkAst(program, (node, ancestors) => {
+    const member = staticMemberName(node);
     if (member === "generateAsync") calls.push("unchecked-zip");
     if (member === "createDocx") calls.push("unchecked-serializer");
-    if (
-      ts.isBindingElement(node) &&
-      (node.propertyName ?? node.name).getText(source) === "generateAsync"
-    ) {
+    if (bindingElementName(text, node, ancestors) === "generateAsync") {
       calls.push("unchecked-zip");
     }
+    const parent = ancestors.at(-1);
     if (
-      ts.isIdentifier(node) &&
-      serializers.has(node.text) &&
-      !ts.isImportSpecifier(node.parent) &&
-      !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node)
+      node.type === "Identifier" &&
+      serializers.has(node.name) &&
+      parent?.type !== "ImportSpecifier" &&
+      !(
+        parent?.type === "MemberExpression" &&
+        !parent.computed &&
+        parent.property === node
+      ) &&
+      !serializerReferences.has(node.start)
     ) {
+      serializerReferences.add(node.start);
       calls.push("unchecked-serializer");
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  });
   return calls;
 };
 
@@ -128,31 +148,34 @@ test("every shared fixture and generator uses validated package construction", (
 });
 
 test("fixture guard detects direct package generators", () => {
+  // Fixtures are whole modules: a syntax error stops the guard.
   expect(
-    packageCalls('return zip.generateAsync({type: "uint8array"})'),
+    packageCalls('export default zip.generateAsync({type: "uint8array"})'),
   ).toEqual(["unchecked-zip"]);
-  expect(packageCalls("return createDocx(document)")).toEqual([
+  expect(packageCalls("export default createDocx(document)")).toEqual([
     "unchecked-serializer",
   ]);
   expect(
     packageCalls(
-      `import { createDocx as serialize } from "core"; return serialize(document)`,
+      `import { createDocx as serialize } from "core"; export default serialize(document)`,
     ),
   ).toEqual(["unchecked-serializer"]);
-  expect(packageCalls(`return core["createDocx"](document)`)).toEqual([
+  expect(packageCalls(`export default core["createDocx"](document)`)).toEqual([
     "unchecked-serializer",
   ]);
   expect(
     packageCalls(
-      `const generate = zip["generateAsync"]; return generate(options)`,
+      `const generate = zip["generateAsync"]; export default generate(options)`,
     ),
   ).toEqual(["unchecked-zip"]);
   expect(
     packageCalls(
-      `const { generateAsync: generate } = zip; return generate(options)`,
+      `const { generateAsync: generate } = zip; export default generate(options)`,
     ),
   ).toEqual(["unchecked-zip"]);
-  expect(packageCalls('return generateDocxFixture(zip, "valid")')).toEqual([]);
+  expect(
+    packageCalls('export default generateDocxFixture(zip, "valid")'),
+  ).toEqual([]);
 });
 
 test(

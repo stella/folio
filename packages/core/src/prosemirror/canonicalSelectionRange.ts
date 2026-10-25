@@ -13,7 +13,13 @@ export const canonicalContentPosition = (
 };
 
 /** Whole-document selection addresses paragraph content rather than document edges. */
-export const canonicalSelectionRange = ({ doc, selection }: EditorState) => {
+export const canonicalSelectionRange = ({
+  doc,
+  selection,
+}: EditorState): {
+  from: number;
+  to: number;
+} => {
   if (selection instanceof CellSelection) {
     throw new TypeError("A cell selection has no canonical linear range.");
   }
@@ -27,7 +33,12 @@ export const canonicalSelectionRange = ({ doc, selection }: EditorState) => {
 };
 
 /** Cell selections address each selected cell independently, in document order. */
-export const canonicalCellSelectionRanges = (selection: CellSelection) => {
+export const canonicalCellSelectionRanges = (
+  selection: CellSelection,
+): {
+  from: number;
+  to: number;
+}[] => {
   const ranges: { from: number; to: number }[] = [];
   selection.forEachCell((cell, cellPosition) => {
     cell.descendants((node, position) => {
@@ -43,7 +54,12 @@ export const canonicalCellSelectionRanges = (selection: CellSelection) => {
 };
 
 /** A selection is either one linear range or a document-ordered set of cell ranges. */
-export const canonicalSelectionRanges = (state: EditorState) =>
+export const canonicalSelectionRanges = (
+  state: EditorState,
+): {
+  from: number;
+  to: number;
+}[] =>
   state.selection instanceof CellSelection
     ? canonicalCellSelectionRanges(state.selection)
     : [canonicalSelectionRange(state)];

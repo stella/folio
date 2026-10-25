@@ -2,8 +2,8 @@ import { Glob } from "bun";
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 
+import { parseSourceModule, walkAst } from "../../../../scripts/lib/oxc-ast";
 import { cloneModel } from "./modelClone";
 
 test("model clones isolate data and retain opaque bindings across the cloned graph", () => {
@@ -57,22 +57,15 @@ test("model clones preserve cycles and omit non-enumerable and accessor bindings
 });
 
 const primitiveReferences = (source: string): number => {
-  const file = ts.createSourceFile(
-    "fixture.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule("fixture.ts", source);
   let count = 0;
-  const visit = (node: ts.Node): void => {
+  walkAst(program, (node) => {
     if (
-      (ts.isIdentifier(node) || ts.isStringLiteral(node)) &&
-      node.text === "structuredClone"
+      (node.type === "Identifier" && node.name === "structuredClone") ||
+      (node.type === "Literal" && node.value === "structuredClone")
     )
       count++;
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+  });
   return count;
 };
 

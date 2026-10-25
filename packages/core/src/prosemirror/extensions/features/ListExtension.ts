@@ -56,7 +56,7 @@ import {
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
 import { Priority } from "../types";
-import type { ExtensionRuntime } from "../types";
+import type { Extension, ExtensionRuntime } from "../types";
 
 // ============================================================================
 // CHAIN COMMANDS HELPER
@@ -233,12 +233,12 @@ function toggleList(intent: ActiveListType): Command {
   };
 }
 
-export const toggleBulletList = withCanonicalCommand(
+export const toggleBulletList: Command = withCanonicalCommand(
   (state, dispatch) => toggleList("bullet")(state, dispatch),
   () => [{ type: "toggleList", kind: "bullet" }],
 );
 
-export const toggleNumberedList = withCanonicalCommand(
+export const toggleNumberedList: Command = withCanonicalCommand(
   (state, dispatch) => toggleList("numbered")(state, dispatch),
   () => [{ type: "toggleList", kind: "decimal" }],
 );
@@ -773,7 +773,9 @@ const listAutoformatPlugins = (): Plugin[] => {
 // EXTENSION
 // ============================================================================
 
-export const ListExtension = createExtension({
+export const ListExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => Extension = createExtension({
   name: "list",
   priority: Priority.High, // Must be before base keymap
   onSchemaReady(): ExtensionRuntime {

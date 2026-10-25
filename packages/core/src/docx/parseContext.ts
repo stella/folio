@@ -58,7 +58,7 @@ export type ParseWarningCollector = {
 const PACKAGE_PART = "package";
 
 export const createParseWarningCollector = (
-  part = PACKAGE_PART,
+  part: string = PACKAGE_PART,
 ): ParseWarningCollector => {
   const retained: ParseWarning[] = [];
   const retainedByCode = new Map<ParseWarningCode, number>();

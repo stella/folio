@@ -1,4 +1,9 @@
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 /**
  * TrueType (`glyf`) subsetting.
  *
@@ -29,7 +34,10 @@ import {
   type SfntTableRecord,
 } from "./tables";
 
-export class SubsetError extends TaggedError("SubsetError")<{
+const SubsetErrorBase: TaggedErrorClass<"SubsetError"> =
+  TaggedError("SubsetError");
+
+export class SubsetError extends SubsetErrorBase<{
   message: string;
 }> {}
 

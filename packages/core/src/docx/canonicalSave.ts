@@ -1,4 +1,6 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
+
+import type { Document } from "@stll/docx-core";
 
 import { withoutUnreferencedNotes } from "../prosemirror/noteReferenceReview";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -16,11 +18,13 @@ import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
 import type { SaveDiagnostic } from "./saveDiagnostics";
 import type { FolioSelectiveSaveFlags } from "./selectiveSaveFlags";
 import { resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
+import type { TripwireResult } from "./selectiveSaveTripwire";
+
+const CanonicalSaveDiagnosticErrorBase: TaggedErrorClass<"CanonicalSaveDiagnosticError"> =
+  TaggedError("CanonicalSaveDiagnosticError");
 
 /** Forward a fidelity fallback through the adapters' existing error channel. */
-export class CanonicalSaveDiagnosticError extends TaggedError(
-  "CanonicalSaveDiagnosticError",
-)<{
+export class CanonicalSaveDiagnosticError extends CanonicalSaveDiagnosticErrorBase<{
   message: string;
   gap: typeof CANONICAL_GAP.save;
   diagnostic: SaveDiagnostic;
@@ -37,7 +41,13 @@ export const serializeCanonicalSave = async ({
   snapshot,
   options,
   featureFlags,
-}: SerializeCanonicalSaveOptions) => {
+}: SerializeCanonicalSaveOptions): Promise<{
+  buffer: ArrayBuffer;
+  document: Document;
+  version: number;
+  diagnostics: SaveDiagnostic[];
+  tripwireResult: TripwireResult | null;
+}> => {
   const document = withoutUnreferencedNotes(snapshot.document);
   // Package-resource operations conservatively retain structural save work through undo.
   const replacementPart =

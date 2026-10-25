@@ -10,10 +10,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 
 import focusedTests from "./ci-focused-tests.json";
 import timings from "./ci-test-timings.json";
+import { parseSourceModule, staticStringValue, walkAst } from "./lib/oxc-ast";
 
 export const TEST_SHARD_COUNT = 4;
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -330,73 +330,66 @@ const resolveSpecifier = (
 };
 
 const unsafeModuleLoads = (source: string, file: string) => {
-  const sourceFile = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    false,
-  );
+  const { program } = parseSourceModule(file, source);
   const failures = new Set<string>();
-  const visit = (node: ts.Node, parent?: ts.Node) => {
+  walkAst(program, (node, ancestors) => {
     if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword
+      node.type === "ImportExpression" &&
+      (node.options !== null || staticStringValue(node.source) === undefined)
     ) {
-      const argument = node.arguments.at(0);
-      if (
-        node.arguments.length !== 1 ||
-        argument === undefined ||
-        (!ts.isStringLiteral(argument) &&
-          !ts.isNoSubstitutionTemplateLiteral(argument))
-      ) {
-        failures.add("non-literal dynamic import");
-      }
+      failures.add("non-literal dynamic import");
     }
-    if (ts.isIdentifier(node) && node.text === "require") {
+    // JSX names are identifiers to TypeScript too.
+    const identifier =
+      node.type === "Identifier" || node.type === "JSXIdentifier"
+        ? node.name
+        : undefined;
+    if (identifier === "require") {
+      const parent = ancestors.at(-1);
       const argument =
-        parent && ts.isCallExpression(parent)
-          ? parent.arguments.at(0)
-          : undefined;
+        parent?.type === "CallExpression" ? parent.arguments.at(0) : undefined;
       if (
-        !parent ||
-        !ts.isCallExpression(parent) ||
-        parent.expression !== node ||
+        parent?.type !== "CallExpression" ||
+        parent.callee !== node ||
         parent.arguments.length !== 1 ||
         argument === undefined ||
-        !ts.isStringLiteral(argument)
+        argument.type !== "Literal" ||
+        typeof argument.value !== "string"
       ) {
         failures.add("unsafe require reference");
       }
     }
-    if (ts.isIdentifier(node) && node.text === "createRequire") {
+    if (identifier === "createRequire") {
       failures.add("createRequire reference");
     }
     if (
-      ts.isPropertyAccessExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "module" &&
-      node.name.text === "require"
+      node.type === "MemberExpression" &&
+      !node.computed &&
+      node.property.type === "Identifier"
     ) {
-      failures.add("module.require reference");
+      if (
+        node.object.type === "Identifier" &&
+        node.object.name === "module" &&
+        node.property.name === "require"
+      ) {
+        failures.add("module.require reference");
+      }
+      if (
+        node.property.name === "resolve" &&
+        node.object.type === "MetaProperty" &&
+        node.object.meta.name === "import"
+      ) {
+        failures.add("import.meta.resolve reference");
+      }
     }
     if (
-      ts.isPropertyAccessExpression(node) &&
-      node.name.text === "resolve" &&
-      ts.isMetaProperty(node.expression) &&
-      node.expression.keywordToken === ts.SyntaxKind.ImportKeyword
-    ) {
-      failures.add("import.meta.resolve reference");
-    }
-    if (
-      ts.isNewExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "Worker"
+      node.type === "NewExpression" &&
+      node.callee.type === "Identifier" &&
+      node.callee.name === "Worker"
     ) {
       failures.add("Worker constructor");
     }
-    ts.forEachChild(node, (child) => visit(child, node));
-  };
-  visit(sourceFile);
+  });
   return [...failures];
 };
 
@@ -450,9 +443,9 @@ export const buildModuleGraph = (
       transpilers.set(loader, transpiler);
     }
     const failures: string[] = [];
-    failures.push(...unsafeModuleLoads(source, importer));
     let imports = transpiler.scanImports("");
     try {
+      failures.push(...unsafeModuleLoads(source, importer));
       imports = transpiler.scanImports(source);
     } catch {
       failures.push("source could not be scanned");

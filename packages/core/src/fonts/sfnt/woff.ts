@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 /**
  * WOFF 1.0 container decoding.
  *
@@ -20,7 +20,10 @@ import {
   SFNT_VERSION,
 } from "./tables";
 
-export class WoffDecodeError extends TaggedError("WoffDecodeError")<{
+const WoffDecodeErrorBase: TaggedErrorClass<"WoffDecodeError"> =
+  TaggedError("WoffDecodeError");
+
+export class WoffDecodeError extends WoffDecodeErrorBase<{
   message: string;
 }> {}
 

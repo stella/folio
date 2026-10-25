@@ -33,7 +33,7 @@ import {
   runIdentityAttrs,
 } from "../../runIdentity";
 import { createMarkExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { ExtensionRuntime, MarkExtension } from "../types";
 
 const CANONICAL_RUN_IDENTITY_ID = /^(?:0|[1-9]\d*)$/u;
 
@@ -176,7 +176,9 @@ const createRunIdentityStripPlugin = (): Plugin =>
     },
   });
 
-export const RunIdentityExtension = createMarkExtension({
+export const RunIdentityExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: RUN_IDENTITY_MARK_NAME,
   schemaMarkName: RUN_IDENTITY_MARK_NAME,
   markSpec: {

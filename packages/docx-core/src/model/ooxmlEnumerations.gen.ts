@@ -173,7 +173,7 @@ export type TextDirectionFlow =
  * A reader keeps the token as authored and a writer writes it back; only
  * rendering goes through the flow.
  */
-export const TEXT_DIRECTION_FLOW_BY_TOKEN = {
+export const TEXT_DIRECTION_FLOW_BY_TOKEN: { readonly tb: "tb"; readonly rl: "rl"; readonly lr: "lr"; readonly tbV: "tbV"; readonly rlV: "rlV"; readonly lrV: "lrV"; readonly btLr: "lr"; readonly lrTb: "tb"; readonly lrTbV: "tbV"; readonly tbLrV: "lrV"; readonly tbRl: "rl"; readonly tbRlV: "rlV"; } = {
   tb: "tb",
   rl: "rl",
   lr: "lr",

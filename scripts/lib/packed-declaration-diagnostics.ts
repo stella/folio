@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import path from "node:path";
-import ts from "typescript";
+import {
+  API,
+  type Diagnostic,
+  formatDiagnostics,
+  type FormatDiagnosticsHost,
+} from "tsrs/unstable/async";
 
 // Module/type resolution diagnostics, including named/default export mismatches.
 // Other semantic errors in third-party types are outside this dependency gate.
@@ -24,15 +29,12 @@ const BUILTINS = new Set(
   builtinModules.flatMap((name) => [name, `node:${name}`]),
 );
 
-const referencesBuiltin = (diagnostic: ts.Diagnostic) => {
-  if (
-    !diagnostic.file ||
-    diagnostic.start === undefined ||
-    diagnostic.length === undefined
-  )
-    return false;
-  const specifier = diagnostic.file.text
-    .slice(diagnostic.start, diagnostic.start + diagnostic.length)
+const DECLARATION_FILE = /\.d\.(?:[cm]?ts|[^.]+\.ts)$/u;
+
+const referencesBuiltin = (diagnostic: Diagnostic) => {
+  if (diagnostic.fileName === undefined) return false;
+  const specifier = readFileSync(diagnostic.fileName, "utf8")
+    .slice(diagnostic.pos, diagnostic.end)
     .replace(/^["']|["']$/gu, "");
   // Match the manifest scanner's explicit host-builtin exemption. Host ambient
   // Node declarations are not runtime dependencies of the portable packages.
@@ -45,40 +47,45 @@ type DeclarationResolutionOptions = {
 };
 
 /** Check our installed declarations with library checking enabled and explicit ownership. */
-export const declarationResolutionDiagnostics = ({
+export const declarationResolutionDiagnostics = async ({
   projectFile,
   packageNames,
-}: DeclarationResolutionOptions) => {
-  const project = ts.parseConfigFileTextToJson(
-    projectFile,
-    readFileSync(projectFile, "utf8"),
-  );
-  if (project.error) return [project.error];
-  const config = ts.parseJsonConfigFileContent(
-    project.config,
-    ts.sys,
-    path.dirname(projectFile),
-  );
-  if (config.errors.length > 0) return config.errors;
-  const program = ts.createProgram({
-    rootNames: config.fileNames,
-    options: { ...config.options, skipLibCheck: false },
-  });
-  return program.getSourceFiles().flatMap((file) => {
-    if (!file.isDeclarationFile) return [];
-    const filename = file.fileName.replaceAll("\\", "/");
-    if (
-      !packageNames.some((name) => filename.includes(`/node_modules/${name}/`))
-    )
-      return [];
-    return program
-      .getSemanticDiagnostics(file)
-      .filter(
-        (diagnostic) =>
-          RESOLUTION_ERRORS.has(diagnostic.code) &&
-          !referencesBuiltin(diagnostic),
+}: DeclarationResolutionOptions): Promise<readonly Diagnostic[]> => {
+  const api = new API({ cwd: path.dirname(projectFile) });
+  try {
+    const config = await api.parseConfigFile(projectFile);
+    if (config.errors.length > 0) return config.errors;
+    const snapshot = await api.createSnapshot({
+      createPrograms: [
+        {
+          rootFiles: config.fileNames,
+          compilerOptions: { ...config.options, skipLibCheck: false },
+        },
+      ],
+    });
+    const [program] = snapshot.operation.createdPrograms;
+    const owned = (await program.getSourceFileNames()).filter((fileName) => {
+      const filename = fileName.replaceAll("\\", "/");
+      return (
+        DECLARATION_FILE.test(filename) &&
+        packageNames.some((name) => filename.includes(`/node_modules/${name}/`))
       );
-  });
+    });
+    if (owned.length === 0) return [];
+    return (await program.getSemanticDiagnostics(owned)).filter(
+      (diagnostic) =>
+        RESOLUTION_ERRORS.has(diagnostic.code) &&
+        !referencesBuiltin(diagnostic),
+    );
+  } finally {
+    await api.close();
+  }
+};
+
+const FORMAT_HOST: FormatDiagnosticsHost = {
+  getCanonicalFileName: (file) => file,
+  getCurrentDirectory: () => process.cwd(),
+  getNewLine: () => "\n",
 };
 
 if (import.meta.main) {
@@ -88,18 +95,12 @@ if (import.meta.main) {
     throw new TypeError(
       "usage: packed-declaration-diagnostics.ts <tsconfig.json>",
     );
-  const diagnostics = declarationResolutionDiagnostics({
+  const diagnostics = await declarationResolutionDiagnostics({
     projectFile,
     packageNames: PUBLISHED_PACKAGES.map(({ name }) => name),
   });
   if (diagnostics.length > 0) {
-    process.stderr.write(
-      ts.formatDiagnostics(diagnostics, {
-        getCanonicalFileName: (file) => file,
-        getCurrentDirectory: () => process.cwd(),
-        getNewLine: () => "\n",
-      }),
-    );
+    process.stderr.write(formatDiagnostics(diagnostics, FORMAT_HOST));
     process.exitCode = 1;
   }
 }

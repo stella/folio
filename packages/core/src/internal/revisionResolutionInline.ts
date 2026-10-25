@@ -546,7 +546,13 @@ export const resolveInlineRevisions = ({
   keepType,
   removeType,
   styleResolver,
-}: ResolveInlineRevisionsOptions) => {
+}: ResolveInlineRevisionsOptions): {
+  resolved: PMNode;
+  positionMap: StepMap;
+  ranges: RevisionRange[];
+  steps: Step[];
+  keptBoundaries: Set<PMNode>;
+} | null => {
   const context: RevisionInlineContext = {
     pointComments,
     mode,

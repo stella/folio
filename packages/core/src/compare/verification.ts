@@ -36,7 +36,10 @@ import { sameFolioContentOutlineLevel } from "./content";
 import { sameFolioContentStatedNumbering } from "./content-types";
 
 /** The two directions of the round trip, each an invariant of its own. */
-export const COMPARE_VERIFICATION_INVARIANTS = Object.freeze([
+export const COMPARE_VERIFICATION_INVARIANTS: readonly [
+  "accept-reproduces-target",
+  "reject-reproduces-base",
+] = Object.freeze([
   "accept-reproduces-target",
   "reject-reproduces-base",
 ] as const);
@@ -49,7 +52,23 @@ export type CompareVerificationInvariant =
  * that fits is the one reported, because a block in the wrong container is a
  * different finding from a block whose words are wrong even when both are true.
  */
-export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
+export const COMPARE_VERIFICATION_CAUSES: readonly [
+  "invisible-structure",
+  "block-count",
+  "container",
+  "inline-structure",
+  "table-geometry",
+  "section-properties",
+  "style",
+  "list-level",
+  "numbering-source",
+  "alignment",
+  "spacing",
+  "indentation",
+  "inline-formatting",
+  "whitespace",
+  "text",
+] = Object.freeze([
   /**
    * Every block is present, in order, at coordinates the block model cannot
    * reach, so no operation could have put a block at the expected ones. Not a

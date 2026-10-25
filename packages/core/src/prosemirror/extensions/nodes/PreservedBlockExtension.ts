@@ -32,6 +32,7 @@ import {
   readPreservedBlockAttrs,
 } from "../../attrs";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 /** The node name, for callers asking what a container holds. */
 export const PRESERVED_BLOCK_NODE_NAME = "preservedBlock";
@@ -68,7 +69,9 @@ const collectUnwritableBlocks = (doc: PMNode): PositionedNode[] => {
   return unwritable;
 };
 
-export const PreservedBlockExtension = createNodeExtension({
+export const PreservedBlockExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: PRESERVED_BLOCK_NODE_NAME,
   schemaNodeName: PRESERVED_BLOCK_NODE_NAME,
   nodeSpec: {

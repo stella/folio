@@ -1,4 +1,10 @@
-import { Result, TaggedError } from "better-result";
+import {
+  type Err,
+  type Ok,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 
 import { type DocxInput, toArrayBuffer } from "../utils/docxInput";
 import {
@@ -7,15 +13,21 @@ import {
 } from "./encryption/containerFormat";
 import { ensureParaIds } from "./ensureParaIds";
 
-export class CanonicalDocxInputError extends TaggedError(
-  "CanonicalDocxInputError",
-)<{
+const CanonicalDocxInputErrorBase: TaggedErrorClass<"CanonicalDocxInputError"> =
+  TaggedError("CanonicalDocxInputError");
+
+export class CanonicalDocxInputError extends CanonicalDocxInputErrorBase<{
   message: string;
   cause?: unknown;
 }> {}
 
 /** Canonical seeding supports plaintext packages; refuse encryption before ZIP normalization. */
-export const prepareCanonicalDocxInput = async (input: DocxInput) => {
+export const prepareCanonicalDocxInput = async (
+  input: DocxInput,
+): Promise<
+  | Err<ArrayBuffer, CanonicalDocxInputError>
+  | Ok<Uint8Array<ArrayBufferLike>, CanonicalDocxInputError>
+> => {
   const bytes = await Result.tryPromise({
     try: () => toArrayBuffer(input),
     catch: (cause) =>

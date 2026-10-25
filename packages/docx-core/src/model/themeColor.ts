@@ -44,7 +44,27 @@ const mapped = (value: ClrSchemeMappingKey): ThemeColorTarget => ({
  * Total over `ST_ThemeColor`: a token added by a schema refresh cannot land
  * without a decision about which slot it paints.
  */
-export const THEME_COLOR_TARGETS = {
+export const THEME_COLOR_TARGETS: {
+  readonly dark1: ThemeColorTarget;
+  readonly light1: ThemeColorTarget;
+  readonly dark2: ThemeColorTarget;
+  readonly light2: ThemeColorTarget;
+  readonly accent1: ThemeColorTarget;
+  readonly accent2: ThemeColorTarget;
+  readonly accent3: ThemeColorTarget;
+  readonly accent4: ThemeColorTarget;
+  readonly accent5: ThemeColorTarget;
+  readonly accent6: ThemeColorTarget;
+  readonly hyperlink: ThemeColorTarget;
+  readonly followedHyperlink: ThemeColorTarget;
+  readonly none: {
+    readonly kind: "cancel";
+  };
+  readonly background1: ThemeColorTarget;
+  readonly text1: ThemeColorTarget;
+  readonly background2: ThemeColorTarget;
+  readonly text2: ThemeColorTarget;
+} = {
   dark1: slot("dk1"),
   light1: slot("lt1"),
   dark2: slot("dk2"),
@@ -96,7 +116,25 @@ const DEFAULT_CLR_SCHEME_MAPPING = {
  * has no DrawingML equivalent: a scheme reference that paints nothing is
  * written by omitting the fill, not by naming a colour.
  */
-export const SCHEME_COLOR_VALUE_BY_THEME_COLOR = {
+export const SCHEME_COLOR_VALUE_BY_THEME_COLOR: {
+  readonly dark1: "dk1";
+  readonly light1: "lt1";
+  readonly dark2: "dk2";
+  readonly light2: "lt2";
+  readonly accent1: "accent1";
+  readonly accent2: "accent2";
+  readonly accent3: "accent3";
+  readonly accent4: "accent4";
+  readonly accent5: "accent5";
+  readonly accent6: "accent6";
+  readonly hyperlink: "hlink";
+  readonly followedHyperlink: "folHlink";
+  readonly none: null;
+  readonly background1: "bg1";
+  readonly text1: "tx1";
+  readonly background2: "bg2";
+  readonly text2: "tx2";
+} = {
   dark1: "dk1",
   light1: "lt1",
   dark2: "dk2",
@@ -121,7 +159,25 @@ export const SCHEME_COLOR_VALUE_BY_THEME_COLOR = {
  * colour. `phClr` is the placeholder a style definition resolves against its
  * instantiating context, which no `w:themeColor` can name.
  */
-export const THEME_COLOR_BY_SCHEME_COLOR_VALUE = {
+export const THEME_COLOR_BY_SCHEME_COLOR_VALUE: {
+  readonly bg1: "background1";
+  readonly tx1: "text1";
+  readonly bg2: "background2";
+  readonly tx2: "text2";
+  readonly accent1: "accent1";
+  readonly accent2: "accent2";
+  readonly accent3: "accent3";
+  readonly accent4: "accent4";
+  readonly accent5: "accent5";
+  readonly accent6: "accent6";
+  readonly hlink: "hyperlink";
+  readonly folHlink: "followedHyperlink";
+  readonly phClr: null;
+  readonly dk1: "dark1";
+  readonly lt1: "light1";
+  readonly dk2: "dark2";
+  readonly lt2: "light2";
+} = {
   bg1: "background1",
   tx1: "text1",
   bg2: "background2",

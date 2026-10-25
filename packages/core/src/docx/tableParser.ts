@@ -22,6 +22,7 @@ import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
  */
 
 import type {
+  BlockContent,
   BlockCustomXml,
   CellMargins,
   ConditionalFormatStyle,
@@ -70,6 +71,7 @@ import {
   type ChildReader,
   dispatchChildrenWithContext,
   keptUnless,
+  type OwnedElsewhere,
   ownedElsewhere,
   sequencePositions,
   withPreservedChildren,
@@ -1653,11 +1655,96 @@ const CELL_CONTENT_UNDECLARED = {
   },
 } as const satisfies Record<string, ChildReader<CellChildrenWalk>>;
 
-export const CELL_CONTENT_HANDLERS = {
+export const CELL_CONTENT_HANDLERS: {
+  readonly tcPr: OwnedElsewhere<"block-content", "tcPr">;
+  // Declared for `w:body`, not for a cell; the handler map is total over
+  // the union every block container shares.
+  readonly sectPr: "capture";
+  readonly altChunk: "capture";
+  readonly commentRangeEnd: "capture";
+  readonly commentRangeStart: "capture";
+  readonly customXmlDelRangeEnd: "capture";
+  readonly customXmlDelRangeStart: "capture";
+  readonly customXmlInsRangeEnd: "capture";
+  readonly customXmlInsRangeStart: "capture";
+  readonly customXmlMoveFromRangeEnd: "capture";
+  readonly customXmlMoveFromRangeStart: "capture";
+  readonly customXmlMoveToRangeEnd: "capture";
+  readonly customXmlMoveToRangeStart: "capture";
+  readonly del: "capture";
+  readonly ins: "capture";
+  readonly moveFrom: "capture";
+  readonly moveTo: "capture";
+  readonly permEnd: "capture";
+  readonly permStart: "capture";
+  readonly proofErr: "capture";
+  readonly moveFromRangeStart: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly moveFromRangeEnd: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly moveToRangeStart: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly moveToRangeEnd: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly p: (
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      options,
+      modelled,
+    }: CellChildrenWalk,
+  ) => void;
+  readonly tbl: (
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      options,
+      modelled,
+    }: CellChildrenWalk,
+  ) => void;
+  readonly sdt: (
+    child: XmlElement,
+    { resources, options, modelled }: CellChildrenWalk,
+  ) => "capture" | undefined;
+  readonly customXml: (
+    child: XmlElement,
+    { resources, options, modelled }: CellChildrenWalk,
+  ) => void;
+  // `CT_Tc` declares the marker beside its blocks, so the cell keeps it
+  // there rather than folding it into a neighbouring paragraph.
+  readonly bookmarkStart: (
+    child: XmlElement,
+    { modelled }: CellChildrenWalk,
+  ) => void;
+  readonly bookmarkEnd: (
+    child: XmlElement,
+    { modelled }: CellChildrenWalk,
+  ) => void;
+} = {
   p: (
-    child,
-    { resources: { styles, theme, numbering, rels, media }, options, modelled },
-  ) => {
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      options,
+      modelled,
+    }: CellChildrenWalk,
+  ): void => {
     const para = parseParagraph(child, styles, theme, numbering, rels, media, {
       ...options,
       runConsolidation: "deferred",
@@ -1676,9 +1763,13 @@ export const CELL_CONTENT_HANDLERS = {
     modelled.push(para);
   },
   tbl: (
-    child,
-    { resources: { styles, theme, numbering, rels, media }, options, modelled },
-  ) => {
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      options,
+      modelled,
+    }: CellChildrenWalk,
+  ): void => {
     const table = parseTable(
       child,
       styles,
@@ -1693,7 +1784,10 @@ export const CELL_CONTENT_HANDLERS = {
     }
     modelled.push(table);
   },
-  sdt: (child, { resources, options, modelled }) => {
+  sdt: (
+    child: XmlElement,
+    { resources, options, modelled }: CellChildrenWalk,
+  ): "capture" | undefined => {
     const properties = parseSdtProperties(
       findWordprocessingChild(child, "sdtPr"),
       findWordprocessingChild(child, "sdtEndPr"),
@@ -1724,7 +1818,10 @@ export const CELL_CONTENT_HANDLERS = {
     });
     return undefined;
   },
-  customXml: (child, { resources, options, modelled }) => {
+  customXml: (
+    child: XmlElement,
+    { resources, options, modelled }: CellChildrenWalk,
+  ): void => {
     const customXml: BlockCustomXml = {
       type: "blockCustomXml",
       ...blockCustomXmlShell(child),
@@ -1739,10 +1836,10 @@ export const CELL_CONTENT_HANDLERS = {
   },
   // `CT_Tc` declares the marker beside its blocks, so the cell keeps it
   // there rather than folding it into a neighbouring paragraph.
-  bookmarkStart: (child, { modelled }) => {
+  bookmarkStart: (child: XmlElement, { modelled }: CellChildrenWalk): void => {
     modelled.push(parseBookmarkStart(child));
   },
-  bookmarkEnd: (child, { modelled }) => {
+  bookmarkEnd: (child: XmlElement, { modelled }: CellChildrenWalk): void => {
     modelled.push(parseBookmarkEnd(child));
   },
   ...BLOCK_MOVE_RANGE_MARKER_HANDLERS,
@@ -1939,17 +2036,80 @@ type RowChildrenWalk = {
   customXmlIdentity: { next: number };
 };
 
-export const ROW_CONTENT_HANDLERS = {
+export const ROW_CONTENT_HANDLERS: {
+  readonly commentRangeEnd: "capture";
+  readonly commentRangeStart: "capture";
+  readonly customXmlPr: "capture";
+  readonly customXmlDelRangeEnd: "capture";
+  readonly customXmlDelRangeStart: "capture";
+  readonly customXmlInsRangeEnd: "capture";
+  readonly customXmlInsRangeStart: "capture";
+  readonly customXmlMoveFromRangeEnd: "capture";
+  readonly customXmlMoveFromRangeStart: "capture";
+  readonly customXmlMoveToRangeEnd: "capture";
+  readonly customXmlMoveToRangeStart: "capture";
+  readonly del: "capture";
+  readonly ins: "capture";
+  readonly moveFrom: "capture";
+  readonly moveFromRangeEnd: "capture";
+  readonly moveFromRangeStart: "capture";
+  readonly moveTo: "capture";
+  readonly moveToRangeEnd: "capture";
+  readonly moveToRangeStart: "capture";
+  readonly permEnd: "capture";
+  readonly permStart: "capture";
+  readonly proofErr: "capture";
+  // A row nested directly in a row is legal markup folio has no model
+  // for; captured whole rather than flattened into this row's cells,
+  // which would move its content into a row the author did not write.
+  readonly tr: (child: XmlElement, { options }: RowChildrenWalk) => "capture";
+  readonly trPr: OwnedElsewhere<"row-content", "trPr">;
+  readonly tblPrEx: OwnedElsewhere<"row-content", "tblPrEx">;
+  readonly tc: (
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      options,
+      row,
+    }: RowChildrenWalk,
+  ) => void;
+  readonly sdt: (
+    child: XmlElement,
+    walk: RowChildrenWalk,
+  ) => "capture" | undefined;
+  readonly customXml: (
+    child: XmlElement,
+    walk: RowChildrenWalk,
+  ) => "capture" | undefined;
+  // A bookmark that selects whole rows opens and closes here, between
+  // two cells. The row models one kind of child, so the marker keeps its
+  // place as an index among the cells rather than as a member — and it
+  // stays a typed marker rather than joining the verbatim sink, because
+  // a bookmark the model cannot see is a bookmark whose partner the
+  // editor deletes.
+  readonly bookmarkStart: (
+    child: XmlElement,
+    { row, bookmarks }: RowChildrenWalk,
+  ) => void;
+  readonly bookmarkEnd: (
+    child: XmlElement,
+    { row, bookmarks }: RowChildrenWalk,
+  ) => void;
+} = {
   tc: (
-    child,
-    { resources: { styles, theme, numbering, rels, media }, options, row },
-  ) => {
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      options,
+      row,
+    }: RowChildrenWalk,
+  ): void => {
     row.cells.push(
       parseTableCell(child, styles, theme, numbering, rels, media, options),
     );
   },
 
-  sdt: (child, walk) => {
+  sdt: (child: XmlElement, walk: RowChildrenWalk): "capture" | undefined => {
     const { options, row, bookmarks, preservedChildren } = walk;
     const sdtContent = findWordprocessingChild(child, "sdtContent");
     if (!sdtContent) {
@@ -1980,7 +2140,10 @@ export const ROW_CONTENT_HANDLERS = {
     return undefined;
   },
 
-  customXml: (child, walk) => {
+  customXml: (
+    child: XmlElement,
+    walk: RowChildrenWalk,
+  ): "capture" | undefined => {
     const firstWrapped = walk.row.cells.length;
     const firstCaptured = walk.preservedChildren.length;
     const firstBookmark = walk.bookmarks.length;
@@ -2006,13 +2169,19 @@ export const ROW_CONTENT_HANDLERS = {
   // stays a typed marker rather than joining the verbatim sink, because
   // a bookmark the model cannot see is a bookmark whose partner the
   // editor deletes.
-  bookmarkStart: (child, { row, bookmarks }) => {
+  bookmarkStart: (
+    child: XmlElement,
+    { row, bookmarks }: RowChildrenWalk,
+  ): void => {
     bookmarks.push({
       index: row.cells.length,
       marker: parseBookmarkStart(child),
     });
   },
-  bookmarkEnd: (child, { row, bookmarks }) => {
+  bookmarkEnd: (
+    child: XmlElement,
+    { row, bookmarks }: RowChildrenWalk,
+  ): void => {
     bookmarks.push({
       index: row.cells.length,
       marker: parseBookmarkEnd(child),
@@ -2046,7 +2215,7 @@ export const ROW_CONTENT_HANDLERS = {
   // A row nested directly in a row is legal markup folio has no model
   // for; captured whole rather than flattened into this row's cells,
   // which would move its content into a row the author did not write.
-  tr: (child, { options }) => {
+  tr: (child: XmlElement, { options }: RowChildrenWalk): "capture" => {
     options.context?.warn({
       code: PARSE_WARNING_CODES.nestedRowOpaque,
       element: child.name ?? "w:tr",
@@ -2343,16 +2512,72 @@ type TableChildrenWalk = {
   customXmlIdentity: { next: number };
 };
 
-export const TABLE_CONTENT_HANDLERS = {
-  tr: (
-    child,
+export const TABLE_CONTENT_HANDLERS: {
+  // A bookmark that selects a whole table opens and closes here. The
+  // sink would keep the bytes and hide the marker from the pass that
+  // pairs it with a `w:bookmarkStart` inside a cell, so it is typed and
+  // positioned by the rows that preceded it.
+  readonly bookmarkStart: (
+    child: XmlElement,
+    { table, bookmarks }: TableChildrenWalk,
+  ) => void;
+  readonly bookmarkEnd: (
+    child: XmlElement,
+    { table, bookmarks }: TableChildrenWalk,
+  ) => void;
+  readonly commentRangeEnd: "capture";
+  readonly commentRangeStart: "capture";
+  // Only `w:customXml` declares this property child. The wrapper itself is
+  // transparent; its property record remains positioned markup.
+  readonly customXmlPr: "capture";
+  readonly customXmlDelRangeEnd: "capture";
+  readonly customXmlDelRangeStart: "capture";
+  readonly customXmlInsRangeEnd: "capture";
+  readonly customXmlInsRangeStart: "capture";
+  readonly customXmlMoveFromRangeEnd: "capture";
+  readonly customXmlMoveFromRangeStart: "capture";
+  readonly customXmlMoveToRangeEnd: "capture";
+  readonly customXmlMoveToRangeStart: "capture";
+  readonly del: "capture";
+  readonly ins: "capture";
+  readonly moveFrom: "capture";
+  readonly moveFromRangeEnd: "capture";
+  readonly moveFromRangeStart: "capture";
+  readonly moveTo: "capture";
+  readonly moveToRangeEnd: "capture";
+  readonly moveToRangeStart: "capture";
+  readonly permEnd: "capture";
+  readonly permStart: "capture";
+  readonly proofErr: "capture";
+  readonly tblPr: OwnedElsewhere<"table-content", "tblPr">;
+  readonly tblGrid: OwnedElsewhere<"table-content", "tblGrid">;
+  readonly tr: (
+    child: XmlElement,
     {
       resources: { styles, theme, numbering, rels, media },
       options,
       table,
       rowsWithGridOffsets,
-    },
-  ) => {
+    }: TableChildrenWalk,
+  ) => void;
+  readonly sdt: (
+    child: XmlElement,
+    walk: TableChildrenWalk,
+  ) => "capture" | undefined;
+  readonly customXml: (
+    child: XmlElement,
+    walk: TableChildrenWalk,
+  ) => "capture" | undefined;
+} = {
+  tr: (
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      options,
+      table,
+      rowsWithGridOffsets,
+    }: TableChildrenWalk,
+  ): void => {
     const rowIndex = table.rows.length;
     table.rows.push(
       parseTableRow(child, styles, theme, numbering, rels, media, options),
@@ -2362,7 +2587,7 @@ export const TABLE_CONTENT_HANDLERS = {
     }
   },
 
-  sdt: (child, walk) => {
+  sdt: (child: XmlElement, walk: TableChildrenWalk): "capture" | undefined => {
     const { options, table, bookmarks, preservedChildren } = walk;
     const sdtContent = findWordprocessingChild(child, "sdtContent");
     if (!sdtContent) {
@@ -2393,7 +2618,10 @@ export const TABLE_CONTENT_HANDLERS = {
     return undefined;
   },
 
-  customXml: (child, walk) => {
+  customXml: (
+    child: XmlElement,
+    walk: TableChildrenWalk,
+  ): "capture" | undefined => {
     const firstWrapped = walk.table.rows.length;
     const firstCaptured = walk.preservedChildren.length;
     const firstBookmark = walk.bookmarks.length;
@@ -2419,13 +2647,19 @@ export const TABLE_CONTENT_HANDLERS = {
   // sink would keep the bytes and hide the marker from the pass that
   // pairs it with a `w:bookmarkStart` inside a cell, so it is typed and
   // positioned by the rows that preceded it.
-  bookmarkStart: (child, { table, bookmarks }) => {
+  bookmarkStart: (
+    child: XmlElement,
+    { table, bookmarks }: TableChildrenWalk,
+  ): void => {
     bookmarks.push({
       index: table.rows.length,
       marker: parseBookmarkStart(child),
     });
   },
-  bookmarkEnd: (child, { table, bookmarks }) => {
+  bookmarkEnd: (
+    child: XmlElement,
+    { table, bookmarks }: TableChildrenWalk,
+  ): void => {
     bookmarks.push({
       index: table.rows.length,
       marker: parseBookmarkEnd(child),
