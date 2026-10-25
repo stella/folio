@@ -1443,3 +1443,40 @@ describe("CI plan", () => {
     );
   });
 });
+
+// Checked-in proptest regressions block; generated cases report on pull
+// requests and merge groups (scripts/rust-property-exploration.ts).
+test("the kernel job splits proptest regressions from exploration", () => {
+  const workflow = readWorkflow("ci.yml");
+  if (!isRecord(workflow["jobs"])) throw new Error("ci.yml has no jobs");
+  const job = workflow["jobs"]["docx-kernel"];
+  if (!isRecord(job) || !isRecord(job["env"]) || !Array.isArray(job["steps"]))
+    throw new Error("Missing docx-kernel job");
+  expect(job["env"]["FOLIO_FUZZ_EXPLORATION"]).toBe(
+    "${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}",
+  );
+  const steps = job["steps"].filter(isRecord);
+  const index = (name: string) =>
+    steps.findIndex((step) => step["name"] === name);
+  const tests = steps[index("Rust tests")];
+  expect(String(tests?.["run"]).split("\n")).toContain(
+    'if [[ "$FOLIO_FUZZ_EXPLORATION" == "report" ]]; then export PROPTEST_CASES=0; fi',
+  );
+  const exploration = steps[index("Rust property exploration")];
+  expect(exploration?.["if"]).toBe("env.FOLIO_FUZZ_EXPLORATION == 'report'");
+  expect(String(exploration?.["run"])).toStartWith(
+    "bun scripts/rust-property-exploration.ts --package stella-docx-kernel",
+  );
+  expect(String(exploration?.["run"])).not.toContain("|| true");
+  expect(exploration?.["continue-on-error"]).toBeUndefined();
+  // A finding appends to a regressions file, which would dirty the package.
+  expect(index("Rust property exploration")).toBeGreaterThan(
+    index("Registry package"),
+  );
+  const upload = steps[index("Keep the exploration findings of a merge group")];
+  expect(upload?.["if"]).toBe("always() && github.event_name == 'merge_group'");
+  const uploadWith = upload?.["with"];
+  expect(isRecord(uploadWith) ? uploadWith["name"] : undefined).toBe(
+    "fuzz-exploration-docx-kernel",
+  );
+});
