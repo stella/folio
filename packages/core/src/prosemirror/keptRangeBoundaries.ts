@@ -389,65 +389,60 @@ export const normalizeKeptRangeBoundaries = (
 };
 
 /**
- * A move range whose start and end a resolution left meeting with nothing
- * between, as one point anchor: the node a reopened package reads that empty
- * range as (`planEmptyRanges`), so the resolved document has the same shape
- * live and after a save.
+ * A move range whose start and end a resolution left side by side, with
+ * nothing between, as one point anchor: the node a reopened package reads
+ * that empty range as, so the resolved document has the same shape live and
+ * after a save. Only a start directly followed by its own end collapses; the
+ * order of any other markers stays as the engine leaves it.
  */
 const collapseEmptyMoveRanges = (tr: Transaction): void => {
-  const paragraphs: number[] = [];
-  tr.doc.descendants((node, position) => {
-    if (!node.isTextblock) return true;
-    let boundaries = 0;
-    node.forEach((child) => {
-      if (child.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) boundaries += 1;
-    });
-    if (boundaries > 1) paragraphs.push(position);
-    return false;
-  });
   const anchorType = tr.doc.type.schema.nodes[RANGE_ANCHOR_NODE_NAME];
   if (anchorType === undefined) return;
-  for (const position of paragraphs.toReversed()) {
-    const paragraph = tr.doc.nodeAt(position);
-    if (paragraph === null) continue;
-    const children: { node: PMNode; offset: number }[] = [];
-    paragraph.forEach((node, offset) => children.push({ node, offset }));
-    // Runs of move range boundaries alone, last first so positions hold.
-    const runs: { from: number; to: number }[] = [];
-    for (let index = 0; index < children.length; index += 1) {
-      if (children[index]?.node.type.name !== MOVE_RANGE_BOUNDARY_NODE_NAME)
-        continue;
-      let end = index;
-      while (
-        children[end + 1]?.node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME
-      )
-        end += 1;
-      if (end > index) runs.push({ from: index, to: end + 1 });
-      index = end;
-    }
-    for (const { from, to } of runs.toReversed()) {
-      const run = children.slice(from, to);
-      const plan = planEmptyRanges(
-        run.map(({ node }) => expectMoveRangeBoundaryAttrs(node)),
-      );
-      if (plan.anchorAt.size === 0) continue;
-      const replacement: PMNode[] = [];
-      for (const [index, { node }] of run.entries()) {
-        const anchored = plan.anchorAt.get(index);
-        if (anchored !== undefined)
-          replacement.push(anchorType.create(anchored, null, node.marks));
-        else if (!plan.closedAt.has(index)) replacement.push(node);
+  const pairs: { position: number; start: PMNode; end: PMNode }[] = [];
+  tr.doc.descendants((node, position) => {
+    if (!node.isTextblock) return true;
+    let previous: { node: PMNode; position: number } | undefined;
+    node.forEach((child, offset) => {
+      const childPosition = position + 1 + offset;
+      if (
+        previous !== undefined &&
+        child.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME &&
+        previous.node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME
+      ) {
+        const start = expectMoveRangeBoundaryAttrs(previous.node);
+        const end = expectMoveRangeBoundaryAttrs(child);
+        if (
+          start.id === end.id &&
+          ((start.type === "moveFromRangeStart" &&
+            end.type === "moveFromRangeEnd") ||
+            (start.type === "moveToRangeStart" &&
+              end.type === "moveToRangeEnd"))
+        ) {
+          pairs.push({
+            position: previous.position,
+            start: previous.node,
+            end: child,
+          });
+          previous = undefined;
+          return;
+        }
       }
-      const first = run[0];
-      const last = run.at(-1);
-      if (first === undefined || last === undefined) continue;
-      const start = position + 1 + first.offset;
-      tr.replaceWith(
-        start,
-        position + 1 + last.offset + last.node.nodeSize,
-        replacement,
-      );
-    }
+      previous = { node: child, position: childPosition };
+    });
+    return false;
+  });
+  // Last first, so the earlier positions stay put.
+  for (const { position, start, end } of pairs.toReversed()) {
+    const anchored = planEmptyRanges([
+      expectMoveRangeBoundaryAttrs(start),
+      expectMoveRangeBoundaryAttrs(end),
+    ]).anchorAt.get(0);
+    if (anchored === undefined) continue;
+    tr.replaceWith(
+      position,
+      position + start.nodeSize + end.nodeSize,
+      anchorType.create(anchored, null, start.marks),
+    );
   }
 };
 
