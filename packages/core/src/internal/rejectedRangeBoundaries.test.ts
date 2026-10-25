@@ -155,6 +155,43 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     ]);
   });
 
+  test("of a kept start and end out of order, the later revision's moves, in both", () => {
+    // An earlier, undated insertion holds a bookmark's end; the run inserts
+    // its start after it. Rejecting both keeps both out of order, and the
+    // start, kept from the later revision, moves before the end.
+    const earlier = { id: 1, author: "A" };
+    const document = documentWith([
+      {
+        type: "insertion",
+        info: earlier,
+        content: [{ type: "bookmarkEnd", id: 3 }],
+      },
+      { type: "run", content: [{ type: "text", text: "one " }] },
+      {
+        type: "insertion",
+        info: insertion,
+        content: [{ type: "bookmarkStart", id: 3, name: "_Link" }],
+      },
+      { type: "run", content: [{ type: "text", text: "two" }] },
+    ]);
+    const engine = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [earlier.id, insertion.id],
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    if (engine.isErr()) throw engine.error;
+    const editor = outline(rejectInEditor(document));
+    expect(editor).toEqual(
+      outline(firstParagraphContent(engine.value.document)),
+    );
+    expect(editor).toEqual([
+      "type:bookmarkStart,id:3",
+      "type:bookmarkEnd,id:3",
+      "text:one two",
+    ]);
+  });
+
   test("an inserted copy of an existing move range start goes, in both", () => {
     const document = documentWith([
       {
