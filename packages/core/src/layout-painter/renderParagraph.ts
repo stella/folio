@@ -2339,7 +2339,7 @@ function getTextAfterTab(
 type TextMeasureStyle = {
   automaticTextSpacing?: AutomaticTextSpacingPolicy;
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
-  documentFontFacts?: TextRun["documentFontFacts"];
+  documentFontFacts?: NonNullable<TextRun["documentFontFacts"]>;
   bold?: boolean;
   italic?: boolean;
   letterSpacing?: number;
