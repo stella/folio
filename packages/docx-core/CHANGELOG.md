@@ -1,5 +1,111 @@
 # @stll/docx-core
 
+## 0.39.0
+
+### Minor Changes
+
+- [#2100](https://github.com/stella/folio/pull/2100) [`14adc3f`](https://github.com/stella/folio/commit/14adc3f7b25721930eb926f54cc6fd2f2f868a46) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored East Asian automatic-spacing toggles through paragraph style resolution, editing, and DOCX serialization.
+
+- [#1957](https://github.com/stella/folio/pull/1957) [`c06cd22`](https://github.com/stella/folio/commit/c06cd22e3eb924f8c2b589b5651839b9f6045246) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Draw cached line, pie, and doughnut charts with bounded path geometry, and reserve chart fallback images for explicit drawing fallbacks.
+
+- [#1904](https://github.com/stella/folio/pull/1904) [`04cd800`](https://github.com/stella/folio/commit/04cd800a77664daedbb79b69e0015ddebdaf17c4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Section break and footnote and endnote commands run through canonical document operations in canonical sessions, including tracked note-reference revisions in suggesting mode; every inserted note paragraph receives a fresh paragraph id. The no-op `extractSelectionContext` editor command is removed: call the exported `extractSelectionContext(state)` function instead. `@stll/docx-core/ops` exports `paragraphIdsIn`.
+
+- [#2064](https://github.com/stella/folio/pull/2064) [`4adccc0`](https://github.com/stella/folio/commit/4adccc0bdcc8d32bba87e4800c7e0ecbbbed90c8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor legacy `w:noColumnBalance` settings in continuous multi-column sections.
+
+- [#1907](https://github.com/stella/folio/pull/1907) [`e9dc457`](https://github.com/stella/folio/commit/e9dc457d2fe49c8e124884569ffdac62c3fa06c5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose and use one pre-batch operation ordering contract for batch execution and replay.
+
+### Patch Changes
+
+- [#2145](https://github.com/stella/folio/pull/2145) [`3508c2f`](https://github.com/stella/folio/commit/3508c2f3d76333d5ecd558add9fd8e57ea9baa7b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolving several revisions at once matches resolving them one operation at a time: a range boundary kept from a removed insertion stays at its depth beside restored inline content controls and later insertions made inside the removed content.
+
+- [#2058](https://github.com/stella/folio/pull/2058) [`2022dbe`](https://github.com/stella/folio/commit/2022dbed10cf101a7bb9f6096a5382238e85e3c7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked move's range markers written between blocks are kept as typed blocks, in the document model and the editor, and are saved back between the same two blocks.
+
+- [#2141](https://github.com/stella/folio/pull/2141) [`f63420f`](https://github.com/stella/folio/commit/f63420ffe0a507c789376c1ddbb1180811bc91fc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Declare paragraphs updated by revision range normalization as receiver effects.
+
+- [#2040](https://github.com/stella/folio/pull/2040) [`e502e85`](https://github.com/stella/folio/commit/e502e855437ab1e3050ba6c0af836ee7ed4f22cb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve unchanged paragraph identity when rejecting whole-document revisions.
+
+- [#1959](https://github.com/stella/folio/pull/1959) [`8141429`](https://github.com/stella/folio/commit/814142966387495d302602c0eec00d70dee36217) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep empty comment lists and empty paragraph formatting out of the document model.
+
+- [#2135](https://github.com/stella/folio/pull/2135) [`ade929d`](https://github.com/stella/folio/commit/ade929dda75e5f72415481feca09feccba7532fa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep comment replies in step with their root thread during editor projection and save.
+
+- [#2030](https://github.com/stella/folio/pull/2030) [`c3f3afc`](https://github.com/stella/folio/commit/c3f3afcdef4671407853ddd011b44469856a4d68) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restore explicit empty paragraph property sets when applying inverse operations.
+
+- [#2133](https://github.com/stella/folio/pull/2133) [`2270e1a`](https://github.com/stella/folio/commit/2270e1ae47d37accbe475dcf6c6dd4003ac1fc43) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve comment endpoint ownership across inline content controls.
+
+- [#2137](https://github.com/stella/folio/pull/2137) [`2c1d144`](https://github.com/stella/folio/commit/2c1d1448d65c53c28d26a05a03d8e8c83cc8830d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retain comment references as paragraph carriers and preserve mixed carrier order when removing a paragraph.
+
+- [#2119](https://github.com/stella/folio/pull/2119) [`916bb0e`](https://github.com/stella/folio/commit/916bb0e84c00b505e246df165fe30058d227f07a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve copied range-boundary ownership through revision resolution and editor round trips.
+
+- [#2012](https://github.com/stella/folio/pull/2012) [`d930da8`](https://github.com/stella/folio/commit/d930da8cae1e272a905c085bbc295abae84e1088) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Classify replacements that address only an automatic note marker as no-change edits.
+
+- [#2060](https://github.com/stella/folio/pull/2060) [`8069ea6`](https://github.com/stella/folio/commit/8069ea6e0435ab08204ec4d140b276341e4bc68d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Update runtime dependencies.
+
+- [#1973](https://github.com/stella/folio/pull/1973) [`f64a269`](https://github.com/stella/folio/commit/f64a26912cbf8807ae5f561a129d7d1cf667ac1b) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update runtime dependencies.
+
+- [#2129](https://github.com/stella/folio/pull/2129) [`2a6c2f8`](https://github.com/stella/folio/commit/2a6c2f888f1aea4ad20f4ba8cbae07dd19f1f307) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve directional range-boundary placement through rejected source-cut wrappers.
+
+- [#2069](https://github.com/stella/folio/pull/2069) [`ed2a724`](https://github.com/stella/folio/commit/ed2a724d5a32cc794713c072a9bf7d9cba2816f8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep empty list-marker projections consistent with numbering definitions and legal-numbering mode.
+
+- [#2159](https://github.com/stella/folio/pull/2159) [`2d71bf9`](https://github.com/stella/folio/commit/2d71bf9e8cd96abe15fdac82a4f75af85f415764) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Insertions at one gap run together in a batch even when a paragraph-property write ties between them, so they inherit their anchor's properties alike.
+
+- [#2139](https://github.com/stella/folio/pull/2139) [`3b740a9`](https://github.com/stella/folio/commit/3b740a9325412fccaa925dcb8b280282cfa54693) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve excluded cached page breaks when replacing text with explicit endpoint gaps.
+
+- [#1962](https://github.com/stella/folio/pull/1962) [`60f127c`](https://github.com/stella/folio/commit/60f127c35b47d8fd7fb4e2fa13e4c9b6ff102602) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align paragraph-mark carriers between direct deletion and accepted tracked deletion.
+
+- [#1962](https://github.com/stella/folio/pull/1962) [`60f127c`](https://github.com/stella/folio/commit/60f127c35b47d8fd7fb4e2fa13e4c9b6ff102602) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Treat marker-only transparent inline containers as empty when resolving paragraph marks.
+
+- [#1968](https://github.com/stella/folio/pull/1968) [`04ad8d7`](https://github.com/stella/folio/commit/04ad8d7dadea7935f7e0ccc9a9489dcd7540e5fa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep point comments anchored consistently across review reads and saves.
+
+- [#2109](https://github.com/stella/folio/pull/2109) [`9b9396d`](https://github.com/stella/folio/commit/9b9396da89dd69d65b5ccb80d014f869981e28a1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve comment range boundaries authored inside hyperlinks.
+
+- [#2118](https://github.com/stella/folio/pull/2118) [`65d534e`](https://github.com/stella/folio/commit/65d534ee19e1ac4dac8843cd55e48d9d4d64b463) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve move-range positions authored inside hyperlinks through editing and revision resolution.
+
+- [#2155](https://github.com/stella/folio/pull/2155) [`d356993`](https://github.com/stella/folio/commit/d3569937d36c3ebe35065ceb1160c40c6dee6694) Thanks [@jan-kubica](https://github.com/jan-kubica)! - When rejecting leaves a kept range start after its kept end, the boundary kept from the later revision moves, in the engine and the editor alike, so the earlier one stays where it was whatever order the revisions are rejected in.
+
+- [#1958](https://github.com/stella/folio/pull/1958) [`d2424e2`](https://github.com/stella/folio/commit/d2424e296bc4cce3cb19814048ca188de08f85d4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Derive exhausted comment ranges from their surviving coverage without changing document-operation history.
+
+- [#2090](https://github.com/stella/folio/pull/2090) [`9174ef4`](https://github.com/stella/folio/commit/9174ef4cf41b84fb002a054ea1103a1091b651c3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - An operation that removes the last reference to a note reports every paragraph record it replaces as touched, including one replaced by an equal record.
+
+- [#1964](https://github.com/stella/folio/pull/1964) [`5f3d53a`](https://github.com/stella/folio/commit/5f3d53a72afc62bc1a78177ba159d09d78f35c87) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep current tracked style numbering authoritative and apply start overrides to full numbering-level overrides.
+
+- [#1964](https://github.com/stella/folio/pull/1964) [`5f3d53a`](https://github.com/stella/folio/commit/5f3d53a72afc62bc1a78177ba159d09d78f35c87) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve paragraph list kind, labels, levels, and legal numbering from one canonical numbering owner across readers.
+
+- [#2047](https://github.com/stella/folio/pull/2047) [`ba1ccf4`](https://github.com/stella/folio/commit/ba1ccf40d600babc415b11edfc7f6bafbf934e34) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The editor and the engine decide what a paragraph keeps when its mark goes with one content rule, so accepting or rejecting a paragraph mark keeps the bookmarks and comment anchors it holds in both.
+
+- [#2112](https://github.com/stella/folio/pull/2112) [`cd077a3`](https://github.com/stella/folio/commit/cd077a386784dbd8fcdc8f04324f292332aa98d6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Derive retained-anchor receiver effects from the canonical paragraph-boundary removal plan.
+
+- [#1958](https://github.com/stella/folio/pull/1958) [`d2424e2`](https://github.com/stella/folio/commit/d2424e296bc4cce3cb19814048ca188de08f85d4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve automatic note markers within note-story text replacements.
+
+- [#2107](https://github.com/stella/folio/pull/2107) [`10b1a2d`](https://github.com/stella/folio/commit/10b1a2da617ba59cd0af8ace022bc288b87617a4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Share linear range multiplicity classification and preserve source ownership when rejecting revisions around range boundaries.
+
+- [#2057](https://github.com/stella/folio/pull/2057) [`c9fa99c`](https://github.com/stella/folio/commit/c9fa99c57eaa34010c4076ef744ff2bdd828c07a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rejecting a tracked change keeps the bookmark, comment and move range boundaries its content held where that content was, in the engine and in the editor, and keeps every such range starting before it ends.
+
+- [#2139](https://github.com/stella/folio/pull/2139) [`3b740a9`](https://github.com/stella/folio/commit/3b740a9325412fccaa925dcb8b280282cfa54693) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve replacement source-run joins around cached page breaks without merging separately authored runs.
+
+- [#1958](https://github.com/stella/folio/pull/1958) [`d2424e2`](https://github.com/stella/folio/commit/d2424e296bc4cce3cb19814048ca188de08f85d4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Remove range comments when edits leave none of their covered content, while preserving authored points and ranges over inline objects.
+
+- [#2132](https://github.com/stella/folio/pull/2132) [`ae3ff3d`](https://github.com/stella/folio/commit/ae3ff3d84271df27b9b17f41b9b1156fd2092693) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Declare canonical paragraph receivers while planning revision resolution, including transitive table joins.
+
+- [#1962](https://github.com/stella/folio/pull/1962) [`60f127c`](https://github.com/stella/folio/commit/60f127c35b47d8fd7fb4e2fa13e4c9b6ff102602) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Unify paragraph-mark refusal reasons before section-ending tables.
+
+- [#2124](https://github.com/stella/folio/pull/2124) [`7830253`](https://github.com/stella/folio/commit/7830253614227c6fcda0a86a06bc5399249ec798) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Refuse insertions that create inverted bookmark or move ranges.
+
+- [#2110](https://github.com/stella/folio/pull/2110) [`a75c101`](https://github.com/stella/folio/commit/a75c1010e549b8fe171b2235b3e04165c1fddca7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep retained range boundaries at their source seam when batch rejection removes both cut containers.
+
+- [#1964](https://github.com/stella/folio/pull/1964) [`5f3d53a`](https://github.com/stella/folio/commit/5f3d53a72afc62bc1a78177ba159d09d78f35c87) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Inserted and merged paragraphs keep the list they ask for: a direct merge into a paragraph pending deletion, a tracked insertion before deleted closing paragraphs, and an insertion after a table in a batch that empties the closing paragraph now read as applying the operations one at a time or directly does. A merge that sets the merged paragraph's properties conflicts with another property edit of that paragraph in the same batch, a suggested operation whose id names a still pending suggestion gets a suggestion id of its own, and clearing a numbered paragraph style drops the style's numbering from the document model. A level-only override with no style numbering is no list in any reader, and clean Markdown reads a pending numbering removal as accepted.
+
+- [#2034](https://github.com/stella/folio/pull/2034) [`4b26e14`](https://github.com/stella/folio/commit/4b26e145ef7351451caa45b9641529f945addac1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep section properties when inserted paragraph boundaries are rejected.
+
+- [#2033](https://github.com/stella/folio/pull/2033) [`6713246`](https://github.com/stella/folio/commit/6713246807a38ccce24a872683dfdb0a60f74a2c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep comment boundary ownership through revision resolution and whole-range deletion.
+
+- [#1968](https://github.com/stella/folio/pull/1968) [`04ad8d7`](https://github.com/stella/folio/commit/04ad8d7dadea7935f7e0ccc9a9489dcd7540e5fa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep both comment range boundaries and references at their authored tracked-change positions.
+
+- [#2092](https://github.com/stella/folio/pull/2092) [`c34806f`](https://github.com/stella/folio/commit/c34806fff64bc338c5e7917bbfe8d69e094b67f2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Synchronize text-only edits in text-box alternate-content fallbacks.
+
+- [#2130](https://github.com/stella/folio/pull/2130) [`723f1c4`](https://github.com/stella/folio/commit/723f1c4a984bc6a25bb53881bb0c78f7ca967441) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve comment anchors when a removed paragraph can only join the following table.
+- Updated dependencies [[`20ee7f4`](https://github.com/stella/folio/commit/20ee7f4e19b0d4e3f47a8d72351ea9d288a5dcb2)]:
+  - @stll/utf8-boundaries@0.1.1
+
 ## 0.38.0
 
 ### Minor Changes
