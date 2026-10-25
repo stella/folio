@@ -128,6 +128,9 @@ export type PainterOptions = {
     registry?: FeatureRegistry;
 };
 
+// @public (undocumented)
+export const releaseDisplayPageResources: (root: Element) => void;
+
 // @public
 export type RenderContext = {
     pageNumber: number;

@@ -129,7 +129,10 @@ import type {
   TableMeasure,
 } from "@stll/folio-core/layout-engine/types";
 // Layout painter
-import { LayoutPainter } from "@stll/folio-core/layout-painter";
+import {
+  LayoutPainter,
+  releaseDisplayPageResources,
+} from "@stll/folio-core/layout-painter";
 import {
   findPageShellForPmPos,
   PAINTER_PAINTED_EVENT,
@@ -2119,6 +2122,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     useLayoutEffect(() => {
       painterRef.current = painter;
     }, [painter]);
+
+    useLayoutEffect(() => {
+      const pagesContainer = pagesContainerRef.current;
+      return () => {
+        if (pagesContainer) releaseDisplayPageResources(pagesContainer);
+      };
+    }, []);
 
     // =========================================================================
     // Layout Pipeline
