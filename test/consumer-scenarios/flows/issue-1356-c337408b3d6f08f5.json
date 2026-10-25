@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "tracked-changes",
+  "seed": 310471735,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 246530538,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1382319484,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "581FD868"
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "581FD868",
+          "text": "First added clause."
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "581FD868",
+          "text": "Second added clause."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "formatRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from collisions flow seed 310471735",
+  "title": "PINNED #1356, reported seed 310471735: a batch matches its operations one at a time"
+}

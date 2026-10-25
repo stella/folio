@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "direct",
+  "seed": 310471641,
+  "steps": [
+    {
+      "action": "mistake",
+      "seed": 3341767597
+    },
+    {
+      "action": "story batch",
+      "seed": 2078096257,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "04D9A0FF",
+          "properties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "bullet"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1758390272,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "7B806329",
+          "properties": {
+            "alignment": null
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 302895341,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "581FD868",
+          "text": "Clause notice delivery payment warranty delivery warranty."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1246860696,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "581FD868",
+          "text": "Written written schedule warranty party."
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2502955736,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hu6sn9r"
+          },
+          "formatting": {
+            "bold": true
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "story batch",
+      "seed": 1175343199,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "04D9A0FF",
+          "quote": "order",
+          "comment": {
+            "text": "Delivery buyer notice term delivery buyer."
+          }
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "04D9A0FF",
+          "text": "Warranty goods period party payment party."
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "04D9A0FF",
+          "properties": {
+            "numbering": {
+              "kind": "none"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "deleteTable"
+  ],
+  "origin": "shrunk from collisions flow seed 310471641",
+  "title": "PINNED #1356, reported seed 310471641: a batch matches its operations one at a time"
+}

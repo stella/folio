@@ -100,6 +100,11 @@ const isOperationType = (
 ): type is FolioDocumentOperation["type"] =>
   Object.hasOwn(PARAGRAPH_PROPERTY_REPLAY, type);
 
+const sameContainerRows = (left: Row, right: Row | undefined): boolean =>
+  right !== undefined &&
+  `${left.table?.tableIndex}:${left.table?.rowIndex}:${left.table?.cellIndex}` ===
+    `${right.table?.tableIndex}:${right.table?.rowIndex}:${right.table?.cellIndex}`;
+
 type SequentialGroupsOptions = {
   applied: readonly AnyOperation[];
   preRows: readonly Row[];
@@ -127,9 +132,11 @@ export const sequentialGroups = ({
     containers.set(key, rows);
   }
   const retiringCarriers = new Set<string>();
+  const finalBlocks = new Set<string>();
   for (const [container, rows] of containers) {
     const last = rows.at(-1);
     if (!last || (container === "story" && last !== preRows.at(-1))) continue;
+    finalBlocks.add(last.id);
     const appended = applied.some(
       (operation) =>
         operation.type === "insertAfterBlock" &&
@@ -254,19 +261,38 @@ export const sequentialGroups = ({
   // A deletion removes or retires its block, so an insertion before it can
   // only be stated one at a time while the block still stands. The batch
   // keeps that gap, so the oracle runs the whole run ahead of the deletion.
-  for (const { operation } of rest) {
-    if (
-      operation.type !== "insertBeforeBlock" ||
-      !deleted.has(blockIdOf(operation))
-    ) {
-      continue;
+  // A container's final paragraph differs. In tracked changes its deletion
+  // cannot retire an earlier mark, so a paragraph inserted first would carry
+  // the break and the batch deletes first. In a suggestion the batch hands
+  // the break to a paragraph inserted into the gap before it, whichever side
+  // of the gap the insertion is stated from.
+  const gapDeletion = (operation: AnyOperation): string | undefined => {
+    const id = blockIdOf(operation);
+    if (operation.type === "insertBeforeBlock") {
+      const retires = mode === "tracked-changes" && finalBlocks.has(id);
+      return deleted.has(id) && !retires ? id : undefined;
     }
+    if (operation.type !== "insertAfterBlock" || mode !== "suggested") {
+      return undefined;
+    }
+    const index = preRows.findIndex((row) => row.id === id);
+    const next = preRows.at(index + 1);
+    return next !== undefined &&
+      deleted.has(next.id) &&
+      finalBlocks.has(next.id) &&
+      sameContainerRows(next, preRows.at(index))
+      ? next.id
+      : undefined;
+  };
+  for (const { operation } of rest) {
+    const deletedId = gapDeletion(operation);
+    if (deletedId === undefined) continue;
     const from = groups.findIndex((group) => group.includes(operation));
     const target = groups.findIndex(
       (group) =>
         group.length === 1 &&
         group[0]?.type === "deleteBlock" &&
-        blockIdOf(group[0]) === blockIdOf(operation),
+        blockIdOf(group[0]) === deletedId,
     );
     const moved = groups[from];
     if (moved && target >= 0 && target < from) {

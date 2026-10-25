@@ -1,0 +1,7 @@
+{
+  "seed": 787497607,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "a batch matches its operations one at a time"
+}
