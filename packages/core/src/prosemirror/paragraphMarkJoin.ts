@@ -31,6 +31,27 @@ import {
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
+/**
+ * The attrs the paragraph a join leaves takes: `next`'s, less the editing
+ * sessions (`w:rsid*` attributes) it shares with the removed `paragraph`.
+ *
+ * A split copies the paragraph's attrs onto both halves, and a save writes
+ * the sessions on the first half only, the first record in document order.
+ * Rejecting the split removes that first half, so the paragraph left names
+ * none of them, live as after a save.
+ */
+export const joinedParagraphAttrs = (
+  paragraph: PMNode,
+  next: PMNode,
+): PMNode["attrs"] => {
+  const sessions: unknown = next.attrs["_preservedAttributes"];
+  return typeof sessions === "object" &&
+    sessions !== null &&
+    sessions === paragraph.attrs["_preservedAttributes"]
+    ? { ...next.attrs, _preservedAttributes: null }
+    : next.attrs;
+};
+
 type JoinAtParagraphMarkOptions = {
   tr: Transaction;
   /** Position of the paragraph whose mark goes. */
@@ -61,7 +82,11 @@ export const joinAtParagraphMark = ({
     const leftToken = getProseParagraphPropertySourceToken(paragraph);
     const rightToken = getProseParagraphPropertySourceToken(next);
     tr.replaceWith(boundary - 1, join.nextPosition + 1, join.inlineBookmarks);
-    tr.setNodeMarkup(paragraphPos, undefined, next.attrs);
+    tr.setNodeMarkup(
+      paragraphPos,
+      undefined,
+      joinedParagraphAttrs(paragraph, next),
+    );
     markParagraphPropertySourceTransfers(tr, [
       {
         displacedToken: typeof leftToken === "string" ? leftToken : null,
@@ -70,7 +95,7 @@ export const joinAtParagraphMark = ({
     ]);
   } else {
     joinProseParagraphsWithRightPropertySource({
-      attrs: next.attrs,
+      attrs: joinedParagraphAttrs(paragraph, next),
       pos: boundary,
       transaction: tr,
     });

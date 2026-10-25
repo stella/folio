@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 787497590,
+  "title": "Rejecting a tracked split inside a link rejoins one link after a save",
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 148085620,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "79D25458",
+          "offset": 18
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 787497590"
+}

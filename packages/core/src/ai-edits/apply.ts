@@ -116,6 +116,7 @@ import {
   commentsForTrackedInsertion,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
+  joinCommentStretches,
   NON_INCLUSIVE_MARK_DISPOSITION,
   placeTrackedInsertion,
   surveyReplacedAnnotations,
@@ -8682,6 +8683,9 @@ const applyMinimalTrackedReplacement = ({
       if (commentMark) {
         nextTr = nextTr.addMark(run.at, end, commentMark);
       }
+    }
+    if (removedFrom !== null) {
+      nextTr = joinCommentStretches(nextTr, removedFrom);
     }
   }
   return {
