@@ -75,6 +75,7 @@ import {
   installCanvasMeasureProvider,
   resetCanvasContext,
 } from "../layout-engine/measure/measureContainer";
+import { columnBalancingForCompatibility } from "../layout-engine/noColumnBalanceCompatibility";
 import { resolveEffectiveParagraphSpacingTree } from "../layout-engine/paragraphSpacing";
 import { resolveTableIndentCompatibility } from "../layout-engine/tableIndentCompatibility";
 import type {
@@ -1115,6 +1116,10 @@ function runLayoutPipelineMeasured<THfPMs>(
         pageNumbering: bodyLayoutConfig.pageNumbering,
         pageGap,
         mirrorMargins,
+        columnBalancing: columnBalancingForCompatibility(
+          document?.package.settings?.noColumnBalance,
+          document?.package.settings?.compatibilityMode,
+        ),
       };
       if (document?.package.document.sections !== undefined) {
         nextLayoutOpts.sectionVerticalAlignments =

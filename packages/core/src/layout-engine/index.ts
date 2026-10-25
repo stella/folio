@@ -444,7 +444,11 @@ function layoutDocumentPass(
           nextBreakIndex === blocks.length ||
           (nextBreak?.kind === "sectionBreak" &&
             nextBreak.type === "continuous");
-        if (nextColumns && sectionEndsContinuously) {
+        if (
+          nextColumns &&
+          sectionEndsContinuously &&
+          options.columnBalancing !== "natural"
+        ) {
           const state = paginator.getCurrentState();
           const balancedHeight = balancedParagraphSectionHeight({
             blocks,

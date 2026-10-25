@@ -454,6 +454,7 @@ export type LayoutOptions = {
     finalPageNumbering?: SectionPageNumbering;
     sectionVerticalAlignments?: readonly (VerticalAlign | undefined)[];
     columns?: ColumnLayout;
+    columnBalancing?: "balanced" | "natural";
     pageGap?: number;
     defaultLineHeight?: number;
     headerContentHeights?: HeaderFooterContentHeights;
