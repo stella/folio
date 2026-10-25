@@ -75,7 +75,10 @@ import {
   serializeEmptyRunProperties,
   serializePreviousRunProperties,
 } from "../runPropertyPresence";
-import { replayableShapeAlternateContent } from "../shapeAlternateContent";
+import {
+  replayableShapeAlternateContent,
+  synchronizedTextShapeAlternateContent,
+} from "../shapeAlternateContent";
 import { requiredWrapPolygon, serializeWrapPolygon } from "../wrapPolygon";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
@@ -1032,11 +1035,16 @@ function serializeRunContent(content: RunContent): string {
         return content.rawXml;
       }
       return serializeDrawingContent(content);
-    case "shape":
+    case "shape": {
+      const alternateContent = replayableShapeAlternateContent(content);
+      if (alternateContent !== undefined) {
+        return alternateContent;
+      }
+      const drawingXml = serializeShapeContent(content);
       return (
-        replayableShapeAlternateContent(content) ??
-        serializeShapeContent(content)
+        synchronizedTextShapeAlternateContent(content, drawingXml) ?? drawingXml
       );
+    }
     default:
       return "";
   }

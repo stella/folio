@@ -1647,6 +1647,7 @@ export type Shape = {
 export type ShapeAlternateContent = {
     verbatimXml: string;
     verbatimFingerprint: string;
+    verbatimStructureFingerprint?: string;
 };
 
 // @public

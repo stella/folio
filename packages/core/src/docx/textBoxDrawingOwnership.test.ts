@@ -199,6 +199,45 @@ describe("text-box drawing ownership", () => {
     expect(bodyShapeWrapTypes(reopened)).toEqual(["inline"]);
   });
 
+  test("VML text-box content resolves by WordprocessingML namespace, not prefix", async () => {
+    const strictWordNamespace =
+      "http://purl.oclc.org/ooxml/wordprocessingml/main";
+    const source = await buildDocx(`
+        <w:pict>
+          <v:shape style="width:2in;height:1in">
+            <v:textbox>
+              <w:txbxContent><w:p><w:r><w:t>Strict text</w:t></w:r></w:p></w:txbxContent>
+            </v:textbox>
+          </v:shape>
+        </w:pict>`);
+    const zip = await JSZip.loadAsync(source);
+    const xml = await zip.file("word/document.xml")!.async("text");
+    const strictXml = xml
+      .replaceAll("w:", "q:")
+      .replaceAll("xmlns:w=", "xmlns:q=")
+      .replaceAll(
+        "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        strictWordNamespace,
+      );
+    zip.file("word/document.xml", strictXml);
+    const parsed = await parseDocx(
+      await zip.generateAsync({ type: "arraybuffer" }),
+      { preloadFonts: false },
+    );
+    const shape = parsed.package.document.content
+      .filter((block) => block.type === "paragraph")
+      .flatMap((paragraph) => paragraph.content)
+      .flatMap((item) => (item.type === "run" ? item.content : []))
+      .find((item) => item.type === "shape");
+    const paragraph =
+      shape?.type === "shape" ? shape.shape.textBody?.content.at(0) : undefined;
+    const run =
+      paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const text = run?.type === "run" ? run.content.at(0) : undefined;
+
+    expect(text?.type === "text" ? text.text : undefined).toBe("Strict text");
+  });
+
   test("positioned VML text boxes normalize every omitted axis offset before DrawingML conversion", async () => {
     const cases = [
       {

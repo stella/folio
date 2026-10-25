@@ -1474,23 +1474,20 @@ export function cloneWithXmlnsDeclarations(
   const prefixes = collectUsedNamespacePrefixes(element);
   const additions: Record<string, string> = {};
   const attributes = element.attributes ?? {};
-  for (const [name, value] of Object.entries(xmlnsDecls)) {
-    const prefix = name === "xmlns" ? "" : name.slice("xmlns:".length);
-    if (prefixes.has(prefix) && attributes[name] === undefined) {
-      additions[name] = value;
-    }
-  }
   for (const prefix of prefixes) {
     const name = `xmlns:${prefix}`;
-    if (
-      !prefix ||
-      attributes[name] !== undefined ||
-      additions[name] !== undefined ||
-      !isCanonicalNamespacePrefix(prefix)
-    ) {
+    const declaration = prefix === "" ? "xmlns" : name;
+    if (attributes[declaration] !== undefined || prefix === "xml") {
       continue;
     }
-    additions[name] = NAMESPACES[prefix];
+    const sourceBinding = resolveNamespaceUri(element.namespaceScope, prefix);
+    const inheritedBinding = xmlnsDecls[declaration];
+    const binding = sourceBinding ?? inheritedBinding;
+    if (binding !== undefined) {
+      additions[declaration] = binding;
+    } else if (isCanonicalNamespacePrefix(prefix)) {
+      additions[declaration] = NAMESPACES[prefix];
+    }
   }
   for (const _key in additions) {
     return cloneElement(element, {
