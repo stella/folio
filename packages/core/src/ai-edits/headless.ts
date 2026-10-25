@@ -153,6 +153,7 @@ import {
 import { schema, singletonManager } from "../prosemirror/schema";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
+import { collapseEmptyTextBoxHosts } from "../prosemirror/textBoxHostCollapse";
 import type { Comment } from "../types/content";
 import type {
   BlockContent,
@@ -3789,9 +3790,12 @@ export class FolioDocxReviewer {
 
   private setEditableStoryState(
     story: FolioEditableDocumentStoryHandle,
-    state: EditorState,
+    projected: EditorState,
   ): void {
     this.resolvedStoryExpectations.delete(editableStoryKey(story));
+    // A paragraph an edit left holding only text boxes is the box a reopened
+    // package projects it as.
+    const state = collapseEmptyTextBoxHosts(projected);
     if (story.type === "main") {
       this.state = state;
       return;

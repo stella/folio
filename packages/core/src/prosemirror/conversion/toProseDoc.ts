@@ -5393,7 +5393,7 @@ function convertParagraphWithTextBoxes(
  * copied, and a copy must not make a second claim on the same `w:p`; the
  * attribute remainder travels in the node's own `_preservedAttributes`.
  */
-function hostParagraphAttrs(
+export function hostParagraphAttrs(
   attrs: PMNode["attrs"],
 ): NonNullable<TextBoxAttrs["_docxHostParagraph"]> {
   const {
