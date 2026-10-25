@@ -117,6 +117,34 @@ if (!ENABLED) {
     });
   }
 
+  test("pinned #1811 seed 1988744118: an inserted list item does not repeat its anchor's page break", async () => {
+    await runFlowFile({
+      version: 1,
+      kind: "random",
+      generation: "targeted",
+      fixture:
+        "public-corpus:003e08fc366ccc3f36f621b32f4c897f4e42b00853d0311a6b56b3e36423e1d6",
+      mode: "tracked-changes",
+      seed: 1988744118,
+      steps: [
+        {
+          action: "core batch",
+          seed: 1101143660,
+          atomic: true,
+          operations: [
+            {
+              type: "insertAfterBlock",
+              blockId: "15BA2F55",
+              text: "Party invoice term written.",
+              numbering: { kind: "newList", format: "bullet" },
+            },
+          ],
+        },
+      ],
+      origin: "shrunk from random flow seed 1988744118",
+    });
+  });
+
   const READER_CASES = [
     {
       issue: 1366,
