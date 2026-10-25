@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 2043620338,
+  "title": "Deleting a joined block with a pending replacement removes its comment",
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2980009393,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "5E88C024",
+          "separator": " "
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "5E88C024",
+            "startOffset": 28,
+            "endOffset": 34,
+            "selectedTextHash": "haaxaim"
+          },
+          "replace": "updated"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3292139078,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 2043620338"
+}
