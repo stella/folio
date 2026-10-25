@@ -42,6 +42,7 @@ import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
 import {
+  parseCopyOriginMarker,
   parseMarkupRangeMarker,
   parseMoveBookmarkMarker,
 } from "./markupRangeMarker";
@@ -300,11 +301,19 @@ const linkedRangeMarker =
         return;
       case "commentRangeStart":
       case "commentRangeEnd":
+        push({
+          type,
+          ...parseMarkupRangeMarker(child),
+        });
+        return;
+      // As the paragraph parser reads them: a move range end carries the
+      // copy origin a pasted range recorded.
       case "moveFromRangeEnd":
       case "moveToRangeEnd":
         push({
           type,
           ...parseMarkupRangeMarker(child),
+          ...parseCopyOriginMarker(child),
         });
         return;
       default: {

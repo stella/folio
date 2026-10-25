@@ -300,3 +300,51 @@ test("unsupported and unknown-namespace hyperlink markup stays captured beside s
   expect(xml).toContain('<w:proofErr w:type="spellEnd"/>');
   expect(rangeFacts(await roundtrip(parsed))).toEqual(expectedFacts("moved"));
 });
+
+const moveMarkers = (document: Document, ends = false) =>
+  document.package.document.content.flatMap((paragraph) =>
+    paragraph.type === "paragraph"
+      ? inlineLeafSpans(paragraph.content).flatMap(({ node }) =>
+          node.type === "moveFromRangeEnd" ||
+          node.type === "moveToRangeEnd" ||
+          (!ends &&
+            (node.type === "moveFromRangeStart" ||
+              node.type === "moveToRangeStart"))
+            ? [node]
+            : [],
+        )
+      : [],
+  );
+
+test("hyperlink move ends retain their copy origin through the parser and the editor", async () => {
+  const parsed = await parseSource();
+  for (const end of moveMarkers(parsed, true))
+    Object.assign(end, { copyOriginAncestors: [0] });
+  const saved = await roundtrip(parsed);
+  const edited = fromProseDoc(toProseDoc(saved), saved, {
+    stylesheetSource: { type: "package" },
+  });
+  for (const document of [saved, edited, await roundtrip(edited)])
+    expect(
+      moveMarkers(document, true).map(({ type, copyOriginAncestors }) => ({
+        type,
+        copyOriginAncestors,
+      })),
+    ).toEqual([
+      { type: "moveFromRangeEnd", copyOriginAncestors: [0] },
+      { type: "moveToRangeEnd", copyOriginAncestors: [0] },
+    ]);
+});
+
+test("each save of a hyperlink move marker is a record of its own", async () => {
+  const parsed = await parseSource();
+  const doc = toProseDoc(parsed);
+  const save = () =>
+    fromProseDoc(doc, parsed, { stylesheetSource: { type: "package" } });
+  const first = moveMarkers(save());
+  expect(first).toHaveLength(4);
+  for (const marker of first) Object.assign(marker, { id: 99 });
+  const second = moveMarkers(save());
+  for (const marker of second) expect(first.includes(marker)).toBe(false);
+  expect(second.map(({ id }) => id)).toEqual([2, 2, 3, 3]);
+});

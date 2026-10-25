@@ -3935,7 +3935,10 @@ function extractParagraphContent(
     }
 
     if (node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME) {
-      const marker = expectMoveRangeBoundaryAttrs(node);
+      // Cloned for the model, as the range-anchor branch below clones its
+      // markers: the attrs hold this record for as long as the editor state
+      // does, and the rebuilt document must not share it.
+      const marker = { ...expectMoveRangeBoundaryAttrs(node) };
       const tracked = node.marks.some(
         (mark) =>
           mark.type.name === "insertion" || mark.type.name === "deletion",
