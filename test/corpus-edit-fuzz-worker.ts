@@ -11,6 +11,7 @@ import {
   toArrayBuffer,
 } from "./consumer-scenarios/support/documents.ts";
 import {
+  type AppliedOperation,
   coreBatch,
   type Operation,
   randomOperation,
@@ -176,7 +177,7 @@ const saveAndReopen = async (
 type SavedOutcomeArgs = {
   reopened: Awaited<ReturnType<typeof openReviewer>>;
   pre: Pre;
-  operation: Operation;
+  operation: AppliedOperation;
   applied: boolean;
   context: string;
 };
@@ -206,6 +207,9 @@ const runSteps = async (
     try {
       const pre = await capture(reviewer, mode);
       const batch = coreBatch([operation], mode);
+      const normalizedOperation = batch.operations.at(0);
+      if (normalizedOperation === undefined)
+        throw new Error("A one-operation batch has no normalized operation");
       let result: ReturnType<typeof reviewer.applyDocumentOperations>;
       try {
         result = reviewer.applyDocumentOperations(batch as never, {
@@ -238,7 +242,7 @@ const runSteps = async (
         const gaps = await assertSavedOutcome({
           reopened,
           pre,
-          operation,
+          operation: normalizedOperation,
           applied,
           context: `edit ${index}`,
         });

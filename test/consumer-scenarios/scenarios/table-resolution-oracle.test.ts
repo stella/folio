@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
+import { sequentialGroups } from "../support/batch-replay-order.ts";
 import { FIXTURES, openReviewer } from "../support/documents.ts";
-import { sequentialGroups } from "../support/metamorphic.ts";
 import {
   coreBatch,
   GENERATORS,
@@ -55,13 +55,13 @@ describe("table operation source coordinates", () => {
       const operation = GENERATORS[type]?.(reviewer.getContent(), random);
       if (!operation) continue;
       const pre = await capture(reviewer, "tracked-changes");
-      const result = reviewer.applyDocumentOperations(
-        coreBatch(
-          [{ ...operation, id: `op-${type}` }],
-          "tracked-changes",
-        ) as never,
-        { undefinedReferences: "refuse" },
+      const batch = coreBatch(
+        [{ ...operation, id: `op-${type}` }],
+        "tracked-changes",
       );
+      const result = reviewer.applyDocumentOperations(batch as never, {
+        undefinedReferences: "refuse",
+      });
       if (type !== "deleteTable") continue;
       assert.equal(result.applied.length, 1);
       const acceptedIds = new Set(pre.rows.map(({ id }) => id));
@@ -81,7 +81,7 @@ describe("table operation source coordinates", () => {
       await assertRequestedOutcome(
         reviewer,
         pre,
-        { applied: [operation] },
+        { applied: batch.operations },
         "table ownership seed 201",
       );
       return;
@@ -654,15 +654,15 @@ describe("table operation source coordinates", () => {
         },
       ];
       const pre = await capture(reviewer, mode);
-      const result = reviewer.applyDocumentOperations(
-        coreBatch(operations, mode) as never,
-        { undefinedReferences: "refuse" },
-      );
+      const batch = coreBatch(operations, mode);
+      const result = reviewer.applyDocumentOperations(batch as never, {
+        undefinedReferences: "refuse",
+      });
       assert.equal(result.applied.length, operations.length, mode);
       await assertRequestedOutcome(
         reviewer,
         pre,
-        { applied: operations },
+        { applied: batch.operations },
         `emptied row, ${mode}`,
       );
     }

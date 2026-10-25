@@ -2658,6 +2658,31 @@ const isBatchableParagraphInsertion = (
   );
 };
 
+const insertionWithLiveAnchor = (
+  item: ResolvedOperation,
+  tr: Transaction,
+): ResolvedOperation | null => {
+  if (
+    item.operation.type !== "insertAfterBlock" &&
+    item.operation.type !== "insertBeforeBlock"
+  ) {
+    panic("Only paragraph insertions have insertion anchors", {
+      operationId: item.operation.id,
+    });
+  }
+  const mapped = tr.mapping.mapResult(item.blockFrom, 1);
+  const anchor = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
+  const paraId: unknown = item.blockNode.attrs["paraId"];
+  if (
+    !anchor?.isTextblock ||
+    anchor.type !== item.blockNode.type ||
+    (typeof paraId === "string" && anchor.attrs["paraId"] !== paraId)
+  ) {
+    return null;
+  }
+  return { ...item, blockNode: anchor };
+};
+
 type RotateAddedFinalBreaksOptions = {
   tr: Transaction;
   /** Revision ids this batch minted, so marks it did not write are left alone. */
@@ -5198,46 +5223,49 @@ const applyFolioAIEditOperationsInternal = ({
     // Recheck every insertion against the live anchor, including insertions
     // sharing a gap. Earlier edits can delete its text or its containing row.
     const insertionState = tr;
-    const insertionRun = executionGroup.filter((candidate) => {
+    const insertionRun = executionGroup.flatMap((candidate) => {
       if (
-        !isSuggested ||
-        (candidate.operation.type !== "insertAfterBlock" &&
-          candidate.operation.type !== "insertBeforeBlock")
+        candidate.operation.type !== "insertAfterBlock" &&
+        candidate.operation.type !== "insertBeforeBlock"
       ) {
-        return true;
+        return [candidate];
       }
-      const mapped = insertionState.mapping.mapResult(candidate.blockFrom);
-      const block = mapped.deletedAcross
-        ? null
-        : insertionState.doc.nodeAt(mapped.pos);
-      const paraId: unknown = candidate.blockNode.attrs["paraId"];
-      if (
-        !block?.isTextblock ||
-        block.type !== candidate.blockNode.type ||
-        (typeof paraId === "string" && block.attrs["paraId"] !== paraId)
-      ) {
+      const liveCandidate = insertionWithLiveAnchor(candidate, insertionState);
+      if (!liveCandidate) {
+        if (!isSuggested) return [candidate];
         if (candidate.operation.moveId !== undefined) {
           refusedMoveIds.add(candidate.operation.moveId);
         }
-        skipped.push({ id: candidate.operation.id, reason: "pendingDeletion" });
-        return false;
+        skipped.push({
+          id: candidate.operation.id,
+          reason: isSuggested ? "pendingDeletion" : "missingBlock",
+        });
+        return [];
       }
-      const blockFrom = mapped.pos;
-      if (
-        !isPendingDeletion(
-          insertionState.doc,
-          blockFrom,
-          block,
-          buildCleanBlockText(block, blockFrom, {
-            fieldResults: "text",
-            noteReferences,
-          }).text,
-        )
-      ) {
-        return true;
+      if (isSuggested) {
+        const blockFrom = insertionState.mapping.map(candidate.blockFrom, 1);
+        if (
+          isPendingDeletion(
+            insertionState.doc,
+            blockFrom,
+            liveCandidate.blockNode,
+            buildCleanBlockText(liveCandidate.blockNode, blockFrom, {
+              fieldResults: "text",
+              noteReferences,
+            }).text,
+          )
+        ) {
+          if (candidate.operation.moveId !== undefined) {
+            refusedMoveIds.add(candidate.operation.moveId);
+          }
+          skipped.push({
+            id: candidate.operation.id,
+            reason: "pendingDeletion",
+          });
+          return [];
+        }
       }
-      skipped.push({ id: candidate.operation.id, reason: "pendingDeletion" });
-      return false;
+      return [liveCandidate];
     });
     if (insertionRun.length === 0) continue;
     const item = insertionRun.at(0);

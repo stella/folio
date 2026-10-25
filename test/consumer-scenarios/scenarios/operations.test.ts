@@ -69,6 +69,13 @@ const testPattern = (title: string): string =>
   `^${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`;
 
 describe("applyDocumentOperations", () => {
+  test("core batches add ids without dropping operation payload fields", () => {
+    const operation = { type: "custom", range: { start: 1, end: 2 } };
+    const batch = coreBatch([operation], "direct");
+
+    assert.deepEqual(batch.operations, [{ ...operation, id: "op-1" }]);
+  });
+
   for (const name of FIXTURE_NAMES) {
     for (const mode of MODES) {
       const known = KNOWN_FAILING_OPERATION_RUNS.find(
@@ -123,10 +130,10 @@ describe("applyDocumentOperations", () => {
           if (!operation) continue;
           const pre = await capture(reviewer, mode);
           // These are separate batches; keep their proposal ids distinct across the run.
-          const result = reviewer.applyDocumentOperations(
-            coreBatch([{ ...operation, id: `op-${type}` }], mode) as never,
-            { undefinedReferences: "refuse" },
-          );
+          const batch = coreBatch([{ ...operation, id: `op-${type}` }], mode);
+          const result = reviewer.applyDocumentOperations(batch as never, {
+            undefinedReferences: "refuse",
+          });
           const outcome =
             result.applied.length > 0
               ? "applied"
@@ -136,7 +143,7 @@ describe("applyDocumentOperations", () => {
           await assertRequestedOutcome(
             reviewer,
             pre,
-            { applied: result.applied.length > 0 ? [operation] : [] },
+            { applied: result.applied.length > 0 ? batch.operations : [] },
             `${name} / ${mode}: ${JSON.stringify(operation)}`,
           );
           assert.ok(

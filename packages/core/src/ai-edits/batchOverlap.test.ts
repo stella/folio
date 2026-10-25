@@ -7,9 +7,8 @@
  * one at a time — so no operation ever edits a block it did not name.
  *
  * The oracle applies the operations the batch applied, each in a batch of its
- * own and re-resolved against the document as it then stands: insertions
- * first, then comments and formatting (which move no position), then the rest
- * from the end of the document backwards, as the batch runs them.
+ * own and re-resolved against the document as it then stands, in the same
+ * canonical order the batch uses. Equal-gap insertions retain input order.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -17,6 +16,8 @@ import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
+import { sequentialGroups } from "../../../../test/consumer-scenarios/support/batch-replay-order.ts";
+import type { Row } from "../../../../test/consumer-scenarios/support/oracle.ts";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -43,7 +44,6 @@ import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyCha
 import { resolveStateStory } from "../prosemirror/markupViewProjection";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { ParagraphFormatting } from "../types/document";
-import { compareBatchTieOrder } from "./batch-claims";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import type {
@@ -323,59 +323,10 @@ type GeneratedOperation =
       block: number;
     };
 
-const INSERTIONS: ReadonlySet<GeneratedOperation["kind"]> = new Set([
-  "insertAfterBlock",
-  "insertBeforeBlock",
-]);
-const ANNOTATIONS: ReadonlySet<GeneratedOperation["kind"]> = new Set([
-  "formatRange",
-  "commentOnRange",
-  "commentOnBlock",
-]);
-
 const spanText = ({ block, first, last }: Span): string =>
   Array.from({ length: last - first + 1 }, (_, offset) =>
     token(block, first + offset),
   ).join(" ");
-
-/**
- * Where the batch places an operation, in the coordinates it resolved against:
- * `[block, 0, 0]` is the position before the block, `[block, 1, offset]` a
- * position in its text. The position after a block is the one before the next.
- */
-const placement = (operation: GeneratedOperation): [number, number, number] => {
-  const text = blockText(operation.block);
-  switch (operation.kind) {
-    case "replaceInBlock":
-    case "replaceRange":
-    case "formatRange":
-    case "commentOnRange":
-      return [
-        operation.block,
-        1,
-        text.indexOf(token(operation.block, operation.first)),
-      ];
-    case "splitBlock":
-      return [
-        operation.block,
-        1,
-        text.indexOf(token(operation.block, operation.before)) - 1,
-      ];
-    case "mergeBlockWithNext":
-    case "insertAfterBlock":
-      return [operation.block + 1, 0, 0];
-    case "setBlockParagraphProperties":
-    case "insertBeforeBlock":
-      return [operation.block, 0, 0];
-    default:
-      return [operation.block, 1, 0];
-  }
-};
-
-const comparePlacement = (
-  left: readonly [number, number, number],
-  right: readonly [number, number, number],
-): number => left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
 
 /**
  * The operation `generated` stands for, resolved against the reviewer's
@@ -638,69 +589,26 @@ const batchAgainstOneAtATime = async ({
       }
     }
   };
-  // Insertions sharing a gap keep their input order: that order is the
-  // batch's own contract, so the oracle states them together the same way.
-  applyAlone(
-    materializeAll(
-      applied.filter(({ operation }) => INSERTIONS.has(operation.kind)),
-    ),
+  const initialOperations = materializeAll(applied);
+  const entriesById = new Map(
+    applied.map((entry) => [`op${String(entry.index)}`, entry]),
   );
-  // Retiring the story's final break happens at batch completion, after the
-  // predecessor's admissible property edit. A separate delete call retires
-  // that mark immediately; replay those properties before completing deletion.
-  const deletedBlocks = new Set(
-    applied
-      .filter(({ operation }) => operation.kind === "deleteBlock")
-      .map(({ operation }) => operation.block),
-  );
-  let finalBreakCarrier = BLOCK_COUNT - 1;
-  while (finalBreakCarrier > 0 && deletedBlocks.has(finalBreakCarrier))
-    finalBreakCarrier--;
-  const insertsAfterLast = applied.some(
-    ({ operation }) =>
-      operation.kind === "insertAfterBlock" &&
-      operation.block === BLOCK_COUNT - 1,
-  );
-  const editsFinalBreakCarrier = applied.some(
-    ({ operation }) =>
-      operation.kind === "setBlockParagraphProperties" &&
-      operation.block === finalBreakCarrier,
-  );
-  const beforeFinalBreakRetirement = ({
-    operation,
-  }: {
-    operation: GeneratedOperation;
-  }) =>
-    mode === "tracked-changes" &&
-    editsFinalBreakCarrier &&
-    !insertsAfterLast &&
-    finalBreakCarrier < BLOCK_COUNT - 1 &&
-    operation.kind === "setBlockParagraphProperties" &&
-    operation.block >= finalBreakCarrier;
-  // Replay carrier and suffix property edits before retirement makes their
-  // revision pre-existing; coordinate ties follow the planner order below.
-  // Without a carrier edit, keep suffix edits after deletion: retirement would
-  // otherwise overwrite properties that the batch retains as its own edits.
-  const compareReplayOrder = (
-    left: { operation: GeneratedOperation; index: number },
-    right: { operation: GeneratedOperation; index: number },
-  ) =>
-    comparePlacement(placement(right.operation), placement(left.operation)) ||
-    compareBatchTieOrder(left.index, right.index);
-  const rest = [
-    ...applied.filter(({ operation }) => ANNOTATIONS.has(operation.kind)),
-    ...applied.filter(beforeFinalBreakRetirement).toSorted(compareReplayOrder),
-    ...applied
-      .filter(
-        (entry) =>
-          !INSERTIONS.has(entry.operation.kind) &&
-          !ANNOTATIONS.has(entry.operation.kind) &&
-          !beforeFinalBreakRetirement(entry),
-      )
-      .toSorted(compareReplayOrder),
-  ];
-  for (const entry of rest) {
-    applyAlone(materializeAll([entry]));
+  const replayRows: Row[] = blockIds.map((id, index) => ({
+    id,
+    text: blockText(index),
+    kind: "paragraph",
+  }));
+  for (const group of sequentialGroups({
+    applied: initialOperations,
+    preRows: replayRows,
+    mode,
+  })) {
+    const entries = group.flatMap((operation) => {
+      const entry = entriesById.get(operation.id);
+      if (!entry) throw new Error(`No generated operation for ${operation.id}`);
+      return [entry];
+    });
+    applyAlone(materializeAll(entries));
   }
 
   // A comment's reference anchor is placed after its range, where a second
@@ -768,7 +676,7 @@ const batchAgainstOneAtATime = async ({
   // last paragraph the batch keeps end in the deleted one's paragraph, whose
   // mark is the one that stays: that paragraph goes by the deleted one's id.
   const lastIndex = BLOCK_COUNT - 1;
-  if (mode !== "direct" && deletes(lastIndex) && !insertsAfterLast) {
+  if (mode !== "direct" && deletes(lastIndex) && !rotatesFinalBreak) {
     let kept = lastIndex - 1;
     while (kept >= 0 && deletes(kept)) kept--;
     if (kept >= 0) named.add(kept);
@@ -869,6 +777,37 @@ describe("a batch of two operations on one block or its neighbours", () => {
       }
       expect(problems).toEqual([]);
     }, 240_000);
+  }
+});
+
+describe("a tied insertion and paragraph-property write beside a merge", () => {
+  const orders: readonly (readonly GeneratedOperation[])[] = [
+    [
+      { kind: "insertBeforeBlock", block: 3 },
+      { kind: "mergeBlockWithNext", block: 0 },
+      {
+        kind: "setBlockParagraphProperties",
+        block: 3,
+        properties: { alignment: "center" },
+      },
+    ],
+    [
+      {
+        kind: "setBlockParagraphProperties",
+        block: 3,
+        properties: { alignment: "center" },
+      },
+      { kind: "mergeBlockWithNext", block: 0 },
+      { kind: "insertBeforeBlock", block: 3 },
+    ],
+  ];
+
+  for (const mode of MODES) {
+    test(`matches one-at-a-time execution for both tie orders (${mode})`, async () => {
+      for (const generated of orders) {
+        expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
+      }
+    });
   }
 });
 

@@ -15,6 +15,7 @@ import {
   hashFolioAIBlockText,
 } from "@stll/folio-core/server";
 
+import { sequentialGroups } from "../support/batch-replay-order.ts";
 import {
   COLLISION_FIXTURES,
   FIXTURES,
@@ -34,6 +35,7 @@ import {
 } from "../support/known-issues.ts";
 import { captureLinks, comparePreservedLinks } from "../support/link-oracle.ts";
 import {
+  type AppliedOperation,
   type Block,
   COLLISIONS,
   type Mode,
@@ -86,6 +88,94 @@ describe("the requested-outcome oracle", () => {
     return model;
   };
 
+  test("range formatting exempts only the paragraph it changed from style checks", () => {
+    const target = row("target", "😀xx", {
+      styleId: "Normal",
+      previewRuns: [{ text: "😀xx", bold: false }],
+    });
+    const heading = row("heading", "Heading", {
+      kind: "heading",
+      headingLevel: 2,
+      styleId: "Heading2",
+      previewRuns: [{ text: "Heading", bold: false }],
+    });
+    const formatted = modelOf([target, heading]);
+    formatted.mode = "tracked-changes";
+    expectOperation(formatted, {
+      type: "formatRange",
+      range: {
+        type: "textRange",
+        story: "main",
+        blockId: target.id,
+        startOffset: 0,
+        endOffset: 2,
+      },
+      formatting: { bold: true },
+    });
+    expectOperation(formatted, {
+      type: "setBlockParagraphProperties",
+      blockId: target.id,
+      properties: { styleId: "Heading2" },
+    });
+    assert.deepEqual(
+      compareWithModel(formatted, [
+        row("target", "😀xx", {
+          kind: "heading",
+          headingLevel: 2,
+          styleId: "Heading2",
+          previewRuns: [
+            { text: "😀", bold: true, directFormatting: { bold: true } },
+            { text: "xx", bold: false },
+          ],
+        }),
+        heading,
+      ]),
+      [],
+    );
+
+    const other = row("other", "x", {
+      styleId: "Normal",
+      previewRuns: [{ text: "x", bold: false }],
+    });
+    const unrelatedFormat = modelOf([target, other, heading]);
+    unrelatedFormat.mode = "tracked-changes";
+    expectOperation(unrelatedFormat, {
+      type: "formatRange",
+      range: {
+        type: "textRange",
+        story: "main",
+        blockId: other.id,
+        startOffset: 0,
+        endOffset: 1,
+      },
+      formatting: { bold: true },
+    });
+    expectOperation(unrelatedFormat, {
+      type: "setBlockParagraphProperties",
+      blockId: target.id,
+      properties: { styleId: "Heading2" },
+    });
+    assert.ok(
+      compareWithModel(unrelatedFormat, [
+        row("target", "😀xx", {
+          kind: "heading",
+          headingLevel: 2,
+          styleId: "Heading2",
+          previewRuns: [{ text: "😀xx", bold: true }],
+        }),
+        row("other", "x", {
+          styleId: "Normal",
+          previewRuns: [
+            { text: "x", bold: true, directFormatting: { bold: true } },
+          ],
+        }),
+        heading,
+      ]).some((problem) =>
+        problem.includes("effective bold differs from style Heading2"),
+      ),
+    );
+  });
+
   test("notices a payload the engine dropped or put on the wrong block", () => {
     const replace = {
       type: "replaceInBlock",
@@ -135,6 +225,391 @@ describe("the requested-outcome oracle", () => {
     assert.match(
       compareWithModel(expecting([restyle]), before).join("\n"),
       /styleId is undefined, expected "Heading2"/u,
+    );
+  });
+
+  test("inherits list properties from the live canonical insertion anchor", () => {
+    const beforeRows = [row("anchor", "Anchor."), row("other", "Other.")];
+    const properties = {
+      id: "properties",
+      type: "setBlockParagraphProperties",
+      blockId: "anchor",
+      properties: {
+        alignment: "center",
+        numbering: { kind: "newList", format: "numbered" },
+      },
+    };
+    const insertion = {
+      id: "insert",
+      type: "insertBeforeBlock",
+      blockId: "anchor",
+      text: "Inserted.",
+    };
+    const check = (operations: AppliedOperation[], actual: Row[]) => {
+      const model = modelOf(beforeRows);
+      for (const group of sequentialGroups({
+        applied: operations,
+        preRows: beforeRows,
+        mode: "direct",
+      })) {
+        for (const operation of group) expectOperation(model, operation);
+      }
+      return compareWithModel(model, actual);
+    };
+    const numbered = { numId: 100, level: 0 };
+
+    assert.deepEqual(
+      check(
+        [properties, insertion],
+        [
+          row("inserted", "Inserted.", { kind: "paragraph" }),
+          row("anchor", "Anchor.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: numbered,
+            displayLabel: "1.",
+          }),
+          beforeRows[1]!,
+        ],
+      ),
+      [],
+    );
+    assert.deepEqual(
+      check(
+        [insertion, properties],
+        [
+          row("inserted", "Inserted.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: numbered,
+          }),
+          row("anchor", "Anchor.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: numbered,
+            displayLabel: "1.",
+          }),
+          beforeRows[1]!,
+        ],
+      ),
+      [],
+    );
+
+    const withoutInheritance = {
+      ...insertion,
+      inheritFormatting: false,
+    };
+    const explicitNone = {
+      ...insertion,
+      numbering: { kind: "none" },
+    };
+    assert.deepEqual(
+      check(
+        [withoutInheritance, properties],
+        [
+          row("inserted", "Inserted.", { kind: "paragraph" }),
+          row("anchor", "Anchor.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: numbered,
+            displayLabel: "1.",
+          }),
+          beforeRows[1]!,
+        ],
+      ),
+      [],
+    );
+    assert.deepEqual(
+      check(
+        [explicitNone, properties],
+        [
+          row("inserted", "Inserted.", {
+            kind: "paragraph",
+            directAlignment: "center",
+          }),
+          row("anchor", "Anchor.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: numbered,
+            displayLabel: "1.",
+          }),
+          beforeRows[1]!,
+        ],
+      ),
+      [],
+    );
+    assert.match(
+      check(
+        [insertion, properties],
+        [
+          row("inserted", "Inserted.", { kind: "paragraph" }),
+          row("anchor", "Anchor.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: numbered,
+            displayLabel: "1.",
+          }),
+          beforeRows[1]!,
+        ],
+      ).join("\n"),
+      /list reference|kind is/u,
+    );
+
+    const laterProperties = {
+      ...properties,
+      id: "later-properties",
+    };
+    assert.deepEqual(
+      check(
+        [laterProperties, insertion, properties],
+        [
+          row("inserted", "Inserted.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: { numId: 101, level: 0 },
+          }),
+          row("anchor", "Anchor.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: { numId: 102, level: 0 },
+            displayLabel: "1.",
+          }),
+          beforeRows[1]!,
+        ],
+      ),
+      [],
+    );
+    assert.match(
+      check(
+        [laterProperties, insertion, properties],
+        [
+          row("inserted", "Inserted.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: { numId: 102, level: 0 },
+          }),
+          row("anchor", "Anchor.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: { numId: 102, level: 0 },
+            displayLabel: "1.",
+          }),
+          beforeRows[1]!,
+        ],
+      ).join("\n"),
+      /aliases another modeled list reference/u,
+    );
+    assert.deepEqual(
+      check(
+        [properties, { ...insertion, blockId: "other" }],
+        [
+          row("anchor", "Anchor.", {
+            kind: "listItem",
+            listLevel: 0,
+            directAlignment: "center",
+            listReference: numbered,
+            displayLabel: "1.",
+          }),
+          row("inserted", "Inserted.", { kind: "paragraph" }),
+          row("other", "Other."),
+        ],
+      ),
+      [],
+    );
+  });
+
+  test("keeps direct numbering through restyles and updates inherited numbering at execution time", () => {
+    const makeModel = (styleId: string) => {
+      const model = modelOf([
+        row("anchor", "Anchor.", {
+          styleId,
+          ...(styleId === "ListStyle"
+            ? {
+                kind: "listItem",
+                listLevel: 0,
+                listReference: { numId: 40, level: 0 },
+              }
+            : {}),
+          statedNumbering: { kind: "inherit" },
+        }),
+      ]);
+      model.numberingFacts = {
+        styles: new Map([
+          ["ListStyle", { kind: "reference", numId: 40, ilvl: 0 }],
+          ["PlainStyle", undefined],
+        ]),
+        direct: new Map([
+          ["anchor", undefined],
+          ["other", { kind: "none" }],
+        ]),
+        markerLevels: new Map([[40, new Set([0])]]),
+      };
+      return model;
+    };
+    // Operations at one position run in reverse input order, so the batch is
+    // stated back to front to name the order they execute in.
+    const applyOrdered = (
+      model: ReturnType<typeof modelOf>,
+      inExecutionOrder: AppliedOperation[],
+    ) => {
+      for (const group of sequentialGroups({
+        applied: inExecutionOrder.toReversed(),
+        preRows: [row("anchor", "Anchor.")],
+        mode: "direct",
+      })) {
+        for (const operation of group) expectOperation(model, operation);
+      }
+      return model;
+    };
+    const newList = {
+      id: "new-list",
+      type: "setBlockParagraphProperties",
+      blockId: "anchor",
+      properties: { numbering: { kind: "newList", format: "numbered" } },
+    };
+    const restyle = {
+      id: "restyle",
+      type: "setBlockParagraphProperties",
+      blockId: "anchor",
+      properties: { styleId: "PlainStyle" },
+    };
+    const insert = {
+      id: "insert",
+      type: "insertBeforeBlock",
+      blockId: "anchor",
+      text: "Inserted.",
+    };
+    const directFirst = applyOrdered(makeModel("PlainStyle"), [
+      newList,
+      restyle,
+      insert,
+    ]);
+    assert.deepEqual(
+      compareWithModel(directFirst, [
+        row("inserted", "Inserted.", {
+          kind: "listItem",
+          styleId: "PlainStyle",
+          listLevel: 0,
+          listReference: { numId: 100, level: 0 },
+        }),
+        row("anchor", "Anchor.", {
+          kind: "listItem",
+          styleId: "PlainStyle",
+          listLevel: 0,
+          listReference: { numId: 100, level: 0 },
+        }),
+      ]),
+      [],
+    );
+    const insertFirst = applyOrdered(makeModel("PlainStyle"), [
+      insert,
+      restyle,
+      newList,
+    ]);
+    assert.deepEqual(
+      compareWithModel(insertFirst, [
+        row("inserted", "Inserted.", {
+          kind: "paragraph",
+          styleId: "PlainStyle",
+        }),
+        row("anchor", "Anchor.", {
+          kind: "listItem",
+          styleId: "PlainStyle",
+          listLevel: 0,
+          listReference: { numId: 100, level: 0 },
+        }),
+      ]),
+      [],
+    );
+
+    const styleDerived = applyOrdered(makeModel("ListStyle"), [
+      {
+        ...restyle,
+        properties: { styleId: "PlainStyle" },
+      },
+      insert,
+    ]);
+    assert.deepEqual(
+      compareWithModel(styleDerived, [
+        row("inserted", "Inserted.", {
+          kind: "paragraph",
+          styleId: "PlainStyle",
+        }),
+        row("anchor", "Anchor.", {
+          kind: "paragraph",
+          styleId: "PlainStyle",
+        }),
+      ]),
+      [],
+    );
+
+    const explicitNone = applyOrdered(makeModel("ListStyle"), [
+      {
+        ...newList,
+        properties: { numbering: { kind: "none" } },
+      },
+      {
+        ...restyle,
+        properties: { styleId: "ListStyle" },
+      },
+      insert,
+    ]);
+    assert.deepEqual(
+      compareWithModel(explicitNone, [
+        row("inserted", "Inserted.", {
+          kind: "paragraph",
+          styleId: "ListStyle",
+        }),
+        row("anchor", "Anchor.", {
+          kind: "paragraph",
+          styleId: "ListStyle",
+        }),
+      ]),
+      [],
+    );
+  });
+
+  test("inherits from the named cell paragraph, not its table placement host", () => {
+    const host = row("host", "Host.", {
+      table: location(0),
+      directAlignment: "right",
+    });
+    const named = row("named", "Named.", {
+      table: location(1),
+      directAlignment: "center",
+    });
+    const model = modelOf([host, named]);
+    expectOperation(model, {
+      type: "insertBeforeBlock",
+      blockId: named.id,
+      text: "Inserted.",
+    });
+
+    assert.deepEqual(
+      compareWithModel(model, [
+        row("inserted", "Inserted.", { directAlignment: "center" }),
+        host,
+        named,
+      ]),
+      [],
+    );
+    assert.match(
+      compareWithModel(model, [
+        row("inserted", "Inserted.", { directAlignment: "right" }),
+        host,
+        named,
+      ]).join("\n"),
+      /directAlignment is "right", expected "center"/u,
     );
   });
 

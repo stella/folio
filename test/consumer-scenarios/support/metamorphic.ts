@@ -21,11 +21,9 @@
  *   (blocks, comments and changes, ids and dates included).
  * - `batchSequential`: a batch leaves what its applied operations leave one
  *   at a time, with pre-batch anchors mapped through earlier operations, in
- *   the order the batch contract gives (packages/core/src/ai-edits/
- *   batchOverlap.test.ts): annotations first, then insertions and other
- *   non-column operations together from right to left, then table-column
- *   edits in source-grid order
- *   (table and column descending, insertions before deletions at ties).
+ *   the order `orderBatchOperations` gives. Insertions inherit paragraph
+ *   properties current when their canonical execution group runs; their
+ *   stable target identity still comes from the pre-state.
  * - `readerStability`: after every save, the live reviewer and the reopened
  *   one give the same `getContent()`, bridge snapshot, `toMarkdown`,
  *   `getChanges()` and `getComments()`.
@@ -45,21 +43,15 @@ import assert from "node:assert/strict";
 import { inflateRawSync } from "node:zlib";
 
 import { validateDocxPackage } from "@stll/docx-core";
-import {
-  type BatchOrderAddress,
-  contentRank,
-  groupInsertionRuns,
-  orderBatchOperations,
-} from "@stll/docx-core/ops";
 import { createReviewerBridge } from "@stll/folio-agents";
 import { toMarkdown } from "@stll/folio-core/markdown";
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-  type FolioDocumentOperation,
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
+import { sequentialGroups } from "./batch-replay-order.ts";
 import { openReviewer } from "./documents.ts";
 import { projectContentPair, projectSnapshotIdentities } from "./identity.ts";
 import type { Finding } from "./known-issues.ts";
@@ -437,16 +429,6 @@ export const partDifference = (
 // Batch ≡ one at a time
 // ---------------------------------------------------------------------------
 
-const INSERTIONS = new Set([
-  "insertAfterBlock",
-  "insertBeforeBlock",
-  "insertTable",
-]);
-const ANNOTATIONS = new Set([
-  "formatRange",
-  "commentOnRange",
-  "commentOnBlock",
-]);
 const RANGED = new Set(["replaceRange", "formatRange", "commentOnRange"]);
 
 type Handle = { blockId: string; startOffset: number; endOffset: number };
@@ -602,232 +584,6 @@ export const restate = (
       return null;
   }
   return restated;
-};
-
-/** Where the batch places an operation, in the pre-state: [block, inside, offset]. */
-const placement = (
-  operation: AnyOperation,
-  preRows: readonly Row[],
-): [number, number, number] => {
-  const index = preRows.findIndex((row) => row.id === blockIdOf(operation));
-  const text = preRows[index]?.text ?? "";
-  const handle = handleOf(operation);
-  if (handle) return [index, 1, handle.startOffset];
-  switch (operation.type) {
-    case "replaceInBlock":
-      return [index, 1, Math.max(0, text.indexOf(String(operation["find"])))];
-    case "splitBlock":
-      return [index, 1, Number(operation["offset"])];
-    case "mergeBlockWithNext":
-    case "insertAfterBlock":
-    case "insertTable":
-      return [index + 1, 0, 0];
-    case "setBlockParagraphProperties":
-    case "insertBeforeBlock":
-      return [index, 0, 0];
-    default:
-      return [index, 1, 0];
-  }
-};
-
-const PARAGRAPH_PROPERTY_REPLAY = {
-  replaceInBlock: "other",
-  replaceRange: "other",
-  commentOnRange: "other",
-  formatRange: "other",
-  insertAfterBlock: "other",
-  insertBeforeBlock: "other",
-  replaceBlock: "restyle",
-  deleteBlock: "other",
-  splitBlock: "other",
-  mergeBlockWithNext: "other",
-  setBlockParagraphProperties: "patch",
-  insertTable: "other",
-  deleteTable: "other",
-  commentOnBlock: "other",
-  insertSignatureTable: "other",
-  insertTableRow: "other",
-  deleteTableRow: "other",
-  insertTableColumn: "other",
-  deleteTableColumn: "other",
-  mergeTableCells: "other",
-  splitTableCell: "other",
-} as const satisfies Record<
-  FolioDocumentOperation["type"],
-  "patch" | "restyle" | "other"
->;
-
-const isOperationType = (
-  type: string,
-): type is FolioDocumentOperation["type"] =>
-  Object.hasOwn(PARAGRAPH_PROPERTY_REPLAY, type);
-
-type SequentialGroupsOptions = {
-  applied: readonly AnyOperation[];
-  preRows: readonly Row[];
-  mode: Mode;
-};
-
-/** The one-at-a-time groups, in the batch contract's order. */
-export const sequentialGroups = ({
-  applied,
-  preRows,
-  mode,
-}: SequentialGroupsOptions): AnyOperation[][] => {
-  const indexed = applied.map((operation, index) => ({ operation, index }));
-  const deleted = new Set(
-    applied
-      .filter((operation) => operation.type === "deleteBlock")
-      .map(blockIdOf),
-  );
-  const containers = new Map<string, Row[]>();
-  for (const row of preRows) {
-    const key = row.table
-      ? `${row.table.tableIndex}:${row.table.rowIndex}:${row.table.cellIndex}`
-      : "story";
-    const rows = containers.get(key) ?? [];
-    rows.push(row);
-    containers.set(key, rows);
-  }
-  const retiringCarriers = new Set<string>();
-  for (const [container, rows] of containers) {
-    const last = rows.at(-1);
-    if (!last || (container === "story" && last !== preRows.at(-1))) continue;
-    const appended = applied.some(
-      (operation) =>
-        operation.type === "insertAfterBlock" &&
-        blockIdOf(operation) === last.id,
-    );
-    if (appended || !deleted.has(last.id)) continue;
-    const carrier = rows.findLast((row) => !deleted.has(row.id));
-    if (carrier) retiringCarriers.add(carrier.id);
-  }
-  const beforeFinalBreakRetirement = (operation: AnyOperation): boolean => {
-    if (!isOperationType(operation.type)) {
-      throw new Error(`Sequential replay has no policy for ${operation.type}`);
-    }
-    if (
-      mode !== "tracked-changes" ||
-      !retiringCarriers.has(blockIdOf(operation) ?? "")
-    ) {
-      return false;
-    }
-    const disposition = PARAGRAPH_PROPERTY_REPLAY[operation.type];
-    switch (disposition) {
-      case "patch":
-        return true;
-      case "restyle":
-        return (
-          operation["styleId"] !== undefined &&
-          operation["styleId"] !==
-            preRows.find((row) => row.id === blockIdOf(operation))?.styleId
-        );
-      case "other":
-        return false;
-      default: {
-        const unhandled: never = disposition;
-        throw new Error(
-          `Unhandled paragraph property replay policy: ${unhandled}`,
-        );
-      }
-    }
-  };
-  const earlyProperties = applied.filter(beforeFinalBreakRetirement);
-  const earlyIds = new Set(earlyProperties.map(({ id }) => id));
-  const isColumnEdit = (operation: AnyOperation): boolean =>
-    operation.type === "insertTableColumn" ||
-    operation.type === "deleteTableColumn";
-  const deletedSplitTargets = new Set(
-    applied
-      .filter(
-        (operation) =>
-          mode === "tracked-changes" &&
-          operation.type === "deleteBlock" &&
-          applied.some(
-            (candidate) =>
-              candidate.type === "insertTable" &&
-              candidate["position"] !== "before" &&
-              blockIdOf(candidate) === blockIdOf(operation),
-          ),
-      )
-      .map(blockIdOf),
-  );
-  const columnLocation = (operation: AnyOperation): [number, number] => {
-    const targetId = blockIdOf(operation);
-    const target = preRows.find((row) => row.id === targetId);
-    if (!target?.table)
-      throw new Error(
-        `Applied ${operation.type} anchor ${targetId} has no source table.`,
-      );
-    const sourceColumn = target.table.gridColumnIndex;
-    const column =
-      operation.type === "insertTableColumn" &&
-      operation["position"] !== "before"
-        ? sourceColumn + target.table.columnSpan
-        : sourceColumn;
-    return [target.table.tableIndex, column];
-  };
-  const ordered = orderBatchOperations(
-    indexed.filter(
-      ({ operation }) =>
-        !ANNOTATIONS.has(operation.type) && !earlyIds.has(operation.id),
-    ),
-    ({ operation, index }): BatchOrderAddress => {
-      if (isColumnEdit(operation)) {
-        const [tablePosition, columnIndex] = columnLocation(operation);
-        return {
-          type: "column",
-          tablePosition,
-          columnIndex,
-          insertion: operation.type === "insertTableColumn",
-          inputIndex: index,
-        };
-      }
-      const [block, inside, offset] = placement(operation, preRows);
-      const hasDeletedSplit = deletedSplitTargets.has(blockIdOf(operation));
-      const position =
-        hasDeletedSplit && operation.type === "deleteBlock"
-          ? (block + 1) * 1_000_000_000
-          : block * 1_000_000_000 + inside * 100_000_000 + offset;
-      return {
-        type: "content",
-        position,
-        rank: contentRank(operation, { hasDeletedSplit }),
-        inputIndex: index,
-      };
-    },
-  );
-  const rest = ordered.filter(({ operation }) => !isColumnEdit(operation));
-  const columns = ordered.filter(({ operation }) => isColumnEdit(operation));
-  const inputOrder = new Map(applied.map(({ id }, index) => [id, index]));
-  const groups = groupInsertionRuns(
-    rest.map(({ operation }) => operation),
-    (operation) => {
-      if (!INSERTIONS.has(operation.type)) return null;
-      const [block, inside, offset] = placement(operation, preRows);
-      return block * 1_000_000_000 + inside * 100_000_000 + offset;
-    },
-  ).map((group) =>
-    group.toSorted(
-      (left, right) =>
-        (inputOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
-        (inputOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
-    ),
-  );
-  return [
-    ...applied
-      .filter((operation) => ANNOTATIONS.has(operation.type))
-      .map((one) => [one]),
-    // A tracked batch retires final breaks only after admissible property edits.
-    // Separate deletions retire them immediately, so replay those edits first.
-    ...earlyProperties.map((one) => [one]),
-    // Insertions participate in the same right-to-left sweep as the other
-    // operations. Only insertions at one gap stay together: applying every
-    // insertion first can change which pending paragraph mark a later
-    // merge or replacement owns. Within a gap the batch preserves input order.
-    ...groups,
-    ...columns.map(({ operation }) => [operation]),
-  ];
 };
 
 const batchOf = (
