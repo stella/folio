@@ -1,7 +1,18 @@
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { FolioAIBlock } from "./types";
 
-const IDENTITY_BLOCK_ATTRS = new Set(["paraId", "textId"]);
+/**
+ * What a paragraph's copy must not claim: its ids, and what its source
+ * authored once (the editing sessions its `w:rsid*` attributes name, its
+ * bookmark boundaries). A save writes those on one record only, the first in
+ * document order, so a copy placed before its source would take them from it.
+ */
+const IDENTITY_BLOCK_ATTRS = new Set([
+  "paraId",
+  "textId",
+  "_preservedAttributes",
+  "bookmarks",
+]);
 
 /** Resolve explicit snapshot provenance, falling back to the legacy id-shape convention. */
 export const folioAIBlockIdStability = ({

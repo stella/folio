@@ -1,0 +1,7 @@
+{
+  "seed": 787497590,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "rejecting a tracked split inside a link agrees with its save"
+}

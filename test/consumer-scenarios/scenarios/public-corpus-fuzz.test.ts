@@ -81,6 +81,42 @@ if (!ENABLED) {
     });
   });
 
+  for (const [title, operation] of [
+    [
+      "inserting before a paragraph keeps its editing sessions on it",
+      {
+        type: "insertBeforeBlock",
+        blockId: "441E8208",
+        text: "Invoice schedule delivery party warranty party buyer.",
+      },
+    ],
+    [
+      "rejecting a split agrees with its save",
+      { type: "splitBlock", blockId: "46227DB8", offset: 16 },
+    ],
+  ] as const) {
+    test(`pinned #1762 seed 841387651: ${title}`, async () => {
+      await runFlowFile({
+        version: 1,
+        kind: "random",
+        generation: "targeted",
+        fixture:
+          "public-corpus:00e76a5f41aec4c76133b89312337952016bc73ff12b37c29d5aa07026c35d51",
+        mode: "tracked-changes",
+        seed: 841387651,
+        steps: [
+          {
+            action: "core batch",
+            seed: 2353247479,
+            atomic: true,
+            operations: [operation],
+          },
+        ],
+        origin: "shrunk from random flow seed 841387651",
+      });
+    });
+  }
+
   const READER_CASES = [
     {
       issue: 1366,
