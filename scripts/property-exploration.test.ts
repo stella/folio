@@ -1,4 +1,11 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import {
+  afterEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  spyOn,
+  test,
+} from "bun:test";
 import fc from "fast-check";
 /**
  * Exploration reports (test/property-exploration.ts): under pull request and
@@ -24,6 +31,8 @@ import {
 import { extractFailureMarkers } from "./failure-fingerprints";
 import { blockingFindings, propertyReplays } from "./fuzz-ejection";
 import { parseFailureRecord, readFindings } from "./fuzz-failure-issues";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const FILE = "scripts/property-exploration.test.ts";
 
@@ -133,53 +142,47 @@ describe("which failures are exploration", () => {
 });
 
 describe("report mode", () => {
-  test(
-    "a generated failure is logged, recorded and passes",
-    () => {
-      const directory = reportingCi();
-      const lines = logged(() => {
-        assertProperty(
-          fc.property(fc.nat(), (value) => value < 10),
-          { id: "generated failure reports", numRuns: 200 },
-        );
-      });
-      const markers = extractFailureMarkers(lines.join("\n"));
-      expect(markers).toHaveLength(1);
-      expect(markers[0]).toMatchObject({
-        test: `${FILE}::generated failure reports`,
-        exploration: true,
-      });
-      expect(
-        lines.some((line) =>
-          line.startsWith("::warning title=Fuzz exploration finding::"),
-        ),
-      ).toBe(true);
-      const property = lines.find((line) =>
-        line.startsWith("PROPERTY_FAILURE "),
+  test("a generated failure is logged, recorded and passes", () => {
+    const directory = reportingCi();
+    const lines = logged(() => {
+      assertProperty(
+        fc.property(fc.nat(), (value) => value < 10),
+        { id: "generated failure reports", numRuns: 200 },
       );
-      expect(
-        JSON.parse((property as string).slice("PROPERTY_FAILURE ".length)),
-      ).toMatchObject({ exploration: true, pinned: false });
-      const records = readdirSync(directory).filter(
-        (file) => !file.endsWith(".flow.json"),
-      );
-      expect(records).toHaveLength(1);
-      const record = parseFailureRecord(
-        JSON.parse(
-          readFileSync(path.join(directory, records[0] as string), "utf8"),
-        ),
-      );
-      expect(record?.marker).toMatchObject({
-        fingerprint: markers[0]?.fingerprint,
-        exploration: true,
-      });
-      // The filer reads the record; a merge-group replay leaves it out.
-      const findings = readFindings([], [directory]);
-      expect(findings).toHaveLength(1);
-      expect(blockingFindings(findings)).toEqual([]);
-    },
-    propertyTestTimeout(5_000),
-  );
+    });
+    const markers = extractFailureMarkers(lines.join("\n"));
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toMatchObject({
+      test: `${FILE}::generated failure reports`,
+      exploration: true,
+    });
+    expect(
+      lines.some((line) =>
+        line.startsWith("::warning title=Fuzz exploration finding::"),
+      ),
+    ).toBe(true);
+    const property = lines.find((line) => line.startsWith("PROPERTY_FAILURE "));
+    expect(
+      JSON.parse((property as string).slice("PROPERTY_FAILURE ".length)),
+    ).toMatchObject({ exploration: true, pinned: false });
+    const records = readdirSync(directory).filter(
+      (file) => !file.endsWith(".flow.json"),
+    );
+    expect(records).toHaveLength(1);
+    const record = parseFailureRecord(
+      JSON.parse(
+        readFileSync(path.join(directory, records[0] as string), "utf8"),
+      ),
+    );
+    expect(record?.marker).toMatchObject({
+      fingerprint: markers[0]?.fingerprint,
+      exploration: true,
+    });
+    // The filer reads the record; a merge-group replay leaves it out.
+    const findings = readFindings([], [directory]);
+    expect(findings).toHaveLength(1);
+    expect(blockingFindings(findings)).toEqual([]);
+  });
 
   test("a caller seed, PROPERTY_TEST_SEED or an example still fails", () => {
     reportingCi();

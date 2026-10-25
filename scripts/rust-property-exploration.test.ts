@@ -21,23 +21,23 @@ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 `;
 
 const failing = (
-  test: string,
+  name: string,
   output: string,
 ) => `     Running tests/property_styles.rs (target/debug/deps/property_styles-3c4d)
 
 running 2 tests
-test ${test} ... FAILED
+test ${name} ... FAILED
 test plain ... ok
 
 failures:
 
----- ${test} stdout ----
+---- ${name} stdout ----
 ${output}
 note: run with \`RUST_BACKTRACE=1\` environment variable to display a backtrace
 
 
 failures:
-    ${test}
+    ${name}
 
 test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
 
