@@ -54,9 +54,11 @@ import type { StyleMap } from "./styleParser";
 import {
   findChildren,
   getAttribute,
+  getAttributeByNamespaceUri,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
   parseOnOffAttribute,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -307,8 +309,15 @@ export const HYPERLINK_CHILD_HANDLERS = {
       "w",
       "commentReference",
     )) {
-      const commentId = parseNumericAttribute(commentReference, "w", "id");
-      if (commentId !== undefined) {
+      const commentId = Number.parseInt(
+        getAttributeByNamespaceUri(
+          commentReference,
+          WORDPROCESSINGML_NAMESPACE_URIS,
+          "id",
+        ) ?? "",
+        10,
+      );
+      if (Number.isFinite(commentId)) {
         push({
           type: "commentReference",
           id: commentId,
