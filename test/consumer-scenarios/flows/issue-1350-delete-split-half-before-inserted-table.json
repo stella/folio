@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "direct",
+  "seed": 7977843,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3543227075,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "31617F9A",
+          "offset": 6
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2087732144,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "31617F9A",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3471709578,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "insertAfterBlock",
+    "deleteBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow"
+  ],
+  "origin": "shrunk from collisions flow seed 7977843",
+  "title": "PINNED #1350, reported seed 7977843: deleting a split half before a pending inserted table retracts its break past the table, directly as tracked"
+}

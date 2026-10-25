@@ -401,6 +401,11 @@ export const collectPairedBookmarkIds = (
         case "bookmarkEnd":
           countBoundary(child.id, "end");
           break;
+        case "commentRangeStart":
+        case "commentRangeEnd":
+          break;
+        case "commentReference":
+          break;
         case "run":
           visitRun(child);
           break;
@@ -1188,6 +1193,7 @@ function convertParagraph(
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
           runScope,
+          openCommentIds,
         });
         if (linkNodes.length === 0) {
           const emptyWrapperStacks = emptyInlineWrapperStacks(content.children);
@@ -1213,7 +1219,7 @@ function convertParagraph(
           });
           break;
         }
-        emitInlineNodes(linkNodes);
+        emitInlineNodes(linkNodes, true);
         break;
       }
       case "simpleField":
@@ -1555,8 +1561,10 @@ function convertTrackedChange(
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
           runScope,
+          openCommentIds,
         }),
       );
+      commentsAlreadyApplied = true;
     } else if (item.type === "simpleField" || item.type === "complexField") {
       const fieldNode = convertField(item, {
         getInheritedRunFormatting: getTrackedRunFormatting,
@@ -3068,8 +3076,10 @@ function convertField(
               hyperlinkIndex: nextHyperlinkInstanceIndex(),
               textBoxAnchors,
               runScope,
+              openCommentIds,
             }),
           );
+          commentsAlreadyApplied = true;
           break;
         case "insertion":
         case "deletion":
@@ -3428,8 +3438,10 @@ function convertInlineSdt(
             hyperlinkIndex: currentHyperlinkIndex,
             textBoxAnchors,
             runScope,
+            openCommentIds,
           }),
         );
+        commentsAlreadyApplied = true;
         break;
       }
       case "simpleField":
@@ -5003,6 +5015,7 @@ type ConvertHyperlinkOptions = {
   hyperlinkIndex: number;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
   runScope: RunConversionScope;
+  openCommentIds: Set<number>;
 };
 
 function convertHyperlink(
@@ -5013,6 +5026,7 @@ function convertHyperlink(
     hyperlinkIndex,
     textBoxAnchors,
     runScope,
+    openCommentIds,
   }: ConvertHyperlinkOptions,
 ): PMNode[] {
   const nodes: PMNode[] = [];
@@ -5039,7 +5053,39 @@ function convertHyperlink(
     hyperlink.children,
   )) {
     const childNodes: PMNode[] = [];
+    let commentsAlreadyApplied = false;
     switch (child.type) {
+      case "commentRangeStart":
+        openCommentIds.add(child.id);
+        childNodes.push(
+          schema.node(
+            COMMENT_RANGE_BOUNDARY_NODE_NAME,
+            { marker: child },
+            undefined,
+            [linkMark],
+          ),
+        );
+        commentsAlreadyApplied = true;
+        break;
+      case "commentRangeEnd":
+        openCommentIds.delete(child.id);
+        childNodes.push(
+          schema.node(
+            COMMENT_RANGE_BOUNDARY_NODE_NAME,
+            { marker: child },
+            undefined,
+            [linkMark],
+          ),
+        );
+        commentsAlreadyApplied = true;
+        break;
+      case "commentReference":
+        childNodes.push(
+          schema.node("commentReference", { commentId: child.id }, undefined, [
+            linkMark,
+          ]),
+        );
+        break;
       case "bookmarkStart":
         childNodes.push(
           schema.node(
@@ -5125,11 +5171,14 @@ function convertHyperlink(
       default:
         break;
     }
+    const wrappedNodes = withInlineWrapperMark(childNodes, stack, {
+      hyperlinkIndex,
+      stackStart: 0,
+    });
     nodes.push(
-      ...withInlineWrapperMark(childNodes, stack, {
-        hyperlinkIndex,
-        stackStart: 0,
-      }),
+      ...(commentsAlreadyApplied
+        ? wrappedNodes
+        : applyCommentMarks(wrappedNodes, openCommentIds)),
     );
   }
 
@@ -5393,7 +5442,7 @@ function convertParagraphWithTextBoxes(
  * copied, and a copy must not make a second claim on the same `w:p`; the
  * attribute remainder travels in the node's own `_preservedAttributes`.
  */
-function hostParagraphAttrs(
+export function hostParagraphAttrs(
   attrs: PMNode["attrs"],
 ): NonNullable<TextBoxAttrs["_docxHostParagraph"]> {
   const {

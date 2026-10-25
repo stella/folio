@@ -347,63 +347,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "21447c4f40a78f5e",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1418,
-        "primary": "9d1a8d843140c354",
-        "title": "consumer flow emoji / tracked-changes: tracked acceptance differs from direct editing",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "emoji",
-          "mode": "tracked-changes",
-          "seed": 1576447506,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 3280130925,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "3CEFFC83"
-                }
-              ]
-            },
-            {
-              "action": "story batch",
-              "seed": 3216189728,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "31617F9A"
-                }
-              ]
-            },
-            {
-              "action": "story batch",
-              "seed": 1064917930,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "5E88C024"
-                },
-                {
-                  "type": "deleteBlock",
-                  "blockId": "412DDC7F"
-                }
-              ]
-            }
-          ]
-        },
-        "type": "consumer",
-        "reportSeed": 1576447506,
-        "reportSeeds": [1576447506]
-      }
-    },
-    {
       "fingerprint": "9d1a8d843140c354",
       "issueOrPr": "#1350",
       "firstSeen": "2026-10-02"

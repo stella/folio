@@ -128,9 +128,30 @@ const canonicalTableRow = (row: TableRow): TableRow => {
   return next;
 };
 
-/** currentFormatting is an optional capture of the owning node's current properties. */
+/**
+ * currentFormatting is an optional capture of the owning node's current
+ * properties. A `w:lastRenderedPageBreak` is where a previous layout broke the
+ * page, which a relayout recomputes, so it is dropped like the paragraph's
+ * `renderedPageBreakBefore`. Adjacent text items alike but for their text are
+ * one, as a seam merge makes them, so dropping a break between two leaves
+ * the same content a merged run has.
+ */
 const canonicalRun = (run: Run): Run => {
-  const next = { ...run };
+  const content: Run["content"] = [];
+  for (const item of run.content) {
+    if (item.type === "renderedPageBreak") continue;
+    const last = content.at(-1);
+    if (last?.type === "text" && item.type === "text") {
+      const { text: _lastText, ...lastRest } = last;
+      const { text: _itemText, ...itemRest } = item;
+      if (JSON.stringify(lastRest) === JSON.stringify(itemRest)) {
+        content.splice(-1, 1, { ...last, text: last.text + item.text });
+        continue;
+      }
+    }
+    content.push(item);
+  }
+  const next = { ...run, content };
   const formatting = authoredFormatting(run.formatting);
   if (formatting === undefined) delete next.formatting;
   else next.formatting = formatting;
@@ -160,6 +181,14 @@ const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] => {
         ? node
         : rebuildNode(node, canonicalList(children));
     const own = rebuilt.type === "run" ? canonicalRun(rebuilt) : rebuilt;
+    // A run that held only rendered page breaks is not content.
+    if (
+      own.type === "run" &&
+      own.content.length === 0 &&
+      node.type === "run" &&
+      node.content.length > 0
+    )
+      continue;
     const last = out.at(-1);
     if (last === undefined) out.push(own);
     else out.splice(-1, 1, ...mergeAtSeam(last, own));

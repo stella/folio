@@ -11,7 +11,9 @@ import {
   expectTrackedChangeMarkAttrs,
   isTrackedRevisionAncestorArray,
 } from "../../attrs";
+import { mintRevisionId } from "../../plugins/revisionIds";
 import { createMarkExtension } from "../create";
+import { authorFromClipboardRevision } from "../features/clipboardTrackedRevisions";
 
 /**
  * Build an inline style string for the tracked change author color.
@@ -59,6 +61,13 @@ const revisionAncestorsFromDom = (serialized: string | undefined) => {
   }
 };
 
+const clipboardRevisionAttrs = (dom: HTMLElement) => ({
+  revisionId: mintRevisionId(),
+  author: authorFromClipboardRevision(dom.getAttribute("cite")),
+  date: dom.getAttribute("datetime"),
+  _docxRevisionAncestors: null,
+});
+
 /**
  * Insertion mark — text added in tracked changes
  * Renders with per-author colored underline.
@@ -93,6 +102,10 @@ export const InsertionExtension = createMarkExtension({
     },
     inclusive: false,
     parseDOM: [
+      {
+        tag: "ins",
+        getAttrs: (dom) => clipboardRevisionAttrs(dom),
+      },
       {
         tag: "span.docx-insertion",
         getAttrs(dom) {
@@ -200,6 +213,10 @@ export const DeletionExtension = createMarkExtension({
     },
     inclusive: false,
     parseDOM: [
+      {
+        tag: "del",
+        getAttrs: (dom) => clipboardRevisionAttrs(dom),
+      },
       {
         tag: "span.docx-deletion",
         getAttrs(dom) {

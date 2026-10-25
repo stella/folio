@@ -1,0 +1,7 @@
+{
+  "seed": 293416777,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "deleting every paragraph after a table keeps the first ones properties on the closing paragraph"
+}
