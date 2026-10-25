@@ -168,6 +168,7 @@ const BOUNDARY_SIDES: Record<
 const occurrenceOf = (
   item: BoundaryItem,
   kept: boolean,
+  keptFrom: string | undefined,
 ): BoundaryOccurrence => {
   const { family, side } = BOUNDARY_SIDES[item.type];
   return {
@@ -175,7 +176,32 @@ const occurrenceOf = (
     range: `${family}:${item.id}`,
     side,
     kept,
+    ...(kept && keptFrom !== undefined ? { keptFrom } : {}),
   };
+};
+
+/**
+ * The date of the revision each kept boundary was kept from, the empty string
+ * when it has none: the engine's tie-break between a kept start and end out
+ * of order, so the editor moves the same one.
+ */
+const keptRevisionDates = new WeakMap<PMNode, string>();
+
+/** The date of the outermost revision `selection` removes `node` with. */
+const removingRevisionDate = (
+  node: PMNode,
+  selection: RevisionSelection,
+): string => {
+  for (const mark of node.marks) {
+    if (!REVISION_MARK_NAMES.has(mark.type.name)) continue;
+    const layer = trackedRevisionPathOf(mark).find(
+      (candidate) =>
+        selection.resolves(candidate.revisionId) &&
+        revisionLayerRemovesContent(candidate, selection.mode),
+    );
+    if (layer !== undefined) return layer.date ?? "";
+  }
+  return "";
 };
 
 type Found = {
@@ -193,7 +219,11 @@ const boundariesIn = (doc: PMNode, kept: ReadonlySet<PMNode>): Found[] => {
         position,
         node,
         item,
-        occurrence: occurrenceOf(item, kept.has(node)),
+        occurrence: occurrenceOf(
+          item,
+          kept.has(node),
+          keptRevisionDates.get(node),
+        ),
       });
     return true;
   });
@@ -527,16 +557,30 @@ export const removeResolvedSubtree = (
         selection,
       );
       if (withResolvedCopyOrigin === null) return;
-      kept.push(
-        withResolvedCopyOrigin.type.create(withResolvedCopyOrigin.attrs, null, [
+      const keptNode = withResolvedCopyOrigin.type.create(
+        withResolvedCopyOrigin.attrs,
+        null,
+        [
           ...candidate.marks.filter(
             (mark) =>
               !REVISION_MARK_NAMES.has(mark.type.name) &&
               !COVERAGE_MARK_NAMES.has(mark.type.name),
           ),
           ...landing,
-        ]),
+        ],
       );
+      keptRevisionDates.set(
+        keptNode,
+        removingRevisionDate(
+          candidate.marks.some((mark) =>
+            REVISION_MARK_NAMES.has(mark.type.name),
+          )
+            ? candidate
+            : node,
+          selection,
+        ),
+      );
+      kept.push(keptNode);
       return;
     }
     candidate.forEach(visit);

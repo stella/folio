@@ -82,15 +82,19 @@ export const pairedCommentRanges = (
   return new Set([...starts].filter((id) => ends.has(id)));
 };
 
-/** The boundaries a rejection kept from removed content, and their ranges. */
+/**
+ * The boundaries a rejection kept from removed content, and their ranges.
+ * Each kept boundary maps to the date of the revision it was kept from, the
+ * empty string when that revision has none.
+ */
 export type RelocatedBoundaries = {
   ranges: Set<string>;
-  nodes: WeakSet<InlineNode>;
+  nodes: WeakMap<InlineNode, string>;
 };
 
 export const noRelocatedBoundaries = (): RelocatedBoundaries => ({
   ranges: new Set(),
-  nodes: new WeakSet(),
+  nodes: new WeakMap(),
 });
 
 /**
@@ -104,16 +108,19 @@ export const removedContentBoundaries = ({
   rejecting,
   pairedComments,
   relocated,
+  revisionDate = "",
 }: {
   nodes: readonly InlineNode[];
   rejecting: boolean;
   pairedComments: ReadonlySet<number>;
   relocated: RelocatedBoundaries;
+  /** The date of the revision whose content is removed. */
+  revisionDate?: string;
 }): InlineNode[] =>
   nodes.flatMap((node) => {
     if (isBoundary(node) && rejecting) {
       relocated.ranges.add(rangeKey(node));
-      relocated.nodes.add(node);
+      relocated.nodes.set(node, revisionDate);
       return [node];
     }
     if (isCommentAnchor(node)) return pairedComments.has(node.id) ? [node] : [];
@@ -122,6 +129,7 @@ export const removedContentBoundaries = ({
       rejecting,
       pairedComments,
       relocated,
+      revisionDate,
     });
   });
 
@@ -572,6 +580,12 @@ export type BoundaryOccurrence = {
   side: "start" | "end";
   /** Whether a rejection kept it from removed content. */
   kept: boolean;
+  /**
+   * The date of the revision a kept boundary came from. Of a kept start and
+   * end out of order, the one kept from the later revision moves: that edit
+   * put it out of order, and the earlier one stays where it was.
+   */
+  keptFrom?: string;
 };
 
 /** What makes kept boundaries' ranges well-formed, by index into the occurrences. */
@@ -655,10 +669,16 @@ export const planWellFormedRanges = (
     if (multiplicity?.type !== "pair") continue;
     const { start, end } = multiplicity;
     if (end > start) continue;
-    if (occurrences[end]?.kept === true)
-      moved.push({ moving: end, anchor: start, side: "after" });
-    else if (occurrences[start]?.kept === true)
+    const startOccurrence = occurrences[start];
+    const endOccurrence = occurrences[end];
+    const startIsLater =
+      startOccurrence?.kept === true &&
+      (endOccurrence?.kept !== true ||
+        (startOccurrence.keptFrom ?? "") > (endOccurrence.keptFrom ?? ""));
+    if (startIsLater)
       moved.push({ moving: start, anchor: end, side: "before" });
+    else if (endOccurrence?.kept === true)
+      moved.push({ moving: end, anchor: start, side: "after" });
   }
   return {
     dropped: [...dropped].toSorted((left, right) => left - right),
@@ -696,12 +716,16 @@ export const wellFormedRanges = ({
   for (const paragraph of order)
     visit(paragraph, contents.get(paragraph) ?? []);
   const plan = planWellFormedRanges(
-    found.map(({ node }) => ({
-      boundary: `${node.type}:${node.id}`,
-      range: rangeKey(node),
-      side: BOUNDARY_SIDES[node.type].side,
-      kept: relocated.nodes.has(node),
-    })),
+    found.map(({ node }) => {
+      const keptFrom = relocated.nodes.get(node);
+      return {
+        boundary: `${node.type}:${node.id}`,
+        range: rangeKey(node),
+        side: BOUNDARY_SIDES[node.type].side,
+        kept: keptFrom !== undefined,
+        ...(keptFrom === undefined ? {} : { keptFrom }),
+      };
+    }),
   );
   const current = (paragraph: string) =>
     changed.get(paragraph) ?? contents.get(paragraph) ?? [];

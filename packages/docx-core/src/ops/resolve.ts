@@ -1153,6 +1153,7 @@ const resolveList = (
           rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
           pairedComments: resolution.pairedComments,
           relocated: resolution.relocated,
+          revisionDate: node.info.date ?? "",
         });
         appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are
@@ -1777,6 +1778,8 @@ const joinOps = (
   document: Document,
   { op, story, paraId, added, depth }: JoinPlan,
   ends: EmptiedEndsById,
+  /** Table receivers a later paragraph of this resolution already ran into. */
+  ranInto: ReadonlySet<string> = new Set(),
 ): Result<ParagraphMarkPlan, DocumentOpRefusal> => {
   const body = storyBody(document, story);
   const location = storyParagraphs(body).find(
@@ -1953,8 +1956,18 @@ const joinOps = (
       ),
     );
   }
+  // The paragraph after this one ran into the table in this resolution, so
+  // this one follows it in: resolving the marks one at a time from the first
+  // joins this paragraph to that one before it runs in. Removing it as a
+  // paragraph with no content of its own would drop what it holds.
+  const continuesRunIn =
+    outcome.kind === "remove" &&
+    tableTarget !== undefined &&
+    paragraph.content.length > 0 &&
+    ranInto.has(idKey(tableTarget.receiver.paraId ?? ""));
+  const tableOutcome = continuesRunIn ? "run-in" : outcome.kind;
   if (
-    (outcome.kind === "remove" || outcome.kind === "run-in") &&
+    (tableOutcome === "remove" || tableOutcome === "run-in") &&
     blocks.length > 1 &&
     next?.type === "table"
   ) {
@@ -1971,7 +1984,7 @@ const joinOps = (
         ),
       );
     }
-    if (outcome.kind === "remove") {
+    if (tableOutcome === "remove") {
       const removal = planParagraphBoundaryRemoval({
         blocks,
         index: location.index,
@@ -2457,13 +2470,17 @@ export const planRevisionResolution = ({
   const removedParagraphs = new Set(rows.value.touched.removed.map(idKey));
   const edits: DocumentEdit[] = [staged.value, rows.value];
   let current = rows.value.document;
+  const ranInto = new Set<string>();
   for (const join of joins.toReversed()) {
     if (removedParagraphs.has(idKey(join.paraId))) continue;
-    const planned = joinOps(current, join, emptiedEnds);
+    const planned = joinOps(current, join, emptiedEnds, ranInto);
     if (planned.isErr()) {
       return Result.err(planned.error);
     }
     receiverEffects.push(...planned.value.receiverEffects);
+    for (const effect of planned.value.receiverEffects)
+      if (effect.type === "table-run-in")
+        ranInto.add(idKey(effect.receiver.paraId ?? ""));
     const joined = applyOps(current, planned.value.ops);
     if (joined.isErr()) {
       return Result.err(joined.error);
