@@ -101,28 +101,37 @@ export const orderBatchOperations = <T>(
   );
 
 /**
- * Partition an ordered batch into execution runs. Only consecutive insertions
- * at the same position share a run; every other operation remains a singleton.
+ * Partition an ordered batch into execution runs. Insertions at the same
+ * position share a run; every other operation remains a singleton.
+ *
+ * An operation that `keepsGap` admits (one that writes properties and places
+ * nothing in the gap) does not end a run: an equal-gap insertion after it
+ * still joins the run, which runs before it. Otherwise a property write tied
+ * between two insertions at one gap would split them, and they would inherit
+ * their anchor's properties from different moments while landing in one
+ * requested sequence, which no series of single edits produces.
  */
 export const groupInsertionRuns = <T>(
   operations: readonly T[],
   insertionPositionOf: (operation: T) => number | null,
+  keepsGap: (operation: T) => boolean = () => false,
 ): T[][] => {
   const groups: T[][] = [];
+  let open: { run: T[]; position: number } | null = null;
   for (const operation of operations) {
     const position = insertionPositionOf(operation);
-    const previous = groups.at(-1);
-    const first = previous?.at(0);
-    if (
-      position !== null &&
-      previous !== undefined &&
-      first !== undefined &&
-      insertionPositionOf(first) === position
-    ) {
-      previous.push(operation);
+    if (position !== null && open !== null && open.position === position) {
+      open.run.push(operation);
+      continue;
+    }
+    if (position !== null) {
+      const run = [operation];
+      groups.push(run);
+      open = { run, position };
       continue;
     }
     groups.push([operation]);
+    if (!keepsGap(operation)) open = null;
   }
   return groups;
 };

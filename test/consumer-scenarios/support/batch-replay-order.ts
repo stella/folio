@@ -253,6 +253,7 @@ export const sequentialGroups = ({
       const [block, inside, offset] = placement(operation, preRows);
       return block * 1_000_000_000 + inside * 100_000_000 + offset;
     },
+    (operation) => operation.type === "setBlockParagraphProperties",
   ).map((group) =>
     group.toSorted(
       (left, right) =>

@@ -60,5 +60,13 @@
       "note": "A final-paragraph property edit survives retirement when the third operation annotates another block.",
       "date": "2026-10-09"
     }
+  ],
+  "applies accepted patches in planner order against an independent replay": [
+    {
+      "seed": -1648233649,
+      "path": "52:1:0:3:6:6:6:8:8:8",
+      "note": "#2158: a direct insertion before a block an earlier merge in the batch formed",
+      "date": "2026-10-25"
+    }
   ]
 }
