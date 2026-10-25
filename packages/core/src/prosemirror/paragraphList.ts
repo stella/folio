@@ -2,6 +2,7 @@ import { panic } from "better-result";
 
 import {
   levelShowsMarker,
+  numberingLevelHasMarkerSlot,
   paragraphNumberingReference,
   type ResolvedParagraphNumbering,
   resolveNumberingLevel,
@@ -27,7 +28,13 @@ const standaloneList = (
   rendering: ListRendering,
   source: ListReferenceSource,
 ): ParagraphList =>
-  rendering.markerHidden === true || rendering.marker.trim().length === 0
+  rendering.markerHidden === true ||
+  (rendering.marker.trim().length === 0 &&
+    ((rendering.markerTemplate ?? rendering.marker) !== "" ||
+      !numberingLevelHasMarkerSlot(
+        { numFmt: rendering.numFmt ?? "decimal" },
+        rendering.isLegal,
+      )))
     ? {
         kind: "markerless",
         reference,

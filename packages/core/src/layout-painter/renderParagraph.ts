@@ -2683,7 +2683,7 @@ export function renderLine(
     const firstLineHangingPx = Math.max(0, -firstLineIndentPx);
     const hasVisibleListMarker =
       options.isFirstLine &&
-      block.attrs?.listMarker &&
+      block.attrs?.listMarker != null &&
       !block.attrs.listMarkerHidden;
     // A list marker consumes the hanging slot inline. When the marker starts
     // before the content edge, its negative margin cancels the part of that
@@ -3630,7 +3630,7 @@ export function renderParagraphFragment(
     // - The marker box fills the hanging space
     if (
       isFirstLine &&
-      block.attrs?.listMarker &&
+      block.attrs?.listMarker != null &&
       !block.attrs.listMarkerHidden
     ) {
       // Override padding for list first lines.

@@ -455,9 +455,10 @@ export function advanceListMarker(
   if (attrs.listMarker) {
     return attrs.listMarker;
   }
-  const levelFormat = levelFormats?.[level] ?? attrs.listNumFmt;
-  if (levelFormat === "none" || attrs.listMarker === "") {
-    return null;
+  if (markerTemplate === "" || attrs.listMarker === "") {
+    return "";
   }
+  const levelFormat = levelFormats?.[level] ?? attrs.listNumFmt;
+  if (levelFormat === "none") return "";
   return formatNumberedMarker(counters, level);
 }
