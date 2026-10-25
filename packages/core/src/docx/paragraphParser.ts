@@ -2818,6 +2818,13 @@ const getHyperlinkText = (hyperlink: Hyperlink): string =>
           return getRunText(child);
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "commentReference":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           return "";
         // Opaque markup contributes whatever it puts on the line, which is
         // nothing except for a transparent wrapper such as `w:customXml`.

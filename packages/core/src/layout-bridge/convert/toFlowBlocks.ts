@@ -720,40 +720,63 @@ export function toFlowBlocks(
     sectionBreaksWithoutMarker,
   );
   const result = groupParagraphFrames(reconciledBlocks, nextBlockId);
-  if (options.embeddedFontFamilyMap) {
-    attachEmbeddedFontFamilies(result, options.embeddedFontFamilyMap);
+  if (
+    options.embeddedFontFamilyMap !== undefined ||
+    options.documentFontFacts !== undefined
+  ) {
+    attachFontResolutionContext(result, options);
   }
   return result;
 }
 
 /** Attach editor-owned resolution to freshly derived blocks without changing authored data. */
-const attachEmbeddedFontFamilies = (
+const attachFontResolutionContext = (
   blocks: FlowBlock[],
-  familyMap: ReadonlyMap<string, string>,
+  options: Pick<
+    ToFlowBlocksOptions,
+    "embeddedFontFamilyMap" | "documentFontFacts"
+  >,
 ): void => {
   for (const block of blocks) {
     switch (block.kind) {
       case "paragraph":
         for (const run of block.runs) {
           if (run.kind !== "image" && run.kind !== "lineBreak") {
-            run.embeddedFontFamilyMap = familyMap;
+            if (options.embeddedFontFamilyMap !== undefined) {
+              run.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
+            }
+            if (options.documentFontFacts !== undefined) {
+              run.documentFontFacts = options.documentFontFacts;
+            }
           }
         }
         block.attrs ??= {};
-        block.attrs.embeddedFontFamilyMap = familyMap;
+        if (options.embeddedFontFamilyMap !== undefined) {
+          block.attrs.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
+        }
+        if (options.documentFontFacts !== undefined) {
+          block.attrs.documentFontFacts = options.documentFontFacts;
+        }
         if (block.attrs.listMarkerFormatting) {
-          block.attrs.listMarkerFormatting.embeddedFontFamilyMap = familyMap;
+          if (options.embeddedFontFamilyMap !== undefined) {
+            block.attrs.listMarkerFormatting.embeddedFontFamilyMap =
+              options.embeddedFontFamilyMap;
+          }
+          if (options.documentFontFacts !== undefined) {
+            block.attrs.listMarkerFormatting.documentFontFacts =
+              options.documentFontFacts;
+          }
         }
         break;
       case "table":
         for (const row of block.rows) {
           for (const cell of row.cells) {
-            attachEmbeddedFontFamilies(cell.blocks, familyMap);
+            attachFontResolutionContext(cell.blocks, options);
           }
         }
         break;
       case "textBox":
-        attachEmbeddedFontFamilies(block.content, familyMap);
+        attachFontResolutionContext(block.content, options);
         break;
       case "image":
       case "sectionBreak":

@@ -9,6 +9,7 @@
  * from CSS transforms rather than mirroring VML's `v:textpath` shape.
  */
 
+import type { DocumentFontFacts } from "../fonts/documentFontFacts";
 import type { Page } from "../layout-engine/types";
 import type { Watermark } from "../types/document";
 import { resolveFontFamily } from "../utils/fontResolver";
@@ -20,6 +21,7 @@ const PICTURE_WASHOUT_OPACITY = 0.18;
 
 export type RenderWatermarkOptions = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+  documentFontFacts?: DocumentFontFacts;
   /** Resolved image src for picture watermarks (`data:` / `blob:` only). */
   imageSrc?: string;
 };

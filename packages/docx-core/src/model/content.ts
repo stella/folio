@@ -331,7 +331,7 @@ export type Hyperlink = {
   /** Document location */
   docLocation?: string;
   /**
-   * The link's content: runs, bookmark boundaries, the transparent wrappers,
+   * The link's content: runs, bookmark and comment markers, the transparent wrappers,
    * and markup folio does not model kept where the source put it.
    *
    * `CT_Hyperlink` is `EG_PContent`, so a link may hold a permission range, a
@@ -346,7 +346,18 @@ export type Hyperlink = {
    * save leg writes the canonical order, wrapper outside the link.
    */
   children: (
-    Run | BookmarkStart | BookmarkEnd | InlineWrapper | PreservedInline
+    | Run
+    | BookmarkStart
+    | BookmarkEnd
+    | CommentRangeStart
+    | CommentRangeEnd
+    | CommentReference
+    | InlineWrapper
+    | MoveFromRangeStart
+    | MoveFromRangeEnd
+    | MoveToRangeStart
+    | MoveToRangeEnd
+    | PreservedInline
   )[];
 };
 

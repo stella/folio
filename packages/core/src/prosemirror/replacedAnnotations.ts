@@ -64,6 +64,7 @@ import {
   type Node as PMNode,
   type Schema,
 } from "prosemirror-model";
+import type { Transaction } from "prosemirror-state";
 
 import { isCommentExhausted } from "@stll/docx-core/ops";
 
@@ -602,6 +603,8 @@ export const placeTrackedInsertion = (
     // Disjoint comments have no position adjacent to every stretch. Put the
     // replacement before the earliest reference; accepting the deletions then
     // leaves each comment on the new text with its reference after that text.
+    // The later comments reach it across removed text they did not cover, and
+    // `joinCommentStretches` makes them cover it, as a saved range does.
     return { start, end: Math.min(...own.map(([, stretch]) => stretch.end)) };
   };
   const anchored = pieces.map(stretchOf);
@@ -628,6 +631,71 @@ export const placeTrackedInsertion = (
     previous = position;
   }
   return positions;
+};
+
+/**
+ * `tr` with every comment in the paragraph at `at` covering one stretch.
+ *
+ * A comment is saved as two points, `w:commentRangeStart` and
+ * `w:commentRangeEnd`, so it covers everything between its first and last
+ * covered character. A tracked replacement over separate comments gives its
+ * new text all of them, as the direct edit does, but the new text sits next
+ * to only one of their removed stretches: the others then skip the removed
+ * text between. The saved package cannot hold that gap and covers it, so the
+ * live document covers it too. Otherwise rejecting the replacement before and
+ * after a save gives different comment ranges.
+ */
+export const joinCommentStretches = (
+  tr: Transaction,
+  at: number,
+): Transaction => {
+  const $at = tr.doc.resolve(at);
+  if (!$at.parent.inlineContent) {
+    return tr;
+  }
+  const from = $at.start();
+  const to = $at.end();
+  const leaves: { node: PMNode; position: number }[] = [];
+  tr.doc.nodesBetween(from, to, (node, position) => {
+    if (!node.isLeaf) {
+      return true;
+    }
+    if (!isZeroWidthAnchor(node)) {
+      leaves.push({ node, position });
+    }
+    return false;
+  });
+  const comments: Mark[] = [];
+  for (const { node } of leaves) {
+    for (const mark of node.marks) {
+      if (mark.type.name === "comment" && !mark.isInSet(comments)) {
+        comments.push(mark);
+      }
+    }
+  }
+  let next = tr;
+  for (const comment of comments) {
+    const covered = leaves.flatMap(({ node }, index) =>
+      comment.isInSet(node.marks) ? [index] : [],
+    );
+    const first = covered[0];
+    const last = covered.at(-1);
+    if (first === undefined || last === undefined) {
+      continue;
+    }
+    for (let index = first + 1; index < last; index++) {
+      const leaf = leaves[index];
+      if (leaf === undefined || comment.isInSet(leaf.node.marks)) {
+        continue;
+      }
+      next = next.addMark(
+        leaf.position,
+        leaf.position + leaf.node.nodeSize,
+        comment,
+      );
+    }
+  }
+  return next;
 };
 
 /**

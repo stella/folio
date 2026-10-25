@@ -18,6 +18,11 @@ import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_PATH = path.join(import.meta.dir, "api-surface-budget.json");
+const RAISES_RELATIVE_DIRECTORY = "scripts/api-surface-budget-raises";
+const RAISES_DIRECTORY = path.join(
+  import.meta.dir,
+  "api-surface-budget-raises",
+);
 const PACKAGES = PUBLISHED_PACKAGES.map(({ slug }) => slug);
 const HEADROOM = 1.05;
 const BYTE_FLOOR = 1024;
@@ -33,6 +38,8 @@ export type SurfaceSize = {
 };
 type Baseline = Map<PackageName, SurfaceSize>;
 export type SurfaceBudget = ReadonlyMap<string, SurfaceSize>;
+/** Increases a raise file grants, per package and metric. */
+export type SurfaceRaise = ReadonlyMap<string, Partial<SurfaceSize>>;
 
 const METRIC_NAMES = [
   "reportBytes",
@@ -208,6 +215,133 @@ const readBaseline = () => {
   return Result.ok(baseline);
 };
 
+const isIncrease = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+
+/** Parse one raise file: published packages to positive metric increases. */
+export const parseRaise = (
+  value: unknown,
+  file: string,
+): Result<SurfaceRaise, ApiSurfaceBudgetError> => {
+  const invalid = (detail: string) =>
+    Result.err(
+      new ApiSurfaceBudgetError({ message: `Invalid ${file}: ${detail}` }),
+    );
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("expected an object of packages");
+  }
+  const raise = new Map<string, Partial<SurfaceSize>>();
+  for (const [name, entry] of Object.entries(value)) {
+    if (!(PACKAGES as readonly string[]).includes(name)) {
+      return invalid(`${name} is not a published package`);
+    }
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      return invalid(`${name} must map metrics to increases`);
+    }
+    const increases: Partial<SurfaceSize> = {};
+    for (const [metric, increase] of Object.entries(entry)) {
+      const known = METRIC_NAMES.find((candidate) => candidate === metric);
+      if (known === undefined) return invalid(`${name}.${metric} is unknown`);
+      if (!isIncrease(increase)) {
+        return invalid(`${name}.${metric} must be a positive integer`);
+      }
+      increases[known] = increase;
+    }
+    raise.set(name, increases);
+  }
+  return Result.ok(raise);
+};
+
+const raiseFileNames = (): string[] =>
+  existsSync(RAISES_DIRECTORY)
+    ? readdirSync(RAISES_DIRECTORY)
+        .filter((file) => file.endsWith(".json"))
+        .toSorted()
+    : [];
+
+const readRaises = (
+  files: readonly string[],
+): Result<SurfaceRaise[], ApiSurfaceBudgetError> => {
+  const raises: SurfaceRaise[] = [];
+  for (const file of files) {
+    const relative = `${RAISES_RELATIVE_DIRECTORY}/${file}`;
+    const parsed = Result.try({
+      try: (): unknown =>
+        JSON.parse(readFileSync(path.join(RAISES_DIRECTORY, file), "utf8")),
+      catch: (cause) =>
+        new ApiSurfaceBudgetError({
+          message: `Invalid ${relative}: expected JSON`,
+          cause,
+        }),
+    });
+    if (parsed.isErr()) return parsed;
+    const raise = parseRaise(parsed.value, relative);
+    if (raise.isErr()) return raise;
+    raises.push(raise.value);
+  }
+  return Result.ok(raises);
+};
+
+/** Sum raises per package and metric. */
+export const sumRaises = (raises: readonly SurfaceRaise[]): SurfaceRaise => {
+  const total = new Map<string, Partial<SurfaceSize>>();
+  for (const raise of raises) {
+    for (const [name, increases] of raise) {
+      const sum = { ...total.get(name) };
+      for (const metric of METRIC_NAMES) {
+        const increase = increases[metric];
+        if (increase !== undefined) sum[metric] = (sum[metric] ?? 0) + increase;
+      }
+      total.set(name, sum);
+    }
+  }
+  return total;
+};
+
+const raisedBudget = (budget: Baseline, raise: SurfaceRaise): Baseline =>
+  new Map(
+    [...budget].map(([name, size]) => {
+      const increases = raise.get(name) ?? {};
+      return [
+        name,
+        {
+          reportBytes: size.reportBytes + (increases.reportBytes ?? 0),
+          reportLines: size.reportLines + (increases.reportLines ?? 0),
+          declarationBytes:
+            size.declarationBytes + (increases.declarationBytes ?? 0),
+          declarationLines:
+            size.declarationLines + (increases.declarationLines ?? 0),
+        },
+      ];
+    }),
+  );
+
+/** Raise files the base already had; the rest belong to this change. */
+const baseRaiseFileNames = (revision: string): Set<string> => {
+  const listing = Bun.spawnSync(
+    [
+      "git",
+      "ls-tree",
+      "--name-only",
+      revision,
+      `${RAISES_RELATIVE_DIRECTORY}/`,
+    ],
+    { cwd: REPOSITORY_ROOT, stdout: "pipe", stderr: "pipe" },
+  );
+  if (listing.exitCode !== 0) {
+    throw new Error(
+      `Cannot list API budget raises at the base: ${listing.stderr.toString().trim()}`,
+    );
+  }
+  return new Set(
+    listing.stdout
+      .toString()
+      .split("\n")
+      .filter((line) => line.endsWith(".json"))
+      .map((line) => path.basename(line)),
+  );
+};
+
 const maximum = (baseline: number, floor: number): number =>
   Math.max(baseline * HEADROOM, baseline + floor);
 
@@ -234,10 +368,17 @@ const report = (measured: Baseline): void => {
 
 type BudgetEvaluation = { failures: string[]; warnings: string[] };
 
+/**
+ * `budget` is the committed ceiling (the budget file plus every raise file).
+ * `allowance` holds the raises this change itself adds: growth over the base
+ * passes up to the larger of that raise and the small per-change headroom, so
+ * a change never edits a shared number and concurrent changes cannot conflict.
+ */
 export const evaluateBudget = (
   base: SurfaceBudget,
   measured: SurfaceBudget,
   budget: SurfaceBudget,
+  allowance: SurfaceRaise = new Map(),
 ): BudgetEvaluation => {
   const failures: string[] = [];
   const warnings: string[] = [];
@@ -254,16 +395,17 @@ export const evaluateBudget = (
       const budgetMaximum = maximumSize[metric];
       if (current <= budgetMaximum) continue;
       const detail = `${name}.${metric}: base ${previous}, new ${current}, budget ${budgetMaximum}`;
-      // Small per-change growth passes without a budget edit, so concurrent
-      // changes do not all rewrite the same budget lines.
-      const headroom = METRICS[metric];
-      if (current > previous + headroom) {
+      const allowed = Math.max(
+        METRICS[metric],
+        allowance.get(name)?.[metric] ?? 0,
+      );
+      if (current > previous + allowed) {
         failures.push(
-          `${detail}; bump scripts/api-surface-budget.json ${name}.${metric} to at least ${current}`,
+          `${detail}; add a file under ${RAISES_RELATIVE_DIRECTORY}/ raising ${name}.${metric} by at least ${current - previous}`,
         );
       } else if (current > previous) {
         warnings.push(
-          `${detail}; growth ${current - previous} is within the per-change headroom of ${headroom}`,
+          `${detail}; growth ${current - previous} is within this change's allowance of ${allowed}`,
         );
       } else {
         warnings.push(`${detail}; existing base drift did not grow`);
@@ -273,14 +415,33 @@ export const evaluateBudget = (
   return { failures, warnings };
 };
 
-const check = (base: Baseline, measured: Baseline): number => {
+const check = (
+  base: Baseline,
+  measured: Baseline,
+  baseRaises: ReadonlySet<string>,
+): number => {
   const baselineResult = readBaseline();
   if (baselineResult.isErr()) {
     console.error(baselineResult.error.message);
     return 1;
   }
-  const baseline = baselineResult.value;
-  const { failures, warnings } = evaluateBudget(base, measured, baseline);
+  const files = raiseFileNames();
+  const raisesResult = readRaises(files);
+  if (raisesResult.isErr()) {
+    console.error(raisesResult.error.message);
+    return 1;
+  }
+  const raises = raisesResult.value;
+  const baseline = raisedBudget(baselineResult.value, sumRaises(raises));
+  const ownRaises = raises.filter(
+    (_, index) => !baseRaises.has(files[index] ?? ""),
+  );
+  const { failures, warnings } = evaluateBudget(
+    base,
+    measured,
+    baseline,
+    sumRaises(ownRaises),
+  );
   for (const warning of warnings)
     console.warn(`api-surface-budget: warning: ${warning}`);
   for (const name of PACKAGES) {
@@ -463,11 +624,17 @@ if (import.meta.main) {
         BASELINE_PATH,
         `${JSON.stringify(Object.fromEntries(measured), null, 2)}\n`,
       );
-      console.log("api-surface-budget: wrote scripts/api-surface-budget.json");
+      // The measured budget now includes everything the raises granted.
+      for (const file of raiseFileNames()) {
+        rmSync(path.join(RAISES_DIRECTORY, file));
+      }
+      console.log(
+        `api-surface-budget: wrote scripts/api-surface-budget.json and folded ${RAISES_RELATIVE_DIRECTORY}/ into it`,
+      );
       process.exit(0);
     }
     if (!base) throw new TypeError("API budget checks require --base <sha>.");
-    process.exit(check(measureBase(base), measured));
+    process.exit(check(measureBase(base), measured, baseRaiseFileNames(base)));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);

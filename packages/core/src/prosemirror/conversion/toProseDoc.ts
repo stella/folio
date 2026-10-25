@@ -171,7 +171,10 @@ import {
   RUN_IDENTITY_MARK_NAME,
   runIdentityAttrs,
 } from "../runIdentity";
-import { continueSourceCarrierIdentitiesAcrossRevisions } from "../runIdentityAcrossRevisions";
+import {
+  continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks,
+  continueSourceCarrierIdentitiesAcrossRevisions,
+} from "../runIdentityAcrossRevisions";
 import {
   getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
@@ -400,6 +403,15 @@ export const collectPairedBookmarkIds = (
           break;
         case "bookmarkEnd":
           countBoundary(child.id, "end");
+          break;
+        case "commentRangeStart":
+        case "commentRangeEnd":
+          break;
+        case "commentReference":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           break;
         case "run":
           visitRun(child);
@@ -676,7 +688,7 @@ export function toProseDoc(
         _adjustLineHeightInTable: adjustLineHeightInTable,
         _doNotUseIndentAsNumberingTabStop: doNotUseIndentAsNumberingTabStop,
       },
-      nodes,
+      [...continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(nodes)],
     ),
   );
   assertValidProseMirrorDocument(
@@ -1188,6 +1200,7 @@ function convertParagraph(
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
           runScope,
+          openCommentIds,
         });
         if (linkNodes.length === 0) {
           const emptyWrapperStacks = emptyInlineWrapperStacks(content.children);
@@ -1213,7 +1226,7 @@ function convertParagraph(
           });
           break;
         }
-        emitInlineNodes(linkNodes);
+        emitInlineNodes(linkNodes, true);
         break;
       }
       case "simpleField":
@@ -1555,8 +1568,10 @@ function convertTrackedChange(
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
           runScope,
+          openCommentIds,
         }),
       );
+      commentsAlreadyApplied = true;
     } else if (item.type === "simpleField" || item.type === "complexField") {
       const fieldNode = convertField(item, {
         getInheritedRunFormatting: getTrackedRunFormatting,
@@ -3068,8 +3083,10 @@ function convertField(
               hyperlinkIndex: nextHyperlinkInstanceIndex(),
               textBoxAnchors,
               runScope,
+              openCommentIds,
             }),
           );
+          commentsAlreadyApplied = true;
           break;
         case "insertion":
         case "deletion":
@@ -3428,8 +3445,10 @@ function convertInlineSdt(
             hyperlinkIndex: currentHyperlinkIndex,
             textBoxAnchors,
             runScope,
+            openCommentIds,
           }),
         );
+        commentsAlreadyApplied = true;
         break;
       }
       case "simpleField":
@@ -5003,6 +5022,7 @@ type ConvertHyperlinkOptions = {
   hyperlinkIndex: number;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
   runScope: RunConversionScope;
+  openCommentIds: Set<number>;
 };
 
 function convertHyperlink(
@@ -5013,6 +5033,7 @@ function convertHyperlink(
     hyperlinkIndex,
     textBoxAnchors,
     runScope,
+    openCommentIds,
   }: ConvertHyperlinkOptions,
 ): PMNode[] {
   const nodes: PMNode[] = [];
@@ -5039,7 +5060,52 @@ function convertHyperlink(
     hyperlink.children,
   )) {
     const childNodes: PMNode[] = [];
+    let commentsAlreadyApplied = false;
     switch (child.type) {
+      case "commentRangeStart":
+        openCommentIds.add(child.id);
+        childNodes.push(
+          schema.node(
+            COMMENT_RANGE_BOUNDARY_NODE_NAME,
+            { marker: child },
+            undefined,
+            [linkMark],
+          ),
+        );
+        commentsAlreadyApplied = true;
+        break;
+      case "commentRangeEnd":
+        openCommentIds.delete(child.id);
+        childNodes.push(
+          schema.node(
+            COMMENT_RANGE_BOUNDARY_NODE_NAME,
+            { marker: child },
+            undefined,
+            [linkMark],
+          ),
+        );
+        commentsAlreadyApplied = true;
+        break;
+      case "commentReference":
+        childNodes.push(
+          schema.node("commentReference", { commentId: child.id }, undefined, [
+            linkMark,
+          ]),
+        );
+        break;
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        childNodes.push(
+          schema.node(
+            MOVE_RANGE_BOUNDARY_NODE_NAME,
+            { marker: child },
+            undefined,
+            [linkMark],
+          ),
+        );
+        break;
       case "bookmarkStart":
         childNodes.push(
           schema.node(
@@ -5125,11 +5191,14 @@ function convertHyperlink(
       default:
         break;
     }
+    const wrappedNodes = withInlineWrapperMark(childNodes, stack, {
+      hyperlinkIndex,
+      stackStart: 0,
+    });
     nodes.push(
-      ...withInlineWrapperMark(childNodes, stack, {
-        hyperlinkIndex,
-        stackStart: 0,
-      }),
+      ...(commentsAlreadyApplied
+        ? wrappedNodes
+        : applyCommentMarks(wrappedNodes, openCommentIds)),
     );
   }
 
@@ -5393,7 +5462,7 @@ function convertParagraphWithTextBoxes(
  * copied, and a copy must not make a second claim on the same `w:p`; the
  * attribute remainder travels in the node's own `_preservedAttributes`.
  */
-function hostParagraphAttrs(
+export function hostParagraphAttrs(
   attrs: PMNode["attrs"],
 ): NonNullable<TextBoxAttrs["_docxHostParagraph"]> {
   const {
@@ -6040,7 +6109,11 @@ export function headerFooterToProseDoc(
     nodes.push(schema.node("paragraph", {}, []));
   }
 
-  const pmDoc = stampNumberedRefFieldBaselines(schema.node("doc", null, nodes));
+  const pmDoc = stampNumberedRefFieldBaselines(
+    schema.node("doc", null, [
+      ...continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(nodes),
+    ]),
+  );
   assertValidProseMirrorDocument(
     pmDoc,
     "Header/footer conversion produced an invalid ProseMirror document",

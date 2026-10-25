@@ -387,6 +387,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     element.style.fontFamily = resolveFontFamily(run.fontFamily, {
       alternateFontName: run.alternateFontFamily,
       embeddedFontFamilyMap: run.embeddedFontFamilyMap,
+      documentFontFacts: run.documentFontFacts,
     }).cssFallback;
   }
   if (run.fontSize) {
@@ -2078,6 +2079,9 @@ function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
     ...(run.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap }
       : {}),
+    ...(run.documentFontFacts
+      ? { documentFontFacts: run.documentFontFacts }
+      : {}),
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
     ...(run.letterSpacing !== undefined
@@ -2311,6 +2315,7 @@ function getTextAfterTab(
  */
 type TextMeasureStyle = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+  documentFontFacts?: TextRun["documentFontFacts"];
   bold?: boolean;
   italic?: boolean;
   letterSpacing?: number;
@@ -2389,7 +2394,7 @@ function createTextMeasurer(
         fontPrefixParts.push(DOCX_BOLD_FONT_WEIGHT);
       }
       fontPrefixParts.push(`${(size * 96) / 72}px`);
-      return `${fontPrefixParts.join(" ")} ${resolveFontFamily(family, { alternateFontName: alternateFamily, embeddedFontFamilyMap: style.embeddedFontFamilyMap }).cssFallback}`;
+      return `${fontPrefixParts.join(" ")} ${resolveFontFamily(family, { alternateFontName: alternateFamily, embeddedFontFamilyMap: style.embeddedFontFamilyMap, documentFontFacts: style.documentFontFacts }).cssFallback}`;
     };
     const baseFont = fontString(
       fontFamily,
@@ -3759,6 +3764,7 @@ function renderListMarker({
   span.style.fontFamily = resolveFontFamily(formatting.fontFamily, {
     alternateFontName: formatting.alternateFontFamily,
     embeddedFontFamilyMap: formatting.embeddedFontFamilyMap,
+    documentFontFacts: formatting.documentFontFacts,
   }).cssFallback;
   if (formatting.fontSize) {
     // 1pt = 96/72 px
