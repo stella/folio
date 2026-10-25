@@ -924,9 +924,34 @@ type SourceOwnerRoutes = Record<SourceOwnerSide, SourceOwnerRoute | undefined>;
 type SourceOwnerState =
   | { type: "source" }
   | { type: "merged"; into: SourceOwner }
-  | { type: "removed"; routes: SourceOwnerRoutes };
+  | {
+      type: "removed";
+      routes: SourceOwnerRoutes;
+      /** The occurrences either side as the list held them, never rerouted. */
+      adjacent: Record<SourceOwnerSide, SourceOwner | undefined>;
+    };
 type SourceOwner = { state: SourceOwnerState };
-type SourceOccurrence = { node: InlineNode; owner: SourceOwner | undefined };
+/**
+ * A record in a resolved list and the source occurrence it came from.
+ * `lifted` is set on content a resolved wrapper left in its place: it stands
+ * one level above where the wrapper held it, so a depth measured from the
+ * wrapper reaches one level less into it.
+ */
+type SourceOccurrence = {
+  node: InlineNode;
+  owner: SourceOwner | undefined;
+  lifted?: true;
+};
+
+/** `node` in the place of `occurrence`, from the same source and as lifted. */
+const occurrenceOf = (
+  node: InlineNode,
+  occurrence: SourceOccurrence | undefined,
+): SourceOccurrence => ({
+  node,
+  owner: occurrence?.owner,
+  ...(occurrence?.lifted === true && { lifted: true as const }),
+});
 
 const sourceOwnerRoot = (owner: SourceOwner): SourceOwner => {
   let root = owner;
@@ -984,7 +1009,17 @@ const sourceOwnerDepthAt = ({
       compress(current);
       return undefined;
     }
-    path.push({ owner: current, depth: route.depth });
+    // A removed occurrence between two others the resolution removes was cut
+    // into content that goes with it; its depth measured that content, not
+    // the content the route reaches, so it does not limit the route.
+    const { adjacent } = current.state;
+    const enclosed =
+      adjacent.before?.state.type === "removed" &&
+      adjacent.after?.state.type === "removed";
+    path.push({
+      owner: current,
+      depth: enclosed ? Number.POSITIVE_INFINITY : route.depth,
+    });
     current = route.owner;
   }
   return undefined;
@@ -1003,11 +1038,16 @@ const resolveList = (
   const sourceOwners = nodes.map((): SourceOwner => ({
     state: { type: "source" },
   }));
-  const appendSource = (node: InlineNode, index: number): void => {
+  const appendSource = (
+    node: InlineNode,
+    index: number,
+    lifted = false,
+  ): void => {
     out.push({
       node,
       owner:
         sourceOwners.at(index) ?? panic("A source occurrence has an owner."),
+      ...(lifted && { lifted: true as const }),
     });
   };
   const appendUnowned = (items: readonly InlineNode[]): void => {
@@ -1056,6 +1096,7 @@ const resolveList = (
           const after = sourceOwners.at(index + 1);
           removedOwner.state = {
             type: "removed",
+            adjacent: { before, after },
             routes: {
               before:
                 before === undefined
@@ -1161,7 +1202,7 @@ const resolveList = (
         plainSeams.add(out.length);
         plainSeams.add(out.length + content.length);
       }
-      for (const child of content) appendSource(child, index);
+      for (const child of content) appendSource(child, index, true);
       if (resolved.edges?.last !== undefined)
         recordSourceSeam(out.length, resolved.edges.last);
       if (node.resolutionJoins === undefined) seams.push(out.length);
@@ -1332,26 +1373,34 @@ const resolveList = (
       const afterOccurrence = out[seam];
       const before = beforeOccurrence?.node;
       const after = afterOccurrence?.node;
+      // The depth reaches into the source occurrence; content its resolved
+      // wrapper left in place starts one level shallower.
       const ownerDepth = ({
-        owner,
+        occurrence,
         source,
         side,
       }: {
-        owner: SourceOwner | undefined;
+        occurrence: SourceOccurrence | undefined;
         source: SourceOwner | undefined;
         side: SourceOwnerSide;
       }): number | undefined => {
-        return sourceOwnerDepthAt({ owner, source, side, depth: kept.depth });
+        const depth = sourceOwnerDepthAt({
+          owner: occurrence?.owner,
+          source,
+          side,
+          depth: kept.depth,
+        });
+        return depth === undefined || occurrence?.lifted !== true
+          ? depth
+          : depth - 1;
       };
-      const beforeOwner = beforeOccurrence?.owner;
-      const afterOwner = afterOccurrence?.owner;
       const beforeDepth = ownerDepth({
-        owner: beforeOwner,
+        occurrence: beforeOccurrence,
         source: kept.before,
         side: "before",
       });
       const afterDepth = ownerDepth({
-        owner: afterOwner,
+        occurrence: afterOccurrence,
         source: kept.after,
         side: "after",
       });
@@ -1367,17 +1416,19 @@ const resolveList = (
           : withBoundariesAtEdge(before, boundaries, beforeDepth, "end");
       if (intoAfter !== undefined && after !== undefined) {
         carryResolutionState(resolution, after, intoAfter);
-        out.splice(seam - kept.count, kept.count + 1, {
-          node: intoAfter,
-          owner: afterOwner,
-        });
+        out.splice(
+          seam - kept.count,
+          kept.count + 1,
+          occurrenceOf(intoAfter, afterOccurrence),
+        );
         seam -= kept.count;
       } else if (intoBefore !== undefined && before !== undefined) {
         carryResolutionState(resolution, before, intoBefore);
-        out.splice(seam - kept.count - 1, kept.count + 1, {
-          node: intoBefore,
-          owner: beforeOwner,
-        });
+        out.splice(
+          seam - kept.count - 1,
+          kept.count + 1,
+          occurrenceOf(intoBefore, beforeOccurrence),
+        );
         seam -= kept.count;
       }
     }
@@ -1442,8 +1493,14 @@ const resolveList = (
           rightRoot.state = { type: "merged", into: leftRoot };
         }
       }
-      const owner = leftOwner ?? rightOwner;
-      out.splice(seam - 1, 2, { node: merged, owner });
+      out.splice(
+        seam - 1,
+        2,
+        occurrenceOf(
+          merged,
+          leftOwner === undefined ? rightOccurrence : leftOccurrence,
+        ),
+      );
     } else {
       if (met.length !== 2)
         panic("A seam retains two roots or joins them into one.");
@@ -1454,8 +1511,8 @@ const resolveList = (
       out.splice(
         seam - 1,
         2,
-        { node: metLeft, owner: leftOccurrence?.owner },
-        { node: metRight, owner: rightOccurrence?.owner },
+        occurrenceOf(metLeft, leftOccurrence),
+        occurrenceOf(metRight, rightOccurrence),
       );
     }
   }

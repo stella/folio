@@ -1,0 +1,7 @@
+{
+  "seed": 2043620359,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "deleting a retired paragraph after inserting beside it retracts the insertion into the closing paragraph"
+}

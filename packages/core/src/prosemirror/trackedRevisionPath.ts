@@ -60,11 +60,15 @@ export const enclosingInsertionAncestors = ({
   if (!insertionMark) {
     return ancestors;
   }
-  const attrs = expectTrackedChangeMarkAttrs(insertionMark);
-  if (ancestors.some(({ revisionId }) => revisionId === attrs.revisionId)) {
+  const layer = trackedRevisionLayerOf(insertionMark, node);
+  if (
+    ancestors.some(
+      ({ revisionId, type }) =>
+        revisionId === layer.revisionId && type === layer.type,
+    )
+  ) {
     return ancestors;
   }
-  const layer = trackedRevisionLayerOf(insertionMark, node);
   return [layer, ...ancestors];
 };
 
