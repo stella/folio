@@ -161,7 +161,7 @@
       "if": null
     },
     {
-      "run": "bun scripts/api-surface-budget.ts --self-test\nbun run api:check\nbun run api:budget\n",
+      "run": "# A pull request builds its merge with the current base, and the\n# event's base SHA can trail that base, so compare with the merge's\n# first parent: growth already on the base is not this change's.\nif [[ \"$GITHUB_EVENT_NAME\" == \"pull_request\" ]]; then\n  API_BASE=\"$(git rev-parse HEAD^1)\"\n  export API_BASE\nfi\nbun scripts/api-surface-budget.ts --self-test\nbun run api:check\nbun run api:budget\n",
       "if": null
     }
   ],
