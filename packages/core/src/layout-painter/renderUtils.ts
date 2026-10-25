@@ -3,8 +3,9 @@
  * Extracted to break import cycles between renderPage, renderParagraph, renderTable, etc.
  */
 
-import type { ImageRun } from "../layout-engine/types";
 import type { NumberFormat } from "../types/document";
+import type { HorizontalClipViewport } from "../utils/paragraphInlineLayout";
+import { resolveImageLineAlign } from "../utils/paragraphInlineLayout";
 
 // `isFloatingImageRun` and `isTextWrappingFloatingImageRun` are pure
 // predicates over `ImageRun` and now live in `layout-engine/types` so the
@@ -24,25 +25,7 @@ export {
  * anchor) follows the paragraph alignment. Word's `inside`/`outside` collapse
  * to left/right (eigenpal/docx-editor#787, issue #777).
  */
-export function resolveImageLineAlign(
-  imageRun: ImageRun,
-  paragraphAlignment: "left" | "center" | "right" | "justify" | undefined,
-): "left" | "center" | "right" | "justify" | undefined {
-  const horizontal = imageRun.position?.horizontal;
-  if (!horizontal) {
-    return paragraphAlignment;
-  }
-  switch (horizontal.align) {
-    case "center":
-      return "center";
-    case "right":
-    case "outside":
-      return "right";
-    default:
-      // left, inside, or unspecified — Word's anchored default is left.
-      return "left";
-  }
-}
+export { resolveImageLineAlign };
 
 /**
  * Context passed to fragment renderers
@@ -68,6 +51,12 @@ export type RenderContext = {
   contentWidth?: number;
   /** When true, floating images render in-flow instead of being skipped (for table cells) */
   insideTableCell?: boolean;
+  /** @internal Whether plain inline pictures keep their authored extent or fit their text area. */
+  inlinePictureSizing?: "authoredExtent" | "textColumnFit";
+  /** Horizontal page/cell viewport in page coordinates for inline picture paint. */
+  inlinePictureViewport?: HorizontalClipViewport;
+  /** Page-coordinate origin for story-local line positions. */
+  inlinePictureOriginX?: number;
   /**
    * How the renderer should position its outer element. The body lays
    * fragments at absolute (x, y) on the page (`'absolute'`), while

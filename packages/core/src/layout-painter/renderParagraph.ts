@@ -65,8 +65,11 @@ import { resolveFontFamily } from "../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
 import { underlineDecorationCss } from "../utils/formatToStyle";
 import { getHorizontalScaleFactor } from "../utils/horizontalScale";
+import { getParagraphFrame } from "../utils/paragraphFrame";
 import {
+  inlinePictureClipInsets,
   type PhysicalParagraphInlineLayout,
+  resolveParagraphLineGeometryForBlock,
   resolvePhysicalParagraphInlineLayout,
 } from "../utils/paragraphInlineLayout";
 import {
@@ -103,7 +106,7 @@ import {
   hasImageVisualAttrs,
   wrapImageWithCrop,
 } from "./renderImage";
-import { isFloatingImageRun, resolveImageLineAlign } from "./renderUtils";
+import { isFloatingImageRun } from "./renderUtils";
 import type { RenderContext } from "./renderUtils";
 import { applySdtDataAttrs } from "./sdtBoundary";
 
@@ -1122,7 +1125,17 @@ export function getLeaderChar(leader: string): string | null {
 /**
  * Render an inline image run (flows with text)
  */
-function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
+type RenderInlineImageOptions = {
+  run: ImageRun;
+  doc: Document;
+  sizing: NonNullable<RenderContext["inlinePictureSizing"]>;
+};
+
+function renderInlineImageRun({
+  run,
+  doc,
+  sizing,
+}: RenderInlineImageOptions): HTMLElement {
   const img = doc.createElement("img");
   img.className = `${PARAGRAPH_CLASS_NAMES.run} ${PARAGRAPH_CLASS_NAMES.image}`;
 
@@ -1222,12 +1235,11 @@ function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
   // image's natural one — so a deliberately stretched image keeps its shape.
   // (eigenpal/docx-editor#760.) Only the plain inline path opts in: the rotated
   // and cropped paths return earlier and need their explicit pixel geometry.
-  if (run.width > 0 && run.height > 0) {
+  if (run.width > 0 && run.height > 0 && sizing === "textColumnFit") {
     img.style.height = "auto";
     img.style.aspectRatio = `${run.width} / ${run.height}`;
     img.style.maxWidth = "100%";
   }
-
   // wp:inline distT/distB: the measurer folds these into maxImageHeightPx;
   // applying them as margins here keeps the margin-box footprint consistent
   // with the line height the measurer reserved.
@@ -1350,7 +1362,50 @@ function renderBlockImage(run: ImageRun, doc: Document): HTMLElement {
  * Note: Floating images (square/tight/through) are handled separately at paragraph level,
  * not through this function. If they reach here, render as block.
  */
-function renderImageRun(run: ImageRun, doc: Document): HTMLElement {
+type RenderImageRunOptions = {
+  run: ImageRun;
+  doc: Document;
+  context?: RenderContext;
+  sizing: NonNullable<RenderContext["inlinePictureSizing"]>;
+  imageLeft: number;
+};
+
+type ClipInlineImageToViewportOptions = {
+  content: HTMLElement;
+  doc: Document;
+  insets: { left: number; right: number };
+};
+
+const clipInlineImageToViewport = ({
+  content,
+  doc,
+  insets,
+}: ClipInlineImageToViewportOptions): HTMLElement => {
+  if (insets.left === 0 && insets.right === 0) return content;
+  const wrapper = doc.createElement("span");
+  wrapper.className = PARAGRAPH_CLASS_NAMES.run;
+  wrapper.style.display = "inline-block";
+  wrapper.style.verticalAlign = "middle";
+  wrapper.style.clipPath = `inset(0px ${insets.right}px 0px ${insets.left}px)`;
+  wrapper.append(content);
+  return wrapper;
+};
+
+const inlinePictureSizingForParagraph = (
+  block: ParagraphBlock,
+  context: RenderContext | undefined,
+): NonNullable<RenderContext["inlinePictureSizing"]> =>
+  getParagraphFrame(block) === undefined
+    ? (context?.inlinePictureSizing ?? "textColumnFit")
+    : "textColumnFit";
+
+function renderImageRun({
+  run,
+  doc,
+  context,
+  sizing,
+  imageLeft,
+}: RenderImageRunOptions): HTMLElement {
   // Floating images should be handled at paragraph level, not here
   // If they reach here (e.g., inside table cells), render as block
   let el: HTMLElement;
@@ -1361,7 +1416,18 @@ function renderImageRun(run: ImageRun, doc: Document): HTMLElement {
   ) {
     el = renderBlockImage(run, doc);
   } else {
-    el = renderInlineImageRun(run, doc);
+    el = renderInlineImageRun({ run, doc, sizing });
+    if (context?.inlinePictureViewport !== undefined) {
+      el = clipInlineImageToViewport({
+        content: el,
+        doc,
+        insets: inlinePictureClipInsets({
+          pictureLeft: imageLeft,
+          pictureWidth: inlineImageBoundingBox(run).width,
+          viewport: context.inlinePictureViewport,
+        }),
+      });
+    }
   }
   applyImageRevisionStyle(getImageRevisionStyleTarget(el), run);
   return el;
@@ -1670,11 +1736,21 @@ function applyMathFontSize(element: HTMLElement, run: MathRun): void {
 /**
  * Render a single run (for non-tab runs)
  */
-function renderRun(
-  run: Run,
-  doc: Document,
-  context?: RenderContext,
-): HTMLElement {
+type RenderRunOptions = {
+  run: Run;
+  doc: Document;
+  context?: RenderContext;
+  sizing: NonNullable<RenderContext["inlinePictureSizing"]>;
+  imageLeft: number;
+};
+
+function renderRun({
+  run,
+  doc,
+  context,
+  sizing,
+  imageLeft,
+}: RenderRunOptions): HTMLElement {
   if (isTextRun(run)) {
     return renderTextRun(run, doc);
   }
@@ -1684,7 +1760,13 @@ function renderRun(
     return renderTabRun(run, doc, 48); // Default 0.5 inch tab
   }
   if (isImageRun(run)) {
-    return renderImageRun(run, doc);
+    return renderImageRun({
+      run,
+      doc,
+      ...(context === undefined ? {} : { context }),
+      sizing,
+      imageLeft,
+    });
   }
   if (isLineBreakRun(run)) {
     return renderLineBreakRun(run, doc);
@@ -1995,6 +2077,10 @@ type RenderLineOptions = {
   tabStops?: TabStop[];
   /** Render context for field substitution */
   context?: RenderContext;
+  /** Page-coordinate X origin for clipping the authored image extent. */
+  imageOriginX?: number;
+  /** Actual shared line origin used for inline image clipping. */
+  inlineImageLineStartX?: number;
   /** Left indent in pixels */
   leftIndentPx?: number;
   /** Authored OOXML left indent used by logical tab-stop calculations. */
@@ -2603,7 +2689,7 @@ export function renderLine(
     // follows the paragraph alignment. Mirror the resolved alignment onto
     // justify-content so logo-only header lines stay placed like Word
     // (eigenpal/docx-editor#787).
-    const imageAlign = resolveImageLineAlign(runsForLine[0]!, alignment);
+    const imageAlign = alignment;
     if (imageAlign === "center") {
       lineEl.style.justifyContent = "center";
     } else if (imageAlign === "right") {
@@ -2842,6 +2928,11 @@ export function renderLine(
     // Non-first lines start at the left indent position
     currentX = tabLeftIndentPx + floatingLeftOffsetPx;
   }
+  const imageFlowStartX = currentX;
+  const imageLeftAtCurrentX = (): number =>
+    options?.inlineImageLineStartX === undefined
+      ? (options?.imageOriginX ?? 0) + currentX
+      : options.inlineImageLineStartX + currentX - imageFlowStartX;
 
   // Render each run
   for (let i = 0; i < runsForLine.length; i++) {
@@ -3002,10 +3093,36 @@ export function renderLine(
             const imageKey = getInlineImageRunKey(next);
             if (!options?.renderedInlineImageKeys?.has(imageKey)) {
               options?.renderedInlineImageKeys?.add(imageKey);
-              lineEl.append(renderImageRun(next, doc));
+              lineEl.append(
+                renderImageRun({
+                  run: next,
+                  doc,
+                  ...(options?.context === undefined
+                    ? {}
+                    : { context: options.context }),
+                  sizing: inlinePictureSizingForParagraph(
+                    block,
+                    options?.context,
+                  ),
+                  imageLeft: imageLeftAtCurrentX(),
+                }),
+              );
             }
           } else {
-            lineEl.append(renderRun(next, doc, options?.context));
+            lineEl.append(
+              renderRun({
+                run: next,
+                doc,
+                ...(options?.context === undefined
+                  ? {}
+                  : { context: options.context }),
+                sizing: inlinePictureSizingForParagraph(
+                  block,
+                  options?.context,
+                ),
+                imageLeft: imageLeftAtCurrentX(),
+              }),
+            );
           }
         }
 
@@ -3113,7 +3230,13 @@ export function renderLine(
       }
       options?.renderedInlineImageKeys?.add(imageKey);
       // Inline or block image - render in the text flow
-      const runEl = renderImageRun(run, doc);
+      const runEl = renderImageRun({
+        run,
+        doc,
+        ...(options?.context === undefined ? {} : { context: options.context }),
+        sizing: inlinePictureSizingForParagraph(block, options?.context),
+        imageLeft: imageLeftAtCurrentX(),
+      });
       lineEl.append(runEl);
       // Block images don't contribute to horizontal position. Rotated inline
       // images advance by their axis-aligned bbox width — the wrapper span
@@ -3188,7 +3311,13 @@ export function renderLine(
       });
     } else {
       // Fallback for unknown run types
-      const runEl = renderRun(run, doc, options?.context);
+      const runEl = renderRun({
+        run,
+        doc,
+        ...(options?.context === undefined ? {} : { context: options.context }),
+        sizing: inlinePictureSizingForParagraph(block, options?.context),
+        imageLeft: imageLeftAtCurrentX(),
+      });
       lineEl.append(runEl);
     }
   }
@@ -3299,6 +3428,18 @@ export function renderParagraphFragment(
   options: RenderParagraphOptions = {},
 ): HTMLElement {
   const doc = options.document ?? document;
+  const renderContext: RenderContext =
+    getParagraphFrame(block) === undefined
+      ? context
+      : {
+          ...context,
+          inlinePictureSizing: "textColumnFit",
+          inlinePictureViewport: {
+            left: fragment.x,
+            right: fragment.x + fragment.width,
+          },
+          inlinePictureOriginX: fragment.x,
+        };
 
   const fragmentEl = doc.createElement("div");
   fragmentEl.className = PARAGRAPH_CLASS_NAMES.fragment;
@@ -3369,12 +3510,6 @@ export function renderParagraphFragment(
     fragmentAlignment = isRtl ? "right" : "left";
   }
   fragmentEl.style.textAlign = fragmentAlignment;
-
-  // An RTL paragraph with no explicit alignment defaults to right; pass that
-  // through to per-line rendering so flex-promoted lines (image-only,
-  // image+text, right-tab anchors) align to the start side too, not just the
-  // fragment text-align. (#723)
-  const effectiveAlignment = alignment;
 
   // Track indentation for line-level application
   // Indentation is applied per-line, not at fragment level
@@ -3528,8 +3663,15 @@ export function renderParagraphFragment(
     // while body lines reached it. Measurement separately accounts for the
     // indent when deciding how much text fits the first line (eigenpal/docx-editor#868).
     const lineAvailableWidth = availableWidth;
+    const lineGeometry = resolveParagraphLineGeometryForBlock({
+      fragment,
+      block,
+      line,
+      lineTopYPx: fragment.y + _cumulativeLineY + (line.floatSkipBefore ?? 0),
+      isFirstLine,
+    });
 
-    const lineEl = renderLine(block, line, effectiveAlignment, doc, {
+    const lineEl = renderLine(block, line, lineGeometry.alignment, doc, {
       availableWidth: lineAvailableWidth - lineLeftOffset - lineRightOffset,
       isLastLine,
       isFirstLine,
@@ -3545,7 +3687,12 @@ export function renderParagraphFragment(
         ? {}
         : { explicitAlignment: inlineLayout.explicitAlignment }),
       contentWidthPx: fragment.width,
-      context,
+      context: renderContext,
+      imageOriginX: renderContext.inlinePictureOriginX ?? fragment.x,
+      inlineImageLineStartX:
+        (renderContext.inlinePictureOriginX ?? fragment.x) +
+        lineGeometry.paintStartXPx -
+        fragment.x,
       floatingMargins: {
         leftMargin: lineLeftOffset,
         rightMargin: lineRightOffset,

@@ -219,7 +219,14 @@ export const paintFootnoteArea = ({
           xPx: page.margins.left,
           yPx: areaTopPx + offsetPx,
           widthPx: contentWidthPx,
-          context: { ...context, story },
+          context: {
+            ...context,
+            story,
+            inlinePictureViewport: {
+              left: page.margins.left,
+              right: page.size.w - page.margins.right,
+            },
+          },
           label: `footnote ${content.displayNumber}`,
         });
       },

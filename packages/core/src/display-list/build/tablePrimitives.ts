@@ -40,6 +40,8 @@ import type {
 } from "../../layout-engine/types";
 import { cellTextRotationDegrees } from "../../layout-painter/renderTable";
 import { paintsCssBorder } from "../../utils/borderCss";
+import { intersectHorizontalClipViewports } from "../../utils/paragraphInlineLayout";
+import type { HorizontalClipViewport } from "../../utils/paragraphInlineLayout";
 import { HIT_REGION_KINDS } from "../primitives";
 import type { DisplayPrimitive, DisplayRect, DisplayStroke } from "../types";
 import type { BuildContext } from "./buildContext";
@@ -208,6 +210,12 @@ const paintCell = ({
     0,
     cellMeasure.width - padding.left - padding.right,
   );
+  const cellPictureViewport = intersectHorizontalClipViewports(
+    context.inlinePictureViewport,
+    cell.textDirection === "btLr"
+      ? { left: contentXPx, right: contentXPx + contentWidthPx }
+      : { left: box.xPx, right: box.xPx + box.widthPx },
+  );
 
   // Every direction the painter turns, not the two that were spelled here: a
   // vertical flow this builder paints horizontally is the same report whichever
@@ -231,6 +239,7 @@ const paintCell = ({
     xPx: contentXPx,
     yPx: contentYPx,
     widthPx: contentWidthPx,
+    inlinePictureViewport: cellPictureViewport,
     context,
     paintTextBox,
   });
@@ -264,6 +273,7 @@ type PaintCellBlocksOptions = {
   readonly xPx: number;
   readonly yPx: number;
   readonly widthPx: number;
+  readonly inlinePictureViewport: HorizontalClipViewport;
   readonly context: BuildContext;
   readonly paintTextBox: PaintTextBox;
 };
@@ -287,6 +297,7 @@ const paintCellBlocks = ({
   xPx,
   yPx,
   widthPx,
+  inlinePictureViewport,
   context,
   paintTextBox,
 }: PaintCellBlocksOptions): void => {
@@ -329,6 +340,7 @@ const paintCellBlocks = ({
             block,
             measure,
             context,
+            inlinePictureViewport,
             ...(previous?.kind === "paragraph" &&
             previous.attrs?.borders !== undefined
               ? { prevBorders: previous.attrs.borders }
@@ -359,7 +371,10 @@ const paintCellBlocks = ({
             measure,
             xPx: fragment.x,
             yPx: fragment.y,
-            context,
+            context: {
+              ...context,
+              inlinePictureViewport,
+            },
             paintTextBox,
           });
         },

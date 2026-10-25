@@ -144,6 +144,9 @@ export type RenderContext = {
     sectionPages?: number;
     contentWidth?: number;
     insideTableCell?: boolean;
+    inlinePictureSizing?: "authoredExtent" | "textColumnFit";
+    inlinePictureViewport?: HorizontalClipViewport;
+    inlinePictureOriginX?: number;
     positioning?: "absolute" | "flow";
 };
 

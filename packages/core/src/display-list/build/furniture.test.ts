@@ -25,6 +25,7 @@ import type {
   LayoutOptions,
   PageMargins,
   ParagraphBlock,
+  TableBlock,
   TextBoxBlock,
 } from "../../layout-engine/types";
 import type { BlockLookup } from "../../layout-painter/index";
@@ -422,6 +423,95 @@ describe("footnote bodies", () => {
 const SECTION_REFS = [{ headerDefault: "rIdH", footerDefault: "rIdF" }];
 
 describe("header and footer stories", () => {
+  test("clips an oversized inline picture in a header at the paper edge", () => {
+    withFakeTextMeasure(() => {
+      const headerParagraph: ParagraphBlock = {
+        kind: "paragraph",
+        id: "header-picture-paragraph",
+        runs: [
+          {
+            kind: "image",
+            src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+            width: 800,
+            height: 30,
+          },
+        ],
+      };
+      const built = buildLayout([para("body", "Body")], {
+        sectionHeaderFooterRefs: SECTION_REFS,
+      });
+      const list = buildDisplayList({
+        ...built,
+        headerContentByRId: new Map([["rIdH", storyBlocks([headerParagraph])]]),
+      });
+      const pictureClip = flatten(list.pages.at(0)?.primitives ?? []).find(
+        (primitive) =>
+          primitive.kind === "clipGroup" &&
+          primitive.children.some((child) => child.kind === "image"),
+      );
+
+      expect(pictureClip).toMatchObject({
+        kind: "clipGroup",
+        rect: { xPx: MARGINS.left, widthPx: PAGE_SIZE.w - MARGINS.left },
+      });
+    }, fakeMeasure);
+  });
+
+  test("clips a header-table picture at its cell border box", () => {
+    withFakeTextMeasure(() => {
+      const picture: ParagraphBlock = {
+        kind: "paragraph",
+        id: "header-cell-picture-paragraph",
+        runs: [
+          {
+            kind: "image",
+            src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+            width: 300,
+            height: 30,
+          },
+        ],
+      };
+      const table: TableBlock = {
+        kind: "table",
+        id: "header-picture-table",
+        columnWidths: [200],
+        rows: [
+          {
+            id: "header-picture-row",
+            cells: [
+              {
+                id: "header-picture-cell",
+                blocks: [picture],
+                padding: { top: 0, right: 36, bottom: 0, left: 36 },
+              },
+            ],
+          },
+        ],
+      };
+      const built = buildLayout([para("body", "Body")], {
+        sectionHeaderFooterRefs: SECTION_REFS,
+      });
+      const list = buildDisplayList({
+        ...built,
+        headerContentByRId: new Map([["rIdH", storyBlocks([table])]]),
+      });
+      const cellClip = flatten(list.pages.at(0)?.primitives ?? []).find(
+        (primitive) =>
+          primitive.kind === "clipGroup" &&
+          primitive.rect.widthPx === 164 &&
+          primitive.children.some((child) => child.kind === "image"),
+      );
+
+      if (cellClip?.kind !== "clipGroup") {
+        throw new Error("Expected the header picture to be cell-clipped");
+      }
+      expect(cellClip.rect).toMatchObject({ xPx: 132, widthPx: 164 });
+      expect(cellClip.rect.xPx + cellClip.rect.widthPx).toBe(296);
+      const image = cellClip.children.find((child) => child.kind === "image");
+      expect(image?.rect).toMatchObject({ xPx: 132, widthPx: 300 });
+    }, fakeMeasure);
+  });
+
   test("a supplied header paints its text through the shared paragraph builder", () => {
     withFakeTextMeasure(() => {
       const built = buildLayout([para("a", "Body")], {

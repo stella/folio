@@ -76,7 +76,17 @@ import {
 } from "../../layout-painter/renderParagraph";
 import { isFloatingImageRun } from "../../layout-painter/renderUtils";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
-import { resolvePhysicalParagraphInlineLayout } from "../../utils/paragraphInlineLayout";
+import { getParagraphFrame } from "../../utils/paragraphFrame";
+import {
+  inlinePictureVisibleBounds,
+  isInlinePictureRun,
+  resolveParagraphLineGeometryForBlock,
+  resolvePhysicalParagraphInlineLayout,
+} from "../../utils/paragraphInlineLayout";
+import type {
+  HorizontalClipViewport,
+  ParagraphLineGeometry,
+} from "../../utils/paragraphInlineLayout";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import { sanitizeExternalUrl } from "../../utils/urlSecurity";
 import {
@@ -252,6 +262,7 @@ export type ParagraphPaintOptions = {
   readonly block: ParagraphBlock;
   readonly measure: ParagraphMeasure;
   readonly context: BuildContext;
+  readonly inlinePictureViewport?: HorizontalClipViewport;
   /** Borders of the adjacent paragraphs, for ECMA-376 §17.3.1.24 border grouping. */
   readonly prevBorders?: ParagraphBorders;
   readonly nextBorders?: ParagraphBorders;
@@ -415,93 +426,6 @@ const paintParagraphChrome = ({
   }));
 
   return primitives;
-};
-
-type LineGeometry = {
-  /** Where the first glyph lands, page-absolute, after alignment. */
-  readonly paintStartXPx: number;
-  /**
-   * The same line's start in the measurer's coordinates, whose origin is the
-   * fragment's own left edge. Tab stops are twips from there, so a tab must be
-   * computed in this space and only then shifted by the alignment.
-   */
-  readonly layoutStartXPx: number;
-  /** Rightmost x inline content may occupy, in the measurer's coordinates. */
-  readonly layoutRightEdgeXPx: number;
-  readonly baselineYPx: number;
-  readonly lineTopYPx: number;
-};
-
-type ResolveLineGeometryOptions = {
-  readonly fragment: ParagraphFragment;
-  readonly line: MeasuredLine;
-  readonly lineTopYPx: number;
-  readonly alignment: "left" | "center" | "right" | "justify";
-  readonly isRtl: boolean;
-  readonly indentLeft: number;
-  readonly indentRight: number;
-  /** `(w:firstLine - w:hanging)`, the measurer's first-line offset. */
-  readonly firstLineOffsetPx: number;
-  readonly markerInlineWidthPx: number;
-  readonly isFirstLine: boolean;
-};
-
-const resolveLineGeometry = ({
-  fragment,
-  line,
-  lineTopYPx,
-  alignment,
-  isRtl,
-  indentLeft,
-  indentRight,
-  firstLineOffsetPx,
-  markerInlineWidthPx,
-  isFirstLine,
-}: ResolveLineGeometryOptions): LineGeometry => {
-  const leftOffset = line.leftOffset ?? 0;
-  const rightOffset = line.rightOffset ?? 0;
-  const firstLineExtra = isFirstLine
-    ? firstLineOffsetPx + markerInlineWidthPx
-    : 0;
-
-  // The measurer accumulates from the fragment's left edge whatever the
-  // alignment, so tab stops stay on the document's grid. Both `measureParagraph`
-  // and `renderLine` use that origin, not the page's.
-  const layoutStartXPx = indentLeft + leftOffset + (isRtl ? 0 : firstLineExtra);
-  const layoutRightEdgeXPx = fragment.width - indentRight - rightOffset;
-
-  const leftEdge = fragment.x + layoutStartXPx;
-  const rightEdge =
-    fragment.x + layoutRightEdgeXPx - (isRtl ? firstLineExtra : 0);
-
-  let paintStartXPx: number;
-  switch (alignment) {
-    case "right":
-      paintStartXPx = rightEdge - line.width;
-      break;
-    case "center":
-      paintStartXPx = leftEdge + (rightEdge - leftEdge - line.width) / 2;
-      break;
-    case "left":
-    case "justify":
-      paintStartXPx = isRtl ? rightEdge - line.width : leftEdge;
-      break;
-  }
-
-  // CSS centres the inline box in its line box: half the leading sits above the
-  // font's ascent, half below its descent.
-  const baselineYPx =
-    lineTopYPx +
-    (line.lineHeight - (line.ascent + line.descent)) / 2 +
-    line.ascent;
-
-  return {
-    paintStartXPx,
-    layoutStartXPx,
-    layoutRightEdgeXPx,
-    baselineYPx,
-    lineTopYPx,
-  };
 };
 
 type JustificationPlan = {
@@ -1113,7 +1037,7 @@ const resolveLinkTarget = (
 type PaintLineOptions = {
   readonly block: ParagraphBlock;
   readonly line: MeasuredLine;
-  readonly geometry: LineGeometry;
+  readonly geometry: ParagraphLineGeometry;
   readonly context: BuildContext;
   readonly alignment: "left" | "center" | "right" | "justify";
   readonly isRtl: boolean;
@@ -1124,6 +1048,7 @@ type PaintLineOptions = {
   readonly indentLeft: number;
   readonly firstLineOffsetPx: number;
   readonly markerInlineWidthPx: number;
+  readonly inlinePictureViewport?: HorizontalClipViewport;
 };
 
 type PaintedLine = {
@@ -1145,6 +1070,7 @@ const paintLine = ({
   indentLeft,
   firstLineOffsetPx,
   markerInlineWidthPx,
+  inlinePictureViewport,
 }: PaintLineOptions): PaintedLine => {
   const sink: LineSink = { backgrounds: [], glyphs: [], decorations: [] };
   const tabRegions: RegionDescriptor[] = [];
@@ -1390,18 +1316,42 @@ const paintLine = ({
         }
         const boundingBox = inlineImageBoundingBox(run);
         // Word seats an inline image as a tall glyph on the text baseline.
+        const imageRect = {
+          xPx: paintXOf(),
+          yPx: geometry.baselineYPx - boundingBox.height,
+          widthPx: boundingBox.width,
+          heightPx: boundingBox.height,
+        };
         const primitives = paintImage({
           source: run,
-          rect: {
-            xPx: paintXOf(),
-            yPx: geometry.baselineYPx - boundingBox.height,
-            widthPx: boundingBox.width,
-            heightPx: boundingBox.height,
-          },
+          rect: imageRect,
           context,
           label: "inline image",
         });
-        sink.glyphs.push(...primitives);
+        if (
+          inlinePictureViewport === undefined ||
+          primitives.length === 0 ||
+          !isInlinePictureRun(run)
+        ) {
+          sink.glyphs.push(...primitives);
+        } else {
+          const visible = inlinePictureVisibleBounds({
+            pictureLeft: imageRect.xPx,
+            pictureWidth: imageRect.widthPx,
+            viewport: inlinePictureViewport,
+          });
+          sink.glyphs.push({
+            kind: "clipGroup",
+            rect: {
+              xPx: visible.left,
+              yPx: imageRect.yPx,
+              widthPx: visible.right - visible.left,
+              heightPx: imageRect.heightPx,
+            },
+            children: primitives,
+            regions: [],
+          });
+        }
         if (run.displayMode !== "block" && run.wrapType !== "topAndBottom") {
           layoutXPx += boundingBox.width;
         }
@@ -1681,6 +1631,11 @@ export const paintParagraphFragment = (
   options: ParagraphPaintOptions,
 ): void => {
   const { fragment, block, measure, context, composer } = options;
+  const paragraphFrame = getParagraphFrame(block);
+  const inlinePictureViewport =
+    paragraphFrame === undefined
+      ? (options.inlinePictureViewport ?? context.inlinePictureViewport)
+      : { left: fragment.x, right: fragment.x + fragment.width };
   composer.push(paintParagraphChrome(options));
 
   const { alignment, indentLeft, indentRight, isRtl } =
@@ -1715,21 +1670,16 @@ export const paintParagraphFragment = (
     cursorYPx += line.floatSkipBefore ?? 0;
 
     const isFirstLine = lineIndex === 0 && fragment.continuesFromPrev !== true;
-    const geometry = resolveLineGeometry({
+    const lineRuns = sliceRunsForLine(block, line);
+    const geometry = resolveParagraphLineGeometryForBlock({
       fragment,
+      block,
       line,
       lineTopYPx: cursorYPx,
-      alignment,
-      isRtl,
-      indentLeft,
-      indentRight,
-      firstLineOffsetPx,
-      markerInlineWidthPx,
       isFirstLine,
     });
 
     // The line's own runs, from the same slice the painting below uses.
-    const lineRuns = sliceRunsForLine(block, line);
     // The line's own box spans the fragment's width, not the glyphs': a click
     // to the right of the last word is still on that line, and that is where
     // the caret goes.
@@ -1764,6 +1714,9 @@ export const paintParagraphFragment = (
           indentLeft,
           firstLineOffsetPx,
           markerInlineWidthPx,
+          ...(inlinePictureViewport === undefined
+            ? {}
+            : { inlinePictureViewport }),
         });
         composer.push(painted.primitives);
         for (const tab of painted.tabRegions) {

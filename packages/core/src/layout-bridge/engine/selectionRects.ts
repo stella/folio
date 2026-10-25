@@ -45,7 +45,10 @@ import type {
   TextRun,
 } from "../../layout-engine/types";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
-import { resolvePhysicalParagraphInlineLayout } from "../../utils/paragraphInlineLayout";
+import {
+  resolveParagraphLineGeometryForBlock,
+  resolvePhysicalParagraphInlineLayout,
+} from "../../utils/paragraphInlineLayout";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import { getPageTop } from "./hitTest";
 
@@ -509,7 +512,7 @@ export function selectionToRects(
         const paragraphBlock = block as ParagraphBlock;
         const paragraphMeasure = measure as ParagraphMeasure;
         const paragraphFragment = fragment as ParagraphFragment;
-        const { alignment, indentLeft, indentRight } =
+        const { indentLeft, indentRight } =
           resolvePhysicalParagraphInlineLayout(paragraphBlock);
         const availableWidth = Math.max(
           0,
@@ -578,24 +581,22 @@ export function selectionToRects(
             availableWidth,
           );
 
-          // Calculate alignment offset
-          let alignmentOffset = 0;
-          if (alignment === "center") {
-            alignmentOffset = Math.max(0, (availableWidth - line.width) / 2);
-          } else if (alignment === "right") {
-            alignmentOffset = Math.max(0, availableWidth - line.width);
-          }
-
           // Calculate line Y offset within fragment
           const lineOffset = measuredLineContentOffset(
             paragraphMeasure.lines,
             paragraphFragment.fromLine,
             index,
           );
+          const lineGeometry = resolveParagraphLineGeometryForBlock({
+            fragment: paragraphFragment,
+            block: paragraphBlock,
+            line,
+            lineTopYPx: fragment.y + lineOffset,
+            isFirstLine: index === 0 && !paragraphFragment.continuesFromPrev,
+          });
 
           // Create selection rectangle
-          const rectX =
-            fragment.x + indentLeft + alignmentOffset + Math.min(startX, endX);
+          const rectX = lineGeometry.paintStartXPx + Math.min(startX, endX);
           const rectWidth = isEmptyLine
             ? EMPTY_PARAGRAPH_SLIVER_WIDTH
             : Math.max(1, Math.abs(endX - startX));
@@ -729,7 +730,7 @@ export function selectionToRects(
                   },
                 );
               }
-              const { alignment, indentLeft, indentRight } =
+              const { indentLeft, indentRight } =
                 resolvePhysicalParagraphInlineLayout(paragraphBlock);
               const availableWidth = Math.max(
                 0,
@@ -786,21 +787,22 @@ export function selectionToRects(
                   charOffsetTo,
                   availableWidth,
                 );
-                let alignmentOffset = 0;
-                if (alignment === "center") {
-                  alignmentOffset = Math.max(
-                    0,
-                    (availableWidth - line.width) / 2,
-                  );
-                } else if (alignment === "right") {
-                  alignmentOffset = Math.max(0, availableWidth - line.width);
-                }
-
                 const lineY = measuredLineContentOffset(
                   paragraphMeasure.lines,
                   0,
                   index,
                 );
+                const lineGeometry = resolveParagraphLineGeometryForBlock({
+                  fragment: {
+                    x: tableFragment.x + placement.left + contentOffsetX,
+                    width: contentWidth,
+                  },
+                  block: paragraphBlock,
+                  line,
+                  lineTopYPx:
+                    tableFragment.y + rowY + contentOffsetY + blockY + lineY,
+                  isFirstLine: index === 0,
+                });
                 const clippedLineY = contentOffsetY + blockY + lineY;
                 if (
                   clippedLineY + line.lineHeight <= clipTop ||
@@ -810,13 +812,7 @@ export function selectionToRects(
                 }
 
                 rects.push({
-                  x:
-                    tableFragment.x +
-                    placement.left +
-                    contentOffsetX +
-                    indentLeft +
-                    alignmentOffset +
-                    Math.min(startX, endX),
+                  x: lineGeometry.paintStartXPx + Math.min(startX, endX),
                   y: tableFragment.y + rowY + clippedLineY - clipTop + pageTopY,
                   width: isEmptyLine
                     ? EMPTY_PARAGRAPH_SLIVER_WIDTH
@@ -930,12 +926,25 @@ export function getCaretPosition(
             );
 
             // Calculate indentation
-            const { alignment, indentLeft, indentRight } =
+            const { indentLeft, indentRight } =
               resolvePhysicalParagraphInlineLayout(paragraphBlock);
             const availableWidth = Math.max(
               0,
               fragment.width - indentLeft - indentRight,
             );
+            const lineOffset = measuredLineContentOffset(
+              paragraphMeasure.lines,
+              paragraphFragment.fromLine,
+              lineIndex,
+            );
+            const lineGeometry = resolveParagraphLineGeometryForBlock({
+              fragment: paragraphFragment,
+              block: paragraphBlock,
+              line,
+              lineTopYPx: fragment.y + lineOffset,
+              isFirstLine:
+                lineIndex === 0 && !paragraphFragment.continuesFromPrev,
+            });
 
             const x = charOffsetToX(
               paragraphBlock,
@@ -944,23 +953,8 @@ export function getCaretPosition(
               availableWidth,
             );
 
-            // Calculate alignment offset
-            let alignmentOffset = 0;
-            if (alignment === "center") {
-              alignmentOffset = Math.max(0, (availableWidth - line.width) / 2);
-            } else if (alignment === "right") {
-              alignmentOffset = Math.max(0, availableWidth - line.width);
-            }
-
-            // Calculate Y offset
-            const lineOffset = measuredLineContentOffset(
-              paragraphMeasure.lines,
-              paragraphFragment.fromLine,
-              lineIndex,
-            );
-
             return {
-              x: fragment.x + indentLeft + alignmentOffset + x,
+              x: lineGeometry.paintStartXPx + x,
               y: fragment.y + lineOffset + pageTopY,
               height: line.lineHeight,
               pageIndex,

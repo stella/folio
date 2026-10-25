@@ -24,6 +24,11 @@ import type {
   ParagraphBorders,
 } from "../../layout-engine/types";
 import type { BlockLookup, BlockLookupEntry } from "../../layout-painter/index";
+import {
+  pageHorizontalColumns,
+  paragraphInlinePictureViewport,
+} from "../../utils/paragraphInlineLayout";
+import type { HorizontalClipViewport } from "../../utils/paragraphInlineLayout";
 import { HIT_REGION_KINDS } from "../primitives";
 import type {
   DisplayColor,
@@ -230,6 +235,7 @@ type PaintFragmentOptions = {
   readonly context: BuildContext;
   readonly prevEntry: BlockLookupEntry | undefined;
   readonly nextEntry: BlockLookupEntry | undefined;
+  readonly inlinePictureViewport?: HorizontalClipViewport;
 };
 
 const paintFragment = ({
@@ -239,6 +245,7 @@ const paintFragment = ({
   composer,
   prevEntry,
   nextEntry,
+  inlinePictureViewport,
 }: PaintFragmentOptions): void => {
   const { block, measure } = entry;
   const mismatch = (): void => {
@@ -263,6 +270,9 @@ const paintFragment = ({
         measure,
         context,
         composer,
+        ...(inlinePictureViewport === undefined
+          ? {}
+          : { inlinePictureViewport }),
         ...(prevBorders === undefined ? {} : { prevBorders }),
         ...(nextBorders === undefined ? {} : { nextBorders }),
       });
@@ -360,6 +370,12 @@ const buildPage = ({
   // `behindDoc` artwork paints under the body and the rest paints over it: the
   // producer resolves that stacking so no backend has to.
   const geometry = pageGeometryOf(page);
+  const paperPictureViewport = { left: 0, right: page.size.w };
+  const pictureColumns = pageHorizontalColumns({
+    layout: page.columns,
+    contentLeft: page.margins.left,
+    contentWidth: page.size.w - page.margins.left - page.margins.right,
+  });
   const placedFloats = new Set<ImageRun>();
   const behindFloats: DisplayPrimitive[] = [];
   const frontFloats: DisplayPrimitive[] = [];
@@ -418,6 +434,15 @@ const buildPage = ({
           continue;
         }
         const paint = (fragmentContext: BuildContext): void => {
+          const inlinePictureViewport =
+            fragment.kind === "paragraph" && entry.block.kind === "paragraph"
+              ? paragraphInlinePictureViewport({
+                  block: entry.block,
+                  fragment,
+                  paper: paperPictureViewport,
+                  columns: pictureColumns,
+                })
+              : undefined;
           composer.region(
             blockRegion({
               fragment,
@@ -432,6 +457,9 @@ const buildPage = ({
                 composer,
                 prevEntry: entries[index - 1],
                 nextEntry: entries[index + 1],
+                ...(inlinePictureViewport === undefined
+                  ? {}
+                  : { inlinePictureViewport }),
               });
             },
           );

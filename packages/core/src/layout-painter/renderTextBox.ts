@@ -228,7 +228,12 @@ export function renderTextBoxFragment(
       paraFragment,
       contentBlock,
       contentMeasure,
-      context,
+      {
+        ...context,
+        inlinePictureSizing: "textColumnFit",
+        inlinePictureViewport: { left: 0, right: innerWidth },
+        inlinePictureOriginX: 0,
+      },
       {
         document: doc,
         ...(prevBorders !== undefined ? { prevBorders } : {}),
