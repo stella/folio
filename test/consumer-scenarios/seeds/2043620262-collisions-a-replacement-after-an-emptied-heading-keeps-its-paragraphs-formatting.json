@@ -1,0 +1,7 @@
+{
+  "seed": 2043620262,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "a replacement after an emptied heading keeps its paragraph's formatting"
+}

@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "direct",
+  "seed": 521103234,
+  "title": "A replacement after emptying a heading keeps its own paragraph's formatting",
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 449585737,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "5E88C024",
+          "text": "Warranty goods delivery buyer."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2593281235,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 15
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1997358,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "412DDC7F",
+          "find": "Terms",
+          "replace": "",
+          "precondition": {
+            "blockTextHash": "h3xf15e"
+          }
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 626256728,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "@3",
+          "offset": 9
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1698104477,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "@4",
+          "find": "buyer",
+          "replace": "amended",
+          "precondition": {
+            "blockTextHash": "hwgr68v"
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "formatRange",
+    "replaceBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "commentOnBlock",
+    "deleteTableRow"
+  ],
+  "origin": "shrunk from collisions flow seed 521103234"
+}

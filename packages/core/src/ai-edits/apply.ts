@@ -7550,10 +7550,14 @@ const insertCleanText = ({
     if (text.length === 0) {
       return { transaction: tr.delete(from, to), start: from, end: from };
     }
-    // Explicit stored marks (formatting switched on at the caret) win over the replaced span.
+    // Explicit stored marks (formatting switched on at the caret) win over the
+    // replaced span, for text that replaces the selection. Elsewhere they are
+    // another paragraph's caret formatting, such as an emptied heading's.
+    const atSelection = tr.selection.from === from && tr.selection.to === to;
     const replacement = tr.doc.type.schema.text(
       text,
-      tr.storedMarks ?? inheritedReplacementMarks(tr.doc, from, to),
+      (atSelection ? tr.storedMarks : null) ??
+        inheritedReplacementMarks(tr.doc, from, to),
     );
     return {
       transaction: tr.replaceWith(from, to, replacement),
