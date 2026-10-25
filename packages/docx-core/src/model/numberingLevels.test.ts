@@ -221,6 +221,38 @@ describe("resolveNumberingLevel", () => {
 
 describe("levelShowsMarker", () => {
   test.each([
+    { currentLegal: false, referencedLegal: false },
+    { currentLegal: false, referencedLegal: true },
+    { currentLegal: true, referencedLegal: false },
+    { currentLegal: true, referencedLegal: true },
+  ])(
+    "placeholder visibility uses current legal mode $currentLegal, not referenced legal mode $referencedLegal",
+    ({ currentLegal, referencedLegal }) => {
+      expect(
+        levelShowsMarker(
+          definitions({
+            abstractNums: [
+              {
+                abstractNumId: 1,
+                levels: [
+                  level(0, {
+                    numFmt: "none",
+                    lvlText: "",
+                    isLgl: referencedLegal,
+                  }),
+                  level(1, { lvlText: "%1", isLgl: currentLegal }),
+                ],
+              },
+            ],
+          }),
+          1,
+          1,
+        ),
+      ).toBe(currentLegal);
+    },
+  );
+
+  test.each([
     ["visible", level(0), true],
     ["hidden", level(0, { rPr: { hidden: true } }), false],
     ["none", level(0, { numFmt: "none" }), true],

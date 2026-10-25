@@ -268,6 +268,7 @@ export type DocumentBody = {
 // @public
 export type DocumentSettings = {
     compatibilityMode?: number;
+    noColumnBalance?: boolean;
     defaultTabStop: number;
     evenAndOddHeaders?: boolean;
     mirrorMargins?: boolean;
@@ -1019,7 +1020,9 @@ export type NumberingLevelEntry = {
 };
 
 // @public
-export const numberingLevelHasMarkerSlot: (level: Pick<ListLevel, "numFmt">) => boolean;
+export const numberingLevelHasMarkerSlot: (level: {
+    numFmt: CounterFormat;
+}, isLegal?: boolean) => boolean;
 
 // @public (undocumented)
 export type NumberingLevelResolution = {
@@ -1081,6 +1084,8 @@ export type ParagraphFormatting = OwnFieldPresence<{
     alignment?: ParagraphAlignment;
     bidi?: boolean;
     kinsoku?: boolean;
+    autoSpaceDE?: boolean;
+    autoSpaceDN?: boolean;
     overflowPunctuation?: boolean;
     spaceBefore?: number;
     spaceAfter?: number;
@@ -1646,6 +1651,7 @@ export type Shape = {
 export type ShapeAlternateContent = {
     verbatimXml: string;
     verbatimFingerprint: string;
+    verbatimStructureFingerprint?: string;
 };
 
 // @public

@@ -18,6 +18,7 @@
 import type { EditorView } from "prosemirror-view";
 
 import {
+  clampRowResizeDelta,
   commitColumnResize,
   commitRightEdgeResize,
   commitRowResize,
@@ -46,6 +47,7 @@ type RowResizeState = {
   isEdge: boolean;
   tablePmStart: number;
   origHeight: number;
+  minimumHeight: number;
 };
 
 type RightEdgeResizeState = {
@@ -80,6 +82,7 @@ export function useTableResize(): UseTableResizeReturn {
     isEdge: false,
     tablePmStart: 0,
     origHeight: 0,
+    minimumHeight: MIN_ROW_HEIGHT_TWIPS,
   };
   const edge: RightEdgeResizeState = {
     active: false,
@@ -169,13 +172,15 @@ export function useTableResize(): UseTableResizeReturn {
       e.preventDefault();
       const delta = e.clientY - row.startY;
       const origTop = parseFloat(row.handle.style.top);
-      row.handle.style.top = `${origTop + delta}px`;
       row.startY = e.clientY;
       const deltaTwips = Math.round(delta * TWIPS_PER_PIXEL);
-      const newHeight = row.origHeight + deltaTwips;
-      if (newHeight >= MIN_ROW_HEIGHT_TWIPS) {
-        row.origHeight = newHeight;
-      }
+      const clampedDelta = clampRowResizeDelta({
+        currentHeight: row.origHeight,
+        delta: deltaTwips,
+        minimumHeight: row.minimumHeight,
+      });
+      row.handle.style.top = `${origTop + clampedDelta / TWIPS_PER_PIXEL}px`;
+      row.origHeight += clampedDelta;
       return;
     }
 
@@ -263,13 +268,14 @@ function seedRowHeight(
   const stored = readRowHeight(view, row.tablePmStart, row.rowIndex);
   if (stored != null) {
     row.origHeight = stored;
-    return;
+  } else {
+    // Estimate from rendered height when the row has no explicit height.
+    const tableEl = target.closest(".layout-table");
+    const rowEl = tableEl?.querySelector(`[data-row-index="${row.rowIndex}"]`);
+    const renderedHeight = rowEl ? rowEl.getBoundingClientRect().height : 30;
+    row.origHeight = Math.round(renderedHeight * TWIPS_PER_PIXEL);
   }
-  // Estimate from rendered height when the row has no explicit height.
-  const tableEl = target.closest(".layout-table");
-  const rowEl = tableEl?.querySelector(`[data-row-index="${row.rowIndex}"]`);
-  const renderedHeight = rowEl ? rowEl.getBoundingClientRect().height : 30;
-  row.origHeight = Math.round(renderedHeight * TWIPS_PER_PIXEL);
+  row.minimumHeight = Math.min(MIN_ROW_HEIGHT_TWIPS, row.origHeight);
 }
 
 function seedRightEdgeWidth(view: EditorView, edge: RightEdgeResizeState) {

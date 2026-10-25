@@ -283,6 +283,8 @@ export type ParagraphFormatting = OwnFieldPresence<{
   bidi?: boolean;
   /** Apply East Asian first/last-character line-breaking rules (w:kinsoku). */
   kinsoku?: boolean;
+  autoSpaceDE?: boolean;
+  autoSpaceDN?: boolean;
   /** Allow punctuation to hang beyond the text margin (w:overflowPunct). */
   overflowPunctuation?: boolean;
 

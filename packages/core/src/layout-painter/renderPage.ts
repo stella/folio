@@ -9,6 +9,7 @@ import { panic } from "better-result";
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
+import { releaseDisplayPageResources } from "../display-list/pageResourceOwnership";
 import { embeddedFontFingerprint } from "../fonts/embeddedFontFingerprint";
 import {
   measureParagraph,
@@ -523,6 +524,7 @@ function syncPageMarginGuideOverlay(
   for (const stale of Array.from(
     pageEl.querySelectorAll<HTMLElement>(":scope > .layout-page-margin-guide"),
   )) {
+    releaseDisplayPageResources(stale);
     stale.remove();
   }
 
@@ -547,6 +549,7 @@ function syncPageBorderOverlay(
   for (const stale of Array.from(
     pageEl.querySelectorAll<HTMLElement>(":scope > .layout-page-border"),
   )) {
+    releaseDisplayPageResources(stale);
     stale.remove();
   }
   const overlay = renderPageBorderOverlay(page, options, doc);
@@ -574,6 +577,7 @@ function syncPageWatermarkOverlay(
   for (const stale of Array.from(
     pageEl.querySelectorAll<HTMLElement>(":scope > .layout-page-watermark"),
   )) {
+    releaseDisplayPageResources(stale);
     stale.remove();
   }
 
@@ -3282,7 +3286,7 @@ export function renderPages(
       const shell = prev.element;
       const pageContextChanged = totalPagesChanged || fieldContextChanged;
       if (pageContextChanged) {
-        shell.innerHTML = "";
+        clearRenderedPage(shell);
         data.rendered = false;
         populatePageShell(shell, prevDataMap, totalPages, options);
         applyPageStyles(shell, page.size.w, page.size.h, options);
@@ -3367,7 +3371,7 @@ export function renderPages(
           observer.unobserve(shell);
         }
         prevDataMap.delete(shell);
-        shell.remove();
+        removeRenderedPage(shell);
       }
       prevShells.length = pages.length;
     }
@@ -3415,7 +3419,7 @@ export function renderPages(
   const overlayBefore = existingChildren.find((el) => !isPageShell(el)) ?? null;
   for (const el of existingChildren) {
     if (isPageShell(el)) {
-      el.remove();
+      removeRenderedPage(el);
     }
   }
   delete pc.__pageRenderState;
@@ -3668,6 +3672,7 @@ function populatePageShell(
   for (const stale of Array.from(
     shell.querySelectorAll<HTMLElement>(":scope > .layout-page-border"),
   )) {
+    releaseDisplayPageResources(stale);
     stale.remove();
   }
 
@@ -3729,6 +3734,24 @@ export function renderAllPagesNow(container: HTMLElement): number {
  * Surgically replace only the content area of a rendered page shell.
  * Preserves header/footer elements to avoid blinking.
  */
+function clearRenderedPage(shell: HTMLElement): void {
+  releaseDisplayPageResources(shell);
+  shell.innerHTML = "";
+}
+
+function removeRenderedPage(element: Element): void {
+  releaseDisplayPageResources(element);
+  element.remove();
+}
+
+function replaceRenderedPageElement(
+  oldElement: Element,
+  newElement: Element,
+): void {
+  releaseDisplayPageResources(oldElement);
+  oldElement.replaceWith(newElement);
+}
+
 function repopulatePageContent(
   shell: HTMLElement,
   pageDataMap: Map<
@@ -3755,21 +3778,32 @@ function repopulatePageContent(
   // Extract the new content area from the rendered page
   const newContentEl = fullPageEl.querySelector(`.${PAGE_CLASS_NAMES.content}`);
   const oldContentEl = shell.querySelector(`.${PAGE_CLASS_NAMES.content}`);
+  const newFontStyle = fullPageEl.querySelector(":scope > style");
+  const oldFontStyle = shell.querySelector(":scope > style");
 
   if (newContentEl && oldContentEl) {
+    if (newFontStyle && oldFontStyle) {
+      replaceRenderedPageElement(oldFontStyle, newFontStyle);
+    } else if (newFontStyle) {
+      shell.prepend(newFontStyle);
+    } else if (oldFontStyle) {
+      removeRenderedPage(oldFontStyle);
+    }
     // Replace only the content area — header/footer stay untouched
-    oldContentEl.replaceWith(newContentEl);
+    replaceRenderedPageElement(oldContentEl, newContentEl);
     syncPageWatermarkOverlay(
       shell,
       data.page,
       pageOptions,
       options.document ?? document,
     );
+    releaseDisplayPageResources(fullPageEl);
     return;
   }
 
   // Fallback: full replace if structure doesn't match
-  shell.innerHTML = "";
+  releaseDisplayPageResources(fullPageEl);
+  clearRenderedPage(shell);
   data.rendered = false;
   populatePageShell(shell, pageDataMap, totalPages, options);
 }
@@ -3959,7 +3993,7 @@ function depopulatePageShell(
     return;
   }
 
-  shell.innerHTML = "";
+  clearRenderedPage(shell);
   data.rendered = false;
 
   const container = shell.parentElement as PageContainer | null;

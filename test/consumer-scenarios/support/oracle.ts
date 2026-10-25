@@ -2031,8 +2031,16 @@ export const compareWithModel = (
 
 type AnchorDisposition = "kept" | "removed" | "ambiguous";
 
-/** Decide whether the model removed the anchor, accounting for repeated text. */
-const anchorDisposition = (model: Model, entry: Comment): AnchorDisposition => {
+/**
+ * Decide whether the model removed the anchor, accounting for repeated text.
+ * `acceptedAnchor` is the comment's quote in the accepted document: a live
+ * quote reads pending deleted text that the live block text leaves out.
+ */
+const anchorDisposition = (
+  model: Model,
+  entry: Comment,
+  acceptedAnchor: string = entry.anchor,
+): AnchorDisposition => {
   if (entry.blockId === null) return "kept";
   const row = model.rows.find(
     (candidate) => candidate.pre?.id === entry.blockId,
@@ -2041,7 +2049,9 @@ const anchorDisposition = (model: Model, entry: Comment): AnchorDisposition => {
   if (explicitlyDeleted || (row?.removed && !row.pendingJoin)) {
     const liveText = model.liveTextById.get(entry.blockId);
     return entry.anchor === "" ||
-      (liveText !== undefined && liveText.includes(entry.anchor))
+      (liveText !== undefined &&
+        (liveText.includes(entry.anchor) ||
+          (acceptedAnchor !== "" && liveText.includes(acceptedAnchor))))
       ? "removed"
       : "kept";
   }
@@ -2154,7 +2164,9 @@ export const compareComments = (
     // only when a pending paragraph join moved its anchor to another block.
     const located = live && live.blockId !== entry.blockId ? live : entry;
     let disposition =
-      mode === "suggested" ? "kept" : anchorDisposition(model, located);
+      mode === "suggested"
+        ? "kept"
+        : anchorDisposition(model, located, entry.anchor);
     // A suggested removal stays pending and rejectable, so its comments stay.
     if (
       mode !== "suggested" &&

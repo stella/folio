@@ -30,6 +30,7 @@ import {
 import {
   listRenderingAttrPatch,
   listRenderingFromAttrs,
+  type ListRenderingSourceAttrs,
 } from "./listRenderingAttrs";
 import {
   effectiveParagraphNumberingReference,
@@ -80,10 +81,27 @@ const visibleLabel = (
   if (counted) {
     return `${counted}${foldedFieldSuffix(counterAttrs)}`;
   }
+  if (
+    counterAttrs.listMarker === "" ||
+    counterAttrs.listMarkerTemplate === ""
+  ) {
+    return "";
+  }
   // What the page paints when the counter resolves nothing: the marker as
   // the paragraph carries it.
   return staticMarker(counterAttrs);
 };
+
+const projectedListRendering = (
+  attrs: ListRenderingSourceAttrs,
+  numId: number,
+): ListRendering | undefined =>
+  attrs.listMarker != null ||
+  attrs.listMarkerTemplate != null ||
+  attrs.listIsBullet === true ||
+  attrs.listNumFmt != null
+    ? listRenderingFromAttrs({ attrs, numId })
+    : undefined;
 
 /**
  * The attrs the counter reads for a paragraph of the document model, as
@@ -102,8 +120,8 @@ export const listLabelAttrsFromRendering = (
       : { numPrFromStyle: paragraphNumberingAttr(numPrFromStyle) }),
   };
   if (rendering === undefined) return attrs;
-  if (rendering.marker) attrs.listMarker = rendering.marker;
-  if (rendering.markerTemplate)
+  if (rendering.marker !== undefined) attrs.listMarker = rendering.marker;
+  if (rendering.markerTemplate !== undefined)
     attrs.listMarkerTemplate = rendering.markerTemplate;
   if (rendering.isBullet) attrs.listIsBullet = true;
   if (rendering.isLegal) attrs.listIsLegal = true;
@@ -171,11 +189,7 @@ export const createListLabelCounter = (
     const effective = effectiveParagraphNumberingReference(sources);
     const projectedRendering =
       standaloneRendering ??
-      (attrs.listMarker != null ||
-      attrs.listIsBullet === true ||
-      attrs.listNumFmt != null
-        ? listRenderingFromAttrs({ attrs, numId: effective?.numId ?? 1 })
-        : undefined);
+      projectedListRendering(attrs, effective?.numId ?? 1);
     // A level-only override names no instance of its own: its style supplies
     // the numId or nothing does (ECMA-376 §17.9.19). A tracked predecessor's
     // reference is what rejecting restores, never the current list.
@@ -216,15 +230,10 @@ export const createListLabelCounter = (
           });
           const previousReference =
             effectiveParagraphNumberingReference(previousSources);
-          const previousProjected =
-            previous.listMarker != null ||
-            previous.listIsBullet === true ||
-            previous.listNumFmt != null
-              ? listRenderingFromAttrs({
-                  attrs: previous,
-                  numId: previousReference?.numId ?? 1,
-                })
-              : undefined;
+          const previousProjected = projectedListRendering(
+            previous,
+            previousReference?.numId ?? 1,
+          );
           const previousList = resolveParagraphList(
             previousSources,
             numbering,

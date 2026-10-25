@@ -129,7 +129,10 @@ import type {
   TableMeasure,
 } from "@stll/folio-core/layout-engine/types";
 // Layout painter
-import { LayoutPainter } from "@stll/folio-core/layout-painter";
+import {
+  LayoutPainter,
+  releaseDisplayPageResources,
+} from "@stll/folio-core/layout-painter";
 import {
   findPageShellForPmPos,
   PAINTER_PAINTED_EVENT,
@@ -209,9 +212,11 @@ import type {
 } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { getTemplateSlashMenu } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import {
+  clampRowResizeDelta,
   commitColumnResize,
   commitRightEdgeResize,
   commitRowResize,
+  MIN_ROW_HEIGHT_TWIPS,
 } from "@stll/folio-core/prosemirror/tableResize";
 import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
@@ -1974,6 +1979,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const resizeRowIndexRef = useRef(0);
     const resizeRowTablePmStartRef = useRef(0);
     const resizeRowOrigHeightRef = useRef(0); // twips
+    const resizeRowMinimumHeightRef = useRef(MIN_ROW_HEIGHT_TWIPS);
     const resizeRowHandleRef = useRef<HTMLElement | null>(null);
     const resizeRowIsEdgeRef = useRef(false);
 
@@ -2116,6 +2122,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     useLayoutEffect(() => {
       painterRef.current = painter;
     }, [painter]);
+
+    useLayoutEffect(() => {
+      const pagesContainer = pagesContainerRef.current;
+      return () => {
+        if (pagesContainer) releaseDisplayPageResources(pagesContainer);
+      };
+    }, []);
 
     // =========================================================================
     // Layout Pipeline
@@ -4111,6 +4124,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               }
             }
           }
+          resizeRowMinimumHeightRef.current = Math.min(
+            MIN_ROW_HEIGHT_TWIPS,
+            resizeRowOrigHeightRef.current,
+          );
           return;
         }
 
@@ -4388,16 +4405,17 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             const origTop = Number.parseFloat(
               resizeRowHandleRef.current.style.top,
             );
-            resizeRowHandleRef.current.style.top = `${origTop + delta}px`;
+            const deltaTwips = Math.round(delta * 15);
+            const clampedDelta = clampRowResizeDelta({
+              currentHeight: resizeRowOrigHeightRef.current,
+              delta: deltaTwips,
+              minimumHeight: resizeRowMinimumHeightRef.current,
+            });
+            resizeRowHandleRef.current.style.top = `${origTop + clampedDelta / 15}px`;
             resizeStartYRef.current = e.clientY;
 
             // Update stored height (convert pixel delta to twips)
-            const deltaTwips = Math.round(delta * 15);
-            const minHeight = 200; // ~0.14 inches minimum
-            const newHeight = resizeRowOrigHeightRef.current + deltaTwips;
-            if (newHeight >= minHeight) {
-              resizeRowOrigHeightRef.current = newHeight;
-            }
+            resizeRowOrigHeightRef.current += clampedDelta;
           }
           return;
         }
@@ -5487,6 +5505,24 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
 
         if (readOnly) {
+          const modifier = e.metaKey || e.ctrlKey;
+          const selectionGesture =
+            (modifier && e.key.toLowerCase() === "a") ||
+            (e.shiftKey &&
+              /^(?:Arrow(?:Left|Right|Up|Down)|Home|End|PageUp|PageDown)$/u.test(
+                e.key,
+              ));
+          if (selectionGesture) {
+            const view = hiddenPMRef.current?.getView();
+            const handled =
+              view?.someProp("handleKeyDown", (handler) =>
+                handler(view, e.nativeEvent),
+              ) ?? false;
+            if (handled) {
+              e.preventDefault();
+              return;
+            }
+          }
           if (isReadOnlyEditKey(e)) {
             onReadOnlyEditAttempt?.();
             e.preventDefault();

@@ -98,10 +98,12 @@ type RangeBoundaryType = {
  * mark must not take away. None is. A range boundary is a position, not
  * content: a paragraph that goes leaves it where the paragraph was
  * (`paragraphRemains` in `rangeBoundaries.ts`), so it keeps no blank
- * paragraph standing. A cached page break and a note's own marker mark
- * nothing a reader placed.
+ * paragraph standing. A comment reference remains one logical offset unit,
+ * but moves as an anchor when its paragraph goes. A cached page break and a
+ * note's own marker mark nothing a reader placed.
  */
 const ZERO_WIDTH_ITEMS_HOLD_CONTENT = {
+  commentReference: false,
   bookmarkStart: false,
   bookmarkEnd: false,
   commentRangeStart: false,
@@ -114,6 +116,7 @@ const ZERO_WIDTH_ITEMS_HOLD_CONTENT = {
   noteMarker: false,
 } as const satisfies Record<
   | RangeBoundaryType
+  | "commentReference"
   | Extract<RunContent["type"], "renderedPageBreak" | "noteMarker">,
   boolean
 >;
@@ -152,16 +155,40 @@ const isRangeBoundaryItem = (
 ): item is Extract<ParagraphContent, { type: RangeBoundaryType }> =>
   isRangeBoundary(item);
 
+type ParagraphRetentionFacts = {
+  width: number;
+  zeroWidthItems: ZeroWidthItem[];
+};
+
+const collectParagraphRetentionFacts = (
+  items: readonly ParagraphContent[],
+  facts: ParagraphRetentionFacts,
+): void => {
+  for (const item of items) {
+    if (item.type === "commentReference") {
+      facts.zeroWidthItems.push(item.type);
+      continue;
+    }
+    if (isRangeBoundaryItem(item)) {
+      facts.zeroWidthItems.push(item.type);
+      continue;
+    }
+    if (isInlineContainer(item)) {
+      collectParagraphRetentionFacts(childrenOf(item), facts);
+      continue;
+    }
+    facts.width += inlineWidth(item);
+  }
+};
+
 /** Whether a paragraph holds content its mark must not take away. */
 export const paragraphHoldsContent = (
   paragraph: Paragraph,
-): ParagraphContentVerdict =>
-  paragraphContentVerdict({
-    width: paragraphLength(paragraph),
-    zeroWidthItems: paragraph.content
-      .filter(isRangeBoundaryItem)
-      .map((item) => item.type),
-  });
+): ParagraphContentVerdict => {
+  const facts: ParagraphRetentionFacts = { width: 0, zeroWidthItems: [] };
+  collectParagraphRetentionFacts(paragraph.content, facts);
+  return paragraphContentVerdict(facts);
+};
 
 /** Tracked content that direct text must not join: it is on its way out. */
 export const isRemovedRevision = (item: ParagraphContent): boolean =>

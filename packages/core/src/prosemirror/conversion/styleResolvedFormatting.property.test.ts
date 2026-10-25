@@ -63,6 +63,8 @@ const OTHER_BORDER: BorderSpec = {
 const FIELD_VALUES = {
   bidi: [false, true],
   kinsoku: [false, true],
+  autoSpaceDE: [false, true],
+  autoSpaceDN: [false, true],
   overflowPunctuation: [false, true],
   snapToGrid: [false, true],
   widowControl: [false, true],

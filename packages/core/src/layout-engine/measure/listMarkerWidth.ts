@@ -122,7 +122,7 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
  */
 export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   const attrs = block.attrs;
-  if (!attrs?.listMarker || attrs.listMarkerHidden) {
+  if (attrs?.listMarker == null || attrs.listMarkerHidden) {
     return 0;
   }
 
@@ -182,7 +182,10 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   const searchStart =
     hanging > 0 ? Math.max(minBodyStart, indentLeft) : minBodyStart;
 
-  const firstCustomPast = customTabs.find((px) => px >= searchStart);
+  const emptyMarkerTab = naturalWidth === 0 && markerEndOffset === 0;
+  const firstCustomPast = customTabs.find((px) =>
+    emptyMarkerTab ? px > searchStart : px >= searchStart,
+  );
 
   // Honor the document's `w:defaultTabStop` (§17.6.13) when stamped onto
   // the block by `toFlowBlocks`; fall back to the OOXML default otherwise.
@@ -194,7 +197,9 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   // `searchStart` is strictly between two stops.
   const firstGridPast =
     defaultTabStopPx > 0
-      ? Math.ceil(searchStart / defaultTabStopPx) * defaultTabStopPx
+      ? (emptyMarkerTab
+          ? Math.floor(searchStart / defaultTabStopPx) + 1
+          : Math.ceil(searchStart / defaultTabStopPx)) * defaultTabStopPx
       : undefined;
 
   // Closest wins — Word doesn't let a far custom tab override a closer

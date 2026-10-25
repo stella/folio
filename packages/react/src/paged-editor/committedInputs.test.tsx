@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 
 import { panic } from "better-result";
 import { afterAll, expect, test } from "bun:test";
-import { Plugin } from "prosemirror-state";
+import { Plugin, TextSelection } from "prosemirror-state";
 import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
@@ -311,6 +311,88 @@ test("persistent paged controller reads document I/O from the latest commit", as
     await render(replacement);
     expect(editor.current?.getEditor()).toBe(controller);
     expect(await controller.getDocx()).toBe(replacement);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+test("read-only pages route selection keys but preserve native scrolling and refuse edits", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<PagedEditorRef>();
+  const messages = getFolioMessages("en");
+  const calls: string[] = [];
+  const { onReadOnlyEditAttempt } = createTransactionCallbacks(
+    calls,
+    "readonly-keyboard",
+  );
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+        <PagedEditor
+          ref={editor}
+          document={createEmptyDocument({ initialText: "Read only text" })}
+          documentIdentity="readonly-keyboard-selection"
+          markupView="all-markup"
+          documentIO={createDocumentIO(new ArrayBuffer(0))}
+          readOnly
+          onReadOnlyEditAttempt={onReadOnlyEditAttempt}
+        />
+      </IntlProvider>,
+    ),
+  );
+  try {
+    await act(async () => editor.current?.ensureView({ focus: false }));
+    const view =
+      editor.current?.getEditor()?.getView() ?? panic("Expected a hidden view");
+    const pageSurface = container.querySelector<HTMLElement>(".paged-editor");
+    if (!pageSurface) panic("Expected the page surface");
+    const dispatchKey = (key: string, init: KeyboardEventInit = {}) => {
+      const event = new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      pageSurface.dispatchEvent(event);
+      return event;
+    };
+
+    await act(async () => {
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)),
+      );
+      dispatchKey("a", { ctrlKey: true });
+    });
+    expect(view.state.selection.from).toBe(1);
+    expect(view.state.selection.to).toBe(view.state.doc.content.size - 1);
+
+    await act(async () => {
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)),
+      );
+      const event = dispatchKey("ArrowRight", { shiftKey: true });
+      expect(event.defaultPrevented).toBe(true);
+    });
+    expect([view.state.selection.from, view.state.selection.to]).toEqual([
+      1, 2,
+    ]);
+
+    const before = view.state.doc;
+    await act(async () => {
+      const event = dispatchKey("b");
+      expect(event.defaultPrevented).toBe(true);
+    });
+    expect(calls).toEqual(["blocked-readonly-keyboard"]);
+    expect(view.state.doc).toBe(before);
+
+    await act(async () => {
+      const event = dispatchKey("ArrowLeft");
+      expect(event.defaultPrevented).toBe(false);
+    });
+    expect(view.state.doc).toBe(before);
   } finally {
     await act(async () => root.unmount());
     container.remove();

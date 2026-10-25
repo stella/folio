@@ -240,15 +240,15 @@ export type DrawingContent =
  * The shape models the `mc:Choice` branch; `mc:Fallback` repeats the shape for
  * consumers that cannot process that branch (ECMA-376 Part 3), typically as VML
  * holding a second copy of the text. The element is written back whole while
- * the shape is unedited. Once the shape is edited, the Choice is regenerated
- * from the model and the Fallback is dropped: it would describe the shape as it
- * was, contradicting the new Choice for every consumer that reads only it.
+ * the shape is unedited. A text-only edit updates both branches; other edits
+ * regenerate the Choice and drop the Fallback rather than replaying stale geometry.
  */
 export type ShapeAlternateContent = {
   /** The whole element, every branch included, as `captureVerbatimXml` wrote it. */
   verbatimXml: string;
   /** Fingerprint of the modeled shape when the element was captured. */
   verbatimFingerprint: string;
+  verbatimStructureFingerprint?: string;
 };
 
 /**
