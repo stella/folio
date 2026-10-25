@@ -86,6 +86,9 @@ export const extractFailureMarkers = (log: string): FailureMarker[] =>
         typeof value["primary"] === "string"
           ? { flow: value["flow"], primary: value["primary"] }
           : {}),
+        ...(value["exploration"] === true
+          ? { exploration: true as const }
+          : {}),
       },
     ];
   });

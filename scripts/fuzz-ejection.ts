@@ -83,7 +83,15 @@ const titlePattern = (title: string): string =>
     .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
     .join(".*");
 
-/** The failed properties a log names, from its `PROPERTY_FAILURE {json}` lines. */
+/**
+ * The findings that failed the group. An exploration finding was reported
+ * without failing its run (test/property-exploration.ts); it is filed from
+ * the group's records instead and never explains an ejection.
+ */
+export const blockingFindings = (findings: readonly Finding[]): Finding[] =>
+  findings.filter(({ record }) => record.marker.exploration !== true);
+
+/** The failed properties a log names, from its `PROPERTY_FAILURE {json}` lines, exploration reports left out. */
 export const propertyReplays = (log: string): PropertyReplay[] =>
   log.split("\n").flatMap((line) => {
     const start = line.indexOf("PROPERTY_FAILURE ");
@@ -96,6 +104,7 @@ export const propertyReplays = (log: string): PropertyReplay[] =>
     } catch {
       return [];
     }
+    if (value["exploration"] === true) return [];
     const { file, test, seed, numRunsFactor } = value;
     const counterexample = value["path"];
     if (
@@ -229,7 +238,9 @@ const replay = (options: Options): void => {
   const logs = logsIn(options.queueLogs).map((file) =>
     readFileSync(file, "utf8"),
   );
-  const markers = logs.flatMap((log) => extractFailureMarkers(log));
+  const markers = logs
+    .flatMap((log) => extractFailureMarkers(log))
+    .filter((marker) => marker.exploration !== true);
   const attempts: ReplayAttempt[] = [];
   const consumers = markers.filter((marker) =>
     marker.repro.includes("consumer-scenarios.ts"),
@@ -281,7 +292,10 @@ const replay = (options: Options): void => {
       outcome,
     });
   });
-  verifyReplayAttempts(readFindings(logsIn(options.queueLogs), []), attempts);
+  verifyReplayAttempts(
+    blockingFindings(readFindings(logsIn(options.queueLogs), [])),
+    attempts,
+  );
   writeFileSync(
     path.join(options.out, "replay-complete.json"),
     JSON.stringify({
@@ -474,7 +488,9 @@ const report = async (options: Options): Promise<void> => {
       message: "--group-sha and --base-sha must be commit shas",
     });
   }
-  const findings = readFindings(logsIn(options.queueLogs), []);
+  const findings = blockingFindings(
+    readFindings(logsIn(options.queueLogs), []),
+  );
   const attempts = readReplayAttempts(options);
   const context: Context = {
     runUrl: options.runUrl,

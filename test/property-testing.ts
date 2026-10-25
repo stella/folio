@@ -24,6 +24,13 @@ import {
 } from "./consumer-scenarios/support/failure-fingerprints";
 import { reportFuzzHealth } from "./consumer-scenarios/support/fuzz-health";
 import { classifyFuzzRun } from "./fuzz-health";
+import {
+  EXPLORATION_DIR_ENV,
+  type ExplorationContext,
+  explorationReportsOnly,
+  isExplorationFailure,
+  type SeedSource,
+} from "./property-exploration";
 
 /**
  * Shared fast-check configuration for the repo's property tests. Every
@@ -60,6 +67,14 @@ import { classifyFuzzRun } from "./fuzz-health";
  *     replays each of them before the property's generated runs, in every
  *     environment; `propertyConfig` refuses a property that has pinned seeds
  *     but is not asserted through `assertProperty`.
+ *
+ *  5. Exploration reports. With `FOLIO_FUZZ_EXPLORATION=report` under CI (pull
+ *     requests and merge groups), a failure of the generated pass that only a
+ *     commit- or fast-check-chosen seed found logs its FOLIO_FAILURE and
+ *     PROPERTY_FAILURE lines marked `exploration`, writes its failure record
+ *     to `FOLIO_FUZZ_EXPLORATION_DIR`, and passes. Pinned, caller and
+ *     environment seeds, replay paths and `examples` still fail
+ *     (test/property-exploration.ts).
  */
 
 const SEED_ENV = "PROPERTY_TEST_SEED";
@@ -374,7 +389,11 @@ const errorText = (error: unknown): string => {
  * that would pin it. Under CI it also logs one machine-readable line.
  */
 const replayReporter =
-  <Ts>(identity: PropertyIdentity, pinned: PinnedSeed | undefined) =>
+  <Ts>(
+    identity: PropertyIdentity,
+    pinned: PinnedSeed | undefined,
+    exploration: ExplorationContext,
+  ) =>
   (details: fc.RunDetails<Ts>): void => {
     const registryFile = identity.site
       ? seedFileFor(identity.site.file)
@@ -408,6 +427,9 @@ const replayReporter =
       throw details.errorInstance;
     }
     const counterexamplePath = details.counterexamplePath;
+    const reportOnly =
+      isExplorationFailure(exploration, counterexamplePath) &&
+      explorationReportsOnly(process.env);
     const replay = replayCommand(identity, {
       seed: details.seed,
       path: counterexamplePath,
@@ -429,22 +451,28 @@ const replayReporter =
       );
     }
     if (isCi()) {
-      const directory = process.env["FOLIO_PROPERTY_FAILURES_DIR"];
-      const marker = failureMarker({
-        test: identity.key ?? identity.title ?? "property",
-        seed: details.seed,
-        path: counterexamplePath,
-        repro: replay,
-        failure: details.errorInstance,
-      });
+      const marker = {
+        ...failureMarker({
+          test: identity.key ?? identity.title ?? "property",
+          seed: details.seed,
+          path: counterexamplePath,
+          repro: replay,
+          failure: details.errorInstance,
+        }),
+        ...(reportOnly ? { exploration: true as const } : {}),
+      };
       logFailureMarker(marker);
-      if (directory !== undefined)
-        writeFailureRecord(
-          directory,
-          failureRecord(marker, details.errorInstance, {
-            flow: details.counterexample,
-          }),
-        );
+      const record = failureRecord(marker, details.errorInstance, {
+        flow: details.counterexample,
+      });
+      const directories = [
+        process.env["FOLIO_PROPERTY_FAILURES_DIR"],
+        reportOnly ? process.env[EXPLORATION_DIR_ENV] : undefined,
+      ];
+      for (const directory of directories) {
+        if (directory !== undefined && directory !== "")
+          writeFailureRecord(directory, record);
+      }
       console.error(
         `PROPERTY_FAILURE ${JSON.stringify({
           file: identity.site?.file ?? null,
@@ -455,6 +483,7 @@ const replayReporter =
           path: counterexamplePath,
           numRunsFactor: numRunsFactor(),
           pinned: pinned !== undefined,
+          ...(reportOnly ? { exploration: true } : {}),
           replay,
           counterexample: truncate(
             fc.stringify(details.counterexample),
@@ -463,6 +492,14 @@ const replayReporter =
           error: truncate(errorText(details.errorInstance), 1_000),
         })}`,
       );
+    }
+    if (reportOnly) {
+      // One annotation line on the run; the replay and pin lines follow it.
+      console.error(
+        `::warning title=Fuzz exploration finding::${identity.key ?? identity.title ?? "property"} failed on a generated case (reported, not failing this run). Replay: ${replay}`,
+      );
+      console.error(lines.join("\n"));
+      return;
     }
     throw new Error(lines.join("\n"), { cause: details.errorInstance });
   };
@@ -507,15 +544,50 @@ const envReplayPath = (
   return applies ? envPath : own;
 };
 
+/** The seed a run starts from and what chose it. */
+const seedOf = <Ts>(
+  params: fc.Parameters<Ts>,
+  identity: PropertyIdentity,
+  pinned: PinnedSeed | undefined,
+): { seed: number | undefined; source: SeedSource } => {
+  if (pinned !== undefined) return { seed: pinned.seed, source: "registry" };
+  if (params.seed !== undefined) return { seed: params.seed, source: "caller" };
+  const seed = defaultSeed(identity);
+  if (propertyTestSeed() !== undefined) return { seed, source: "environment" };
+  return { seed, source: seed === undefined ? "fast-check" : "commit" };
+};
+
+/** The seed, replay path and exploration context of one run. */
+const runOf = <Ts>(
+  params: fc.Parameters<Ts>,
+  identity: PropertyIdentity,
+  pinned: PinnedSeed | undefined,
+): {
+  seed: number | undefined;
+  replayPath: string | undefined;
+  exploration: ExplorationContext;
+} => {
+  const { seed, source } = seedOf(params, identity, pinned);
+  const replayPath =
+    pinned === undefined ? envReplayPath(seed, params.path) : pinned.path;
+  return {
+    seed,
+    replayPath,
+    exploration: {
+      seedSource: source,
+      replayPath: replayPath !== undefined && replayPath !== "",
+      examples: params.examples?.length ?? 0,
+    },
+  };
+};
+
 const buildConfig = <Ts>(
   params: fc.Parameters<Ts>,
   identity: PropertyIdentity,
   pinned?: PinnedSeed,
 ): fc.Parameters<Ts> => {
   const baseNumRuns = params.numRuns ?? FAST_CHECK_DEFAULT_NUM_RUNS;
-  const seed = pinned?.seed ?? params.seed ?? defaultSeed(identity);
-  const replayPath =
-    pinned === undefined ? envReplayPath(seed, params.path) : pinned.path;
+  const { seed, replayPath, exploration } = runOf(params, identity, pinned);
   const own =
     params.reporter === undefined && params.asyncReporter === undefined;
   const expected = pinned?.expectedFailure;
@@ -524,14 +596,16 @@ const buildConfig = <Ts>(
     ...params,
     ...(seed === undefined ? {} : { seed }),
     ...(replayPath === undefined ? {} : { path: replayPath }),
-    ...(own ? { reporter: replayReporter<Ts>(identity, pinned) } : {}),
+    ...(own
+      ? { reporter: replayReporter<Ts>(identity, pinned, exploration) }
+      : {}),
     numRuns: Math.ceil(baseNumRuns * numRunsFactor()),
   };
   if (expected !== undefined) {
     // A recorded counterexample is one exact replay, independent of the nightly
     // factor and caller reporters. The generated pass keeps its own configuration.
     Reflect.deleteProperty(config, "asyncReporter");
-    config.reporter = replayReporter<Ts>(identity, pinned);
+    config.reporter = replayReporter<Ts>(identity, pinned, exploration);
     config.numRuns = 1;
     config.endOnFailure = true;
   }
@@ -652,9 +726,13 @@ export function assertKnownProperty<Ts>(
     },
   };
   const generated = configFor(params, identity, true);
+  const { exploration } = runOf(params, identity, undefined);
   Reflect.deleteProperty(generated, "asyncReporter");
   generated.reporter = (details) => {
-    replayReporter<Ts>(identity, undefined)(details);
+    replayReporter<Ts>(identity, undefined, exploration)(details);
+    // Reported without failing: the search stopped at that case, so the
+    // recorded causes it had not reached yet prove nothing.
+    if (details.failed) return;
     const missing = expectedFailures.filter((expected) => !seen.has(expected));
     if (missing.length > 0) {
       throw new Error(

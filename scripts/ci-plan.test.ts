@@ -78,6 +78,7 @@ const graph = (
 type Job = {
   needs?: unknown;
   if?: unknown;
+  env?: unknown;
   steps?: unknown;
   outputs?: Record<string, unknown>;
   "timeout-minutes"?: unknown;
@@ -105,6 +106,7 @@ const readJobs = (): Record<string, Job> => {
     jobs[id] = {
       needs: job["needs"],
       if: job["if"],
+      env: job["env"],
       steps: job["steps"],
       "timeout-minutes": job["timeout-minutes"],
       strategy: job["strategy"],
@@ -682,7 +684,28 @@ describe("CI plan", () => {
           typeof step["uses"] === "string" &&
           step["uses"].startsWith("actions/upload-artifact@"),
       );
-      expect(uploads).toHaveLength(2);
+      expect(uploads).toHaveLength(3);
+      // Generated property failures report on pull requests and merge
+      // groups; their records go to the exploration filer.
+      const env = jobs[id]?.env;
+      if (!isRecord(env)) throw new Error(`Missing env for ${id}`);
+      expect(env["FOLIO_FUZZ_EXPLORATION"]).toBe(
+        "${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}",
+      );
+      expect(env["FOLIO_FUZZ_EXPLORATION_DIR"]).toBe(
+        "${{ github.workspace }}/test-results/fuzz-exploration",
+      );
+      const exploration = uploads.find(
+        (step) =>
+          isRecord(step["with"]) &&
+          step["with"]["name"] === `fuzz-exploration-${shard}`,
+      );
+      if (!isRecord(exploration) || !isRecord(exploration["with"]))
+        throw new Error(`Missing exploration upload for ${id}`);
+      expect(exploration["if"]).toBe(
+        "always() && github.event_name == 'merge_group'",
+      );
+      expect(exploration["with"]["path"]).toBe("test-results/fuzz-exploration");
       const upload = uploads.find(
         (step) =>
           isRecord(step["with"]) &&

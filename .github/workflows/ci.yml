@@ -540,6 +540,12 @@ jobs:
     if: needs.ci-plan.outputs.code_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      # A generated property case found by the commit's seed reports here
+      # instead of failing; pinned seeds, examples and every other test still
+      # fail (test/property-exploration.ts).
+      FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
+      FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -585,12 +591,28 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # Filed by fuzz-ejection-replay.yml once the group's run completes.
+      - name: Keep the exploration findings of a merge group
+        if: always() && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-exploration-1
+          path: test-results/fuzz-exploration
+          retention-days: 7
+          if-no-files-found: ignore
+
   tests-2:
     name: Focused and full tests (2/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      # A generated property case found by the commit's seed reports here
+      # instead of failing; pinned seeds, examples and every other test still
+      # fail (test/property-exploration.ts).
+      FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
+      FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -636,12 +658,28 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # Filed by fuzz-ejection-replay.yml once the group's run completes.
+      - name: Keep the exploration findings of a merge group
+        if: always() && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-exploration-2
+          path: test-results/fuzz-exploration
+          retention-days: 7
+          if-no-files-found: ignore
+
   tests-3:
     name: Focused and full tests (3/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      # A generated property case found by the commit's seed reports here
+      # instead of failing; pinned seeds, examples and every other test still
+      # fail (test/property-exploration.ts).
+      FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
+      FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -687,12 +725,28 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # Filed by fuzz-ejection-replay.yml once the group's run completes.
+      - name: Keep the exploration findings of a merge group
+        if: always() && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-exploration-3
+          path: test-results/fuzz-exploration
+          retention-days: 7
+          if-no-files-found: ignore
+
   tests-4:
     name: Focused and full tests (4/4)
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      # A generated property case found by the commit's seed reports here
+      # instead of failing; pinned seeds, examples and every other test still
+      # fail (test/property-exploration.ts).
+      FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
+      FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -737,6 +791,16 @@ jobs:
           path: test-results/full-test-suite.log
           retention-days: 7
           if-no-files-found: error
+
+      # Filed by fuzz-ejection-replay.yml once the group's run completes.
+      - name: Keep the exploration findings of a merge group
+        if: always() && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-exploration-4
+          path: test-results/fuzz-exploration
+          retention-days: 7
+          if-no-files-found: ignore
 
   container-contract:
     name: Container contract and survival census

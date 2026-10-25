@@ -1,5 +1,6 @@
 import {
   afterEach,
+  beforeEach,
   describe,
   expect,
   setDefaultTimeout,
@@ -129,6 +130,9 @@ const ENV_KEYS = [
   "PROPERTY_TEST_NUM_RUNS_FACTOR",
   "PROPERTY_TEST_SEED_SALT",
   "FOLIO_FUZZ_HEALTH",
+  // Pull request CI reports generated failures; these tests expect them to fail.
+  "FOLIO_FUZZ_EXPLORATION",
+  "FOLIO_FUZZ_EXPLORATION_DIR",
 ] as const;
 const savedEnv = Object.fromEntries(
   ENV_KEYS.map((key) => [key, process.env[key]]),
@@ -140,6 +144,11 @@ afterEach(() => {
     if (value === undefined) Reflect.deleteProperty(process.env, key);
     else process.env[key] = value;
   }
+});
+
+beforeEach(() => {
+  Reflect.deleteProperty(process.env, "FOLIO_FUZZ_EXPLORATION");
+  Reflect.deleteProperty(process.env, "FOLIO_FUZZ_EXPLORATION_DIR");
 });
 
 const withEnv = (

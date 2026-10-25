@@ -291,11 +291,16 @@ const composition = fc.oneof(
     .map((mutations) => ({ type: "zip" as const, mutations })),
 );
 
-const commitSeed = (): number => {
-  const head = process.env["GITHUB_SHA"]?.slice(0, 8);
-  return head && /^[0-9a-f]{8}$/iu.test(head)
-    ? Number.parseInt(head, 16)
-    : DEFAULT_SEED;
+/**
+ * Locally a fixed sequence. Under CI, or with PROPERTY_TEST_SEED, the shared
+ * seed discipline applies, so a per-commit search counts as exploration.
+ */
+const localSeed = (): { seed?: number } => {
+  const ci = process.env["CI"];
+  const underCi = ci !== undefined && ci !== "" && ci !== "false" && ci !== "0";
+  return underCi || propertyTestSeed() !== undefined
+    ? {}
+    : { seed: DEFAULT_SEED };
 };
 
 test(
@@ -317,7 +322,7 @@ test(
       }),
       propertyConfig({
         numRuns: Number(process.env["PARSER_FUZZ_RUNS"] ?? BASE_RUNS),
-        seed: propertyTestSeed() ?? commitSeed(),
+        ...localSeed(),
       }),
     );
   },
