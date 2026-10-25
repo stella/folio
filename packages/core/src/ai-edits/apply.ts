@@ -3028,6 +3028,79 @@ const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
 };
 
 /**
+ * Where the paragraph at `position` runs on into the next paragraph when its
+ * added break is retracted, across the tables between them: the next
+ * paragraph's position, or null when no table stands between or one cannot
+ * be crossed.
+ *
+ * Retracting the break puts the paragraph's words in the next paragraph, so
+ * a table between them changes sides of those words. That reads the same
+ * only when, in each resolution, either the words or the table are gone:
+ * words that stay on accepting may cross only a wholly deleted table, and
+ * words that stay on rejecting only a wholly inserted one.
+ */
+const paragraphAcrossVanishingTables = (
+  doc: PMNode,
+  position: number,
+): number | null => {
+  const paragraph = doc.nodeAt(position);
+  if (paragraph?.type.name !== "paragraph") return null;
+  const $at = doc.resolve(position);
+  const staysOnAccept = !holdsOnlyDeletedContent(paragraph);
+  const staysOnReject = !holdsOnlyInsertedContent(paragraph, "including-moves");
+  let next = position + paragraph.nodeSize;
+  let crossed = false;
+  for (let index = $at.index() + 1; index < $at.parent.childCount; index++) {
+    const node = $at.parent.child(index);
+    if (node.type === paragraph.type) return crossed ? next : null;
+    if (node.type.spec["tableRole"] !== "table" || node.childCount === 0) {
+      return null;
+    }
+    let deleted = true;
+    let inserted = true;
+    node.forEach((row) => {
+      const { trIns, trDel } = expectTableRowAttrs(row);
+      deleted &&= trDel != null;
+      inserted &&= trIns != null;
+    });
+    if ((staysOnAccept && !deleted) || (staysOnReject && !inserted)) {
+      return null;
+    }
+    next += node.nodeSize;
+    crossed = true;
+  }
+  return null;
+};
+
+/** The paragraph a retracted added break on `predecessor` runs it into. */
+const retractedBreakTargetPosition = (
+  doc: PMNode,
+  predecessor: { node: PMNode; position: number },
+): number => {
+  const adjacent = predecessor.position + predecessor.node.nodeSize;
+  return paragraphAcrossVanishingTables(doc, predecessor.position) ?? adjacent;
+};
+
+/**
+ * Move the paragraph at `from` to just before `before`, past the tables
+ * `paragraphAcrossVanishingTables` found it may cross; returns where it
+ * now starts.
+ */
+const moveParagraphPastTables = (
+  tr: Transaction,
+  from: number,
+  before: number,
+): number => {
+  const paragraph = tr.doc.nodeAt(from);
+  if (!paragraph) {
+    return panic("A paragraph moved past tables vanished", { from });
+  }
+  const target = before - paragraph.nodeSize;
+  tr.delete(from, from + paragraph.nodeSize).insert(target, paragraph);
+  return target;
+};
+
+/**
  * Whether everything after `position` in its container is paragraphs pending
  * deletion: a join there, once accepted, has no words after it.
  */
@@ -3070,18 +3143,31 @@ const hasDeletedContent = (paragraph: PMNode): boolean => {
   return found;
 };
 
-/** The final paragraph reached by a chain of wholly deleted paragraphs. */
+/**
+ * The final paragraph reached by a chain of wholly deleted paragraphs, and of
+ * paragraphs wholly inserted under `insertedBy` (revisions of the running
+ * batch) when given.
+ */
 const deletedFinalParagraphAfter = (
   at: ResolvedPos,
   paragraphTypeName: string,
+  insertedBy?: ReadonlySet<number>,
 ): number | null => {
   let position = at.pos;
   for (let index = at.index(); index < at.parent.childCount; index++) {
     const paragraph = at.parent.child(index);
+    if (paragraph.type.name !== paragraphTypeName) return null;
+    const insertedBreak = addedBreakRevisionId(paragraph.attrs["pPrMark"]);
     if (
-      paragraph.type.name !== paragraphTypeName ||
-      !holdsOnlyDeletedContent(paragraph)
+      index < at.parent.childCount - 1 &&
+      insertedBreak !== null &&
+      insertedBy?.has(insertedBreak) === true &&
+      holdsOnlyInsertedContent(paragraph, "ordinary")
     ) {
+      position += paragraph.nodeSize;
+      continue;
+    }
+    if (!holdsOnlyDeletedContent(paragraph)) {
       return null;
     }
     if (index === at.parent.childCount - 1) {
@@ -3249,6 +3335,59 @@ const retiredFinalBreak = (
   deletion: Pick<DeletedFinalParagraph, "precededWhenDeleted">,
 ) => (deletion.precededWhenDeleted ? finalParagraphPredecessor(doc, at) : null);
 
+/**
+ * The paragraph a direct replay leaves at a container's end when the batch
+ * deletes every paragraph back to the container's start or a table.
+ *
+ * Applied directly, the batch runs right to left: each deleted paragraph that
+ * a paragraph precedes goes, and the leftmost of the run is the one emptied
+ * and kept, with its own properties. Tracked, the run's breaks are deleted
+ * and the container's own last mark stays on the emptied final paragraph, so
+ * that paragraph must take the leftmost one's properties for accepting to
+ * read the same. Paragraphs and tables an earlier batch deleted are absent
+ * from the direct document and are looked past; a table this batch deletes
+ * still stands when the run collapses, so the run starts after it.
+ *
+ * Null when a surviving paragraph precedes the run (its break retires
+ * instead) or the run is the emptied paragraph alone.
+ */
+const collapsedFinalRunSource = (
+  doc: PMNode,
+  at: number,
+  batchRevisionIds: ReadonlySet<number>,
+): { node: PMNode; position: number } | null => {
+  const emptied = doc.nodeAt(at);
+  if (emptied?.type.name !== "paragraph") return null;
+  const $emptied = doc.resolve(at);
+  if (!paragraphEndsItsContainer($emptied, emptied.type.name)) return null;
+  let source: { node: PMNode; position: number } | null = null;
+  let position = at;
+  for (let index = $emptied.index() - 1; index >= 0; index--) {
+    const node = $emptied.parent.child(index);
+    position -= node.nodeSize;
+    if (node.type.spec["tableRole"] === "table") {
+      let deletedEarlier = node.childCount > 0;
+      node.forEach((row) => {
+        const { trDel } = expectTableRowAttrs(row);
+        deletedEarlier &&=
+          trDel != null && !batchRevisionIds.has(trDel.revisionId);
+      });
+      if (deletedEarlier) continue;
+      return source;
+    }
+    if (node.type !== emptied.type) return source;
+    const mark: unknown = node.attrs["pPrMark"];
+    if (!isPlainDeletedPPrMark(mark) || !holdsOnlyDeletedContent(node)) {
+      return null;
+    }
+    const revisionId = addedOrDeletedBreakRevisionId(mark);
+    if (revisionId !== null && batchRevisionIds.has(revisionId)) {
+      source = { node, position };
+    }
+  }
+  return source;
+};
+
 type CrossesBatchDeletionOptions = {
   doc: PMNode;
   /** Where the predecessor `finalParagraphPredecessor` found ends. */
@@ -3401,7 +3540,7 @@ const hasDeferredParagraphPropertyWrite = ({
     const writeTarget =
       mark == null
         ? target
-        : tr.doc.nodeAt(predecessor.position + predecessor.node.nodeSize);
+        : tr.doc.nodeAt(retractedBreakTargetPosition(tr.doc, predecessor));
     if (!writeTarget || !targets.includes(writeTarget)) continue;
     if (
       mark != null &&
@@ -3476,7 +3615,7 @@ const paragraphPropertyRevisionTargets = ({
     )
       continue;
     const target = tr.doc.nodeAt(
-      predecessor.position + predecessor.node.nodeSize,
+      retractedBreakTargetPosition(tr.doc, predecessor),
     );
     if (!target) continue;
     if (canRetractFinalBreak({ predecessor: predecessor.node, target }))
@@ -3549,8 +3688,30 @@ const withRetiredFinalParagraphs = ({
       continue;
     }
     const predecessor = retiredFinalBreak(tr.doc, at, deletion);
-    if (!predecessor) continue;
-    const { node: previous, position } = predecessor;
+    if (!predecessor) {
+      const source = deletion.precededWhenDeleted
+        ? collapsedFinalRunSource(tr.doc, at, batchRevisionIds)
+        : null;
+      if (!source) continue;
+      const revisionId = nextRevisionId;
+      const carried = carryParagraphProperties({
+        tr,
+        position: at,
+        source: source.node,
+        styleResolver,
+        numbering,
+        revision: { id: revisionId, author, date, ...revisionExtras },
+        keep: new Set<string>(),
+      });
+      if (carried.tracked) {
+        nextRevisionId++;
+        addedRevisions.push({ operationId, revisionId });
+      }
+      if (carried.changed) resolvedOperationIds.add(operationId);
+      continue;
+    }
+    const { node: previous } = predecessor;
+    let { position } = predecessor;
     const mark: unknown = previous.attrs["pPrMark"];
     if (mark == null) {
       const revisionId = nextRevisionId++;
@@ -3596,13 +3757,19 @@ const withRetiredFinalParagraphs = ({
       continue;
     }
     if (addedBreakRevisionId(mark) !== null) {
-      const following = tr.doc.nodeAt(position + previous.nodeSize);
+      const targetPosition = retractedBreakTargetPosition(tr.doc, predecessor);
+      const following = tr.doc.nodeAt(targetPosition);
       if (
         !following ||
         !canRetractFinalBreak({ predecessor: previous, target: following })
       ) {
         // One w:pPrChange per paragraph: an occupied predecessor keeps the emptied target.
         continue;
+      }
+      // Wholly deleted tables between them go on accepting, and the added
+      // words on rejecting: the paragraph joins past them.
+      if (targetPosition !== position + previous.nodeSize) {
+        position = moveParagraphPastTables(tr, position, targetPosition);
       }
       joinAtParagraphMark({
         tr,
@@ -6093,7 +6260,21 @@ const applyFolioAIEditOperationsInternal = ({
           // A relocation's source break is `w:moveFrom`, not `w:del`: the two
           // resolve alike, and the kind is what tells a reader this end has a
           // matching one elsewhere rather than being a deletion of its own.
-          const markPosition = tr.mapping.map(item.blockFrom);
+          let markPosition = tr.mapping.map(item.blockFrom);
+          const markOwner = tr.doc.nodeAt(markPosition);
+          const across =
+            markOwner &&
+            !isPairedMove(item.operation.moveId) &&
+            addedBreakRevisionId(markOwner.attrs["pPrMark"]) !== null
+              ? paragraphAcrossVanishingTables(tr.doc, markPosition)
+              : null;
+          if (across !== null) {
+            // A table stands between it and the paragraph its retracted break
+            // runs into, one that neither resolution keeps beside its words
+            // (a pending inserted table, after these deleted words): the
+            // paragraph moves past it to join, as it would beside it.
+            markPosition = moveParagraphPastTables(tr, markPosition, across);
+          }
           const markPlace = tr.doc.resolve(markPosition);
           const endsItsContainer = paragraphEndsItsContainer(
             markPlace,
@@ -6190,9 +6371,13 @@ const applyFolioAIEditOperationsInternal = ({
             // A later batch deleted the paragraph whose break an earlier
             // final-paragraph deletion already retired. Extend that chain to
             // the preceding survivor, regardless of deletion order.
+            // Paragraphs this batch inserted after it, before the final one,
+            // are looked past: accepted, the last of them precedes the final
+            // paragraph, and its break is the one that retires.
             const finalPosition = deletedFinalParagraphAfter(
               tr.doc.resolve(markPosition),
               deleted.type.name,
+              new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? [])),
             );
             if (finalPosition !== null) {
               deletedFinalParagraphs.push({
