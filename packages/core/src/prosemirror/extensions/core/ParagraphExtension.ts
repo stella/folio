@@ -427,6 +427,8 @@ const paragraphNodeSpec: NodeSpec = {
     alignment: { default: null },
     alignmentFromStyle: { default: undefined },
     kinsoku: { default: null },
+    autoSpaceDE: { default: null },
+    autoSpaceDN: { default: null },
     overflowPunctuation: { default: null },
     suppressAutoHyphens: { default: null },
     spaceBefore: { default: null },

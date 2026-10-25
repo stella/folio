@@ -484,6 +484,8 @@ const readParagraphAttrsUncached = (
     issues,
   );
   optionalBoolean(attrs, "kinsoku", "paragraph.attrs.kinsoku", issues);
+  optionalBoolean(attrs, "autoSpaceDE", "paragraph.attrs.autoSpaceDE", issues);
+  optionalBoolean(attrs, "autoSpaceDN", "paragraph.attrs.autoSpaceDN", issues);
   optionalBoolean(
     attrs,
     "overflowPunctuation",
@@ -4913,6 +4915,8 @@ const optionalWordArt = (
 const PARAGRAPH_FORMATTING_BOOLEAN_KEYS = [
   "bidi",
   "kinsoku",
+  "autoSpaceDE",
+  "autoSpaceDN",
   "overflowPunctuation",
   "suppressAutoHyphens",
   "suppressLineNumbers",

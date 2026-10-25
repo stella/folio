@@ -282,6 +282,8 @@ export function paragraphStyleCascadeAttrs({
   set("shading", formatting?.shading ?? stylePpr?.shading);
   set("tabs", mergeParagraphTabStops(stylePpr?.tabs, formatting?.tabs));
   set("kinsoku", formatting?.kinsoku ?? stylePpr?.kinsoku);
+  set("autoSpaceDE", formatting?.autoSpaceDE ?? stylePpr?.autoSpaceDE);
+  set("autoSpaceDN", formatting?.autoSpaceDN ?? stylePpr?.autoSpaceDN);
   set(
     "overflowPunctuation",
     formatting?.overflowPunctuation ?? stylePpr?.overflowPunctuation,

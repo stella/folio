@@ -1084,6 +1084,8 @@ export type ParagraphFormatting = OwnFieldPresence<{
     alignment?: ParagraphAlignment;
     bidi?: boolean;
     kinsoku?: boolean;
+    autoSpaceDE?: boolean;
+    autoSpaceDN?: boolean;
     overflowPunctuation?: boolean;
     spaceBefore?: number;
     spaceAfter?: number;

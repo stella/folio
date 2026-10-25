@@ -1859,6 +1859,8 @@ function paragraphFormattingToAttrs(
     set("shading", formatting?.shading);
     set("tabs", formatting?.tabs);
     set("kinsoku", formatting?.kinsoku);
+    set("autoSpaceDE", formatting?.autoSpaceDE);
+    set("autoSpaceDN", formatting?.autoSpaceDN);
     set("overflowPunctuation", formatting?.overflowPunctuation);
     set("suppressAutoHyphens", formatting?.suppressAutoHyphens);
 
