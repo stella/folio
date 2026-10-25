@@ -176,6 +176,20 @@ if (!ENABLED) {
     });
   }
 
+  test("pinned #1811 seed 1664907555: accepting a move leaves its empty range as after a save", async () => {
+    await runFlowFile({
+      version: 1,
+      kind: "random",
+      generation: "targeted",
+      fixture:
+        "public-corpus:0046e12f3a66e48dc3d27a2a534ae5cce848aa4497eaa076ebfb5c6fa807774d",
+      mode: "direct",
+      seed: 1664907555,
+      steps: [{ action: "accept all", seed: 2864637698 }],
+      origin: "shrunk from random flow seed 1664907555",
+    });
+  });
+
   const PACKAGE_IDENTITY_CASES = [
     {
       name: "#1368: rejecting all on a positional-ID document",
