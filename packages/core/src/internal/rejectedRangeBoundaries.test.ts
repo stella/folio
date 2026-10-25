@@ -155,7 +155,7 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     ]);
   });
 
-  test("of a kept start and end out of order, the editor moves the later revision's", () => {
+  test("of a kept start and end out of order, the later revision's moves, in both", () => {
     // An earlier, undated insertion holds a move range's end; a later one
     // holds its start after it. Rejecting both keeps both out of order: the
     // editor hands the planner each boundary's revision date, as the engine
@@ -177,7 +177,18 @@ describe("rejecting an insertion keeps its range boundaries", () => {
       },
       { type: "run", content: [{ type: "text", text: "two" }] },
     ]);
-    expect(outline(rejectInEditor(document))).toEqual([
+    const engine = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [earlier.id, insertion.id],
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    if (engine.isErr()) throw engine.error;
+    const editor = outline(rejectInEditor(document));
+    expect(editor).toEqual(
+      outline(firstParagraphContent(engine.value.document)),
+    );
+    expect(editor).toEqual([
       "type:moveToRangeStart,id:6",
       "type:moveToRangeEnd,id:6",
       "text:one two",
