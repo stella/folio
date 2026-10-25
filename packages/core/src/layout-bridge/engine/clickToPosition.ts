@@ -12,11 +12,14 @@ import {
   measuredLineAdvance,
   measuredLineContentOffset,
 } from "../../layout-engine/lineFlow";
+import { automaticRunGap } from "../../layout-engine/measure/automaticTextSpacing";
 import {
   buildRunFontStyle,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_FONT_SIZE,
   findCharacterAtX as findCharAtX,
 } from "../../layout-engine/measure/measureHelpers";
-import { measureRun } from "../../layout-engine/measure/measureProvider";
+import { measurePositionedRun } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
 import type {
   MeasuredLine,
@@ -34,6 +37,7 @@ import {
 } from "../../utils/paragraphInlineLayout";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import type { FragmentHit, TableCellHit } from "./hitTest";
+import { computeLinePmRange } from "./linePmRange";
 
 // =============================================================================
 // TYPES
@@ -59,7 +63,7 @@ export type PositionResult = {
  * Extract FontStyle from a run for measurement.
  */
 function runToFontStyle(run: TextRun | TabRun): FontStyle {
-  return buildRunFontStyle(run, "Arial", 12);
+  return buildRunFontStyle(run, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
 }
 
 /**
@@ -100,11 +104,7 @@ function sliceRunsForLine(block: ParagraphBlock, line: MeasuredLine): Run[] {
     }
 
     // Handle non-text runs as atomic units
-    if (
-      run.kind === "tab" ||
-      run.kind === "image" ||
-      run.kind === "lineBreak"
-    ) {
+    if (run.kind !== "text") {
       result.push(run);
       continue;
     }
@@ -134,91 +134,6 @@ function sliceRunsForLine(block: ParagraphBlock, line: MeasuredLine): Run[] {
   }
 
   return result;
-}
-
-/**
- * Calculate the PM position range for a line.
- */
-function computeLinePmRange(
-  block: ParagraphBlock,
-  line: MeasuredLine,
-): { pmStart: number | undefined; pmEnd: number | undefined } {
-  // Walk through runs to find PM positions
-  let pmStart: number | undefined;
-  let pmEnd: number | undefined;
-
-  // Get block's PM start as base
-  const blockPmStart = block.pmStart ?? 0;
-
-  // Calculate character offset to line start
-  let charOffset = 0;
-  for (
-    let runIndex = 0;
-    runIndex < block.runs.length && runIndex <= line.toRun;
-    runIndex++
-  ) {
-    const run = block.runs[runIndex];
-    if (!run) {
-      continue;
-    }
-
-    if (runIndex < line.fromRun) {
-      // Before the line - count all characters
-      if (run.kind === "text") {
-        charOffset += run.text.length;
-      } else if (
-        run.kind === "tab" ||
-        run.kind === "lineBreak" ||
-        run.kind === "renderedPageBreak"
-      ) {
-        charOffset += 1;
-      } else if (run.kind === "image") {
-        charOffset += 1;
-      }
-    } else if (runIndex === line.fromRun) {
-      // First run of line - add fromChar offset
-      charOffset += line.fromChar;
-      pmStart = blockPmStart + charOffset;
-
-      // Continue to find pmEnd
-      if (run.kind === "text") {
-        charOffset = line.fromChar;
-      }
-    }
-  }
-
-  // Calculate pmEnd
-  if (pmStart !== undefined) {
-    let lineLength = 0;
-    for (
-      let runIndex = line.fromRun;
-      runIndex <= line.toRun && runIndex < block.runs.length;
-      runIndex++
-    ) {
-      const run = block.runs[runIndex];
-      if (!run) {
-        continue;
-      }
-
-      if (run.kind === "text") {
-        const text = run.text;
-        const start = runIndex === line.fromRun ? line.fromChar : 0;
-        const end = runIndex === line.toRun ? line.toChar : text.length;
-        lineLength += end - start;
-      } else if (
-        run.kind === "tab" ||
-        run.kind === "lineBreak" ||
-        run.kind === "renderedPageBreak"
-      ) {
-        lineLength += 1;
-      } else if (run.kind === "image") {
-        lineLength += 1;
-      }
-    }
-    pmEnd = pmStart + lineLength;
-  }
-
-  return { pmStart, pmEnd };
 }
 
 /**
@@ -323,7 +238,9 @@ function findCharacterInLine({
   let currentX = 0;
   let currentCharOffset = 0;
 
-  for (const run of runs) {
+  for (let runIndex = 0; runIndex < runs.length; runIndex += 1) {
+    const run = runs[runIndex];
+    if (run === undefined) continue;
     // Handle tab runs
     if (run.kind === "tab") {
       const tabWidth = run.width ?? 48; // Default tab width
@@ -396,7 +313,11 @@ function findCharacterInLine({
       }
 
       const style = runToFontStyle(run);
-      const measurement = measureRun(text, style);
+      const measurement = measurePositionedRun({
+        text,
+        style,
+        trailingAutomaticSpacingPx: automaticRunGap(run, runs[runIndex + 1]),
+      });
       const runEndX = currentX + measurement.width;
 
       if (adjustedX <= runEndX) {
@@ -623,7 +544,9 @@ export function positionToX(
       let x = 0;
       let charsProcessed = 0;
 
-      for (const run of runs) {
+      for (let runIndex = 0; runIndex < runs.length; runIndex += 1) {
+        const run = runs[runIndex];
+        if (run === undefined) continue;
         if (run.kind === "tab") {
           if (offsetInLine <= charsProcessed + 1) {
             if (offsetInLine <= charsProcessed) {
@@ -649,14 +572,21 @@ export function positionToX(
           charsProcessed += 1;
         } else if (run.kind === "text") {
           const text = run.text;
+          const measurement = measurePositionedRun({
+            text,
+            style: runToFontStyle(run),
+            trailingAutomaticSpacingPx: automaticRunGap(
+              run,
+              runs[runIndex + 1],
+            ),
+          });
           if (offsetInLine <= charsProcessed + text.length) {
             const charInRun = offsetInLine - charsProcessed;
-            const style = runToFontStyle(run);
-            const measurement = measureRun(text.slice(0, charInRun), style);
-            return { x: x + measurement.width, lineIndex };
+            let prefix = 0;
+            for (let index = 0; index < charInRun; index += 1)
+              prefix += measurement.charWidths[index] ?? 0;
+            return { x: x + prefix, lineIndex };
           }
-          const style = runToFontStyle(run);
-          const measurement = measureRun(text, style);
           x += measurement.width;
           charsProcessed += text.length;
         }

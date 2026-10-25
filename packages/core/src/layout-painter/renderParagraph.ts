@@ -5,10 +5,16 @@
  * Handles text formatting, alignment, and positioning.
  */
 
+import { panic } from "better-result";
+
 import { ommlToMathml } from "../docx/mathToMathml";
 import { parseXmlDocument } from "../docx/xmlParser";
 import { evaluateFieldInstruction } from "../fields/evaluateField";
 import type { FieldContext } from "../fields/fieldContext";
+import {
+  automaticRunGap,
+  automaticTextSpacingGaps,
+} from "../layout-engine/measure/automaticTextSpacing";
 import {
   applyComplexScriptFormatting,
   hasComplexScriptFormatting,
@@ -21,10 +27,12 @@ import {
   resolveListMarkerFont,
 } from "../layout-engine/measure/listMarkerWidth";
 import {
+  buildRunFontStyle,
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_SIZE,
   docxScriptFontSize,
 } from "../layout-engine/measure/measureHelpers";
+import type { AutomaticTextSpacingPolicy } from "../layout-engine/measure/measureTypes";
 import {
   SMALL_CAPS_SCALE,
   smallCapsSegments,
@@ -88,6 +96,7 @@ import {
   type ScriptClass,
   segmentByScript,
 } from "../utils/scriptSegments";
+import { applyTextAdvanceGaps } from "../utils/textAdvanceGapsDom";
 import { trailingSpaceStart } from "../utils/trailingText";
 import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
 import {
@@ -758,6 +767,7 @@ function applyPmPositions(
  * Render a text run
  */
 type RenderTextRunOptions = {
+  trailingAutomaticSpacingPx?: number;
   hyperlinkDirection?: typeof LEFT_TO_RIGHT_DIRECTION;
   visualSpaceContractionPx?: number;
   ancestorHorizontalScaleFactor?: number;
@@ -967,6 +977,16 @@ function renderTextRun(
       ...(smallCapsFontSizePx !== undefined ? { smallCapsFontSizePx } : {}),
     });
   }
+  const gaps = automaticTextSpacingGaps(
+    paintedText,
+    buildRunFontStyle(run, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE),
+  );
+  if ((options?.trailingAutomaticSpacingPx ?? 0) > 0)
+    gaps.push({
+      offset: paintedText.length,
+      advancePx: options?.trailingAutomaticSpacingPx ?? 0,
+    });
+  applyTextAdvanceGaps(span, gaps);
   applyWhitespaceUnderline(span, run);
 
   return span;
@@ -2183,6 +2203,7 @@ function runVisualSpaceContraction({
  */
 function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
   return {
+    ...buildRunFontStyle(run, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE),
     ...(run.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap }
       : {}),
@@ -2260,6 +2281,7 @@ function measureFollowingContentWidth(
     // Mirror the main render loop's scale so tab-aligned trailing content
     // reserves the same width it paints.
     if (isTextRun(run)) {
+      width += automaticRunGap(runs[i - 1], run);
       const text = run.allCaps ? run.text.toLocaleUpperCase() : run.text;
       width +=
         measureText(
@@ -2345,6 +2367,7 @@ function measureDecimalPrefixWidth(
 
     const take = Math.min(runText.length, decimalIndex - consumed);
     if (take > 0) {
+      width += automaticRunGap(runs[i - 1], run);
       const horizontalScaleFactor = getHorizontalScaleFactor(
         run.horizontalScale,
       );
@@ -2421,8 +2444,9 @@ function getTextAfterTab(
  * Uses the same font fallback chain as measureContainer.ts
  */
 type TextMeasureStyle = {
+  automaticTextSpacing?: AutomaticTextSpacingPolicy;
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
-  documentFontFacts?: TextRun["documentFontFacts"];
+  documentFontFacts?: NonNullable<TextRun["documentFontFacts"]>;
   bold?: boolean;
   italic?: boolean;
   letterSpacing?: number;
@@ -2469,7 +2493,7 @@ function createTextMeasurer(
   const canvas = doc.createElement("canvas");
   const ctx = canvas.getContext("2d");
 
-  return (
+  const naturalWidth = (
     text: string,
     fontSize = 11,
     fontFamily = DEFAULT_FONT_FAMILY,
@@ -2582,6 +2606,21 @@ function createTextMeasurer(
       style.letterSpacing,
     );
   };
+  return (
+    text,
+    fontSize = DEFAULT_FONT_SIZE,
+    fontFamily = DEFAULT_FONT_FAMILY,
+    style = {},
+  ) => {
+    let width = naturalWidth(text, fontSize, fontFamily, style);
+    for (const gap of automaticTextSpacingGaps(text, {
+      ...style,
+      fontSize,
+      fontFamily,
+    }))
+      width += gap.advancePx;
+    return width;
+  };
 }
 
 /**
@@ -2630,6 +2669,15 @@ export function renderLine(
     collapsedLeadingSpaceRuns.has(run) || collapsedTrailingSpaceRuns.has(run);
   const hasCollapsedLineEdgeSpaceRuns =
     collapsedLeadingSpaceRuns.size > 0 || collapsedTrailingSpaceRuns.size > 0;
+  const trailingAutomaticSpacing = new Map(
+    runsForLine.map((run, index) => [
+      run,
+      automaticRunGap(run, runsForLine.at(index + 1)),
+    ]),
+  );
+  const trailingAutomaticSpacingOf = (run: TextRun): number =>
+    trailingAutomaticSpacing.get(run) ??
+    panic("Missing automatic spacing for a run on this line.");
   const collapsedSpaceMeasureText = hasCollapsedLineEdgeSpaceRuns
     ? createTextMeasurer(doc)
     : undefined;
@@ -2675,6 +2723,7 @@ export function renderLine(
         ? LEFT_TO_RIGHT_DIRECTION
         : undefined;
     const runEl = renderTextRun(run, doc, {
+      trailingAutomaticSpacingPx: trailingAutomaticSpacingOf(run),
       ...(hyperlinkDirection !== undefined ? { hyperlinkDirection } : {}),
       ...(visualSpaceContractionPx !== undefined
         ? { visualSpaceContractionPx }
@@ -3255,6 +3304,7 @@ export function renderLine(
           ? { visualSpaceContractionPx: runContractionPx }
           : {}),
       });
+      currentX += trailingAutomaticSpacingOf(run);
     } else if (isImageRun(run)) {
       // Skip floating images - they're rendered separately at page level.
       // Exception: inside table cells, floating images must render in-flow

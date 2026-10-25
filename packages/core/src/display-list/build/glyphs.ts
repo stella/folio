@@ -6,10 +6,8 @@
  * here are the numbers line breaking and pagination were decided on.
  */
 
-import {
-  measureRun,
-  measureTextWidth,
-} from "../../layout-engine/measure/measureProvider";
+import { automaticTextSpacingGaps } from "../../layout-engine/measure/automaticTextSpacing";
+import { measurePositionedRun } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
 import {
   FONT_KERNING_MODE,
@@ -34,6 +32,7 @@ export type Glyphs = {
 };
 
 export type BuildGlyphsOptions = {
+  readonly trailingAutomaticSpacingPx?: number;
   readonly text: string;
   readonly style: FontStyle;
   readonly allCaps: boolean;
@@ -57,15 +56,20 @@ export type BuildGlyphsOptions = {
 export const buildGlyphs = (options: BuildGlyphsOptions): Glyphs => {
   const { text, style, allCaps, spaceDeltaPx, collapsed } = options;
   const adjustments = adjustmentsOf(options);
-  const { charWidths } = measureRun(text, style);
+  const { charWidths } = measurePositionedRun({
+    text,
+    style,
+    trailingAutomaticSpacingPx: collapsed
+      ? 0
+      : (options.trailingAutomaticSpacingPx ?? 0),
+  });
   const advancesPx: number[] = [];
   let painted = "";
   let widthPx = 0;
   let unitOffset = 0;
-  const shapedScale = shapedScaleOf(text, style, charWidths);
 
   for (const char of text) {
-    const measured = (charWidths[unitOffset] ?? 0) * shapedScale;
+    const measured = charWidths[unitOffset] ?? 0;
     unitOffset += char.length;
     const advance = collapsed
       ? 0
@@ -91,32 +95,6 @@ export const buildGlyphs = (options: BuildGlyphsOptions): Glyphs => {
 };
 
 /**
- * What every per-character width has to be multiplied by for the run to occupy
- * the width the line was fitted at.
- *
- * The two numbers come from the same measurer and differ by what shaping does
- * across a boundary: a pair that kerns or ligates is narrower in the string
- * than the two characters are apart. Line breaking used the string's width, so
- * that is the run's width, and advances that summed to anything else would
- * declare an extent no backend paints.
- *
- * Spread over every character rather than dropped on the last, because the
- * difference is not one boundary's: concentrating it would move the run's final
- * glyph by the whole of it.
- */
-const shapedScaleOf = (
-  text: string,
-  style: FontStyle,
-  charWidths: readonly number[],
-): number => {
-  const perCharacterPx = charWidths.reduce((total, width) => total + width, 0);
-  if (perCharacterPx <= 0) {
-    return 1;
-  }
-  return measureTextWidth(text, style) / perCharacterPx;
-};
-
-/**
  * The three adjustments named, or nothing when none applies.
  *
  * A collapsed run carries no advances at all, so it has nothing to reapply
@@ -124,9 +102,11 @@ const shapedScaleOf = (
  * widen what the line was fitted without.
  */
 const adjustmentsOf = ({
+  text,
   style,
   spaceDeltaPx,
   collapsed,
+  trailingAutomaticSpacingPx = 0,
 }: BuildGlyphsOptions): DisplayRunAdjustments | undefined => {
   const horizontalScale = getHorizontalScaleFactor(style.horizontalScale);
   // Measured letter spacing is pre-scale, as CSS letter-spacing is; the advances
@@ -135,10 +115,23 @@ const adjustmentsOf = ({
     ? 0
     : (style.letterSpacing ?? 0) * horizontalScale;
   const wordSpacingPx = collapsed ? 0 : spaceDeltaPx;
-  if (letterSpacingPx === 0 && wordSpacingPx === 0 && horizontalScale === 1) {
+  const gaps = collapsed ? [] : automaticTextSpacingGaps(text, style);
+  if (!collapsed && trailingAutomaticSpacingPx > 0)
+    gaps.push({ offset: text.length, advancePx: trailingAutomaticSpacingPx });
+  if (
+    letterSpacingPx === 0 &&
+    wordSpacingPx === 0 &&
+    horizontalScale === 1 &&
+    gaps.length === 0
+  ) {
     return undefined;
   }
-  return { letterSpacingPx, horizontalScale, wordSpacingPx };
+  return {
+    letterSpacingPx,
+    horizontalScale,
+    wordSpacingPx,
+    ...(gaps.length === 0 ? {} : { automaticTextSpacingGaps: gaps }),
+  };
 };
 
 /**

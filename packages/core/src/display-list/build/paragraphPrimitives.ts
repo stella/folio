@@ -17,6 +17,7 @@
  * put a right-aligned line's tabs on the wrong stops.
  */
 
+import { automaticRunGap } from "../../layout-engine/measure/automaticTextSpacing";
 import {
   getListMarkerInlineWidth,
   getListMarkerVisualOffset,
@@ -1191,6 +1192,7 @@ const paintLine = ({
           allCaps: run.allCaps === true,
           spaceDeltaPx,
           collapsed: isCollapsedEdgeRun(run),
+          trailingAutomaticSpacingPx: automaticRunGap(run, runs[index + 1]),
         });
         const pmRange = modelRangeOf(run, context);
         const collapsedEdge = collapsedEdgeOf(run, style, collapsedLeadingRuns);
@@ -1546,6 +1548,7 @@ const paintTab = ({
       following.kind === "math"
     ) {
       const text = paintableText(following, context);
+      followingWidthPx += automaticRunGap(runs[next - 1], following);
       followingText += text;
       followingWidthPx += measureTextWidth(
         following.kind === "text" && following.allCaps
@@ -1658,6 +1661,7 @@ const measureDecimalPrefixWidth = (
     const text = paintableText(run, context);
     const take = Math.min(text.length, decimalIndex - consumed);
     if (take > 0) {
+      width += automaticRunGap(runs[index - 1], run);
       width += measureTextWidth(text.slice(0, take), runFontStyle(run));
     }
     consumed += text.length;
