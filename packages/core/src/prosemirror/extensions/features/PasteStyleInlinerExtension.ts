@@ -18,6 +18,7 @@ import { Plugin } from "prosemirror-state";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { Priority } from "../types";
+import { prepareClipboardTrackedRevisions } from "./clipboardTrackedRevisions";
 
 /**
  * Parse a CSS rule's style declarations into a Record<property, value>.
@@ -187,11 +188,12 @@ function unwrapGoogleDocsStructuralB(doc: Document): void {
 /**
  * Transform pasted HTML by inlining class-based CSS and unwrapping Google Docs wrappers.
  */
-function transformPastedHTML(html: string): string {
+export function transformPastedHTML(html: string): string {
   const hasStyleBlock = html.includes("<style");
   const hasGoogleDocsWrapper = html.includes("docs-internal-guid-");
+  const hasTrackedRevision = /<(?:ins|del)(?:\s|\/?>)/iu.test(html);
 
-  if (!hasStyleBlock && !hasGoogleDocsWrapper) {
+  if (!hasStyleBlock && !hasGoogleDocsWrapper && !hasTrackedRevision) {
     return html;
   }
 
@@ -209,6 +211,10 @@ function transformPastedHTML(html: string): string {
 
     if (hasGoogleDocsWrapper) {
       unwrapGoogleDocsStructuralB(doc);
+    }
+
+    if (hasTrackedRevision) {
+      prepareClipboardTrackedRevisions(doc.body);
     }
 
     return doc.body.innerHTML;

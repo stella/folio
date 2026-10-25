@@ -23,7 +23,6 @@ export const StrikeExtension = createMarkExtension({
     parseDOM: [
       { tag: "s" },
       { tag: "strike" },
-      { tag: "del" },
       {
         style: "text-decoration",
         getAttrs: (value) => (value.includes("line-through") ? {} : false),
