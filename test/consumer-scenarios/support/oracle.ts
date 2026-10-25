@@ -53,6 +53,7 @@ import {
   applyTableOperation,
   compareTableGeometry,
   modelFromRows,
+  removeTextBoxTables,
   type TableModel,
   UnsupportedTableExpectation,
 } from "./table-oracle.ts";
@@ -2023,10 +2024,15 @@ export const EXPECTATIONS = {
     // The text boxes drawn in the paragraph go with it once the deletion
     // resolves; the suggested live view still lists their paragraphs.
     if (model.mode === "suggested") return;
-    for (const boxed of textBoxRowsOf(model, row)) {
+    const boxedRows = textBoxRowsOf(model, row);
+    for (const boxed of boxedRows) {
       boxed.removed = true;
       boxed.removedWithTextBox = true;
     }
+    removeTextBoxTables(
+      model.tables,
+      boxedRows.flatMap(({ pre }) => (pre === undefined ? [] : [pre.id])),
+    );
   },
   splitBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);

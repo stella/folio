@@ -7526,7 +7526,7 @@ type InsertedCleanText = {
   end: number;
 };
 
-const insertCleanText = ({
+export const insertCleanText = ({
   tr,
   from,
   to,
