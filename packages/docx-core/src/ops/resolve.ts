@@ -2457,12 +2457,7 @@ export const planRevisionResolution = ({
   const removedParagraphs = new Set(rows.value.touched.removed.map(idKey));
   const edits: DocumentEdit[] = [staged.value, rows.value];
   let current = rows.value.document;
-  // In document order: a paragraph's content joins the paragraph after it
-  // before that one joins what follows it, as resolving the marks one at a
-  // time from the first does. From the last, a paragraph holding only
-  // zero-width run content would meet the table the next one ran into and be
-  // removed with that content instead.
-  for (const join of joins) {
+  for (const join of joins.toReversed()) {
     if (removedParagraphs.has(idKey(join.paraId))) continue;
     const planned = joinOps(current, join, emptiedEnds);
     if (planned.isErr()) {
