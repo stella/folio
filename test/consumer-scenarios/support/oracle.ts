@@ -414,14 +414,26 @@ type ListLineage =
       numId: number;
       source: "document" | "operation";
       basis: "direct" | "style";
+      /** Stated as a level alone: the id still comes from the paragraph's style. */
+      partial?: true;
     }
   | { type: "newList"; operationId: string }
   | {
       type: "none";
       source: "document" | "operation";
       basis: "direct" | "style";
+      partial?: true;
     }
   | { type: "unknown"; source: "document" | "operation" };
+
+/**
+ * Direct numbering a copy of the paragraph keeps whole. A level stated alone
+ * (`w:ilvl` without `w:numId`) takes its id from the style of the paragraph it
+ * is on, so it follows the copy's style and is not carried over as written.
+ */
+const hasFixedDirectNumbering = (lineage: ListLineage): boolean =>
+  hasDirectNumbering(lineage) &&
+  !("partial" in lineage && lineage.partial === true);
 
 const hasDirectNumbering = (lineage: ListLineage): boolean => {
   switch (lineage.type) {
@@ -808,6 +820,9 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => {
       numId: pre.listReference.numId,
       source: "document",
       basis: pre.statedNumbering?.kind === "inherit" ? "style" : "direct",
+      ...(pre.statedNumbering?.kind === "levelOnly"
+        ? { partial: true as const }
+        : {}),
     };
   } else if (pre?.statedNumbering?.kind === "none") {
     listLineage = { type: "none", source: "document", basis: "direct" };
@@ -1253,12 +1268,17 @@ const operationListLineage = ({
           inheritsFormatting,
           replacesDirect,
         });
+        const partially = (lineage: ListLineage): ListLineage =>
+          stated?.kind === "levelOnly" &&
+          (lineage.type === "reference" || lineage.type === "none")
+            ? { ...lineage, partial: true }
+            : lineage;
         if (base === UNKNOWN_NUMBERING) {
           return stated?.kind === "reference" && stated.ilvl !== undefined
             ? renderedLineage(model, stated)
             : { type: "unknown", source: "operation" };
         }
-        return renderedLineage(model, numberingOver(base, stated));
+        return partially(renderedLineage(model, numberingOver(base, stated)));
       }
       case "inherit": {
         const styleId = request["styleId"];
@@ -1292,7 +1312,7 @@ const operationListLineage = ({
       typeof styleId === "string" || styleId === null,
       "An applied style id must be a string or null",
     );
-    if (inheritsFormatting && hasDirectNumbering(source.listLineage)) {
+    if (inheritsFormatting && hasFixedDirectNumbering(source.listLineage)) {
       return source.listLineage;
     }
     return styleListLineage({
@@ -1754,7 +1774,7 @@ const paragraphRequestForLiveRow = ({
     "styleId" in request &&
     !("numbering" in request) &&
     (!insertion || inherited !== undefined) &&
-    hasDirectNumbering(row.listLineage);
+    hasFixedDirectNumbering(row.listLineage);
   const result = paragraphRequest({
     model,
     request,
