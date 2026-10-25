@@ -4275,7 +4275,9 @@ const buildInsertedParagraphs = ({
       : {
           ...stripBlockIdentityAttrs(item.blockNode.attrs),
           // A new paragraph inherits the anchor's formatting, not the
-          // revision carriers that explain how the anchor reached it.
+          // revision carriers that explain how the anchor reached it, nor the
+          // source attributes (revision session ids) of the `w:p` it is not.
+          _preservedAttributes: null,
           _propertyChanges: null,
           pPrMark: null,
           _suggestedInsert: null,
