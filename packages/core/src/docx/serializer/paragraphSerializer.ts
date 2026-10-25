@@ -618,6 +618,11 @@ function serializeHyperlinkChild(
       return serializeParagraphContent(child, disposition);
     case "commentReference":
       return serializeCommentReferenceRun(child.id);
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
+      return serializeMoveRangeMarker(child);
     // A transparent wrapper the link was authored around, written where the
     // author put it and carrying the link's disposition down to its runs.
     case "inlineWrapper":
