@@ -733,17 +733,20 @@ type StyleListLineageOptions = {
   model: Model;
   styleId: string | null;
   source: ModelRow;
+  /** Whether the paragraph keeps its direct numbering; `inherit` drops it. */
+  keepsDirect?: boolean;
 };
 
 const styleListLineage = ({
   model,
   styleId,
   source,
+  keepsDirect = true,
 }: StyleListLineageOptions): ListLineage => {
   const numbering = requestedStyleNumbering(
     model,
     styleId,
-    liveParagraph(source) ?? source.pre,
+    keepsDirect ? (liveParagraph(source) ?? source.pre) : undefined,
   );
   if (model.numberingFacts !== undefined && numbering !== UNKNOWN_NUMBERING) {
     if (
@@ -1088,12 +1091,44 @@ const requestedStyleNumbering = (
   return numberingOver(style, direct);
 };
 
+/**
+ * The lineage of a document row as it stands now. A list marker the row shows
+ * only through a pending property change numbers nothing a copy inherits, so
+ * the authored numbering decides, as for the fields a copy takes.
+ */
+const currentLineage = (model: Model, row: ModelRow): ListLineage => {
+  const { listLineage } = row;
+  if (
+    listLineage.type !== "reference" ||
+    listLineage.source !== "document" ||
+    !model.numberingFacts ||
+    !row.pre
+  ) {
+    return listLineage;
+  }
+  const numbering = requestedStyleNumbering(
+    model,
+    row.pre.styleId ?? null,
+    row.pre,
+  );
+  if (numbering === UNKNOWN_NUMBERING) return listLineage;
+  if (
+    numbering?.kind === "reference" &&
+    numberingKind(model, numbering) === "listItem"
+  ) {
+    return { ...listLineage, numId: numbering.numId };
+  }
+  return { type: "none", source: "document", basis: listLineage.basis };
+};
+
 type OperationListLineageOptions = {
   model: Model;
   request: Record<string, unknown>;
   operationId: string;
   source: ModelRow;
   inheritsFormatting: boolean;
+  /** The request sets the properties of an existing paragraph, not of a copy. */
+  replacesDirect?: boolean;
 };
 
 const statedNumId = (numbering: object): number => {
@@ -1130,6 +1165,7 @@ type BaseNumberingOptions = {
   request: Record<string, unknown>;
   source: ModelRow;
   inheritsFormatting: boolean;
+  replacesDirect: boolean;
 };
 
 /** The numbering a request is stated over: the style's, plus the direct numbering the block keeps. */
@@ -1138,6 +1174,7 @@ const baseNumbering = ({
   request,
   source,
   inheritsFormatting,
+  replacesDirect,
 }: BaseNumberingOptions): RequestedNumbering => {
   const requested = request["styleId"];
   let styleId: string | null;
@@ -1148,7 +1185,11 @@ const baseNumbering = ({
   } else {
     styleId = source.pre?.styleId ?? null;
   }
-  if (!inheritsFormatting) return requestedStyleNumbering(model, styleId);
+  // A stated numbering replaces the paragraph's own `w:numPr`, so only the
+  // style's numbering is left for a partial override to keep.
+  if (!inheritsFormatting || replacesDirect) {
+    return requestedStyleNumbering(model, styleId);
+  }
   const lineage = source.listLineage;
   if (lineage.type === "newList") return UNKNOWN_NUMBERING;
   if (lineage.source === "operation") {
@@ -1167,6 +1208,7 @@ const operationListLineage = ({
   operationId,
   source,
   inheritsFormatting,
+  replacesDirect = false,
 }: OperationListLineageOptions): ListLineage => {
   const numbering = request["numbering"];
   if ("numbering" in request) {
@@ -1202,6 +1244,7 @@ const operationListLineage = ({
           request,
           source,
           inheritsFormatting,
+          replacesDirect,
         });
         if (base === UNKNOWN_NUMBERING) {
           return stated?.kind === "reference" && stated.ilvl !== undefined
@@ -1213,7 +1256,12 @@ const operationListLineage = ({
       case "inherit": {
         const styleId = request["styleId"];
         if (typeof styleId === "string" || styleId === null) {
-          return styleListLineage({ model, styleId, source });
+          return styleListLineage({
+            model,
+            styleId,
+            source,
+            keepsDirect: false,
+          });
         }
         return styleListLineage({
           model,
@@ -1222,6 +1270,7 @@ const operationListLineage = ({
               ? source.fields.styleId
               : (source.pre?.styleId ?? null),
           source,
+          keepsDirect: false,
         });
       }
       default:
@@ -1241,7 +1290,7 @@ const operationListLineage = ({
     }
     return styleListLineage({ model, styleId, source });
   }
-  if (inheritsFormatting) return source.listLineage;
+  if (inheritsFormatting) return currentLineage(model, source);
   return { type: "none", source: "operation", basis: "direct" };
 };
 
@@ -1959,16 +2008,19 @@ export const EXPECTATIONS = {
       // Whether the join keeps that paragraph's pending deletion is not modelled yet.
       throw new Unmodelled("a join with a paragraph pending deletion");
     }
+    row.mergeSeparator =
+      typeof operation["separator"] === "string" ? operation["separator"] : "";
     if (
       model.mode !== "direct" &&
       next?.removed &&
       isContainerCarrier(model, next)
     ) {
+      // The batch runs the deletion first, so the join meets a paragraph with
+      // no text left and has nothing to separate, as when no block survives.
       next.removed = false;
       next.edits.push({ start: 0, end: next.text.length, replace: "" });
+      row.mergeSeparator = "";
     }
-    row.mergeSeparator =
-      typeof operation["separator"] === "string" ? operation["separator"] : "";
     const merged = operation["mergedParagraphProperties"] as
       ParagraphRequest | undefined;
     if (merged) {
@@ -1979,6 +2031,7 @@ export const EXPECTATIONS = {
           operationId: String(operation["id"]),
           source: row,
           inheritsFormatting: true,
+          replacesDirect: true,
         });
       }
       Object.assign(
@@ -1997,6 +2050,7 @@ export const EXPECTATIONS = {
         operationId: String(operation["id"]),
         source: row,
         inheritsFormatting: true,
+        replacesDirect: true,
       });
     }
     const { fields, checks } = paragraphRequestForLiveRow({

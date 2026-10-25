@@ -37,6 +37,20 @@ const placement = (
   const text = preRows[index]?.text ?? "";
   const handle = handleOf(operation);
   if (handle) return [index, 1, handle.startOffset];
+  // A paragraph added beside a table cell goes outside the table: before its
+  // first row or after its last, so every anchor in one outermost table shares a gap.
+  const outer = preRows[index]?.table?.outerTableIndex;
+  if (outer !== undefined) {
+    const rows = preRows.flatMap((row, at) =>
+      row.table?.outerTableIndex === outer ? [at] : [],
+    );
+    if (operation.type === "insertBeforeBlock") {
+      return [rows.at(0) ?? index, 0, 0];
+    }
+    if (operation.type === "insertAfterBlock") {
+      return [(rows.at(-1) ?? index) + 1, 0, 0];
+    }
+  }
   switch (operation.type) {
     case "replaceInBlock":
       return [index, 1, Math.max(0, text.indexOf(String(operation["find"])))];
