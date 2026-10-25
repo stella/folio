@@ -29,16 +29,29 @@ describe("API surface budget comparison", () => {
     });
   });
 
-  test("growth without a budget bump fails and identifies the required bump", () => {
+  test("growth beyond the per-change headroom without a budget bump fails and identifies the required bump", () => {
     const result = evaluateBudget(
       surfaces(4_222),
-      surfaces(4_223),
+      surfaces(4_273),
       surfaces(4_023),
     );
 
     expect(result.warnings).toEqual([]);
     expect(result.failures).toEqual([
-      "docx-core.reportLines: base 4222, new 4223, budget 4023; bump scripts/api-surface-budget.json docx-core.reportLines to at least 4223",
+      "docx-core.reportLines: base 4222, new 4273, budget 4023; bump scripts/api-surface-budget.json docx-core.reportLines to at least 4273",
+    ]);
+  });
+
+  test("growth within the per-change headroom passes with a warning", () => {
+    const result = evaluateBudget(
+      surfaces(4_222),
+      surfaces(4_272),
+      surfaces(4_023),
+    );
+
+    expect(result.failures).toEqual([]);
+    expect(result.warnings).toEqual([
+      "docx-core.reportLines: base 4222, new 4272, budget 4023; growth 50 is within the per-change headroom of 50",
     ]);
   });
 
