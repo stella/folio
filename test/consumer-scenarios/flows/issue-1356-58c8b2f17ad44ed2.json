@@ -28,19 +28,6 @@
       ]
     },
     {
-      "action": "suggest_changes",
-      "seed": 1758390272,
-      "operations": [
-        {
-          "type": "setBlockParagraphProperties",
-          "blockId": "7B806329",
-          "properties": {
-            "alignment": null
-          }
-        }
-      ]
-    },
-    {
       "action": "story batch",
       "seed": 302895341,
       "atomic": false,

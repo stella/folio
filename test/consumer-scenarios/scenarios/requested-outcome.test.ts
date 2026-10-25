@@ -456,12 +456,14 @@ describe("the requested-outcome oracle", () => {
       };
       return model;
     };
+    // Operations at one position run in reverse input order, so the batch is
+    // stated back to front to name the order they execute in.
     const applyOrdered = (
       model: ReturnType<typeof modelOf>,
-      operations: AppliedOperation[],
+      inExecutionOrder: AppliedOperation[],
     ) => {
       for (const group of sequentialGroups({
-        applied: operations,
+        applied: inExecutionOrder.toReversed(),
         preRows: [row("anchor", "Anchor.")],
         mode: "direct",
       })) {
@@ -496,6 +498,7 @@ describe("the requested-outcome oracle", () => {
       compareWithModel(directFirst, [
         row("inserted", "Inserted.", {
           kind: "listItem",
+          styleId: "PlainStyle",
           listLevel: 0,
           listReference: { numId: 100, level: 0 },
         }),
@@ -515,7 +518,10 @@ describe("the requested-outcome oracle", () => {
     ]);
     assert.deepEqual(
       compareWithModel(insertFirst, [
-        row("inserted", "Inserted.", { kind: "paragraph" }),
+        row("inserted", "Inserted.", {
+          kind: "paragraph",
+          styleId: "PlainStyle",
+        }),
         row("anchor", "Anchor.", {
           kind: "listItem",
           styleId: "PlainStyle",
@@ -535,7 +541,10 @@ describe("the requested-outcome oracle", () => {
     ]);
     assert.deepEqual(
       compareWithModel(styleDerived, [
-        row("inserted", "Inserted.", { kind: "paragraph" }),
+        row("inserted", "Inserted.", {
+          kind: "paragraph",
+          styleId: "PlainStyle",
+        }),
         row("anchor", "Anchor.", {
           kind: "paragraph",
           styleId: "PlainStyle",
@@ -557,7 +566,10 @@ describe("the requested-outcome oracle", () => {
     ]);
     assert.deepEqual(
       compareWithModel(explicitNone, [
-        row("inserted", "Inserted.", { kind: "paragraph" }),
+        row("inserted", "Inserted.", {
+          kind: "paragraph",
+          styleId: "ListStyle",
+        }),
         row("anchor", "Anchor.", {
           kind: "paragraph",
           styleId: "ListStyle",

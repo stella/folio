@@ -775,7 +775,14 @@ const inheritedListFields = (model: Model, row: Row): Fields => {
       case "reference":
       case "none":
       case "unknown":
-        if (current.listLineage.source === "operation") return fields;
+        if (current.listLineage.source === "operation") {
+          // An operation that left the block numbering nothing leaves a
+          // copy of it a plain paragraph, whatever marker the pre-state had.
+          return current.listLineage.type === "none" &&
+            fields.kind === "listItem"
+            ? { ...fields, kind: "paragraph", listLevel: undefined }
+            : fields;
+        }
         break;
       default: {
         const unhandled: never = current.listLineage;
@@ -1285,10 +1292,15 @@ const operationListLineage = ({
       typeof styleId === "string" || styleId === null,
       "An applied style id must be a string or null",
     );
-    if (hasDirectNumbering(source.listLineage)) {
+    if (inheritsFormatting && hasDirectNumbering(source.listLineage)) {
       return source.listLineage;
     }
-    return styleListLineage({ model, styleId, source });
+    return styleListLineage({
+      model,
+      styleId,
+      source,
+      keepsDirect: inheritsFormatting,
+    });
   }
   if (inheritsFormatting) return currentLineage(model, source);
   return { type: "none", source: "operation", basis: "direct" };
@@ -1390,6 +1402,19 @@ const isBullet = (label: string | undefined): boolean =>
 
 type ParagraphRequest = Record<string, unknown>;
 
+/** Checks that the numbering a restyle derives survives; direct numbering stated after it replaces them. */
+const STYLE_NUMBERING_CHECKS = new WeakSet<ModelRow["checks"][number]>();
+
+/** Drop the style-derived numbering checks once a request states its own numbering. */
+const retireStyleNumberingChecks = (
+  row: ModelRow,
+  request: ParagraphRequest,
+): void => {
+  const stated = request["numbering"];
+  if (!isRecord(stated) || stated["kind"] === "inherit") return;
+  row.checks = row.checks.filter((check) => !STYLE_NUMBERING_CHECKS.has(check));
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -1422,7 +1447,7 @@ const paragraphRequest = ({
       !("numbering" in request) &&
       numbering !== UNKNOWN_NUMBERING
     ) {
-      checks.push((row) => {
+      const styleNumberingCheck: ModelRow["checks"][number] = (row) => {
         if (numbering?.kind === "reference") {
           return row.listReference?.numId === numbering.numId
             ? null
@@ -1431,7 +1456,9 @@ const paragraphRequest = ({
         return row.listReference === undefined
           ? null
           : "the requested style introduced unexpected numbering";
-      });
+      };
+      STYLE_NUMBERING_CHECKS.add(styleNumberingCheck);
+      checks.push(styleNumberingCheck);
     }
     const example =
       styleId === null ? undefined : model.styleExamples.get(styleId);
@@ -2058,6 +2085,7 @@ export const EXPECTATIONS = {
       request: operation["properties"] as ParagraphRequest,
       row,
     });
+    if (isRecord(properties)) retireStyleNumberingChecks(row, properties);
     Object.assign(row.fields, fields);
     row.checks.push(...checks);
   },
@@ -2478,14 +2506,14 @@ export const compareWithModel = (
       case "reference":
         if (row.listReference?.numId !== entry.listLineage.numId) {
           problems.push(
-            `"${row.text}": list reference ${JSON.stringify(row.listReference)} differs from modeled reference ${entry.listLineage.numId}`,
+            `"${row.text}": numbering list reference ${JSON.stringify(row.listReference)} differs from modeled reference ${entry.listLineage.numId}`,
           );
         }
         break;
       case "none":
         if (row.listReference !== undefined) {
           problems.push(
-            `"${row.text}": unexpected list reference ${JSON.stringify(row.listReference)}`,
+            `"${row.text}": unexpected numbering list reference ${JSON.stringify(row.listReference)}`,
           );
         }
         break;

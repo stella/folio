@@ -50,20 +50,6 @@
       ]
     },
     {
-      "action": "story batch",
-      "seed": 1240132377,
-      "atomic": true,
-      "operations": [
-        {
-          "type": "setBlockParagraphProperties",
-          "blockId": "412DDC7F",
-          "properties": {
-            "alignment": null
-          }
-        }
-      ]
-    },
-    {
       "action": "save and reopen",
       "seed": 3511710269
     },

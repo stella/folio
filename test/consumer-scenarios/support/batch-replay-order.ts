@@ -133,6 +133,7 @@ export const sequentialGroups = ({
   }
   const retiringCarriers = new Set<string>();
   const finalBlocks = new Set<string>();
+  const uncarriedFinals = new Set<string>();
   for (const [container, rows] of containers) {
     const last = rows.at(-1);
     if (!last || (container === "story" && last !== preRows.at(-1))) continue;
@@ -145,6 +146,7 @@ export const sequentialGroups = ({
     if (appended || !deleted.has(last.id)) continue;
     const carrier = rows.findLast((row) => !deleted.has(row.id));
     if (carrier) retiringCarriers.add(carrier.id);
+    else uncarriedFinals.add(last.id);
   }
   const beforeFinalBreakRetirement = (operation: AnyOperation): boolean => {
     if (!isOperationType(operation.type)) {
@@ -261,15 +263,15 @@ export const sequentialGroups = ({
   // A deletion removes or retires its block, so an insertion before it can
   // only be stated one at a time while the block still stands. The batch
   // keeps that gap, so the oracle runs the whole run ahead of the deletion.
-  // A container's final paragraph differs. In tracked changes its deletion
-  // cannot retire an earlier mark, so a paragraph inserted first would carry
-  // the break and the batch deletes first. In a suggestion the batch hands
+  // A container's final paragraph differs. In tracked changes, with no
+  // surviving paragraph to retire its mark onto, a paragraph inserted first
+  // would carry the break and the batch deletes first. In a suggestion the batch hands
   // the break to a paragraph inserted into the gap before it, whichever side
   // of the gap the insertion is stated from.
   const gapDeletion = (operation: AnyOperation): string | undefined => {
     const id = blockIdOf(operation);
     if (operation.type === "insertBeforeBlock") {
-      const retires = mode === "tracked-changes" && finalBlocks.has(id);
+      const retires = mode === "tracked-changes" && uncarriedFinals.has(id);
       return deleted.has(id) && !retires ? id : undefined;
     }
     if (operation.type !== "insertAfterBlock" || mode !== "suggested") {

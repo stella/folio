@@ -2670,7 +2670,7 @@ const insertionWithLiveAnchor = (
     });
   }
   const mapped = tr.mapping.mapResult(item.blockFrom, 1);
-  const anchor = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
+  const anchor = mapped.deleted ? null : tr.doc.nodeAt(mapped.pos);
   const paraId: unknown = item.blockNode.attrs["paraId"];
   if (
     !anchor?.isTextblock ||
@@ -5085,6 +5085,9 @@ const applyFolioAIEditOperationsInternal = ({
             }).text,
           )
         ) {
+          if (candidate.operation.moveId !== undefined) {
+            refusedMoveIds.add(candidate.operation.moveId);
+          }
           skipped.push({
             id: candidate.operation.id,
             reason: "pendingDeletion",
