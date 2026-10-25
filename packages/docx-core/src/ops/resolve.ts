@@ -1153,6 +1153,7 @@ const resolveList = (
           rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
           pairedComments: resolution.pairedComments,
           relocated: resolution.relocated,
+          revisionDate: node.info.date ?? "",
         });
         appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are

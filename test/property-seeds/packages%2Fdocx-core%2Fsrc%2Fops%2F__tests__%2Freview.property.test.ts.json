@@ -89,6 +89,12 @@
   ],
   "L3: resolving a run's revisions at once equals resolving each operation's in turn": [
     {
+      "seed": 1398201434,
+      "path": "44:0:0:0:0:0:0:0:0:0:2:1:4:3:4:4:6:6:6:7:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:5:4:4:4:4:4:4:4:4:4:4:4:5:4:4:25:4:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:16:14:14:14:14:14:14:14:14:14:14:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4",
+      "note": "Rejecting every revision moves a kept bookmark start from the run before an earlier kept end, rather than the end after it.",
+      "date": "2026-10-25"
+    },
+    {
       "seed": -148989159,
       "note": "#1909: the issue's seed; its recorded path no longer replays against the current generators.",
       "date": "2026-10-25"
