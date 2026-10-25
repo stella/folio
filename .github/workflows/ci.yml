@@ -517,6 +517,13 @@ jobs:
         env:
           API_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
+          # A pull request builds its merge with the current base, and the
+          # event's base SHA can trail that base, so compare with the merge's
+          # first parent: growth already on the base is not this change's.
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            API_BASE="$(git rev-parse HEAD^1)"
+            export API_BASE
+          fi
           bun scripts/api-surface-budget.ts --self-test
           bun run api:check
           bun run api:budget
