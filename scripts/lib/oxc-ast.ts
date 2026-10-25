@@ -10,14 +10,17 @@ import {
   type Expression,
   type Node,
   type ObjectPattern,
+  type ParseResult,
   type ParserOptions,
   parseSync,
-  type Program,
   type TSType,
   visitorKeys,
 } from "oxc-parser";
 
-export type { Comment, EcmaScriptModule, Node, Program };
+export type { Comment, EcmaScriptModule, Node };
+// oxc-parser imports `Program` for its own signatures, which hides the
+// re-export; take the type from the parse result instead.
+export type Program = ParseResult["program"];
 
 export type SourceModule = {
   readonly fileName: string;
