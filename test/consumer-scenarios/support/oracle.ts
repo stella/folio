@@ -665,6 +665,10 @@ type ModelRow = {
   besideTable?: boolean;
   /** A block of a table row the batch deletes, rather than one emptied alone. */
   rowDeleted?: boolean;
+  /** A text box paragraph removed with the paragraph the box is drawn in. */
+  removedWithTextBox?: boolean;
+  /** For a block inserted next to a text box paragraph: that paragraph, whose box holds it. */
+  inTextBoxOf?: ModelRow;
   before: ModelRow[];
   after: ModelRow[];
   /** Formatting that must hold over `[start, end)` of the result's text. */
@@ -1818,6 +1822,10 @@ const insertBlock =
         ? [String(operation["text"])]
         : paragraphsOf(String(operation["text"]));
     // `""` inserts a blank paragraph, which no reader lists.
+    // Next to a text box paragraph the new block goes in that box, and goes
+    // with it when the paragraph the box is drawn in is deleted.
+    const inTextBox =
+      named.pre !== undefined && model.inTextBox?.has(named.pre.id) === true;
     const rows = texts.map((text, index) => {
       const row = modelRow(text);
       if (index === 0 || scope === "allParagraphs") {
@@ -1831,6 +1839,7 @@ const insertBlock =
           inheritsFormatting: operation["inheritFormatting"] !== false,
         });
       }
+      if (inTextBox) row.inTextBoxOf = named;
       return row;
     });
     pushBesideBlocks(model, anchor, position, rows);
@@ -2008,7 +2017,10 @@ export const EXPECTATIONS = {
     // The text boxes drawn in the paragraph go with it once the deletion
     // resolves; the suggested live view still lists their paragraphs.
     if (model.mode === "suggested") return;
-    for (const boxed of textBoxRowsOf(model, row)) boxed.removed = true;
+    for (const boxed of textBoxRowsOf(model, row)) {
+      boxed.removed = true;
+      boxed.removedWithTextBox = true;
+    }
   },
   splitBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);
@@ -2391,7 +2403,9 @@ const materialize = (model: Model): Expected[] => {
   const emit = (row: ModelRow) => {
     for (const inserted of row.before) emit(inserted);
     const gone =
-      row.removed || (row.pendingDeletion === true && row.edits.length === 0);
+      row.removed ||
+      row.inTextBoxOf?.removedWithTextBox === true ||
+      (row.pendingDeletion === true && row.edits.length === 0);
     if (!gone) {
       const segments = applyEdits(row.text, row.edits, row.splits);
       const whole = untouchedText(row);
