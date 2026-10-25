@@ -153,6 +153,7 @@ import {
 import { schema, singletonManager } from "../prosemirror/schema";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
+import { collapseEmptyTextBoxHosts } from "../prosemirror/textBoxHostCollapse";
 import type { Comment } from "../types/content";
 import type {
   BlockContent,
@@ -3789,11 +3790,19 @@ export class FolioDocxReviewer {
 
   private setEditableStoryState(
     story: FolioEditableDocumentStoryHandle,
-    state: EditorState,
+    projected: EditorState,
   ): void {
     this.resolvedStoryExpectations.delete(editableStoryKey(story));
+    // A paragraph an edit left holding only text boxes is the box a reopened
+    // package projects it as. A story this replaces with its own document
+    // (a projection that resolved nothing) was folded when it was stored,
+    // so only a changed document is walked.
+    const folded = (stored: EditorState): EditorState =>
+      stored.doc === projected.doc
+        ? projected
+        : collapseEmptyTextBoxHosts(projected);
     if (story.type === "main") {
-      this.state = state;
+      this.state = folded(this.state);
       return;
     }
     const entry = this.secondaryStoryStates.get(secondaryStoryKey(story));
@@ -3803,7 +3812,7 @@ export class FolioDocxReviewer {
         story,
       });
     }
-    entry.state = state;
+    entry.state = folded(entry.state);
   }
 
   private getHeaderFooterStory(
