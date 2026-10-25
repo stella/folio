@@ -5505,6 +5505,24 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
 
         if (readOnly) {
+          const modifier = e.metaKey || e.ctrlKey;
+          const selectionGesture =
+            (modifier && e.key.toLowerCase() === "a") ||
+            (e.shiftKey &&
+              /^(?:Arrow(?:Left|Right|Up|Down)|Home|End|PageUp|PageDown)$/u.test(
+                e.key,
+              ));
+          if (selectionGesture) {
+            const view = hiddenPMRef.current?.getView();
+            const handled =
+              view?.someProp("handleKeyDown", (handler) =>
+                handler(view, e.nativeEvent),
+              ) ?? false;
+            if (handled) {
+              e.preventDefault();
+              return;
+            }
+          }
           if (isReadOnlyEditKey(e)) {
             onReadOnlyEditAttempt?.();
             e.preventDefault();
