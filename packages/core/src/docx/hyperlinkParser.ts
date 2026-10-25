@@ -18,6 +18,9 @@
 import type {
   BookmarkEnd,
   BookmarkStart,
+  CommentRangeEnd,
+  CommentRangeStart,
+  CommentReference,
   Hyperlink,
   InlineWrapper,
   MediaFile,
@@ -38,6 +41,7 @@ import {
 import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
+import { parseMarkupRangeMarker } from "./markupRangeMarker";
 import {
   preservedInlineCapture,
   preserveInlineChild,
@@ -48,10 +52,13 @@ import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
 import type { StyleMap } from "./styleParser";
 import {
+  findChildren,
   getAttribute,
+  getAttributeByNamespaceUri,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
   parseOnOffAttribute,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -297,6 +304,26 @@ export const HYPERLINK_CHILD_HANDLERS = {
     if (runHoldsPayload(run)) {
       push(run);
     }
+    for (const commentReference of findChildren(
+      child,
+      "w",
+      "commentReference",
+    )) {
+      const commentId = Number.parseInt(
+        getAttributeByNamespaceUri(
+          commentReference,
+          WORDPROCESSINGML_NAMESPACE_URIS,
+          "id",
+        ) ?? "",
+        10,
+      );
+      if (Number.isFinite(commentId)) {
+        push({
+          type: "commentReference",
+          id: commentId,
+        } satisfies CommentReference);
+      }
+    }
   },
   bookmarkStart: (child, { push }) => {
     push(parseBookmarkStart(child));
@@ -321,8 +348,18 @@ export const HYPERLINK_CHILD_HANDLERS = {
   moveFrom: CAPTURE,
   moveTo: CAPTURE,
 
-  commentRangeEnd: CAPTURE,
-  commentRangeStart: CAPTURE,
+  commentRangeEnd: (child, { push }) => {
+    push({
+      type: "commentRangeEnd",
+      ...parseMarkupRangeMarker(child),
+    } satisfies CommentRangeEnd);
+  },
+  commentRangeStart: (child, { push }) => {
+    push({
+      type: "commentRangeStart",
+      ...parseMarkupRangeMarker(child),
+    } satisfies CommentRangeStart);
+  },
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,
