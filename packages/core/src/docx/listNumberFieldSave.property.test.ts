@@ -1247,8 +1247,8 @@ const FIXTURES: readonly Pinned[] = [
     path: "tests/visual/fixtures/sample.docx",
     projection: {
       digest:
-        "1d3ff50604fe13a5b52d62b221abbaeb7bab1098f410843af4527226cc7acd47",
-      length: 90_815,
+        "c8d4dad94737c6320ca380ae77614b4d3a40748c25cb42a9084292c581064883",
+      length: 91_651,
     },
     saved: { file: "sample.document.xml" },
   },
@@ -1256,8 +1256,8 @@ const FIXTURES: readonly Pinned[] = [
     path: "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx",
     projection: {
       digest:
-        "a68195ab6c8e32a6df0e09ed04cc6131467dd2f5035fda94da7580149e7726aa",
-      length: 8803,
+        "2333272a8c7d0def552d39171aab2727fb6f04e37b8e6583e3db9ac80990ae72",
+      length: 8993,
     },
     saved: { file: "step3-header-footer-fields.document.xml" },
   },
@@ -1265,14 +1265,14 @@ const FIXTURES: readonly Pinned[] = [
     path: "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx",
     projection: {
       digest:
-        "db9ec37655bc5ed3c05a45c698f76a09f36fa5786d43bd843746ddcadc844c22",
-      length: 4271,
+        "f52525fb20b9b2506078b95f54ee94584d3cf7906c589a3cdd83ddea9345a018",
+      length: 4347,
     },
     saved: { file: "step3-footnotes.document.xml" },
   },
   {
     path: "tests/visual/fixtures/docx-editor-demo.docx",
-    projection: { length: 445_919 },
+    projection: { length: 449_985 },
     saved: {
       digest:
         "6bac5af14f8a58ea6627768ea747a8fc8ec69ce3e3edae1c41d720de84f81dee",

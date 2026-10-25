@@ -157,6 +157,8 @@ export const PARAGRAPH_FORMATTING_RESERVED = {
   alignment: NO_RESERVED_VALUE,
   bidi: toggle("w:bidi@val"),
   kinsoku: toggle("w:kinsoku@val"),
+  autoSpaceDE: toggle("w:autoSpaceDE@val"),
+  autoSpaceDN: toggle("w:autoSpaceDN@val"),
   overflowPunctuation: toggle("w:overflowPunct@val"),
   spaceBefore: NO_RESERVED_VALUE,
   spaceAfter: NO_RESERVED_VALUE,

@@ -22,6 +22,8 @@ import { createNumberingMap } from "../docx/numberingParser";
 import { createDocx } from "../docx/rezip";
 import { toMarkdown } from "../markdown";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import { createListLabelCounter } from "./listLabels";
+import { paragraphNumberingAttr } from "./numberingAttr";
 import { resolveParagraphList } from "./paragraphList";
 
 setDefaultTimeout(propertyTestTimeout(20_000));
@@ -150,6 +152,89 @@ const assertReaders = (
 };
 
 describe("paragraph list reader agreement", () => {
+  test("empty and whitespace marker projections follow package numbering policy", () => {
+    const reference = paragraphNumberingReference({ numId: 1, ilvl: 0 });
+    const sources = { numPr: reference, numPrFromStyle: undefined };
+    for (const numFmt of [
+      "decimal",
+      "lowerLetter",
+      "bullet",
+      "none",
+    ] as const) {
+      for (const isLegal of [false, true]) {
+        for (const hidden of [false, true]) {
+          for (const marker of ["", "   "]) {
+            const numbering = createNumberingMap({
+              abstractNums: [
+                {
+                  abstractNumId: 1,
+                  levels: [
+                    {
+                      ilvl: 0,
+                      numFmt,
+                      lvlText: marker,
+                      isLgl: isLegal,
+                      rPr: { hidden },
+                    },
+                  ],
+                },
+              ],
+              nums: [{ numId: 1, abstractNumId: 1 }],
+            });
+            const packaged = resolveParagraphList(sources, numbering);
+            const rendering = {
+              numId: 1,
+              level: 0,
+              marker,
+              markerTemplate: marker,
+              numFmt,
+              isLegal,
+              markerHidden: hidden,
+              isBullet: numFmt === "bullet",
+            };
+            expect(resolveParagraphList(sources, null, rendering).kind).toBe(
+              packaged.kind,
+            );
+            for (const markerAttr of [
+              "listMarker",
+              "listMarkerTemplate",
+            ] as const) {
+              const attrs = {
+                numPr: paragraphNumberingAttr(reference),
+                [markerAttr]: marker,
+                listNumFmt: numFmt,
+                listIsLegal: isLegal,
+                listMarkerHidden: hidden,
+              };
+              const info = {
+                id: 1,
+                author: "Reviewer",
+                date: "2026-01-01T00:00:00Z",
+              };
+              const current = createListLabelCounter()(attrs);
+              const original = createListLabelCounter()({
+                pPrMark: { kind: "del", info },
+                _propertyChanges: [
+                  {
+                    type: "paragraphPropertyChange",
+                    info,
+                    previousFormatting: attrs,
+                  },
+                ],
+              });
+              for (const result of [current, original]) {
+                expect(result.kind).toBe(packaged.kind);
+                expect(result.label).toBe(
+                  packaged.kind === "marker" ? marker : undefined,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
   test("without a numbering part, a paragraph's own cancellation wins over its list projection", () => {
     const projection = { marker: "1.", level: 0, numId: 1, isBullet: false };
     expect(

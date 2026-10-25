@@ -7,6 +7,9 @@ import {
   getTrackedSectionEndpointRemoval,
   ParagraphChangeTrackerExtension,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { paragraphRemainsOf } from "../keptRangeBoundaries";
+import { schema as documentSchema } from "../schema";
+import { paragraphContentOf } from "../zeroWidthAnchors";
 import {
   acceptAIEditRevision,
   acceptAllChanges,
@@ -52,6 +55,12 @@ const schema = new Schema({
       attrs: BOOKMARK_ATTRS,
     },
     textBoxAnchor: { inline: true, group: "inline", atom: true },
+    commentReference: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      attrs: { commentId: { default: 0 } },
+    },
   },
   marks: {
     insertion: {
@@ -299,6 +308,147 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
     expect(view.state.doc.childCount).toBe(1);
     expect(view.state.doc.child(0).textContent).toBe("first");
   });
+
+  test("rejectAll transfers a reference-only inserted paragraph to its prior host", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, schema.text("first")),
+        schema.node(
+          "paragraph",
+          { pPrMark: insMark({ id: 1 }) },
+          schema.node("commentReference", { commentId: 7 }),
+        ),
+      ]),
+    });
+    const view = dispatcher(state);
+    expect(
+      paragraphRemainsOf(view.state.doc.child(1)).comments.map(
+        ({ type }) => type.name,
+      ),
+    ).toEqual(["commentReference"]);
+
+    rejectAllChanges()(view.state, view.dispatch);
+
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.child(0).textContent).toBe("first");
+    expect(view.state.doc.child(0).lastChild?.type.name).toBe(
+      "commentReference",
+    );
+  });
+
+  test("a comment reference alone does not count as paragraph content", () => {
+    const reference = schema.node("commentReference", { commentId: 7 });
+    const referenceOnly = schema.node("paragraph", null, reference);
+    const textAndReference = schema.node("paragraph", null, [
+      schema.text("kept"),
+      reference,
+    ]);
+
+    expect(paragraphContentOf(referenceOnly)).toBe(false);
+    expect(paragraphContentOf(textAndReference)).toBe(true);
+  });
+
+  test("a reference-only paragraph with no previous host stays in place", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          { pPrMark: insMark({ id: 1 }) },
+          schema.node("commentReference", { commentId: 7 }),
+        ),
+      ]),
+    });
+    const view = dispatcher(state);
+
+    rejectAllChanges()(view.state, view.dispatch);
+
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.child(0).attrs["pPrMark"]).toBeNull();
+    expect(view.state.doc.child(0).firstChild?.type.name).toBe(
+      "commentReference",
+    );
+  });
+
+  for (const [order, nodes] of [
+    [
+      "bookmark before reference",
+      [
+        documentSchema.node("bookmarkBoundary", {
+          type: "start",
+          id: 8,
+          name: "kept",
+        }),
+        documentSchema.node("commentReference", { commentId: 9 }),
+      ],
+    ],
+    [
+      "reference before bookmark",
+      [
+        documentSchema.node("commentReference", { commentId: 9 }),
+        documentSchema.node("bookmarkBoundary", {
+          type: "start",
+          id: 8,
+          name: "kept",
+        }),
+      ],
+    ],
+  ] as const) {
+    for (const resolution of ["accept", "reject"] as const) {
+      test(`single ${resolution} preserves ${order} before a table`, () => {
+        const state = EditorState.create({
+          schema: documentSchema,
+          doc: documentSchema.node("doc", null, [
+            documentSchema.node(
+              "paragraph",
+              null,
+              documentSchema.text("before"),
+            ),
+            documentSchema.node(
+              "paragraph",
+              {
+                pPrMark:
+                  resolution === "accept"
+                    ? delMark({ id: 8 })
+                    : insMark({ id: 8 }),
+              },
+              nodes,
+            ),
+            documentSchema.node("table", null, [
+              documentSchema.node("tableRow", null, [
+                documentSchema.node("tableCell", null, [
+                  documentSchema.node(
+                    "paragraph",
+                    null,
+                    documentSchema.text("cell"),
+                  ),
+                ]),
+              ]),
+            ]),
+          ]),
+        });
+        const view = dispatcher(state);
+
+        const resolve = resolution === "accept" ? acceptChange : rejectChange;
+        const targetPosition = view.state.doc.child(0).nodeSize;
+        resolve(
+          targetPosition,
+          targetPosition + view.state.doc.child(1).nodeSize,
+        )(view.state, view.dispatch);
+
+        expect(view.state.doc.childCount).toBe(2);
+        const host = view.state.doc.child(0);
+        expect(host.content.content.map((node) => node.type.name)).toEqual([
+          "text",
+          ...nodes.map((node) => node.type.name),
+        ]);
+        expect(host.child(1).attrs).toEqual(nodes[0]?.attrs);
+        expect(host.child(2).attrs).toEqual(nodes[1]?.attrs);
+        expect(view.state.doc.child(1).type.name).toBe("table");
+      });
+    }
+  }
 
   // Whether an emptied paragraph stays is the engine's one paragraph-content
   // rule, the same in the editor: a cached page break is not content, so the

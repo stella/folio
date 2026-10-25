@@ -60,6 +60,7 @@ import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
 import {
   afterNativeCompositionFlush,
+  formattingMarksBesideLockedControl,
   handleEditorBeforeInput,
 } from "../textInput";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
@@ -1037,6 +1038,14 @@ function applySuggestionInsert(
   }
 
   const insertAt = tr.mapping.map(to);
+  const formattingMarks = formattingMarksBesideLockedControl({
+    state: view.state,
+    from,
+    to,
+  });
+  if (formattingMarks !== undefined) {
+    tr.setStoredMarks(formattingMarks);
+  }
   tr.insertText(text, insertAt, insertAt);
 
   // Strip inherited deletion marks — new text must never be marked as deleted.

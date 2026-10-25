@@ -11,7 +11,7 @@ import {
 } from "../../../../test/property-testing";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { CLEARED_LIST_RENDERING_ATTRS } from "./listMarker";
-import { listRenderingAttrPatch } from "./listRenderingAttrs";
+import { hasListRendering, listRenderingAttrPatch } from "./listRenderingAttrs";
 import { schema } from "./schema";
 
 test("folded LISTNUM display text stays literal while numbered and symbol-font bullet markers resolve", () => {
@@ -98,4 +98,62 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
       id: "folded LISTNUM display text stays literal while numbered and symbol-font bullet markers resolve",
     },
   );
+});
+
+test("an empty level marker remains an empty marker through layout conversion", () => {
+  const numPr = paragraphNumberingReference({ numId: 1, ilvl: 0 });
+  const rendering = {
+    level: 0,
+    numId: 1,
+    isBullet: false,
+    isLegal: true,
+    numFmt: "none",
+    marker: "",
+    markerTemplate: "",
+    markerSuffix: "tab",
+  } as const satisfies Parameters<typeof listRenderingAttrPatch>[0];
+  const ordinaryNone = { ...rendering, isLegal: false };
+  const doc = schema.node("doc", null, [
+    schema.node(
+      "paragraph",
+      {
+        numPr,
+        ...listRenderingAttrPatch(rendering),
+      },
+      schema.text("first"),
+    ),
+    schema.node(
+      "paragraph",
+      {
+        numPr,
+        ...listRenderingAttrPatch({ ...ordinaryNone, marker: "" }),
+      },
+      schema.text("ordinary none"),
+    ),
+  ]);
+
+  const paragraphs = toFlowBlocks(doc).filter(
+    (block) => block.kind === "paragraph",
+  );
+  expect(paragraphs.map((paragraph) => paragraph.attrs?.listMarker)).toEqual([
+    "",
+    undefined,
+  ]);
+  expect(paragraphs.at(0)?.attrs?.listMarkerSuffix).toBe("tab");
+});
+
+test("none numbering renders only for a legal-numbering level", () => {
+  const ordinaryNone = {
+    listMarkerTemplate: "",
+    listIsLegal: false,
+    listNumFmt: "none",
+  } as const satisfies Parameters<typeof hasListRendering>[0];
+  const legalNone = {
+    listMarkerTemplate: "",
+    listIsLegal: true,
+    listNumFmt: "none",
+  } as const satisfies Parameters<typeof hasListRendering>[0];
+
+  expect(hasListRendering(ordinaryNone)).toBe(false);
+  expect(hasListRendering(legalNone)).toBe(true);
 });
