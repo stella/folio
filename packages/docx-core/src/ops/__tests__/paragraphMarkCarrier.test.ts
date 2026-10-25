@@ -201,7 +201,7 @@ test("accepting a mark deletion before a table hosts an unhosted comment anchor 
   ]);
 });
 
-test("accepting a mark deletion before a table moves a comment anchor to the paragraph before", () => {
+test("accepting a mark deletion before a table moves mixed carriers together to the paragraph before", () => {
   const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
   const before: Paragraph = {
     type: "paragraph",
@@ -230,10 +230,8 @@ test("accepting a mark deletion before a table moves a comment anchor to the par
   expect(resolveAccepted(document).package.document.content).toEqual([
     {
       ...before,
-      content: [...before.content, { type: "commentRangeEnd", id: 1 }],
+      content: [...before.content, ...paragraph.content],
     },
-    { type: "bookmarkStart", id: 3, name: "kept" },
-    { type: "bookmarkEnd", id: 3 },
     table,
     finalParagraph,
   ]);
