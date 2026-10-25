@@ -6,6 +6,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import type { DocumentFontFacts } from "../../fonts/documentFontFacts";
 import type { FontAlternates } from "../../fonts/fontAlternates";
 import type {
   ParagraphAttrs,
@@ -24,6 +25,8 @@ export type ToFlowBlocksOptions = {
   showCommentHighlights?: boolean;
   /** Embedded families owned by this editor, never ambient process state. */
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+  /** Authored font-table facts owned by this document. */
+  documentFontFacts?: DocumentFontFacts;
   /** Default font family. */
   defaultFont?: string;
   /** Default font size in points. */

@@ -4,6 +4,7 @@
 
 ```ts
 
+import { FontInfo } from '@stll/docx-core/model';
 import { ImagePosition } from '@stll/docx-core/model';
 import { ImageWrap } from '@stll/docx-core/model';
 import { InlineWrapper } from '@stll/docx-core/model';
@@ -103,6 +104,7 @@ export type FontMetrics = {
 // @public
 export type FontStyle = {
     embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+    documentFontFacts?: DocumentFontFacts;
     fontFamily?: string;
     alternateFontFamily?: string;
     eastAsiaFontFamily?: string;

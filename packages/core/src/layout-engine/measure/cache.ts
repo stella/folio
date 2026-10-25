@@ -5,6 +5,12 @@
  * Improves performance by avoiding repeated measurements of identical content.
  */
 
+import { panic } from "better-result";
+
+import {
+  type DocumentFontFacts,
+  documentFontFactsCacheIdentity,
+} from "../../fonts/documentFontFacts";
 import { embeddedFontFingerprint } from "../../fonts/embeddedFontFingerprint";
 import type {
   ImageRun,
@@ -281,6 +287,7 @@ export function getFontCacheSize(): number {
 type ParagraphMeasureEntry = {
   measure: ParagraphMeasure;
   maxWidth: number;
+  bytes: number;
 };
 
 /**
@@ -288,6 +295,7 @@ type ParagraphMeasureEntry = {
  * Large documents can have 500+ unique paragraphs.
  */
 const DEFAULT_PARAGRAPH_CACHE_SIZE = 5000;
+const MAX_PARAGRAPH_CACHE_BYTES = 16 * 1024 * 1024;
 
 /**
  * Current max size for paragraph measure cache
@@ -299,6 +307,7 @@ let paragraphCacheMaxSize = DEFAULT_PARAGRAPH_CACHE_SIZE;
  * Key format: block content hash
  */
 const paragraphMeasureCache = new Map<string, ParagraphMeasureEntry>();
+let paragraphCacheBytes = 0;
 
 type ImageMeasureCacheField =
   | "kind"
@@ -367,17 +376,26 @@ type FontContextRef = (
   families: ReadonlyMap<string, string> | undefined,
 ) => number | undefined;
 
-const runMeasureCacheInput = (run: Run, fontContextRef: FontContextRef) => {
+type DocumentFontContextRef = (
+  facts: DocumentFontFacts | undefined,
+) => number | undefined;
+
+const runMeasureCacheInput = (
+  run: Run,
+  fontContextRef: FontContextRef,
+  documentFontContextRef: DocumentFontContextRef,
+) => {
   switch (run.kind) {
     case "text":
     case "tab":
     case "renderedPageBreak":
     case "field":
     case "math": {
-      const { embeddedFontFamilyMap, ...formatting } = run;
+      const { embeddedFontFamilyMap, documentFontFacts, ...formatting } = run;
       return {
         ...formatting,
         embeddedFontFamilies: fontContextRef(embeddedFontFamilyMap),
+        documentFontFacts: documentFontContextRef(documentFontFacts),
       };
     }
     case "lineBreak":
@@ -394,13 +412,16 @@ const runMeasureCacheInput = (run: Run, fontContextRef: FontContextRef) => {
 const paragraphAttrsMeasureCacheInput = (
   attrs: ParagraphAttrs | undefined,
   fontContextRef: FontContextRef,
+  documentFontContextRef: DocumentFontContextRef,
 ) => {
   if (attrs === undefined) return undefined;
 
-  const { snapToGrid, embeddedFontFamilyMap, ...rest } = attrs;
+  const { snapToGrid, embeddedFontFamilyMap, documentFontFacts, ...rest } =
+    attrs;
   const measurementAttrs = {
     ...rest,
     embeddedFontFamilies: fontContextRef(embeddedFontFamilyMap),
+    documentFontFacts: documentFontContextRef(documentFontFacts),
   };
   if (measurementAttrs.documentGridLinePitch === undefined) {
     return measurementAttrs;
@@ -414,6 +435,8 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
   // a small local reference instead of duplicating all embedded families.
   const fontContexts: string[] = [];
   const contextRefs = new Map<string, number>();
+  const documentFontContexts: string[] = [];
+  const documentContextRefs = new Map<string, number>();
   const fontContextRef: FontContextRef = (families) => {
     if (!families) return undefined;
     const fingerprint = embeddedFontFingerprint(families);
@@ -424,15 +447,30 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     fontContexts.push(fingerprint);
     return index;
   };
-  const attrs = paragraphAttrsMeasureCacheInput(block.attrs, fontContextRef);
+  const documentFontContextRef: DocumentFontContextRef = (facts) => {
+    const identity = documentFontFactsCacheIdentity(facts);
+    if (identity === undefined) return undefined;
+    const existing = documentContextRefs.get(identity);
+    if (existing !== undefined) return existing;
+    const index = documentFontContexts.length;
+    documentContextRefs.set(identity, index);
+    documentFontContexts.push(identity);
+    return index;
+  };
+  const attrs = paragraphAttrsMeasureCacheInput(
+    block.attrs,
+    fontContextRef,
+    documentFontContextRef,
+  );
   const runs = block.runs.map((run) =>
-    runMeasureCacheInput(run, fontContextRef),
+    runMeasureCacheInput(run, fontContextRef, documentFontContextRef),
   );
   return JSON.stringify({
     lineBreakProviderGeneration: getLineBreakProviderGeneration(),
     attrs,
     runs,
     fontContexts,
+    documentFontContexts,
   });
 }
 
@@ -440,12 +478,17 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
  * Evict oldest entries if paragraph cache exceeds max size
  */
 function evictParagraphEntries(): void {
-  while (paragraphMeasureCache.size > paragraphCacheMaxSize) {
-    const oldestKey = paragraphMeasureCache.keys().next().value;
-    if (oldestKey === undefined) {
-      break;
+  while (
+    paragraphMeasureCache.size > paragraphCacheMaxSize ||
+    paragraphCacheBytes > MAX_PARAGRAPH_CACHE_BYTES
+  ) {
+    const oldest = paragraphMeasureCache.entries().next().value;
+    if (oldest === undefined) {
+      panic("Paragraph cache byte accounting must match retained entries.");
     }
+    const [oldestKey, entry] = oldest;
     paragraphMeasureCache.delete(oldestKey);
+    paragraphCacheBytes -= entry.bytes;
   }
 }
 
@@ -478,7 +521,15 @@ export function setCachedParagraphMeasure(
   measure: ParagraphMeasure,
 ): void {
   const key = hashParagraphBlock(block);
-  paragraphMeasureCache.set(key, { measure, maxWidth });
+  const bytes = (key.length + JSON.stringify(measure).length) * 2;
+  const previous = paragraphMeasureCache.get(key);
+  if (previous !== undefined) {
+    paragraphMeasureCache.delete(key);
+    paragraphCacheBytes -= previous.bytes;
+  }
+  if (bytes > MAX_PARAGRAPH_CACHE_BYTES) return;
+  paragraphMeasureCache.set(key, { measure, maxWidth, bytes });
+  paragraphCacheBytes += bytes;
   evictParagraphEntries();
 }
 
@@ -487,6 +538,7 @@ export function setCachedParagraphMeasure(
  */
 export function clearParagraphMeasureCache(): void {
   paragraphMeasureCache.clear();
+  paragraphCacheBytes = 0;
 }
 
 /**
