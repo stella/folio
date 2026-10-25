@@ -254,9 +254,16 @@ export const evaluateBudget = (
       const budgetMaximum = maximumSize[metric];
       if (current <= budgetMaximum) continue;
       const detail = `${name}.${metric}: base ${previous}, new ${current}, budget ${budgetMaximum}`;
-      if (current > previous) {
+      // Small per-change growth passes without a budget edit, so concurrent
+      // changes do not all rewrite the same budget lines.
+      const headroom = METRICS[metric];
+      if (current > previous + headroom) {
         failures.push(
           `${detail}; bump scripts/api-surface-budget.json ${name}.${metric} to at least ${current}`,
+        );
+      } else if (current > previous) {
+        warnings.push(
+          `${detail}; growth ${current - previous} is within the per-change headroom of ${headroom}`,
         );
       } else {
         warnings.push(`${detail}; existing base drift did not grow`);
