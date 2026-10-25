@@ -79,6 +79,10 @@ const SOURCE_FIELDS = new Map(
       disposition: "exclude",
       reason: "Replay cache validity",
     },
+    verbatimStructureFingerprint: {
+      disposition: "exclude",
+      reason: "Replay cache validity of a captured shape's structure",
+    },
     namespaceDeclarations: {
       disposition: "exclude",
       reason: "Lexical namespace spelling",
@@ -194,7 +198,10 @@ const projectCanonicalReviewModel = ({
       if (key === "comments" && Array.isArray(entry) && entry.length === 0)
         continue;
       if (
+        // An `alternateContent` holding only replay hints (the captured XML
+        // and its fingerprints) models nothing a reader can see.
         (key === "formatting" ||
+          key === "alternateContent" ||
           key === "previousFormatting" ||
           key === "currentFormatting") &&
         typeof entry === "object" &&

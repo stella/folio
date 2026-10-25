@@ -7,12 +7,16 @@
  * pulls canvas/DOM into an importer's graph.
  */
 
+import type { DocumentFontFacts } from "../../fonts/documentFontFacts";
+
 /**
  * Font styling properties for measurement
  */
 export type FontStyle = {
   /** Embedded families owned by this editor, never ambient process state. */
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+  /** Authored font-table facts owned by this document. */
+  documentFontFacts?: DocumentFontFacts;
   fontFamily?: string;
   alternateFontFamily?: string;
   /**

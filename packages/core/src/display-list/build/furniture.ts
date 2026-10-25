@@ -10,6 +10,7 @@
  * this page gets, and this module only paints what it chose.
  */
 
+import type { DocumentFontFacts } from "../../fonts/documentFontFacts";
 import type {
   FootnoteContent,
   HeaderFooterContent,
@@ -38,6 +39,7 @@ import { paintWatermark } from "./watermarkPrimitives";
  */
 export type PageFurnitureInputs = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
+  documentFontFacts?: DocumentFontFacts;
   /**
    * `w:pgBorders` for the section. Absent: no border is painted, and the gap is
    * reported unless `documentFeatures` says the document has none.
@@ -255,6 +257,9 @@ export const paintPageFurniture = ({
           watermark: selected.watermark,
           ...(furniture.embeddedFontFamilyMap
             ? { embeddedFontFamilyMap: furniture.embeddedFontFamilyMap }
+            : {}),
+          ...(furniture.documentFontFacts
+            ? { documentFontFacts: furniture.documentFontFacts }
             : {}),
           ...(furniture.watermarkImageSrc === undefined
             ? {}

@@ -4086,6 +4086,20 @@ function extractParagraphContent(
         return;
       }
       const changeAttrs = expectTrackedChangeMarkAttrs(changeMark);
+      // A deletion read from a package carries the formatting its text had
+      // without the paragraph mark's (`_historicalFormatting`), so the
+      // baseline it is reconciled against is the same one.
+      const runFormattingContext =
+        changeMark === deletionMark && changeAttrs._historicalFormatting
+          ? {
+              ...formattingContext,
+              inheritedFormatting:
+                formattingContext.baseParagraphFormatting ??
+                formattingContext.inheritedFormatting,
+              paragraphMarkFormatting: undefined,
+              paragraphMarkPrecedesStyle: false,
+            }
+          : formattingContext;
       const revisionAncestors = enclosingInsertionAncestors({
         insertionMark: changeMark === deletionMark ? insertionMark : undefined,
         ancestors: changeAttrs._docxRevisionAncestors ?? [],
@@ -4180,7 +4194,7 @@ function extractParagraphContent(
         const run =
           anchorRun ??
           createTrackedChangeRun({
-            ...formattingContext,
+            ...runFormattingContext,
             marks: otherMarks,
             node,
           });
@@ -4243,7 +4257,7 @@ function extractParagraphContent(
       const run =
         anchorRun ??
         createTrackedChangeRun({
-          ...formattingContext,
+          ...runFormattingContext,
           marks: otherMarks,
           node,
         });
