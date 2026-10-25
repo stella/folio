@@ -28,6 +28,7 @@ import {
   copyOriginBoundaryAfterRemovingAddedAncestors,
   copyOriginBoundaryAfterResolution,
 } from "./copyOriginResolution";
+import { planEmptyRanges } from "./emptyRangeAnchor";
 import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockBookmarkBoundaryExtension";
 import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockMoveRangeBoundaryExtension";
 import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
@@ -413,7 +414,72 @@ export const normalizeKeptRangeBoundaries = (
   tr: Transaction,
   kept: ReadonlySet<PMNode>,
 ): void => {
-  if (kept.size === 0) return;
+  if (kept.size > 0) wellFormKeptRangeBoundaries(tr, kept);
+  collapseEmptyMoveRanges(tr);
+};
+
+/**
+ * A move range whose start and end a resolution left side by side, with
+ * nothing between, as one point anchor: the node a reopened package reads
+ * that empty range as, so the resolved document has the same shape live and
+ * after a save. Only a start directly followed by its own end collapses; the
+ * order of any other markers stays as the engine leaves it.
+ */
+const collapseEmptyMoveRanges = (tr: Transaction): void => {
+  const anchorType = tr.doc.type.schema.nodes[RANGE_ANCHOR_NODE_NAME];
+  if (anchorType === undefined) return;
+  const pairs: { position: number; start: PMNode; end: PMNode }[] = [];
+  tr.doc.descendants((node, position) => {
+    if (!node.isTextblock) return true;
+    let previous: { node: PMNode; position: number } | undefined;
+    node.forEach((child, offset) => {
+      const childPosition = position + 1 + offset;
+      if (
+        previous !== undefined &&
+        child.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME &&
+        previous.node.type.name === MOVE_RANGE_BOUNDARY_NODE_NAME
+      ) {
+        const start = expectMoveRangeBoundaryAttrs(previous.node);
+        const end = expectMoveRangeBoundaryAttrs(child);
+        if (
+          start.id === end.id &&
+          ((start.type === "moveFromRangeStart" &&
+            end.type === "moveFromRangeEnd") ||
+            (start.type === "moveToRangeStart" &&
+              end.type === "moveToRangeEnd"))
+        ) {
+          pairs.push({
+            position: previous.position,
+            start: previous.node,
+            end: child,
+          });
+          previous = undefined;
+          return;
+        }
+      }
+      previous = { node: child, position: childPosition };
+    });
+    return false;
+  });
+  // Last first, so the earlier positions stay put.
+  for (const { position, start, end } of pairs.toReversed()) {
+    const anchored = planEmptyRanges([
+      expectMoveRangeBoundaryAttrs(start),
+      expectMoveRangeBoundaryAttrs(end),
+    ]).anchorAt.get(0);
+    if (anchored === undefined) continue;
+    tr.replaceWith(
+      position,
+      position + start.nodeSize + end.nodeSize,
+      anchorType.create(anchored, null, start.marks),
+    );
+  }
+};
+
+const wellFormKeptRangeBoundaries = (
+  tr: Transaction,
+  kept: ReadonlySet<PMNode>,
+): void => {
   const found = boundariesIn(tr.doc, kept);
   const plan = planWellFormedRanges(found.map(({ occurrence }) => occurrence));
   const leaving = new Set(plan.dropped);

@@ -1,0 +1,10 @@
+{
+  "editor and engine reject generated insertions holding every boundary kind alike": [
+    {
+      "seed": -837849552,
+      "path": "110:1:4:4:5:8:8",
+      "note": "Only a move range start directly followed by its end collapses into a point anchor, so the editor keeps the engine's order of other kept markers.",
+      "date": "2026-10-25"
+    }
+  ]
+}

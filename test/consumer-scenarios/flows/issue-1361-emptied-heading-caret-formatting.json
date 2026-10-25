@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "direct",
+  "seed": 774176254,
+  "title": "A replacement after an emptied heading keeps its paragraph's formatting across a save",
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1973906397,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "412DDC7F",
+          "find": "Agreement",
+          "replace": "",
+          "precondition": {
+            "blockTextHash": "hnqfstq"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 4245484289,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "31617F9A",
+            "startOffset": 0,
+            "endOffset": 11,
+            "selectedTextHash": "hmk415m"
+          },
+          "replace": "updated"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "commentOnRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "insertTable",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from collisions flow seed 774176254"
+}

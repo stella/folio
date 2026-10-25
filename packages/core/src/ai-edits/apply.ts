@@ -7526,7 +7526,7 @@ type InsertedCleanText = {
   end: number;
 };
 
-const insertCleanText = ({
+export const insertCleanText = ({
   tr,
   from,
   to,
@@ -7542,6 +7542,13 @@ const insertCleanText = ({
   const replaced = keepsReplacedText
     ? (commentsForTrackedInsertion(tr.doc, from, [carried])[0] ?? [])
     : carried;
+  // Explicit stored marks (formatting switched on at the caret) win over the
+  // replaced span, for text that replaces the selection. Elsewhere they are
+  // another paragraph's caret formatting, such as an emptied heading's.
+  const atSelection = tr.selection.from === from && tr.selection.to === to;
+  const baseMarks =
+    (atSelection ? tr.storedMarks : null) ??
+    inheritedReplacementMarks(tr.doc, from, to);
   if (
     !hasReplacedAnnotations(annotations) &&
     replaced.length === 0 &&
@@ -7550,11 +7557,7 @@ const insertCleanText = ({
     if (text.length === 0) {
       return { transaction: tr.delete(from, to), start: from, end: from };
     }
-    // Explicit stored marks (formatting switched on at the caret) win over the replaced span.
-    const replacement = tr.doc.type.schema.text(
-      text,
-      tr.storedMarks ?? inheritedReplacementMarks(tr.doc, from, to),
-    );
+    const replacement = tr.doc.type.schema.text(text, baseMarks);
     return {
       transaction: tr.replaceWith(from, to, replacement),
       start: from,
@@ -7568,10 +7571,7 @@ const insertCleanText = ({
       cleanTextInlineNodes({
         schema,
         text,
-        marks: addCarriedMarks(
-          inheritedReplacementMarks(tr.doc, from, to),
-          replaced,
-        ),
+        marks: addCarriedMarks(baseMarks, replaced),
       }),
     ),
   });

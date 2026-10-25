@@ -29,6 +29,8 @@ type Table = {
   sourceWidth: number;
   /** Original columns; null marks one added during this batch. */
   sourceColumns: (number | null)[];
+  /** For a table the batch inserted: the block it was inserted next to. */
+  insertedBeside?: string;
 };
 type Source = { table: Table; cell: Cell; row: number };
 
@@ -37,6 +39,24 @@ export type TableModel = {
   sources: Map<string, Source>;
   /** Pre-state rows locate an inserted table among prose and existing tables. */
   rows: readonly Row[];
+  /**
+   * Text box paragraphs the batch removes with the paragraph their box is
+   * drawn in: a table inserted next to one is in that box and goes with it.
+   */
+  removedTextBoxBlocks: Set<string>;
+};
+
+/** Remove the inserted tables a removed text box held. */
+export const removeTextBoxTables = (
+  model: TableModel,
+  blockIds: readonly string[],
+): void => {
+  for (const id of blockIds) model.removedTextBoxBlocks.add(id);
+  model.tables = model.tables.filter(
+    ({ insertedBeside }) =>
+      insertedBeside === undefined ||
+      !model.removedTextBoxBlocks.has(insertedBeside),
+  );
 };
 
 export class UnsupportedTableExpectation extends Error {}
@@ -99,7 +119,7 @@ export const modelFromRows = (rows: readonly Row[]): TableModel => {
       }),
     );
   }
-  return { tables, sources, rows };
+  return { tables, sources, rows, removedTextBoxBlocks: new Set() };
 };
 
 const sourceOf = (model: TableModel, blockId: unknown): Source => {
@@ -320,12 +340,13 @@ export const applyTableOperation = (
   switch (operation.type) {
     case "insertTable": {
       const position = operation["position"] === "before" ? "before" : "after";
+      const blockId = String(operation["blockId"]);
+      if (model.removedTextBoxBlocks.has(blockId)) return true;
       const index = tableInsertIndex(model, operation["blockId"], position);
-      model.tables.splice(
-        index,
-        0,
-        rectangularTable(operation["rows"] as string[][]),
-      );
+      model.tables.splice(index, 0, {
+        ...rectangularTable(operation["rows"] as string[][]),
+        insertedBeside: blockId,
+      });
       return true;
     }
     case "insertSignatureTable": {

@@ -53,6 +53,7 @@ import {
   applyTableOperation,
   compareTableGeometry,
   modelFromRows,
+  removeTextBoxTables,
   type TableModel,
   UnsupportedTableExpectation,
 } from "./table-oracle.ts";
@@ -665,6 +666,10 @@ type ModelRow = {
   besideTable?: boolean;
   /** A block of a table row the batch deletes, rather than one emptied alone. */
   rowDeleted?: boolean;
+  /** A text box paragraph removed with the paragraph the box is drawn in. */
+  removedWithTextBox?: boolean;
+  /** For a block inserted next to a text box paragraph: that paragraph, whose box holds it. */
+  inTextBoxOf?: ModelRow;
   before: ModelRow[];
   after: ModelRow[];
   /** Formatting that must hold over `[start, end)` of the result's text. */
@@ -1791,6 +1796,15 @@ const paragraphRequestForLiveRow = ({
   }
   return result;
 };
+/**
+ * `named` when it is a text box paragraph: a block inserted next to it goes
+ * in that box, and goes with it when the paragraph the box is drawn in is
+ * deleted.
+ */
+const textBoxHolder = (model: Model, named: ModelRow): ModelRow | undefined =>
+  named.pre !== undefined && model.inTextBox?.has(named.pre.id) === true
+    ? named
+    : undefined;
 
 const insertBlock =
   (position: "before" | "after"): Expect =>
@@ -1818,6 +1832,7 @@ const insertBlock =
         ? [String(operation["text"])]
         : paragraphsOf(String(operation["text"]));
     // `""` inserts a blank paragraph, which no reader lists.
+    const holder = textBoxHolder(model, named);
     const rows = texts.map((text, index) => {
       const row = modelRow(text);
       if (index === 0 || scope === "allParagraphs") {
@@ -1831,6 +1846,7 @@ const insertBlock =
           inheritsFormatting: operation["inheritFormatting"] !== false,
         });
       }
+      if (holder) row.inTextBoxOf = holder;
       return row;
     });
     pushBesideBlocks(model, anchor, position, rows);
@@ -2008,7 +2024,15 @@ export const EXPECTATIONS = {
     // The text boxes drawn in the paragraph go with it once the deletion
     // resolves; the suggested live view still lists their paragraphs.
     if (model.mode === "suggested") return;
-    for (const boxed of textBoxRowsOf(model, row)) boxed.removed = true;
+    const boxedRows = textBoxRowsOf(model, row);
+    for (const boxed of boxedRows) {
+      boxed.removed = true;
+      boxed.removedWithTextBox = true;
+    }
+    removeTextBoxTables(
+      model.tables,
+      boxedRows.flatMap(({ pre }) => (pre === undefined ? [] : [pre.id])),
+    );
   },
   splitBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);
@@ -2126,11 +2150,16 @@ export const EXPECTATIONS = {
     const texts = rows.flatMap((cells) =>
       cells.flatMap((cell) => cell.split(/\r\n|\r|\n/u)),
     );
+    const holder = textBoxHolder(model, named);
     pushBesideBlocks(
       model,
       anchor,
       position,
-      texts.map((text) => modelRow(text)),
+      texts.map((text) => {
+        const row = modelRow(text);
+        if (holder) row.inTextBoxOf = holder;
+        return row;
+      }),
     );
   },
   deleteTable: (model, operation) => {
@@ -2391,7 +2420,9 @@ const materialize = (model: Model): Expected[] => {
   const emit = (row: ModelRow) => {
     for (const inserted of row.before) emit(inserted);
     const gone =
-      row.removed || (row.pendingDeletion === true && row.edits.length === 0);
+      row.removed ||
+      row.inTextBoxOf?.removedWithTextBox === true ||
+      (row.pendingDeletion === true && row.edits.length === 0);
     if (!gone) {
       const segments = applyEdits(row.text, row.edits, row.splits);
       const whole = untouchedText(row);

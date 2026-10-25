@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 160976185,
+  "title": "A block inserted in a text box goes with the paragraph the box is drawn in",
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 728870658,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "1BF99289",
+          "text": "Invoice payment schedule."
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "7B806329"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 160976185"
+}

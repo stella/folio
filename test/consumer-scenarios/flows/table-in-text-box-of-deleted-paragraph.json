@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 160976185,
+  "title": "A table inserted in a text box goes with the paragraph the box is drawn in",
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 728870658,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [["Term", "Value"]]
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "7B806329"
+        }
+      ]
+    }
+  ],
+  "origin": "written from the review of the text box insertion oracle"
+}
