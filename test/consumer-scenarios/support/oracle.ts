@@ -745,8 +745,15 @@ const styleListLineage = ({
     styleId,
     liveParagraph(source) ?? source.pre,
   );
-  if (numbering === undefined && model.numberingFacts !== undefined)
-    return { type: "none", source: "operation", basis: "style" };
+  if (model.numberingFacts !== undefined && numbering !== UNKNOWN_NUMBERING) {
+    if (
+      numbering === undefined ||
+      (numbering.kind === "reference" &&
+        numberingKind(model, numbering) !== "listItem")
+    ) {
+      return { type: "none", source: "operation", basis: "style" };
+    }
+  }
   return listLineageOf(numbering, "operation", "style");
 };
 
@@ -1089,6 +1096,74 @@ type OperationListLineageOptions = {
   inheritsFormatting: boolean;
 };
 
+const statedNumId = (numbering: object): number => {
+  assert.ok(
+    "numId" in numbering && typeof numbering["numId"] === "number",
+    "An applied reference request must name a numeric list id",
+  );
+  return numbering["numId"];
+};
+
+const statedLevel = (numbering: object): number => {
+  assert.ok(
+    "ilvl" in numbering && typeof numbering["ilvl"] === "number",
+    "An applied level request must name a numeric level",
+  );
+  return numbering["ilvl"];
+};
+
+/** A reference whose level shows no marker numbers nothing, however it is stated. */
+const renderedLineage = (model: Model, numbering: Numbering): ListLineage => {
+  if (numbering?.kind !== "reference") {
+    return { type: "none", source: "operation", basis: "direct" };
+  }
+  if (!model.numberingFacts) return { type: "unknown", source: "operation" };
+  return numberingKind(model, numbering) === "listItem"
+    ? {
+        type: "reference",
+        numId: numbering.numId,
+        source: "operation",
+        basis: "direct",
+      }
+    : { type: "none", source: "operation", basis: "direct" };
+};
+
+type BaseNumberingOptions = {
+  model: Model;
+  request: Record<string, unknown>;
+  source: ModelRow;
+  inheritsFormatting: boolean;
+};
+
+/** The numbering a request is stated over: the style's, plus the direct numbering the block keeps. */
+const baseNumbering = ({
+  model,
+  request,
+  source,
+  inheritsFormatting,
+}: BaseNumberingOptions): RequestedNumbering => {
+  const requested = request["styleId"];
+  let styleId: string | null;
+  if (typeof requested === "string" || requested === null) {
+    styleId = requested;
+  } else if (typeof source.fields.styleId === "string") {
+    styleId = source.fields.styleId;
+  } else {
+    styleId = source.pre?.styleId ?? null;
+  }
+  if (!inheritsFormatting) return requestedStyleNumbering(model, styleId);
+  const lineage = source.listLineage;
+  if (lineage.type === "newList") return UNKNOWN_NUMBERING;
+  if (lineage.source === "operation") {
+    return lineage.type === "none" ? { kind: "none" } : UNKNOWN_NUMBERING;
+  }
+  return requestedStyleNumbering(
+    model,
+    styleId,
+    liveParagraph(source) ?? source.pre,
+  );
+};
+
 const operationListLineage = ({
   model,
   request,
@@ -1112,16 +1187,30 @@ const operationListLineage = ({
       case "none":
         return { type: "none", source: "operation", basis: "direct" };
       case "reference":
-        assert.ok(
-          "numId" in numbering && typeof numbering["numId"] === "number",
-          "An applied reference request must name a numeric list id",
-        );
-        return {
-          type: "reference",
-          numId: numbering["numId"],
-          source: "operation",
-          basis: "direct",
-        };
+      case "levelOnly": {
+        const stated: Numbering =
+          numbering["kind"] === "reference"
+            ? {
+                kind: "reference",
+                numId: statedNumId(numbering),
+                ...(typeof numbering["ilvl"] === "number"
+                  ? { ilvl: numbering["ilvl"] }
+                  : {}),
+              }
+            : { kind: "levelOnly", ilvl: statedLevel(numbering) };
+        const base = baseNumbering({
+          model,
+          request,
+          source,
+          inheritsFormatting,
+        });
+        if (base === UNKNOWN_NUMBERING) {
+          return stated?.kind === "reference" && stated.ilvl !== undefined
+            ? renderedLineage(model, stated)
+            : { type: "unknown", source: "operation" };
+        }
+        return renderedLineage(model, numberingOver(base, stated));
+      }
       case "inherit": {
         const styleId = request["styleId"];
         if (typeof styleId === "string" || styleId === null) {
@@ -1594,7 +1683,9 @@ const paragraphRequestForLiveRow = ({
     numbering: preserveDirect ? "preserveDirect" : "deriveStyle",
   });
   if (preserveDirect && live) {
-    result.fields.kind = live.kind;
+    // Direct numbering outlives the restyle, but a heading style still makes
+    // the block a heading.
+    if (result.fields.kind !== "heading") result.fields.kind = live.kind;
     result.fields.listLevel = live.listLevel;
   }
   return result;

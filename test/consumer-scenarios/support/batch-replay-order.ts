@@ -237,6 +237,29 @@ export const sequentialGroups = ({
         (inputOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
     ),
   );
+  // A deletion removes or retires its block, so an insertion before it can
+  // only be stated one at a time while the block still stands. The batch
+  // keeps that gap, so the oracle runs the whole run ahead of the deletion.
+  for (const { operation } of rest) {
+    if (
+      operation.type !== "insertBeforeBlock" ||
+      !deleted.has(blockIdOf(operation))
+    ) {
+      continue;
+    }
+    const from = groups.findIndex((group) => group.includes(operation));
+    const target = groups.findIndex(
+      (group) =>
+        group.length === 1 &&
+        group[0]?.type === "deleteBlock" &&
+        blockIdOf(group[0]) === blockIdOf(operation),
+    );
+    const moved = groups[from];
+    if (moved && target >= 0 && target < from) {
+      groups.splice(from, 1);
+      groups.splice(target, 0, moved);
+    }
+  }
   const annotations = orderBatchOperations(
     indexed.filter(({ operation }) => ANNOTATIONS.has(operation.type)),
     ({ operation, index }): BatchOrderAddress => {
