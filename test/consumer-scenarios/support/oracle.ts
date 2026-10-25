@@ -1736,6 +1736,8 @@ type LiveParagraphRequestOptions = {
   request: ParagraphRequest;
   row: ModelRow;
   inherited?: Row;
+  /** The request makes a new block beside `row` rather than editing it. */
+  insertion?: boolean;
 };
 
 const paragraphRequestForLiveRow = ({
@@ -1743,16 +1745,20 @@ const paragraphRequestForLiveRow = ({
   request,
   row,
   inherited,
+  insertion = false,
 }: LiveParagraphRequestOptions): ReturnType<typeof paragraphRequest> => {
-  const live = liveParagraph(row);
+  // A new block is not the row it sits beside: it copies that row's live
+  // properties only when it inherits them, and has no paragraph of its own.
+  const live = insertion ? inherited : liveParagraph(row);
   const preserveDirect =
     "styleId" in request &&
     !("numbering" in request) &&
+    (!insertion || inherited !== undefined) &&
     hasDirectNumbering(row.listLineage);
   const result = paragraphRequest({
     model,
     request,
-    pre: live,
+    pre: insertion ? undefined : live,
     source: row,
     inherited,
     numbering: preserveDirect ? "preserveDirect" : "deriveStyle",
@@ -1780,6 +1786,7 @@ const insertBlock =
       request: operation,
       row: named,
       inherited,
+      insertion: true,
     });
     const fields = {
       ...(inherited ? inheritedListFields(model, inherited) : {}),
