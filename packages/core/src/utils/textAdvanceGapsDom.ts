@@ -36,7 +36,10 @@ export const applyTextAdvanceGaps = (
         start = Math.max(consumed, previous);
         if (!/^\p{M}$/u.test(character)) break;
       }
-      fragment.append(doc.createTextNode(text.slice(consumed, start)));
+      // No empty text node: a collapsed DOM range in one has no geometry, so a
+      // caret mapped onto it would land at the page origin.
+      if (start > consumed)
+        fragment.append(doc.createTextNode(text.slice(consumed, start)));
       const advance = doc.createElement("span");
       advance.style.letterSpacing = `${gap.advancePx}px`;
       advance.textContent = text.slice(start, boundary);
@@ -44,7 +47,8 @@ export const applyTextAdvanceGaps = (
       consumed = boundary;
     }
     if (consumed > 0) {
-      fragment.append(doc.createTextNode(text.slice(consumed)));
+      if (consumed < text.length)
+        fragment.append(doc.createTextNode(text.slice(consumed)));
       textNode.parentNode?.replaceChild(fragment, textNode);
     }
     sourceOffset = end;
