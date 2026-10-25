@@ -5216,8 +5216,13 @@ const applyFolioAIEditOperationsInternal = ({
         });
     }
   };
-  const executionGroups = groupInsertionRuns(executionOrder, (candidate) =>
-    isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
+  // A paragraph-property write places nothing in a gap, so equal-gap
+  // insertions on either side of it run together and inherit alike.
+  const executionGroups = groupInsertionRuns(
+    executionOrder,
+    (candidate) =>
+      isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
+    (candidate) => candidate.operation.type === "setBlockParagraphProperties",
   );
   for (const executionGroup of executionGroups) {
     // Recheck every insertion against the live anchor, including insertions

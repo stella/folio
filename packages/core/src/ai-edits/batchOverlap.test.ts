@@ -809,6 +809,24 @@ describe("a tied insertion and paragraph-property write beside a merge", () => {
       }
     });
   }
+
+  // #2158: two insertions before the block a merge joins into, one of them
+  // reformatted, in either order against the merge.
+  for (const mode of MODES) {
+    test(`matches one-at-a-time execution with two insertions before the merged block (${mode})`, async () => {
+      const generated: readonly GeneratedOperation[] = [
+        { kind: "insertBeforeBlock", block: 1 },
+        {
+          kind: "setBlockParagraphProperties",
+          block: 1,
+          properties: { alignment: "center" },
+        },
+        { kind: "mergeBlockWithNext", block: 0 },
+        { kind: "insertBeforeBlock", block: 1 },
+      ];
+      expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
+    });
+  }
 });
 
 describe("a batch that deletes the story's last paragraph and inserts after it", () => {
