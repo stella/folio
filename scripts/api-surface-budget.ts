@@ -427,27 +427,20 @@ const check = (
   }
   const files = raiseFileNames();
   const raisesResult = readRaises(files);
-  const ownRaisesResult = readRaises(
-    files.filter((file) => !baseRaises.has(file)),
-  );
-  if (raisesResult.isErr() || ownRaisesResult.isErr()) {
-    const error = raisesResult.isErr()
-      ? raisesResult.error
-      : ownRaisesResult.isErr()
-        ? ownRaisesResult.error
-        : panic("api-surface-budget: unreachable raise error");
-    console.error(error.message);
+  if (raisesResult.isErr()) {
+    console.error(raisesResult.error.message);
     return 1;
   }
-  const baseline = raisedBudget(
-    baselineResult.value,
-    sumRaises(raisesResult.value),
+  const raises = raisesResult.value;
+  const baseline = raisedBudget(baselineResult.value, sumRaises(raises));
+  const ownRaises = raises.filter(
+    (_, index) => !baseRaises.has(files[index] ?? ""),
   );
   const { failures, warnings } = evaluateBudget(
     base,
     measured,
     baseline,
-    sumRaises(ownRaisesResult.value),
+    sumRaises(ownRaises),
   );
   for (const warning of warnings)
     console.warn(`api-surface-budget: warning: ${warning}`);
