@@ -5,7 +5,8 @@ name: Merge group fuzz replay
 # failure main reproduces was already there: it gets its issue, and the
 # pull request is labelled so it can go back into the queue. Runs after CI
 # rather than inside it, so the queue removing the group's branch does not
-# cancel it.
+# cancel it. Generated cases that failed without failing the group are filed
+# by the exploration job.
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers] never runs the group's code; reads its logs as data
     workflows: [CI]
@@ -37,10 +38,11 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
+      # Exploration findings did not fail the group; the exploration job files them.
       - name: Any fuzz failure in the group's logs
         id: logs
         run: |
-          if grep -rqs 'FOLIO_FAILURE ' queue-logs; then
+          if grep -rhs 'FOLIO_FAILURE ' queue-logs | grep -vq '"exploration":true'; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
@@ -153,4 +155,66 @@ jobs:
           GROUP_SHA: ${{ github.event.workflow_run.head_sha }}
           BASE_SHA: ${{ needs.replay.outputs.base }}
           PR: ${{ needs.replay.outputs.pr }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+
+  # Generated property cases that failed without failing the group
+  # (test/property-exploration.ts) leave failure records; file them by
+  # signature whatever the group's outcome. Pull requests only report theirs:
+  # a pull request's own new bug may never land, and its run holds no write token.
+  exploration:
+    name: File exploration findings
+    if: github.event.workflow_run.event == 'merge_group'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      # The filer comes from the default branch; the group's records are data.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          pattern: fuzz-exploration-*
+          path: exploration
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Any exploration finding
+        id: records
+        run: |
+          if [ -n "$(find exploration -name '*.json' -not -name '*.flow.json' -print -quit 2>/dev/null)" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No exploration finding in the merge group."
+          fi
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.records.outputs.found == 'true'
+        with:
+          bun-version-file: "package.json"
+
+      - name: Install the filer
+        if: steps.records.outputs.found == 'true'
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Open or update findings
+        if: steps.records.outputs.found == 'true'
+        run: >-
+          bun scripts/fuzz-failure-issues.ts
+          --records exploration --lane merge-queue-exploration --result failure
+          --trigger merge-group --source "a merge queue run's generated cases"
+          --run-url "${RUN_URL}" --sha "${GROUP_SHA}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GROUP_SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}

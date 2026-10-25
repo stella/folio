@@ -472,3 +472,39 @@ test("ejection workflow pins main and separates replay from issue writes", () =>
     ),
   ).toBe(false);
 });
+
+test("merge-group exploration findings are filed without a replay", () => {
+  const workflow = Bun.YAML.parse(
+    readFileSync(
+      path.resolve(
+        import.meta.dir,
+        "../.github/workflows/fuzz-ejection-replay.yml",
+      ),
+      "utf8",
+    ),
+  );
+  const { replay, exploration } = workflow.jobs;
+  const scan = replay.steps.find((step: { id?: string }) => step.id === "logs");
+  expect(scan.run).toContain(`grep -vq '"exploration":true'`);
+  expect(exploration.if).toBe(
+    "github.event.workflow_run.event == 'merge_group'",
+  );
+  expect(exploration.needs).toBeUndefined();
+  expect(exploration.permissions).toEqual({
+    actions: "read",
+    contents: "read",
+    issues: "write",
+  });
+  expect(exploration.concurrency.group).toBe("fuzz-failure-issues");
+  const download = exploration.steps.find((step: { uses?: string }) =>
+    step.uses?.startsWith("actions/download-artifact@"),
+  );
+  expect(download.with.pattern).toBe("fuzz-exploration-*");
+  expect(download.with["run-id"]).toBe("${{ github.event.workflow_run.id }}");
+  const filing = exploration.steps.find((step: { run?: string }) =>
+    step.run?.includes("fuzz-failure-issues.ts"),
+  );
+  expect(filing.run).toContain("--records exploration");
+  expect(filing.run).toContain("--trigger merge-group");
+  expect(filing.run).toContain("--result failure");
+});

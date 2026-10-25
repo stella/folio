@@ -78,6 +78,7 @@ const graph = (
 type Job = {
   needs?: unknown;
   if?: unknown;
+  env?: unknown;
   steps?: unknown;
   outputs?: Record<string, unknown>;
   "timeout-minutes"?: unknown;
@@ -105,6 +106,7 @@ const readJobs = (): Record<string, Job> => {
     jobs[id] = {
       needs: job["needs"],
       if: job["if"],
+      env: job["env"],
       steps: job["steps"],
       "timeout-minutes": job["timeout-minutes"],
       strategy: job["strategy"],
@@ -682,7 +684,28 @@ describe("CI plan", () => {
           typeof step["uses"] === "string" &&
           step["uses"].startsWith("actions/upload-artifact@"),
       );
-      expect(uploads).toHaveLength(2);
+      expect(uploads).toHaveLength(3);
+      // Generated property failures report on pull requests and merge
+      // groups; their records go to the exploration filer.
+      const env = jobs[id]?.env;
+      if (!isRecord(env)) throw new Error(`Missing env for ${id}`);
+      expect(env["FOLIO_FUZZ_EXPLORATION"]).toBe(
+        "${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}",
+      );
+      expect(env["FOLIO_FUZZ_EXPLORATION_DIR"]).toBe(
+        "${{ github.workspace }}/test-results/fuzz-exploration",
+      );
+      const exploration = uploads.find(
+        (step) =>
+          isRecord(step["with"]) &&
+          step["with"]["name"] === `fuzz-exploration-${shard}`,
+      );
+      if (!isRecord(exploration) || !isRecord(exploration["with"]))
+        throw new Error(`Missing exploration upload for ${id}`);
+      expect(exploration["if"]).toBe(
+        "always() && github.event_name == 'merge_group'",
+      );
+      expect(exploration["with"]["path"]).toBe("test-results/fuzz-exploration");
       const upload = uploads.find(
         (step) =>
           isRecord(step["with"]) &&
@@ -1419,4 +1442,41 @@ describe("CI plan", () => {
       [...areas.map((area) => `${area}_required`), "api_required"].toSorted(),
     );
   });
+});
+
+// Checked-in proptest regressions block; generated cases report on pull
+// requests and merge groups (scripts/rust-property-exploration.ts).
+test("the kernel job splits proptest regressions from exploration", () => {
+  const workflow = readWorkflow("ci.yml");
+  if (!isRecord(workflow["jobs"])) throw new Error("ci.yml has no jobs");
+  const job = workflow["jobs"]["docx-kernel"];
+  if (!isRecord(job) || !isRecord(job["env"]) || !Array.isArray(job["steps"]))
+    throw new Error("Missing docx-kernel job");
+  expect(job["env"]["FOLIO_FUZZ_EXPLORATION"]).toBe(
+    "${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}",
+  );
+  const steps = job["steps"].filter(isRecord);
+  const index = (name: string) =>
+    steps.findIndex((step) => step["name"] === name);
+  const tests = steps[index("Rust tests")];
+  expect(String(tests?.["run"]).split("\n")).toContain(
+    'if [[ "$FOLIO_FUZZ_EXPLORATION" == "report" ]]; then export PROPTEST_CASES=0; fi',
+  );
+  const exploration = steps[index("Rust property exploration")];
+  expect(exploration?.["if"]).toBe("env.FOLIO_FUZZ_EXPLORATION == 'report'");
+  expect(String(exploration?.["run"])).toStartWith(
+    "bun scripts/rust-property-exploration.ts --package stella-docx-kernel",
+  );
+  expect(String(exploration?.["run"])).not.toContain("|| true");
+  expect(exploration?.["continue-on-error"]).toBeUndefined();
+  // A finding appends to a regressions file, which would dirty the package.
+  expect(index("Rust property exploration")).toBeGreaterThan(
+    index("Registry package"),
+  );
+  const upload = steps[index("Keep the exploration findings of a merge group")];
+  expect(upload?.["if"]).toBe("always() && github.event_name == 'merge_group'");
+  const uploadWith = upload?.["with"];
+  expect(isRecord(uploadWith) ? uploadWith["name"] : undefined).toBe(
+    "fuzz-exploration-docx-kernel",
+  );
 });
