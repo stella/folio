@@ -2670,7 +2670,7 @@ const insertionWithLiveAnchor = (
     });
   }
   const mapped = tr.mapping.mapResult(item.blockFrom, 1);
-  const anchor = mapped.deleted ? null : tr.doc.nodeAt(mapped.pos);
+  const anchor = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
   const paraId: unknown = item.blockNode.attrs["paraId"];
   if (
     !anchor?.isTextblock ||
