@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { buildDocumentFontFacts } from "../fonts/documentFontFacts";
 import { setHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
 import type {
   FieldRun,
@@ -17,6 +18,7 @@ import type {
   ParagraphMeasure,
   TextRun,
 } from "../layout-engine/types";
+import { parseFontFamilyList } from "../utils/fontResolver";
 import { renderParagraphFragment } from "./renderParagraph";
 
 function createFakeStyle(): Record<string, string> {
@@ -160,6 +162,36 @@ const text = (value: string, rtl?: boolean): TextRun => ({
 });
 
 describe("Issue #719 — RTL base direction detection", () => {
+  test("paints an unknown document font with its font-table family fallback", () => {
+    const documentFontFacts = buildDocumentFontFacts({
+      fonts: [{ name: "LedgerFace", family: "roman", pitch: "variable" }],
+    });
+    if (!documentFontFacts) {
+      throw new Error("Expected document font facts");
+    }
+    const paragraph = render([
+      {
+        ...text("Ledger text"),
+        fontFamily: "LedgerFace",
+        documentFontFacts,
+      },
+    ]) as unknown as FakeElement;
+
+    const hasRomanFallback = findAllByTag(paragraph, "span").some((span) => {
+      const families = parseFontFamilyList(span.style.fontFamily ?? "");
+      const timesNewRomanIndex = families.indexOf("Times New Roman");
+      const timesIndex = families.indexOf("Times");
+      const serifIndex = families.indexOf("serif");
+      return (
+        timesNewRomanIndex >= 0 &&
+        timesIndex > timesNewRomanIndex &&
+        serifIndex > timesIndex &&
+        serifIndex === families.length - 1
+      );
+    });
+    expect(hasRomanFallback).toBe(true);
+  });
+
   test("Hebrew-led paragraph with rtl runs renders dir=rtl", () => {
     expect(render([text("בדיקה 1", true)]).dir).toBe("rtl");
   });

@@ -108,6 +108,30 @@ describe("initial layout font loading", () => {
     expect(families).toContain("Carlito");
   });
 
+  test("loads the metric fallback selected by document font-table facts", () => {
+    const document = createEmptyDocument({ initialText: "Ledger text" });
+    document.package.fontTable = {
+      fonts: [{ name: "LedgerFace", family: "roman", pitch: "variable" }],
+    };
+    const fontFamily = schema.marks["fontFamily"]?.create({
+      ascii: "LedgerFace",
+      hAnsi: "LedgerFace",
+    });
+    if (!fontFamily) {
+      throw new Error("Expected fontFamily mark in schema");
+    }
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("Ledger text", [fontFamily]),
+      ]),
+    ]);
+
+    const families = collectInitialLayoutFontFamilies(document, pmDoc);
+
+    expect(families).toContain("LedgerFace");
+    expect(families).toContain("Times New Roman");
+  });
+
   test("combines inherited text formatting with explicit marks", () => {
     const bold = schema.marks["bold"]?.create();
     if (!bold) {

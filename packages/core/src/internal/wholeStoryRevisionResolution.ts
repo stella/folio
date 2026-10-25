@@ -29,6 +29,7 @@ import {
   isBlockBoundaryNode,
   paragraphRemainsOf,
 } from "../prosemirror/keptRangeBoundaries";
+import { joinedParagraphAttrs } from "../prosemirror/paragraphMarkJoin";
 import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
@@ -627,6 +628,10 @@ const resolveStructure = ({
       // is the chain's last one: its identity, properties, mark and section
       // endpoint survive whether this one still has words or not. Its runs
       // are re-read in the survivor's style when the chain is assembled.
+      const joinedAttrs = joinedParagraphAttrs(paragraph, chain.node);
+      if (joinedAttrs !== chain.node.attrs) {
+        chain.node = rebuild(chain.node, { attrs: joinedAttrs });
+      }
       const displacedToken = getProseParagraphPropertySourceToken(paragraph);
       const selectedToken = getProseParagraphPropertySourceToken(chain.node);
       context.transfers.push({

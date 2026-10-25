@@ -472,6 +472,9 @@ export function measureParagraph(
         ...(attrs?.embeddedFontFamilyMap
           ? { embeddedFontFamilyMap: attrs.embeddedFontFamilyMap }
           : {}),
+        ...(attrs?.documentFontFacts
+          ? { documentFontFacts: attrs.documentFontFacts }
+          : {}),
         ...(attrs?.defaultAlternateFontFamily !== undefined
           ? { alternateFontFamily: attrs.defaultAlternateFontFamily }
           : {}),
@@ -1007,6 +1010,9 @@ export function measureParagraph(
         fontFamily: run.fontFamily ?? "Cambria Math",
         ...(run.embeddedFontFamilyMap
           ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap }
+          : {}),
+        ...(run.documentFontFacts
+          ? { documentFontFacts: run.documentFontFacts }
           : {}),
         fontSize: run.fontSize ?? DEFAULT_FONT_SIZE,
         ...(run.bold !== undefined ? { bold: run.bold } : {}),

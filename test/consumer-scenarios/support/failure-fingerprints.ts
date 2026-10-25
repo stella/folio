@@ -20,6 +20,12 @@ export type FailureMarker = {
    */
   flow?: string;
   primary?: string;
+  /**
+   * A randomly generated case that was reported without failing its run
+   * (test/property-exploration.ts). A merge-group replay skips it: it did not
+   * eject the group.
+   */
+  exploration?: true;
 };
 
 export const shellQuote = (value: string): string =>

@@ -105,11 +105,13 @@ const continuesCarrier = ({
 const continueIdentities = (
   nodes: readonly PMNode[],
   owner: CarrierOwnerEntry,
+  /** The carrier before `nodes` and whether revised content lies between. */
+  before?: { anchor: PMNode; bridged: boolean },
 ): readonly PMNode[] => {
   const renamed = new Map<number, Mark>();
   /** The last carrier with an identity, while only revised content follows it. */
-  let anchor: PMNode | undefined;
-  let bridged = false;
+  let anchor: PMNode | undefined = before?.anchor;
+  let bridged = before?.bridged ?? false;
   let changed = false;
   const result = nodes.map((node) => {
     if (node.type.name === INLINE_CONTENT_CONTROL_NODE_NAME) {
@@ -166,4 +168,92 @@ export const continueSourceCarrierIdentitiesAcrossRevisions = (
     continued = continueIdentities(continued, CARRIER_OWNERS[markName]);
   }
   return continued;
+};
+
+/** Paragraph-mark kinds whose rejection joins the paragraph to the next. */
+const INSERTED_PARAGRAPH_MARK_KINDS: ReadonlySet<unknown> = new Set([
+  "ins",
+  "moveTo",
+]);
+
+const endsWithInsertedMark = (node: PMNode): boolean => {
+  if (node.type.name !== "paragraph") return false;
+  const mark: unknown = node.attrs["pPrMark"];
+  return (
+    typeof mark === "object" &&
+    mark !== null &&
+    "kind" in mark &&
+    INSERTED_PARAGRAPH_MARK_KINDS.has(mark.kind)
+  );
+};
+
+const childrenOf = (node: PMNode): PMNode[] => {
+  const children: PMNode[] = [];
+  node.forEach((child) => {
+    children.push(child);
+  });
+  return children;
+};
+
+/**
+ * `paragraph`, after `previous` whose inserted mark split one source paragraph
+ * in two, with the carriers that continue `previous`'s last one across that
+ * mark given its identity, as fragments across a revision boundary are.
+ */
+const continueAcrossInsertedMark = (
+  previous: PMNode,
+  paragraph: PMNode,
+): PMNode => {
+  const anchor = previous.lastChild;
+  if (anchor === null) return paragraph;
+  const original = childrenOf(paragraph);
+  let continued: readonly PMNode[] = original;
+  for (const markName of SOURCE_CARRIER_MARK_NAMES) {
+    continued = continueIdentities(continued, CARRIER_OWNERS[markName], {
+      anchor,
+      bridged: true,
+    });
+  }
+  return continued === original
+    ? paragraph
+    : paragraph.copy(Fragment.fromArray([...continued]));
+};
+
+/**
+ * `blocks`, sibling blocks of one container and everything inside them, with
+ * the source carriers a tracked paragraph split cut apart given one identity.
+ *
+ * A split inside a run or link saves the two halves in two paragraphs, which
+ * reopen as two carriers. Rejecting the inserted paragraph mark rejoins the
+ * halves, and the editor that made the split still holds one carrier there.
+ * A deleted paragraph mark joined two source paragraphs, whose carriers were
+ * always separate, so it is not crossed.
+ */
+export const continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks = (
+  blocks: readonly PMNode[],
+): readonly PMNode[] => {
+  let changed = false;
+  const result: PMNode[] = [];
+  for (const block of blocks) {
+    let next = block;
+    if (!block.isTextblock && !block.isLeaf && !block.inlineContent) {
+      const children = childrenOf(block);
+      const continued =
+        continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(children);
+      if (continued !== children) {
+        next = block.copy(Fragment.fromArray([...continued]));
+      }
+    }
+    const previous = result.at(-1);
+    if (
+      previous !== undefined &&
+      next.type.name === "paragraph" &&
+      endsWithInsertedMark(previous)
+    ) {
+      next = continueAcrossInsertedMark(previous, next);
+    }
+    changed ||= next !== block;
+    result.push(next);
+  }
+  return changed ? result : blocks;
 };

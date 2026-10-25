@@ -4759,19 +4759,19 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeStart": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeStart": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Hyperlink/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}permEnd": {
       "disposition": "captured-verbatim"

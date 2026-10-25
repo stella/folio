@@ -154,11 +154,11 @@ export const HYPERLINK_CONTENT = {
   insertion: false,
   mathEquation: false,
   moveFrom: false,
-  moveFromRangeEnd: false,
-  moveFromRangeStart: false,
+  moveFromRangeEnd: true,
+  moveFromRangeStart: true,
   moveTo: false,
-  moveToRangeEnd: false,
-  moveToRangeStart: false,
+  moveToRangeEnd: true,
+  moveToRangeStart: true,
   simpleField: false,
 } as const satisfies AdmissionMap<Hyperlink["children"][number]>;
 

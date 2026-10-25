@@ -171,7 +171,10 @@ import {
   RUN_IDENTITY_MARK_NAME,
   runIdentityAttrs,
 } from "../runIdentity";
-import { continueSourceCarrierIdentitiesAcrossRevisions } from "../runIdentityAcrossRevisions";
+import {
+  continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks,
+  continueSourceCarrierIdentitiesAcrossRevisions,
+} from "../runIdentityAcrossRevisions";
 import {
   getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
@@ -405,6 +408,10 @@ export const collectPairedBookmarkIds = (
         case "commentRangeEnd":
           break;
         case "commentReference":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           break;
         case "run":
           visitRun(child);
@@ -681,7 +688,7 @@ export function toProseDoc(
         _adjustLineHeightInTable: adjustLineHeightInTable,
         _doNotUseIndentAsNumberingTabStop: doNotUseIndentAsNumberingTabStop,
       },
-      nodes,
+      [...continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(nodes)],
     ),
   );
   assertValidProseMirrorDocument(
@@ -5086,6 +5093,19 @@ function convertHyperlink(
           ]),
         );
         break;
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        childNodes.push(
+          schema.node(
+            MOVE_RANGE_BOUNDARY_NODE_NAME,
+            { marker: child },
+            undefined,
+            [linkMark],
+          ),
+        );
+        break;
       case "bookmarkStart":
         childNodes.push(
           schema.node(
@@ -6089,7 +6109,11 @@ export function headerFooterToProseDoc(
     nodes.push(schema.node("paragraph", {}, []));
   }
 
-  const pmDoc = stampNumberedRefFieldBaselines(schema.node("doc", null, nodes));
+  const pmDoc = stampNumberedRefFieldBaselines(
+    schema.node("doc", null, [
+      ...continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(nodes),
+    ]),
+  );
   assertValidProseMirrorDocument(
     pmDoc,
     "Header/footer conversion produced an invalid ProseMirror document",
