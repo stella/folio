@@ -64,10 +64,9 @@ const withSharedRevisionId = (
       }
       const ancestors = expectTrackedChangeMarkAttrs(
         mark,
-      )._docxRevisionAncestors?.map((ancestor) => ({
-        ...ancestor,
-        revisionId,
-      }));
+      )._docxRevisionAncestors?.map((ancestor) =>
+        Object.assign({}, ancestor, { revisionId }),
+      );
       return schema.mark(mark.type.name, {
         ...mark.attrs,
         revisionId,
