@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, spyOn, test } from "bun:test";
+import fc from "fast-check";
 import { history, redo, undo } from "prosemirror-history";
 import { Fragment, Schema, Slice } from "prosemirror-model";
 import { EditorState, Plugin } from "prosemirror-state";
@@ -23,6 +24,7 @@ import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
 } from "../../../docx/paragraphPropertySource";
+import { deterministicHexId } from "../../../utils/hexId";
 import {
   getChangedParagraphIds,
   ParagraphChangeTrackerExtension,
@@ -208,25 +210,100 @@ describe("ParaIdAllocatorExtension", () => {
   });
 
   test("reserves authored IDs before allocating missing initial IDs", () => {
+    // A later paragraph already owns the id the first one would derive.
+    const derived = deterministicHexId("Missing:1");
+    const original = schema.node("doc", null, [
+      para("Missing"),
+      para("Authored later", derived),
+    ]);
+
+    const normalized = ensureParaIdsInDoc(original);
+
+    expect(normalized.child(0).attrs["paraId"]).toBe(
+      deterministicHexId("Missing:1:1"),
+    );
+    expect(normalized.child(1).attrs["paraId"]).toBe(derived);
+  });
+
+  test("derives initial IDs from text and ordinal, never at random", () => {
     const random = spyOn(Math, "random");
-    let calls = 0;
     try {
-      random.mockImplementation(() => {
-        calls += 1;
-        return calls === 1 ? 0 : 0.5;
-      });
       const original = schema.node("doc", null, [
-        para("Missing"),
-        para("Authored later", "00000001"),
+        para("Same"),
+        para("Same"),
+        para(""),
       ]);
 
-      const normalized = ensureParaIdsInDoc(original);
+      const ids = collectParaIds(
+        EditorState.create({ doc: ensureParaIdsInDoc(original) }),
+      );
 
-      expect(normalized.child(0).attrs["paraId"]).toBe("40000000");
-      expect(normalized.child(1).attrs["paraId"]).toBe("00000001");
+      expect(ids).toEqual([
+        deterministicHexId("Same:1"),
+        deterministicHexId("Same:2"),
+        deterministicHexId(":3"),
+      ]);
+      expect(random).not.toHaveBeenCalled();
     } finally {
       random.mockRestore();
     }
+  });
+
+  test("seeding a state and seeding a doc give the same IDs", () => {
+    const paragraphs = [
+      para("Kept", "11111111"),
+      para("Duplicate", "11111111"),
+      para("Missing"),
+      para("Zero", "00000000"),
+    ];
+    const fromDoc = ensureParaIdsInDoc(schema.node("doc", null, paragraphs));
+    const fromState = ensureParaIdsInState(createState(...paragraphs));
+
+    expect(collectParaIds(fromState)).toEqual(
+      collectParaIds(EditorState.create({ doc: fromDoc })),
+    );
+  });
+
+  test("initial IDs are unique, reproducible and keep each first authored ID", () => {
+    const authored = ["11111111", "22222222", "00000000", null] as const;
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            text: fc.constantFrom("", "Clause.", "Reserved.", "Notice"),
+            id: fc.constantFrom(...authored),
+            nested: fc.boolean(),
+          }),
+          { minLength: 1, maxLength: 12 },
+        ),
+        (specs) => {
+          const blocks = specs.map(({ text, id, nested }) =>
+            nested
+              ? schema.node("blockquote", null, [para(text, id)])
+              : para(text, id),
+          );
+          const original = schema.node("doc", null, blocks);
+          const first = ensureParaIdsInDoc(original);
+          const ids = collectParaIds(EditorState.create({ doc: first }));
+
+          expect(ensureParaIdsInDoc(original).eq(first)).toBe(true);
+          expect(new Set(ids).size).toBe(ids.length);
+          expect(ids).not.toContain("00000000");
+          const seen = new Set<string>();
+          for (const [index, { id }] of specs.entries()) {
+            if (id !== null && id !== "00000000" && !seen.has(id)) {
+              seen.add(id);
+              expect(ids[index]).toBe(id);
+            }
+          }
+          expect(
+            collectParaIds(
+              ensureParaIdsInState(createState(...first.children)),
+            ),
+          ).toEqual(ids);
+        },
+      ),
+    );
   });
 
   test("allocates missing paraIds on the initial state before the first edit", () => {

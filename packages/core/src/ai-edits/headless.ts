@@ -1,6 +1,5 @@
 import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 import JSZip from "jszip";
-import { Fragment } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Command, Plugin, Transaction } from "prosemirror-state";
@@ -66,10 +65,6 @@ import {
 import { normalizeListModelRendering } from "../docx/listModelNormalization";
 import { createNumberingIdAllocator } from "../docx/numberingIds";
 import { getCachedNumberingMap } from "../docx/numberingParser";
-import {
-  recreateProseNodeWithParagraphPropertySource,
-  transferProseParagraphPropertySource,
-} from "../docx/paragraphPropertySource";
 import { visitDocxParagraphs } from "../docx/paragraphTraversal";
 import { parseDocx } from "../docx/parser";
 import { createReply } from "../docx/replyToComment";
@@ -128,6 +123,7 @@ import {
   hasStructuralChanges,
   hasUntrackedChanges,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import {
@@ -168,7 +164,6 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
-import { deterministicHexId } from "../utils/hexId";
 import type {
   FolioReplacementBackground,
   FolioRevisionStamp,
@@ -264,86 +259,6 @@ type FolioDocumentOperationUndoEntry = {
   afterState: EditorState;
   createdCommentsLengthBefore: number;
   createdCommentsLengthAfter: number;
-};
-
-/**
- * Assign a stable `w14:paraId` to every body paragraph that lacks one (or
- * duplicates an earlier id), derived deterministically from the paragraph's
- * text plus its document ordinal. Re-parsing the SAME bytes mints the SAME ids,
- * so the block ids a snapshot exposes are reproducible across
- * {@link FolioDocxReviewer.fromBuffer} calls — the documented "snapshot on one
- * parse, apply on another" flow resolves instead of skipping every op as a
- * stale anchor. Word-authored paraIds are preserved; only gaps and collisions
- * get a fresh id.
- *
- * The shared `ParaIdAllocatorExtension` mints RANDOM ids (correct for freshly
- * typed paragraphs in the live editor); this load-time pass is deterministic so
- * a paraId-less corpus document anchors reproducibly.
- *
- * Rebuilding only the changed branches, like {@link ensureParaIdsInDoc}, keeps
- * the pass linear in paragraph count. Seeding through a transaction instead
- * costs one `setNodeMarkup` step per paragraph, and both halves of that are
- * quadratic: every step rebuilds the containing fragment, and the plugin
- * `appendTransaction` chain rescans the accumulated step maps. Because the pass
- * runs before the state exists, no history, mapping, or change-tracking
- * semantics depend on it.
- */
-const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
-  const seen = new Set<string>();
-  let ordinal = 0;
-
-  const rewrite = (parent: PMNode): Fragment => {
-    let changed = false;
-    const children: PMNode[] = [];
-
-    parent.forEach((child) => {
-      let next = child;
-      if (child.type.name === "paragraph") {
-        ordinal += 1;
-        const existing = child.attrs["paraId"];
-        if (
-          typeof existing === "string" &&
-          existing.length > 0 &&
-          !seen.has(existing)
-        ) {
-          seen.add(existing);
-        } else {
-          let paraId = deterministicHexId(`${child.textContent}:${ordinal}`);
-          for (let salt = 1; seen.has(paraId); salt++) {
-            paraId = deterministicHexId(
-              `${child.textContent}:${ordinal}:${salt}`,
-            );
-          }
-          seen.add(paraId);
-          next = recreateProseNodeWithParagraphPropertySource(child, {
-            attrs: { ...child.attrs, paraId, idStability: "positional" },
-          });
-        }
-        const paraId = next.attrs["paraId"];
-        if (typeof paraId === "string") {
-          transferProseParagraphPropertySource(next, child, paraId);
-        }
-      } else if (child.childCount > 0) {
-        const content = rewrite(child);
-        if (content !== child.content) {
-          next = recreateProseNodeWithParagraphPropertySource(child, {
-            content,
-          });
-        }
-      }
-      if (next !== child) {
-        changed = true;
-      }
-      children.push(next);
-    });
-
-    return changed ? Fragment.fromArray(children) : parent.content;
-  };
-
-  const content = rewrite(doc);
-  return content === doc.content
-    ? doc
-    : recreateProseNodeWithParagraphPropertySource(doc, { content });
 };
 
 /** Options for {@link FolioDocxReviewer.fromBuffer}. */
@@ -1673,7 +1588,7 @@ export class FolioDocxReviewer {
     const state = ensureBaseDirectionInState(
       EditorState.create({
         schema,
-        doc: ensureDeterministicParaIdsInDoc(toProseDoc(baseDocument)),
+        doc: ensureParaIdsInDoc(toProseDoc(baseDocument)),
         plugins,
       }),
     );
@@ -3773,7 +3688,7 @@ export class FolioDocxReviewer {
       story.type === "header" || story.type === "footer"
         ? headerFooterToProseDoc(source.content, conversionOptions)
         : footnoteToProseDoc(source.content, conversionOptions);
-    return ensureDeterministicParaIdsInDoc(storyDoc);
+    return ensureParaIdsInDoc(storyDoc);
   }
 
   private requireEditableStoryState(
@@ -3918,9 +3833,7 @@ export class FolioDocxReviewer {
     const state = ensureBaseDirectionInState(
       EditorState.create({
         schema,
-        doc: ensureDeterministicParaIdsInDoc(
-          headerFooterToProseDoc(empty.content),
-        ),
+        doc: ensureParaIdsInDoc(headerFooterToProseDoc(empty.content)),
         plugins: createHeadlessPlugins(
           this.baseDocument.package.styles,
           this.baseDocument.package.numbering,
