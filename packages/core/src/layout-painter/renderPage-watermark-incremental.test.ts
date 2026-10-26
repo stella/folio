@@ -182,6 +182,11 @@ class FakeElement {
     } as DOMRect;
   }
 
+  /** These pages mount inside no editor scroll root, so no ancestor matches. */
+  closest(): FakeElement | null {
+    return null;
+  }
+
   querySelector(selector: string): FakeElement | null {
     return findByClass(
       this,
