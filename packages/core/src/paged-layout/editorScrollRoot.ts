@@ -59,8 +59,27 @@ const nearestScrollOffset = ({
   return 0;
 };
 
+/**
+ * Farthest move, in viewport heights, that the default behavior animates. A
+ * longer smooth scroll passes page shells that virtualization paints one by
+ * one before discarding them, and shows blank shells until it arrives.
+ */
+const SMOOTH_SCROLL_MAX_VIEWPORTS = 2;
+
+const navigationScrollBehavior = (
+  distance: number,
+  viewportHeight: number,
+): ScrollBehavior =>
+  Math.abs(distance) > viewportHeight * SMOOTH_SCROLL_MAX_VIEWPORTS
+    ? "instant"
+    : prefersReducedMotionBehavior();
+
 type ScrollEditorElementOptions = {
   block?: "start" | "center" | "end" | "nearest";
+  /**
+   * Omitted: smooth (instant under `prefers-reduced-motion`) within two
+   * viewport heights, instant beyond.
+   */
   behavior?: ScrollBehavior;
   /** Space to leave between the target and the visible root edge. */
   margin?: number;
@@ -73,7 +92,7 @@ export const scrollEditorElementIntoView = (
   element: HTMLElement | null,
   {
     block = "center",
-    behavior = prefersReducedMotionBehavior(),
+    behavior,
     margin = 0,
     rect,
   }: ScrollEditorElementOptions = {},
@@ -123,9 +142,12 @@ export const scrollEditorElementIntoView = (
       viewportEnd: visibleLeft + root.clientWidth,
     });
   if (top === root.scrollTop && left === root.scrollLeft) return;
+  const clampedTop = Math.max(0, top);
   scrollEditorTo(root, {
-    top: Math.max(0, top),
+    top: clampedTop,
     left: Math.max(0, left),
-    behavior,
+    behavior:
+      behavior ??
+      navigationScrollBehavior(clampedTop - root.scrollTop, root.clientHeight),
   });
 };

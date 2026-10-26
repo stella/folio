@@ -20,7 +20,10 @@ import {
   findBodyPmAnchor,
   findBodyPmAnchors,
 } from "../layout-bridge/dom/findBodyPmSpans";
-import { findPageShellForPmPos } from "../layout-painter/renderPage";
+import {
+  findPageShellForPmPos,
+  renderPagesAround,
+} from "../layout-painter/renderPage";
 import {
   getEditorScrollRoot,
   scrollEditorElementIntoView,
@@ -39,96 +42,80 @@ export const scrollPagesToPmPosition = (
     return;
   }
 
-  // Phase 1: locate the target via per-run DOM if it's already
-  // rendered, otherwise via the page shell (always present
-  // under virtualization). The shell-based path was added to
-  // fix the "many clicks to arrive" bug — a per-run query on a
-  // virtualized doc only sees runs in the currently-rendered
-  // buffer, so each click stepped one buffer-width forward
-  // instead of jumping straight to the target.
-  const exact = findBodyPmAnchor(pageContainer, pmPos);
-  if (exact) {
-    scrollEditorElementIntoView(exact);
+  // A per-run query on a virtualized doc only sees the rendered buffer, so a
+  // target outside it is located through its page shell (always present, with
+  // correct dimensions). That page and its neighbours are painted before the
+  // scroll, so the viewport lands on content in one move and the pages in
+  // between are never painted; the distance-aware default behavior makes a
+  // far jump instant.
+  const rendered =
+    findBodyPmAnchor(pageContainer, pmPos) ??
+    findAnchorContaining(pageContainer, pmPos);
+  if (rendered) {
+    scrollEditorElementIntoView(rendered);
     return;
   }
 
-  // Walk all currently-rendered runs to see if pmPos falls
-  // inside one of them (block-node positions never match
-  // exactly but usually live inside a known run).
-  let runMatch: HTMLElement | null = null;
-  for (const el of findBodyPmAnchors(pageContainer)) {
-    const start = Number(el.dataset["pmStart"]);
-    if (Number.isNaN(start)) {
-      continue;
-    }
-    const endAttr = el.dataset["pmEnd"];
-    const end = endAttr === undefined ? start : Number(endAttr);
-    if (start <= pmPos && pmPos <= end) {
-      runMatch = el;
-      break;
-    }
-  }
-  if (runMatch) {
-    scrollEditorElementIntoView(runMatch);
-    return;
-  }
-
-  // Target lives outside the rendered buffer. Scroll to its
-  // page shell (which exists with correct dimensions even when
-  // empty), then refine to the exact run once the
-  // IntersectionObserver populates the page content.
-  //
-  // Future optimization: when the AI review session opens,
-  // pre-warm the page shells that contain pending suggestions
-  // (one-shot populate of ~30 pages instead of 200). Lets this
-  // scroll become single-phase again — no rAF refine — and makes
-  // navigation feel instant for long documents.
   const shellHit = findPageShellForPmPos(pageContainer, pmPos);
   if (!shellHit) {
     return;
   }
   const { element: shell } = shellHit;
-  scrollEditorElementIntoView(shell);
+  renderPagesAround(pageContainer, shell);
+  scrollEditorElementIntoView(
+    findBodyPmAnchor(shell, pmPos) ??
+      findAnchorContaining(shell, pmPos) ??
+      findAnchorBefore(shell, pmPos) ??
+      shell,
+  );
+};
 
-  let attempts = 0;
-  const refine = () => {
-    attempts++;
-    const exactInShell = findBodyPmAnchor(shell, pmPos);
-    if (exactInShell) {
-      scrollEditorElementIntoView(exactInShell);
-      return;
+type AnchorRange = { element: HTMLElement; start: number; end: number };
+
+const anchorRanges = (root: ParentNode): AnchorRange[] => {
+  const ranges: AnchorRange[] = [];
+  for (const element of findBodyPmAnchors(root)) {
+    const start = Number(element.dataset["pmStart"]);
+    if (Number.isNaN(start)) {
+      continue;
     }
-    let bestEl: HTMLElement | null = null;
-    let bestStart = Number.NEGATIVE_INFINITY;
-    for (const el of findBodyPmAnchors(shell)) {
-      const start = Number(el.dataset["pmStart"]);
-      if (Number.isNaN(start)) {
-        continue;
-      }
-      const endAttr = el.dataset["pmEnd"];
-      const end = endAttr === undefined ? start : Number(endAttr);
-      if (start <= pmPos && pmPos <= end) {
-        bestEl = el;
-        break;
-      }
-      if (start <= pmPos && start > bestStart) {
-        bestStart = start;
-        bestEl = el;
-      }
+    const endAttr = element.dataset["pmEnd"];
+    ranges.push({
+      element,
+      start,
+      end: endAttr === undefined ? start : Number(endAttr),
+    });
+  }
+  return ranges;
+};
+
+/** First painted run whose range holds `pmPos` (block positions rarely match a run start). */
+const findAnchorContaining = (
+  root: ParentNode,
+  pmPos: number,
+): HTMLElement | null => {
+  for (const { element, start, end } of anchorRanges(root)) {
+    if (start <= pmPos && pmPos <= end) {
+      return element;
     }
-    if (bestEl) {
-      scrollEditorElementIntoView(bestEl);
-      return;
+  }
+  return null;
+};
+
+/** The painted run starting closest before `pmPos`. */
+const findAnchorBefore = (
+  root: ParentNode,
+  pmPos: number,
+): HTMLElement | null => {
+  let best: HTMLElement | null = null;
+  let bestStart = Number.NEGATIVE_INFINITY;
+  for (const { element, start } of anchorRanges(root)) {
+    if (start <= pmPos && start > bestStart) {
+      bestStart = start;
+      best = element;
     }
-    // IntersectionObserver populates on the next tick; give it
-    // a few frames before giving up. ~20 frames covers slow
-    // initial paint on long pages without spinning indefinitely
-    // if the page genuinely has no run at this position.
-    if (attempts < 20) {
-      requestAnimationFrame(refine);
-    }
-  };
-  requestAnimationFrame(refine);
+  }
+  return best;
 };
 
 /**
