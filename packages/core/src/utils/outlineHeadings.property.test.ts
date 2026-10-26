@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Layout, Page } from "../layout-engine/types";
 import type { HeadingInfo } from "./headingCollector";
 import { resolveOutlineHeadings } from "./outlineHeadings";
@@ -109,7 +112,7 @@ describe("resolveOutlineHeadings", () => {
         id: "a reported page wins, an unreported one keeps the last known page, and only changed entries are replaced",
       },
     );
-  });
+  }, propertyTestTimeout(5_000));
 
   test("a heading the layout cannot place yet keeps its number under the same id", () => {
     const [kept, added] = resolveOutlineHeadings({
