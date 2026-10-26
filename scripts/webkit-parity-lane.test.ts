@@ -65,7 +65,8 @@ test("the WebKit workflow is manual, on macOS, read-only and never files issues"
   ]) {
     expect(source).toContain(`--project=${project}`);
   }
-  expect(source).toContain("playwright install chromium webkit");
+  expect(source).toContain("uses: ./.github/actions/playwright-deps");
+  expect(source).toContain("browsers: chromium webkit");
   expect(source).not.toContain("issues:");
   expect(
     JSON.stringify(readFileSync(".github/workflows/ci.yml", "utf8")),

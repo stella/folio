@@ -389,3 +389,79 @@ test("publishing tokens and their artifact chain reject cached Bun setup", () =>
   };
   expect(cacheProblems(artifacts)).toHaveLength(1);
 });
+
+const PLAYWRIGHT_ACTION = "./.github/actions/playwright-deps";
+const PLAYWRIGHT_ACTION_FILE = ".github/actions/playwright-deps/action.yml";
+
+// Browsers and their system packages come from one cached owner, so no job
+// downloads them on its own and a slow package mirror cannot eat its budget.
+const directPlaywrightInstalls = (
+  label: string,
+  steps: readonly unknown[],
+): string[] =>
+  steps.flatMap((step) =>
+    isRecord(step) &&
+    typeof step["run"] === "string" &&
+    /\bplaywright\s+install\b/u.test(step["run"])
+      ? [`${label}: install Playwright through ${PLAYWRIGHT_ACTION}`]
+      : [],
+  );
+
+const jobSteps = (workflow: unknown): [string, unknown[]][] => {
+  if (!isRecord(workflow) || !isRecord(workflow["jobs"]))
+    panic("Invalid workflow jobs");
+  return Object.entries(workflow["jobs"]).flatMap(([name, job]) =>
+    isRecord(job) && Array.isArray(job["steps"])
+      ? [[name, job["steps"]] satisfies [string, unknown[]]]
+      : [],
+  );
+};
+
+test("a Playwright install outside the shared action is rejected", () => {
+  for (const run of [
+    "bunx playwright install --with-deps chromium",
+    "sudo apt-get update\nnpx playwright install chromium webkit",
+  ]) {
+    expect(directPlaywrightInstalls("fixture", [{ run }])).toHaveLength(1);
+  }
+  expect(
+    directPlaywrightInstalls("fixture", [
+      { uses: PLAYWRIGHT_ACTION },
+      { run: "bunx playwright test --project=chromium" },
+    ]),
+  ).toEqual([]);
+});
+
+test("every committed job installs Playwright through the shared action", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const problems: string[] = [];
+  let shared = 0;
+  for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({
+    cwd: root,
+  })) {
+    const workflow: unknown = Bun.YAML.parse(
+      readFileSync(`${root}/${file}`, "utf8"),
+    );
+    for (const [name, steps] of jobSteps(workflow)) {
+      problems.push(...directPlaywrightInstalls(`${file}: ${name}`, steps));
+      shared += steps.filter(
+        (step) => isRecord(step) && step["uses"] === PLAYWRIGHT_ACTION,
+      ).length;
+    }
+  }
+  for (const file of new Bun.Glob(
+    ".github/actions/**/action.{yml,yaml}",
+  ).scanSync({ cwd: root })) {
+    if (file === PLAYWRIGHT_ACTION_FILE) continue;
+    const action: unknown = Bun.YAML.parse(
+      readFileSync(`${root}/${file}`, "utf8"),
+    );
+    if (!isRecord(action) || !isRecord(action["runs"]))
+      panic(`Invalid action ${file}`);
+    const steps = action["runs"]["steps"];
+    if (Array.isArray(steps))
+      problems.push(...directPlaywrightInstalls(file, steps));
+  }
+  expect(problems).toEqual([]);
+  expect(shared).toBeGreaterThan(0);
+});
