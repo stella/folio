@@ -768,7 +768,18 @@ describe("CI plan", () => {
         "bunx playwright test --project=browser-input-pinned --workers=1",
       ]);
       expect(pinned?.strategy).toBeUndefined();
-      expect(pinned?.["timeout-minutes"]).toBe(10);
+      // The replays have a tight limit of their own; the job's limit covers a
+      // cold browser install, so a cancelled job never leaves the cache cold.
+      expect(pinned?.["timeout-minutes"]).toBe(25);
+      const replays = steps.find(
+        (step) =>
+          isRecord(step) &&
+          typeof step["run"] === "string" &&
+          step["run"].includes("playwright test"),
+      );
+      expect(isRecord(replays) ? replays["timeout-minutes"] : undefined).toBe(
+        5,
+      );
 
       const listing = Bun.spawnSync(
         [

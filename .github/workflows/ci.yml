@@ -965,7 +965,10 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # The job covers a cold Playwright install, which can take over 15
+    # minutes on a slow package mirror, so the browser cache is saved and the
+    # next run is warm. The replays carry their own limit below.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -981,6 +984,7 @@ jobs:
         uses: ./.github/actions/playwright-deps
 
       - name: Run only standing browser input regressions
+        timeout-minutes: 5
         run: bunx playwright test --project=browser-input-pinned --workers=1
 
       - name: Upload failed pinned replay artifacts
