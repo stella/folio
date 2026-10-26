@@ -4076,7 +4076,9 @@ export function findPageShellForPmPos(
     if (pageStart === Number.POSITIVE_INFINITY) {
       continue;
     }
-    if (pageStart <= pmPos && pmPos <= pageEnd) {
+    // Half-open, like `pmEnd`: the position where a page's last block ends is
+    // where the next page's first block starts, and belongs to the next page.
+    if (pageStart <= pmPos && pmPos < pageEnd) {
       return { element: shell, isExact: true };
     }
     if (pageStart <= pmPos && pageStart > bestStart) {

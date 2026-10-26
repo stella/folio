@@ -19,7 +19,11 @@ import type {
   ParagraphMeasure,
 } from "../layout-engine/types";
 import type { BlockLookup } from "../layout-painter/index";
-import { PAGE_CLASS_NAMES, renderPages } from "../layout-painter/renderPage";
+import {
+  findPageShellForPmPos,
+  PAGE_CLASS_NAMES,
+  renderPages,
+} from "../layout-painter/renderPage";
 import { scrollPagesToPmPosition } from "./scrollToPmPosition";
 
 afterAll(() => GlobalRegistrator.unregister());
@@ -392,6 +396,15 @@ describe("scrollPagesToPmPosition over virtualized pages", () => {
     expect(trace.paintedPages).toEqual([57, 58, 59, 60, 61, 62]);
     expect(paintedIndices()).toEqual([57, 58, 59, 60, 61, 62]);
     expect(trace.pageMeasurements).toBe(0);
+  });
+
+  test("a block that starts a page is found on that page, not the one before", () => {
+    const { container, shells, jump } = mountPages();
+
+    expect(findPageShellForPmPos(container, pageStart(60))?.element).toBe(
+      shells[60],
+    );
+    expect(jump(pageStart(60)).scrollCalls.at(-1)?.top).toBe(centredTop(60));
   });
 
   test("a near jump stays smooth unless the reader prefers reduced motion", () => {
