@@ -62,57 +62,61 @@ const collect = (positions: readonly number[]): HeadingInfo[] =>
   }));
 
 describe("resolveOutlineHeadings", () => {
-  test("a reported page wins, an unreported one keeps the last known page, and only changed entries are replaced", () => {
-    assertProperty(
-      fc.property(
-        headingPositions,
-        pageStarts,
-        pageStarts,
-        (positions, before, after) => {
-          const first = resolveOutlineHeadings({
-            collected: collect(positions),
-            layout: layoutFromStarts(before, DOCUMENT_END),
-            previous: [],
-          });
-          expect(first.map(({ pageNumber }) => pageNumber)).toEqual(
-            positions.map((pmPos) => pageOf(before, pmPos)),
-          );
-
-          // Settled: the same document and layout return the same list.
-          expect(
-            resolveOutlineHeadings({
+  test(
+    "a reported page wins, an unreported one keeps the last known page, and only changed entries are replaced",
+    () => {
+      assertProperty(
+        fc.property(
+          headingPositions,
+          pageStarts,
+          pageStarts,
+          (positions, before, after) => {
+            const first = resolveOutlineHeadings({
               collected: collect(positions),
               layout: layoutFromStarts(before, DOCUMENT_END),
-              previous: first,
-            }),
-          ).toBe(first);
-          // Pending layout: nothing is blanked or replaced.
-          expect(
-            resolveOutlineHeadings({
-              collected: collect(positions),
-              layout: null,
-              previous: first,
-            }),
-          ).toBe(first);
+              previous: [],
+            });
+            expect(first.map(({ pageNumber }) => pageNumber)).toEqual(
+              positions.map((pmPos) => pageOf(before, pmPos)),
+            );
 
-          const relaid = resolveOutlineHeadings({
-            collected: collect(positions),
-            layout: layoutFromStarts(after, DOCUMENT_END),
-            previous: first,
-          });
-          for (const [index, heading] of relaid.entries()) {
-            const previous = first[index];
-            const page = pageOf(after, heading.pmPos);
-            expect(heading.pageNumber).toBe(page);
-            expect(heading === previous).toBe(previous?.pageNumber === page);
-          }
+            // Settled: the same document and layout return the same list.
+            expect(
+              resolveOutlineHeadings({
+                collected: collect(positions),
+                layout: layoutFromStarts(before, DOCUMENT_END),
+                previous: first,
+              }),
+            ).toBe(first);
+            // Pending layout: nothing is blanked or replaced.
+            expect(
+              resolveOutlineHeadings({
+                collected: collect(positions),
+                layout: null,
+                previous: first,
+              }),
+            ).toBe(first);
+
+            const relaid = resolveOutlineHeadings({
+              collected: collect(positions),
+              layout: layoutFromStarts(after, DOCUMENT_END),
+              previous: first,
+            });
+            for (const [index, heading] of relaid.entries()) {
+              const previous = first[index];
+              const page = pageOf(after, heading.pmPos);
+              expect(heading.pageNumber).toBe(page);
+              expect(heading === previous).toBe(previous?.pageNumber === page);
+            }
+          },
+        ),
+        {
+          id: "a reported page wins, an unreported one keeps the last known page, and only changed entries are replaced",
         },
-      ),
-      {
-        id: "a reported page wins, an unreported one keeps the last known page, and only changed entries are replaced",
-      },
-    );
-  }, propertyTestTimeout(5_000));
+      );
+    },
+    propertyTestTimeout(5_000),
+  );
 
   test("a heading the layout cannot place yet keeps its number under the same id", () => {
     const [kept, added] = resolveOutlineHeadings({
