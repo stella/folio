@@ -457,7 +457,7 @@ export type RunShadingAttrs = TextColorAttrs & {
 };
 
 // @public (undocumented)
-export const schema: Schema<any, any>;
+export const schema: Schema;
 
 // @public
 export type SdtAttrs = {

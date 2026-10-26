@@ -10,7 +10,11 @@ import { resolveHighlightToCss } from "../../../utils/colorResolver";
 import { expectHighlightMarkAttrs } from "../../attrs";
 import { canonicalRunFormatting } from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type {
+  ExtensionContext,
+  ExtensionRuntime,
+  MarkExtension,
+} from "../types";
 import { removeMark, setMark, withRunFormattingLock } from "./markUtils";
 
 type HighlightColor = NonNullable<TextFormatting["highlight"]>;
@@ -133,7 +137,9 @@ export const parseDOMHighlightColor = (
   return CSS_HIGHLIGHT_TO_NAME[normalizeCssColorKey(trimmed)] ?? null;
 };
 
-export const HighlightExtension = createMarkExtension({
+export const HighlightExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "highlight",
   schemaMarkName: "highlight",
   markSpec: {

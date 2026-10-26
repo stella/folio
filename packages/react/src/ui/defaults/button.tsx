@@ -1,3 +1,5 @@
+import type { JSX } from "react/jsx-runtime";
+
 import { cn } from "../../lib/utils";
 import type { FolioButtonProps } from "../folio-ui";
 
@@ -18,7 +20,7 @@ export function DefaultButton({
   className,
   children,
   ...props
-}: FolioButtonProps) {
+}: FolioButtonProps): JSX.Element {
   return (
     <button
       type="button"

@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 import { initProseMirrorDoc } from "y-prosemirror";
 import * as Y from "yjs";
 
@@ -16,11 +16,14 @@ import { ParagraphPropertySourceValidationError } from "../paragraphPropertySour
 import { parseDocx } from "../parser";
 import { repackDocx } from "../rezip";
 
+const FolioYjsDocxMaterializationErrorBase: TaggedErrorClass<"FolioYjsDocxMaterializationError"> =
+  TaggedError("FolioYjsDocxMaterializationError");
+
 /** Yjs fragment that stores Folio's canonical ProseMirror document. */
 export const FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME = "prosemirror";
 
 /** Maximum accepted size of a complete Yjs collaboration state update. */
-export const FOLIO_YJS_UPDATE_MAX_BYTES = 10 * 1024 * 1024;
+export const FOLIO_YJS_UPDATE_MAX_BYTES: number = 10 * 1024 * 1024;
 
 /** Stable failure codes returned by server-side Yjs-to-DOCX materialization. */
 export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES = [
@@ -37,9 +40,7 @@ export type FolioYjsDocxMaterializationErrorCode =
   (typeof FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES)[number];
 
 /** Typed failure raised when a collaboration snapshot cannot be materialized. */
-export class FolioYjsDocxMaterializationError extends TaggedError(
-  "FolioYjsDocxMaterializationError",
-)<{
+export class FolioYjsDocxMaterializationError extends FolioYjsDocxMaterializationErrorBase<{
   code: FolioYjsDocxMaterializationErrorCode;
   message: string;
   cause?: unknown;

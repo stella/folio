@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 
-export function useCloseOnDialogOpenChange(onClose: () => void) {
+export function useCloseOnDialogOpenChange(
+  onClose: () => void,
+): (open: boolean) => void {
   return useCallback(
     (open: boolean) => {
       if (!open) {

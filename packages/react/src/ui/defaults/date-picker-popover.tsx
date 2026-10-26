@@ -1,3 +1,5 @@
+import type { JSX } from "react/jsx-runtime";
+
 import { sliceText } from "@stll/folio-core/utils/sliceText";
 
 import type { FolioDatePickerPopoverProps } from "../folio-ui";
@@ -28,7 +30,7 @@ export function DefaultDatePickerPopover({
   value,
   onChange,
   defaultOpen = false,
-}: FolioDatePickerPopoverProps) {
+}: FolioDatePickerPopoverProps): JSX.Element {
   // The native date input is the intentional dependency-free fallback; a
   // consumer injects a locale-aware DatePickerPopover via DocxEditor.
   /* eslint-disable no-raw-date-input/no-raw-date-input -- intentional dependency-free fallback */

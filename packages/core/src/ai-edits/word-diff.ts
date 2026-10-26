@@ -56,10 +56,8 @@ export type WordDiffSegment = {
  * word, which reads well for a reference number or a date and badly for a
  * sentence.
  */
-export const WORD_DIFF_GRANULARITIES = Object.freeze([
-  "word",
-  "character",
-] as const);
+export const WORD_DIFF_GRANULARITIES: readonly ["word", "character"] =
+  Object.freeze(["word", "character"] as const);
 
 export type WordDiffGranularity = (typeof WORD_DIFF_GRANULARITIES)[number];
 

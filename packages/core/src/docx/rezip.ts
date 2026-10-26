@@ -1,4 +1,9 @@
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 import JSZip from "jszip";
 
 import {
@@ -191,9 +196,10 @@ import {
   type XmlElement,
 } from "./xmlParser";
 
-export class DocxPackageFidelityError extends TaggedError(
-  "DocxPackageFidelityError",
-)<{
+const DocxPackageFidelityErrorBase: TaggedErrorClass<"DocxPackageFidelityError"> =
+  TaggedError("DocxPackageFidelityError");
+
+export class DocxPackageFidelityError extends DocxPackageFidelityErrorBase<{
   message: string;
 }> {
   constructor(message: string) {
@@ -1042,9 +1048,10 @@ const materializeEmbeddedMedia = async ({
   await registerImageExtensions(zip, extensions, compressionLevel);
 };
 
-export class CanonicalImageRelationshipRefusalError extends TaggedError(
-  "CanonicalImageRelationshipRefusalError",
-)<{
+const CanonicalImageRelationshipRefusalErrorBase: TaggedErrorClass<"CanonicalImageRelationshipRefusalError"> =
+  TaggedError("CanonicalImageRelationshipRefusalError");
+
+export class CanonicalImageRelationshipRefusalError extends CanonicalImageRelationshipRefusalErrorBase<{
   message: string;
   gap: typeof CANONICAL_GAP.save;
   part: string;

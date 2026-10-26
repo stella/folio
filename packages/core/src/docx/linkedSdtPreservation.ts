@@ -1,5 +1,6 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
+import type { PreservedInline } from "../types/document";
 import { preserveInlineChild } from "./preservedRunContent";
 import {
   getChildElements,
@@ -8,12 +9,15 @@ import {
   type XmlElement,
 } from "./xmlParser";
 
-export class UnrepresentableLinkedSdtRevisionError extends TaggedError(
-  "UnrepresentableLinkedSdtRevisionError",
-)<{ message: string }> {}
+const UnrepresentableLinkedSdtRevisionErrorBase: TaggedErrorClass<"UnrepresentableLinkedSdtRevisionError"> =
+  TaggedError("UnrepresentableLinkedSdtRevisionError");
+
+export class UnrepresentableLinkedSdtRevisionError extends UnrepresentableLinkedSdtRevisionErrorBase<{
+  message: string;
+}> {}
 
 /** Capture only the unsupported hyperlink child, never its enclosing revision. */
-export const preserveLinkedSdt = (root: XmlElement) => {
+export const preserveLinkedSdt = (root: XmlElement): PreservedInline => {
   const pending = getChildElements(root);
   while (pending.length > 0) {
     const node = pending.pop();

@@ -13,7 +13,7 @@ type TooltipChildProps = {
   title?: string | undefined;
 };
 
-export function Tooltip({ content, children }: TooltipProps) {
+export function Tooltip({ content, children }: TooltipProps): ReactNode {
   const label = getTooltipLabel(content);
   if (!label || !isValidElement<TooltipChildProps>(children)) {
     return children;

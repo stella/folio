@@ -3,7 +3,9 @@
 import { TaggedError } from "better-result";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+import { parseSync } from "oxc-parser";
+
+import { moduleReferences, parseLikeTypeScript } from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const REPORT_VERSION = 1;
@@ -334,44 +336,47 @@ type ImportGraph = {
   readonly importedBy: ReadonlyMap<string, readonly string[]>;
 };
 
+const keywordCount = (source: string, keyword: RegExp): number =>
+  source.match(keyword)?.length ?? 0;
+
+// A fixed template (`./module`) in `import()` or `require()` names a module as
+// plainly as a string.
+// TypeScript read type syntax in JavaScript files too, so JavaScript is parsed
+// with the TypeScript grammar (JSX included, as JavaScript allows it).
+//
+// The graph reads every tracked source file, and building each JavaScript
+// syntax tree costs most of that. oxc's module record lists import and export
+// declarations without one, so a file is read from the record when the record
+// accounts for every `import` and `export` keyword in its text. Anything the
+// record leaves out (`import()`, `import("…")` types, `import x = require()`,
+// `export {} from`, declarations inside `declare module`) leaves a keyword
+// unaccounted for, and a `require()` call spells `require` (or an escape), so
+// those files are read from the syntax tree. Keywords in comments and strings
+// only send a file down that exact path too.
 const importSpecifiers = (file: string, source: string): string[] => {
-  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest);
-  const specifiers: string[] = [];
-  const visit = (node: ts.Node): void => {
+  const kind = /\.(?:ts|mts|cts)$/u.test(file) ? "ts" : "tsx";
+  const parsed = parseSync(file, source, {
+    lang: kind === "ts" && /\.d\.[cm]?ts$/u.test(file) ? "dts" : kind,
+  });
+  if (parsed.errors.length === 0 && !/\brequire\b|\\u/u.test(source)) {
+    const { staticImports, staticExports, importMetas } = parsed.module;
     if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier &&
-      ts.isStringLiteral(node.moduleSpecifier)
+      keywordCount(source, /\bimport\b/gu) ===
+        staticImports.length + importMetas.length &&
+      keywordCount(source, /\bexport\b/gu) === staticExports.length &&
+      staticExports.every(({ entries }) => entries.length > 0)
     ) {
-      specifiers.push(node.moduleSpecifier.text);
-    } else if (
-      ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) &&
-          node.expression.text === "require"))
-    ) {
-      const argument = node.arguments.at(0);
-      // A fixed template (`./module`) names a module as plainly as a string.
-      if (argument && ts.isStringLiteralLike(argument))
-        specifiers.push(argument.text);
-    } else if (
-      ts.isImportEqualsDeclaration(node) &&
-      ts.isExternalModuleReference(node.moduleReference) &&
-      node.moduleReference.expression &&
-      ts.isStringLiteral(node.moduleReference.expression)
-    ) {
-      specifiers.push(node.moduleReference.expression.text);
-    } else if (
-      ts.isImportTypeNode(node) &&
-      ts.isLiteralTypeNode(node.argument) &&
-      ts.isStringLiteral(node.argument.literal)
-    ) {
-      specifiers.push(node.argument.literal.text);
+      return [
+        ...staticImports.map(({ moduleRequest }) => moduleRequest.value),
+        ...staticExports.flatMap(({ entries }) =>
+          entries[0]?.moduleRequest ? [entries[0].moduleRequest.value] : [],
+        ),
+      ];
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(parsed);
-  return specifiers;
+  }
+  return moduleReferences(parseLikeTypeScript(file, source, kind).program).map(
+    ({ specifier }) => specifier,
+  );
 };
 
 export const buildImportGraph = (

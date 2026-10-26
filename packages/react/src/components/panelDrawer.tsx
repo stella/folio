@@ -5,7 +5,7 @@
  * closes.
  */
 
-import { type RefObject, useEffect, useRef } from "react";
+import { type JSX, type RefObject, useEffect, useRef } from "react";
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -48,7 +48,7 @@ type UseDrawerFocusOptions = {
   returnFocusTarget?: () => HTMLElement | null;
 };
 
-export const useDrawerFocus = (options: UseDrawerFocusOptions) => {
+export const useDrawerFocus = (options: UseDrawerFocusOptions): void => {
   const { container, onClose, returnFocusTarget } = options;
   const initial = options.initial ?? "item";
   const onCloseRef = useRef(onClose);
@@ -91,7 +91,7 @@ type PanelScrimProps = {
 };
 
 /** Dims the page under an open drawer; pressing it closes the drawer. */
-export const PanelScrim = ({ onDismiss }: PanelScrimProps) => {
+export const PanelScrim = ({ onDismiss }: PanelScrimProps): JSX.Element => {
   // Escape closes the drawer for keyboard users; the scrim is the pointer's
   // equivalent, hidden from assistive technology like any backdrop.
   return (

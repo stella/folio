@@ -1,5 +1,6 @@
 import path from "node:path";
-import ts from "typescript";
+
+import { type Node, nodeText, parseSourceModule, walkAst } from "./oxc-ast";
 
 export type CanonicalCommandCensusSource = Readonly<{
   file: string;
@@ -8,7 +9,7 @@ export type CanonicalCommandCensusSource = Readonly<{
 
 type Declaration = Readonly<{
   file: string;
-  node: ts.Node;
+  node: Node;
 }>;
 
 type ImportBinding = Readonly<{
@@ -17,7 +18,8 @@ type ImportBinding = Readonly<{
 }>;
 
 type FileIndex = Readonly<{
-  sourceFile: ts.SourceFile;
+  program: Node;
+  text: string;
   declarations: ReadonlyMap<string, Declaration | null>;
   imports: ReadonlyMap<string, ImportBinding | null>;
 }>;
@@ -25,11 +27,11 @@ type FileIndex = Readonly<{
 type CommandRegistration = Readonly<{
   file: string;
   name: string;
-  initializer: ts.Node;
+  initializer: Node;
 }>;
 
 type ReturnedExpression = Readonly<{
-  expression: ts.Node | undefined;
+  expression: Node | undefined;
 }>;
 
 const canonicalWrapperNames = new Set([
@@ -40,27 +42,21 @@ const canonicalWrapperNames = new Set([
 const canonicalCommandsFile =
   "packages/core/src/prosemirror/canonicalCommands.ts";
 
-const declarationName = (node: ts.Node): string | undefined => {
+const declarationName = (node: Node): string | undefined => {
   if (
-    (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
-    node.name !== undefined
+    (node.type === "FunctionDeclaration" ||
+      node.type === "TSDeclareFunction" ||
+      node.type === "ClassDeclaration") &&
+    node.id !== null
   ) {
-    return node.name.text;
+    return node.id.name;
   }
 
-  if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name))
-    return node.name.text;
-  return undefined;
-};
-
-const moduleSpecifier = (node: ts.Node): string | undefined => {
-  if (
-    (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-    node.moduleSpecifier !== undefined &&
-    ts.isStringLiteral(node.moduleSpecifier)
-  ) {
-    return node.moduleSpecifier.text;
-  }
+  if (node.type === "VariableDeclarator" && node.id.type === "Identifier")
+    return node.id.name;
+  // A catch binding is a variable declaration without an initializer.
+  if (node.type === "CatchClause" && node.param?.type === "Identifier")
+    return node.param.name;
   return undefined;
 };
 
@@ -76,51 +72,44 @@ const addUnique = <T>(
   map.set(key, null);
 };
 
-const importedBindings = (sourceFile: ts.SourceFile) => {
+const importedBindings = (program: Node) => {
   const bindings = new Map<string, ImportBinding | null>();
-  for (const statement of sourceFile.statements) {
-    const specifier = moduleSpecifier(statement);
-    if (
-      !specifier ||
-      !ts.isImportDeclaration(statement) ||
-      !statement.importClause
-    )
-      continue;
+  if (program.type !== "Program") return bindings;
+  for (const statement of program.body) {
+    if (statement.type !== "ImportDeclaration") continue;
+    const specifier = statement.source.value;
+    if (!specifier) continue;
 
-    const clause = statement.importClause;
-    if (clause.name)
-      addUnique(bindings, clause.name.text, {
-        name: "default",
-        source: specifier,
-      });
-
-    const namedBindings = clause.namedBindings;
-    if (namedBindings && ts.isNamespaceImport(namedBindings)) {
-      addUnique(bindings, namedBindings.name.text, {
-        name: "*",
-        source: specifier,
-      });
-    }
-    if (namedBindings && ts.isNamedImports(namedBindings)) {
-      for (const element of namedBindings.elements) {
-        addUnique(bindings, element.name.text, {
-          name: (element.propertyName ?? element.name).text,
+    for (const binding of statement.specifiers) {
+      if (binding.type === "ImportDefaultSpecifier")
+        addUnique(bindings, binding.local.name, {
+          name: "default",
           source: specifier,
         });
-      }
+      if (binding.type === "ImportNamespaceSpecifier")
+        addUnique(bindings, binding.local.name, {
+          name: "*",
+          source: specifier,
+        });
+      if (binding.type === "ImportSpecifier")
+        addUnique(bindings, binding.local.name, {
+          name:
+            binding.imported.type === "Identifier"
+              ? binding.imported.name
+              : binding.imported.value,
+          source: specifier,
+        });
     }
   }
   return bindings;
 };
 
-const collectDeclarations = (sourceFile: ts.SourceFile, file: string) => {
+const collectDeclarations = (program: Node, file: string) => {
   const declarations = new Map<string, Declaration | null>();
-  const visit = (node: ts.Node): void => {
+  walkAst(program, (node) => {
     const name = declarationName(node);
     if (name) addUnique(declarations, name, { file, node });
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
+  });
   return declarations;
 };
 
@@ -142,125 +131,136 @@ const resolveModuleFile = (
   return candidates.find((candidate) => files.has(candidate));
 };
 
-const propertyName = (
-  name: ts.PropertyName | undefined,
-): string | undefined => {
-  if (!name) return undefined;
+/** A static identifier, string or numeric member name. */
+const propertyName = (member: Node): string | undefined => {
   if (
-    ts.isIdentifier(name) ||
-    ts.isStringLiteral(name) ||
-    ts.isNumericLiteral(name)
-  ) {
-    return name.text;
-  }
+    member.type !== "Property" &&
+    member.type !== "MethodDefinition" &&
+    member.type !== "TSAbstractMethodDefinition"
+  )
+    return undefined;
+  if (member.computed) return undefined;
+  const { key } = member;
+  if (key.type === "Identifier") return key.name;
+  if (key.type === "Literal" && typeof key.value === "string") return key.value;
+  if (key.type === "Literal" && typeof key.value === "number")
+    return String(key.value);
   return undefined;
 };
 
-const commandInitializer = (
-  command: ts.ObjectLiteralElementLike,
-): ts.Node | undefined => {
-  if (ts.isPropertyAssignment(command)) return command.initializer;
-  if (ts.isMethodDeclaration(command)) return command;
-  if (ts.isShorthandPropertyAssignment(command)) return command.name;
-  return undefined;
+const commandInitializer = (command: Node): Node | undefined => {
+  if (command.type !== "Property" || command.kind !== "init") return undefined;
+  if (command.shorthand) return command.key;
+  return command.value;
 };
 
-const unwrapExpression = (node: ts.Node): ts.Node => {
+/** Parentheses, type assertions and optional chains do not change the value. */
+const unwrapExpression = (node: Node): Node => {
   if (
-    ts.isParenthesizedExpression(node) ||
-    ts.isAsExpression(node) ||
-    ts.isTypeAssertionExpression(node) ||
-    ts.isSatisfiesExpression(node)
+    node.type === "ParenthesizedExpression" ||
+    node.type === "TSAsExpression" ||
+    node.type === "TSTypeAssertion" ||
+    node.type === "TSSatisfiesExpression" ||
+    node.type === "ChainExpression"
   ) {
     return unwrapExpression(node.expression);
   }
   return node;
 };
 
-const commandObjectRegistrations = (
-  sourceFile: ts.SourceFile,
-  file: string,
-) => {
-  const registrations: CommandRegistration[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      (ts.isShorthandPropertyAssignment(node) ||
-        ts.isMethodDeclaration(node) ||
-        ts.isGetAccessorDeclaration(node)) &&
-      propertyName(node.name) === "commands"
-    )
-      throw new Error(`${file}: command registry shape cannot be censused`);
-    if (
-      ts.isPropertyAssignment(node) &&
-      propertyName(node.name) === "commands"
-    ) {
-      const object = unwrapExpression(node.initializer);
-      if (!ts.isObjectLiteralExpression(object))
-        throw new Error(
-          `${file}: command registry must be an object literal for the census`,
-        );
-      for (const command of object.properties) {
-        const name = propertyName(command.name);
-        const initializer = commandInitializer(command);
-        if (!name || !initializer)
-          throw new Error(
-            `${file}: command registration cannot be censused: ${command.getText(sourceFile)}`,
-          );
-        registrations.push({ file, name, initializer });
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  return registrations;
-};
+const isFunctionScope = (node: Node) =>
+  node.type === "ArrowFunctionExpression" ||
+  node.type === "FunctionExpression" ||
+  node.type === "FunctionDeclaration" ||
+  node.type === "MethodDefinition" ||
+  node.type === "TSAbstractMethodDefinition" ||
+  node.type === "ClassDeclaration" ||
+  node.type === "ClassExpression";
 
-const declarationValue = (declaration: Declaration): ts.Node => {
-  if (
-    ts.isVariableDeclaration(declaration.node) &&
-    declaration.node.initializer
-  ) {
-    return declaration.node.initializer;
-  }
-  return declaration.node;
-};
-
-const returnedExpressions = (node: ts.Node): ReturnedExpression[] => {
+const returnedExpressions = (node: Node): ReturnedExpression[] => {
   const callable = unwrapExpression(node);
-  if (ts.isArrowFunction(callable) && !ts.isBlock(callable.body)) {
+  if (callable.type === "ArrowFunctionExpression" && callable.expression) {
     return [{ expression: callable.body }];
   }
 
   const body =
-    ts.isArrowFunction(callable) ||
-    ts.isFunctionExpression(callable) ||
-    ts.isFunctionDeclaration(callable) ||
-    ts.isMethodDeclaration(callable)
+    callable.type === "ArrowFunctionExpression" ||
+    callable.type === "FunctionExpression" ||
+    callable.type === "FunctionDeclaration"
       ? callable.body
       : undefined;
   if (!body) return [];
 
   const expressions: ReturnedExpression[] = [];
-  const visit = (current: ts.Node): void => {
-    if (
-      current !== body &&
-      (ts.isArrowFunction(current) ||
-        ts.isFunctionExpression(current) ||
-        ts.isFunctionDeclaration(current) ||
-        ts.isMethodDeclaration(current) ||
-        ts.isClassDeclaration(current) ||
-        ts.isClassExpression(current))
-    ) {
-      return;
+  walkAst(body, (current, ancestors) => {
+    if (current === body) return true;
+    if (isFunctionScope(current)) {
+      // Object accessors are not separate methods; their returns stay visible.
+      const parent = ancestors.at(-1);
+      return (
+        current.type === "FunctionExpression" &&
+        parent?.type === "Property" &&
+        parent.kind !== "init"
+      );
     }
-    if (ts.isReturnStatement(current)) {
-      expressions.push({ expression: current.expression });
-      return;
+    if (current.type === "ReturnStatement") {
+      expressions.push({ expression: current.argument ?? undefined });
+      return false;
     }
-    ts.forEachChild(current, visit);
-  };
-  visit(body);
+    return true;
+  });
   return expressions;
+};
+
+const commandObjectRegistrations = (
+  program: Node,
+  text: string,
+  file: string,
+) => {
+  const registrations: CommandRegistration[] = [];
+  walkAst(program, (node, ancestors) => {
+    if (propertyName(node) !== "commands") return;
+    if (
+      node.type === "MethodDefinition" ||
+      node.type === "TSAbstractMethodDefinition"
+    ) {
+      if (node.kind === "method" || node.kind === "get")
+        throw new Error(`${file}: command registry shape cannot be censused`);
+      return;
+    }
+    // Destructuring patterns bind names; only object literals register commands.
+    if (
+      node.type !== "Property" ||
+      ancestors.at(-1)?.type !== "ObjectExpression"
+    )
+      return;
+    if (node.shorthand || node.method || node.kind === "get")
+      throw new Error(`${file}: command registry shape cannot be censused`);
+    if (node.kind !== "init") return;
+    const object = unwrapExpression(node.value);
+    if (object.type !== "ObjectExpression")
+      throw new Error(
+        `${file}: command registry must be an object literal for the census`,
+      );
+    for (const command of object.properties) {
+      const name = propertyName(command);
+      const initializer = commandInitializer(command);
+      if (!name || !initializer)
+        throw new Error(
+          `${file}: command registration cannot be censused: ${nodeText(text, command)}`,
+        );
+      registrations.push({ file, name, initializer });
+    }
+  });
+  return registrations;
+};
+
+/** A variable's initializer; null for a variable without one. */
+const declarationValue = (declaration: Declaration): Node | null => {
+  if (declaration.node.type === "VariableDeclarator")
+    return declaration.node.init;
+  if (declaration.node.type === "CatchClause") return null;
+  return declaration.node;
 };
 
 /**
@@ -275,17 +275,12 @@ export const censusUndescribedCanonicalCommands = (
   const files = new Map<string, FileIndex>();
   for (const { file, source } of sources) {
     const normalizedFile = path.posix.normalize(file);
-    const sourceFile = ts.createSourceFile(
-      normalizedFile,
-      source,
-      ts.ScriptTarget.Latest,
-      true,
-      normalizedFile.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-    );
+    const { program } = parseSourceModule(normalizedFile, source);
     files.set(normalizedFile, {
-      sourceFile,
-      declarations: collectDeclarations(sourceFile, normalizedFile),
-      imports: importedBindings(sourceFile),
+      program,
+      text: source,
+      declarations: collectDeclarations(program, normalizedFile),
+      imports: importedBindings(program),
     });
   }
 
@@ -320,18 +315,21 @@ export const censusUndescribedCanonicalCommands = (
     visited: Set<string>,
   ): boolean => {
     const declarationNameValue = declarationName(declaration.node);
-    const key = `${declaration.file}#${declarationNameValue ?? declaration.node.pos}`;
+    const key = `${declaration.file}#${declarationNameValue ?? declaration.node.start}`;
     if (visited.has(key)) return false;
     const nextVisited = new Set(visited);
     nextVisited.add(key);
 
     const value = declarationValue(declaration);
-    if (ts.isVariableDeclaration(declaration.node)) {
-      if (declaration.node.initializer === undefined) return false;
-      const initializer = unwrapExpression(declaration.node.initializer);
+    if (
+      declaration.node.type === "VariableDeclarator" ||
+      declaration.node.type === "CatchClause"
+    ) {
+      if (value === null) return false;
+      const initializer = unwrapExpression(value);
       if (
-        ts.isArrowFunction(initializer) ||
-        ts.isFunctionExpression(initializer)
+        initializer.type === "ArrowFunctionExpression" ||
+        initializer.type === "FunctionExpression"
       ) {
         const returns = returnedExpressions(initializer);
         return (
@@ -346,7 +344,7 @@ export const censusUndescribedCanonicalCommands = (
       return proveExpression(declaration.file, value, nextVisited);
     }
 
-    const returns = returnedExpressions(value);
+    const returns = value === null ? [] : returnedExpressions(value);
     return (
       returns.length > 0 &&
       returns.every(
@@ -359,19 +357,19 @@ export const censusUndescribedCanonicalCommands = (
 
   const proveExpression = (
     file: string,
-    input: ts.Node,
+    input: Node,
     visited: Set<string>,
   ): boolean => {
     const expression = unwrapExpression(input);
     if (
-      ts.isCallExpression(expression) &&
-      ts.isIdentifier(unwrapExpression(expression.expression))
+      expression.type === "CallExpression" &&
+      unwrapExpression(expression.callee).type === "Identifier"
     ) {
-      const callee = unwrapExpression(expression.expression);
-      if (ts.isIdentifier(callee) && isCanonicalWrapper(file, callee.text))
+      const callee = unwrapExpression(expression.callee);
+      if (callee.type === "Identifier" && isCanonicalWrapper(file, callee.name))
         return true;
-      if (ts.isIdentifier(callee)) {
-        const declaration = resolveDeclaration(file, callee.text);
+      if (callee.type === "Identifier") {
+        const declaration = resolveDeclaration(file, callee.name);
         return (
           declaration !== undefined && proveDeclaration(declaration, visited)
         );
@@ -379,25 +377,25 @@ export const censusUndescribedCanonicalCommands = (
       return false;
     }
 
-    if (ts.isIdentifier(expression)) {
-      if (isCanonicalWrapper(file, expression.text)) return true;
-      const declaration = resolveDeclaration(file, expression.text);
+    if (expression.type === "Identifier") {
+      if (isCanonicalWrapper(file, expression.name)) return true;
+      const declaration = resolveDeclaration(file, expression.name);
       return (
         declaration !== undefined && proveDeclaration(declaration, visited)
       );
     }
 
-    if (ts.isConditionalExpression(expression)) {
+    if (expression.type === "ConditionalExpression") {
       return (
-        proveExpression(file, expression.whenTrue, visited) &&
-        proveExpression(file, expression.whenFalse, visited)
+        proveExpression(file, expression.consequent, visited) &&
+        proveExpression(file, expression.alternate, visited)
       );
     }
     return false;
   };
 
-  const provesFactory = (file: string, initializer: ts.Node): boolean => {
-    if (ts.isIdentifier(unwrapExpression(initializer))) {
+  const provesFactory = (file: string, initializer: Node): boolean => {
+    if (unwrapExpression(initializer).type === "Identifier") {
       return proveExpression(file, initializer, new Set());
     }
     const returns = returnedExpressions(initializer);
@@ -413,9 +411,13 @@ export const censusUndescribedCanonicalCommands = (
 
   const registrations = sources.flatMap(({ file }) => {
     const normalizedFile = path.posix.normalize(file);
-    const sourceFile = files.get(normalizedFile)?.sourceFile;
-    return sourceFile
-      ? commandObjectRegistrations(sourceFile, normalizedFile)
+    const fileIndex = files.get(normalizedFile);
+    return fileIndex
+      ? commandObjectRegistrations(
+          fileIndex.program,
+          fileIndex.text,
+          normalizedFile,
+        )
       : [];
   });
 

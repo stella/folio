@@ -11,10 +11,9 @@ const BASELINE_PATH = path.join(import.meta.dir, "typecheck-budget.json");
 const BASELINE_RELATIVE_PATH = "scripts/typecheck-budget.json";
 // Compiler-work counters remain a separate metric: Bun check does not expose
 // Types/Instantiations. Preserve this counter baseline independently of correctness checks.
-const NATIVE_TSC = path.join(
-  REPO_ROOT,
-  "node_modules/@typescript/native/bin/tsc",
-);
+// The TypeScript 7 projects are measured with the tsrs CLI, which accepts the
+// same flags as `tsc` and prints the same extended diagnostics.
+const NATIVE_TSC = path.join(REPO_ROOT, "node_modules/tsrs/bin/tsrs");
 const CLASSIC_TSC = path.join(REPO_ROOT, "node_modules/typescript/bin/tsc");
 
 const PROJECTS = [

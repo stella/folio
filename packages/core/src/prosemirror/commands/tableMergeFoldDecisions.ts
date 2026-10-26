@@ -2,6 +2,16 @@ import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
+import type {
+  CellMargins,
+  ConditionalFormatStyle,
+  PreservedMarkup,
+  ShadingProperties,
+  TableCellBorders,
+  TableMeasurement,
+  TextDirection,
+} from "@stll/docx-core/model";
+
 import {
   isCellMergeContinuation,
   isCellMergeStart,
@@ -22,7 +32,11 @@ export const tableMergeFoldDecisions = ({
   table,
   mode,
   revisionSet,
-}: TableMergeFoldDecisionsOptions) => {
+}: TableMergeFoldDecisionsOptions): {
+  folds: Map<number, boolean>;
+  origins: Set<number>;
+  invalid: Set<number>;
+} => {
   const decisions = new Map<number, boolean>();
   const origins = new Set<number>();
   const invalid = new Set<number>();
@@ -105,7 +119,27 @@ export const tableMergeFoldDecisions = ({
 };
 
 /** Persist an implicit merge origin even when reader rules retain its continuation. */
-export const resolvedTableMergeOriginAttrs = (cell: PMNode) => ({
+export const resolvedTableMergeOriginAttrs = (
+  cell: PMNode,
+): {
+  _originalFormatting: {
+    vMerge: string;
+    width?: TableMeasurement;
+    borders?: TableCellBorders;
+    margins?: CellMargins;
+    shading?: ShadingProperties;
+    verticalAlign?: "top" | "center" | "bottom";
+    textDirection?: TextDirection;
+    gridSpan?: number;
+    fitText?: boolean;
+    noWrap?: boolean;
+    hideMark?: boolean;
+    conditionalFormat?: ConditionalFormatStyle;
+    preserved?: PreservedMarkup;
+    sourceXml?: string;
+  };
+  _preserveVMergeRestart: boolean;
+} => ({
   ...cell.attrs,
   _originalFormatting: {
     ...expectTableCellAttrs(cell)._originalFormatting,
@@ -125,7 +159,26 @@ export const resolvedVisibleTableCellMergeAttrs = ({
   cell,
   mode,
   origin,
-}: ResolvedVisibleTableCellMergeOptions) => {
+}: ResolvedVisibleTableCellMergeOptions): {
+  cellMarker: null;
+  _originalFormatting: {
+    width?: TableMeasurement;
+    borders?: TableCellBorders;
+    margins?: CellMargins;
+    shading?: ShadingProperties;
+    verticalAlign?: "top" | "center" | "bottom";
+    textDirection?: TextDirection;
+    gridSpan?: number;
+    vMerge?: "restart" | "continue";
+    fitText?: boolean;
+    noWrap?: boolean;
+    hideMark?: boolean;
+    conditionalFormat?: ConditionalFormatStyle;
+    preserved?: PreservedMarkup;
+    sourceXml?: string;
+  };
+  _preserveVMergeRestart: boolean;
+} => {
   const attrs = expectTableCellAttrs(cell);
   const marker = attrs.cellMarker;
   if (marker?.kind !== "merge") return panic("Cell has no merge revision");

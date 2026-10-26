@@ -331,7 +331,13 @@ export const rewriteStreamingXmlDecimalAttributes = (
 export const scanStreamingXmlNumericIdAttributes = (
   xml: string,
   visitOpenTag: OpenTagScanVisitor,
-) => {
+):
+  | {
+      status: "unsupported";
+    }
+  | {
+      status: "scanned";
+    } => {
   const parsed = parseStreamingXmlInternal({
     xml,
     mode: "attributes",
@@ -349,7 +355,13 @@ export const scanStreamingXmlNumericIdAttributes = (
 export const scanStreamingXmlElements = (
   xml: string,
   visitElement: ElementScanVisitor,
-) => {
+):
+  | {
+      status: "unsupported";
+    }
+  | {
+      status: "scanned";
+    } => {
   const parsed = parseStreamingXmlInternal({
     xml,
     mode: "attributes",

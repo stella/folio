@@ -61,7 +61,11 @@ export type LayoutSchedulerConfig<TState> = {
 };
 
 /** Interactive transaction layout timing shared by framework adapters. */
-export const TRANSACTION_LAYOUT_TIMING = {
+export const TRANSACTION_LAYOUT_TIMING: {
+  readonly debounceMs: 32;
+  readonly maxDelayMs: 96;
+  readonly leadingFrame: true;
+} = {
   debounceMs: 32,
   maxDelayMs: 96,
   leadingFrame: true,

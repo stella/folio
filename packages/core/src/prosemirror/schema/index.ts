@@ -6,6 +6,8 @@
  * ExtensionManager directly.
  */
 
+import type { Schema } from "prosemirror-model";
+
 import { ExtensionManager } from "../extensions/ExtensionManager";
 // oxlint-disable-next-line import/no-cycle -- singleton registry; StarterKit pulls in extensions that read back the singleton at runtime
 import { createStarterKit } from "../extensions/StarterKit";
@@ -166,8 +168,8 @@ for (const commandName of requiredCommands) {
   mgr.requireCommand(commandName);
 }
 
-export const singletonManager = mgr;
-export const schema = mgr.getSchema();
+export const singletonManager: ExtensionManager = mgr;
+export const schema: Schema = mgr.getSchema();
 
 /**
  * Export types for convenience

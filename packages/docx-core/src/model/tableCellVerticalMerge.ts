@@ -7,5 +7,6 @@ export const TABLE_CELL_VERTICAL_MERGES = {
   CONTINUE: "continue",
 } as const;
 
-export const tableCellVerticalMerge = (value: TableCellFormatting["vMerge"]) =>
-  value ?? TABLE_CELL_VERTICAL_MERGES.NONE;
+export const tableCellVerticalMerge = (
+  value: TableCellFormatting["vMerge"],
+): "none" | "restart" | "continue" => value ?? TABLE_CELL_VERTICAL_MERGES.NONE;

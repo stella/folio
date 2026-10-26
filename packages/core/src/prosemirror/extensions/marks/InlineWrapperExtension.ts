@@ -22,6 +22,7 @@ import {
 } from "../../inlineWrapperStack";
 import type { InlineWrapperLayer } from "../../schema/marks";
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
 export const INLINE_WRAPPER_MARK_NAME = "inlineWrapper";
 const INLINE_WRAPPER_HYPERLINK_ORIGIN_ATTRIBUTE =
@@ -64,7 +65,9 @@ const layerElement = (
   }
 };
 
-export const InlineWrapperExtension = createMarkExtension({
+export const InlineWrapperExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: INLINE_WRAPPER_MARK_NAME,
   schemaMarkName: INLINE_WRAPPER_MARK_NAME,
   markSpec: {

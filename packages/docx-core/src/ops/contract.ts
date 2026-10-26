@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import type {
   BlockContent,
@@ -6,6 +6,10 @@ import type {
   TableCell,
   TableRow,
 } from "../model/document";
+
+const DocumentOpsContractErrorBase: TaggedErrorClass<"DocumentOpsContractError"> =
+  TaggedError("DocumentOpsContractError");
+
 /**
  * The seed contract: what a document must be for operations to apply to it.
  *
@@ -53,9 +57,7 @@ import {
 import { documentStories, replaceStoryBody, storyBody } from "./stories";
 
 /** A document that does not meet the seed contract. */
-export class DocumentOpsContractError extends TaggedError(
-  "DocumentOpsContractError",
-)<{
+export class DocumentOpsContractError extends DocumentOpsContractErrorBase<{
   message: string;
   reason: DocumentOpRefusalReason;
 }> {}

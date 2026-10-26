@@ -827,7 +827,7 @@ function parseDocDefaults(
 export function resolveStyleInheritance(
   style: Style,
   styleMap: StyleMap,
-  visited = new Set<string>(),
+  visited: Set<string> = new Set<string>(),
 ): Style {
   // Prevent circular inheritance
   if (visited.has(style.styleId)) {

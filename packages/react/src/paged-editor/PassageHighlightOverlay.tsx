@@ -14,7 +14,7 @@
  * method, so this overlay never has to reason about the document itself.
  */
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, JSX } from "react";
 
 import type { SelectionRect } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 
@@ -35,7 +35,7 @@ const overlayStyles: CSSProperties = {
 
 export const PassageHighlightOverlay = ({
   rects,
-}: PassageHighlightOverlayProps) => {
+}: PassageHighlightOverlayProps): JSX.Element | null => {
   if (rects.length === 0) {
     return null;
   }

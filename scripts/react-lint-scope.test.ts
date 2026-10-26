@@ -10,17 +10,43 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import ts from "typescript";
 
 import { reactCompilerRules } from "@stll/oxlint-config";
 
 import config, { nonReactPackageOverride } from "../oxlint.config.ts";
+import { type Node, parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const isReactModule = (specifier: string) =>
   /^(?:react|react-dom)(?:\/|$)/u.test(specifier);
 const isReactRule = (rule: string) =>
   /^(?:react|react-hooks|react-compiler)\//u.test(rule);
+/** A string literal or a template literal without substitutions. */
+const stringLiteralText = (node: Node | undefined): string | undefined => {
+  if (node?.type === "Literal") {
+    const value: unknown = node.value;
+    return typeof value === "string" ? value : undefined;
+  }
+  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) {
+    return node.quasis[0]?.value.cooked ?? undefined;
+  }
+  return undefined;
+};
+/** The key of a plain `key: value` property with an identifier or string key. */
+const propertyAssignmentName = (node: Node): string | undefined => {
+  if (
+    node.type !== "Property" ||
+    node.kind !== "init" ||
+    node.method ||
+    node.shorthand ||
+    node.computed
+  ) {
+    return undefined;
+  }
+  return node.key.type === "Identifier"
+    ? node.key.name
+    : stringLiteralText(node.key);
+};
 const sourceImportsReact = (source: string, filename = "source.ts") => {
   // The SFC parser excludes templates, comments and styles from module imports.
   const scripts = [source];
@@ -36,57 +62,42 @@ const sourceImportsReact = (source: string, filename = "source.ts") => {
       ),
     );
   }
+  // Vue scripts are TypeScript-shaped; parse them as TypeScript.
+  const scriptName = filename.endsWith(".vue") ? `${filename}.ts` : filename;
   return scripts.some((script) => {
-    const file = ts.createSourceFile(
-      filename,
-      script,
-      ts.ScriptTarget.Latest,
-      true,
-    );
+    const { program } = parseSourceModule(scriptName, script);
     let found = false;
-    const visit = (node: ts.Node) => {
+    walkAst(program, (node) => {
       if (
-        (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-        node.moduleSpecifier &&
-        ts.isStringLiteralLike(node.moduleSpecifier) &&
-        isReactModule(node.moduleSpecifier.text)
+        (node.type === "ImportDeclaration" ||
+          node.type === "ExportNamedDeclaration" ||
+          node.type === "ExportAllDeclaration") &&
+        node.source &&
+        isReactModule(node.source.value)
       ) {
         found = true;
       }
       if (
-        ts.isImportEqualsDeclaration(node) &&
-        ts.isExternalModuleReference(node.moduleReference) &&
-        node.moduleReference.expression &&
-        ts.isStringLiteralLike(node.moduleReference.expression) &&
-        isReactModule(node.moduleReference.expression.text)
+        node.type === "TSImportEqualsDeclaration" &&
+        node.moduleReference.type === "TSExternalModuleReference" &&
+        isReactModule(node.moduleReference.expression.value)
       ) {
         found = true;
       }
-      if (
-        ts.isImportTypeNode(node) &&
-        ts.isLiteralTypeNode(node.argument) &&
-        ts.isStringLiteralLike(node.argument.literal) &&
-        isReactModule(node.argument.literal.text)
-      ) {
+      if (node.type === "TSImportType" && isReactModule(node.source.value)) {
         found = true;
       }
-      if (
-        ts.isCallExpression(node) &&
-        (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-          (ts.isIdentifier(node.expression) &&
-            node.expression.text === "require"))
-      ) {
-        const argument = node.arguments.at(0);
-        if (
-          argument &&
-          ts.isStringLiteralLike(argument) &&
-          isReactModule(argument.text)
-        )
-          found = true;
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(file);
+      let argument: Node | undefined;
+      if (node.type === "ImportExpression") argument = node.source;
+      else if (
+        node.type === "CallExpression" &&
+        node.callee.type === "Identifier" &&
+        node.callee.name === "require"
+      )
+        argument = node.arguments.at(0);
+      const specifier = stringLiteralText(argument);
+      if (specifier !== undefined && isReactModule(specifier)) found = true;
+    });
     return found;
   });
 };
@@ -143,49 +154,34 @@ describe("React lint package scope", () => {
     expect(source).not.toMatch(
       /WarningsExpireAt|WarningPolicyAt|Date\.(?:now|parse)\(/u,
     );
-    const file = ts.createSourceFile(
-      "oxlint.config.ts",
-      source,
-      ts.ScriptTarget.Latest,
-      true,
+    const { program } = parseSourceModule("oxlint.config.ts", source);
+    const declaration = program.body.find(
+      (statement) => statement.type === "ExportDefaultDeclaration",
     );
-    const declaration = file.statements.find(ts.isExportAssignment);
-    if (!declaration || !ts.isCallExpression(declaration.expression)) {
+    if (declaration?.declaration.type !== "CallExpression") {
       panic("Lint config must export the shared library config call");
     }
-    const options = declaration.expression.arguments.at(0);
-    if (!options || !ts.isObjectLiteralExpression(options)) {
+    const options = declaration.declaration.arguments.at(0);
+    if (options?.type !== "ObjectExpression") {
       panic("Lint config options must be inspectable");
     }
     const rulesProperty = options.properties.find(
-      (property) =>
-        ts.isPropertyAssignment(property) &&
-        (ts.isIdentifier(property.name) ||
-          ts.isStringLiteralLike(property.name)) &&
-        property.name.text === "rules",
+      (property) => propertyAssignmentName(property) === "rules",
     );
     if (
-      !rulesProperty ||
-      !ts.isPropertyAssignment(rulesProperty) ||
-      !ts.isObjectLiteralExpression(rulesProperty.initializer)
+      rulesProperty?.type !== "Property" ||
+      rulesProperty.value.type !== "ObjectExpression"
     ) {
       panic("Local lint rules must be an explicit object");
     }
-    for (const property of rulesProperty.initializer.properties) {
-      if (
-        !ts.isPropertyAssignment(property) ||
-        !(
-          ts.isIdentifier(property.name) ||
-          ts.isStringLiteralLike(property.name)
-        )
-      ) {
+    for (const property of rulesProperty.value.properties) {
+      const name = propertyAssignmentName(property);
+      if (name === undefined) {
         panic(
           "Local rule spreads and computed keys can override shared Compiler policy",
         );
       }
-      expect(compilerRules, property.name.text).not.toContain(
-        property.name.text,
-      );
+      expect(compilerRules, name).not.toContain(name);
     }
     expect(config.rules).not.toHaveProperty("react/hooks");
     for (const override of config.overrides ?? []) {

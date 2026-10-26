@@ -1,10 +1,13 @@
 /** An authored automatic note mark: invisible, but retained through PM JSON and edits. */
 import { expectNoteMarkerAttrs } from "../../../internal/noteMarkerAttrs";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 export const NOTE_MARKER_NODE_NAME = "noteMarker";
 
-export const NoteMarkerExtension = createNodeExtension({
+export const NoteMarkerExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: NOTE_MARKER_NODE_NAME,
   schemaNodeName: NOTE_MARKER_NODE_NAME,
   nodeSpec: {

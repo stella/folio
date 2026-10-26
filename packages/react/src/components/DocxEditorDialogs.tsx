@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { type JSX, lazy, Suspense } from "react";
 
 import type {
   EndnoteProperties,
@@ -145,7 +145,7 @@ export function DocxEditorDialogs({
   footnoteProperties,
   insertSymbol,
   setNumberingValue,
-}: DocxEditorDialogsProps) {
+}: DocxEditorDialogsProps): JSX.Element {
   return (
     <Suspense fallback={null}>
       {findReplace.state.dialog.status === "open" && (

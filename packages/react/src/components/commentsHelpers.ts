@@ -15,7 +15,10 @@ import { clampCommentMarkRange } from "./commentAnchors";
 export const PENDING_COMMENT_ID = -1;
 
 /** Stable empty anchor positions Map used as the initial state. */
-export const EMPTY_ANCHOR_POSITIONS = new Map<string, number>();
+export const EMPTY_ANCHOR_POSITIONS: Map<string, number> = new Map<
+  string,
+  number
+>();
 
 export { allocateCommentId, seedCommentIdAbove };
 

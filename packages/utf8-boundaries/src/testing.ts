@@ -1,8 +1,13 @@
 import { panic } from "better-result";
 import fc from "fast-check";
 
-export const TEXT_BOUNDARIES = [7, 4096, 16 * 1024, 64 * 1024] as const;
-export const astralText = fc
+export const TEXT_BOUNDARIES: readonly [7, 4096, number, number] = [
+  7,
+  4096,
+  16 * 1024,
+  64 * 1024,
+] as const;
+export const astralText: fc.Arbitrary<string> = fc
   .integer({ min: 0x10000, max: 0x10ffff })
   .map((point) => String.fromCodePoint(point));
 export const combiningText: fc.Arbitrary<string> = fc.constantFrom(
@@ -14,14 +19,14 @@ export const rtlText: fc.Arbitrary<string> = fc.constantFrom(
   "שָׁלוֹם",
   "مرحبا",
 );
-export const edgeText = fc.oneof(
+export const edgeText: fc.Arbitrary<string> = fc.oneof(
   astralText,
   combiningText,
   rtlText,
   fc.constantFrom("👩🏽‍⚖️", "🇨🇿"),
 );
 
-export const boundaryOffset = fc
+export const boundaryOffset: fc.Arbitrary<number> = fc
   .tuple(
     fc.constantFrom(...TEXT_BOUNDARIES),
     fc.integer({ min: 1, max: 4 }),
@@ -30,7 +35,7 @@ export const boundaryOffset = fc
   .map(([size, multiple, delta]) => size * multiple + delta);
 
 /** ASCII padding positions the edge in both UTF-16 units and UTF-8 bytes. */
-export const textAtBoundary = fc
+export const textAtBoundary: fc.Arbitrary<string> = fc
   .tuple(boundaryOffset, edgeText, fc.array(edgeText, { maxLength: 3 }))
   .map(
     ([offset, edge, suffix]) =>
@@ -38,7 +43,13 @@ export const textAtBoundary = fc
   );
 
 /** Exercise every serializer at each declared boundary, rather than sampling the set. */
-export const boundaryTextCases = (astral: string, suffix: string) =>
+export const boundaryTextCases = (
+  astral: string,
+  suffix: string,
+): {
+  boundary: number;
+  text: string;
+}[] =>
   TEXT_BOUNDARIES.flatMap((boundary) =>
     [-1, 0, 1].flatMap((shift) =>
       [astral, "e\u0301", "שָׁלוֹם", "👩🏽‍⚖️", "🇨🇿"].map((cluster) => ({

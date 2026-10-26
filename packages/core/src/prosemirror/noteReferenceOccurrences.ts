@@ -1,19 +1,26 @@
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 import { isHistoryTransaction } from "prosemirror-history";
 import { Fragment, Mark, type Node as PMNode, Slice } from "prosemirror-model";
 import { Plugin, type Transaction } from "prosemirror-state";
 
 import { readFootnoteRefMarkAttrs } from "./attrs";
 
-export class NoteReferenceEditRefusal extends TaggedError(
-  "NoteReferenceEditRefusal",
-)<{
+const NoteReferenceEditRefusalBase: TaggedErrorClass<"NoteReferenceEditRefusal"> =
+  TaggedError("NoteReferenceEditRefusal");
+
+export class NoteReferenceEditRefusal extends NoteReferenceEditRefusalBase<{
   message: string;
 }> {}
 
-export class NoteReferenceReplayDefect extends TaggedError(
-  "NoteReferenceReplayDefect",
-)<{
+const NoteReferenceReplayDefectBase: TaggedErrorClass<"NoteReferenceReplayDefect"> =
+  TaggedError("NoteReferenceReplayDefect");
+
+export class NoteReferenceReplayDefect extends NoteReferenceReplayDefectBase<{
   message: string;
 }> {}
 
@@ -212,7 +219,7 @@ export const assertNoteReferenceOccurrences = (doc: PMNode): void => {
 };
 
 /** Production edit boundary: refuse before committing an unsaveable occurrence. */
-export const noteReferenceOccurrencePlugin = () => {
+export const noteReferenceOccurrencePlugin = (): Plugin => {
   const { validate } = createOccurrenceValidator();
   return new Plugin({
     filterTransaction(transaction) {

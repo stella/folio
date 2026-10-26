@@ -1,4 +1,4 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 
@@ -29,9 +29,10 @@ type PreviousReferences = NonNullable<
   SectionPropertyChange["previousReferences"]
 >;
 
-export class InvalidSectionReferenceHistoryError extends TaggedError(
-  "InvalidSectionReferenceHistoryError",
-)<{
+const InvalidSectionReferenceHistoryErrorBase: TaggedErrorClass<"InvalidSectionReferenceHistoryError"> =
+  TaggedError("InvalidSectionReferenceHistoryError");
+
+export class InvalidSectionReferenceHistoryError extends InvalidSectionReferenceHistoryErrorBase<{
   message: string;
 }> {}
 

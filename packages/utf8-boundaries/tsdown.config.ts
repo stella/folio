@@ -8,7 +8,7 @@ export default defineConfig({
   },
   format: ["esm"],
   platform: "neutral",
-  dts: true,
+  dts: { generator: "oxc" },
   outDir: "dist",
   clean: true,
 });

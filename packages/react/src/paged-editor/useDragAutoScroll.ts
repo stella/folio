@@ -28,7 +28,10 @@ export type DragAutoScrollOptions = {
 export function useDragAutoScroll({
   pagesContainerRef,
   onScrollExtendSelection,
-}: DragAutoScrollOptions) {
+}: DragAutoScrollOptions): {
+  updateMousePosition: (clientX: number, clientY: number) => void;
+  stopAutoScroll: () => void;
+} {
   const rafIdRef = useRef<number | null>(null);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const activeRef = useRef(false);
@@ -38,7 +41,7 @@ export function useDragAutoScroll({
     [pagesContainerRef],
   );
 
-  const stopAutoScroll = useCallback(() => {
+  const stopAutoScroll = useCallback((): void => {
     activeRef.current = false;
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current);
@@ -96,7 +99,7 @@ export function useDragAutoScroll({
    * and start/stop auto-scroll as needed.
    */
   const updateMousePosition = useCallback(
-    (clientX: number, clientY: number) => {
+    (clientX: number, clientY: number): void => {
       lastMouseRef.current = { x: clientX, y: clientY };
       if (!activeRef.current) {
         const container = getScrollParent();

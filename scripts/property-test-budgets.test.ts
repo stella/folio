@@ -24,11 +24,20 @@
 
 import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+import type { CallExpression } from "oxc-parser";
 
 import { scanTestTimeout } from "../test/scan-timeout";
 import timings from "./ci-test-timings.json";
+import {
+  createLineIndex,
+  type Node,
+  parseSourceModule,
+  type Program,
+  staticMemberName,
+  walkAst,
+} from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const SCANNED_ROOTS = ["packages", "scripts", "parity"] as const;
@@ -41,46 +50,61 @@ const REQUIRED_TIMEOUT_HEADROOM = 0.25;
 
 setDefaultTimeout(scanTestTimeout(120_000));
 
+/** The name a `.name` access reads; `[name]` and other callees have none. */
+const dotName = (node: Node): string | undefined =>
+  node.type === "MemberExpression" && !node.computed
+    ? staticMemberName(node)
+    : undefined;
+
 /** `fc.assert(...)`, `fc.sample(...)`, `fc.check(...)`. */
-const callsFastCheck = (node: ts.CallExpression): boolean =>
-  ts.isPropertyAccessExpression(node.expression) &&
-  FAST_CHECK_DRIVERS.has(node.expression.name.text) &&
-  ts.isIdentifier(node.expression.expression) &&
-  node.expression.expression.text === "fc";
+const callsFastCheck = (node: CallExpression): boolean =>
+  FAST_CHECK_DRIVERS.has(dotName(node.callee) ?? "") &&
+  node.callee.type === "MemberExpression" &&
+  node.callee.object.type === "Identifier" &&
+  node.callee.object.name === "fc";
 
 /** `assertProperty(...)`: `fc.assert` through `propertyConfig`. */
-const callsAssertHelper = (node: ts.CallExpression): boolean =>
-  ts.isIdentifier(node.expression) && ASSERT_HELPERS.has(node.expression.text);
+const callsAssertHelper = (node: CallExpression): boolean =>
+  node.callee.type === "Identifier" && ASSERT_HELPERS.has(node.callee.name);
 
-const drivesFastCheck = (node: ts.CallExpression): boolean =>
+const drivesFastCheck = (node: CallExpression): boolean =>
   callsFastCheck(node) || callsAssertHelper(node);
 
+/** Whether `node` calls the function named `name` directly. */
+const callsNamed = (
+  node: Node | undefined,
+  name: string,
+): node is CallExpression =>
+  node?.type === "CallExpression" &&
+  node.callee.type === "Identifier" &&
+  node.callee.name === name;
+
 /** `test(...)`, `it(...)`, and their `.each` / `.skip` / `.failing` forms. */
-const isTestExpression = (expression: ts.Expression): boolean => {
-  if (ts.isIdentifier(expression)) return TEST_CALLEES.has(expression.text);
-  if (
-    ts.isPropertyAccessExpression(expression) ||
-    ts.isCallExpression(expression)
-  )
+const isTestExpression = (expression: Node): boolean => {
+  if (expression.type === "Identifier")
+    return TEST_CALLEES.has(expression.name);
+  if (expression.type === "MemberExpression" && !expression.computed)
+    return isTestExpression(expression.object);
+  if (expression.type === "CallExpression")
+    return isTestExpression(expression.callee);
+  // An optional chain is the access or call it wraps.
+  if (expression.type === "ChainExpression")
     return isTestExpression(expression.expression);
   return false;
 };
-const isTestCall = (node: ts.CallExpression): boolean =>
-  isTestExpression(node.expression);
+const isTestCall = (node: Node): node is CallExpression =>
+  node.type === "CallExpression" && isTestExpression(node.callee);
 
-const isAsyncTest = (call: ts.CallExpression): boolean => {
+const isAsyncTest = (call: CallExpression): boolean => {
   const body = call.arguments[1];
   if (
     body === undefined ||
-    (!ts.isArrowFunction(body) && !ts.isFunctionExpression(body))
+    (body.type !== "ArrowFunctionExpression" &&
+      body.type !== "FunctionExpression")
   ) {
     return false;
   }
-  return (
-    body.modifiers?.some(
-      (modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword,
-    ) === true
-  );
+  return body.async;
 };
 
 /**
@@ -89,74 +113,73 @@ const isAsyncTest = (call: ts.CallExpression): boolean => {
  * `numRuns` (100 by default), so any call through it counts as raising one
  * even when the literal it wraps omits the field.
  */
-const passesNumRuns = (call: ts.CallExpression): boolean => {
+const passesNumRuns = (call: CallExpression): boolean => {
   if (callsAssertHelper(call)) return true;
   const params = call.arguments.at(1);
   if (params === undefined) return false;
-  if (ts.isCallExpression(params)) {
-    return (
-      ts.isIdentifier(params.expression) &&
-      params.expression.text === RUN_COUNT_HELPER
-    );
+  if (params.type === "CallExpression") {
+    return callsNamed(params, RUN_COUNT_HELPER);
   }
   return (
-    ts.isObjectLiteralExpression(params) &&
+    params.type === "ObjectExpression" &&
     params.properties.some(
       (property) =>
-        (ts.isPropertyAssignment(property) ||
-          ts.isShorthandPropertyAssignment(property)) &&
-        ts.isIdentifier(property.name) &&
-        property.name.text === "numRuns",
+        property.type === "Property" &&
+        property.kind === "init" &&
+        !property.method &&
+        !property.computed &&
+        property.key.type === "Identifier" &&
+        property.key.name === "numRuns",
     )
   );
 };
 
 /** Resolve literal or constant numeric budgets without evaluating test code. */
-const budgetDeclarations = (sourceFile: ts.SourceFile) => {
-  const constants = new Map<string, ts.Expression[]>();
-  const collect = (node: ts.Node): void => {
+const budgetDeclarations = (program: Program) => {
+  const constants = new Map<string, Node[]>();
+  walkAst(program, (node, ancestors) => {
+    const list = ancestors.at(-1);
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      ts.isVariableDeclarationList(node.parent) &&
-      (node.parent.flags & ts.NodeFlags.Const) !== 0
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
+      node.init &&
+      list?.type === "VariableDeclaration" &&
+      // `await using` carries TypeScript's const flag too.
+      (list.kind === "const" || list.kind === "await using")
     ) {
-      const existing = constants.get(node.name.text);
-      if (existing) existing.push(node.initializer);
-      else constants.set(node.name.text, [node.initializer]);
+      const existing = constants.get(node.id.name);
+      if (existing) existing.push(node.init);
+      else constants.set(node.id.name, [node.init]);
     }
-    ts.forEachChild(node, collect);
-  };
-  collect(sourceFile);
+  });
   const numericValue = (
-    expression: ts.Expression,
+    expression: Node,
     resolving = new Set<string>(),
   ): number | undefined => {
-    if (ts.isNumericLiteral(expression)) return Number(expression.text);
-    if (ts.isParenthesizedExpression(expression))
+    if (expression.type === "Literal") {
+      const { value } = expression;
+      return typeof value === "number" ? value : undefined;
+    }
+    if (expression.type === "ParenthesizedExpression")
       return numericValue(expression.expression, resolving);
-    if (ts.isPrefixUnaryExpression(expression)) {
-      const operand = numericValue(expression.operand, resolving);
+    if (expression.type === "UnaryExpression") {
+      const operand = numericValue(expression.argument, resolving);
       if (operand === undefined) return undefined;
-      if (expression.operator === ts.SyntaxKind.MinusToken) return -operand;
-      if (expression.operator === ts.SyntaxKind.PlusToken) return operand;
+      if (expression.operator === "-") return -operand;
+      if (expression.operator === "+") return operand;
       return undefined;
     }
-    if (!ts.isIdentifier(expression) || resolving.has(expression.text))
+    if (expression.type !== "Identifier" || resolving.has(expression.name))
       return undefined;
-    const declarations = constants.get(expression.text);
+    const declarations = constants.get(expression.name);
     const initializer =
       declarations?.length === 1 ? declarations.at(0) : undefined;
     if (initializer === undefined) return undefined;
-    return numericValue(initializer, new Set([...resolving, expression.text]));
+    return numericValue(initializer, new Set([...resolving, expression.name]));
   };
-  const validBudget = (expression: ts.Expression | undefined): boolean => {
+  const validBudget = (expression: Node | undefined): boolean => {
     if (
-      !expression ||
-      !ts.isCallExpression(expression) ||
-      !ts.isIdentifier(expression.expression) ||
-      expression.expression.text !== BUDGET_HELPER ||
+      !callsNamed(expression, BUDGET_HELPER) ||
       expression.arguments.length !== 1
     )
       return false;
@@ -166,32 +189,23 @@ const budgetDeclarations = (sourceFile: ts.SourceFile) => {
     return value !== undefined && Number.isFinite(value) && value > 0;
   };
   let fileBudget: "absent" | "valid" | "invalid" = "absent";
-  for (const statement of sourceFile.statements) {
+  for (const statement of program.body) {
     if (
-      !ts.isExpressionStatement(statement) ||
-      !ts.isCallExpression(statement.expression)
+      statement.type !== "ExpressionStatement" ||
+      !callsNamed(statement.expression, "setDefaultTimeout")
     )
       continue;
     const call = statement.expression;
-    if (
-      !ts.isIdentifier(call.expression) ||
-      call.expression.text !== "setDefaultTimeout"
-    )
-      continue;
     if (fileBudget === "invalid") continue;
     const timeout = call.arguments.at(0);
-    const usesHelper =
-      timeout !== undefined &&
-      ts.isCallExpression(timeout) &&
-      ts.isIdentifier(timeout.expression) &&
-      timeout.expression.text === BUDGET_HELPER;
+    const usesHelper = callsNamed(timeout, BUDGET_HELPER);
     if (!usesHelper) {
       fileBudget = "absent";
       continue;
     }
     fileBudget = validBudget(timeout) ? "valid" : "invalid";
   }
-  const validTestBudget = (testCall: ts.CallExpression): boolean => {
+  const validTestBudget = (testCall: CallExpression): boolean => {
     if (fileBudget === "invalid") return false;
     if (testCall.arguments.length >= 3)
       return validBudget(testCall.arguments.at(-1));
@@ -201,23 +215,28 @@ const budgetDeclarations = (sourceFile: ts.SourceFile) => {
 };
 
 /**
- * `ts.sys.readDirectory` deduplicates by real path, so the workspace symlinks
- * under `packages/<name>/node_modules/@stll` shadow the packages they point at
- * and the real sources never get visited. Exclude them during the walk.
+ * The workspace symlinks under `packages/<name>/node_modules/@stll` point back
+ * at the packages; the walk reads the real sources, never those copies.
  */
 const testFiles = (): string[] =>
   SCANNED_ROOTS.flatMap((root) =>
-    ts.sys
-      .readDirectory(
-        path.join(REPO_ROOT, root),
-        [".ts", ".tsx"],
-        ["**/node_modules/**"],
-      )
-      .map((absolute) =>
-        path.relative(REPO_ROOT, absolute).replaceAll("\\", "/"),
-      )
+    [
+      ...new Bun.Glob("**/*.{ts,tsx}").scanSync({
+        cwd: path.join(REPO_ROOT, root),
+        dot: true,
+        onlyFiles: true,
+      }),
+    ]
+      .map((file) => `${root}/${file.replaceAll("\\", "/")}`)
+      .filter((file) => !/(?:^|\/)node_modules\//.test(file))
       .filter((file) => /\.test\.tsx?$/.test(file)),
   ).toSorted();
+
+const readFileText = (file: string): string | undefined =>
+  existsSync(file)
+    ? // A byte-order mark is not source text.
+      readFileSync(file, "utf8").replace(/^\uFEFF/u, "")
+    : undefined;
 
 type BudgetRequiringSite = { site: string; declaresBudget: boolean };
 
@@ -225,39 +244,26 @@ const budgetRequiringSites = (
   file: string,
   sourceText: string,
 ): BudgetRequiringSite[] => {
-  const sourceFile = ts.createSourceFile(
-    file,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const validTestBudget = budgetDeclarations(sourceFile);
+  const { program } = parseSourceModule(file, sourceText);
+  const lineOf = createLineIndex(sourceText);
+  const validTestBudget = budgetDeclarations(program);
   const sites: BudgetRequiringSite[] = [];
-  const visit = (
-    node: ts.Node,
-    enclosingTest: ts.CallExpression | null,
-  ): void => {
-    const nextTest =
-      ts.isCallExpression(node) && isTestCall(node) ? node : enclosingTest;
+  walkAst(program, (node, ancestors) => {
+    if (node.type !== "CallExpression" || !drivesFastCheck(node)) return;
+    const enclosingTest = isTestCall(node)
+      ? node
+      : ancestors.findLast((ancestor) => isTestCall(ancestor));
     if (
-      ts.isCallExpression(node) &&
-      drivesFastCheck(node) &&
-      nextTest !== null &&
-      (isAsyncTest(nextTest) || passesNumRuns(node))
+      enclosingTest?.type === "CallExpression" &&
+      (isAsyncTest(enclosingTest) || passesNumRuns(node))
     ) {
-      const { line } = sourceFile.getLineAndCharacterOfPosition(
-        node.getStart(sourceFile),
-      );
+      const { line } = lineOf(node.start);
       sites.push({
         site: `${file}:${String(line + 1)}`,
-        declaresBudget: validTestBudget(nextTest),
+        declaresBudget: validTestBudget(enclosingTest),
       });
     }
-    ts.forEachChild(node, (child) => {
-      visit(child, nextTest);
-    });
-  };
-  visit(sourceFile, null);
+  });
   return sites;
 };
 
@@ -267,36 +273,22 @@ const budgetRequiringSites = (
  * and the nightly factor.
  */
 const bypassingSites = (file: string, sourceText: string): string[] => {
-  const sourceFile = ts.createSourceFile(
-    file,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule(file, sourceText);
+  const lineOf = createLineIndex(sourceText);
   const sites: string[] = [];
-  const visit = (node: ts.Node): void => {
+  walkAst(program, (node) => {
     if (
-      ts.isCallExpression(node) &&
+      node.type === "CallExpression" &&
       callsFastCheck(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text !== "sample"
+      dotName(node.callee) !== "sample"
     ) {
-      const params = node.arguments.at(1);
-      const configured =
-        params !== undefined &&
-        ts.isCallExpression(params) &&
-        ts.isIdentifier(params.expression) &&
-        params.expression.text === RUN_COUNT_HELPER;
+      const configured = callsNamed(node.arguments.at(1), RUN_COUNT_HELPER);
       if (!configured) {
-        const { line } = sourceFile.getLineAndCharacterOfPosition(
-          node.getStart(sourceFile),
-        );
+        const { line } = lineOf(node.start);
         sites.push(`${file}:${String(line + 1)}`);
       }
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
+  });
   return sites;
 };
 
@@ -305,39 +297,26 @@ const nestedConfigurationSites = (
   file: string,
   sourceText: string,
 ): string[] => {
-  const sourceFile = ts.createSourceFile(
-    file,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule(file, sourceText);
+  const lineOf = createLineIndex(sourceText);
   const sites: string[] = [];
-  const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && callsAssertHelper(node)) {
+  walkAst(program, (node) => {
+    if (node.type === "CallExpression" && callsAssertHelper(node)) {
       let params = node.arguments.at(1);
-      while (params !== undefined && ts.isParenthesizedExpression(params))
+      while (params?.type === "ParenthesizedExpression")
         params = params.expression;
-      if (
-        params !== undefined &&
-        ts.isCallExpression(params) &&
-        ts.isIdentifier(params.expression) &&
-        params.expression.text === RUN_COUNT_HELPER
-      ) {
-        const { line } = sourceFile.getLineAndCharacterOfPosition(
-          node.getStart(sourceFile),
-        );
+      if (callsNamed(params, RUN_COUNT_HELPER)) {
+        const { line } = lineOf(node.start);
         sites.push(`${file}:${String(line + 1)}`);
       }
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
+  });
   return sites;
 };
 
 const scanRepository = (): BudgetRequiringSite[] =>
   testFiles().flatMap((file) => {
-    const sourceText = ts.sys.readFile(path.join(REPO_ROOT, file));
+    const sourceText = readFileText(path.join(REPO_ROOT, file));
     if (sourceText === undefined) panic(`Cannot read ${file}.`);
     return sourceText.includes("fc.")
       ? budgetRequiringSites(file, sourceText)
@@ -358,24 +337,16 @@ const insufficientHeadroom = (
   entries.flatMap(({ file, durationMs }) => {
     const sourceText = readSource(file);
     if (sourceText === undefined) return [];
-    const sourceFile = ts.createSourceFile(
-      file,
-      sourceText,
-      ts.ScriptTarget.Latest,
-      true,
-    );
-    const topLevelTests = sourceFile.statements.filter(
+    const { program } = parseSourceModule(file, sourceText);
+    const topLevelTests = program.body.filter(
       (statement) =>
-        ts.isExpressionStatement(statement) &&
-        ts.isCallExpression(statement.expression) &&
+        statement.type === "ExpressionStatement" &&
         isTestCall(statement.expression),
     );
     let testCalls = 0;
-    const countTests = (node: ts.Node): void => {
-      if (ts.isCallExpression(node) && isTestCall(node)) testCalls += 1;
-      ts.forEachChild(node, countTests);
-    };
-    countTests(sourceFile);
+    walkAst(program, (node) => {
+      if (isTestCall(node)) testCalls += 1;
+    });
     if (topLevelTests.length !== 1 || testCalls !== 1) return [];
 
     const budgetMatch =
@@ -413,7 +384,7 @@ describe("property test budgets", () => {
 
   test("invalid fixture budgets cannot acquire a declared allowance", () => {
     const fixture = "test/__fixtures__/property-test-budgets.invalid.ts";
-    const source = ts.sys.readFile(path.join(REPO_ROOT, fixture));
+    const source = readFileText(path.join(REPO_ROOT, fixture));
     if (source === undefined) panic("Cannot read invalid budget fixture.");
     const sites = budgetRequiringSites(fixture, source);
     expect(sites).toHaveLength(8);
@@ -584,7 +555,7 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
 
   test("every fc.assert and fc.check takes its parameters from propertyConfig", () => {
     const bypassing = testFiles().flatMap((file) => {
-      const sourceText = ts.sys.readFile(path.join(REPO_ROOT, file));
+      const sourceText = readFileText(path.join(REPO_ROOT, file));
       if (sourceText === undefined) panic(`Cannot read ${file}.`);
       return sourceText.includes("fc.") ? bypassingSites(file, sourceText) : [];
     });
@@ -628,7 +599,7 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
 
   test("assertion helpers take raw options so pinned seeds replay before configuration", () => {
     const nested = testFiles().flatMap((file) => {
-      const sourceText = ts.sys.readFile(path.join(REPO_ROOT, file));
+      const sourceText = readFileText(path.join(REPO_ROOT, file));
       if (sourceText === undefined) panic(`Cannot read ${file}.`);
       return nestedConfigurationSites(file, sourceText);
     });
@@ -650,7 +621,7 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
       durationMs,
     }));
     const violations = insufficientHeadroom(entries, (file) =>
-      ts.sys.readFile(path.join(REPO_ROOT, file)),
+      readFileText(path.join(REPO_ROOT, file)),
     );
     expect(violations).toEqual([]);
   });

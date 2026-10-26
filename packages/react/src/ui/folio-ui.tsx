@@ -3,6 +3,7 @@ import type {
   ComponentProps,
   ComponentType,
   CSSProperties,
+  JSX,
   ReactNode,
   RefAttributes,
   RefObject,
@@ -406,7 +407,7 @@ export function FolioUIProvider({
 }: {
   components?: Partial<FolioUIComponents> | undefined;
   children: ReactNode;
-}) {
+}): JSX.Element {
   const value = resolveFolioComponents(components);
   return (
     <FolioUIContext.Provider value={value}>{children}</FolioUIContext.Provider>

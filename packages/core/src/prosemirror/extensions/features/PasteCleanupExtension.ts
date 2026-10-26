@@ -20,7 +20,7 @@ import { Plugin } from "prosemirror-state";
 
 import { pasteWithoutFormatting } from "../../commands/pastePlainText";
 import { createExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { Extension, ExtensionRuntime } from "../types";
 import { Priority } from "../types";
 import {
   cleanPastedHtml,
@@ -37,7 +37,9 @@ type PasteCleanupOptions = {
   getInternalClipboardToken?: () => string;
 };
 
-export const PasteCleanupExtension = createExtension<PasteCleanupOptions>({
+export const PasteCleanupExtension: (
+  options?: Partial<PasteCleanupOptions> | undefined,
+) => Extension = createExtension<PasteCleanupOptions>({
   name: "pasteCleanup",
   priority: Priority.Highest,
   onSchemaReady(_context, options): ExtensionRuntime {

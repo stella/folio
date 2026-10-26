@@ -24,7 +24,7 @@ export const MAX_HEX_ID_EXCLUSIVE = 0x7fffffff;
  * is not a real Word id — it must not be trusted as one (e.g. echoed
  * unescaped into serialized XML attributes).
  */
-export const HEX_ID_PATTERN = /^[0-9A-Fa-f]{8}$/u;
+export const HEX_ID_PATTERN: RegExp = /^[0-9A-Fa-f]{8}$/u;
 
 /** Whether `value` is a well-formed 8-hex-digit OOXML long-hex id. */
 export const isValidHexId = (value: string | undefined | null): boolean =>

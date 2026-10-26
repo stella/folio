@@ -45,7 +45,17 @@ type BorderInput = {
  * `threeDEmboss`/`threeDEngrave` as a plain line where the shading is
  * unavailable, so they stroke solid.
  */
-export const CSS_BORDER_STROKE_PATTERNS = {
+export const CSS_BORDER_STROKE_PATTERNS: {
+  readonly none: "none";
+  readonly solid: "solid";
+  readonly double: "double";
+  readonly dotted: "dotted";
+  readonly dashed: "dashed";
+  readonly groove: "solid";
+  readonly ridge: "solid";
+  readonly inset: "solid";
+  readonly outset: "solid";
+} = {
   none: "none",
   solid: "solid",
   double: "double",
@@ -65,7 +75,19 @@ export const CSS_BORDER_STROKE_PATTERNS = {
  * so the distinction collapses to dotted or dashed. It collapses here, once,
  * rather than at whichever consumer happened to know the spelling.
  */
-export const PRESET_DASH_STROKE_PATTERNS = {
+export const PRESET_DASH_STROKE_PATTERNS: {
+  readonly solid: "solid";
+  readonly dot: "dotted";
+  readonly dash: "dashed";
+  readonly lgDash: "dashed";
+  readonly dashDot: "dashed";
+  readonly lgDashDot: "dashed";
+  readonly lgDashDotDot: "dashed";
+  readonly sysDash: "dashed";
+  readonly sysDot: "dotted";
+  readonly sysDashDot: "dashed";
+  readonly sysDashDotDot: "dashed";
+} = {
   solid: "solid",
   dot: "dotted",
   dash: "dashed",
@@ -113,7 +135,98 @@ type UnderlineStrokes = {
  * and its weight and stroke count are the plain ones by default rather than by
  * decision.
  */
-export const UNDERLINE_STROKES = {
+export const UNDERLINE_STROKES: {
+  readonly none: {
+    readonly pattern: "none";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly single: {
+    readonly pattern: "solid";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly words: {
+    readonly pattern: "solid";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly double: {
+    readonly pattern: "double";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly thick: {
+    readonly pattern: "solid";
+    readonly weight: 2;
+    readonly strokes: 1;
+  };
+  readonly dotted: {
+    readonly pattern: "dotted";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly dottedHeavy: {
+    readonly pattern: "dotted";
+    readonly weight: 2;
+    readonly strokes: 1;
+  };
+  readonly dash: {
+    readonly pattern: "dashed";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly dashedHeavy: {
+    readonly pattern: "dashed";
+    readonly weight: 2;
+    readonly strokes: 1;
+  };
+  readonly dashLong: {
+    readonly pattern: "dashed";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly dashLongHeavy: {
+    readonly pattern: "dashed";
+    readonly weight: 2;
+    readonly strokes: 1;
+  };
+  readonly dotDash: {
+    readonly pattern: "dashed";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly dashDotHeavy: {
+    readonly pattern: "dashed";
+    readonly weight: 2;
+    readonly strokes: 1;
+  };
+  readonly dotDotDash: {
+    readonly pattern: "dashed";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly dashDotDotHeavy: {
+    readonly pattern: "dashed";
+    readonly weight: 2;
+    readonly strokes: 1;
+  };
+  readonly wave: {
+    readonly pattern: "wavy";
+    readonly weight: 1;
+    readonly strokes: 1;
+  };
+  readonly wavyHeavy: {
+    readonly pattern: "wavy";
+    readonly weight: 2;
+    readonly strokes: 1;
+  };
+  readonly wavyDouble: {
+    readonly pattern: "wavy";
+    readonly weight: 1;
+    readonly strokes: 2;
+  };
+} = {
   none: { pattern: "none", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
   single: { pattern: "solid", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },
   words: { pattern: "solid", weight: PLAIN_UNDERLINE_WEIGHT, strokes: 1 },

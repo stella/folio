@@ -20,7 +20,7 @@
 // names. Only used to classify the first *letter* (`\p{L}`), so the non-letter
 // members of these scripts (Arabic-Indic digits, combining marks, punctuation)
 // are never tested — they're weak/neutral and skipped upstream.
-export const RTL_STRONG_LETTER =
+export const RTL_STRONG_LETTER: RegExp =
   /[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Samaritan}\p{Script=Mandaic}\p{Script=Adlam}]/u;
 
 const LETTER = /\p{L}/u;

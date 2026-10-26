@@ -37,7 +37,7 @@ export const TRANSITIONAL_NAME_BY_STRICT_NAME = {
 export type StrictName = keyof typeof TRANSITIONAL_NAME_BY_STRICT_NAME;
 
 /** The same keys as a list, so a consumer can walk them without widening them. */
-export const STRICT_NAMES = [
+export const STRICT_NAMES: readonly ["CT_Border end", "CT_Border start", "CT_Ind @end", "CT_Ind @endChars", "CT_Ind @start", "CT_Ind @startChars", "CT_TblWidth end", "CT_TblWidth start"] = [
   "CT_Border end",
   "CT_Border start",
   "CT_Ind @end",

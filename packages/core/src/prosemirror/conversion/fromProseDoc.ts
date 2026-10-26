@@ -1,4 +1,4 @@
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 /**
@@ -792,9 +792,10 @@ type SaveStylesheetDivergence =
   | { type: "docDefaults" }
   | { type: "sourceUnavailable" };
 
-class SaveStylesheetSourceMismatch extends TaggedError(
-  "SaveStylesheetSourceMismatch",
-)<{
+const SaveStylesheetSourceMismatchBase: TaggedErrorClass<"SaveStylesheetSourceMismatch"> =
+  TaggedError("SaveStylesheetSourceMismatch");
+
+class SaveStylesheetSourceMismatch extends SaveStylesheetSourceMismatchBase<{
   message: string;
   divergences: readonly SaveStylesheetDivergence[];
 }> {}
@@ -935,7 +936,10 @@ const saveStylesheet = (
   }
 };
 
-class MissingSaveStylesheet extends TaggedError("MissingSaveStylesheet")<{
+const MissingSaveStylesheetBase: TaggedErrorClass<"MissingSaveStylesheet"> =
+  TaggedError("MissingSaveStylesheet");
+
+class MissingSaveStylesheet extends MissingSaveStylesheetBase<{
   message: string;
 }> {}
 

@@ -1,9 +1,12 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import type JSZip from "jszip";
 
 import { base64ToBytes, encodeBinaryString, encodeUtf8 } from "./encoding";
 
-class ZipStreamInputError extends TaggedError("ZipStreamInputError")<{
+const ZipStreamInputErrorBase: TaggedErrorClass<"ZipStreamInputError"> =
+  TaggedError("ZipStreamInputError");
+
+class ZipStreamInputError extends ZipStreamInputErrorBase<{
   message: string;
 }> {}
 

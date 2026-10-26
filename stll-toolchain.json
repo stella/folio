@@ -6,6 +6,15 @@
       "job": "consumer-scenarios-minimum"
     }
   ],
+  "typescriptAllowlist": [
+    {
+      "workspace": ".",
+      "name": "typescript",
+      "spec": "6.0.3",
+      "dependency": "dependency-cruiser",
+      "reason": "dependency-cruiser's tsc extractor (.dependency-cruiser.cjs parser \"tsc\") loads the TypeScript 6 compiler API to tag type-only imports; the same install serves the vue-tsc peer in packages/vue and packages/playground-vue, the classic projects of the compiler-work budget and the packaged-consumer compile in scripts/validate-dist.ts."
+    }
+  ],
   "rustExceptions": [
     {
       "pin": "1.97.1",

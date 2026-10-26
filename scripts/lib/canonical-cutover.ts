@@ -1,10 +1,16 @@
-import ts from "typescript";
-
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
 } from "../../packages/core/src/types/canonicalCapabilities";
 import { censusUndescribedCanonicalCommands } from "./canonical-command-census";
+import {
+  createLineIndex,
+  type Node,
+  nodeText,
+  parseSourceModule,
+  type Program,
+  walkAst,
+} from "./oxc-ast";
 
 /** Legacy PM execution still owns these sources when canonical sessions refuse them. */
 export const PUBLIC_OPERATION_SOURCE_GAPS = Object.entries(
@@ -23,30 +29,97 @@ const gapNames = new Map(Object.entries(CANONICAL_GAP));
 const gapIds = new Set(Object.keys(CANONICAL_CAPABILITIES));
 const sessionName = /experimentalSession|ExperimentalSession|sessionRef/;
 
-const scriptParts = ({ file, source }: CanonicalSource) => {
-  if (!file.endsWith(".vue")) return [source];
+type ScriptPart = { code: string; directive: boolean };
+
+const scriptParts = ({ file, source }: CanonicalSource): ScriptPart[] => {
+  if (!file.endsWith(".vue")) return [{ code: source, directive: false }];
   const parts = [
     ...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g),
-  ].map((match) => match[1] ?? "");
+  ].map((match) => ({ code: match[1] ?? "", directive: false }));
   // Vue directives are JS expressions too; do not leave template-only gates unmeasured.
   for (const match of source.matchAll(
     /(?:v-[\w:-]+|:[\w-]+|@[\w.-]+)="([^"]*)"/g,
   ))
-    parts.push(match[1] ?? "");
+    parts.push({ code: match[1] ?? "", directive: true });
   return parts;
+};
+
+/**
+ * Vue parts parse as TypeScript. A directive is a handler body or a bare
+ * expression such as an object literal; a candidate that is neither is text
+ * the attribute pattern matched outside a template (a comment, a string), so
+ * it carries no session gate to measure.
+ */
+const parsePart = (
+  file: string,
+  { code, directive }: ScriptPart,
+): { code: string; program: Program } | undefined => {
+  const name = file.endsWith(".vue") ? `${file}.ts` : file;
+  try {
+    return { code, program: parseSourceModule(name, code).program };
+  } catch (error) {
+    if (!directive) throw error;
+  }
+  const expression = `(${code})`;
+  try {
+    return {
+      code: expression,
+      program: parseSourceModule(name, expression).program,
+    };
+  } catch {
+    return undefined;
+  }
 };
 
 const isRefusal = (name: string) =>
   name === "CanonicalSessionRefusalError" || name === "CanonicalSessionError";
 
+/** Optional chains are plain member and call nodes in the shapes compared here. */
+const unwrapChain = (node: Node): Node =>
+  node.type === "ChainExpression" ? node.expression : node;
+
+const isStaticMember = (node: Node) =>
+  node.type === "MemberExpression" && !node.computed;
+
+const isPrefixUnary = (node: Node) =>
+  (node.type === "UnaryExpression" &&
+    ["!", "-", "+", "~"].includes(node.operator)) ||
+  (node.type === "UpdateExpression" && node.prefix);
+
+/** An object literal member written as `name: value`, a shorthand or a method. */
+const isObjectLiteralMember = (node: Node, parent: Node | undefined) =>
+  node.type === "Property" && parent?.type === "ObjectExpression";
+
+/** The written name of a non-computed property or method key. */
+const keyText = (text: string, node: Node): string | undefined => {
+  if (
+    node.type !== "Property" &&
+    node.type !== "MethodDefinition" &&
+    node.type !== "TSAbstractMethodDefinition"
+  )
+    return undefined;
+  return node.computed ? undefined : nodeText(text, node.key);
+};
+
+const isPropertyAssignment = (node: Node) =>
+  node.type === "Property" &&
+  node.kind === "init" &&
+  !node.method &&
+  !node.shorthand;
+
+const isShorthandProperty = (node: Node) =>
+  node.type === "Property" && node.shorthand;
+
 /** Enumerate the known PM mutation primitives, wherever they are installed or executed. */
 const mutationGap = (
-  node: ts.Node,
+  node: Node,
+  parent: Node | undefined,
+  text: string,
   file: string,
   imports: Map<string, string>,
 ): string | undefined => {
-  if (ts.isCallExpression(node)) {
-    const name = node.expression.getText();
+  if (node.type === "CallExpression") {
+    const name = nodeText(text, node.callee);
     if (name === "fromProseDoc" || imports.get(name)?.endsWith(":fromProseDoc"))
       return CANONICAL_GAP.save;
     if (imports.get(name) === "prosemirror-history:history")
@@ -64,8 +137,15 @@ const mutationGap = (
     )
       return CANONICAL_GAP.documentOperations;
   }
-  if (ts.isMethodDeclaration(node) || ts.isPropertyAssignment(node)) {
-    const name = node.name.getText();
+  const method =
+    ((node.type === "MethodDefinition" ||
+      node.type === "TSAbstractMethodDefinition") &&
+      node.kind === "method") ||
+    (isObjectLiteralMember(node, parent) &&
+      node.type === "Property" &&
+      (node.method || isPropertyAssignment(node)));
+  if (method) {
+    const name = keyText(text, node);
     if (name === "appendTransaction") {
       if (file.endsWith("/suggestionMode.ts"))
         return CANONICAL_GAP.suggestionPlugin;
@@ -101,74 +181,69 @@ export const inspectCanonicalSources = (
     const { file } = source;
     if (file.endsWith("/canonicalCapabilities.ts")) continue;
     const counts = { branches: 0 };
-    for (const part of scriptParts(source)) {
-      const tree = ts.createSourceFile(
-        file,
-        part,
-        ts.ScriptTarget.Latest,
-        true,
-        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-      );
+    for (const scriptPart of scriptParts(source)) {
+      const parsed = parsePart(file, scriptPart);
+      if (parsed === undefined) continue;
+      const { code: part, program } = parsed;
+      const text = (node: Node) => nodeText(part, node);
+      const lineOf = createLineIndex(part);
       const imports = new Map<string, string>();
       const namespaces = new Set<string>();
-      for (const statement of tree.statements) {
-        if (
-          !ts.isImportDeclaration(statement) ||
-          !ts.isStringLiteral(statement.moduleSpecifier)
-        )
-          continue;
-        const bindings = statement.importClause?.namedBindings;
-        if (
-          bindings &&
-          ts.isNamespaceImport(bindings) &&
-          /(?:^|\/)canonicalCapabilities(?:\.ts)?$/.test(
-            statement.moduleSpecifier.text,
+      for (const statement of program.body) {
+        if (statement.type !== "ImportDeclaration") continue;
+        const moduleName = statement.source.value;
+        for (const binding of statement.specifiers) {
+          if (
+            binding.type === "ImportNamespaceSpecifier" &&
+            /(?:^|\/)canonicalCapabilities(?:\.ts)?$/.test(moduleName)
           )
-        )
-          namespaces.add(bindings.name.text);
-        if (bindings && ts.isNamedImports(bindings))
-          for (const binding of bindings.elements) {
-            const imported = binding.propertyName?.text ?? binding.name.text;
-            imports.set(
-              binding.name.text,
-              `${statement.moduleSpecifier.text}:${imported}`,
+            namespaces.add(binding.local.name);
+          if (binding.type !== "ImportSpecifier") continue;
+          const imported =
+            binding.imported.type === "Identifier"
+              ? binding.imported.name
+              : binding.imported.value;
+          imports.set(binding.local.name, `${moduleName}:${imported}`);
+          if (
+            [
+              "usesCanonicalSession",
+              "CANONICAL_GAP",
+              "CanonicalSessionError",
+              "CanonicalSessionRefusalError",
+            ].includes(imported) &&
+            imported !== binding.local.name
+          )
+            failures.push(
+              `${file}: canonical guard primitives cannot be aliased`,
             );
-            if (
-              [
-                "usesCanonicalSession",
-                "CANONICAL_GAP",
-                "CanonicalSessionError",
-                "CanonicalSessionRefusalError",
-              ].includes(imported) &&
-              imported !== binding.name.text
-            )
-              failures.push(
-                `${file}: canonical guard primitives cannot be aliased`,
-              );
-          }
+        }
       }
       // Canonical persistence has one model-only owner. Consumers must capture
       // its snapshot from the controller rather than assembling PM save signals.
       const saveSnapshots = new Set<string>();
-      const collectSaveSnapshots = (node: ts.Node) => {
+      walkAst(program, (node) => {
         if (
-          ts.isVariableDeclaration(node) &&
-          ts.isIdentifier(node.name) &&
-          node.initializer &&
-          ts.isCallExpression(node.initializer) &&
-          /(?:\.|\?\.)captureCanonicalSave$/.test(
-            node.initializer.expression.getText(),
+          node.type === "VariableDeclarator" &&
+          node.id.type === "Identifier" &&
+          node.init
+        ) {
+          const initializer = unwrapChain(node.init);
+          if (
+            initializer.type === "CallExpression" &&
+            /(?:\.|\?\.)captureCanonicalSave$/.test(text(initializer.callee))
           )
-        )
-          saveSnapshots.add(node.name.text);
-        ts.forEachChild(node, collectSaveSnapshots);
-      };
-      collectSaveSnapshots(tree);
-      const checkSaveOwnership = (node: ts.Node) => {
+            saveSnapshots.add(node.id.name);
+        }
+      });
+      // An identifier token is visited once, even where oxc repeats it as
+      // both halves of a shorthand import or property.
+      const seenIdentifiers = new Set<number>();
+      walkAst(program, (node, ancestors) => {
+        const parent = ancestors.at(-1);
         if (
-          ts.isVariableDeclaration(node) &&
-          ts.isIdentifier(node.name) &&
-          node.name.text === "serializeCanonicalSave" &&
+          node.type === "VariableDeclarator" &&
+          node.id.type === "Identifier" &&
+          node.id.name === "serializeCanonicalSave" &&
           !file.endsWith("/docx/canonicalSave.ts")
         )
           failures.push(
@@ -176,79 +251,79 @@ export const inspectCanonicalSources = (
           );
         if (
           file.endsWith("/docx/canonicalSave.ts") &&
-          ts.isIdentifier(node) &&
-          (ts.isImportSpecifier(node.parent) ||
-            (ts.isCallExpression(node.parent) &&
-              node.parent.expression === node)) &&
+          node.type === "Identifier" &&
+          !seenIdentifiers.has(node.start) &&
+          (parent?.type === "ImportSpecifier" ||
+            (parent?.type === "CallExpression" && parent.callee === node)) &&
           [
             "fromProseDoc",
             "getChangedParagraphIds",
             "hasStructuralChanges",
             "hasUntrackedChanges",
-          ].includes(node.text)
+          ].includes(node.name)
         )
           failures.push(
             `${file}: canonical serialization cannot derive authority from PM`,
           );
+        if (node.type === "Identifier") seenIdentifiers.add(node.start);
         if (
-          ts.isCallExpression(node) &&
-          node.expression.getText() === "serializeCanonicalSave"
+          node.type === "CallExpression" &&
+          text(node.callee) === "serializeCanonicalSave"
         ) {
           const argument = node.arguments.at(0);
           const snapshot =
-            argument && ts.isObjectLiteralExpression(argument)
+            argument?.type === "ObjectExpression"
               ? argument.properties.find(
-                  (property) => property.name?.getText() === "snapshot",
+                  (property) => keyText(part, property) === "snapshot",
                 )
               : undefined;
           let name: string | undefined;
-          if (snapshot && ts.isShorthandPropertyAssignment(snapshot))
-            name = snapshot.name.text;
           if (
             snapshot &&
-            ts.isPropertyAssignment(snapshot) &&
-            ts.isIdentifier(snapshot.initializer)
+            isShorthandProperty(snapshot) &&
+            snapshot.type === "Property" &&
+            snapshot.key.type === "Identifier"
           )
-            name = snapshot.initializer.text;
+            name = snapshot.key.name;
+          if (
+            snapshot &&
+            isPropertyAssignment(snapshot) &&
+            snapshot.type === "Property" &&
+            snapshot.value.type === "Identifier"
+          )
+            name = snapshot.value.name;
           if (!name || !saveSnapshots.has(name))
             failures.push(
               `${file}: canonical serialization requires a controller save snapshot`,
             );
         }
-        ts.forEachChild(node, checkSaveOwnership);
-      };
-      checkSaveOwnership(tree);
-      const memberKey = (node: ts.Node) => {
-        if (ts.isPropertyAccessExpression(node)) return node.name.text;
+      });
+      const memberKey = (node: Node) => {
+        if (node.type !== "MemberExpression") return undefined;
+        if (!node.computed)
+          return node.property.type === "PrivateIdentifier"
+            ? `#${node.property.name}`
+            : node.property.name;
         if (
-          ts.isElementAccessExpression(node) &&
-          node.argumentExpression &&
-          ts.isStringLiteral(node.argumentExpression)
+          node.property.type === "Literal" &&
+          typeof node.property.value === "string"
         )
-          return node.argumentExpression.text;
+          return node.property.value;
         return undefined;
       };
-      const primitiveName = (node: ts.Node): string | undefined => {
-        if (ts.isIdentifier(node)) return node.text;
+      const primitiveName = (node: Node): string | undefined => {
+        if (node.type === "Identifier") return node.name;
         if (
-          (ts.isPropertyAccessExpression(node) ||
-            ts.isElementAccessExpression(node)) &&
-          ts.isIdentifier(node.expression) &&
-          namespaces.has(node.expression.text)
+          node.type === "MemberExpression" &&
+          node.object.type === "Identifier" &&
+          namespaces.has(node.object.name)
         )
           return memberKey(node);
         return undefined;
       };
-      const gapKey = (node: ts.Node | undefined): string | undefined => {
-        if (
-          !node ||
-          !(
-            ts.isPropertyAccessExpression(node) ||
-            ts.isElementAccessExpression(node)
-          )
-        )
-          return undefined;
-        return primitiveName(node.expression) === "CANONICAL_GAP"
+      const gapKey = (node: Node | undefined): string | undefined => {
+        if (node?.type !== "MemberExpression") return undefined;
+        return primitiveName(node.object) === "CANONICAL_GAP"
           ? memberKey(node)
           : undefined;
       };
@@ -256,69 +331,79 @@ export const inspectCanonicalSources = (
       const aliases = new Set<string>();
       const safeSelectors = new Set<string>();
       const gapRelays = new Set<string>();
-      const selectorsIn = (node: ts.Node): boolean => {
-        if (sessionName.test(node.getText())) return true;
+      const selectorsIn = (node: Node): boolean => {
+        if (sessionName.test(text(node))) return true;
         let found = false;
-        const walk = (child: ts.Node) => {
-          if (ts.isIdentifier(child) && aliases.has(child.text)) found = true;
-          ts.forEachChild(child, walk);
-        };
-        walk(node);
+        walkAst(node, (child) => {
+          if (
+            (child.type === "Identifier" || child.type === "JSXIdentifier") &&
+            aliases.has(child.name)
+          )
+            found = true;
+        });
         return found;
       };
-      const collectAliases = (node: ts.Node) => {
+      walkAst(program, (node) => {
         if (
-          ts.isVariableDeclaration(node) &&
-          ts.isIdentifier(node.name) &&
-          node.initializer
+          node.type !== "VariableDeclarator" ||
+          node.id.type !== "Identifier" ||
+          !node.init
+        )
+          return;
+        const initial = node.init;
+        if (
+          initial.type === "ArrowFunctionExpression" &&
+          initial.params.some((parameter) => {
+            const binding =
+              parameter.type === "AssignmentPattern"
+                ? parameter.left
+                : parameter;
+            const type =
+              binding.type === "TSParameterProperty"
+                ? undefined
+                : binding.typeAnnotation?.typeAnnotation;
+            if (type?.type !== "TSTypeReference") return false;
+            const typeName = text(type.typeName);
+            return (
+              typeName === "CanonicalGap" ||
+              imports.get(typeName)?.endsWith(":CanonicalGap")
+            );
+          })
+        )
+          gapRelays.add(node.id.name);
+        const value = unwrapChain(initial);
+        if (
+          (value.type === "Identifier" ||
+            isStaticMember(value) ||
+            (value.type === "CallExpression" &&
+              /toValue|[gG]etExperimentalSession/.test(text(value.callee)))) &&
+          selectorsIn(initial)
+        )
+          aliases.add(node.id.name);
+        if (
+          initial.type === "ArrowFunctionExpression" &&
+          initial.expression &&
+          unwrapChain(initial.body).type === "CallExpression"
         ) {
-          const initial = node.initializer;
+          const body = unwrapChain(initial.body);
           if (
-            ts.isArrowFunction(initial) &&
-            initial.parameters.some(
-              (parameter) =>
-                parameter.type &&
-                ts.isTypeReferenceNode(parameter.type) &&
-                (parameter.type.typeName.getText() === "CanonicalGap" ||
-                  imports
-                    .get(parameter.type.typeName.getText())
-                    ?.endsWith(":CanonicalGap")),
-            )
+            body.type === "CallExpression" &&
+            primitiveName(body.callee) === "usesCanonicalSession"
           )
-            gapRelays.add(node.name.text);
-          if (
-            (ts.isIdentifier(initial) ||
-              ts.isPropertyAccessExpression(initial) ||
-              (ts.isCallExpression(initial) &&
-                /toValue|[gG]etExperimentalSession/.test(
-                  initial.expression.getText(),
-                ))) &&
-            selectorsIn(initial)
-          )
-            aliases.add(node.name.text);
-          if (
-            ts.isArrowFunction(initial) &&
-            ts.isCallExpression(initial.body) &&
-            primitiveName(initial.body.expression) === "usesCanonicalSession"
-          )
-            safeSelectors.add(node.name.text);
+            safeSelectors.add(node.id.name);
         }
-        ts.forEachChild(node, collectAliases);
-      };
-      collectAliases(tree);
+      });
       const markers = [...part.matchAll(/\/\/ canonical-gap: ([\w.-]+)/g)];
       const usedMarkers = new Set<number>();
-      const markerFor = (node: ts.Node, gap: string) => {
-        const line = tree.getLineAndCharacterOfPosition(node.getStart()).line;
+      const markerFor = (node: Node, gap: string) => {
+        const { line } = lineOf(node.start);
         const marker = markers.find((match) => {
-          const markerLine = tree.getLineAndCharacterOfPosition(
-            match.index,
-          ).line;
+          const markerLine = lineOf(match.index).line;
           const between = lines.slice(markerLine + 1, line);
           return (
             match[1] === gap &&
             markerLine < line &&
-            between.every((text) => /^\s*\/\/ canonical-gap:/.test(text))
+            between.every((entry) => /^\s*\/\/ canonical-gap:/.test(entry))
           );
         });
         if (!marker)
@@ -330,36 +415,33 @@ export const inspectCanonicalSources = (
           record(gap, file);
         }
       };
-      const visit = (node: ts.Node) => {
+      walkAst(program, (node, ancestors) => {
         if (
-          ts.isBinaryExpression(node) &&
+          node.type === "BinaryExpression" &&
+          ["===", "!==", "==", "!="].includes(node.operator) &&
           (selectorsIn(node) ||
             (!file.startsWith("packages/core/") &&
               [node.left, node.right].some(
                 (operand) =>
-                  operand.getText() === '"canonical"' ||
-                  operand.getText() === "'canonical'",
-              ))) &&
-          [
-            ts.SyntaxKind.EqualsEqualsEqualsToken,
-            ts.SyntaxKind.ExclamationEqualsEqualsToken,
-            ts.SyntaxKind.EqualsEqualsToken,
-            ts.SyntaxKind.ExclamationEqualsToken,
-          ].includes(node.operatorToken.kind)
+                  text(operand) === '"canonical"' ||
+                  text(operand) === "'canonical'",
+              )))
         ) {
           // The operands themselves identify a selector, rather than nested helper calls.
           const operands = [node.left, node.right];
           if (
+            operands.some((operand) => {
+              const call = unwrapChain(operand);
+              return (
+                call.type !== "CallExpression" ||
+                primitiveName(call.callee) !== "usesCanonicalSession"
+              );
+            }) &&
             operands.some(
               (operand) =>
-                !ts.isCallExpression(operand) ||
-                primitiveName(operand.expression) !== "usesCanonicalSession",
-            ) &&
-            operands.some(
-              (operand) =>
-                operand.getText() === '"canonical"' ||
-                operand.getText() === "'canonical'" ||
-                operand.getText() === "undefined",
+                text(operand) === '"canonical"' ||
+                text(operand) === "'canonical'" ||
+                text(operand) === "undefined",
             )
           ) {
             counts.branches++;
@@ -376,73 +458,72 @@ export const inspectCanonicalSources = (
           else record(gap, file);
         }
         const conditionOf = () => {
-          if (ts.isIfStatement(node)) return node.expression;
-          if (ts.isConditionalExpression(node)) return node.condition;
+          if (node.type === "IfStatement") return node.test;
+          if (node.type === "ConditionalExpression") return node.test;
           return undefined;
         };
         const condition = conditionOf();
+        const conditionValue = condition && unwrapChain(condition);
         if (
           condition &&
-          (ts.isIdentifier(condition) ||
-            ts.isPropertyAccessExpression(condition) ||
-            ts.isPrefixUnaryExpression(condition)) &&
+          conditionValue &&
+          (conditionValue.type === "Identifier" ||
+            isStaticMember(conditionValue) ||
+            isPrefixUnary(conditionValue)) &&
           selectorsIn(condition) &&
-          !condition.getText().includes("usesCanonicalSession") &&
+          !text(condition).includes("usesCanonicalSession") &&
           ![...safeSelectors].some((selector) =>
-            condition.getText().includes(selector),
+            text(condition).includes(selector),
           )
         )
           failures.push(`${file}: bare session gate must name a ledger id`);
         if (
-          ts.isCallExpression(node) &&
-          node.expression.getText() === "refuseCanonicalModelEdit"
+          node.type === "CallExpression" &&
+          text(node.callee) === "refuseCanonicalModelEdit"
         ) {
           const gap = node.arguments.at(0);
-          if (gapKey(gap) === undefined)
+          if (gapKey(gap && unwrapChain(gap)) === undefined)
             failures.push(`${file}: model refusal must name a ledger id`);
         }
         if (
-          ts.isCallExpression(node) &&
-          primitiveName(node.expression) === "usesCanonicalSession"
+          node.type === "CallExpression" &&
+          primitiveName(node.callee) === "usesCanonicalSession"
         ) {
           counts.branches++;
           if (node.arguments.length !== 2)
             failures.push(`${file}: session branch needs a ledger id`);
           const gap = node.arguments.at(1);
-          if (gapKey(gap) === undefined)
+          if (gapKey(gap && unwrapChain(gap)) === undefined)
             failures.push(
               `${file}: session branch must name a constant ledger id`,
             );
         }
         if (
-          ts.isCallExpression(node) &&
-          node.expression.getText() === "handleSessionRefusal" &&
+          node.type === "CallExpression" &&
+          text(node.callee) === "handleSessionRefusal" &&
           node.arguments.length !== 2
         )
           failures.push(
             `${file}: session refusal handler must receive its gap id`,
           );
         if (
-          ts.isCallExpression(node) &&
-          gapRelays.has(node.expression.getText())
+          node.type === "CallExpression" &&
+          gapRelays.has(text(node.callee))
         ) {
-          const message = node.arguments.at(0);
-          const gap = node.arguments.at(1);
+          const messageArgument = node.arguments.at(0);
+          const gapArgument = node.arguments.at(1);
+          const message = messageArgument && unwrapChain(messageArgument);
+          const gap = gapArgument && unwrapChain(gapArgument);
           if (
-            message &&
-            (ts.isPropertyAccessExpression(message) ||
-              ts.isElementAccessExpression(message)) &&
+            message?.type === "MemberExpression" &&
             memberKey(message) === "message" &&
-            memberKey(message.expression) === "error"
+            memberKey(message.object) === "error"
           ) {
             if (
               !gap ||
-              !(
-                ts.isPropertyAccessExpression(gap) ||
-                ts.isElementAccessExpression(gap)
-              ) ||
+              gap.type !== "MemberExpression" ||
               memberKey(gap) !== "gap" ||
-              gap.expression.getText() !== message.expression.getText()
+              text(gap.object) !== text(message.object)
             )
               failures.push(
                 `${file}: canonical error relay must forward the original gap id`,
@@ -450,35 +531,38 @@ export const inspectCanonicalSources = (
           }
         }
         if (
-          ts.isNewExpression(node) &&
-          isRefusal(primitiveName(node.expression) ?? "")
+          node.type === "NewExpression" &&
+          isRefusal(primitiveName(node.callee) ?? "")
         ) {
-          const payload = node.arguments?.at(0);
+          const payload = node.arguments.at(0);
           if (
-            !payload ||
-            !ts.isObjectLiteralExpression(payload) ||
+            payload?.type !== "ObjectExpression" ||
             !payload.properties.some(
               (property) =>
-                (ts.isPropertyAssignment(property) ||
-                  ts.isShorthandPropertyAssignment(property)) &&
-                property.name.getText() === "gap",
+                (isPropertyAssignment(property) ||
+                  isShorthandProperty(property)) &&
+                keyText(part, property) === "gap",
             )
           )
             failures.push(`${file}: canonical refusal must carry its gap id`);
         }
-        const mutation = mutationGap(node, file, imports);
+        const mutation = mutationGap(
+          node,
+          ancestors.at(-1),
+          part,
+          file,
+          imports,
+        );
         if (mutation) markerFor(node, mutation);
         if (mutation === CANONICAL_GAP.documentOperations) {
           for (const gap of PUBLIC_OPERATION_SOURCE_GAPS) markerFor(node, gap);
         }
         if (
-          ts.isIfStatement(node) &&
-          node.expression.getText() === "intents === undefined"
+          node.type === "IfStatement" &&
+          text(node.test) === "intents === undefined"
         )
           markerFor(node, CANONICAL_GAP.commands);
-        ts.forEachChild(node, visit);
-      };
-      visit(tree);
+      });
       for (const marker of markers)
         if (!usedMarkers.has(marker.index))
           failures.push(`${file}: orphan canonical gap marker ${marker[1]}`);

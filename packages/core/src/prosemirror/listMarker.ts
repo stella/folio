@@ -67,7 +67,26 @@ export const MAX_LIST_LEVEL = 8;
 
 export { LIST_RENDERING_ATTR_KEYS } from "./listRenderingAttrs";
 
-export const CLEARED_LIST_RENDERING_ATTRS = Object.freeze({
+export const CLEARED_LIST_RENDERING_ATTRS: Readonly<{
+  listIsBullet: null;
+  listIsLegal: null;
+  listNumFmt: null;
+  listMarker: null;
+  listMarkerTemplate: null;
+  listMarkerHidden: null;
+  listMarkerFormatting: null;
+  listMarkerAlignment: null;
+  listMarkerSuffix: null;
+  listMarkerAllCaps: null;
+  listImplicitChildLevelAdvances: null;
+  listFoldedMarkerSuffix: null;
+  listMarkerSecondSlotOffsetTwips: null;
+  listLevelNumFmts: null;
+  listLevelStarts: null;
+  listLevelTabs: null;
+  listAbstractNumId: null;
+  listStartOverride: null;
+}> = Object.freeze({
   listIsBullet: null,
   listIsLegal: null,
   listNumFmt: null,

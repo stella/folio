@@ -277,7 +277,7 @@ ${strictNames.join("\n")}
 export type StrictName = keyof typeof TRANSITIONAL_NAME_BY_STRICT_NAME;
 
 /** The same keys as a list, so a consumer can walk them without widening them. */
-export const STRICT_NAMES = [
+export const STRICT_NAMES: readonly [${entries.map(({ key }) => `"${key}"`).join(", ")}] = [
 ${entries.map(({ key }) => `  "${key}",`).join("\n")}
 ] as const satisfies readonly StrictName[];
 

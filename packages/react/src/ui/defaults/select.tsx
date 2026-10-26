@@ -1,4 +1,5 @@
 import { Select as SelectPrimitive } from "@base-ui/react/select";
+import type { JSX } from "react/jsx-runtime";
 
 import { cn } from "../../lib/utils";
 import type {
@@ -18,7 +19,7 @@ import type {
  * own Select via `DocxEditor`'s `components` prop for that polish.
  */
 
-function DefaultSelectRoot(props: FolioSelectRootProps) {
+function DefaultSelectRoot(props: FolioSelectRootProps): JSX.Element {
   return <SelectPrimitive.Root {...props} />;
 }
 
@@ -27,7 +28,7 @@ function DefaultSelectTrigger({
   children,
   size,
   ...props
-}: FolioSelectTriggerProps) {
+}: FolioSelectTriggerProps): JSX.Element {
   return (
     <SelectPrimitive.Trigger
       className={cn("folio-default-select-trigger", className)}
@@ -55,7 +56,10 @@ function DefaultSelectTrigger({
   );
 }
 
-function DefaultSelectValue({ className, ...props }: FolioSelectValueProps) {
+function DefaultSelectValue({
+  className,
+  ...props
+}: FolioSelectValueProps): JSX.Element {
   return (
     <SelectPrimitive.Value
       className={cn("folio-default-select-value", className)}
@@ -68,7 +72,7 @@ function DefaultSelectPopup({
   className,
   children,
   ...props
-}: FolioSelectPopupProps) {
+}: FolioSelectPopupProps): JSX.Element {
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Positioner
@@ -95,7 +99,7 @@ function DefaultSelectItem({
   className,
   children,
   ...props
-}: FolioSelectItemProps) {
+}: FolioSelectItemProps): JSX.Element {
   return (
     <SelectPrimitive.Item
       className={cn("folio-default-select-item", className)}
@@ -106,7 +110,13 @@ function DefaultSelectItem({
   );
 }
 
-export const DefaultSelect = {
+export const DefaultSelect: {
+  Root: typeof DefaultSelectRoot;
+  Trigger: typeof DefaultSelectTrigger;
+  Value: typeof DefaultSelectValue;
+  Popup: typeof DefaultSelectPopup;
+  Item: typeof DefaultSelectItem;
+} = {
   Root: DefaultSelectRoot,
   Trigger: DefaultSelectTrigger,
   Value: DefaultSelectValue,

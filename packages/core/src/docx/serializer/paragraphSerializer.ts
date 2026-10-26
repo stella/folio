@@ -10,7 +10,7 @@
  * - Runs, hyperlinks, bookmarks, fields as child elements
  */
 
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 import {
@@ -738,9 +738,10 @@ function serializeComplexField(field: ComplexField): string {
   return parts.join("");
 }
 
-class UnrepresentableTrackedCaptureError extends TaggedError(
-  "UnrepresentableTrackedCaptureError",
-)<{
+const UnrepresentableTrackedCaptureErrorBase: TaggedErrorClass<"UnrepresentableTrackedCaptureError"> =
+  TaggedError("UnrepresentableTrackedCaptureError");
+
+class UnrepresentableTrackedCaptureError extends UnrepresentableTrackedCaptureErrorBase<{
   message: string;
 }> {}
 
@@ -770,9 +771,10 @@ function serializeRemovedPreservedInline(item: PreservedInline): string {
   return item.xml;
 }
 
-class UnrepresentableTrackedFieldChildError extends TaggedError(
-  "UnrepresentableTrackedFieldChildError",
-)<{
+const UnrepresentableTrackedFieldChildErrorBase: TaggedErrorClass<"UnrepresentableTrackedFieldChildError"> =
+  TaggedError("UnrepresentableTrackedFieldChildError");
+
+class UnrepresentableTrackedFieldChildError extends UnrepresentableTrackedFieldChildErrorBase<{
   message: string;
 }> {}
 
@@ -1117,9 +1119,10 @@ const trackedChangeSegments = ({
   );
 };
 
-class UnrepresentableNestedHyperlinkError extends TaggedError(
-  "UnrepresentableNestedHyperlinkError",
-)<{
+const UnrepresentableNestedHyperlinkErrorBase: TaggedErrorClass<"UnrepresentableNestedHyperlinkError"> =
+  TaggedError("UnrepresentableNestedHyperlinkError");
+
+class UnrepresentableNestedHyperlinkError extends UnrepresentableNestedHyperlinkErrorBase<{
   message: string;
 }> {}
 

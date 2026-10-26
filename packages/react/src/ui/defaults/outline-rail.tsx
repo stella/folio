@@ -1,4 +1,5 @@
 import {
+  type JSX,
   type KeyboardEvent,
   type RefObject,
   useCallback,
@@ -32,7 +33,7 @@ export function DefaultOutlineRail({
   activeId,
   ariaLabel = "Outline",
   presentation = "panel",
-}: FolioOutlineRailProps) {
+}: FolioOutlineRailProps): JSX.Element | null {
   const listRef = useRef<HTMLOListElement>(null);
   const activeIndex = items.findIndex((item) => item.id === activeId);
   const [focus, setFocus] = useState<OutlineFocus>({

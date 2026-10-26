@@ -18,7 +18,7 @@ export type GenerateRedlineDocxOptions = {
 };
 
 // @public
-export class GenerateRedlineDocxResourceImportError extends GenerateRedlineDocxResourceImportError_base<{
+export class GenerateRedlineDocxResourceImportError extends GenerateRedlineDocxResourceImportErrorBase<{
     message: string;
     detail: string;
 }> {}
@@ -49,7 +49,7 @@ export type GenerateRedlineUnprocessedStory = {
 };
 
 // @public
-export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base<{
+export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsErrorBase<{
     message: string;
     option: "baseView" | "revisedView";
     receivedValue: unknown;

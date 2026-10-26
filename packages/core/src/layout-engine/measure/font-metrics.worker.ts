@@ -15,7 +15,7 @@
  * deliberately dependency-free.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import {
   countCodePoints,
@@ -26,7 +26,10 @@ import {
 } from "./measureWorkerProtocol";
 import type { FontKerningMode } from "./textMeasurementPolicy";
 
-class WorkerInitError extends TaggedError("WorkerInitError")<{
+const WorkerInitErrorBase: TaggedErrorClass<"WorkerInitError"> =
+  TaggedError("WorkerInitError");
+
+class WorkerInitError extends WorkerInitErrorBase<{
   message: string;
 }> {}
 

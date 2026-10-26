@@ -9,7 +9,7 @@
 import { isHistoryTransaction } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
-import type { EditorState, Transaction } from "prosemirror-state";
+import type { EditorState, PluginKey, Transaction } from "prosemirror-state";
 import {
   AddMarkStep,
   AddNodeMarkStep,
@@ -39,12 +39,21 @@ import {
 import { sectionPropertiesOf } from "../../sectionCarrier";
 import { sectionMarkEditsOf } from "../../sectionMarkEdits";
 import { createExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { Extension, ExtensionRuntime } from "../types";
 
-export const paragraphChangeTrackerKey =
-  createPluginKeyOwner<InternalParagraphChangeTrackerState>(
-    "paragraphChangeTracker",
-  );
+export const paragraphChangeTrackerKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<InternalParagraphChangeTrackerState>;
+  owns: (plugin: Plugin<InternalParagraphChangeTrackerState>) => boolean;
+  get: (
+    state: EditorState,
+  ) => Plugin<InternalParagraphChangeTrackerState> | undefined;
+  getState: (
+    state: EditorState,
+  ) => InternalParagraphChangeTrackerState | undefined;
+}> = createPluginKeyOwner<InternalParagraphChangeTrackerState>(
+  "paragraphChangeTracker",
+);
 
 const CLEAR_META = "clear";
 const IGNORE_META = "ignore";
@@ -1045,7 +1054,9 @@ export function markChangedParagraphRanges(
   } satisfies ChangedParagraphRangesMeta);
 }
 
-export const ParagraphChangeTrackerExtension = createExtension({
+export const ParagraphChangeTrackerExtension: (
+  options?: Partial<{}> | undefined,
+) => Extension = createExtension({
   name: "paragraphChangeTracker",
   defaultOptions: {},
   onSchemaReady(): ExtensionRuntime {

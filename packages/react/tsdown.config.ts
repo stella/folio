@@ -107,5 +107,5 @@ export default defineConfig([
     dts: false,
     clean: false,
   },
-  { ...shared, dts: { emitDtsOnly: true }, clean: false },
+  { ...shared, dts: { generator: "oxc", emitDtsOnly: true }, clean: false },
 ]);

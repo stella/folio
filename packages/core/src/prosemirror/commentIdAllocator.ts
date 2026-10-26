@@ -3,7 +3,7 @@
  * Loaded and issued IDs stay reserved even when a comment is deleted.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import type { EditorView } from "prosemirror-view";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
@@ -19,9 +19,10 @@ import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 /** Sentinel ID for a comment that hasn't been persisted yet (anchored to selection). */
 export const PENDING_COMMENT_ID = -1;
 
-export class CommentIdSpaceExhaustedError extends TaggedError(
-  "CommentIdSpaceExhaustedError",
-)<{
+const CommentIdSpaceExhaustedErrorBase: TaggedErrorClass<"CommentIdSpaceExhaustedError"> =
+  TaggedError("CommentIdSpaceExhaustedError");
+
+export class CommentIdSpaceExhaustedError extends CommentIdSpaceExhaustedErrorBase<{
   message: string;
 }> {}
 

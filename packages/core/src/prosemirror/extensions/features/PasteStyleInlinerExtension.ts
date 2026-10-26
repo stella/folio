@@ -16,7 +16,7 @@
 import { Plugin } from "prosemirror-state";
 
 import { createExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { Extension, ExtensionRuntime } from "../types";
 import { Priority } from "../types";
 import { prepareClipboardTrackedRevisions } from "./clipboardTrackedRevisions";
 
@@ -223,7 +223,9 @@ export function transformPastedHTML(html: string): string {
   }
 }
 
-export const PasteStyleInlinerExtension = createExtension({
+export const PasteStyleInlinerExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => Extension = createExtension({
   name: "pasteStyleInliner",
   // Run before other paste handlers so styles are inlined before parseDOM
   priority: Priority.High,

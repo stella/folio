@@ -1,4 +1,5 @@
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
+import type { JSX } from "react/jsx-runtime";
 
 import { cn } from "../../lib/utils";
 import type { FolioCheckboxProps } from "../folio-ui";
@@ -8,7 +9,10 @@ import type { FolioCheckboxProps } from "../folio-ui";
  * Wraps `@base-ui/react`'s accessible Checkbox primitive with a minimal check
  * indicator; consumers inject their own design-system Checkbox for full polish.
  */
-export function DefaultCheckbox({ className, ...props }: FolioCheckboxProps) {
+export function DefaultCheckbox({
+  className,
+  ...props
+}: FolioCheckboxProps): JSX.Element {
   return (
     <CheckboxPrimitive.Root
       className={cn("folio-default-checkbox", className)}

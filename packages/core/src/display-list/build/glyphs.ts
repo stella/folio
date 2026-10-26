@@ -142,7 +142,15 @@ const adjustmentsOf = ({
  * and forgot the adjustments would silently paint a run the line was not fitted
  * with.
  */
-export const glyphRunText = (glyphs: Glyphs) => ({
+export const glyphRunText = (
+  glyphs: Glyphs,
+): {
+  adjustments?: DisplayRunAdjustments;
+  text: string;
+  advancesPx: number[];
+  kerning: boolean;
+  smallCaps: boolean;
+} => ({
   text: glyphs.text,
   advancesPx: glyphs.advancesPx,
   kerning: glyphs.kerning,

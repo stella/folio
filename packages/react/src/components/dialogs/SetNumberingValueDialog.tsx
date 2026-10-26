@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -28,7 +28,9 @@ const MAX_VALUE = 32767;
 const DEFAULT_VALUE = 1;
 
 /** *Set Numbering Value*: start the selected item's list over at a value. */
-export function SetNumberingValueDialog(props: SetNumberingValueDialogProps) {
+export function SetNumberingValueDialog(
+  props: SetNumberingValueDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

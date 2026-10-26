@@ -6,10 +6,6 @@ on:
 permissions:
   contents: read
 
-# No event base exists for a manual run; compare every declared project.
-env:
-  TOOLCHAIN_BASE: unavailable-toolchain-base
-
 jobs:
   typecheck-proofs:
     name: Typecheck proofs
@@ -29,16 +25,6 @@ jobs:
 
       - name: Verify seeded typecheck diagnostic
         run: bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json
-
-      # typecheck:compiler-parity lists the Bun projects explicitly.
-      # packages/vue and packages/playground-vue retain vue-tsc for SFC checks;
-      # TypeScript 6 remains installed for compiler API consumers.
-      - name: Install standalone native project dependencies
-        run: bun install --frozen-lockfile
-        working-directory: plugins/vscode
-
-      - name: Compare compiler diagnostics
-        run: bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"
 
   typecheck-budget:
     name: Compiler-work budget

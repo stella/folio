@@ -30,12 +30,13 @@ import { panic } from "better-result";
 import { $ } from "bun";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+import type { CallExpression } from "oxc-parser";
 
 import {
   PROPERTY_SEEDS_FILE,
   testFileForSeedFile,
 } from "../test/seed-registry";
+import { type Node, nodeText, parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
@@ -129,24 +130,20 @@ const walk = (dir: string): string[] =>
 // Synchronous properties without a declared budget use Bun's 5-second default.
 const DEFAULT_PROPERTY_WEIGHT_MS = 5_000;
 
-const callName = (expression: ts.Expression): string | undefined => {
-  if (ts.isIdentifier(expression)) return expression.text;
-  if (ts.isPropertyAccessExpression(expression))
-    return callName(expression.expression);
-  if (ts.isCallExpression(expression)) return callName(expression.expression);
+const callName = (expression: Node): string | undefined => {
+  if (expression.type === "Identifier") return expression.name;
+  if (expression.type === "MemberExpression" && !expression.computed)
+    return callName(expression.object);
+  if (expression.type === "CallExpression") return callName(expression.callee);
   return undefined;
 };
 
-const enclosingTest = (node: ts.Node): ts.CallExpression | undefined => {
-  for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
-    if (
-      ts.isCallExpression(parent) &&
-      ["test", "it"].includes(callName(parent.expression) ?? "")
-    )
-      return parent;
-  }
-  return undefined;
-};
+const enclosingTest = (ancestors: readonly Node[]): Node | undefined =>
+  ancestors.findLast(
+    (ancestor) =>
+      ancestor.type === "CallExpression" &&
+      ["test", "it"].includes(callName(ancestor.callee) ?? ""),
+  );
 
 type PropertyFileProfileOptions = { file: string; text: string };
 
@@ -155,67 +152,79 @@ export const propertyFileProfile = ({
   file,
   text,
 }: PropertyFileProfileOptions) => {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
-  const constants = new Map<string, ts.Expression[]>();
-  const drivers: ts.CallExpression[] = [];
-  const budgets: ts.CallExpression[] = [];
-  const defaults: ts.CallExpression[] = [];
-  const visit = (node: ts.Node): void => {
+  const { program } = parseSourceModule(file, text);
+  const constants = new Map<string, Node[]>();
+  const drivers: Node[] = [];
+  const budgets: CallExpression[] = [];
+  const defaults: CallExpression[] = [];
+  const ancestry = new Map<Node, readonly Node[]>();
+  walkAst(program, (node, ancestors) => {
+    const parent = ancestors.at(-1);
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      ts.isVariableDeclarationList(node.parent) &&
-      (node.parent.flags & ts.NodeFlags.Const) !== 0
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
+      node.init !== null &&
+      parent?.type === "VariableDeclaration" &&
+      // `await using` bindings carry TypeScript's const flag as well.
+      (parent.kind === "const" || parent.kind === "await using")
     ) {
-      const existing = constants.get(node.name.text);
-      if (existing) existing.push(node.initializer);
-      else constants.set(node.name.text, [node.initializer]);
+      const existing = constants.get(node.id.name);
+      if (existing) existing.push(node.init);
+      else constants.set(node.id.name, [node.init]);
     }
-    if (ts.isCallExpression(node)) {
-      const callee = node.expression;
+    if (node.type === "CallExpression") {
+      const { callee } = node;
       if (
-        (ts.isIdentifier(callee) && callee.text === "assertProperty") ||
-        (ts.isPropertyAccessExpression(callee) &&
-          ts.isIdentifier(callee.expression) &&
-          callee.expression.text === "fc" &&
-          (callee.name.text === "assert" || callee.name.text === "check"))
-      )
+        (callee.type === "Identifier" && callee.name === "assertProperty") ||
+        (callee.type === "MemberExpression" &&
+          !callee.computed &&
+          callee.object.type === "Identifier" &&
+          callee.object.name === "fc" &&
+          callee.property.type === "Identifier" &&
+          (callee.property.name === "assert" ||
+            callee.property.name === "check"))
+      ) {
         drivers.push(node);
-      if (ts.isIdentifier(callee) && callee.text === "propertyTestTimeout")
+        ancestry.set(node, [...ancestors]);
+      }
+      if (
+        callee.type === "Identifier" &&
+        callee.name === "propertyTestTimeout"
+      ) {
         budgets.push(node);
-      if (ts.isIdentifier(callee) && callee.text === "setDefaultTimeout")
+        ancestry.set(node, [...ancestors]);
+      }
+      if (callee.type === "Identifier" && callee.name === "setDefaultTimeout")
         defaults.push(node);
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  });
   if (drivers.length === 0)
     return { drivers: 0, weightMs: 0, missingBudgets: 0 };
 
   const numericBudget = (
-    expression: ts.Expression,
+    expression: Node,
     resolving = new Set<string>(),
   ): number => {
     let value: number;
-    if (ts.isNumericLiteral(expression)) value = Number(expression.text);
-    else if (ts.isParenthesizedExpression(expression))
+    const literal = expression.type === "Literal" ? expression.value : null;
+    if (typeof literal === "number") value = literal;
+    else if (expression.type === "ParenthesizedExpression")
       return numericBudget(expression.expression, resolving);
-    else if (ts.isIdentifier(expression)) {
-      const definitions = constants.get(expression.text);
+    else if (expression.type === "Identifier") {
+      const definitions = constants.get(expression.name);
       const definition =
         definitions?.length === 1 ? definitions.at(0) : undefined;
-      if (!definition || resolving.has(expression.text))
+      if (!definition || resolving.has(expression.name))
         return panic(
-          `Cannot derive property budget in ${file}: ${expression.getText(source)}`,
+          `Cannot derive property budget in ${file}: ${nodeText(text, expression)}`,
         );
       return numericBudget(
         definition,
-        new Set([...resolving, expression.text]),
+        new Set([...resolving, expression.name]),
       );
     } else {
       return panic(
-        `Cannot derive property budget in ${file}: ${expression.getText(source)}`,
+        `Cannot derive property budget in ${file}: ${nodeText(text, expression)}`,
       );
     }
     if (!Number.isFinite(value) || value <= 0)
@@ -225,7 +234,7 @@ export const propertyFileProfile = ({
     return value;
   };
   let missingBudgets = 0;
-  const timeoutBudget = (call: ts.CallExpression): number => {
+  const timeoutBudget = (call: CallExpression): number => {
     const argument = call.arguments.at(0);
     if (argument === undefined) {
       missingBudgets += 1;
@@ -233,7 +242,7 @@ export const propertyFileProfile = ({
     }
     return numericBudget(argument);
   };
-  const stated = new Map<ts.CallExpression, number>();
+  const stated = new Map<Node, number>();
   // Validate every declared helper call, including calls not used by a property.
   for (const call of budgets) stated.set(call, timeoutBudget(call));
   let defaultBudget = DEFAULT_PROPERTY_WEIGHT_MS;
@@ -242,14 +251,14 @@ export const propertyFileProfile = ({
     if (argument === undefined)
       return panic(`Missing default property budget in ${file}`);
     defaultBudget =
-      ts.isCallExpression(argument) && stated.has(argument)
+      argument.type === "CallExpression" && stated.has(argument)
         ? (stated.get(argument) ??
           panic(`Missing profiled property budget in ${file}`))
         : numericBudget(argument);
   }
-  const testBudgets = new Map<ts.CallExpression, number>();
+  const testBudgets = new Map<Node, number>();
   for (const [call, budget] of stated) {
-    const owner = enclosingTest(call);
+    const owner = enclosingTest(ancestry.get(call) ?? []);
     if (owner !== undefined) {
       if (testBudgets.has(owner))
         return panic(`Multiple property budgets in one test in ${file}`);
@@ -258,7 +267,7 @@ export const propertyFileProfile = ({
   }
   let weightMs = 0;
   for (const driver of drivers) {
-    const owner = enclosingTest(driver);
+    const owner = enclosingTest(ancestry.get(driver) ?? []);
     weightMs +=
       owner === undefined
         ? defaultBudget

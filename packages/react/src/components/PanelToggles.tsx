@@ -8,6 +8,7 @@
  */
 
 import { ListTreeIcon, MessageSquareTextIcon } from "lucide-react";
+import type { JSX } from "react/jsx-runtime";
 import { useFormatter, useTranslations } from "use-intl";
 
 import { cn } from "../lib/utils";
@@ -35,7 +36,7 @@ export function PanelToggles({
   commentsShown,
   commentCount,
   onToggleComments,
-}: PanelTogglesProps) {
+}: PanelTogglesProps): JSX.Element {
   const t = useTranslations("folio");
   const format = useFormatter();
   const commentsLabel = t("comments.visibility");

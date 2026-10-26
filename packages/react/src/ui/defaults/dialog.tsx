@@ -1,4 +1,5 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import type { JSX } from "react/jsx-runtime";
 
 import { cn } from "../../lib/utils";
 import type {
@@ -19,11 +20,14 @@ import type {
  * polished Dialog through `DocxEditor`'s `components` prop.
  */
 
-function DefaultDialogRoot(props: FolioDialogRootProps) {
+function DefaultDialogRoot(props: FolioDialogRootProps): JSX.Element {
   return <DialogPrimitive.Root {...props} />;
 }
 
-function DefaultDialogPortal({ children, ...props }: FolioDialogPortalProps) {
+function DefaultDialogPortal({
+  children,
+  ...props
+}: FolioDialogPortalProps): JSX.Element {
   // `folio-root` re-establishes the editor root inside the body portal so design
   // tokens and the standalone stylesheet's scoped utilities apply to the dialog
   // (and `.dark .folio-root` themes it). `display: contents` keeps the wrapper
@@ -40,7 +44,7 @@ function DefaultDialogPortal({ children, ...props }: FolioDialogPortalProps) {
 function DefaultDialogBackdrop({
   className,
   ...props
-}: FolioDialogBackdropProps) {
+}: FolioDialogBackdropProps): JSX.Element {
   return (
     <DialogPrimitive.Backdrop
       className={cn("folio-default-dialog-backdrop", className)}
@@ -49,7 +53,10 @@ function DefaultDialogBackdrop({
   );
 }
 
-function DefaultDialogPopup({ className, ...props }: FolioDialogPopupProps) {
+function DefaultDialogPopup({
+  className,
+  ...props
+}: FolioDialogPopupProps): JSX.Element {
   return (
     <DialogPrimitive.Popup
       className={cn("folio-default-dialog-popup", className)}
@@ -58,7 +65,10 @@ function DefaultDialogPopup({ className, ...props }: FolioDialogPopupProps) {
   );
 }
 
-function DefaultDialogTitle({ className, ...props }: FolioDialogTitleProps) {
+function DefaultDialogTitle({
+  className,
+  ...props
+}: FolioDialogTitleProps): JSX.Element {
   return (
     <DialogPrimitive.Title
       className={cn("folio-default-dialog-title", className)}
@@ -67,7 +77,10 @@ function DefaultDialogTitle({ className, ...props }: FolioDialogTitleProps) {
   );
 }
 
-function DefaultDialogClose({ className, ...props }: FolioDialogCloseProps) {
+function DefaultDialogClose({
+  className,
+  ...props
+}: FolioDialogCloseProps): JSX.Element {
   return (
     <DialogPrimitive.Close
       className={cn("folio-default-dialog-close", className)}
@@ -76,7 +89,14 @@ function DefaultDialogClose({ className, ...props }: FolioDialogCloseProps) {
   );
 }
 
-export const DefaultDialog = {
+export const DefaultDialog: {
+  Root: typeof DefaultDialogRoot;
+  Portal: typeof DefaultDialogPortal;
+  Backdrop: typeof DefaultDialogBackdrop;
+  Popup: typeof DefaultDialogPopup;
+  Title: typeof DefaultDialogTitle;
+  Close: typeof DefaultDialogClose;
+} = {
   Root: DefaultDialogRoot,
   Portal: DefaultDialogPortal,
   Backdrop: DefaultDialogBackdrop,

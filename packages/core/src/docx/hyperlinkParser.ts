@@ -340,8 +340,81 @@ const linkedRangeMarker =
  * recognising is recognised by all of them rather than by whichever list
  * somebody remembered to update.
  */
-export const HYPERLINK_CHILD_HANDLERS = {
-  r: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
+export const HYPERLINK_CHILD_HANDLERS: {
+  readonly r: (
+    child: XmlElement,
+    {
+      push,
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      inScopeXmlns,
+    }: HyperlinkChildContext,
+  ) => void;
+  readonly bookmarkStart: (
+    child: XmlElement,
+    { push }: HyperlinkChildContext,
+  ) => void;
+  readonly bookmarkEnd: (
+    child: XmlElement,
+    { push }: HyperlinkChildContext,
+  ) => void;
+  // The transparent wrappers. `EG_PContent` declares all four, so a link may
+  // be authored around a bidirectional override or a smart tag; each is read
+  // as the wrapper it is, and the runs inside it stay editable text.
+  readonly bdo: ChildReader<HyperlinkChildContext>;
+  readonly dir: ChildReader<HyperlinkChildContext>;
+  readonly customXml: ChildReader<HyperlinkChildContext>;
+  readonly smartTag: ChildReader<HyperlinkChildContext>;
+  // A revision *inside* a link. The paragraph parser hoists these around the
+  // link instead; a link reached from anywhere else — a simple field's cached
+  // result — keeps the markup rather than dropping it.
+  readonly del: "capture";
+  readonly ins: "capture";
+  readonly moveFrom: "capture";
+  readonly moveTo: "capture";
+  readonly commentRangeEnd: ChildReader<HyperlinkChildContext>;
+  readonly commentRangeStart: ChildReader<HyperlinkChildContext>;
+  readonly customXmlDelRangeEnd: "capture";
+  readonly customXmlDelRangeStart: "capture";
+  readonly customXmlInsRangeEnd: "capture";
+  readonly customXmlInsRangeStart: "capture";
+  readonly customXmlMoveFromRangeEnd: "capture";
+  readonly customXmlMoveFromRangeStart: "capture";
+  readonly customXmlMoveToRangeEnd: "capture";
+  readonly customXmlMoveToRangeStart: "capture";
+  readonly fldSimple: (
+    child: XmlElement,
+    { push }: HyperlinkChildContext,
+  ) => void;
+  readonly hyperlink: (
+    child: XmlElement,
+    { push }: HyperlinkChildContext,
+  ) => void;
+  readonly moveFromRangeEnd: ChildReader<HyperlinkChildContext>;
+  readonly moveFromRangeStart: ChildReader<HyperlinkChildContext>;
+  readonly moveToRangeEnd: ChildReader<HyperlinkChildContext>;
+  readonly moveToRangeStart: ChildReader<HyperlinkChildContext>;
+  readonly permEnd: "capture";
+  readonly permStart: "capture";
+  readonly proofErr: "capture";
+  readonly sdt: (child: XmlElement, { push }: HyperlinkChildContext) => void;
+  readonly subDoc: "capture";
+} = {
+  r: (
+    child: XmlElement,
+    {
+      push,
+      styles,
+      theme,
+      rels,
+      media,
+      previews,
+      inScopeXmlns,
+    }: HyperlinkChildContext,
+  ): void => {
     const run = parseRun(
       child,
       styles,
@@ -375,10 +448,10 @@ export const HYPERLINK_CHILD_HANDLERS = {
       }
     }
   },
-  bookmarkStart: (child, { push }) => {
+  bookmarkStart: (child: XmlElement, { push }: HyperlinkChildContext): void => {
     push(parseBookmarkStart(child));
   },
-  bookmarkEnd: (child, { push }) => {
+  bookmarkEnd: (child: XmlElement, { push }: HyperlinkChildContext): void => {
     push(parseBookmarkEnd(child));
   },
 
@@ -408,10 +481,10 @@ export const HYPERLINK_CHILD_HANDLERS = {
   customXmlMoveFromRangeStart: CAPTURE,
   customXmlMoveToRangeEnd: CAPTURE,
   customXmlMoveToRangeStart: CAPTURE,
-  fldSimple: (child, { push }) => {
+  fldSimple: (child: XmlElement, { push }: HyperlinkChildContext): void => {
     push(preserveInlineChild(child));
   },
-  hyperlink: (child, { push }) => {
+  hyperlink: (child: XmlElement, { push }: HyperlinkChildContext): void => {
     push(preserveInlineChild(child));
   },
   moveFromRangeEnd: linkedRangeMarker("moveFromRangeEnd"),
@@ -421,7 +494,7 @@ export const HYPERLINK_CHILD_HANDLERS = {
   permEnd: CAPTURE,
   permStart: CAPTURE,
   proofErr: CAPTURE,
-  sdt: (child, { push }) => {
+  sdt: (child: XmlElement, { push }: HyperlinkChildContext): void => {
     push(preserveLinkedSdt(child));
   },
   subDoc: CAPTURE,

@@ -1,4 +1,4 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
@@ -78,14 +78,41 @@ export const FOLIO_LINE_SPACING_RULE_VALUES: readonly LineSpacingRule[] =
   Object.freeze([...LINE_SPACING_RULE_VALUES]);
 
 /** `w:br/@w:clear` values accepted on an authored hard page break. */
-export const FOLIO_PAGE_BREAK_CLEAR_VALUES = Object.freeze([
+export const FOLIO_PAGE_BREAK_CLEAR_VALUES: readonly [
+  "none",
+  "left",
+  "right",
+  "all",
+] = Object.freeze([
   "none",
   "left",
   "right",
   "all",
 ] as const satisfies readonly NonNullable<BreakContent["clear"]>[]);
 
-export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly [
+  "replaceInBlock",
+  "replaceRange",
+  "commentOnRange",
+  "formatRange",
+  "insertAfterBlock",
+  "insertBeforeBlock",
+  "replaceBlock",
+  "deleteBlock",
+  "splitBlock",
+  "mergeBlockWithNext",
+  "setBlockParagraphProperties",
+  "insertTable",
+  "deleteTable",
+  "commentOnBlock",
+  "insertSignatureTable",
+  "insertTableRow",
+  "deleteTableRow",
+  "insertTableColumn",
+  "deleteTableColumn",
+  "mergeTableCells",
+  "splitTableCell",
+] = Object.freeze([
   "replaceInBlock",
   "replaceRange",
   "commentOnRange",
@@ -109,22 +136,26 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "splitTableCell",
 ] as const satisfies readonly FolioAIEditOperation["type"][]);
 
-export const FOLIO_DOCUMENT_OPERATION_MODES = Object.freeze([
+export const FOLIO_DOCUMENT_OPERATION_MODES: readonly [
+  "direct",
+  "tracked-changes",
+  "suggested",
+] = Object.freeze([
   "direct",
   "tracked-changes",
   "suggested",
 ] as const satisfies readonly FolioAIEditApplyMode[]);
 
-export const FOLIO_DOCUMENT_OPERATION_STORIES = Object.freeze([
+export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly [
   "main",
   "header",
   "footer",
   "footnote",
   "endnote",
-] as const);
-export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS = Object.freeze([
+] = Object.freeze(["main", "header", "footer", "footnote", "endnote"] as const);
+export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly [
   "blockTextHash",
-] as const);
+] = Object.freeze(["blockTextHash"] as const);
 /**
  * Batch-level preconditions. `documentVersion` is an opaque host token (an
  * entity version id, a collaboration checkpoint) pinning the document the
@@ -133,13 +164,13 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS = Object.freeze([
  * batch with `documentVersionMismatch` when it differs. The core apply path
  * preserves the token but has no version to compare it to.
  */
-export const FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS = Object.freeze([
+export const FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS: readonly [
   "documentVersion",
-] as const);
-export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES = Object.freeze([
+] = Object.freeze(["documentVersion"] as const);
+export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES: readonly [
   "best-effort",
   "atomic",
-] as const);
+] = Object.freeze(["best-effort", "atomic"] as const);
 
 export type FolioDocumentOperation = FolioAIEditOperation;
 export type FolioDocumentOperationMode = FolioAIEditApplyMode;
@@ -163,7 +194,45 @@ const DIRECT_AND_SUGGESTED_MODES = Object.freeze([
   "suggested",
 ] as const satisfies readonly FolioDocumentOperationMode[]);
 
-export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
+export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
+  readonly replaceInBlock: readonly ["direct", "tracked-changes", "suggested"];
+  readonly replaceRange: readonly ["direct", "tracked-changes", "suggested"];
+  readonly commentOnRange: readonly ["direct", "tracked-changes"];
+  readonly formatRange: readonly ["direct", "tracked-changes", "suggested"];
+  readonly insertAfterBlock: readonly [
+    "direct",
+    "tracked-changes",
+    "suggested",
+  ];
+  readonly insertBeforeBlock: readonly [
+    "direct",
+    "tracked-changes",
+    "suggested",
+  ];
+  readonly replaceBlock: readonly ["direct", "tracked-changes", "suggested"];
+  readonly deleteBlock: readonly ["direct", "tracked-changes", "suggested"];
+  readonly splitBlock: readonly ["direct", "tracked-changes"];
+  readonly mergeBlockWithNext: readonly ["direct", "tracked-changes"];
+  readonly setBlockParagraphProperties: readonly ["direct", "tracked-changes"];
+  readonly insertTable: readonly ["direct", "tracked-changes"];
+  readonly deleteTable: readonly ["direct", "tracked-changes"];
+  readonly commentOnBlock: readonly ["direct", "tracked-changes"];
+  readonly insertSignatureTable: readonly ["direct", "suggested"];
+  readonly insertTableRow: readonly ["direct", "tracked-changes", "suggested"];
+  readonly deleteTableRow: readonly ["direct", "tracked-changes", "suggested"];
+  readonly insertTableColumn: readonly [
+    "direct",
+    "tracked-changes",
+    "suggested",
+  ];
+  readonly deleteTableColumn: readonly [
+    "direct",
+    "tracked-changes",
+    "suggested",
+  ];
+  readonly mergeTableCells: readonly ["direct", "tracked-changes"];
+  readonly splitTableCell: readonly ["direct", "tracked-changes"];
+}> = Object.freeze({
   replaceInBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   replaceRange: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   commentOnRange: DIRECT_AND_TRACKED_MODES,
@@ -241,16 +310,18 @@ export const isSupportedFolioDocumentOperationVersion = (
 ): value is typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION =>
   value === FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
-export class UnsupportedFolioDocumentOperationVersionError extends TaggedError(
-  "UnsupportedFolioDocumentOperationVersionError",
-)<{
+const UnsupportedFolioDocumentOperationVersionErrorBase: TaggedErrorClass<"UnsupportedFolioDocumentOperationVersionError"> =
+  TaggedError("UnsupportedFolioDocumentOperationVersionError");
+
+export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionErrorBase<{
   message: string;
   receivedVersion: unknown;
 }> {}
 
-export class InvalidFolioDocumentOperationBatchError extends TaggedError(
-  "InvalidFolioDocumentOperationBatchError",
-)<{
+const InvalidFolioDocumentOperationBatchErrorBase: TaggedErrorClass<"InvalidFolioDocumentOperationBatchError"> =
+  TaggedError("InvalidFolioDocumentOperationBatchError");
+
+export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchErrorBase<{
   message: string;
   path: string;
   reason: string;
@@ -1262,7 +1333,29 @@ const acceptedKeys = (
  * decoder) can strip stray keys with the same knowledge instead of
  * guessing, and so tool schemas can be derived from the contract.
  */
-export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
+export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
+  readonly replaceInBlock: readonly string[];
+  readonly replaceRange: readonly string[];
+  readonly commentOnRange: readonly string[];
+  readonly formatRange: readonly string[];
+  readonly insertAfterBlock: readonly string[];
+  readonly insertBeforeBlock: readonly string[];
+  readonly replaceBlock: readonly string[];
+  readonly deleteBlock: readonly string[];
+  readonly splitBlock: readonly string[];
+  readonly mergeBlockWithNext: readonly string[];
+  readonly setBlockParagraphProperties: readonly string[];
+  readonly insertTable: readonly string[];
+  readonly deleteTable: readonly string[];
+  readonly commentOnBlock: readonly string[];
+  readonly insertSignatureTable: readonly string[];
+  readonly insertTableRow: readonly string[];
+  readonly deleteTableRow: readonly string[];
+  readonly insertTableColumn: readonly string[];
+  readonly deleteTableColumn: readonly string[];
+  readonly mergeTableCells: readonly string[];
+  readonly splitTableCell: readonly string[];
+}> = Object.freeze({
   replaceInBlock: acceptedKeys(OPERATION_KEY_DECISIONS.replaceInBlock),
   replaceRange: acceptedKeys(OPERATION_KEY_DECISIONS.replaceRange),
   commentOnRange: acceptedKeys(OPERATION_KEY_DECISIONS.commentOnRange),

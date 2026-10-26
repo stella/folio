@@ -1,7 +1,15 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import type { StyleEngine } from "../style-engine";
-import type { TextFormatting } from "../types/document";
+import type {
+  ColorValue,
+  EmphasisMark,
+  PreservedMarkup,
+  ShadingProperties,
+  TextEffect,
+  TextFormatting,
+  UnderlineStyle,
+} from "../types/document";
 import {
   mergeTextFormatting,
   STYLE_TOGGLE_KEYS,
@@ -302,7 +310,109 @@ type ResolveParagraphInheritedRunFormattingOptions =
 /** One source cascade for imported body runs and the saver inheritance baseline. */
 export const resolveParagraphInheritedRunFormatting = (
   options: ResolveParagraphInheritedRunFormattingOptions,
-) => {
+): {
+  inheritedFormatting:
+    | {
+        bold?: boolean | undefined;
+        boldCs?: boolean | undefined;
+        italic?: boolean | undefined;
+        italicCs?: boolean | undefined;
+        underline?:
+          | {
+              style: UnderlineStyle;
+              color?: ColorValue;
+            }
+          | undefined;
+        strike?: boolean | undefined;
+        doubleStrike?: boolean | undefined;
+        vertAlign?: "baseline" | "superscript" | "subscript" | undefined;
+        smallCaps?: boolean | undefined;
+        allCaps?: boolean | undefined;
+        hidden?: boolean | undefined;
+        noProof?: boolean | undefined;
+        color?: ColorValue | undefined;
+        highlight?:
+          | "black"
+          | "blue"
+          | "cyan"
+          | "darkBlue"
+          | "darkCyan"
+          | "darkGray"
+          | "darkGreen"
+          | "darkMagenta"
+          | "darkRed"
+          | "darkYellow"
+          | "green"
+          | "lightGray"
+          | "magenta"
+          | "none"
+          | "red"
+          | "white"
+          | "yellow"
+          | undefined;
+        shading?: ShadingProperties | undefined;
+        fontSize?: number | undefined;
+        fontSizeCs?: number | undefined;
+        fontFamily?:
+          | {
+              ascii?: string;
+              hAnsi?: string;
+              eastAsia?: string;
+              cs?: string;
+              hint?: "default" | "eastAsia" | "cs";
+              asciiTheme?:
+                | "majorAscii"
+                | "majorHAnsi"
+                | "majorEastAsia"
+                | "majorBidi"
+                | "minorAscii"
+                | "minorHAnsi"
+                | "minorEastAsia"
+                | "minorBidi";
+              hAnsiTheme?: string;
+              eastAsiaTheme?: string;
+              csTheme?: string;
+            }
+          | undefined;
+        language?:
+          | {
+              val?: string;
+              eastAsia?: string;
+              bidi?: string;
+            }
+          | undefined;
+        spacing?: number | undefined;
+        position?: number | undefined;
+        scale?: number | undefined;
+        kerning?: number | undefined;
+        effect?: TextEffect | undefined;
+        emphasisMark?: EmphasisMark | undefined;
+        emboss?: boolean | undefined;
+        imprint?: boolean | undefined;
+        outline?: boolean | undefined;
+        shadow?: boolean | undefined;
+        rtl?: boolean | undefined;
+        cs?: boolean | undefined;
+        styleId?: string | undefined;
+        preserved?: PreservedMarkup | undefined;
+      }
+    | undefined;
+  inheritedToggleCascade: {
+    formatting: TextFormatting | undefined;
+    toggleStates: ReadonlyMap<
+      StyleToggleKey,
+      {
+        value: boolean;
+        defaultsActive: boolean;
+      }
+    >;
+    type: "styleToggleCascade";
+  };
+  baseFormatting: TextFormatting | undefined;
+  baseToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
+  defaultFormatting: TextFormatting | undefined;
+  defaultToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
+} => {
   const body = resolveParagraphBodyRunFormatting(options);
   const ordinaryFormatting = mergeTextFormatting(
     body.defaultFormatting,

@@ -18,7 +18,12 @@
  * generic doc-change reset racing the host's selection move.
  */
 
-import type { EditorState, PluginSpec, Transaction } from "prosemirror-state";
+import type {
+  EditorState,
+  PluginKey,
+  PluginSpec,
+  Transaction,
+} from "prosemirror-state";
 import { Plugin } from "prosemirror-state";
 
 import { createPluginKeyOwner } from "../pluginKeyOwner";
@@ -71,8 +76,13 @@ type Meta = OpenMeta | ClearMeta;
 // new field name.
 const QUERY_CHAR = /[\p{L}\p{N}_.-]/u;
 
-export const templateSlashMenuKey =
-  createPluginKeyOwner<TemplateSlashMenuState>("templateSlashMenu");
+export const templateSlashMenuKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<TemplateSlashMenuState>;
+  owns: (plugin: Plugin<TemplateSlashMenuState>) => boolean;
+  get: (state: EditorState) => Plugin<TemplateSlashMenuState> | undefined;
+  getState: (state: EditorState) => TemplateSlashMenuState | undefined;
+}> = createPluginKeyOwner<TemplateSlashMenuState>("templateSlashMenu");
 
 /** Whether the char immediately before `pos` is a marker boundary (start of the
  *  text block or whitespace). This is the misfire guard: a `/` mid-token (dates,

@@ -24,7 +24,8 @@ export const writeUint32Le = (value: number): Uint8Array => {
   return out;
 };
 
-export const passwordToUtf16Le = encodeUtf16LE;
+export const passwordToUtf16Le: (text: string) => Uint8Array<ArrayBuffer> =
+  encodeUtf16LE;
 
 export const bytesEqual = (left: Uint8Array, right: Uint8Array): boolean => {
   if (left.length !== right.length) {
@@ -52,7 +53,8 @@ export const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
   ) as ArrayBuffer;
 };
 
-export const decodeBase64 = base64ToBytes;
+export const decodeBase64: (text: string) => Uint8Array<ArrayBuffer> =
+  base64ToBytes;
 
 export const padToBlock = (
   bytes: Uint8Array,

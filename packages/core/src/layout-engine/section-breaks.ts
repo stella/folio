@@ -66,9 +66,8 @@ export type BreakDecision = {
 const DEFAULT_COLUMNS: ColumnLayout = { count: 1, gap: 0 };
 
 /** `w:sectPr` may omit `w:type`; §17.6.22's omitted value is `nextPage`. */
-export const DEFAULT_SECTION_BREAK_TYPE = "nextPage" satisfies NonNullable<
-  SectionBreakBlock["type"]
->;
+export const DEFAULT_SECTION_BREAK_TYPE: "nextPage" =
+  "nextPage" satisfies NonNullable<SectionBreakBlock["type"]>;
 
 /**
  * The section start a boundary states, with the omitted value resolved.
@@ -106,7 +105,13 @@ export function normalizeSectionBreakType(
  *   no further column.
  * - `region`: it begins in place, below the outgoing content.
  */
-const SECTION_START_ADVANCE = {
+const SECTION_START_ADVANCE: {
+  readonly nextPage: "page";
+  readonly evenPage: "page";
+  readonly oddPage: "page";
+  readonly nextColumn: "column";
+  readonly continuous: "region";
+} = {
   nextPage: "page",
   evenPage: "page",
   oddPage: "page",

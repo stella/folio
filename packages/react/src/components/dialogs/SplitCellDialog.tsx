@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -33,7 +33,9 @@ export type SplitCellDialogProps = {
 const MIN_PARTS = 1;
 const MAX_PARTS = 63;
 
-export function SplitCellDialog(props: SplitCellDialogProps) {
+export function SplitCellDialog(
+  props: SplitCellDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

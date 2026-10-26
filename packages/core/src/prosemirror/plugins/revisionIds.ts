@@ -10,7 +10,7 @@
  * without a load-order cycle.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import type { Node as PmNode } from "prosemirror-model";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
@@ -26,9 +26,10 @@ import { MAX_REVISION_ID } from "@stll/docx-core/model";
 let counter = 1;
 const occupiedIds = new Set<number>();
 
-export class RevisionIdAllocationError extends TaggedError(
-  "RevisionIdAllocationError",
-)<{
+const RevisionIdAllocationErrorBase: TaggedErrorClass<"RevisionIdAllocationError"> =
+  TaggedError("RevisionIdAllocationError");
+
+export class RevisionIdAllocationError extends RevisionIdAllocationErrorBase<{
   message: string;
   first: number;
   next: number;

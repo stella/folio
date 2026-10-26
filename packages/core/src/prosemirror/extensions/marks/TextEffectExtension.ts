@@ -10,6 +10,7 @@ import type { TextEffect } from "../../../types/document";
 import { TEXT_EFFECT_VALUES } from "../../../types/documentEnumValues";
 import { expectTextEffectMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
 type Variant = Exclude<TextEffect, "none">;
 
@@ -20,7 +21,9 @@ const VARIANTS = TEXT_EFFECT_VALUES.filter(
 const isVariant = (value: string | null): value is Variant =>
   value !== null && (VARIANTS as readonly string[]).includes(value);
 
-export const TextEffectExtension = createMarkExtension({
+export const TextEffectExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "textEffect",
   schemaMarkName: "textEffect",
   markSpec: {

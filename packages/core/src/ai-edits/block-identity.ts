@@ -25,7 +25,9 @@ export const folioAIBlockIdStability = ({
   idStability ??
   (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable");
 
-export const stripBlockIdentityAttrs = (attrs: Record<string, unknown>) => {
+export const stripBlockIdentityAttrs = (
+  attrs: Record<string, unknown>,
+): Record<string, unknown> => {
   const next: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(attrs)) {
     next[key] = IDENTITY_BLOCK_ATTRS.has(key) ? null : value;

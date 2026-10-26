@@ -1,4 +1,4 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
@@ -6,16 +6,19 @@ import { canonicalJson } from "../utils/canonicalJson";
 import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
 import type { SaveDiagnostic } from "./saveDiagnostics";
 
-export class CanonicalResourceSaveRefusalError extends TaggedError(
-  "CanonicalResourceSaveRefusalError",
-)<{
+const CanonicalResourceSaveRefusalErrorBase: TaggedErrorClass<"CanonicalResourceSaveRefusalError"> =
+  TaggedError("CanonicalResourceSaveRefusalError");
+
+export class CanonicalResourceSaveRefusalError extends CanonicalResourceSaveRefusalErrorBase<{
   message: string;
   gap: typeof CANONICAL_GAP.resourceReplacement;
   diagnostic: Extract<SaveDiagnostic, { type: "canonicalResourceReplacement" }>;
 }> {}
 
 /** Full and selective package writers preserve existing style/media source entries. */
-export const canonicalResourceReplacementOf = (document: Document) => {
+export const canonicalResourceReplacementOf = (
+  document: Document,
+): string | undefined => {
   const source = getDocumentSourceBaseline(document);
   if (source.type !== "captured" || !document.originalBuffer) return undefined;
   const baseline = source.resourceStyles;

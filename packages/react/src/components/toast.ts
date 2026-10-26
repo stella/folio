@@ -4,7 +4,7 @@
  * (e.g. in the standalone playground). Shared by `DocxEditor` and the hyperlink
  * handlers so the two never drift.
  */
-export const toast = (msg: string) => {
+export const toast = (msg: string): void => {
   const existing = document.querySelector("[data-folio-toast]");
   if (existing) {
     return;

@@ -87,6 +87,8 @@ export type RenderMapOptions = {
  * The `satisfies` is what makes it total: a key the enumeration gains and the
  * map does not fails to compile, which is the only thing that keeps a
  * hand-decided table from drifting away from the generated union beside it.
+ * The declared type is spelled out because declaration emit does not infer
+ * through `satisfies`.
  */
 export const renderMap = ({
   name,
@@ -96,7 +98,7 @@ export const renderMap = ({
   entries,
 }: RenderMapOptions): string =>
   `${doc}
-export const ${name} = {
+export const ${name}: { ${entries.map(([key, value]) => `readonly ${key}: "${value}"; `).join("")}} = {
 ${entries.map(([key, value]) => `  ${key}: "${value}",`).join("\n")}
 } as const satisfies Record<${keyType}, ${valueType}>;
 `;

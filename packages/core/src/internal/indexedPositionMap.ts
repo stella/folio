@@ -1,7 +1,17 @@
 import type { StepMap } from "prosemirror-transform";
 
 /** StepMap.map scans its ranges; index them once for many paragraph lookups. */
-export const indexedPositionMap = (map: StepMap) => {
+export const indexedPositionMap = (
+  map: StepMap,
+): ((position: number, assoc: 1 | -1) => number) & {
+  mapResult: (
+    position: number,
+    assoc: 1 | -1,
+  ) => {
+    pos: number;
+    deletedAcross: boolean;
+  };
+} => {
   const changes: {
     oldStart: number;
     oldEnd: number;

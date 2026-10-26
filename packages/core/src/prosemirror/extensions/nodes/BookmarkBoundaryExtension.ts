@@ -15,6 +15,7 @@ import {
   findInvalidBookmarkBoundaryIds,
 } from "../../bookmarkBoundaryIntegrity";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./BlockBookmarkBoundaryExtension";
 import {
   bookmarkBoundaryAttrSpec,
@@ -116,59 +117,57 @@ const collectInvalidBoundaries = (doc: PMNode): PositionedNode[] => {
   ];
 };
 
-export const BookmarkBoundaryExtension =
-  createNodeExtension<BookmarkBoundaryOptions>({
-    name: BOOKMARK_BOUNDARY_NODE_NAME,
-    schemaNodeName: BOOKMARK_BOUNDARY_NODE_NAME,
-    nodeSpec: (options) => ({
-      inline: true,
-      group: "inline",
-      marks: "_",
-      atom: true,
-      selectable: false,
-      attrs: bookmarkBoundaryAttrSpec,
-      parseDOM: [
-        {
-          tag: "span[data-docx-bookmark-boundary]",
-          getAttrs: (dom) =>
-            parseBookmarkBoundaryDom(
-              dom,
-              options.getInternalClipboardToken?.(),
-            ),
-        },
-      ],
-      toDOM(node) {
-        return [
-          "span",
-          bookmarkBoundaryDomAttributes(
-            node,
-            options.getInternalClipboardToken?.(),
-          ),
-        ];
+export const BookmarkBoundaryExtension: (
+  options?: Partial<BookmarkBoundaryOptions> | undefined,
+) => NodeExtension = createNodeExtension<BookmarkBoundaryOptions>({
+  name: BOOKMARK_BOUNDARY_NODE_NAME,
+  schemaNodeName: BOOKMARK_BOUNDARY_NODE_NAME,
+  nodeSpec: (options) => ({
+    inline: true,
+    group: "inline",
+    marks: "_",
+    atom: true,
+    selectable: false,
+    attrs: bookmarkBoundaryAttrSpec,
+    parseDOM: [
+      {
+        tag: "span[data-docx-bookmark-boundary]",
+        getAttrs: (dom) =>
+          parseBookmarkBoundaryDom(dom, options.getInternalClipboardToken?.()),
       },
-    }),
-    onSchemaReady: () => ({
-      plugins: [
-        new Plugin({
-          appendTransaction(transactions, _oldState, newState) {
-            if (!transactions.some(({ docChanged }) => docChanged)) {
-              return null;
-            }
+    ],
+    toDOM(node) {
+      return [
+        "span",
+        bookmarkBoundaryDomAttributes(
+          node,
+          options.getInternalClipboardToken?.(),
+        ),
+      ];
+    },
+  }),
+  onSchemaReady: () => ({
+    plugins: [
+      new Plugin({
+        appendTransaction(transactions, _oldState, newState) {
+          if (!transactions.some(({ docChanged }) => docChanged)) {
+            return null;
+          }
 
-            const invalidBoundaries = collectInvalidBoundaries(newState.doc);
-            if (invalidBoundaries.length === 0) {
-              return null;
-            }
+          const invalidBoundaries = collectInvalidBoundaries(newState.doc);
+          if (invalidBoundaries.length === 0) {
+            return null;
+          }
 
-            const transaction = newState.tr;
-            for (const { node, position } of invalidBoundaries.toSorted(
-              (first, second) => second.position - first.position,
-            )) {
-              transaction.delete(position, position + node.nodeSize);
-            }
-            return transaction;
-          },
-        }),
-      ],
-    }),
-  });
+          const transaction = newState.tr;
+          for (const { node, position } of invalidBoundaries.toSorted(
+            (first, second) => second.position - first.position,
+          )) {
+            transaction.delete(position, position + node.nodeSize);
+          }
+          return transaction;
+        },
+      }),
+    ],
+  }),
+});

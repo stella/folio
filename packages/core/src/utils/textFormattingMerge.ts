@@ -2,7 +2,20 @@ import type { ColorValue, TextFormatting } from "../types/document";
 import { mergeFontFamily } from "./fontFamilyMerge";
 
 // Double strike is deliberately absent: it uses ordinary last-defined inheritance.
-export const STYLE_TOGGLE_KEYS = [
+export const STYLE_TOGGLE_KEYS: readonly [
+  "bold",
+  "boldCs",
+  "italic",
+  "italicCs",
+  "allCaps",
+  "emboss",
+  "imprint",
+  "outline",
+  "shadow",
+  "smallCaps",
+  "strike",
+  "hidden",
+] = [
   "bold",
   "boldCs",
   "italic",

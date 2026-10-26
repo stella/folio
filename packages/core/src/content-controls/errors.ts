@@ -1,10 +1,19 @@
+const ContentControlTypeErrorBase: TaggedErrorClass<"ContentControlTypeError"> =
+  TaggedError("ContentControlTypeError");
+
+const ContentControlBoundErrorBase: TaggedErrorClass<"ContentControlBoundError"> =
+  TaggedError("ContentControlBoundError");
+
+const ContentControlLockedErrorBase: TaggedErrorClass<"ContentControlLockedError"> =
+  TaggedError("ContentControlLockedError");
+
 /**
  * Tagged errors for the content-controls API. Every write helper that
  * refuses a mutation throws one of these; consumers can either bubble the
  * error or retry with `{ force: true }`.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import type { SdtProperties } from "../types/document";
 
@@ -13,9 +22,7 @@ import type { SdtProperties } from "../types/document";
  * mutation. Caller can override with `{ force: true }` if they understand
  * the consequences (overrides apply per call, not per document).
  */
-export class ContentControlLockedError extends TaggedError(
-  "ContentControlLockedError",
-)<{
+export class ContentControlLockedError extends ContentControlLockedErrorBase<{
   message: string;
   lock: NonNullable<SdtProperties["lock"]>;
   tag?: string;
@@ -36,9 +43,7 @@ export class ContentControlLockedError extends TaggedError(
  * Reference: python-docx #965, Aspose forum thread on removing custom
  * XML mapping before content updates.
  */
-export class ContentControlBoundError extends TaggedError(
-  "ContentControlBoundError",
-)<{
+export class ContentControlBoundError extends ContentControlBoundErrorBase<{
   message: string;
   xpath: string;
   storeItemID?: string;
@@ -51,9 +56,7 @@ export class ContentControlBoundError extends TaggedError(
  * control's type — e.g. setting free text on a checkbox, or unwrapping a
  * `w15:repeatingSection` (which would orphan its row items).
  */
-export class ContentControlTypeError extends TaggedError(
-  "ContentControlTypeError",
-)<{
+export class ContentControlTypeError extends ContentControlTypeErrorBase<{
   message: string;
   sdtType: SdtProperties["sdtType"];
   reason: string;

@@ -12,7 +12,7 @@ export const registerEditorCommandOwner = (
   execute: (command: Command) => boolean | undefined,
 ) => {
   owners.set(view, execute);
-  return () => {
+  return (): void => {
     owners.delete(view);
   };
 };

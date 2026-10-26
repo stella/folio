@@ -19,17 +19,21 @@
  * untouched so ordinary typed text stays mark-free and serializes cleanly.
  */
 
-import { Plugin } from "prosemirror-state";
+import { type EditorState, Plugin, type PluginKey } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { createExtension } from "../create";
 import { textFormattingToMarks } from "../marks/markUtils";
-import type { ExtensionRuntime } from "../types";
+import type { Extension, ExtensionRuntime } from "../types";
 
-export const emptyParagraphFormatKey = createPluginKeyOwner(
-  "emptyParagraphFormat",
-);
+export const emptyParagraphFormatKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<unknown>;
+  owns: (plugin: Plugin<unknown>) => boolean;
+  get: (state: EditorState) => Plugin<unknown> | undefined;
+  getState: (state: EditorState) => unknown;
+}> = createPluginKeyOwner("emptyParagraphFormat");
 
 /**
  * Run-formatting properties the painter does NOT reproduce from
@@ -96,7 +100,9 @@ function createEmptyParagraphFormatPlugin(): Plugin {
   });
 }
 
-export const EmptyParagraphFormatExtension = createExtension({
+export const EmptyParagraphFormatExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => Extension = createExtension({
   name: "emptyParagraphFormat",
   onSchemaReady(): ExtensionRuntime {
     return {

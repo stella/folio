@@ -1,5 +1,10 @@
 /** Public batches compile against the read projection; only the canonical journal publishes. */
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 import { Mark } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
@@ -71,7 +76,29 @@ type CanonicalPublicOperationRefusal = NonNullable<
 >;
 
 /** A new public kind cannot bypass a canonical compiler/refusal decision. */
-export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS = {
+export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
+  readonly replaceInBlock: "compile";
+  readonly replaceRange: "compile";
+  readonly replaceBlock: "compile";
+  readonly splitBlock: "compile";
+  readonly formatRange: "compile";
+  readonly mergeBlockWithNext: "compile";
+  readonly setBlockParagraphProperties: "publicOps.unsupportedInline";
+  readonly insertAfterBlock: "publicOps.unsupportedInline";
+  readonly insertBeforeBlock: "publicOps.unsupportedInline";
+  readonly deleteBlock: "publicOps.unsupportedInline";
+  readonly commentOnBlock: "compile";
+  readonly commentOnRange: "compile";
+  readonly insertTable: "publicOps.tableStructure";
+  readonly insertSignatureTable: "publicOps.tableStructure";
+  readonly deleteTable: "publicOps.tableStructure";
+  readonly insertTableRow: "publicOps.tableStructure";
+  readonly deleteTableRow: "publicOps.tableStructure";
+  readonly insertTableColumn: "publicOps.tableStructure";
+  readonly deleteTableColumn: "publicOps.tableStructure";
+  readonly mergeTableCells: "publicOps.tableStructure";
+  readonly splitTableCell: "publicOps.tableStructure";
+} = {
   replaceInBlock: "compile",
   replaceRange: "compile",
   replaceBlock: "compile",
@@ -213,9 +240,10 @@ const compilePublicIntents = ({
   return Result.ok({ document, ops, revisions, nextRevisionId });
 };
 
-class CanonicalPublicOperationResolutionError extends TaggedError(
-  "CanonicalPublicOperationResolutionError",
-)<{
+const CanonicalPublicOperationResolutionErrorBase: TaggedErrorClass<"CanonicalPublicOperationResolutionError"> =
+  TaggedError("CanonicalPublicOperationResolutionError");
+
+class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationResolutionErrorBase<{
   message: string;
   reason: FolioAIEditSkipReason;
 }> {}

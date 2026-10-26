@@ -63,7 +63,10 @@ export type SinkBearingBlock = DeclaresSink<
 export const SINK_ON_NODE_ATTRS = "carried-on-node-attrs";
 
 /** How the editor carries each sink-bearing record's markup. */
-export const PRESERVED_SINK_CARRIERS = {
+export const PRESERVED_SINK_CARRIERS: {
+  readonly table: "carried-on-node-attrs";
+  readonly tableRow: "carried-on-node-attrs";
+} = {
   table: SINK_ON_NODE_ATTRS,
   tableRow: SINK_ON_NODE_ATTRS,
 } as const satisfies Record<

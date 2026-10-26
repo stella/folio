@@ -121,7 +121,7 @@ const WHEEL_ZOOM_SENSITIVITY = 0.003;
  * Preset zoom levels for wheel/keyboard snapping within the shared
  * `[ZOOM_MIN, ZOOM_MAX]` range (see `@stll/folio-core/utils/zoom`).
  */
-export const ZOOM_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+export const ZOOM_PRESETS: number[] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 // ============================================================================
 // HELPER FUNCTIONS

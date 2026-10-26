@@ -189,12 +189,26 @@ const mergedSequence = (
 const row = (key: string, names: readonly string[]): string =>
   `  ${JSON.stringify(key)}: [${names.map((name) => JSON.stringify(name)).join(", ")}],`;
 
+type TableEntry = readonly [key: string, names: readonly string[]];
+
+/**
+ * The spread table's type, spelled out so declaration emit needs no
+ * inference: isolated declarations cannot see through `...SEQUENCE_CHILDREN`.
+ */
+const tableType = (entries: readonly TableEntry[]): string =>
+  `{ ${entries
+    .map(
+      ([key, names]) =>
+        `readonly ${JSON.stringify(key)}: readonly [${names.map((name) => JSON.stringify(name)).join(", ")}]; `,
+    )
+    .join("")}}`;
+
 type GeneratedFile = { path: string; contents: string };
 
 const render = async (): Promise<GeneratedFile[]> => {
   const space = await loadContainerSpace();
-  const setRows: string[] = [];
-  const sequenceRows: string[] = [];
+  const setEntries: TableEntry[] = [];
+  const sequenceEntries: TableEntry[] = [];
   const settingsChildren = sequencedChildren(space, "settings", "CT_Settings");
 
   for (const { key, members, sequence } of DISPATCHED_CONTAINERS) {
@@ -210,8 +224,10 @@ const render = async (): Promise<GeneratedFile[]> => {
         message: `container ${key} declares no wordprocessingml children`,
       });
     }
-    (sequence ? sequenceRows : setRows).push(row(key, names));
+    (sequence ? sequenceEntries : setEntries).push([key, names]);
   }
+  const sequenceRows = sequenceEntries.map(([key, names]) => row(key, names));
+  const setRows = setEntries.map(([key, names]) => row(key, names));
 
   const sequenceFile = [
     sequenceHeader,
@@ -234,7 +250,7 @@ const render = async (): Promise<GeneratedFile[]> => {
     header,
     'import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";',
     "",
-    "export const CONTAINER_CHILDREN = {",
+    `export const CONTAINER_CHILDREN: ${tableType([...sequenceEntries, ...setEntries])} = {`,
     ...setRows,
     "  // Written in schema order and owned by `@stll/docx-core`, because a",
     "  // serializer there writes one of them too; see its module comment.",

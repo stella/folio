@@ -17,7 +17,7 @@ import {
 } from "./paragraphTraversal";
 
 /** The code this normalisation is reported under, owned here, not at the caller. */
-export const UNBALANCED_MOVE_RANGE_WARNING =
+export const UNBALANCED_MOVE_RANGE_WARNING: "unbalanced-move-range" =
   PARSE_WARNING_CODES.unbalancedMoveRange;
 
 type NormalizeTrackedMoveRangesInput = {

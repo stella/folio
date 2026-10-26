@@ -1,9 +1,9 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import fc from "fast-check";
-import ts from "typescript";
 
 import { AhoCorasick } from "@stll/aho-corasick";
 
+import { parseSourceModule } from "../../scripts/lib/oxc-ast";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -13,22 +13,22 @@ import { normalizeLineText } from "../textNorm";
 
 describe("parity literal queries", () => {
   test("the matcher module owns no mutable module state", async () => {
-    const source = ts.createSourceFile(
+    const { program } = parseSourceModule(
       "literalSearch.ts",
       await Bun.file(new URL("../literalSearch.ts", import.meta.url)).text(),
-      ts.ScriptTarget.Latest,
-      true,
     );
-    for (const statement of source.statements) {
-      if (ts.isImportDeclaration(statement)) continue;
-      expect(ts.isVariableStatement(statement)).toBe(true);
-      if (!ts.isVariableStatement(statement)) continue;
-      expect(statement.declarationList.flags & ts.NodeFlags.Const).toBeTruthy();
-      for (const declaration of statement.declarationList.declarations) {
-        expect(
-          declaration.initializer &&
-            ts.isArrowFunction(declaration.initializer),
-        ).toBe(true);
+    for (const statement of program.body) {
+      if (statement.type === "ImportDeclaration") continue;
+      // `export const` wraps the variable statement in its export.
+      const variables =
+        statement.type === "ExportNamedDeclaration"
+          ? statement.declaration
+          : statement;
+      expect(variables?.type === "VariableDeclaration").toBe(true);
+      if (variables?.type !== "VariableDeclaration") continue;
+      expect(variables.kind === "const").toBeTruthy();
+      for (const declaration of variables.declarations) {
+        expect(declaration.init?.type === "ArrowFunctionExpression").toBe(true);
       }
     }
   });

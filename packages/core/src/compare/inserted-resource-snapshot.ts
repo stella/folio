@@ -18,7 +18,10 @@ type CreateInsertedResourceProjectionOptions = {
 export const createInsertedResourceProjection = ({
   base,
   revised,
-}: CreateInsertedResourceProjectionOptions) => {
+}: CreateInsertedResourceProjectionOptions): {
+  snapshot: FolioAIEditSnapshot;
+  revisedBlockIds: string[];
+} => {
   const document = sourceDocumentOf(revised);
   const insertions = alignFolioBlocks(base.blocks, revised.blocks)
     .flatMap((event) => {
@@ -90,7 +93,7 @@ export const createInsertedResourceProjection = ({
 export const rebindInsertedResourceBlocks = (
   projection: ReturnType<typeof createInsertedResourceProjection>,
   rebound: FolioAIEditSnapshot,
-) => {
+): Map<string, FolioAIBlock> => {
   if (rebound.blocks.length !== projection.revisedBlockIds.length) {
     return panic(
       "A redline resource import changed the carried insertion count",

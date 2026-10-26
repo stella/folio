@@ -6,6 +6,7 @@ import {
   paragraphNumberingFromSlots,
   type ParagraphNumberingOverride,
   paragraphNumberingReference,
+  type ResolvedParagraphNumbering,
   resolveParagraphNumbering,
 } from "@stll/docx-core/model";
 
@@ -32,7 +33,7 @@ export const paragraphNumberingSourcesFromBoundary = ({
 export const effectiveParagraphNumbering = ({
   numPr,
   numPrFromStyle,
-}: ParagraphNumberingSources) =>
+}: ParagraphNumberingSources): ResolvedParagraphNumbering =>
   resolveParagraphNumbering(mergeParagraphNumbering(numPrFromStyle, numPr));
 
 /** A list reference for membership consumers; cancellation and absence are not lists.
@@ -40,7 +41,9 @@ export const effectiveParagraphNumbering = ({
  */
 export const effectiveParagraphNumberingReference = (
   sources: ParagraphNumberingSources,
-) => {
+):
+  | Exclude<ResolvedParagraphNumbering, { readonly kind: "none" }>
+  | undefined => {
   const numbering = effectiveParagraphNumbering(sources);
   return numbering.kind === "reference" ? numbering : undefined;
 };

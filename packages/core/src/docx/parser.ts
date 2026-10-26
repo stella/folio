@@ -1,4 +1,8 @@
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
+
+const DocxParseErrorBase: TaggedErrorClass<"DocxParseError"> =
+  TaggedError("DocxParseError");
+
 /**
  * Main Parser Orchestrator - Unified parseDocx function
  *
@@ -1022,7 +1026,7 @@ export async function parseDocxWithPreviewBudget(
 
 /** DOCX parsing failure: malformed package, unsupported feature, or
  *  upstream parser exception. Wraps the original cause for diagnostics. */
-export class DocxParseError extends TaggedError("DocxParseError")<{
+export class DocxParseError extends DocxParseErrorBase<{
   message: string;
   cause?: unknown;
 }> {}

@@ -105,7 +105,13 @@ export const automaticTextGap = ({
   return ptToPx(before.style.fontSize ?? DEFAULT_FONT_SIZE) / 4;
 };
 
-export const automaticTextSpacingGaps = (text: string, style: FontStyle) => {
+export const automaticTextSpacingGaps = (
+  text: string,
+  style: FontStyle,
+): {
+  offset: number;
+  advancePx: number;
+}[] => {
   const gaps: { offset: number; advancePx: number }[] = [];
   const policy = style.automaticTextSpacing;
   if (
@@ -136,7 +142,7 @@ export const automaticTextSpacingGaps = (text: string, style: FontStyle) => {
 export const automaticGapCodeUnitAdvances = (
   text: string,
   gaps: readonly { offset: number; advancePx: number }[],
-) => {
+): Map<number, number> => {
   const advances = new Map<number, number>();
   for (const gap of gaps) {
     const previousUnit = text.charCodeAt(gap.offset - 1);

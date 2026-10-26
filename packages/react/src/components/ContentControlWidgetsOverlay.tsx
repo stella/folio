@@ -1,6 +1,12 @@
 /** Thin React renderer for the shared content-control widget controller. */
 
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import {
+  type ReactPortal,
+  useCallback,
+  useEffect,
+  useMemo,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 
 import type { EditorView } from "prosemirror-view";
@@ -21,7 +27,7 @@ type ContentControlWidgetsOverlayProps = {
 export function ContentControlWidgetsOverlay({
   getEventRoot,
   getEditorView,
-}: ContentControlWidgetsOverlayProps) {
+}: ContentControlWidgetsOverlayProps): ReactPortal | null {
   const folioUI = useFolioUI();
   const { Root: Menu, Item: MenuItem } = folioUI.Menu;
   const DatePickerPopover = folioUI.DatePickerPopover;

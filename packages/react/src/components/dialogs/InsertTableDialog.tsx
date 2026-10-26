@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -49,7 +49,9 @@ const DEFAULT_STYLE_OPTIONS: InsertTableStyleOption[] = [
   { id: "TableGridLight", name: "Grid Table Light" },
 ];
 
-export function InsertTableDialog(props: InsertTableDialogProps) {
+export function InsertTableDialog(
+  props: InsertTableDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

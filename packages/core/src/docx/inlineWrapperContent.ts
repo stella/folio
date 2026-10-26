@@ -47,7 +47,32 @@ type AdmissionMap<Admitted extends ParagraphContent> = {
  * extent as marks; lifting a marker changes which side of the tracked content
  * owns that position when the revision is resolved.
  */
-export const TRACKED_CHANGE_WRAPPER_CONTENT = {
+export const TRACKED_CHANGE_WRAPPER_CONTENT: {
+  readonly inlineWrapper: true;
+  readonly bookmarkEnd: true;
+  readonly bookmarkStart: true;
+  readonly complexField: true;
+  readonly deletion: true;
+  readonly hyperlink: true;
+  readonly inlineSdt: true;
+  readonly insertion: true;
+  readonly mathEquation: true;
+  readonly moveFrom: true;
+  readonly moveTo: true;
+  readonly preservedInline: true;
+  readonly run: true;
+  readonly simpleField: true;
+  readonly commentRangeEnd: true;
+  readonly commentRangeStart: true;
+  // The model lifts w:commentReference out of its w:r carrier. Keeping the
+  // record here writes that carrier within CT_RunTrackChange at the same
+  // position.
+  readonly commentReference: true;
+  readonly moveFromRangeEnd: true;
+  readonly moveFromRangeStart: true;
+  readonly moveToRangeEnd: true;
+  readonly moveToRangeStart: true;
+} = {
   inlineWrapper: true,
   bookmarkEnd: true,
   bookmarkStart: true,
@@ -101,7 +126,29 @@ export const TRACKED_CHANGE_WRAPPER_CONTENT = {
  * admits them as direct children. Keeping them here preserves the authored
  * container when neighboring wrappers collapse.
  */
-export const INLINE_SDT_CONTENT = {
+export const INLINE_SDT_CONTENT: {
+  readonly inlineWrapper: true;
+  readonly bookmarkEnd: true;
+  readonly bookmarkStart: true;
+  readonly complexField: true;
+  readonly deletion: true;
+  readonly hyperlink: true;
+  readonly inlineSdt: true;
+  readonly insertion: true;
+  readonly mathEquation: true;
+  readonly moveFrom: true;
+  readonly moveTo: true;
+  readonly preservedInline: true;
+  readonly run: true;
+  readonly simpleField: true;
+  readonly commentRangeEnd: true;
+  readonly commentRangeStart: true;
+  readonly commentReference: true;
+  readonly moveFromRangeEnd: true;
+  readonly moveFromRangeStart: true;
+  readonly moveToRangeEnd: true;
+  readonly moveToRangeStart: true;
+} = {
   inlineWrapper: true,
   bookmarkEnd: true,
   bookmarkStart: true,
@@ -138,7 +185,29 @@ export const INLINE_SDT_CONTENT = {
  * schema's: OOXML nests `w:ins` inside `w:hyperlink` and folio nests the link
  * inside the revision, so the paragraph parser hoists one around the link.
  */
-export const HYPERLINK_CONTENT = {
+export const HYPERLINK_CONTENT: {
+  readonly bookmarkEnd: true;
+  readonly bookmarkStart: true;
+  readonly commentRangeEnd: true;
+  readonly commentRangeStart: true;
+  readonly commentReference: true;
+  readonly inlineWrapper: true;
+  readonly preservedInline: true;
+  readonly run: true;
+  readonly complexField: false;
+  readonly deletion: false;
+  readonly hyperlink: false;
+  readonly inlineSdt: false;
+  readonly insertion: false;
+  readonly mathEquation: false;
+  readonly moveFrom: false;
+  readonly moveFromRangeEnd: true;
+  readonly moveFromRangeStart: true;
+  readonly moveTo: false;
+  readonly moveToRangeEnd: true;
+  readonly moveToRangeStart: true;
+  readonly simpleField: false;
+} = {
   bookmarkEnd: true,
   bookmarkStart: true,
   commentRangeEnd: true,
@@ -170,7 +239,29 @@ export const HYPERLINK_CONTENT = {
  * model. `w:fldData` is the field's own child rather than its content, so it
  * rides `dispatchChildren`'s sink like any other capture.
  */
-export const SIMPLE_FIELD_CONTENT = {
+export const SIMPLE_FIELD_CONTENT: {
+  readonly hyperlink: true;
+  readonly inlineWrapper: true;
+  readonly preservedInline: true;
+  readonly run: true;
+  readonly bookmarkEnd: false;
+  readonly bookmarkStart: false;
+  readonly commentRangeEnd: false;
+  readonly commentRangeStart: false;
+  readonly commentReference: false;
+  readonly complexField: false;
+  readonly deletion: true;
+  readonly inlineSdt: false;
+  readonly insertion: true;
+  readonly mathEquation: false;
+  readonly moveFrom: true;
+  readonly moveFromRangeEnd: false;
+  readonly moveFromRangeStart: false;
+  readonly moveTo: true;
+  readonly moveToRangeEnd: false;
+  readonly moveToRangeStart: false;
+  readonly simpleField: false;
+} = {
   hyperlink: true,
   inlineWrapper: true,
   preservedInline: true,

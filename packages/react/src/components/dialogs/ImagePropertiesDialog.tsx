@@ -6,7 +6,7 @@
  * - Border/outline style, color, and width
  */
 
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -35,7 +35,9 @@ export type ImagePropertiesDialogProps = {
 // COMPONENT
 // ============================================================================
 
-export function ImagePropertiesDialog(props: ImagePropertiesDialogProps) {
+export function ImagePropertiesDialog(
+  props: ImagePropertiesDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

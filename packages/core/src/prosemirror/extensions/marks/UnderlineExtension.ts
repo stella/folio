@@ -13,7 +13,11 @@ import {
 import { expectUnderlineMarkAttrs } from "../../attrs";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type {
+  ExtensionContext,
+  ExtensionRuntime,
+  MarkExtension,
+} from "../types";
 import {
   canonicalSetMarkFormatting,
   setMark,
@@ -24,7 +28,9 @@ import {
 /** `w:u w:val="none"`: the token that cancels an inherited underline. */
 const NO_UNDERLINE = "none";
 
-export const UnderlineExtension = createMarkExtension({
+export const UnderlineExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "underline",
   schemaMarkName: "underline",
   markSpec: {

@@ -23,7 +23,7 @@ export const INSTALL_SCOPES = {
   "browser-discovery": {
     roots: [
       "@playwright/test",
-      "typescript",
+      "oxc-parser",
       "fast-check",
       "better-result",
       "jszip",
@@ -34,7 +34,7 @@ export const INSTALL_SCOPES = {
   },
   "typecheck-budget": {
     roots: [
-      "@typescript/native",
+      "tsrs",
       "typescript",
       "better-result",
       "bun-types",

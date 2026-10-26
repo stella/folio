@@ -66,7 +66,7 @@ const copyPrivateBindings = ({
  * String-key model data, binary buffers, aliases and cycles are deeply cloned.
  * JSON payloads have no bindings to transfer.
  */
-export const cloneModel = <T>(value: T) => {
+export const cloneModel = <T>(value: T): T => {
   const cloned = structuredClone(value);
   copyPrivateBindings({ source: value, target: cloned, seen: new WeakSet() });
   return cloned;

@@ -34,7 +34,172 @@ export type ParagraphFieldWriteBack =
  * Total over `ParagraphFormatting`, so a new `w:pPr` field cannot land without
  * a decision about how a save tells its authored value from its inherited one.
  */
-export const PARAGRAPH_FORMATTING_WRITE_BACK = {
+export const PARAGRAPH_FORMATTING_WRITE_BACK: {
+  readonly alignment: {
+    readonly kind: "direct-provenance";
+  };
+  readonly bidi: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "direction";
+  };
+  readonly kinsoku: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "kinsoku";
+  };
+  readonly autoSpaceDE: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "autoSpaceDE";
+  };
+  readonly autoSpaceDN: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "autoSpaceDN";
+  };
+  readonly overflowPunctuation: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "overflowPunctuation";
+  };
+  readonly spaceBefore: {
+    readonly kind: "direct-provenance";
+  };
+  readonly spaceAfter: {
+    readonly kind: "direct-provenance";
+  };
+  readonly lineSpacing: {
+    readonly kind: "direct-provenance";
+  };
+  readonly lineSpacingRule: {
+    readonly kind: "direct-provenance";
+  };
+  readonly snapToGrid: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "snapToGrid";
+  };
+  readonly beforeAutospacing: {
+    readonly kind: "direct-provenance";
+  };
+  readonly afterAutospacing: {
+    readonly kind: "direct-provenance";
+  };
+  readonly spacingExplicit: {
+    readonly kind: "derived";
+  };
+  // The `w:spacing` and `w:ind` attributes the model has no field for. They
+  // are bytes the author wrote, not values a command sets, so they ride
+  // `_originalFormatting` exactly as `preserved` does — the remainder follows
+  // the record, and a record the editor creates has none.
+  readonly spacingPreservedAttributes: {
+    readonly kind: "original-only";
+  };
+  readonly indentLeft: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "indentLeft";
+  };
+  readonly indentRight: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "indentRight";
+  };
+  readonly indentFirstLine: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "indentFirstLine";
+  };
+  // Reads as the sign of `indentFirstLine`; its node-spec default is `false`
+  // rather than `null`, so the attr carries no absent state of its own.
+  readonly hangingIndent: {
+    readonly kind: "direct-provenance";
+  };
+  readonly indentPreservedAttributes: {
+    readonly kind: "original-only";
+  };
+  // `borders`, `shading` and `tabs` need no entry of their own: their
+  // remainder is a field of the record the attr carries whole, so it travels
+  // with the value the command sets rather than beside it.
+  readonly borders: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "borders";
+  };
+  readonly shading: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "shading";
+  };
+  readonly tabs: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "tabs";
+  };
+  readonly keepNext: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "keepNext";
+  };
+  readonly keepLines: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "keepLines";
+  };
+  readonly widowControl: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "widowControl";
+  };
+  readonly pageBreakBefore: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "pageBreakBefore";
+  };
+  readonly contextualSpacing: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "contextualSpacing";
+  };
+  readonly numPr: {
+    readonly kind: "direct-provenance";
+  };
+  readonly numPrFromStyle: {
+    readonly kind: "derived";
+  };
+  // A historical `w:numberingChange` snapshot, carried as markup. No editor
+  // attr states it, so it survives through `_originalFormatting` like the
+  // other captured-markup fields.
+  readonly numberingChangeXml: {
+    readonly kind: "original-only";
+  };
+  // The `w:ins` record attached to numbering properties has the same ownership:
+  // it is revision metadata, not an editable paragraph-formatting value.
+  readonly numberingInsertionXml: {
+    readonly kind: "original-only";
+  };
+  readonly outlineLevel: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "outlineLevel";
+  };
+  readonly styleId: {
+    readonly kind: "direct-provenance";
+  };
+  readonly frame: {
+    readonly kind: "original-only";
+  };
+  // `w:suppressLineNumbers` reaches layout through the resolved style, not
+  // through a paragraph attr, so no command can state it and there is nothing
+  // for a save to read back. Give it an attr and it becomes
+  // `style-resolved-attr` like the toggles above.
+  readonly suppressLineNumbers: {
+    readonly kind: "original-only";
+  };
+  readonly suppressAutoHyphens: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "suppressAutoHyphens";
+  };
+  readonly runProperties: {
+    readonly kind: "original-only";
+  };
+  // `<w:specVanish/>` on the paragraph mark, not a `w:pPr` child, but the attr
+  // carries the style-resolved value the same way the toggles above do.
+  readonly runInWithNext: {
+    readonly kind: "style-resolved-attr";
+    readonly attr: "runInWithNext";
+  };
+  // The `w:pPr` children folio does not model, as bytes. No editor attr states
+  // them, and none should: they are markup the author wrote, not a value a
+  // command sets. They ride `_originalFormatting` and go back where the
+  // element they were read from goes.
+  readonly preserved: {
+    readonly kind: "original-only";
+  };
+} = {
   alignment: { kind: "direct-provenance" },
   bidi: { kind: "style-resolved-attr", attr: "direction" },
   kinsoku: { kind: "style-resolved-attr", attr: "kinsoku" },

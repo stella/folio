@@ -7,8 +7,11 @@
 
 import { expectCommentMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
-export const CommentExtension = createMarkExtension({
+export const CommentExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "comment",
   schemaMarkName: "comment",
   markSpec: {

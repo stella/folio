@@ -19,7 +19,7 @@
 export const UNDERLINE_OFFSET_RATIO = 0.1;
 
 /** Underline thickness as a fraction of the em, floored so a hairline stays visible. */
-export const UNDERLINE_THICKNESS_RATIO = 1 / 14;
+export const UNDERLINE_THICKNESS_RATIO: number = 1 / 14;
 export const MIN_DECORATION_THICKNESS_PX = 1;
 
 /**

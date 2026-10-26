@@ -455,7 +455,7 @@ export type CompareContentOptions<Block extends FolioContentBlockIdentity = Foli
 export const compareDocx: (base: ArrayBuffer, target: ArrayBuffer, options: CompareDocxOptions) => Promise<Result<CompareResult, CompareDocxError>>;
 
 // @public
-export class CompareDocxApplyError extends CompareDocxApplyError_base<{
+export class CompareDocxApplyError extends CompareDocxApplyErrorBase<{
     message: string;
     skipped: readonly FolioAIEditSkippedOperation[];
 }> {}
@@ -464,13 +464,13 @@ export class CompareDocxApplyError extends CompareDocxApplyError_base<{
 export type CompareDocxError = CompareDocxApplyError | CompareDocxFinalParagraphMarkError | CompareDocxOperationLimitError | CompareDocxParseError | CompareDocxRoundTripError | CompareDocxSerializeError | InvalidCompareDocxOptionsError;
 
 // @public
-export class CompareDocxFinalParagraphMarkError extends CompareDocxFinalParagraphMarkError_base<{
+export class CompareDocxFinalParagraphMarkError extends CompareDocxFinalParagraphMarkErrorBase<{
     message: string;
     revisions: readonly FinalParagraphMarkRevision[];
 }> {}
 
 // @public
-export class CompareDocxOperationLimitError extends CompareDocxOperationLimitError_base<{
+export class CompareDocxOperationLimitError extends CompareDocxOperationLimitErrorBase<{
     message: string;
     limit: number;
 }> {}
@@ -485,14 +485,14 @@ export type CompareDocxOptions = {
 };
 
 // @public (undocumented)
-export class CompareDocxParseError extends CompareDocxParseError_base<{
+export class CompareDocxParseError extends CompareDocxParseErrorBase<{
     message: string;
     side: "base" | "target";
     cause: unknown;
 }> {}
 
 // @public
-export class CompareDocxRoundTripError extends CompareDocxRoundTripError_base<{
+export class CompareDocxRoundTripError extends CompareDocxRoundTripErrorBase<{
     message: string;
     story: FolioDocumentStoryHandle;
     invariant: CompareVerificationInvariant;
@@ -501,7 +501,7 @@ export class CompareDocxRoundTripError extends CompareDocxRoundTripError_base<{
 }> {}
 
 // @public (undocumented)
-export class CompareDocxSerializeError extends CompareDocxSerializeError_base<{
+export class CompareDocxSerializeError extends CompareDocxSerializeErrorBase<{
     message: string;
     cause: unknown;
 }> {}
@@ -847,7 +847,7 @@ export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_mod
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly import__stll_docx_core_model.ParagraphAlignment[];
 
 // @public
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 14;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION: 14;
 
 // @public (undocumented)
 export type FolioAIBlock = FolioAIParagraphBlock | FolioAIDiagnosticBlock;
@@ -1368,7 +1368,7 @@ export type FolioContentComparisonEvent<Block extends FolioContentBlockIdentity 
 export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
 
 // @public (undocumented)
-export class FolioContentComparisonLimitError extends FolioContentComparisonLimitError_base<{
+export class FolioContentComparisonLimitError extends FolioContentComparisonLimitErrorBase<{
     message: string;
     input: "base" | "revised" | "result";
     limit: FolioContentComparisonLimit;
@@ -1426,7 +1426,7 @@ export type FolioContentInlineFormatting = Partial<Record<FolioContentInlineBool
 export type FolioContentInlineFormattingPatch = { [Property in keyof FolioContentInlineFormatting]?: FolioContentInlineFormatting[Property] | null; };
 
 // @public (undocumented)
-export class FolioContentInlinePresentationProjectionError extends FolioContentInlinePresentationProjectionError_base<{
+export class FolioContentInlinePresentationProjectionError extends FolioContentInlinePresentationProjectionErrorBase<{
     message: string;
     side: "base" | "revised" | "both";
     baseBlockId: string;
@@ -1712,7 +1712,7 @@ export type FolioWordDiffOptions = {
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
 
 // @public
-export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionError_base<{
+export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionErrorBase<{
     message: string;
     marker: unknown;
     supportedVersion: FolioYjsAttrSchemaVersion;
@@ -1790,14 +1790,14 @@ export const inspectDocxCompatibility: (doc: import__stll_docx_core_model.Docume
 export type InspectDocxCompatibilityOptions = Partial<DocxCompatibilityContext>;
 
 // @public (undocumented)
-export class InvalidCompareDocxOptionsError extends InvalidCompareDocxOptionsError_base<{
+export class InvalidCompareDocxOptionsError extends InvalidCompareDocxOptionsErrorBase<{
     message: string;
     option: "timestamp" | "revisionFormat";
     receivedValue: unknown;
 }> {}
 
 // @public (undocumented)
-export class InvalidFolioContentComparisonError extends InvalidFolioContentComparisonError_base<{
+export class InvalidFolioContentComparisonError extends InvalidFolioContentComparisonErrorBase<{
     message: string;
     input: "options" | "base" | "revised";
     blockIndex?: number;
@@ -1805,7 +1805,7 @@ export class InvalidFolioContentComparisonError extends InvalidFolioContentCompa
 }> {}
 
 // @public (undocumented)
-export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base<{
+export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchErrorBase<{
     message: string;
     path: string;
     reason: string;
@@ -2013,7 +2013,7 @@ export function toMarkdown(doc: import__stll_docx_core_model.Document, opts?: Ma
 export function toMarkdownResult(doc: import__stll_docx_core_model.Document, opts?: MarkdownOptions): MarkdownResult;
 
 // @public (undocumented)
-export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base<{
+export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionErrorBase<{
     message: string;
     receivedVersion: unknown;
 }> {}

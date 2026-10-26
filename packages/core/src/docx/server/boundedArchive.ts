@@ -1,4 +1,4 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import JSZip from "jszip";
 
 import { decodeText } from "../../utils/textEncoding";
@@ -19,13 +19,16 @@ import {
   type XmlResourceLimits,
 } from "../xmlResourceLimits";
 
-export const DOCX_MAX_ENTRY_BYTES = 128 * 1024 * 1024;
-export const DOCX_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+export const DOCX_MAX_ENTRY_BYTES: number = 128 * 1024 * 1024;
+export const DOCX_MAX_TOTAL_BYTES: number = 256 * 1024 * 1024;
 export const DOCX_MAX_ENTRIES = 4096;
-export const DOCX_MAX_INPUT_BYTES = 50 * 1024 * 1024;
+export const DOCX_MAX_INPUT_BYTES: number = 50 * 1024 * 1024;
+
+const DocxArchiveErrorBase: TaggedErrorClass<"DocxArchiveError"> =
+  TaggedError("DocxArchiveError");
 
 /** Error raised when a DOCX archive cannot be loaded within configured limits. */
-export class DocxArchiveError extends TaggedError("DocxArchiveError")<{
+export class DocxArchiveError extends DocxArchiveErrorBase<{
   message: string;
   reason:
     | "load-failed"

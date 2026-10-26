@@ -13,7 +13,7 @@ import { getStandaloneClipboardImageFiles } from "../../../utils/clipboard";
 import { isSafeImageFile } from "../../../utils/imageValidation";
 import { sanitizeImageSrc } from "../../../utils/sanitizeImageSrc";
 import { createExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
 
 const MAX_INLINE_IMAGE_WIDTH = 612; // ~6.375 inches at 96 DPI
 
@@ -123,7 +123,9 @@ async function insertImageFiles(
   view.focus();
 }
 
-export const ImagePasteExtension = createExtension({
+export const ImagePasteExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => Extension = createExtension({
   name: "imagePaste",
   onSchemaReady(_ctx: ExtensionContext): ExtensionRuntime {
     const plugin = new Plugin({

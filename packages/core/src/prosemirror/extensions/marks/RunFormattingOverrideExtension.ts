@@ -14,6 +14,7 @@ import { expectRunFormattingOverrideMarkAttrs } from "../../attrs";
 import { withAuthoredRunFormatting } from "../../runFormattingProvenance";
 import type { RunFormattingOverrideAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
 type BuildRunFormattingOverrideAttrsOptions =
   | { type: "authored-baseline"; formatting: TextFormatting | undefined }
@@ -227,7 +228,9 @@ export function applyRunFormattingOverrideMark(
   );
 }
 
-export const RunFormattingOverrideExtension = createMarkExtension({
+export const RunFormattingOverrideExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "runFormattingOverride",
   schemaMarkName: "runFormattingOverride",
   markSpec: {

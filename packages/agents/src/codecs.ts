@@ -15,7 +15,29 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
 
-export const FOLIO_STORY_HANDLE_JSON_SCHEMA = {
+export const FOLIO_STORY_HANDLE_JSON_SCHEMA: {
+  readonly type: "object";
+  readonly properties: {
+    readonly type: {
+      readonly type: "string";
+      readonly enum: readonly [
+        "main",
+        "header",
+        "footer",
+        "footnote",
+        "endnote",
+      ];
+    };
+    readonly relationshipId: {
+      readonly type: "string";
+    };
+    readonly noteId: {
+      readonly type: "integer";
+    };
+  };
+  readonly required: readonly ["type"];
+  readonly additionalProperties: false;
+} = {
   type: "object",
   properties: {
     type: {
@@ -29,7 +51,38 @@ export const FOLIO_STORY_HANDLE_JSON_SCHEMA = {
   additionalProperties: false,
 } as const satisfies FolioAgentJsonObjectSchema;
 
-export const FOLIO_SECTION_HANDLE_JSON_SCHEMA = {
+export const FOLIO_SECTION_HANDLE_JSON_SCHEMA: {
+  readonly type: "object";
+  readonly properties: {
+    readonly type: {
+      readonly type: "string";
+      readonly enum: readonly ["headingSection"];
+    };
+    readonly story: {
+      readonly type: "string";
+      readonly enum: readonly ["main"];
+    };
+    readonly headingBlockId: {
+      readonly type: "string";
+    };
+    readonly headingTextHash: {
+      readonly type: "string";
+    };
+    readonly headingLevel: {
+      readonly type: "integer";
+      readonly minimum: 1;
+      readonly maximum: 9;
+    };
+  };
+  readonly required: readonly [
+    "type",
+    "story",
+    "headingBlockId",
+    "headingTextHash",
+    "headingLevel",
+  ];
+  readonly additionalProperties: false;
+} = {
   type: "object",
   properties: {
     type: { type: "string", enum: ["headingSection"] },
@@ -48,7 +101,45 @@ export const FOLIO_SECTION_HANDLE_JSON_SCHEMA = {
   additionalProperties: false,
 } as const satisfies FolioAgentJsonObjectSchema;
 
-export const FOLIO_SCOPED_HANDLE_JSON_SCHEMA = {
+export const FOLIO_SCOPED_HANDLE_JSON_SCHEMA: {
+  readonly type: "object";
+  readonly properties: {
+    readonly type: {
+      readonly type: "string";
+      readonly enum: readonly [
+        "main",
+        "header",
+        "footer",
+        "footnote",
+        "endnote",
+        "headingSection",
+      ];
+    };
+    readonly story: {
+      readonly type: "string";
+      readonly enum: readonly ["main"];
+    };
+    readonly relationshipId: {
+      readonly type: "string";
+    };
+    readonly noteId: {
+      readonly type: "integer";
+    };
+    readonly headingBlockId: {
+      readonly type: "string";
+    };
+    readonly headingTextHash: {
+      readonly type: "string";
+    };
+    readonly headingLevel: {
+      readonly type: "integer";
+      readonly minimum: 1;
+      readonly maximum: 9;
+    };
+  };
+  readonly required: readonly ["type"];
+  readonly additionalProperties: false;
+} = {
   type: "object",
   properties: {
     type: {

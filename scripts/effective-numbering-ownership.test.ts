@@ -2,7 +2,19 @@ import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+
+import {
+  bindingElements,
+  collectSyntaxTree,
+  isBlock,
+  isFunctionLike,
+  type Node,
+  nodeText,
+  parameterParts,
+  parametersOf,
+  parseLikeTypeScript,
+  walkAst,
+} from "./lib/oxc-ast";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const OWNER = "packages/core/src/prosemirror/numberingAttr.ts";
@@ -37,76 +49,107 @@ const LEVEL_OWNER_ALLOWLIST = new Set([
   "packages/core/src/prosemirror/styles/resolvedStyleAttrs.ts",
 ]);
 
-const levelOwnerViolations = (source: string): string[] => {
-  const file = ts.createSourceFile(
-    "fixture.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+const parseFixture = (source: string, file: string) =>
+  parseLikeTypeScript(file, source, "ts").program;
+
+/** `a.b` (TypeScript's property access): the accessed name. */
+const accessedName = (node: Node): string | undefined => {
+  if (node.type !== "MemberExpression" || node.computed) return undefined;
+  return node.property.type === "PrivateIdentifier"
+    ? `#${node.property.name}`
+    : node.property.name;
+};
+
+/** `a["b"]` (TypeScript's element access with a string literal): the key. */
+const stringKey = (node: Node): string | undefined =>
+  node.type === "MemberExpression" &&
+  node.computed &&
+  node.property.type === "Literal" &&
+  typeof node.property.value === "string"
+    ? node.property.value
+    : undefined;
+
+const levelOwnerViolations = (
+  source: string,
+  file = "fixture.ts",
+): string[] => {
+  const program = parseFixture(source, file);
   const found: string[] = [];
-  const visit = (node: ts.Node): void => {
+  walkAst(program, (node) => {
     if (
-      ts.isCallExpression(node) &&
-      ((ts.isIdentifier(node.expression) &&
-        node.expression.text === "hasListRendering") ||
-        (ts.isPropertyAccessExpression(node.expression) &&
-          node.expression.name.text === "getLevel"))
+      node.type === "CallExpression" &&
+      ((node.callee.type === "Identifier" &&
+        node.callee.name === "hasListRendering") ||
+        accessedName(node.callee) === "getLevel")
     ) {
-      found.push(node.getText(file));
+      found.push(nodeText(source, node));
     }
     if (
-      ts.isPropertyAccessExpression(node) &&
-      node.name.text === "levels" &&
-      ts.isElementAccessExpression(node.expression) &&
-      node.expression.argumentExpression?.getText(file).includes("abstractNum")
+      node.type === "MemberExpression" &&
+      accessedName(node) === "levels" &&
+      node.object.type === "MemberExpression" &&
+      node.object.computed &&
+      nodeText(source, node.object.property).includes("abstractNum")
     ) {
-      found.push(node.getText(file));
+      found.push(nodeText(source, node));
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+  });
   return found;
 };
 
-const cachedRenderingDecisionViolations = (source: string): string[] => {
+const cachedRenderingDecisionViolations = (
+  source: string,
+  file = "fixture.ts",
+): string[] => {
   if (
     !source.includes("resolveParagraphList") ||
     !source.includes("listRendering")
   )
     return [];
-  const file = ts.createSourceFile(
-    "fixture.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const program = parseFixture(source, file);
+  const { nodes, parentOf } = collectSyntaxTree(program);
   const found: string[] = [];
-  const decisionScope = (node: ts.Node): ts.Node => {
-    let scope = node.parent;
-    while (scope && !ts.isFunctionLike(scope) && !ts.isSourceFile(scope))
-      scope = scope.parent;
-    return scope ?? file;
+  const decisionScope = (node: Node): Node => {
+    let scope = parentOf(node);
+    while (scope && !isFunctionLike(scope) && scope.type !== "Program")
+      scope = parentOf(scope);
+    return scope ?? program;
   };
-  const visit = (node: ts.Node): void => {
+  // TypeScript's text of a function: a method's starts at its name, and the
+  // file's runs to the end of the text.
+  const scopeText = (scope: Node): string => {
+    if (scope.type === "Program") return source.slice(scope.start);
+    const owner = parentOf(scope);
+    return scope.type === "FunctionExpression" &&
+      owner !== undefined &&
+      (owner.type === "MethodDefinition" ||
+        owner.type === "TSAbstractMethodDefinition" ||
+        (owner.type === "Property" && owner.value === scope))
+      ? nodeText(source, owner)
+      : nodeText(source, scope);
+  };
+  for (const node of nodes) {
     if (
-      ((ts.isPropertyAccessExpression(node) &&
-        node.name.text === "listRendering") ||
-        (ts.isElementAccessExpression(node) &&
-          ts.isStringLiteral(node.argumentExpression) &&
-          node.argumentExpression.text === "listRendering")) &&
-      decisionScope(node).getText(file).includes("resolveParagraphList(")
+      (accessedName(node) === "listRendering" ||
+        stringKey(node) === "listRendering") &&
+      scopeText(decisionScope(node)).includes("resolveParagraphList(")
     ) {
-      found.push(node.getText(file));
+      found.push(nodeText(source, node));
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+  }
   return found;
 };
 
+/** `object.property` built for a destructured name; it has no source of its own. */
+type SyntheticAccess = {
+  readonly type: "SyntheticAccess";
+  readonly object: Node;
+  readonly property: string;
+};
+type Expression = Node | SyntheticAccess;
+
 /** Follow local aliases so membership cannot accidentally read only the authored slot. */
-const violations = (source: string): string[] => {
+const violations = (source: string, file = "fixture.ts"): string[] => {
   // Files without either a source slot or a membership reader cannot cross
   // this boundary. Avoid constructing their syntax trees during discovery.
   if (
@@ -114,159 +157,165 @@ const violations = (source: string): string[] => {
     ![...MEMBERSHIP_READERS].some((name) => source.includes(name))
   )
     return [];
-  const file = ts.createSourceFile(
-    "fixture.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const scopeOf = (node: ts.Node): ts.Node => {
-    let scope = node.parent;
+  const program = parseFixture(source, file);
+  const { nodes, parentOf } = collectSyntaxTree(program);
+  const scopeOf = (node: Node): Node => {
+    let scope = parentOf(node);
     while (
       scope &&
-      !ts.isBlock(scope) &&
-      !ts.isSourceFile(scope) &&
-      !ts.isFunctionLike(scope)
+      !isBlock(scope) &&
+      scope.type !== "Program" &&
+      !isFunctionLike(scope)
     )
-      scope = scope.parent;
-    return scope ?? file;
+      scope = parentOf(scope);
+    return scope ?? program;
   };
-  const bindings = new Map<ts.Node, Map<string, ts.Expression | undefined>>();
-  const collect = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
-      const scope = scopeOf(node);
-      const locals =
-        bindings.get(scope) ?? new Map<string, ts.Expression | undefined>();
-      locals.set(node.name.text, node.initializer);
-      bindings.set(scope, locals);
-    }
+  const bindings = new Map<Node, Map<string, Expression | undefined>>();
+  const localsOf = (scope: Node): Map<string, Expression | undefined> => {
+    const locals =
+      bindings.get(scope) ?? new Map<string, Expression | undefined>();
+    bindings.set(scope, locals);
+    return locals;
+  };
+  for (const node of nodes) {
+    if (node.type === "VariableDeclarator" && node.id.type === "Identifier")
+      localsOf(scopeOf(node)).set(node.id.name, node.init ?? undefined);
+    // TypeScript declares a catch clause's variable like any other.
+    if (node.type === "CatchClause" && node.param?.type === "Identifier")
+      localsOf(scopeOf(node.param)).set(node.param.name, undefined);
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isObjectBindingPattern(node.name) &&
-      node.initializer
+      node.type === "VariableDeclarator" &&
+      node.id.type === "ObjectPattern" &&
+      node.init
     ) {
-      const scope = scopeOf(node);
-      const locals =
-        bindings.get(scope) ?? new Map<string, ts.Expression | undefined>();
-      for (const element of node.name.elements) {
-        if (!ts.isIdentifier(element.name) || element.dotDotDotToken) continue;
-        const property = element.propertyName ?? element.name;
-        if (!ts.isIdentifier(property)) continue;
-        locals.set(
-          element.name.text,
-          ts.factory.createPropertyAccessExpression(
-            node.initializer,
-            property.text,
-          ),
-        );
+      const locals = localsOf(scopeOf(node));
+      for (const element of bindingElements(node.id)) {
+        if (
+          element.name.type !== "Identifier" ||
+          element.node.type === "RestElement"
+        )
+          continue;
+        const property = element.propertyName;
+        if (
+          property !== undefined &&
+          (property.type !== "Identifier" ||
+            (element.node.type === "Property" && element.node.computed))
+        )
+          continue;
+        locals.set(element.name.name, {
+          type: "SyntheticAccess",
+          object: node.init,
+          property: property?.name ?? element.name.name,
+        });
       }
-      bindings.set(scope, locals);
     }
-    if (ts.isFunctionLike(node)) {
-      const locals =
-        bindings.get(node) ?? new Map<string, ts.Expression | undefined>();
-      for (const parameter of node.parameters)
-        if (ts.isIdentifier(parameter.name))
-          locals.set(parameter.name.text, undefined);
-      bindings.set(node, locals);
+    if (isFunctionLike(node)) {
+      const locals = localsOf(node);
+      for (const parameter of parametersOf(node)) {
+        const { name } = parameterParts(parameter);
+        if (name.type === "Identifier") locals.set(name.name, undefined);
+      }
     }
-    ts.forEachChild(node, collect);
-  };
-  collect(file);
-  const initializerOf = (node: ts.Identifier): ts.Expression | undefined => {
-    let scope: ts.Node | undefined = node;
+  }
+  const initializerOf = (node: Node & { name: string }) => {
+    let scope: Node | undefined = node;
     while (scope) {
       const locals = bindings.get(scope);
-      if (locals?.has(node.text)) return locals.get(node.text);
-      scope = scope.parent;
+      if (locals?.has(node.name)) return locals.get(node.name);
+      scope = parentOf(scope);
     }
     return undefined;
   };
   const importNames = new Map<string, string>();
-  const collectImports = (node: ts.Node): void => {
-    if (ts.isImportSpecifier(node))
-      importNames.set(node.name.text, (node.propertyName ?? node.name).text);
-    ts.forEachChild(node, collectImports);
-  };
-  collectImports(file);
+  for (const node of nodes)
+    if (node.type === "ImportSpecifier")
+      importNames.set(
+        node.local.name,
+        node.imported.type === "Literal"
+          ? node.imported.value
+          : node.imported.name,
+      );
+  const propertyAccessName = (node: Expression): string | undefined =>
+    node.type === "SyntheticAccess" ? node.property : accessedName(node);
   const callableName = (
-    node: ts.Expression,
+    node: Expression,
     seen = new Set<string>(),
   ): string | undefined => {
-    if (ts.isPropertyAccessExpression(node)) return node.name.text;
-    if (!ts.isIdentifier(node)) return undefined;
-    if (seen.has(node.text)) return undefined;
+    const accessed = propertyAccessName(node);
+    if (accessed !== undefined) return accessed;
+    if (node.type !== "Identifier") return undefined;
+    if (seen.has(node.name)) return undefined;
     const initializer = initializerOf(node);
     if (initializer) {
       const next = new Set(seen);
-      next.add(node.text);
+      next.add(node.name);
       return callableName(initializer, next);
     }
-    return importNames.get(node.text) ?? node.text;
+    return importNames.get(node.name) ?? node.name;
   };
-  const isAttrs = (node: ts.Expression, seen = new Set<string>()): boolean => {
-    if (ts.isIdentifier(node)) {
-      if (/attrs$/iu.test(node.text)) return true;
+  const isAttrs = (node: Expression, seen = new Set<string>()): boolean => {
+    if (node.type === "Identifier") {
+      if (/attrs$/iu.test(node.name)) return true;
       const initializer = initializerOf(node);
-      if (initializer && !seen.has(node.text)) {
+      if (initializer && !seen.has(node.name)) {
         const next = new Set(seen);
-        next.add(node.text);
+        next.add(node.name);
         return isAttrs(initializer, next);
       }
     }
     return (
-      (ts.isPropertyAccessExpression(node) && node.name.text === "attrs") ||
-      (ts.isCallExpression(node) &&
+      propertyAccessName(node) === "attrs" ||
+      (node.type === "CallExpression" &&
         ["expectParagraphAttrs", "mergeParagraphAttrs"].includes(
-          callableName(node.expression) ?? "",
+          callableName(node.callee) ?? "",
         ))
     );
   };
   const readsAuthoredSlot = (
-    node: ts.Node,
+    node: Expression,
     seen = new Set<string>(),
   ): boolean => {
     if (
-      ts.isCallExpression(node) &&
-      EFFECTIVE_READERS.has(callableName(node.expression) ?? "")
+      node.type === "CallExpression" &&
+      EFFECTIVE_READERS.has(callableName(node.callee) ?? "")
     )
       return false;
     if (
-      (ts.isPropertyAccessExpression(node) &&
-        node.name.text === "numPr" &&
-        isAttrs(node.expression)) ||
-      (ts.isElementAccessExpression(node) &&
-        ts.isStringLiteral(node.argumentExpression) &&
-        node.argumentExpression.text === "numPr" &&
-        isAttrs(node.expression))
+      (node.type === "SyntheticAccess" || node.type === "MemberExpression") &&
+      (propertyAccessName(node) === "numPr" ||
+        (node.type === "MemberExpression" && stringKey(node) === "numPr")) &&
+      isAttrs(node.object)
     )
       return true;
-    if (ts.isIdentifier(node) && !seen.has(node.text)) {
+    if (node.type === "Identifier" && !seen.has(node.name)) {
       const initializer = initializerOf(node);
       if (initializer) {
         const next = new Set(seen);
-        next.add(node.text);
+        next.add(node.name);
         return readsAuthoredSlot(initializer, next);
       }
     }
-    return (
-      ts.forEachChild(
-        node,
-        (child) => readsAuthoredSlot(child, seen) || undefined,
-      ) === true
-    );
+    // A synthetic access's own name resolves to nothing; its object is its
+    // only child that can.
+    if (node.type === "SyntheticAccess")
+      return readsAuthoredSlot(node.object, seen);
+    let found = false;
+    walkAst(node, (child) => {
+      if (child === node) return true;
+      if (!found) found = readsAuthoredSlot(child, seen);
+      return false;
+    });
+    return found;
   };
   const found: string[] = [];
-  const visit = (node: ts.Node): void => {
+  for (const node of nodes) {
     if (
-      ts.isCallExpression(node) &&
-      MEMBERSHIP_READERS.has(callableName(node.expression) ?? "") &&
+      node.type === "CallExpression" &&
+      MEMBERSHIP_READERS.has(callableName(node.callee) ?? "") &&
       node.arguments.some((argument) => readsAuthoredSlot(argument))
     )
-      found.push(node.getText(file));
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+      found.push(nodeText(source, node));
+  }
   return found;
 };
 
@@ -320,7 +369,7 @@ test("production membership readers never consume the authored slot alone", () =
         file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== OWNER,
     );
   const found = files.flatMap((file) =>
-    violations(readFileSync(path.join(ROOT, file), "utf8")).map(
+    violations(readFileSync(path.join(ROOT, file), "utf8"), file).map(
       (entry) => `${file}: ${entry}`,
     ),
   );
@@ -352,7 +401,7 @@ test("numbering level decisions stay in explicitly owned bridges", () => {
         !LEVEL_OWNER_ALLOWLIST.has(file),
     );
   const found = files.flatMap((file) =>
-    levelOwnerViolations(readFileSync(path.join(ROOT, file), "utf8")).map(
+    levelOwnerViolations(readFileSync(path.join(ROOT, file), "utf8"), file).map(
       (entry) => `${file}: ${entry}`,
     ),
   );
@@ -381,6 +430,7 @@ test("paragraph list readers do not decide rendering from the cached projection"
   const found = files.flatMap((file) =>
     cachedRenderingDecisionViolations(
       readFileSync(path.join(ROOT, file), "utf8"),
+      file,
     ).map((entry) => `${file}: ${entry}`),
   );
   expect(found).toEqual([]);

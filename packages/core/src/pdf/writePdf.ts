@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 /**
  * The PDF backend's entry point.
  *
@@ -92,7 +92,10 @@ export type WritePdfResult = {
   readonly unencodable: readonly PdfUnencodable[];
 };
 
-export class WritePdfError extends TaggedError("WritePdfError")<{
+const WritePdfErrorBase: TaggedErrorClass<"WritePdfError"> =
+  TaggedError("WritePdfError");
+
+export class WritePdfError extends WritePdfErrorBase<{
   message: string;
   cause?: unknown;
 }> {}

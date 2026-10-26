@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import ts from "typescript";
+import type { TSType, TSTypeLiteral } from "oxc-parser";
 
 import { MODEL_TYPE_DISCRIMINATORS } from "./lib/corpus-signature";
+import {
+  type Node,
+  parseSourceModule,
+  type Program,
+  walkAst,
+} from "./lib/oxc-ast";
 
 /**
  * The discriminators a signature may name, derived from the model rather than
@@ -32,39 +38,28 @@ const MODEL_DIR = path.join(
   "model",
 );
 
-const modelSourceFiles = async (): Promise<ts.SourceFile[]> => {
+const modelSourceFiles = async (): Promise<Program[]> => {
   const names = (await readdir(MODEL_DIR))
     .filter((name) => name.endsWith(".ts") && !name.includes(".test."))
     .sort();
   return Promise.all(
-    names.map(async (name) =>
-      ts.createSourceFile(
-        name,
-        await Bun.file(path.join(MODEL_DIR, name)).text(),
-        ts.ScriptTarget.ESNext,
-        true,
-        ts.ScriptKind.TS,
-      ),
+    names.map(
+      async (name) =>
+        parseSourceModule(
+          name,
+          await Bun.file(path.join(MODEL_DIR, name)).text(),
+        ).program,
     ),
   );
 };
 
-const eachNode = (node: ts.Node, visit: (child: ts.Node) => void): void => {
-  visit(node);
-  ts.forEachChild(node, (child) => {
-    eachNode(child, visit);
-  });
-};
-
 /** Every `type X = …` in the model, so a reference can be followed. */
-const aliasesIn = (
-  sources: readonly ts.SourceFile[],
-): Map<string, ts.TypeNode> => {
-  const aliases = new Map<string, ts.TypeNode>();
+const aliasesIn = (sources: readonly Program[]): Map<string, TSType> => {
+  const aliases = new Map<string, TSType>();
   for (const source of sources) {
-    eachNode(source, (node) => {
-      if (ts.isTypeAliasDeclaration(node)) {
-        aliases.set(node.name.text, node.type);
+    walkAst(source, (node) => {
+      if (node.type === "TSTypeAliasDeclaration") {
+        aliases.set(node.id.name, node.typeAnnotation);
       }
     });
   }
@@ -86,69 +81,72 @@ const ELEMENT_ARGUMENT: ReadonlyMap<string, number> = new Map([
 ]);
 
 /** Every type node the walk can reach as an element of an array. */
-const elementPositionsIn = (
-  sources: readonly ts.SourceFile[],
-): ts.TypeNode[] => {
-  const positions: ts.TypeNode[] = [];
-  const collect = (node: ts.Node): void => {
-    if (!ts.isPropertySignature(node) || node.type === undefined) {
+const elementPositionsIn = (sources: readonly Program[]): TSType[] => {
+  const positions: TSType[] = [];
+  const collect = (node: Node): void => {
+    if (node.type !== "TSPropertySignature" || node.typeAnnotation === null) {
       return;
     }
-    const declared = node.type;
-    if (ts.isArrayTypeNode(declared)) {
+    const declared = node.typeAnnotation.typeAnnotation;
+    if (declared.type === "TSArrayType") {
       positions.push(declared.elementType);
       return;
     }
     if (
-      !ts.isTypeReferenceNode(declared) ||
-      !ts.isIdentifier(declared.typeName)
+      declared.type !== "TSTypeReference" ||
+      declared.typeName.type !== "Identifier"
     ) {
       return;
     }
-    const argument = ELEMENT_ARGUMENT.get(declared.typeName.text);
+    const argument = ELEMENT_ARGUMENT.get(declared.typeName.name);
     if (argument === undefined) {
       return;
     }
-    const element = (declared.typeArguments ?? []).at(argument);
+    const element = (declared.typeArguments?.params ?? []).at(argument);
     if (element !== undefined) {
       positions.push(element);
     }
   };
   for (const source of sources) {
-    eachNode(source, collect);
+    walkAst(source, collect);
   }
   return positions;
 };
 
 /** The string literals a `type` member declares, directly or as a union. */
-const literalsOf = (declared: ts.TypeNode, into: Set<string>): void => {
-  if (ts.isParenthesizedTypeNode(declared)) {
-    literalsOf(declared.type, into);
+const literalsOf = (declared: TSType, into: Set<string>): void => {
+  if (declared.type === "TSParenthesizedType") {
+    literalsOf(declared.typeAnnotation, into);
     return;
   }
-  if (ts.isUnionTypeNode(declared)) {
+  if (declared.type === "TSUnionType") {
     for (const member of declared.types) {
       literalsOf(member, into);
     }
     return;
   }
-  if (ts.isLiteralTypeNode(declared) && ts.isStringLiteral(declared.literal)) {
-    into.add(declared.literal.text);
+  if (
+    declared.type === "TSLiteralType" &&
+    declared.literal.type === "Literal"
+  ) {
+    const { value } = declared.literal;
+    if (typeof value === "string") into.add(value);
   }
 };
 
 const discriminatorsOfObject = (
-  declared: ts.TypeLiteralNode,
+  declared: TSTypeLiteral,
   into: Set<string>,
 ): void => {
   for (const member of declared.members) {
     if (
-      ts.isPropertySignature(member) &&
-      member.type !== undefined &&
-      ts.isIdentifier(member.name) &&
-      member.name.text === "type"
+      member.type === "TSPropertySignature" &&
+      member.typeAnnotation !== null &&
+      !member.computed &&
+      member.key.type === "Identifier" &&
+      member.key.name === "type"
     ) {
-      literalsOf(member.type, into);
+      literalsOf(member.typeAnnotation.typeAnnotation, into);
     }
   }
 };
@@ -166,37 +164,40 @@ const NARROWING_HELPERS = new Set([
 ]);
 
 const expandInto = (
-  declared: ts.TypeNode,
-  aliases: ReadonlyMap<string, ts.TypeNode>,
+  declared: TSType,
+  aliases: ReadonlyMap<string, TSType>,
   into: Set<string>,
-  seen: Set<ts.TypeNode>,
+  seen: Set<TSType>,
 ): void => {
   if (seen.has(declared)) {
     return;
   }
   seen.add(declared);
-  if (ts.isParenthesizedTypeNode(declared)) {
-    expandInto(declared.type, aliases, into, seen);
+  if (declared.type === "TSParenthesizedType") {
+    expandInto(declared.typeAnnotation, aliases, into, seen);
     return;
   }
-  if (ts.isUnionTypeNode(declared) || ts.isIntersectionTypeNode(declared)) {
+  if (
+    declared.type === "TSUnionType" ||
+    declared.type === "TSIntersectionType"
+  ) {
     for (const member of declared.types) {
       expandInto(member, aliases, into, seen);
     }
     return;
   }
-  if (ts.isTypeLiteralNode(declared)) {
+  if (declared.type === "TSTypeLiteral") {
     discriminatorsOfObject(declared, into);
     return;
   }
   if (
-    !ts.isTypeReferenceNode(declared) ||
-    !ts.isIdentifier(declared.typeName)
+    declared.type !== "TSTypeReference" ||
+    declared.typeName.type !== "Identifier"
   ) {
     return;
   }
-  const { text } = declared.typeName;
-  const argument = declared.typeArguments?.at(0);
+  const text = declared.typeName.name;
+  const argument = declared.typeArguments?.params.at(0);
   if (NARROWING_HELPERS.has(text) && argument !== undefined) {
     expandInto(argument, aliases, into, seen);
     return;
@@ -211,7 +212,7 @@ const declaredModelDiscriminators = async (): Promise<Set<string>> => {
   const sources = await modelSourceFiles();
   const aliases = aliasesIn(sources);
   const discriminators = new Set<string>();
-  const seen = new Set<ts.TypeNode>();
+  const seen = new Set<TSType>();
   for (const position of elementPositionsIn(sources)) {
     expandInto(position, aliases, discriminators, seen);
   }

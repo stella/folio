@@ -671,7 +671,7 @@ export type FontDefinition = {
     style?: string;
 };
 
-// @public
+// @public (undocumented)
 export type FontOption = {
     name: string;
     fontFamily: string;
@@ -766,7 +766,7 @@ export type HyperlinkDialogProps = {
 
 export { ImageMeta }
 
-// @public
+// @public (undocumented)
 export type ImagePositionData = {
     horizontal?: {
         relativeTo?: string;
@@ -795,7 +795,7 @@ export type ImagePositionDialogProps = {
     currentData?: ImagePositionData;
 };
 
-// @public
+// @public (undocumented)
 export type ImagePropertiesData = {
     alt?: string;
     borderWidth?: number;
@@ -1109,7 +1109,7 @@ export type ZoomControlProps = {
     compact?: boolean;
 };
 
-// @public
+// @public (undocumented)
 export type ZoomLevel = {
     value: number;
     label: string;

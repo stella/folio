@@ -10,10 +10,18 @@ import type { Attrs, Mark, MarkType, Schema } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
 import { readThemeColor } from "@stll/docx-core/model";
-import type { RunPropsPatch } from "@stll/docx-core/ops";
+import type { FormattingPatch, RunPropsPatch } from "@stll/docx-core/ops";
 
 import { isContentLocked } from "../../../content-controls/mutateContentControls";
-import type { TextFormatting, UnderlineStyle } from "../../../types/document";
+import type {
+  ColorValue,
+  EmphasisMark,
+  PreservedMarkup,
+  ShadingProperties,
+  TextEffect,
+  TextFormatting,
+  UnderlineStyle,
+} from "../../../types/document";
 import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
 import { normalizeHorizontalScalePercent } from "../../../utils/horizontalScale";
@@ -413,7 +421,95 @@ export const canonicalSetMarkFormatting = ({
   state,
   type,
   attrs,
-}: CanonicalSetMarkFormattingOptions) => {
+}: CanonicalSetMarkFormattingOptions): {
+  type: "formatRun";
+  from: number;
+  to: number;
+  patch: FormattingPatch<{
+    bold?: boolean | undefined;
+    boldCs?: boolean | undefined;
+    italic?: boolean | undefined;
+    italicCs?: boolean | undefined;
+    underline?:
+      | {
+          style: UnderlineStyle;
+          color?: ColorValue;
+        }
+      | undefined;
+    strike?: boolean | undefined;
+    doubleStrike?: boolean | undefined;
+    vertAlign?: "baseline" | "superscript" | "subscript" | undefined;
+    smallCaps?: boolean | undefined;
+    allCaps?: boolean | undefined;
+    hidden?: boolean | undefined;
+    noProof?: boolean | undefined;
+    color?: ColorValue | undefined;
+    highlight?:
+      | "black"
+      | "blue"
+      | "cyan"
+      | "darkBlue"
+      | "darkCyan"
+      | "darkGray"
+      | "darkGreen"
+      | "darkMagenta"
+      | "darkRed"
+      | "darkYellow"
+      | "green"
+      | "lightGray"
+      | "magenta"
+      | "none"
+      | "red"
+      | "white"
+      | "yellow"
+      | undefined;
+    shading?: ShadingProperties | undefined;
+    fontSize?: number | undefined;
+    fontSizeCs?: number | undefined;
+    fontFamily?:
+      | {
+          ascii?: string;
+          hAnsi?: string;
+          eastAsia?: string;
+          cs?: string;
+          hint?: "default" | "eastAsia" | "cs";
+          asciiTheme?:
+            | "majorAscii"
+            | "majorHAnsi"
+            | "majorEastAsia"
+            | "majorBidi"
+            | "minorAscii"
+            | "minorHAnsi"
+            | "minorEastAsia"
+            | "minorBidi";
+          hAnsiTheme?: string;
+          eastAsiaTheme?: string;
+          csTheme?: string;
+        }
+      | undefined;
+    language?:
+      | {
+          val?: string;
+          eastAsia?: string;
+          bidi?: string;
+        }
+      | undefined;
+    spacing?: number | undefined;
+    position?: number | undefined;
+    scale?: number | undefined;
+    kerning?: number | undefined;
+    effect?: TextEffect | undefined;
+    emphasisMark?: EmphasisMark | undefined;
+    emboss?: boolean | undefined;
+    imprint?: boolean | undefined;
+    outline?: boolean | undefined;
+    shadow?: boolean | undefined;
+    rtl?: boolean | undefined;
+    cs?: boolean | undefined;
+    styleId?: string | undefined;
+    preserved?: PreservedMarkup | undefined;
+  }>;
+}[] => {
   const markType = documentMarkType(state, type);
   const { empty } = state.selection;
   if (empty) {

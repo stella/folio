@@ -1,10 +1,10 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 
 import { scanTestTimeout } from "../test/scan-timeout";
 import { CONSUMER_DEPENDENCIES } from "./consumer-scenario-dependencies";
+import { importedModuleNames, parseSourceModule } from "./lib/oxc-ast";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -23,8 +23,9 @@ test("every third-party import in staged scenarios has an explicit consumer inst
     )) {
       const source = readFileSync(path.join(root, directory, file), "utf8");
       if (file === "public-corpus.ts") corpusChecked = true;
-      for (const { fileName: specifier } of ts.preProcessFile(source)
-        .importedFiles) {
+      for (const specifier of importedModuleNames(
+        parseSourceModule(file, source),
+      )) {
         if (
           specifier.startsWith(".") ||
           specifier.startsWith("node:") ||

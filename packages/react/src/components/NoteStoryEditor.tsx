@@ -5,7 +5,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties } from "react";
+import type {
+  CSSProperties,
+  ForwardRefExoticComponent,
+  RefAttributes,
+} from "react";
 
 import type { Plugin } from "prosemirror-state";
 /** Thin React surface over core's persistent note-story editor manager. */
@@ -87,7 +91,7 @@ const hostStyle: CSSProperties = { padding: "12px 16px", minHeight: 72 };
 const EMPTY_PLUGINS: Plugin[] = [];
 
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools. */
-export const NoteStoryEditor = forwardRef<
+const NoteStoryEditorComponent = forwardRef<
   NoteStoryEditorRef,
   NoteStoryEditorProps
 >(function NoteStoryEditor(
@@ -272,5 +276,9 @@ export const NoteStoryEditor = forwardRef<
   );
 });
 /* eslint-enable prefer-arrow-callback */
+
+export const NoteStoryEditor: ForwardRefExoticComponent<
+  NoteStoryEditorProps & RefAttributes<NoteStoryEditorRef>
+> = NoteStoryEditorComponent;
 
 NoteStoryEditor.displayName = "NoteStoryEditor";

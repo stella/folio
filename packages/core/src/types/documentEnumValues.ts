@@ -36,7 +36,13 @@ import type {
   UnderlineStyle,
 } from "./document";
 
-export const SHAPE_TEXT_ANCHOR_VALUES = [
+export const SHAPE_TEXT_ANCHOR_VALUES: readonly [
+  "top",
+  "middle",
+  "bottom",
+  "distributed",
+  "justified",
+] = [
   "top",
   "middle",
   "bottom",
@@ -58,7 +64,26 @@ export const normalizeShapeTextAnchor = (
   return undefined;
 };
 
-export const UNDERLINE_STYLE_VALUES = [
+export const UNDERLINE_STYLE_VALUES: readonly [
+  "none",
+  "single",
+  "words",
+  "double",
+  "thick",
+  "dotted",
+  "dottedHeavy",
+  "dash",
+  "dashedHeavy",
+  "dashLong",
+  "dashLongHeavy",
+  "dotDash",
+  "dashDotHeavy",
+  "dotDotDash",
+  "dashDotDotHeavy",
+  "wave",
+  "wavyHeavy",
+  "wavyDouble",
+] = [
   "none",
   "single",
   "words",
@@ -79,7 +104,25 @@ export const UNDERLINE_STYLE_VALUES = [
   "wavyDouble",
 ] as const satisfies readonly UnderlineStyle[];
 
-export const HIGHLIGHT_COLOR_VALUES = [
+export const HIGHLIGHT_COLOR_VALUES: readonly [
+  "black",
+  "blue",
+  "cyan",
+  "darkBlue",
+  "darkCyan",
+  "darkGray",
+  "darkGreen",
+  "darkMagenta",
+  "darkRed",
+  "darkYellow",
+  "green",
+  "lightGray",
+  "magenta",
+  "none",
+  "red",
+  "white",
+  "yellow",
+] = [
   "black",
   "blue",
   "cyan",
@@ -99,7 +142,15 @@ export const HIGHLIGHT_COLOR_VALUES = [
   "yellow",
 ] as const satisfies readonly NonNullable<TextFormatting["highlight"]>[];
 
-export const TEXT_EFFECT_VALUES = [
+export const TEXT_EFFECT_VALUES: readonly [
+  "none",
+  "blinkBackground",
+  "lights",
+  "antsBlack",
+  "antsRed",
+  "shimmer",
+  "sparkle",
+] = [
   "none",
   "blinkBackground",
   "lights",
@@ -109,7 +160,13 @@ export const TEXT_EFFECT_VALUES = [
   "sparkle",
 ] as const satisfies readonly TextEffect[];
 
-export const EMPHASIS_MARK_VALUES = [
+export const EMPHASIS_MARK_VALUES: readonly [
+  "none",
+  "dot",
+  "comma",
+  "circle",
+  "underDot",
+] = [
   "none",
   "dot",
   "comma",
@@ -122,7 +179,16 @@ type FontTheme = NonNullable<
 >;
 type FontHint = NonNullable<NonNullable<TextFormatting["fontFamily"]>["hint"]>;
 
-export const FONT_THEME_VALUES = [
+export const FONT_THEME_VALUES: readonly [
+  "majorAscii",
+  "majorHAnsi",
+  "majorEastAsia",
+  "majorBidi",
+  "minorAscii",
+  "minorHAnsi",
+  "minorEastAsia",
+  "minorBidi",
+] = [
   "majorAscii",
   "majorHAnsi",
   "majorEastAsia",
@@ -133,7 +199,7 @@ export const FONT_THEME_VALUES = [
   "minorBidi",
 ] as const satisfies readonly FontTheme[];
 
-export const FONT_HINT_VALUES = [
+export const FONT_HINT_VALUES: readonly ["default", "eastAsia", "cs"] = [
   "default",
   "eastAsia",
   "cs",
@@ -144,9 +210,22 @@ export const FONT_HINT_VALUES = [
  * omitted `start`, `end` and `numTab`, and every one of them was dropped at
  * parse time.
  */
-export const PARAGRAPH_ALIGNMENT_VALUES = PARAGRAPH_ALIGNMENTS;
+export const PARAGRAPH_ALIGNMENT_VALUES: readonly [
+  "start",
+  "center",
+  "end",
+  "both",
+  "mediumKashida",
+  "distribute",
+  "numTab",
+  "highKashida",
+  "lowKashida",
+  "thaiDistribute",
+  "left",
+  "right",
+] = PARAGRAPH_ALIGNMENTS;
 
-export const LINE_SPACING_RULE_VALUES = [
+export const LINE_SPACING_RULE_VALUES: readonly ["auto", "exact", "atLeast"] = [
   "auto",
   "exact",
   "atLeast",
@@ -156,9 +235,26 @@ export const LINE_SPACING_RULE_VALUES = [
  * `ST_TabJc`, from the schema: the hand-written list omitted `start` and
  * `end`, and a tab stop declared with either lost its alignment on save.
  */
-export const TAB_STOP_ALIGNMENT_VALUES = TAB_STOP_ALIGNMENTS;
+export const TAB_STOP_ALIGNMENT_VALUES: readonly [
+  "clear",
+  "start",
+  "center",
+  "end",
+  "decimal",
+  "bar",
+  "num",
+  "left",
+  "right",
+] = TAB_STOP_ALIGNMENTS;
 
-export const TAB_LEADER_VALUES = [
+export const TAB_LEADER_VALUES: readonly [
+  "none",
+  "dot",
+  "hyphen",
+  "underscore",
+  "heavy",
+  "middleDot",
+] = [
   "none",
   "dot",
   "hyphen",
@@ -167,18 +263,26 @@ export const TAB_LEADER_VALUES = [
   "middleDot",
 ] as const satisfies readonly TabLeader[];
 
-export const POSITIONAL_TAB_RELATIVE_TO_VALUES = [
-  "margin",
-  "indent",
-] as const satisfies readonly NonNullable<PositionalTab["relativeTo"]>[];
+export const POSITIONAL_TAB_RELATIVE_TO_VALUES: readonly ["margin", "indent"] =
+  ["margin", "indent"] as const satisfies readonly NonNullable<
+    PositionalTab["relativeTo"]
+  >[];
 
-export const POSITIONAL_TAB_ALIGNMENT_VALUES = [
+export const POSITIONAL_TAB_ALIGNMENT_VALUES: readonly [
   "left",
   "center",
   "right",
-] as const satisfies readonly NonNullable<PositionalTab["alignment"]>[];
+] = ["left", "center", "right"] as const satisfies readonly NonNullable<
+  PositionalTab["alignment"]
+>[];
 
-export const POSITIONAL_TAB_LEADER_VALUES = [
+export const POSITIONAL_TAB_LEADER_VALUES: readonly [
+  "none",
+  "dot",
+  "hyphen",
+  "underscore",
+  "middleDot",
+] = [
   "none",
   "dot",
   "hyphen",
@@ -188,7 +292,13 @@ export const POSITIONAL_TAB_LEADER_VALUES = [
 
 type Frame = NonNullable<ParagraphFormatting["frame"]>;
 
-export const FRAME_X_ALIGN_VALUES = [
+export const FRAME_X_ALIGN_VALUES: readonly [
+  "left",
+  "center",
+  "right",
+  "inside",
+  "outside",
+] = [
   "left",
   "center",
   "right",
@@ -196,7 +306,14 @@ export const FRAME_X_ALIGN_VALUES = [
   "outside",
 ] as const satisfies readonly NonNullable<Frame["xAlign"]>[];
 
-export const FRAME_Y_ALIGN_VALUES = [
+export const FRAME_Y_ALIGN_VALUES: readonly [
+  "top",
+  "center",
+  "bottom",
+  "inside",
+  "outside",
+  "inline",
+] = [
   "top",
   "center",
   "bottom",
@@ -205,7 +322,14 @@ export const FRAME_Y_ALIGN_VALUES = [
   "inline",
 ] as const satisfies readonly NonNullable<Frame["yAlign"]>[];
 
-export const FRAME_WRAP_VALUES = [
+export const FRAME_WRAP_VALUES: readonly [
+  "around",
+  "auto",
+  "none",
+  "notBeside",
+  "through",
+  "tight",
+] = [
   "around",
   "auto",
   "none",
@@ -214,14 +338,30 @@ export const FRAME_WRAP_VALUES = [
   "tight",
 ] as const satisfies readonly NonNullable<Frame["wrap"]>[];
 
-export const SDT_LOCK_VALUES = [
+export const SDT_LOCK_VALUES: readonly [
+  "sdtLocked",
+  "contentLocked",
+  "sdtContentLocked",
+  "unlocked",
+] = [
   "sdtLocked",
   "contentLocked",
   "sdtContentLocked",
   "unlocked",
 ] as const satisfies readonly NonNullable<SdtProperties["lock"]>[];
 
-export const SDT_TYPE_VALUES = [
+export const SDT_TYPE_VALUES: readonly [
+  "richText",
+  "plainText",
+  "date",
+  "dropdown",
+  "comboBox",
+  "checkbox",
+  "picture",
+  "buildingBlockGallery",
+  "group",
+  "unknown",
+] = [
   "richText",
   "plainText",
   "date",
@@ -234,7 +374,59 @@ export const SDT_TYPE_VALUES = [
   "unknown",
 ] as const satisfies readonly SdtType[];
 
-export const FIELD_TYPE_VALUES = [
+export const FIELD_TYPE_VALUES: readonly [
+  "PAGE",
+  "NUMPAGES",
+  "NUMWORDS",
+  "NUMCHARS",
+  "DATE",
+  "TIME",
+  "CREATEDATE",
+  "SAVEDATE",
+  "PRINTDATE",
+  "AUTHOR",
+  "TITLE",
+  "SUBJECT",
+  "KEYWORDS",
+  "COMMENTS",
+  "FILENAME",
+  "FILESIZE",
+  "TEMPLATE",
+  "DOCPROPERTY",
+  "DOCVARIABLE",
+  "REF",
+  "PAGEREF",
+  "NOTEREF",
+  "HYPERLINK",
+  "TOC",
+  "TOA",
+  "INDEX",
+  "SEQ",
+  "STYLEREF",
+  "AUTONUM",
+  "AUTONUMLGL",
+  "AUTONUMOUT",
+  "LISTNUM",
+  "IF",
+  "MERGEFIELD",
+  "NEXT",
+  "NEXTIF",
+  "ASK",
+  "SET",
+  "QUOTE",
+  "INCLUDETEXT",
+  "INCLUDEPICTURE",
+  "SYMBOL",
+  "ADVANCE",
+  "EDITTIME",
+  "REVNUM",
+  "SECTION",
+  "SECTIONPAGES",
+  "USERADDRESS",
+  "USERNAME",
+  "USERINITIALS",
+  "UNKNOWN",
+] = [
   "PAGE",
   "NUMPAGES",
   "NUMWORDS",
@@ -288,7 +480,12 @@ export const FIELD_TYPE_VALUES = [
   "UNKNOWN",
 ] as const satisfies readonly FieldType[];
 
-export const STYLE_TYPE_VALUES = [
+export const STYLE_TYPE_VALUES: readonly [
+  "paragraph",
+  "character",
+  "numbering",
+  "table",
+] = [
   "paragraph",
   "character",
   "numbering",
@@ -297,7 +494,21 @@ export const STYLE_TYPE_VALUES = [
 
 type ConditionalStyleType = NonNullable<Style["tblStylePr"]>[number]["type"];
 
-export const CONDITIONAL_STYLE_TYPE_VALUES = [
+export const CONDITIONAL_STYLE_TYPE_VALUES: readonly [
+  "band1Horz",
+  "band1Vert",
+  "band2Horz",
+  "band2Vert",
+  "firstCol",
+  "firstRow",
+  "lastCol",
+  "lastRow",
+  "neCell",
+  "nwCell",
+  "seCell",
+  "swCell",
+  "wholeTable",
+] = [
   "band1Horz",
   "band1Vert",
   "band2Horz",
@@ -313,7 +524,7 @@ export const CONDITIONAL_STYLE_TYPE_VALUES = [
   "wholeTable",
 ] as const satisfies readonly ConditionalStyleType[];
 
-export const TABLE_WIDTH_TYPE_VALUES = [
+export const TABLE_WIDTH_TYPE_VALUES: readonly ["auto", "dxa", "nil", "pct"] = [
   "auto",
   "dxa",
   "nil",
@@ -324,19 +535,27 @@ export const TABLE_WIDTH_TYPE_VALUES = [
  * `ST_JcTable`, from the schema: the hand-written list omitted `start` and
  * `end`, so a table written with either read as having no placement at all.
  */
-export const TABLE_JUSTIFICATION_VALUES = TABLE_ALIGNMENTS;
+export const TABLE_JUSTIFICATION_VALUES: readonly [
+  "center",
+  "end",
+  "left",
+  "right",
+  "start",
+] = TABLE_ALIGNMENTS;
 
-export const TABLE_ROW_HEIGHT_RULE_VALUES = [
+export const TABLE_ROW_HEIGHT_RULE_VALUES: readonly [
   "auto",
   "atLeast",
   "exact",
-] as const satisfies readonly NonNullable<TableRowFormatting["heightRule"]>[];
+] = ["auto", "atLeast", "exact"] as const satisfies readonly NonNullable<
+  TableRowFormatting["heightRule"]
+>[];
 
-export const TABLE_CELL_VERTICAL_ALIGNMENT_VALUES = [
+export const TABLE_CELL_VERTICAL_ALIGNMENT_VALUES: readonly [
   "top",
   "center",
   "bottom",
-] as const satisfies readonly NonNullable<
+] = ["top", "center", "bottom"] as const satisfies readonly NonNullable<
   TableCellFormatting["verticalAlign"]
 >[];
 
@@ -345,9 +564,61 @@ export const TABLE_CELL_VERTICAL_ALIGNMENT_VALUES = [
  * `lrTbV` and `tbLrV`, so a cell written with one read as the table's flow and
  * saved without a `w:textDirection`.
  */
-export const TEXT_DIRECTION_VALUES = TEXT_DIRECTIONS;
+export const TEXT_DIRECTION_VALUES: readonly [
+  "tb",
+  "rl",
+  "lr",
+  "tbV",
+  "rlV",
+  "lrV",
+  "btLr",
+  "lrTb",
+  "lrTbV",
+  "tbLrV",
+  "tbRl",
+  "tbRlV",
+] = TEXT_DIRECTIONS;
 
-export const SHADING_PATTERN_VALUES = [
+export const SHADING_PATTERN_VALUES: readonly [
+  "clear",
+  "solid",
+  "horzStripe",
+  "vertStripe",
+  "reverseDiagStripe",
+  "diagStripe",
+  "horzCross",
+  "diagCross",
+  "thinHorzStripe",
+  "thinVertStripe",
+  "thinReverseDiagStripe",
+  "thinDiagStripe",
+  "thinHorzCross",
+  "thinDiagCross",
+  "pct5",
+  "pct10",
+  "pct12",
+  "pct15",
+  "pct20",
+  "pct25",
+  "pct30",
+  "pct35",
+  "pct37",
+  "pct40",
+  "pct45",
+  "pct50",
+  "pct55",
+  "pct60",
+  "pct62",
+  "pct65",
+  "pct70",
+  "pct75",
+  "pct80",
+  "pct85",
+  "pct87",
+  "pct90",
+  "pct95",
+  "nil",
+] = [
   "clear",
   "solid",
   "horzStripe",
@@ -388,7 +659,13 @@ export const SHADING_PATTERN_VALUES = [
   "nil",
 ] as const satisfies readonly NonNullable<ShadingProperties["pattern"]>[];
 
-export const FLOATING_TABLE_X_SPEC_VALUES = [
+export const FLOATING_TABLE_X_SPEC_VALUES: readonly [
+  "left",
+  "center",
+  "right",
+  "inside",
+  "outside",
+] = [
   "left",
   "center",
   "right",
@@ -398,7 +675,14 @@ export const FLOATING_TABLE_X_SPEC_VALUES = [
   FloatingTableProperties["tblpXSpec"]
 >[];
 
-export const FLOATING_TABLE_Y_SPEC_VALUES = [
+export const FLOATING_TABLE_Y_SPEC_VALUES: readonly [
+  "top",
+  "center",
+  "bottom",
+  "inside",
+  "outside",
+  "inline",
+] = [
   "top",
   "center",
   "bottom",
@@ -409,7 +693,15 @@ export const FLOATING_TABLE_Y_SPEC_VALUES = [
   FloatingTableProperties["tblpYSpec"]
 >[];
 
-export const IMAGE_WRAP_TYPE_VALUES = [
+export const IMAGE_WRAP_TYPE_VALUES: readonly [
+  "inline",
+  "square",
+  "tight",
+  "through",
+  "topAndBottom",
+  "behind",
+  "inFront",
+] = [
   "inline",
   "square",
   "tight",
@@ -419,7 +711,16 @@ export const IMAGE_WRAP_TYPE_VALUES = [
   "inFront",
 ] as const satisfies readonly ImageWrap["type"][];
 
-export const IMAGE_HORIZONTAL_RELATIVE_TO_VALUES = [
+export const IMAGE_HORIZONTAL_RELATIVE_TO_VALUES: readonly [
+  "character",
+  "column",
+  "insideMargin",
+  "leftMargin",
+  "margin",
+  "outsideMargin",
+  "page",
+  "rightMargin",
+] = [
   "character",
   "column",
   "insideMargin",
@@ -430,7 +731,13 @@ export const IMAGE_HORIZONTAL_RELATIVE_TO_VALUES = [
   "rightMargin",
 ] as const satisfies readonly ImagePosition["horizontal"]["relativeTo"][];
 
-export const IMAGE_HORIZONTAL_ALIGNMENT_VALUES = [
+export const IMAGE_HORIZONTAL_ALIGNMENT_VALUES: readonly [
+  "left",
+  "right",
+  "center",
+  "inside",
+  "outside",
+] = [
   "left",
   "right",
   "center",
@@ -440,7 +747,16 @@ export const IMAGE_HORIZONTAL_ALIGNMENT_VALUES = [
   ImagePosition["horizontal"]["alignment"]
 >[];
 
-export const IMAGE_VERTICAL_RELATIVE_TO_VALUES = [
+export const IMAGE_VERTICAL_RELATIVE_TO_VALUES: readonly [
+  "insideMargin",
+  "line",
+  "margin",
+  "outsideMargin",
+  "page",
+  "paragraph",
+  "topMargin",
+  "bottomMargin",
+] = [
   "insideMargin",
   "line",
   "margin",
@@ -451,7 +767,13 @@ export const IMAGE_VERTICAL_RELATIVE_TO_VALUES = [
   "bottomMargin",
 ] as const satisfies readonly ImagePosition["vertical"]["relativeTo"][];
 
-export const IMAGE_VERTICAL_ALIGNMENT_VALUES = [
+export const IMAGE_VERTICAL_ALIGNMENT_VALUES: readonly [
+  "top",
+  "bottom",
+  "center",
+  "inside",
+  "outside",
+] = [
   "top",
   "bottom",
   "center",
@@ -461,7 +783,12 @@ export const IMAGE_VERTICAL_ALIGNMENT_VALUES = [
   ImagePosition["vertical"]["alignment"]
 >[];
 
-export const IMAGE_WRAP_TEXT_VALUES = [
+export const IMAGE_WRAP_TEXT_VALUES: readonly [
+  "bothSides",
+  "left",
+  "right",
+  "largest",
+] = [
   "bothSides",
   "left",
   "right",
@@ -479,7 +806,175 @@ export const IMAGE_WRAP_TEXT_VALUES = [
  * narrowed to `undefined` by `narrowEnum` and falls back to `rect`, while
  * known phase-2/3 presets keep their identity for serialization.
  */
-export const SHAPE_TYPE_VALUES = [
+export const SHAPE_TYPE_VALUES: readonly [
+  "rect",
+  "roundRect",
+  "ellipse",
+  "triangle",
+  "rtTriangle",
+  "parallelogram",
+  "trapezoid",
+  "pentagon",
+  "hexagon",
+  "heptagon",
+  "octagon",
+  "decagon",
+  "dodecagon",
+  "star4",
+  "star5",
+  "star6",
+  "star7",
+  "star8",
+  "star10",
+  "star12",
+  "star16",
+  "star24",
+  "star32",
+  "line",
+  "straightConnector1",
+  "bentConnector2",
+  "bentConnector3",
+  "bentConnector4",
+  "bentConnector5",
+  "curvedConnector2",
+  "curvedConnector3",
+  "curvedConnector4",
+  "curvedConnector5",
+  "rightArrow",
+  "leftArrow",
+  "upArrow",
+  "downArrow",
+  "leftRightArrow",
+  "upDownArrow",
+  "quadArrow",
+  "leftRightUpArrow",
+  "bentArrow",
+  "uturnArrow",
+  "leftUpArrow",
+  "bentUpArrow",
+  "curvedRightArrow",
+  "curvedLeftArrow",
+  "curvedUpArrow",
+  "curvedDownArrow",
+  "stripedRightArrow",
+  "notchedRightArrow",
+  "homePlate",
+  "chevron",
+  "rightArrowCallout",
+  "downArrowCallout",
+  "leftArrowCallout",
+  "upArrowCallout",
+  "leftRightArrowCallout",
+  "quadArrowCallout",
+  "circularArrow",
+  "flowChartProcess",
+  "flowChartAlternateProcess",
+  "flowChartDecision",
+  "flowChartInputOutput",
+  "flowChartPredefinedProcess",
+  "flowChartInternalStorage",
+  "flowChartDocument",
+  "flowChartMultidocument",
+  "flowChartTerminator",
+  "flowChartPreparation",
+  "flowChartManualInput",
+  "flowChartManualOperation",
+  "flowChartConnector",
+  "flowChartOffpageConnector",
+  "flowChartPunchedCard",
+  "flowChartPunchedTape",
+  "flowChartSummingJunction",
+  "flowChartOr",
+  "flowChartCollate",
+  "flowChartSort",
+  "flowChartExtract",
+  "flowChartMerge",
+  "flowChartOnlineStorage",
+  "flowChartDelay",
+  "flowChartMagneticTape",
+  "flowChartMagneticDisk",
+  "flowChartMagneticDrum",
+  "flowChartDisplay",
+  "wedgeRectCallout",
+  "wedgeRoundRectCallout",
+  "wedgeEllipseCallout",
+  "cloudCallout",
+  "borderCallout1",
+  "borderCallout2",
+  "borderCallout3",
+  "accentCallout1",
+  "accentCallout2",
+  "accentCallout3",
+  "callout1",
+  "callout2",
+  "callout3",
+  "accentBorderCallout1",
+  "accentBorderCallout2",
+  "accentBorderCallout3",
+  "actionButtonBlank",
+  "actionButtonHome",
+  "actionButtonHelp",
+  "actionButtonInformation",
+  "actionButtonBackPrevious",
+  "actionButtonForwardNext",
+  "actionButtonBeginning",
+  "actionButtonEnd",
+  "actionButtonReturn",
+  "actionButtonDocument",
+  "actionButtonSound",
+  "actionButtonMovie",
+  "irregularSeal1",
+  "irregularSeal2",
+  "frame",
+  "halfFrame",
+  "corner",
+  "diagStripe",
+  "chord",
+  "arc",
+  "bracketPair",
+  "bracePair",
+  "leftBracket",
+  "rightBracket",
+  "leftBrace",
+  "rightBrace",
+  "can",
+  "cube",
+  "bevel",
+  "donut",
+  "noSmoking",
+  "blockArc",
+  "foldedCorner",
+  "smileyFace",
+  "heart",
+  "lightningBolt",
+  "sun",
+  "moon",
+  "cloud",
+  "snip1Rect",
+  "snip2SameRect",
+  "snip2DiagRect",
+  "snipRoundRect",
+  "round1Rect",
+  "round2SameRect",
+  "round2DiagRect",
+  "plaque",
+  "teardrop",
+  "mathPlus",
+  "mathMinus",
+  "mathMultiply",
+  "mathDivide",
+  "mathEqual",
+  "mathNotEqual",
+  "gear6",
+  "gear9",
+  "funnel",
+  "pieWedge",
+  "pie",
+  "leftCircularArrow",
+  "leftRightCircularArrow",
+  "swooshArrow",
+  "textBox",
+] = [
   // Basic shapes
   "rect",
   "roundRect",
@@ -680,7 +1175,22 @@ export type OutlineStyleCssAlias =
  * stripped) so loading a document that persisted any of them does not fail
  * validation. eigenpal #694.
  */
-export const OUTLINE_STYLE_ATTR_VALUES = [
+export const OUTLINE_STYLE_ATTR_VALUES: readonly [
+  "solid",
+  "dot",
+  "dash",
+  "lgDash",
+  "dashDot",
+  "lgDashDot",
+  "lgDashDotDot",
+  "sysDash",
+  "sysDot",
+  "sysDashDot",
+  "sysDashDotDot",
+  "dashed",
+  "dotted",
+  "none",
+] = [
   ...PRESET_LINE_DASH_VALS,
   ...OUTLINE_STYLE_CSS_ALIAS_VALUES,
   "none",
@@ -754,12 +1264,143 @@ export const outlineAttrForDash = (
  * `bahtText`, `dollarText` and `custom`, and carried three `decimalZeroN`
  * members the format does not declare at all.
  */
-export const NUMBER_FORMAT_VALUES = NUMBER_FORMATS;
+export const NUMBER_FORMAT_VALUES: readonly [
+  "decimal",
+  "upperRoman",
+  "lowerRoman",
+  "upperLetter",
+  "lowerLetter",
+  "ordinal",
+  "cardinalText",
+  "ordinalText",
+  "hex",
+  "chicago",
+  "ideographDigital",
+  "japaneseCounting",
+  "aiueo",
+  "iroha",
+  "decimalFullWidth",
+  "decimalHalfWidth",
+  "japaneseLegal",
+  "japaneseDigitalTenThousand",
+  "decimalEnclosedCircle",
+  "decimalFullWidth2",
+  "aiueoFullWidth",
+  "irohaFullWidth",
+  "decimalZero",
+  "bullet",
+  "ganada",
+  "chosung",
+  "decimalEnclosedFullstop",
+  "decimalEnclosedParen",
+  "decimalEnclosedCircleChinese",
+  "ideographEnclosedCircle",
+  "ideographTraditional",
+  "ideographZodiac",
+  "ideographZodiacTraditional",
+  "taiwaneseCounting",
+  "ideographLegalTraditional",
+  "taiwaneseCountingThousand",
+  "taiwaneseDigital",
+  "chineseCounting",
+  "chineseLegalSimplified",
+  "chineseCountingThousand",
+  "koreanDigital",
+  "koreanCounting",
+  "koreanLegal",
+  "koreanDigital2",
+  "vietnameseCounting",
+  "russianLower",
+  "russianUpper",
+  "none",
+  "numberInDash",
+  "hebrew1",
+  "hebrew2",
+  "arabicAlpha",
+  "arabicAbjad",
+  "hindiVowels",
+  "hindiConsonants",
+  "hindiNumbers",
+  "hindiCounting",
+  "thaiLetters",
+  "thaiNumbers",
+  "thaiCounting",
+  "bahtText",
+  "dollarText",
+  "custom",
+] = NUMBER_FORMATS;
 
 /** What a marker may count in, which is wider than what a `w:numFmt` may say. */
-export const COUNTER_FORMAT_VALUES = COUNTER_FORMATS;
+export const COUNTER_FORMAT_VALUES: readonly [
+  "decimal",
+  "upperRoman",
+  "lowerRoman",
+  "upperLetter",
+  "lowerLetter",
+  "ordinal",
+  "cardinalText",
+  "ordinalText",
+  "hex",
+  "chicago",
+  "ideographDigital",
+  "japaneseCounting",
+  "aiueo",
+  "iroha",
+  "decimalFullWidth",
+  "decimalHalfWidth",
+  "japaneseLegal",
+  "japaneseDigitalTenThousand",
+  "decimalEnclosedCircle",
+  "decimalFullWidth2",
+  "aiueoFullWidth",
+  "irohaFullWidth",
+  "decimalZero",
+  "bullet",
+  "ganada",
+  "chosung",
+  "decimalEnclosedFullstop",
+  "decimalEnclosedParen",
+  "decimalEnclosedCircleChinese",
+  "ideographEnclosedCircle",
+  "ideographTraditional",
+  "ideographZodiac",
+  "ideographZodiacTraditional",
+  "taiwaneseCounting",
+  "ideographLegalTraditional",
+  "taiwaneseCountingThousand",
+  "taiwaneseDigital",
+  "chineseCounting",
+  "chineseLegalSimplified",
+  "chineseCountingThousand",
+  "koreanDigital",
+  "koreanCounting",
+  "koreanLegal",
+  "koreanDigital2",
+  "vietnameseCounting",
+  "russianLower",
+  "russianUpper",
+  "none",
+  "numberInDash",
+  "hebrew1",
+  "hebrew2",
+  "arabicAlpha",
+  "arabicAbjad",
+  "hindiVowels",
+  "hindiConsonants",
+  "hindiNumbers",
+  "hindiCounting",
+  "thaiLetters",
+  "thaiNumbers",
+  "thaiCounting",
+  "bahtText",
+  "dollarText",
+  "custom",
+  "decimalZero3",
+  "decimalZero4",
+  "decimalZero5",
+] = COUNTER_FORMATS;
 
-export const LEVEL_SUFFIX_VALUES = [
+export const LEVEL_SUFFIX_VALUES: readonly ["tab", "space", "nothing"] = [
   "tab",
   "space",
   "nothing",

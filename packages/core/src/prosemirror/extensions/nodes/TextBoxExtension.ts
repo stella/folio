@@ -13,6 +13,7 @@ import {
 import { expectTextBoxAttrs } from "../../attrs";
 import type { TextBoxAttrs as SchemaTextBoxAttrs } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 export type TextBoxAttrs = SchemaTextBoxAttrs;
 
@@ -107,7 +108,9 @@ export function parseTextBoxWordArt(raw: string): TextBoxAttrs["wordArt"] {
   }
 }
 
-export const TextBoxExtension = createNodeExtension({
+export const TextBoxExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "textBox",
   schemaNodeName: "textBox",
   nodeSpec: {

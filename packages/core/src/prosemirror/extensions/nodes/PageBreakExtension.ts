@@ -3,6 +3,7 @@
  */
 
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 /**
  * LEGACY_PAGE_BREAK_NODE_REMOVAL_CONDITION: delete the block node after persisted editor
@@ -10,7 +11,9 @@ import { createNodeExtension } from "../create";
  * confirms that no loaded snapshot contains a block-level page break. DOCX
  * import and editor commands must never create this legacy shape.
  */
-export const PageBreakExtension = createNodeExtension({
+export const PageBreakExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "pageBreak",
   schemaNodeName: "pageBreak",
   nodeSpec: {

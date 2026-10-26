@@ -4,7 +4,7 @@
  * Edits position, numbering format, start number, and restart rules.
  */
 
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -82,7 +82,7 @@ export function FootnotePropertiesDialog({
   onApply,
   footnotePr,
   endnotePr,
-}: FootnotePropertiesDialogProps) {
+}: FootnotePropertiesDialogProps): JSX.Element {
   const {
     Root: Dialog,
     Portal: DialogPortal,

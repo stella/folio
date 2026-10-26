@@ -66,13 +66,13 @@ import {
 import { readSidecarFile, writeNewSidecarFile } from "./sidecar";
 
 /** How long an editor's lease lasts without renewal. */
-export const EDITOR_LEASE_MS = 30 * 1000;
+export const EDITOR_LEASE_MS: number = 30 * 1000;
 
 /** How often an editor renews its lease while it holds it. */
-export const EDITOR_RENEW_MS = 10 * 1000;
+export const EDITOR_RENEW_MS: number = 10 * 1000;
 
 /** How long a writer waits for an editor to save and release by default. */
-export const DEFAULT_FLUSH_WAIT_MS = 5 * 1000;
+export const DEFAULT_FLUSH_WAIT_MS: number = 5 * 1000;
 
 /** How often a writer retries the lease, and an editor re-checks for requests. */
 export const FLUSH_POLL_MS = 100;

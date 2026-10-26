@@ -1,6 +1,7 @@
 import { defineConfig } from "tsdown";
 
 import { stableRelativeImportOrder } from "../../scripts/lib/stable-relative-import-order.ts";
+import { tsrsDeclarations } from "../../scripts/lib/tsrs-declarations.ts";
 
 // @stll/folio-cli publishes a source-mirrored dist like @stll/folio-agents:
 // one `dist/*.js` + `dist/*.d.ts` per source module (`unbundle: true`), every
@@ -26,6 +27,7 @@ const shared = {
 // JS and declarations are emitted in two separate passes, as in
 // packages/agents/tsdown.config.ts; neither pass may `clean` because tsdown
 // runs array configs concurrently, so the `build` script clears `dist`.
+// Declarations come from tsrs: the lease outcome union documents each member.
 export default defineConfig([
   {
     ...shared,
@@ -33,5 +35,12 @@ export default defineConfig([
     clean: false,
     plugins: [stableRelativeImportOrder()],
   },
-  { ...shared, dts: { emitDtsOnly: true }, clean: false },
+  {
+    ...shared,
+    dts: {
+      ...tsrsDeclarations("tsconfig.declarations.json"),
+      emitDtsOnly: true,
+    },
+    clean: false,
+  },
 ]);

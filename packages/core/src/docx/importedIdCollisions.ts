@@ -49,7 +49,159 @@ const paragraphIdentityForKind = (
 };
 
 /** Definition sites only: paired markers and references never claim an identity. */
-export const IMPORTED_ID_COLLISION_REGISTRY = {
+export const IMPORTED_ID_COLLISION_REGISTRY: {
+  readonly bookmark: {
+    readonly kind: "bookmark";
+    readonly scope: "part";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "id";
+    readonly attributeNamespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    readonly encoding: "decimal";
+  };
+  readonly comment: {
+    readonly kind: "comment";
+    readonly scope: "part";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "id";
+    readonly attributeNamespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    readonly encoding: "decimal";
+  };
+  readonly footnote: {
+    readonly kind: "footnote";
+    readonly scope: "part";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "id";
+    readonly attributeNamespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    readonly encoding: "decimal";
+  };
+  readonly endnote: {
+    readonly kind: "endnote";
+    readonly scope: "part";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "id";
+    readonly attributeNamespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    readonly encoding: "decimal";
+  };
+  readonly revision: {
+    readonly kind: "revision";
+    readonly scope: "package";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "id";
+    readonly attributeNamespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    readonly encoding: "decimal";
+  };
+  readonly paraId: {
+    readonly kind: "paraId";
+    readonly scope: "part";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        readonly elements: Set<string>;
+      },
+      {
+        readonly namespace: "http://schemas.microsoft.com/office/word/2012/wordml";
+        readonly elements: Set<string>;
+      },
+      {
+        readonly namespace: string;
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "paraId";
+    readonly attributeNamespace: "http://schemas.microsoft.com/office/word/2010/wordml";
+    readonly encoding: "hex";
+  };
+  readonly textId: {
+    readonly kind: "textId";
+    readonly scope: "part";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "textId";
+    readonly attributeNamespace: "http://schemas.microsoft.com/office/word/2010/wordml";
+    readonly encoding: "hex";
+  };
+  readonly numId: {
+    readonly kind: "numId";
+    readonly scope: "part";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "numId";
+    readonly attributeNamespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    readonly encoding: "decimal";
+  };
+  readonly abstractNumId: {
+    readonly kind: "abstractNumId";
+    readonly scope: "part";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "abstractNumId";
+    readonly attributeNamespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    readonly encoding: "decimal";
+  };
+  readonly drawing: {
+    readonly kind: "drawing";
+    readonly scope: "package";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "id";
+    readonly attributeNamespace: null;
+    readonly encoding: "decimal";
+  };
+  readonly relationship: {
+    readonly kind: "relationship";
+    readonly scope: "part";
+    readonly sites: readonly [
+      {
+        readonly namespace: "http://schemas.openxmlformats.org/package/2006/relationships";
+        readonly elements: Set<string>;
+      },
+    ];
+    readonly attribute: "Id";
+    readonly attributeNamespace: null;
+    readonly encoding: "string";
+  };
+} = {
   bookmark: {
     kind: IMPORTED_ID_COLLISION_KINDS.bookmark,
     scope: "part",

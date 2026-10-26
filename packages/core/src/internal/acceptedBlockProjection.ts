@@ -50,7 +50,10 @@ const hasBlockRevision = (blocks: readonly BlockContent[]): boolean =>
 export const projectAcceptedBlocks = (
   blocks: readonly BlockContent[],
   pkg: DocxPackage | undefined,
-) => {
+): {
+  blocks: readonly BlockContent[];
+  completeness: string;
+} | null => {
   if (!hasBlockRevision(blocks)) return null;
   const options = {
     ...(pkg?.styles !== undefined && { styles: pkg.styles }),

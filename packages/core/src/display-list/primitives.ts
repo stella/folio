@@ -110,7 +110,19 @@ export const DISPLAY_PRIMITIVE_KINDS: readonly PrimitiveKind[] =
  * export the same dash: with the pattern name alone, each backend would pick
  * its own period and nobody would notice until the two were laid side by side.
  */
-export const STROKE_DASH_FACTORS = {
+export const STROKE_DASH_FACTORS: {
+  readonly solid: null;
+  readonly dashed: {
+    readonly dash: 3;
+    readonly gap: 2;
+  };
+  readonly dotted: {
+    readonly dash: 1;
+    readonly gap: 1;
+  };
+  readonly double: null;
+  readonly wavy: null;
+} = {
   solid: null,
   dashed: { dash: 3, gap: 2 },
   dotted: { dash: 1, gap: 1 },
@@ -177,7 +189,21 @@ export const WHITE: DisplayColor = { r: 255, g: 255, b: 255, a: 1 };
  * new kind that is not listed fails to compile, and so does a name that is not
  * a kind.
  */
-export const HIT_REGION_KINDS = {
+export const HIT_REGION_KINDS: {
+  readonly pageContent: "pageContent";
+  readonly headerSlot: "headerSlot";
+  readonly footerSlot: "footerSlot";
+  readonly note: "note";
+  readonly paragraph: "paragraph";
+  readonly line: "line";
+  readonly emptyRun: "emptyRun";
+  readonly tab: "tab";
+  readonly image: "image";
+  readonly table: "table";
+  readonly tableRow: "tableRow";
+  readonly tableCell: "tableCell";
+  readonly textBox: "textBox";
+} = {
   pageContent: "pageContent",
   headerSlot: "headerSlot",
   footerSlot: "footerSlot",

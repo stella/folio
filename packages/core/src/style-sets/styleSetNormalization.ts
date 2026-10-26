@@ -33,11 +33,11 @@ import type { Style } from "../types/document";
 import { DOCUMENT_STYLE_SET_VERSION, type DocumentStyleSet } from "./types";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
-export const DUPLICATE_STYLE_ID_WARNING =
+export const DUPLICATE_STYLE_ID_WARNING: "style-set-duplicate-style-id" =
   PARSE_WARNING_CODES.styleSetDuplicateStyleId;
-export const INITIAL_PARAGRAPH_STYLE_WARNING =
+export const INITIAL_PARAGRAPH_STYLE_WARNING: "style-set-initial-style-missing" =
   PARSE_WARNING_CODES.styleSetInitialStyleMissing;
-export const UNNUMBERED_STYLE_SET_STYLE_WARNING =
+export const UNNUMBERED_STYLE_SET_STYLE_WARNING: "unnumbered-style" =
   PARSE_WARNING_CODES.unnumberedStyle;
 
 /** The part a style-set normalisation names: the set itself, not a package. */

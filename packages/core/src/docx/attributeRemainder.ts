@@ -33,7 +33,7 @@
  * answer than recording the drop in the container contract.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 import type { PreservedAttribute } from "@stll/docx-core/model";
@@ -68,9 +68,10 @@ const CANONICAL_PREFIX: ReadonlyMap<string, string> = new Map([
 const XML_LOCAL_NAME =
   /^[\p{L}_][\p{L}\p{M}\p{N}._\-\u{00B7}\u{203F}-\u{2040}]*$/u;
 
-export class InvalidPreservedAttributeError extends TaggedError(
-  "InvalidPreservedAttributeError",
-)<{
+const InvalidPreservedAttributeErrorBase: TaggedErrorClass<"InvalidPreservedAttributeError"> =
+  TaggedError("InvalidPreservedAttributeError");
+
+export class InvalidPreservedAttributeError extends InvalidPreservedAttributeErrorBase<{
   message: string;
   name: string;
 }> {}

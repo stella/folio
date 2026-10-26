@@ -8,7 +8,14 @@ import {
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /** The complete modeled attribute set of one direct `w:pPr/w:spacing`. */
-export const DIRECT_PARAGRAPH_SPACING_KEYS = [
+export const DIRECT_PARAGRAPH_SPACING_KEYS: readonly [
+  "spaceBefore",
+  "spaceAfter",
+  "lineSpacing",
+  "lineSpacingRule",
+  "beforeAutospacing",
+  "afterAutospacing",
+] = [
   "spaceBefore",
   "spaceAfter",
   "lineSpacing",

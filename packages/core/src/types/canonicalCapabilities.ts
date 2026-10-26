@@ -45,7 +45,175 @@ type CanonicalCapability = {
   | { owner: "controller" | "adapters" | "prosemirror" | "ai-edits" }
 );
 
-export const CANONICAL_CAPABILITIES = {
+export const CANONICAL_CAPABILITIES: {
+  readonly "authority-routing": {
+    readonly owner: "controller";
+    readonly kind: "routing";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Explicit session selection and legacy authority routing.";
+  };
+  readonly "command-descriptors": {
+    readonly remainingCommands: {
+      readonly registry: "extension-commands";
+    };
+    readonly owner: "controller";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Commands without canonical descriptors retain PM probing and hit the dispatch boundary.";
+  };
+  readonly "tracked-hyperlink-resolution": {
+    readonly owner: "controller";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Hyperlink and TOC suggestions and edits intersecting review identities require serializable wrapper review provenance.";
+  };
+  readonly "story-content-projection": {
+    readonly owner: "controller";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits.";
+  };
+  readonly "comment-model-edits": {
+    readonly owner: "adapters";
+    readonly kind: "routing";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Default sessions retain comment model edits; canonical comments use semantic operations.";
+  };
+  readonly "direct-model-edits": {
+    readonly owner: "adapters";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Direct model and pending-suggestion snapshots bypass the canonical journal.";
+  };
+  readonly "section-properties": {
+    readonly owner: "controller";
+    readonly kind: "routing";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "The shared controller journals section properties; default sessions keep model changes.";
+  };
+  readonly "watermark-model-edits": {
+    readonly owner: "adapters";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["vue"];
+    readonly summary: "Vue watermark mutations still change the model directly.";
+  };
+  readonly "collaboration-session": {
+    readonly owner: "controller";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Collaboration cannot activate a canonical session.";
+  };
+  readonly "unclassified-transactions": {
+    readonly owner: "controller";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Unclassified native and plugin mutations are refused at the projection boundary.";
+  };
+  readonly "pm-save-projection": {
+    readonly owner: "controller";
+    readonly kind: "routing";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Legacy save and read paths reconstruct documents from PM.";
+  };
+  readonly "canonical-resource-replacement": {
+    readonly owner: "controller";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Canonical save refuses existing style, style-default, and media replacements the package writers cannot express.";
+  };
+  readonly "pm-history": {
+    readonly owner: "prosemirror";
+    readonly kind: "mutation-source";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "PM history remains installed for legacy sessions.";
+  };
+  readonly "pm-suggestion-plugin": {
+    readonly owner: "prosemirror";
+    readonly kind: "mutation-source";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "The legacy suggestion plugin produces PM transactions.";
+  };
+  readonly "pm-paragraph-tracker": {
+    readonly owner: "prosemirror";
+    readonly kind: "mutation-source";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Dirty tracking and section bookkeeping still observe PM transactions.";
+  };
+  readonly "pm-table-geometry": {
+    readonly owner: "prosemirror";
+    readonly kind: "mutation-source";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Table geometry, resize and repair still produce PM transactions.";
+  };
+  readonly "pm-paragraph-identity": {
+    readonly owner: "prosemirror";
+    readonly kind: "mutation-source";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Legacy paragraph identity repair remains a PM append transaction.";
+  };
+  readonly "pm-document-operations": {
+    readonly owner: "document-operations";
+    readonly defaultSessionMutation: "pm-public-operations";
+    readonly kind: "mutation-source";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Public document operations still execute against a held PM view.";
+  };
+  readonly "publicOps.comments": {
+    readonly owner: "document-operations";
+    readonly defaultSessionMutation: "pm-public-operations";
+    readonly kind: "routing";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Canonical public comments compile to semantic operations; default sessions retain PM comments.";
+  };
+  readonly "publicOps.suggestedMode": {
+    readonly owner: "document-operations";
+    readonly defaultSessionMutation: "pm-public-operations";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Public suggested mode refuses in canonical sessions until pending suggestions use the journal.";
+  };
+  readonly "publicOps.unsupportedInline": {
+    readonly owner: "document-operations";
+    readonly defaultSessionMutation: "pm-public-operations";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
+  };
+  readonly "publicOps.tableStructure": {
+    readonly owner: "document-operations";
+    readonly defaultSessionMutation: "pm-public-operations";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Public table structure operations require canonical table operation descriptors.";
+  };
+  readonly "publicOps.pendingParagraphMarkProperties": {
+    readonly owner: "document-operations";
+    readonly defaultSessionMutation: "pm-public-operations";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.";
+  };
+  readonly "publicOps.secondaryStories": {
+    readonly owner: "document-operations";
+    readonly defaultSessionMutation: "pm-public-operations";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Public secondary-story batches refuse until canonical story routing is available.";
+  };
+  readonly "publicOps.headlessSession": {
+    readonly owner: "document-operations";
+    readonly defaultSessionMutation: "pm-headless-reviewer";
+    readonly kind: "mutation-source";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "The headless reviewer has no canonical session selector while its mutations remain PM-owned.";
+  };
+  readonly "pm-ai-snapshots": {
+    readonly owner: "ai-edits";
+    readonly kind: "mutation-source";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Headless AI edits still use PM execution and snapshot undo.";
+  };
+} = {
   [CANONICAL_GAP.authorityRouting]: {
     owner: "controller",
     kind: "routing",

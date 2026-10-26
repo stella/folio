@@ -219,7 +219,7 @@ export type DocumentStyleSet = {
 };
 
 // @public
-export class DocxArchiveError extends DocxArchiveError_base<{
+export class DocxArchiveError extends DocxArchiveErrorBase<{
     message: string;
     reason: "load-failed" | "input-too-large" | "too-many-entries" | "entry-too-large" | "total-too-large" | "compression-ratio-exceeded" | "invalid-options";
     cause?: unknown;
@@ -261,7 +261,7 @@ export const endnote: (doc: import__stll_docx_core_model.Document, content: stri
 export const ensureParaIds: (docx: Uint8Array | ArrayBuffer, options?: EnsureParaIdsOptions) => Promise<EnsureParaIdsResult>;
 
 // @public
-export class EnsureParaIdsError extends EnsureParaIdsError_base<{
+export class EnsureParaIdsError extends EnsureParaIdsErrorBase<{
     message: string;
     reason: (typeof ENSURE_PARA_IDS_REASONS)[keyof typeof ENSURE_PARA_IDS_REASONS];
     cause?: unknown;
@@ -493,7 +493,7 @@ export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS: readonly ["remove-attr
 export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
 
 // @public
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 14;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION: 14;
 
 // @public
 export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES: readonly ["empty_update", "invalid_update", "missing_document", "source_mismatch", "stale_attr_schema", "update_too_large"];
@@ -1113,7 +1113,7 @@ export type FolioDocumentOutlineEntry = {
 };
 
 // @public (undocumented)
-export class FolioDocumentPrivacyArchiveError extends FolioDocumentPrivacyArchiveError_base<{
+export class FolioDocumentPrivacyArchiveError extends FolioDocumentPrivacyArchiveErrorBase<{
     message: string;
     reason: "input-too-large" | "load-failed" | "too-many-entries" | "core-properties-too-large";
     cause?: unknown;
@@ -1183,7 +1183,7 @@ export type FolioDocumentStoryHandle = {
 };
 
 // @public (undocumented)
-export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundError_base<{
+export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundErrorBase<{
     message: string;
     story: FolioEditableDocumentStoryHandle;
 }> {}
@@ -1246,7 +1246,7 @@ export type FolioDocxPackageInspection = {
 };
 
 // @public (undocumented)
-export class FolioDocxPackageInspectionError extends FolioDocxPackageInspectionError_base<{
+export class FolioDocxPackageInspectionError extends FolioDocxPackageInspectionErrorBase<{
     message: string;
     code: FolioDocxPackageInspectionErrorCode;
     part?: string;
@@ -1370,7 +1370,7 @@ export type FolioDocxXmlPatchApplication = {
 };
 
 // @public (undocumented)
-export class FolioDocxXmlPatchApplicationError extends FolioDocxXmlPatchApplicationError_base<{
+export class FolioDocxXmlPatchApplicationError extends FolioDocxXmlPatchApplicationErrorBase<{
     message: string;
     stage: "verify" | "load" | "replace" | "generate";
     part?: string;
@@ -1621,14 +1621,14 @@ export type FolioVersionDiffSummaryCounts = {
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
 
 // @public
-export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionError_base<{
+export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionErrorBase<{
     message: string;
     marker: unknown;
     supportedVersion: FolioYjsAttrSchemaVersion;
 }> {}
 
 // @public
-export class FolioYjsDocxMaterializationError extends FolioYjsDocxMaterializationError_base<{
+export class FolioYjsDocxMaterializationError extends FolioYjsDocxMaterializationErrorBase<{
     code: FolioYjsDocxMaterializationErrorCode;
     message: string;
     cause?: unknown;
@@ -1638,7 +1638,7 @@ export class FolioYjsDocxMaterializationError extends FolioYjsDocxMaterializatio
 export type FolioYjsDocxMaterializationErrorCode = (typeof FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES)[number];
 
 // @public
-export class FolioYjsSnapshotMigrationError extends FolioYjsSnapshotMigrationError_base<{
+export class FolioYjsSnapshotMigrationError extends FolioYjsSnapshotMigrationErrorBase<{
     code: FolioYjsSnapshotMigrationErrorCode;
     message: string;
     cause?: unknown;
@@ -1667,7 +1667,7 @@ export type GenerateRedlineDocxOptions = {
 };
 
 // @public
-export class GenerateRedlineDocxResourceImportError extends GenerateRedlineDocxResourceImportError_base<{
+export class GenerateRedlineDocxResourceImportError extends GenerateRedlineDocxResourceImportErrorBase<{
     message: string;
     detail: string;
 }> {}
@@ -1750,52 +1750,52 @@ export type InspectDocxPackageOptions = {
 };
 
 // @public (undocumented)
-export class InvalidBilingualDocumentOptionsError extends InvalidBilingualDocumentOptionsError_base<{
+export class InvalidBilingualDocumentOptionsError extends InvalidBilingualDocumentOptionsErrorBase<{
     message: string;
     option: "tableLayout" | "targetStyleSuffix";
 }> {}
 
 // @public (undocumented)
-export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base<{
+export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchErrorBase<{
     message: string;
     path: string;
     reason: string;
 }> {}
 
 // @public (undocumented)
-export class InvalidFolioDocumentPrivacyOptionsError extends InvalidFolioDocumentPrivacyOptionsError_base<{
+export class InvalidFolioDocumentPrivacyOptionsError extends InvalidFolioDocumentPrivacyOptionsErrorBase<{
     message: string;
     receivedValue: unknown;
 }> {}
 
 // @public (undocumented)
-export class InvalidFolioDocxXmlPatchProposalError extends InvalidFolioDocxXmlPatchProposalError_base<{
+export class InvalidFolioDocxXmlPatchProposalError extends InvalidFolioDocxXmlPatchProposalErrorBase<{
     message: string;
     path: string;
     reason: string;
 }> {}
 
 // @public (undocumented)
-export class InvalidFolioDocxXmlPatchProposalOptionsError extends InvalidFolioDocxXmlPatchProposalOptionsError_base<{
+export class InvalidFolioDocxXmlPatchProposalOptionsError extends InvalidFolioDocxXmlPatchProposalOptionsErrorBase<{
     message: string;
     path: string;
 }> {}
 
 // @public
-export class InvalidFolioReportBuilderOptionsError extends InvalidFolioReportBuilderOptionsError_base<{
+export class InvalidFolioReportBuilderOptionsError extends InvalidFolioReportBuilderOptionsErrorBase<{
     message: string;
     path: string;
 }> {}
 
 // @public (undocumented)
-export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base<{
+export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsErrorBase<{
     message: string;
     option: "include" | "privacy.transforms";
     receivedValue: unknown;
 }> {}
 
 // @public
-export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base<{
+export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsErrorBase<{
     message: string;
     option: "baseView" | "revisedView";
     receivedValue: unknown;
@@ -1912,19 +1912,19 @@ export type TableCellSpec = string | {
 };
 
 // @public (undocumented)
-export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base<{
+export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionErrorBase<{
     message: string;
     receivedVersion: unknown;
 }> {}
 
 // @public (undocumented)
-export class UnsupportedFolioDocxXmlPatchApplicationProfileError extends UnsupportedFolioDocxXmlPatchApplicationProfileError_base<{
+export class UnsupportedFolioDocxXmlPatchApplicationProfileError extends UnsupportedFolioDocxXmlPatchApplicationProfileErrorBase<{
     message: string;
     profile: unknown;
 }> {}
 
 // @public (undocumented)
-export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewError_base<{
+export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewErrorBase<{
     message: string;
     receivedView: unknown;
 }> {}

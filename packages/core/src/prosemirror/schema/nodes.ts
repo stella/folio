@@ -985,10 +985,10 @@ export type ShapeAttrs = {
 /**
  * Text box node attributes
  */
-export const TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES = Object.freeze([
+export const TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES: readonly [
   "source-empty",
   "authored",
-] as const);
+] = Object.freeze(["source-empty", "authored"] as const);
 
 export type TextBoxTextBodyContentState = {
   [Type in (typeof TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES)[number]]: {

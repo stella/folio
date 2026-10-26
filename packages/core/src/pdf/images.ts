@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 /**
  * Image decoding for PDF image XObjects.
  *
@@ -26,7 +26,10 @@ import {
   type PdfValue,
 } from "./objects";
 
-export class PdfImageError extends TaggedError("PdfImageError")<{
+const PdfImageErrorBase: TaggedErrorClass<"PdfImageError"> =
+  TaggedError("PdfImageError");
+
+export class PdfImageError extends PdfImageErrorBase<{
   message: string;
 }> {}
 

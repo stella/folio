@@ -34,7 +34,7 @@ const HALF_POINTS_PER_INCH = 144;
 const EIGHTHS_PER_INCH = 576;
 
 /** Pixels per inch at standard DPI */
-export const PIXELS_PER_INCH = STANDARD_DPI;
+export const PIXELS_PER_INCH: 96 = STANDARD_DPI;
 
 /**
  * Word's auto paragraph spacing in px. HTML-origin paragraphs use
@@ -43,7 +43,7 @@ export const PIXELS_PER_INCH = STANDARD_DPI;
  * The value is empirical (Word's rendered auto gap), not derivable from a
  * twips conversion. See eigenpal/docx-editor#823.
  */
-export const AUTO_PARAGRAPH_SPACING_PX = pointsToPixels(14);
+export const AUTO_PARAGRAPH_SPACING_PX: number = pointsToPixels(14);
 
 // ============================================================================
 // TWIPS CONVERSIONS

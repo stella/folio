@@ -353,7 +353,7 @@ export const saveDocumentBytes = async (
 const usageError = (message: string, hint?: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.usage, message, hint });
 
-export const SAVE_HELP = [
+export const SAVE_HELP: string = [
   "Usage: folio save <file> --from <saved.docx> --expect-version <sha> [flags]",
   "",
   "Commit a whole package an editor serialized as a folio transaction: under the write",

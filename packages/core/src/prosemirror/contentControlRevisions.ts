@@ -159,7 +159,7 @@ export const encloseWholeControls = ({
   from,
   to,
   revisionId,
-}: EncloseWholeControlsOptions) => {
+}: EncloseWholeControlsOptions): void => {
   const enclosed: { pos: number; attrs: PMNode["attrs"] }[] = [];
   tr.doc.nodesBetween(from, to, (node, pos) => {
     if (!isInlineControl(node) || pos < from || pos + node.nodeSize > to) {

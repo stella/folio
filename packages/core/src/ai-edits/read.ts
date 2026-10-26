@@ -58,7 +58,24 @@ export type FolioReviewChangeKind =
  * this census, so a newly modeled revision cannot silently miss the resolver
  * and serialization matrix.
  */
-export const FOLIO_REVIEW_CHANGE_KINDS = Object.freeze({
+export const FOLIO_REVIEW_CHANGE_KINDS: Readonly<{
+  readonly insertion: "insertion";
+  readonly deletion: "deletion";
+  readonly formatting: "formatting";
+  readonly rowInserted: "rowInserted";
+  readonly rowDeleted: "rowDeleted";
+  readonly cellInserted: "cellInserted";
+  readonly cellDeleted: "cellDeleted";
+  readonly cellMerged: "cellMerged";
+  readonly paragraphMarkInserted: "paragraphMarkInserted";
+  readonly paragraphMarkDeleted: "paragraphMarkDeleted";
+  readonly paragraphPropertiesChanged: "paragraphPropertiesChanged";
+  readonly sectionPropertiesChanged: "sectionPropertiesChanged";
+  readonly tablePropertiesChanged: "tablePropertiesChanged";
+  readonly tablePropertyExceptionsChanged: "tablePropertyExceptionsChanged";
+  readonly rowPropertiesChanged: "rowPropertiesChanged";
+  readonly cellPropertiesChanged: "cellPropertiesChanged";
+}> = Object.freeze({
   insertion: "insertion",
   deletion: "deletion",
   formatting: "formatting",

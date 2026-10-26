@@ -65,8 +65,10 @@ import {
 import { createExtension, createNodeExtension } from "../create";
 import type {
   AnyExtension,
+  Extension,
   ExtensionContext,
   ExtensionRuntime,
+  NodeExtension,
   TableBorderCommandSpec,
   TableCellBorderCommandSpec,
   TableCellMarginsCommand,
@@ -1127,25 +1129,33 @@ function goToPrevCell(): Command {
 // NODE EXTENSIONS (4 separate ones for schema contribution)
 // ============================================================================
 
-export const TableNodeExtension = createNodeExtension({
+export const TableNodeExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "table",
   schemaNodeName: "table",
   nodeSpec: tableSpec,
 });
 
-export const TableRowExtension = createNodeExtension({
+export const TableRowExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "tableRow",
   schemaNodeName: "tableRow",
   nodeSpec: tableRowSpec,
 });
 
-export const TableCellExtension = createNodeExtension({
+export const TableCellExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "tableCell",
   schemaNodeName: "tableCell",
   nodeSpec: tableCellSpec,
 });
 
-export const TableHeaderExtension = createNodeExtension({
+export const TableHeaderExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "tableHeader",
   schemaNodeName: "tableHeader",
   nodeSpec: tableHeaderSpec,
@@ -1160,7 +1170,9 @@ export type BorderPreset = "all" | "outside" | "inside" | "none";
 /** Whole-table border presets (Word's "All Borders" / "No Border"). */
 export type TableBorderPreset = "all" | "none";
 
-export const TablePluginExtension = createExtension({
+export const TablePluginExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => Extension = createExtension({
   name: "tablePlugin",
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
     const { schema } = ctx;

@@ -7,9 +7,21 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
  * and the ZIP date used for reproducible output.
  */
 import path from "node:path";
-import ts from "typescript";
+import type { VariableDeclarator } from "oxc-parser";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  bindingElements,
+  collectSyntaxTree,
+  createLineIndex,
+  type DeclaredName,
+  isFunctionLike,
+  type Node,
+  nodeText,
+  parameterParts,
+  parametersOf,
+  parseLikeTypeScript,
+} from "./lib/oxc-ast";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -19,47 +31,47 @@ const WRITER = "utf8-boundaries/src/zip.ts";
 
 type Violation = { line: number; method: "file" | "folder" };
 
+const isFileOrFolder = (name: string | undefined): name is "file" | "folder" =>
+  name === "file" || name === "folder";
+
 const staticPropertyName = (
-  expression: ts.Expression,
+  expression: Node,
 ): "file" | "folder" | undefined => {
-  if (ts.isPropertyAccessExpression(expression)) {
-    return expression.name.text === "file" || expression.name.text === "folder"
-      ? expression.name.text
-      : undefined;
+  if (expression.type !== "MemberExpression") return undefined;
+  if (!expression.computed) {
+    const name =
+      expression.property.type === "Identifier"
+        ? expression.property.name
+        : undefined;
+    return isFileOrFolder(name) ? name : undefined;
   }
-  if (!ts.isElementAccessExpression(expression)) return undefined;
-  const argument = expression.argumentExpression;
-  if (
-    argument !== undefined &&
-    (ts.isStringLiteral(argument) ||
-      ts.isNoSubstitutionTemplateLiteral(argument)) &&
-    (argument.text === "file" || argument.text === "folder")
-  ) {
-    return argument.text;
-  }
-  return undefined;
+  const argument = expression.property;
+  let text: string | undefined;
+  if (argument.type === "Literal" && typeof argument.value === "string")
+    text = argument.value;
+  if (argument.type === "TemplateLiteral" && argument.expressions.length === 0)
+    text = argument.quasis[0]?.value.cooked ?? undefined;
+  return isFileOrFolder(text) ? text : undefined;
 };
 
-const unwrapExpression = (expression: ts.Expression): ts.Expression => {
+const unwrapExpression = (expression: Node): Node => {
   if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isTypeAssertionExpression(expression) ||
-    ts.isNonNullExpression(expression) ||
-    ts.isAwaitExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
+    expression.type === "ParenthesizedExpression" ||
+    expression.type === "TSAsExpression" ||
+    expression.type === "TSTypeAssertion" ||
+    expression.type === "TSNonNullExpression" ||
+    expression.type === "TSSatisfiesExpression"
   ) {
     return unwrapExpression(expression.expression);
   }
+  if (expression.type === "AwaitExpression")
+    return unwrapExpression(expression.argument);
   return expression;
 };
 
-const receiverExpression = (
-  expression: ts.Expression,
-): ts.Expression | undefined => {
+const receiverExpression = (expression: Node): Node | undefined => {
   const unwrapped = unwrapExpression(expression);
-  if (ts.isPropertyAccessExpression(unwrapped)) return unwrapped.expression;
-  if (ts.isElementAccessExpression(unwrapped)) return unwrapped.expression;
+  if (unwrapped.type === "MemberExpression") return unwrapped.object;
   return undefined;
 };
 
@@ -67,99 +79,96 @@ const findWrites = (
   sourceText: string,
   fileName = "fixture.ts",
 ): Violation[] => {
-  const source = ts.createSourceFile(
+  const { program } = parseLikeTypeScript(
     fileName,
     sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-    /\.[jt]sx$/u.test(fileName) ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    /\.[jt]sx$/u.test(fileName) ? "tsx" : "ts",
   );
+  const { nodes, parentOf } = collectSyntaxTree(program);
+  const lineOf = createLineIndex(sourceText);
   const violations: Violation[] = [];
   const jszipBindings = new Set<string>();
-  const declarations: ts.VariableDeclaration[] = [];
-  const typedDeclarations: Array<
-    ts.ParameterDeclaration | ts.VariableDeclaration
-  > = [];
+  const declarations: VariableDeclarator[] = [];
+  const typedDeclarations: DeclaredName[] = [];
   const typedZipReceivers = new Set<string>();
   const directFileReceivers = new Set<string>();
 
-  const collectJsZipBindings = (node: ts.Node): void => {
+  for (const node of nodes) {
     if (
-      ts.isImportDeclaration(node) &&
-      ts.isStringLiteral(node.moduleSpecifier) &&
-      node.moduleSpecifier.text === "jszip" &&
-      node.importClause !== undefined
+      node.type === "ImportDeclaration" &&
+      node.source.value === "jszip" &&
+      node.specifiers.length > 0
     ) {
-      if (node.importClause.name !== undefined)
-        jszipBindings.add(node.importClause.name.text);
-      const bindings = node.importClause.namedBindings;
-      if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
-        jszipBindings.add(bindings.name.text);
-      } else if (bindings !== undefined && ts.isNamedImports(bindings)) {
-        for (const element of bindings.elements) {
-          if (
-            element.propertyName?.text === "JSZip" ||
-            element.name.text === "JSZip"
-          ) {
-            jszipBindings.add(element.name.text);
-          }
+      for (const specifier of node.specifiers) {
+        if (specifier.type !== "ImportSpecifier") {
+          jszipBindings.add(specifier.local.name);
+          continue;
         }
+        const imported =
+          specifier.imported.type === "Literal"
+            ? specifier.imported.value
+            : specifier.imported.name;
+        if (imported === "JSZip" || specifier.local.name === "JSZip")
+          jszipBindings.add(specifier.local.name);
       }
     }
-    if (ts.isVariableDeclaration(node)) declarations.push(node);
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer !== undefined &&
-      ts.isCallExpression(node.initializer) &&
-      ts.isIdentifier(node.initializer.expression) &&
-      node.initializer.expression.text === "require" &&
-      node.initializer.arguments.some(
-        (argument) => ts.isStringLiteral(argument) && argument.text === "jszip",
-      )
-    ) {
-      jszipBindings.add(node.name.text);
+    if (node.type === "VariableDeclarator") {
+      declarations.push(node);
+      // A declarator's type sits on its binding name, as a parameter's does.
+      typedDeclarations.push(parameterParts(node.id));
+      if (
+        node.id.type === "Identifier" &&
+        node.init?.type === "CallExpression" &&
+        node.init.callee.type === "Identifier" &&
+        node.init.callee.name === "require" &&
+        node.init.arguments.some(
+          (argument) =>
+            argument.type === "Literal" && argument.value === "jszip",
+        )
+      ) {
+        jszipBindings.add(node.id.name);
+      }
     }
-    if (ts.isParameter(node) || ts.isVariableDeclaration(node))
-      typedDeclarations.push(node);
-  };
-  const allNodes: ts.Node[] = [source];
-  while (allNodes.length > 0) {
-    const node = allNodes.pop();
-    if (node === undefined) continue;
-    collectJsZipBindings(node);
-    allNodes.push(...node.getChildren(source));
+    if (isFunctionLike(node))
+      for (const parameter of parametersOf(node))
+        typedDeclarations.push(parameterParts(parameter));
   }
+  // TypeScript's text of a binding name stops before its annotation.
+  const bindingNameText = ({ name, type }: DeclaredName): string =>
+    name.type === "Identifier"
+      ? name.name
+      : sourceText
+          .slice(name.start, sourceText.lastIndexOf(":", type?.start))
+          .trimEnd();
   for (const declaration of typedDeclarations) {
-    if (
-      declaration.type === undefined ||
-      !ts.isTypeReferenceNode(declaration.type)
-    )
-      continue;
-    if (!jszipBindings.has(declaration.type.typeName.getText(source))) continue;
-    typedZipReceivers.add(declaration.name.getText(source));
+    const { type } = declaration;
+    if (type === undefined || type.type !== "TSTypeReference") continue;
+    if (!jszipBindings.has(nodeText(sourceText, type.typeName))) continue;
+    typedZipReceivers.add(bindingNameText(declaration));
   }
 
-  const isJSZipConstruction = (initializer: ts.Expression): boolean => {
+  const isJSZipConstruction = (initializer: Node): boolean => {
     const expression = unwrapExpression(initializer);
     if (
-      ts.isNewExpression(expression) &&
-      ts.isIdentifier(expression.expression) &&
-      jszipBindings.has(expression.expression.text)
+      expression.type === "NewExpression" &&
+      expression.callee.type === "Identifier" &&
+      jszipBindings.has(expression.callee.name)
     ) {
       return true;
     }
     if (
-      !ts.isCallExpression(expression) ||
-      !ts.isPropertyAccessExpression(expression.expression)
+      expression.type !== "CallExpression" ||
+      expression.callee.type !== "MemberExpression" ||
+      expression.callee.computed
     ) {
       return false;
     }
-    const callee = expression.expression;
+    const callee = expression.callee;
     return (
-      callee.name.text === "loadAsync" &&
-      ts.isIdentifier(callee.expression) &&
-      jszipBindings.has(callee.expression.text)
+      callee.property.type === "Identifier" &&
+      callee.property.name === "loadAsync" &&
+      callee.object.type === "Identifier" &&
+      jszipBindings.has(callee.object.name)
     );
   };
 
@@ -168,70 +177,58 @@ const findWrites = (
   while (addedReceiver) {
     addedReceiver = false;
     for (const declaration of declarations) {
-      if (
-        !ts.isIdentifier(declaration.name) ||
-        declaration.initializer === undefined
-      )
-        continue;
-      const initializer = unwrapExpression(declaration.initializer);
+      if (declaration.id.type !== "Identifier" || !declaration.init) continue;
+      const initializer = unwrapExpression(declaration.init);
       const isZipAlias =
-        ts.isIdentifier(initializer) && knownZipReceivers.has(initializer.text);
+        initializer.type === "Identifier" &&
+        knownZipReceivers.has(initializer.name);
       if (
         (isZipAlias || isJSZipConstruction(initializer)) &&
-        !knownZipReceivers.has(declaration.name.text)
+        !knownZipReceivers.has(declaration.id.name)
       ) {
-        knownZipReceivers.add(declaration.name.text);
+        knownZipReceivers.add(declaration.id.name);
         addedReceiver = true;
       }
     }
   }
 
-  const receiverKey = (expression: ts.Expression): string =>
-    unwrapExpression(expression).getText(source);
-  const collectDirectFileReceivers = (node: ts.Node): void => {
+  const receiverKey = (expression: Node): string =>
+    nodeText(sourceText, unwrapExpression(expression));
+  for (const node of nodes) {
     if (
-      !ts.isCallExpression(node) ||
-      staticPropertyName(node.expression) !== "file"
+      node.type !== "CallExpression" ||
+      staticPropertyName(node.callee) !== "file"
     )
-      return;
-    const receiver = receiverExpression(node.expression);
+      continue;
+    const receiver = receiverExpression(node.callee);
     if (receiver !== undefined) directFileReceivers.add(receiverKey(receiver));
-  };
-  const collectReceivers: ts.Node[] = [source];
-  while (collectReceivers.length > 0) {
-    const node = collectReceivers.pop();
-    if (node === undefined) continue;
-    collectDirectFileReceivers(node);
-    collectReceivers.push(...node.getChildren(source));
   }
 
-  const addViolation = (node: ts.Node, method: "file" | "folder"): void => {
-    const { line } = source.getLineAndCharacterOfPosition(
-      node.getStart(source),
-    );
+  const addViolation = (node: Node, method: "file" | "folder"): void => {
+    const { line } = lineOf(node.start);
     violations.push({ line: line + 1, method });
   };
-  const inspect = (node: ts.Node): void => {
-    if (ts.isCallExpression(node)) {
-      const method = staticPropertyName(node.expression);
+  for (const node of nodes) {
+    if (node.type === "CallExpression") {
+      const method = staticPropertyName(node.callee);
       if (
         method !== undefined &&
         (method === "folder" ||
-          node.arguments.some(ts.isSpreadElement) ||
+          node.arguments.some(
+            (argument) => argument.type === "SpreadElement",
+          ) ||
           (method === "file" && node.arguments.length >= 2))
       ) {
         addViolation(node, method);
       }
     }
 
-    if (
-      ts.isPropertyAccessExpression(node) ||
-      ts.isElementAccessExpression(node)
-    ) {
+    if (node.type === "MemberExpression") {
       const method = staticPropertyName(node);
-      if (method === undefined) return;
+      if (method === undefined) continue;
+      const parent = parentOf(node);
       const directCall =
-        ts.isCallExpression(node.parent) && node.parent.expression === node;
+        parent?.type === "CallExpression" && parent.callee === node;
       const receiver = receiverExpression(node);
       const receiverId =
         receiver === undefined ? undefined : receiverKey(receiver);
@@ -242,33 +239,37 @@ const findWrites = (
       if (!directCall && isKnownZipReceiver) addViolation(node, method);
     }
 
-    if (ts.isBindingElement(node)) {
-      const propertyName = node.propertyName;
-      let name: string | undefined;
-      if (propertyName === undefined && ts.isIdentifier(node.name))
-        name = node.name.text;
-      if (
-        propertyName !== undefined &&
-        (ts.isIdentifier(propertyName) || ts.isStringLiteral(propertyName))
-      )
-        name = propertyName.text;
-      if (name === "file" || name === "folder") {
-        const declaration = node.parent.parent;
-        const receiver =
-          ts.isVariableDeclaration(declaration) &&
-          declaration.initializer !== undefined
-            ? receiverKey(declaration.initializer)
-            : undefined;
-        if (receiver !== undefined && knownZipReceivers.has(receiver))
-          addViolation(node, name);
+    if (node.type === "ObjectPattern" || node.type === "ArrayPattern") {
+      const declaration = parentOf(node);
+      const receiver =
+        declaration?.type === "VariableDeclarator" && declaration.init
+          ? receiverKey(declaration.init)
+          : undefined;
+      for (const element of bindingElements(node)) {
+        const propertyName = element.propertyName;
+        let name: string | undefined;
+        if (propertyName === undefined && element.name.type === "Identifier")
+          name = element.name.name;
+        if (
+          propertyName !== undefined &&
+          !(element.node.type === "Property" && element.node.computed)
+        ) {
+          if (propertyName.type === "Identifier") name = propertyName.name;
+          if (
+            propertyName.type === "Literal" &&
+            typeof propertyName.value === "string"
+          )
+            name = propertyName.value;
+        }
+        if (
+          isFileOrFolder(name) &&
+          receiver !== undefined &&
+          knownZipReceivers.has(receiver)
+        )
+          addViolation(element.node, name);
       }
     }
-  };
-  const visit = (node: ts.Node): void => {
-    inspect(node);
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  }
   return violations;
 };
 

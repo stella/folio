@@ -7,11 +7,14 @@
 
 import { expectEmphasisMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
 /**
  * Emboss — raised text effect via text-shadow
  */
-export const EmbossExtension = createMarkExtension({
+export const EmbossExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "emboss",
   schemaMarkName: "emboss",
   markSpec: {
@@ -33,7 +36,9 @@ export const EmbossExtension = createMarkExtension({
 /**
  * Imprint/Engrave — engraved text effect via text-shadow
  */
-export const ImprintExtension = createMarkExtension({
+export const ImprintExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "imprint",
   schemaMarkName: "imprint",
   markSpec: {
@@ -55,7 +60,9 @@ export const ImprintExtension = createMarkExtension({
 /**
  * Text Shadow (w:shadow) — subtle drop shadow on text
  */
-export const TextShadowExtension = createMarkExtension({
+export const TextShadowExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "textShadow",
   schemaMarkName: "textShadow",
   markSpec: {
@@ -77,7 +84,9 @@ export const TextShadowExtension = createMarkExtension({
 /**
  * Emphasis Mark (w:em) — dot/circle/comma above/below text
  */
-export const EmphasisMarkExtension = createMarkExtension({
+export const EmphasisMarkExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "emphasisMark",
   schemaMarkName: "emphasisMark",
   markSpec: {
@@ -127,7 +136,9 @@ export const EmphasisMarkExtension = createMarkExtension({
 /**
  * Text Outline (w:outline) — outlined text with no fill
  */
-export const TextOutlineExtension = createMarkExtension({
+export const TextOutlineExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "textOutline",
   schemaMarkName: "textOutline",
   markSpec: {

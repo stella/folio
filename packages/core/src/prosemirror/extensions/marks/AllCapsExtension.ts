@@ -3,8 +3,11 @@
  */
 
 import { createMarkExtension } from "../create";
+import type { MarkExtension } from "../types";
 
-export const AllCapsExtension = createMarkExtension({
+export const AllCapsExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "allCaps",
   schemaMarkName: "allCaps",
   markSpec: {

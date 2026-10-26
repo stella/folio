@@ -8,7 +8,7 @@
  * FormattingBar).
  */
 
-import { useCallback, useMemo } from "react";
+import { type JSX, useCallback, useMemo } from "react";
 
 import { cn } from "../../lib/utils";
 import { useFolioUI } from "../../ui/folio-ui";
@@ -59,7 +59,7 @@ export function ZoomControl({
   disabled = false,
   className,
   compact = false,
-}: ZoomControlProps) {
+}: ZoomControlProps): JSX.Element {
   const {
     Root: Select,
     Trigger: SelectTrigger,

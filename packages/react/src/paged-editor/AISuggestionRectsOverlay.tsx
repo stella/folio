@@ -17,7 +17,7 @@
  * every fresh layout so rects track reflow.
  */
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, JSX } from "react";
 
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import type { SelectionRect } from "@stll/folio-core/layout-bridge/engine/selectionRects";
@@ -59,7 +59,7 @@ const rectClassName = (suggestion: AISuggestion, focused: boolean): string =>
 
 export const AISuggestionRectsOverlay = ({
   groups,
-}: AISuggestionRectsOverlayProps) => {
+}: AISuggestionRectsOverlayProps): JSX.Element | null => {
   if (groups.length === 0) {
     return null;
   }

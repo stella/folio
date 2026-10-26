@@ -1,9 +1,23 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+import type { TSType } from "oxc-parser";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  bindingElements,
+  collectSyntaxTree,
+  createLineIndex,
+  isBlock,
+  isFunctionLike,
+  type Node,
+  nodeText,
+  parameterParts,
+  parametersOf,
+  parseLikeTypeScript,
+  propertyNameText,
+  walkAst,
+} from "./lib/oxc-ast";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -29,66 +43,104 @@ const TEXT_NAME =
 
 type Violation = { line: number; reason: string };
 
+const isStringLiteral = (
+  node: Node | undefined,
+): node is Node & { type: "Literal"; value: string } =>
+  node?.type === "Literal" && typeof node.value === "string";
+
+const isNumericLiteral = (
+  node: Node | undefined,
+): node is Node & { type: "Literal"; value: number } =>
+  node?.type === "Literal" && typeof node.value === "number";
+
+const isRegExpLiteral = (node: Node | undefined): boolean =>
+  node?.type === "Literal" && "regex" in node;
+
+/** TypeScript's prefix unary operators; `typeof`, `void` and `delete` are nodes of their own there. */
+const isPrefixUnary = (
+  node: Node,
+): node is Node & { type: "UnaryExpression" } =>
+  node.type === "UnaryExpression" &&
+  (node.operator === "-" ||
+    node.operator === "+" ||
+    node.operator === "!" ||
+    node.operator === "~");
+
+/** A statement the way TypeScript lists it: an exported declaration keeps its `export`. */
+const declarationOf = (statement: Node): Node =>
+  (statement.type === "ExportNamedDeclaration" ||
+    statement.type === "ExportDefaultDeclaration") &&
+  statement.declaration
+    ? statement.declaration
+    : statement;
+
 const SPACE_INSPECTOR =
   "core/src/layout-engine/measure/paragraphMeasureShared.ts";
 const verifiedSpaceInspector = (text: string): boolean => {
-  const source = ts.createSourceFile(
-    SPACE_INSPECTOR,
-    text,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const declaration = source.statements.find(
-    (node) =>
-      ts.isFunctionDeclaration(node) && node.name?.text === "isSpaceOrTab",
-  );
+  const { program } = parseLikeTypeScript(SPACE_INSPECTOR, text, "ts");
+  const declaration = program.body
+    .map(declarationOf)
+    .find(
+      (node) =>
+        (node.type === "FunctionDeclaration" ||
+          node.type === "TSDeclareFunction") &&
+        node.id?.name === "isSpaceOrTab",
+    );
   if (
     !declaration ||
-    !ts.isFunctionDeclaration(declaration) ||
-    declaration.parameters.length !== 1 ||
-    declaration.body?.statements.length !== 1
+    (declaration.type !== "FunctionDeclaration" &&
+      declaration.type !== "TSDeclareFunction") ||
+    declaration.params.length !== 1 ||
+    declaration.body?.body.length !== 1
   )
     return false;
-  const parameter = declaration.parameters.at(0)?.name;
-  const statement = declaration.body.statements.at(0);
+  const parameter = parameterParts(declaration.params[0]!).name;
+  const statement = declaration.body.body.at(0);
   if (
-    !parameter ||
-    !ts.isIdentifier(parameter) ||
+    parameter.type !== "Identifier" ||
     !statement ||
-    !ts.isReturnStatement(statement) ||
-    !statement.expression ||
-    !ts.isBinaryExpression(statement.expression) ||
-    statement.expression.operatorToken.kind !== ts.SyntaxKind.BarBarToken
+    statement.type !== "ReturnStatement" ||
+    !statement.argument ||
+    statement.argument.type !== "LogicalExpression" ||
+    statement.argument.operator !== "||"
   )
     return false;
-  const compares = (node: ts.Expression, expected: string): boolean =>
-    ts.isBinaryExpression(node) &&
-    node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
-    ts.isIdentifier(node.left) &&
-    node.left.text === parameter.text &&
-    ts.isStringLiteral(node.right) &&
-    node.right.text === expected;
+  const compares = (node: Node, expected: string): boolean =>
+    node.type === "BinaryExpression" &&
+    node.operator === "===" &&
+    node.left.type === "Identifier" &&
+    node.left.name === parameter.name &&
+    isStringLiteral(node.right) &&
+    node.right.value === expected;
   return (
-    compares(statement.expression.left, " ") &&
-    compares(statement.expression.right, "\t")
+    compares(statement.argument.left, " ") &&
+    compares(statement.argument.right, "\t")
   );
 };
 
-const member = (node: ts.Expression): string | undefined => {
-  if (ts.isPropertyAccessExpression(node)) return node.name.text;
-  if (
-    ts.isElementAccessExpression(node) &&
-    node.argumentExpression &&
-    ts.isStringLiteral(node.argumentExpression)
-  )
-    return node.argumentExpression.text;
+const member = (node: Node): string | undefined => {
+  if (node.type !== "MemberExpression") return undefined;
+  if (!node.computed)
+    return node.property.type === "PrivateIdentifier"
+      ? `#${node.property.name}`
+      : node.property.name;
+  if (isStringLiteral(node.property)) return node.property.value;
   return undefined;
 };
 
-const receiver = (node: ts.Expression): ts.Expression | undefined =>
-  ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)
-    ? node.expression
-    : undefined;
+const receiver = (node: Node): Node | undefined =>
+  node.type === "MemberExpression" ? node.object : undefined;
+
+/** `a.b` with an identifier name: TypeScript's property access. */
+const accessedName = (node: Node): string | undefined =>
+  node.type === "MemberExpression" && !node.computed ? member(node) : undefined;
+
+/** A TypeScript parameter or variable declaration. */
+type Declared = {
+  readonly kind: "parameter" | "variable";
+  readonly name: Node;
+  readonly type: TSType | undefined;
+};
 
 const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
   const text = file.endsWith(".vue")
@@ -96,45 +148,62 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         .map((match) => match[1] ?? "")
         .join("\n")
     : input;
-  const source = ts.createSourceFile(
+  const { program } = parseLikeTypeScript(
     file,
     text,
-    ts.ScriptTarget.Latest,
-    true,
-    file.endsWith(".tsx") || file.endsWith(".jsx")
-      ? ts.ScriptKind.TSX
-      : ts.ScriptKind.TS,
+    file.endsWith(".tsx") || file.endsWith(".jsx") ? "tsx" : "ts",
   );
-  const nodes: ts.Node[] = [];
-  const collect = (node: ts.Node): void => {
-    nodes.push(node);
-    ts.forEachChild(node, collect);
-  };
-  collect(source);
+  const { nodes, parentOf } = collectSyntaxTree(program);
+  const lineOf = createLineIndex(text);
+  // Declarations are keyed by the node that stands where TypeScript's does:
+  // the declarator, the parameter, or the catch clause's variable.
+  const declared = new Map<Node, Declared>();
+  for (const node of nodes) {
+    if (node.type === "VariableDeclarator")
+      declared.set(node, { kind: "variable", ...parameterParts(node.id) });
+    if (node.type === "CatchClause" && node.param)
+      declared.set(node.param, {
+        kind: "variable",
+        ...parameterParts(node.param),
+      });
+    if (isFunctionLike(node))
+      for (const parameter of parametersOf(node))
+        declared.set(parameter, {
+          kind: "parameter",
+          ...parameterParts(parameter),
+        });
+  }
   // Resolve identifiers to declarations rather than sharing facts by spelling.
-  const bindings = new Map<ts.Node, Map<string, ts.Node>>();
-  const isScope = (node: ts.Node): boolean =>
-    ts.isSourceFile(node) ||
-    ts.isBlock(node) ||
-    ts.isFunctionLike(node) ||
-    ts.isForStatement(node) ||
-    ts.isForOfStatement(node) ||
-    ts.isForInStatement(node) ||
-    ts.isCatchClause(node) ||
-    ts.isCaseBlock(node);
-  const scopeOf = (node: ts.Node | undefined): ts.Node => {
-    for (let current = node; current; current = current.parent)
-      if (isScope(current)) return current;
-    return source;
+  const bindings = new Map<Node, Map<string, Node>>();
+  const isScope = (node: Node): boolean =>
+    node.type === "Program" ||
+    isBlock(node) ||
+    isFunctionLike(node) ||
+    node.type === "ForStatement" ||
+    node.type === "ForOfStatement" ||
+    node.type === "ForInStatement" ||
+    node.type === "CatchClause" ||
+    // TypeScript's case block holds the clauses, not the switch's subject.
+    node.type === "SwitchStatement";
+  /** TypeScript's `scopeOf(node.parent)`. */
+  const scopeAbove = (node: Node): Node => {
+    let child = node;
+    let current = parentOf(node);
+    while (current) {
+      if (
+        isScope(current) &&
+        !(current.type === "SwitchStatement" && current.discriminant === child)
+      )
+        return current;
+      child = current;
+      current = parentOf(current);
+    }
+    return program;
   };
-  const bind = (
-    name: ts.BindingName,
-    declaration: ts.Node,
-    scope: ts.Node,
-  ): void => {
-    if (!ts.isIdentifier(name)) {
-      for (const element of name.elements)
-        if (ts.isBindingElement(element)) bind(element.name, element, scope);
+  const bind = (name: Node, declaration: Node, scope: Node): void => {
+    if (name.type !== "Identifier") {
+      for (const element of bindingElements(name))
+        bind(element.name, element.node, scope);
       return;
     }
     let names = bindings.get(scope);
@@ -142,252 +211,241 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       names = new Map();
       bindings.set(scope, names);
     }
-    names.set(name.text, declaration);
+    names.set(name.name, declaration);
   };
   for (const node of nodes) {
-    if (ts.isParameter(node)) bind(node.name, node, scopeOf(node.parent));
-    if (ts.isVariableDeclaration(node)) {
-      let scope = scopeOf(node.parent);
-      if (
-        ts.isVariableDeclarationList(node.parent) &&
-        !(node.parent.flags & ts.NodeFlags.BlockScoped)
-      ) {
+    const declaration = declared.get(node);
+    if (declaration?.kind === "parameter")
+      bind(declaration.name, node, scopeAbove(node));
+    if (declaration?.kind === "variable") {
+      let scope = scopeAbove(node);
+      const list = parentOf(node);
+      if (list?.type === "VariableDeclaration" && list.kind === "var") {
         for (
-          let current: ts.Node | undefined = node.parent;
+          let current: Node | undefined = list;
           current;
-          current = current.parent
+          current = parentOf(current)
         ) {
-          if (ts.isFunctionLike(current) || ts.isSourceFile(current)) {
+          if (isFunctionLike(current) || current.type === "Program") {
             scope = current;
             break;
           }
         }
       }
-      bind(node.name, node, scope);
+      bind(declaration.name, node, scope);
     }
-    if (ts.isFunctionDeclaration(node) && node.name)
-      bind(node.name, node, scopeOf(node.parent));
-    if (ts.isImportSpecifier(node)) bind(node.name, node, scopeOf(node.parent));
-    if (ts.isImportClause(node) && node.name)
-      bind(node.name, node, scopeOf(node.parent));
-    if (ts.isNamespaceImport(node)) bind(node.name, node, scopeOf(node.parent));
+    if (
+      (node.type === "FunctionDeclaration" ||
+        node.type === "TSDeclareFunction") &&
+      node.id
+    )
+      bind(node.id, node, scopeAbove(node));
+    if (
+      node.type === "ImportSpecifier" ||
+      node.type === "ImportDefaultSpecifier" ||
+      node.type === "ImportNamespaceSpecifier"
+    )
+      bind(node.local, node, scopeAbove(node));
   }
-  const bindingOf = (identifier: ts.Identifier): ts.Node => {
+  const bindingOf = (identifier: Node & { name: string }): Node => {
     for (
-      let scope: ts.Node | undefined = scopeOf(identifier.parent);
+      let scope: Node | undefined = scopeAbove(identifier);
       scope;
-      scope = scope === source ? undefined : scopeOf(scope.parent)
+      scope = scope === program ? undefined : scopeAbove(scope)
     ) {
-      const declaration = bindings.get(scope)?.get(identifier.text);
+      const declaration = bindings.get(scope)?.get(identifier.name);
       if (declaration) return declaration;
     }
     return identifier;
   };
-  const strings = new Set<ts.Node>();
-  const arrays = new Set<ts.Node>();
-  const stringArrays = new Set<ts.Node>();
-  const stringFunctions = new Set<ts.Node>();
-  const methods = new Map<
-    ts.Node,
-    { receiver: ts.Expression; method: string }
-  >();
-  const caps = new Set<ts.Node>();
-  const numbers = new Set<ts.Node>();
-  const asciiValidators = new Set<ts.Node>();
-  const regexes = new Set<ts.Node>();
-  const inspectors = new Set<ts.Node>();
-  const mutated = new Set<ts.Node>();
+  const strings = new Set<Node>();
+  const arrays = new Set<Node>();
+  const stringArrays = new Set<Node>();
+  const stringFunctions = new Set<Node>();
+  const methods = new Map<Node, { receiver: Node; method: string }>();
+  const caps = new Set<Node>();
+  const numbers = new Set<Node>();
+  const asciiValidators = new Set<Node>();
+  const regexes = new Set<Node>();
+  const inspectors = new Set<Node>();
+  const mutated = new Set<Node>();
   for (const node of nodes) {
-    if (
-      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
-      (node.operator === ts.SyntaxKind.PlusPlusToken ||
-        node.operator === ts.SyntaxKind.MinusMinusToken) &&
-      ts.isIdentifier(node.operand)
-    )
-      mutated.add(bindingOf(node.operand));
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
-      ts.isIdentifier(node.left)
-    )
+    if (node.type === "UpdateExpression" && node.argument.type === "Identifier")
+      mutated.add(bindingOf(node.argument));
+    if (node.type === "AssignmentExpression" && node.left.type === "Identifier")
       mutated.add(bindingOf(node.left));
   }
-  const numericCall = (node: ts.Expression): boolean => {
-    if (!ts.isCallExpression(node)) return false;
-    if (ts.isIdentifier(node.expression))
+  const numericCall = (node: Node): boolean => {
+    if (node.type !== "CallExpression") return false;
+    if (node.callee.type === "Identifier")
       return (
-        /^(?:parseInt|parseFloat|Number)$/u.test(node.expression.text) &&
-        bindingOf(node.expression) === node.expression
+        /^(?:parseInt|parseFloat|Number)$/u.test(node.callee.name) &&
+        bindingOf(node.callee) === node.callee
       );
-    const owner = receiver(node.expression);
+    const owner = receiver(node.callee);
     return (
       owner !== undefined &&
-      ts.isIdentifier(owner) &&
-      owner.text === "Number" &&
+      owner.type === "Identifier" &&
+      owner.name === "Number" &&
       bindingOf(owner) === owner &&
-      /^(?:parseInt|parseFloat)$/u.test(member(node.expression) ?? "")
+      /^(?:parseInt|parseFloat)$/u.test(member(node.callee) ?? "")
     );
   };
+  const typeText = (type: TSType | undefined): string | undefined =>
+    type === undefined ? undefined : nodeText(text, type);
   for (const node of nodes) {
-    if (
-      (ts.isParameter(node) || ts.isVariableDeclaration(node)) &&
-      ts.isIdentifier(node.name)
-    ) {
-      if (node.type?.kind === ts.SyntaxKind.StringKeyword) strings.add(node);
-      if (node.type?.kind === ts.SyntaxKind.NumberKeyword) numbers.add(node);
-      if (node.type?.getText(source) === "RegExp") regexes.add(node);
-      if (/^RegExp(?:Match|Exec)Array$/u.test(node.type?.getText(source) ?? ""))
+    const declaration = declared.get(node);
+    if (declaration && declaration.name.type === "Identifier") {
+      const { type } = declaration;
+      if (type?.type === "TSStringKeyword") strings.add(node);
+      if (type?.type === "TSNumberKeyword") numbers.add(node);
+      if (typeText(type) === "RegExp") regexes.add(node);
+      if (/^RegExp(?:Match|Exec)Array$/u.test(typeText(type) ?? ""))
         arrays.add(node);
       if (
-        node.type &&
-        (ts.isArrayTypeNode(node.type) ||
+        type &&
+        (type.type === "TSArrayType" ||
           /^(?:readonly\s+)?(?:Uint\d+Array|Int\d+Array|ArrayBuffer|Buffer|Array<|ReadonlyArray<)/u.test(
-            node.type.getText(source),
+            nodeText(text, type),
           ))
       )
         arrays.add(node);
       if (
-        node.type &&
-        ts.isArrayTypeNode(node.type) &&
-        node.type.elementType.kind === ts.SyntaxKind.StringKeyword
+        type &&
+        type.type === "TSArrayType" &&
+        type.elementType.type === "TSStringKeyword"
       )
         stringArrays.add(node);
     }
     if (
-      ts.isFunctionDeclaration(node) &&
-      node.name &&
-      node.type?.kind === ts.SyntaxKind.StringKeyword
+      (node.type === "FunctionDeclaration" ||
+        node.type === "TSDeclareFunction") &&
+      node.id &&
+      node.returnType?.typeAnnotation.type === "TSStringKeyword"
+    )
+      stringFunctions.add(node);
+    if (node.type !== "VariableDeclarator") {
+      if (
+        node.type === "ImportSpecifier" &&
+        (node.imported.type === "Literal"
+          ? node.imported.value
+          : node.imported.name) === "isSpaceOrTab"
+      ) {
+        const importDeclaration = parentOf(node);
+        if (
+          importDeclaration?.type === "ImportDeclaration" &&
+          path.resolve(
+            PACKAGES,
+            path.dirname(file),
+            `${importDeclaration.source.value}.ts`,
+          ) === path.join(PACKAGES, SPACE_INSPECTOR) &&
+          verifiedSpaceInspector(
+            readFileSync(path.join(PACKAGES, SPACE_INSPECTOR), "utf8"),
+          )
+        )
+          inspectors.add(node);
+      }
+      continue;
+    }
+    const initializer = node.init;
+    if (
+      node.id.type === "Identifier" &&
+      initializer?.type === "ArrowFunctionExpression" &&
+      initializer.returnType?.typeAnnotation.type === "TSStringKeyword"
     )
       stringFunctions.add(node);
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      ts.isArrowFunction(node.initializer) &&
-      node.initializer.type?.kind === ts.SyntaxKind.StringKeyword
-    )
-      stringFunctions.add(node);
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer?.kind === ts.SyntaxKind.RegularExpressionLiteral &&
+      node.id.type === "Identifier" &&
+      initializer &&
+      isRegExpLiteral(initializer) &&
       /^\/\^\[[\da-zA-Z-]+\]\{\d+\}\$\/[gu]*$/u.test(
-        node.initializer.getText(source),
+        nodeText(text, initializer),
       )
     )
       asciiValidators.add(node);
     if (
-      ts.isVariableDeclaration(node) &&
-      node.initializer &&
-      (node.initializer.kind === ts.SyntaxKind.RegularExpressionLiteral ||
-        (ts.isNewExpression(node.initializer) &&
-          ts.isIdentifier(node.initializer.expression) &&
-          node.initializer.expression.text === "RegExp" &&
-          bindingOf(node.initializer.expression) ===
-            node.initializer.expression))
+      initializer &&
+      (isRegExpLiteral(initializer) ||
+        (initializer.type === "NewExpression" &&
+          initializer.callee.type === "Identifier" &&
+          initializer.callee.name === "RegExp" &&
+          bindingOf(initializer.callee) === initializer.callee))
     )
       regexes.add(node);
     if (
-      ts.isVariableDeclaration(node) &&
-      node.initializer &&
-      ts.isArrowFunction(node.initializer) &&
-      !ts.isBlock(node.initializer.body) &&
-      numericCall(node.initializer.body)
+      initializer?.type === "ArrowFunctionExpression" &&
+      initializer.body.type !== "BlockStatement" &&
+      numericCall(initializer.body)
     )
       inspectors.add(node);
-    if (
-      ts.isImportSpecifier(node) &&
-      (node.propertyName?.text ?? node.name.text) === "isSpaceOrTab"
-    ) {
-      const declaration = node.parent.parent.parent;
-      if (
-        ts.isImportDeclaration(declaration) &&
-        ts.isStringLiteral(declaration.moduleSpecifier) &&
-        path.resolve(
-          PACKAGES,
-          path.dirname(file),
-          `${declaration.moduleSpecifier.text}.ts`,
-        ) === path.join(PACKAGES, SPACE_INSPECTOR) &&
-        verifiedSpaceInspector(
-          readFileSync(path.join(PACKAGES, SPACE_INSPECTOR), "utf8"),
-        )
-      )
-        inspectors.add(node);
-    }
   }
-  const isArray = (node: ts.Expression): boolean => {
-    if (ts.isArrayLiteralExpression(node)) return true;
-    if (ts.isIdentifier(node)) return arrays.has(bindingOf(node));
-    if (ts.isNewExpression(node))
+  const isArray = (node: Node): boolean => {
+    if (node.type === "ArrayExpression") return true;
+    if (node.type === "Identifier") return arrays.has(bindingOf(node));
+    if (node.type === "NewExpression")
       return /^(?:Uint\d+Array|Int\d+Array|ArrayBuffer|Buffer|Array)$/u.test(
-        node.expression.getText(source),
+        nodeText(text, node.callee),
       );
-    if (ts.isCallExpression(node)) {
+    if (node.type === "CallExpression") {
       if (
-        member(node.expression) === "split" ||
-        member(node.expression) === "map" ||
-        member(node.expression) === "filter"
+        member(node.callee) === "split" ||
+        member(node.callee) === "map" ||
+        member(node.callee) === "filter"
+      )
+        return true;
+      const owner = receiver(node.callee);
+      if (
+        member(node.callee) === "from" &&
+        owner !== undefined &&
+        nodeText(text, owner) === "Array"
       )
         return true;
       if (
-        member(node.expression) === "from" &&
-        receiver(node.expression)?.getText(source) === "Array"
-      )
-        return true;
-      const owner = receiver(node.expression);
-      if (
-        member(node.expression) === "exec" &&
+        member(node.callee) === "exec" &&
         owner &&
-        (owner.kind === ts.SyntaxKind.RegularExpressionLiteral ||
-          (ts.isIdentifier(owner) && regexes.has(bindingOf(owner))))
+        (isRegExpLiteral(owner) ||
+          (owner.type === "Identifier" && regexes.has(bindingOf(owner))))
       )
         return true;
-      if (member(node.expression) === "match" && owner && isString(owner))
+      if (member(node.callee) === "match" && owner && isString(owner))
         return true;
     }
     return false;
   };
-  const isStringArray = (node: ts.Expression): boolean => {
-    if (ts.isIdentifier(node)) return stringArrays.has(bindingOf(node));
-    if (ts.isArrayLiteralExpression(node))
-      return node.elements.every((element) => isString(element));
-    if (!ts.isCallExpression(node)) return false;
-    const owner = receiver(node.expression);
+  const isStringArray = (node: Node): boolean => {
+    if (node.type === "Identifier") return stringArrays.has(bindingOf(node));
+    if (node.type === "ArrayExpression")
+      return node.elements.every(
+        (element) => element !== null && isString(element),
+      );
+    if (node.type !== "CallExpression") return false;
+    const owner = receiver(node.callee);
     if (!owner) return false;
-    if (member(node.expression) === "split") return isString(owner);
-    return member(node.expression) === "filter" && isStringArray(owner);
+    if (member(node.callee) === "split") return isString(owner);
+    return member(node.callee) === "filter" && isStringArray(owner);
   };
-  const isString = (node: ts.Expression): boolean => {
+  const isString = (node: Node): boolean => {
     if (isArray(node)) return false;
-    if (
-      ts.isStringLiteral(node) ||
-      ts.isNoSubstitutionTemplateLiteral(node) ||
-      ts.isTemplateExpression(node)
-    )
-      return true;
-    if (ts.isIdentifier(node))
+    if (isStringLiteral(node) || node.type === "TemplateLiteral") return true;
+    if (node.type === "Identifier")
       return (
         !numbers.has(bindingOf(node)) &&
-        (strings.has(bindingOf(node)) || TEXT_NAME.test(node.text))
+        (strings.has(bindingOf(node)) || TEXT_NAME.test(node.name))
       );
-    if (
-      ts.isPropertyAccessExpression(node) ||
-      ts.isElementAccessExpression(node)
-    )
+    if (node.type === "MemberExpression")
       return /^(?:text|message|name|title|description|label)$/u.test(
         member(node) ?? "",
       );
-    if (ts.isCallExpression(node)) {
-      if (ts.isIdentifier(node.expression))
+    if (node.type === "CallExpression") {
+      if (node.callee.type === "Identifier")
         return (
-          node.expression.text === "String" ||
-          stringFunctions.has(bindingOf(node.expression))
+          node.callee.name === "String" ||
+          stringFunctions.has(bindingOf(node.callee))
         );
-      const method = member(node.expression);
+      const method = member(node.callee);
       if (method === "join") return true;
       if (method === "toString") return true;
-      const owner = receiver(node.expression);
+      const owner = receiver(node.callee);
       return (
         owner !== undefined &&
         /^(?:slice|substring|substr|trim|trimStart|trimEnd|replace|replaceAll|toUpperCase|toLowerCase|padStart|padEnd|toString)$/u.test(
@@ -396,58 +454,56 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         isString(owner)
       );
     }
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.PlusToken
-    )
+    if (node.type === "BinaryExpression" && node.operator === "+")
       return isString(node.left) || isString(node.right);
     return false;
   };
   let changed = true;
-  const coordinateWalk = (declaration: ts.VariableDeclaration): boolean => {
+  const coordinateWalk = (declaration: Node): boolean => {
+    const list = parentOf(declaration);
     if (
-      ts.isVariableDeclarationList(declaration.parent) &&
-      ts.isForStatement(declaration.parent.parent)
+      list?.type === "VariableDeclaration" &&
+      parentOf(list)?.type === "ForStatement"
     )
       return true;
     return nodes.some((node) => {
-      if (!ts.isWhileStatement(node) && !ts.isForStatement(node)) return false;
-      const condition = ts.isWhileStatement(node)
-        ? node.expression
-        : node.condition;
+      if (node.type !== "WhileStatement" && node.type !== "ForStatement")
+        return false;
+      const condition = node.test;
       if (!condition) return false;
       let indexed = false;
-      const inspect = (part: ts.Node): void => {
+      walkAst(condition, (part) => {
         if (
-          ts.isElementAccessExpression(part) &&
-          part.argumentExpression &&
-          ts.isIdentifier(part.argumentExpression) &&
-          bindingOf(part.argumentExpression) === declaration &&
-          isString(part.expression)
+          part.type === "MemberExpression" &&
+          part.computed &&
+          part.property.type === "Identifier" &&
+          bindingOf(part.property) === declaration &&
+          isString(part.object)
         )
           indexed = true;
-        ts.forEachChild(part, inspect);
-      };
-      inspect(condition);
+      });
       return indexed;
     });
   };
   while (changed) {
     changed = false;
     for (const node of nodes) {
+      const list = parentOf(node);
+      const loop = list === undefined ? undefined : parentOf(list);
       if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        ts.isVariableDeclarationList(node.parent) &&
-        ts.isForOfStatement(node.parent.parent)
+        node.type === "VariableDeclarator" &&
+        node.id.type === "Identifier" &&
+        list?.type === "VariableDeclaration" &&
+        loop?.type === "ForOfStatement"
       ) {
-        const iterable = node.parent.parent.expression;
-        const owner = ts.isCallExpression(iterable)
-          ? receiver(iterable.expression)
-          : undefined;
+        const iterable = loop.right;
+        const owner =
+          iterable.type === "CallExpression"
+            ? receiver(iterable.callee)
+            : undefined;
         if (
-          ts.isCallExpression(iterable) &&
-          member(iterable.expression) === "matchAll" &&
+          iterable.type === "CallExpression" &&
+          member(iterable.callee) === "matchAll" &&
           owner &&
           isString(owner) &&
           !arrays.has(node)
@@ -457,21 +513,24 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
         }
       }
       if (
-        ts.isCallExpression(node) &&
-        /^(?:map|filter|forEach)$/u.test(member(node.expression) ?? "")
+        node.type === "CallExpression" &&
+        /^(?:map|filter|forEach)$/u.test(member(node.callee) ?? "")
       ) {
-        const owner = receiver(node.expression);
+        const owner = receiver(node.callee);
         const callback = node.arguments.at(0);
         if (
           owner &&
           isStringArray(owner) &&
           callback &&
-          (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))
+          (callback.type === "ArrowFunctionExpression" ||
+            callback.type === "FunctionExpression")
         ) {
-          const parameter = callback.parameters.at(0)?.name;
+          const first = callback.params.at(0);
+          const parameter =
+            first === undefined ? undefined : parameterParts(first).name;
           if (
             parameter &&
-            ts.isIdentifier(parameter) &&
+            parameter.type === "Identifier" &&
             !strings.has(bindingOf(parameter))
           ) {
             strings.add(bindingOf(parameter));
@@ -479,122 +538,117 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
           }
         }
       }
-      if (!ts.isVariableDeclaration(node) || !node.initializer) continue;
-      if (ts.isObjectBindingPattern(node.name) && isString(node.initializer)) {
-        for (const element of node.name.elements) {
-          if (!ts.isIdentifier(element.name)) continue;
+      if (node.type !== "VariableDeclarator" || !node.init) continue;
+      const initializer = node.init;
+      if (node.id.type === "ObjectPattern" && isString(initializer)) {
+        for (const element of bindingElements(node.id)) {
+          if (element.name.type !== "Identifier") continue;
           const method =
-            element.propertyName?.getText(source).replace(/["']/gu, "") ??
-            element.name.text;
+            propertyNameText(text, element)?.replace(/["']/gu, "") ??
+            element.name.name;
           if (
             /^(?:slice|substring|substr)$/u.test(method) &&
             !methods.has(bindingOf(element.name))
           ) {
             methods.set(bindingOf(element.name), {
-              receiver: node.initializer,
+              receiver: initializer,
               method,
             });
             changed = true;
           }
         }
       }
-      if (!ts.isIdentifier(node.name)) continue;
+      if (node.id.type !== "Identifier") continue;
+      const name = node.id;
       if (
-        ts.isIdentifier(node.initializer) &&
-        regexes.has(bindingOf(node.initializer)) &&
+        initializer.type === "Identifier" &&
+        regexes.has(bindingOf(initializer)) &&
         !regexes.has(node)
       ) {
         regexes.add(node);
         changed = true;
       }
       if (
-        ts.isIdentifier(node.initializer) &&
-        inspectors.has(bindingOf(node.initializer)) &&
+        initializer.type === "Identifier" &&
+        inspectors.has(bindingOf(initializer)) &&
         !inspectors.has(node)
       ) {
         inspectors.add(node);
         changed = true;
       }
       if (
-        (ts.isNumericLiteral(node.initializer) ||
-          (ts.isIdentifier(node.initializer) &&
-            numbers.has(bindingOf(node.initializer)))) &&
+        (isNumericLiteral(initializer) ||
+          (initializer.type === "Identifier" &&
+            numbers.has(bindingOf(initializer)))) &&
         !numbers.has(node)
       ) {
         numbers.add(node);
         changed = true;
       }
-      if (isArray(node.initializer) && !arrays.has(bindingOf(node.name))) {
+      if (isArray(initializer) && !arrays.has(bindingOf(name))) {
         arrays.add(node);
         changed = true;
       }
-      if (
-        isStringArray(node.initializer) &&
-        !stringArrays.has(bindingOf(node.name))
-      ) {
+      if (isStringArray(initializer) && !stringArrays.has(bindingOf(name))) {
         stringArrays.add(node);
         changed = true;
       }
-      if (isString(node.initializer) && !strings.has(bindingOf(node.name))) {
+      if (isString(initializer) && !strings.has(bindingOf(name))) {
         strings.add(node);
         changed = true;
       }
       if (
-        ts.isVariableDeclarationList(node.parent) &&
+        list?.type === "VariableDeclaration" &&
         (!mutated.has(node) ||
           !/(?:offset|index|idx|start|end|cursor|position|^i$|^j$)/iu.test(
-            node.name.text,
+            name.name,
           ) ||
           !coordinateWalk(node)) &&
-        ((ts.isNumericLiteral(node.initializer) &&
-          Number(node.initializer.text) >= 1) ||
-          (ts.isIdentifier(node.initializer) &&
-            caps.has(bindingOf(node.initializer))))
+        ((isNumericLiteral(initializer) && initializer.value >= 1) ||
+          (initializer.type === "Identifier" &&
+            caps.has(bindingOf(initializer))))
       ) {
-        if (!caps.has(bindingOf(node.name))) {
-          caps.add(bindingOf(node.name));
+        if (!caps.has(bindingOf(name))) {
+          caps.add(bindingOf(name));
           changed = true;
         }
       }
-      const owner = receiver(node.initializer);
-      const method = member(node.initializer);
+      const owner = receiver(initializer);
+      const method = member(initializer);
       if (
         owner &&
         isString(owner) &&
         /^(?:slice|substring|substr)$/u.test(method ?? "") &&
-        !methods.has(bindingOf(node.name))
+        !methods.has(bindingOf(name))
       ) {
-        methods.set(bindingOf(node.name), {
+        methods.set(bindingOf(name), {
           receiver: owner,
           method: method ?? "",
         });
         changed = true;
       }
       if (
-        ts.isIdentifier(node.initializer) &&
-        methods.has(bindingOf(node.initializer)) &&
-        !methods.has(bindingOf(node.name))
+        initializer.type === "Identifier" &&
+        methods.has(bindingOf(initializer)) &&
+        !methods.has(bindingOf(name))
       ) {
-        methods.set(
-          bindingOf(node.name),
-          methods.get(bindingOf(node.initializer))!,
-        );
+        methods.set(bindingOf(name), methods.get(bindingOf(initializer))!);
         changed = true;
       }
       if (
-        ts.isCallExpression(node.initializer) &&
-        member(node.initializer.expression) === "bind"
+        initializer.type === "CallExpression" &&
+        member(initializer.callee) === "bind"
       ) {
-        const reference = receiver(node.initializer.expression);
+        const reference = receiver(initializer.callee);
         const boundOwner = reference ? receiver(reference) : undefined;
         const boundMethod = reference ? member(reference) : undefined;
         if (
           boundOwner &&
           isString(boundOwner) &&
           /^(?:slice|substring|substr)$/u.test(boundMethod ?? "") &&
-          !methods.has(bindingOf(node.name))
+          !methods.has(bindingOf(name))
         ) {
-          methods.set(bindingOf(node.name), {
+          methods.set(bindingOf(name), {
             receiver: boundOwner,
             method: boundMethod ?? "",
           });
@@ -603,253 +657,267 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       }
     }
   }
-  const sameBinding = (left: ts.Identifier, right: ts.Identifier): boolean => {
+  const sameBinding = (
+    left: Node & { name: string },
+    right: Node & { name: string },
+  ): boolean => {
     const first = bindingOf(left);
     const second = bindingOf(right);
     return (
       first === second ||
-      (first === left && second === right && left.text === right.text)
+      (first === left && second === right && left.name === right.name)
     );
   };
-  const coordinate = (node: ts.Expression): boolean => {
-    if (ts.isPropertyAccessExpression(node))
-      return /^(?:index|offset|position|start|end)$/iu.test(node.name.text);
+  const coordinate = (node: Node): boolean => {
+    const accessed = accessedName(node);
+    if (accessed !== undefined)
+      return /^(?:index|offset|position|start|end)$/iu.test(accessed);
     if (
-      !ts.isIdentifier(node) ||
-      CAP_NAME.test(node.text) ||
+      node.type !== "Identifier" ||
+      CAP_NAME.test(node.name) ||
       caps.has(bindingOf(node))
     )
       return false;
     if (
       /(?:offset|index|idx|start|end|cursor|position|break|^at$)/iu.test(
-        node.text,
+        node.name,
       )
     )
       return true;
     const declaration = bindingOf(node);
     return (
-      ts.isVariableDeclaration(declaration) &&
-      declaration.initializer !== undefined &&
-      ts.isCallExpression(declaration.initializer) &&
+      declaration.type === "VariableDeclarator" &&
+      declaration.init?.type === "CallExpression" &&
       /^(?:indexOf|lastIndexOf|search)$/u.test(
-        member(declaration.initializer.expression) ?? "",
+        member(declaration.init.callee) ?? "",
       )
     );
   };
-  const cap = (node: ts.Expression | undefined): boolean => {
+  // Small offsets beside parser/selection coordinates retain UTF-16 units.
+  const capOperands = (left: Node, right: Node): boolean => {
+    if (
+      (coordinate(left) && isNumericLiteral(right) && right.value <= 4) ||
+      (coordinate(right) && isNumericLiteral(left) && left.value <= 4)
+    )
+      return false;
+    return cap(left) || cap(right);
+  };
+  const cap = (node: Node | undefined): boolean => {
     if (!node) return false;
-    if (ts.isNumericLiteral(node)) return Number(node.text) >= 1;
-    if (ts.isIdentifier(node))
-      return caps.has(bindingOf(node)) || CAP_NAME.test(node.text);
-    if (ts.isPrefixUnaryExpression(node) && ts.isNumericLiteral(node.operand))
-      return Number(node.operand.text) >= 1;
-    if (ts.isCallExpression(node))
+    if (isNumericLiteral(node)) return node.value >= 1;
+    if (node.type === "Identifier")
+      return caps.has(bindingOf(node)) || CAP_NAME.test(node.name);
+    if (isPrefixUnary(node) && isNumericLiteral(node.argument))
+      return node.argument.value >= 1;
+    if (node.type === "CallExpression")
       return node.arguments.some((argument) => cap(argument));
-    if (ts.isBinaryExpression(node)) {
-      // Small offsets beside parser/selection coordinates retain UTF-16 units.
-      if (
-        (coordinate(node.left) &&
-          ts.isNumericLiteral(node.right) &&
-          Number(node.right.text) <= 4) ||
-        (coordinate(node.right) &&
-          ts.isNumericLiteral(node.left) &&
-          Number(node.left.text) <= 4)
-      )
-        return false;
-      return cap(node.left) || cap(node.right);
+    // TypeScript's binary expression also covers logical, assignment and comma
+    // operators; a comma list nests to the left.
+    if (
+      node.type === "BinaryExpression" ||
+      node.type === "LogicalExpression" ||
+      node.type === "AssignmentExpression"
+    )
+      return capOperands(node.left, node.right);
+    if (node.type === "SequenceExpression") {
+      const [first, second, ...rest] = node.expressions;
+      return (
+        (first !== undefined &&
+          second !== undefined &&
+          capOperands(first, second)) ||
+        rest.some((expression) => cap(expression))
+      );
     }
-    if (ts.isPropertyAccessExpression(node))
-      return CAP_NAME.test(node.name.text);
+    const accessed = accessedName(node);
+    if (accessed !== undefined) return CAP_NAME.test(accessed);
     return false;
   };
-  const isInspection = (node: ts.Node): boolean => {
+  const isInspection = (node: Node): boolean => {
     // Numeric and regexp predicates inspect units; they do not emit clipped text.
-    let parent = node.parent;
+    let parent = parentOf(node);
     while (
-      ts.isNonNullExpression(parent) ||
-      ts.isParenthesizedExpression(parent)
+      parent?.type === "TSNonNullExpression" ||
+      parent?.type === "ParenthesizedExpression"
     )
-      parent = parent.parent;
-    if (!ts.isCallExpression(parent)) return false;
+      parent = parentOf(parent);
+    if (parent?.type !== "CallExpression") return false;
     if (numericCall(parent)) return true;
     if (
-      ts.isIdentifier(parent.expression) &&
-      inspectors.has(bindingOf(parent.expression))
+      parent.callee.type === "Identifier" &&
+      inspectors.has(bindingOf(parent.callee))
     )
       return true;
-    const owner = receiver(parent.expression);
+    const owner = receiver(parent.callee);
     return (
-      member(parent.expression) === "test" &&
+      member(parent.callee) === "test" &&
       owner !== undefined &&
-      (owner.kind === ts.SyntaxKind.RegularExpressionLiteral ||
-        (ts.isIdentifier(owner) && regexes.has(bindingOf(owner))))
+      (isRegExpLiteral(owner) ||
+        (owner.type === "Identifier" && regexes.has(bindingOf(owner))))
     );
   };
   const asciiTailCondition = (
-    condition: ts.Expression,
-    owner: ts.Identifier,
+    condition: Node,
+    owner: Node & { name: string },
     amount: number,
-    seen = new Set<ts.Node>(),
+    seen = new Set<Node>(),
   ): boolean => {
     if (seen.has(condition)) return false;
     seen.add(condition);
-    if (ts.isParenthesizedExpression(condition))
+    if (condition.type === "ParenthesizedExpression")
       return asciiTailCondition(condition.expression, owner, amount, seen);
-    if (ts.isIdentifier(condition)) {
+    if (condition.type === "Identifier") {
       const declaration = bindingOf(condition);
       return (
-        ts.isVariableDeclaration(declaration) &&
-        declaration.initializer !== undefined &&
-        asciiTailCondition(declaration.initializer, owner, amount, seen)
+        declaration.type === "VariableDeclarator" &&
+        declaration.init !== null &&
+        asciiTailCondition(declaration.init, owner, amount, seen)
       );
     }
-    if (ts.isBinaryExpression(condition)) {
-      if (
-        condition.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
-      )
+    if (condition.type === "LogicalExpression") {
+      if (condition.operator === "&&")
         return (
           asciiTailCondition(condition.left, owner, amount, seen) ||
           asciiTailCondition(condition.right, owner, amount, seen)
         );
-      if (condition.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+      if (condition.operator === "||")
         return (
           asciiTailCondition(condition.left, owner, amount, new Set(seen)) &&
           asciiTailCondition(condition.right, owner, amount, new Set(seen))
         );
     }
     if (
-      !ts.isCallExpression(condition) ||
-      member(condition.expression) !== "endsWith"
+      condition.type !== "CallExpression" ||
+      member(condition.callee) !== "endsWith"
     )
       return false;
-    const tested = receiver(condition.expression);
+    const tested = receiver(condition.callee);
     const suffix = condition.arguments.at(0);
     return (
       tested !== undefined &&
-      ts.isIdentifier(tested) &&
+      tested.type === "Identifier" &&
       sameBinding(tested, owner) &&
-      suffix !== undefined &&
-      ts.isStringLiteral(suffix) &&
-      suffix.text.length === amount &&
-      suffix.text.length > 0 &&
-      Array.from(suffix.text).every(
+      isStringLiteral(suffix) &&
+      suffix.value.length === amount &&
+      suffix.value.length > 0 &&
+      Array.from(suffix.value).every(
         (character) => character.charCodeAt(0) <= 0x7f,
       )
     );
   };
+  const within = (node: Node, container: Node): boolean =>
+    node.start >= container.start && node.end <= container.end;
   const protectedAsciiTail = (
-    node: ts.CallExpression,
-    owner: ts.Expression,
+    node: Node & { type: "CallExpression" },
+    owner: Node,
   ): boolean => {
-    if (!ts.isIdentifier(owner)) return false;
+    if (owner.type !== "Identifier") return false;
     const end =
       node.arguments.at(1) ??
       (node.arguments.length === 1 ? node.arguments.at(0) : undefined);
     let amount: number | undefined;
     if (
       end &&
-      ts.isPrefixUnaryExpression(end) &&
-      end.operator === ts.SyntaxKind.MinusToken &&
-      ts.isNumericLiteral(end.operand)
+      end.type === "UnaryExpression" &&
+      end.operator === "-" &&
+      isNumericLiteral(end.argument)
     )
-      amount = Number(end.operand.text);
+      amount = end.argument.value;
     if (
       end &&
-      ts.isBinaryExpression(end) &&
-      end.operatorToken.kind === ts.SyntaxKind.MinusToken &&
-      ts.isPropertyAccessExpression(end.left) &&
-      end.left.name.text === "length" &&
-      ts.isIdentifier(end.left.expression) &&
-      sameBinding(end.left.expression, owner) &&
-      ts.isNumericLiteral(end.right)
+      end.type === "BinaryExpression" &&
+      end.operator === "-" &&
+      accessedName(end.left) === "length" &&
+      end.left.type === "MemberExpression" &&
+      end.left.object.type === "Identifier" &&
+      sameBinding(end.left.object, owner) &&
+      isNumericLiteral(end.right)
     )
-      amount = Number(end.right.text);
+      amount = end.right.value;
     if (amount === undefined) return false;
-    for (let parent = node.parent; parent; parent = parent.parent) {
-      if (ts.isFunctionLike(parent)) break;
+    for (let parent = parentOf(node); parent; parent = parentOf(parent)) {
+      if (isFunctionLike(parent)) break;
       if (
-        ts.isIfStatement(parent) &&
-        node.pos >= parent.thenStatement.pos &&
-        node.end <= parent.thenStatement.end &&
-        asciiTailCondition(parent.expression, owner, amount)
+        parent.type === "IfStatement" &&
+        within(node, parent.consequent) &&
+        asciiTailCondition(parent.test, owner, amount)
       )
         return true;
       if (
-        ts.isConditionalExpression(parent) &&
-        node.pos >= parent.whenTrue.pos &&
-        node.end <= parent.whenTrue.end &&
-        asciiTailCondition(parent.condition, owner, amount)
+        parent.type === "ConditionalExpression" &&
+        within(node, parent.consequent) &&
+        asciiTailCondition(parent.test, owner, amount)
       )
         return true;
     }
     return false;
   };
-  const asciiNumber = (node: ts.Expression): boolean => {
-    if (!ts.isCallExpression(node)) return false;
-    const method = member(node.expression);
-    const owner = receiver(node.expression);
+  const asciiNumber = (node: Node): boolean => {
+    if (node.type !== "CallExpression") return false;
+    const method = member(node.callee);
+    const owner = receiver(node.callee);
     if (!owner) return false;
     if (/^(?:toUpperCase|toLowerCase|padStart|padEnd)$/u.test(method ?? "")) {
       const padding = node.arguments.at(1);
       return (
         asciiNumber(owner) &&
         (!padding ||
-          (ts.isStringLiteral(padding) &&
-            Array.from(padding.text).every(
+          (isStringLiteral(padding) &&
+            Array.from(padding.value).every(
               (character) => character.charCodeAt(0) <= 0x7f,
             )))
       );
     }
+    const radix = node.arguments.at(0);
     if (
       method !== "toString" ||
-      !/^(?:8|10|16|36)$/u.test(node.arguments.at(0)?.getText(source) ?? "")
+      !/^(?:8|10|16|36)$/u.test(
+        radix === undefined ? "" : nodeText(text, radix),
+      )
     )
       return false;
     return (
-      ts.isNumericLiteral(owner) ||
-      (ts.isIdentifier(owner) && numbers.has(bindingOf(owner))) ||
-      (ts.isCallExpression(owner) &&
-        ts.isPropertyAccessExpression(owner.expression) &&
-        ts.isIdentifier(owner.expression.expression) &&
-        bindingOf(owner.expression.expression) ===
-          owner.expression.expression &&
-        /^(?:Math\.random|Date\.now)$/u.test(owner.expression.getText(source)))
+      isNumericLiteral(owner) ||
+      (owner.type === "Identifier" && numbers.has(bindingOf(owner))) ||
+      (owner.type === "CallExpression" &&
+        owner.callee.type === "MemberExpression" &&
+        !owner.callee.computed &&
+        owner.callee.object.type === "Identifier" &&
+        bindingOf(owner.callee.object) === owner.callee.object &&
+        /^(?:Math\.random|Date\.now)$/u.test(nodeText(text, owner.callee)))
     );
   };
   const violations: Violation[] = [];
-  const add = (node: ts.Node, reason: string): void => {
+  const add = (node: Node, reason: string): void => {
     violations.push({
-      line:
-        source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+      line: lineOf(node.start).line + 1,
       reason,
     });
   };
   for (const node of nodes) {
     if (
-      ts.isElementAccessExpression(node) &&
-      node.argumentExpression &&
-      ts.isNumericLiteral(node.argumentExpression) &&
-      node.argumentExpression.text === "0" &&
-      isString(node.expression)
+      node.type === "MemberExpression" &&
+      node.computed &&
+      isNumericLiteral(node.property) &&
+      node.property.value === 0 &&
+      isString(node.object)
     ) {
       // A following ASCII delimiter proves the first unit is not half a pair.
       let delimiterGuard = false;
-      for (let parent = node.parent; parent; parent = parent.parent) {
-        if (!ts.isIfStatement(parent)) continue;
-        const condition = parent.expression;
+      for (let parent = parentOf(node); parent; parent = parentOf(parent)) {
+        if (parent.type !== "IfStatement") continue;
+        const condition = parent.test;
         if (
-          ts.isBinaryExpression(condition) &&
-          condition.operatorToken.kind ===
-            ts.SyntaxKind.EqualsEqualsEqualsToken &&
-          ts.isElementAccessExpression(condition.left) &&
-          condition.left.argumentExpression?.getText(source) === "1" &&
-          ts.isStringLiteral(condition.right) &&
-          condition.right.text === ":" &&
-          ts.isIdentifier(node.expression) &&
-          ts.isIdentifier(condition.left.expression) &&
-          sameBinding(node.expression, condition.left.expression) &&
-          node.pos >= parent.thenStatement.pos &&
-          node.end <= parent.thenStatement.end
+          condition.type === "BinaryExpression" &&
+          condition.operator === "===" &&
+          condition.left.type === "MemberExpression" &&
+          condition.left.computed &&
+          nodeText(text, condition.left.property) === "1" &&
+          isStringLiteral(condition.right) &&
+          condition.right.value === ":" &&
+          node.object.type === "Identifier" &&
+          condition.left.object.type === "Identifier" &&
+          sameBinding(node.object, condition.left.object) &&
+          within(node, parent.consequent)
         )
           delimiterGuard = true;
         break;
@@ -857,18 +925,19 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
       if (!delimiterGuard && !isInspection(node))
         add(node, "string initials must use grapheme slicing");
     }
-    if (!ts.isCallExpression(node)) continue;
-    const alias = ts.isIdentifier(node.expression)
-      ? methods.get(bindingOf(node.expression))
-      : undefined;
-    const owner = alias?.receiver ?? receiver(node.expression);
-    const method = alias?.method ?? member(node.expression);
+    if (node.type !== "CallExpression") continue;
+    const alias =
+      node.callee.type === "Identifier"
+        ? methods.get(bindingOf(node.callee))
+        : undefined;
+    const owner = alias?.receiver ?? receiver(node.callee);
+    const method = alias?.method ?? member(node.callee);
     const first = node.arguments.at(0);
     if (
       owner &&
       isString(owner) &&
       (method === "at" || method === "charAt") &&
-      ((first && ts.isNumericLiteral(first) && Number(first.text) === 0) ||
+      ((isNumericLiteral(first) && first.value === 0) ||
         (method === "charAt" && first === undefined))
     ) {
       if (!asciiNumber(owner) && !isInspection(node))
@@ -884,49 +953,45 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
     if (asciiNumber(owner)) continue;
     if (isInspection(node) || protectedAsciiTail(node, owner)) continue;
     // Parsing a hexadecimal numeric field does not emit the sliced text.
-    const parent = node.parent;
+    const parent = parentOf(node);
     const numericParser =
-      ts.isCallExpression(parent) &&
-      ((ts.isIdentifier(parent.expression) &&
-        parent.expression.text === "parseInt" &&
-        bindingOf(parent.expression) === parent.expression) ||
-        (ts.isPropertyAccessExpression(parent.expression) &&
-          parent.expression.name.text === "parseInt" &&
-          ts.isIdentifier(parent.expression.expression) &&
-          parent.expression.expression.text === "Number" &&
-          bindingOf(parent.expression.expression) ===
-            parent.expression.expression));
-    if (
-      ts.isCallExpression(parent) &&
-      numericParser &&
-      parent.arguments.at(1)?.getText(source) === "16"
-    )
+      parent?.type === "CallExpression" &&
+      ((parent.callee.type === "Identifier" &&
+        parent.callee.name === "parseInt" &&
+        bindingOf(parent.callee) === parent.callee) ||
+        (accessedName(parent.callee) === "parseInt" &&
+          parent.callee.type === "MemberExpression" &&
+          parent.callee.object.type === "Identifier" &&
+          parent.callee.object.name === "Number" &&
+          bindingOf(parent.callee.object) === parent.callee.object));
+    const radix =
+      parent?.type === "CallExpression" ? parent.arguments.at(1) : undefined;
+    if (numericParser && radix !== undefined && nodeText(text, radix) === "16")
       continue;
     if (
-      ts.isConditionalExpression(parent) &&
-      parent.whenTrue === node &&
-      ts.isCallExpression(parent.condition) &&
-      member(parent.condition.expression) === "test"
+      parent?.type === "ConditionalExpression" &&
+      parent.consequent === node &&
+      parent.test.type === "CallExpression" &&
+      member(parent.test.callee) === "test"
     ) {
-      const validator = receiver(parent.condition.expression);
-      const validated = parent.condition.arguments.at(0);
+      const validator = receiver(parent.test.callee);
+      const validated = parent.test.arguments.at(0);
       if (
         validator &&
-        ts.isIdentifier(validator) &&
+        validator.type === "Identifier" &&
         asciiValidators.has(bindingOf(validator)) &&
         validated &&
-        ts.isIdentifier(validated) &&
-        ts.isIdentifier(owner) &&
+        validated.type === "Identifier" &&
+        owner.type === "Identifier" &&
         sameBinding(validated, owner)
       )
         continue;
     }
+    const only = node.arguments.length === 1 ? node.arguments[0] : undefined;
     if (
       method === "substr" ||
       cap(node.arguments.at(1)) ||
-      (node.arguments.length === 1 &&
-        ts.isPrefixUnaryExpression(node.arguments[0]!) &&
-        cap(node.arguments[0]))
+      (only !== undefined && isPrefixUnary(only) && cap(only))
     )
       add(node, "bounded string truncation must use sliceText");
   }
@@ -944,24 +1009,25 @@ const violationsFor = (file: string, text: string): Violation[] => {
   )
     return [];
   if (file === "core/src/fonts/sfnt/parse.ts") {
-    const source = ts.createSourceFile(
-      file,
-      text,
-      ts.ScriptTarget.Latest,
-      true,
-    );
-    const ascii = source.statements.find(
-      (node) =>
-        ts.isVariableStatement(node) &&
-        node.declarationList.declarations.some(
-          ({ name }) =>
-            ts.isIdentifier(name) && name.text === "sanitizePostScriptName",
-        ),
-    );
-    if (ascii?.getText(source).replace(/\s+/gu, "") === ASCII_FONT_FUNCTION)
+    const { program } = parseLikeTypeScript(file, text, "ts");
+    // TypeScript's statement is the whole `export const`, keyword included.
+    const ascii = program.body.find((statement) => {
+      const declaration = declarationOf(statement);
+      return (
+        declaration.type === "VariableDeclaration" &&
+        declaration.declarations.some(
+          ({ id }) =>
+            id.type === "Identifier" && id.name === "sanitizePostScriptName",
+        )
+      );
+    });
+    if (
+      ascii &&
+      nodeText(text, ascii).replace(/\s+/gu, "") === ASCII_FONT_FUNCTION
+    )
       return findTruncations(
-        text.slice(0, ascii.getStart(source)) +
-          " ".repeat(ascii.end - ascii.getStart(source)) +
+        text.slice(0, ascii.start) +
+          " ".repeat(ascii.end - ascii.start) +
           text.slice(ascii.end),
         file,
       );

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useMemo } from "react";
-import type { CSSProperties, MouseEvent } from "react";
+import type { CSSProperties, JSX, MouseEvent } from "react";
 
 import { panic } from "better-result";
 import {
@@ -63,7 +63,7 @@ export function AlignmentButtons({
   value = "left",
   onChange,
   disabled = false,
-}: AlignmentButtonsProps) {
+}: AlignmentButtonsProps): JSX.Element {
   const {
     Root: Popover,
     Trigger: PopoverTrigger,

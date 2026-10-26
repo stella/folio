@@ -8,9 +8,11 @@
 import { dropCursor } from "prosemirror-dropcursor";
 
 import { createExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { Extension, ExtensionRuntime } from "../types";
 
-export const DropCursorExtension = createExtension({
+export const DropCursorExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => Extension = createExtension({
   name: "dropCursor",
   onSchemaReady(): ExtensionRuntime {
     return {

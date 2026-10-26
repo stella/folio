@@ -155,7 +155,7 @@ export const finalizeParagraphFormatting: (formatting: ParagraphFormatting | und
 export const hasIllegalXmlCharacters: (value: string) => boolean;
 
 // @public
-export class InvalidOoxmlNumericIdError extends InvalidOoxmlNumericIdError_base<{
+export class InvalidOoxmlNumericIdError extends InvalidOoxmlNumericIdErrorBase<{
     message: string;
     partPath: string;
     elementName: string;

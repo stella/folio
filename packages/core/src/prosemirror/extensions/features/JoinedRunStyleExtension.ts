@@ -17,7 +17,7 @@ import { Plugin } from "prosemirror-state";
 
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { createExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { Extension, ExtensionRuntime } from "../types";
 
 export const JOINED_RUNS_RESTYLED_META = "joinedRunsRestyled";
 
@@ -54,7 +54,9 @@ const createPastedTableEndPlugin = (): Plugin =>
     },
   });
 
-export const JoinedRunStyleExtension = createExtension({
+export const JoinedRunStyleExtension: (
+  options?: Partial<{}> | undefined,
+) => Extension = createExtension({
   name: "joinedRunStyle",
   defaultOptions: {},
   onSchemaReady(): ExtensionRuntime {

@@ -6,14 +6,20 @@ import { panic } from "better-result";
 
 import { canonicalRunFormatting } from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type {
+  ExtensionContext,
+  ExtensionRuntime,
+  MarkExtension,
+} from "../types";
 import {
   isMarkActive,
   toggleDocumentMark,
   withRunFormattingLock,
 } from "./markUtils";
 
-export const SubscriptExtension = createMarkExtension({
+export const SubscriptExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "subscript",
   schemaMarkName: "subscript",
   markSpec: {

@@ -49,7 +49,7 @@ export const DOCX_MAX_COMPRESSION_RATIO = 200;
  * so the ratio only has to bound entries (and packages) large enough to
  * matter. The byte caps still apply below this size.
  */
-export const DOCX_COMPRESSION_RATIO_GRACE_BYTES = 4 * 1024 * 1024;
+export const DOCX_COMPRESSION_RATIO_GRACE_BYTES: number = 4 * 1024 * 1024;
 
 const CENTRAL_DIRECTORY_RECORD_SIGNATURE = [0x50, 0x4b, 0x01, 0x02] as const;
 

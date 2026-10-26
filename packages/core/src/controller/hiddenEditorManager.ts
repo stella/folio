@@ -1,4 +1,9 @@
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 import type {
   Command,
   EditorState,
@@ -110,9 +115,10 @@ import {
 import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
 import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
 
-export class CanonicalSessionRefusalError extends TaggedError(
-  "CanonicalSessionRefusalError",
-)<{
+const CanonicalSessionRefusalErrorBase: TaggedErrorClass<"CanonicalSessionRefusalError"> =
+  TaggedError("CanonicalSessionRefusalError");
+
+export class CanonicalSessionRefusalError extends CanonicalSessionRefusalErrorBase<{
   gap: CanonicalGap;
   message: string;
 }> {}
@@ -548,7 +554,7 @@ export const createHiddenEditorClipboardHandlers = (
     deps.onCopy?.();
     return false;
   },
-  cut: (_view: unknown, event: PreventableDomEvent) => {
+  cut: (_view: unknown, event: PreventableDomEvent): boolean => {
     if (!deps.getReadOnly()) {
       deps.onCut?.();
       return false;
@@ -557,7 +563,7 @@ export const createHiddenEditorClipboardHandlers = (
     event.preventDefault();
     return true;
   },
-  paste: (_view: unknown, event: PreventableDomEvent) => {
+  paste: (_view: unknown, event: PreventableDomEvent): boolean => {
     if (!deps.getReadOnly()) {
       deps.onPaste?.();
       return false;

@@ -30,7 +30,30 @@ import { getAttribute, getChildElements, parseXmlDocument } from "./xmlParser";
 /**
  * Relationship type constants for common types
  */
-export const RELATIONSHIP_TYPES = {
+export const RELATIONSHIP_TYPES: {
+  readonly image: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+  readonly hyperlink: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
+  readonly header: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header";
+  readonly footer: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer";
+  readonly footnotes: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes";
+  readonly endnotes: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes";
+  readonly styles: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
+  readonly numbering: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering";
+  readonly fontTable: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable";
+  readonly theme: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
+  readonly settings: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings";
+  readonly webSettings: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings";
+  readonly oleObject: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject";
+  readonly chart: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
+  readonly diagramData: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData";
+  readonly officeDocument: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+  readonly coreProperties: "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
+  readonly extendedProperties: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties";
+  readonly customProperties: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties";
+  readonly customXml: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml";
+  readonly comments: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
+  readonly commentsExtended: "http://schemas.microsoft.com/office/2011/relationships/commentsExtended";
+} = {
   image:
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
   hyperlink:

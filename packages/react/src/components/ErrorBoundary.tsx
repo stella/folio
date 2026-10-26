@@ -100,7 +100,11 @@ export function useErrorNotifications(): ErrorContextValue {
  * Thin React wrapper around the framework-agnostic ErrorManager.
  * Uses useSyncExternalStore to subscribe to ErrorManager state.
  */
-export function ErrorProvider({ children }: { children: ReactNode }) {
+export function ErrorProvider({
+  children,
+}: {
+  children: ReactNode;
+}): React.JSX.Element {
   // Create ErrorManager once
   const manager = useMemo(() => new ErrorManager(), []);
 

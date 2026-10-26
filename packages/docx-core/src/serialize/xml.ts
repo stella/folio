@@ -3,7 +3,7 @@ import { escapeXmlAttribute } from "./xmlEscape";
 export const attr = (
   name: string,
   value: string | number | boolean | undefined,
-) =>
+): string =>
   value === undefined ? "" : ` ${name}="${escapeXmlAttribute(String(value))}"`;
 
 /**

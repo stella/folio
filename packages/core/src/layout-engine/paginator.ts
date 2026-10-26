@@ -215,7 +215,81 @@ function areMarginsEqual(left: PageMargins, right: PageMargins): boolean {
 /**
  * Creates a paginator for managing page layout state.
  */
-export function createPaginator(options: PaginatorOptions) {
+export function createPaginator(options: PaginatorOptions): {
+  /** All pages created so far. */
+  readonly pages: Page[];
+  /** All page states. */
+  states: PageState[];
+  /** Column width in pixels (use getColumnWidth() for current value after updates). */
+  readonly columnWidth: number;
+  /** Get current column layout (returns copy to prevent external mutation). */
+  readonly columns: {
+    count: number;
+    gap: number;
+    equalWidth?: boolean;
+    widths?: number[];
+    gaps?: number[];
+    separator?: boolean;
+  };
+  /** Get current state. */
+  getCurrentState: () => PageState;
+  /** Get available height in current column. */
+  getAvailableHeight: () => number;
+  /** Full content height of a fresh page in the active section. */
+  getContentHeight: () => number;
+  /** Get content width for the active section. */
+  getContentWidth: () => number;
+  /** Check if height fits in current column. */
+  fits: (height: number) => boolean;
+  /** Ensure height fits, advancing if needed. */
+  ensureFits: {
+    (height: number): PageState;
+    (options: {
+      requiredHeight: number;
+      freshColumnHeight?: number;
+    }): PageState;
+  };
+  isAtFreshColumnRegion: () => boolean;
+  /** Add a fragment to current page. */
+  addFragment: (
+    fragment: Fragment,
+    height: number,
+    spaceBefore?: number,
+    spaceAfter?: number,
+  ) => { state: PageState; x: number; y: number };
+  /** Add an already-positioned fragment without advancing normal flow. */
+  addUnflowedFragment: (fragment: Fragment) => PageState;
+  /** Reserve additional footnote area on the current page. */
+  addFootnoteHeight: (additionalHeight: number, footnoteIds?: number[]) => void;
+  /** Force a page break. */
+  forcePageBreak: (breakOptions?: ForcePageBreakOptions) => PageState;
+  /** Reuse the current sheet while advancing authored page ordinals. */
+  coalescePageBreak: () => PageState;
+  /** Reuse an already blank current page for the active section/layout. */
+  retargetCurrentBlankPage: () => boolean;
+  /** Force a column break. */
+  forceColumnBreak: () => PageState;
+  /** Get X position for column. */
+  getColumnX: (columnIndex: number) => number;
+  /** Update column layout (for section breaks). */
+  updateColumns: (newColumns: ColumnLayout) => void;
+  /** Update page size/margins for subsequent pages. */
+  updatePageLayout: (
+    newPageSize?: { w: number; h: number },
+    newMargins?: PageMargins,
+    applyImmediately?: boolean,
+  ) => void;
+  /** Mark the next created page as the first page of a new section. */
+  startSection: ({
+    sectionIndex,
+    pageNumbering,
+    placement,
+  }: StartSectionOptions) => void;
+  /** Set (or clear) the content that opens each page a flow continues onto. */
+  setPageTopContinuation: (
+    continuation: PageTopContinuation | undefined,
+  ) => void;
+} {
   let pageSize = { ...options.pageSize };
   let margins = { ...options.margins };
   let columns: ColumnLayout = options.columns ?? { count: 1, gap: 0 };
@@ -557,7 +631,10 @@ export function createPaginator(options: PaginatorOptions) {
     freshColumnHeight?: number;
   };
   function ensureFits(height: number): PageState;
-  function ensureFits(options: EnsureFitsOptions): PageState;
+  function ensureFits(options: {
+    requiredHeight: number;
+    freshColumnHeight?: number;
+  }): PageState;
   function ensureFits(input: number | EnsureFitsOptions): PageState {
     let state = getCurrentState();
     const requiredHeight =
@@ -1007,34 +1084,41 @@ export function createPaginator(options: PaginatorOptions) {
 
   return {
     /** All pages created so far. */
-    get pages() {
+    get pages(): Page[] {
       materializeCarrierGeometry(states.at(-1));
       return pages;
     },
     /** All page states. */
     states,
     /** Column width in pixels (use getColumnWidth() for current value after updates). */
-    get columnWidth() {
+    get columnWidth(): number {
       const columnIndex = states.at(-1)?.columnIndex ?? 0;
       return columnWidths[columnIndex] ?? columnWidths[0] ?? getContentWidth();
     },
     /** Get current column layout (returns copy to prevent external mutation). */
-    get columns() {
+    get columns(): {
+      count: number;
+      gap: number;
+      equalWidth?: boolean;
+      widths?: number[];
+      gaps?: number[];
+      separator?: boolean;
+    } {
       return { ...columns };
     },
     /** Get current state. */
     getCurrentState,
     /** Get available height in current column. */
-    getAvailableHeight: () => getAvailableHeight(getCurrentState()),
+    getAvailableHeight: (): number => getAvailableHeight(getCurrentState()),
     /** Full content height of a fresh page in the active section. */
     getContentHeight,
     /** Get content width for the active section. */
     getContentWidth,
     /** Check if height fits in current column. */
-    fits: (height: number) => fits(height),
+    fits: (height: number): boolean => fits(height),
     /** Ensure height fits, advancing if needed. */
     ensureFits,
-    isAtFreshColumnRegion: () => {
+    isAtFreshColumnRegion: (): boolean => {
       const state = getCurrentState();
       return state.columnIndex > 0 && state.cursorY === columnRegionTop;
     },

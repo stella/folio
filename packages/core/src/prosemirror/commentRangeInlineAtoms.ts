@@ -18,7 +18,27 @@ import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "./trackedRunInlineAtoms";
 export type CommentRangeInlineAtomParticipation = "extends" | "inert";
 
 /** Keyed by the tracked-run atom set, which the fixed-point test binds to the schema. */
-export const COMMENT_RANGE_INLINE_ATOM_PARTICIPATION = Object.freeze({
+export const COMMENT_RANGE_INLINE_ATOM_PARTICIPATION: Readonly<{
+  readonly bookmarkBoundary: "extends";
+  readonly commentReference: "inert";
+  readonly commentRangeBoundary: "inert";
+  readonly field: "extends";
+  readonly hardBreak: "extends";
+  readonly image: "extends";
+  readonly math: "extends";
+  readonly moveRangeBoundary: "extends";
+  readonly noteMarker: "extends";
+  readonly pageBreakRun: "extends";
+  readonly preservedXml: "extends";
+  readonly rangeAnchor: "inert";
+  readonly renderedPageBreak: "inert";
+  readonly shape: "extends";
+  readonly structuredField: "extends";
+  readonly symbol: "extends";
+  readonly tab: "extends";
+  readonly text: "extends";
+  readonly textBoxAnchor: "extends";
+}> = Object.freeze({
   bookmarkBoundary: "extends",
   commentReference: "inert",
   commentRangeBoundary: "inert",

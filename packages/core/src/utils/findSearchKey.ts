@@ -38,7 +38,12 @@ export const createFindSearchKey = ({
   document,
   bodyVersion,
   context,
-}: FindSearchKeyOptions) => ({
+}: FindSearchKeyOptions): {
+  query: string;
+  bodyVersion: string | object;
+  documentVersion: string;
+  storyScope: string;
+} => ({
   query: createFindQueryKey(query, options),
   bodyVersion: bodyVersion ?? JSON.stringify(document.package.document.content),
   documentVersion: JSON.stringify([

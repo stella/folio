@@ -7,7 +7,10 @@ export const CANONICAL_INPUT_TIMER_OWNER = "folio.canonical-input-timer";
 export const CANONICAL_COMPOSITION_FLUSH_DELAY_MS = 25;
 
 /** Mark the scheduled wrapper, never the caller's potentially shared callback. */
-export const setCanonicalInputTimer = (callback: () => void, delay: number) => {
+export const setCanonicalInputTimer = (
+  callback: () => void,
+  delay: number,
+): NodeJS.Timeout => {
   const ownedCallback = () => callback();
   Object.defineProperty(
     ownedCallback,

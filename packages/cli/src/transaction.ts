@@ -56,7 +56,9 @@ const fileSystemError = (message: string, error: unknown): FolioCliError =>
 const BACKUP_NAME = /^[0-9a-f]{64}\.docx$/u;
 
 /** `.folio/backups/<document name>`, created private and never through a symlink. */
-export const backupDirectoryFor = (documentPath: string) =>
+export const backupDirectoryFor = (
+  documentPath: string,
+): Promise<Result<string, FolioCliError>> =>
   sidecarDirectory(documentPath, "backups", path.basename(documentPath));
 
 /**

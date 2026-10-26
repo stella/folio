@@ -7,7 +7,7 @@
  * - Margins (top, bottom, left, right) in inches
  */
 
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -70,7 +70,9 @@ const DEFAULT_WIDTH = 12_240;
 const DEFAULT_HEIGHT = 15_840;
 const DEFAULT_MARGIN = 1440;
 
-export function PageSetupDialog(props: PageSetupDialogProps) {
+export function PageSetupDialog(
+  props: PageSetupDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

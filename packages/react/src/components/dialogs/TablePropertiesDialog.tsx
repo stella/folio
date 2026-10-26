@@ -2,7 +2,7 @@
  * Table Properties Dialog — width type, width value, alignment.
  */
 
-import { useCallback, useId, useState } from "react";
+import { type JSX, useCallback, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -47,7 +47,9 @@ const TABLE_JUSTIFICATION_LABEL_KEYS = {
   `dialogs.tableProperties.alignOptions.${string}`
 >;
 
-export function TablePropertiesDialog(props: TablePropertiesDialogProps) {
+export function TablePropertiesDialog(
+  props: TablePropertiesDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

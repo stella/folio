@@ -10,8 +10,11 @@ import {
 } from "../../imagePictureNames";
 import type { ImageAttrs } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
-export const ImageExtension = createNodeExtension({
+export const ImageExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "image",
   schemaNodeName: "image",
   nodeSpec: {

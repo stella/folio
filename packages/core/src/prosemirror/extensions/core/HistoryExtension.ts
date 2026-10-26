@@ -14,7 +14,7 @@ import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { createExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
 
 /**
  * Who answers the undo and redo keys (Mod-z, Mod-y, Mod-Shift-z).
@@ -182,7 +182,9 @@ const defaultHistoryOptions: HistoryOptions = {
   shortcuts: "editor",
 };
 
-export const HistoryExtension = createExtension({
+export const HistoryExtension: (
+  options?: Partial<HistoryOptions> | undefined,
+) => Extension = createExtension({
   name: "history",
   defaultOptions: defaultHistoryOptions,
   onSchemaReady(

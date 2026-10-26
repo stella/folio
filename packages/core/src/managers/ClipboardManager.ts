@@ -268,4 +268,4 @@ export function createSelectionFromDOM(): ClipboardSelection | null {
 }
 
 // Backwards-compatible alias for the CSS-string color converter.
-export const rgbToHex = cssColorToHex;
+export const rgbToHex: typeof cssColorToHex = cssColorToHex;

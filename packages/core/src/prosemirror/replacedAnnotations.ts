@@ -92,7 +92,16 @@ import { isZeroWidthAnchor } from "./zeroWidthAnchors";
  * non-inclusive mark that is missing from it fails
  * `replacedAnnotations.test.ts` rather than silently following the text.
  */
-export const NON_INCLUSIVE_MARK_DISPOSITION = {
+export const NON_INCLUSIVE_MARK_DISPOSITION: {
+  readonly comment: "carry";
+  readonly hyperlink: "carry";
+  readonly footnoteRef: "followsTheText";
+  readonly runIdentity: "followsTheText";
+  readonly insertion: "followsTheText";
+  readonly deletion: "followsTheText";
+  readonly runPropertyChange: "followsTheText";
+  readonly inlineWrapper: "followsTheText";
+} = {
   comment: "carry",
   hyperlink: "carry",
   footnoteRef: "followsTheText",
@@ -131,7 +140,10 @@ type ResolvedCommentPointsOptions = {
 export const createResolvedCommentPointCollector = ({
   removes,
   retiresStructure,
-}: Omit<ResolvedCommentPointsOptions, "doc">) => {
+}: Omit<ResolvedCommentPointsOptions, "doc">): {
+  visit: (node: PMNode, position: number, previous?: PMNode) => boolean;
+  finish: () => Map<number, number>;
+} => {
   const points = new Map<number, number>();
   const retained = new Set<number>();
   const removedStructures: { from: number; to: number }[] = [];

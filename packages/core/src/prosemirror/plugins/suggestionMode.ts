@@ -32,7 +32,7 @@ import {
   Selection,
   TextSelection,
 } from "prosemirror-state";
-import type { Transaction } from "prosemirror-state";
+import type { PluginKey, Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
@@ -69,8 +69,13 @@ import { documentStylesKey, getDocumentStyleResolver } from "./documentStyles";
 import { selectLockedInlineControl } from "./lockedControlKeyHandling";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
-export const suggestionModeKey =
-  createPluginKeyOwner<SuggestionModeState>("suggestionMode");
+export const suggestionModeKey: Readonly<{
+  key: string;
+  createKey: () => PluginKey<SuggestionModeState>;
+  owns: (plugin: Plugin<SuggestionModeState>) => boolean;
+  get: (state: EditorState) => Plugin<SuggestionModeState> | undefined;
+  getState: (state: EditorState) => SuggestionModeState | undefined;
+}> = createPluginKeyOwner<SuggestionModeState>("suggestionMode");
 export const SUGGESTION_META = "suggestionModeApplied";
 export const SUGGESTION_BYPASS_META = "suggestionModeBypass";
 /**

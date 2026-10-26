@@ -1,6 +1,5 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -65,15 +64,11 @@ describe("shared toolchain CI selection", () => {
   test("compiler proofs run only through the manual workflow", () => {
     expect(proofs.on).toEqual({ workflow_dispatch: null });
     expect(proofs.permissions).toEqual({ contents: "read" });
-    expect(proofs.env.TOOLCHAIN_BASE).toBe("unavailable-toolchain-base");
     const proofCommands = proofs.jobs["typecheck-proofs"].steps
-      .filter((step) =>
-        /stll-typecheck-probe|typecheck:compiler-parity/.test(step.run ?? ""),
-      )
+      .filter((step) => /stll-typecheck-probe/.test(step.run ?? ""))
       .map((step) => step.run);
     expect(proofCommands).toEqual([
       "bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json",
-      'bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"',
     ]);
     for (const file of readdirSync(path.join(repo, ".github/workflows"))) {
       if (!/\.ya?ml$/.test(file) || file === "typecheck-proofs.yml") continue;
@@ -82,9 +77,7 @@ describe("shared toolchain CI selection", () => {
       );
       for (const job of Object.values(automatic.jobs ?? {})) {
         for (const step of job.steps ?? []) {
-          expect(step.run ?? "").not.toMatch(
-            /stll-typecheck-probe|typecheck:compiler-parity/,
-          );
+          expect(step.run ?? "").not.toMatch(/stll-typecheck-probe/);
         }
         expect(job.uses ?? "").not.toContain("typecheck-proofs.yml");
       }
@@ -103,7 +96,7 @@ describe("shared toolchain CI selection", () => {
     ]);
   });
 
-  test("compiler-work counters run only as a manual proof after parity", () => {
+  test("compiler-work counters run only as a manual proof after the probe", () => {
     expect(workflow.jobs["typecheck-budget"]).toBeUndefined();
     expect(
       workflow.jobs["ci-plan"].outputs.typecheck_budget_required,
@@ -165,77 +158,6 @@ describe("shared toolchain CI selection", () => {
         /^bun check --no-pretty --all --project=\S+$/,
       );
     }
-  });
-
-  test("parity selects exactly the Bun projects declared by repository scripts", () => {
-    const tracked = Bun.spawnSync(
-      ["git", "ls-files", "package.json", "**/package.json"],
-      {
-        cwd: repo,
-      },
-    );
-    expect(tracked.exitCode).toBe(0);
-    const projects = new Set();
-    for (const file of tracked.stdout.toString().trim().split("\n")) {
-      const manifest = JSON.parse(readFileSync(path.join(repo, file), "utf8"));
-      for (const command of Object.values(manifest.scripts ?? {})) {
-        if (typeof command !== "string") continue;
-        const checked = /^bun check --no-pretty --all --project=(\S+)$/.exec(
-          command,
-        );
-        if (!checked) continue;
-        const project = checked[1];
-        projects.add(
-          path
-            .relative(repo, path.resolve(repo, path.dirname(file), project))
-            .replaceAll(path.sep, "/"),
-        );
-      }
-    }
-    const manifest = JSON.parse(
-      readFileSync(path.join(repo, "package.json"), "utf8"),
-    );
-    const selected = [
-      ...manifest.scripts["typecheck:compiler-parity"].matchAll(
-        /--project (\S+)/g,
-      ),
-    ].map((match) => match[1]);
-    expect(selected.toSorted()).toEqual([...projects].toSorted());
-    expect(selected.length).toBe(new Set(selected).size);
-    const probe = proofs.jobs["typecheck-proofs"].steps.find((step) =>
-      step.run?.includes("stll-typecheck-probe"),
-    );
-    expect(projects.has(/--project (\S+)/.exec(probe.run)?.[1])).toBe(true);
-  });
-
-  test("every Bun project install root is installed before compiler comparison", () => {
-    const manifest = JSON.parse(
-      readFileSync(path.join(repo, "package.json"), "utf8"),
-    );
-    const roots = new Set();
-    for (const [, project] of manifest.scripts[
-      "typecheck:compiler-parity"
-    ].matchAll(/--project (\S+)/g)) {
-      let directory = path.dirname(path.join(repo, project));
-      while (!existsSync(path.join(directory, "bun.lock"))) {
-        if (directory === repo)
-          throw new Error(`No install root for ${project}`);
-        directory = path.dirname(directory);
-      }
-      roots.add(directory);
-    }
-    const steps = proofs.jobs["typecheck-proofs"].steps;
-    const comparison = steps.findIndex((step) =>
-      step.run?.includes("typecheck:compiler-parity"),
-    );
-    expect(comparison).toBeGreaterThan(0);
-    const installed = new Set(
-      steps
-        .slice(0, comparison)
-        .filter((step) => step.run === "bun install --frozen-lockfile")
-        .map((step) => path.resolve(repo, step["working-directory"] ?? ".")),
-    );
-    expect([...installed].toSorted()).toEqual([...roots].toSorted());
   });
 
   test("a committed Bun change selects full suites against the event base", () => {
@@ -652,6 +574,16 @@ describe("published Node minimum", () => {
             readFileSync(path.join(repo, file), "utf8"),
           );
         }
+        // The fixture root declares no TypeScript install, so the repository's
+        // allowlist for its own tools does not apply to it.
+        const toolchain = JSON.parse(
+          readFileSync(path.join(repo, "stll-toolchain.json"), "utf8"),
+        );
+        delete toolchain.typescriptAllowlist;
+        writeFileSync(
+          path.join(directory, "stll-toolchain.json"),
+          JSON.stringify(toolchain),
+        );
         writeFileSync(
           path.join(directory, "package.json"),
           JSON.stringify({
@@ -679,9 +611,14 @@ describe("published Node minimum", () => {
             Bun.spawnSync(["git", ...args], { cwd: directory }).exitCode,
           ).toBe(0);
         const initial = check();
+        // Dated quarantine entries near expiry print warnings; only errors count.
         expect({
           status: initial.exitCode,
-          diagnostic: initial.stderr.toString(),
+          diagnostic: initial.stderr
+            .toString()
+            .split("\n")
+            .filter((line) => line !== "" && !line.includes("] warning: "))
+            .join("\n"),
         }).toEqual({
           status: 0,
           diagnostic: "",

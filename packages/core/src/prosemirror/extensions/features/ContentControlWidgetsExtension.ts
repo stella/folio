@@ -11,9 +11,11 @@
 
 import { createContentControlWidgetsPlugin } from "../../plugins/contentControlWidgets";
 import { createExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
 
-export const ContentControlWidgetsExtension = createExtension({
+export const ContentControlWidgetsExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => Extension = createExtension({
   name: "contentControlWidgets",
   onSchemaReady(_ctx: ExtensionContext): ExtensionRuntime {
     return {

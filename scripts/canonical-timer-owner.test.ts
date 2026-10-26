@@ -1,9 +1,9 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import ts from "typescript";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import { type Node, parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -13,32 +13,27 @@ const probeFile = resolve(rootDir, "tests/visual/canonicalTimerProbe.ts");
 const fixtureProblems = (file: string, source: string) => {
   let ownsFixture = false;
   let importsPlainTest = false;
-  const parsed = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  for (const node of parsed.statements) {
-    if (
-      !ts.isImportDeclaration(node) ||
-      !ts.isStringLiteral(node.moduleSpecifier)
-    )
-      continue;
-    if (node.importClause?.isTypeOnly) continue;
-    const bindings = node.importClause?.namedBindings;
-    const specifier = node.moduleSpecifier.text;
+  const { program } = parseSourceModule(file, source);
+  for (const node of program.body) {
+    if (node.type !== "ImportDeclaration") continue;
+    if (node.importKind === "type") continue;
+    const specifier = node.source.value;
     if (
       specifier === "@playwright/test" &&
-      (node.importClause?.name !== undefined ||
-        (bindings && ts.isNamespaceImport(bindings)))
+      node.specifiers.some(
+        (binding) =>
+          binding.type === "ImportDefaultSpecifier" ||
+          binding.type === "ImportNamespaceSpecifier",
+      )
     )
       importsPlainTest = true;
-    if (!bindings || !ts.isNamedImports(bindings)) continue;
-    const importsTest = bindings.elements.some(
+    const importsTest = node.specifiers.some(
       (binding) =>
-        !binding.isTypeOnly &&
-        (binding.propertyName ?? binding.name).text === "test",
+        binding.type === "ImportSpecifier" &&
+        binding.importKind !== "type" &&
+        (binding.imported.type === "Identifier"
+          ? binding.imported.name
+          : binding.imported.value) === "test",
     );
     if (!importsTest) continue;
     const target = resolve(dirname(file), specifier);
@@ -58,6 +53,42 @@ const fixtureProblems = (file: string, source: string) => {
   return problems;
 };
 
+const literalText = (node: Node | null | undefined) =>
+  node?.type === "Literal" && typeof node.value === "string"
+    ? node.value
+    : undefined;
+
+/** The module a node names, if it names one. */
+const moduleNameOf = (node: Node): string | undefined => {
+  switch (node.type) {
+    case "ImportDeclaration":
+    case "ExportAllDeclaration":
+    case "ExportNamedDeclaration":
+    case "ImportExpression":
+    case "TSImportType":
+      return literalText(node.source);
+    case "TSExternalModuleReference":
+      return literalText(node.expression);
+    case "CallExpression":
+      return node.callee.type === "Identifier" && node.callee.name === "require"
+        ? literalText(node.arguments.at(0))
+        : undefined;
+    default:
+      return undefined;
+  }
+};
+
+/** Every module a file names: imports, re-exports, `import()`, `require()` and import types. */
+const importedFiles = (file: string, source: string) => {
+  const { program } = parseSourceModule(file, source);
+  const names: string[] = [];
+  walkAst(program, (node) => {
+    const name = moduleNameOf(node);
+    if (name !== undefined) names.push(name);
+  });
+  return names;
+};
+
 test("every timer oracle consumer installs the probe before navigation", () => {
   // Build the harness import graph once; propagate dependencies backwards to
   // include indirect consumers without maintaining a parallel call-site list.
@@ -74,18 +105,16 @@ test("every timer oracle consumer installs the probe before navigation", () => {
       ([file, source]) =>
         [
           file,
-          ts
-            .preProcessFile(source, true, true)
-            .importedFiles.flatMap(({ fileName }) => {
-              if (!fileName.startsWith(".")) return [];
-              const target = resolve(dirname(file), fileName);
-              return [
-                target,
-                `${target}.ts`,
-                `${target}.tsx`,
-                resolve(target, "index.ts"),
-              ].filter((candidate) => sources.has(candidate));
-            }),
+          importedFiles(file, source).flatMap((fileName) => {
+            if (!fileName.startsWith(".")) return [];
+            const target = resolve(dirname(file), fileName);
+            return [
+              target,
+              `${target}.ts`,
+              `${target}.tsx`,
+              resolve(target, "index.ts"),
+            ].filter((candidate) => sources.has(candidate));
+          }),
         ] as const,
     ),
   );
@@ -131,24 +160,22 @@ test("every timer oracle consumer installs the probe before navigation", () => {
 });
 
 const rawTimerReferences = (source: string) => {
-  const parsed = ts.createSourceFile(
-    "canonical.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule("canonical.ts", source);
   let references = 0;
-  const visit = (node: ts.Node) => {
+  // oxc repeats a shorthand name as key and value; count each token once.
+  const counted = new Set<number>();
+  walkAst(program, (node, ancestors) => {
     if (
-      ts.isIdentifier(node) &&
-      node.text === "setTimeout" &&
-      !ts.isTypeQueryNode(node.parent)
-    )
+      node.type === "Identifier" &&
+      node.name === "setTimeout" &&
+      ancestors.at(-1)?.type !== "TSTypeQuery" &&
+      !counted.has(node.start)
+    ) {
+      counted.add(node.start);
       references++;
-    if (ts.isStringLiteral(node) && node.text === "setTimeout") references++;
-    ts.forEachChild(node, visit);
-  };
-  visit(parsed);
+    }
+    if (node.type === "Literal" && node.value === "setTimeout") references++;
+  });
   return references;
 };
 

@@ -6,9 +6,15 @@ import { panic } from "better-result";
 
 import { expectHardBreakAttrs } from "../../attrs";
 import { createNodeExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type {
+  ExtensionContext,
+  ExtensionRuntime,
+  NodeExtension,
+} from "../types";
 
-export const HardBreakExtension = createNodeExtension({
+export const HardBreakExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "hardBreak",
   schemaNodeName: "hardBreak",
   nodeSpec: {

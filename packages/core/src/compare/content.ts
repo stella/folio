@@ -7,7 +7,12 @@
  * splits/merges, and table-column changes whose cells are not contiguous.
  */
 
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 
 import { isNumberingReference } from "@stll/docx-core/model";
 
@@ -43,7 +48,18 @@ import { inlineFormattingSegments } from "./formatting";
 export type { FolioContentFormatRange } from "./content-types";
 
 /** Hard resource ceilings for one representation-neutral comparison. */
-export const FOLIO_CONTENT_COMPARISON_LIMITS = Object.freeze({
+export const FOLIO_CONTENT_COMPARISON_LIMITS: Readonly<{
+  readonly blocksPerSnapshot: 100000;
+  readonly changes: 10000;
+  readonly blockCodeUnits: 1048576;
+  readonly textCodeUnitsPerSnapshot: 8000000;
+  readonly previewRunsPerBlock: 65536;
+  readonly previewRunsPerSnapshot: 1000000;
+  readonly containerDepth: 64;
+  readonly containerEntriesPerSnapshot: 1000000;
+  readonly attributeCodeUnits: 16384;
+  readonly attributeCodeUnitsPerSnapshot: 8000000;
+}> = Object.freeze({
   blocksPerSnapshot: 100_000,
   changes: 10_000,
   blockCodeUnits: 1_048_576,
@@ -80,18 +96,20 @@ const MAX_MOVE_PROFILE_TOKENS = 16_384;
 /** Bound source code units copied into one edited-move token profile. */
 const MAX_MOVE_PROFILE_CODE_UNITS = 1_048_576;
 
-export class InvalidFolioContentComparisonError extends TaggedError(
-  "InvalidFolioContentComparisonError",
-)<{
+const InvalidFolioContentComparisonErrorBase: TaggedErrorClass<"InvalidFolioContentComparisonError"> =
+  TaggedError("InvalidFolioContentComparisonError");
+
+export class InvalidFolioContentComparisonError extends InvalidFolioContentComparisonErrorBase<{
   message: string;
   input: "options" | "base" | "revised";
   blockIndex?: number;
   field: string;
 }> {}
 
-export class FolioContentComparisonLimitError extends TaggedError(
-  "FolioContentComparisonLimitError",
-)<{
+const FolioContentComparisonLimitErrorBase: TaggedErrorClass<"FolioContentComparisonLimitError"> =
+  TaggedError("FolioContentComparisonLimitError");
+
+export class FolioContentComparisonLimitError extends FolioContentComparisonLimitErrorBase<{
   message: string;
   input: "base" | "revised" | "result";
   limit: FolioContentComparisonLimit;
@@ -101,9 +119,10 @@ export class FolioContentComparisonLimitError extends TaggedError(
   field?: string;
 }> {}
 
-export class FolioContentInlinePresentationProjectionError extends TaggedError(
-  "FolioContentInlinePresentationProjectionError",
-)<{
+const FolioContentInlinePresentationProjectionErrorBase: TaggedErrorClass<"FolioContentInlinePresentationProjectionError"> =
+  TaggedError("FolioContentInlinePresentationProjectionError");
+
+export class FolioContentInlinePresentationProjectionError extends FolioContentInlinePresentationProjectionErrorBase<{
   message: string;
   side: "base" | "revised" | "both";
   baseBlockId: string;

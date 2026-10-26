@@ -7,7 +7,12 @@
  * below does any arithmetic on the page height.
  */
 
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 
 import {
   DOUBLE_STROKE_GAP_FACTOR,
@@ -36,7 +41,10 @@ import {
 import type { EmbeddedPdfFont, PreparedFont, ShapedRunRequest } from "./fonts";
 import { basePageMatrix, transformMatrix } from "./pageSpace";
 
-export class PaintError extends TaggedError("PaintError")<{
+const PaintErrorBase: TaggedErrorClass<"PaintError"> =
+  TaggedError("PaintError");
+
+export class PaintError extends PaintErrorBase<{
   message: string;
 }> {}
 

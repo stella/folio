@@ -8,11 +8,14 @@
 import { expectSdtAttrs } from "../../attrs";
 import { onOffFromDataset } from "../../conversion/sdtAttrs";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
 /** The editor's node for an inline `w:sdt`. */
 export const INLINE_CONTENT_CONTROL_NODE_NAME = "sdt";
 
-export const SdtExtension = createNodeExtension({
+export const SdtExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: INLINE_CONTENT_CONTROL_NODE_NAME,
   schemaNodeName: INLINE_CONTENT_CONTROL_NODE_NAME,
   nodeSpec: {

@@ -15,9 +15,9 @@ import { InlineContentRemovals } from "./inlineContentRemovals";
 import { visitInlineContentSlots } from "./paragraphTraversal";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
-export const DANGLING_COMMENT_REFERENCE_WARNING =
+export const DANGLING_COMMENT_REFERENCE_WARNING: "dangling-comment-reference" =
   PARSE_WARNING_CODES.danglingCommentReference;
-export const UNBALANCED_COMMENT_RANGE_WARNING =
+export const UNBALANCED_COMMENT_RANGE_WARNING: "unbalanced-comment-range" =
   PARSE_WARNING_CODES.unbalancedCommentRange;
 
 type NormalizeCommentReferencesInput = {

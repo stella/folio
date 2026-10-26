@@ -117,7 +117,9 @@ export type FolioContentListReference = { numId: number; level: number };
 export type FolioContentStatedNumbering =
   ParagraphNumberingOverride | { readonly kind: "inherit" };
 
-export const INHERITED_PARAGRAPH_NUMBERING = {
+export const INHERITED_PARAGRAPH_NUMBERING: {
+  readonly kind: "inherit";
+} = {
   kind: "inherit",
 } as const satisfies FolioContentStatedNumbering;
 

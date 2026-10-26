@@ -5,7 +5,7 @@
 import { createSelectionTrackerPlugin } from "../../plugins/selectionTracker";
 import type { SelectionChangeCallback } from "../../plugins/selectionTracker";
 import { createExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
 
 type SelectionTrackerOptions = {
   onSelectionChange?: SelectionChangeCallback;
@@ -13,7 +13,9 @@ type SelectionTrackerOptions = {
 
 const defaultSelectionTrackerOptions: SelectionTrackerOptions = {};
 
-export const SelectionTrackerExtension = createExtension({
+export const SelectionTrackerExtension: (
+  options?: Partial<SelectionTrackerOptions> | undefined,
+) => Extension = createExtension({
   name: "selectionTracker",
   defaultOptions: defaultSelectionTrackerOptions,
   onSchemaReady(

@@ -20,7 +20,7 @@
  * independently editable text for a translation row to address.
  */
 
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 
@@ -140,15 +140,17 @@ export type CreateBilingualDocumentResult = {
 const STYLE_SUFFIX_PATTERN = /^[A-Za-z0-9-]+$/u;
 const DEFAULT_TABLE_LAYOUT = BILINGUAL_TABLE_LAYOUTS[0];
 
-export class InvalidBilingualDocumentOptionsError extends TaggedError(
-  "InvalidBilingualDocumentOptionsError",
-)<{
+const InvalidBilingualDocumentOptionsErrorBase: TaggedErrorClass<"InvalidBilingualDocumentOptionsError"> =
+  TaggedError("InvalidBilingualDocumentOptionsError");
+
+export class InvalidBilingualDocumentOptionsError extends InvalidBilingualDocumentOptionsErrorBase<{
   message: string;
   option: "tableLayout" | "targetStyleSuffix";
 }> {}
-class UneditableBilingualManifestError extends TaggedError(
-  "UneditableBilingualManifestError",
-)<{
+const UneditableBilingualManifestErrorBase: TaggedErrorClass<"UneditableBilingualManifestError"> =
+  TaggedError("UneditableBilingualManifestError");
+
+class UneditableBilingualManifestError extends UneditableBilingualManifestErrorBase<{
   message: string;
   missingHandleCount: number;
 }> {}

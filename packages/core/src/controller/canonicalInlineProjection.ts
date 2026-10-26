@@ -1,4 +1,9 @@
-import { panic, Result, TaggedError } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
 import { hasIllegalXmlCharacters } from "@stll/docx-core";
@@ -31,7 +36,44 @@ import type {
 type SourceKind = ParagraphContent["type"] | RunContent["type"];
 type SourcePolicy =
   "container" | "leaf" | "text" | "rawField" | "control" | "layout";
-export const CANONICAL_SOURCE_INLINE_POLICIES = {
+export const CANONICAL_SOURCE_INLINE_POLICIES: {
+  readonly run: "container";
+  readonly hyperlink: "container";
+  readonly insertion: "container";
+  readonly deletion: "container";
+  readonly moveFrom: "container";
+  readonly moveTo: "container";
+  readonly inlineWrapper: "container";
+  readonly inlineSdt: "control";
+  readonly simpleField: "leaf";
+  readonly complexField: "leaf";
+  readonly mathEquation: "leaf";
+  readonly preservedInline: "leaf";
+  readonly bookmarkStart: "leaf";
+  readonly bookmarkEnd: "leaf";
+  readonly commentRangeStart: "leaf";
+  readonly commentRangeEnd: "leaf";
+  readonly commentReference: "leaf";
+  readonly moveFromRangeStart: "leaf";
+  readonly moveFromRangeEnd: "leaf";
+  readonly moveToRangeStart: "leaf";
+  readonly moveToRangeEnd: "leaf";
+  readonly text: "text";
+  readonly tab: "leaf";
+  readonly break: "leaf";
+  readonly symbol: "leaf";
+  readonly footnoteRef: "leaf";
+  readonly endnoteRef: "leaf";
+  readonly noteMarker: "leaf";
+  readonly fieldChar: "rawField";
+  readonly instrText: "rawField";
+  readonly softHyphen: "leaf";
+  readonly noBreakHyphen: "leaf";
+  readonly renderedPageBreak: "layout";
+  readonly preservedXml: "leaf";
+  readonly drawing: "leaf";
+  readonly shape: "leaf";
+} = {
   run: "container",
   hyperlink: "container",
   insertion: "container",
@@ -72,7 +114,28 @@ export const CANONICAL_SOURCE_INLINE_POLICIES = {
 
 type NativePolicy =
   "text" | "unit" | "markers" | "noteMarker" | "capture" | "refused";
-export const CANONICAL_NATIVE_INLINE_POLICIES = {
+export const CANONICAL_NATIVE_INLINE_POLICIES: {
+  readonly text: "text";
+  readonly bookmarkBoundary: "markers";
+  readonly commentRangeBoundary: "markers";
+  readonly moveRangeBoundary: "markers";
+  readonly rangeAnchor: "markers";
+  readonly noteMarker: "noteMarker";
+  readonly preservedXml: "capture";
+  readonly field: "unit";
+  readonly structuredField: "unit";
+  readonly hardBreak: "unit";
+  readonly image: "unit";
+  readonly math: "unit";
+  readonly pageBreakRun: "unit";
+  readonly shape: "unit";
+  readonly symbol: "unit";
+  readonly tab: "unit";
+  readonly textBoxAnchor: "unit";
+  readonly commentReference: "unit";
+  readonly renderedPageBreak: "refused";
+  readonly sdt: "refused";
+} = {
   text: "text",
   bookmarkBoundary: "markers",
   commentRangeBoundary: "markers",
@@ -101,7 +164,10 @@ const nativePolicies = new Map<string, NativePolicy>(
   Object.entries(CANONICAL_NATIVE_INLINE_POLICIES),
 );
 
-class InlineProjectionError extends TaggedError("InlineProjectionError")<{
+const InlineProjectionErrorBase: TaggedErrorClass<"InlineProjectionError"> =
+  TaggedError("InlineProjectionError");
+
+class InlineProjectionError extends InlineProjectionErrorBase<{
   message: string;
 }> {}
 const refuse = (message: string) =>

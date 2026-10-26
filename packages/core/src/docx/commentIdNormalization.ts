@@ -18,7 +18,7 @@ import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import type { Comment } from "../types/document";
 
 /** The code this normalisation is reported under, owned here, not at the caller. */
-export const DUPLICATE_COMMENT_ID_WARNING =
+export const DUPLICATE_COMMENT_ID_WARNING: "duplicate-comment-id" =
   PARSE_WARNING_CODES.duplicateCommentId;
 
 export type NormalizeCommentIdsResult = {

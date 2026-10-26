@@ -279,7 +279,7 @@ export function ToolbarButton({
   className,
   ariaLabel,
   testId,
-}: ToolbarButtonProps) {
+}: ToolbarButtonProps): React.JSX.Element {
   const derivedTestId =
     toToolbarTestId(ariaLabel) ||
     toToolbarTestId(title, { stripParentheses: true });
@@ -363,7 +363,7 @@ export function ToolbarGroup({
   label,
   children,
   className,
-}: ToolbarGroupProps) {
+}: ToolbarGroupProps): React.JSX.Element {
   return (
     <div
       className={cn("flex items-center gap-0.5", className)}
@@ -378,7 +378,7 @@ export function ToolbarGroup({
 /**
  * Toolbar separator.
  */
-export function ToolbarSeparator() {
+export function ToolbarSeparator(): React.JSX.Element {
   return (
     <div
       className="mx-1 h-6 w-px shrink-0 bg-[var(--doc-border)] sm:mx-2"

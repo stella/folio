@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type JSX, useId, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -39,7 +39,9 @@ export type HyperlinkDialogProps = {
 
 type HyperlinkTargetType = "url" | "bookmark";
 
-export function HyperlinkDialog(props: HyperlinkDialogProps) {
+export function HyperlinkDialog(
+  props: HyperlinkDialogProps,
+): JSX.Element | null {
   if (!props.isOpen) {
     return null;
   }

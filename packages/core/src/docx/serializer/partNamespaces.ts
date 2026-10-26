@@ -1,3 +1,6 @@
+const UnboundNamespacePrefixErrorBase: TaggedErrorClass<"UnboundNamespacePrefixError"> =
+  TaggedError("UnboundNamespacePrefixError");
+
 /**
  * Namespace declarations for parts folio rebuilds from the model.
  *
@@ -12,7 +15,7 @@
  * nothing fails the save instead of being written unbound.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import {
   assertValidOoxmlNumericIds,
@@ -189,9 +192,7 @@ const NAMESPACE_TABLE: ReadonlyMap<string, OoxmlNamespace> = new Map(
 );
 
 /** A rebuilt part uses a prefix that resolves to no namespace URI. */
-export class UnboundNamespacePrefixError extends TaggedError(
-  "UnboundNamespacePrefixError",
-)<{
+export class UnboundNamespacePrefixError extends UnboundNamespacePrefixErrorBase<{
   message: string;
   partPath: string;
   prefixes: readonly string[];

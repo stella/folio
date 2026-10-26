@@ -24,7 +24,7 @@ export {
 } from "./file-system";
 
 /** Largest `.docx` the CLI opens; larger inputs are refused before reading. */
-export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES: number = 64 * 1024 * 1024;
 
 const FILE_VERSION_PATTERN = /^[0-9a-f]{64}$/u;
 

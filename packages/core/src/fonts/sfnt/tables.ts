@@ -1,4 +1,8 @@
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
+
+const SfntDirectoryErrorBase: TaggedErrorClass<"SfntDirectoryError"> =
+  TaggedError("SfntDirectoryError");
+
 /**
  * Shared sfnt container primitives: table tags, the container magics, the
  * table directory, and the `loca` offset array.
@@ -66,7 +70,7 @@ const DIRECTORY_ENTRY = {
 const TAG_LENGTH = 4;
 
 /** A structural problem in the container: bad header, or a table out of bounds. */
-export class SfntDirectoryError extends TaggedError("SfntDirectoryError")<{
+export class SfntDirectoryError extends SfntDirectoryErrorBase<{
   message: string;
 }> {}
 

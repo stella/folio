@@ -32,7 +32,7 @@ export type FolioSelectiveSaveFlags = {
   selectiveSaveMaxBytes?: number;
 };
 
-export const DEFAULT_SELECTIVE_SAVE_MAX_BYTES = 100 * 1024 * 1024;
+export const DEFAULT_SELECTIVE_SAVE_MAX_BYTES: number = 100 * 1024 * 1024;
 
 export type ResolvedSelectiveSaveFlags = {
   selectiveSave: boolean;

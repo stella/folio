@@ -44,17 +44,22 @@ updates:
           - version-update:semver-major
           - version-update:semver-minor
           - version-update:semver-patch
+      - dependency-name: npm
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
+      - dependency-name: pnpm
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
       - dependency-name: typescript
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
           - version-update:semver-patch
       - dependency-name: "@typescript/native"
-        update-types:
-          - version-update:semver-major
-          - version-update:semver-minor
-          - version-update:semver-patch
-      - dependency-name: typescript-compat
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
@@ -231,6 +236,9 @@ updates:
     cooldown:
       default-days: 5
     groups:
+      stella-shared:
+        patterns:
+          - stella/.github/*
       dependencies:
         patterns:
           - "*"

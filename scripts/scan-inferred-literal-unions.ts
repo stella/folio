@@ -1,83 +1,93 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import ts from "typescript";
+import type { TSType } from "oxc-parser";
+
+import { nodeText, parseSourceModule, type Program } from "./lib/oxc-ast";
 
 const root = join(import.meta.dir, "..");
 
-const isLiteralUnion = (node: ts.TypeNode): boolean =>
-  ts.isUnionTypeNode(node) &&
+const isLiteralUnion = (node: TSType): boolean =>
+  node.type === "TSUnionType" &&
   node.types.length > 1 &&
-  node.types.every(
-    (member) =>
-      ts.isLiteralTypeNode(member) &&
-      (ts.isStringLiteral(member.literal) ||
-        ts.isNumericLiteral(member.literal)),
-  );
+  node.types.every((member) => {
+    if (member.type !== "TSLiteralType" || member.literal.type !== "Literal")
+      return false;
+    const { value } = member.literal;
+    return typeof value === "string" || typeof value === "number";
+  });
 
-const unwrapType = (node: ts.TypeNode): ts.TypeNode =>
-  ts.isParenthesizedTypeNode(node) ? unwrapType(node.type) : node;
+const unwrapType = (node: TSType): TSType =>
+  node.type === "TSParenthesizedType" ? unwrapType(node.typeAnnotation) : node;
 
-const hasInferredLiteralUnion = (node: ts.TypeNode): boolean => {
+const hasInferredLiteralUnion = (node: TSType): boolean => {
   const candidate = unwrapType(node);
   if (isLiteralUnion(candidate)) return true;
-  if (ts.isArrayTypeNode(candidate))
+  if (candidate.type === "TSArrayType")
     return isLiteralUnion(unwrapType(candidate.elementType));
-  if (
-    ts.isTypeReferenceNode(candidate) &&
-    candidate.typeArguments?.length === 1
-  ) {
-    return isLiteralUnion(unwrapType(candidate.typeArguments[0]!));
-  }
-  return false;
+  const typeArgument =
+    candidate.type === "TSTypeReference" &&
+    candidate.typeArguments?.params.length === 1
+      ? candidate.typeArguments.params.at(0)
+      : undefined;
+  return typeArgument !== undefined && isLiteralUnion(unwrapType(typeArgument));
 };
 
-const declarationTypes = (
-  source: ts.SourceFile,
-): ReadonlyMap<string, ts.TypeNode> => {
-  const result = new Map<string, ts.TypeNode>();
-  for (const statement of source.statements) {
-    if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        if (ts.isIdentifier(declaration.name) && declaration.type) {
-          result.set(declaration.name.text, declaration.type);
-        }
-      }
-    } else if (
-      ts.isFunctionDeclaration(statement) &&
-      statement.name &&
-      statement.type
-    ) {
-      result.set(statement.name.text, statement.type);
-    }
+type TopLevelDeclaration = {
+  readonly name: string;
+  readonly type: TSType | undefined;
+  readonly exported: boolean;
+};
+
+/** Top-level variables and functions, including exported and declared ones. */
+const topLevelDeclarations = (program: Program): TopLevelDeclaration[] =>
+  program.body.flatMap((statement): TopLevelDeclaration[] => {
+    const declaration =
+      statement.type === "ExportNamedDeclaration" ||
+      statement.type === "ExportDefaultDeclaration"
+        ? statement.declaration
+        : statement;
+    const exported = declaration !== statement;
+    if (declaration?.type === "VariableDeclaration")
+      return declaration.declarations.flatMap(({ id }) =>
+        id.type === "Identifier"
+          ? [
+              {
+                name: id.name,
+                type: id.typeAnnotation?.typeAnnotation,
+                exported,
+              },
+            ]
+          : [],
+      );
+    if (
+      (declaration?.type === "FunctionDeclaration" ||
+        declaration?.type === "TSDeclareFunction") &&
+      declaration.id !== null
+    )
+      return [
+        {
+          name: declaration.id.name,
+          type: declaration.returnType?.typeAnnotation,
+          exported,
+        },
+      ];
+    return [];
+  });
+
+const declarationTypes = (program: Program): ReadonlyMap<string, TSType> => {
+  const result = new Map<string, TSType>();
+  for (const { name, type } of topLevelDeclarations(program)) {
+    if (type !== undefined) result.set(name, type);
   }
   return result;
 };
 
-const unannotatedExports = (source: ts.SourceFile): ReadonlySet<string> => {
-  const result = new Set<string>();
-  for (const statement of source.statements) {
-    const exported =
-      ts.canHaveModifiers(statement) &&
-      (ts
-        .getModifiers(statement)
-        ?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword) ??
-        false);
-    if (!exported) continue;
-    if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        if (ts.isIdentifier(declaration.name) && !declaration.type)
-          result.add(declaration.name.text);
-      }
-    } else if (
-      ts.isFunctionDeclaration(statement) &&
-      statement.name &&
-      !statement.type
-    ) {
-      result.add(statement.name.text);
-    }
-  }
-  return result;
-};
+const unannotatedExports = (program: Program): ReadonlySet<string> =>
+  new Set(
+    topLevelDeclarations(program)
+      .filter(({ type, exported }) => exported && type === undefined)
+      .map(({ name }) => name),
+  );
 
 const findings: string[] = [];
 const packageEntries = await readdir(join(root, "packages"), {
@@ -100,13 +110,9 @@ for (const entry of packageEntries) {
     const declarationText = await Bun.file(
       join(distDirectory, relativeFile),
     ).text();
-    const declarationSource = ts.createSourceFile(
-      relativeFile,
-      declarationText,
-      ts.ScriptTarget.Latest,
-      true,
+    const emittedTypes = declarationTypes(
+      parseSourceModule(relativeFile, declarationText).program,
     );
-    const emittedTypes = declarationTypes(declarationSource);
     if (![...emittedTypes.values()].some(hasInferredLiteralUnion)) continue;
 
     const sourceRelative = relativeFile.replace(/\.d\.ts$/u, ".ts");
@@ -119,17 +125,13 @@ for (const entry of packageEntries) {
     );
     if (!sourceFile) continue;
     const sourceText = await Bun.file(sourceFile).text();
-    const source = ts.createSourceFile(
-      sourceFile,
-      sourceText,
-      ts.ScriptTarget.Latest,
-      true,
+    const unannotated = unannotatedExports(
+      parseSourceModule(sourceFile, sourceText).program,
     );
-    const unannotated = unannotatedExports(source);
     for (const [name, type] of emittedTypes) {
       if (unannotated.has(name) && hasInferredLiteralUnion(type)) {
         findings.push(
-          `${sourceFile.slice(root.length + 1)}:${name} -> ${type.getText(declarationSource)}`,
+          `${sourceFile.slice(root.length + 1)}:${name} -> ${nodeText(declarationText, type)}`,
         );
       }
     }

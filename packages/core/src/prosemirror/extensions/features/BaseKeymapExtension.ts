@@ -41,7 +41,7 @@ import {
   textFormattingToMarks,
 } from "../marks/markUtils";
 import { Priority } from "../types";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
 
 function chainCommands(...commands: Command[]): Command {
   return (state, dispatch, view) => {
@@ -385,7 +385,9 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
   return true;
 };
 
-export const BaseKeymapExtension = createExtension({
+export const BaseKeymapExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => Extension = createExtension({
   name: "baseKeymap",
   priority: Priority.Low,
   onSchemaReady(_ctx: ExtensionContext): ExtensionRuntime {

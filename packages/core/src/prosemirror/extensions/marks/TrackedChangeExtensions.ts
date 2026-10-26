@@ -14,6 +14,7 @@ import {
 import { mintRevisionId } from "../../plugins/revisionIds";
 import { createMarkExtension } from "../create";
 import { authorFromClipboardRevision } from "../features/clipboardTrackedRevisions";
+import type { MarkExtension } from "../types";
 
 /**
  * Build an inline style string for the tracked change author color.
@@ -72,7 +73,9 @@ const clipboardRevisionAttrs = (dom: HTMLElement) => ({
  * Insertion mark — text added in tracked changes
  * Renders with per-author colored underline.
  */
-export const InsertionExtension = createMarkExtension({
+export const InsertionExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "insertion",
   schemaMarkName: "insertion",
   markSpec: {
@@ -184,7 +187,9 @@ export const InsertionExtension = createMarkExtension({
  * Deletion mark — text removed in tracked changes
  * Renders with per-author colored strikethrough.
  */
-export const DeletionExtension = createMarkExtension({
+export const DeletionExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "deletion",
   schemaMarkName: "deletion",
   markSpec: {
@@ -298,7 +303,9 @@ export const DeletionExtension = createMarkExtension({
  * this mark carries the previous run properties and revision metadata needed
  * to serialize, list, accept, and reject the change.
  */
-export const RunPropertyChangeExtension = createMarkExtension({
+export const RunPropertyChangeExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => MarkExtension = createMarkExtension({
   name: "runPropertyChange",
   schemaMarkName: "runPropertyChange",
   markSpec: {

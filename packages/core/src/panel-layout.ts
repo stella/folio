@@ -42,7 +42,7 @@ export const PANEL_METRICS = {
 } as const;
 
 /** Width the comments take beside the page: gap, cards, gap. */
-export const COMMENTS_TRACK_WIDTH =
+export const COMMENTS_TRACK_WIDTH: number =
   PANEL_METRICS.commentsWidth + 2 * PANEL_METRICS.commentsGap;
 
 export type PanelLayoutTier = "wide" | "medium" | "narrow";

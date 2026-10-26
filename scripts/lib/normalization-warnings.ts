@@ -16,7 +16,7 @@
  * be forgotten into passing.
  */
 
-import ts from "typescript";
+import { parseSourceModule, walkAst } from "./oxc-ast";
 
 export const NORMALIZATION_MODULE_SUFFIX = "Normalization.ts";
 export const PARSE_WARNING_CODES_SYMBOL = "PARSE_WARNING_CODES";
@@ -42,25 +42,21 @@ export type NormalizationWarningViolation = {
  * sees.
  */
 const referencesWarningCodes = (path: string, source: string): boolean => {
-  const file = ts.createSourceFile(
-    path,
-    source,
-    ts.ScriptTarget.ESNext,
-    true,
-    ts.ScriptKind.TS,
-  );
+  const { program } = parseSourceModule(path, source);
   let found = false;
-  const visit = (node: ts.Node): void => {
+  walkAst(program, (node) => {
     if (found) {
-      return;
+      return false;
     }
-    if (ts.isIdentifier(node) && node.text === PARSE_WARNING_CODES_SYMBOL) {
+    if (
+      node.type === "Identifier" &&
+      node.name === PARSE_WARNING_CODES_SYMBOL
+    ) {
       found = true;
-      return;
+      return false;
     }
-    ts.forEachChild(node, visit);
-  };
-  ts.forEachChild(file, visit);
+    return true;
+  });
   return found;
 };
 

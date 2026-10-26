@@ -36,6 +36,7 @@ import type {
   ImageSize,
   ImageTransform,
   MediaFile,
+  NonVisualDrawingNames,
   RelationshipId,
   RelationshipMap,
 } from "../types/document";
@@ -738,7 +739,12 @@ export const imageDerivedFactsOf = ({
   id,
   pictureNames,
   imageData,
-}: ImageDerivedFactsOptions) => ({
+}: ImageDerivedFactsOptions): {
+  filename?: string;
+  mimeType?: string;
+  pictureNames?: NonVisualDrawingNames;
+  id?: string;
+} => ({
   ...(id ? { id } : {}),
   ...(Object.keys(pictureNames).length > 0 ? { pictureNames } : {}),
   ...(imageData.mimeType ? { mimeType: imageData.mimeType } : {}),

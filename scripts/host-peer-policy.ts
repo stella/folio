@@ -2,7 +2,8 @@ import { TaggedError } from "better-result";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import ts from "typescript";
+
+import { parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 const SINGLETON =
   /^(?:prosemirror-[a-z-]+|yjs|y-prosemirror|y-protocols|react|react-dom)(?:\/|$)/u;
@@ -57,11 +58,68 @@ export const discoverPublishedPackages = (
     })
     .sort();
 
-const singletonImports = (source: string): string[] =>
-  ts
-    .preProcessFile(source, true, true)
-    .importedFiles.map(({ fileName }) => fileName)
-    .filter((specifier) => SINGLETON.test(specifier));
+const quotedSpecifier = (text: string): string | undefined =>
+  /^(["'])([^"']*)\1$/u.exec(text)?.at(2);
+
+/**
+ * Singleton module specifiers a source names. `runtime` keeps only the ones
+ * that survive type erasure: type-only imports, exports and `import()` types
+ * are dropped.
+ */
+const singletonImports = (
+  filename: string,
+  source: string,
+  { runtime }: { runtime: boolean },
+): string[] => {
+  const parsed = parseSourceModule(
+    filename.endsWith(".vue") ? `${filename}.ts` : filename,
+    source,
+  );
+  const { module } = parsed;
+  const specifiers = [
+    ...module.staticImports
+      .filter(
+        ({ entries }) =>
+          !runtime ||
+          entries.length === 0 ||
+          entries.some(({ isType }) => !isType),
+      )
+      .map(({ moduleRequest }) => moduleRequest.value),
+    ...module.staticExports.flatMap(({ entries }) =>
+      entries.flatMap(({ moduleRequest, isType }) =>
+        moduleRequest && !(runtime && isType) ? [moduleRequest.value] : [],
+      ),
+    ),
+    ...module.dynamicImports.flatMap(({ moduleRequest }) => {
+      const specifier = quotedSpecifier(
+        source.slice(moduleRequest.start, moduleRequest.end),
+      );
+      return specifier === undefined ? [] : [specifier];
+    }),
+  ];
+  walkAst(parsed.program, (node) => {
+    if (
+      !runtime &&
+      node.type === "TSImportType" &&
+      typeof node.source.value === "string"
+    ) {
+      specifiers.push(node.source.value);
+    }
+    // CommonJS `require("…")`, as a module scan of JavaScript reads it.
+    const [argument] = node.type === "CallExpression" ? node.arguments : [];
+    if (
+      node.type === "CallExpression" &&
+      node.callee.type === "Identifier" &&
+      node.callee.name === "require" &&
+      node.arguments.length === 1 &&
+      argument?.type === "Literal" &&
+      typeof argument.value === "string"
+    ) {
+      specifiers.push(argument.value);
+    }
+  });
+  return specifiers.filter((specifier) => SINGLETON.test(specifier));
+};
 
 const sourceFiles = (packageDirectory: string): string[] =>
   walk(path.join(packageDirectory, "src"))
@@ -99,7 +157,9 @@ export const assertHostPeerManifest = (packageDirectory: string): void => {
     }
   }
   for (const filename of sourceFiles(packageDirectory)) {
-    for (const specifier of singletonImports(scriptSource(filename))) {
+    for (const specifier of singletonImports(filename, scriptSource(filename), {
+      runtime: false,
+    })) {
       const name = specifier.split("/").at(0);
       if (!name || !manifest.peerDependencies?.[name]) {
         violations.push(
@@ -119,14 +179,9 @@ export const assertHostPeersExternal = (packageDirectory: string): void => {
   const expected = new Set<string>();
   for (const filename of sourceFiles(packageDirectory)) {
     if (filename.endsWith(".d.ts")) continue;
-    const { outputText } = ts.transpileModule(scriptSource(filename), {
-      fileName: filename.endsWith(".vue") ? `${filename}.ts` : filename,
-      compilerOptions: {
-        module: ts.ModuleKind.ESNext,
-        jsx: ts.JsxEmit.Preserve,
-      },
-    });
-    for (const specifier of singletonImports(outputText)) {
+    for (const specifier of singletonImports(filename, scriptSource(filename), {
+      runtime: true,
+    })) {
       if (!specifier.endsWith(".css")) expected.add(specifier);
     }
   }
@@ -150,7 +205,10 @@ export const assertHostPeersExternal = (packageDirectory: string): void => {
       }
       continue;
     }
-    for (const specifier of singletonImports(source)) observed.add(specifier);
+    for (const specifier of singletonImports(filename, source, {
+      runtime: false,
+    }))
+      observed.add(specifier);
     for (const sentinel of BUNDLED_SENTINELS) {
       if (source.includes(sentinel))
         violations.push(

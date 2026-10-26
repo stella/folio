@@ -46,7 +46,7 @@ export const getViewportCenterZoomAnchorForZoomChange = ({
   nextZoom,
   pendingAnchor,
   scrollTop,
-}: GetViewportCenterZoomAnchorForZoomChangeParams) => {
+}: GetViewportCenterZoomAnchorForZoomChangeParams): ViewportCenterZoomAnchor | null => {
   if (pendingAnchor?.zoom === nextZoom) {
     return null;
   }
@@ -69,7 +69,7 @@ export const getViewportCenterZoomAnchorForZoomChange = ({
 export const getScrollTopForZoomAnchor = (
   anchor: ViewportCenterZoomAnchor,
   nextZoom: number,
-) => {
+): number => {
   if (anchor.zoom <= 0 || nextZoom <= 0) {
     return anchor.scaledY - anchor.offsetY;
   }

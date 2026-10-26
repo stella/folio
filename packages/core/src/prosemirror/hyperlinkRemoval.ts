@@ -11,7 +11,7 @@
  * the plain text an untracked removal leaves.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
@@ -35,9 +35,10 @@ import { paragraphRunStyleContextAt } from "./runStyleFormatting";
 type LinkedPiece = { from: number; to: number; node: PMNode };
 type LinkedRange = { from: number; to: number; pieces: LinkedPiece[] };
 
-export class HyperlinkRemovalRefusal extends TaggedError(
-  "HyperlinkRemovalRefusal",
-)<{
+const HyperlinkRemovalRefusalBase: TaggedErrorClass<"HyperlinkRemovalRefusal"> =
+  TaggedError("HyperlinkRemovalRefusal");
+
+export class HyperlinkRemovalRefusal extends HyperlinkRemovalRefusalBase<{
   message: string;
 }> {}
 

@@ -19,7 +19,11 @@
  * positioning is inline.
  */
 
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  CSSProperties,
+  JSX,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import { useState } from "react";
 
 import type { SelectionRect } from "@stll/folio-core/layout-bridge/engine/selectionRects";
@@ -317,7 +321,7 @@ export const TemplateDirectivesOverlay = ({
   gutter,
   caretPos,
   ranges,
-}: TemplateDirectivesOverlayProps) => {
+}: TemplateDirectivesOverlayProps): JSX.Element | null => {
   const [hoveredBlockId, setHoveredBlockId] = useState<number | null>(null);
 
   if (groups.length === 0) {

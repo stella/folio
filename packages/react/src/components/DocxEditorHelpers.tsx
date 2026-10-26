@@ -3,9 +3,10 @@
  */
 
 import { AlertCircleIcon, FileIcon } from "lucide-react";
+import type { JSX } from "react/jsx-runtime";
 import { useTranslations } from "use-intl";
 
-export function DefaultLoadingIndicator() {
+export function DefaultLoadingIndicator(): JSX.Element {
   const t = useTranslations("folio");
 
   return (
@@ -16,7 +17,7 @@ export function DefaultLoadingIndicator() {
   );
 }
 
-export function DefaultPlaceholder() {
+export function DefaultPlaceholder(): JSX.Element {
   const t = useTranslations("folio");
 
   return (
@@ -27,7 +28,7 @@ export function DefaultPlaceholder() {
   );
 }
 
-export function ParseError({ message }: { message: string }) {
+export function ParseError({ message }: { message: string }): JSX.Element {
   const t = useTranslations("folio");
 
   return (

@@ -284,7 +284,15 @@ const noChunkedTextCodec: Rule = {
   },
 };
 
-const plugin = {
+const plugin: {
+  meta: {
+    name: string;
+  };
+  rules: {
+    "no-string-zip-entry": Rule;
+    "no-chunked-text-codec": Rule;
+  };
+} = {
   meta: { name: "utf8-boundaries" },
   rules: {
     "no-string-zip-entry": noStringZipEntry,

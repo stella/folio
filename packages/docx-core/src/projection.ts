@@ -1,4 +1,4 @@
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import initializeRuntime, {
   type DocxAttributedComment,
@@ -74,14 +74,18 @@ export type {
   DocxRevisionKind,
 };
 
-export class DocxProjectionInitializationError extends TaggedError(
-  "DocxProjectionInitializationError",
-)<{
+const DocxProjectionInitializationErrorBase: TaggedErrorClass<"DocxProjectionInitializationError"> =
+  TaggedError("DocxProjectionInitializationError");
+
+export class DocxProjectionInitializationError extends DocxProjectionInitializationErrorBase<{
   message: string;
   cause: unknown;
 }> {}
 
-export class DocxProjectionError extends TaggedError("DocxProjectionError")<{
+const DocxProjectionErrorBase: TaggedErrorClass<"DocxProjectionError"> =
+  TaggedError("DocxProjectionError");
+
+export class DocxProjectionError extends DocxProjectionErrorBase<{
   message: string;
   cause: unknown;
 }> {}

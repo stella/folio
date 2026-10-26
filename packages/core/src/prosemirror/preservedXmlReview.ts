@@ -1,4 +1,4 @@
-import type { Mark, Node as PMNode } from "prosemirror-model";
+import type { Attrs, Mark, Node as PMNode } from "prosemirror-model";
 
 import { captureVerbatimXml } from "../docx/verbatimCapture";
 import {
@@ -54,7 +54,7 @@ const hasPendingDeletion = (marks: readonly Mark[]) =>
 export const resolvedPreservedXmlAttrs = (
   node: PMNode,
   marks: readonly Mark[],
-) => {
+): Attrs => {
   if (
     node.type.name !== "preservedXml" ||
     !hasPendingDeletion(node.marks) ||

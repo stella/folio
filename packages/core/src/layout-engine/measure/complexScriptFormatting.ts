@@ -40,7 +40,7 @@ export const applyComplexScriptFormatting = <
 >(
   base: T,
   source: ComplexScriptFormattingSource,
-) => {
+): T & ResolvedComplexScriptFormatting => {
   const result = { ...base, ...resolveComplexScriptFormatting(source) };
   if (
     source.complexScriptFontFamily !== undefined &&

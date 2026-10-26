@@ -31,7 +31,13 @@ import type { SectionProperties, SectionStart } from "../types/document";
  * going typeless to every reader. Which members the *insert* commands offer is
  * a separate, narrower question (`InsertableSectionBreak`).
  */
-export const SECTION_BREAK_TYPES = [
+export const SECTION_BREAK_TYPES: readonly [
+  "nextPage",
+  "nextColumn",
+  "continuous",
+  "evenPage",
+  "oddPage",
+] = [
   "nextPage",
   "nextColumn",
   "continuous",

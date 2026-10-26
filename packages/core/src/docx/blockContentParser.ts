@@ -23,6 +23,7 @@ import {
   type ChildHandlers,
   type ChildReader,
   dispatchChildrenWithContext,
+  type OwnedElsewhere,
   ownedElsewhere,
   withPreservedChildren,
 } from "./containerChildren";
@@ -196,11 +197,104 @@ const parseBlockCustomXml = (
   };
 };
 
-export const BLOCK_CONTENT_HANDLERS = {
+export const BLOCK_CONTENT_HANDLERS: {
+  readonly altChunk: "capture";
+  readonly commentRangeEnd: "capture";
+  readonly commentRangeStart: "capture";
+  readonly customXmlDelRangeEnd: "capture";
+  readonly customXmlDelRangeStart: "capture";
+  readonly customXmlInsRangeEnd: "capture";
+  readonly customXmlInsRangeStart: "capture";
+  readonly customXmlMoveFromRangeEnd: "capture";
+  readonly customXmlMoveFromRangeStart: "capture";
+  readonly customXmlMoveToRangeEnd: "capture";
+  readonly customXmlMoveToRangeStart: "capture";
+  readonly del: "capture";
+  readonly ins: "capture";
+  readonly moveFrom: "capture";
+  readonly moveTo: "capture";
+  readonly permEnd: "capture";
+  readonly permStart: "capture";
+  readonly proofErr: "capture";
+  readonly sectPr: OwnedElsewhere<"block-content", "sectPr">;
+  readonly tcPr: OwnedElsewhere<"block-content", "tcPr">;
+  readonly moveFromRangeStart: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly moveFromRangeEnd: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly moveToRangeStart: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly moveToRangeEnd: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly p: (
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+    }: BlockContentWalk,
+  ) => void;
+  readonly tbl: (
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+    }: BlockContentWalk,
+  ) => "capture" | undefined;
+  readonly sdt: (
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+    }: BlockContentWalk,
+  ) => void;
+  readonly customXml: (
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+    }: BlockContentWalk,
+  ) => void;
+  // A block container declares the marker beside its blocks, so the model
+  // keeps it there: it is a block in its own right, between the same two
+  // siblings the source wrote it between. Re-anchoring it into a
+  // neighbouring paragraph saved the element and changed the range.
+  readonly bookmarkStart: (
+    child: XmlElement,
+    { modelled }: BlockContentWalk,
+  ) => void;
+  readonly bookmarkEnd: (
+    child: XmlElement,
+    { modelled }: BlockContentWalk,
+  ) => void;
+} = {
   p: (
-    child,
-    { resources: { styles, theme, numbering, rels, media }, state, modelled },
-  ) => {
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+    }: BlockContentWalk,
+  ): void => {
     const paragraph = parseParagraph(
       child,
       styles,
@@ -235,9 +329,13 @@ export const BLOCK_CONTENT_HANDLERS = {
     modelled.push(paragraph);
   },
   tbl: (
-    child,
-    { resources: { styles, theme, numbering, rels, media }, state, modelled },
-  ) => {
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+    }: BlockContentWalk,
+  ): "capture" | undefined => {
     const table = parseTable(
       child,
       styles,
@@ -259,17 +357,25 @@ export const BLOCK_CONTENT_HANDLERS = {
     return undefined;
   },
   sdt: (
-    child,
-    { resources: { styles, theme, numbering, rels, media }, state, modelled },
-  ) => {
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+    }: BlockContentWalk,
+  ): void => {
     modelled.push(
       parseBlockSdt(child, styles, theme, numbering, rels, media, state),
     );
   },
   customXml: (
-    child,
-    { resources: { styles, theme, numbering, rels, media }, state, modelled },
-  ) => {
+    child: XmlElement,
+    {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+    }: BlockContentWalk,
+  ): void => {
     modelled.push(
       parseBlockCustomXml(child, styles, theme, numbering, rels, media, state),
     );
@@ -278,10 +384,10 @@ export const BLOCK_CONTENT_HANDLERS = {
   // keeps it there: it is a block in its own right, between the same two
   // siblings the source wrote it between. Re-anchoring it into a
   // neighbouring paragraph saved the element and changed the range.
-  bookmarkStart: (child, { modelled }) => {
+  bookmarkStart: (child: XmlElement, { modelled }: BlockContentWalk): void => {
     modelled.push(parseBookmarkStart(child));
   },
-  bookmarkEnd: (child, { modelled }) => {
+  bookmarkEnd: (child: XmlElement, { modelled }: BlockContentWalk): void => {
     modelled.push(parseBookmarkEnd(child));
   },
   ...BLOCK_MOVE_RANGE_MARKER_HANDLERS,

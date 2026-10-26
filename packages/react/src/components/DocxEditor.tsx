@@ -11,7 +11,12 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties, RefObject } from "react";
+import type {
+  CSSProperties,
+  ForwardRefExoticComponent,
+  RefAttributes,
+  RefObject,
+} from "react";
 
 import {
   CheckIcon,
@@ -565,11 +570,8 @@ type InitialScrollState =
   | { status: "scheduled"; cancel: () => void }
   | { status: "applied" };
 
-/**
- * DocxEditor - Complete DOCX editor component
- */
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools without reindenting this large component. */
-export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(
+const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
   function DocxEditor(
     {
       documentBuffer,
@@ -6413,6 +6415,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(
   },
 );
 /* eslint-enable prefer-arrow-callback */
+
+/**
+ * DocxEditor - Complete DOCX editor component
+ */
+export const DocxEditor: ForwardRefExoticComponent<
+  DocxEditorProps & RefAttributes<DocxEditorRef>
+> = DocxEditorComponent;
 
 type MenuCheckboxItemComponent = typeof DEFAULT_COMPONENTS.Menu.CheckboxItem;
 

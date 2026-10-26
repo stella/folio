@@ -1,4 +1,6 @@
-import ts from "typescript";
+import type { Expression } from "oxc-parser";
+
+import { createLineIndex, nodeText, parseSourceModule } from "./oxc-ast";
 
 export type MissingExportType = {
   readonly column: number;
@@ -6,31 +8,28 @@ export type MissingExportType = {
   readonly name: string;
 };
 
-const isExported = (node: ts.Node): boolean =>
-  ts.canHaveModifiers(node) &&
-  (ts
-    .getModifiers(node)
-    ?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword) ??
-    false);
-
-const unwrapExpression = (expression: ts.Expression): ts.Expression => {
+const unwrapExpression = (expression: Expression): Expression => {
   if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
+    expression.type === "ParenthesizedExpression" ||
+    expression.type === "TSSatisfiesExpression"
   ) {
     return unwrapExpression(expression.expression);
   }
   return expression;
 };
 
-const isConstAssertedAggregate = (expression: ts.Expression): boolean => {
+const isConstAssertedAggregate = (
+  text: string,
+  expression: Expression,
+): boolean => {
   const candidate = unwrapExpression(expression);
-  if (!ts.isAsExpression(candidate) || candidate.type.getText() !== "const")
+  if (
+    candidate.type !== "TSAsExpression" ||
+    nodeText(text, candidate.typeAnnotation) !== "const"
+  )
     return false;
   const value = unwrapExpression(candidate.expression);
-  return (
-    ts.isArrayLiteralExpression(value) || ts.isObjectLiteralExpression(value)
-  );
+  return value.type === "ArrayExpression" || value.type === "ObjectExpression";
 };
 
 /** Find exported const-asserted arrays and objects whose public type is inferred. */
@@ -38,32 +37,30 @@ export const exportedConstAssertionsWithoutTypes = (
   sourceText: string,
   fileName = "source.ts",
 ): readonly MissingExportType[] => {
-  const source = ts.createSourceFile(
-    fileName,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const { program } = parseSourceModule(fileName, sourceText);
+  const lineOf = createLineIndex(sourceText);
   const missing: MissingExportType[] = [];
 
-  for (const statement of source.statements) {
-    if (!ts.isVariableStatement(statement) || !isExported(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
+  for (const statement of program.body) {
+    if (
+      statement.type !== "ExportNamedDeclaration" ||
+      statement.declaration?.type !== "VariableDeclaration"
+    )
+      continue;
+    for (const declaration of statement.declaration.declarations) {
       if (
-        declaration.type ||
-        !declaration.initializer ||
-        !ts.isIdentifier(declaration.name) ||
-        !isConstAssertedAggregate(declaration.initializer)
+        declaration.id.type !== "Identifier" ||
+        declaration.id.typeAnnotation ||
+        !declaration.init ||
+        !isConstAssertedAggregate(sourceText, declaration.init)
       ) {
         continue;
       }
-      const position = source.getLineAndCharacterOfPosition(
-        declaration.name.getStart(source),
-      );
+      const position = lineOf(declaration.id.start);
       missing.push({
-        column: position.character + 1,
+        column: position.column + 1,
         line: position.line + 1,
-        name: declaration.name.text,
+        name: declaration.id.name,
       });
     }
   }

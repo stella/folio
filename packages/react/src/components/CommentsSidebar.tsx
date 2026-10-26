@@ -144,7 +144,7 @@ export type CommentsSidebarProps = {
   onDismiss?: () => void;
 };
 
-export const SIDEBAR_WIDTH = PANEL_METRICS.commentsWidth;
+export const SIDEBAR_WIDTH: 280 = PANEL_METRICS.commentsWidth;
 
 /** A drawer is a surface of its own over the page; a column is transparent. */
 const DRAWER_SURFACE_STYLE: React.CSSProperties = {

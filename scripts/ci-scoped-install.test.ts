@@ -10,7 +10,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import ts from "typescript";
 
 import { scanTestTimeout } from "../test/scan-timeout";
 import {
@@ -24,6 +23,7 @@ import {
   installFrozenRepositoryDependencies,
   settleRepositoryLockfile,
 } from "./clean-room-install";
+import { moduleReferences, parseSourceModule } from "./lib/oxc-ast";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -145,8 +145,9 @@ describe("scoped CI environments", () => {
       cwd: root,
     })) {
       const source = readFileSync(path.join(root, file), "utf8");
-      for (const { fileName } of ts.preProcessFile(source, true, true)
-        .importedFiles) {
+      for (const { specifier: fileName } of moduleReferences(
+        parseSourceModule(file, source).program,
+      )) {
         const name = fileName.startsWith("@")
           ? fileName.split("/").slice(0, 2).join("/")
           : fileName.split("/").at(0);

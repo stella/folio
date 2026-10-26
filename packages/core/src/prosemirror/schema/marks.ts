@@ -317,7 +317,40 @@ type RunFormattingPropertySpec =
       }
     : never;
 
-export const RUN_FORMATTING_PROPERTY_SPECS = {
+export const RUN_FORMATTING_PROPERTY_SPECS: {
+  readonly bold: "boolean";
+  readonly boldCs: "boolean";
+  readonly italic: "boolean";
+  readonly italicCs: "boolean";
+  readonly underline: "value";
+  readonly strike: "boolean";
+  readonly doubleStrike: "boolean";
+  readonly vertAlign: "value";
+  readonly smallCaps: "boolean";
+  readonly allCaps: "boolean";
+  readonly hidden: "boolean";
+  readonly noProof: "boolean";
+  readonly color: "value";
+  readonly highlight: "value";
+  readonly shading: "value";
+  readonly fontSize: "value";
+  readonly fontSizeCs: "value";
+  readonly fontFamily: "value";
+  readonly language: "value";
+  readonly spacing: "value";
+  readonly position: "value";
+  readonly scale: "value";
+  readonly kerning: "value";
+  readonly effect: "value";
+  readonly emphasisMark: "value";
+  readonly emboss: "boolean";
+  readonly imprint: "boolean";
+  readonly outline: "boolean";
+  readonly shadow: "boolean";
+  readonly rtl: "boolean";
+  readonly cs: "boolean";
+  readonly styleId: "style";
+} = {
   bold: "boolean",
   boldCs: "boolean",
   italic: "boolean",

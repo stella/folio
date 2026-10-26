@@ -107,7 +107,7 @@ export type FormattingBarProps = {
   inline?: boolean;
 } & ToolbarProps;
 
-export function FormattingBar(props: FormattingBarProps) {
+export function FormattingBar(props: FormattingBarProps): React.JSX.Element {
   const {
     currentFormatting = {},
     onFormat,

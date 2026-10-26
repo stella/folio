@@ -1,9 +1,9 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import ts from "typescript";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import { type Node, nodeText, parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 setDefaultTimeout(scanTestTimeout(10_000));
 
@@ -40,74 +40,109 @@ const ALLOWED_DIRECT_PRODUCERS = new Set([
   "packages/docx-core/src/serialize/docx.ts#serializeNumberingLevel#1",
 ]);
 
-const enclosingDeclaration = (
-  node: ts.Node,
-  source: ts.SourceFile,
-): { name: string; node: ts.Node } => {
-  let nearestVariable: ts.VariableDeclaration | undefined;
-  for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
-    if (ts.isFunctionDeclaration(ancestor) && ancestor.name) {
-      return { name: ancestor.name.text, node: ancestor };
-    }
-    if (ts.isMethodDeclaration(ancestor)) {
-      return { name: ancestor.name.getText(source), node: ancestor };
-    }
-    if (
-      (ts.isArrowFunction(ancestor) || ts.isFunctionExpression(ancestor)) &&
-      ts.isVariableDeclaration(ancestor.parent)
-    ) {
-      return {
-        name: ancestor.parent.name.getText(source),
-        node: ancestor.parent,
-      };
-    }
-    if (ts.isFunctionExpression(ancestor) && ancestor.name) {
-      return { name: ancestor.name.text, node: ancestor };
-    }
-    if (!nearestVariable && ts.isVariableDeclaration(ancestor))
-      nearestVariable = ancestor;
-  }
-  return nearestVariable
-    ? { name: nearestVariable.name.getText(source), node: nearestVariable }
-    : { name: "<module>", node: source };
+/** A binding as written, without the type annotation oxc includes in its span. */
+const bindingText = (text: string, binding: Node) => {
+  const annotation =
+    binding.type === "Identifier" ||
+    binding.type === "ObjectPattern" ||
+    binding.type === "ArrayPattern"
+      ? binding.typeAnnotation
+      : undefined;
+  return annotation
+    ? text.slice(binding.start, annotation.start).trimEnd()
+    : nodeText(text, binding);
 };
 
-const directProducerKeys = (file: string, sourceText: string): string[] => {
-  const source = ts.createSourceFile(
-    file,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const declarationCounts = new Map<ts.Node, number>();
-  const producers: string[] = [];
-  const visit = (node: ts.Node): void => {
-    if (ts.isObjectLiteralExpression(node)) {
-      const typeProperty = node.properties.find(
-        (property): property is ts.PropertyAssignment =>
-          ts.isPropertyAssignment(property) &&
-          property.name.getText(source) === "type" &&
-          ts.isStringLiteral(property.initializer) &&
-          property.initializer.text === "paragraph",
-      );
-      const formattingProperty = node.properties.find(
-        (
-          property,
-        ): property is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
-          (ts.isPropertyAssignment(property) ||
-            ts.isShorthandPropertyAssignment(property)) &&
-          property.name.getText(source) === "formatting",
-      );
-      if (typeProperty && formattingProperty) {
-        const declaration = enclosingDeclaration(node, source);
-        const ordinal = (declarationCounts.get(declaration.node) ?? 0) + 1;
-        declarationCounts.set(declaration.node, ordinal);
-        producers.push(`${file}#${declaration.name}#${String(ordinal)}`);
-      }
+/** The written name of a key; a computed key keeps its brackets. */
+const keyText = (text: string, node: Node): string | undefined => {
+  if (
+    node.type !== "Property" &&
+    node.type !== "MethodDefinition" &&
+    node.type !== "TSAbstractMethodDefinition"
+  )
+    return undefined;
+  const key = nodeText(text, node.key);
+  return node.computed ? `[${key}]` : key;
+};
+
+const isMethod = (node: Node) =>
+  ((node.type === "MethodDefinition" ||
+    node.type === "TSAbstractMethodDefinition") &&
+    node.kind === "method") ||
+  (node.type === "Property" && node.method);
+
+const enclosingDeclaration = (
+  ancestors: readonly Node[],
+  text: string,
+): { name: string; node: Node } => {
+  let nearestVariable: Node | undefined;
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const ancestor = ancestors[index];
+    if (ancestor === undefined) continue;
+    const parent = ancestors[index - 1];
+    if (ancestor.type === "FunctionDeclaration" && ancestor.id) {
+      return { name: ancestor.id.name, node: ancestor };
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+    if (isMethod(ancestor)) {
+      return { name: keyText(text, ancestor) ?? "", node: ancestor };
+    }
+    if (
+      (ancestor.type === "ArrowFunctionExpression" ||
+        ancestor.type === "FunctionExpression") &&
+      parent?.type === "VariableDeclarator"
+    ) {
+      return { name: bindingText(text, parent.id), node: parent };
+    }
+    if (ancestor.type === "FunctionExpression" && ancestor.id) {
+      return { name: ancestor.id.name, node: ancestor };
+    }
+    if (!nearestVariable && ancestor.type === "VariableDeclarator")
+      nearestVariable = ancestor;
+  }
+  if (nearestVariable?.type === "VariableDeclarator")
+    return {
+      name: bindingText(text, nearestVariable.id),
+      node: nearestVariable,
+    };
+  const [program] = ancestors;
+  if (program === undefined) throw new TypeError("Producer has no module");
+  return { name: "<module>", node: program };
+};
+
+const isPropertyAssignment = (node: Node) =>
+  node.type === "Property" &&
+  node.kind === "init" &&
+  !node.method &&
+  !node.shorthand;
+
+const directProducerKeys = (file: string, sourceText: string): string[] => {
+  const { program } = parseSourceModule(file, sourceText);
+  const declarationCounts = new Map<Node, number>();
+  const producers: string[] = [];
+  walkAst(program, (node, ancestors) => {
+    if (node.type !== "ObjectExpression") return;
+    const typeProperty = node.properties.find(
+      (property) =>
+        isPropertyAssignment(property) &&
+        property.type === "Property" &&
+        keyText(sourceText, property) === "type" &&
+        property.value.type === "Literal" &&
+        property.value.value === "paragraph",
+    );
+    const formattingProperty = node.properties.find(
+      (property) =>
+        property.type === "Property" &&
+        property.kind === "init" &&
+        !property.method &&
+        keyText(sourceText, property) === "formatting",
+    );
+    if (typeProperty && formattingProperty) {
+      const declaration = enclosingDeclaration(ancestors, sourceText);
+      const ordinal = (declarationCounts.get(declaration.node) ?? 0) + 1;
+      declarationCounts.set(declaration.node, ordinal);
+      producers.push(`${file}#${declaration.name}#${String(ordinal)}`);
+    }
+  });
   return producers;
 };
 

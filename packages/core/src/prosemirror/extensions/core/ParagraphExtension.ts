@@ -86,7 +86,7 @@ import {
   paragraphAttrsFromResolvedStyle,
 } from "../../styles/resolvedStyleAttrs";
 import { createNodeExtension } from "../create";
-import type { ExtensionRuntime } from "../types";
+import type { ExtensionRuntime, NodeExtension } from "../types";
 
 // ============================================================================
 // HELPERS (from nodes.ts)
@@ -1181,7 +1181,9 @@ export type GenerateTableOfContentsOptions = {
   title: string;
 };
 
-export const ParagraphExtension = createNodeExtension({
+export const ParagraphExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "paragraph",
   schemaNodeName: "paragraph",
   nodeSpec: paragraphNodeSpec,

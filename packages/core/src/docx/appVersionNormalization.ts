@@ -1,3 +1,6 @@
+const AppVersionSchemaErrorBase: TaggedErrorClass<"AppVersionSchemaError"> =
+  TaggedError("AppVersionSchemaError");
+
 // PARSE-WARNING-EXEMPT: rewrites an out-of-range AppVersion in docProps, which
 // no reader sees; the alternative is a package a consumer refuses to open.
 
@@ -20,7 +23,7 @@
  * stated is a different decision.
  */
 
-import { TaggedError } from "better-result";
+import { TaggedError, type TaggedErrorClass } from "better-result";
 
 /** `XX.YYYY`: the only form the extended-properties `AppVersion` may take. */
 const SCHEMA_FORM = /^\d{1,2}\.\d{4}$/u;
@@ -44,9 +47,7 @@ const CANONICAL_BUILD = "0000";
  * throws this rather than letting the package go out carrying a version a
  * consumer refuses.
  */
-export class AppVersionSchemaError extends TaggedError(
-  "AppVersionSchemaError",
-)<{
+export class AppVersionSchemaError extends AppVersionSchemaErrorBase<{
   message: string;
   appVersion: string;
 }> {}

@@ -1,3 +1,9 @@
+const GenerateRedlineDocxResourceImportErrorBase: TaggedErrorClass<"GenerateRedlineDocxResourceImportError"> =
+  TaggedError("GenerateRedlineDocxResourceImportError");
+
+const InvalidGenerateRedlineDocxOptionsErrorBase: TaggedErrorClass<"InvalidGenerateRedlineDocxOptionsError"> =
+  TaggedError("InvalidGenerateRedlineDocxOptionsError");
+
 /**
  * Compare two `.docx` buffers and produce a third buffer whose text
  * and supported inline-formatting differences are represented as tracked changes.
@@ -10,7 +16,7 @@
  * @packageDocumentation
  */
 
-import { panic, TaggedError } from "better-result";
+import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
 import {
   type FolioDocumentStoryHandle,
@@ -72,18 +78,14 @@ export type GenerateRedlineDocxOptions = {
 };
 
 /** Raised when a resolved input view is not `"original"` or `"final"`. */
-export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
-  "InvalidGenerateRedlineDocxOptionsError",
-)<{
+export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsErrorBase<{
   message: string;
   option: "baseView" | "revisedView";
   receivedValue: unknown;
 }> {}
 
 /** Raised before body operations when revised resources cannot be imported atomically. */
-export class GenerateRedlineDocxResourceImportError extends TaggedError(
-  "GenerateRedlineDocxResourceImportError",
-)<{
+export class GenerateRedlineDocxResourceImportError extends GenerateRedlineDocxResourceImportErrorBase<{
   message: string;
   detail: string;
 }> {}

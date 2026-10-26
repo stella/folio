@@ -4,8 +4,11 @@
 
 import { PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR } from "../../../docx/paragraphPropertySource";
 import { createNodeExtension } from "../create";
+import type { NodeExtension } from "../types";
 
-export const DocExtension = createNodeExtension({
+export const DocExtension: (
+  options?: Partial<Record<string, unknown>> | undefined,
+) => NodeExtension = createNodeExtension({
   name: "doc",
   schemaNodeName: "doc",
   nodeSpec: {

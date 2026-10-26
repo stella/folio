@@ -36,7 +36,14 @@ export const inlineBookmarksForParagraphJoin = ({
 };
 
 /** Paragraph siblings separated only by typed range boundaries. */
-export const paragraphJoinAfter = (doc: PMNode, position: number) => {
+export const paragraphJoinAfter = (
+  doc: PMNode,
+  position: number,
+): {
+  next: PMNode;
+  nextPosition: number;
+  inlineBookmarks: PMNode[];
+} | null => {
   const at = doc.resolve(position);
   const first = at.nodeBefore;
   if (first?.type.name !== "paragraph") return null;

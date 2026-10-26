@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type JSX, useState } from "react";
 
 import { useTranslations } from "use-intl";
 
@@ -38,7 +38,7 @@ export function InsertSymbolDialog({
   isOpen,
   onClose,
   onInsert,
-}: InsertSymbolDialogProps) {
+}: InsertSymbolDialogProps): JSX.Element {
   const {
     Root: Dialog,
     Portal: DialogPortal,
