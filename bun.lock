@@ -61,7 +61,7 @@
     },
     "packages/agents": {
       "name": "@stll/folio-agents",
-      "version": "0.16.4",
+      "version": "0.16.5",
       "dependencies": {
         "@stll/folio-core": "workspace:^",
         "@stll/utf8-boundaries": "workspace:*",
@@ -86,7 +86,7 @@
     },
     "packages/cli": {
       "name": "@stll/folio-cli",
-      "version": "0.5.4",
+      "version": "0.5.5",
       "bin": {
         "folio": "./src/bin.ts",
       },
@@ -136,7 +136,7 @@
     },
     "packages/core": {
       "name": "@stll/folio-core",
-      "version": "0.63.0",
+      "version": "0.63.1",
       "dependencies": {
         "@stll/docx-core": "workspace:^",
         "@stll/docx-utils": "^0.2.0",
@@ -189,7 +189,7 @@
     },
     "packages/docx-core": {
       "name": "@stll/docx-core",
-      "version": "0.39.0",
+      "version": "0.39.1",
       "dependencies": {
         "@nodable/entities": "^3.0.0",
         "@stll/docx-utils": "^0.2.0",
@@ -230,7 +230,7 @@
     },
     "packages/nuxt": {
       "name": "@stll/folio-nuxt",
-      "version": "0.4.3",
+      "version": "0.4.4",
       "dependencies": {
         "@nuxt/kit": "^4.6.2",
         "@nuxt/schema": "^4.6.2",
@@ -309,7 +309,7 @@
     },
     "packages/react": {
       "name": "@stll/folio-react",
-      "version": "0.31.0",
+      "version": "0.31.1",
       "dependencies": {
         "@base-ui/react": "1.9.0",
         "@fontsource/arimo": "^5.2.8",
@@ -361,7 +361,7 @@
     },
     "packages/utf8-boundaries": {
       "name": "@stll/utf8-boundaries",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "better-result": "3.0.1",
       },
@@ -381,7 +381,7 @@
     },
     "packages/vue": {
       "name": "@stll/folio-vue",
-      "version": "0.26.1",
+      "version": "0.26.2",
       "dependencies": {
         "@fontsource/arimo": "^5.2.8",
         "@fontsource/caladea": "^5.2.8",

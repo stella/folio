@@ -1,5 +1,13 @@
 # @stll/folio-nuxt
 
+## 0.4.4
+
+### Patch Changes
+
+- Updated dependencies [[`f963237`](https://github.com/stella/folio/commit/f963237b6ec7e3d22ec56119ba21369202e2c5c8)]:
+  - @stll/utf8-boundaries@0.1.2
+  - @stll/folio-vue@0.26.2
+
 ## 0.4.3
 
 ### Patch Changes

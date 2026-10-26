@@ -1,5 +1,16 @@
 # @stll/folio-core
 
+## 0.63.1
+
+### Patch Changes
+
+- [#2169](https://github.com/stella/folio/pull/2169) [`60788a0`](https://github.com/stella/folio/commit/60788a039c54f7a907de55506c7f1be5a0e5c4b5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Give a paragraph without a `w14:paraId` the same id in the live editor and in the headless reviewer: one load-time allocator derives it from the paragraph's text and position for both, so a block id read in the editor resolves when an edit is applied headlessly.
+
+- [#2161](https://github.com/stella/folio/pull/2161) [`f963237`](https://github.com/stella/folio/commit/f963237b6ec7e3d22ec56119ba21369202e2c5c8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Declarations are generated from explicit export types. `@stll/folio-agents` now types the paragraph alignment and line spacing rule enums in its operation schemas.
+- Updated dependencies [[`f963237`](https://github.com/stella/folio/commit/f963237b6ec7e3d22ec56119ba21369202e2c5c8)]:
+  - @stll/utf8-boundaries@0.1.2
+  - @stll/docx-core@0.39.1
+
 ## 0.63.0
 
 ### Minor Changes
