@@ -1,5 +1,11 @@
 # @stll/utf8-boundaries
 
+## 0.1.2
+
+### Patch Changes
+
+- [#2161](https://github.com/stella/folio/pull/2161) [`f963237`](https://github.com/stella/folio/commit/f963237b6ec7e3d22ec56119ba21369202e2c5c8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Declarations are generated from explicit export types. `@stll/folio-agents` now types the paragraph alignment and line spacing rule enums in its operation schemas.
+
 ## 0.1.1
 
 ### Patch Changes
