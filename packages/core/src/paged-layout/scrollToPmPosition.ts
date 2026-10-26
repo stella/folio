@@ -89,13 +89,19 @@ const anchorRanges = (root: ParentNode): AnchorRange[] => {
   return ranges;
 };
 
-/** First painted run whose range holds `pmPos` (block positions rarely match a run start). */
+/**
+ * First painted run whose range holds `pmPos` (block positions rarely match a
+ * run start). Ranges are half-open, as page lookups are: a run ending where a
+ * block starts belongs before it, so the end of a painted page never stands in
+ * for the unpainted page that block opens. A run without an end holds only its
+ * start.
+ */
 const findAnchorContaining = (
   root: ParentNode,
   pmPos: number,
 ): HTMLElement | null => {
   for (const { element, start, end } of anchorRanges(root)) {
-    if (start <= pmPos && pmPos <= end) {
+    if (start <= pmPos && (pmPos < end || pmPos === start)) {
       return element;
     }
   }
