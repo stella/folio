@@ -1,16 +1,14 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
-
-GlobalRegistrator.register();
-
 import {
   afterAll,
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
   test,
 } from "bun:test";
 
+import { acquireHarnessDom } from "../../../../test/harnessDom";
 import type {
   MeasuredLine,
   Page,
@@ -26,7 +24,11 @@ import {
 } from "../layout-painter/renderPage";
 import { scrollPagesToPmPosition } from "./scrollToPmPosition";
 
-afterAll(() => GlobalRegistrator.unregister());
+let releaseDom: ReturnType<typeof acquireHarnessDom>;
+beforeAll(() => {
+  releaseDom = acquireHarnessDom();
+});
+afterAll(() => releaseDom());
 
 const PAGE_COUNT = 78;
 /** Each page holds one paragraph spanning `[index * 100, (index + 1) * 100)`. */
