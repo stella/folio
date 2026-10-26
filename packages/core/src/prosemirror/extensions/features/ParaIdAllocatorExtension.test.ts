@@ -20,6 +20,10 @@ import { EditorState, Plugin } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 
 import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../../test/property-testing";
+import {
   joinProseParagraphsWithRightPropertySource,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
@@ -264,47 +268,52 @@ describe("ParaIdAllocatorExtension", () => {
     );
   });
 
-  test("initial IDs are unique, reproducible and keep each first authored ID", () => {
-    const authored = ["11111111", "22222222", "00000000", null] as const;
-    fc.assert(
-      fc.property(
-        fc.array(
-          fc.record({
-            text: fc.constantFrom("", "Clause.", "Reserved.", "Notice"),
-            id: fc.constantFrom(...authored),
-            nested: fc.boolean(),
-          }),
-          { minLength: 1, maxLength: 12 },
-        ),
-        (specs) => {
-          const blocks = specs.map(({ text, id, nested }) =>
-            nested
-              ? schema.node("blockquote", null, [para(text, id)])
-              : para(text, id),
-          );
-          const original = schema.node("doc", null, blocks);
-          const first = ensureParaIdsInDoc(original);
-          const ids = collectParaIds(EditorState.create({ doc: first }));
+  test(
+    "initial IDs are unique, reproducible and keep each first authored ID",
+    () => {
+      const authored = ["11111111", "22222222", "00000000", null] as const;
+      fc.assert(
+        fc.property(
+          fc.array(
+            fc.record({
+              text: fc.constantFrom("", "Clause.", "Reserved.", "Notice"),
+              id: fc.constantFrom(...authored),
+              nested: fc.boolean(),
+            }),
+            { minLength: 1, maxLength: 12 },
+          ),
+          (specs) => {
+            const blocks = specs.map(({ text, id, nested }) =>
+              nested
+                ? schema.node("blockquote", null, [para(text, id)])
+                : para(text, id),
+            );
+            const original = schema.node("doc", null, blocks);
+            const first = ensureParaIdsInDoc(original);
+            const ids = collectParaIds(EditorState.create({ doc: first }));
 
-          expect(ensureParaIdsInDoc(original).eq(first)).toBe(true);
-          expect(new Set(ids).size).toBe(ids.length);
-          expect(ids).not.toContain("00000000");
-          const seen = new Set<string>();
-          for (const [index, { id }] of specs.entries()) {
-            if (id !== null && id !== "00000000" && !seen.has(id)) {
-              seen.add(id);
-              expect(ids[index]).toBe(id);
+            expect(ensureParaIdsInDoc(original).eq(first)).toBe(true);
+            expect(new Set(ids).size).toBe(ids.length);
+            expect(ids).not.toContain("00000000");
+            const seen = new Set<string>();
+            for (const [index, { id }] of specs.entries()) {
+              if (id !== null && id !== "00000000" && !seen.has(id)) {
+                seen.add(id);
+                expect(ids[index]).toBe(id);
+              }
             }
-          }
-          expect(
-            collectParaIds(
-              ensureParaIdsInState(createState(...first.children)),
-            ),
-          ).toEqual(ids);
-        },
-      ),
-    );
-  });
+            expect(
+              collectParaIds(
+                ensureParaIdsInState(createState(...first.children)),
+              ),
+            ).toEqual(ids);
+          },
+        ),
+        propertyConfig(),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
 
   test("allocates missing paraIds on the initial state before the first edit", () => {
     const initial = createState(para("Needs an id"), para("Also needs one"));

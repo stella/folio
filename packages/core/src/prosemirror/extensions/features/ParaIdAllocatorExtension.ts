@@ -466,7 +466,7 @@ const mintedParagraphAttrs = (
   ...paragraph.attrs,
   paraId,
   // Snapshots report a minted id as positional: no package names it.
-  ...("idStability" in paragraph.type.attrs && {
+  ...(paragraph.type.spec.attrs?.["idStability"] !== undefined && {
     idStability: "positional",
   }),
 });
