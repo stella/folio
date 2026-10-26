@@ -532,7 +532,7 @@ jobs:
       # copies over `api-reports/` when the runner and their machine disagree.
       - name: Upload regenerated API reports after a surface failure
         if: failure() && steps.api-surface-report.outcome == 'failure'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: api-reports-regenerated
           path: |
@@ -581,7 +581,7 @@ jobs:
 
       - name: Upload per-file test timings
         if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-timings-${{ github.run_id }}-1
           path: test-results/test-timings-1.json
@@ -591,7 +591,7 @@ jobs:
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-log-full-test-suite-1
           path: test-results/full-test-suite.log
@@ -601,7 +601,7 @@ jobs:
       # Filed by fuzz-ejection-replay.yml once the group's run completes.
       - name: Keep the exploration findings of a merge group
         if: always() && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-exploration-1
           path: test-results/fuzz-exploration
@@ -648,7 +648,7 @@ jobs:
 
       - name: Upload per-file test timings
         if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-timings-${{ github.run_id }}-2
           path: test-results/test-timings-2.json
@@ -658,7 +658,7 @@ jobs:
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-log-full-test-suite-2
           path: test-results/full-test-suite.log
@@ -668,7 +668,7 @@ jobs:
       # Filed by fuzz-ejection-replay.yml once the group's run completes.
       - name: Keep the exploration findings of a merge group
         if: always() && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-exploration-2
           path: test-results/fuzz-exploration
@@ -715,7 +715,7 @@ jobs:
 
       - name: Upload per-file test timings
         if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-timings-${{ github.run_id }}-3
           path: test-results/test-timings-3.json
@@ -725,7 +725,7 @@ jobs:
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-log-full-test-suite-3
           path: test-results/full-test-suite.log
@@ -735,7 +735,7 @@ jobs:
       # Filed by fuzz-ejection-replay.yml once the group's run completes.
       - name: Keep the exploration findings of a merge group
         if: always() && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-exploration-3
           path: test-results/fuzz-exploration
@@ -782,7 +782,7 @@ jobs:
 
       - name: Upload per-file test timings
         if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-timings-${{ github.run_id }}-4
           path: test-results/test-timings-4.json
@@ -792,7 +792,7 @@ jobs:
       # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
       - name: Keep the test log of a failed merge group
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-log-full-test-suite-4
           path: test-results/full-test-suite.log
@@ -802,7 +802,7 @@ jobs:
       # Filed by fuzz-ejection-replay.yml once the group's run completes.
       - name: Keep the exploration findings of a merge group
         if: always() && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-exploration-4
           path: test-results/fuzz-exploration
@@ -925,7 +925,7 @@ jobs:
       # Filed by fuzz-ejection-replay.yml once the group's run completes.
       - name: Keep the exploration findings of a merge group
         if: always() && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-exploration-docx-kernel
           path: test-results/fuzz-exploration
@@ -951,7 +951,7 @@ jobs:
 
       - name: Upload canonical WebAssembly artifacts after a drift failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: canonical-wasm
           path: |
@@ -991,7 +991,7 @@ jobs:
 
       - name: Upload failed pinned replay artifacts
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-pinned-browser-input-failure
           path: test-results/
@@ -1022,7 +1022,7 @@ jobs:
           --workers=1
       - name: Preserve canonical protocol evidence
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: canonical-evaluation-failure
           path: test-results/
@@ -1085,7 +1085,7 @@ jobs:
 
       - name: Upload failed interaction artifacts
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-interactions-failure
           path: test-results/
@@ -1137,7 +1137,7 @@ jobs:
           bun-version-file: "package.json"
 
       # The scenarios run under Node, as an integrator runs the packages.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
 
@@ -1147,7 +1147,7 @@ jobs:
         run: bun scripts/consumer-scenarios.ts --pack-only test-results/consumer-tarballs
 
       - name: Share consumer tarballs with the minimum runtime
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: consumer-scenarios-tarballs
           path: test-results/consumer-tarballs
@@ -1174,7 +1174,7 @@ jobs:
       # (fuzz-ejection-replay.yml).
       - name: Keep the scenario log of a merge group
         if: always() && steps.scenarios.outcome != 'skipped' && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-log-consumer-scenarios
           path: test-results/consumer-scenarios.log
@@ -1185,7 +1185,7 @@ jobs:
       # sessions; the run fails on a required cell with no hits.
       - name: Upload the coverage ledger
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: consumer-scenarios-coverage
           path: |
@@ -1210,13 +1210,13 @@ jobs:
 
       # The published CLI support range owns this job's exact minimum runtime.
       # stll-toolchain.json scopes this engine floor to this package and job.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22.0.0" # Generated by bun run generate:consumer-node-minimum.
 
       - run: bun install --frozen-lockfile
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: consumer-scenarios-tarballs
           path: test-results/consumer-tarballs
@@ -1229,7 +1229,7 @@ jobs:
 
       - name: Upload minimum runtime coverage
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: consumer-scenarios-minimum-coverage
           path: |
@@ -1259,7 +1259,7 @@ jobs:
 
       - name: Upload packed dependency artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: packed-dependency-tarballs
           path: test-results/package-tarballs/

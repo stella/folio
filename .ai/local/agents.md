@@ -66,10 +66,12 @@ editing. Its published packages have explicit ownership boundaries:
   `bun scripts/check-lockfile-workspace-versions.ts --write`, then
   `bun install --frozen-lockfile`. The synchronizer owns cached workspace
   self-versions; dependency-graph changes belong in an explicit install.
-- Type checking runs on `bun check`. The root `typescript` packages stay only for
-  tools that load them: dependency-cruiser's extractor, `vue-tsc`, the
-  compiler-work budget, and the packaged-consumer checks that compile against
-  them as a consumer does. Repository
+- Type checking runs on `bun check`. The root `typescript` 6 package stays only for
+  tools that load it: dependency-cruiser's extractor, `vue-tsc`, the classic
+  projects of the compiler-work budget, and the packaged-consumer checks that
+  compile against it as a consumer does. It is listed in `typescriptAllowlist`
+  in `stll-toolchain.json`; the budget measures its TypeScript 7 projects with
+  the `tsrs` CLI. Repository
   scripts parse sources with `oxc-parser` (`scripts/lib/oxc-ast.ts`) and use `tsrs`
   when they need a program or the type checker.
 - Compile-time proofs live in `*.typecheck.ts`, in a published package under its

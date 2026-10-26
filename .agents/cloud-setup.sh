@@ -51,8 +51,6 @@ NODE_DIR="/opt/stll-cloud/node/$NODE_VERSION"
 BUN_DIR="/opt/stll-cloud/bun/$BUN_VERSION"
 export PATH="$NODE_DIR/bin:$BUN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 BUN_CACHE="/var/cache/stll-cloud/bun/$OUTPUT_UID"
-DEPENDENCY_STATE_ROOT=/var/lib/stll-cloud
-DEPENDENCY_STAMP="$DEPENDENCY_STATE_ROOT/dependencies-$(printf '%s' "$REPO_ROOT" | sha256sum | cut -d' ' -f1).sha256"
 
 [[ -f "$REPO_ROOT/.node-version" && ! -L "$REPO_ROOT/.node-version" ]] || fail 'A regular root .node-version is required'
 [[ "$(awk 'NF { if (++count > 1 || NF != 1) exit 1; value=$1 } END { if (count != 1) exit 1; print value }' "$REPO_ROOT/.node-version")" == "$NODE_VERSION" ]] || fail 'Node selector changed; regenerate cloud-setup.sh'
@@ -153,16 +151,18 @@ verify_bun_routes() {
   [[ -n "$minimal_path" ]] || minimal_path=/usr/local/bin:/usr/bin:/bin
   root_mise="$(printenv STLL_CLOUD_TEST_ROOT_MISE || true)"
   [[ -n "$root_mise" ]] || root_mise=/root/.local/share/mise
-  bun_route 'the setup PATH' env PATH="$PATH" sh
-  bun_route 'sh -c' sh
+  # An absolute shell: a PATH entry such as a user-writable mise shims
+  # directory must never supply the program that root runs.
+  bun_route 'the setup PATH' env PATH="$PATH" /bin/sh
+  bun_route 'sh -c' /bin/sh
   bun_route 'bash -lc' "$login_shell" -l
-  bun_route 'the minimal system PATH' env -i PATH="$minimal_path" sh
+  bun_route 'the minimal system PATH' env -i PATH="$minimal_path" /bin/sh
   configured_mise="$(printenv MISE_DATA_DIR || true)"
   for mise_root in "$configured_mise" "$OUTPUT_HOME/.local/share/mise" "$root_mise"; do
     [[ -n "$mise_root" ]] || continue
     shims="$mise_root/shims"
     [[ -d "$shims" ]] || continue
-    bun_route "mise shims PATH $shims" env PATH="$shims:$PATH" sh
+    bun_route "mise shims PATH $shims" env PATH="$shims:$PATH" /bin/sh
   done
 }
 replace_image_buns() {
@@ -189,7 +189,8 @@ replace_image_buns() {
       [[ -d "$candidate" ]] && continue
       [[ "$(readlink -f -- "$candidate")" == "$(readlink -f -- "$BUN_DIR/bun")" ]] || ln -sfnT -- "$BUN_DIR/bun" "$candidate"
     done
-  done < <(printf '%s' "$PATH" | tr : '\n')
+  # The trailing newline lets read return the last PATH entry too.
+  done < <(printf '%s\n' "$PATH" | tr : '\n')
 }
 install_runtimes() (
   if [[ ! -s /etc/ssl/certs/ca-certificates.crt ]]; then
@@ -229,7 +230,6 @@ install_runtimes() (
   ln -sfnT -- "$NODE_DIR/bin/npx" /usr/local/bin/npx
   ln -sfnT -- "$BUN_DIR/bun" /usr/local/bin/bun
   replace_image_buns
-  verify_bun_routes
 )
 
 dependency_install() {
@@ -268,45 +268,13 @@ process.stdout.write([...hosts].sort().join(","));
   network_run "$download_hosts" 240 runuser -u "$OUTPUT_USER" -- env HOME="$OUTPUT_HOME" BUN_INSTALL_CACHE_DIR="$BUN_CACHE" PATH="$PATH" BUN_CONFIG_HTTP_IDLE_TIMEOUT=20 "$BUN_DIR/bun" install --frozen-lockfile
 }
 
-dependency_hash() {
-  [[ -f bun.lock && ! -L bun.lock ]] || fail 'A regular root bun.lock is required'
-  sha256sum -- bun.lock | cut -d ' ' -f1
-}
-prepare_dependency_state() {
-  [[ ! -L "$DEPENDENCY_STATE_ROOT" ]] || fail 'Dependency state root must not be a symlink'
-  if [[ -e "$DEPENDENCY_STATE_ROOT" ]]; then
-    [[ -d "$DEPENDENCY_STATE_ROOT" && "$(stat -c '%u:%a' "$DEPENDENCY_STATE_ROOT")" == 0:755 ]] || fail 'Invalid dependency state root'
-  else
-    install -d -m 755 -o root -g root "$DEPENDENCY_STATE_ROOT"
-  fi
-  [[ ! -L "$DEPENDENCY_STAMP" ]] || fail 'Dependency stamp must not be a symlink'
-  if [[ -e "$DEPENDENCY_STAMP" ]]; then
-    [[ -f "$DEPENDENCY_STAMP" && "$(stat -c '%u:%a' "$DEPENDENCY_STAMP")" == 0:644 ]] || fail 'Invalid dependency stamp'
-  fi
-}
-write_dependency_stamp() {
-  local temporary
-  prepare_dependency_state
-  temporary="$(mktemp "$DEPENDENCY_STATE_ROOT/.dependencies.XXXXXX")"
-  chmod 644 "$temporary"
-  dependency_hash > "$temporary"
-  mv -f -- "$temporary" "$DEPENDENCY_STAMP"
-}
+# The frozen install is the check: it reads every input the package manager
+# uses and changes nothing on a current tree, so no stamp stands in for it.
 install_dependencies() {
-  prepare_dependency_state
-  rm -f -- "$DEPENDENCY_STAMP"
   dependency_install
-  write_dependency_stamp
 }
 sync_dependencies() {
-  local expected installed=''
-  prepare_dependency_state
-  expected="$(dependency_hash)"
-  if [[ -f "$DEPENDENCY_STAMP" ]]; then IFS= read -r installed < "$DEPENDENCY_STAMP" || true; fi
-  [[ "$installed" == "$expected" ]] && return
-  rm -f -- "$DEPENDENCY_STAMP"
   dependency_install || fail 'bun.lock mismatch; dependency installation failed'
-  write_dependency_stamp
 }
 
 
@@ -618,6 +586,8 @@ if [[ "$MODE" == install ]]; then
   step services install_services
   step tools install_tools
   step shell install_shell_environment
+  # Login routes read the installed profile, so they are checked after it.
+  step routes verify_bun_routes
   step dependencies install_dependencies
 
   exit 0

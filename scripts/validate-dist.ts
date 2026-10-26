@@ -100,10 +100,8 @@ const scanReactSentinels = createLiteralChecklist([
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 // Resolve the classic TypeScript compiler explicitly rather than via
-// `.bin/tsc`: the native TS7 compiler is installed under the aliased
-// `@typescript/native` package and also claims a `tsc` bin, so `.bin/tsc`
-// is an ambiguous collision. The clean-room check simulates a consumer on
-// the stable JS compiler, so pin it to the `typescript` (6.x) package.
+// `.bin/tsc`. The clean-room check simulates a consumer on the stable JS
+// compiler, so pin it to the `typescript` (6.x) package.
 const tscBin = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
 
 const target = process.argv[2];

@@ -574,6 +574,16 @@ describe("published Node minimum", () => {
             readFileSync(path.join(repo, file), "utf8"),
           );
         }
+        // The fixture root declares no TypeScript install, so the repository's
+        // allowlist for its own tools does not apply to it.
+        const toolchain = JSON.parse(
+          readFileSync(path.join(repo, "stll-toolchain.json"), "utf8"),
+        );
+        delete toolchain.typescriptAllowlist;
+        writeFileSync(
+          path.join(directory, "stll-toolchain.json"),
+          JSON.stringify(toolchain),
+        );
         writeFileSync(
           path.join(directory, "package.json"),
           JSON.stringify({
@@ -601,9 +611,14 @@ describe("published Node minimum", () => {
             Bun.spawnSync(["git", ...args], { cwd: directory }).exitCode,
           ).toBe(0);
         const initial = check();
+        // Dated quarantine entries near expiry print warnings; only errors count.
         expect({
           status: initial.exitCode,
-          diagnostic: initial.stderr.toString(),
+          diagnostic: initial.stderr
+            .toString()
+            .split("\n")
+            .filter((line) => line !== "" && !line.includes("] warning: "))
+            .join("\n"),
         }).toEqual({
           status: 0,
           diagnostic: "",

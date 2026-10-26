@@ -34,7 +34,7 @@ export const INSTALL_SCOPES = {
   },
   "typecheck-budget": {
     roots: [
-      "@typescript/native",
+      "tsrs",
       "typescript",
       "better-result",
       "bun-types",
