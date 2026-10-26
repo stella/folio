@@ -3,6 +3,7 @@
 import { TaggedError } from "better-result";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
+import { parseSync } from "oxc-parser";
 
 import { moduleReferences, parseLikeTypeScript } from "./lib/oxc-ast";
 
@@ -335,18 +336,48 @@ type ImportGraph = {
   readonly importedBy: ReadonlyMap<string, readonly string[]>;
 };
 
+const keywordCount = (source: string, keyword: RegExp): number =>
+  source.match(keyword)?.length ?? 0;
+
 // A fixed template (`./module`) in `import()` or `require()` names a module as
 // plainly as a string.
 // TypeScript read type syntax in JavaScript files too, so JavaScript is parsed
 // with the TypeScript grammar (JSX included, as JavaScript allows it).
-const importSpecifiers = (file: string, source: string): string[] =>
-  moduleReferences(
-    parseLikeTypeScript(
-      file,
-      source,
-      /\.(?:ts|mts|cts)$/u.test(file) ? "ts" : "tsx",
-    ).program,
-  ).map(({ specifier }) => specifier);
+//
+// The graph reads every tracked source file, and building each JavaScript
+// syntax tree costs most of that. oxc's module record lists import and export
+// declarations without one, so a file is read from the record when the record
+// accounts for every `import` and `export` keyword in its text. Anything the
+// record leaves out (`import()`, `import("…")` types, `import x = require()`,
+// `export {} from`, declarations inside `declare module`) leaves a keyword
+// unaccounted for, and a `require()` call spells `require` (or an escape), so
+// those files are read from the syntax tree. Keywords in comments and strings
+// only send a file down that exact path too.
+const importSpecifiers = (file: string, source: string): string[] => {
+  const kind = /\.(?:ts|mts|cts)$/u.test(file) ? "ts" : "tsx";
+  const parsed = parseSync(file, source, {
+    lang: kind === "ts" && /\.d\.[cm]?ts$/u.test(file) ? "dts" : kind,
+  });
+  if (parsed.errors.length === 0 && !/\brequire\b|\\u/u.test(source)) {
+    const { staticImports, staticExports, importMetas } = parsed.module;
+    if (
+      keywordCount(source, /\bimport\b/gu) ===
+        staticImports.length + importMetas.length &&
+      keywordCount(source, /\bexport\b/gu) === staticExports.length &&
+      staticExports.every(({ entries }) => entries.length > 0)
+    ) {
+      return [
+        ...staticImports.map(({ moduleRequest }) => moduleRequest.value),
+        ...staticExports.flatMap(({ entries }) =>
+          entries[0]?.moduleRequest ? [entries[0].moduleRequest.value] : [],
+        ),
+      ];
+    }
+  }
+  return moduleReferences(parseLikeTypeScript(file, source, kind).program).map(
+    ({ specifier }) => specifier,
+  );
+};
 
 export const buildImportGraph = (
   repoRoot: string,
