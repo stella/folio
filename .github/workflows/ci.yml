@@ -965,7 +965,7 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -977,6 +977,28 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(bunx playwright --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
+      # The browser and the system packages it needs are fixed per Playwright
+      # version and runner image. A cold fetch can take most of the job's
+      # budget on a slow package mirror, so it is saved as soon as it lands,
+      # before the replays run.
+      - name: Restore Playwright Chromium
+        id: browser-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ steps.playwright.outputs.version }}
+
+      - name: Restore Playwright system packages
+        id: apt-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/playwright-apt
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-playwright-apt-${{ steps.playwright.outputs.version }}
+
       - name: Install Playwright Chromium
         run: |
           sudo rm -f \
@@ -984,7 +1006,28 @@ jobs:
             /etc/apt/sources.list.d/azure-cli.sources \
             /etc/apt/sources.list.d/microsoft-prod.list \
             /etc/apt/sources.list.d/microsoft-prod.sources
+          archives="$HOME/.cache/playwright-apt"
+          mkdir -p "$archives/partial"
+          # apt installs from the cached packages and keeps what it downloads
+          # beside them for the cache to save.
+          echo "Dir::Cache::Archives \"$archives\";" |
+            sudo tee /etc/apt/apt.conf.d/99playwright-archives >/dev/null
           bunx playwright install --with-deps chromium
+          sudo chown -R "$(id -u):$(id -g)" "$archives"
+
+      - name: Save Playwright Chromium
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browser-cache.outputs.cache-primary-key }}
+
+      - name: Save Playwright system packages
+        if: steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/playwright-apt
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}
 
       - name: Run only standing browser input regressions
         run: bunx playwright test --project=browser-input-pinned --workers=1

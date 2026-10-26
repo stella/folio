@@ -768,7 +768,7 @@ describe("CI plan", () => {
         "bunx playwright test --project=browser-input-pinned --workers=1",
       ]);
       expect(pinned?.strategy).toBeUndefined();
-      expect(pinned?.["timeout-minutes"]).toBe(10);
+      expect(pinned?.["timeout-minutes"]).toBe(20);
 
       const listing = Bun.spawnSync(
         [
