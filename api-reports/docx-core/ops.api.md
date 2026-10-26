@@ -84,7 +84,7 @@ export type BatchOrderAddress = {
 };
 
 // @public (undocumented)
-export class BatchRejection extends BatchRejection_base<{
+export class BatchRejection extends BatchRejectionBase<{
     message: string;
     reason: BatchRejectionReason;
     opId?: string;
@@ -417,7 +417,7 @@ export type DocumentOpEnvelope = {
 };
 
 // @public
-export class DocumentOpRefusal extends DocumentOpRefusal_base<{
+export class DocumentOpRefusal extends DocumentOpRefusalBase<{
     message: string;
     reason: DocumentOpRefusalReason;
     opType: DocumentOpType | undefined;
@@ -427,7 +427,7 @@ export class DocumentOpRefusal extends DocumentOpRefusal_base<{
 export type DocumentOpRefusalReason = (typeof DOCUMENT_OP_REFUSAL_REASONS)[keyof typeof DOCUMENT_OP_REFUSAL_REASONS];
 
 // @public
-export class DocumentOpsContractError extends DocumentOpsContractError_base<{
+export class DocumentOpsContractError extends DocumentOpsContractErrorBase<{
     message: string;
     reason: DocumentOpRefusalReason;
 }> {}

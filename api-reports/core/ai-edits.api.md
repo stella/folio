@@ -844,7 +844,7 @@ export type FolioDocumentStoryHandle = {
 };
 
 // @public (undocumented)
-export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundError_base<{
+export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundErrorBase<{
     message: string;
     story: FolioEditableDocumentStoryHandle;
 }> {}
@@ -980,7 +980,7 @@ export const getTrackedChangesFromDoc: (doc: Node_2) => FolioReviewChange[];
 export const hashFolioAIBlockText: (text: string) => string;
 
 // @public (undocumented)
-export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base<{
+export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchErrorBase<{
     message: string;
     path: string;
     reason: string;
@@ -1020,13 +1020,13 @@ export const resolveFolioAITextRange: (input: ResolveFolioAITextRangeOptions) =>
 export const resolvePassageRange: (input: ResolvePassageRangeOptions) => DocPositionRange | null;
 
 // @public (undocumented)
-export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base<{
+export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionErrorBase<{
     message: string;
     receivedVersion: unknown;
 }> {}
 
 // @public (undocumented)
-export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewError_base<{
+export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewErrorBase<{
     message: string;
     receivedView: unknown;
 }> {}

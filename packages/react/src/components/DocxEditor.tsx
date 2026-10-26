@@ -570,9 +570,6 @@ type InitialScrollState =
   | { status: "scheduled"; cancel: () => void }
   | { status: "applied" };
 
-/**
- * DocxEditor - Complete DOCX editor component
- */
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools without reindenting this large component. */
 const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
   function DocxEditor(
@@ -6419,6 +6416,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
 );
 /* eslint-enable prefer-arrow-callback */
 
+/**
+ * DocxEditor - Complete DOCX editor component
+ */
 export const DocxEditor: ForwardRefExoticComponent<
   DocxEditorProps & RefAttributes<DocxEditorRef>
 > = DocxEditorComponent;

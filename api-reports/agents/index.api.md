@@ -351,7 +351,7 @@ export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, opti
 export const getFolioToolDefinitions: (options?: FolioAgentToolOptions) => FolioAgentToolDefinition[];
 
 // @public
-export class InvalidFolioSuggestChangesOptionsError extends InvalidFolioSuggestChangesOptionsError_base<{
+export class InvalidFolioSuggestChangesOptionsError extends InvalidFolioSuggestChangesOptionsErrorBase<{
     message: string;
     option: keyof FolioSuggestChangesOptions;
 }> {}

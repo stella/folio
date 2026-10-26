@@ -4,12 +4,10 @@
 // stops the caller: a guard that read half a tree would report a clean result
 // for code it never saw.
 import {
-  type ArrayPattern,
   type Comment,
   type EcmaScriptModule,
   type Expression,
   type Node,
-  type ObjectPattern,
   type ParseResult,
   type ParserOptions,
   parseSync,
@@ -189,6 +187,7 @@ export const collectSyntaxTree = (root: Node): SyntaxTree => {
     if (isRepeatedName(node, parent)) return false;
     nodes.push(node);
     if (parent !== undefined) parents.set(node, parent);
+    return true;
   });
   return { nodes, parentOf: (node) => parents.get(node) };
 };
@@ -295,8 +294,10 @@ const withDefault = (
 
 /** The elements of an object or array binding pattern; array holes are skipped. */
 export const bindingElements = (pattern: Node): BindingElement[] => {
+  // ESTree spells binding and assignment patterns with the same node types.
   let entries: ReadonlyArray<
-    ObjectPattern["properties"][number] | ArrayPattern["elements"][number]
+    | Extract<Node, { type: "ObjectPattern" }>["properties"][number]
+    | Extract<Node, { type: "ArrayPattern" }>["elements"][number]
   > = [];
   if (pattern.type === "ObjectPattern") entries = pattern.properties;
   if (pattern.type === "ArrayPattern") entries = pattern.elements;

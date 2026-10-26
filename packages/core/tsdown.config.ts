@@ -1,6 +1,7 @@
 import { defineConfig } from "tsdown";
 
 import { stableRelativeImportOrder } from "../../scripts/lib/stable-relative-import-order.ts";
+import { tsrsDeclarations } from "../../scripts/lib/tsrs-declarations.ts";
 
 // @stll/folio-core publishes a source-mirrored dist: every source module maps
 // 1:1 to a `dist/*.js` + `dist/*.d.ts` (`unbundle: true`). The package's
@@ -63,6 +64,9 @@ const shared = {
 //
 // tsdown runs array configs concurrently, so neither pass may `clean` (it would
 // race the other's output). The `build` script clears `dist` up front instead.
+//
+// Declarations come from tsrs: published unions document their members, which
+// the oxc generator would drop.
 export default defineConfig([
   {
     ...shared,
@@ -70,5 +74,12 @@ export default defineConfig([
     clean: false,
     plugins: [stableRelativeImportOrder()],
   },
-  { ...shared, dts: { generator: "oxc", emitDtsOnly: true }, clean: false },
+  {
+    ...shared,
+    dts: {
+      ...tsrsDeclarations("tsconfig.declarations.json"),
+      emitDtsOnly: true,
+    },
+    clean: false,
+  },
 ]);

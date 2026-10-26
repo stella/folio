@@ -23,6 +23,7 @@ export const INSTALL_SCOPES = {
   "browser-discovery": {
     roots: [
       "@playwright/test",
+      "oxc-parser",
       "fast-check",
       "better-result",
       "jszip",

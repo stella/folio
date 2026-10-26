@@ -2,8 +2,8 @@ import { Result, TaggedError } from "better-result";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { type Expression, parseSync } from "oxc-parser";
 
-import { parseSourceModule, walkAst } from "../scripts/lib/oxc-ast";
 import type { PinnedSeed } from "./property-testing";
 
 /**
@@ -119,10 +119,22 @@ export const parseSeedTitles = (source: string, file: string): SeedRegistry => {
   const result = Result.try(() => JSON.parse(source));
   if (result.isErr()) return invalid(`Invalid seed JSON in ${file}`);
   const parsed: unknown = result.value;
-  // Valid JSON is a valid parenthesized JavaScript expression.
-  const { program } = parseSourceModule(file, `(${source})`);
-  walkAst(program, (node) => {
-    if (node.type === "ObjectExpression") {
+  // Valid JSON is a valid parenthesized JavaScript expression. Node runners
+  // import this module without a bundler, so it reads oxc's tree directly
+  // rather than through the extensionless repository AST helpers.
+  const ast = parseSync(file, `(${source})`, { lang: "js" });
+  const [statement] = ast.program.body;
+  if (ast.errors.length > 0 || statement?.type !== "ExpressionStatement")
+    return invalid(`Invalid seed JSON in ${file}`);
+  const visit = (node: Expression): void => {
+    if (node.type === "ParenthesizedExpression") {
+      visit(node.expression);
+    } else if (node.type === "ArrayExpression") {
+      for (const element of node.elements) {
+        if (element !== null && element.type !== "SpreadElement")
+          visit(element);
+      }
+    } else if (node.type === "ObjectExpression") {
       const keys = new Set<string>();
       for (const property of node.properties) {
         if (
@@ -141,9 +153,11 @@ export const parseSeedTitles = (source: string, file: string): SeedRegistry => {
             `Duplicate seed key ${JSON.stringify(key)} in ${file}`,
           );
         keys.add(key);
+        visit(property.value);
       }
     }
-  });
+  };
+  visit(statement.expression);
   if (!isRecord(parsed))
     return invalid(`Seed titles must be an object in ${file}`);
   const entries: [string, readonly PinnedSeed[]][] = [];

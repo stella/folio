@@ -82,7 +82,7 @@ export type HyperlinkDialogProps = {
     bookmarks?: readonly HyperlinkBookmarkOption[];
 };
 
-// @public
+// @public (undocumented)
 export type ImagePositionData = {
     horizontal?: {
         relativeTo?: string;
@@ -111,7 +111,7 @@ export type ImagePositionDialogProps = {
     currentData?: ImagePositionData;
 };
 
-// @public
+// @public (undocumented)
 export type ImagePropertiesData = {
     alt?: string;
     borderWidth?: number;

@@ -526,7 +526,7 @@ export const restartNumbering: Command;
 export const sameListState: (left: ListState | undefined, right: ListState | undefined) => boolean;
 
 // @public (undocumented)
-export const schema: Schema<any, any>;
+export const schema: Schema;
 
 // @public (undocumented)
 export function selectColumn(state: EditorState, dispatch?: (tr: Transaction) => void): boolean;

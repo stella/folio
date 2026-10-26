@@ -34,7 +34,7 @@ export type DocxProjectionBookmarkFact = readonly [paragraphOrdinal: number, boo
 export type DocxProjectionContainer = "body" | "tableCell";
 
 // @public (undocumented)
-export class DocxProjectionError extends DocxProjectionError_base<{
+export class DocxProjectionError extends DocxProjectionErrorBase<{
     message: string;
     cause: unknown;
 }> {}
@@ -61,7 +61,7 @@ export type DocxProjectionFormattingUnknownReason = "document-part-only" | "styl
 export type DocxProjectionIndentationFact = readonly [paragraphOrdinal: number, firstLineTwips: number | null, hangingTwips: number | null, leftTwips: number | null, rightTwips: number | null, startTwips: number | null, endTwips: number | null, firstLineCharsHundredths: number | null, hangingCharsHundredths: number | null, leftCharsHundredths: number | null, rightCharsHundredths: number | null, startCharsHundredths: number | null, endCharsHundredths: number | null];
 
 // @public (undocumented)
-export class DocxProjectionInitializationError extends DocxProjectionInitializationError_base<{
+export class DocxProjectionInitializationError extends DocxProjectionInitializationErrorBase<{
     message: string;
     cause: unknown;
 }> {}
