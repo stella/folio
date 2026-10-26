@@ -33,7 +33,10 @@ import { deterministicHexId, generateHexId } from "../../../utils/hexId";
  * ids in an `appendTransaction` hook after every doc-changed step.
  *
  * Id lifecycle rules (locked by the co-located tests):
- * - Missing/empty/reserved-zero id: a fresh random id is minted.
+ * - Load: a missing/empty/reserved-zero or duplicate id gets one derived
+ *   from the paragraph's text and ordinal (`ensureParaIdsInDoc`), the same
+ *   id the headless reviewer derives for the same document.
+ * - Missing/empty/reserved-zero id after an edit: a fresh random id is minted.
  * - Split: the half holding the paragraph's original start position
  *   keeps the id; the other half gets a fresh one. Anchors inside the
  *   content stay resolvable on the half that carries them.
@@ -328,9 +331,6 @@ const collectParaIdUpdatesFromCensus = (
   return updates;
 };
 
-const collectParaIdUpdates = (doc: PMNode): ParaIdUpdate[] =>
-  collectParaIdUpdatesFromCensus(collectParagraphCensus(doc));
-
 type ParagraphPropertySourceUpdate = {
   pos: number;
   token: string | null;
@@ -413,71 +413,63 @@ const collectParagraphPropertySourceUpdates = (
     .sort((left, right) => left.pos - right.pos);
 };
 
-type InitialParaIds = {
-  needsRewrite: boolean;
-  taken: Set<string>;
-};
-
-const collectInitialParaIds = (doc: PMNode): InitialParaIds => {
-  let needsRewrite = false;
+/**
+ * The ids a loaded document's paragraphs take, in document order: `null`
+ * keeps the paragraph's own id, a string replaces it.
+ *
+ * This is the only load-time allocator. The live editor and the headless
+ * reviewer both seed through it, so the same document gives the same block ids
+ * on either side: an id read from the editor resolves when the edit is applied
+ * headlessly, and re-parsing the same bytes mints the same ids. An id is
+ * derived from the paragraph's text and its document ordinal, never drawn at
+ * random. Authored ids are reserved first, so a minted id never takes one a
+ * later paragraph owns; of a duplicated authored id, the first occurrence
+ * keeps it.
+ */
+const planLoadParaIds = (doc: PMNode): (string | null)[] => {
+  const paragraphs: PMNode[] = [];
   const taken = new Set<string>();
   doc.descendants((node) => {
     if (node.type.name !== "paragraph") {
       return true;
     }
-
+    paragraphs.push(node);
     const id = node.attrs["paraId"];
-    if (!isUsableParaId(id) || taken.has(id)) {
-      needsRewrite = true;
-    } else {
+    if (isUsableParaId(id)) {
       taken.add(id);
     }
     return false;
   });
-  return { needsRewrite, taken };
+
+  const kept = new Set<string>();
+  return paragraphs.map((paragraph, index) => {
+    const id = paragraph.attrs["paraId"];
+    if (isUsableParaId(id) && !kept.has(id)) {
+      kept.add(id);
+      return null;
+    }
+    const seed = `${paragraph.textContent}:${String(index + 1)}`;
+    let minted = deterministicHexId(seed);
+    for (let salt = 1; taken.has(minted); salt++) {
+      minted = deterministicHexId(`${seed}:${String(salt)}`);
+    }
+    taken.add(minted);
+    return minted;
+  });
 };
 
-const rewriteInitialParaIds = (
-  parent: PMNode,
-  taken: Set<string>,
-  seen: Set<string>,
-): Fragment => {
-  let changed = false;
-  const children: PMNode[] = [];
-  parent.forEach((child) => {
-    let next = child;
-    if (child.type.name === "paragraph") {
-      const id = child.attrs["paraId"];
-      if (!isUsableParaId(id) || seen.has(id)) {
-        let newId = generateHexId();
-        while (taken.has(newId)) {
-          newId = generateHexId();
-        }
-        taken.add(newId);
-        seen.add(newId);
-        next = recreateProseNodeWithParagraphPropertySource(child, {
-          attrs: { ...child.attrs, paraId: newId },
-        });
-      } else {
-        seen.add(id);
-      }
-      const paraId = next.attrs["paraId"];
-      if (typeof paraId === "string") {
-        transferProseParagraphPropertySource(next, child, paraId);
-      }
-    } else if (child.childCount > 0) {
-      const content = rewriteInitialParaIds(child, taken, seen);
-      if (content !== child.content) {
-        next = recreateProseNodeWithParagraphPropertySource(child, { content });
-      }
-    }
-    if (next !== child) {
-      changed = true;
-    }
-    children.push(next);
-  });
-  return changed ? Fragment.fromArray(children) : parent.content;
-};
+/** A paragraph's attrs once it holds an id folio minted rather than read. */
+const mintedParagraphAttrs = (
+  paragraph: PMNode,
+  paraId: string,
+): Record<string, unknown> => ({
+  ...paragraph.attrs,
+  paraId,
+  // Snapshots report a minted id as positional: no package names it.
+  ...(paragraph.type.spec.attrs?.["idStability"] !== undefined && {
+    idStability: "positional",
+  }),
+});
 
 /**
  * Allocate initial paragraph IDs before constructing editor state.
@@ -487,31 +479,76 @@ const rewriteInitialParaIds = (
  * below so history, mappings, and duplicate ownership retain their semantics.
  */
 export const ensureParaIdsInDoc = (doc: PMNode): PMNode => {
-  const { needsRewrite, taken } = collectInitialParaIds(doc);
-  if (!needsRewrite) {
+  const plan = planLoadParaIds(doc);
+  if (plan.every((paraId) => paraId === null)) {
     return doc;
   }
 
+  let ordinal = 0;
+  const rewrite = (parent: PMNode): Fragment => {
+    let changed = false;
+    const children: PMNode[] = [];
+    parent.forEach((child) => {
+      let next = child;
+      if (child.type.name === "paragraph") {
+        const minted = plan[ordinal];
+        ordinal += 1;
+        if (minted !== null && minted !== undefined) {
+          next = recreateProseNodeWithParagraphPropertySource(child, {
+            attrs: mintedParagraphAttrs(child, minted),
+          });
+        }
+        const paraId = next.attrs["paraId"];
+        if (typeof paraId === "string") {
+          transferProseParagraphPropertySource(next, child, paraId);
+        }
+      } else if (child.childCount > 0) {
+        const content = rewrite(child);
+        if (content !== child.content) {
+          next = recreateProseNodeWithParagraphPropertySource(child, {
+            content,
+          });
+        }
+      }
+      if (next !== child) {
+        changed = true;
+      }
+      children.push(next);
+    });
+    return changed ? Fragment.fromArray(children) : parent.content;
+  };
+
   return recreateProseNodeWithParagraphPropertySource(doc, {
-    content: rewriteInitialParaIds(doc, taken, new Set()),
+    content: rewrite(doc),
   });
 };
 
+/** {@link ensureParaIdsInDoc} for a state that already exists. */
 export const ensureParaIdsInState = (state: EditorState): EditorState => {
-  const updates = collectParaIdUpdates(state.doc);
-  if (updates.length === 0) {
+  const plan = planLoadParaIds(state.doc);
+  if (plan.every((paraId) => paraId === null)) {
     return state;
   }
 
   const tr = state.tr;
-  for (const update of updates) {
-    setProseParagraphMarkupWithPropertySource({
-      attrs: update.attrs,
-      ownership: "transfer-allocated-id",
-      pos: update.pos,
-      transaction: tr,
-    });
-  }
+  let ordinal = 0;
+  // Markup-only steps keep every position, so the old doc's positions hold.
+  state.doc.descendants((node, pos) => {
+    if (node.type.name !== "paragraph") {
+      return true;
+    }
+    const minted = plan[ordinal];
+    ordinal += 1;
+    if (minted !== null && minted !== undefined) {
+      setProseParagraphMarkupWithPropertySource({
+        attrs: mintedParagraphAttrs(node, minted),
+        ownership: "transfer-allocated-id",
+        pos,
+        transaction: tr,
+      });
+    }
+    return false;
+  });
   ignoreTrackedChanges(tr);
   tr.setMeta(paraIdAllocatorKey, "allocated");
   tr.setMeta("addToHistory", false);

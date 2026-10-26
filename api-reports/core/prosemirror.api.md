@@ -145,7 +145,7 @@ export const documentStylesKey: Readonly<{
     getState: (state: EditorState) => StyleResolver | null | undefined;
 }>;
 
-// @public (undocumented)
+// @public
 export const ensureParaIdsInState: (state: EditorState) => EditorState;
 
 // @public
