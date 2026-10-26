@@ -100,7 +100,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  navigate: [pmPos: number];
+  navigate: [heading: HeadingInfo];
   expand: [];
   close: [];
   outlineDepthChange: [depth: OutlineDepth];
@@ -129,7 +129,7 @@ const onDepthChange = (event: Event) => {
 const surfaceWidth = computed(() => SURFACE_WIDTH[props.surface]);
 const items = computed<OutlineItem[]>(() =>
   props.headings.map((heading) => ({
-    id: String(heading.pmPos),
+    id: heading.id,
     label: heading.text,
     level: heading.level,
     ...(typeof heading.pageNumber === "number"
@@ -142,7 +142,7 @@ const pctById = computed(() => {
   if (props.docSize > 0) {
     for (const heading of props.headings) {
       positions.set(
-        String(heading.pmPos),
+        heading.id,
         Math.min(99, Math.max(1, (heading.pmPos / props.docSize) * 100)),
       );
     }
@@ -152,7 +152,9 @@ const pctById = computed(() => {
 
 const resolvePct = (id: string) => pctById.value.get(id) ?? null;
 const handleJump = (id: string) => {
-  emit("navigate", Number(id));
+  const heading = props.headings.find((candidate) => candidate.id === id);
+  if (!heading) return;
+  emit("navigate", heading);
   if (props.surface === "drawer") emit("close");
 };
 </script>

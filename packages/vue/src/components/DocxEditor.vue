@@ -1455,7 +1455,7 @@ function updateActiveHeading(): void {
   let next: string | null = null;
   for (const heading of visibleOutlineHeadings.value) {
     const candidate = offsets.find(({ pm }) => pm >= heading.pmPos);
-    if (candidate && candidate.top <= threshold) next = String(heading.pmPos);
+    if (candidate && candidate.top <= threshold) next = heading.id;
   }
   activeHeadingId.value = next;
 }
@@ -1497,8 +1497,8 @@ function toggleOutlineOverlay(): void {
   panelOverlay.value = panelOverlay.value === "outline" ? "none" : "outline";
 }
 
-function handleOutlineNavigate(pmPos: number): void {
-  activeHeadingId.value = String(pmPos);
+function handleOutlineNavigate({ id, pmPos }: HeadingInfo): void {
+  activeHeadingId.value = id;
   activeHeadingLockUntil = Date.now() + 900;
   outlineSidebar.handleOutlineNavigate(pmPos);
 }
