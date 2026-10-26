@@ -4,6 +4,7 @@ import { createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { schema } from "../prosemirror/schema";
 import {
   HEADING_COLLECTOR_DOCUMENT,
   HEADING_COLLECTOR_RUN_IN_DOCUMENT,
@@ -60,6 +61,43 @@ describe("document outline collection", () => {
       "Inherited heading overridden to body text",
     );
   });
+});
+
+test("a heading keeps its id when text above it moves its position", () => {
+  const styles = createBuiltInStyleIndex(HEADING_COLLECTOR_STYLES);
+  const heading = (paraId: string | null, text: string) =>
+    schema.node("paragraph", { styleId: "Heading1", paraId }, [
+      schema.text(text),
+    ]);
+  const body = (text: string) =>
+    schema.node("paragraph", { styleId: "Normal" }, [schema.text(text)]);
+  const before = collectHeadings(
+    schema.node("doc", null, [
+      heading("1A2B3C4D", "First"),
+      body("Body"),
+      heading("1A2B3C4D", "Copied id"),
+      heading(null, "No id"),
+    ]),
+    styles,
+  );
+  const after = collectHeadings(
+    schema.node("doc", null, [
+      heading("1A2B3C4D", "First"),
+      body("Body with more text typed into it"),
+      heading("1A2B3C4D", "Copied id"),
+      heading(null, "No id"),
+    ]),
+    styles,
+  );
+
+  expect(before.map(({ id }) => id)).toEqual([
+    "1A2B3C4D",
+    `pos-${String(before[1]?.pmPos)}`,
+    `pos-${String(before[2]?.pmPos)}`,
+  ]);
+  // Only the paraId-backed heading is position-independent.
+  expect(after.at(0)?.id).toBe(before.at(0)?.id);
+  expect(after.at(1)?.pmPos).not.toBe(before.at(1)?.pmPos);
 });
 
 test("a numbering-level outline is preserved without promoting its paragraph", async () => {

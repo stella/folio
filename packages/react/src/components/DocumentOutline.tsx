@@ -26,7 +26,6 @@ import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 
 import { useFolioUI } from "../ui/folio-ui";
 import type { OutlineItem } from "../ui/folio-ui";
-import { headingId } from "./hooks/useActiveHeading";
 import { useDrawerFocus } from "./panelDrawer";
 
 /** Where the outline sits: a column, a tick rail, or an opened in-flow panel. */
@@ -47,10 +46,9 @@ export type DocumentOutlineProps = {
   /** Total ProseMirror document content size — drives proportional tick
    *  placement when pages are virtualised. */
   docSize: number;
-  /** The heading the reader is in (its item id). */
+  /** The heading the reader is in (its `id`). */
   activeId: string | null;
-  /** Jump to the heading with item id `id`. */
-  onJump: (id: string) => void;
+  onJump: (heading: HeadingInfo) => void;
   surface: DocumentOutlineSurface;
   /** Rail: whether the full outline is open. */
   expanded?: boolean;
@@ -95,7 +93,7 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
     () =>
       headings.map((heading) => {
         const item: OutlineItem = {
-          id: headingId(heading),
+          id: heading.id,
           label: heading.text,
           level: heading.level,
         };
@@ -112,7 +110,7 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
     if (docSize > 0) {
       for (const heading of headings) {
         map.set(
-          headingId(heading),
+          heading.id,
           Math.min(99, Math.max(1, (heading.pmPos / docSize) * 100)),
         );
       }
@@ -122,12 +120,16 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
 
   const handleJump = useCallback(
     (id: string) => {
-      onJump(id);
+      const heading = headings.find((candidate) => candidate.id === id);
+      if (!heading) {
+        return;
+      }
+      onJump(heading);
       if (surface === "expanded") {
         onClose?.();
       }
     },
-    [onClose, onJump, surface],
+    [headings, onClose, onJump, surface],
   );
 
   const resolvePct = useCallback(

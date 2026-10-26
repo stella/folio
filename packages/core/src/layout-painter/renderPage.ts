@@ -62,6 +62,7 @@ import type {
   TextBoxFragment,
   TextBoxMeasure,
 } from "../layout-engine/types";
+import { getEditorScrollRoot } from "../paged-layout/editorScrollRoot";
 import type { BorderSpec, Theme, Watermark } from "../types/document";
 import { cssBorderStyle } from "../utils/borderCss";
 import { resolveFontFamily } from "../utils/fontResolver";
@@ -2689,13 +2690,27 @@ type PageContainerState = {
   >;
   /** Current render options — kept up-to-date so the observer closure always reads fresh values. */
   currentOptions: FullPageOptions;
+  /**
+   * Shells within the retention band, as last reported by the retention
+   * observer. Read instead of measuring every rendered page on each callback.
+   */
+  retainedShells: Set<HTMLElement>;
+};
+
+/**
+ * `populate` paints shells that come near the viewport; `retain` reports the
+ * wider band whose pages stay painted.
+ */
+type PageObservers = {
+  populate: IntersectionObserver;
+  retain: IntersectionObserver;
 };
 
 /**
  * Extended container type with observer and render state references.
  */
 type PageContainer = {
-  __pageObserver?: IntersectionObserver;
+  __pageObservers?: PageObservers;
   __pageRenderState?: PageContainerState;
 } & HTMLElement;
 
@@ -3250,6 +3265,8 @@ function applyContainerStyles(container: HTMLElement, pageGap: number): void {
  */
 const VIRTUALIZATION_BUFFER = 1;
 const VIRTUALIZATION_ROOT_MARGIN_PX = 1000;
+/** Painted pages stay painted within three viewport heights of the viewport. */
+const VIRTUALIZATION_RETAIN_MARGIN_PERCENT = 300;
 const INITIAL_EAGER_RENDER_PAGES = 3;
 
 /**
@@ -3295,7 +3312,7 @@ export function renderPages(
     // --- INCREMENTAL UPDATE PATH ---
     const prevShells = prevState.pageStates;
     const prevDataMap = prevState.pageDataMap;
-    const observer = pc.__pageObserver;
+    const observers = pc.__pageObservers;
 
     // If total page count changed, NUMPAGES fields in headers/footers are stale.
     // Force re-render of all currently-rendered pages.
@@ -3422,9 +3439,8 @@ export function renderPages(
         });
         prevDataMap.set(pageEl, { page, index: i, rendered: false });
 
-        if (observer) {
-          observer.observe(pageEl);
-        }
+        observers?.populate.observe(pageEl);
+        observers?.retain.observe(pageEl);
       }
     }
 
@@ -3432,9 +3448,9 @@ export function renderPages(
     if (pages.length < prevShells.length) {
       for (let i = prevShells.length - 1; i >= pages.length; i--) {
         const shell = prevShells[i]!.element; // SAFETY: i >= pages.length and i < prevShells.length
-        if (observer) {
-          observer.unobserve(shell);
-        }
+        observers?.populate.unobserve(shell);
+        observers?.retain.unobserve(shell);
+        prevState.retainedShells.delete(shell);
         prevDataMap.delete(shell);
         removeRenderedPage(shell);
       }
@@ -3464,10 +3480,11 @@ export function renderPages(
   // --- FULL REBUILD PATH ---
 
   // Disconnect any previous observer
-  const prevObserver = pc.__pageObserver;
-  if (prevObserver) {
-    prevObserver.disconnect();
-    delete pc.__pageObserver;
+  const prevObservers = pc.__pageObservers;
+  if (prevObservers) {
+    prevObservers.populate.disconnect();
+    prevObservers.retain.disconnect();
+    delete pc.__pageObservers;
   }
 
   // Remove only the page shells this painter owns (identified by the page
@@ -3548,112 +3565,72 @@ export function renderPages(
     });
   }
 
-  // Use the browser viewport as intersection root.
-  // The observer reads from pc.__pageRenderState so it always uses
-  // the latest options/totalPages (updated by the incremental path).
-  const observer = new IntersectionObserver(
+  // Both observers intersect against the editor's scroll root: inside an
+  // overflow container the viewport root would see pages clipped to the
+  // container before the margins extend it, so the retention band would
+  // shrink to the visible pages. The viewport stays the root for a container
+  // outside any editor scroll root. Both read pc.__pageRenderState, so they
+  // always see the latest options/totalPages (updated by the incremental path).
+  const observerRoot = getEditorScrollRoot(container);
+  const populate = new IntersectionObserver(
     (entries) => {
       const renderState = pc.__pageRenderState;
       if (!renderState) {
         return;
       }
-      const {
-        currentOptions: liveOptions,
-        totalPages: liveTotalPages,
-        pageDataMap: liveDataMap,
-      } = renderState;
-
+      for (const entry of entries) {
+        if (!(entry.target instanceof HTMLElement) || !entry.isIntersecting) {
+          continue;
+        }
+        const data = renderState.pageDataMap.get(entry.target);
+        if (data) {
+          populatePageRange(renderState, data.index);
+        }
+      }
+      // No sweep here: this callback can run before the retention observer's
+      // for the same frame, and a sweep against last frame's band would
+      // discard the pages just painted. Pages painted here lie inside the
+      // retention band, so its own callback sweeps whenever the band moves.
+    },
+    {
+      root: observerRoot,
+      rootMargin: `${VIRTUALIZATION_ROOT_MARGIN_PX}px 0px ${VIRTUALIZATION_ROOT_MARGIN_PX}px 0px`,
+    },
+  );
+  const retain = new IntersectionObserver(
+    (entries) => {
+      const renderState = pc.__pageRenderState;
+      if (!renderState) {
+        return;
+      }
       for (const entry of entries) {
         if (!(entry.target instanceof HTMLElement)) {
           continue;
         }
-        const shell = entry.target;
-        const data = liveDataMap.get(shell);
-        if (!data) {
-          continue;
-        }
-
         if (entry.isIntersecting) {
-          // Page is near viewport — render it and neighbors
-          populatePageShell(shell, liveDataMap, liveTotalPages, liveOptions);
-
-          // Also render buffer pages above and below
-          for (
-            let offset = -VIRTUALIZATION_BUFFER;
-            offset <= VIRTUALIZATION_BUFFER;
-            offset++
-          ) {
-            const neighborIdx = data.index + offset;
-            if (
-              neighborIdx >= 0 &&
-              neighborIdx < renderState.pageStates.length &&
-              neighborIdx !== data.index
-            ) {
-              populatePageShell(
-                renderState.pageStates[neighborIdx]!.element, // SAFETY: guarded by length check above
-                liveDataMap,
-                liveTotalPages,
-                liveOptions,
-              );
-            }
-          }
+          renderState.retainedShells.add(entry.target);
+        } else {
+          renderState.retainedShells.delete(entry.target);
         }
       }
-
-      // Sweep: depopulate pages far from any currently-visible page.
-      const viewportHeight = window.innerHeight;
-      const nearThreshold = viewportHeight * 3;
-      const nearIndices = new Set<number>();
-
-      let depopulated = false;
-      for (const [el, data] of liveDataMap) {
-        if (!data.rendered) {
-          continue;
-        }
-        const rect = el.getBoundingClientRect();
-        if (
-          rect.bottom > -nearThreshold &&
-          rect.top < viewportHeight + nearThreshold
-        ) {
-          nearIndices.add(data.index);
-        }
-      }
-
-      for (const [el, data] of liveDataMap) {
-        if (!data.rendered) {
-          continue;
-        }
-        let keepRendered = false;
-        for (const nearIdx of nearIndices) {
-          if (Math.abs(data.index - nearIdx) <= VIRTUALIZATION_BUFFER + 1) {
-            keepRendered = true;
-            break;
-          }
-        }
-        if (!keepRendered && nearIndices.size > 0) {
-          depopulatePageShell(el, liveDataMap);
-          depopulated = true;
-        }
-      }
-      if (depopulated) {
-        emitPainterPainted(container);
-      }
+      sweepUnretainedPages(container, renderState);
     },
     {
-      root: null,
-      rootMargin: `${VIRTUALIZATION_ROOT_MARGIN_PX}px 0px ${VIRTUALIZATION_ROOT_MARGIN_PX}px 0px`,
+      root: observerRoot,
+      rootMargin: `${VIRTUALIZATION_RETAIN_MARGIN_PERCENT}% 0px ${VIRTUALIZATION_RETAIN_MARGIN_PERCENT}% 0px`,
     },
   );
 
-  // Observe all page shells
   for (const shell of pageShells) {
-    observer.observe(shell);
+    populate.observe(shell);
+    retain.observe(shell);
   }
 
-  // Store observer and render state on the container BEFORE eager rendering,
+  // Store observers and render state on the container BEFORE eager rendering,
   // so the populatePageShell calls below can find state if needed.
-  pc.__pageObserver = observer;
+  pc.__pageObservers = { populate, retain };
   pc.__pageRenderState = {
+    retainedShells: new Set(),
     pageStates: pageShells.map((el) => ({
       element: el,
       fingerprint: null,
@@ -3759,6 +3736,78 @@ function populatePageShell(
   if (container instanceof HTMLElement) {
     emitPainterPainted(container);
   }
+}
+
+/** Paint the page at `index` and its buffer neighbours. */
+function populatePageRange(state: PageContainerState, index: number): void {
+  const first = Math.max(0, index - VIRTUALIZATION_BUFFER);
+  const last = Math.min(
+    state.pageStates.length - 1,
+    index + VIRTUALIZATION_BUFFER,
+  );
+  for (let i = first; i <= last; i++) {
+    populatePageShell(
+      state.pageStates[i]!.element, // SAFETY: first..last is clamped to pageStates
+      state.pageDataMap,
+      state.totalPages,
+      state.currentOptions,
+    );
+  }
+}
+
+/**
+ * Depopulate painted pages more than one page beyond the buffer of every
+ * retained shell. Reads the retention observer's last report, so it forces no
+ * layout.
+ */
+function sweepUnretainedPages(
+  container: HTMLElement,
+  state: PageContainerState,
+): void {
+  const retainedIndices: number[] = [];
+  for (const shell of state.retainedShells) {
+    const data = state.pageDataMap.get(shell);
+    if (data) {
+      retainedIndices.push(data.index);
+    }
+  }
+  if (retainedIndices.length === 0) {
+    return;
+  }
+  let depopulated = false;
+  for (const [el, data] of state.pageDataMap) {
+    if (!data.rendered) {
+      continue;
+    }
+    const keepRendered = retainedIndices.some(
+      (retainedIndex) =>
+        Math.abs(data.index - retainedIndex) <= VIRTUALIZATION_BUFFER + 1,
+    );
+    if (!keepRendered) {
+      depopulatePageShell(el, state.pageDataMap);
+      depopulated = true;
+    }
+  }
+  if (depopulated) {
+    emitPainterPainted(container);
+  }
+}
+
+/**
+ * Paint `shell` and its buffer neighbours now, ahead of the observer, so a
+ * navigation can scroll straight onto painted content instead of passing blank
+ * shells. No-op for containers `renderPages` did not virtualize.
+ */
+export function renderPagesAround(
+  container: HTMLElement,
+  shell: HTMLElement,
+): void {
+  const state = (container as PageContainer).__pageRenderState;
+  const data = state?.pageDataMap.get(shell);
+  if (!state || !data) {
+    return;
+  }
+  populatePageRange(state, data.index);
 }
 
 /**
@@ -4032,7 +4081,9 @@ export function findPageShellForPmPos(
     if (pageStart === Number.POSITIVE_INFINITY) {
       continue;
     }
-    if (pageStart <= pmPos && pmPos <= pageEnd) {
+    // Half-open, like `pmEnd`: the position where a page's last block ends is
+    // where the next page's first block starts, and belongs to the next page.
+    if (pageStart <= pmPos && pmPos < pageEnd) {
       return { element: shell, isExact: true };
     }
     if (pageStart <= pmPos && pageStart > bestStart) {

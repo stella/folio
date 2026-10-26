@@ -80,6 +80,7 @@ import {
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
+import type { Layout } from "@stll/folio-core/layout-engine/types";
 import {
   DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
   historyShortcutOwner,
@@ -254,6 +255,7 @@ import {
   filterHeadingsByDepth,
 } from "@stll/folio-core/utils/outlineDepth";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
+import { resolveOutlineHeadings } from "@stll/folio-core/utils/outlineHeadings";
 import type { TableAction } from "@stll/folio-core/utils/tableOperations";
 import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 import {
@@ -740,10 +742,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     );
     // Document outline sidebar state
     const [showOutline, setShowOutline] = useState(showOutlineProp);
-    const showOutlineRef = useRef(false);
-    useLayoutEffect(() => {
-      showOutlineRef.current = showOutline;
-    });
     const [outlineHeadings, setHeadingInfos] = useState<HeadingInfo[]>([]);
 
     const [, setTrackedChangeEntries] = useState<TrackedChangeEntry[]>([]);
@@ -786,12 +784,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
 
     // Debounce timer for extractTrackedChanges (avoid full doc walk on every keystroke)
     const extractTrackedChangesTimerRef = useRef<ReturnType<
-      typeof setTimeout
-    > | null>(null);
-
-    // Debounce timer for collectHeadings — same reasoning as tracked changes:
-    // a doc-wide descend on every keystroke stalls typing on large documents.
-    const collectHeadingsTimerRef = useRef<ReturnType<
       typeof setTimeout
     > | null>(null);
 
@@ -855,9 +847,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => () => {
         if (extractTrackedChangesTimerRef.current) {
           clearTimeout(extractTrackedChangesTimerRef.current);
-        }
-        if (collectHeadingsTimerRef.current) {
-          clearTimeout(collectHeadingsTimerRef.current);
         }
       },
       [],
@@ -1102,56 +1091,36 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       [reportEditorViewReady],
     );
 
-    // Refresh outline headings when the document loads or the outline is enabled.
-    // handleDocumentChange keeps it in sync after subsequent edits. Page-number
-    // resolution depends on the paged layout having run at least once, so we
-    // retry briefly until every heading has a page or we give up.
+    // Outline headings follow completed layouts: each pass collects the
+    // headings of the document just laid out and places them on its pages, so
+    // an edit never lists a heading without its page number, and an edit that
+    // moves no heading leaves the list (and every entry) as it was.
     useEffect(() => {
-      if (!showOutline || !history.state || bodyViewEpoch === 0) {
+      const pagedEditor = pagedEditorRef.current;
+      if (!showOutline || bodyViewEpoch === 0 || !pagedEditor) {
         return;
       }
-      const view = pagedEditorRef.current?.getView();
-      if (!view) {
-        return;
-      }
-      const headings = collectHeadings(
-        view.state.doc,
-        getDocumentBuiltInStyles(view.state),
-      );
-      setHeadingInfos(headings);
-
-      let attempts = 0;
-      let timer: ReturnType<typeof setTimeout> | null = null;
-      const fill = () => {
-        attempts++;
-        const pagedRef = pagedEditorRef.current;
-        if (!pagedRef) {
+      let collectedDoc: EditorView["state"]["doc"] | null = null;
+      let collected: HeadingInfo[] = [];
+      const refresh = (layout: Layout | null) => {
+        const view = pagedEditor.getView();
+        if (!view) {
           return;
         }
-        let unresolved = false;
-        for (const heading of headings) {
-          if (heading.pageNumber == null) {
-            const page = pagedRef.getPageNumberForPmPos(heading.pmPos);
-            if (page !== null) {
-              heading.pageNumber = page;
-            } else {
-              unresolved = true;
-            }
-          }
+        if (view.state.doc !== collectedDoc) {
+          collectedDoc = view.state.doc;
+          collected = collectHeadings(
+            view.state.doc,
+            getDocumentBuiltInStyles(view.state),
+          );
         }
-        // Push a fresh array so React picks up the mutated entries.
-        setHeadingInfos([...headings]);
-        if (unresolved && attempts < 10) {
-          timer = setTimeout(fill, 300);
-        }
+        setHeadingInfos((previous) =>
+          resolveOutlineHeadings({ collected, layout, previous }),
+        );
       };
-      timer = setTimeout(fill, 100);
-      return () => {
-        if (timer) {
-          clearTimeout(timer);
-        }
-      };
-    }, [showOutline, history.state, bodyViewEpoch]);
+      refresh(pagedEditor.getLayout());
+      return pagedEditor.getEditor().on("layoutComplete", refresh);
+    }, [showOutline, bodyViewEpoch]);
 
     // Refs
 
@@ -1692,10 +1661,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           clearTimeout(extractTrackedChangesTimerRef.current);
           extractTrackedChangesTimerRef.current = null;
         }
-        if (collectHeadingsTimerRef.current) {
-          clearTimeout(collectHeadingsTimerRef.current);
-          collectHeadingsTimerRef.current = null;
-        }
       }, [
         setCommentsDirty,
         resetLoadedComments,
@@ -1814,28 +1779,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             ? cloneDocumentWithParagraphPropertySources(documentWithComments)
             : documentWithComments,
         );
-        // Update outline headings if sidebar is open (debounced — collectHeadings
-        // descends the whole doc, expensive on large files).
-        if (showOutlineRef.current) {
-          if (collectHeadingsTimerRef.current) {
-            clearTimeout(collectHeadingsTimerRef.current);
-          }
-          collectHeadingsTimerRef.current = setTimeout(() => {
-            const view = pagedEditorRef.current?.getView();
-            if (view) {
-              const headings = collectHeadings(
-                view.state.doc,
-                getDocumentBuiltInStyles(view.state),
-              );
-              const pagedRef = pagedEditorRef.current;
-              for (const heading of headings) {
-                heading.pageNumber =
-                  pagedRef?.getPageNumberForPmPos(heading.pmPos) ?? null;
-              }
-              setHeadingInfos(headings);
-            }
-          }, 400);
-        }
         // Re-extract tracked changes after document change (debounced to avoid
         // full-document walk on every keystroke in suggestion mode)
         if (extractTrackedChangesTimerRef.current) {
@@ -5551,9 +5494,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       requestAnimationFrame(flash);
     }, []);
     const handleOutlineJump = useCallback(
-      (id: string) => {
+      ({ id, pmPos }: HeadingInfo) => {
         markHeadingJumped(id);
-        handleOutlineHeadingClick(Number(id));
+        handleOutlineHeadingClick(pmPos);
       },
       [handleOutlineHeadingClick, markHeadingJumped],
     );

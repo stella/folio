@@ -138,8 +138,8 @@ test("panel measurements rebind when the scroll container is replaced", async ()
 });
 
 const headings = [
-  { text: "First", level: 0, pmPos: 0 },
-  { text: "Second", level: 1, pmPos: 7 },
+  { id: "2B3C4D01", text: "First", level: 0, pmPos: 0 },
+  { id: "2B3C4D02", text: "Second", level: 1, pmPos: 7 },
 ] satisfies HeadingInfo[];
 
 const createHeadingRoot = (initialSecondTop: number) => {
@@ -213,7 +213,7 @@ test("active heading follows only the replacement scroll root and cancels old wo
       root.render(<HeadingProbe scrollContainer={first.element} />),
     );
     await act(async () => frames.flush());
-    expect(host.querySelector("output")?.dataset["active"]).toBe("0");
+    expect(host.querySelector("output")?.dataset["active"]).toBe("2B3C4D01");
     first.element.dispatchEvent(new Event("scroll"));
     expect(frames.pending()).toBe(1);
     await act(async () =>
@@ -221,17 +221,17 @@ test("active heading follows only the replacement scroll root and cancels old wo
     );
     expect(frames.pending()).toBe(1);
     await act(async () => frames.flush());
-    expect(host.querySelector("output")?.dataset["active"]).toBe("7");
+    expect(host.querySelector("output")?.dataset["active"]).toBe("2B3C4D02");
 
     first.setSecondTop(80);
     first.element.dispatchEvent(new Event("scroll"));
     expect(frames.pending()).toBe(0);
-    expect(host.querySelector("output")?.dataset["active"]).toBe("7");
+    expect(host.querySelector("output")?.dataset["active"]).toBe("2B3C4D02");
     replacement.setSecondTop(200);
     replacement.element.dispatchEvent(new Event("scroll"));
     expect(frames.pending()).toBe(1);
     await act(async () => frames.flush());
-    expect(host.querySelector("output")?.dataset["active"]).toBe("0");
+    expect(host.querySelector("output")?.dataset["active"]).toBe("2B3C4D01");
 
     replacement.element.dispatchEvent(new Event("scroll"));
     await act(async () => root.render(<HeadingProbe scrollContainer={null} />));

@@ -36,10 +36,10 @@ afterAll(() => {
 });
 
 const headings: HeadingInfo[] = [
-  { text: "First level", level: 0, pmPos: 1 },
-  { text: "Second level", level: 1, pmPos: 2 },
-  { text: "Third level", level: 2, pmPos: 3 },
-  { text: "Deep level", level: 8, pmPos: 4 },
+  { id: "1A2B3C01", text: "First level", level: 0, pmPos: 1 },
+  { id: "1A2B3C02", text: "Second level", level: 1, pmPos: 2 },
+  { id: "1A2B3C03", text: "Third level", level: 2, pmPos: 3 },
+  { id: "1A2B3C04", text: "Deep level", level: 8, pmPos: 4 },
 ];
 const EMPTY_HEADINGS: HeadingInfo[] = [];
 const onJumpNoop = () => {};

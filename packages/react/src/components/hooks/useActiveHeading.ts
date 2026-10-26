@@ -13,10 +13,6 @@ import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 /** How long a jump holds the active heading before scrolling may move it. */
 const MANUAL_ACTIVE_LOCK_MS = 900;
 
-/** Outline item id for a heading: its ProseMirror position. */
-export const headingId = (heading: HeadingInfo): string =>
-  String(heading.pmPos);
-
 type ActiveHeading = {
   activeId: string | null;
   /** Mark `id` active now, holding it while the jump's scroll settles. */
@@ -64,7 +60,7 @@ export const useActiveHeading = (
       for (const heading of headings) {
         const candidate = offsets.find((offset) => offset.pm >= heading.pmPos);
         if (candidate && candidate.top <= threshold) {
-          next = headingId(heading);
+          next = heading.id;
         }
       }
       setActiveId(next);

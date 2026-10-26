@@ -10,6 +10,13 @@ import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
  * Information about a heading found in the document.
  */
 export type HeadingInfo = {
+  /**
+   * Outline identity within this editing session: the paragraph's `paraId`,
+   * which the editor allocates for every body paragraph and which survives
+   * edits elsewhere in the document. A paragraph without one, or whose
+   * `paraId` an earlier heading already took, is identified by position.
+   */
+  id: string;
   /** The text content of the heading */
   text: string;
   /** Outline level (0 = Heading 1, 1 = Heading 2, etc.) */
@@ -19,6 +26,9 @@ export type HeadingInfo = {
   /** 1-indexed page number, filled in by the editor once layout is known. */
   pageNumber?: number | null;
 };
+
+/** Not hex, so it cannot collide with a `paraId` Word or the editor writes. */
+const POSITIONAL_HEADING_ID_PREFIX = "pos-";
 
 const RUN_IN_TITLE_MARKS = new Set(["bold", "italic", "underline"]);
 
@@ -90,6 +100,7 @@ export function collectHeadings(
   styles: BuiltInStyleIndex,
 ): HeadingInfo[] {
   const headings: HeadingInfo[] = [];
+  const takenIds = new Set<string>();
 
   doc.descendants((node, pos) => {
     if (node.type.name !== "paragraph") {
@@ -109,9 +120,16 @@ export function collectHeadings(
       return;
     }
     const text = headingText(node);
-    if (text.trim()) {
-      headings.push({ text: text.trim(), level, pmPos: pos });
+    if (!text.trim()) {
+      return;
     }
+    const paraId = node.attrs["paraId"];
+    const id =
+      typeof paraId === "string" && paraId !== "" && !takenIds.has(paraId)
+        ? paraId
+        : `${POSITIONAL_HEADING_ID_PREFIX}${String(pos)}`;
+    takenIds.add(id);
+    headings.push({ id, text: text.trim(), level, pmPos: pos });
   });
 
   return headings;
