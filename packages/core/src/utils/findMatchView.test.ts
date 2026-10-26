@@ -347,11 +347,17 @@ const appendPaintedSpan = ({
   return span;
 };
 
+const VIEWPORT_HEIGHT = 100;
+
+/** Reveals animate within two viewport heights and jump instantly beyond. */
+const revealBehavior = (top: number) =>
+  top > 2 * VIEWPORT_HEIGHT ? "instant" : "smooth";
+
 const viewport = () => {
   const container = document.createElement("div");
   container.dataset["folioScroll"] = "";
   Object.defineProperties(container, {
-    clientHeight: { value: 100 },
+    clientHeight: { value: VIEWPORT_HEIGHT },
     clientWidth: { value: 500 },
   });
   container.getBoundingClientRect = () => new DOMRect(0, 0, 500, 100);
@@ -731,7 +737,7 @@ describe("view-only search geometry", () => {
     const commentRoot = document.createElement("div");
     commentRoot.dataset["folioScroll"] = "";
     Object.defineProperties(commentRoot, {
-      clientHeight: { value: 100 },
+      clientHeight: { value: VIEWPORT_HEIGHT },
       clientWidth: { value: 500 },
     });
     commentRoot.getBoundingClientRect = () => new DOMRect(0, 0, 500, 100);
@@ -784,7 +790,7 @@ describe("view-only search geometry", () => {
     expect(commentScroll).toHaveBeenCalledWith({
       top: 219,
       left: 0,
-      behavior: "smooth",
+      behavior: "instant",
     });
     expect(bodyScroll).not.toHaveBeenCalled();
     expect(doc).toEqual(before);
@@ -843,7 +849,7 @@ describe("view-only search geometry", () => {
         expect(scroll).toHaveBeenCalledWith({
           top: 159 + index * 40,
           left: 0,
-          behavior: "smooth",
+          behavior: revealBehavior(159 + index * 40),
         });
       }
       expect(view.reveal(matches.length)).toBe(false);
@@ -1134,14 +1140,14 @@ test.each(Object.entries(navigationStories))(
       expect(scroll).toHaveBeenCalledWith({
         top: 1050,
         left: 0,
-        behavior: "smooth",
+        behavior: "instant",
       });
       await new Promise<void>((resolve) => setTimeout(resolve, 60));
       expect(scroll).toHaveBeenCalledTimes(2);
       expect(scroll).toHaveBeenLastCalledWith({
         top: 659,
         left: 0,
-        behavior: "smooth",
+        behavior: "instant",
       });
       expect(
         container.querySelectorAll("[data-find-match-index]"),
