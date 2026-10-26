@@ -62,6 +62,7 @@ import type {
   TextBoxFragment,
   TextBoxMeasure,
 } from "../layout-engine/types";
+import { getEditorScrollRoot } from "../paged-layout/editorScrollRoot";
 import type { BorderSpec, Theme, Watermark } from "../types/document";
 import { cssBorderStyle } from "../utils/borderCss";
 import { resolveFontFamily } from "../utils/fontResolver";
@@ -3564,9 +3565,13 @@ export function renderPages(
     });
   }
 
-  // Both observers use the browser viewport as intersection root and read
-  // pc.__pageRenderState, so they always see the latest options/totalPages
-  // (updated by the incremental path).
+  // Both observers intersect against the editor's scroll root: inside an
+  // overflow container the viewport root would see pages clipped to the
+  // container before the margins extend it, so the retention band would
+  // shrink to the visible pages. The viewport stays the root for a container
+  // outside any editor scroll root. Both read pc.__pageRenderState, so they
+  // always see the latest options/totalPages (updated by the incremental path).
+  const observerRoot = getEditorScrollRoot(container);
   const populate = new IntersectionObserver(
     (entries) => {
       const renderState = pc.__pageRenderState;
@@ -3588,7 +3593,7 @@ export function renderPages(
       // retention band, so its own callback sweeps whenever the band moves.
     },
     {
-      root: null,
+      root: observerRoot,
       rootMargin: `${VIRTUALIZATION_ROOT_MARGIN_PX}px 0px ${VIRTUALIZATION_ROOT_MARGIN_PX}px 0px`,
     },
   );
@@ -3611,7 +3616,7 @@ export function renderPages(
       sweepUnretainedPages(container, renderState);
     },
     {
-      root: null,
+      root: observerRoot,
       rootMargin: `${VIRTUALIZATION_RETAIN_MARGIN_PERCENT}% 0px ${VIRTUALIZATION_RETAIN_MARGIN_PERCENT}% 0px`,
     },
   );

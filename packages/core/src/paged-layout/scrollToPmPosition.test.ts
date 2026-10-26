@@ -116,10 +116,12 @@ class FakeIntersectionObserver {
   readonly callback: ObserverCallback;
   /** Extra band above and below the viewport, in pixels. */
   readonly margin: number;
+  readonly root: Element | Document | null;
   readonly targets = new Map<Element, boolean | null>();
 
   constructor(callback: ObserverCallback, options?: IntersectionObserverInit) {
     this.callback = callback;
+    this.root = options?.root ?? null;
     const top = (options?.rootMargin ?? "0px").split(" ").at(0) ?? "0px";
     this.margin = top.endsWith("%")
       ? (Number.parseFloat(top) / 100) * VIEWPORT_HEIGHT
@@ -414,6 +416,24 @@ describe("scrollPagesToPmPosition over virtualized pages", () => {
       shells[60],
     );
     expect(jump(pageStart(60)).scrollCalls.at(-1)?.top).toBe(centredTop(60));
+  });
+
+  test("a block that starts the first unpainted page is painted and landed on, not the end of the page before", () => {
+    const { jump, paintedIndices } = mountPages();
+    expect(paintedIndices()).toEqual([0, 1, 2]);
+
+    const trace = jump(pageStart(3));
+    expect(trace.paintedBeforeScroll).toContain(3);
+    expect(trace.scrollCalls.at(-1)?.top).toBe(centredTop(3));
+  });
+
+  test("virtualization intersects pages against the editor's scroll root", () => {
+    const { container } = mountPages();
+    const scrollRoot = container.closest("[data-folio-scroll]");
+    expect(scrollRoot).not.toBeNull();
+    expect(
+      FakeIntersectionObserver.instances.map((observer) => observer.root),
+    ).toEqual([scrollRoot, scrollRoot]);
   });
 
   test("a near jump stays smooth unless the reader prefers reduced motion", () => {
