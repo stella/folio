@@ -156,16 +156,14 @@ type JumpTrace = {
   scrollCalls: ScrollCall[];
 };
 
-const originalObserver = globalThis.IntersectionObserver;
-const originalFrame = globalThis.requestAnimationFrame;
-const originalRect = Object.getOwnPropertyDescriptor(
-  HTMLElement.prototype,
-  "getBoundingClientRect",
-);
-const originalInnerHeight = Object.getOwnPropertyDescriptor(
-  window,
-  "innerHeight",
-);
+/** The harness globals each test replaces, captured once the DOM is borrowed. */
+type HarnessOriginals = {
+  observer: typeof IntersectionObserver;
+  frame: typeof requestAnimationFrame;
+  rect: PropertyDescriptor | undefined;
+  innerHeight: PropertyDescriptor | undefined;
+};
+let originals: HarnessOriginals;
 
 /**
  * Pages stacked at a fixed pitch inside the editor's scroll root, which fills
@@ -355,6 +353,15 @@ const setGlobal = (name: string, value: unknown) =>
   });
 
 beforeEach(() => {
+  originals = {
+    observer: globalThis.IntersectionObserver,
+    frame: globalThis.requestAnimationFrame,
+    rect: Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "getBoundingClientRect",
+    ),
+    innerHeight: Object.getOwnPropertyDescriptor(window, "innerHeight"),
+  };
   FakeIntersectionObserver.instances = [];
   setGlobal("IntersectionObserver", FakeIntersectionObserver);
   Object.defineProperty(window, "innerHeight", {
@@ -364,19 +371,19 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setGlobal("IntersectionObserver", originalObserver);
-  setGlobal("requestAnimationFrame", originalFrame);
-  if (originalRect) {
+  setGlobal("IntersectionObserver", originals.observer);
+  setGlobal("requestAnimationFrame", originals.frame);
+  if (originals.rect) {
     Object.defineProperty(
       HTMLElement.prototype,
       "getBoundingClientRect",
-      originalRect,
+      originals.rect,
     );
   } else {
     Reflect.deleteProperty(HTMLElement.prototype, "getBoundingClientRect");
   }
-  if (originalInnerHeight) {
-    Object.defineProperty(window, "innerHeight", originalInnerHeight);
+  if (originals.innerHeight) {
+    Object.defineProperty(window, "innerHeight", originals.innerHeight);
   }
   document.body.replaceChildren();
 });

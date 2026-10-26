@@ -43,7 +43,7 @@ const pageStarts = fc
   .uniqueArray(fc.integer({ min: 1, max: DOCUMENT_END - 1 }), {
     maxLength: 12,
   })
-  .map((starts) => [0, ...starts.sort((a, b) => a - b)]);
+  .map((starts) => [0].concat(starts.sort((a, b) => a - b)));
 
 const headingPositions = fc
   .uniqueArray(fc.integer({ min: 0, max: DOCUMENT_END - 1 }), {
