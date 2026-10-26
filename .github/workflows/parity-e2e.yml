@@ -27,13 +27,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Install Playwright Chromium
-        run: |
-          sudo rm -f \
-            /etc/apt/sources.list.d/azure-cli.list \
-            /etc/apt/sources.list.d/azure-cli.sources \
-            /etc/apt/sources.list.d/microsoft-prod.list \
-            /etc/apt/sources.list.d/microsoft-prod.sources
-          bunx playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-deps
 
       # The `parity` Playwright project boots both the React (4200) and Vue
       # (4201) playground dev servers via the config's webServer array and runs

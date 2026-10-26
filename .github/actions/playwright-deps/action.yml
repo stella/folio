@@ -1,0 +1,93 @@
+name: Playwright browsers
+description: >-
+  Installs Playwright browsers, and on Linux the system packages they need,
+  from caches keyed by runner and Playwright version. A cold fetch is saved
+  as soon as it lands, so a job that later fails or times out still leaves
+  the next run warm.
+
+inputs:
+  browsers:
+    description: Space-separated Playwright browser names.
+    required: false
+    default: chromium
+
+runs:
+  using: composite
+  steps:
+    - name: Read the Playwright version
+      id: playwright
+      shell: bash
+      run: echo "version=$(bunx playwright --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
+    - name: Name the browser caches
+      id: names
+      shell: bash
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+        RUNNER_OS_NAME: ${{ runner.os }}
+      run: |
+        browsers=$(printf '%s\n' $BROWSERS | sort | paste -sd- -)
+        echo "browsers=$browsers" >> "$GITHUB_OUTPUT"
+        if [ "$RUNNER_OS_NAME" = "macOS" ]; then
+          echo "path=$HOME/Library/Caches/ms-playwright" >> "$GITHUB_OUTPUT"
+        else
+          echo "path=$HOME/.cache/ms-playwright" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Restore Playwright browsers
+      id: browser-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.names.outputs.path }}
+        key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.names.outputs.browsers }}-${{ steps.playwright.outputs.version }}
+
+    - name: Restore Playwright system packages
+      id: apt-cache
+      if: runner.os == 'Linux'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/playwright-apt
+        key: ${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-playwright-apt-${{ steps.names.outputs.browsers }}-${{ steps.playwright.outputs.version }}
+
+    - name: Install Playwright browsers and system packages
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+      run: |
+        # Package sources the browser packages do not need, and whose mirrors
+        # have stalled installs.
+        for source in azure-cli.list azure-cli.sources microsoft-prod.list microsoft-prod.sources; do
+          sudo rm -f "/etc/apt/sources.list.d/$source"
+        done
+        archives="$HOME/.cache/playwright-apt"
+        mkdir -p "$archives/partial"
+        # apt installs from the cached packages and keeps what it downloads
+        # beside them for the cache to save.
+        echo "Dir::Cache::Archives \"$archives\";" |
+          sudo tee /etc/apt/apt.conf.d/99playwright-archives >/dev/null
+        # shellcheck disable=SC2086 # one browser name per word
+        bunx playwright install --with-deps $BROWSERS
+        sudo chown -R "$(id -u):$(id -g)" "$archives"
+
+    - name: Install Playwright browsers
+      if: runner.os != 'Linux'
+      shell: bash
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+      # shellcheck disable=SC2086 # one browser name per word
+      run: bunx playwright install $BROWSERS
+
+    - name: Save Playwright browsers
+      if: steps.browser-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.names.outputs.path }}
+        key: ${{ steps.browser-cache.outputs.cache-primary-key }}
+
+    - name: Save Playwright system packages
+      if: runner.os == 'Linux' && steps.apt-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/playwright-apt
+        key: ${{ steps.apt-cache.outputs.cache-primary-key }}

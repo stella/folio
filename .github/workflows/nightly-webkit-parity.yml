@@ -29,7 +29,9 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: bunx playwright install chromium webkit
+        uses: ./.github/actions/playwright-deps
+        with:
+          browsers: chromium webkit
 
       # The Chromium reference is recorded in this job, on this machine, so the
       # comparison does not mix in machine or font differences. Any failure here
