@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { createEmptyDocument } from "@stll/folio-core";
+import { validateFolioDocumentModel } from "@stll/folio-core/docx/modelValidation";
 import type { Comment } from "@stll/folio-core/types/content";
 
 import {
@@ -263,6 +265,17 @@ describe("pruneOrphanedComments", () => {
  * is that a comment can adopt a supplied id AND that the counter is seeded above
  * it so a later mint can never re-issue it.
  */
+describe("createComment: document model", () => {
+  test("creates a comment the document model accepts, so it saves", () => {
+    const document = createEmptyDocument({ initialText: "Clause." });
+    const comment = createComment("Review this paragraph", "Reviewer");
+    document.package.document.comments = [comment];
+
+    expect(validateFolioDocumentModel(document).issues).toEqual([]);
+    expect(comment.content.at(0)).not.toHaveProperty("formatting");
+  });
+});
+
 describe("createComment: external comment id adoption", () => {
   test("creates bounded IDs outside adopted IDs at the upper boundary", () => {
     createComment("Existing maximum", "Reviewer", undefined, MAX_COMMENT_ID);

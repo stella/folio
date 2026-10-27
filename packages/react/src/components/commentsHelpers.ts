@@ -94,10 +94,11 @@ export function createComment(
     id: id ?? allocateCommentId(),
     author: authorName,
     date: new Date().toISOString(),
+    // The model's canonical paragraph has no formatting rather than an empty
+    // one; a save refuses the empty form.
     content: [
       {
         type: "paragraph",
-        formatting: {},
         content: [
           { type: "run", formatting: {}, content: [{ type: "text", text }] },
         ],
