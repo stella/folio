@@ -1,5 +1,17 @@
 # @stll/folio-react
 
+## 0.32.0
+
+### Minor Changes
+
+- [#2170](https://github.com/stella/folio/pull/2170) [`b465919`](https://github.com/stella/folio/commit/b4659192c513fcd25bc075855c0b834949cdd83b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `HeadingInfo` carries an `id` (the paragraph's `paraId`, else its position), which outline items now use instead of the heading's position, and `resolveOutlineHeadings` places collected headings on a layout's pages while keeping unchanged entries. The React outline recollects headings on each completed layout instead of on document history changes and timers, so an edit that moves no heading keeps the same heading list and page numbers.
+
+### Patch Changes
+
+- [#2173](https://github.com/stella/folio/pull/2173) [`cf16671`](https://github.com/stella/folio/commit/cf16671734568ab35fbc2afd2a34500be8ac9c7f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Create comments with the document model's canonical paragraph, without empty paragraph formatting, so a document holding a newly added comment saves.
+- Updated dependencies [[`b465919`](https://github.com/stella/folio/commit/b4659192c513fcd25bc075855c0b834949cdd83b), [`b465919`](https://github.com/stella/folio/commit/b4659192c513fcd25bc075855c0b834949cdd83b), [`b465919`](https://github.com/stella/folio/commit/b4659192c513fcd25bc075855c0b834949cdd83b)]:
+  - @stll/folio-core@0.64.0
+
 ## 0.31.1
 
 ### Patch Changes
