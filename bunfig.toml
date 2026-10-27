@@ -29,6 +29,10 @@ minimumReleaseAgeExcludes = [
   # release that fixes GHSA-55q2-fjhq-7xh7; publisher and repository ownership
   # match the preceding releases. Remove after quarantine expiry.
   "bun-types", # quarantine-expires: 2026-10-27T10:17:50.170Z
+  # Security patch for a dependency-audit finding. node-forge 1.4.1 is the only
+  # release that fixes GHSA-86w9-cpqp-85rv; its publisher matches the preceding
+  # releases. Remove after quarantine expiry.
+  "node-forge", # quarantine-expires: 2026-11-01T04:44:07.718Z
   "@stll/agent-input", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
   "@stll/aho-corasick", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z
   "@stll/aho-corasick-darwin-arm64", # quarantine-excluded-since: 2026-10-22T15:02:29.496Z

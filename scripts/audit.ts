@@ -38,19 +38,6 @@ const PERMANENT_IGNORES = ["GHSA-5p4m-2wfm-xmqj"];
 
 const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
   {
-    // 2026-10-02: node-forge <=1.4.0 accepts malformed RSA PKCS#1 v1.5
-    // signatures. It reaches the tree only through development tooling
-    // (@stll/folio-nuxt devDependencies nuxt and @nuxt/module-builder ->
-    // @nuxt/cli -> listhen, which uses it for local HTTPS certificates). No
-    // published package depends on it, and folio never verifies RSA
-    // signatures. No patched node-forge exists yet.
-    advisory: "GHSA-86w9-cpqp-85rv",
-    packageName: "node-forge",
-    vulnerableThrough: "1.4.0",
-    requiredBy: { type: "direct", parent: "listhen" },
-    expires: "2026-11-01",
-  },
-  {
     // 2026-10-03: braces <=3.0.3 exhausts the stack on deeply nested
     // patterns. It reaches the tree only through development tooling
     // (@tailwindcss/cli, nuxt and @nuxt/module-builder -> @parcel/watcher ->
