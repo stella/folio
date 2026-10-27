@@ -1,5 +1,13 @@
 # @stll/folio-vue
 
+## 0.26.3
+
+### Patch Changes
+
+- [#2170](https://github.com/stella/folio/pull/2170) [`b465919`](https://github.com/stella/folio/commit/b4659192c513fcd25bc075855c0b834949cdd83b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `HeadingInfo` carries an `id` (the paragraph's `paraId`, else its position), which outline items now use instead of the heading's position, and `resolveOutlineHeadings` places collected headings on a layout's pages while keeping unchanged entries. The React outline recollects headings on each completed layout instead of on document history changes and timers, so an edit that moves no heading keeps the same heading list and page numbers.
+- Updated dependencies [[`b465919`](https://github.com/stella/folio/commit/b4659192c513fcd25bc075855c0b834949cdd83b), [`b465919`](https://github.com/stella/folio/commit/b4659192c513fcd25bc075855c0b834949cdd83b), [`b465919`](https://github.com/stella/folio/commit/b4659192c513fcd25bc075855c0b834949cdd83b)]:
+  - @stll/folio-core@0.64.0
+
 ## 0.26.2
 
 ### Patch Changes
