@@ -18,9 +18,9 @@
  * that no declaration allows.
  */
 
-import { Result, TaggedError } from "better-result";
-import { XMLParser } from "fast-xml-parser";
 import path from "node:path";
+
+import { readXml, type XmlElement } from "@stll/docx-core/xml";
 
 import type { OoxmlSchemaGraph } from "../generate-ooxml-schema-graph";
 import { orderedParticlesByOwner } from "./ooxml-schema-graph";
@@ -64,11 +64,6 @@ type SchemaAttribute = OoxmlSchemaGraph["attributes"][number];
 type SchemaCompositor = OoxmlSchemaGraph["compositors"][number];
 type SchemaInheritance = OoxmlSchemaGraph["inheritance"][number];
 
-class SchemaPartParseError extends TaggedError("SchemaPartParseError")<{
-  message: string;
-  cause?: unknown;
-}> {}
-
 const GRAPH_PATH = path.resolve(
   import.meta.dir,
   "..",
@@ -99,10 +94,6 @@ const XMLNS_PREFIX_DECLARATION = "xmlns:";
 const XML_PREFIX = "xml";
 const DEFAULT_PREFIX = "";
 
-/** fast-xml-parser's `preserveOrder` shape: the attribute bag and the text leaf. */
-const ATTRIBUTES_KEY = ":@";
-const NON_ELEMENT_KEY_PREFIXES = ["#", "?"];
-
 const SYMBOL_PREFIXES = {
   attribute: "attribute:",
   attributeGroup: "attributeGroup:",
@@ -126,17 +117,7 @@ const UNKNOWN_ROOT_DETAIL = "root element is not a global element declaration";
 const OUT_OF_ORDER_DETAIL =
   "child precedes a sibling the sequence declares earlier";
 
-const PARSER_OPTIONS = {
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  allowBooleanAttributes: true,
-  parseTagValue: false,
-  parseAttributeValue: false,
-  trimValues: false,
-};
-
-type ParsedNode = Record<string, unknown>;
+type ParsedNode = XmlElement;
 type ParsedElement = { node: ParsedNode; tag: string };
 
 /** Prefix to namespace URI, with `""` for the default declaration. */
@@ -524,48 +505,21 @@ const enumerationFor = (
   return values;
 };
 
-const attributesOf = (
-  node: ParsedNode,
-): Record<string, unknown> | undefined => {
-  const bag = node[ATTRIBUTES_KEY];
-  return typeof bag === "object" && bag !== null
-    ? (bag as Record<string, unknown>)
-    : undefined;
-};
+const attributesOf = (node: ParsedNode): Record<string, unknown> | undefined =>
+  node.attributes;
 
-const tagOf = (node: ParsedNode): string | undefined => {
-  for (const key of Object.keys(node)) {
-    if (key === ATTRIBUTES_KEY) {
-      continue;
-    }
-    if (NON_ELEMENT_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-      continue;
-    }
-    return key;
-  }
-  return undefined;
-};
-
-const elementsOf = (nodes: readonly unknown[]): ParsedElement[] => {
+const elementsOf = (nodes: readonly ParsedNode[]): ParsedElement[] => {
   const elements: ParsedElement[] = [];
-  for (const candidate of nodes) {
-    if (typeof candidate !== "object" || candidate === null) {
-      continue;
+  for (const node of nodes) {
+    if (node.type === "element" && node.name !== undefined) {
+      elements.push({ node, tag: node.name });
     }
-    const node = candidate as ParsedNode;
-    const tag = tagOf(node);
-    if (tag === undefined) {
-      continue;
-    }
-    elements.push({ node, tag });
   }
   return elements;
 };
 
-const childrenOf = ({ node, tag }: ParsedElement): ParsedElement[] => {
-  const nested = node[tag];
-  return Array.isArray(nested) ? elementsOf(nested) : [];
-};
+const childrenOf = ({ node }: ParsedElement): ParsedElement[] =>
+  elementsOf(node.elements ?? []);
 
 const extendScope = (
   parent: NamespaceScope,
@@ -795,21 +749,14 @@ export const validateOoxmlPart = ({
   xml,
   limit = DEFAULT_VIOLATION_LIMIT,
 }: ValidatePartOptions): SchemaViolation[] => {
-  const parsed = Result.try({
-    try: (): unknown => new XMLParser(PARSER_OPTIONS).parse(xml),
-    catch: (cause) =>
-      new SchemaPartParseError({
-        message: "part is not well-formed XML",
-        cause,
-      }),
-  });
+  const parsed = readXml(xml, { conformance: "tolerant" });
   // Well-formedness is the corpus classifier's verdict (`malformed-document-xml`);
   // a part that never parsed has no schema signature to report here.
-  if (parsed.isErr() || !Array.isArray(parsed.value)) {
+  if (parsed.status === "rejected") {
     return [];
   }
   const index = indexFor(graph);
-  const root = elementsOf(parsed.value).at(0);
+  const root = elementsOf(parsed.value.elements ?? []).at(0);
   if (root === undefined) {
     return [];
   }
