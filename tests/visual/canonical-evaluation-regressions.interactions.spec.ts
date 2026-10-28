@@ -258,12 +258,13 @@ const assertCollectedTransportEvidence = ({
       return (
         typeof sessionId === "string" &&
         sessions.has(sessionId) &&
-        event["error"] !== undefined
+        isProtocolRecord(event["error"]) &&
+        event["error"]["message"] === "Promise was collected"
       );
     });
     expect(
       errors,
-      "both unrooted calls must produce correlated raw CDP failures",
+      "both released object groups must produce correlated raw CDP failures",
     ).toHaveLength(2);
     const methods = [];
     for (const error of errors) {
@@ -306,11 +307,13 @@ test("canonical load roots the awaited transport promise across forced collectio
     await cdp.send("Runtime.enable");
     const { frameTree } = await cdp.send("Page.getFrameTree");
     for (const transport of [
-      "unrooted",
+      "protocol",
+      "released-evaluate",
+      "released-call",
       "bridge",
       "handle",
-      "handle-released",
       "cdp",
+      "handle-released",
     ] as const) {
       entered = Promise.withResolvers<void>();
       await page.evaluate((fixtureTransport) => {
@@ -341,7 +344,7 @@ test("canonical load roots the awaited transport promise across forced collectio
           "({ pending: globalThis.__folioCanonical.load([]) })",
         );
         try {
-          // Both cases use the identical evaluator; releasing the handle is the ablation.
+          // Both cases await the same evaluator, with and without a retained handle.
           const loaded = Result.tryPromise({
             try: () => operation.evaluate(({ pending }) => pending),
             catch: (error: unknown) => error,
@@ -354,18 +357,22 @@ test("canonical load roots the awaited transport promise across forced collectio
           const retained = await page.evaluate(() =>
             globalThis.__folioCompleteTransportLoad?.(),
           );
-          const result = await loaded;
-          if (transport === "handle") {
-            expect(retained).toBe(true);
-            expect(result.isOk()).toBe(true);
-            if (result.isOk()) expect(result.value).toBe(true);
-          } else {
+          if (transport === "handle-released") {
+            // Playwright awaits a wrapper promise. Its source becomes collectible
+            // after handle release, leaving the wrapper pending until cancellation.
             expect(retained).toBe(false);
+            await page.goto("about:blank");
+            const result = await loaded;
             expect(result.isErr()).toBe(true);
             if (result.isErr())
               expect(String(result.error)).toContain(
                 "Execution context was destroyed",
               );
+          } else {
+            expect(retained).toBe(true);
+            const result = await loaded;
+            expect(result.isOk()).toBe(true);
+            if (result.isOk()) expect(result.value).toBe(true);
           }
         } finally {
           await operation.dispose();
@@ -373,27 +380,52 @@ test("canonical load roots the awaited transport promise across forced collectio
         continue;
       }
 
+      const objectGroup = `folio-transport-${transport}`;
+      const receiver = await cdp.send("Runtime.evaluate", {
+        expression: "globalThis",
+        objectGroup,
+      });
+      const objectId = receiver.result.objectId;
+      if (!objectId) throw new TypeError("Expected a remote global object");
       const loaded = Result.tryPromise({
-        try: () =>
-          transport === "cdp"
-            ? evaluateCanonicalLoad(page, [])
-            : cdp
-                .send("Runtime.evaluate", {
-                  expression: "globalThis.__folioCanonical.load([])",
-                  awaitPromise: true,
-                  returnByValue: true,
-                })
-                .then(({ result }) => result.value),
+        try: () => {
+          if (transport === "cdp") return evaluateCanonicalLoad(page, []);
+          if (transport === "released-call")
+            return cdp
+              .send("Runtime.callFunctionOn", {
+                objectId,
+                functionDeclaration:
+                  "function () { return globalThis.__folioCanonical.load([]); }",
+                objectGroup,
+                awaitPromise: true,
+                returnByValue: true,
+              })
+              .then(({ result }) => result.value);
+          return cdp
+            .send("Runtime.evaluate", {
+              expression: "globalThis.__folioCanonical.load([])",
+              objectGroup,
+              awaitPromise: true,
+              returnByValue: true,
+            })
+            .then(({ result }) => result.value);
+        },
         catch: (error: unknown) => error,
       });
       await entered.promise;
+      // V8 5177b108 retains awaited protocol promises until cancellation. Releasing
+      // their object group is the explicit ablation for both evaluation methods.
+      const released =
+        transport === "released-evaluate" || transport === "released-call";
+      if (released)
+        await cdp.send("Runtime.releaseObjectGroup", { objectGroup });
       // One forced collection, after the load has returned across a protocol boundary.
       await cdp.send("HeapProfiler.collectGarbage");
       const retained = await page.evaluate(() =>
         globalThis.__folioCompleteTransportLoad?.(),
       );
       const result = await loaded;
-      if (transport === "unrooted") {
+      if (released) {
         expect(retained).toBe(false);
         expect(result.isErr()).toBe(true);
         if (result.isErr())
@@ -403,6 +435,7 @@ test("canonical load roots the awaited transport promise across forced collectio
       expect(retained).toBe(true);
       expect(result.isOk()).toBe(true);
       if (result.isOk()) expect(result.value).toBe(true);
+      await cdp.send("Runtime.releaseObjectGroup", { objectGroup });
     }
     await assertCollectedTransportEvidence({
       path: protocolPath,

@@ -56,8 +56,8 @@ BUN_CACHE="/var/cache/stll-cloud/bun/$OUTPUT_UID"
 [[ "$(awk 'NF { if (++count > 1 || NF != 1) exit 1; value=$1 } END { if (count != 1) exit 1; print value }' "$REPO_ROOT/.node-version")" == "$NODE_VERSION" ]] || fail 'Node selector changed; regenerate cloud-setup.sh'
 cd -- "$REPO_ROOT"
 case "$(uname -m)" in
-  x86_64) ARCH=amd64; NODE_ARCH=x64; BUN_ARCH=x64 ;;
-  aarch64|arm64) ARCH=arm64; NODE_ARCH=arm64; BUN_ARCH=aarch64 ;;
+  x86_64) ARCH=amd64; NODE_ARCH=x64; BUN_ARCH=x64; NODE_SHA256='ca70e9e349de048b9522abb3adc05b3bd6f43c5ffd3ec57916c7da292f59f022'; BUN_SHA256='bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c' ;;
+  aarch64|arm64) ARCH=arm64; NODE_ARCH=arm64; BUN_ARCH=aarch64; NODE_SHA256='7a6353f63eb3d04765004b4adf172616243e4522434635cb1d26288658b04ab5'; BUN_SHA256='baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e' ;;
   *) fail 'Only amd64 and arm64 are supported' ;;
 esac
 
@@ -209,6 +209,7 @@ install_runtimes() (
   if ! node_ready; then
     node_archive="node-v$NODE_VERSION-linux-$NODE_ARCH.tar.xz"
     download_file "https://nodejs.org/dist/v$NODE_VERSION/$node_archive" "$scratch/$node_archive" 120
+    (cd "$scratch"; printf '%s  %s\n' "$NODE_SHA256" "$node_archive" | sha256sum --strict -c -)
     download_file "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt" "$scratch/node-sums" 45
     (cd "$scratch"; awk -v name="$node_archive" '$2 == name { print; count++ } END { if (count != 1) exit 1 }' node-sums | sha256sum --strict -c -)
     install -d -m 755 "$NODE_DIR"
@@ -218,10 +219,12 @@ install_runtimes() (
     bun_folder="bun-linux-$BUN_ARCH"
     bun_archive="$bun_folder.zip"
     download_file "https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/$bun_archive" "$scratch/$bun_archive" 120
+    (cd "$scratch"; printf '%s  %s\n' "$BUN_SHA256" "$bun_archive" | sha256sum --strict -c -)
     download_file "https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/SHASUMS256.txt" "$scratch/bun-sums" 45
     (cd "$scratch"; awk -v name="$bun_archive" '$2 == name || $2 == "*" name { print $1 "  " name; count++ } END { if (count != 1) exit 1 }' bun-sums | sha256sum --strict -c -)
     unzip -q "$scratch/$bun_archive" -d "$scratch/bun"
     install -d -m 755 "$BUN_DIR"
+    [[ ! -d "$BUN_DIR/bun" ]] || fail 'Install target is a directory; remove it and rerun install:' "$BUN_DIR/bun"
     install -m 755 "$scratch/bun/$bun_folder/bun" "$BUN_DIR/bun"
   fi
   runtime_ready
@@ -310,20 +313,20 @@ apt_install() (
   policy_state=installed
   printf '%s\n' '#!/bin/sh' 'exit 101' > /usr/sbin/policy-rc.d
   chmod 755 /usr/sbin/policy-rc.d
-  local package
-  for package in "$@"; do
-    if [[ "$package" == */* ]]; then
-      # apt cannot fetch local archives with --download-only, so their installs
-      # stay one call. Package triggers can be slow on cloud filesystems; the
-      # longer whole-call deadline covers them while Acquire timeouts still
-      # bound each network request.
-      APT_DEADLINE=600 DEBIAN_FRONTEND=noninteractive apt_network install -y --no-install-recommends "$@"
-      return
-    fi
-  done
   # The network deadline covers downloads only; unpacking and maintainer scripts
   # (for example locale generation or cluster creation) run offline afterwards.
   DEBIAN_FRONTEND=noninteractive apt_network install -y --no-install-recommends --download-only "$@"
+  local package pending
+  for package in "$@"; do
+    if [[ "$package" == */* ]]; then
+      # apt rejects --no-download for local archives, so prove instead that
+      # only local file: archives remain; --print-uris reads local state only.
+      pending="$(set -o pipefail; DEBIAN_FRONTEND=noninteractive apt-get --print-uris -qq -y --no-install-recommends install "$@" | awk '$1 !~ /^\047file:/')"
+      [[ -z "$pending" ]] || fail "Package downloads remain after the bounded download step: $pending"
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+      return
+    fi
+  done
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --no-download "$@"
 )
 
@@ -418,6 +421,7 @@ esac
     # Launchers persist the system homes in fresh shells without profile sourcing.
     printf '%s\n' '#!/bin/sh' 'export RUSTUP_HOME=/opt/stll-cloud/rustup' 'export CARGO_HOME=/opt/stll-cloud/cargo' 'export RUSTUP_AUTO_INSTALL=0' 'export RUSTUP_TOOLCHAIN=1.99.0' "exec /opt/stll-cloud/cargo/bin/$tool \"\$@\"" > "$scratch/$tool"
     if ! cmp -s "$scratch/$tool" "/usr/local/bin/$tool"; then
+      [[ ! -d "/usr/local/bin/$tool" ]] || fail 'Install target is a directory; remove it and rerun install:' "/usr/local/bin/$tool"
       install -m 755 "$scratch/$tool" "/usr/local/bin/$tool"
     fi
   done
@@ -444,13 +448,19 @@ esac
     install -d -m 755 '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129'
     case "$ARCH" in
       amd64)
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner'
         install -m 755 "$scratch/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl/wasm-bindgen-test-runner" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js'
         install -m 755 "$scratch/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl/wasm2es6js" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen'
         install -m 755 "$scratch/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl/wasm-bindgen" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen'
         ;;
       arm64)
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner'
         install -m 755 "$scratch/wasm-bindgen-0.2.129-aarch64-unknown-linux-musl/wasm-bindgen-test-runner" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js'
         install -m 755 "$scratch/wasm-bindgen-0.2.129-aarch64-unknown-linux-musl/wasm2es6js" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen'
         install -m 755 "$scratch/wasm-bindgen-0.2.129-aarch64-unknown-linux-musl/wasm-bindgen" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen'
         ;;
     esac

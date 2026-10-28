@@ -5,7 +5,7 @@
     "": {
       "name": "stella-folio",
       "devDependencies": {
-        "@stll/fuzzy-search-wasm": "1.2.0",
+        "@stll/fuzzy-search-wasm": "1.4.0",
         "@types/node": "26.6.5",
         "@types/vscode": "1.86.0",
         "@vscode/test-electron": "3.1.0",
@@ -208,7 +208,7 @@
 
     "@secretlint/types": ["@secretlint/types@10.2.2", "", {}, "sha512-Nqc90v4lWCXyakD6xNyNACBJNJ0tNCwj2WNk/7ivyacYHxiITVgmLUFXTBOeCdy79iz6HtN9Y31uw/jbLrdOAg=="],
 
-    "@stll/fuzzy-search-wasm": ["@stll/fuzzy-search-wasm@1.2.0", "", { "dependencies": { "@napi-rs/wasm-runtime": "^1.1.3" }, "peerDependencies": { "vite": ">=5 <10" }, "optionalPeers": ["vite"] }, "sha512-6YcjgJp8U6d91lzxUtO7NzFIfc/BOhY7v8W9i5mxnZ32TXVkcas+RpWXuoj/2U969eq0renR9GdKiv8/y6F1DQ=="],
+    "@stll/fuzzy-search-wasm": ["@stll/fuzzy-search-wasm@1.4.0", "", { "dependencies": { "@napi-rs/wasm-runtime": "^1.1.3" }, "peerDependencies": { "vite": ">=5 <10" }, "optionalPeers": ["vite"] }, "sha512-1DFnx57z9ghN9hun0Am+Kk//0DBzZK1OBbRDO9QA3tm7EOLgUSw0YFogN8yUkfrKv/P/jIIPdvC1ebgW62w9pg=="],
 
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.4", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A=="],
 

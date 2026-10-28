@@ -28,7 +28,6 @@ minimumReleaseAgeExcludes = [
   # Security patch for a dependency-audit finding. dompurify 3.4.13 is the only
   # release that fixes GHSA-55q2-fjhq-7xh7; publisher and repository ownership
   # match the preceding releases. Remove after quarantine expiry.
-  "bun-types", # quarantine-expires: 2026-10-27T10:17:50.170Z
   # Security patch for a dependency-audit finding. node-forge 1.4.1 is the only
   # release that fixes GHSA-86w9-cpqp-85rv; its publisher matches the preceding
   # releases. Remove after quarantine expiry.
