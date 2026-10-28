@@ -15,6 +15,8 @@
 
 import { expect, type Page, test } from "@playwright/test";
 
+import { ensureLiveView } from "../parity/parity-fixture";
+
 // Two full editor sessions, each probed five times.
 test.setTimeout(120_000);
 
@@ -77,6 +79,9 @@ const open = async (page: Page, renderer: string): Promise<void> => {
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
+  // Painted pages precede the deferred editing view. Measure renderer parity
+  // against a live view, as the other selection parity probes do.
+  await ensureLiveView(page);
 };
 
 const pageBox = async (page: Page) => {
