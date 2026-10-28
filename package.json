@@ -153,7 +153,7 @@
     "@oxlint/plugins": "1.87.0",
     "@playwright/test": "1.64.1",
     "@rolldown/plugin-babel": "^0.2.4",
-    "@stll/aho-corasick": "1.0.4",
+    "@stll/aho-corasick": "2.0.0",
     "@stll/docx-core": "workspace:*",
     "@stll/folio-core": "workspace:*",
     "@stll/fuzzy-search": "1.2.0",
