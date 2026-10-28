@@ -7,7 +7,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { FolioDocxReviewer } from "./headless";
@@ -57,8 +58,8 @@ const storyFieldRuns = (label: string) =>
   `<w:r><w:t xml:space="preserve"> end</w:t></w:r>`;
 
 const createNoteFieldDocx = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -70,14 +71,14 @@ const createNoteFieldDocx = async (): Promise<ArrayBuffer> => {
   <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -86,7 +87,7 @@ const createNoteFieldDocx = async (): Promise<ArrayBuffer> => {
   <Relationship Id="${FOOTER_RELATIONSHIP_ID}" Type="${RELATIONSHIP_TYPES.footer}" Target="footer1.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="${RELATIONSHIP_NAMESPACE}">
@@ -100,21 +101,21 @@ const createNoteFieldDocx = async (): Promise<ArrayBuffer> => {
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
   <w:p w14:paraId="42000010">${storyFieldRuns("header")}</w:p>
 </w:hdr>`,
   );
-  zip.file(
+  zip.set(
     "word/footer1.xml",
     `${XML_DECLARATION}
 <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
   <w:p w14:paraId="42000011">${storyFieldRuns("footer")}</w:p>
 </w:ftr>`,
   );
-  zip.file(
+  zip.set(
     "word/footnotes.xml",
     `${XML_DECLARATION}
 <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
@@ -142,12 +143,12 @@ const createNoteFieldDocx = async (): Promise<ArrayBuffer> => {
   )}
 </w:footnotes>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECLARATION}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /**

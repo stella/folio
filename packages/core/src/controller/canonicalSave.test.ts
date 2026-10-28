@@ -8,7 +8,6 @@ import {
 } from "../../../../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
-import JSZip from "jszip";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { validateDocxPackage } from "@stll/docx-core";
@@ -17,6 +16,7 @@ import {
   OP_STORIES,
   packageResourcesOpOf,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
 import { canonicalSaveParagraphXml } from "../../../../test/canonicalSaveSequence";
@@ -41,25 +41,25 @@ const SOURCE_BLOCKS = IDS.map(
     `<w:p w14:paraId='${id}'><w:r>\n<w:t>text${index}</w:t>\t</w:r></w:p>`,
 );
 const openSource = async () => {
-  const zip = await JSZip.loadAsync(
+  const zip = await ZipArchive.read(
     await createDocx(createSimpleDocument([{ text: "seed" }])),
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `<?xml version='1.0'?>\n<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main' xmlns:w14='http://schemas.microsoft.com/office/word/2010/wordml'><w:body>\n${SOURCE_BLOCKS.join("\n<!-- gap -->\n")}\n</w:body></w:document>`,
   );
-  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+  return parseDocx((await zip.generate({ compression: "store" })).buffer, {
     preloadFonts: false,
   });
 };
 
 const stylesXmlOf = async (buffer: ArrayBuffer) => {
-  const file = (await JSZip.loadAsync(buffer)).file("word/styles.xml");
+  const file = (await ZipArchive.read(buffer)).entry("word/styles.xml");
   if (!file)
     return panic(
       "The generated source or saved package is missing its styles part",
     );
-  return file.async("text");
+  return file.text();
 };
 
 test("generated canonical histories save the model and preserve every block outside cumulative touched ids", async () => {
@@ -282,10 +282,10 @@ test("generated canonical histories save the model and preserve every block outs
             omitted: 0,
           });
           const xml = await (
-            await JSZip.loadAsync(saved.buffer)
+            await ZipArchive.read(saved.buffer)
           )
-            .file("word/document.xml")
-            ?.async("text");
+            .entry("word/document.xml")
+            ?.text();
           for (const [index, id] of IDS.entries()) {
             if (!snapshot.changedBlockIds.includes(id))
               expect(xml).toContain(SOURCE_BLOCKS[index]);
@@ -436,10 +436,10 @@ test("selective refusal emits a typed diagnostic and trusted full replay preserv
   ]);
   expect(saved.diagnostics).toEqual(diagnostics);
   const xml = await (
-    await JSZip.loadAsync(saved.buffer)
+    await ZipArchive.read(saved.buffer)
   )
-    .file("word/document.xml")
-    ?.async("text");
+    .entry("word/document.xml")
+    ?.text();
   for (const block of SOURCE_BLOCKS) expect(xml).toContain(block);
 });
 
@@ -482,9 +482,9 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
         const original = await openSource();
         if (!original.originalBuffer)
           return panic("The generated source is missing its baseline");
-        const zip = await JSZip.loadAsync(original.originalBuffer);
+        const zip = await ZipArchive.read(original.originalBuffer);
         const mediaPath = "word/media/canonical-resource.png";
-        zip.file(
+        zip.set(
           mediaPath,
           Buffer.from(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=",
@@ -492,7 +492,7 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
           ),
         );
         const document = await parseDocx(
-          await zip.generateAsync({ type: "arraybuffer" }),
+          (await zip.generate({ compression: "store" })).buffer,
           {
             preloadFonts: false,
           },

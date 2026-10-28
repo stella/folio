@@ -23,11 +23,11 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
+    "@stll/docx-core": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "0.28.2",
-    "jszip": "3.10.2",
     "prosemirror-model": "^1.25.9",
     "prosemirror-view": "^1.42.7"
   }

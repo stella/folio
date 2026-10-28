@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { validateDocumentModel, validateDocxPackage } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createStellaStyleDocumentPreset } from "../../style-sets/stellaStyle";
 import type { HeaderFooter } from "../../types/document";
@@ -29,7 +29,7 @@ const zipText = async (
   buffer: ArrayBuffer,
   path: string,
 ): Promise<string | undefined> =>
-  JSZip.loadAsync(buffer).then((zip) => zip.file(path)?.async("string"));
+  ZipArchive.read(buffer).then((zip) => zip.entry(path)?.text());
 
 const externalHyperlinkRel = (
   relsXml: string | undefined,
@@ -101,14 +101,14 @@ describe("hyperlink relationships outside the main body", () => {
       paragraph([run("See "), hyperlink({ text: "source", href: LINK })]),
     ]);
     doc.package.document.content = [paragraph([run("Claim"), ref])];
-    const zip = await JSZip.loadAsync(await createDocx(doc));
+    const zip = await ZipArchive.read(await createDocx(doc));
 
     // Re-case the note part and its rels the way some producers do.
     const rename = async (from: string, to: string) => {
-      const xml = await zip.file(from)?.async("string");
+      const xml = await zip.entry(from)?.text();
       expect(xml).toBeDefined();
-      zip.remove(from);
-      zip.file(to, xml ?? "");
+      zip.delete(from);
+      zip.set(to, xml ?? "");
     };
     await rename("word/endnotes.xml", "word/Endnotes.xml");
     await rename(
@@ -116,14 +116,14 @@ describe("hyperlink relationships outside the main body", () => {
       "word/_rels/Endnotes.xml.rels",
     );
     const recase = async (path: string) => {
-      const xml = await zip.file(path)?.async("string");
-      zip.file(path, (xml ?? "").replaceAll("endnotes.xml", "Endnotes.xml"));
+      const xml = await zip.entry(path)?.text();
+      zip.set(path, (xml ?? "").replaceAll("endnotes.xml", "Endnotes.xml"));
     };
     await recase("[Content_Types].xml");
     await recase("word/_rels/document.xml.rels");
 
     const parsed = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },
@@ -198,12 +198,10 @@ describe("from-scratch header materialisation", () => {
     ];
 
     const buffer = await createDocx(doc);
-    const zip = await JSZip.loadAsync(buffer);
-    expect(zip.file("word/header1.xml")).not.toBeNull();
+    const zip = await ZipArchive.read(buffer);
+    expect(zip.entry("word/header1.xml")).toBeDefined();
 
-    const relsXml = await zip
-      .file("word/_rels/document.xml.rels")!
-      .async("string");
+    const relsXml = await zip.entry("word/_rels/document.xml.rels")!.text();
     const ids = [...relsXml.matchAll(/Id="(?<id>[^"]+)"/gu)].map(
       (match) => match.groups!.id,
     );

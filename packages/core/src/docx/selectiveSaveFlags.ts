@@ -11,7 +11,7 @@
  * - `selectiveSaveTripwire` — run selective + full and compare bytes for CI
  *   observability. Never blocks the user-visible save.
  * - `selectiveSaveMaxBytes` — refuse the selective path for original buffers
- *   above this size, since holding them in memory plus the JSZip overhead is
+ *   above this size, since holding them in memory plus the archive overhead is
  *   the dominant cost.
  */
 

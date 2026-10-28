@@ -1,5 +1,6 @@
 import { Result } from "better-result";
-import type JSZip from "jszip";
+
+import type { ZipArchive } from "@stll/docx-core/zip";
 /**
  * What a repack carries out of the source package, and the guarantee that
  * nothing in the output points at a part the output does not hold.
@@ -26,9 +27,7 @@ import type JSZip from "jszip";
  * does not open.
  */
 
-import { writeZipPart } from "@stll/docx-core/zip";
-
-import { decodeText, encodeUtf8 } from "../utils/textEncoding";
+import { decodeText } from "../utils/textEncoding";
 
 const CONTENT_TYPE_ELEMENT = /<(?:Default|Override)\b[^>]*?\/?>/giu;
 const PART_NAME_ATTRIBUTE =
@@ -135,20 +134,18 @@ export const isUnsafePackagePath = (path: string): boolean => {
 };
 
 /** Drop the entries whose path a save refuses. Every other part survives. */
-export const removeUnsafeEntries = (zip: JSZip): void => {
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (!file.dir && isUnsafePackagePath(path)) {
-      zip.remove(path);
+export const removeUnsafeEntries = (zip: ZipArchive): void => {
+  for (const path of zip.paths()) {
+    if (isUnsafePackagePath(path)) {
+      zip.delete(path);
     }
   }
 };
 
-const presentPartPaths = (zip: JSZip): Set<string> => {
+const presentPartPaths = (zip: ZipArchive): Set<string> => {
   const present = new Set<string>();
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (!file.dir) {
-      present.add(normalizePartPath(path));
-    }
+  for (const path of zip.paths()) {
+    present.add(normalizePartPath(path));
   }
   return present;
 };
@@ -202,18 +199,19 @@ type RelationshipPart = {
  * sequential read keeps the output order stable.
  */
 const readRelationshipParts = async (
-  zip: JSZip,
+  zip: ZipArchive,
 ): Promise<RelationshipPart[]> => {
   const parts: RelationshipPart[] = [];
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (file.dir || !normalizePartPath(path).endsWith(".rels")) {
+  for (const file of zip.entries()) {
+    const { path } = file;
+    if (!normalizePartPath(path).endsWith(".rels")) {
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- a handful of tiny parts, read in package order
     parts.push({
       path,
       xml: await file
-        .async("uint8array")
+        .bytes()
         .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     });
   }
@@ -221,7 +219,7 @@ const readRelationshipParts = async (
 };
 
 type WritePartOptions = {
-  zip: JSZip;
+  zip: ZipArchive;
   path: string;
   xml: string;
   compressionLevel: number;
@@ -233,15 +231,7 @@ const writePart = ({
   xml,
   compressionLevel,
 }: WritePartOptions): void => {
-  writeZipPart({
-    zip,
-    path,
-    data: encodeUtf8(xml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  zip.set(path, xml, { level: compressionLevel });
 };
 
 /**
@@ -255,7 +245,7 @@ const writePart = ({
  * which is what the repack tests assert about their own output.
  */
 export const reconcilePackageReferences = async (
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<PackageReferenceRepair> => {
   const present = presentPartPaths(zip);
@@ -303,7 +293,7 @@ export const reconcilePackageReferences = async (
   // content. Scrub only the removed ids' attributes; every other reference
   // in the part is untouched.
   for (const [partPath, ids] of removedIdsByOwningPart) {
-    const file = zip.file(partPath);
+    const file = zip.entry(partPath);
     if (!file) {
       continue;
     }
@@ -313,7 +303,7 @@ export const reconcilePackageReferences = async (
       "gu",
     );
     const xml = await file
-      .async("uint8array")
+      .bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
     const removedIds = new Set<string>();
     const scrubbed = xml.replaceAll(referencePattern, (...args) => {
@@ -331,14 +321,16 @@ export const reconcilePackageReferences = async (
     }
   }
 
-  const contentTypes = zip.file(CONTENT_TYPES_PATTERN)[0];
+  const contentTypes = zip
+    .entries()
+    .find(({ path }) => CONTENT_TYPES_PATTERN.test(path));
   if (!contentTypes) {
     return repair;
   }
   let droppedOverride = false;
   const prunedContentTypes = (
     await contentTypes
-      .async("uint8array")
+      .bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
   ).replaceAll(CONTENT_TYPE_ELEMENT, (element) => {
     const partName = PART_NAME_ATTRIBUTE.exec(element)?.groups?.["value"];
@@ -354,7 +346,7 @@ export const reconcilePackageReferences = async (
   if (droppedOverride) {
     writePart({
       zip,
-      path: contentTypes.name,
+      path: contentTypes.path,
       xml: prunedContentTypes,
       compressionLevel,
     });
@@ -401,7 +393,7 @@ export type PackageIntegrityReport = {
  * census, one pass over the XML parts checking references against it.
  */
 export const checkPackageIntegrity = async (
-  zip: JSZip,
+  zip: ZipArchive,
 ): Promise<PackageIntegrityReport> => {
   const present = presentPartPaths(zip);
   const report: PackageIntegrityReport = {
@@ -430,13 +422,14 @@ export const checkPackageIntegrity = async (
     }
   }
 
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (file.dir || !normalizePartPath(path).endsWith(".xml")) {
+  for (const file of zip.entries()) {
+    const { path } = file;
+    if (!normalizePartPath(path).endsWith(".xml")) {
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- a handful of XML parts, read in package order
     const xml = await file
-      .async("uint8array")
+      .bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
     const ids = idsByOwningPart.get(path);
     for (const match of xml.matchAll(REFERENCE_ATTRIBUTE)) {

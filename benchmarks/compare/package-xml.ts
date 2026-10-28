@@ -8,7 +8,7 @@
  * engine work inside the setup the timings are supposed to exclude.
  */
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 /** A package part: XML text, or bytes for media. */
 export type PackagePart = string | Uint8Array;
@@ -21,47 +21,31 @@ export type DocxPackage = ReadonlyMap<string, PackagePart>;
  */
 const FIXED_ZIP_DATE = new Date(Date.UTC(2000, 0, 1));
 
-/**
- * Folder entries are the one part of the package the fixed date does not
- * reach: JSZip synthesizes them from the part names and stamps them with
- * `new Date()`, so a corpus package changed every two seconds. Word writes no
- * folder entries either, so dropping them is also the more faithful package.
- */
-const ZIP_ENTRY_OPTIONS = {
-  date: FIXED_ZIP_DATE,
-  createFolders: false,
-} as const;
-
 export const zipPackage = async (parts: DocxPackage): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   for (const name of [...parts.keys()].toSorted()) {
     const part = parts.get(name);
     if (part === undefined) {
       continue;
     }
-    zip.file(name, part, ZIP_ENTRY_OPTIONS);
+    zip.set(name, part, { modified: FIXED_ZIP_DATE });
   }
-  return await zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
-  });
+  return (await zip.generate({ level: 6 })).buffer;
 };
 
 export const unzipPackage = async (
   buffer: ArrayBuffer,
 ): Promise<Map<string, PackagePart>> => {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   const parts = new Map<string, PackagePart>();
-  for (const [name, file] of Object.entries(zip.files)) {
-    if (file.dir) {
-      continue;
-    }
+  for (const [name, file] of zip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
     parts.set(
       name,
       name.endsWith(".xml") || name.endsWith(".rels")
-        ? await file.async("string")
-        : await file.async("uint8array"),
+        ? await file.text()
+        : await file.bytes(),
     );
   }
   return parts;

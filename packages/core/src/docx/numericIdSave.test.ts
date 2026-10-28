@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { InvalidOoxmlNumericIdError } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
@@ -19,12 +19,12 @@ test("the DOCX writer rejects a synthetic timestamp-sized comment id", async () 
 
 test("the DOCX writer rejects invalid ids injected into untouched note parts after import", async () => {
   const doc = await parseDocx(await createEmptyDocx());
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/footnotes.xml",
     '<x:footnotes xmlns:x="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><x:footnote x:type="separator" x:id="2147483648"><x:p/></x:footnote></x:footnotes>',
   );
-  const source = await zip.generateAsync({ type: "arraybuffer" });
+  const source = (await zip.generate({ compression: "store" })).buffer;
   doc.originalBuffer = source;
   await expect(repackDocx(doc)).rejects.toBeInstanceOf(
     InvalidOoxmlNumericIdError,

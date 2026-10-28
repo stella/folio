@@ -18,7 +18,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createDocx } from "../docx/rezip";
 import type {
@@ -75,11 +76,9 @@ const threads = (comments: readonly FolioReviewComment[]) =>
   }));
 
 const packageCounts = async (buffer: ArrayBuffer) => {
-  const zip = await JSZip.loadAsync(buffer);
-  const documentXml =
-    (await zip.file("word/document.xml")?.async("text")) ?? "";
-  const commentsXml =
-    (await zip.file("word/comments.xml")?.async("text")) ?? "";
+  const zip = await ZipArchive.read(buffer);
+  const documentXml = (await zip.entry("word/document.xml")?.text()) ?? "";
+  const commentsXml = (await zip.entry("word/comments.xml")?.text()) ?? "";
   return {
     rangeStarts: (documentXml.match(/<w:commentRangeStart\b/gu) ?? []).length,
     references: (documentXml.match(/<w:commentReference\b/gu) ?? []).length,

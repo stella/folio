@@ -5,7 +5,8 @@
  * materializes it into a real part. eigenpal/docx-editor#684 (BUG2).
  */
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { HeaderFooter } from "../types/document";
 import { setDocumentWatermark } from "../watermark";
@@ -38,18 +39,18 @@ describe("watermark header coverage on save (eigenpal #684)", () => {
 
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
-    const headerFiles = Object.keys(zip.files).filter((p) =>
-      /^word\/header\d+\.xml$/u.test(p),
-    );
+    const zip = await ZipArchive.read(out);
+    const headerFiles = zip
+      .paths()
+      .filter((p) => /^word\/header\d+\.xml$/u.test(p));
     // Default header + the coverage-created first-page header.
     expect(headerFiles).toHaveLength(2);
     for (const path of headerFiles) {
       // oxlint-disable-next-line no-await-in-loop -- sequential test assertion over each extracted header entry
-      expect(await zip.file(path)!.async("text")).toContain("CONFIDENTIAL");
+      expect(await zip.entry(path)!.text()).toContain("CONFIDENTIAL");
     }
 
-    const docXml = await zip.file("word/document.xml")!.async("text");
+    const docXml = await zip.entry("word/document.xml")!.text();
     expect(docXml).toMatch(/<w:headerReference[^>]*w:type="first"/u);
 
     const reparsed = await parseDocx(out, { preloadFonts: false });

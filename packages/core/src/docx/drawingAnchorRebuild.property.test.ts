@@ -24,7 +24,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -79,28 +80,28 @@ const anchorXml = (anchorAttributes: string, docPrChildren: string): string =>
   `${GRAPHIC}</wp:anchor></w:drawing></w:r></w:p>`;
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:r="${R_NAMESPACE}" ` +
       `xmlns:a="${A_NAMESPACE}" xmlns:wp="${WP_NAMESPACE}" xmlns:pic="${PIC_NAMESPACE}" ` +
       `xmlns:wps="${WPS_NAMESPACE}">` +
       `<w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  zip.file("word/media/image1.png", PNG);
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  zip.set("word/media/image1.png", PNG);
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
       '<Default Extension="png" ContentType="image/png"/></Types>',
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
@@ -109,7 +110,7 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
         "</Relationships>",
     ),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /**
@@ -147,11 +148,8 @@ const savedAfterResize = async (body: string): Promise<string> => {
   resizePictures(parsed);
   const saved = await repackDocx(parsed, { updateModifiedDate: false });
   return (
-    (await (
-      await JSZip.loadAsync(saved)
-    )
-      .file("word/document.xml")
-      ?.async("text")) ?? ""
+    (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+    ""
   );
 };
 
@@ -216,16 +214,16 @@ describe("a resized drawing is rebuilt with the anchor it was authored with", ()
   });
 
   test("a link folio refuses is not replayed from the source bytes", async () => {
-    const zip = await JSZip.loadAsync(
+    const zip = await ZipArchive.read(
       await buildDocx(anchorXml(ANCHOR_ATTRIBUTE_XML, HLINK_CLICK)),
     );
-    const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
-    zip.file(
+    const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
+    zip.set(
       "word/_rels/document.xml.rels",
       (rels ?? "").replace("https://example.org/", "javascript:alert(1)"),
     );
     const parsed = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },
@@ -233,12 +231,12 @@ describe("a resized drawing is rebuilt with the anchor it was authored with", ()
     resizePictures(parsed);
     const saved =
       (await (
-        await JSZip.loadAsync(
+        await ZipArchive.read(
           await repackDocx(parsed, { updateModifiedDate: false }),
         )
       )
-        .file("word/document.xml")
-        ?.async("text")) ?? "";
+        .entry("word/document.xml")
+        ?.text()) ?? "";
 
     expect(saved).not.toContain("a:hlinkClick");
     expect(saved).not.toContain('tooltip="a tip"');
@@ -346,11 +344,8 @@ const savedAfterEdit = async (
   resizePictures(projected);
   const saved = await repackDocx(projected, { updateModifiedDate: false });
   return (
-    (await (
-      await JSZip.loadAsync(saved)
-    )
-      .file("word/document.xml")
-      ?.async("text")) ?? ""
+    (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+    ""
   );
 };
 

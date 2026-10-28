@@ -1,9 +1,9 @@
 import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import { assertValidOoxmlNumericIds } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -27,29 +27,29 @@ const invalidId = fc
 test("selective saves share imported numeric identities across original and canonical baselines", async () => {
   await assertProperty(
     fc.asyncProperty(invalidId, async (id) => {
-      const zip = await JSZip.loadAsync(await createEmptyDocx());
-      zip.file(
+      const zip = await ZipArchive.read(await createEmptyDocx());
+      zip.set(
         "word/document.xml",
         `<w:document xmlns:w="${WORD_NAMESPACE}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body><w:p w14:paraId="10000001"><w:bookmarkStart w:id="${id}" w:name="anchor"/><w:r><w:t>Before</w:t></w:r><w:bookmarkEnd w:id="${id}"/><w:r><w:footnoteReference w:id="${id}"/></w:r></w:p><w:p w14:paraId="10000002"><w:bookmarkStart w:id="1" w:name="occupied"/><w:r><w:t>Untouched</w:t></w:r><w:bookmarkEnd w:id="1"/></w:p></w:body></w:document>`,
       );
-      zip.file(
+      zip.set(
         "word/footnotes.xml",
         `<w:footnotes xmlns:w="${WORD_NAMESPACE}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:footnote w:id="${id}"><w:p w14:paraId="20000001"><w:r><w:t>Note</w:t></w:r></w:p></w:footnote></w:footnotes>`,
       );
       // An opaque OOXML part participates in the same package identity spaces.
-      zip.file(
+      zip.set(
         "word/opaque.xml",
         `<w:opaque xmlns:w="${WORD_NAMESPACE}"><w:bookmarkStart w:id="${id}" w:name="opaque"/><w:bookmarkEnd w:id="${id}"/></w:opaque>`,
       );
-      const source = await zip.generateAsync({ type: "arraybuffer" });
+      const source = (await zip.generate({ compression: "store" })).buffer;
       const document = await parseDocx(source, { preloadFonts: false });
-      const canonicalZip = await JSZip.loadAsync(document.originalBuffer);
+      const canonicalZip = await ZipArchive.read(document.originalBuffer);
       const canonicalOpaqueXml = await canonicalZip
-        .file("word/opaque.xml")
-        ?.async("text");
+        .entry("word/opaque.xml")
+        ?.text();
       const canonicalNoteXml = await canonicalZip
-        .file("word/footnotes.xml")
-        ?.async("text");
+        .entry("word/footnotes.xml")
+        ?.text();
       expect(canonicalOpaqueXml).toBeDefined();
       expect(canonicalNoteXml).toBeDefined();
       expect(canonicalOpaqueXml).not.toContain(`w:id="${id}"`);
@@ -74,20 +74,23 @@ test("selective saves share imported numeric identities across original and cano
           if (saved === null)
             panic("Selective save declined a normalized synthetic source");
           // oxlint-disable-next-line no-await-in-loop -- inspect the result of this baseline's save
-          const savedZip = await JSZip.loadAsync(saved);
-          for (const [path, file] of Object.entries(savedZip.files)) {
-            if (file.dir || !path.startsWith("word/") || !path.endsWith(".xml"))
-              continue;
+          const savedZip = await ZipArchive.read(saved);
+          for (const [path, file] of savedZip
+            .entries()
+            .map(
+              (archiveEntry) => [archiveEntry.path, archiveEntry] as const,
+            )) {
+            if (!path.startsWith("word/") || !path.endsWith(".xml")) continue;
             // oxlint-disable-next-line no-await-in-loop -- the emitted package oracle checks each OOXML part
-            const xml = await file.async("text");
+            const xml = await file.text();
             expect(() => assertValidOoxmlNumericIds(xml, path)).not.toThrow();
           }
           // oxlint-disable-next-line no-await-in-loop -- untouched opaque XML is byte-identical to canonical import
-          expect(await savedZip.file("word/opaque.xml")?.async("text")).toBe(
+          expect(await savedZip.entry("word/opaque.xml")?.text()).toBe(
             canonicalOpaqueXml,
           );
           // oxlint-disable-next-line no-await-in-loop -- untouched note XML is byte-identical to canonical import
-          expect(await savedZip.file("word/footnotes.xml")?.async("text")).toBe(
+          expect(await savedZip.entry("word/footnotes.xml")?.text()).toBe(
             canonicalNoteXml,
           );
           // oxlint-disable-next-line no-await-in-loop -- compare each saved model against its edit mode

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import type {
   Document,
   ParagraphNumberingOverride,
   Table,
 } from "../model/document";
+import { ZipArchive } from "../zip/archive";
 import { serializeDocumentToDocx } from "./docx";
 import { InvalidOoxmlNumericIdError } from "./numericIds";
 
@@ -48,8 +48,8 @@ const docWithBorder = (style: string, rgb: string): Document => {
 };
 
 const readDocumentXml = async (buf: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buf);
-  const xml = await zip.file("word/document.xml")?.async("string");
+  const zip = await ZipArchive.read(buf);
+  const xml = await zip.entry("word/document.xml")?.text();
   if (xml === undefined) {
     throw new Error("word/document.xml missing from serialized docx");
   }
@@ -57,8 +57,8 @@ const readDocumentXml = async (buf: ArrayBuffer): Promise<string> => {
 };
 
 const readNumberingXml = async (buf: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buf);
-  const xml = await zip.file("word/numbering.xml")?.async("string");
+  const zip = await ZipArchive.read(buf);
+  const xml = await zip.entry("word/numbering.xml")?.text();
   if (xml === undefined) {
     throw new Error("word/numbering.xml missing from serialized docx");
   }

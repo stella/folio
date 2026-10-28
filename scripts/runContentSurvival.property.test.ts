@@ -22,7 +22,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { getParagraphText } from "../packages/core/src/docx/paragraphParser";
 import { parseDocx } from "../packages/core/src/docx/parser";
@@ -159,21 +160,21 @@ const NOTE_RELATIONSHIP_PREFIX =
  * nothing, and a fixture that cannot be parsed proves nothing.
  */
 const buildDocx = async (markup: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${WML_NAMESPACE}"><w:body>` +
       `<w:p><w:r>${markup}</w:r></w:p><w:sectPr/></w:body></w:document>`,
   );
-  zip.file("word/footnotes.xml", notesPart("footnotes", "footnote"));
-  zip.file("word/endnotes.xml", notesPart("endnotes", "endnote"));
+  zip.set("word/footnotes.xml", notesPart("footnotes", "footnote"));
+  zip.set("word/endnotes.xml", notesPart("endnotes", "endnote"));
 
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
@@ -181,7 +182,7 @@ const buildDocx = async (markup: string): Promise<ArrayBuffer> => {
         `<Override PartName="/word/endnotes.xml" ContentType="${NOTE_CONTENT_TYPE_PREFIX}endnotes+xml"/></Types>`,
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
@@ -189,15 +190,15 @@ const buildDocx = async (markup: string): Promise<ArrayBuffer> => {
         `<Relationship Id="rIdPropEndnotes" Type="${NOTE_RELATIONSHIP_PREFIX}endnotes" Target="endnotes.xml"/></Relationships>`,
     ),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentPart = async (buffer: ArrayBuffer): Promise<string> => {
   const part = await (
-    await JSZip.loadAsync(buffer)
+    await ZipArchive.read(buffer)
   )
-    .file("word/document.xml")
-    ?.async("text");
+    .entry("word/document.xml")
+    ?.text();
   if (part === undefined) {
     throw new Error("the saved package has no word/document.xml");
   }

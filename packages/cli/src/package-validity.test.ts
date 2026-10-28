@@ -4,7 +4,7 @@
  *
  * A ZIP of unrelated entries used to read as an empty document and commit as
  * a successful `save`, replacing a real package; the invalid-input tests only
- * used bytes that are not a ZIP at all, which JSZip already refuses. The
+ * used bytes that are not a ZIP at all, which the ZIP reader already refuses. The
  * matrix is every malformed shape crossed with every command, and the command
  * list comes from the registry and the help text, so a new command is covered
  * the day it is added.

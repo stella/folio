@@ -7,8 +7,7 @@
  * keeps the difference visible in the diff instead of hidden in bytes.
  */
 
-import JSZip from "jszip";
-import { writeZipEntry } from "@stll/utf8-boundaries";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 const NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -22,15 +21,6 @@ const EXTENDED_PROPERTIES =
 const EXTENDED_PROPERTIES_TYPE =
   "application/vnd.openxmlformats-officedocument.extended-properties+xml";
 const WORDML_2010 = "http://schemas.microsoft.com/office/word/2010/wordml";
-
-/** Pinned so two builds of the fixture produce identical bytes. */
-const FIXED_ZIP_DATE = new Date(Date.UTC(2000, 0, 1));
-
-/**
- * `createFolders: false` because JSZip stamps the folder entries it
- * synthesizes with `new Date()`, which the fixed date above does not reach.
- */
-const ZIP_ENTRY_OPTIONS = { date: FIXED_ZIP_DATE, createFolders: false } as const;
 
 /**
  * One cell's content: a line of text, or a sequence of its own — which is how
@@ -535,9 +525,9 @@ export const buildBodySequenceDocx = async (
       : {}),
   };
 
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   for (const name of Object.keys(parts).toSorted()) {
-    writeZipEntry(zip, name, parts[name] ?? "", ZIP_ENTRY_OPTIONS);
+    zip.set(name, parts[name] ?? "");
   }
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };

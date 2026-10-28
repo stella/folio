@@ -1268,7 +1268,7 @@ export type FolioDocxPackagePart = {
     readonly path: string;
     readonly kind: FolioDocxPackagePartKind;
     readonly contentType: string | null;
-    readonly declaredUncompressedBytes: number | null;
+    readonly declaredUncompressedBytes: number;
 };
 
 // @public (undocumented)

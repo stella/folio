@@ -1,3 +1,3 @@
-import JSZip from "jszip";
+import { ZipArchive } from "./zip/archive";
 
-export const projectionFallback = JSZip;
+export const projectionFallback = ZipArchive;

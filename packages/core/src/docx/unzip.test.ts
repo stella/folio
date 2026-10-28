@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   archiveWithRawDeflate,
@@ -87,27 +88,24 @@ describe("unzipDocx security limits", () => {
   });
 
   test("rejects archives with too many file entries", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
 
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
     const error = await getRejectedError(unzipDocx(buffer, { maxFiles: 1 }));
 
     expect(error).toBeInstanceOf(DocxSecurityError);
   });
 
   test("accepts large document XML entries within the default limit", async () => {
-    const zip = new JSZip();
+    const zip = new ZipArchive();
     const largeBody = "x".repeat(26 * 1024 * 1024);
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", `<w:document>${largeBody}</w:document>`);
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", `<w:document>${largeBody}</w:document>`);
 
     const content = await unzipDocx(
-      await zip.generateAsync({
-        compression: "DEFLATE",
-        type: "arraybuffer",
-      }),
+      (await zip.generate()).buffer,
       WITHOUT_RATIO_LIMIT,
     );
 
@@ -117,17 +115,14 @@ describe("unzipDocx security limits", () => {
   });
 
   test("accepts large header XML entries within the default limit", async () => {
-    const zip = new JSZip();
+    const zip = new ZipArchive();
     const largeHeader = "x".repeat(65 * 1024 * 1024);
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("word/header3.xml", `<w:hdr>${largeHeader}</w:hdr>`);
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("word/header3.xml", `<w:hdr>${largeHeader}</w:hdr>`);
 
     const content = await unzipDocx(
-      await zip.generateAsync({
-        compression: "DEFLATE",
-        type: "arraybuffer",
-      }),
+      (await zip.generate()).buffer,
       WITHOUT_RATIO_LIMIT,
     );
 
@@ -138,14 +133,14 @@ describe("unzipDocx security limits", () => {
 
   for (const utf16 of UTF16_CASES) {
     test(`decodes UTF-16 ${utf16.byteOrder} endian XML with byte-order mark ${utf16.byteOrderMark}`, async () => {
-      const zip = new JSZip();
+      const zip = new ZipArchive();
       const documentXml =
         '<?xml version="1.0" encoding="UTF-16"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Žluťoučký kůň</w:t></w:r></w:p></w:body></w:document>';
-      zip.file("[Content_Types].xml", "<Types />");
-      zip.file("word/document.xml", encodeUtf16(documentXml, utf16));
+      zip.set("[Content_Types].xml", "<Types />");
+      zip.set("word/document.xml", encodeUtf16(documentXml, utf16));
 
       const content = await unzipDocx(
-        await zip.generateAsync({ type: "arraybuffer" }),
+        (await zip.generate({ compression: "store" })).buffer,
       );
 
       expect(content.documentXml).toBe(documentXml);
@@ -154,29 +149,29 @@ describe("unzipDocx security limits", () => {
   }
 
   test("accepts media-heavy packages within the default file-count limit", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
     for (let index = 0; index < 3800; index += 1) {
-      zip.file(
+      zip.set(
         `word/media/image${index}.png`,
         new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00]),
       );
     }
 
     const content = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
     );
 
     expect(content.media.size).toBe(3800);
   });
 
   test("repairs archives missing the end-of-central-directory tail", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
 
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
     const truncated = truncateAfterEndOfCentralDirectoryCounts(buffer);
     const content = await unzipDocx(truncated);
 
@@ -189,11 +184,26 @@ describe("unzipDocx security limits", () => {
   });
 
   test("rejects unsafe archive paths", async () => {
-    const zip = new JSZip();
-    zip.file("/word/document.xml", "<w:document />");
-
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
-    const error = await getRejectedError(unzipDocx(buffer));
+    // The writer refuses the name, so write a placeholder of the same length
+    // and rename it in both the local header and the central directory.
+    const zip = new ZipArchive();
+    zip.set("xword/document.xml", "<w:document />");
+    const bytes = await zip.generate({ compression: "store" });
+    const placeholder = new TextEncoder().encode("xword/document.xml");
+    const unsafe = new TextEncoder().encode("/word/document.xml");
+    let renamed = 0;
+    for (
+      let offset = 0;
+      offset + placeholder.length <= bytes.length;
+      offset++
+    ) {
+      if (placeholder.every((byte, index) => bytes[offset + index] === byte)) {
+        bytes.set(unsafe, offset);
+        renamed++;
+      }
+    }
+    expect(renamed).toBe(2);
+    const error = await getRejectedError(unzipDocx(bytes.buffer));
 
     expect(error).toBeInstanceOf(DocxSecurityError);
   });
@@ -201,15 +211,12 @@ describe("unzipDocx security limits", () => {
   test("counts an entry the parser never reads toward the expansion ceiling", async () => {
     // A save carries every part of the package, so an entry folio does not
     // model still passes through the host. The ceiling has to see it.
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("word/embeddings/workbook.xlsx", "\0".repeat(4 * 1024 * 1024));
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("word/embeddings/workbook.xlsx", "\0".repeat(4 * 1024 * 1024));
 
-    const buffer = await zip.generateAsync({
-      compression: "DEFLATE",
-      type: "arraybuffer",
-    });
+    const buffer = (await zip.generate()).buffer;
     const error = await getRejectedError(
       unzipDocx(buffer, { maxTotalUncompressedBytes: 1024 * 1024 }),
     );
@@ -218,74 +225,74 @@ describe("unzipDocx security limits", () => {
   });
 
   test("carries a macro project through the archive without reading it", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("word/vbaProject.bin", new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]));
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("word/vbaProject.bin", new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]));
 
     const content = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
     );
 
     expect(content.allXml.has("word/vbaProject.bin")).toBe(false);
     expect(getFileList(content)).not.toContain("word/vbaProject.bin");
     expect(await extractFile(content, "word/vbaProject.bin")).toBeNull();
-    expect(content.originalZip.file("word/vbaProject.bin")).not.toBeNull();
+    expect(content.originalZip.entry("word/vbaProject.bin")).toBeDefined();
   });
 
   test("skips media entries with mismatched content signatures", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("word/media/image1.png", new Uint8Array([0x00, 0x00, 0x00, 0x00]));
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("word/media/image1.png", new Uint8Array([0x00, 0x00, 0x00, 0x00]));
 
     const content = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
     );
 
     expect(content.media.size).toBe(0);
   });
 
   test("loads valid media without eager data URL conversion", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set(
       "word/media/image1.png",
       new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00]),
     );
 
     const content = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
     );
 
     expect(content.media.has("word/media/image1.png")).toBe(true);
   });
 
   test("can keep unused XML in the source package without decompressing it", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("customXml/item1.xml", "<data />");
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("customXml/item1.xml", "<data />");
 
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
     const fullContent = await unzipDocx(buffer);
     const content = await unzipDocx(buffer, { extractAllXml: false });
 
     expect(fullContent.allXml.get("customXml/item1.xml")).toBe("<data />");
     expect(content.originalBuffer).toBe(buffer);
     expect(content.allXml.has("customXml/item1.xml")).toBe(false);
-    expect(content.originalZip.file("customXml/item1.xml")).not.toBeNull();
+    expect(content.originalZip.entry("customXml/item1.xml")).toBeDefined();
   });
 
   test("skips oversized raster media instead of rejecting the document", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("word/media/image1.png", new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("word/media/image1.png", new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
 
     const content = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         maxMediaBytes: 3,
       },
@@ -299,14 +306,14 @@ describe("unzipDocx security limits", () => {
   });
 
   test("does not expose active or embedded payload entries for preservation", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("word/vbaProject.bin", new Uint8Array([0x00]));
-    zip.file("word/embeddings/oleObject1.bin", new Uint8Array([0x00]));
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("word/vbaProject.bin", new Uint8Array([0x00]));
+    zip.set("word/embeddings/oleObject1.bin", new Uint8Array([0x00]));
 
     const content = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
     );
 
     expect(content.media.size).toBe(0);
@@ -318,13 +325,13 @@ describe("unzipDocx security limits", () => {
   });
 
   test("preserves known vector image entries without loading them by default", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("word/media/image1.emf", new Uint8Array([0x01, 0x02]));
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("word/media/image1.emf", new Uint8Array([0x01, 0x02]));
 
     const content = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
     );
 
     expect(content.media.size).toBe(0);
@@ -332,16 +339,13 @@ describe("unzipDocx security limits", () => {
   });
 
   test("preserves large vector image entries without extracting them", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("word/media/image1.emf", new Uint8Array(26 * 1024 * 1024));
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("word/media/image1.emf", new Uint8Array(26 * 1024 * 1024));
 
     const content = await unzipDocx(
-      await zip.generateAsync({
-        compression: "DEFLATE",
-        type: "arraybuffer",
-      }),
+      (await zip.generate()).buffer,
       WITHOUT_RATIO_LIMIT,
     );
 
@@ -350,13 +354,13 @@ describe("unzipDocx security limits", () => {
   });
 
   test("skips oversized embedded fonts without rejecting the document", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types />");
-    zip.file("word/document.xml", "<w:document />");
-    zip.file("word/fonts/font1.odttf", new Uint8Array([1, 2, 3, 4]));
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types />");
+    zip.set("word/document.xml", "<w:document />");
+    zip.set("word/fonts/font1.odttf", new Uint8Array([1, 2, 3, 4]));
 
     const content = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         maxFontBytes: 3,
       },
@@ -428,16 +432,13 @@ describe("unzipDocx archive inflation limits", () => {
   });
 
   test("refuses a package whose parts together pass the ratio cap", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types/>");
-    zip.file("word/document.xml", "<w:document/>");
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types/>");
+    zip.set("word/document.xml", "<w:document/>");
     for (const index of [1, 2, 3]) {
-      zip.file(`word/header${String(index)}.xml`, "x".repeat(2 * 1024 * 1024));
+      zip.set(`word/header${String(index)}.xml`, "x".repeat(2 * 1024 * 1024));
     }
-    const buffer = await zip.generateAsync({
-      type: "arraybuffer",
-      compression: "DEFLATE",
-    });
+    const buffer = (await zip.generate()).buffer;
 
     const error = await getRejectedError(unzipDocx(buffer));
 
@@ -464,7 +465,7 @@ describe("unzipDocx archive inflation limits", () => {
 
   test("counts archive records before the archive is parsed", async () => {
     const buffer = toArrayBuffer(await manyEntryArchive(40));
-    const loadAsync = spyOn(JSZip, "loadAsync");
+    const loadAsync = spyOn(ZipArchive, "loadAsync");
 
     try {
       const error = await getRejectedError(unzipDocx(buffer, { maxFiles: 10 }));
@@ -497,14 +498,11 @@ describe("unzipDocx archive inflation limits", () => {
   });
 
   test("refuses parts that together pass the cumulative limit", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types/>");
-    zip.file(
-      "word/document.xml",
-      `<w:document>${"a".repeat(600)}</w:document>`,
-    );
-    zip.file("word/header1.xml", `<w:hdr>${"b".repeat(600)}</w:hdr>`);
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types/>");
+    zip.set("word/document.xml", `<w:document>${"a".repeat(600)}</w:document>`);
+    zip.set("word/header1.xml", `<w:hdr>${"b".repeat(600)}</w:hdr>`);
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
 
     await expect(
       unzipDocx(buffer, { maxTotalUncompressedBytes: 1000 }),
@@ -532,20 +530,18 @@ describe("unzipDocx archive inflation limits", () => {
   });
 
   test("leaves a highly compressible binary part to the byte and package limits", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types/>");
-    zip.file("word/document.xml", "<w:document/>");
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", "<Types/>");
+    zip.set("word/document.xml", "<w:document/>");
+    zip.set(
       "word/media/image1.bmp",
       new Uint8Array(5 * 1024 * 1024).fill(0xff),
-      {
-        compression: "DEFLATE",
-      },
+      { compression: "deflate" },
     );
     // Incompressible padding keeps the package as a whole under the ratio cap.
     const padding = crypto.getRandomValues(new Uint8Array(64 * 1024));
-    zip.file("word/embeddings/padding.bin", padding);
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    zip.set("word/embeddings/padding.bin", padding);
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
 
     await expect(unzipDocx(buffer)).resolves.toBeDefined();
   });

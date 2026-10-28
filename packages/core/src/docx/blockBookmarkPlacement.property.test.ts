@@ -17,7 +17,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -159,12 +160,12 @@ type PlacementKey = keyof typeof PLACEMENTS;
 const PLACEMENT_KEYS = Object.keys(PLACEMENTS) as PlacementKey[];
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 type Anchor = {
@@ -231,8 +232,8 @@ const anchorsOf = (
 };
 
 const documentXmlOf = async (saved: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(saved);
-  return (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const zip = await ZipArchive.read(saved);
+  return (await zip.entry("word/document.xml")?.text()) ?? "";
 };
 
 const expectedAnchors = (

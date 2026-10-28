@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
 
 import {
   DOCX_CONFORMANCE_CLASSES,
   DRAWING_RAW_XML_MODES,
 } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -23,12 +24,12 @@ const XML_DECLARATION =
 const createAdjustedShapeDocx = async (
   preset: "rightBrace" | "roundRect",
 ): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const adjustments =
     preset === "rightBrace"
       ? '<a:gd name="adj1" fmla="val 12500"/><a:gd name="adj2" fmla="val 62500"/>'
       : '<a:gd name="adj" fmla="val 25000"/>';
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -37,14 +38,14 @@ const createAdjustedShapeDocx = async (
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document
@@ -76,12 +77,12 @@ const createAdjustedShapeDocx = async (
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECLARATION}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** Smallest valid PNG, so the header logo resolves to real media. */
@@ -133,8 +134,8 @@ const XML_NAMESPACES = [
 
 /** A header logo plus a bodiless brace shape in a table cell: no opaque content. */
 const createHeaderPictureDocx = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -145,34 +146,34 @@ const createHeaderPictureDocx = async (): Promise<ArrayBuffer> => {
   <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId10" Type="${RELATIONSHIP_TYPES.header}" Target="header1.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/header1.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
 </Relationships>`,
   );
-  zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-  zip.file(
+  zip.set("word/media/image1.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+  zip.set(
     "word/header1.xml",
     `${XML_DECLARATION}
 <w:hdr ${XML_NAMESPACES}>${HEADER_PICTURE_XML}</w:hdr>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document ${XML_NAMESPACES}>
@@ -189,12 +190,12 @@ const createHeaderPictureDocx = async (): Promise<ArrayBuffer> => {
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECLARATION}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** A `wpg:wgp` group the rasterizer renders into a single preview image. */
@@ -545,10 +546,10 @@ describe("DOCX compatibility inspection", () => {
       preloadFonts: false,
     });
     const originalHeaderXml = await (
-      await JSZip.loadAsync(source)
+      await ZipArchive.read(source)
     )
-      .file("word/header1.xml")
-      ?.async("text");
+      .entry("word/header1.xml")
+      ?.text();
 
     const pmDocument = toProseDoc(parsed);
     let bodyTextPosition: number | undefined;
@@ -574,10 +575,10 @@ describe("DOCX compatibility inspection", () => {
       { updateModifiedDate: false },
     );
     const savedHeaderXml = await (
-      await JSZip.loadAsync(saved)
+      await ZipArchive.read(saved)
     )
-      .file("word/header1.xml")
-      ?.async("text");
+      .entry("word/header1.xml")
+      ?.text();
 
     expect(savedHeaderXml).toBe(originalHeaderXml);
     expect(

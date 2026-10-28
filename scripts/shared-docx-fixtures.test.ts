@@ -1,7 +1,8 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { scanTestTimeout } from "../test/scan-timeout";
 import {
@@ -97,9 +98,9 @@ const packageCalls = (text: string) => {
   const serializerReferences = new Set<number>();
   walkAst(program, (node, ancestors) => {
     const member = staticMemberName(node);
-    if (member === "generateAsync") calls.push("unchecked-zip");
+    if (member === "generate") calls.push("unchecked-zip");
     if (member === "createDocx") calls.push("unchecked-serializer");
-    if (bindingElementName(text, node, ancestors) === "generateAsync") {
+    if (bindingElementName(text, node, ancestors) === "generate") {
       calls.push("unchecked-zip");
     }
     const parent = ancestors.at(-1);
@@ -150,7 +151,7 @@ test("every shared fixture and generator uses validated package construction", (
 test("fixture guard detects direct package generators", () => {
   // Fixtures are whole modules: a syntax error stops the guard.
   expect(
-    packageCalls('export default zip.generateAsync({type: "uint8array"})'),
+    packageCalls('export default zip.generate({ compression: "store" })'),
   ).toEqual(["unchecked-zip"]);
   expect(packageCalls("export default createDocx(document)")).toEqual([
     "unchecked-serializer",
@@ -165,12 +166,12 @@ test("fixture guard detects direct package generators", () => {
   ]);
   expect(
     packageCalls(
-      `const generate = zip["generateAsync"]; export default generate(options)`,
+      `const write = zip["generate"]; export default write(options)`,
     ),
   ).toEqual(["unchecked-zip"]);
   expect(
     packageCalls(
-      `const { generateAsync: generate } = zip; export default generate(options)`,
+      `const { generate: write } = zip; export default write(options)`,
     ),
   ).toEqual(["unchecked-zip"]);
   expect(
@@ -189,12 +190,12 @@ test(
 );
 
 test("invalid fixture fails at construction with its name and schema reason", async () => {
-  const zip = await JSZip.loadAsync(await buildScrollRootDocument());
-  const part = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(await buildScrollRootDocument());
+  const part = zip.entry("word/document.xml");
   if (!part) throw new Error("Missing fixture document part");
-  zip.file(
+  zip.set(
     "word/document.xml",
-    (await part.async("string")).replace(' w:header="720"', ""),
+    (await part.text()).replace(' w:header="720"', ""),
   );
   await expect(
     generateDocxFixture(zip, "deliberately-invalid"),

@@ -1,8 +1,9 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -601,7 +602,7 @@ describe("renderWmfSvg", () => {
 
 describe("WMF package previews", () => {
   test("generates SVG previews for EMF and WMF while preserving their source bytes", async () => {
-    const zip = await JSZip.loadAsync(readFileSync(FIXTURE));
+    const zip = await ZipArchive.read(readFileSync(FIXTURE));
     const emf = minimalEmf();
     const wmf = vectorWmf({
       records: [
@@ -615,13 +616,13 @@ describe("WMF package previews", () => {
         ]),
       ],
     });
-    zip.file("word/media/image1.emf", emf);
-    zip.file("word/media/image2.wmf", wmf);
+    zip.set("word/media/image1.emf", emf);
+    zip.set("word/media/image2.wmf", wmf);
     const relationshipPath = "word/_rels/document.xml.rels";
-    const relationships = await zip.file(relationshipPath)?.async("string");
+    const relationships = await zip.entry(relationshipPath)?.text();
     if (!relationships)
       throw new Error("Fixture is missing document relationships");
-    zip.file(
+    zip.set(
       relationshipPath,
       relationships.replace(
         "</Relationships>",
@@ -630,7 +631,7 @@ describe("WMF package previews", () => {
     );
 
     const document = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },
@@ -642,13 +643,9 @@ describe("WMF package previews", () => {
     expect(new Uint8Array(emfMedia?.data ?? new ArrayBuffer(0))).toEqual(emf);
     expect(new Uint8Array(wmfMedia?.data ?? new ArrayBuffer(0))).toEqual(wmf);
 
-    const output = await JSZip.loadAsync(await repackDocx(document));
-    expect(
-      await output.file("word/media/image1.emf")?.async("uint8array"),
-    ).toEqual(emf);
-    expect(
-      await output.file("word/media/image2.wmf")?.async("uint8array"),
-    ).toEqual(wmf);
+    const output = await ZipArchive.read(await repackDocx(document));
+    expect(await output.entry("word/media/image1.emf")?.bytes()).toEqual(emf);
+    expect(await output.entry("word/media/image2.wmf")?.bytes()).toEqual(wmf);
     expect(renderEmfSvg(emf)).not.toBeNull();
   });
 });

@@ -18,7 +18,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -311,12 +312,10 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
           });
 
           const saved = await reviewer.toBuffer();
-          const zip = await JSZip.loadAsync(saved);
-          const xml =
-            (await zip.file("word/document.xml")?.async("text")) ?? "";
+          const zip = await ZipArchive.read(saved);
+          const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
           const rels =
-            (await zip.file("word/_rels/document.xml.rels")?.async("text")) ??
-            "";
+            (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? "";
 
           const commentSpans = assertBalancedRanges(xml, "commentRange");
           assertBalancedRanges(xml, "bookmark");

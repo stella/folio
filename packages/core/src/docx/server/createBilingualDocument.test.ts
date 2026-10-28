@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import {
   BODY_TEXT_OUTLINE_LEVEL,
@@ -8,6 +7,7 @@ import {
   type ParagraphNumberingOverride,
   paragraphNumberingReferenceId,
 } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { createStellaStyleDocumentPreset } from "../../style-sets/stellaStyle";
@@ -1078,16 +1078,16 @@ describe("createBilingualDocx", () => {
     const source = await buildSource();
     // Strip word/styles.xml and its relationship: legal OOXML, and the path
     // where minted styles used to be dropped silently on save.
-    const zip = await JSZip.loadAsync(source.originalBuffer!);
-    zip.remove("word/styles.xml");
+    const zip = await ZipArchive.read(source.originalBuffer!);
+    zip.delete("word/styles.xml");
     const relsPath = "word/_rels/document.xml.rels";
-    const rels = await zip.file(relsPath)!.async("text");
-    zip.file(
+    const rels = await zip.entry(relsPath)!.text();
+    zip.set(
       relsPath,
       rels.replace(/<Relationship [^>]*relationships\/styles"[^>]*\/>/u, ""),
     );
     const stripped = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },
@@ -1143,10 +1143,10 @@ describe("createBilingualDocx", () => {
     });
     expect(findStyle(reparsed, `Clause-${SUFFIX}`)).toBeDefined();
     const relsAfter = await (
-      await JSZip.loadAsync(await createDocx(document))
+      await ZipArchive.read(await createDocx(document))
     )
-      .file(relsPath)!
-      .async("text");
+      .entry(relsPath)!
+      .text();
     expect(relsAfter).toContain("relationships/styles");
   });
 

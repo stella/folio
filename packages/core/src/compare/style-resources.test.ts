@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
@@ -47,17 +48,17 @@ const documentWith = async ({
 };
 
 const stylesXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file("word/styles.xml");
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry("word/styles.xml");
   if (!file) throw new Error("Expected styles.xml");
-  return file.async("text");
+  return file.text();
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry("word/document.xml");
   if (!file) throw new Error("Expected document.xml");
-  return file.async("text");
+  return file.text();
 };
 
 describe("referenced comparison style resources", () => {
@@ -302,10 +303,10 @@ describe("referenced comparison style resources", () => {
     expect(await stylesXml(compared.value.buffer)).toContain(
       'w:styleId="TargetCharacter"',
     );
-    const pendingZip = await JSZip.loadAsync(compared.value.buffer);
-    const pendingDocument = pendingZip.file("word/document.xml");
+    const pendingZip = await ZipArchive.read(compared.value.buffer);
+    const pendingDocument = pendingZip.entry("word/document.xml");
     if (!pendingDocument) throw new Error("Expected document.xml");
-    const pendingDocumentXml = await pendingDocument.async("text");
+    const pendingDocumentXml = await pendingDocument.text();
     expect(pendingDocumentXml).not.toContain("<w:u ");
 
     const reviewer = await FolioDocxReviewer.fromBuffer(compared.value.buffer);

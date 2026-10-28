@@ -12,9 +12,10 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -119,18 +120,16 @@ const REVISION_ELEMENT_ID =
  * if something checks them all together.
  */
 const revisionIdsInPackage = async (buffer: ArrayBuffer): Promise<string[]> => {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   const ids: string[] = [];
-  for (const [partPath, file] of Object.entries(zip.files)) {
-    if (
-      file.dir ||
-      !partPath.startsWith("word/") ||
-      !partPath.endsWith(".xml")
-    ) {
+  for (const [partPath, file] of zip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
+    if (!partPath.startsWith("word/") || !partPath.endsWith(".xml")) {
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- the parts share one id space, so they are read together
-    const xml = await file.async("text");
+    const xml = await file.text();
     for (const [, id] of xml.matchAll(REVISION_ELEMENT_ID)) {
       ids.push(id ?? "");
     }
@@ -149,18 +148,16 @@ const PARAGRAPH_ID_ATTRIBUTE =
 const paragraphIdsInPackage = async (
   buffer: ArrayBuffer,
 ): Promise<string[]> => {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   const ids: string[] = [];
-  for (const [partPath, file] of Object.entries(zip.files)) {
-    if (
-      file.dir ||
-      !partPath.startsWith("word/") ||
-      !partPath.endsWith(".xml")
-    ) {
+  for (const [partPath, file] of zip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
+    if (!partPath.startsWith("word/") || !partPath.endsWith(".xml")) {
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- the parts share one id space, so they are read together
-    const xml = await file.async("text");
+    const xml = await file.text();
     for (const [, id] of xml.matchAll(PARAGRAPH_ID_ATTRIBUTE)) {
       ids.push(id ?? "");
     }

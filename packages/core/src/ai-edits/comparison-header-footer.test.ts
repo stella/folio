@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { compareDocx } from "../compare/compare";
 import { parseRelationships, RELATIONSHIP_TYPES } from "../docx/relsParser";
@@ -142,13 +143,14 @@ test("comparison rebinds an imported header's external hyperlink relationship", 
       decision === "accept" ? 1 : 0,
     );
     if (decision === "reject") continue;
-    const zip = await JSZip.loadAsync(buffer);
-    const rels = Object.entries(zip.files).find(([path]) =>
-      /^word\/_rels\/header\d+\.xml\.rels$/u.test(path),
-    );
+    const zip = await ZipArchive.read(buffer);
+    const rels = zip
+      .entries()
+      .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)
+      .find(([path]) => /^word\/_rels\/header\d+\.xml\.rels$/u.test(path));
     if (!rels) throw new Error("Missing imported header relationships");
     const relationship = [
-      ...parseRelationships(await rels[1].async("text")).values(),
+      ...parseRelationships(await rels[1].text()).values(),
     ].find(({ type }) => type === RELATIONSHIP_TYPES.hyperlink);
     expect(relationship?.target).toBe(
       "https://example.test/imported-header-link",
@@ -212,15 +214,15 @@ test("comparison preserves an imported footer's empty hyperlink container", asyn
       reviewer.rejectAll();
     }
     const buffer = await reviewer.toBuffer();
-    const zip = await JSZip.loadAsync(buffer);
-    const footers = Object.keys(zip.files).filter((path) =>
-      /^word\/footer\d+\.xml$/u.test(path),
-    );
+    const zip = await ZipArchive.read(buffer);
+    const footers = zip
+      .paths()
+      .filter((path) => /^word\/footer\d+\.xml$/u.test(path));
     expect(footers).toHaveLength(decision === "accept" ? 1 : 0);
     if (decision === "accept") {
       const footer = footers.at(0);
       if (!footer) throw new Error("Missing imported footer");
-      expect(await zip.file(footer)?.async("text")).toContain("<w:hyperlink>");
+      expect(await zip.entry(footer)?.text()).toContain("<w:hyperlink>");
     }
   }
 });

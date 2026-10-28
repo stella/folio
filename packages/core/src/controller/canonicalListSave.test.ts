@@ -1,7 +1,6 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { Fragment, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
@@ -11,6 +10,7 @@ import {
   type DocumentOp,
   OP_STORIES,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { CANONICAL_SAVE_FALLBACK_DIAGNOSTIC } from "../../../../test/canonicalSaveDiagnostics";
 import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
@@ -268,10 +268,10 @@ test(
               options: { mode },
             });
             const xml = await (
-              await JSZip.loadAsync(saved.buffer)
+              await ZipArchive.read(saved.buffer)
             )
-              .file("word/document.xml")
-              ?.async("text");
+              .entry("word/document.xml")
+              ?.text();
             expect(xml).toBeDefined();
             if (xml === undefined) return;
             const paragraphs = findChildrenByNamespaceUri(
@@ -434,10 +434,10 @@ test(
                 valid: true,
               });
               const xml = await (
-                await JSZip.loadAsync(saved.buffer)
+                await ZipArchive.read(saved.buffer)
               )
-                .file("word/document.xml")
-                ?.async("text");
+                .entry("word/document.xml")
+                ?.text();
               if (xml === undefined)
                 throw new Error("Saved package must contain its document XML");
               const paragraphs = findChildrenByNamespaceUri(

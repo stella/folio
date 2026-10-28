@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 /**
  * Deterministic DOCX fixtures for end-to-end performance scenarios.
  *
@@ -15,6 +14,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { createDocx, createEmptyDocument } from "@stll/folio-core";
 import type { Document } from "@stll/folio-core";
 
@@ -132,9 +132,9 @@ const buildMixedScriptDocument = (repetitions: number): Document => {
 };
 
 const addEmbeddedFont = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const contentTypesFile = zip.file("[Content_Types].xml");
-  const documentRelsFile = zip.file("word/_rels/document.xml.rels");
+  const zip = await ZipArchive.read(buffer);
+  const contentTypesFile = zip.entry("[Content_Types].xml");
+  const documentRelsFile = zip.entry("word/_rels/document.xml.rels");
   if (!contentTypesFile || !documentRelsFile) {
     throw new Error(
       "Generated DOCX is missing content types or document relationships",
@@ -145,10 +145,10 @@ const addEmbeddedFont = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
 <w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:font w:name="Arimo Embedded"><w:family w:val="swiss"/><w:embedRegular r:id="rIdPerfFont"/></w:font>
 </w:fonts>`;
-  zip.file("word/fontTable.xml", fontTable);
+  zip.set("word/fontTable.xml", fontTable);
 
-  const documentRels = await documentRelsFile.async("string");
-  zip.file(
+  const documentRels = await documentRelsFile.text();
+  zip.set(
     "word/_rels/document.xml.rels",
     documentRels.replace(
       "</Relationships>",
@@ -160,11 +160,11 @@ const addEmbeddedFont = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdPerfFont" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="fonts/arimo-hebrew.woff2"/>
 </Relationships>`;
-  zip.file("word/_rels/fontTable.xml.rels", fontRelationships);
-  zip.file("word/fonts/arimo-hebrew.woff2", await readFile(EMBEDDED_FONT_PATH));
+  zip.set("word/_rels/fontTable.xml.rels", fontRelationships);
+  zip.set("word/fonts/arimo-hebrew.woff2", await readFile(EMBEDDED_FONT_PATH));
 
-  const contentTypes = await contentTypesFile.async("string");
-  zip.file(
+  const contentTypes = await contentTypesFile.text();
+  zip.set(
     "[Content_Types].xml",
     contentTypes.replace(
       "</Types>",
@@ -174,11 +174,13 @@ const addEmbeddedFont = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
   return generateDeterministicDocx(zip);
 };
 
-const generateDeterministicDocx = async (zip: JSZip): Promise<ArrayBuffer> => {
-  const coreProperties = zip.file("docProps/core.xml");
+const generateDeterministicDocx = async (
+  zip: ZipArchive,
+): Promise<ArrayBuffer> => {
+  const coreProperties = zip.entry("docProps/core.xml");
   if (coreProperties) {
-    const xml = await coreProperties.async("string");
-    zip.file(
+    const xml = await coreProperties.text();
+    zip.set(
       "docProps/core.xml",
       xml.replaceAll(
         /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/gu,
@@ -186,10 +188,9 @@ const generateDeterministicDocx = async (zip: JSZip): Promise<ArrayBuffer> => {
       ),
     );
   }
-  for (const entry of Object.values(zip.files)) {
-    entry.date = FIXED_ZIP_DATE;
-  }
-  return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
+  return zip
+    .generate({ modified: FIXED_ZIP_DATE })
+    .then((bytes) => bytes.buffer);
 };
 
 const writeDocument = async (
@@ -198,7 +199,7 @@ const writeDocument = async (
 ): Promise<void> => {
   const buffer = await createDocx(document);
   const normalized = await generateDeterministicDocx(
-    await JSZip.loadAsync(buffer),
+    await ZipArchive.read(buffer),
   );
   await writeFile(resolve(FIXTURES_DIR, name), new Uint8Array(normalized));
 };

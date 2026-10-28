@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -156,10 +157,10 @@ describe("imported bookmark collisions", () => {
       semanticProjection(pm),
     );
     const savedAgain = await save(reopened);
-    const firstZip = await JSZip.loadAsync(saved);
-    const secondZip = await JSZip.loadAsync(savedAgain);
-    expect(await secondZip.file("word/document.xml")?.async("string")).toBe(
-      await firstZip.file("word/document.xml")?.async("string"),
+    const firstZip = await ZipArchive.read(saved);
+    const secondZip = await ZipArchive.read(savedAgain);
+    expect(await secondZip.entry("word/document.xml")?.text()).toBe(
+      await firstZip.entry("word/document.xml")?.text(),
     );
   });
 });

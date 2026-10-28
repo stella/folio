@@ -13,5 +13,3 @@ export {
   bytesToBase64Url,
 } from "./encoding";
 export { sliceText, truncateCodePoints, truncateGraphemes } from "./sliceText";
-export { writeZipEntry } from "./zip";
-export type { ZipEntryInput } from "./zip";

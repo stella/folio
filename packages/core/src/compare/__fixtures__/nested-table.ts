@@ -7,22 +7,12 @@
  * the structure under test is legible in the diff.
  */
 
-import JSZip from "jszip";
-import { writeZipEntry } from "@stll/utf8-boundaries";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 const NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
 const OFFICE_RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const WORDPROCESSING = "application/vnd.openxmlformats-officedocument.wordprocessingml";
-
-/** Pinned so two builds of the fixture produce identical bytes. */
-const FIXED_ZIP_DATE = new Date(Date.UTC(2000, 0, 1));
-
-/**
- * `createFolders: false` because JSZip stamps the folder entries it
- * synthesizes with `new Date()`, which the fixed date above does not reach.
- */
-const ZIP_ENTRY_OPTIONS = { date: FIXED_ZIP_DATE, createFolders: false } as const;
 
 const paragraph = (text: string): string =>
   text.length === 0 ? `<w:p/>` : `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
@@ -100,9 +90,9 @@ export const buildNestedTableDocx = async ({
       `</w:body></w:document>`,
   };
 
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   for (const name of Object.keys(parts).toSorted()) {
-    writeZipEntry(zip, name, parts[name] ?? "", ZIP_ENTRY_OPTIONS);
+    zip.set(name, parts[name] ?? "");
   }
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };

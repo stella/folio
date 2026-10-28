@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 /**
  * The invariant that makes the real serializers run, over packages built here.
  *
@@ -9,14 +10,13 @@
  * does and what the corpus is full of.
  */
 
-import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
-
+import { ZipArchive } from "@stll/docx-core/zip";
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
 import type { Document, DrawingContent } from "@stll/folio-core/types/document";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import {
   type CorpusInvariantInput,
@@ -74,22 +74,22 @@ const packageWithBody = async (
   body: string,
   imageRelationshipId?: string,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const zip = await ZipArchive.read(await createEmptyDocx());
   if (imageRelationshipId !== undefined) {
-    const rels = await zip.file(DOCUMENT_RELS_PART)?.async("string");
+    const rels = await zip.entry(DOCUMENT_RELS_PART)?.text();
     if (rels === undefined) {
       throw new Error("the empty package has no main-part relationships");
     }
-    zip.file(
+    zip.set(
       DOCUMENT_RELS_PART,
       rels.replace(
         "</Relationships>",
         `<Relationship Id="${imageRelationshipId}" Type="${OFFICE_RELATIONSHIP}/image" Target="media/art.png"/></Relationships>`,
       ),
     );
-    zip.file("word/media/art.png", PNG_1X1_BASE64, { base64: true });
+    zip.set("word/media/art.png", base64ToBytes(PNG_1X1_BASE64));
   }
-  zip.file(
+  zip.set(
     DOCUMENT_PART,
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<w:document xmlns:w="${WORDPROCESSING}" xmlns:r="${OFFICE_RELATIONSHIP}" ` +
@@ -99,7 +99,7 @@ const packageWithBody = async (
       `<w:body>${body}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body>` +
       `</w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** Attribute order as the producer wrote it: replay reproduces this spelling. */

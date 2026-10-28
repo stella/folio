@@ -16,7 +16,8 @@
 import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -126,12 +127,12 @@ const CHILDREN_OUTSIDE_THE_GENERAL_SET: ReadonlySet<string> = new Set([
 const packageWithParagraphProperties = async (
   propertiesXml: string,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const documentXml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const documentXml = await zip.entry("word/document.xml")?.text();
   if (!documentXml) {
     panic("The generated package has no main document part.");
   }
-  zip.file(
+  zip.set(
     "word/document.xml",
     documentXml.replace(
       /<w:body>[\s\S]*<\/w:body>/u,
@@ -139,7 +140,7 @@ const packageWithParagraphProperties = async (
         "<w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/></w:body>",
     ),
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 const NUMBERING_CONTENT_TYPE =
@@ -151,13 +152,13 @@ const NUMBERING_RELATIONSHIP =
 const packageWithLevelProperties = async (
   propertiesXml: string,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (!types || !rels) {
     panic("The generated package lost its packaging parts.");
   }
-  zip.file(
+  zip.set(
     "word/numbering.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
@@ -167,21 +168,21 @@ const packageWithLevelProperties = async (
       "</w:lvl></w:abstractNum>" +
       '<w:num w:numId="900"><w:abstractNumId w:val="900"/></w:num></w:numbering>',
   );
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
       `<Override PartName="/word/numbering.xml" ContentType="${NUMBERING_CONTENT_TYPE}"/></Types>`,
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
       `<Relationship Id="rIdLevelProperties" Type="${NUMBERING_RELATIONSHIP}" Target="numbering.xml"/></Relationships>`,
     ),
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 /**
@@ -368,12 +369,12 @@ describe("a paragraph property set keeps every declared child", () => {
         if (CHILDREN_OUTSIDE_THE_GENERAL_SET.has(child)) {
           continue;
         }
-        const zip = await JSZip.loadAsync(await createEmptyDocx());
-        const stylesXml = await zip.file("word/styles.xml")?.async("text");
+        const zip = await ZipArchive.read(await createEmptyDocx());
+        const stylesXml = await zip.entry("word/styles.xml")?.text();
         if (!stylesXml) {
           panic("The generated package has no styles part.");
         }
-        zip.file(
+        zip.set(
           "word/styles.xml",
           stylesXml.replace(
             "</w:styles>",
@@ -382,7 +383,7 @@ describe("a paragraph property set keeps every declared child", () => {
           ),
         );
         const parsed = await parseDocx(
-          await zip.generateAsync({ type: "arraybuffer" }),
+          (await zip.generate({ compression: "store" })).buffer,
           {
             preloadFonts: false,
           },

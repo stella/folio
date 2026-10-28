@@ -1,6 +1,7 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
@@ -28,11 +29,11 @@ const indentationDocument = (indentLeft: number): Promise<ArrayBuffer> => {
 };
 
 const mainDocumentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const part = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const part = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!part) {
     panic("expected word/document.xml");
   }
-  return await part.async("string");
+  return await part.text();
 };
 
 describe("paragraph indentation comparison", () => {

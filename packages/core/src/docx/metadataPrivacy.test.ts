@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -38,18 +39,18 @@ const buildDocument = async (): Promise<ArrayBuffer> => {
       },
     },
   });
-  const zip = await JSZip.loadAsync(buffer);
-  zip.file("docProps/core.xml", CORE_PROPERTIES_XML);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = await ZipArchive.read(buffer);
+  zip.set("docProps/core.xml", CORE_PROPERTIES_XML);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const readCorePropertiesXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file("docProps/core.xml");
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry("docProps/core.xml");
   if (!file) {
     throw new Error("expected core properties");
   }
-  return file.async("text");
+  return file.text();
 };
 
 const expectPrivateMetadataAbsent = async (
@@ -134,10 +135,10 @@ describe("rewriteDocxMetadataPrivacy", () => {
         },
       },
     });
-    const zip = await JSZip.loadAsync(buffer);
-    zip.remove("docProps/core.xml");
-    zip.file("docProps/Core.xml", CORE_PROPERTIES_XML);
-    const casedBuffer = await zip.generateAsync({ type: "arraybuffer" });
+    const zip = await ZipArchive.read(buffer);
+    zip.delete("docProps/core.xml");
+    zip.set("docProps/Core.xml", CORE_PROPERTIES_XML);
+    const casedBuffer = (await zip.generate({ compression: "store" })).buffer;
 
     const result = await rewriteDocxMetadataPrivacy(casedBuffer, {
       transforms: [
@@ -158,16 +159,16 @@ describe("rewriteDocxMetadataPrivacy", () => {
       "modified",
     ]);
 
-    const rewrittenZip = await JSZip.loadAsync(result.buffer);
+    const rewrittenZip = await ZipArchive.read(result.buffer);
     // Written back under the original casing, not a new lowercase entry.
-    expect(rewrittenZip.file("docProps/core.xml")).toBeNull();
-    const rewrittenFile = rewrittenZip.file("docProps/Core.xml");
+    expect(rewrittenZip.entry("docProps/core.xml")).toBeUndefined();
+    const rewrittenFile = rewrittenZip.entry("docProps/Core.xml");
     if (!rewrittenFile) {
       throw new Error(
         "expected the cased core properties part to survive the rewrite",
       );
     }
-    const xml = await rewrittenFile.async("text");
+    const xml = await rewrittenFile.text();
     expect(xml).not.toContain("<dc:creator>");
     expect(xml).not.toContain("<cp:lastModifiedBy>");
     expect(xml).toContain("<cp:revision>7</cp:revision>");

@@ -24,8 +24,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import assert from "node:assert/strict";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -147,13 +148,13 @@ const tableWithCellControl = (sibling: string): string =>
   `<w:tbl><w:tblPr/>${GRID}<w:tr>${sibling}${control(cell("controlled"))}${cell("plain")}</w:tr></w:tbl>`;
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}">` +
       `<w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /**
@@ -234,8 +235,8 @@ const savedDocumentXml = async (body: string, leg: Leg): Promise<string> => {
   const saved = await repackDocx(documentForLeg(parsed, leg), {
     updateModifiedDate: false,
   });
-  const zip = await JSZip.loadAsync(saved);
-  return (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const zip = await ZipArchive.read(saved);
+  return (await zip.entry("word/document.xml")?.text()) ?? "";
 };
 
 /** The control's wrapper, and what each of its modelled fields writes. */

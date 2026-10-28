@@ -14,7 +14,8 @@ import {
   expect,
   test,
 } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   EXPECTED_CANCELLED_STYLE_TOGGLES,
@@ -469,17 +470,16 @@ describe("layoutDocxHeadless automatic hyphenation", () => {
     }
     // The serializer does not write `w:autoHyphenation`; patch it into the part.
     document.package.settings = { ...document.package.settings };
-    const zip = await JSZip.loadAsync(await createDocx(document));
-    const settings =
-      (await zip.file("word/settings.xml")?.async("string")) ?? "";
+    const zip = await ZipArchive.read(await createDocx(document));
+    const settings = (await zip.entry("word/settings.xml")?.text()) ?? "";
     expect(settings).toMatch(/<w:settings[^>]*>/u);
-    zip.file(
+    zip.set(
       "word/settings.xml",
       autoHyphenation
         ? settings.replace(/(<w:settings[^>]*>)/u, "$1<w:autoHyphenation/>")
         : settings,
     );
-    return zip.generateAsync({ type: "arraybuffer" });
+    return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
   };
 
   const countHyphenatedLines = (measures: readonly Measure[]): number =>

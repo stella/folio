@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -31,9 +32,9 @@ test(
               "word/_rels/document.xml.rels",
             ),
           ).toBe(path.toLowerCase());
-          const zip = new JSZip();
-          zip.file(path, "<part/>");
-          zip.file(
+          const zip = new ZipArchive();
+          zip.set(path, "<part/>");
+          zip.set(
             "word/_rels/document.xml.rels",
             `<Relationships><Relationship Id="r1" Target="${target}"/></Relationships>`,
           );

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { getDocxSummary, getDocxVariables, parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
@@ -13,8 +14,8 @@ const XML_DECLARATION = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
  * EastAsian font to the Japanese face rather than an empty string.
  */
 async function createEmptyEaThemeFixture(): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -23,26 +24,26 @@ async function createEmptyEaThemeFixture(): Promise<ArrayBuffer> {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`,
   );
-  zip.file(
+  zip.set(
     "word/settings.xml",
     `${XML_DECLARATION}
 <w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:themeFontLang w:val="en-US" w:eastAsia="ja-JP"/>
 </w:settings>`,
   );
-  zip.file(
+  zip.set(
     "word/theme/theme1.xml",
     `${XML_DECLARATION}
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">
@@ -65,7 +66,7 @@ async function createEmptyEaThemeFixture(): Promise<ArrayBuffer> {
   </a:themeElements>
 </a:theme>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -79,7 +80,7 @@ async function createEmptyEaThemeFixture(): Promise<ArrayBuffer> {
   </w:body>
 </w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 describe("parseDocx — w:themeFontLang resolves empty EastAsian theme slots", () => {

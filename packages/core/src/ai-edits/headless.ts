@@ -1,5 +1,4 @@
 import { panic, TaggedError, type TaggedErrorClass } from "better-result";
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Command, Plugin, Transaction } from "prosemirror-state";
@@ -11,6 +10,7 @@ import {
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
 import { reconcileDocumentPartRelationships } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   matchInlineAtoms,
@@ -3785,9 +3785,9 @@ export class FolioDocxReviewer {
       if (xml === null) return null;
       const extension = media.path.split(".").at(-1)?.toLowerCase();
       if (!extension || !/^[a-z0-9]+$/u.test(extension)) return null;
-      const originalZip = await JSZip.loadAsync(this.originalBuffer);
+      const originalZip = await ZipArchive.read(this.originalBuffer);
       const existingPaths = new Set(
-        Object.keys(originalZip.files).map((path) => path.toLowerCase()),
+        originalZip.paths().map((path) => path.toLowerCase()),
       );
       let suffix = 1;
       let path = `word/media/folio-import-${suffix}.${extension}`;

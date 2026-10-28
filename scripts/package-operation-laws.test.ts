@@ -2,8 +2,8 @@ import { TaggedError } from "better-result";
 /** Package byte and scope laws extend the corpus oracle to every operation kind in unit CI. */
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
@@ -160,11 +160,13 @@ const assertPackageOperationLaws = async ({
   if (kind === "joinBlocks" || kind === "setParagraphProps") {
     // Anchor the inverse control to authored bytes, so losing captures before
     // the baseline cannot make both sides agree on an already damaged package.
-    const source = await JSZip.loadAsync(bytes);
-    for (const part of source.file(
-      /^word\/(?:document|header[^/]*|footer[^/]*)\.xml$/u,
-    )) {
-      const xml = await part.async("text");
+    const source = await ZipArchive.read(bytes);
+    for (const part of source
+      .entries()
+      .filter(({ path }) =>
+        /^word\/(?:document|header[^/]*|footer[^/]*)\.xml$/u.test(path),
+      )) {
+      const xml = await part.text();
       // The XML parser normalizes CR and CRLF before capturing paragraph XML.
       const capturedPrefix = xml
         .replace(/\r\n?/gu, "\n")
@@ -174,10 +176,10 @@ const assertPackageOperationLaws = async ({
         throw new OperationPackageLawError({
           message: "Authored paragraph whitespace is missing.",
         });
-      const saved = control.get(part.name);
+      const saved = control.get(part.path);
       if (saved === undefined)
         throw new OperationPackageLawError({
-          message: `The baseline lost ${part.name}.`,
+          message: `The baseline lost ${part.path}.`,
         });
       expect(
         new TextDecoder().decode(saved).replace(/\r\n?/gu, "\n"),
@@ -368,15 +370,15 @@ test(
         fc.constantFrom(" ", "\n", "\r\n", "\t"),
         async (document, seed, whitespace) => {
           cases += 1;
-          const zip = await JSZip.loadAsync(await createDocx(document));
-          const xml = await zip.file("word/document.xml")?.async("text");
+          const zip = await ZipArchive.read(await createDocx(document));
+          const xml = await zip.entry("word/document.xml")?.text();
           if (!xml) throw new TypeError("Missing document part");
           expect(xml).toContain("<w:pPr>");
-          zip.file(
+          zip.set(
             "word/document.xml",
             xml.replaceAll("<w:pPr>", `<w:pPr>${whitespace}`),
           );
-          const bytes = await zip.generateAsync({ type: "arraybuffer" });
+          const bytes = (await zip.generate({ compression: "store" })).buffer;
           const parsed = normalizeForOps(
             await parseDocx(bytes, { preloadFonts: false }),
           );

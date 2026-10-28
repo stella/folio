@@ -21,7 +21,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -240,11 +241,11 @@ describe("a save leaves every note part's comment ranges balanced", () => {
           });
 
           const saved = await reviewer.toBuffer();
-          const zip = await JSZip.loadAsync(saved);
+          const zip = await ZipArchive.read(saved);
           const parts = await Promise.all(
             STORY_PARTS.map(async (part) => ({
               part,
-              xml: await zip.file(part)?.async("text"),
+              xml: await zip.entry(part)?.text(),
             })),
           );
           for (const { part, xml } of parts) {

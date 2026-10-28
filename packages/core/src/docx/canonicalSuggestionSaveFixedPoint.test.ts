@@ -1,6 +1,5 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import {
@@ -16,6 +15,7 @@ import {
   REVISION_DECISIONS,
   storyBody,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -131,8 +131,8 @@ test.each(["absent", "empty", "bold"] as const)(
       nextBlockId: second.paraId,
     });
     const fullSave = await createDocx(suggested);
-    const zip = await JSZip.loadAsync(source);
-    const originalXml = await zip.file("word/document.xml")?.async("text");
+    const zip = await ZipArchive.read(source);
+    const originalXml = await zip.entry("word/document.xml")?.text();
     if (!originalXml) panic("Expected document part");
     const patched = buildStructuralDocumentPatch({
       originalXml,
@@ -141,8 +141,9 @@ test.each(["absent", "empty", "bold"] as const)(
     });
     if (patched === null)
       panic("Expected structural save to handle the edit sequence");
-    zip.file("word/document.xml", patched);
-    const structuralSave = await zip.generateAsync({ type: "arraybuffer" });
+    zip.set("word/document.xml", patched);
+    const structuralSave = (await zip.generate({ compression: "store" }))
+      .buffer;
     for (const saved of [fullSave, structuralSave]) {
       const reopened = await parseDocx(saved, {
         preloadFonts: false,

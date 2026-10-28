@@ -13,7 +13,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -34,11 +35,11 @@ const OPTIONS = {
 } as const;
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const entry = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const entry = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!entry) {
     throw new Error("The compared package has no main document part.");
   }
-  return await entry.async("string");
+  return await entry.text();
 };
 
 type RoundTrip = {
@@ -457,19 +458,19 @@ describe("a table whose properties changed and whose words did not", () => {
 
   test("ignores a table's raw source capture when its parsed properties agree", async () => {
     const base = await buildBodySequenceDocx([INTRO, TWO_ROW_TABLE, OUTRO]);
-    const zip = await JSZip.loadAsync(base);
-    const entry = zip.file("word/document.xml");
+    const zip = await ZipArchive.read(base);
+    const entry = zip.entry("word/document.xml");
     if (!entry)
       throw new Error("The fixture package has no main document part.");
-    const source = await entry.async("string");
-    zip.file(
+    const source = await entry.text();
+    zip.set(
       "word/document.xml",
       source.replace(
         '<w:tblW w:w="4800" w:type="dxa"/>',
         '<w:tblW w:type="dxa" w:w="4800"/>',
       ),
     );
-    const target = await zip.generateAsync({ type: "arraybuffer" });
+    const target = (await zip.generate({ compression: "store" })).buffer;
     const result = await compareDocx(base, target, OPTIONS);
     if (result.isErr()) throw result.error;
 

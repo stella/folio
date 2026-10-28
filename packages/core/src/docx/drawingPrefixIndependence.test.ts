@@ -11,7 +11,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 import { createEmptyDocx } from "./rezip";
@@ -55,22 +56,22 @@ const documentXml = (prefix: string): string =>
   "<w:sectPr/></w:body></w:document>";
 
 const parsedImage = async (prefix: string) => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", documentXml(prefix));
-  zip.file("word/media/image1.png", PNG);
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", documentXml(prefix));
+  zip.set("word/media/image1.png", PNG);
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
       '<Default Extension="png" ContentType="image/png"/></Types>',
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
@@ -79,7 +80,7 @@ const parsedImage = async (prefix: string) => {
     ),
   );
   const parsed = await parseDocx(
-    await zip.generateAsync({ type: "arraybuffer" }),
+    (await zip.generate({ compression: "store" })).buffer,
     {
       preloadFonts: false,
     },

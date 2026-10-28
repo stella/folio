@@ -17,9 +17,9 @@ import { Result } from "better-result";
  * accepted.
  */
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import JSZip from "jszip";
 import path from "node:path";
 
+import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 import { createTextReader } from "@stll/folio-core/utils/textEncoding";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
@@ -175,37 +175,33 @@ const childrenNamed = (
     (child) => child.namespace === namespace && child.localName === localName,
   );
 
-type PartIndex = ReadonlyMap<string, JSZip.JSZipObject>;
+type PartIndex = ReadonlyMap<string, ZipEntry>;
 
 /** Part names compare case-insensitively (ECMA-376 Part 2, 9.1.1.1). */
 const partKey = (name: string): string => name.toLowerCase();
 
-/** Inflate at most `limit` bytes of an entry; `truncated` when it holds more. */
-const inflatePrefix = (
-  entry: JSZip.JSZipObject,
+/**
+ * The first `limit` bytes of an entry as text; `truncated` when it holds more.
+ * An entry declared larger than `limit` is inflated only when its prefix is
+ * needed; inflation never passes the entry's declared size.
+ */
+const inflatePrefix = async (
+  entry: ZipEntry,
   limit: number,
-): Promise<{ text: string; truncated: boolean }> =>
-  new Promise((resolve, reject) => {
-    const decoder = createTextReader();
-    let text = "";
-    let size = 0;
-    const stream = entry.internalStream("uint8array");
-    stream
-      .on("data", (chunk: Uint8Array) => {
-        const room = limit - size;
-        size += chunk.length;
-        text += decoder.read(chunk.subarray(0, Math.max(0, room)));
-        if (size > limit) {
-          stream.pause();
-          resolve({ text: text + decoder.finishPrefix(), truncated: true });
-        }
-      })
-      .on("error", reject)
-      .on("end", () =>
-        resolve({ text: text + decoder.finish(), truncated: false }),
-      )
-      .resume();
-  });
+): Promise<{ text: string; truncated: boolean }> => {
+  const bytes = await entry.bytes();
+  const decoder = createTextReader();
+  if (bytes.byteLength <= limit) {
+    return { text: decoder.read(bytes) + decoder.finish(), truncated: false };
+  }
+  return {
+    text: decoder.read(bytes.subarray(0, limit)) + decoder.finishPrefix(),
+    truncated: true,
+  };
+};
+
+/** Whether an entry declares more than `limit` inflated bytes. */
+const exceeds = (entry: ZipEntry, limit: number): boolean => entry.size > limit;
 
 type ReadIndexOptions = {
   parts: PartIndex;
@@ -222,6 +218,12 @@ const readIndexPart = async ({
 }: ReadIndexOptions): Promise<Result<XmlElement, Refusal>> => {
   const entry = parts.get(partKey(name));
   if (entry === undefined) return refuse(missing, `it has no ${name}.`);
+  if (exceeds(entry, MAX_PACKAGE_INDEX_BYTES)) {
+    return refuse(
+      invalid,
+      `its ${name} is over ${String(MAX_PACKAGE_INDEX_BYTES)} bytes.`,
+    );
+  }
   const inflated = await Result.tryPromise({
     try: () => inflatePrefix(entry, MAX_PACKAGE_INDEX_BYTES),
     catch: () => ({
@@ -351,7 +353,7 @@ const ZIP_END_LENGTH = 22;
 const ZIP_CENTRAL_MEMBER_LENGTH = 46;
 const ZIP_MAX_COMMENT_LENGTH = 0xffff;
 
-/** Read central-directory names before JSZip stores members by name. */
+/** Read central-directory names before ZipArchive stores members by name. */
 const checkRawMemberNames = (bytes: Uint8Array): Result<void, Refusal> => {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let end = -1;
@@ -479,16 +481,16 @@ const checkPackage = async (
   const rawNames = checkRawMemberNames(bytes);
   if (rawNames.isErr()) return rawNames;
   const zip = await Result.tryPromise({
-    try: () => JSZip.loadAsync(bytes),
+    try: () => ZipArchive.read(bytes),
     catch: () => ({
       reason: INVALID_PACKAGE_REASONS.notZip,
       message: "it is not a readable ZIP archive.",
     }),
   });
   if (zip.isErr()) return Result.err(zip.error);
-  const parts = new Map<string, JSZip.JSZipObject>();
-  for (const [name, entry] of Object.entries(zip.value.files)) {
-    if (entry.dir) continue;
+  const parts = new Map<string, ZipEntry>();
+  for (const entry of zip.value.entries()) {
+    const name = entry.path;
     const key = partKey(name.replace(/^\//u, ""));
     if (parts.has(key)) {
       return refuse(

@@ -5,10 +5,11 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { spawnSync } from "node:child_process";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   CONTRACT_PARAGRAPHS,
@@ -52,15 +53,9 @@ describe("folio executable", () => {
     "read -> suggest -> changes -> accept --all -> compare",
     async () => {
       const file = await writeDocx(dir, "contract.docx", CONTRACT_PARAGRAPHS);
-      const sourceZip = await JSZip.loadAsync(await readFile(file));
-      sourceZip.files = Object.fromEntries(
-        Object.entries(sourceZip.files).filter(([, entry]) => !entry.dir),
-      );
-      const sourceNames = Object.keys(sourceZip.files).toSorted();
-      await writeFile(
-        file,
-        await sourceZip.generateAsync({ type: "uint8array" }),
-      );
+      const sourceZip = await ZipArchive.read(await readFile(file));
+      const sourceNames = sourceZip.paths().toSorted();
+      await writeFile(file, await sourceZip.generate({ compression: "store" }));
       const original = path.join(dir, "original.docx");
       await copyFile(file, original);
 
@@ -97,9 +92,7 @@ describe("folio executable", () => {
       const receipt = dataOf(suggested.stdout);
       expect(receipt["saveStrategy"]).toBe("selective");
       expect(
-        Object.keys(
-          (await JSZip.loadAsync(await readFile(file))).files,
-        ).toSorted(),
+        (await ZipArchive.read(await readFile(file))).paths().toSorted(),
       ).toEqual(sourceNames);
 
       const stale = folio([

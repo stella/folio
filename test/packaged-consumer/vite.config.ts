@@ -11,7 +11,7 @@ import { defineConfig } from "vite";
 //
 // Bundle the workspace packages under test so their internals, assets, and the
 // worker inside folio-core go through the bundler. Externalize everything else
-// (React, ProseMirror, yjs, jszip, …): a consumer installs those itself, and
+// (React, ProseMirror, yjs, …): a consumer installs those itself, and
 // leaving them external keeps the build fast and focused on workspace output.
 const BUNDLED_WORKSPACE_PACKAGES = [
   "@stll/docx-core",

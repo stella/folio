@@ -16,9 +16,10 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { Fragment, type Mark, type Node as PMNode } from "prosemirror-model";
 import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -74,17 +75,14 @@ const documentXml = (chosen: Chosen): string =>
   "</w:body></w:document>";
 
 const packageFor = async (xml: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", xml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", xml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(buffer)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(buffer)).entry("word/document.xml")?.text()) ??
+  "";
 
 const save = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });

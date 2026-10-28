@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
@@ -121,7 +122,7 @@ const reopenResolved = async (
     reviewer.toBuffer(),
   ]);
   const documentXml = async (saved: ArrayBuffer) =>
-    (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text");
+    (await ZipArchive.read(saved)).entry("word/document.xml")?.text();
   const expectedXml = await documentXml(first);
   expect(await documentXml(second)).toBe(expectedXml);
   expect(await documentXml(concurrentFirst)).toBe(expectedXml);
@@ -162,10 +163,10 @@ const expectResolvedTerminals = async (
   }
   expect(result.value.verification).toEqual({ status: "verified" });
   const pendingXml = await (
-    await JSZip.loadAsync(result.value.buffer)
+    await ZipArchive.read(result.value.buffer)
   )
-    .file("word/document.xml")
-    ?.async("text");
+    .entry("word/document.xml")
+    ?.text();
   expect(pendingXml).toMatch(/<w:rPr><w:del\b[^>]*\/><\/w:rPr><w:sectPr>/u);
 
   const [accepted, rejected] = await Promise.all([
@@ -192,11 +193,11 @@ const expectPendingTerminals = async ({
     createDocx(rejectedDocument),
   ]);
   const [pendingZip, acceptedReviewer, rejectedReviewer] = await Promise.all([
-    JSZip.loadAsync(pending),
+    ZipArchive.read(pending),
     FolioDocxReviewer.fromBuffer(accepted),
     FolioDocxReviewer.fromBuffer(rejected),
   ]);
-  const pendingXml = await pendingZip.file("word/document.xml")?.async("text");
+  const pendingXml = await pendingZip.entry("word/document.xml")?.text();
   expect(pendingXml).toMatch(
     /<w:pPr><w:rPr><w:ins\b[^>]*\/><\/w:rPr><w:sectPr>/u,
   );

@@ -16,7 +16,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -134,8 +135,8 @@ const withProbeStyles = async (
   docx: ArrayBuffer,
   count: number,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(docx);
-  const styles = await zip.file("word/styles.xml")?.async("text");
+  const zip = await ZipArchive.read(docx);
+  const styles = await zip.entry("word/styles.xml")?.text();
   if (!styles) {
     throw new Error("fixture must carry a styles part");
   }
@@ -144,11 +145,11 @@ const withProbeStyles = async (
     (_, index) =>
       `<w:style w:type="paragraph" w:styleId="${styleFor(index)}"><w:name w:val="${styleFor(index)}"/></w:style>`,
   ).join("");
-  zip.file(
+  zip.set(
     "word/styles.xml",
     styles.replace("</w:styles>", `${probes}</w:styles>`),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 describe("block ids resolve against the live document", () => {

@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   SCROLL_CONTROL_TAG,
@@ -10,19 +10,19 @@ import { generateDocxFixture } from "./validatedDocxFixture";
 
 /** Explicit page boundaries and OOXML paragraph identifiers make navigation targets stable. */
 export const buildScrollRootDocument = () => {
-  const zip = new JSZip();
-  const options = { date: new Date("2026-01-01T00:00:00Z") };
-  zip.file(
+  const zip = new ZipArchive();
+  const options = { modified: new Date("2026-01-01T00:00:00Z") };
+  zip.set(
     "[Content_Types].xml",
     `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
     options,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
     options,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body>
 <w:p w14:paraId="13300100"><w:r><w:t>First page</w:t></w:r></w:p>

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { createDocx } from "../../docx/rezip";
@@ -115,12 +116,12 @@ const reviewedFieldDocument = (
   ]);
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const part = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(buffer);
+  const part = zip.entry("word/document.xml");
   if (!part) {
     throw new Error("missing word/document.xml");
   }
-  return part.async("text");
+  return part.text();
 };
 
 const elementCount = (xml: string, tag: AtomFixture["xmlTag"]): number =>

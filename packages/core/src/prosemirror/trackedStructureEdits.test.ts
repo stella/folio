@@ -6,8 +6,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { type EditorState, TextSelection } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { documentShape } from "../__tests__/documentShapes";
 import { CONFORMANCE_OPERATIONS } from "../__tests__/editorCommandConformance";
@@ -281,10 +282,10 @@ describe("structural edits in suggesting mode", () => {
 
     const { bytes } = await saveLikeEditors(accepted, view.state, base);
     const footnotesXml = await (
-      await JSZip.loadAsync(bytes)
+      await ZipArchive.read(bytes)
     )
-      .file("word/footnotes.xml")
-      ?.async("text");
+      .entry("word/footnotes.xml")
+      ?.text();
     const note = new RegExp(
       `<w:footnote\\b[^>]*\\bw:id="${added.id}"[^>]*>[\\s\\S]*?</w:footnote>`,
       "u",

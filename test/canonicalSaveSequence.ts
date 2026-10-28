@@ -1,5 +1,6 @@
 import { panic } from "better-result";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   DOCUMENT_OP_TYPES,
@@ -102,11 +103,11 @@ export const canonicalSaveParagraphXml = async (
   bytes: ArrayBuffer,
   paraId: string,
 ) => {
-  const zip = await JSZip.loadAsync(bytes);
+  const zip = await ZipArchive.read(bytes);
   const part =
-    zip.file("word/document.xml") ?? panic("Expected main document part");
+    zip.entry("word/document.xml") ?? panic("Expected main document part");
   return (
-    extractParagraphXml(await part.async("string"), paraId) ??
+    extractParagraphXml(await part.text(), paraId) ??
     panic("Expected preserved paragraph XML")
   );
 };

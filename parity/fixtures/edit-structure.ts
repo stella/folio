@@ -1,6 +1,6 @@
 /** Stable structural view of a saved synthetic package. */
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
 import {
@@ -18,8 +18,8 @@ const WORDPROCESSING_NAMESPACES = new Set([
 ]);
 
 const countPackageCarriers = async (buffer: ArrayBuffer) => {
-  const zip = await JSZip.loadAsync(buffer);
-  const xml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(buffer);
+  const xml = await zip.entry("word/document.xml")?.text();
   const root = xml ? parseXmlDocument(xml) : null;
   if (!root) throw new Error("Saved package has no readable document root");
   const counts = { paragraphs: 0, sections: 0, fields: 0, noteReferences: 0 };

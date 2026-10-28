@@ -13,7 +13,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -267,8 +268,8 @@ describe("suggested insertion admission uses the live anchor for every gap run",
       { id: "move-from", code: "unpairedMove", moveId: "move" },
       { id: "move-to", code: "unpairedMove", moveId: "move" },
     ]);
-    const zip = await JSZip.loadAsync(await reviewer.toBuffer());
-    const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+    const zip = await ZipArchive.read(await reviewer.toBuffer());
+    const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
     expect(xml).not.toContain("<w:moveFrom ");
     expect(xml).not.toContain("<w:moveTo ");
   });

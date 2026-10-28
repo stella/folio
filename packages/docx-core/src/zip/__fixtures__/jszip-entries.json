@@ -1,0 +1,734 @@
+{
+  "artifacts/stella-style-sample/contract-stella-style.docx": {
+    "[Content_Types].xml": "a803a511c01aae30",
+    "_rels/.rels": "43bdd04f31bc9c60",
+    "word/_rels/document.xml.rels": "130925ae4d9da99d",
+    "word/document.xml": "3b5571dcd7a2d9e1",
+    "word/styles.xml": "9905c02497dc84c7",
+    "docProps/core.xml": "1717c68e115e90c8",
+    "docProps/app.xml": "65de7e3d1b1f3b48",
+    "word/numbering.xml": "fd42e252169d379c",
+    "word/fontTable.xml": "d26acdd7d69c222d",
+    "word/settings.xml": "fa45bf63d1cf250d"
+  },
+  "packages/core/src/docx/__fixtures__/header-vml-emf.docx": {
+    "[Content_Types].xml": "904b4b3407ae7542",
+    "_rels/.rels": "6b1f432240d639e6",
+    "word/document.xml": "f3e3097c1b2e8957",
+    "word/_rels/document.xml.rels": "d8bf5ddb0ca91187",
+    "word/styles.xml": "d138c73917675908",
+    "word/header1.xml": "73cc9f62594d33e7",
+    "word/_rels/header1.xml.rels": "035d824091d6334c",
+    "word/footer1.xml": "14544f06c6659e45",
+    "word/media/image1.emf": "6fed0435e6d997ff",
+    "word/embeddings/oleObject1.bin": "73e1b7924e687260"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "911cd198fb089944"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "fd02fb288b1a6f2c"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "29404f6d323375ce"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "0c846c35ffd82239"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "9d163e155cc775db"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "1a25e5c282c5d58a"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "eb9b61bf381f1ee5"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "11b206db3710d8a3"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "c8c89b982a5caff9"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "bedc5c1dc0187ed1"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": {
+    "[Content_Types].xml": "98ef64cbab9e7952",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "ded13847077defec",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/numbering.xml": "1b922716815e7f11",
+    "word/document.xml": "e24bb2fa7b776bbc"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "89b32c767780e80c"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": {
+    "[Content_Types].xml": "62696033ed4f9fc2",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "be19a789d2ffa5eb",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/comments.xml": "cde1b06a502ac1d1",
+    "word/document.xml": "f86a8513e45a05d7"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "788320cf07baeb5b"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": {
+    "[Content_Types].xml": "0d96131b97e2f40d",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "72dda9d67eec247e",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/endnotes.xml": "a33a721e3daf849b",
+    "word/document.xml": "b872397cc612fa7e"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": {
+    "[Content_Types].xml": "de5f62865f00e920",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "728bb57aa690ac60",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/footnotes.xml": "605b7937bd19db21",
+    "word/document.xml": "1d76b6fc38184303"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": {
+    "[Content_Types].xml": "98ef64cbab9e7952",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "ded13847077defec",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/numbering.xml": "3b68a91f9eb82de1",
+    "word/document.xml": "e24bb2fa7b776bbc"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "57a49f58543d14e5"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "5b1800b08925ce02",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "b93e5a1e8fb4f3b4"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "222faade98932204"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "c7ba250646c15d99"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "6cf2cb7cdb4cad7d"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "9b7deab1e51b70e2"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "d7b2159eba1d9818"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "abb3014d0f986e3a"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "d8ea5ac2216586e1"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "a25b3e42b7db35fa"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "3605a67aa91d7ac2"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "9098a95f07bedbc7"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "69837e73a04a5710"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "8173daa556063998"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "576c57baf8fc9da9"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "28250a83c20dabba"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "fa1840153ef0c60f"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "292352518e743531"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "0a42aec48efa8173"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "8189e81ede4b9133"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "79879d399572b887"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "a5a82dc7d95b25c4"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": {
+    "[Content_Types].xml": "de5f62865f00e920",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "da10c5236f76c7b4",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/footnotes.xml": "97a5a4fa100d292a",
+    "word/document.xml": "250df151fc79840f"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": {
+    "[Content_Types].xml": "89a93639ad43baa8",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "1230ac5c3e03804f",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/header1.xml": "d048102932e8de9b",
+    "word/header2.xml": "b1e81aa0092f6e40",
+    "word/footer1.xml": "5e3bac03883a66bd",
+    "word/document.xml": "0c04c6f5321476cc"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/document.xml": "808355859a5991f4"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": {
+    "[Content_Types].xml": "c9ab175f6fb9a797",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "ced2cf18ef40507e",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/header1.xml": "06af892159cc1518",
+    "word/_rels/header1.xml.rels": "344d5ac30e8242a4",
+    "word/media/watermark.png": "3021f0aa967ddb48",
+    "word/document.xml": "825e30065a8f6cdd"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": {
+    "[Content_Types].xml": "0cac8228221acddb",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "ced2cf18ef40507e",
+    "word/styles.xml": "3c147744f7e862df",
+    "word/header1.xml": "b8a2c26369d2c20b",
+    "word/document.xml": "1ba6061afc6c2d84"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "0f437bdde4b6bc06",
+    "word/document.xml": "f4f7027294159c4a"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "0f437bdde4b6bc06",
+    "word/document.xml": "d998eb7e3f2ef272"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "0f437bdde4b6bc06",
+    "word/document.xml": "fc42a106a03d1570"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/styles.xml": "0f437bdde4b6bc06",
+    "word/document.xml": "6ef852f0cc758a44"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": {
+    "word/media/image100.png": "fa5da85b5a2b82b7",
+    "word/media/image103.png": "fa5da85b5a2b82b7",
+    "word/media/image106.png": "0d5187392f6bd0de",
+    "word/media/image107.png": "dd7a3eb1a76cd659",
+    "word/media/image108.png": "4ec1250def75d69d",
+    "word/media/image110.png": "4ad9e846aa60dcfd",
+    "word/media/image119.png": "f2fd8541d64a6469",
+    "word/media/image120.png": "399a3549f4446a2a",
+    "word/media/image123.png": "f886e7c1c771572a",
+    "word/media/image124.png": "f886e7c1c771572a",
+    "word/media/image125.png": "35a96c7cef428eb7",
+    "word/media/image126.png": "1fde1c415799f206",
+    "word/media/image129.png": "8dc95cfed5ba19dc",
+    "word/media/image131.png": "3564059086ff17ba",
+    "word/media/image134.png": "c023d242d501ee0c",
+    "word/media/image135.png": "28803297147cc1c6",
+    "word/media/image138.png": "ef6e808571dda8bc",
+    "word/media/image139.png": "b4745de2b0897c54",
+    "word/media/image140.png": "dd25110537997c99",
+    "word/media/image141.png": "b46310f15eba474a",
+    "word/media/image143.png": "b39172239d883a58",
+    "word/media/image148.png": "005c40903da53c43",
+    "word/document.xml": "cc4346336c5b1f1e",
+    "word/theme/theme1.xml": "7f8f61ae6274c029",
+    "word/settings.xml": "ad5d4df2bdce138e",
+    "word/styles.xml": "c6e2ebc1c4f8bb86",
+    "word/fontTable.xml": "44832385011f8f2a",
+    "docProps/core.xml": "c0c49dbf29442d85",
+    "docProps/app.xml": "84042bc5eca3a722",
+    "docProps/custom.xml": "630cbba161e6629f",
+    "[Content_Types].xml": "f5d21897de250b8c",
+    "_rels/.rels": "c6f0cf621f5d4cc6",
+    "word/_rels/document.xml.rels": "0d3156d166402b29"
+  },
+  "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": {
+    "word/document.xml": "65a15a44c15ce7c3",
+    "_rels/.rels": "c1e0a9be7d0ea039",
+    "word/styles.xml": "948f8e4a18570962",
+    "word/_rels/document.xml.rels": "0b48c53d94a763cb",
+    "word/numbering.xml": "4d551442dcc28726",
+    "word/settings.xml": "417c9bbb1f699092",
+    "word/media/b4de8134-e1d7-4ae0-976c-5fcda2cb31c3.jpeg": "09bc31f6500e83a1",
+    "word/footer1.xml": "7db4d41ddc40d920",
+    "word/footer2.xml": "7606ff1ad3aa0908",
+    "word/footer3.xml": "7606ff1ad3aa0908",
+    "[Content_Types].xml": "16a2f9a29b42f4f0"
+  },
+  "packages/playground/public/folio-showcase.docx": {
+    "[Content_Types].xml": "d748079df13a6d9b",
+    "_rels/.rels": "a9ae57efe9186f07",
+    "docProps/core.xml": "ad364cbfe0799536",
+    "docProps/app.xml": "be664981c3141cdd",
+    "word/document.xml": "26953404d6a13e46",
+    "word/_rels/document.xml.rels": "3737213934aa84dc",
+    "word/styles.xml": "50c79318b76c018e",
+    "word/stylesWithEffects.xml": "463ae0928cf0d847",
+    "word/settings.xml": "33cde39d44a5162f",
+    "word/webSettings.xml": "349d36de7434d09f",
+    "word/fontTable.xml": "79385fb7f6024750",
+    "word/theme/theme1.xml": "e3a8ab7db9ca7afc",
+    "customXml/item1.xml": "a86086ffc5d8e83e",
+    "customXml/_rels/item1.xml.rels": "1ca6c9a64edcebe2",
+    "customXml/itemProps1.xml": "c542307b13ec29a8",
+    "word/numbering.xml": "b9ca3010f620513e",
+    "word/header1.xml": "1617efb58058b80c",
+    "word/footer1.xml": "ebbdd54177eb0e02",
+    "word/media/image1.png": "25e86dd0285cf186",
+    "word/media/image2.png": "29fb2955a11ca2e5",
+    "docProps/thumbnail.jpeg": "96367138dc44ce09",
+    "word/footnotes.xml": "d1066b4b6e4dc157",
+    "word/comments.xml": "8ac3dac274be9eb0"
+  },
+  "parity/fixtures/edit-comment-range-seed.docx": {
+    "[Content_Types].xml": "cf77bd8bcc41bd87",
+    "_rels/.rels": "d8b0bad955075e5c",
+    "word/_rels/document.xml.rels": "c358597b8fd2e43e",
+    "word/document.xml": "bc7515d773adccc8",
+    "word/styles.xml": "5f7e24f0a5c47b8a",
+    "word/numbering.xml": "70b9ad0bc0207904",
+    "word/comments.xml": "eeec81e15e43f498"
+  },
+  "parity/fixtures/edit-final-paragraph-seed.docx": {
+    "[Content_Types].xml": "cf77bd8bcc41bd87",
+    "_rels/.rels": "d8b0bad955075e5c",
+    "word/_rels/document.xml.rels": "4accbbe3680ab5dc",
+    "word/document.xml": "436f724b8a82c5d0",
+    "word/styles.xml": "5f7e24f0a5c47b8a",
+    "word/numbering.xml": "70b9ad0bc0207904"
+  },
+  "parity/fixtures/edit-merged-table-seed.docx": {
+    "[Content_Types].xml": "cf77bd8bcc41bd87",
+    "_rels/.rels": "d8b0bad955075e5c",
+    "word/_rels/document.xml.rels": "4accbbe3680ab5dc",
+    "word/document.xml": "b6b7efa0015737b9",
+    "word/styles.xml": "5f7e24f0a5c47b8a",
+    "word/numbering.xml": "70b9ad0bc0207904"
+  },
+  "parity/fixtures/edit-notes-fields-sections-seed.docx": {
+    "[Content_Types].xml": "cf77bd8bcc41bd87",
+    "_rels/.rels": "d8b0bad955075e5c",
+    "word/_rels/document.xml.rels": "e361356135e5edd3",
+    "word/document.xml": "1660e859b2076f3f",
+    "word/styles.xml": "5f7e24f0a5c47b8a",
+    "word/numbering.xml": "70b9ad0bc0207904",
+    "word/footnotes.xml": "0ddbbf3740c06760",
+    "word/endnotes.xml": "54603115251e2872"
+  },
+  "parity/fixtures/edit-numbering-seed.docx": {
+    "[Content_Types].xml": "cf77bd8bcc41bd87",
+    "_rels/.rels": "d8b0bad955075e5c",
+    "word/_rels/document.xml.rels": "4accbbe3680ab5dc",
+    "word/document.xml": "bc09099a26ea433e",
+    "word/styles.xml": "5f7e24f0a5c47b8a",
+    "word/numbering.xml": "70b9ad0bc0207904"
+  },
+  "parity/fixtures/edit-paragraph-boundary-seed.docx": {
+    "[Content_Types].xml": "cf77bd8bcc41bd87",
+    "_rels/.rels": "d8b0bad955075e5c",
+    "word/_rels/document.xml.rels": "4accbbe3680ab5dc",
+    "word/document.xml": "3815ab11e2621514",
+    "word/styles.xml": "5f7e24f0a5c47b8a",
+    "word/numbering.xml": "70b9ad0bc0207904"
+  },
+  "parity/fixtures/isolated-page-furniture.docx": {
+    "[Content_Types].xml": "f22dd6eaa18d4ab5",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "e94b8104029470c5",
+    "word/document.xml": "858fd07e9407c89a",
+    "word/styles.xml": "d88e9a3b5584dbb5",
+    "word/settings.xml": "278c9f70d4884e9a",
+    "word/numbering.xml": "1527972bab19ea6a",
+    "word/header1.xml": "592ce169928a3b75",
+    "word/footer1.xml": "dc6a1fb42a739c5c",
+    "word/_rels/header1.xml.rels": "b938dd776cd76615",
+    "word/_rels/footer1.xml.rels": "86cf84cd5308e604",
+    "word/media/synthetic-band.png": "431ced6916a2a21a"
+  },
+  "parity/fixtures/layout-kitchen-sink.docx": {
+    "[Content_Types].xml": "8f04ee90f520d01d",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "27504a853c506e26",
+    "word/document.xml": "d3a71b3263d4919e",
+    "word/styles.xml": "d88e9a3b5584dbb5",
+    "word/settings.xml": "278c9f70d4884e9a",
+    "word/numbering.xml": "1527972bab19ea6a",
+    "word/header1.xml": "592ce169928a3b75",
+    "word/footer1.xml": "dc6a1fb42a739c5c",
+    "word/_rels/header1.xml.rels": "b938dd776cd76615",
+    "word/_rels/footer1.xml.rels": "86cf84cd5308e604",
+    "word/media/synthetic-band.png": "431ced6916a2a21a",
+    "word/footnotes.xml": "f4e1dc1b28542334"
+  },
+  "parity/fixtures/pairwise-layout-interactions.docx": {
+    "[Content_Types].xml": "f22dd6eaa18d4ab5",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "11ff3f72f06c0d94",
+    "word/document.xml": "1a7490d3dd9ae9a9",
+    "word/styles.xml": "d88e9a3b5584dbb5",
+    "word/settings.xml": "278c9f70d4884e9a",
+    "word/numbering.xml": "1527972bab19ea6a",
+    "word/header1.xml": "592ce169928a3b75",
+    "word/footer1.xml": "dc6a1fb42a739c5c",
+    "word/_rels/header1.xml.rels": "b938dd776cd76615",
+    "word/_rels/footer1.xml.rels": "86cf84cd5308e604",
+    "word/media/synthetic-band.png": "431ced6916a2a21a"
+  },
+  "parity/fixtures/word-hyphenation-hanging.docx": {
+    "[Content_Types].xml": "236299af1c65102c",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "6e70924a22c4d7f2",
+    "word/document.xml": "fe5c7cf51d06938e",
+    "word/settings.xml": "210b405e2d8ef2e5",
+    "word/styles.xml": "b16826e18bae7f73",
+    "word/numbering.xml": "044f910453e4f102"
+  },
+  "test/packaged-consumer/public/fixture.docx": {
+    "[Content_Types].xml": "0d40e4a24445cd0a",
+    "docProps/app.xml": "cd70555e9a617283",
+    "docProps/custom.xml": "b20beecb36a23b28",
+    "docProps/core.xml": "df5367ebb1ecf258",
+    "_rels/.rels": "641d22a23aa9eb55",
+    "word/fontTable.xml": "15ee349dcc3b32b6",
+    "word/document.xml": "514d10523b69a97e",
+    "word/header1.xml": "6792ca586ddebc81",
+    "word/settings.xml": "7a6c7766f6fb90b5",
+    "word/numbering.xml": "efde02fa6a99834a",
+    "word/footer1.xml": "5450fe3af9fbf072",
+    "word/comments.xml": "1a86e64cdfce9767",
+    "word/styles.xml": "907e9a0949c2e418",
+    "word/_rels/document.xml.rels": "f63299a5ab4ab23c",
+    "word/_rels/footnotes.xml.rels": "bf64631f0bc7bd46",
+    "word/_rels/header1.xml.rels": "bf64631f0bc7bd46",
+    "word/_rels/fontTable.xml.rels": "bf64631f0bc7bd46",
+    "word/_rels/comments.xml.rels": "bf64631f0bc7bd46",
+    "word/_rels/footer1.xml.rels": "bf64631f0bc7bd46",
+    "word/footnotes.xml": "5a340540bed5ec7a"
+  },
+  "tests/visual/fixtures/cursive-face-change.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/document.xml": "8ec23f2c8d2d9720",
+    "word/styles.xml": "355a0d9da294f5c1"
+  },
+  "tests/visual/fixtures/docx-editor-demo.docx": {
+    "[Content_Types].xml": "0d40e4a24445cd0a",
+    "docProps/app.xml": "cd70555e9a617283",
+    "docProps/custom.xml": "b20beecb36a23b28",
+    "docProps/core.xml": "df5367ebb1ecf258",
+    "_rels/.rels": "641d22a23aa9eb55",
+    "word/fontTable.xml": "15ee349dcc3b32b6",
+    "word/document.xml": "514d10523b69a97e",
+    "word/header1.xml": "6792ca586ddebc81",
+    "word/settings.xml": "7a6c7766f6fb90b5",
+    "word/numbering.xml": "efde02fa6a99834a",
+    "word/footer1.xml": "5450fe3af9fbf072",
+    "word/comments.xml": "9503c7ecec71bec4",
+    "word/styles.xml": "907e9a0949c2e418",
+    "word/_rels/document.xml.rels": "f63299a5ab4ab23c",
+    "word/_rels/footnotes.xml.rels": "bf64631f0bc7bd46",
+    "word/_rels/header1.xml.rels": "bf64631f0bc7bd46",
+    "word/_rels/fontTable.xml.rels": "bf64631f0bc7bd46",
+    "word/_rels/comments.xml.rels": "bf64631f0bc7bd46",
+    "word/_rels/footer1.xml.rels": "bf64631f0bc7bd46",
+    "word/footnotes.xml": "5a340540bed5ec7a"
+  },
+  "tests/visual/fixtures/font-subsets.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/document.xml": "61f51cd53d34ede0",
+    "word/styles.xml": "071c7cf39ce9f4cf"
+  },
+  "tests/visual/fixtures/markup-views-final.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/document.xml": "fcb930831f7290c6",
+    "word/styles.xml": "fc2106e1eee48b79"
+  },
+  "tests/visual/fixtures/markup-views-original.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/document.xml": "1cc96666897a91c2",
+    "word/styles.xml": "fc2106e1eee48b79"
+  },
+  "tests/visual/fixtures/markup-views.docx": {
+    "[Content_Types].xml": "df3cf9f0d680dd16",
+    "_rels/.rels": "e9369a2425724259",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/document.xml": "2670b8f30e3cde9f",
+    "word/styles.xml": "fc2106e1eee48b79"
+  },
+  "tests/visual/fixtures/mixed-script-font-measure.docx": {
+    "[Content_Types].xml": "b5b987655d83ad3e",
+    "_rels/.rels": "43bdd04f31bc9c60",
+    "word/_rels/document.xml.rels": "e38ed4b82866ed31",
+    "word/document.xml": "761e7fdf58797f83",
+    "word/styles.xml": "69a365260bd9a029",
+    "docProps/core.xml": "7a8a93ef8b65072d",
+    "docProps/app.xml": "fdf2d40d9725620a",
+    "word/settings.xml": "1df4e4839c13a336",
+    "word/fontTable.xml": "33566bc94adebc86",
+    "word/_rels/fontTable.xml.rels": "79f899401513b70b",
+    "word/fonts/arimo-hebrew.woff2": "2ba360f7455a399d"
+  },
+  "tests/visual/fixtures/mixed-script-font-sample.docx": {
+    "[Content_Types].xml": "b153a5ed0066edc2",
+    "_rels/.rels": "43bdd04f31bc9c60",
+    "word/_rels/document.xml.rels": "082d093797072159",
+    "word/document.xml": "393a0bef49686148",
+    "word/styles.xml": "69e6e4705dbbb031",
+    "docProps/core.xml": "196e265aceea0f24",
+    "docProps/app.xml": "b3f37b4758ea7295",
+    "word/fontTable.xml": "33566bc94adebc86",
+    "word/_rels/fontTable.xml.rels": "79f899401513b70b",
+    "word/fonts/arimo-hebrew.woff2": "dbde4d2366e4ba3a"
+  },
+  "tests/visual/fixtures/performance-1500-paragraphs.docx": {
+    "[Content_Types].xml": "356b392ebcbfc20d",
+    "_rels/.rels": "43bdd04f31bc9c60",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/document.xml": "625aec5c6a07f7f7",
+    "word/styles.xml": "69e6e4705dbbb031",
+    "docProps/core.xml": "196e265aceea0f24",
+    "docProps/app.xml": "b3f37b4758ea7295"
+  },
+  "tests/visual/fixtures/performance-long-split-table.docx": {
+    "[Content_Types].xml": "356b392ebcbfc20d",
+    "_rels/.rels": "43bdd04f31bc9c60",
+    "word/_rels/document.xml.rels": "c4424d40b3965466",
+    "word/document.xml": "80258c013211a202",
+    "word/styles.xml": "69e6e4705dbbb031",
+    "docProps/core.xml": "196e265aceea0f24",
+    "docProps/app.xml": "b3f37b4758ea7295"
+  },
+  "tests/visual/fixtures/podily-bps.docx": {
+    "[Content_Types].xml": "a59489d02b293493",
+    "_rels/.rels": "12ef8be97ca54249",
+    "word/_rels/document.xml.rels": "98792418bdd66df0",
+    "word/document.xml": "3da618e2ae776cb4",
+    "word/footer3.xml": "837a1bae64b60068",
+    "word/footnotes.xml": "b2865e844c2b6d51",
+    "word/endnotes.xml": "bf4b7cd94edc1142",
+    "word/footer1.xml": "7c4204d3a9541c9b",
+    "word/header1.xml": "d849ab73c2b0ad69",
+    "word/header2.xml": "4a6d219627afaed7",
+    "word/footer2.xml": "d3702e98ca86e429",
+    "word/header3.xml": "8a3f434c06713bd3",
+    "word/_rels/header1.xml.rels": "94bca6aec3177c3b",
+    "word/media/image1.png": "fd79e1076d9c6d8f",
+    "word/webextensions/taskpanes.xml": "c3afdcd828298491",
+    "word/webextensions/webextension1.xml": "f880f9aa0858ef26",
+    "word/theme/theme1.xml": "4512ca0729caa8ba",
+    "word/webextensions/_rels/taskpanes.xml.rels": "c2d95a9c9ac08613",
+    "word/settings.xml": "1a88094cf64909bc",
+    "word/webSettings.xml": "753994b7397ff81c",
+    "customXml/_rels/item1.xml.rels": "80482f86e196171d",
+    "word/fontTable.xml": "65735eadf5965fd7",
+    "word/people.xml": "b632b2be5b0b1888",
+    "docProps/core.xml": "a0b87b8384f65a01",
+    "docProps/app.xml": "28dc44d5546ed486",
+    "customXml/itemProps1.xml": "744658865f6a2b55",
+    "customXml/item1.xml": "c8092edbb672f8c9",
+    "word/styles.xml": "67f3486a7d20c541",
+    "word/numbering.xml": "7eed2f182b8cefb5"
+  },
+  "tests/visual/fixtures/sample.docx": {
+    "[Content_Types].xml": "09a5850927fbe77d",
+    "docProps/app.xml": "be664981c3141cdd",
+    "docProps/thumbnail.jpeg": "96367138dc44ce09",
+    "docProps/core.xml": "7d847b0bfd0f54e5",
+    "customXml/item1.xml": "a86086ffc5d8e83e",
+    "customXml/_rels/item1.xml.rels": "1ca6c9a64edcebe2",
+    "customXml/itemProps1.xml": "c542307b13ec29a8",
+    "_rels/.rels": "a9ae57efe9186f07",
+    "word/fontTable.xml": "79385fb7f6024750",
+    "word/document.xml": "fa6eddb148b7bdb6",
+    "word/header1.xml": "4fb3d2527b7fa9ab",
+    "word/settings.xml": "51a0d348fe85965c",
+    "word/numbering.xml": "70976f19cbcd896e",
+    "word/footer1.xml": "8ad5d7f71cfb66bb",
+    "word/webSettings.xml": "349d36de7434d09f",
+    "word/styles.xml": "541aca3c9c757a89",
+    "word/theme/theme1.xml": "e3a8ab7db9ca7afc",
+    "word/_rels/document.xml.rels": "157ed86827865b09",
+    "word/stylesWithEffects.xml": "463ae0928cf0d847"
+  },
+  "tests/visual/fixtures/tracked-insertion-boundary.docx": {
+    "[Content_Types].xml": "356b392ebcbfc20d",
+    "_rels/.rels": "43bdd04f31bc9c60",
+    "word/_rels/document.xml.rels": "5931ab90e9e45812",
+    "word/document.xml": "a7dd89c824a1767d",
+    "word/styles.xml": "455410008d623722",
+    "docProps/core.xml": "55d458ae67293f84",
+    "docProps/app.xml": "65de7e3d1b1f3b48"
+  }
+}

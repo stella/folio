@@ -1,7 +1,8 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -95,11 +96,8 @@ const resolved = async (
   });
   // A paragraph that goes takes no bookmark with it: both ends stay, in place.
   const xml =
-    (await (
-      await JSZip.loadAsync(saved)
-    )
-      .file("word/document.xml")
-      ?.async("string")) ?? "";
+    (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+    "";
   const bookmarks = [
     ...xml.matchAll(/<w:(bookmarkStart|bookmarkEnd)\b|<w:(p|tbl)\b/gu),
   ].map((match) => match[1] ?? match[2]);
@@ -131,10 +129,10 @@ const checkDeletion = async (options: FixtureOptions) => {
   }
   if (options.kind === "moveTo" && options.following === "paragraph") {
     const xml = await (
-      await JSZip.loadAsync(await tracked.toBuffer())
+      await ZipArchive.read(await tracked.toBuffer())
     )
-      .file("word/document.xml")
-      ?.async("string");
+      .entry("word/document.xml")
+      ?.text();
     expect(xml).toMatch(/<w:moveTo\b[^>]*><w:del\b/u);
   }
   expect(await resolved(tracked, "accept")).toEqual(
@@ -215,10 +213,10 @@ test("retracting an inserted paragraph before a table keeps a comment that ends 
   expect(result.skipped).toEqual([]);
   const xml =
     (await (
-      await JSZip.loadAsync(await reviewer.toBuffer())
+      await ZipArchive.read(await reviewer.toBuffer())
     )
-      .file("word/document.xml")
-      ?.async("string")) ?? "";
+      .entry("word/document.xml")
+      ?.text()) ?? "";
   // The comment still spans what it covered outside the pending paragraph.
   expect(xml).toMatch(/<w:commentRangeStart w:id="7"\/>/u);
   expect(xml).toMatch(/<w:commentRangeEnd w:id="7"\/>/u);
@@ -272,10 +270,10 @@ test("retracting an inserted paragraph first in its container keeps a comment th
   expect(result.skipped).toEqual([]);
   const xml =
     (await (
-      await JSZip.loadAsync(await reviewer.toBuffer())
+      await ZipArchive.read(await reviewer.toBuffer())
     )
-      .file("word/document.xml")
-      ?.async("string")) ?? "";
+      .entry("word/document.xml")
+      ?.text()) ?? "";
   expect(xml).toMatch(/<w:commentRangeStart w:id="8"\/>/u);
   expect(xml).toMatch(/<w:commentRangeEnd w:id="8"\/>/u);
   expect(xml.indexOf('commentRangeStart w:id="8"')).toBeLessThan(

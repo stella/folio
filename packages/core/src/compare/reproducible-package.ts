@@ -1,15 +1,14 @@
-import JSZip from "jszip";
-
-import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * Date comparison output from the comparison's timestamp. Imported entries
  * retain source dates, and saves can stamp `dcterms:modified` from the wall
  * clock; restamping both makes repeated comparisons reproducible.
  */
 
-import { decodeText, encodeUtf8 } from "../utils/textEncoding";
+import { ZipArchive } from "@stll/docx-core/zip";
 
-/** JSZip deflate level `repackDocx` writes DOCX parts at. */
+import { decodeText } from "../utils/textEncoding";
+
+/** ZipArchive deflate level `repackDocx` writes DOCX parts at. */
 const DOCX_COMPRESSION_LEVEL = 6;
 
 const CORE_PROPERTIES_PATH = "docProps/core.xml";
@@ -31,32 +30,17 @@ export const withFixedPackageDates = async (
   buffer: ArrayBuffer,
   date: Date,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const coreProps = zip.file(CORE_PROPERTIES_PATH);
+  const zip = await ZipArchive.read(buffer);
+  const coreProps = zip.entry(CORE_PROPERTIES_PATH);
   if (coreProps) {
-    writeZipPart({
-      zip,
-      path: CORE_PROPERTIES_PATH,
-      data: encodeUtf8(
-        withFixedModifiedDate(
-          await coreProps
-            .async("uint8array")
-            .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
-          date,
-        ),
+    zip.set(
+      CORE_PROPERTIES_PATH,
+      withFixedModifiedDate(
+        decodeText(await coreProps.bytes(), { ignoreBOM: true }),
+        date,
       ),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: DOCX_COMPRESSION_LEVEL },
-      },
-    });
+    );
   }
-  zip.forEach((_path, file) => {
-    file.date = date;
-  });
-  return await zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: DOCX_COMPRESSION_LEVEL },
-  });
+  return (await zip.generate({ level: DOCX_COMPRESSION_LEVEL, modified: date }))
+    .buffer;
 };

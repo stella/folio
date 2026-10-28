@@ -5,11 +5,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import {
@@ -65,16 +66,16 @@ const packageOf = async ({
   footnotes,
   header,
 }: Fixture): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="${MAIN}.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="${MAIN}.styles+xml"/><Override PartName="/word/settings.xml" ContentType="${MAIN}.settings+xml"/><Override PartName="/word/footnotes.xml" ContentType="${MAIN}.footnotes+xml"/>${header === undefined ? "" : `<Override PartName="/word/header1.xml" ContentType="${MAIN}.header+xml"/>`}</Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIPS}/officeDocument" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIPS}/styles" Target="styles.xml"/><Relationship Id="rId3" Type="${RELATIONSHIPS}/settings" Target="settings.xml"/><Relationship Id="rId4" Type="${RELATIONSHIPS}/footnotes" Target="footnotes.xml"/>${header === undefined ? "" : `<Relationship Id="rId5" Type="${RELATIONSHIPS}/header" Target="header1.xml"/>`}</Relationships>`,
   );
@@ -88,23 +89,23 @@ const packageOf = async ({
           "<w:sectPr>",
           '<w:sectPr><w:headerReference w:type="default" r:id="rId5"/>',
         );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${NAMESPACES}><w:body>${withSection}</w:body></w:document>`,
   );
-  zip.file("word/styles.xml", reference.package.styles);
-  zip.file("word/settings.xml", reference.package.settings);
-  zip.file(
+  zip.set("word/styles.xml", reference.package.styles);
+  zip.set("word/settings.xml", reference.package.settings);
+  zip.set(
     "word/footnotes.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes ${NAMESPACES}>${SEPARATORS}${footnotes ?? ""}</w:footnotes>`,
   );
   if (header !== undefined) {
-    zip.file(
+    zip.set(
       "word/header1.xml",
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${NAMESPACES}>${header}</w:hdr>`,
     );
   }
-  return zip.generateAsync({ type: "uint8array" });
+  return zip.generate({ compression: "store" });
 };
 
 const open = async (fixture: Fixture): Promise<Document> =>

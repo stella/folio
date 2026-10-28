@@ -19,7 +19,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -30,21 +31,18 @@ const W_NAMESPACE =
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}">` +
       `<w:body>${body}<w:sectPr xml:lang="en-US"/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(saved)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+  "";
 
 /** Parse and save, with no editor round trip in between: the plainest resave. */
 const roundTrip = async (body: string): Promise<string> => {

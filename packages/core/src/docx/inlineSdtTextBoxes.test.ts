@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -56,9 +57,9 @@ const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </w:document>`;
 
 const createSource = async (): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", documentXml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", documentXml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const firstParagraph = (
@@ -118,8 +119,8 @@ describe("inline content-control text boxes", () => {
         updateModifiedDate: false,
       },
     );
-    const savedZip = await JSZip.loadAsync(saved);
-    const savedXml = await savedZip.file("word/document.xml")?.async("text");
+    const savedZip = await ZipArchive.read(saved);
+    const savedXml = await savedZip.entry("word/document.xml")?.text();
     expect(savedXml?.match(/<w:sdt>/gu)).toHaveLength(2);
     expect(savedXml).toContain("<wps:txbx>");
 

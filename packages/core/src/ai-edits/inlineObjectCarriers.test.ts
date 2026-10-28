@@ -15,7 +15,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -580,8 +581,8 @@ describe("a paragraph holding a text box, first in the body", () => {
   };
 
   const bodyXml = async (bytes: ArrayBuffer): Promise<string> => {
-    const zip = await JSZip.loadAsync(bytes);
-    const xml = await zip.file("word/document.xml")?.async("string");
+    const zip = await ZipArchive.read(bytes);
+    const xml = await zip.entry("word/document.xml")?.text();
     if (xml === undefined) {
       throw new Error("the package has no main document part");
     }

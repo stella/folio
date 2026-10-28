@@ -16,7 +16,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -99,16 +100,16 @@ const sideXml = (
 };
 
 const docxFor = (art: ArtCase): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${allIds(
       art,
@@ -119,7 +120,7 @@ const docxFor = (art: ArtCase): Promise<ArrayBuffer> => {
       )
       .join("")}</Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document ${NS}><w:body><w:p><w:r><w:t>bordered</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgBorders w:offsetFrom="page">${SIDES.map(
       (side) => sideXml(side, art[side]),
@@ -130,9 +131,9 @@ const docxFor = (art: ArtCase): Promise<ArrayBuffer> => {
   // relationship and the `r:id` naming it — this fixture is exercising
   // relationship-id wiring, not image content, so the bytes are arbitrary.
   for (const id of allIds(art)) {
-    zip.file(`word/media/${id}.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    zip.set(`word/media/${id}.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** The art ids the model holds, side by side. */
@@ -165,11 +166,11 @@ const save = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const file = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const file = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!file) {
     throw new Error("saved package has no main part");
   }
-  return file.async("string");
+  return file.text();
 };
 
 /** Every art attribute the saved `w:pgBorders` carries, prefix included. */

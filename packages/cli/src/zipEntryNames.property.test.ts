@@ -1,16 +1,16 @@
 /**
  * Corpus invariant for the executable save boundary: a plain tracked insertion
  * needs no new package part, so saving it must preserve every ZIP entry name.
- * Directory entries are removed from inputs to expose JSZip's implicit folders.
+ * Directory entries are removed from inputs to expose ZipArchive's implicit folders.
  */
 
 import { panic } from "better-result";
 import { afterAll, describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { spawnSync } from "node:child_process";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { ensureParaIds, FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { makeTempDir } from "./__tests__/fixtures";
@@ -40,22 +40,18 @@ describe("folio suggest --in-place preserves corpus ZIP entry names", () => {
     async (name) => {
       const { dir, cleanup } = await makeTempDir();
       try {
-        const inputZip = await JSZip.loadAsync(
+        const inputZip = await ZipArchive.read(
           await readFile(path.join(CORPUS, name)),
         );
-        // JSZip.remove(directory) also removes its children; retain all parts.
-        inputZip.files = Object.fromEntries(
-          Object.entries(inputZip.files).filter(([, entry]) => !entry.dir),
-        );
-        const sourceNames = Object.keys(inputZip.files).toSorted();
+        const sourceNames = inputZip.paths().toSorted();
         expect(sourceNames.some((entryName) => entryName.endsWith("/"))).toBe(
           false,
         );
-        const input = await inputZip.generateAsync({ type: "uint8array" });
+        const input = await inputZip.generate({ compression: "store" });
         const { docx: source } = await ensureParaIds(input);
-        expect(
-          Object.keys((await JSZip.loadAsync(source)).files).toSorted(),
-        ).toEqual(sourceNames);
+        expect((await ZipArchive.read(source)).paths().toSorted()).toEqual(
+          sourceNames,
+        );
 
         const reviewer = await FolioDocxReviewer.fromBuffer(source);
         // snapshot() includes blank paragraphs, so even the empty document is edited.
@@ -106,9 +102,9 @@ describe("folio suggest --in-place preserves corpus ZIP entry names", () => {
         expect(receipt["fileVersion"]).not.toBe(fileVersionOf(source));
 
         const saved = new Uint8Array(await readFile(file));
-        expect(
-          Object.keys((await JSZip.loadAsync(saved)).files).toSorted(),
-        ).toEqual(sourceNames);
+        expect((await ZipArchive.read(saved)).paths().toSorted()).toEqual(
+          sourceNames,
+        );
         const reopened = await FolioDocxReviewer.fromBuffer(saved);
         expect(
           reopened.getContent().filter(({ text }) => text === INSERTED_TEXT),

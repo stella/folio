@@ -26,8 +26,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -95,14 +96,14 @@ const buildDocx = async (
   paragraphs: readonly ParagraphPlan[],
   comments: readonly CommentFacts[],
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const zip = await ZipArchive.read(await createEmptyDocx());
 
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:r="${RELATIONSHIP_NAMESPACE}">` +
       `<w:body>${paragraphs.map(paragraphXml).join("")}</w:body></w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/comments.xml",
     `${XML_DECLARATION}<w:comments xmlns:w="${W_NAMESPACE}" xmlns:w14="${W14_NAMESPACE}">` +
       comments
@@ -115,7 +116,7 @@ const buildDocx = async (
         .join("") +
       "</w:comments>",
   );
-  zip.file(
+  zip.set(
     "word/commentsExtended.xml",
     `${XML_DECLARATION}<w15:commentsEx xmlns:w="${W_NAMESPACE}" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">` +
       comments
@@ -130,12 +131,12 @@ const buildDocx = async (
       "</w15:commentsEx>",
   );
 
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
@@ -143,7 +144,7 @@ const buildDocx = async (
         '<Override PartName="/word/commentsExtended.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"/></Types>',
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
@@ -151,7 +152,7 @@ const buildDocx = async (
         '<Relationship Id="rIdPropCommentsEx" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/></Relationships>',
     ),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const MARKER_PATTERN =
@@ -165,8 +166,8 @@ const MARKER_KIND_BY_ELEMENT = new Map<string, MarkerKind>([
 
 /** The marker sequence each body paragraph carries, in document order. */
 const markersByParagraph = async (buffer: ArrayBuffer): Promise<Marker[][]> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const zip = await ZipArchive.read(buffer);
+  const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
   return xml
     .split(/<w:p[\s>]/u)
     .slice(1)

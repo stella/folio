@@ -17,9 +17,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import { setDocumentBodyComments } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -144,28 +144,29 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
       }),
     ),
   );
-  const zip = await JSZip.loadAsync(await createDocx(document));
-  zip.file(
+  const zip = await ZipArchive.read(await createDocx(document));
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:wp="${WP_NAMESPACE}" ` +
       `xmlns:a="${A_NAMESPACE}" xmlns:wps="${WPS_NAMESPACE}">` +
       `<w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** Every part of a package, by path, so a comparison names the part that drifted. */
 const packageParts = async (
   buffer: ArrayBuffer,
 ): Promise<Map<string, string>> => {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   return new Map(
     await Promise.all(
-      Object.entries(zip.files)
-        .filter(([, file]) => !file.dir)
+      zip
+        .entries()
+        .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)
         .map(async ([path, file]): Promise<readonly [string, string]> => [
           path,
-          await file.async("base64"),
+          Buffer.from(await file.bytes()).toString("base64"),
         ]),
     ),
   );
@@ -323,8 +324,8 @@ describe("a text box does not leave its carrier run behind", () => {
     const { first } = await expectFixedPoint(
       await buildDocx(`${BOOKMARK_PAIR}<w:p>${CARRIER_RUN}</w:p>`),
     );
-    const zip = await JSZip.loadAsync(first);
-    expect(await zip.file("word/document.xml")?.async("text")).not.toContain(
+    const zip = await ZipArchive.read(first);
+    expect(await zip.entry("word/document.xml")?.text()).not.toContain(
       "<w:rPr><w:noProof/></w:rPr></w:r>",
     );
   });

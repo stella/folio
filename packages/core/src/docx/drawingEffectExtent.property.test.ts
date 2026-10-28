@@ -17,7 +17,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -109,27 +110,27 @@ const anchorBody = (kind: WrapKind, authoredOn: AuthoredOn): string =>
   "</wp:anchor></w:drawing></w:r></w:p>";
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:r="${R_NAMESPACE}" ` +
       `xmlns:a="${A_NAMESPACE}" xmlns:wp="${WP_NAMESPACE}" xmlns:pic="${PIC_NAMESPACE}">` +
       `<w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  zip.file("word/media/image1.png", PNG);
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  zip.set("word/media/image1.png", PNG);
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
       '<Default Extension="png" ContentType="image/png"/></Types>',
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
@@ -137,7 +138,7 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
         "</Relationships>",
     ),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /**
@@ -169,11 +170,8 @@ const resizePictures = (document: Document): void => {
 };
 
 const partOf = async (saved: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(saved)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+  "";
 
 /** The two legs the container survival law runs: a forced save, and the editor. */
 const LEGS = ["save", "editor"] as const;

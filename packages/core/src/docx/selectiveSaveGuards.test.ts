@@ -14,7 +14,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
@@ -49,22 +50,22 @@ const STYLES = `${XML_DECL}<w:styles xmlns:w="http://schemas.openxmlformats.org/
 const CORE_PROPS = `${XML_DECL}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>fx</dc:title><dcterms:modified xsi:type="dcterms:W3CDTF">2024-01-01T00:00:00.000Z</dcterms:modified></cp:coreProperties>`;
 
 async function makeFixture(extraPaddingBytes = 0): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
-  zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file("word/_rels/document.xml.rels", DOC_RELS);
-  zip.file("word/document.xml", DOCUMENT_XML);
-  zip.file("word/styles.xml", STYLES);
-  zip.file("docProps/core.xml", CORE_PROPS);
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", CONTENT_TYPES);
+  zip.set("_rels/.rels", PACKAGE_RELS);
+  zip.set("word/_rels/document.xml.rels", DOC_RELS);
+  zip.set("word/document.xml", DOCUMENT_XML);
+  zip.set("word/styles.xml", STYLES);
+  zip.set("docProps/core.xml", CORE_PROPS);
   if (extraPaddingBytes > 0) {
     // Synthetic large media entry (a preservable type, so it does not trip
     // the non-preservable-entry guard) to drive the memory-threshold guard
     // without inflating the test runner with multi-MB fixtures.
-    zip.file("word/media/padding.png", new Uint8Array(extraPaddingBytes), {
-      compression: "STORE",
+    zip.set("word/media/padding.png", new Uint8Array(extraPaddingBytes), {
+      compression: "store",
     });
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 describe("memory threshold guard", () => {
@@ -277,15 +278,15 @@ describe("package entry guard", () => {
     // The document is the author's: a macro project is carried verbatim by
     // both save paths, so the selective path has no reason to bail. It only
     // refuses an entry PATH that would escape the package.
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", CONTENT_TYPES);
-    zip.file("_rels/.rels", PACKAGE_RELS);
-    zip.file("word/_rels/document.xml.rels", DOC_RELS);
-    zip.file("word/document.xml", DOCUMENT_XML);
-    zip.file("word/styles.xml", STYLES);
-    zip.file("docProps/core.xml", CORE_PROPS);
-    zip.file("word/vbaProject.bin", new Uint8Array([0, 1, 2, 3]));
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", CONTENT_TYPES);
+    zip.set("_rels/.rels", PACKAGE_RELS);
+    zip.set("word/_rels/document.xml.rels", DOC_RELS);
+    zip.set("word/document.xml", DOCUMENT_XML);
+    zip.set("word/styles.xml", STYLES);
+    zip.set("docProps/core.xml", CORE_PROPS);
+    zip.set("word/vbaProject.bin", new Uint8Array([0, 1, 2, 3]));
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
     const result = await attemptSelectiveSave(doc, buffer, {
@@ -295,28 +296,28 @@ describe("package entry guard", () => {
     });
 
     expect(result).not.toBeNull();
-    const saved = await JSZip.loadAsync(result!);
-    expect(
-      await saved.file("word/vbaProject.bin")?.async("uint8array"),
-    ).toEqual(new Uint8Array([0, 1, 2, 3]));
+    const saved = await ZipArchive.read(result!);
+    expect(await saved.entry("word/vbaProject.bin")?.bytes()).toEqual(
+      new Uint8Array([0, 1, 2, 3]),
+    );
   });
 
   test("does not bail on the Word package preview thumbnail", async () => {
     // `docProps/thumbnail.jpeg` is plain preview media Word writes into
     // nearly every authored file; the selective path carries it like any
     // other part.
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", CONTENT_TYPES);
-    zip.file("_rels/.rels", PACKAGE_RELS);
-    zip.file("word/_rels/document.xml.rels", DOC_RELS);
-    zip.file("word/document.xml", DOCUMENT_XML);
-    zip.file("word/styles.xml", STYLES);
-    zip.file("docProps/core.xml", CORE_PROPS);
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", CONTENT_TYPES);
+    zip.set("_rels/.rels", PACKAGE_RELS);
+    zip.set("word/_rels/document.xml.rels", DOC_RELS);
+    zip.set("word/document.xml", DOCUMENT_XML);
+    zip.set("word/styles.xml", STYLES);
+    zip.set("docProps/core.xml", CORE_PROPS);
+    zip.set(
       "docProps/thumbnail.jpeg",
       new Uint8Array([0xff, 0xd8, 0xff, 0xd9]),
     );
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
     const result = await attemptSelectiveSave(doc, buffer, {

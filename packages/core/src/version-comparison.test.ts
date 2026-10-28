@@ -11,9 +11,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { escapeXmlText } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
@@ -106,7 +106,7 @@ const withCoreProperties = async (
   buffer: ArrayBuffer,
   properties: CorePropertiesFixture,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   const elements = [
     properties.title === undefined
       ? ""
@@ -136,11 +136,11 @@ const withCoreProperties = async (
       ? ""
       : `<dcterms:modified>${escapeXmlText(properties.modified)}</dcterms:modified>`,
   ].join("");
-  zip.file(
+  zip.set(
     "docProps/core.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/">${elements}</cp:coreProperties>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const storyParagraph = (text: string, paraId: string): Paragraph => ({
@@ -225,33 +225,33 @@ const buildStoryDocument = async ({
   const materialized = await repackDocx(document, {
     updateModifiedDate: false,
   });
-  const zip = await JSZip.loadAsync(materialized);
-  const contentTypesFile = zip.file("[Content_Types].xml");
-  const relationshipsFile = zip.file("word/_rels/document.xml.rels");
+  const zip = await ZipArchive.read(materialized);
+  const contentTypesFile = zip.entry("[Content_Types].xml");
+  const relationshipsFile = zip.entry("word/_rels/document.xml.rels");
   if (!contentTypesFile || !relationshipsFile) {
     throw new Error("expected package metadata parts");
   }
-  const contentTypes = await contentTypesFile.async("text");
-  const relationships = await relationshipsFile.async("text");
-  zip.file(
+  const contentTypes = await contentTypesFile.text();
+  const relationships = await relationshipsFile.text();
+  zip.set(
     "[Content_Types].xml",
     contentTypes.replace(
       "</Types>",
       '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/></Types>',
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     relationships.replace(
       "</Relationships>",
       '<Relationship Id="rIdFootnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>',
     ),
   );
-  zip.file(
+  zip.set(
     "word/footnotes.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:footnote w:id="2"><w:p w14:paraId="41000001"><w:r><w:t>${footnoteText}</w:t></w:r></w:p></w:footnote></w:footnotes>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const findChange = (

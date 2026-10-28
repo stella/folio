@@ -6,9 +6,9 @@ import { Result } from "better-result";
  * resolved.
  */
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import JSZip from "jszip";
 import path from "node:path";
 
+import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { decodeText } from "@stll/folio-core/utils/textEncoding";
 
@@ -29,9 +29,11 @@ const RELATIONSHIP_NAMESPACES = [
   "http://purl.oclc.org/ooxml/officeDocument/relationships",
 ];
 
-const loadZip = (bytes: Uint8Array): Promise<Result<JSZip, FolioCliError>> =>
+const loadZip = (
+  bytes: Uint8Array,
+): Promise<Result<ZipArchive, FolioCliError>> =>
   Result.tryPromise({
-    try: () => JSZip.loadAsync(bytes),
+    try: () => ZipArchive.read(bytes),
     catch: (error) =>
       cliError({
         code: FOLIO_CLI_ERROR_CODES.integrityFailed,
@@ -39,8 +41,12 @@ const loadZip = (bytes: Uint8Array): Promise<Result<JSZip, FolioCliError>> =>
       }),
   });
 
-const partEntries = (zip: JSZip): Map<string, JSZip.JSZipObject> =>
-  new Map(Object.entries(zip.files).filter(([, entry]) => !entry.dir));
+const partEntries = (zip: ZipArchive): Map<string, ZipEntry> =>
+  new Map(
+    zip
+      .entries()
+      .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const),
+  );
 
 const sameBytes = (left: Uint8Array, right: Uint8Array): boolean =>
   Buffer.compare(left, right) === 0;
@@ -63,10 +69,7 @@ export const diffPackages = async (
       changes.push({ part, change: "added" });
       continue;
     }
-    const [left, right] = await Promise.all([
-      previous.async("uint8array"),
-      entry.async("uint8array"),
-    ]);
+    const [left, right] = await Promise.all([previous.bytes(), entry.bytes()]);
     if (!sameBytes(left, right)) {
       changes.push({ part, change: "modified" });
     }
@@ -114,7 +117,7 @@ export const nextRevisionIdSeed = async (
   for (const [part, entry] of partEntries(zip.value)) {
     if (!part.endsWith(".xml")) continue;
     const xml = await entry
-      .async("uint8array")
+      .bytes()
       .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
     for (const prefix of prefixesBoundTo(xml, WORDPROCESSINGML_NAMESPACES)) {
       const pattern = new RegExp(
@@ -181,8 +184,8 @@ const integrityError = (message: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.integrityFailed, message });
 
 type CheckPartOptions = {
-  zip: JSZip;
-  parts: ReadonlyMap<string, JSZip.JSZipObject>;
+  zip: ZipArchive;
+  parts: ReadonlyMap<string, ZipEntry>;
   part: string;
 };
 
@@ -199,7 +202,7 @@ const checkChangedPart = async ({
     return null;
   }
   const xml = await entry
-    .async("uint8array")
+    .bytes()
     .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
   if (XMLValidator.validate(xml) !== true) {
     return `${part} is not well-formed XML.`;
@@ -220,8 +223,8 @@ const checkChangedPart = async ({
   const prefixes = prefixesBoundTo(xml, RELATIONSHIP_NAMESPACES);
   if (prefixes.size === 0) return null;
   const relsXml = await zip
-    .file(relationshipsPartFor(part))
-    ?.async("uint8array")
+    .entry(relationshipsPartFor(part))
+    ?.bytes()
     .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
   const ids = new Set(parseRelationships(relsXml ?? "").map(({ id }) => id));
   for (const prefix of prefixes) {

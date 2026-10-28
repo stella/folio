@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { createReviewerBridge } from "./bridges/reviewer";
@@ -18,8 +18,8 @@ const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
 const buildDocx = async (
   paragraphs: readonly string[],
 ): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
@@ -28,7 +28,7 @@ const buildDocx = async (
       '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
       "</Types>",
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
@@ -42,12 +42,12 @@ const buildDocx = async (
         `<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`,
     )
     .join("");
-  zip.file(
+  zip.set(
     "word/document.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       `<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 const acceptedTexts = async (

@@ -5,7 +5,6 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { undo } from "prosemirror-history";
@@ -14,6 +13,8 @@ import {
   type EditorState,
   TextSelection,
 } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { acceptAIEditRevision } from "../prosemirror/commands/comments";
@@ -64,27 +65,27 @@ const table = () =>
   `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="4680"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="4680" w:type="dxa"/></w:tcPr>${paragraph("66000001", "Cell.")}</w:tc></w:tr></w:tbl>`;
 
 const packageOf = async (body: string): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="${MAIN}.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="${MAIN}.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="${MAIN}.numbering+xml"/><Override PartName="/word/settings.xml" ContentType="${MAIN}.settings+xml"/></Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIPS}/officeDocument" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIPS}/styles" Target="styles.xml"/><Relationship Id="rId2" Type="${RELATIONSHIPS}/numbering" Target="numbering.xml"/><Relationship Id="rId3" Type="${RELATIONSHIPS}/settings" Target="settings.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${NAMESPACES}><w:body>${body}${reference.package.sectPr}</w:body></w:document>`,
   );
-  zip.file("word/styles.xml", reference.package.styles);
-  zip.file("word/numbering.xml", reference.package.numbering);
-  zip.file("word/settings.xml", reference.package.settings);
-  return zip.generateAsync({ type: "uint8array" });
+  zip.set("word/styles.xml", reference.package.styles);
+  zip.set("word/numbering.xml", reference.package.numbering);
+  zip.set("word/settings.xml", reference.package.settings);
+  return zip.generate({ compression: "store" });
 };
 
 const open = async (body: string, mode: EditorMode = "suggesting") => {
@@ -413,10 +414,10 @@ describe("runs a join moves read from the surviving paragraph's style", () => {
   const savedBody = async (state: EditorState, base: Document) => {
     const saved = await saveHarnessState(state, base);
     const xml = await (
-      await JSZip.loadAsync(saved.bytes)
+      await ZipArchive.read(saved.bytes)
     )
-      .file("word/document.xml")
-      ?.async("string");
+      .entry("word/document.xml")
+      ?.text();
     if (!xml) throw new Error("missing document.xml");
     const body = xml.slice(
       xml.indexOf("<w:body>"),

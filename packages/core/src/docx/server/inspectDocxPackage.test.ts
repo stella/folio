@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { createHash } from "node:crypto";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createEmptyDocx } from "../rezip";
 import { DocxArchiveError } from "./boundedArchive";
@@ -12,14 +13,14 @@ import {
   readRequestedXmlParts,
 } from "./inspectDocxPackage";
 
-type MutatePackage = (zip: JSZip) => void;
+type MutatePackage = (zip: ZipArchive) => void;
 
 const mutateEmptyPackage = async (
   mutate: MutatePackage,
 ): Promise<Uint8Array> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const zip = await ZipArchive.read(await createEmptyDocx());
   mutate(zip);
-  return await zip.generateAsync({ type: "uint8array" });
+  return await zip.generate({ compression: "store" });
 };
 
 const rejection = async (promise: Promise<unknown>): Promise<unknown> => {
@@ -34,7 +35,7 @@ const rejection = async (promise: Promise<unknown>): Promise<unknown> => {
 describe("inspectDocxPackage", () => {
   test("lists deterministic part metadata without returning bodies by default", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file("word/media/payload.bin", new Uint8Array(1024));
+      zip.set("word/media/payload.bin", new Uint8Array(1024));
     });
 
     const inspection = await inspectDocxPackage(bytes, {
@@ -62,16 +63,14 @@ describe("inspectDocxPackage", () => {
   });
 
   test("returns only explicitly requested XML with an exact byte hash", async () => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    const documentBytes = await zip
-      .file("word/document.xml")
-      ?.async("uint8array");
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    const documentBytes = await zip.entry("word/document.xml")?.bytes();
     if (documentBytes === undefined) {
       throw new Error("Expected document part");
     }
 
     const inspection = await inspectDocxPackage(
-      await zip.generateAsync({ type: "uint8array" }),
+      await zip.generate({ compression: "store" }),
       {
         xmlParts: ["word/document.xml"],
       },
@@ -91,7 +90,7 @@ describe("inspectDocxPackage", () => {
       '<?xml version="1.0" encoding="UTF-16"?><root>Žluťoučký</root>';
     const encoded = Buffer.from(text, "utf16le");
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file(
+      zip.set(
         "custom.xml",
         Buffer.concat([Buffer.from([0xff, 0xfe]), encoded]),
       );
@@ -106,8 +105,8 @@ describe("inspectDocxPackage", () => {
 
   test("decodes empty and one-byte XML parts", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file("empty.xml", new Uint8Array());
-      zip.file("short.xml", "<");
+      zip.set("empty.xml", new Uint8Array());
+      zip.set("short.xml", "<");
     });
 
     const inspection = await inspectDocxPackage(bytes, {
@@ -119,7 +118,7 @@ describe("inspectDocxPackage", () => {
 
   test("reports malformed XML bytes as a typed inspection error", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file("malformed.xml", new Uint8Array([0xc3, 0x28]));
+      zip.set("malformed.xml", new Uint8Array([0xc3, 0x28]));
     });
 
     const error = await rejection(
@@ -138,7 +137,7 @@ describe("inspectDocxPackage", () => {
 
   test("rejects missing, binary, and duplicate requested parts", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file("word/media/payload.bin", "data");
+      zip.set("word/media/payload.bin", "data");
     });
 
     const missing = await rejection(
@@ -161,8 +160,8 @@ describe("inspectDocxPackage", () => {
 
   test("enforces requested part count and byte budgets", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file("one.xml", "<one/>");
-      zip.file("two.xml", "<two/>");
+      zip.set("one.xml", "<one/>");
+      zip.set("two.xml", "<two/>");
     });
 
     const count = await rejection(

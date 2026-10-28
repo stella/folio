@@ -20,9 +20,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { getLocalName, parseXml, type XmlElement } from "../docx/xmlParser";
@@ -101,11 +102,11 @@ const NOTE_SEPARATORS = (kind: "footnote" | "endnote") =>
   `<w:${kind} w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:${kind}>`;
 
 const buildPackage = async (fixture: ReferenceFixture): Promise<Uint8Array> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const notes = (["footnote", "endnote"] as const).filter(
     (kind) => fixture[`${kind}s`],
   );
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
       `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
@@ -122,12 +123,12 @@ const buildPackage = async (fixture: ReferenceFixture): Promise<Uint8Array> => {
         .join("") +
       `</Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
       `<Relationship Id="rId1" Type="${RELATIONSHIPS}/officeDocument" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
       `<Relationship Id="rId1" Type="${RELATIONSHIPS}/styles" Target="styles.xml"/>` +
@@ -144,20 +145,20 @@ const buildPackage = async (fixture: ReferenceFixture): Promise<Uint8Array> => {
   const body = fixture.body.includes("<w:sectPr")
     ? fixture.body
     : `${fixture.body}${reference.package.sectPr}`;
-  zip.file(
+  zip.set(
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${NAMESPACES}><w:body>${body}</w:body></w:document>`,
   );
-  zip.file("word/styles.xml", reference.package.styles);
-  zip.file("word/numbering.xml", reference.package.numbering);
-  zip.file("word/settings.xml", reference.package.settings);
+  zip.set("word/styles.xml", reference.package.styles);
+  zip.set("word/numbering.xml", reference.package.numbering);
+  zip.set("word/settings.xml", reference.package.settings);
   for (const kind of notes) {
-    zip.file(
+    zip.set(
       `word/${kind}s.xml`,
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:${kind}s ${NAMESPACES}>${NOTE_SEPARATORS(kind)}${fixture[`${kind}s`] ?? ""}</w:${kind}s>`,
     );
   }
-  return zip.generateAsync({ type: "uint8array" });
+  return zip.generate({ compression: "store" });
 };
 
 // ============================================================================
@@ -348,10 +349,10 @@ const SEPARATOR_TYPES = new Set([
 const summarizeNotes = async (
   bytes: Uint8Array | ArrayBuffer,
 ): Promise<NoteSummaries> => {
-  const zip = await JSZip.loadAsync(bytes);
+  const zip = await ZipArchive.read(bytes);
   const summaries: NoteSummaries = {};
   for (const kind of NOTE_KINDS) {
-    const xml = await zip.file(`word/${kind}s.xml`)?.async("text");
+    const xml = await zip.entry(`word/${kind}s.xml`)?.text();
     if (!xml) continue;
     const root = children(parseXml(xml))[0];
     const notes: Record<string, BlockSummary[]> = {};
@@ -369,8 +370,8 @@ const summarizeNotes = async (
 const summarizeBody = async (
   bytes: Uint8Array | ArrayBuffer,
 ): Promise<BlockSummary[]> => {
-  const zip = await JSZip.loadAsync(bytes);
-  const xml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(bytes);
+  const xml = await zip.entry("word/document.xml")?.text();
   if (!xml) throw new Error("The saved package has no main document part");
   const root = children(parseXml(xml))[0];
   const body =

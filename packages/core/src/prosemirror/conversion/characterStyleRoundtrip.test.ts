@@ -8,9 +8,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { parseDocumentBody } from "../../docx/documentParser";
@@ -1723,10 +1724,10 @@ describe("save stylesheet authority", () => {
       formatting: { styleId: "AddedHeading" },
       content: [runText("Term")],
     });
-    const zip = await JSZip.loadAsync(await createDocx(input));
-    zip.remove("word/styles.xml");
+    const zip = await ZipArchive.read(await createDocx(input));
+    zip.delete("word/styles.xml");
     const base = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         detectVariables: false,
         preloadFonts: false,
@@ -2040,10 +2041,10 @@ describe("unknown and malformed style references", () => {
         }),
       ],
     });
-    const zip = await JSZip.loadAsync(await createDocx(input));
-    zip.remove("word/styles.xml");
+    const zip = await ZipArchive.read(await createDocx(input));
+    zip.delete("word/styles.xml");
     const base = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         detectVariables: false,
         preloadFonts: false,

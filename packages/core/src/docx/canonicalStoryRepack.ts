@@ -1,5 +1,5 @@
 /** Canonical snapshots own explicit section references; the PM projection does not. */
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { withTrackedSectionEndpointRemoval } from "../internal/sectionEndpointResolution";
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
@@ -37,10 +37,10 @@ export const repackWithCanonicalStoryRemovals = async <T>({
 }: CanonicalStoryRepackOptions<T>): Promise<T> => {
   const originalBuffer = document.originalBuffer;
   if (!originalBuffer) return repack();
-  const zip = await JSZip.loadAsync(originalBuffer);
+  const zip = await ZipArchive.read(originalBuffer);
   const xml = await zip
-    .file("word/document.xml")
-    ?.async("uint8array")
+    .entry("word/document.xml")
+    ?.bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   if (!xml) return repack();
   const before = readDocumentSectionFacts(xml);

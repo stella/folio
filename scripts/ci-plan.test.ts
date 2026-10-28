@@ -332,7 +332,6 @@ describe("CI plan", () => {
       "scripts/property-test-budgets.test.ts",
       "scripts/rust-boundaries.test.ts",
       "scripts/on-off-element-writer.test.ts",
-      "scripts/zip-part-writer.test.ts",
       "scripts/encoding-boundaries.test.ts",
       "scripts/text-truncation.test.ts",
       "scripts/on-off-spelling.test.ts",

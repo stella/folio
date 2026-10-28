@@ -4,7 +4,7 @@
  * and MCP matrices so both surfaces are held to the same list.
  */
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { InvalidPackageReason } from "../main-document-part";
 
@@ -17,28 +17,28 @@ const STRICT_OFFICE_DOCUMENT =
 const MAIN_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
 
-type Rewrite = (zip: JSZip) => Promise<void> | void;
+type Rewrite = (zip: ZipArchive) => Promise<void> | void;
 
 const rewritePart = async (
-  zip: JSZip,
+  zip: ZipArchive,
   name: string,
   edit: (xml: string) => string,
 ) => {
-  const xml = await zip.file(name)?.async("string");
+  const xml = await zip.entry(name)?.text();
   if (xml === undefined) throw new Error(`fixture has no ${name}`);
-  zip.file(name, edit(xml));
+  zip.set(name, edit(xml));
 };
 
 const rewritten = async (
   valid: Uint8Array,
   rewrite: Rewrite,
 ): Promise<Uint8Array> => {
-  const zip = await JSZip.loadAsync(valid);
+  const zip = await ZipArchive.read(valid);
   await rewrite(zip);
-  return await zip.generateAsync({ type: "uint8array" });
+  return await zip.generate({ compression: "store" });
 };
 
-/** Add a second central-directory record for the same local part. JSZip's name map hides it. */
+/** Add a second central-directory record for the same local part. ZipArchive's name map hides it. */
 const duplicateExactMember = (valid: Uint8Array): Uint8Array => {
   const view = new DataView(valid.buffer, valid.byteOffset, valid.byteLength);
   const end = valid.length - 22;
@@ -100,9 +100,9 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     name: "a ZIP of unrelated entries",
     reason: "contentTypesMissing",
     build: async () => {
-      const zip = new JSZip();
-      zip.file("unrelated.txt", "hello");
-      return await zip.generateAsync({ type: "uint8array" });
+      const zip = new ZipArchive();
+      zip.set("unrelated.txt", "hello");
+      return await zip.generate({ compression: "store" });
     },
   },
   {
@@ -110,7 +110,7 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     reason: "contentTypesMissing",
     build: (valid) =>
       rewritten(valid, (zip) => {
-        zip.remove("[Content_Types].xml");
+        zip.delete("[Content_Types].xml");
       }),
   },
   {
@@ -131,7 +131,7 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     reason: "relationshipsMissing",
     build: (valid) =>
       rewritten(valid, (zip) => {
-        zip.remove("_rels/.rels");
+        zip.delete("_rels/.rels");
       }),
   },
   {
@@ -139,7 +139,7 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     reason: "relationshipsInvalid",
     build: (valid) =>
       rewritten(valid, (zip) => {
-        zip.file("_rels/.rels", "<Relationships");
+        zip.set("_rels/.rels", "<Relationships");
       }),
   },
   {
@@ -170,7 +170,7 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     reason: "mainPartMissing",
     build: (valid) =>
       rewritten(valid, (zip) => {
-        zip.remove("word/document.xml");
+        zip.delete("word/document.xml");
       }),
   },
   {
@@ -191,7 +191,7 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     reason: "mainPartRoot",
     build: (valid) =>
       rewritten(valid, (zip) => {
-        zip.file("word/document.xml", `<w:styles xmlns:w="${W_NS}"/>`);
+        zip.set("word/document.xml", `<w:styles xmlns:w="${W_NS}"/>`);
       }),
   },
   {
@@ -199,7 +199,7 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     reason: "mainPartRoot",
     build: (valid) =>
       rewritten(valid, (zip) => {
-        zip.file(
+        zip.set(
           "word/document.xml",
           '<w:document xmlns:w="urn:x"><w:body/></w:document>',
         );
@@ -210,10 +210,10 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     reason: "mainPartLocation",
     build: (valid) =>
       rewritten(valid, async (zip) => {
-        const xml = await zip.file("word/document.xml")?.async("string");
+        const xml = await zip.entry("word/document.xml")?.text();
         if (xml === undefined) throw new Error("fixture has no main part");
-        zip.remove("word/document.xml");
-        zip.file("word/main.xml", xml);
+        zip.delete("word/document.xml");
+        zip.set("word/main.xml", xml);
         await rewritePart(zip, "_rels/.rels", (rels) =>
           rels.replace("word/document.xml", "word/main.xml"),
         );
@@ -227,7 +227,7 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     reason: "duplicatePartName",
     build: (valid) =>
       rewritten(valid, (zip) => {
-        zip.file("WORD/DOCUMENT.XML", `<w:document xmlns:w="${W_NS}"/>`);
+        zip.set("WORD/DOCUMENT.XML", `<w:document xmlns:w="${W_NS}"/>`);
       }),
   },
   {

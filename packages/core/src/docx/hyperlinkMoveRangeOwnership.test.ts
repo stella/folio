@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { InvalidOoxmlNumericIdError } from "@stll/docx-core";
 import { applyDocumentOp, inlineLeafSpans } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -26,9 +26,9 @@ const DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:sectPr/></w:body></w:document>`;
 
 const parseSource = async (source = DOCUMENT_XML) => {
-  const zip = await JSZip.loadAsync(await createDocx(createEmptyDocument()));
-  zip.file("word/document.xml", source);
-  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+  const zip = await ZipArchive.read(await createDocx(createEmptyDocument()));
+  zip.set("word/document.xml", source);
+  return parseDocx((await zip.generate({ compression: "store" })).buffer, {
     preloadFonts: false,
   });
 };
@@ -137,8 +137,8 @@ test("rejecting an enclosing insertion retains a moved range's hyperlink-authore
     },
   ]);
   const saved = await repackDocx(rejected, { updateModifiedDate: false });
-  const savedZip = await JSZip.loadAsync(saved);
-  const xml = await savedZip.file("word/document.xml")?.async("text");
+  const savedZip = await ZipArchive.read(saved);
+  const xml = await savedZip.entry("word/document.xml")?.text();
   expect(xml?.match(/<w:moveToRange(?:Start|End)\b/gu) ?? []).toEqual([
     "<w:moveToRangeStart",
     "<w:moveToRangeEnd",
@@ -292,8 +292,8 @@ test("unsupported and unknown-namespace hyperlink markup stays captured beside s
     ),
   );
   const saved = await repackDocx(parsed, { updateModifiedDate: false });
-  const zip = await JSZip.loadAsync(saved);
-  const xml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(saved);
+  const xml = await zip.entry("word/document.xml")?.text();
   expect(xml).toContain("<x:moveToRangeEnd");
   expect(xml).toContain("urn:opaque");
   expect(xml).toContain('<w:proofErr w:type="spellStart"/>');

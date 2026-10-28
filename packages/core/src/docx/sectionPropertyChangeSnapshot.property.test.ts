@@ -16,8 +16,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -131,21 +132,18 @@ const documentWith = (snapshotChildren: string): string =>
   "<w:sectPr/></w:body></w:document>";
 
 const savedSnapshot = async (snapshotChildren: string): Promise<string> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", documentWith(snapshotChildren));
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", documentWith(snapshotChildren));
   const parsed = await parseDocx(
-    await zip.generateAsync({ type: "arraybuffer" }),
+    (await zip.generate({ compression: "store" })).buffer,
     {
       preloadFonts: false,
     },
   );
   const saved = await repackDocx(parsed, { updateModifiedDate: false });
   const part =
-    (await (
-      await JSZip.loadAsync(saved)
-    )
-      .file("word/document.xml")
-      ?.async("text")) ?? "";
+    (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+    "";
   // The snapshot only, because a live section carrying the same child would
   // answer the question the fixture did not ask.
   return /<w:sectPrChange\b.*?<\/w:sectPrChange>/su.exec(part)?.[0] ?? "";

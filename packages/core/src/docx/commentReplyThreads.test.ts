@@ -11,9 +11,9 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -134,19 +134,19 @@ const documentRelsXml = `${XML_DECLARATION}
 </Relationships>`;
 
 const buildThreadedDocx = (options: FixtureOptions): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", contentTypesXml);
-  zip.file("_rels/.rels", packageRelsXml);
-  zip.file("word/_rels/document.xml.rels", documentRelsXml);
-  zip.file("word/document.xml", documentXmlFor(options.includeReplyMarkers));
-  zip.file("word/styles.xml", stylesXml);
-  zip.file("word/comments.xml", commentsXml);
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", contentTypesXml);
+  zip.set("_rels/.rels", packageRelsXml);
+  zip.set("word/_rels/document.xml.rels", documentRelsXml);
+  zip.set("word/document.xml", documentXmlFor(options.includeReplyMarkers));
+  zip.set("word/styles.xml", stylesXml);
+  zip.set("word/comments.xml", commentsXml);
+  zip.set(
     "word/commentsExtended.xml",
     commentsExtendedXmlFor(options.parentDone, options.omitDone),
   );
-  zip.file("docProps/core.xml", corePropertiesXml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("docProps/core.xml", corePropertiesXml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 // A single-comment (non-threaded) document, for the create-reply-via-API case.
@@ -173,15 +173,15 @@ const singleCommentDocumentRels = `${XML_DECLARATION}
 </Relationships>`;
 
 const buildSingleCommentDocx = (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", singleCommentContentTypes);
-  zip.file("_rels/.rels", packageRelsXml);
-  zip.file("word/_rels/document.xml.rels", singleCommentDocumentRels);
-  zip.file("word/document.xml", singleCommentDocumentXml);
-  zip.file("word/styles.xml", stylesXml);
-  zip.file("word/comments.xml", singleCommentXml);
-  zip.file("docProps/core.xml", corePropertiesXml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", singleCommentContentTypes);
+  zip.set("_rels/.rels", packageRelsXml);
+  zip.set("word/_rels/document.xml.rels", singleCommentDocumentRels);
+  zip.set("word/document.xml", singleCommentDocumentXml);
+  zip.set("word/styles.xml", stylesXml);
+  zip.set("word/comments.xml", singleCommentXml);
+  zip.set("docProps/core.xml", corePropertiesXml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 // ============================================================================
@@ -549,8 +549,8 @@ describe("comment reply threads — package lifecycle + deterministic ids", () =
     doc.package.document.comments = [parent];
 
     const saved = await repackDocx({ ...doc, originalBuffer: buffer });
-    const zip = await JSZip.loadAsync(saved);
-    expect(zip.file("word/commentsExtended.xml")).toBeNull();
+    const zip = await ZipArchive.read(saved);
+    expect(zip.entry("word/commentsExtended.xml")).toBeUndefined();
 
     const contentTypes = await readPart(saved, "[Content_Types].xml");
     expect(contentTypes.toLowerCase()).not.toContain("commentsextended.xml");
@@ -652,10 +652,10 @@ const textParagraph = (text: string): Paragraph => ({
 });
 
 async function readPart(buffer: ArrayBuffer, path: string): Promise<string> {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file(path);
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry(path);
   if (!file) {
     throw new Error(`No ${path} in package`);
   }
-  return file.async("text");
+  return file.text();
 }

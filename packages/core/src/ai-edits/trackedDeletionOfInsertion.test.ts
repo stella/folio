@@ -5,7 +5,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
@@ -79,10 +80,10 @@ describe("a tracked deletion of pending inserted text", () => {
 
       const saved = await second.toBuffer();
       const xml = await (
-        await JSZip.loadAsync(saved)
+        await ZipArchive.read(saved)
       )
-        .file("word/document.xml")
-        ?.async("string");
+        .entry("word/document.xml")
+        ?.text();
       expect(xml).toMatch(
         /<w:ins [^>]*><w:del [^>]*><w:r>(?:<w:rPr\/>)?<w:delText>three<\/w:delText>/u,
       );

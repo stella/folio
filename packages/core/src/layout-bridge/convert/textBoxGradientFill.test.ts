@@ -5,7 +5,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "../../docx/parser";
 import { createEmptyDocx, repackDocx } from "../../docx/rezip";
@@ -66,9 +67,9 @@ const documentXml = (fill: string): string => `${XML_DECLARATION}
 </w:document>`;
 
 const buildDocx = async (fill: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", documentXml(fill));
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", documentXml(fill));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const textBoxBlocks = (
@@ -136,10 +137,10 @@ describe("text box gradient fill", () => {
     });
     const saved = await repackDocx(edited, { updateModifiedDate: false });
     const xml = await (
-      await JSZip.loadAsync(saved)
+      await ZipArchive.read(saved)
     )
-      .file("word/document.xml")!
-      .async("text");
+      .entry("word/document.xml")!
+      .text();
 
     expect(xml).toContain("<a:gradFill");
     expect(xml).toContain('<a:lin ang="18900000" scaled="1"/>');

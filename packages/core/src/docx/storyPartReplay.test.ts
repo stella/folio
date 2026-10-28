@@ -1,12 +1,12 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import {
   applyDocumentOps,
   type DocumentOp,
   paragraphLogicalText,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { Paragraph } from "../types/document";
 import { visitDocxParagraphs } from "./paragraphTraversal";
@@ -76,26 +76,26 @@ const storyFixture = async ({
   const untouchedControl = `<${p}:sdt><${p}:sdtPr><${p}:id ${p}:val="9"/><${p}:richText/></${p}:sdtPr><${p}:sdtContent>\n${paragraph("44444444", "Nested control")}\n${controlSibling}\n</${p}:sdtContent></${p}:sdt>`;
   const untouchedTable = `<${p}:tbl><${p}:tblPr/><${p}:tblGrid><${p}:gridCol ${p}:w="2400"/></${p}:tblGrid><${p}:tr><${p}:tc><${p}:tcPr><${p}:tcW ${p}:w="2400" ${p}:type="dxa"/></${p}:tcPr>\n${paragraph("55555555", "Nested cell")}\n${tableSibling}\n</${p}:tc></${p}:tr></${p}:tbl>`;
   const storyXml = `<?xml version="1.0" encoding="UTF-8"?>\n<${p}:${root} xmlns:${p}="${profile.word}" xmlns:p14="http://schemas.microsoft.com/office/word/2010/wordml">\n<${p}:p p14:paraId="11111111"><${p}:pPr><${p}:keepNext/></${p}:pPr><${p}:r><${p}:rPr><${p}:sz ${p}:val="28"/><${p}:webHidden/></${p}:rPr><${p}:t>Target</${p}:t></${p}:r></${p}:p>\n<${p}:p p14:paraId="22222222"><${p}:r><${p}:t>Follower</${p}:t></${p}:r></${p}:p>\n${untouchedParagraph}\n${untouchedControl}\n${untouchedTable}\n</${p}:${root}>`;
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/${partPath}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.${story}+xml"/></Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdOffice" Type="${profile.relationships}/officeDocument" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStory" Type="${profile.relationships}/${story}" Target="${story}1.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `<${p}:document xmlns:${p}="${profile.word}" xmlns:rel="${profile.relationships}" xmlns:p14="http://schemas.microsoft.com/office/word/2010/wordml"><${p}:body><${p}:p p14:paraId="AAAAAAAA"><${p}:r><${p}:t>Main</${p}:t></${p}:r></${p}:p><${p}:sectPr><${p}:${story}Reference ${p}:type="default" rel:id="rIdStory"/></${p}:sectPr></${p}:body></${p}:document>`,
   );
-  zip.file(partPath, storyXml);
+  zip.set(partPath, storyXml);
   return {
-    bytes: await zip.generateAsync({ type: "arraybuffer" }),
+    bytes: (await zip.generate({ compression: "store" })).buffer,
     partPath,
     storyXml,
     untouched: [untouchedParagraph, untouchedControl, untouchedTable],
@@ -140,8 +140,8 @@ test.each(CASES)(
     const forward = await repackDocx(edited.document, {
       updateModifiedDate: false,
     });
-    const forwardZip = await JSZip.loadAsync(forward);
-    const forwardXml = await forwardZip.file(source.partPath)?.async("text");
+    const forwardZip = await ZipArchive.read(forward);
+    const forwardXml = await forwardZip.entry(source.partPath)?.text();
     for (const untouched of source.untouched)
       expect(forwardXml).toContain(untouched);
 
@@ -158,10 +158,10 @@ test.each(CASES)(
 
     const restored = applyDocumentOps(edited.document, edited.inverse).unwrap()
       .document;
-    const inverseZip = await JSZip.loadAsync(
+    const inverseZip = await ZipArchive.read(
       await repackDocx(restored, { updateModifiedDate: false }),
     );
-    expect(await inverseZip.file(source.partPath)?.async("uint8array")).toEqual(
+    expect(await inverseZip.entry(source.partPath)?.bytes()).toEqual(
       new TextEncoder().encode(source.storyXml),
     );
   },
@@ -183,8 +183,8 @@ test.each(NESTED_CASES)(
     const forward = await repackDocx(edited.document, {
       updateModifiedDate: false,
     });
-    const forwardZip = await JSZip.loadAsync(forward);
-    const forwardXml = await forwardZip.file(source.partPath)?.async("text");
+    const forwardZip = await ZipArchive.read(forward);
+    const forwardXml = await forwardZip.entry(source.partPath)?.text();
     for (const untouched of [
       source.untouchedParagraph,
       nested.otherContainer,
@@ -213,10 +213,10 @@ test.each(NESTED_CASES)(
 
     const restored = applyDocumentOps(edited.document, edited.inverse).unwrap()
       .document;
-    const inverseZip = await JSZip.loadAsync(
+    const inverseZip = await ZipArchive.read(
       await repackDocx(restored, { updateModifiedDate: false }),
     );
-    expect(await inverseZip.file(source.partPath)?.async("uint8array")).toEqual(
+    expect(await inverseZip.entry(source.partPath)?.bytes()).toEqual(
       new TextEncoder().encode(source.storyXml),
     );
   },

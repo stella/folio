@@ -183,8 +183,8 @@ attempt, where the base carried revisions.
 
 `--check` reported 18 drifted digests on an unmodified tree, and different ones
 depending on the minute it ran in. The generator pins a fixed date on every
-part it writes, but JSZip synthesizes a folder entry per directory in a part
-name and stamps that one with `new Date()`; DOS timestamps have two-second
+part it writes, but the previous ZIP writer synthesized a folder entry per directory in a part
+name and stamped that one with `new Date()`; DOS timestamps have two-second
 granularity, so two runs in one bucket agreed and two runs a minute apart did
 not. It surfaced only once an identical pair started returning the base package
 as it arrived: every other product is restamped on the way out.

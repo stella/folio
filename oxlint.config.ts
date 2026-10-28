@@ -76,6 +76,23 @@ export default library({
     // findings for both.
     "unicorn/no-useless-spread": "off",
     "unicorn/prefer-string-starts-ends-with": "off",
+    // ZIP archives are read and written by @stll/docx-core/zip, which bounds
+    // every read and passes unchanged entries through.
+    "no-restricted-imports": [
+      "error",
+      {
+        paths: [
+          {
+            name: "jszip",
+            message: "Use ZipArchive from @stll/docx-core/zip.",
+          },
+          {
+            name: "client-zip",
+            message: "Use createZipStream from @stll/docx-core/zip/stream.",
+          },
+        ],
+      },
+    ],
   },
   jsPlugins: [
     "./packages/utf8-boundaries/src/oxlint.ts",
@@ -147,17 +164,12 @@ export default library({
     {
       files: ["packages/*/src/**/*.{ts,tsx,js,jsx,vue}"],
       rules: {
-        "utf8-boundaries/no-string-zip-entry": [
-          "error",
-          { ownerPath: "packages/utf8-boundaries/src/zip.ts" },
-        ],
         "utf8-boundaries/no-chunked-text-codec": "error",
       },
     },
     {
       files: ["**/*.test.*", "**/__tests__/**", "**/generated/**"],
       rules: {
-        "utf8-boundaries/no-string-zip-entry": "off",
         "utf8-boundaries/no-chunked-text-codec": "off",
       },
     },

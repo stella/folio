@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { renderEmfSvg } from "./metafileSvg";
 import { parseDocx } from "./parser";
@@ -270,10 +271,10 @@ describe("renderEmfSvg", () => {
 
 describe("vector-only EMF package previews", () => {
   test("uses generated SVG while preserving original EMF bytes and MIME", async () => {
-    const zip = await JSZip.loadAsync(readFileSync(FIXTURE));
+    const zip = await ZipArchive.read(readFileSync(FIXTURE));
     const emf = vectorEmf();
-    zip.file("word/media/image1.emf", emf);
-    const input = await zip.generateAsync({ type: "arraybuffer" });
+    zip.set("word/media/image1.emf", emf);
+    const input = (await zip.generate({ compression: "store" })).buffer;
 
     const document = await parseDocx(input, { preloadFonts: false });
     const media = document.package.media?.get("word/media/image1.emf");
@@ -282,21 +283,21 @@ describe("vector-only EMF package previews", () => {
     expect(new Uint8Array(media?.data ?? new ArrayBuffer(0))).toEqual(emf);
 
     const output = await repackDocx(document);
-    const outputZip = await JSZip.loadAsync(output);
+    const outputZip = await ZipArchive.read(output);
     const roundTripped = await outputZip
-      .file("word/media/image1.emf")
-      ?.async("uint8array");
+      .entry("word/media/image1.emf")
+      ?.bytes();
     expect(roundTripped).toEqual(emf);
   });
 
   test("bounds generated previews across the complete package", async () => {
-    const zip = await JSZip.loadAsync(readFileSync(FIXTURE));
+    const zip = await ZipArchive.read(readFileSync(FIXTURE));
     const emf = vectorEmf({
       polygonPointCount: 19_990,
       windowExtent: { x: 1, y: 1 },
     });
     const relationshipPath = "word/_rels/document.xml.rels";
-    const relationships = await zip.file(relationshipPath)?.async("string");
+    const relationships = await zip.entry(relationshipPath)?.text();
     if (!relationships) {
       throw new Error("Fixture is missing document relationships");
     }
@@ -306,7 +307,7 @@ describe("vector-only EMF package previews", () => {
       (_, index) =>
         `<Relationship Id="rEmfBudget${index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/budget-${index}.emf"/>`,
     ).join("");
-    zip.file(
+    zip.set(
       relationshipPath,
       relationships.replace(
         "</Relationships>",
@@ -314,10 +315,10 @@ describe("vector-only EMF package previews", () => {
       ),
     );
     for (let index = 0; index < mediaCount; index += 1) {
-      zip.file(`word/media/budget-${index}.emf`, emf);
+      zip.set(`word/media/budget-${index}.emf`, emf);
     }
 
-    const input = await zip.generateAsync({ type: "arraybuffer" });
+    const input = (await zip.generate({ compression: "store" })).buffer;
     const document = await parseDocx(input, { preloadFonts: false });
     const previews = Array.from({ length: mediaCount }, (_, index) =>
       document.package.media?.get(`word/media/budget-${index}.emf`),

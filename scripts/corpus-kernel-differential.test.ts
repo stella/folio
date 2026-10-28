@@ -1,8 +1,8 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import type { BlockContent } from "@stll/folio-core/types/document";
 
@@ -480,9 +480,9 @@ describe("kernelDifferentialFailures: table structure", () => {
 const packageFromDocumentXml = async (
   documentXml: string,
 ): Promise<Uint8Array> => {
-  const archive = new JSZip();
-  archive.file("word/document.xml", documentXml);
-  return archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+  const archive = new ZipArchive();
+  archive.set("word/document.xml", documentXml);
+  return archive.generate();
 };
 
 const runOver = async (documentXml: string) => {

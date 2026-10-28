@@ -16,9 +16,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -82,18 +82,18 @@ const stylesPart = (spellings: readonly StyleSpelling[]): string =>
 const buildDocx = async (
   spellings: readonly StyleSpelling[],
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/styles.xml", stylesPart(spellings));
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/styles.xml", stylesPart(spellings));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** The ids a written `word/styles.xml` defines, in order, duplicates kept. */
 const writtenStyleIds = async (buffer: ArrayBuffer): Promise<string[]> => {
   const xml = await (
-    await JSZip.loadAsync(buffer)
+    await ZipArchive.read(buffer)
   )
-    .file("word/styles.xml")
-    ?.async("text");
+    .entry("word/styles.xml")
+    ?.text();
   if (xml === undefined) {
     throw new Error("the saved package has no styles part");
   }
@@ -119,20 +119,21 @@ const partText = async (
   buffer: ArrayBuffer,
   path: string,
 ): Promise<string | undefined> =>
-  (await JSZip.loadAsync(buffer)).file(path)?.async("text");
+  (await ZipArchive.read(buffer)).entry(path)?.text();
 
 /** Every part of a package, by path, so a byte comparison names the part. */
 const packageParts = async (
   buffer: ArrayBuffer,
 ): Promise<Map<string, string>> => {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   return new Map(
     await Promise.all(
-      Object.entries(zip.files)
-        .filter(([, file]) => !file.dir)
+      zip
+        .entries()
+        .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)
         .map(async ([path, file]): Promise<readonly [string, string]> => [
           path,
-          await file.async("base64"),
+          Buffer.from(await file.bytes()).toString("base64"),
         ]),
     ),
   );

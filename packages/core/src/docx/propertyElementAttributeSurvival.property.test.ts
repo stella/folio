@@ -23,8 +23,9 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -205,12 +206,12 @@ const spell = (attributes: readonly DeclaredAttribute[]): string =>
 const packageWithParagraphProperties = async (
   propertiesXml: string,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const documentXml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const documentXml = await zip.entry("word/document.xml")?.text();
   if (!documentXml) {
     panic("The generated package has no main document part.");
   }
-  zip.file(
+  zip.set(
     "word/document.xml",
     documentXml.replace(
       /<w:body>[\s\S]*<\/w:body>/u,
@@ -218,7 +219,7 @@ const packageWithParagraphProperties = async (
         "<w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/></w:body>",
     ),
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 /** An edit the whole-element replay cannot serve, so the writers rebuild. */

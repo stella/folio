@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { Transform } from "prosemirror-transform";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { parseDocx } from "../../docx/parser";
@@ -172,12 +172,12 @@ const firstTrackedRun = (document: Document) => {
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry("word/document.xml");
   if (!file) {
     throw new Error("Missing word/document.xml");
   }
-  return file.async("text");
+  return file.text();
 };
 
 const pageBreakCount = (xml: string): number =>

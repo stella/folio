@@ -1,7 +1,6 @@
 import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import {
   DOMParser,
   DOMSerializer,
@@ -9,6 +8,8 @@ import {
   type Node as PMNode,
   Slice,
 } from "prosemirror-model";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createCanonicalEditorHarness } from "../../../../test/canonicalEditorHarness";
 import {
@@ -145,11 +146,9 @@ const copiedImageRoundtrip = async ({
       snapshot,
       options: { mode: "full" },
     });
-    const zip = await JSZip.loadAsync(bytes);
-    const xml = await zip.file("word/document.xml")?.async("string");
-    const rels = await zip
-      .file("word/_rels/document.xml.rels")
-      ?.async("string");
+    const zip = await ZipArchive.read(bytes);
+    const xml = await zip.entry("word/document.xml")?.text();
+    const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
     if (rels === undefined)
       throw new TypeError("Saved image fixture has no relationship part.");
     const savedRelationships = parseRelationships(rels);
@@ -172,7 +171,7 @@ const copiedImageRoundtrip = async ({
         const media = edited.package.media?.get(path);
         if (media === undefined)
           throw new TypeError("Copied image lacks canonical media bytes.");
-        expect(await zip.file(path)?.async("uint8array")).toEqual(
+        expect(await zip.entry(path)?.bytes()).toEqual(
           new Uint8Array(media.data),
         );
       }),

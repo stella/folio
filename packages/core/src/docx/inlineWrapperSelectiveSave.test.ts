@@ -14,8 +14,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { EditorState, TextSelection } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -71,19 +72,19 @@ const DOCUMENT = `${XML_DECLARATION}
 </w:document>`;
 
 const fixture = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
-  zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
-  zip.file("word/document.xml", DOCUMENT);
-  zip.file("word/comments.xml", COMMENTS);
-  zip.file("docProps/core.xml", CORE_PROPERTIES);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", CONTENT_TYPES);
+  zip.set("_rels/.rels", PACKAGE_RELS);
+  zip.set("word/_rels/document.xml.rels", DOCUMENT_RELS);
+  zip.set("word/document.xml", DOCUMENT);
+  zip.set("word/comments.xml", COMMENTS);
+  zip.set("docProps/core.xml", CORE_PROPERTIES);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentXmlOf = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const text = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(buffer);
+  const text = await zip.entry("word/document.xml")?.text();
   if (text === undefined) {
     throw new Error("The saved package has no word/document.xml");
   }

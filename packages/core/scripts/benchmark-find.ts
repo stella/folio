@@ -1,7 +1,8 @@
 import { panic } from "better-result";
-import JSZip from "jszip";
 /** Run with Bun: selects the largest fixture by uncompressed document.xml bytes. */
 import { relative, resolve } from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "../src/docx/parser";
 import { toProseDoc } from "../src/prosemirror/conversion/toProseDoc";
@@ -34,13 +35,13 @@ for (const directory of fixtureRoots) {
     absolute: true,
   })) {
     const bytes = await Bun.file(path).arrayBuffer();
-    const zip = await JSZip.loadAsync(bytes);
-    const documentXml = zip.file("word/document.xml");
+    const zip = await ZipArchive.read(bytes);
+    const documentXml = zip.entry("word/document.xml");
     if (!documentXml)
       panic("Fixture has no document.xml", {
         fixture: relative(repositoryRoot, path),
       });
-    const documentXmlBytes = (await documentXml.async("uint8array")).length;
+    const documentXmlBytes = (await documentXml.bytes()).length;
     fixtureCount++;
     if (!largest || documentXmlBytes > largest.documentXmlBytes) {
       largest = { path, documentXmlBytes, compressedBytes: bytes.byteLength };

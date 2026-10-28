@@ -20,7 +20,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -114,9 +115,9 @@ const documentXml = (placement: Placement): string => {
 };
 
 const packageFor = async (xml: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", xml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", xml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const open = (xml: string): Promise<Document> =>

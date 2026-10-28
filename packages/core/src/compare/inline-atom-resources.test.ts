@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "../docx/parser";
 import { createEmptyDocx, repackDocx } from "../docx/rezip";
@@ -59,11 +60,11 @@ const packageWithDocument = async ({
   mediaName: string;
   media: Uint8Array;
 }): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", documentXml(body));
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", documentXml(body));
   const contentTypesPath = "[Content_Types].xml";
-  const contentTypes = await zip.file(contentTypesPath)!.async("text");
-  zip.file(
+  const contentTypes = await zip.entry(contentTypesPath)!.text();
+  zip.set(
     contentTypesPath,
     contentTypes.replace(
       "</Types>",
@@ -71,16 +72,16 @@ const packageWithDocument = async ({
     ),
   );
   const relsPath = "word/_rels/document.xml.rels";
-  const rels = await zip.file(relsPath)!.async("text");
-  zip.file(
+  const rels = await zip.entry(relsPath)!.text();
+  zip.set(
     relsPath,
     rels.replace(
       "</Relationships>",
       `<Relationship Id="${relationshipId}" Type="${IMAGE_RELATIONSHIP}" Target="media/${mediaName}"/></Relationships>`,
     ),
   );
-  zip.file(`word/media/${mediaName}`, media);
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set(`word/media/${mediaName}`, media);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const firstImageNode = (document: PMNode): PMNode => {
@@ -151,9 +152,9 @@ describe("prepareTargetInlineAtom image resources", () => {
       fromProseDoc(mergedPm, base, { stylesheetSource: { type: "package" } }),
       { updateModifiedDate: false },
     );
-    const zip = await JSZip.loadAsync(saved);
-    const xml = await zip.file("word/document.xml")!.async("text");
-    const rels = await zip.file("word/_rels/document.xml.rels")!.async("text");
+    const zip = await ZipArchive.read(saved);
+    const xml = await zip.entry("word/document.xml")!.text();
+    const rels = await zip.entry("word/_rels/document.xml.rels")!.text();
 
     expect(xml).toContain('<wp:extent cx="1001000" cy="500500"/>');
     expect(xml).toContain('<wp:effectExtent l="5" t="7" r="11" b="13"/>');
@@ -180,12 +181,12 @@ describe("prepareTargetInlineAtom image resources", () => {
     expect(imported?.groups?.id).toBeDefined();
     expect(imported?.groups?.file).toBeDefined();
     const importedBytes = await zip
-      .file(`word/media/${imported?.groups?.file}`)!
-      .async("uint8array");
+      .entry(`word/media/${imported?.groups?.file}`)!
+      .bytes();
     expect(importedBytes).toEqual(TARGET_IMAGE_BYTES);
-    expect(
-      await zip.file("word/media/image1.png")!.async("uint8array"),
-    ).toEqual(BASE_IMAGE_BYTES);
+    expect(await zip.entry("word/media/image1.png")!.bytes()).toEqual(
+      BASE_IMAGE_BYTES,
+    );
   });
 
   test("keeps ordinary parsed picture EMUs byte-for-byte when unchanged", async () => {
@@ -217,8 +218,8 @@ describe("prepareTargetInlineAtom image resources", () => {
     expect(drawing.rawImageFingerprint).toBeDefined();
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(saved);
-    const xml = await zip.file("word/document.xml")!.async("text");
+    const zip = await ZipArchive.read(saved);
+    const xml = await zip.entry("word/document.xml")!.text();
     expect(xml).toContain('<wp:extent cx="251460" cy="243840"/>');
     expect(xml).toContain('<a:ext cx="251460" cy="243840"/>');
   });
@@ -250,8 +251,8 @@ describe("prepareTargetInlineAtom image resources", () => {
     drawing.image.size = { width: 777000, height: 333000 };
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(saved);
-    const xml = await zip.file("word/document.xml")!.async("text");
+    const zip = await ZipArchive.read(saved);
+    const xml = await zip.entry("word/document.xml")!.text();
     expect(xml).toContain('<wp:extent cx="777000" cy="333000"/>');
     expect(xml).toContain('<a:ext cx="777000" cy="333000"/>');
     expect(xml).not.toContain('<wp:extent cx="251460" cy="243840"/>');
@@ -284,8 +285,8 @@ describe("prepareTargetInlineAtom image resources", () => {
       fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } }),
       { updateModifiedDate: false },
     );
-    const zip = await JSZip.loadAsync(saved);
-    const xml = await zip.file("word/document.xml")!.async("text");
+    const zip = await ZipArchive.read(saved);
+    const xml = await zip.entry("word/document.xml")!.text();
     expect(xml).toContain('<wp:extent cx="952500" cy="476250"/>');
     expect(xml).not.toContain('<wp:extent cx="251460" cy="243840"/>');
   });

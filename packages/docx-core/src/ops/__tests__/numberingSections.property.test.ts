@@ -1,6 +1,5 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import {
   propertyConfig,
@@ -14,6 +13,7 @@ import type {
 } from "../../model/document";
 import { paragraphNumberingReference } from "../../model/paragraphNumbering";
 import { serializeDocumentToDocx } from "../../serialize/docx";
+import { ZipArchive } from "../../zip/archive";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { captureSectionView, captureSectionViewState } from "../blocks";
 import { contractViolation } from "../contract";
@@ -272,12 +272,12 @@ test("numbering deletion refuses live paragraph and shared abstract references",
 });
 
 test("numbering and section inverses restore byte-equivalent DOCX parts", async () => {
-  const originalZip = await JSZip.loadAsync(
+  const originalZip = await ZipArchive.read(
     await serializeDocumentToDocx(base),
   );
   const originalDocumentXml = await originalZip
-    .file("word/document.xml")
-    ?.async("uint8array");
+    .entry("word/document.xml")
+    ?.bytes();
   const operations = [
     {
       type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
@@ -308,13 +308,13 @@ test("numbering and section inverses restore byte-equivalent DOCX parts", async 
   const restored = applyDocumentOps(current, inverses.toReversed().flat());
   expect(restored.isOk()).toBe(true);
   if (restored.isErr()) return;
-  const restoredZip = await JSZip.loadAsync(
+  const restoredZip = await ZipArchive.read(
     await serializeDocumentToDocx(restored.value.document),
   );
-  expect(
-    await restoredZip.file("word/document.xml")?.async("uint8array"),
-  ).toEqual(originalDocumentXml);
-  expect(restoredZip.file("word/numbering.xml")).toBeNull();
+  expect(await restoredZip.entry("word/document.xml")?.bytes()).toEqual(
+    originalDocumentXml,
+  );
+  expect(restoredZip.entry("word/numbering.xml")).toBeUndefined();
 });
 
 const header: HeaderFooter = {

@@ -1,11 +1,11 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import {
   NO_PARAGRAPH_NUMBERING,
   paragraphNumberingReference,
 } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import {
@@ -207,20 +207,20 @@ const buildInheritedCollisionDocument = async ({
   if (!duplicateParagraphIds || !includeStyledParagraph) return buffer;
   // Serialization normalizes duplicate IDs. Restore the malformed producer
   // shape in the actual package so projection sees the duplicate identities.
-  const zip = await JSZip.loadAsync(buffer);
-  const xml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(buffer);
+  const xml = await zip.entry("word/document.xml")?.text();
   expect(xml).toBeDefined();
   const firstId = xml?.match(/w14:paraId="([^"]+)"/u)?.at(1);
   expect(firstId).toBeDefined();
   let paragraphIndex = 0;
-  zip.file(
+  zip.set(
     "word/document.xml",
     xml?.replace(/w14:paraId="[^"]+"/gu, (attribute) => {
       paragraphIndex += 1;
       return paragraphIndex === 2 ? `w14:paraId="${firstId}"` : attribute;
     }) ?? "",
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 const TARGET_STATED_NUMBERINGS: readonly FolioContentStatedNumbering[] = [
@@ -483,10 +483,8 @@ test("compare and redline preserve inserted style-only numbering across collisio
           : baseBuffer;
         if (omitParagraphIds) {
           for (const fixtureBuffer of [caseBaseBuffer, targetBuffer]) {
-            const zip = await JSZip.loadAsync(fixtureBuffer);
-            const documentXml = await zip
-              .file("word/document.xml")
-              ?.async("text");
+            const zip = await ZipArchive.read(fixtureBuffer);
+            const documentXml = await zip.entry("word/document.xml")?.text();
             expect(documentXml).toBeDefined();
             expect(documentXml).not.toMatch(/w14:(?:paraId|textId)="/u);
           }
@@ -574,8 +572,8 @@ test("redline preserves insertion resources between unchanged anchors with dupli
         numFmt,
         styleId: "StyleNumbered",
       });
-      const zip = await JSZip.loadAsync(targetBuffer);
-      const xml = await zip.file("word/document.xml")?.async("text");
+      const zip = await ZipArchive.read(targetBuffer);
+      const xml = await zip.entry("word/document.xml")?.text();
       expect(xml).toBeDefined();
       if (identity === "duplicate") {
         const ids = [...(xml?.matchAll(/w14:paraId="([^"]+)"/gu) ?? [])].map(

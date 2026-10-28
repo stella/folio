@@ -9,7 +9,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -23,49 +24,46 @@ const COMMENTS_RELATIONSHIP =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
 
 const buildDocx = async (commentBody: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W}"><w:body><w:p>` +
       '<w:commentRangeStart w:id="1"/><w:r><w:t>anchor</w:t></w:r>' +
       '<w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r>' +
       "</w:p><w:sectPr/></w:body></w:document>",
   );
-  zip.file(
+  zip.set(
     "word/comments.xml",
     `${XML_DECLARATION}<w:comments xmlns:w="${W}">` +
       `<w:comment w:id="1" w:author="Reviewer" w:date="2024-01-01T00:00:00Z">${commentBody}</w:comment>` +
       "</w:comments>",
   );
 
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
       `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
       `<Relationship Id="rIdComments" Type="${COMMENTS_RELATIONSHIP}" Target="comments.xml"/></Relationships>`,
     ),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const commentsPart = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(buffer)
-  )
-    .file("word/comments.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(buffer)).entry("word/comments.xml")?.text()) ??
+  "";
 
 const save = async (commentBody: string): Promise<string> =>
   commentsPart(

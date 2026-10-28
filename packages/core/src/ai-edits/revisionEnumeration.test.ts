@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createDocx } from "../docx/rezip";
 import {
@@ -477,7 +478,7 @@ const makeRevisionMatrixDocument = () => {
 const makeRevisionMatrixDocx = async (
   paragraphIds: "with" | "without",
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(
+  const zip = await ZipArchive.read(
     await createDocx(makeRevisionMatrixDocument()),
   );
   if (paragraphIds === "without") {
@@ -488,18 +489,15 @@ const makeRevisionMatrixDocx = async (
       "word/footnotes.xml",
       "word/endnotes.xml",
     ]) {
-      const file = zip.file(path);
+      const file = zip.entry(path);
       if (!file) {
         throw new Error(`revision matrix is missing ${path}`);
       }
-      zip.file(
-        path,
-        (await file.async("text")).replace(/ w14:paraId="[^"]+"/gu, ""),
-      );
+      zip.set(path, (await file.text()).replace(/ w14:paraId="[^"]+"/gu, ""));
     }
   }
-  zip.file(PRESERVATION_SENTINEL_PART, PRESERVATION_SENTINEL);
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set(PRESERVATION_SENTINEL_PART, PRESERVATION_SENTINEL);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const storyKey = (story: FolioEditableDocumentStoryHandle): string =>
@@ -591,11 +589,11 @@ const partBytes = async (
   buffer: ArrayBuffer,
   path: string,
 ): Promise<Uint8Array> => {
-  const file = (await JSZip.loadAsync(buffer)).file(path);
+  const file = (await ZipArchive.read(buffer)).entry(path);
   if (!file) {
     throw new Error(`revision matrix is missing ${path}`);
   }
-  return file.async("uint8array");
+  return file.bytes();
 };
 
 const assertCommentAnchorsInStoryPart = async (

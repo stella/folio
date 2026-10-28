@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -50,31 +51,31 @@ const PLACEMENTS = {
 } as const;
 
 const buildPackage = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="${W_NAMESPACE}" xmlns:r="${R_NAMESPACE}" xmlns:m="${M_NAMESPACE}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   expect(rels).toBeDefined();
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     (rels ?? "").replace(
       "</Relationships>",
       `<Relationship Id="rIdChunk" Type="${R_NAMESPACE}/aFChunk" Target="imported.html"/></Relationships>`,
     ),
   );
-  const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+  const contentTypes = await zip.entry("[Content_Types].xml")?.text();
   expect(contentTypes).toBeDefined();
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     (contentTypes ?? "").replace(
       "</Types>",
       '<Override PartName="/word/imported.html" ContentType="text/html"/></Types>',
     ),
   );
-  zip.file(CHUNK_PART, CHUNK_CONTENT);
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set(CHUNK_PART, CHUNK_CONTENT);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const paragraphIds = (blocks: readonly BlockContent[]): Set<string> => {
@@ -164,7 +165,7 @@ const roundTrip = async (body: string, tableLayout: BilingualTableLayout) => {
       paragraphIds(reparsed.package.document.content),
     ),
   ).toEqual(result.rows);
-  return { source, result, reparsed, zip: await JSZip.loadAsync(saved) };
+  return { source, result, reparsed, zip: await ZipArchive.read(saved) };
 };
 
 describe("bilingual body block preservation", () => {
@@ -186,7 +187,7 @@ describe("bilingual body block preservation", () => {
     for (const layout of ["inline", "stacked"] as const) {
       const { source, zip } = await roundTrip(body, layout);
       expect(carriedBlocks(source.package.document.content)).toHaveLength(20);
-      const xml = await zip.file("word/document.xml")?.async("text");
+      const xml = await zip.entry("word/document.xml")?.text();
       for (const element of [
         "permStart",
         "permEnd",
@@ -209,11 +210,11 @@ describe("bilingual body block preservation", () => {
           ),
         ).toHaveLength(1);
       }
-      expect(await zip.file(CHUNK_PART)?.async("text")).toBe(CHUNK_CONTENT);
-      expect(
-        await zip.file("word/_rels/document.xml.rels")?.async("text"),
-      ).toContain('Target="imported.html"');
-      expect(await zip.file("[Content_Types].xml")?.async("text")).toContain(
+      expect(await zip.entry(CHUNK_PART)?.text()).toBe(CHUNK_CONTENT);
+      expect(await zip.entry("word/_rels/document.xml.rels")?.text()).toContain(
+        'Target="imported.html"',
+      );
+      expect(await zip.entry("[Content_Types].xml")?.text()).toContain(
         'PartName="/word/imported.html"',
       );
     }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { ImagePosition } from "../types/document";
 import { parseDocx } from "./parser";
@@ -52,26 +53,26 @@ const buildDocx = async (
   runContent: string,
   includeImage = false,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", documentXml(runContent));
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", documentXml(runContent));
 
   if (includeImage) {
     const relsPath = "word/_rels/document.xml.rels";
-    const relationships = await zip.file(relsPath)!.async("text");
-    zip.file(
+    const relationships = await zip.entry(relsPath)!.text();
+    zip.set(
       relsPath,
       relationships.replace(
         "</Relationships>",
         `<Relationship Id="rIdImage" Type="${IMAGE_RELATIONSHIP_TYPE}" Target="media/preview.png"/></Relationships>`,
       ),
     );
-    zip.file(
+    zip.set(
       "word/media/preview.png",
       new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
     );
   }
 
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 type ParsedDocx = Awaited<ReturnType<typeof parseDocx>>;
@@ -130,8 +131,8 @@ const bodyShapePositions = ({
 };
 
 const savedDocumentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  return zip.file("word/document.xml")!.async("text");
+  const zip = await ZipArchive.read(buffer);
+  return zip.entry("word/document.xml")!.text();
 };
 
 describe("text-box drawing ownership", () => {
@@ -210,8 +211,8 @@ describe("text-box drawing ownership", () => {
             </v:textbox>
           </v:shape>
         </w:pict>`);
-    const zip = await JSZip.loadAsync(source);
-    const xml = await zip.file("word/document.xml")!.async("text");
+    const zip = await ZipArchive.read(source);
+    const xml = await zip.entry("word/document.xml")!.text();
     const strictXml = xml
       .replaceAll("w:", "q:")
       .replaceAll("xmlns:w=", "xmlns:q=")
@@ -219,9 +220,9 @@ describe("text-box drawing ownership", () => {
         "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
         strictWordNamespace,
       );
-    zip.file("word/document.xml", strictXml);
+    zip.set("word/document.xml", strictXml);
     const parsed = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       { preloadFonts: false },
     );
     const shape = parsed.package.document.content

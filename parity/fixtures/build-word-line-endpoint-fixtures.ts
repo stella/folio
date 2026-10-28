@@ -9,7 +9,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 const OUTPUT_DIR = import.meta.dir;
 const OUTPUT_PATH = path.join(OUTPUT_DIR, "word-hyphenation-hanging.docx");
@@ -296,12 +296,12 @@ const DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   </w:body>
 </w:document>`;
 
-const addXml = (zip: JSZip, filePath: string, contents: string): void => {
-  zip.file(filePath, contents, { date: FIXED_DATE, createFolders: false });
+const addXml = (zip: ZipArchive, filePath: string, contents: string): void => {
+  zip.set(filePath, contents, { modified: FIXED_DATE });
 };
 
 const build = async (): Promise<void> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   addXml(zip, "[Content_Types].xml", CONTENT_TYPES);
   addXml(zip, "_rels/.rels", PACKAGE_RELS);
   addXml(zip, "word/_rels/document.xml.rels", DOCUMENT_RELS);
@@ -310,11 +310,7 @@ const build = async (): Promise<void> => {
   addXml(zip, "word/styles.xml", STYLES_XML);
   addXml(zip, "word/numbering.xml", NUMBERING_XML);
 
-  const fixture = await zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-    compressionOptions: { level: 9 },
-  });
+  const fixture = await zip.generate({ level: 9 });
   await mkdir(OUTPUT_DIR, { recursive: true });
   await Bun.write(OUTPUT_PATH, fixture);
   console.log(`Wrote ${OUTPUT_PATH} (${fixture.byteLength} bytes)`);

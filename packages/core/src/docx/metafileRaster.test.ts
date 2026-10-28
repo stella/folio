@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
 
@@ -16,8 +17,8 @@ describe("extractMetafileRaster", () => {
 
   test("extracts the embedded PNG from the header-vml-emf fixture EMF", async () => {
     const buf = readFileSync(FIXTURE);
-    const zip = await JSZip.loadAsync(buf);
-    const emf = await zip.file("word/media/image1.emf")!.async("uint8array");
+    const zip = await ZipArchive.read(buf);
+    const emf = await zip.entry("word/media/image1.emf")!.bytes();
 
     const raster = extractMetafileRaster(emf);
     expect(raster).not.toBeNull();

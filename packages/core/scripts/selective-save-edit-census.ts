@@ -1,5 +1,4 @@
 import { TaggedError } from "better-result";
-import JSZip from "jszip";
 /**
  * Live transaction save census. Run with:
  * bun packages/core/scripts/selective-save-edit-census.ts [--limit-per-source=10]
@@ -15,6 +14,7 @@ import path from "node:path";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
@@ -185,8 +185,8 @@ const measure = async ({
       ineligible += 1;
       return;
     }
-    const zip = await JSZip.loadAsync(buffer);
-    const originalXml = await zip.file("word/document.xml")?.async("text");
+    const zip = await ZipArchive.read(buffer);
+    const originalXml = await zip.entry("word/document.xml")?.text();
     if (originalXml === undefined) {
       ineligible += 1;
       return;
@@ -272,8 +272,8 @@ const measure = async ({
         const saved =
           selective ??
           (await repackDocx(document, { updateModifiedDate: false }));
-        const savedZip = await JSZip.loadAsync(saved);
-        const xml = await savedZip.file("word/document.xml")?.async("text");
+        const savedZip = await ZipArchive.read(saved);
+        const xml = await savedZip.entry("word/document.xml")?.text();
         if (xml === undefined)
           throw new EditCensusError({ message: "Saved main part missing" });
         const savedOrdinals = censusParagraphOrdinals(
@@ -341,14 +341,14 @@ for (const subject of allSubjects(space)) {
     built.fixture.part.path !== "word/document.xml"
   )
     continue;
-  const zip = await JSZip.loadAsync(base);
+  const zip = await ZipArchive.read(base);
   const seed =
     "<w:p><w:r><w:t>Editable paragraph one</w:t></w:r></w:p><w:p><w:r><w:t>Untouched paragraph two</w:t></w:r></w:p>";
-  zip.file(
+  zip.set(
     "word/document.xml",
     built.fixture.documentXml.replace("<w:body>", `<w:body>${seed}`),
   );
-  const buffer = await zip.generateAsync({ type: "arraybuffer" });
+  const buffer = (await zip.generate({ compression: "store" })).buffer;
   await measure({
     source: `fixture:${subjectKey(subject)}`,
     group: "fixtures-raw",

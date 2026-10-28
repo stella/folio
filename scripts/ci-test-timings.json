@@ -1231,7 +1231,6 @@
   "packages/docx-core/src/validate/packageGraph.test.ts": 7,
   "packages/docx-core/src/validate/schemaAttributes.test.ts": 35,
   "packages/docx-core/src/validate/xmlEntityDecoder.test.ts": 4,
-  "packages/docx-core/src/zip/writeZipPart.test.ts": 452,
   "packages/editor-web/src/historyBridge.test.ts": 166,
   "packages/editor-web/src/protocol.test.ts": 2,
   "packages/playground-vue/test/App.test.ts": 381,
@@ -1517,6 +1516,5 @@
   "scripts/workflow-runner-labels.test.ts": 6,
   "scripts/xml-escaping-lint.test.ts": 261,
   "scripts/xml-splice-owner-lint.test.ts": 186,
-  "scripts/zip-part-writer.test.ts": 2886,
   "tests/visual/interleavingBridge.test.ts": 250
 }

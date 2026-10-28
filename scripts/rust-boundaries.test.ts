@@ -77,7 +77,7 @@ const RUST_BOUNDARIES = [
     imports: ["better-result", "./generated/docx_kernel.js"],
     // A second OOXML or archive reader here would be a second answer to the
     // question the kernel exists to answer.
-    forbidden: ["jszip", "fast-xml-parser", "DOMParser"],
+    forbidden: ["zip/archive", "fast-xml-parser", "DOMParser"],
   },
   {
     label: "text shaping",

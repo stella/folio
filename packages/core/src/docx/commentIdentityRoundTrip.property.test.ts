@@ -23,7 +23,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -155,9 +156,9 @@ const HEADER_RELATIONSHIP_ID = "rIdPropHeader";
 const buildDocx = async (
   forest: readonly GeneratedComment[],
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const zip = await ZipArchive.read(await createEmptyDocx());
 
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>` +
       anchorsFor(forest, "body") +
@@ -165,12 +166,12 @@ const buildDocx = async (
       `<w:sectPr><w:headerReference w:type="default" r:id="${HEADER_RELATIONSHIP_ID}"/></w:sectPr>` +
       "</w:body></w:document>",
   );
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML_DECLARATION}<w:hdr xmlns:w="${W_NAMESPACE}">${anchorsFor(forest, "header") || "<w:p/>"}</w:hdr>`,
   );
 
-  zip.file(
+  zip.set(
     "word/comments.xml",
     `${XML_DECLARATION}<w:comments xmlns:w="${W_NAMESPACE}" xmlns:w14="${W14_NAMESPACE}">` +
       forest
@@ -209,17 +210,17 @@ const buildDocx = async (
       return `<w15:commentEx w15:paraId="${paraId}"${parentAttribute} w15:done="${done ? 1 : 0}"/>`;
     })
     .join("");
-  zip.file(
+  zip.set(
     "word/commentsExtended.xml",
     `${XML_DECLARATION}<w15:commentsEx xmlns:w="${W_NAMESPACE}" xmlns:w15="${W15_NAMESPACE}">${extendedEntries}</w15:commentsEx>`,
   );
 
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
@@ -228,7 +229,7 @@ const buildDocx = async (
         '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>',
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
@@ -237,7 +238,7 @@ const buildDocx = async (
         `<Relationship Id="${HEADER_RELATIONSHIP_ID}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>`,
     ),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** The plain text of a comment, paragraphs joined so a re-split is not a change. */

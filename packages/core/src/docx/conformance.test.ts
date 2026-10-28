@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createEmptyDocument } from "../utils/createDocument";
 import { detectDocxConformanceClass } from "./conformance";
@@ -74,14 +74,14 @@ describe("DOCX conformance detection", () => {
   });
 
   test("stores the detected class on parsed package metadata", async () => {
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "word/document.xml",
       `<x:document xmlns:x="${STRICT_MAIN_NAMESPACE}"><x:body><x:p><x:r><x:t>Text</x:t></x:r></x:p></x:body></x:document>`,
     );
 
     const document = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },

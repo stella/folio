@@ -1,8 +1,9 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
-import JSZip from "jszip";
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { type Command, EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { propertyTestTimeout } from "../../../../../test/property-testing";
 import { parseDocx } from "../../docx/parser";
@@ -48,34 +49,34 @@ const copyOriginAttribute = (origins: readonly number[]): string => {
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 const documentWithCopiedBoundaries = async (): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:mc="${MC_NAMESPACE}" xmlns:folio="${FOLIO_NAMESPACE}" mc:Ignorable="folio"><w:body><w:p><w:ins w:id="1" w:author="A"><w:bookmarkStart w:id="11" w:name="copiedStart" ${copyOriginAttribute([0])}/><w:bookmarkEnd w:id="11" ${copyOriginAttribute([0])}/><w:moveFromRangeStart w:id="21" w:name="moveFrom" w:author="A" ${copyOriginAttribute([0])}/><w:moveFrom w:id="2" w:author="A"><w:r><w:delText>old</w:delText></w:r></w:moveFrom><w:moveFromRangeEnd w:id="21" ${copyOriginAttribute([0])}/><w:moveToRangeStart w:id="22" w:name="moveTo" w:author="A" ${copyOriginAttribute([0])}/><w:moveTo w:id="3" w:author="A"><w:r><w:t>new</w:t></w:r></w:moveTo><w:moveToRangeEnd w:id="22" ${copyOriginAttribute([0])}/></w:ins></w:p><w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const savedDocumentPart = async (saved: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(saved);
-  return (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const zip = await ZipArchive.read(saved);
+  return (await zip.entry("word/document.xml")?.text()) ?? "";
 };
 
 const documentWithNestedCopiedBoundaries = async (
   origins: readonly number[] = [0, 1],
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:mc="${MC_NAMESPACE}" xmlns:folio="${FOLIO_NAMESPACE}" mc:Ignorable="folio"><w:body><w:p><w:ins w:id="41" w:author="A"><w:moveTo w:id="42" w:author="B"><w:bookmarkStart w:id="51" w:name="copied" ${copyOriginAttribute(origins)}/><w:bookmarkEnd w:id="51" ${copyOriginAttribute(origins)}/><w:bookmarkStart w:id="52" w:name="original"/><w:bookmarkEnd w:id="52"/><w:r><w:t>nested</w:t></w:r></w:moveTo></w:ins></w:p><w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentWithParagraphMarkBoundary = async (
   destination: "before-table" | "terminal",
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const zip = await ZipArchive.read(await createEmptyDocx());
   const paragraph = `<w:p><w:pPr><w:rPr><w:ins w:id="70" w:author="P"/></w:rPr></w:pPr><w:ins w:id="71" w:author="A"><w:bookmarkStart w:id="61" w:name="copied" ${copyOriginAttribute([0])}/><w:bookmarkEnd w:id="61" ${copyOriginAttribute([0])}/><w:bookmarkStart w:id="62" w:name="original"/><w:bookmarkEnd w:id="62"/></w:ins></w:p>`;
   const table =
     "<w:tbl><w:tblPr/><w:tblGrid/><w:tr><w:tc><w:p><w:r><w:t>cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>";
@@ -83,18 +84,18 @@ const documentWithParagraphMarkBoundary = async (
     destination === "before-table"
       ? `${paragraph}${table}<w:p><w:r><w:t>after</w:t></w:r></w:p>`
       : `<w:p><w:r><w:t>before</w:t></w:r></w:p>${paragraph}`;
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:mc="${MC_NAMESPACE}" xmlns:folio="${FOLIO_NAMESPACE}" mc:Ignorable="folio"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentWithEmptyMoveRanges = async (
   startOrigins: readonly number[] | undefined,
   endOrigins: readonly number[] | undefined,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const zip = await ZipArchive.read(await createEmptyDocx());
   const origin = (origins: readonly number[] | undefined) =>
     origins === undefined ? "" : " " + copyOriginAttribute(origins);
   const xml = [
@@ -111,13 +112,13 @@ const documentWithEmptyMoveRanges = async (
     origin(endOrigins),
     '/></w:moveTo></w:ins><w:moveToRangeStart w:id="51" w:name="copied" w:author="B"/><w:moveToRangeEnd w:id="51"/></w:p><w:sectPr/></w:body></w:document>',
   ].join("");
-  zip.file("word/document.xml", xml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/document.xml", xml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentWithParagraphMarkEmptyMoveRange =
   async (): Promise<ArrayBuffer> => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
+    const zip = await ZipArchive.read(await createEmptyDocx());
     const xml = [
       XML_DECLARATION,
       '<w:document xmlns:w="',
@@ -132,8 +133,8 @@ const documentWithParagraphMarkEmptyMoveRange =
       copyOriginAttribute([0]),
       '/></w:moveTo></w:ins><w:moveToRangeStart w:id="51" w:name="copied" w:author="B"/><w:moveToRangeEnd w:id="51"/></w:p><w:sectPr/></w:body></w:document>',
     ].join("");
-    zip.file("word/document.xml", xml);
-    return zip.generateAsync({ type: "arraybuffer" });
+    zip.set("word/document.xml", xml);
+    return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
   };
 
 const resolvedProseDocument = async (
@@ -241,13 +242,13 @@ test("empty move-range marker ownership survives DOCX and PM JSON round trips", 
 });
 
 test("nested mixed revision marks expose nearest-first copy-owner depth", async () => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:mc="${MC_NAMESPACE}" xmlns:folio="${FOLIO_NAMESPACE}" mc:Ignorable="folio"><w:body><w:p><w:ins w:id="31" w:author="A"><w:moveTo w:id="32" w:author="B"><w:del w:id="33" w:author="C"><w:bookmarkStart w:id="34" w:name="nested" folio:copyOriginAncestors="{&quot;version&quot;:1,&quot;value&quot;:[0,1]}"/><w:bookmarkEnd w:id="34" folio:copyOriginAncestors="{&quot;version&quot;:1,&quot;value&quot;:[0,1]}"/><w:r><w:delText>x</w:delText></w:r></w:del></w:moveTo></w:ins></w:p><w:sectPr/></w:body></w:document>`,
   );
   const parsed = await parseDocx(
-    await zip.generateAsync({ type: "arraybuffer" }),
+    (await zip.generate({ compression: "store" })).buffer,
     { preloadFonts: false },
   );
   const projected = toProseDoc(parsed);

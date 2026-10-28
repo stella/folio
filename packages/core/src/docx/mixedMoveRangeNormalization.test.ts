@@ -1,6 +1,7 @@
 import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { propertyTestTimeout } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -95,12 +96,12 @@ type BuildDocxOptions = {
 };
 
 const buildDocx = async ({ body, profile }: BuildDocxOptions) => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8"?><${profile.prefix}:document xmlns:${profile.prefix}="${profile.namespace}"><${profile.prefix}:body>${body.replaceAll("w:", `${profile.prefix}:`)}<${profile.prefix}:sectPr/></${profile.prefix}:body></${profile.prefix}:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const markers = (documentBody: DocumentBody) => {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { resolveJustificationCompatibility } from "../layout-engine/justificationCompatibility";
 import { resolveTableIndentCompatibility } from "../layout-engine/tableIndentCompatibility";
@@ -16,31 +17,31 @@ const settingsXml = (body: string): string =>
   `<w:settings xmlns:w="${W}"><w:defaultTabStop w:val="720"/>${body}</w:settings>`;
 
 const packageWithSettings = async (settings: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/settings.xml", settings);
-  const rels = await zip.file("word/_rels/document.xml.rels")!.async("string");
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/settings.xml", settings);
+  const rels = await zip.entry("word/_rels/document.xml.rels")!.text();
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
       '<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/></Relationships>',
     ),
   );
-  const types = await zip.file("[Content_Types].xml")!.async("string");
-  zip.file(
+  const types = await zip.entry("[Content_Types].xml")!.text();
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
       '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/></Types>',
     ),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const savedSettings = async (
   buffer: ArrayBuffer,
 ): Promise<string | undefined> =>
-  (await JSZip.loadAsync(buffer)).file("word/settings.xml")?.async("string");
+  (await ZipArchive.read(buffer)).entry("word/settings.xml")?.text();
 
 describe("new document compatibility mode", () => {
   test("a new document declares compatibility mode 15 to layout", () => {

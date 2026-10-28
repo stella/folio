@@ -16,7 +16,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -172,9 +173,9 @@ const documentXml = (
 const buildPackage = async (
   children: readonly RunChild[],
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", documentXml(children));
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", documentXml(children));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /**
@@ -240,11 +241,11 @@ const repack = (document: Document): Promise<ArrayBuffer> =>
   repackDocx(document, { updateModifiedDate: false });
 
 const savedDocumentPart = async (saved: ArrayBuffer): Promise<string> => {
-  const file = (await JSZip.loadAsync(saved)).file("word/document.xml");
+  const file = (await ZipArchive.read(saved)).entry("word/document.xml");
   if (!file) {
     throw new Error("the saved package has no word/document.xml");
   }
-  return file.async("string");
+  return file.text();
 };
 
 /** Every `w:t` in the saved part, with the `xml:space` the serializer wrote. */

@@ -25,7 +25,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -129,8 +130,8 @@ const buildNestedFieldXml = ({
 };
 
 const createDocx = async (fieldXml: string): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -140,14 +141,14 @@ const createDocx = async (fieldXml: string): Promise<ArrayBuffer> => {
   <Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -155,14 +156,14 @@ const createDocx = async (fieldXml: string): Promise<ArrayBuffer> => {
 </Relationships>`,
   );
   const fieldParagraph = `<w:p>${run("Before ")}${fieldXml}${run(" after.")}</w:p>`;
-  zip.file(
+  zip.set(
     "word/footnotes.xml",
     `${XML_DECLARATION}
 <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:footnote w:id="2">${fieldParagraph}</w:footnote>
 </w:footnotes>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -173,12 +174,12 @@ const createDocx = async (fieldXml: string): Promise<ArrayBuffer> => {
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECLARATION}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** Every sentinel a text blob contains, so "none of the rest" is one diff. */

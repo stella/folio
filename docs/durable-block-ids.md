@@ -72,7 +72,7 @@ Contract highlights (the module doc in `ensureParaIds.ts` is normative):
   key anything on it.
 - Idempotent: full-coverage input returns the original bytes
   (`alreadyComplete: true`), byte-identical by construction. (A no-op rezip
-  would NOT be byte-identical — JSZip regenerates the container — which is
+  would NOT be byte-identical — the writer regenerates the container — which is
   why the short-circuit exists.)
 - OPC digital signatures cover package bytes and become invalid when a signed
   package is rewritten. A signed document that is already complete is returned

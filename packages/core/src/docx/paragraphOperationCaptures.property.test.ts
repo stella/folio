@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import {
   applyDocumentOp,
   applyDocumentOps,
   normalizeForOps,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   generateOpSequence,
@@ -37,15 +37,15 @@ test(
         fc.integer({ min: 0, max: 0x7fffffff }),
         fc.constantFrom(" ", "\n", "\r\n", "\t"),
         async (document, seed, whitespace) => {
-          const zip = await JSZip.loadAsync(await createDocx(document));
-          const xml = await zip.file("word/document.xml")?.async("text");
+          const zip = await ZipArchive.read(await createDocx(document));
+          const xml = await zip.entry("word/document.xml")?.text();
           if (!xml) throw new TypeError("Missing document part");
           expect(xml).toContain("<w:pPr>");
-          zip.file(
+          zip.set(
             "word/document.xml",
             xml.replaceAll("<w:pPr>", `<w:pPr>${whitespace}`),
           );
-          const bytes = await zip.generateAsync({ type: "arraybuffer" });
+          const bytes = (await zip.generate({ compression: "store" })).buffer;
           const parsed = normalizeForOps(
             await parseDocx(bytes, { preloadFonts: false }),
           );

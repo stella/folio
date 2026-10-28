@@ -34,8 +34,8 @@ random source:
   disjoint without a guessed stride;
 - `w14:paraId`s for paragraphs the comparison creates are derived from the
   stamp instead of `Math.random()`;
-- ZIP entry dates are restamped from the same timestamp, because JSZip
-  otherwise writes the current time into every part it rewrites;
+- ZIP entry dates are restamped from the same timestamp, because entries
+  passed through from the source package keep the dates they were read with;
 - `dcterms:modified` in `docProps/core.xml` is restamped from it too, because
   the save otherwise dates the package from the second it happened to run and
   two runs then differ in that part alone.

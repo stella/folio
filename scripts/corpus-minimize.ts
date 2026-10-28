@@ -17,9 +17,10 @@
  */
 
 import { TaggedError } from "better-result";
-import JSZip from "jszip";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+
+import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
 import {
   runCorpusChecks,
@@ -57,18 +58,13 @@ const PRUNABLE_PARTS: readonly string[] = [
 type Package = { names: string[]; contents: Map<string, Uint8Array> };
 
 const readPackage = async (bytes: Uint8Array): Promise<Package> => {
-  const archive = await JSZip.loadAsync(bytes);
-  const names = Object.keys(archive.files).filter(
-    (name) => !archive.files[name]?.dir,
-  );
+  const archive = await ZipArchive.read(bytes);
+  const names = archive.paths();
   names.sort();
   const contents = new Map<string, Uint8Array>();
   await Promise.all(
     names.map(async (name) => {
-      contents.set(
-        name,
-        await (archive.file(name) as JSZip.JSZipObject).async("uint8array"),
-      );
+      contents.set(name, await (archive.entry(name) as ZipEntry).bytes());
     }),
   );
   return { names, contents };
@@ -78,17 +74,14 @@ const writePackage = async (
   names: readonly string[],
   contents: ReadonlyMap<string, Uint8Array>,
 ) => {
-  const archive = new JSZip();
+  const archive = new ZipArchive();
   for (const name of names) {
     const data = contents.get(name);
     if (data !== undefined) {
-      archive.file(name, data);
+      archive.set(name, data);
     }
   }
-  return await archive.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-  });
+  return await archive.generate();
 };
 
 const failureMatching = (

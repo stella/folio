@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { EDIT_OPERATION_SCRIPTS } from "../fixtures/edit-operation-scripts";
 import { readEditStructure } from "../fixtures/edit-structure";
@@ -16,8 +17,8 @@ describe("saved synthetic edit scripts", () => {
         path.join(import.meta.dir, "../fixtures", script.seed),
       ).arrayBuffer();
       const saved = await runEditOperationScript(seed, script);
-      const zip = await JSZip.loadAsync(saved);
-      expect(zip.file("word/document.xml"), script.id).not.toBeNull();
+      const zip = await ZipArchive.read(saved);
+      expect(zip.entry("word/document.xml"), script.id).toBeDefined();
       const structure = await readEditStructure(saved);
       expect(structure.blocks.length, script.id).toBeGreaterThan(0);
       if (script.action === "replyToComment") {

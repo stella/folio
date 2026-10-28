@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 /** Finite, deterministic malformed XML and cross-part package mutations. */
 export const PARSER_XML_MUTATIONS = [
@@ -280,11 +280,11 @@ export const mutateXml = async (
 ): Promise<Uint8Array> => {
   if (source.byteLength > MAX_INPUT_BYTES)
     throw new Error("DOCX mutation input exceeds size limit");
-  const zip = await JSZip.loadAsync(source);
-  const file = zip.file(targetPart);
+  const zip = await ZipArchive.read(source);
+  const file = zip.entry(targetPart);
   if (!file)
     throw new Error(`DOCX mutation target part not found: ${targetPart}`);
-  const original = await file.async("uint8array");
+  const original = await file.bytes();
   if (original.byteLength > MAX_PART_BYTES)
     throw new Error(`DOCX mutation part exceeds size limit: ${targetPart}`);
   const decoded = new TextDecoder("utf-8").decode(original);
@@ -307,12 +307,10 @@ export const mutateXml = async (
   }
   if (changed.byteLength > MAX_PART_BYTES)
     throw new Error("DOCX mutation output part exceeds size limit");
-  zip.file(targetPart, changed, { date: new Date("1980-01-01T00:00:00.000Z") });
-  const output = await zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
+  zip.set(targetPart, changed, {
+    modified: new Date("1980-01-01T00:00:00.000Z"),
   });
+  const output = await zip.generate({ level: 6 });
   if (output.byteLength > MAX_OUTPUT_BYTES)
     throw new Error("DOCX mutation output exceeds size limit");
   return output;

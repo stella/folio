@@ -27,8 +27,8 @@
  */
 
 import { Result } from "better-result";
-import JSZip from "jszip";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { REVISION_ELEMENT_NAMES } from "@stll/folio-core/docx/revisionIdNormalization";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
@@ -896,14 +896,17 @@ const IMAGE_RELATIONSHIP_TYPE =
  * so a fixture rooted at a header declares it there rather than in the
  * document's.
  */
-const withMediaPart = async (zip: JSZip, partPath: string): Promise<void> => {
-  zip.file(MEDIA_PART_PATH, ONE_PIXEL_PNG);
-  const types = await zip.file("[Content_Types].xml")?.async("text");
+const withMediaPart = async (
+  zip: ZipArchive,
+  partPath: string,
+): Promise<void> => {
+  zip.set(MEDIA_PART_PATH, ONE_PIXEL_PNG);
+  const types = await zip.entry("[Content_Types].xml")?.text();
   if (types === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
   if (!types.includes('Extension="png"')) {
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
       types.replace(
         "</Types>",
@@ -914,12 +917,12 @@ const withMediaPart = async (zip: JSZip, partPath: string): Promise<void> => {
 
   const slash = partPath.lastIndexOf("/");
   const relsPath = `${partPath.slice(0, slash)}/_rels/${partPath.slice(slash + 1)}.rels`;
-  const existing = await zip.file(relsPath)?.async("text");
+  const existing = await zip.entry(relsPath)?.text();
   const relationship =
     `<Relationship Id="${IMAGE_RELATIONSHIP_ID}" Type="${IMAGE_RELATIONSHIP_TYPE}" ` +
     `Target="media/${MEDIA_PART_PATH.slice("word/media/".length)}"/>`;
   if (existing === undefined) {
-    zip.file(
+    zip.set(
       relsPath,
       `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationship}</Relationships>`,
     );
@@ -928,7 +931,7 @@ const withMediaPart = async (zip: JSZip, partPath: string): Promise<void> => {
   if (existing.includes(IMAGE_RELATIONSHIP_ID)) {
     return;
   }
-  zip.file(
+  zip.set(
     relsPath,
     existing.replace("</Relationships>", `${relationship}</Relationships>`),
   );
@@ -937,21 +940,21 @@ const withMediaPart = async (zip: JSZip, partPath: string): Promise<void> => {
 let basePackage: Promise<ArrayBuffer> | undefined;
 
 const withSideParts = async (
-  zip: JSZip,
+  zip: ZipArchive,
   fixture: BuiltFixture,
 ): Promise<void> => {
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
   let overrides = "";
   let relationships = "";
   for (const part of SIDE_PARTS) {
-    if (zip.file(part.path) !== null) {
+    if (zip.has(part.path)) {
       continue;
     }
-    zip.file(
+    zip.set(
       part.path,
       typeof part.xml === "string" ? part.xml : part.xml(fixture),
     );
@@ -961,11 +964,11 @@ const withSideParts = async (
   if (overrides === "") {
     return;
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace("</Types>", `${overrides}</Types>`),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace("</Relationships>", `${relationships}</Relationships>`),
   );
@@ -980,17 +983,17 @@ const withSideParts = async (
  * the packaging rather than about folio.
  */
 const declarePart = async (
-  zip: JSZip,
+  zip: ZipArchive,
   part: RebuiltPart,
   relationshipId: string,
 ): Promise<void> => {
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
   if (!types.includes(`PartName="/${part.path}"`)) {
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
       types.replace(
         "</Types>",
@@ -999,7 +1002,7 @@ const declarePart = async (
     );
   }
   if (!rels.includes(`Type="${part.relationship}"`)) {
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       rels.replace(
         "</Relationships>",
@@ -1022,15 +1025,15 @@ const SECTION_REFERENCES: Partial<Record<string, string>> = {
 };
 
 const withSectionReference = async (
-  zip: JSZip,
+  zip: ZipArchive,
   partPath: string,
 ): Promise<void> => {
   const reference = SECTION_REFERENCES[partPath];
-  const documentXml = await zip.file("word/document.xml")?.async("text");
+  const documentXml = await zip.entry("word/document.xml")?.text();
   if (reference === undefined || documentXml === undefined) {
     return;
   }
-  zip.file(
+  zip.set(
     "word/document.xml",
     documentXml.replace("<w:sectPr>", `<w:sectPr>${reference}`),
   );
@@ -1066,7 +1069,7 @@ const REFERENCED_PARTS: Readonly<
 };
 
 const withReferencedPart = async (
-  zip: JSZip,
+  zip: ZipArchive,
   fixture: BuiltFixture,
 ): Promise<void> => {
   const referenced = REFERENCED_PARTS[fixture.subjectSpelling];
@@ -1077,32 +1080,32 @@ const withReferencedPart = async (
   if (
     referenced === undefined ||
     relationshipId === undefined ||
-    zip.file(referenced.part.path)
+    zip.entry(referenced.part.path)
   ) {
     return;
   }
-  zip.file(referenced.part.path, referenced.xml);
+  zip.set(referenced.part.path, referenced.xml);
   await declarePart(zip, referenced.part, relationshipId);
 };
 
 const packageFor = async (fixture: BuiltFixture): Promise<ArrayBuffer> => {
   basePackage ??= createEmptyDocx();
-  const zip = await JSZip.loadAsync(await basePackage);
-  zip.file(fixture.part.path, fixture.documentXml);
+  const zip = await ZipArchive.read(await basePackage);
+  zip.set(fixture.part.path, fixture.documentXml);
   await declarePart(zip, fixture.part, SUBJECT_RELATIONSHIP_ID);
   await withSectionReference(zip, fixture.part.path);
   await withReferencedPart(zip, fixture);
   await withSideParts(zip, fixture);
   await withMediaPart(zip, fixture.part.path);
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const partOf = async (
   buffer: ArrayBuffer,
   partPath: string,
 ): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  return (await zip.file(partPath)?.async("text")) ?? "";
+  const zip = await ZipArchive.read(buffer);
+  return (await zip.entry(partPath)?.text()) ?? "";
 };
 
 const save = (document: Document): Promise<ArrayBuffer> =>

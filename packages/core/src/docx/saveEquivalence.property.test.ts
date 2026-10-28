@@ -27,9 +27,10 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -267,12 +268,12 @@ const applyEdit = (doc: Document, spec: EditSpec): string | null => {
 // ============================================================================
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry("word/document.xml");
   if (!file) {
     throw new Error("word/document.xml missing");
   }
-  return file.async("text");
+  return file.text();
 };
 
 const paragraphIds = (xml: string): string[] => {
@@ -454,21 +455,19 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
     async () => {
       const buffer = readFixture(EDIT_FIXTURE);
       const original = await readEditModel();
-      const originalZip = await JSZip.loadAsync(buffer);
+      const originalZip = await ZipArchive.read(buffer);
       const originalXml = await documentXml(buffer);
 
       // Precompute the original bytes/slices once so each fast-check run only
       // pays for the saved side (the ~1.6 MB document.xml re-scan is the cost
       // driver, so the unedited-paragraph check samples a bounded 40 ids).
-      const untouchedParts = Object.keys(originalZip.files).filter(
-        (part) => !originalZip.files[part]?.dir && !isSelectiveRewritten(part),
-      );
+      const untouchedParts = originalZip
+        .paths()
+        .filter((part) => !isSelectiveRewritten(part));
       const originalUntouched = await Promise.all(
         untouchedParts.map(async (part) => ({
           part,
-          bytes: new Uint8Array(
-            await originalZip.file(part)!.async("arraybuffer"),
-          ),
+          bytes: new Uint8Array(await originalZip.entry(part)!.arrayBuffer()),
         })),
       );
       const sampledSlices = [...new Set(paragraphIds(originalXml))]
@@ -496,7 +495,7 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
             return;
           }
 
-          const savedZip = await JSZip.loadAsync(saved);
+          const savedZip = await ZipArchive.read(saved);
 
           // Every genuinely-untouched part survives byte-for-byte (styles.xml,
           // numbering.xml, footnotes.xml, endnotes.xml, theme, fonts, settings,
@@ -505,9 +504,9 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
           // be byte-identical here; extend this once the note write path lands.
           const comparisons = await Promise.all(
             originalUntouched.map(async ({ part, bytes }) => {
-              const savedFile = savedZip.file(part);
+              const savedFile = savedZip.entry(part);
               const savedBytes = savedFile
-                ? new Uint8Array(await savedFile.async("arraybuffer"))
+                ? new Uint8Array(await savedFile.arrayBuffer())
                 : null;
               return {
                 part,
@@ -521,9 +520,7 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
 
           // Every sampled UNEDITED paragraph keeps its exact original XML slice;
           // the edited paragraph is the only one allowed to change.
-          const savedXml = await savedZip
-            .file("word/document.xml")!
-            .async("text");
+          const savedXml = await savedZip.entry("word/document.xml")!.text();
           for (const { id, slice } of sampledSlices) {
             if (id === paraId) {
               continue;

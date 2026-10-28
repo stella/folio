@@ -1,7 +1,3 @@
-import JSZip from "jszip";
-
-import { decodeText, encodeUtf8 } from "@stll/utf8-boundaries";
-
 import { borderStyleToken, statesNoBorder } from "../model/borderStyle";
 import type { BorderSpec } from "../model/colors";
 import type {
@@ -20,7 +16,7 @@ import type { ListLevel, NumberingDefinitions } from "../model/lists";
 import { paragraphNumberingSlots } from "../model/paragraphNumbering";
 import type { StyleDefinitions } from "../model/styles";
 import { serializeSequenceChildren } from "../schema/sequenceChildren";
-import { writeZipPart } from "../zip/writeZipPart";
+import { ZipArchive } from "../zip/archive";
 import { assertValidOoxmlNumericIds } from "./numericIds";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
 import { attr, pushOnOffElement, serializeOnOffElement } from "./xml";
@@ -153,64 +149,30 @@ export const serializeDocumentToDocx = async (
   document: Document,
   options: SerializeDocumentOptions = {},
 ): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const hasNumbering = hasNumberingDefinitions(document.package.numbering);
-  writeZipPart({
-    zip,
-    path: "[Content_Types].xml",
-    data: encodeUtf8(contentTypesXml(hasNumbering)),
-  });
-  writeZipPart({ zip, path: "_rels/.rels", data: encodeUtf8(ROOT_RELS_XML) });
-  writeZipPart({ zip, path: "docProps/app.xml", data: encodeUtf8(APP_XML) });
-  writeZipPart({
-    zip,
-    path: "docProps/core.xml",
-    data: encodeUtf8(serializeCoreProperties(document)),
-  });
-  writeZipPart({
-    zip,
-    path: "word/document.xml",
-    data: encodeUtf8(serializeDocumentXml(document)),
-  });
-  writeZipPart({
-    zip,
-    path: "word/styles.xml",
-    data: encodeUtf8(serializeStyles(document.package.styles)),
-  });
+  zip.set("[Content_Types].xml", contentTypesXml(hasNumbering));
+  zip.set("_rels/.rels", ROOT_RELS_XML);
+  zip.set("docProps/app.xml", APP_XML);
+  zip.set("docProps/core.xml", serializeCoreProperties(document));
+  zip.set("word/document.xml", serializeDocumentXml(document));
+  zip.set("word/styles.xml", serializeStyles(document.package.styles));
   if (hasNumbering) {
-    writeZipPart({
-      zip,
-      path: "word/numbering.xml",
-      data: encodeUtf8(serializeNumbering(document.package.numbering)),
-    });
-  }
-  writeZipPart({
-    zip,
-    path: `word/${DEFAULT_FOOTER_PART_NAME}`,
-    data: encodeUtf8(buildFooterXml(options.language)),
-  });
-  writeZipPart({
-    zip,
-    path: "word/_rels/document.xml.rels",
-    data: encodeUtf8(documentRelsXml(hasNumbering)),
-  });
-
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (file.dir || !path.endsWith(".xml")) continue;
-    // oxlint-disable-next-line no-await-in-loop -- validate each part before the shared ZIP writer emits any output
-    assertValidOoxmlNumericIds(
-      await file
-        .async("uint8array")
-        .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
-      path,
+    zip.set(
+      "word/numbering.xml",
+      serializeNumbering(document.package.numbering),
     );
   }
+  zip.set(`word/${DEFAULT_FOOTER_PART_NAME}`, buildFooterXml(options.language));
+  zip.set("word/_rels/document.xml.rels", documentRelsXml(hasNumbering));
 
-  return await zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
-  });
+  for (const entry of zip.entries()) {
+    if (!entry.path.endsWith(".xml")) continue;
+    // oxlint-disable-next-line no-await-in-loop -- validate each part before the shared ZIP writer emits any output
+    assertValidOoxmlNumericIds(await entry.text(), entry.path);
+  }
+
+  return (await zip.generate()).buffer;
 };
 
 const hasNumberingDefinitions = (

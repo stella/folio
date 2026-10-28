@@ -13,7 +13,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -93,8 +94,8 @@ const cellShading = (fill: FillValue) =>
   )?.shading;
 
 const styledTableFixture = (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -104,21 +105,21 @@ const styledTableFixture = (): Promise<ArrayBuffer> => {
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.styles}" Target="styles.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECLARATION}
 <w:styles ${WORD_NAMESPACE}>
@@ -128,7 +129,7 @@ const styledTableFixture = (): Promise<ArrayBuffer> => {
   </w:style>
 </w:styles>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document ${WORD_NAMESPACE}>
@@ -155,7 +156,7 @@ const styledTableFixture = (): Promise<ArrayBuffer> => {
 </w:document>`,
   );
 
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 describe("w:shd auto", () => {
@@ -177,10 +178,10 @@ describe("w:shd auto", () => {
     });
     const repacked = await repackDocx(rebuilt, { updateModifiedDate: false });
     const documentXml = await (
-      await JSZip.loadAsync(repacked)
+      await ZipArchive.read(repacked)
     )
-      .file("word/document.xml")
-      ?.async("string");
+      .entry("word/document.xml")
+      ?.text();
 
     expect(documentXml).toContain('w:fill="auto"');
   }, 15_000);

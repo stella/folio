@@ -18,7 +18,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import {
@@ -724,11 +725,11 @@ const notePartXml = async (
   buffer: ArrayBuffer,
   type: "footnote" | "endnote",
 ): Promise<string> => {
-  const file = (await JSZip.loadAsync(buffer)).file(NOTE_PART[type]);
+  const file = (await ZipArchive.read(buffer)).entry(NOTE_PART[type]);
   if (!file) {
     throw new Error(`missing ${NOTE_PART[type]}`);
   }
-  return file.async("text");
+  return file.text();
 };
 
 /**

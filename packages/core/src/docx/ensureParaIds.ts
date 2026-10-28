@@ -57,12 +57,10 @@ const EnsureParaIdsErrorBase: TaggedErrorClass<"EnsureParaIdsError"> =
  *   explicitly allows signature invalidation after warning the user.
  */
 import { TaggedError, type TaggedErrorClass } from "better-result";
-import JSZip from "jszip";
 
-import { writeZipPart } from "@stll/docx-core/zip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { deterministicHexId } from "../utils/hexId";
-import { encodeUtf8 } from "../utils/textEncoding";
 import { resolvePackageRelationshipTarget } from "./packageParts";
 import { spliceXml } from "./selectiveXmlPatch";
 import { loadDocxArchive } from "./server/boundedArchive";
@@ -518,11 +516,12 @@ const isTargetPart = (path: string): boolean =>
 const toUint8Array = (docx: Uint8Array | ArrayBuffer): Uint8Array =>
   docx instanceof Uint8Array ? docx : new Uint8Array(docx);
 
-const hasDigitalSignatureParts = (zip: JSZip): boolean =>
-  Object.values(zip.files).some(
-    ({ dir, name }) =>
-      !dir && name.toLowerCase().startsWith(DIGITAL_SIGNATURE_PART_PREFIX),
-  );
+const hasDigitalSignatureParts = (zip: ZipArchive): boolean =>
+  zip
+    .entries()
+    .some(({ path }) =>
+      path.toLowerCase().startsWith(DIGITAL_SIGNATURE_PART_PREFIX),
+    );
 
 /**
  * Backfill `w14:paraId` on every paragraph of a `.docx` buffer. See the
@@ -639,11 +638,11 @@ const ensureParaIdsInternal = async (
     };
   }
 
-  // Only the write-back path needs a raw JSZip (signature detection, writing
+  // Only the write-back path needs a raw ZipArchive (signature detection, writing
   // new part bytes, and repackaging). `docx` was already validated against
   // the entry-count/size caps above, so this second parse runs on a
   // buffer whose shape is already bounded.
-  const zip = await JSZip.loadAsync(docx);
+  const zip = await ZipArchive.read(docx);
 
   if (
     hasDigitalSignatureParts(zip) &&
@@ -657,28 +656,15 @@ const ensureParaIdsInternal = async (
   }
 
   for (const [partPath, content] of updates) {
-    const sourceEntry = zip.file(partPath);
-    if (sourceEntry === null) {
+    const sourceEntry = zip.entry(partPath);
+    if (sourceEntry === undefined) {
       throw createEnsureParaIdsError(
         `Package part disappeared during normalization: ${partPath}`,
       );
     }
-    writeZipPart({
-      zip,
-      path: partPath,
-      data: encodeUtf8(content),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: 6 },
-        date: sourceEntry.date,
-      },
-    });
+    zip.set(partPath, content, { modified: sourceEntry.modified });
   }
-  const output = await zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
-  });
+  const output = await zip.generate({ level: 6 });
 
   return {
     docx: output,

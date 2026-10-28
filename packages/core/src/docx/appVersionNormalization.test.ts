@@ -1,6 +1,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -84,26 +85,26 @@ describe("normalizeAppVersionInExtendedProperties", () => {
 });
 
 const appVersionOf = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const xml = (await zip.file(EXTENDED_PROPERTIES_PATH)?.async("text")) ?? "";
+  const zip = await ZipArchive.read(buffer);
+  const xml = (await zip.entry(EXTENDED_PROPERTIES_PATH)?.text()) ?? "";
   return /<AppVersion>([^<]*)<\/AppVersion>/u.exec(xml)?.[1] ?? "";
 };
 
 const extendedPropertiesOf = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  return (await zip.file(EXTENDED_PROPERTIES_PATH)?.async("text")) ?? "";
+  const zip = await ZipArchive.read(buffer);
+  return (await zip.entry(EXTENDED_PROPERTIES_PATH)?.text()) ?? "";
 };
 
 /** A package that states a version the schema form rejects. */
 const packageStatingAppVersion = async (
   value: string,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     EXTENDED_PROPERTIES_PATH,
     extendedProperties(`<AppVersion>${value}</AppVersion>`),
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 describe("a saved package states a version of the schema form", () => {
@@ -141,14 +142,14 @@ describe("a saved package states a version of the schema form", () => {
   });
 
   test("a package that carries no extended properties gains none", async () => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    zip.remove(EXTENDED_PROPERTIES_PATH);
-    const source = await zip.generateAsync({ type: "arraybuffer" });
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    zip.delete(EXTENDED_PROPERTIES_PATH);
+    const source = (await zip.generate({ compression: "store" })).buffer;
 
     const saved = await updateMultipleFiles(source, new Map());
 
     expect(
-      (await JSZip.loadAsync(saved)).file(EXTENDED_PROPERTIES_PATH),
-    ).toBeNull();
+      (await ZipArchive.read(saved)).entry(EXTENDED_PROPERTIES_PATH),
+    ).toBeUndefined();
   });
 });

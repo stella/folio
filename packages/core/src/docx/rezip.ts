@@ -4,7 +4,6 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
-import JSZip from "jszip";
 
 import {
   assertValidOoxmlNumericIds,
@@ -16,7 +15,7 @@ import {
   mintRelationshipId,
   numberingInstanceResolves,
 } from "@stll/docx-core/model";
-import { writeZipPart } from "@stll/docx-core/zip";
+import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
@@ -458,7 +457,7 @@ function assertDocumentPackageFidelity({
 
 async function serializeCommentsToZip(
   doc: Document,
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
   const comments = doc.package.document.comments ?? [];
@@ -468,7 +467,7 @@ async function serializeCommentsToZip(
   );
   const sourceCommentsXml = sourceCommentsFile
     ? await sourceCommentsFile
-        .async("uint8array")
+        .bytes()
         .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
     : undefined;
   if (
@@ -504,14 +503,8 @@ async function serializeCommentsToZip(
       ? undefined
       : readRootNamespaceBindings(sourceCommentsXml),
   );
-  writeZipPart({
-    zip,
-    path: sourceCommentsFile?.name ?? "word/comments.xml",
-    data: encodeUtf8(commentsXml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
+  zip.set(sourceCommentsFile?.path ?? "word/comments.xml", commentsXml, {
+    level: compressionLevel,
   });
 
   // Sequential, not Promise.all: comments.xml and commentsExtended.xml both
@@ -541,7 +534,7 @@ const hasCommentEntries = (xml: string): boolean => {
  */
 async function syncCommentsExtendedPart(
   plan: CommentPartPlan,
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
   const xml = serializeCommentsExtended(plan);
@@ -556,7 +549,7 @@ async function syncCommentsExtendedPart(
     if (!existing) {
       return;
     }
-    zip.remove(existing.name);
+    zip.delete(existing.path);
     await transformPackagingFile(
       zip,
       "[Content_Types].xml",
@@ -572,14 +565,8 @@ async function syncCommentsExtendedPart(
     return;
   }
 
-  writeZipPart({
-    zip,
-    path: existing?.name ?? COMMENTS_EXTENDED_PART,
-    data: encodeUtf8(xml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
+  zip.set(existing?.path ?? COMMENTS_EXTENDED_PART, xml, {
+    level: compressionLevel,
   });
   await transformPackagingFile(
     zip,
@@ -597,42 +584,35 @@ async function syncCommentsExtendedPart(
 
 /** Read a packaging file, apply a pure transform, and write it back if it changed. */
 async function transformPackagingFile(
-  zip: JSZip,
+  zip: ZipArchive,
   path: string,
   transform: (xml: string) => string,
   compressionLevel: number,
 ): Promise<void> {
-  const file = zip.file(path);
+  const file = zip.entry(path);
   if (!file) {
     return;
   }
   const xml = await file
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   const next = transform(xml);
   if (next !== xml) {
-    writeZipPart({
-      zip,
-      path,
-      data: encodeUtf8(next),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      },
-    });
+    zip.set(path, next, { level: compressionLevel });
   }
 }
 
 function findZipEntryCaseInsensitive(
-  zip: JSZip,
+  zip: ZipArchive,
   lowerPath: string,
-): JSZip.JSZipObject | null {
-  const direct = zip.file(lowerPath);
+): ZipEntry | null {
+  const direct = zip.entry(lowerPath);
   if (direct) {
     return direct;
   }
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (!file.dir && path.toLowerCase() === lowerPath) {
+  for (const file of zip.entries()) {
+    const { path } = file;
+    if (path.toLowerCase() === lowerPath) {
       return file;
     }
   }
@@ -704,7 +684,7 @@ function relativeTargetForPart(
  * serializer resolves (case-insensitively) so a producer's casing is reused
  * instead of minting a second, lowercase rels part.
  */
-function collectDocxParts(doc: Document, zip: JSZip): DocxPart[] {
+function collectDocxParts(doc: Document, zip: ZipArchive): DocxPart[] {
   const parts: DocxPart[] = [
     {
       relsPath: "word/_rels/document.xml.rels",
@@ -742,7 +722,7 @@ function collectDocxParts(doc: Document, zip: JSZip): DocxPart[] {
       return;
     }
     const partPath =
-      findNotePartEntry(zip, conventionalLowerPath)?.name ??
+      findNotePartEntry(zip, conventionalLowerPath)?.path ??
       conventionalLowerPath;
     parts.push({
       relsPath: notePartRelsPath(partPath),
@@ -755,12 +735,13 @@ function collectDocxParts(doc: Document, zip: JSZip): DocxPart[] {
   return parts;
 }
 
-async function readRelsOrStub(zip: JSZip, relsPath: string): Promise<string> {
-  const file = zip.file(relsPath);
+async function readRelsOrStub(
+  zip: ZipArchive,
+  relsPath: string,
+): Promise<string> {
+  const file = zip.entry(relsPath);
   const xml = file
-    ? await file
-        .async("uint8array")
-        .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
+    ? await file.bytes().then((bytes) => decodeText(bytes, { ignoreBOM: true }))
     : EMPTY_RELS_XML;
   return xml.replace(
     /<Relationships(?<attrs>[^>]*)\/>/u,
@@ -768,9 +749,9 @@ async function readRelsOrStub(zip: JSZip, relsPath: string): Promise<string> {
   );
 }
 
-function findMaxImageNum(zip: JSZip): number {
+function findMaxImageNum(zip: ZipArchive): number {
   let maxImageNum = 0;
-  zip.forEach((relativePath) => {
+  for (const relativePath of zip.paths()) {
     const m = /^word\/media\/image(?<num>\d+)\./u.exec(relativePath);
     if (m) {
       // SAFETY: named group `num` always present when regex matches
@@ -779,25 +760,25 @@ function findMaxImageNum(zip: JSZip): number {
         maxImageNum = num;
       }
     }
-  });
+  }
   return maxImageNum;
 }
 
 async function registerImageExtensions(
-  zip: JSZip,
+  zip: ZipArchive,
   extensions: Set<string>,
   compressionLevel: number,
 ): Promise<void> {
   if (extensions.size === 0) {
     return;
   }
-  const ctFile = zip.file("[Content_Types].xml");
+  const ctFile = zip.entry("[Content_Types].xml");
   if (!ctFile) {
     return;
   }
 
   let ctXml = await ctFile
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   let changed = false;
   for (const ext of extensions) {
@@ -815,15 +796,7 @@ async function registerImageExtensions(
   if (!changed) {
     return;
   }
-  writeZipPart({
-    zip,
-    path: "[Content_Types].xml",
-    data: encodeUtf8(ctXml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  zip.set("[Content_Types].xml", ctXml, { level: compressionLevel });
 }
 
 function collectNewImages(blocks: BlockContent[]): DrawingContent[] {
@@ -926,7 +899,7 @@ function decodeDataUrl(dataUrl: string): {
  */
 async function processNewImages(
   parts: DocxPart[],
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
   let maxImageNum = findMaxImageNum(zip);
@@ -961,15 +934,7 @@ async function processNewImages(
       const newRId = mintRelationshipId(maxId);
 
       // Add binary to ZIP
-      writeZipPart({
-        zip,
-        path: mediaPath,
-        data: new Uint8Array(data),
-        options: {
-          compression: "DEFLATE",
-          compressionOptions: { level: compressionLevel },
-        },
-      });
+      zip.set(mediaPath, new Uint8Array(data), { level: compressionLevel });
 
       // Build relationship entry (target relative to the owning part).
       relEntries.push(
@@ -996,15 +961,7 @@ async function processNewImages(
         "</Relationships>",
         `${relEntries.join("")}</Relationships>`,
       );
-      writeZipPart({
-        zip,
-        path: relsPath,
-        data: encodeUtf8(updatedRelsXml),
-        options: {
-          compression: "DEFLATE",
-          compressionOptions: { level: compressionLevel },
-        },
-      });
+      zip.set(relsPath, updatedRelsXml, { level: compressionLevel });
     }
   }
 
@@ -1013,7 +970,7 @@ async function processNewImages(
 
 type MaterializeEmbeddedMediaOptions = {
   document: Document;
-  zip: JSZip;
+  zip: ZipArchive;
   compressionLevel: number;
 };
 
@@ -1034,14 +991,8 @@ const materializeEmbeddedMedia = async ({
     const extension = media.path.split(".").at(-1)?.toLowerCase();
     if (!extension || !/^[a-z0-9]+$/u.test(extension))
       panic("Embedded media has an invalid extension");
-    writeZipPart({
-      zip,
-      path: media.path,
-      data: new Uint8Array(media.data),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      },
+    zip.set(media.path, new Uint8Array(media.data), {
+      level: compressionLevel,
     });
     extensions.add(extension);
   }
@@ -1061,7 +1012,7 @@ export class CanonicalImageRelationshipRefusalError extends CanonicalImageRelati
 
 type PublishCanonicalImageResourcesOptions = {
   document: Document;
-  zip: JSZip;
+  zip: ZipArchive;
   compressionLevel: number;
 };
 
@@ -1192,14 +1143,8 @@ export const publishCanonicalImageResources = async ({
             "unsafeTarget",
             "A canonical inline picture media path does not match its relationship.",
           );
-        writeZipPart({
-          zip,
-          path: absolute,
-          data: new Uint8Array(media.data),
-          options: {
-            compression: "DEFLATE",
-            compressionOptions: { level: compressionLevel },
-          },
+        zip.set(absolute, new Uint8Array(media.data), {
+          level: compressionLevel,
         });
         const extension = absolute.split(".").at(-1)?.toLowerCase();
         if (!extension || !/^[a-z0-9]+$/u.test(extension))
@@ -1245,16 +1190,7 @@ export const publishCanonicalImageResources = async ({
       });
       changed = true;
     }
-    if (changed)
-      writeZipPart({
-        zip,
-        path: relsPath,
-        data: encodeUtf8(xml),
-        options: {
-          compression: "DEFLATE",
-          compressionOptions: { level: compressionLevel },
-        },
-      });
+    if (changed) zip.set(relsPath, xml, { level: compressionLevel });
   }
 };
 
@@ -1341,7 +1277,7 @@ const matchesExternalHyperlink = (
 /** Compare against the already loaded source ZIP, without mutating model or package. */
 export const hasUnmaterializedHyperlinkBindings = async (
   document: Document,
-  zip: JSZip,
+  zip: ZipArchive,
 ): Promise<boolean> => {
   for (const { blocks, relsPath } of collectDocxParts(document, zip)) {
     const resources = collectExternalHyperlinkResources(blocks);
@@ -1405,7 +1341,7 @@ const rebindCapturedDrawingLink = ({
 /** Materialize each modeled hyperlink against the actual owning ZIP relationship table. */
 async function processNewHyperlinks(
   parts: DocxPart[],
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
   for (const { relsPath, blocks } of parts) {
@@ -1511,15 +1447,7 @@ async function processNewHyperlinks(
     }
     if (relEntries.length > 0) {
       (root.elements ??= []).push(...relEntries);
-      writeZipPart({
-        zip,
-        path: relsPath,
-        data: encodeUtf8(captureVerbatimXml(root)),
-        options: {
-          compression: "DEFLATE",
-          compressionOptions: { level: compressionLevel },
-        },
-      });
+      zip.set(relsPath, captureVerbatimXml(root), { level: compressionLevel });
     }
   }
 }
@@ -1556,15 +1484,16 @@ export type RepackOptions = SaveDiagnosticOptions &
  * over every `word/*.xml` part including the ones a save left untouched.
  */
 const normalizePackageIdsInZip = async (
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> => {
   const xmlParts = new Map<string, string>();
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (!file.dir && path.startsWith("word/") && path.endsWith(".xml")) {
+  for (const file of zip.entries()) {
+    const { path } = file;
+    if (path.startsWith("word/") && path.endsWith(".xml")) {
       // oxlint-disable-next-line no-await-in-loop -- package parts share one id space and must be collected before rewriting
       const xml = await file
-        .async("uint8array")
+        .bytes()
         .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
       assertValidOoxmlNumericIds(xml, path);
       xmlParts.set(path, xml);
@@ -1576,15 +1505,7 @@ const normalizePackageIdsInZip = async (
   for (const [path, xml] of normalizedParts) {
     if (xml !== xmlParts.get(path)) {
       assertValidOoxmlNumericIds(xml, path);
-      writeZipPart({
-        zip,
-        path,
-        data: encodeUtf8(xml),
-        options: {
-          compression: "DEFLATE",
-          compressionOptions: { level: compressionLevel },
-        },
-      });
+      zip.set(path, xml, { level: compressionLevel });
     }
   }
 };
@@ -1597,27 +1518,19 @@ const EXTENDED_PROPERTIES_PATH = "docProps/app.xml";
  * holding none.
  */
 const normalizeAppVersionInZip = async (
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> => {
-  const extendedProperties = zip.file(EXTENDED_PROPERTIES_PATH);
+  const extendedProperties = zip.entry(EXTENDED_PROPERTIES_PATH);
   if (!extendedProperties) {
     return;
   }
   const xml = await extendedProperties
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   const normalized = normalizeAppVersionInExtendedProperties(xml);
   if (normalized !== xml) {
-    writeZipPart({
-      zip,
-      path: EXTENDED_PROPERTIES_PATH,
-      data: encodeUtf8(normalized),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      },
-    });
+    zip.set(EXTENDED_PROPERTIES_PATH, normalized, { level: compressionLevel });
   }
 };
 
@@ -1626,7 +1539,7 @@ const normalizeAppVersionInZip = async (
  * full repack and the selective save cannot drift into running different ones.
  */
 const normalizePackageOnSave = async (
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> => {
   await normalizePackageIdsInZip(zip, compressionLevel);
@@ -1639,16 +1552,14 @@ const normalizePackageOnSave = async (
  * content types name a part it does not hold.
  */
 const generateDocxZip = async (
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<ArrayBuffer> => {
   await reconcilePackageReferences(zip, compressionLevel);
   await normalizePackageOnSave(zip, compressionLevel);
-  return zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
-  });
+  return zip
+    .generate({ level: compressionLevel })
+    .then((bytes) => bytes.buffer);
 };
 
 /**
@@ -1692,7 +1603,7 @@ const originalDocumentPart = (
 
 type ParsedZipSource = {
   buffer: ArrayBuffer;
-  zip: JSZip;
+  zip: ZipArchive;
   document: OriginalDocumentPart | undefined;
   corePropertiesXml: string | undefined;
 };
@@ -1708,16 +1619,16 @@ const loadParsedZipSource = async (
     return cached;
   }
 
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   removeUnsafeEntries(zip);
   const [documentXml, corePropertiesXml] = await Promise.all([
     zip
-      .file("word/document.xml")
-      ?.async("uint8array")
+      .entry("word/document.xml")
+      ?.bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     zip
-      .file("docProps/core.xml")
-      ?.async("uint8array")
+      .entry("docProps/core.xml")
+      ?.bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
   ]);
   const source = {
@@ -1730,17 +1641,13 @@ const loadParsedZipSource = async (
   return source;
 };
 
-const cloneDocxZip = (source: JSZip): JSZip => {
-  const clone = new JSZip();
-  clone.files = { ...source.files };
-  return clone;
-};
+const cloneDocxZip = (source: ZipArchive): ZipArchive => source.clone();
 
 type FinishRepackOptions = SaveDiagnosticOptions &
   DocumentBodyAuthorityOptions & {
     document: Document;
-    originalZip: JSZip;
-    outputZip: JSZip;
+    originalZip: ZipArchive;
+    outputZip: ZipArchive;
     originalDocument: OriginalDocumentPart | undefined;
     originalCorePropertiesXml: string | undefined;
     compressionLevel: number;
@@ -1851,15 +1758,7 @@ const finishRepack = async ({
     ],
     compressionLevel,
   });
-  writeZipPart({
-    zip: outputZip,
-    path: "word/document.xml",
-    data: encodeUtf8(documentXml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  outputZip.set("word/document.xml", documentXml, { level: compressionLevel });
 
   await rebindWatermarkRelIds({
     document,
@@ -1914,14 +1813,8 @@ const finishRepack = async ({
       },
     );
 
-    writeZipPart({
-      zip: outputZip,
-      path: "docProps/core.xml",
-      data: encodeUtf8(updatedCoreProperties),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      },
+    outputZip.set("docProps/core.xml", updatedCoreProperties, {
+      level: compressionLevel,
     });
   }
 
@@ -1968,15 +1861,15 @@ async function repackDocxWithSectionEndpointRemoval({
   );
 
   // Load the original ZIP
-  const originalZip = await JSZip.loadAsync(doc.originalBuffer);
+  const originalZip = await ZipArchive.read(doc.originalBuffer);
   const [originalDocumentXml, originalCorePropertiesXml] = await Promise.all([
     originalZip
-      .file("word/document.xml")
-      ?.async("uint8array")
+      .entry("word/document.xml")
+      ?.bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     originalZip
-      .file("docProps/core.xml")
-      ?.async("uint8array")
+      .entry("docProps/core.xml")
+      ?.bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
   ]);
 
@@ -2042,40 +1935,13 @@ export async function repackDocxFromRaw(
     withoutOrphanCommentRanges(cloneExportDocument(doc)),
   );
 
-  // Create a new ZIP with all original files
-  const newZip = new JSZip();
-
-  // Copy all files from original ZIP
-  for (const [path, file] of Object.entries(rawContent.originalZip.files)) {
-    // Skip directories
-    if (file.dir) {
-      writeZipPart({
-        zip: newZip,
-        path,
-        data: new Uint8Array(),
-        options: { dir: true, date: file.date },
-      });
-      continue;
-    }
-
+  // Start from every part of the original package; parts the save leaves
+  // untouched pass through as their original compressed bytes.
+  const newZip = rawContent.originalZip.clone();
+  for (const path of newZip.paths()) {
     if (isUnsafePackagePath(path)) {
-      continue;
+      newZip.delete(path);
     }
-
-    // Get original file content
-    // oxlint-disable-next-line no-await-in-loop -- entries are decoded and written into the shared newZip in original order to keep deterministic output
-    const content = await file.async("arraybuffer");
-
-    // Add to new ZIP
-    writeZipPart({
-      zip: newZip,
-      path,
-      data: new Uint8Array(content),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      },
-    });
   }
 
   // Promote in-memory header/footer parts to real parts/relationships first, so
@@ -2130,15 +1996,7 @@ export async function repackDocxFromRaw(
       doc: exportDocument,
     });
   }
-  writeZipPart({
-    zip: newZip,
-    path: "word/document.xml",
-    data: encodeUtf8(documentXml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  newZip.set("word/document.xml", documentXml, { level: compressionLevel });
 
   // Rebind picture-watermark image rIds so each header references the image in
   // its own rels (materialization, run before image processing above, gave
@@ -2200,14 +2058,8 @@ export async function repackDocxFromRaw(
       ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     });
 
-    writeZipPart({
-      zip: newZip,
-      path: "docProps/core.xml",
-      data: encodeUtf8(updatedCoreProps),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      },
+    newZip.set("docProps/core.xml", updatedCoreProps, {
+      level: compressionLevel,
     });
   }
 
@@ -2381,44 +2233,28 @@ function withoutRelationships(
  * can neither read nor rewrite. Both sides are filtered on save.
  */
 async function dropAttachedTemplateReference(
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
-  const settingsFile = zip.file(SETTINGS_PART);
+  const settingsFile = zip.entry(SETTINGS_PART);
   if (!settingsFile) {
     return;
   }
-  const relsFile = zip.file(SETTINGS_RELS_PART);
+  const relsFile = zip.entry(SETTINGS_RELS_PART);
   const filtered = withoutAttachedTemplate(
     await settingsFile
-      .async("uint8array")
+      .bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     await relsFile
-      ?.async("uint8array")
+      ?.bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
   );
 
   if (filtered.settingsXml !== undefined) {
-    writeZipPart({
-      zip,
-      path: SETTINGS_PART,
-      data: encodeUtf8(filtered.settingsXml),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      },
-    });
+    zip.set(SETTINGS_PART, filtered.settingsXml, { level: compressionLevel });
   }
   if (filtered.relsXml !== undefined) {
-    writeZipPart({
-      zip,
-      path: SETTINGS_RELS_PART,
-      data: encodeUtf8(filtered.relsXml),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      },
-    });
+    zip.set(SETTINGS_RELS_PART, filtered.relsXml, { level: compressionLevel });
   }
 }
 
@@ -2427,38 +2263,30 @@ async function dropAttachedTemplateReference(
  * If the document already had comments, this is a no-op.
  */
 async function ensureCommentsContentType(
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
-  const ctFile = zip.file("[Content_Types].xml");
+  const ctFile = zip.entry("[Content_Types].xml");
   if (!ctFile) {
     return;
   }
 
   let ctXml = await ctFile
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   if (ctXml.toLowerCase().includes("/word/comments.xml")) {
     return;
   }
 
   const commentsPartPath =
-    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ??
+    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.path ??
     "word/comments.xml";
   // Insert before closing </Types>
   ctXml = ctXml.replace(
     "</Types>",
     `<Override PartName="/${commentsPartPath}" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
   );
-  writeZipPart({
-    zip,
-    path: "[Content_Types].xml",
-    data: encodeUtf8(ctXml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  zip.set("[Content_Types].xml", ctXml, { level: compressionLevel });
 }
 
 /**
@@ -2466,24 +2294,24 @@ async function ensureCommentsContentType(
  * If the document already had comments, this is a no-op.
  */
 async function ensureCommentsRelationship(
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
   const relsPath = "word/_rels/document.xml.rels";
-  const relsFile = zip.file(relsPath);
+  const relsFile = zip.entry(relsPath);
   if (!relsFile) {
     return;
   }
 
   let relsXml = await relsFile
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   if (relsXml.toLowerCase().includes("comments.xml")) {
     return;
   }
 
   const commentsPartPath =
-    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ??
+    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.path ??
     "word/comments.xml";
   // Generate a unique rId
   const newRId = `rId${findMaxRId(relsXml) + 1}`;
@@ -2492,15 +2320,7 @@ async function ensureCommentsRelationship(
     "</Relationships>",
     `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
   );
-  writeZipPart({
-    zip,
-    path: relsPath,
-    data: encodeUtf8(relsXml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  zip.set(relsPath, relsXml, { level: compressionLevel });
 }
 
 // ============================================================================
@@ -2523,25 +2343,15 @@ export async function updateDocumentXml(
   const { compressionLevel = 6 } = options;
 
   // Load original ZIP
-  const zip = await JSZip.loadAsync(originalBuffer);
+  const zip = await ZipArchive.read(originalBuffer);
 
   // Update document.xml
-  writeZipPart({
-    zip,
-    path: "word/document.xml",
-    data: encodeUtf8(newDocumentXml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  zip.set("word/document.xml", newDocumentXml, { level: compressionLevel });
 
   // Generate new DOCX
-  return zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
-  });
+  return zip
+    .generate({ level: compressionLevel })
+    .then((bytes) => bytes.buffer);
 }
 
 /**
@@ -2561,23 +2371,13 @@ export async function updateXmlFile(
 ): Promise<ArrayBuffer> {
   const { compressionLevel = 6 } = options;
 
-  const zip = await JSZip.loadAsync(originalBuffer);
+  const zip = await ZipArchive.read(originalBuffer);
 
-  writeZipPart({
-    zip,
-    path,
-    data: encodeUtf8(content),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  zip.set(path, content, { level: compressionLevel });
 
-  return zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
-  });
+  return zip
+    .generate({ level: compressionLevel })
+    .then((bytes) => bytes.buffer);
 }
 
 /**
@@ -2593,12 +2393,12 @@ export async function updateMultipleFiles(
   updates: Map<string, string | ArrayBuffer>,
   options: RepackOptions = {},
 ): Promise<ArrayBuffer> {
-  const zip = await JSZip.loadAsync(originalBuffer);
+  const zip = await ZipArchive.read(originalBuffer);
   return applyUpdatesToZip(zip, updates, options);
 }
 
 /**
- * Apply file updates to an already-loaded JSZip instance and generate the output.
+ * Apply file updates to an already-loaded ZipArchive instance and generate the output.
  * Use this when the zip is already loaded to avoid a redundant decompression pass.
  *
  * This is the selective save's exit, so it owes the package the same passes
@@ -2608,34 +2408,25 @@ export async function updateMultipleFiles(
  * malformed application version, can sit in a part it never touched.
  */
 export async function applyUpdatesToZip(
-  zip: JSZip,
+  zip: ZipArchive,
   updates: Map<string, string | ArrayBuffer>,
   options: RepackOptions = {},
 ): Promise<ArrayBuffer> {
   const { compressionLevel = 6 } = options;
 
   for (const [path, content] of updates) {
-    writeZipPart({
-      zip,
+    zip.set(
       path,
-      data:
-        typeof content === "string"
-          ? encodeUtf8(content)
-          : new Uint8Array(content),
-      options: {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      },
-    });
+      typeof content === "string"
+        ? encodeUtf8(content)
+        : new Uint8Array(content),
+      { level: compressionLevel },
+    );
   }
 
   await normalizePackageOnSave(zip, compressionLevel);
 
-  return await zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
-  });
+  return (await zip.generate({ level: compressionLevel })).buffer;
 }
 
 // ============================================================================
@@ -2657,18 +2448,18 @@ export async function addRelationship(
     targetMode?: "External" | "Internal";
   },
 ): Promise<{ buffer: ArrayBuffer; rId: string }> {
-  const zip = await JSZip.loadAsync(originalBuffer);
+  const zip = await ZipArchive.read(originalBuffer);
 
   // Read existing relationships
   const relsPath = "word/_rels/document.xml.rels";
-  const relsFile = zip.file(relsPath);
+  const relsFile = zip.entry(relsPath);
 
   if (!relsFile) {
     panic("document.xml.rels not found in DOCX");
   }
 
   const relsXml = await relsFile
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
 
   // Generate new rId
@@ -2687,13 +2478,9 @@ export async function addRelationship(
   );
 
   // Update the ZIP
-  writeZipPart({ zip, path: relsPath, data: encodeUtf8(updatedRelsXml) });
+  zip.set(relsPath, updatedRelsXml);
 
-  const buffer = await zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
-  });
+  const buffer = (await zip.generate({ level: 6 })).buffer;
 
   return { buffer, rId: newRId };
 }
@@ -2713,17 +2500,17 @@ export async function addMedia(
   data: ArrayBuffer,
   mimeType: string,
 ): Promise<{ buffer: ArrayBuffer; rId: string; path: string }> {
-  const zip = await JSZip.loadAsync(originalBuffer);
+  const zip = await ZipArchive.read(originalBuffer);
 
   // Determine media path
   const mediaPath = `word/media/${filename}`;
 
   // Add media file
-  writeZipPart({ zip, path: mediaPath, data: new Uint8Array(data) });
+  zip.set(mediaPath, new Uint8Array(data));
 
   // Add relationship
   const relResult = await addRelationship(
-    await zip.generateAsync({ type: "arraybuffer" }),
+    (await zip.generate({ compression: "store" })).buffer,
     {
       type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
       target: `media/${filename}`,
@@ -2731,10 +2518,10 @@ export async function addMedia(
   );
 
   // Update content types if needed
-  const contentTypesFile = zip.file("[Content_Types].xml");
+  const contentTypesFile = zip.entry("[Content_Types].xml");
   if (contentTypesFile) {
     const contentTypesXml = await contentTypesFile
-      .async("uint8array")
+      .bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
     const extension = filename.split(".").pop()?.toLowerCase() || "";
 
@@ -2752,19 +2539,11 @@ export async function addMedia(
         `${extensionElement}</Types>`,
       );
 
-      const finalZip = await JSZip.loadAsync(relResult.buffer);
-      writeZipPart({
-        zip: finalZip,
-        path: "[Content_Types].xml",
-        data: encodeUtf8(updatedContentTypes),
-      });
+      const finalZip = await ZipArchive.read(relResult.buffer);
+      finalZip.set("[Content_Types].xml", updatedContentTypes);
 
       return {
-        buffer: await finalZip.generateAsync({
-          type: "arraybuffer",
-          compression: "DEFLATE",
-          compressionOptions: { level: 6 },
-        }),
+        buffer: (await finalZip.generate({ level: 6 })).buffer,
         rId: relResult.rId,
         path: mediaPath,
       };
@@ -2822,12 +2601,12 @@ export function hasUnmaterializedHeaderFooter(doc: Document): boolean {
 }
 
 function findMaxHeaderFooterNum(
-  zip: JSZip,
+  zip: ZipArchive,
   prefix: "header" | "footer",
 ): number {
   let max = 0;
   const pattern = new RegExp(`^word/${prefix}(\\d+)\\.xml$`, "u");
-  zip.forEach((relativePath) => {
+  for (const relativePath of zip.paths()) {
     const m = pattern.exec(relativePath);
     if (m) {
       // SAFETY: capture group [1] always present when the regex matches.
@@ -2836,7 +2615,7 @@ function findMaxHeaderFooterNum(
         max = num;
       }
     }
-  });
+  }
   return max;
 }
 
@@ -2851,7 +2630,7 @@ function findMaxHeaderFooterNum(
  */
 async function materializeNewHeaderFooterParts(
   doc: Document,
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<Document> {
   if (!doc.package.headers?.size && !doc.package.footers?.size) return doc;
@@ -3022,31 +2801,23 @@ async function materializeNewHeaderFooterParts(
 
   const compressionOptions = { level: compressionLevel };
   if (relEntries.length > 0)
-    writeZipPart({
-      zip,
-      path: relsPath,
-      data: encodeUtf8(
-        relsXml.replace(
-          "</Relationships>",
-          `${relEntries.join("")}</Relationships>`,
-        ),
+    zip.set(
+      relsPath,
+      relsXml.replace(
+        "</Relationships>",
+        `${relEntries.join("")}</Relationships>`,
       ),
-      options: { compression: "DEFLATE", compressionOptions },
-    });
+      compressionOptions,
+    );
 
-  const ctFile = zip.file("[Content_Types].xml");
+  const ctFile = zip.entry("[Content_Types].xml");
   if (ctFile) {
     const original = await ctFile
-      .async("uint8array")
+      .bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
     const updated = registerContentTypeParts(original, contentTypeParts);
     if (updated !== original)
-      writeZipPart({
-        zip,
-        path: "[Content_Types].xml",
-        data: encodeUtf8(updated),
-        options: { compression: "DEFLATE", compressionOptions },
-      });
+      zip.set("[Content_Types].xml", updated, compressionOptions);
   }
   return doc;
 }
@@ -3135,7 +2906,7 @@ const appendCanonicalRelationship = ({
 
 type RebindWatermarkRelIdsOptions = {
   document: Document;
-  zip: JSZip;
+  zip: ZipArchive;
   compressionLevel: number;
   bodyAuthority: "canonical" | "model" | undefined;
 };
@@ -3288,7 +3059,7 @@ async function rebindWatermarkRelIds({
     if (
       bodyAuthority === "canonical" &&
       canonical.mode === "internal" &&
-      !zip.file(canonical.absolute)
+      !zip.entry(canonical.absolute)
     )
       throw new DocxPackageFidelityError(
         "A canonical picture watermark image part is missing",
@@ -3362,12 +3133,7 @@ async function rebindWatermarkRelIds({
   for (const path of changedPaths) {
     const xml = relsXmlByPath.get(path);
     if (xml) {
-      writeZipPart({
-        zip,
-        path,
-        data: encodeUtf8(xml),
-        options: { compression: "DEFLATE", compressionOptions },
-      });
+      zip.set(path, xml, compressionOptions);
     }
   }
 }
@@ -3379,7 +3145,7 @@ async function rebindWatermarkRelIds({
  * root can keep any prefix binding only the source document declared.
  */
 type CollectHeaderFooterUpdatesOptions = SaveDiagnosticOptions & {
-  sourceZip: JSZip;
+  sourceZip: ZipArchive;
 };
 
 export async function collectHeaderFooterUpdates(
@@ -3416,7 +3182,7 @@ export async function collectHeaderFooterUpdates(
         const bindings = sourceFile
           ? readRootNamespaceBindings(
               await sourceFile
-                .async("uint8array")
+                .bytes()
                 .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
             )
           : new Map<string, string>();
@@ -3441,7 +3207,7 @@ export async function collectHeaderFooterUpdates(
  */
 type SerializeHeadersFootersOptions = SaveDiagnosticOptions & {
   doc: Document;
-  zip: JSZip;
+  zip: ZipArchive;
   compressionLevel: number;
 };
 async function serializeHeadersFootersToZip({
@@ -3455,12 +3221,7 @@ async function serializeHeadersFootersToZip({
     sourceZip: zip,
     onDiagnostic,
   })) {
-    writeZipPart({
-      zip,
-      path: filename,
-      data: encodeUtf8(xml),
-      options: { compression: "DEFLATE", compressionOptions },
-    });
+    zip.set(filename, xml, compressionOptions);
   }
 }
 
@@ -3484,8 +3245,8 @@ async function serializeHeadersFootersToZip({
  */
 type SerializeNotesToZipOptions = {
   doc: Document;
-  originalZip: JSZip;
-  newZip: JSZip;
+  originalZip: ZipArchive;
+  newZip: ZipArchive;
   compressionLevel: number;
   changedNoteParaIds: ReadonlySet<string> | undefined;
 };
@@ -3565,7 +3326,7 @@ async function serializeNotesToZip({
 
 type MaterializeNewNotePartOptions = {
   contentType: string;
-  newZip: JSZip;
+  newZip: ZipArchive;
   partPath:
     | "word/settings.xml"
     | "word/footnotes.xml"
@@ -3598,64 +3359,50 @@ async function materializeNewNotePart({
 
   const compressionOptions = { level: compressionLevel };
   const contentTypesXml = await contentTypesFile
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   const partName = `/${partPath}`;
   if (!contentTypesXml.toLowerCase().includes(partName.toLowerCase())) {
-    writeZipPart({
-      zip: newZip,
-      path: contentTypesFile.name,
-      data: encodeUtf8(
-        contentTypesXml.replace(
-          "</Types>",
-          () =>
-            `<Override PartName="${partName}" ContentType="${contentType}"/></Types>`,
-        ),
+    newZip.set(
+      contentTypesFile.path,
+      contentTypesXml.replace(
+        "</Types>",
+        () =>
+          `<Override PartName="${partName}" ContentType="${contentType}"/></Types>`,
       ),
-      options: { compression: "DEFLATE", compressionOptions },
-    });
+      compressionOptions,
+    );
   }
 
   const relationshipsXml = await relationshipsFile
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   if (!relationshipsXml.includes(relationshipType)) {
     const relationshipId = `rId${findMaxRId(relationshipsXml) + 1}`;
     const target = partPath.slice("word/".length);
-    writeZipPart({
-      zip: newZip,
-      path: relationshipsFile.name,
-      data: encodeUtf8(
-        relationshipsXml.replace(
-          "</Relationships>",
-          () =>
-            `<Relationship Id="${relationshipId}" Type="${relationshipType}" Target="${target}"/></Relationships>`,
-        ),
+    newZip.set(
+      relationshipsFile.path,
+      relationshipsXml.replace(
+        "</Relationships>",
+        () =>
+          `<Relationship Id="${relationshipId}" Type="${relationshipType}" Target="${target}"/></Relationships>`,
       ),
-      options: { compression: "DEFLATE", compressionOptions },
-    });
+      compressionOptions,
+    );
   }
 
-  writeZipPart({
-    zip: newZip,
-    path: partPath,
-    data: encodeUtf8(serializedPart),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions,
-    },
-  });
+  newZip.set(partPath, serializedPart, compressionOptions);
 }
 
 /** Only this modeled switch changes on story lifecycle edits; preserve all other settings. */
 async function serializeHeaderFooterSettingsIntoZip(
   doc: Document,
-  zip: JSZip,
+  zip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
   if (!doc.package.settings) return;
   const enabled = doc.package.settings.evenAndOddHeaders;
-  const file = zip.file(SETTINGS_PART);
+  const file = zip.entry(SETTINGS_PART);
   if (!file) {
     if (enabled === undefined) return;
     await materializeNewNotePart({
@@ -3670,7 +3417,7 @@ async function serializeHeaderFooterSettingsIntoZip(
     return;
   }
   const xml = await file
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   if (parseSettings(xml).evenAndOddHeaders === enabled) return;
   const patched = updateEvenAndOddHeaders(xml, enabled);
@@ -3678,15 +3425,7 @@ async function serializeHeaderFooterSettingsIntoZip(
     throw new DocxPackageFidelityError(
       "Cannot update malformed header/footer settings",
     );
-  writeZipPart({
-    zip,
-    path: file.name,
-    data: encodeUtf8(patched),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  zip.set(file.path, patched, { level: compressionLevel });
 }
 
 /**
@@ -3714,8 +3453,8 @@ const numberingBaselines = new WeakMap<Document, NumberingBaseline>();
 
 async function serializeNumberingIntoZip(
   doc: Document,
-  originalZip: JSZip,
-  newZip: JSZip,
+  originalZip: ZipArchive,
+  newZip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
   const numbering = doc.package.numbering;
@@ -3741,7 +3480,7 @@ async function serializeNumberingIntoZip(
   let baseline = doc.originalBuffer ? numberingBaselines.get(doc) : undefined;
   if (!baseline || baseline.originalBuffer !== doc.originalBuffer) {
     const originalXml = await file
-      .async("uint8array")
+      .bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
     baseline = {
       originalBuffer: doc.originalBuffer,
@@ -3763,15 +3502,7 @@ async function serializeNumberingIntoZip(
   if (patched === null || patched === baseline.originalXml) {
     return;
   }
-  writeZipPart({
-    zip: newZip,
-    path: file.name,
-    data: encodeUtf8(patched),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  newZip.set(file.path, patched, { level: compressionLevel });
 }
 
 const STYLES_PART_PATH = "word/styles.xml";
@@ -3925,7 +3656,7 @@ type AddedStylesPlan =
 /** One append-only style owner for full repack and selective overlays. */
 export async function planAddedStyles(
   doc: Document,
-  originalZip: JSZip,
+  originalZip: ZipArchive,
 ): Promise<AddedStylesPlan> {
   const styles = doc.package.styles;
   if (!styles || styles.styles.length === 0) {
@@ -3933,9 +3664,7 @@ export async function planAddedStyles(
   }
   const file = findNotePartEntry(originalZip, STYLES_PART_PATH);
   const originalXml = file
-    ? await file
-        .async("uint8array")
-        .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
+    ? await file.bytes().then((bytes) => decodeText(bytes, { ignoreBOM: true }))
     : null;
   // The root closes under whatever prefix the part binds WordprocessingML
   // to. Reading only `</w:styles>` took an `x:styles` part for "no usable
@@ -3977,17 +3706,17 @@ export async function planAddedStyles(
       .map((style) =>
         canonical
           ? serializeStyle(style)
-          : selfBoundFragment(serializeStyle(style), file.name),
+          : selfBoundFragment(serializeStyle(style), file.path),
       )
       .join("") +
     originalXml.slice(rootClose);
-  return { type: "patch", path: file.name, xml: patched };
+  return { type: "patch", path: file.path, xml: patched };
 }
 
 async function serializeAddedStylesIntoZip(
   doc: Document,
-  originalZip: JSZip,
-  newZip: JSZip,
+  originalZip: ZipArchive,
+  newZip: ZipArchive,
   compressionLevel: number,
 ): Promise<void> {
   const plan = await planAddedStyles(doc, originalZip);
@@ -4006,15 +3735,7 @@ async function serializeAddedStylesIntoZip(
       });
       return;
     case "patch":
-      writeZipPart({
-        zip: newZip,
-        path: plan.path,
-        data: encodeUtf8(plan.xml),
-        options: {
-          compression: "DEFLATE",
-          compressionOptions: { level: compressionLevel },
-        },
-      });
+      newZip.set(plan.path, plan.xml, { level: compressionLevel });
       return;
     default: {
       const exhaustive: never = plan;
@@ -4030,8 +3751,8 @@ type PatchNotePartIntoZipOptions = {
   baselineFrom: (originalXml: string) => string;
   elementName: "footnote" | "endnote";
   changedNoteParaIds: ReadonlySet<string> | undefined;
-  originalZip: JSZip;
-  newZip: JSZip;
+  originalZip: ZipArchive;
+  newZip: ZipArchive;
   compressionLevel: number;
 };
 
@@ -4116,7 +3837,7 @@ async function patchNotePartIntoZip({
     return;
   }
   const originalXml = await file
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   const baselineXml = baselineFrom(originalXml);
   const effectiveChangedNoteParaIds =
@@ -4137,20 +3858,12 @@ async function patchNotePartIntoZip({
       currentParaIds.has(paraId),
     ),
     elementName,
-    partName: file.name,
+    partName: file.path,
   });
   if (patchedXml === null || patchedXml === originalXml) {
     return;
   }
-  writeZipPart({
-    zip: newZip,
-    path: file.name,
-    data: encodeUtf8(patchedXml),
-    options: {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    },
-  });
+  newZip.set(file.path, patchedXml, { level: compressionLevel });
 }
 
 /** `word/Footnotes.xml` -> `word/_rels/Footnotes.xml.rels` (casing preserved). */
@@ -4164,15 +3877,16 @@ export function notePartRelsPath(partPath: string): string {
  * cased the entry differently still resolves to the existing part.
  */
 function findNotePartEntry(
-  zip: JSZip,
+  zip: ZipArchive,
   conventionalLowerPath: string,
-): JSZip.JSZipObject | null {
-  const direct = zip.file(conventionalLowerPath);
+): ZipEntry | null {
+  const direct = zip.entry(conventionalLowerPath);
   if (direct) {
     return direct;
   }
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (!file.dir && path.toLowerCase() === conventionalLowerPath) {
+  for (const file of zip.entries()) {
+    const { path } = file;
+    if (path.toLowerCase() === conventionalLowerPath) {
       return file;
     }
   }
@@ -4332,14 +4046,13 @@ export function createEmptyDocx(
 const createEmptyDocxZip = ({
   creator,
   application,
-}: DocumentPropertiesOptions): JSZip => {
-  const zip = new JSZip();
+}: DocumentPropertiesOptions): ZipArchive => {
+  const zip = new ZipArchive();
 
   // Content Types
-  writeZipPart({
-    zip,
-    path: "[Content_Types].xml",
-    data: encodeUtf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  zip.set(
+    "[Content_Types].xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
@@ -4347,36 +4060,33 @@ const createEmptyDocxZip = ({
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
-</Types>`),
-  });
+</Types>`,
+  );
 
   // Package relationships
-  writeZipPart({
-    zip,
-    path: "_rels/.rels",
-    data: encodeUtf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  zip.set(
+    "_rels/.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
-</Relationships>`),
-  });
+</Relationships>`,
+  );
 
   // Document relationships
-  writeZipPart({
-    zip,
-    path: "word/_rels/document.xml.rels",
-    data: encodeUtf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  zip.set(
+    "word/_rels/document.xml.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>`),
-  });
+</Relationships>`,
+  );
 
   // Document
-  writeZipPart({
-    zip,
-    path: "word/document.xml",
-    data: encodeUtf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  zip.set(
+    "word/document.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
     <w:p>
@@ -4389,15 +4099,11 @@ const createEmptyDocxZip = ({
       <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
     </w:sectPr>
   </w:body>
-</w:document>`),
-  });
+</w:document>`,
+  );
 
   // Minimal styles
-  writeZipPart({
-    zip,
-    path: STYLES_PART_PATH,
-    data: encodeUtf8(SEED_STYLES_XML),
-  });
+  zip.set(STYLES_PART_PATH, SEED_STYLES_XML);
 
   // Core properties
   const now = new Date().toISOString();
@@ -4405,28 +4111,26 @@ const createEmptyDocxZip = ({
     creator === undefined
       ? ""
       : `\n  <dc:creator>${escapeXmlText(creator)}</dc:creator>`;
-  writeZipPart({
-    zip,
-    path: "docProps/core.xml",
-    data: encodeUtf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  zip.set(
+    "docProps/core.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${creatorElement}
   <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
-</cp:coreProperties>`),
-  });
+</cp:coreProperties>`,
+  );
 
   // App properties
   const applicationElements =
     application === undefined
       ? ""
       : `\n  <Application>${escapeXmlText(application)}</Application>\n  <AppVersion>${CREATED_APP_VERSION}</AppVersion>`;
-  writeZipPart({
-    zip,
-    path: "docProps/app.xml",
-    data: encodeUtf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  zip.set(
+    "docProps/app.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">${applicationElements}
-</Properties>`),
-  });
+</Properties>`,
+  );
 
   return zip;
 };
@@ -4465,8 +4169,8 @@ export async function createDocx(
     outputZip: zip,
     originalDocument: undefined,
     originalCorePropertiesXml: await zip
-      .file("docProps/core.xml")
-      ?.async("uint8array")
+      .entry("docProps/core.xml")
+      ?.bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     compressionLevel: 6,
     updateModifiedDate: true,
@@ -4478,7 +4182,7 @@ export async function createDocx(
 const createDocumentSeedZip = async (
   doc: Document,
   properties: DocumentPropertiesOptions,
-): Promise<JSZip> => {
+): Promise<ZipArchive> => {
   const zip = createEmptyDocxZip(properties);
   const relationships: string[] = [
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>',
@@ -4489,24 +4193,14 @@ const createDocumentSeedZip = async (
   const styleDefinitions = styleDefinitionsToSerialize(doc);
   if (styleDefinitions) {
     assertStyleNumberingReferences(doc);
-    writeZipPart({
-      zip,
-      path: STYLES_PART_PATH,
-      data: encodeUtf8(serializeStylesXml(styleDefinitions)),
-    });
+    zip.set(STYLES_PART_PATH, serializeStylesXml(styleDefinitions));
   } else {
-    writeZipPart({
-      zip,
-      path: STYLES_PART_PATH,
-      data: encodeUtf8(
-        seedStylesXmlWith(
-          missingNoteReferenceStyles(
-            undefined,
-            noteReferenceNeeds(doc.package),
-          ),
-        ),
+    zip.set(
+      STYLES_PART_PATH,
+      seedStylesXmlWith(
+        missingNoteReferenceStyles(undefined, noteReferenceNeeds(doc.package)),
       ),
-    });
+    );
   }
 
   const numbering = doc.package.numbering;
@@ -4514,11 +4208,7 @@ const createDocumentSeedZip = async (
     numbering &&
     (numbering.abstractNums.length > 0 || numbering.nums.length > 0)
   ) {
-    writeZipPart({
-      zip,
-      path: "word/numbering.xml",
-      data: encodeUtf8(serializeNumberingXml(numbering)),
-    });
+    zip.set("word/numbering.xml", serializeNumberingXml(numbering));
     relationships.push(
       relationshipXml(nextRelationshipId, "numbering", "numbering.xml"),
     );
@@ -4532,11 +4222,7 @@ const createDocumentSeedZip = async (
   }
 
   if (doc.package.theme) {
-    writeZipPart({
-      zip,
-      path: "word/theme/theme1.xml",
-      data: encodeUtf8(serializeThemeXml(doc.package.theme)),
-    });
+    zip.set("word/theme/theme1.xml", serializeThemeXml(doc.package.theme));
     relationships.push(
       relationshipXml(nextRelationshipId, "theme", "theme/theme1.xml"),
     );
@@ -4550,11 +4236,7 @@ const createDocumentSeedZip = async (
   }
 
   if (doc.package.fontTable && doc.package.fontTable.fonts.length > 0) {
-    writeZipPart({
-      zip,
-      path: "word/fontTable.xml",
-      data: encodeUtf8(serializeFontTableXml(doc.package.fontTable)),
-    });
+    zip.set("word/fontTable.xml", serializeFontTableXml(doc.package.fontTable));
     relationships.push(
       relationshipXml(nextRelationshipId, "fontTable", "fontTable.xml"),
     );
@@ -4568,11 +4250,7 @@ const createDocumentSeedZip = async (
   }
 
   if (doc.package.settings) {
-    writeZipPart({
-      zip,
-      path: "word/settings.xml",
-      data: encodeUtf8(serializeSettingsXml(doc.package.settings)),
-    });
+    zip.set("word/settings.xml", serializeSettingsXml(doc.package.settings));
     relationships.push(
       relationshipXml(nextRelationshipId, "settings", "settings.xml"),
     );
@@ -4584,28 +4262,22 @@ const createDocumentSeedZip = async (
     );
   }
 
-  writeZipPart({
-    zip,
-    path: "word/_rels/document.xml.rels",
-    data: encodeUtf8(
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`,
-    ),
-  });
+  zip.set(
+    "word/_rels/document.xml.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`,
+  );
   if (overrides.length > 0) {
-    const contentTypesFile = zip.file("[Content_Types].xml");
+    const contentTypesFile = zip.entry("[Content_Types].xml");
     if (!contentTypesFile) {
       panic("Fresh DOCX seed is missing [Content_Types].xml");
     }
     const contentTypes = await contentTypesFile
-      .async("uint8array")
+      .bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
-    writeZipPart({
-      zip,
-      path: "[Content_Types].xml",
-      data: encodeUtf8(
-        contentTypes.replace("</Types>", `${overrides.join("")}\n</Types>`),
-      ),
-    });
+    zip.set(
+      "[Content_Types].xml",
+      contentTypes.replace("</Types>", `${overrides.join("")}\n</Types>`),
+    );
   }
 
   return zip;

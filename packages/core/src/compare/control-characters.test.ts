@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
@@ -11,17 +12,17 @@ const documentWithParagraphs = async (
   const source = await buildBodySequenceDocx([
     { kind: "paragraph", text: "placeholder" },
   ]);
-  const zip = await JSZip.loadAsync(source);
-  const document = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(source);
+  const document = zip.entry("word/document.xml");
   if (!document) {
     throw new Error("The synthetic DOCX fixture has no primary document part.");
   }
-  const xml = await document.async("text");
+  const xml = await document.text();
   const sectionProperties = /<w:sectPr\b[\s\S]*?<\/w:sectPr>/u.exec(xml)?.[0];
   if (!sectionProperties) {
     throw new Error("The synthetic DOCX fixture has no section properties.");
   }
-  zip.file(
+  zip.set(
     "word/document.xml",
     xml.replace(
       /<w:body>[\s\S]*?<\/w:body>/u,
@@ -33,16 +34,16 @@ const documentWithParagraphs = async (
         .join("")}${sectionProperties}</w:body>`,
     ),
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 const rawControlElements = async (buffer: ArrayBuffer): Promise<string[]> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const document = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(buffer);
+  const document = zip.entry("word/document.xml");
   if (!document) {
     throw new Error("The compared DOCX has no primary document part.");
   }
-  return [...(await document.async("text")).matchAll(/<w:(tab|br)\b/gu)].map(
+  return [...(await document.text()).matchAll(/<w:(tab|br)\b/gu)].map(
     ([, element]) => element ?? "",
   );
 };

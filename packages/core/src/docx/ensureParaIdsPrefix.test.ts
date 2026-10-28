@@ -9,7 +9,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -58,10 +59,10 @@ const twoParagraphs = async (): Promise<Uint8Array> =>
 
 const documentPart = async (docx: Uint8Array): Promise<string> => {
   const text = await (
-    await JSZip.loadAsync(docx)
+    await ZipArchive.read(docx)
   )
-    .file("word/document.xml")
-    ?.async("text");
+    .entry("word/document.xml")
+    ?.text();
   if (text === undefined) throw new Error("word/document.xml missing");
   return text;
 };
@@ -70,9 +71,9 @@ const withDocumentPart = async (
   docx: Uint8Array,
   xml: string,
 ): Promise<Uint8Array> => {
-  const zip = await JSZip.loadAsync(docx);
-  zip.file("word/document.xml", xml);
-  return zip.generateAsync({ type: "uint8array" });
+  const zip = await ZipArchive.read(docx);
+  zip.set("word/document.xml", xml);
+  return zip.generate({ compression: "store" });
 };
 
 const respelled = async (
@@ -352,22 +353,22 @@ test(
             relationshipPrefix === ""
               ? `xmlns="${PACKAGE_REL_URI}"`
               : `xmlns:${relationshipPrefix}="${PACKAGE_REL_URI}"`;
-          const zip = new JSZip();
-          zip.file(
+          const zip = new ZipArchive();
+          zip.set(
             "_rels/.rels",
             `<${rels} ${relDeclaration}><${rel} Id="rId1" Type="${relationshipProfile}/officeDocument" Target="${target}"/></${rels}>`,
           );
-          zip.file(mainPart, xml);
-          zip.file(
+          zip.set(mainPart, xml);
+          zip.set(
             "word/comments.xml",
             `<w:comments xmlns:w="${W_URI}" xmlns:ids="${W14_URI}"><w:p ids:paraId="FEED0003"/></w:comments>`,
           );
-          const input = await zip.generateAsync({ type: "uint8array" });
+          const input = await zip.generate({ compression: "store" });
           const normalized = await ensureParaIds(input);
           expect(normalized.assigned).toBe(paragraphCount + 2);
           expect(normalized.deduplicated).toBe(1);
-          const saved = await JSZip.loadAsync(normalized.docx);
-          const output = await saved.file(mainPart)?.async("text");
+          const saved = await ZipArchive.read(normalized.docx);
+          const output = await saved.entry(mainPart)?.text();
           expect(output).toBeDefined();
           const root = parseXmlDocument(output ?? "");
           if (root === null) throw new Error("normalized fixture has no root");
@@ -389,8 +390,8 @@ test(
           expect(output).toContain(foreign);
           expect(output).toContain(fallback);
           expect(output).toContain("<other:t>Unchanged</other:t>");
-          expect(await saved.file("word/comments.xml")?.async("text")).toBe(
-            await zip.file("word/comments.xml")?.async("text"),
+          expect(await saved.entry("word/comments.xml")?.text()).toBe(
+            await zip.entry("word/comments.xml")?.text(),
           );
           const again = await ensureParaIds(normalized.docx);
           expect(again.alreadyComplete).toBe(true);
@@ -398,11 +399,7 @@ test(
           expect(again.mintedParaIds).toEqual([]);
           const repeat = await ensureParaIds(input);
           expect(
-            await (
-              await JSZip.loadAsync(repeat.docx)
-            )
-              .file(mainPart)
-              ?.async("text"),
+            await (await ZipArchive.read(repeat.docx)).entry(mainPart)?.text(),
           ).toBe(output);
         },
       ),
@@ -427,16 +424,16 @@ for (const malformed of [
 }
 
 test("a missing officeDocument target is refused at the attribute boundary", async () => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "_rels/.rels",
     `<Relationships xmlns="${PACKAGE_REL_URI}"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `<w:document xmlns:w="${W_URI}"><w:body><w:p/></w:body></w:document>`,
   );
   await expect(
-    ensureParaIds(await zip.generateAsync({ type: "uint8array" })),
+    ensureParaIds(await zip.generate({ compression: "store" })),
   ).rejects.toBeInstanceOf(EnsureParaIdsError);
 });

@@ -20,8 +20,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
@@ -171,34 +171,34 @@ const markerGroup = (subject: MarkerCase): string => {
 };
 
 const buildDocx = async (subject: MarkerCase): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const zip = await ZipArchive.read(await createEmptyDocx());
   const commented = isCommentRange(subject.marker);
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body>` +
       `<w:p><w:r><w:t>before</w:t></w:r>${markerGroup(subject)}<w:r><w:t>after</w:t></w:r></w:p>` +
       `<w:sectPr/></w:body></w:document>`,
   );
   if (commented) {
-    zip.file(
+    zip.set(
       "word/comments.xml",
       `${XML_DECLARATION}<w:comments xmlns:w="${W_NAMESPACE}">` +
         `<w:comment w:id="${COMMENT_ID}" w:author="A" w:date="2024-01-01T00:00:00Z">` +
         `<w:p><w:r><w:t>note</w:t></w:r></w:p></w:comment></w:comments>`,
     );
-    const types = await zip.file("[Content_Types].xml")?.async("text");
-    const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const types = await zip.entry("[Content_Types].xml")?.text();
+    const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
     if (types === undefined || rels === undefined) {
       throw new Error("the empty package lost its packaging parts");
     }
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
       types.replace(
         "</Types>",
         '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>',
       ),
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       rels.replace(
         "</Relationships>",
@@ -206,7 +206,7 @@ const buildDocx = async (subject: MarkerCase): Promise<ArrayBuffer> => {
       ),
     );
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** The attributes of the first `w:<marker>` element in the saved part. */
@@ -265,9 +265,8 @@ const saveEdited = async ({
   }
   editFirstParagraph(first);
   const saved = await repackDocx(document, { updateModifiedDate: false });
-  const zip = await JSZip.loadAsync(saved);
-  const documentXml =
-    (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const zip = await ZipArchive.read(saved);
+  const documentXml = (await zip.entry("word/document.xml")?.text()) ?? "";
   return {
     documentXml,
     violations: validateOoxmlPart({

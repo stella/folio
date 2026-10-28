@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { DocumentBody } from "../types/document";
 import { parseDocx } from "./parser";
@@ -122,8 +123,8 @@ describe("normalizeTrackedMoveRanges", () => {
     );
 
     const repacked = await repackDocx(doc, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(repacked);
-    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const zip = await ZipArchive.read(repacked);
+    const documentXml = await zip.entry("word/document.xml")?.text();
 
     expect(documentXml).not.toContain("moveFromRangeStart");
     expect(documentXml).not.toContain("moveToRangeStart");
@@ -136,8 +137,8 @@ describe("normalizeTrackedMoveRanges", () => {
 });
 
 const createUnbalancedMoveRangeFixture = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -146,19 +147,19 @@ const createUnbalancedMoveRangeFixture = async (): Promise<ArrayBuffer> => {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -171,5 +172,5 @@ const createUnbalancedMoveRangeFixture = async (): Promise<ArrayBuffer> => {
   </w:body>
 </w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };

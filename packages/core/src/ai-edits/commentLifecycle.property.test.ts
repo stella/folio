@@ -23,7 +23,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -427,9 +428,8 @@ const expectPackageConsistent = async (
   saved: ArrayBuffer,
   threads: readonly { id: number }[],
 ): Promise<void> => {
-  const zip = await JSZip.loadAsync(saved);
-  const read = async (path: string) =>
-    (await zip.file(path)?.async("text")) ?? "";
+  const zip = await ZipArchive.read(saved);
+  const read = async (path: string) => (await zip.entry(path)?.text()) ?? "";
   const documentXml = await read("word/document.xml");
   const footnotesXml = await read("word/footnotes.xml");
   expectBalanced("document", documentXml);

@@ -1,6 +1,5 @@
-import { panic } from "better-result";
+import { panic, Result } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import JSZip from "jszip";
 
 import { decodeText } from "@stll/utf8-boundaries";
 
@@ -31,16 +30,9 @@ import {
   paragraphNumberingReferenceId,
 } from "../model/paragraphNumbering";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { ZipArchive, type ZipEntry, ZipError } from "../zip/archive";
 import { validatePackageGraph } from "./packageGraph";
 import { validateSchemaAttributes } from "./schemaAttributes";
-
-declare module "jszip" {
-  // oxlint-disable-next-line typescript/consistent-type-definitions -- declaration merging requires an interface
-  interface JSZipObject {
-    /** Chunked read of the entry content, missing from the published typings. */
-    internalStream(type: "uint8array"): JSZip.JSZipStreamHelper<Uint8Array>;
-  }
-}
 
 export const DOCX_PACKAGE_ISSUE_CODES = {
   ArchiveBoundsExceeded: "archive_bounds_exceeded",
@@ -108,26 +100,6 @@ const packageXmlParser = new XMLParser({
   ignoreDeclaration: true,
 });
 
-type ZipEntryWithMetadata = {
-  _data?: { uncompressedSize?: number; compressedSize?: number };
-};
-
-const getDeclaredUncompressedSize = (
-  file: JSZip.JSZipObject,
-): number | null => {
-  const metadata = (file as JSZip.JSZipObject & ZipEntryWithMetadata)._data;
-  return typeof metadata?.uncompressedSize === "number"
-    ? metadata.uncompressedSize
-    : null;
-};
-
-const getCompressedSize = (file: JSZip.JSZipObject): number | null => {
-  const metadata = (file as JSZip.JSZipObject & ZipEntryWithMetadata)._data;
-  return typeof metadata?.compressedSize === "number"
-    ? metadata.compressedSize
-    : null;
-};
-
 const RATIO_BOUNDED_EXTENSIONS: ReadonlySet<string> = new Set([
   "xml",
   "rels",
@@ -145,163 +117,101 @@ const isRatioBoundedPart = (path: string): boolean =>
     path.slice(path.lastIndexOf(".") + 1).toLowerCase(),
   );
 
-const exceedsCompressionRatio = (
-  inflatedBytes: number,
-  compressedBytes: number | null,
-): boolean =>
-  compressedBytes !== null &&
-  inflatedBytes > VALIDATE_DOCX_COMPRESSION_RATIO_GRACE_BYTES &&
-  inflatedBytes > compressedBytes * VALIDATE_DOCX_MAX_COMPRESSION_RATIO;
-
-/**
- * Upper bound on the archive's central-directory records, counted before JSZip
- * builds an object per record: each record starts with the `PK\x01\x02`
- * signature, so JSZip cannot find more records than there are signatures.
- */
-const countCentralDirectoryRecords = (
-  bytes: Uint8Array,
-  stopAfter: number,
-): number => {
-  let count = 0;
-  let offset = bytes.indexOf(0x50);
-  while (offset !== -1 && offset + 3 < bytes.length) {
-    if (
-      bytes[offset + 1] === 0x4b &&
-      bytes[offset + 2] === 0x01 &&
-      bytes[offset + 3] === 0x02
-    ) {
-      count += 1;
-      if (count > stopAfter) {
-        return count;
-      }
-    }
-    offset = bytes.indexOf(0x50, offset + 1);
+/** The archive refusal `validateDocxPackage` reports for a read limit. */
+const archiveBoundsMessage = (error: ZipError): string | null => {
+  const entry = error.path === undefined ? "" : ` entry "${error.path}"`;
+  switch (error.reason) {
+    case "too-many-entries":
+      return `Generated DOCX holds more than ${VALIDATE_DOCX_MAX_ENTRIES} archive entries.`;
+    case "entry-too-large":
+      return `Generated DOCX${entry} declares more than ${VALIDATE_DOCX_MAX_ENTRY_BYTES} uncompressed bytes.`;
+    case "total-too-large":
+      return `Generated DOCX declares more than ${VALIDATE_DOCX_MAX_TOTAL_BYTES} cumulative uncompressed bytes.`;
+    case "compression-ratio":
+      return error.path === undefined
+        ? `Generated DOCX declares more than ${VALIDATE_DOCX_MAX_COMPRESSION_RATIO} uncompressed bytes per archive byte.`
+        : `Generated DOCX${entry} declares more than ${VALIDATE_DOCX_MAX_COMPRESSION_RATIO} uncompressed bytes per compressed byte.`;
+    case "declared-size-exceeded":
+      return `Generated DOCX${entry} inflates past its declared size.`;
+    case "corrupt-entry":
+      return `Generated DOCX${entry} does not match its declared size and checksum.`;
+    case "malformed":
+    case "unsupported":
+    case "invalid-entry-name":
+    case "duplicate-entry":
+      return null;
   }
-  return count;
 };
 
 type BoundedEntryRead =
-  { ok: true; bytes: Uint8Array } | { ok: false; error: string };
-
-const concatChunks = (
-  chunks: readonly Uint8Array[],
-  totalBytes: number,
-): Uint8Array => {
-  const merged = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged;
-};
+  { ok: true; text: string } | { ok: false; error: string };
 
 /**
- * Inflate one entry chunk by chunk and stop as soon as it passes `maxBytes`,
- * its declared size or the compression-ratio cap. JSZip compares an entry
- * with its declared size only after inflating all of it, so the declared
- * size alone does not bound the allocation.
+ * Read one XML part, refusing it from its declared size before inflating.
+ * Inflation itself stops at the declared size.
  */
-const readEntryWithinBounds = async (
-  entry: JSZip.JSZipObject,
+const readXmlPart = async (
+  entry: ZipEntry,
   maxBytes: number,
 ): Promise<BoundedEntryRead> => {
-  const declaredBytes = getDeclaredUncompressedSize(entry);
-  const compressedBytes = getCompressedSize(entry);
-  return await new Promise<BoundedEntryRead>((resolve, reject) => {
-    const stream = entry.internalStream("uint8array");
-    const chunks: Uint8Array[] = [];
-    let entryBytes = 0;
-    let settled = false;
-    const stop = (error: string) => {
-      settled = true;
-      stream.pause();
-      resolve({ ok: false, error });
+  if (entry.size > maxBytes) {
+    return {
+      ok: false,
+      error: `Generated DOCX ${entry.path} declares ${entry.size} uncompressed bytes, over the ${maxBytes}-byte limit.`,
     };
-    stream
-      .on("data", (chunk) => {
-        if (settled) {
-          return;
-        }
-        entryBytes += chunk.length;
-        if (declaredBytes !== null && entryBytes > declaredBytes) {
-          stop(
-            `Generated DOCX entry "${entry.name}" inflates past its declared size.`,
-          );
-          return;
-        }
-        if (exceedsCompressionRatio(entryBytes, compressedBytes)) {
-          stop(
-            `Generated DOCX entry "${entry.name}" exceeds the ${VALIDATE_DOCX_MAX_COMPRESSION_RATIO}:1 compression ratio limit.`,
-          );
-          return;
-        }
-        if (entryBytes > maxBytes) {
-          stop(
-            `Generated DOCX ${entry.name} exceeds the ${maxBytes}-byte limit.`,
-          );
-          return;
-        }
-        chunks.push(chunk);
-      })
-      .on("end", () => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve({ ok: true, bytes: concatChunks(chunks, entryBytes) });
-      })
-      .on("error", (error) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        reject(error);
-      })
-      .resume();
+  }
+  const bytes = await Result.tryPromise({
+    try: async () => await entry.bytes(),
+    catch: (cause) => cause,
   });
+  if (Result.isOk(bytes)) return { ok: true, text: decodeText(bytes.value) };
+  const error = bytes.error;
+  if (!(error instanceof ZipError)) throw error;
+  return { ok: false, error: archiveBoundsMessage(error) ?? error.message };
 };
 
-/**
- * Reject an archive whose entry count or declared uncompressed size (total
- * or per-entry) exceeds the local bounds above, before any part is inflated.
- * A declared size JSZip could not determine is skipped rather than treated
- * as unbounded — the per-entry cap below still bounds what an inflate call
- * can actually produce once it runs.
- */
-const checkDocxArchiveBounds = (
-  zip: JSZip,
-  archiveBytes: number,
-): string | null => {
-  const entries = Object.values(zip.files);
-  if (entries.length > VALIDATE_DOCX_MAX_ENTRIES) {
-    return `Generated DOCX declares ${entries.length} archive entries, over the ${VALIDATE_DOCX_MAX_ENTRIES}-entry limit.`;
-  }
-
-  let totalUncompressedBytes = 0;
-  for (const entry of entries) {
-    const declaredBytes = getDeclaredUncompressedSize(entry);
-    if (declaredBytes === null) {
-      continue;
-    }
-    if (declaredBytes > VALIDATE_DOCX_MAX_ENTRY_BYTES) {
-      return `Generated DOCX entry "${entry.name}" declares ${declaredBytes} uncompressed bytes, over the ${VALIDATE_DOCX_MAX_ENTRY_BYTES}-byte limit.`;
-    }
-    if (
-      isRatioBoundedPart(entry.name) &&
-      exceedsCompressionRatio(declaredBytes, getCompressedSize(entry))
-    ) {
-      return `Generated DOCX entry "${entry.name}" declares more than ${VALIDATE_DOCX_MAX_COMPRESSION_RATIO} uncompressed bytes per compressed byte.`;
-    }
-    totalUncompressedBytes += declaredBytes;
-    if (totalUncompressedBytes > VALIDATE_DOCX_MAX_TOTAL_BYTES) {
-      return `Generated DOCX declares more than ${VALIDATE_DOCX_MAX_TOTAL_BYTES} cumulative uncompressed bytes.`;
-    }
-  }
-  if (exceedsCompressionRatio(totalUncompressedBytes, archiveBytes)) {
-    return `Generated DOCX declares more than ${VALIDATE_DOCX_MAX_COMPRESSION_RATIO} uncompressed bytes per archive byte.`;
-  }
-  return null;
+const openArchive = async (
+  bytes: Uint8Array,
+): Promise<
+  | { ok: true; zip: ZipArchive }
+  | { ok: false; result: ValidateDocxPackageResult }
+> => {
+  const read = await Result.tryPromise({
+    try: async () =>
+      await ZipArchive.read(bytes, {
+        limits: {
+          maxEntries: VALIDATE_DOCX_MAX_ENTRIES,
+          maxEntryBytes: VALIDATE_DOCX_MAX_ENTRY_BYTES,
+          maxTotalBytes: VALIDATE_DOCX_MAX_TOTAL_BYTES,
+          maxCompressionRatio: VALIDATE_DOCX_MAX_COMPRESSION_RATIO,
+          compressionRatioGraceBytes:
+            VALIDATE_DOCX_COMPRESSION_RATIO_GRACE_BYTES,
+        },
+        // Binary parts can compress like a run of one byte; the archive-wide
+        // ratio and the byte limits bound them.
+        isCompressionRatioExempt: (path) => !isRatioBoundedPart(path),
+      }),
+    catch: (cause) => cause,
+  });
+  if (Result.isOk(read)) return { ok: true, zip: read.value };
+  const error = read.error;
+  if (!(error instanceof ZipError)) throw error;
+  const bounds = archiveBoundsMessage(error);
+  return {
+    ok: false,
+    result:
+      bounds === null
+        ? {
+            valid: false,
+            code: DOCX_PACKAGE_ISSUE_CODES.InvalidArchive,
+            error: error.message,
+          }
+        : {
+            valid: false,
+            code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
+            error: bounds,
+          },
+  };
 };
 
 type OrderedXmlNode = Record<string, unknown>;
@@ -381,34 +291,16 @@ export const validateDocxPackage = async (
   try {
     const archiveBytes =
       buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-    if (
-      countCentralDirectoryRecords(archiveBytes, VALIDATE_DOCX_MAX_ENTRIES) >
-      VALIDATE_DOCX_MAX_ENTRIES
-    ) {
-      return {
-        valid: false,
-        code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
-        error: `Generated DOCX holds more than ${VALIDATE_DOCX_MAX_ENTRIES} archive entries.`,
-      };
-    }
-
-    const zip = await JSZip.loadAsync(buffer);
-
-    const boundsError = checkDocxArchiveBounds(zip, archiveBytes.byteLength);
-    if (boundsError) {
-      return {
-        valid: false,
-        code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
-        error: boundsError,
-      };
-    }
+    const opened = await openArchive(archiveBytes);
+    if (!opened.ok) return opened.result;
+    const { zip } = opened;
 
     for (const requiredPath of [
       "[Content_Types].xml",
       "_rels/.rels",
       "word/document.xml",
     ]) {
-      if (!zip.file(requiredPath)) {
+      if (!zip.has(requiredPath)) {
         return {
           valid: false,
           code: DOCX_PACKAGE_ISSUE_CODES.MissingPackagePart,
@@ -417,27 +309,21 @@ export const validateDocxPackage = async (
       }
     }
 
-    const documentPart = zip.file("word/document.xml");
-    const declaredDocumentBytes = documentPart
-      ? getDeclaredUncompressedSize(documentPart)
-      : null;
+    const documentPart = zip.entry("word/document.xml");
     if (
-      declaredDocumentBytes !== null &&
-      declaredDocumentBytes > VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES
+      documentPart !== undefined &&
+      documentPart.size > VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES
     ) {
       return {
         valid: false,
         code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
         error:
-          `Generated DOCX word/document.xml declares ${declaredDocumentBytes} uncompressed bytes, ` +
+          `Generated DOCX word/document.xml declares ${documentPart.size} uncompressed bytes, ` +
           `over the ${VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES}-byte limit.`,
       };
     }
     const documentRead = documentPart
-      ? await readEntryWithinBounds(
-          documentPart,
-          VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES,
-        )
+      ? await readXmlPart(documentPart, VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES)
       : undefined;
     if (documentRead !== undefined && !documentRead.ok) {
       return {
@@ -446,8 +332,7 @@ export const validateDocxPackage = async (
         error: documentRead.error,
       };
     }
-    const documentBytes = documentRead?.bytes;
-    const documentXml = documentBytes ? decodeText(documentBytes) : undefined;
+    const documentXml = documentRead?.text;
     const documentError = documentXml
       ? validateDocumentXml(documentXml)
       : "Generated DOCX has no word/document.xml root document.";
@@ -459,9 +344,9 @@ export const validateDocxPackage = async (
       };
     }
 
-    const documentRelsPart = zip.file("word/_rels/document.xml.rels");
+    const documentRelsPart = zip.entry("word/_rels/document.xml.rels");
     const documentRelsRead = documentRelsPart
-      ? await readEntryWithinBounds(
+      ? await readXmlPart(
           documentRelsPart,
           VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES,
         )
@@ -473,12 +358,10 @@ export const validateDocxPackage = async (
         error: documentRelsRead.error,
       };
     }
-    const documentRelsXml = documentRelsRead
-      ? decodeText(documentRelsRead.bytes)
-      : undefined;
+    const documentRelsXml = documentRelsRead?.text;
     if (
       documentRelsXml?.includes("/relationships/numbering") &&
-      !zip.file("word/numbering.xml")
+      !zip.has("word/numbering.xml")
     ) {
       return {
         valid: false,
@@ -493,14 +376,14 @@ export const validateDocxPackage = async (
     if (documentRelsXml)
       parts.set("word/_rels/document.xml.rels", documentRelsXml);
     const paths = new Set<string>();
-    for (const entry of Object.values(zip.files)) {
-      if (entry.dir) continue;
-      paths.add(entry.name);
-      if (!entry.name.endsWith(".xml") && !entry.name.endsWith(".rels"))
+    for (const entry of zip.entries()) {
+      paths.add(entry.path);
+      if (!entry.path.endsWith(".xml") && !entry.path.endsWith(".rels"))
         continue;
-      let xml = parts.get(entry.name);
+      let xml = parts.get(entry.path);
       if (xml === undefined) {
-        const read = await readEntryWithinBounds(
+        // oxlint-disable-next-line no-await-in-loop -- parts are validated one at a time to bound memory
+        const read = await readXmlPart(
           entry,
           VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES,
         );
@@ -510,16 +393,16 @@ export const validateDocxPackage = async (
             code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
             error: read.error,
           };
-        xml = decodeText(read.bytes);
+        xml = read.text;
       }
       const issue = validateSchemaAttributes(xml);
       if (issue)
         return {
           valid: false,
           code: DOCX_PACKAGE_ISSUE_CODES.InvalidSchemaAttribute,
-          error: `${entry.name}: ${issue}`,
+          error: `${entry.path}: ${issue}`,
         };
-      parts.set(entry.name, xml);
+      parts.set(entry.path, xml);
     }
     const graphIssue = validatePackageGraph(parts, paths);
     if (graphIssue)

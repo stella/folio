@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { docxToMarkdown } from "./docxToMarkdown";
 
@@ -18,12 +19,12 @@ const row = (cells: string) => `<w:tr>${cells}</w:tr>`;
 const table = (rows: string) => `<w:tbl>${rows}</w:tbl>`;
 
 const makeDocx = async (body: string): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "word/document.xml",
     `<w:document xmlns:w="${W_NS}" xmlns:r="${R_NS}"><w:body>${body}</w:body></w:document>`,
   );
-  return await zip.generateAsync({ type: "uint8array" });
+  return await zip.generate({ compression: "store" });
 };
 
 /**

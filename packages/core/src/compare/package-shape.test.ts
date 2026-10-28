@@ -11,9 +11,9 @@
 
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   type BodyItem,
@@ -40,7 +40,7 @@ const comparedPackage = async (
   base: readonly BodyItem[],
   target: readonly BodyItem[],
   { onUnverified }: ComparedDocumentOptions = {},
-): Promise<JSZip> => {
+): Promise<ZipArchive> => {
   const result = await compareDocx(
     await buildBodySequenceDocx(base),
     await buildBodySequenceDocx(target),
@@ -49,7 +49,7 @@ const comparedPackage = async (
   if (result.isErr()) {
     throw result.error;
   }
-  return await JSZip.loadAsync(result.value.buffer);
+  return await ZipArchive.read(result.value.buffer);
 };
 
 const comparedDocumentXml = async (
@@ -58,7 +58,7 @@ const comparedDocumentXml = async (
   options: ComparedDocumentOptions = {},
 ): Promise<string> => {
   const zip = await comparedPackage(base, target, options);
-  return (await zip.file("word/document.xml")?.async("text")) ?? "";
+  return (await zip.entry("word/document.xml")?.text()) ?? "";
 };
 
 const REVISION_ELEMENT =
@@ -309,12 +309,12 @@ describe("determinism", () => {
   test.each(["without", "with"] as const)(
     "loaded maximum revisions use bounded deterministic ids, %s a retained section revision",
     async (sectionRevision) => {
-      const zip = await JSZip.loadAsync(
+      const zip = await ZipArchive.read(
         await buildBodySequenceDocx([
           { kind: "paragraph", text: "alpha beta gamma" },
         ]),
       );
-      const xml = await zip.file("word/document.xml")?.async("text");
+      const xml = await zip.entry("word/document.xml")?.text();
       if (xml === undefined) panic("Fixture has no document part");
       const sectionChange = `<w:sectPrChange w:id="1" w:author="Author" w:date="${OPTIONS.timestamp}"><w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:sectPrChange>`;
       let revised = xml.replace(
@@ -323,8 +323,8 @@ describe("determinism", () => {
       );
       if (sectionRevision === "with")
         revised = revised.replace("</w:sectPr>", `${sectionChange}</w:sectPr>`);
-      zip.file("word/document.xml", revised);
-      const base = await zip.generateAsync({ type: "arraybuffer" });
+      zip.set("word/document.xml", revised);
+      const base = (await zip.generate({ compression: "store" })).buffer;
       const target = await buildBodySequenceDocx([
         { kind: "paragraph", text: "alpha BETA gamma" },
       ]);
@@ -345,8 +345,8 @@ describe("determinism", () => {
       expect(new Uint8Array(second.value.buffer)).toEqual(
         new Uint8Array(first.value.buffer),
       );
-      const savedZip = await JSZip.loadAsync(first.value.buffer);
-      const savedXml = await savedZip.file("word/document.xml")?.async("text");
+      const savedZip = await ZipArchive.read(first.value.buffer);
+      const savedXml = await savedZip.entry("word/document.xml")?.text();
       if (savedXml === undefined) panic("Comparison has no document part");
       if (sectionRevision === "with") {
         expect(savedXml).toContain('<w:sectPrChange w:id="1"');
@@ -401,8 +401,8 @@ describe("determinism", () => {
       new Uint8Array(first.value.buffer),
     );
 
-    const zip = await JSZip.loadAsync(first.value.buffer);
-    expect(await zip.file("docProps/core.xml")?.async("text")).toContain(
+    const zip = await ZipArchive.read(first.value.buffer);
+    expect(await zip.entry("docProps/core.xml")?.text()).toContain(
       `<dcterms:modified xsi:type="dcterms:W3CDTF">${OPTIONS.timestamp}</dcterms:modified>`,
     );
   });
@@ -459,7 +459,7 @@ describe("extended properties", () => {
       [{ kind: "paragraph", text: "alpha BETA" }],
     );
 
-    const xml = (await zip.file("docProps/app.xml")?.async("text")) ?? "";
+    const xml = (await zip.entry("docProps/app.xml")?.text()) ?? "";
     expect(/<AppVersion>([^<]*)<\/AppVersion>/u.exec(xml)?.[1] ?? "").toMatch(
       SCHEMA_FORM,
     );

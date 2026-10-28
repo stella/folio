@@ -6,7 +6,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { BlockContent, Endnote, Footnote, Image } from "../types/document";
 import { parseDocx } from "./parser";
@@ -60,17 +61,17 @@ const packageRelsXml = `${XML_DECLARATION}<Relationships xmlns="http://schemas.o
 const documentRelsXml = `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.footnotes}" Target="footnotes.xml"/><Relationship Id="rId2" Type="${RELATIONSHIP_TYPES.endnotes}" Target="endnotes.xml"/></Relationships>`;
 
 const createPackage = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", contentTypesXml);
-  zip.file("_rels/.rels", packageRelsXml);
-  zip.file("word/_rels/document.xml.rels", documentRelsXml);
-  zip.file("word/document.xml", documentXml);
-  zip.file("word/footnotes.xml", notesXml("footnote", 100));
-  zip.file("word/_rels/footnotes.xml.rels", noteRelsXml);
-  zip.file("word/endnotes.xml", notesXml("endnote", 200));
-  zip.file("word/_rels/endnotes.xml.rels", noteRelsXml);
-  zip.file(MEDIA_PATH, PNG_BYTES);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", contentTypesXml);
+  zip.set("_rels/.rels", packageRelsXml);
+  zip.set("word/_rels/document.xml.rels", documentRelsXml);
+  zip.set("word/document.xml", documentXml);
+  zip.set("word/footnotes.xml", notesXml("footnote", 100));
+  zip.set("word/_rels/footnotes.xml.rels", noteRelsXml);
+  zip.set("word/endnotes.xml", notesXml("endnote", 200));
+  zip.set("word/_rels/endnotes.xml.rels", noteRelsXml);
+  zip.set(MEDIA_PATH, PNG_BYTES);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 type NoteImage = { location: "paragraph" | "table" | "sdt"; image: Image };
@@ -139,20 +140,20 @@ describe("pictures in note parts", () => {
 
   test("saving keeps the note media part and relationships", async () => {
     const doc = await parseDocx(await createPackage(), { preloadFonts: false });
-    const zip = await JSZip.loadAsync(await createDocx(doc));
+    const zip = await ZipArchive.read(await createDocx(doc));
 
-    expect(await zip.file(MEDIA_PATH)?.async("uint8array")).toEqual(PNG_BYTES);
+    expect(await zip.entry(MEDIA_PATH)?.bytes()).toEqual(PNG_BYTES);
     for (const relsPath of [
       "word/_rels/footnotes.xml.rels",
       "word/_rels/endnotes.xml.rels",
     ]) {
-      expect(await zip.file(relsPath)?.async("text")).toContain(
+      expect(await zip.entry(relsPath)?.text()).toContain(
         `Id="${NOTE_IMAGE_RID}"`,
       );
     }
 
     const reparsed = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },

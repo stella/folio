@@ -3,10 +3,11 @@
  * test states exactly which paragraphs, identifiers and styles exist.
  */
 
-import JSZip from "jszip";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml";
@@ -79,8 +80,8 @@ const STYLES_XML =
 export const buildDocx = async (
   paragraphs: readonly FixtureBlock[],
 ): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
@@ -90,28 +91,28 @@ export const buildDocx = async (
       '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
       "</Types>",
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       `<Relationships xmlns="${PKG_REL_NS}">` +
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
       "</Relationships>",
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       `<Relationships xmlns="${PKG_REL_NS}">` +
       `<Relationship Id="rId1" Type="${STYLES_REL}" Target="styles.xml"/>` +
       "</Relationships>",
   );
-  zip.file("word/styles.xml", STYLES_XML);
-  zip.file(
+  zip.set("word/styles.xml", STYLES_XML);
+  zip.set(
     "word/document.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       `<w:document xmlns:w="${W_NS}" xmlns:w14="${W14_NS}" xmlns:r="${R_NS}"><w:body>` +
       `${paragraphs.map(blockXml).join("")}<w:sectPr/></w:body></w:document>`,
   );
-  return await zip.generateAsync({ type: "uint8array" });
+  return await zip.generate({ compression: "store" });
 };
 
 /** A contract-shaped fixture: a heading and three clauses, all with paraIds. */

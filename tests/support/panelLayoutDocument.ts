@@ -7,7 +7,7 @@
  * binary, so what the document holds stays reviewable.
  */
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { generateDocxFixture } from "./validatedDocxFixture";
 
@@ -147,15 +147,15 @@ export const buildPanelLayoutDocument = (
   review: PanelLayoutReview,
   sections: PanelLayoutSections = "portrait",
 ): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  const options = { date: FIXED_DATE };
-  zip.file("[Content_Types].xml", contentTypes(review), options);
-  zip.file("_rels/.rels", PACKAGE_RELS, options);
-  zip.file("word/document.xml", documentXml(review, sections), options);
-  zip.file("word/_rels/document.xml.rels", documentRels(review), options);
-  zip.file("word/styles.xml", STYLES_XML, options);
+  const zip = new ZipArchive();
+  const options = { modified: FIXED_DATE };
+  zip.set("[Content_Types].xml", contentTypes(review), options);
+  zip.set("_rels/.rels", PACKAGE_RELS, options);
+  zip.set("word/document.xml", documentXml(review, sections), options);
+  zip.set("word/_rels/document.xml.rels", documentRels(review), options);
+  zip.set("word/styles.xml", STYLES_XML, options);
   if (review === "comment-and-changes") {
-    zip.file("word/comments.xml", COMMENTS_XML, options);
+    zip.set("word/comments.xml", COMMENTS_XML, options);
   }
   return generateDocxFixture(zip, `panel-layout:${review}:${sections}`);
 };

@@ -4,10 +4,110 @@
 
 ```ts
 
-import JSZip from 'jszip';
+import { TaggedErrorClass } from 'better-result';
 
 // @public
-export const writeZipPart: (input: WriteZipPartOptions) => void;
+export type InflateExpectation = {
+    readonly size: number;
+    readonly crc32: number;
+};
+
+// @public
+export type InflateOutcome = {
+    readonly type: "ok";
+    readonly bytes: Uint8Array<ArrayBuffer>;
+} | {
+    readonly type: "overflow";
+} | {
+    readonly type: "corrupt";
+    readonly cause: unknown;
+};
+
+// @public
+export const isSafeZipPath: (path: string) => boolean;
+
+// @public
+export const ZIP_DEFAULT_READ_LIMITS: ZipReadLimits;
+
+// @public
+export class ZipArchive {
+    constructor(options?: {
+        readonly codec?: ZipCodec;
+    });
+    clone(): ZipArchive;
+    delete(path: string): boolean;
+    entries(): ZipEntry[];
+    entry(path: string): ZipEntry | undefined;
+    generate(input?: ZipGenerateOptions): Promise<Uint8Array<ArrayBuffer>>;
+    has(path: string): boolean;
+    paths(): string[];
+    static read(input: Uint8Array | ArrayBuffer, options?: ZipReadOptions): Promise<ZipArchive>;
+    set(path: string, data: ZipEntryData, options?: ZipEntryOptions): void;
+}
+
+// @public
+export type ZipCodec = {
+    readonly inflate: (data: Uint8Array, expected: InflateExpectation) => Promise<InflateOutcome>;
+    readonly deflate: (data: Uint8Array, level: number) => Promise<Uint8Array<ArrayBuffer>>;
+    readonly crc32: (data: Uint8Array, previous?: number) => number;
+};
+
+// @public
+export type ZipCompression = "store" | "deflate";
+
+// @public
+export type ZipEntry = {
+    readonly path: string;
+    readonly size: number;
+    readonly modified: Date;
+    readonly bytes: () => Promise<Uint8Array<ArrayBuffer>>;
+    readonly text: () => Promise<string>;
+    readonly arrayBuffer: () => Promise<ArrayBuffer>;
+};
+
+// @public
+export type ZipEntryData = string | Uint8Array | ArrayBuffer;
+
+// @public
+export type ZipEntryOptions = {
+    readonly compression?: ZipCompression;
+    readonly level?: number;
+    readonly modified?: Date;
+};
+
+// @public
+export class ZipError extends ZipErrorBase<{
+    message: string;
+    reason: ZipErrorReason;
+    path?: string;
+    cause?: unknown;
+}> {}
+
+// @public
+export type ZipErrorReason = "malformed" | "unsupported" | "invalid-entry-name" | "duplicate-entry" | "too-many-entries" | "entry-too-large" | "total-too-large" | "compression-ratio" | "declared-size-exceeded" | "corrupt-entry";
+
+// @public
+export type ZipGenerateOptions = {
+    readonly compression?: ZipCompression;
+    readonly level?: number;
+    readonly modified?: Date;
+};
+
+// @public
+export type ZipReadLimits = {
+    readonly maxEntries: number;
+    readonly maxEntryBytes: number;
+    readonly maxTotalBytes: number;
+    readonly maxCompressionRatio: number;
+    readonly compressionRatioGraceBytes: number;
+};
+
+// @public
+export type ZipReadOptions = {
+    readonly limits?: Partial<ZipReadLimits>;
+    readonly isCompressionRatioExempt?: (path: string) => boolean;
+    readonly codec?: ZipCodec;
+};
 
 // (No @packageDocumentation comment for this package)
 

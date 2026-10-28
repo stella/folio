@@ -17,7 +17,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -100,22 +101,19 @@ const bodyFor = (placement: Placement, captured: string): string => {
 };
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" ` +
       'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
       `<w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(saved)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+  "";
 
 /** Parse, project through the editor and back, save: the trip that used to lose it. */
 const throughTheEditor = async (body: string): Promise<string> => {

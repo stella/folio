@@ -98,7 +98,6 @@
     "dompurify": "^3.4.17",
     "fast-xml-parser": "^5.11.2",
     "hyphen": "1.14.1",
-    "jszip": "3.10.2",
     "utif2": "^4.1.0",
     "valibot": "1.5.0"
   },

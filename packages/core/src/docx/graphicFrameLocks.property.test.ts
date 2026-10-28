@@ -1,3 +1,4 @@
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 /**
  * A drawing's graphic-frame locks are written as they were read, or not at all.
  *
@@ -13,10 +14,10 @@
  * only path that shows the difference: an untouched document replays its
  * captured drawing bytes and never reaches the serializer.
  */
-
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import {
   propertyConfig,
@@ -67,29 +68,29 @@ const documentXml = (graphicFramePr: string): string => `${XML_DECLARATION}
 </w:drawing></w:r></w:p><w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`;
 
 const buildDocx = async (graphicFramePr: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
       '<Default Extension="png" ContentType="image/png"/></Types>',
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
       `<Relationship Id="rIdImage" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/></Relationships>`,
     ),
   );
-  zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-  zip.file("word/document.xml", documentXml(graphicFramePr));
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/media/image1.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+  zip.set("word/document.xml", documentXml(graphicFramePr));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const firstDrawing = (document: Document): DrawingContent => {

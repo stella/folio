@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -12,8 +13,8 @@ const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const createThemedTableFixture = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -24,14 +25,14 @@ const createThemedTableFixture = async (): Promise<ArrayBuffer> => {
   <Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -39,7 +40,7 @@ const createThemedTableFixture = async (): Promise<ArrayBuffer> => {
   <Relationship Id="rId2" Type="${RELATIONSHIP_TYPES.theme}" Target="theme/theme1.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECLARATION}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -51,7 +52,7 @@ const createThemedTableFixture = async (): Promise<ArrayBuffer> => {
   </w:style>
 </w:styles>`,
   );
-  zip.file(
+  zip.set(
     "word/theme/theme1.xml",
     `${XML_DECLARATION}
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">
@@ -78,7 +79,7 @@ const createThemedTableFixture = async (): Promise<ArrayBuffer> => {
   </a:themeElements>
 </a:theme>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -105,7 +106,7 @@ const createThemedTableFixture = async (): Promise<ArrayBuffer> => {
 </w:document>`,
   );
 
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const tableCellBackgrounds = (
@@ -134,10 +135,8 @@ describe("themed table cell shading", () => {
       stylesheetSource: { type: "package" },
     });
     const repacked = await repackDocx(rebuilt, { updateModifiedDate: false });
-    const repackedZip = await JSZip.loadAsync(repacked);
-    const documentXml = await repackedZip
-      .file("word/document.xml")
-      ?.async("string");
+    const repackedZip = await ZipArchive.read(repacked);
+    const documentXml = await repackedZip.entry("word/document.xml")?.text();
 
     expect(documentXml).toContain('w:themeFill="accent1"');
     expect(documentXml).toContain('w:themeFillTint="33"');

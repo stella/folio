@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   PRODUCER_FAMILIES,
@@ -18,11 +19,11 @@ const extendedProperties = (inner: string): string =>
 const packageWith = async (
   parts: Record<string, string>,
 ): Promise<Uint8Array> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   for (const [path, content] of Object.entries(parts)) {
-    zip.file(path, content);
+    zip.set(path, content);
   }
-  return zip.generateAsync({ type: "uint8array" });
+  return zip.generate({ compression: "store" });
 };
 
 describe("producerFamilyOf", () => {

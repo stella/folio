@@ -1,16 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { compareDocx } from "./compare";
 
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(buffer)
-  )
-    .file("word/document.xml")
-    ?.async("string")) ?? "";
+  (await (await ZipArchive.read(buffer)).entry("word/document.xml")?.text()) ??
+  "";
 
 const withTrackedBookmark = async (
   type: "ins" | "del",
@@ -19,7 +17,7 @@ const withTrackedBookmark = async (
   const buffer = await buildBodySequenceDocx([
     { kind: "paragraph", text: "Before after." },
   ]);
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   const xml = await documentPartOf(buffer);
   const textElement = type === "del" ? "delText" : "t";
   const tracked =
@@ -28,14 +26,14 @@ const withTrackedBookmark = async (
     `<w:r><w:${textElement}>${text}</w:${textElement}></w:r>` +
     '<w:bookmarkEnd w:id="9"/>' +
     `</w:${type}>`;
-  zip.file(
+  zip.set(
     "word/document.xml",
     xml.replace(
       '<w:r><w:t xml:space="preserve">Before after.</w:t></w:r>',
       `<w:r><w:t xml:space="preserve">Before </w:t></w:r>${tracked}<w:r><w:t>after.</w:t></w:r>`,
     ),
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 describe("tracked bookmark serialization", () => {

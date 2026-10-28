@@ -18,7 +18,7 @@ import { generateDocxFixture } from "../../support/validatedDocxFixture";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 const OUTPUT_DIR = import.meta.dir;
 /** Fixed so the fixtures are byte-reproducible across rebuilds. */
@@ -120,9 +120,9 @@ const documentXml = (paragraphs: readonly string[]): string =>
   "</w:body></w:document>";
 
 const write = async (name: string, paragraphs: readonly string[]): Promise<void> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const add = (filePath: string, contents: string): void => {
-    zip.file(filePath, contents, { date: FIXED_DATE, createFolders: false });
+    zip.set(filePath, contents, { modified: FIXED_DATE });
   };
   add("[Content_Types].xml", CONTENT_TYPES);
   add("_rels/.rels", PACKAGE_RELS);

@@ -1,7 +1,7 @@
 import { panic } from "better-result";
-/** Authored package-registry spellings, derived from the existing operation seed. */
-import JSZip from "jszip";
 
+/** Authored package-registry spellings, derived from the existing operation seed. */
+import { ZipArchive } from "@stll/docx-core/zip";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 
 import type { Document } from "../../../packages/docx-core/src/model/document";
@@ -11,12 +11,12 @@ export const operationPackageBytes = async (
   document: Document,
   seed: OpSeed,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(
+  const zip = await ZipArchive.read(
     await createDocx(structuredClone(document)),
   );
-  const file = zip.file("[Content_Types].xml");
+  const file = zip.entry("[Content_Types].xml");
   if (!file) return panic("A generated package needs content types.");
-  const xml = await file.async("text");
+  const xml = await file.text();
   const entries = Array.from(
     xml.matchAll(/<(?:Default|Override)\b[^>]*\/>/gu),
     (match) => match[0],
@@ -34,24 +34,26 @@ export const operationPackageBytes = async (
     .join(gap);
   let source = `<?xml version="1.0" encoding="UTF-8"?>${gap}<${prefix}Types xmlns${prefix ? ":ct" : ""}="http://schemas.openxmlformats.org/package/2006/content-types">${gap}${body}${gap}</${prefix}Types>`;
   if (seed.zeroWidth !== undefined) source = source.replaceAll('"', "'");
-  zip.file("[Content_Types].xml", source);
-  const authoredParagraphParts = zip.file(
-    /^word\/(?:document|header[^/]*|footer[^/]*)\.xml$/u,
-  );
+  zip.set("[Content_Types].xml", source);
+  const authoredParagraphParts = zip
+    .entries()
+    .filter(({ path }) =>
+      /^word\/(?:document|header[^/]*|footer[^/]*)\.xml$/u.test(path),
+    );
   const headerParts = authoredParagraphParts.filter((part) =>
-    /^word\/header/u.test(part.name),
+    /^word\/header/u.test(part.path),
   );
   const footerParts = authoredParagraphParts.filter((part) =>
-    /^word\/footer/u.test(part.name),
+    /^word\/footer/u.test(part.path),
   );
   if (headerParts.length !== (document.package.headers?.size ?? 0))
     return panic("Every generated header needs a package XML part.");
   if (footerParts.length !== (document.package.footers?.size ?? 0))
     return panic("Every generated footer needs a package XML part.");
   for (const part of authoredParagraphParts) {
-    const paragraphXml = await part.async("text");
-    zip.file(part.name, paragraphXml.replaceAll("<w:pPr>", `<w:pPr>${gap}`));
+    const paragraphXml = await part.text();
+    zip.set(part.path, paragraphXml.replaceAll("<w:pPr>", `<w:pPr>${gap}`));
   }
-  zip.file("custom/keep.opaque", "unrelated package bytes");
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("custom/keep.opaque", "unrelated package bytes");
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };

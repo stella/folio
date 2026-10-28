@@ -28,70 +28,6 @@ const propertyName = (value: unknown): string | null => {
     return typeof value["value"] === "string" ? value["value"] : null;
   return null;
 };
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-const getFilename = (context: Context): string =>
-  context.getFilename?.() ?? context.filename ?? "";
-
-const noStringZipEntry: Rule = {
-  meta: {
-    type: "problem",
-    messages: {
-      direct:
-        "Encode zip entry text to bytes before calling .file(path, content); use the configured owner.",
-    },
-    schema: [
-      {
-        type: "object",
-        properties: { ownerPath: { type: "string" } },
-        additionalProperties: false,
-      },
-    ],
-  },
-  create(context) {
-    const option = context.options?.at(0);
-    const ownerPath =
-      isRecord(option) && typeof option["ownerPath"] === "string"
-        ? option["ownerPath"]
-        : "";
-    const filename = getFilename(context).replaceAll("\\", "/");
-    const isOwner =
-      ownerPath !== "" &&
-      (filename === ownerPath || filename.endsWith(`/${ownerPath}`));
-    return {
-      CallExpression(raw) {
-        const args = isNode(raw) ? raw["arguments"] : undefined;
-        if (isOwner || !isNode(raw) || !Array.isArray(args) || args.length < 2)
-          return;
-        const callee = raw["callee"];
-        if (
-          !isNode(callee) ||
-          callee.type !== "MemberExpression" ||
-          propertyName(callee["property"]) !== "file"
-        )
-          return;
-        if (
-          args.some(
-            (arg) =>
-              isNode(arg) &&
-              ["ArrowFunctionExpression", "FunctionExpression"].includes(
-                arg.type,
-              ),
-          )
-        )
-          return;
-        const receiver = callee["object"];
-        if (
-          isNode(receiver) &&
-          receiver.type === "Identifier" &&
-          receiver["name"] === "Bun"
-        )
-          return;
-        context.report({ node: raw, messageId: "direct" });
-      },
-    };
-  },
-};
 
 const STREAM_METHODS = new Set(["on", "once", "addEventListener"]);
 const STREAM_CONSTRUCTORS = new Set(["ReadableStream", "TransformStream"]);
@@ -289,13 +225,11 @@ const plugin: {
     name: string;
   };
   rules: {
-    "no-string-zip-entry": Rule;
     "no-chunked-text-codec": Rule;
   };
 } = {
   meta: { name: "utf8-boundaries" },
   rules: {
-    "no-string-zip-entry": noStringZipEntry,
     "no-chunked-text-codec": noChunkedTextCodec,
   },
 };

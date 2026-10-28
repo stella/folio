@@ -15,7 +15,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { Document } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -112,15 +113,15 @@ async function buildDocx(parts: {
   numberingXml: string;
   documentXml: string;
 }): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", contentTypesXml);
-  zip.file("_rels/.rels", packageRelsXml);
-  zip.file("word/_rels/document.xml.rels", documentRelsXml);
-  zip.file("word/document.xml", parts.documentXml);
-  zip.file("word/styles.xml", stylesXml);
-  zip.file("word/numbering.xml", parts.numberingXml);
-  zip.file("docProps/core.xml", corePropertiesXml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", contentTypesXml);
+  zip.set("_rels/.rels", packageRelsXml);
+  zip.set("word/_rels/document.xml.rels", documentRelsXml);
+  zip.set("word/document.xml", parts.documentXml);
+  zip.set("word/styles.xml", stylesXml);
+  zip.set("word/numbering.xml", parts.numberingXml);
+  zip.set("docProps/core.xml", corePropertiesXml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 async function createNumberingFixture(): Promise<ArrayBuffer> {
@@ -128,12 +129,12 @@ async function createNumberingFixture(): Promise<ArrayBuffer> {
 }
 
 async function readPart(buffer: ArrayBuffer, path: string): Promise<string> {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file(path);
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry(path);
   if (!file) {
     throw new Error(`No ${path} in package`);
   }
-  return file.async("text");
+  return file.text();
 }
 
 function editFirstLevelText(

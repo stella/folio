@@ -1,7 +1,6 @@
 import { panic, Result } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import path from "node:path";
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
@@ -12,6 +11,7 @@ import {
   type OpStory,
   storyBody,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
 import { canonicalSaveParagraphXml } from "../../../../test/canonicalSaveSequence";
@@ -98,11 +98,11 @@ const drawings = (document: Document, story: OpStory): DrawingContent[] => {
 };
 const relationshipPath = (part: string) =>
   `${path.posix.dirname(part)}/_rels/${path.posix.basename(part)}.rels`;
-const owningPart = async (zip: JSZip, story: OpStory): Promise<string> => {
+const owningPart = async (zip: ZipArchive, story: OpStory): Promise<string> => {
   if (story === OP_STORIES.MAIN) return "word/document.xml";
   if (story.kind === "footnote") return "word/footnotes.xml";
   if (story.kind === "endnote") return "word/endnotes.xml";
-  const xml = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const xml = await zip.entry("word/_rels/document.xml.rels")?.text();
   const relation = parseRelationships(xml ?? "").get(story.rId);
   if (!relation) panic("Missing serialized story binding");
   return resolveRelativePath("word/_rels/document.xml.rels", relation.target);
@@ -185,21 +185,21 @@ const destination = async ({
       }
     }
   }
-  const zip = await JSZip.loadAsync(await createDocx(model));
+  const zip = await ZipArchive.read(await createDocx(model));
   let conflictId: string | undefined;
   if (conflictingBinding) {
-    const xml = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const xml = await zip.entry("word/_rels/document.xml.rels")?.text();
     const rootRelationships = parseRelationships(xml ?? "");
     let identity = 1;
     while (rootRelationships.has(`rId${identity}`)) identity++;
     conflictId = `rId${identity}`;
     const part = await owningPart(zip, story);
-    zip.file(
+    zip.set(
       relationshipPath(part),
       `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${conflictId}" Type="${RELATIONSHIP_TYPES.image}" Target="https://example.com/original.png" TargetMode="External"/></Relationships>`,
     );
   }
-  const buffer = await zip.generateAsync({ type: "arraybuffer" });
+  const buffer = (await zip.generate({ compression: "store" })).buffer;
   return {
     document: await parseDocx(buffer, { preloadFonts: false }),
     conflictId,
@@ -308,16 +308,14 @@ const copyImage = async ({
 };
 
 const assertSavedOwner = async (
-  zip: JSZip,
+  zip: ZipArchive,
   model: Document,
   story: OpStory,
 ) => {
   const part = await owningPart(zip, story);
   const relsPath = relationshipPath(part);
-  const local = parseRelationships(
-    (await zip.file(relsPath)?.async("text")) ?? "",
-  );
-  const bindings = imageBindings((await zip.file(part)?.async("text")) ?? "");
+  const local = parseRelationships((await zip.entry(relsPath)?.text()) ?? "");
+  const bindings = imageBindings((await zip.entry(part)?.text()) ?? "");
   const pictures = drawings(model, story);
   expect(pictures).toHaveLength(1);
   for (const { image } of pictures) {
@@ -341,7 +339,7 @@ const assertSavedOwner = async (
       const media =
         model.package.media?.get(expectedPath) ??
         panic("Allocated bytes missing");
-      expect(await zip.file(expectedPath)?.async("uint8array")).toEqual(
+      expect(await zip.entry(expectedPath)?.bytes()).toEqual(
         new Uint8Array(media.data),
       );
     }
@@ -441,13 +439,13 @@ test.each(CASES)(
             options: { mode: serializationMode },
             featureFlags: { selectiveSave: true },
           });
-          const zip = await JSZip.loadAsync(saved.buffer);
+          const zip = await ZipArchive.read(saved.buffer);
           const sourceBuffer =
             source.document.originalBuffer ?? panic("Missing parsed source");
           expect(
             await canonicalSaveParagraphXml(saved.buffer, "76000002"),
           ).toBe(await canonicalSaveParagraphXml(sourceBuffer, "76000002"));
-          const sourceZip = await JSZip.loadAsync(sourceBuffer);
+          const sourceZip = await ZipArchive.read(sourceBuffer);
           const ownedPart = await owningPart(sourceZip, story);
           const writable = new Set([
             "word/document.xml",
@@ -463,12 +461,15 @@ test.each(CASES)(
           )
             writable.add("word/styles.xml");
           await Promise.all(
-            Object.entries(sourceZip.files).map(async ([entry, file]) => {
-              if (file.dir || writable.has(entry)) return;
-              expect(await zip.file(entry)?.async("uint8array")).toEqual(
-                await file.async("uint8array"),
-              );
-            }),
+            sourceZip
+              .entries()
+              .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)
+              .map(async ([entry, file]) => {
+                if (writable.has(entry)) return;
+                expect(await zip.entry(entry)?.bytes()).toEqual(
+                  await file.bytes(),
+                );
+              }),
           );
           await assertSavedOwner(zip, edited, OP_STORIES.MAIN);
           if (story !== OP_STORIES.MAIN)
@@ -514,7 +515,7 @@ test.each(CASES)(
             featureFlags: { selectiveSave: true },
           });
           await assertSavedOwner(
-            await JSZip.loadAsync(repeated.buffer),
+            await ZipArchive.read(repeated.buffer),
             edited,
             story,
           );
@@ -574,7 +575,7 @@ test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
     const snapshot = driver.session.captureSaveSnapshot();
     const before = snapshot.document;
     const part = await owningPart(
-      await JSZip.loadAsync(
+      await ZipArchive.read(
         source.document.originalBuffer ?? panic("Missing parsed baseline"),
       ),
       story,

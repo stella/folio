@@ -7,7 +7,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { compareSelectiveVsFull } from "./selectiveSaveTripwire";
 
@@ -16,11 +17,11 @@ const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 async function makeZip(
   entries: Record<string, string | Uint8Array>,
 ): Promise<ArrayBuffer> {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   for (const [path, data] of Object.entries(entries)) {
-    zip.file(path, data);
+    zip.set(path, data);
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 const SHARED_ENTRIES = {
@@ -94,17 +95,17 @@ describe("compareSelectiveVsFull", () => {
   });
 
   test("`match` survives different file insertion order in the zip", async () => {
-    const a = new JSZip();
-    a.file("[Content_Types].xml", SHARED_ENTRIES["[Content_Types].xml"]);
-    a.file("_rels/.rels", SHARED_ENTRIES["_rels/.rels"]);
-    a.file("word/document.xml", SHARED_ENTRIES["word/document.xml"]);
-    const aBuf = await a.generateAsync({ type: "arraybuffer" });
+    const a = new ZipArchive();
+    a.set("[Content_Types].xml", SHARED_ENTRIES["[Content_Types].xml"]);
+    a.set("_rels/.rels", SHARED_ENTRIES["_rels/.rels"]);
+    a.set("word/document.xml", SHARED_ENTRIES["word/document.xml"]);
+    const aBuf = (await a.generate({ compression: "store" })).buffer;
 
-    const b = new JSZip();
-    b.file("word/document.xml", SHARED_ENTRIES["word/document.xml"]);
-    b.file("_rels/.rels", SHARED_ENTRIES["_rels/.rels"]);
-    b.file("[Content_Types].xml", SHARED_ENTRIES["[Content_Types].xml"]);
-    const bBuf = await b.generateAsync({ type: "arraybuffer" });
+    const b = new ZipArchive();
+    b.set("word/document.xml", SHARED_ENTRIES["word/document.xml"]);
+    b.set("_rels/.rels", SHARED_ENTRIES["_rels/.rels"]);
+    b.set("[Content_Types].xml", SHARED_ENTRIES["[Content_Types].xml"]);
+    const bBuf = (await b.generate({ compression: "store" })).buffer;
 
     const result = await compareSelectiveVsFull(aBuf, bBuf);
     expect(result.kind).toBe("match");

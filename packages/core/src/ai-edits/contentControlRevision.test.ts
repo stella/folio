@@ -10,7 +10,6 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import {
   EditorState,
@@ -19,6 +18,8 @@ import {
   type Transaction,
 } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import {
@@ -35,8 +36,8 @@ const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 const createDocx = async (bodyXml: string): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
       `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
@@ -44,26 +45,23 @@ const createDocx = async (bodyXml: string): Promise<ArrayBuffer> => {
       `<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
       `</Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
       `<Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W}"><w:body>${bodyXml}` +
       `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const bodyOf = async (saved: ArrayBuffer): Promise<string> => {
   const xml =
-    (await (
-      await JSZip.loadAsync(saved)
-    )
-      .file("word/document.xml")
-      ?.async("text")) ?? "";
+    (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+    "";
   return xml.slice(
     xml.indexOf("<w:body>") + "<w:body>".length,
     xml.indexOf("<w:sectPr>"),
