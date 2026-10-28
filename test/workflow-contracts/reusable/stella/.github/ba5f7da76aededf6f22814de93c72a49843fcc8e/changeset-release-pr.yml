@@ -71,7 +71,7 @@ jobs:
   version:
     name: Maintain version packages PR
     env:
-      RUSTUP_TOOLCHAIN: 1.99.0
+      RUSTUP_TOOLCHAIN: 1.99.1
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 15
     concurrency:
@@ -102,9 +102,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - if: steps.lifecycle.outputs.may-update == 'true' && (inputs.sync-cargo-inherited-lock || inputs.prepare-rust-wasm)
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
         with:
-          toolchain: 1.99.0
+          toolchain: 1.99.1
 
       # rust-toolchain only prepends the toolchain when it installs one. Keep
       # Cargo available when the runner already has the requested toolchain.
@@ -119,7 +119,7 @@ jobs:
           CARGO_MANIFEST_PATH: ${{ inputs.cargo-manifest }}
         run: |
           set -euo pipefail
-          rustup target add wasm32-unknown-unknown --toolchain 1.99.0
+          rustup target add wasm32-unknown-unknown --toolchain 1.99.1
 
           mapfile -t versions < <(
             cargo metadata \
