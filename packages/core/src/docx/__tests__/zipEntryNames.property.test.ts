@@ -4,6 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
+import { createZipStream } from "@stll/docx-core/zip/stream";
 
 import { withFixedPackageDates } from "../../compare/reproducible-package";
 import { ensureParaIds } from "../ensureParaIds";
@@ -23,11 +24,35 @@ const CORE_PROPERTIES_PATH = "docProps/core.xml";
 const PACKAGE_DATE = new Date("2000-01-01T00:00:00.000Z");
 const CORE_PROPERTIES_XML = `<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>Fixture title</dc:title><dc:subject>Fixture subject</dc:subject><dc:creator>Fixture creator</dc:creator><cp:keywords>fixture</cp:keywords><dc:description>Fixture description</dc:description><cp:lastModifiedBy>Fixture modifier</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">1999-01-01T00:00:00.000Z</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">1999-01-01T00:00:00.000Z</dcterms:modified></cp:coreProperties>`;
 
-/** Include directories in the oracle: filtering them would hide the regression. */
+/**
+ * Every name in the central directory, directories included: the archive
+ * reader skips directory records, so the oracle walks the records itself
+ * rather than hide the regression it exists to catch.
+ */
 const entryNames = async (
   buffer: ArrayBuffer | Uint8Array,
-): Promise<string[]> =>
-  Object.keys((await ZipArchive.read(buffer)).files).sort();
+): Promise<string[]> => {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let end = bytes.byteLength - 22;
+  while (end >= 0 && view.getUint32(end, true) !== 0x06_05_4b_50) end--;
+  const names: string[] = [];
+  let cursor = view.getUint32(end + 16, true);
+  for (let index = 0; index < view.getUint16(end + 10, true); index++) {
+    const nameLength = view.getUint16(cursor + 28, true);
+    names.push(
+      new TextDecoder().decode(
+        bytes.subarray(cursor + 46, cursor + 46 + nameLength),
+      ),
+    );
+    cursor +=
+      46 +
+      nameLength +
+      view.getUint16(cursor + 30, true) +
+      view.getUint16(cursor + 32, true);
+  }
+  return names.toSorted();
+};
 
 type EntryNamesPreservedOptions = {
   source: ArrayBuffer;
@@ -62,7 +87,8 @@ const withPrivateMetadata = async (
 
 const corePropertiesText = async (buffer: ArrayBuffer): Promise<string> => {
   const part = (await ZipArchive.read(buffer)).entry(CORE_PROPERTIES_PATH);
-  if (part === null) panic("Expected source core properties to survive save");
+  if (part === undefined)
+    panic("Expected source core properties to survive save");
   return part.text();
 };
 
@@ -76,13 +102,19 @@ describe("save paths preserve corpus package entry names", () => {
       false,
     );
     const zip = await ZipArchive.read(source);
-    const document = zip.entry("word/document.xml");
-    if (document === undefined) panic("Expected a source document part");
-    const documentXml = await document.text();
-    // Deliberately reproduce ZipArchive's default to prove the oracle sees the
-    // invented parent, even though every file part remains unchanged.
-    zip.set("word/document.xml", documentXml);
-    const wrong = (await zip.generate({ compression: "store" })).buffer;
+    // Deliberately invent a parent directory entry to prove the oracle sees
+    // it, even though every file part remains unchanged.
+    const parts = await Promise.all(
+      zip.entries().map(async (entry) => ({
+        path: entry.path,
+        data: await entry.bytes(),
+      })),
+    );
+    const wrong = new Uint8Array(
+      await new Response(
+        createZipStream([{ path: "word/" }, ...parts]),
+      ).arrayBuffer(),
+    );
     expect(await entryNames(wrong)).toContain("word/");
     expect(await entryNames(wrong)).not.toEqual(await entryNames(source));
   });

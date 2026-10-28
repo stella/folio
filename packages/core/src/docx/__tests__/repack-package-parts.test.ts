@@ -15,7 +15,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { ZipArchive } from "@stll/docx-core/zip";
+import { ZipArchive, ZipError } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -307,7 +307,11 @@ describe("a path that would escape the package is refused", () => {
     const zip = await ZipArchive.read(
       await buildPackage({ extras: [EMBEDDED_WORKBOOK] }),
     );
-    zip.set("../escape.bin", new Uint8Array([1, 2, 3]));
+    // The archive cannot hold an escaping name: it is refused when written,
+    // as it is when read.
+    expect(() => zip.set("../escape.bin", new Uint8Array([1, 2, 3]))).toThrow(
+      ZipError,
+    );
     zip.set("escape.bin", new Uint8Array([4]));
     zip.set(
       "word/_rels/document.xml.rels",

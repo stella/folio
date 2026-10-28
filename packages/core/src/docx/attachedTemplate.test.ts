@@ -105,8 +105,7 @@ describe("attached template reference", () => {
   });
 
   const seedSource = async (): Promise<ArrayBuffer> => {
-    const seeded = new ZipArchive();
-    await seeded.loadAsync(await createEmptyDocx());
+    const seeded = await ZipArchive.read(await createEmptyDocx());
     seeded.set("word/settings.xml", SETTINGS_XML);
     seeded.set("word/_rels/settings.xml.rels", SETTINGS_RELS);
     return seeded

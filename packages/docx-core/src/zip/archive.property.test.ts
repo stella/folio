@@ -126,3 +126,54 @@ describe("arbitrary corruption", () => {
     propertyTestTimeout(60_000),
   );
 });
+
+const TEXT_CHUNK_BYTES = 16 * 1024;
+
+test(
+  "text entries keep supplementary characters across chunk boundaries",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.record({
+          chunk: fc.integer({ min: 1, max: 4 }),
+          codePoint: fc.integer({ min: 0x1_00_00, max: 0x10_ff_ff }),
+        }),
+        async ({ chunk, codePoint }) => {
+          for (const compression of ["store", "deflate"] as const) {
+            for (const shift of [-1, 0, 1]) {
+              const archive = new ZipArchive();
+              const expected = new Map<string, string>();
+              for (let index = 1; index <= chunk; index++) {
+                const boundary = index * TEXT_CHUNK_BYTES + shift;
+                const text = `${"a".repeat(boundary)}${String.fromCodePoint(codePoint)}end`;
+                const encoded = new TextEncoder().encode(text);
+                for (const [path, data] of [
+                  [`word/text-${index}.xml`, text],
+                  [`word/bytes-${index}.xml`, encoded],
+                  [`word/buffer-${index}.xml`, encoded.buffer],
+                ] as const) {
+                  archive.set(path, data);
+                  expected.set(path, text);
+                }
+              }
+              // oxlint-disable-next-line no-await-in-loop -- each layout is checked in turn
+              const reread = await ZipArchive.read(
+                // oxlint-disable-next-line no-await-in-loop -- each layout is checked in turn
+                await archive.generate({ compression }),
+              );
+              for (const [path, text] of expected) {
+                // oxlint-disable-next-line no-await-in-loop -- entries are checked in turn
+                expect((await reread.entry(path)?.text()) === text).toBe(true);
+              }
+            }
+          }
+        },
+      ),
+      {
+        numRuns: 10,
+        id: "ZIP text preserves supplementary characters across chunk boundaries",
+      },
+    );
+  },
+  propertyTestTimeout(60_000),
+);

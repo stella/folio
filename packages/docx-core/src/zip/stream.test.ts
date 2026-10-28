@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { closeSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
+import {
+  closeSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  rmSync,
+  writeSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -127,14 +134,46 @@ describe("streaming writer", () => {
     }
     try {
       expect(offset).toBeGreaterThan(bigSize);
-      const mapped = Bun.mmap(file);
-      const archive = await ZipArchive.read(mapped, {
-        limits: { maxEntryBytes: bigSize, maxTotalBytes: bigSize + 10 },
-      });
-      expect(archive.paths()).toEqual(["large.bin", "after.txt"]);
-      expect(archive.entry("large.bin")?.size).toBe(bigSize);
-      expect(await archive.entry("after.txt")?.text()).toBe("after");
+      // The records after the data: central directory, Zip64 end record and
+      // locator, end record. Read them back from the file's tail.
+      const tailSize = 1024;
+      const tail = new Uint8Array(tailSize);
+      const reader = openSync(file, "r");
+      try {
+        readSync(reader, tail, 0, tailSize, offset - tailSize);
+      } finally {
+        closeSync(reader);
+      }
+      const view = new DataView(tail.buffer);
+      const end = tailSize - 22;
+      expect(view.getUint32(end, true)).toBe(0x06_05_4b_50);
+      expect(view.getUint32(end + 16, true)).toBe(0xff_ff_ff_ff);
+      const locator = end - 20;
+      expect(view.getUint32(locator, true)).toBe(0x07_06_4b_50);
+      const record =
+        Number(view.getBigUint64(locator + 8, true)) - (offset - tailSize);
+      expect(view.getUint32(record, true)).toBe(0x06_06_4b_50);
+      expect(view.getBigUint64(record + 32, true)).toBe(2n);
+      const directoryOffset = Number(view.getBigUint64(record + 48, true));
+      expect(directoryOffset).toBeGreaterThan(bigSize);
+      // First record: large.bin, both sizes in its Zip64 extra field.
+      let cursor = directoryOffset - (offset - tailSize);
+      expect(view.getUint32(cursor + 20, true)).toBe(0xff_ff_ff_ff);
+      expect(view.getUint32(cursor + 24, true)).toBe(0xff_ff_ff_ff);
+      const nameLength = view.getUint16(cursor + 28, true);
+      const extra = cursor + 46 + nameLength;
+      expect(view.getUint16(extra, true)).toBe(1);
+      expect(view.getBigUint64(extra + 4, true)).toBe(BigInt(bigSize));
+      expect(view.getBigUint64(extra + 12, true)).toBe(BigInt(bigSize));
+      // Second record: after.txt, its local header offset past 4 GiB.
+      cursor = extra + 4 + view.getUint16(extra + 2, true);
+      expect(view.getUint32(cursor + 42, true)).toBe(0xff_ff_ff_ff);
+      const secondExtra = cursor + 46 + view.getUint16(cursor + 28, true);
+      expect(view.getBigUint64(secondExtra + 4, true)).toBeGreaterThan(
+        BigInt(bigSize),
+      );
       if (systemZipCheck.available) {
+        // Info-ZIP reads every byte of both entries and checks their CRC-32.
         const unzip = Bun.spawnSync(["unzip", "-tqq", file]);
         expect(unzip.exitCode).toBe(0);
       }

@@ -1231,7 +1231,6 @@
   "packages/docx-core/src/validate/packageGraph.test.ts": 7,
   "packages/docx-core/src/validate/schemaAttributes.test.ts": 35,
   "packages/docx-core/src/validate/xmlEntityDecoder.test.ts": 4,
-  "packages/docx-core/src/zip/writeZipPart.test.ts": 452,
   "packages/editor-web/src/historyBridge.test.ts": 166,
   "packages/editor-web/src/protocol.test.ts": 2,
   "packages/playground-vue/test/App.test.ts": 381,

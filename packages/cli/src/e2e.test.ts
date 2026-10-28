@@ -92,9 +92,7 @@ describe("folio executable", () => {
       const receipt = dataOf(suggested.stdout);
       expect(receipt["saveStrategy"]).toBe("selective");
       expect(
-        Object.keys(
-          (await ZipArchive.read(await readFile(file))).files,
-        ).toSorted(),
+        (await ZipArchive.read(await readFile(file))).paths().toSorted(),
       ).toEqual(sourceNames);
 
       const stale = folio([

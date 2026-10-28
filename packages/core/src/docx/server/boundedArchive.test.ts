@@ -40,13 +40,8 @@ describe("loadDocxArchive", () => {
     );
     expect(await archive.readEntryString("missing.xml")).toBeNull();
     expect(archive.entryMetadata).toEqual([
-      { path: "word/", directory: true, declaredUncompressedBytes: null },
-      {
-        path: "word/document.xml",
-        directory: false,
-        declaredUncompressedBytes: 7,
-      },
-      { path: "media.bin", directory: false, declaredUncompressedBytes: 3 },
+      { path: "word/document.xml", declaredUncompressedBytes: 7 },
+      { path: "media.bin", declaredUncompressedBytes: 3 },
     ]);
   });
 

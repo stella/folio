@@ -184,11 +184,26 @@ describe("unzipDocx security limits", () => {
   });
 
   test("rejects unsafe archive paths", async () => {
+    // The writer refuses the name, so write a placeholder of the same length
+    // and rename it in both the local header and the central directory.
     const zip = new ZipArchive();
-    zip.set("/word/document.xml", "<w:document />");
-
-    const buffer = (await zip.generate({ compression: "store" })).buffer;
-    const error = await getRejectedError(unzipDocx(buffer));
+    zip.set("xword/document.xml", "<w:document />");
+    const bytes = await zip.generate({ compression: "store" });
+    const placeholder = new TextEncoder().encode("xword/document.xml");
+    const unsafe = new TextEncoder().encode("/word/document.xml");
+    let renamed = 0;
+    for (
+      let offset = 0;
+      offset + placeholder.length <= bytes.length;
+      offset++
+    ) {
+      if (placeholder.every((byte, index) => bytes[offset + index] === byte)) {
+        bytes.set(unsafe, offset);
+        renamed++;
+      }
+    }
+    expect(renamed).toBe(2);
+    const error = await getRejectedError(unzipDocx(bytes.buffer));
 
     expect(error).toBeInstanceOf(DocxSecurityError);
   });

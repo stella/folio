@@ -102,9 +102,9 @@ describe("folio suggest --in-place preserves corpus ZIP entry names", () => {
         expect(receipt["fileVersion"]).not.toBe(fileVersionOf(source));
 
         const saved = new Uint8Array(await readFile(file));
-        expect(
-          Object.keys((await ZipArchive.read(saved)).files).toSorted(),
-        ).toEqual(sourceNames);
+        expect((await ZipArchive.read(saved)).paths().toSorted()).toEqual(
+          sourceNames,
+        );
         const reopened = await FolioDocxReviewer.fromBuffer(saved);
         expect(
           reopened.getContent().filter(({ text }) => text === INSERTED_TEXT),
