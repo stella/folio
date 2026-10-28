@@ -1,0 +1,563 @@
+{
+  "parseXml": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": "f0c30a425fd89fc53a4dd836a9bd0f84fb43d4c709b13066be9327db82d829d5",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": "6f244465e29be4dc634abbcbae234b8e4800206d061bfa919279d59d654a668b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": "f8da7ba4803e37bb02836495b3481787e0ace45dd4cf723c8dbfb4181bd6d9e9",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": "6d153e75e1aff303c3f43384ae921fc02ca09399188cfe2d18ba6eb9fd0ba288",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": "f0cdad43286538a0dc71069d9a31f8897a4d1b8b270554e7c3686654fca769a9",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": "c259b2ca1f71058b5bd163832648583c698f1b684ece1bb48a2e6b3901b6d112",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": "22938db34e468a21c54cd1c2688d1c6530890d8dc49712b66640753c0d2635a1",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": "44e168089c3acd27921cd40d5f6cce13b49679cb0453f81137a349b653876b6b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": "114882facce242b66f273037dcb55fcc3ee56f6c2d8e34e4a93cbb4638e84044",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": "119d5c9762b9705af9afb0faa8a1bf4299f33fb6f3ef382488613540a25016d7",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": "31d70775307e7c1c8effafe5ff6b3b2731c46cd060b9d016d88fb3c386cac18b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": "d7e814a273f29a091fbeb2da8f61aa36fe60cc40399c2e8700442ac73cfc652f",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": "d487fd7d1852cccb681fdcd19ed8975e8ed31cbdd3d40cace508efda4a30ed68",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": "8a3809d355329188c4e0bf4c813d3be55b35f74e18d4523e8b02415dd1a08942",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": "0d0fe457c9210a928624fc520b85a9911761b5f50f4a48c130d60fcfd63975fb",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": "49bb17a17db50f600fadaa09deedf5e189c4bd23444ca91ae3a0f00569c58ab0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": "d00fe8ae918344c749def6bcadbd5723a5abd5e611a13865c6bcac13959a28ec",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": "db85d8550443656128a133594a29f444c329dc0c46166862e8f1e130e5938c0c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": "a95d8446c57d6c5e816bf6b638765542872874a225bd37705e0b4c20214d96bf",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": "3389b101b7bd7614f8aa2f5c5ef1e3d904a9215bb7d17834de184102d865dfc3",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": "3a2861638406b3fbc6b4c7d30789ce2af72ae43edeb3f625ee786dac88970a48",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": "43bf18a3d1a579f0c42effe6026095412727ba5ff990214cc83594d885f33144",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": "d9a65a66d93b2bd4d607c3bb53be5bbb20c3ec2f999ef631b9e2722cd531e7ed",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": "455c015da059f2b2bcfb61d10a2ef7e727223bae687bb41cfad89895e5178434",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": "e1d3007a13e3bd9963aab7c8cb6c177c16c1816a5c64328499f63fc7f4277356",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": "4c9b30f36f2933e5ba6047e50d2bedd526d2c94d06a15e990a4eee13b1368e1d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": "288742bff1de99c072ce134838422a56a25c969fe830274776b994eb1195ca05",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": "cf40ce178017a0d10c3f63f5e536fc228e466a752a19c01c8b213b715cff0eed",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": "32d89860e6d32bb49f1eb0c666227be786375524fc80a1cce1571dcfbcc98e0d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": "bc16ac0386f5414a0d249915048a2bf8740891e28384296c882afd0fad942ca4",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": "5aa42ab99437573843b6f38408b7028c227864b7df2aff88d7d29b03516dfead",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": "40d8bf96db69b9643ae88a7e9064ece79fddd7fa535eee4055f2a0ae3737a628",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": "529548f50d9a6746c8f1ba0e8dfa555e715dadcce8fce57375fd093c1bdc1847",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": "6d2a789336d184ae1eb0dd38197e17a8bd1fb3e1a2fb9d7eb348bdc22fc6e2ce",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": "dbaa196dfac147649aa2793e1f3dfeb81486cb8275e33a64b8346ec222fc8ffd",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": "f833a6d0ae77a23b90855d48b58dc0f41d9f6cc7508f42e55d63496d119e8041",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": "e4d35d501bae9cb839e777611ee7eaad455a5d86bd5fe2d21189d8f7fa7cd37c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": "20d7555d574070153229efe0020b7d847c48c33a7d9325c43d33921f4123698d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": "f19726515c51688b3ac30ae6e4221140c84ba05ef7d1196db246753853701a81",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": "7392daa9434fed18d578dfcf0c214029b686e30366e127ee0e839e89e4cde521",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": "80557d24d92cbf19619af12ed04f2e4bc919565dd27414e79cec2c35a4d901c5",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": "0dc85aac327b93d7f41f2c4b3c383e3e0152a883852e1abb0ed0b2de1d58f6fe",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": "bee2980eab927b20b64cf4ec3e697b8ef58a68de5494acb790f60adc1cb77756",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": "89f3748aa82417f6567fb901ed584bece6f2078d6fb10b21427c8ce4ef3e7ae4",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": "00e524cd114b50409b6263aff19c558d85ed02b8a93b0d56dd9a20c4e54ea30a",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": "805ca8cbef83eaa5f0c4c1a5d3d1fd4b7a7b9def985cc3aa27bf36c322cb8c77",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": "d7e7ebfa0b98fbf29483ae046f81ac050e267d5f499fa479396e0875b8edc9d8",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": "063250b644a12f55f6b25da0e2037f925b64b35aace1499ffc6de942456de8ba",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": "b3ad339441b2b684beff9aeb466edbb02117c6684ee470f6c2e22009b2657e14",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": "577b32146b21d6559990e314dbc729d283cea88348e35ab4efa70fe10fbbae08",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": "0eccdd58c6c6dad7861e48112eeea3b314d9f52dd9dcd0eecfc7e92307a7964d",
+      "tests/visual/fixtures/cursive-face-change.docx": "41600d1b05eaea659ec94e56b535154b0765579b762279d4dcff0f0271acdabc",
+      "tests/visual/fixtures/docx-editor-demo.docx": "b9c6a2bfbdb37f4534e49c4c3f1c664431ff72c9f2575405252d2662a27ff6d3",
+      "tests/visual/fixtures/font-subsets.docx": "254502dc6ad1a699a8ce272cdd14c318e269f22a965c14611bbd8d385e811cbc",
+      "tests/visual/fixtures/markup-views-final.docx": "d220c267d0faea3a5d4021326321af7b568695e021339c3ca39f50139ba87f16",
+      "tests/visual/fixtures/markup-views-original.docx": "def0ff680f504950a72517d8aa3df64f5626038117b731c1c349db5c009a86e5",
+      "tests/visual/fixtures/markup-views.docx": "ff04f203fbeacfdd1161d13570bc1de238a0f1306741e06696d3287d8588886e",
+      "tests/visual/fixtures/mixed-script-font-measure.docx": "2ef9a81250b35e20447f698f06b219c65060f869b79ca7b319a53eac36870c20",
+      "tests/visual/fixtures/mixed-script-font-sample.docx": "4579bb12ca6b7bee86efc2f5664baf4a41b8a2b22500f42aab227e8802dfd9c5",
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": "3dac7260523bf97f70ae1acda9d8c757b148f516ce0e356727538104174f38c5",
+      "tests/visual/fixtures/performance-long-split-table.docx": "445616597ac947aa2871b358d6f5e91d13a4a5eddca1ddcf76ba4c7d129cd0bd",
+      "tests/visual/fixtures/podily-bps.docx": "7dadb5c9c7d47cf3204876c0f90a3ef073dc6a94bb9f2943fc5a1bcb70f06702",
+      "tests/visual/fixtures/sample.docx": "81086fcc14d39b632ab46e63998cd1430d24a9dc58866fbdb82d4c853daff2ee",
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": "52061edd421540a09c5ffe57959b0844338b3266b6aad5dcd409bbbf79d5a02f"
+    },
+    "edges": {
+      "ordinary": {
+        "digest": "66b2cee666e6d821b2f1da8618960b423de2fc800f106aaf2df14396d9d83e3b"
+      },
+      "built-in entities": {
+        "digest": "dbb33944ef7e8c47621c6d49a1e05035fbf6283651feb839668ebbb125518075"
+      },
+      "character references": {
+        "digest": "9f52702bdfbc275daf32109cbe540e14f2e9306d8cb722ecdb0d1bc089631894"
+      },
+      "CRLF text": {
+        "digest": "cddbdb3d211baa780d07eed12aa9811e9e22ae7c1158d7879e93b43407db31d9"
+      },
+      "CRLF and tab attribute": {
+        "digest": "0306f2ca90a61a89ebb314819835ae9e58cf8dc6773752ff515db537df81c2c8"
+      },
+      "CDATA": {
+        "digest": "860083e78df29c26411720a3c38359c84eca00392f323aa406c4cb16c5b39604"
+      },
+      "comment and PI": {
+        "digest": "fa51827ee0ccef50de4411f57cec90cb4e23acb23f61f94b79d4fc5a59ae89fb"
+      },
+      "mismatched end tag": {
+        "digest": "7953729e68d5c05f4b072ed3558ceef053f1fc7e1c27f93fb3823ad09288088f"
+      },
+      "unclosed element": {
+        "digest": "7953729e68d5c05f4b072ed3558ceef053f1fc7e1c27f93fb3823ad09288088f"
+      },
+      "stray end tag": {
+        "digest": "aa763d4e432dc37bfc01fb7c36b027911fd18193be29fbe5b0eec31505757ba2"
+      },
+      "two roots": {
+        "digest": "cbac90116c313f91e87c67d51c1ff526fe008b680b62888170d600fc86d0635a"
+      },
+      "text before root": {
+        "digest": "1b6fea134dd86a67911e5eace0ca701fb4f934aa2daa7a313b139e8382b8ace2"
+      },
+      "text after root": {
+        "digest": "aa763d4e432dc37bfc01fb7c36b027911fd18193be29fbe5b0eec31505757ba2"
+      },
+      "duplicate attribute": {
+        "digest": "22cbbeaebe82f319afca2595578d42f49c9b78b25f45d890c11a7ada8705a090"
+      },
+      "attribute without value": {
+        "digest": "d9aff09ced70fca71bfdb427e5c844fbb4da602ff025089fa3ff5076d93a3722"
+      },
+      "unquoted attribute": {
+        "digest": "d9aff09ced70fca71bfdb427e5c844fbb4da602ff025089fa3ff5076d93a3722"
+      },
+      "attributes without separator": {
+        "digest": "9c136ea3948344436c9a7f63d66a3e13d74508d3e72c631fb715e32efd4d06c6"
+      },
+      "less-than in attribute": {
+        "digest": "2598b28e8e397461954393ce201190f3a2b431167e20cc67a8e9166ac8b5ab1e"
+      },
+      "HTML entity in text": {
+        "digest": "899925a18bc01891ed2861159378cf300a457ffb8746e2db29d011cf2f4a84f9"
+      },
+      "HTML entity in attribute": {
+        "digest": "f243fcc806971738e47c8d54357d97826a060bde3a27a07620f0ec0a781183e1"
+      },
+      "unknown entity": {
+        "digest": "0461ab1959b088956f50777365eab93cb3b748d555bb9f74c67623b1fc774b04"
+      },
+      "bare ampersand": {
+        "digest": "bdb5474d933967fe01e1f89c82c24a63c2de156bd7d9e26bf0f8871556303491"
+      },
+      "ampersand without semicolon": {
+        "digest": "bc56609a2f3ef323130f9e8155a9a4470ef503b81a6b2a33cbeea4497df64a71"
+      },
+      "null character reference": {
+        "digest": "ba59f22af4eeb1cec516edd4da9b340c906549c11299763641323b4c0ecfa928"
+      },
+      "C0 character reference": {
+        "digest": "0f45ee041105af3b1fee0601aab1ef3f966834440dccf8b4a09bdaf361ec696f"
+      },
+      "surrogate character reference": {
+        "digest": "ba59f22af4eeb1cec516edd4da9b340c906549c11299763641323b4c0ecfa928"
+      },
+      "out-of-range character reference": {
+        "digest": "05809e7d9c412dae9d1dea6065d7a7c41e58c09acfb67fa8333149e97d389377"
+      },
+      "lenient character reference": {
+        "digest": "ba59f22af4eeb1cec516edd4da9b340c906549c11299763641323b4c0ecfa928"
+      },
+      "raw control character": {
+        "digest": "0f45ee041105af3b1fee0601aab1ef3f966834440dccf8b4a09bdaf361ec696f"
+      },
+      "CDATA terminator in text": {
+        "digest": "6aaa0f0c14d3b2ec0a38eeb882edcaa951204774a166ad30cfc12009644f0b66"
+      },
+      "double hyphen in comment": {
+        "digest": "aa763d4e432dc37bfc01fb7c36b027911fd18193be29fbe5b0eec31505757ba2"
+      },
+      "DOCTYPE": {
+        "digest": "ac26031c867ffebdcdef767e2dd649f80408fac07fff46fbf6e057e7c8dab3b4"
+      },
+      "DOCTYPE entity expansion": {
+        "digest": "16e6bd633425834efe04c2c1aa54d581e9cf730402db401ae65da15daa08e24e"
+      },
+      "prototype attribute": {
+        "thrown": "[SECURITY] Invalid name: \"__proto__\" is a reserved JavaScript keyword that could cause prototype pollution"
+      },
+      "constructor element": {
+        "thrown": "[SECURITY] Invalid name: \"constructor\" is a reserved JavaScript keyword that could cause prototype pollution"
+      },
+      "constructor attribute": {
+        "thrown": "[SECURITY] Invalid name: \"constructor\" is a reserved JavaScript keyword that could cause prototype pollution"
+      },
+      "name starting with a digit": {
+        "digest": "897bdff3b6b8770304d03268c25523a82ecd08186edf92c8820ba4790ee40f25"
+      },
+      "name with two colons": {
+        "digest": "65b745382724789d15142f8748788d2312944718cf4f091c275e46186a60de10"
+      },
+      "unbound element prefix": {
+        "digest": "0722a6f2538e69143ae0e0dc8a4b68aa5fc4fc4b33f2fa1b8f1f1fcc3f318373"
+      },
+      "unbound attribute prefix": {
+        "digest": "9b7b0b48690535570355fa58d3196bdea513d56da310566a4f007c8ee800030a"
+      },
+      "declaration inside the root": {
+        "digest": "aa763d4e432dc37bfc01fb7c36b027911fd18193be29fbe5b0eec31505757ba2"
+      },
+      "declaration after whitespace": {
+        "digest": "aa763d4e432dc37bfc01fb7c36b027911fd18193be29fbe5b0eec31505757ba2"
+      },
+      "byte-order mark": {
+        "digest": "aa763d4e432dc37bfc01fb7c36b027911fd18193be29fbe5b0eec31505757ba2"
+      },
+      "unclosed CDATA": {
+        "thrown": "CDATA is not closed."
+      },
+      "unclosed comment": {
+        "thrown": "Comment is not closed."
+      },
+      "depth 99": {
+        "digest": "ec89d6009d7260262e010086019a3d3913b2df4c88e3de93e975bef6bec7b949"
+      },
+      "depth 101": {
+        "digest": "0afde363b130cc2c9ccb8dfbaf59f77a7e287143e7621982501502a670c7d714"
+      },
+      "depth 150": {
+        "thrown": "Maximum nested tags exceeded"
+      },
+      "many attributes": {
+        "digest": "29d3885bef5f3f8209d8fad8f62aadd0ad7b0424e380dc5cec602f2e0f5276ce"
+      },
+      "space before tag name": {
+        "digest": "d9aff09ced70fca71bfdb427e5c844fbb4da602ff025089fa3ff5076d93a3722"
+      },
+      "space after self-closing slash": {
+        "digest": "d9aff09ced70fca71bfdb427e5c844fbb4da602ff025089fa3ff5076d93a3722"
+      },
+      "space in end tag": {
+        "digest": "d9aff09ced70fca71bfdb427e5c844fbb4da602ff025089fa3ff5076d93a3722"
+      },
+      "empty document": {
+        "digest": "e0c01f3489ff784ad4d08259af9f7cefe8e59a617c8f4c5b0f22fba8f2a6fe93"
+      },
+      "whitespace document": {
+        "digest": "e0c01f3489ff784ad4d08259af9f7cefe8e59a617c8f4c5b0f22fba8f2a6fe93"
+      },
+      "xml prefix rebound": {
+        "digest": "334a381c3f318aad5d95db728a644c2356f8228017dc243ade91b9447ac0cb7e"
+      },
+      "namespace URI with reference": {
+        "digest": "916446bcba77d98ed352b47c6ce3e3b3714e2f070d57b110bac0f5fe2183a565"
+      },
+      "numeric identifier out of range": {
+        "digest": "6bec6dcdb855cbf160cb1b493c6de8dca23d46f2fb4f378a63ea4893a1650f7d"
+      },
+      "numeric identifier with reference": {
+        "digest": "96e4dc4e5338d57c2166929ae1eeff3540c3be480dbab1c3b39372aa377e953a"
+      },
+      "numeric identifier with HTML entity": {
+        "digest": "60e5346078e967f1429f6a330806a61accef07379783f7f5414133dea66b80e0"
+      },
+      "relationship attribute": {
+        "digest": "8b8bd7f14c79a0927ac2c89a0e8dd135ad63100f64db3ab9b31c68b9a9aff0c7"
+      },
+      "element": {
+        "digest": "bfe5f081271673d13a3450af4177b261a33683d616e4ffd2878f70b6e4378ff0"
+      },
+      "element with comment after": {
+        "digest": "ac26031c867ffebdcdef767e2dd649f80408fac07fff46fbf6e057e7c8dab3b4"
+      },
+      "element with comment before": {
+        "digest": "ac26031c867ffebdcdef767e2dd649f80408fac07fff46fbf6e057e7c8dab3b4"
+      },
+      "element with PI after": {
+        "digest": "ac26031c867ffebdcdef767e2dd649f80408fac07fff46fbf6e057e7c8dab3b4"
+      },
+      "two elements": {
+        "digest": "726ce58109e5a161dbbabc8b16681a3afc09189b545184565f0887ffea976660"
+      },
+      "text and element": {
+        "digest": "ac26031c867ffebdcdef767e2dd649f80408fac07fff46fbf6e057e7c8dab3b4"
+      },
+      "element and text": {
+        "digest": "ac26031c867ffebdcdef767e2dd649f80408fac07fff46fbf6e057e7c8dab3b4"
+      },
+      "CDATA only": {
+        "digest": "a958c0a6d02cfb3d3b58ee98363dad1325dbbd60577f3db376a0edc44c8fb18e"
+      },
+      "comment only": {
+        "digest": "e0c01f3489ff784ad4d08259af9f7cefe8e59a617c8f4c5b0f22fba8f2a6fe93"
+      },
+      "declaration": {
+        "digest": "ac26031c867ffebdcdef767e2dd649f80408fac07fff46fbf6e057e7c8dab3b4"
+      },
+      "nested": {
+        "digest": "bd32620ec25cb82b8ae0caaf47083028cd8be6748c730a8df5ee0d56ba2c866d"
+      },
+      "foreign namespace": {
+        "digest": "4e8cc9eed1f3c86ce1465172f8b7352f4e41f312defee26fe9744f1bee7525aa"
+      },
+      "unbound prefix": {
+        "digest": "e46e5e2a9422253537de89a73d48cdccee048b0dfb4a3c865055e9644c924c2e"
+      },
+      "rebinding w": {
+        "digest": "8c5fc8ed05e7156d730337a88ba56d470e05bfd08aa37f672b987f7912e4ea85"
+      },
+      "duplicate expanded attribute": {
+        "digest": "249ff62feb9cfa7b9d4c45d4f7d466c9bd64fc5fc0a90d1a4c17a5103f8287c2"
+      },
+      "xml prefix bound elsewhere": {
+        "digest": "c8868f1b93292eeb68b81e682e45579e5ba354f858229502634777816db6336b"
+      },
+      "xmlns prefix": {
+        "digest": "56b2c3c8c4be641bafc57ebf1b0214ada20d3667d810e5bd1a376a70bd69f43a"
+      },
+      "empty prefix binding": {
+        "digest": "f6dfda0b20589d7a765cc24b3b7097a6ed1dacd3a3292a9ea3369de349a41d9e"
+      },
+      "reserved xml-prefixed binding": {
+        "digest": "8aa41ed282597b0f97d0bd6e6fe6e5d2c9acb59999b2351f67fce5249e5e9f7a"
+      },
+      "HTML entity": {
+        "digest": "703294eafcfac7935cd54fca20f4c3b609269ee46f1996861e0880fd441f7b31"
+      },
+      "built-in entity": {
+        "digest": "f3dd8cddc6408c6aeb53251a9ad4593bb16fcd23866f390da44bf330998103f8"
+      },
+      "character reference": {
+        "digest": "eeb5ba998b1a667edbf3d8f65a2e8e4203a3fe9e942e70483fb9362fadc249ff"
+      },
+      "invalid character reference": {
+        "digest": "3b74473aceaed9f296df4447eb75c92f2ff0657697e16e4274a0f4abf31a36bb"
+      },
+      "ENTITY": {
+        "digest": "bb2909623ecdf9ee8ebec3a38c25bb7c9c3fa15758ac9eb3d5b6555844c4714a"
+      },
+      "mismatched": {
+        "digest": "4e17bfe3f6a087bee44f3d7935de066e6fed7127d429eca022b56796ab75d257"
+      },
+      "unclosed": {
+        "digest": "ac26031c867ffebdcdef767e2dd649f80408fac07fff46fbf6e057e7c8dab3b4"
+      },
+      "whitespace around": {
+        "digest": "ac26031c867ffebdcdef767e2dd649f80408fac07fff46fbf6e057e7c8dab3b4"
+      },
+      "empty": {
+        "digest": "e0c01f3489ff784ad4d08259af9f7cefe8e59a617c8f4c5b0f22fba8f2a6fe93"
+      }
+    }
+  },
+  "safety": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": "603104f44d5db229cd46c665cdd6986f7dbc7e7e5aa47bce5cde631295c6100b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": "044fb5eb5121e7658130976d6e3ddf61feffd0bbed813de6521d8ffd447a3adf",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": "ba7515dcb0657929251111d0121d977c64ca9cca408d0e4d3a7740979f25697e",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": "995de473599383bcb3b2eb834309a891d1bb74405e3954b9ac160764c90b6027",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": "6a555cc5e414fda35ab489c2027d23e33dff91c8b322438d9ae77781c1f3e26d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": "044fb5eb5121e7658130976d6e3ddf61feffd0bbed813de6521d8ffd447a3adf",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": "6a555cc5e414fda35ab489c2027d23e33dff91c8b322438d9ae77781c1f3e26d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": "d74716a03dc35139a9b91e10506918350c1a24405d6b73525b2322878735bd72",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": "961ac86654836c0ede937d4084a3b940d3475db69aacab151503b46d0a048c0d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": "82c3c44d759a89ac781a77c10a4e3fb914c10420ea12ae95440400ec499f935b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": "15668ef491482fdcf5a00ffad5797c931193609df0659487e20109235e368460",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": "c1b88e286bac4f0c3b4074c1a1ccc99a428d331a23b6e3ee3139566a3e1be4fa",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": "23f3787a1ef77c0adc5bc765b770b9d156f4b39abc25106bc85b9ed10ed015a6",
+      "tests/visual/fixtures/cursive-face-change.docx": "652f4bcf2eb47255db146228dd8ef374297a4aae6fd69eb768a8c7887db5ba89",
+      "tests/visual/fixtures/docx-editor-demo.docx": "354bc02117d304a7a91474dee6cff65011b9c0c779f3a0375c59137885d7545f",
+      "tests/visual/fixtures/font-subsets.docx": "652f4bcf2eb47255db146228dd8ef374297a4aae6fd69eb768a8c7887db5ba89",
+      "tests/visual/fixtures/markup-views-final.docx": "652f4bcf2eb47255db146228dd8ef374297a4aae6fd69eb768a8c7887db5ba89",
+      "tests/visual/fixtures/markup-views-original.docx": "652f4bcf2eb47255db146228dd8ef374297a4aae6fd69eb768a8c7887db5ba89",
+      "tests/visual/fixtures/markup-views.docx": "652f4bcf2eb47255db146228dd8ef374297a4aae6fd69eb768a8c7887db5ba89",
+      "tests/visual/fixtures/mixed-script-font-measure.docx": "1ed6ba34b47baf5d2cd99558b6cc703ec948a3ca551f44ba6b307d2060d152ee",
+      "tests/visual/fixtures/mixed-script-font-sample.docx": "5e20b647a7731062aac6fe1295bfd09aecd21513006ae461a45e4b1f3bd56ec4",
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": "72c83e511d25519ce4d693eb3361fe5a94e8cf1bc56c8a0fd64b954959c8d735",
+      "tests/visual/fixtures/performance-long-split-table.docx": "72c83e511d25519ce4d693eb3361fe5a94e8cf1bc56c8a0fd64b954959c8d735",
+      "tests/visual/fixtures/podily-bps.docx": "8ab6347e236aecaf6caa0200d36de38e2e5299dbb05a86144dfd02543abfd4cd",
+      "tests/visual/fixtures/sample.docx": "b32512533900eaebaffd8cc0dd35b8bddd4869d3e0000efa4e23064c5d8edb7f",
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": "72c83e511d25519ce4d693eb3361fe5a94e8cf1bc56c8a0fd64b954959c8d735"
+    },
+    "edges": {
+      "ordinary": null,
+      "built-in entities": null,
+      "character references": "not-well-formed",
+      "CRLF text": null,
+      "CRLF and tab attribute": null,
+      "CDATA": null,
+      "comment and PI": null,
+      "mismatched end tag": "not-well-formed",
+      "unclosed element": "not-well-formed",
+      "stray end tag": "not-well-formed",
+      "two roots": null,
+      "text before root": "not-well-formed",
+      "text after root": "not-well-formed",
+      "duplicate attribute": "not-well-formed",
+      "attribute without value": "not-well-formed",
+      "unquoted attribute": "not-well-formed",
+      "attributes without separator": "not-well-formed",
+      "less-than in attribute": "not-well-formed",
+      "HTML entity in text": "entity-forbidden",
+      "HTML entity in attribute": "entity-forbidden",
+      "unknown entity": "entity-forbidden",
+      "bare ampersand": "entity-forbidden",
+      "ampersand without semicolon": "entity-forbidden",
+      "null character reference": "entity-forbidden",
+      "C0 character reference": "entity-forbidden",
+      "surrogate character reference": "entity-forbidden",
+      "out-of-range character reference": "entity-forbidden",
+      "lenient character reference": "entity-forbidden",
+      "raw control character": "not-well-formed",
+      "CDATA terminator in text": "not-well-formed",
+      "double hyphen in comment": "not-well-formed",
+      "DOCTYPE": "doctype-forbidden",
+      "DOCTYPE entity expansion": "doctype-forbidden",
+      "prototype attribute": null,
+      "constructor element": null,
+      "constructor attribute": null,
+      "name starting with a digit": "not-well-formed",
+      "name with two colons": "not-well-formed",
+      "unbound element prefix": null,
+      "unbound attribute prefix": null,
+      "declaration inside the root": "not-well-formed",
+      "declaration after whitespace": "not-well-formed",
+      "byte-order mark": null,
+      "unclosed CDATA": "not-well-formed",
+      "unclosed comment": "not-well-formed",
+      "depth 99": null,
+      "depth 101": null,
+      "depth 150": null,
+      "many attributes": null,
+      "space before tag name": "not-well-formed",
+      "space after self-closing slash": "not-well-formed",
+      "space in end tag": null,
+      "empty document": "not-well-formed",
+      "whitespace document": "not-well-formed",
+      "xml prefix rebound": null,
+      "namespace URI with reference": null,
+      "numeric identifier out of range": null,
+      "numeric identifier with reference": null,
+      "numeric identifier with HTML entity": "entity-forbidden",
+      "relationship attribute": null,
+      "element": null,
+      "element with comment after": null,
+      "element with comment before": null,
+      "element with PI after": null,
+      "two elements": null,
+      "text and element": "not-well-formed",
+      "element and text": null,
+      "CDATA only": "not-well-formed",
+      "comment only": "not-well-formed",
+      "declaration": null,
+      "nested": null,
+      "foreign namespace": null,
+      "unbound prefix": null,
+      "rebinding w": null,
+      "duplicate expanded attribute": null,
+      "xml prefix bound elsewhere": null,
+      "xmlns prefix": null,
+      "empty prefix binding": null,
+      "reserved xml-prefixed binding": null,
+      "HTML entity": "entity-forbidden",
+      "built-in entity": null,
+      "character reference": null,
+      "invalid character reference": "entity-forbidden",
+      "ENTITY": "not-well-formed",
+      "mismatched": "not-well-formed",
+      "unclosed": "not-well-formed",
+      "whitespace around": null,
+      "empty": "not-well-formed"
+    }
+  },
+  "elementToXml": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": "1b4724437cbe87a58f0191069c423bb9bf918f91c80e179ccbd78ff93f797468",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": "6b8ecb240ca6a42f25fe346d15c3a0be486ea7518716bbeb701f07ce8722928c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": "f65f990fc96f27a41f5824565235ed80d31542c9e2f7e29f38fec4d5b029a628",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": "af0a730b61852c978247eb69e3d5e9488d62b42ba5beaf1500522825bd8c031b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": "c9a5f3a34f939c60b7ef1897de9891c9984593d0db0d5b02678aa9cffeb003be",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": "f0efef5bbba5571b95d3c4f94098920e253b460cab1b3fd65c1883a319e922c2",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": "e10c3238baacd74518a30f236681f2d931dfa278cca6da414819b87d7388c63f",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": "82bb9cd9f9584fccf39ae2f4d55f0589fd8cd6409ccae63a5f73ae9190e2c36b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": "00c9cea3dd4b624328de2bfa0694d0c98b5a08836fb2823adc1914fc8be7afad",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": "6f1a2c14eeb40f5a885a0fbed5e4915e8f08eb14d813ab47f94d7da7b7822083",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": "7610b54bcb72b0d01b170aef245a2f9caca8cf35a5db6018367d4618740d877f",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": "59542497414b234711184d2680b1c95859cf8806bf4085adcb3ab606a96551ca",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": "15126fa471c888a976fc462b0ac8586840e45e98465fbdaa453f9651e457aeff",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": "bed636246741d71b6387cbe7833fa0803cf1fef1a1a86f8f2d890533e3d442ec",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": "a51b6731fdca5e9b6dec1bbb8f0f26e8b65cc9f19a41e78b15a371d06b94f82a",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": "51b4398466edcee2363f4d9f09b9f83bcc433ace65fd930c4c92275c78946c22",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": "1fb4fcc6dee1817e25d3f659f392dfbc2556c674bc0d60f68dd28628467c9be7",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": "a878dac023dff41dd1a68d8db9ff3dd583e368bb697e097851f785c0a5f5b6a1",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": "14cfb7c7cef608978ae8386abebf212bcdb3a2b5ad70a12f37f88a120e8ea8b6",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": "0e3cf0a5eb9879c7193541d9a0fa6a6ae440fc08fffdbacea995fd3f0182953d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": "f7a92f62269fd14f483b163b7f62fb961f9c5ba44d385dc843f9eafea0faec07",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": "5fb64f7f34e16107ae8bee5e892c2888a599552dee9d0418d6817688ba7e73f9",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": "1ecb99ba5805ffa92cb8c3496b36e94942d298df3854eeda03cdedb4e74b688f",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": "4069d1f771b39573b5f42480f42906990820973d038bbf76bff10cb38b133cc6",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": "42d7688dbbcdbc08917d2b329b15a83d8bea4e386e1d1c14d79823123bae3a1c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": "02fa4ea127bf83938e4872110193f331f47b2f2a47c4744f2d5334cfa16cc016",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": "8b137a1aea1b749cd236e73ded3fc0e6dddd47260fd65df8be6a370c81e4f767",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": "6b2dc87e50247fc84cc2039a953481bfed7d5ced6d1393245ce9d043087108b3",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": "21ea3bda8059f14f302d3ab091bfc8b7f9b3b34ce4aa9d350e10a928dd6c60a3",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": "229298fbfa4b468fa40b22e85854d9739c706dc7f4a32c16a8a5c9bf3d88a391",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": "71e21d0e5fcc719c18f21346b687a91fe1584c61f079422c36f424920b066004",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": "203ab27dee82432f66fc96731149a916db9ce59c733f8412bd40bf27b573efbe",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": "dc48a0d90ff1e8a16d2164f5f6ce5b39033fb31315e3dfc3343335cb3f93dc38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": "be39500fb766aef19bea5b9eabb816a87209474133bf9b543f664f6e6e66757c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": "39b86b610427bd3b04dcc6bb41a476c1b0325b681b244d361726d7f517020e20",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": "f8e91ad00113b4e6a36caad23d4dc26c8c49ac0c183fd460ecabebbf229d8afe",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": "372dc3c0738a080c0b80eab29df236f0193375f886cc0151750188686bf39c10",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": "158f7685453a8de60ef0f9257b4c4ee1aad2d751fac493f48cb64cbf1b5a1be7",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": "29abb214769f4d6f37e42da1126628021faf9cd072927084938c8a1b52677813",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": "b7d4aeac80f2ccbfe74acf08f2e084e36f5331a8628267c8053d9fc3cd69f34a",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": "94cfcceef8d3332f603ed0c75cebfa991b30330f0912db0ea53a07b731ca37b5",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": "73fea35ecc0592b59da5b39b63209fd83a83aa00e5ed5a2567183fe33a2e5b7b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": "c5f9cccbd01bf1efb61bcba27bc2fe7b10337c0d1bb06737bfbef09d0e47242d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": "d47e704dfc27b1c3e1c99593cf7f42a6892898b2193a35e406ab8896052be3f2",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": "b9dc0bea4483a9acf417718675949353bfdb3b9020b8d89c861b36f6dd7c2033",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": "0e8eba2fc9bb4db44464747a7e9f448a9e541dff1b705119dd8e0938d5bcd9c9",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": "506d240b7b5400b19da37c78019215389c3e33c84ab9ff4faf3a6065bded7627",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": "e7b07571e7e8df7f171f86640d35a00379d71327c4b5360b5177e85b63472331",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": "1c6e41e5ece8379991b16fcf4ec30976d590ca2f53997b21902045575e12d5b1",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": "cfea487e409dfe3e1d7f6c6ba3474a21baefd4e0dec487dd28e300c456b22fa7",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": "96010106a1f9042b711cf7ba34e4d17e0b23af4ddddf742208500175e41b01ae",
+      "tests/visual/fixtures/cursive-face-change.docx": "25352b246733dcd7656a30a43c53a045cbcb878f4e3abddc938f1921158b9e8e",
+      "tests/visual/fixtures/docx-editor-demo.docx": "60fe0b1f153149e5e57e46c5f35ae9f727701da5502d2fe36cd60a4e8f867c86",
+      "tests/visual/fixtures/font-subsets.docx": "7a73c34aac3fa191b40a22aa6acd1b7e2ab29e32ec9b969c997de5b0ebd965f5",
+      "tests/visual/fixtures/markup-views-final.docx": "1b8af65c968187d28ec7abab0eadb83b7bd7a9c742aed28560012d8072cb27b3",
+      "tests/visual/fixtures/markup-views-original.docx": "df2a43aad370f4ff74353b94b36174eebc301b1c693d505a5d3bb822ed1851b5",
+      "tests/visual/fixtures/markup-views.docx": "d760836604b0fb8fb9db400045dd05c38c218efe954ae4e54231f947dbcfc837",
+      "tests/visual/fixtures/mixed-script-font-measure.docx": "26c812b69fc70f0017f7f1284fe1da7d30424bdba8c3994765ed62d412e64adb",
+      "tests/visual/fixtures/mixed-script-font-sample.docx": "5e48bde95f767edc59ddb4f38bf8054795ac37426b77328a4a7ef565c3511a58",
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": "4c910be27a87c8b1c2000f174a5faed3f48d390f9813d5b415cbc25040a38dd6",
+      "tests/visual/fixtures/performance-long-split-table.docx": "e06f2eb6be07ba2d11b60f36f2af6c4b635cf243f554b3280e6834f35f594edd",
+      "tests/visual/fixtures/podily-bps.docx": "ab215046322e2936d0467d6557b67503be58d08bffbb725224d3310bb4082aed",
+      "tests/visual/fixtures/sample.docx": "5fa8cc6f313ea009777e362c7bb5a7dc89aea57d76241119aab0ebbfd9e4af44",
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": "2d2e766db1297b54303889a217171777d1a252fa69a4080d38b2f4e3be059b7d"
+    },
+    "edges": {}
+  }
+}

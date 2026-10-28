@@ -5,8 +5,8 @@
  * own implementation:
  *
  *   1. Well-formedness. Whatever goes in, the document that comes out holds
- *      only characters XML 1.0 §2.2 admits, and two independent parsers
- *      (`fast-xml-parser`, which folio reads packages with, and happy-dom's
+ *      only characters XML 1.0 §2.2 admits, and two parsers (folio's own
+ *      reader in its well-formed mode, and happy-dom's independent
  *      `DOMParser`) both open it.
  *   2. Value preservation. Attribute and element values come back as the
  *      sanitised input, through both parsers. happy-dom implements §3.3.3
@@ -21,13 +21,13 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { XMLParser } from "fast-xml-parser";
 import { Window } from "happy-dom";
 
 import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { readXml } from "../xml/streamingXmlParser";
 import {
   escapeXmlAttribute,
   escapeXmlText,
@@ -90,29 +90,18 @@ const hostileString = fc
   )
   .map((pieces) => pieces.join(""));
 
-const fxp = new XMLParser({
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  trimValues: false,
-  textNodeName: "#text",
-  parseTagValue: false,
-  parseAttributeValue: false,
-  processEntities: true,
-  htmlEntities: true,
-});
-
 type ParsedValues = { attribute: string; text: string };
 
-const readWithFastXmlParser = (xml: string): ParsedValues => {
-  const nodes = fxp.parse(xml) as Record<string, unknown>[];
-  const root = nodes[0] as {
-    r: { "#text"?: string }[];
-    ":@": Record<string, string>;
-  };
+const readWithFolioReader = (xml: string): ParsedValues => {
+  const read = readXml(xml, { conformance: "well-formed" });
+  if (read.status === "rejected") {
+    throw new Error(`folio's reader refused the document: ${read.reason}`);
+  }
+  const root = read.value.elements?.at(0);
+  expect(root?.name).toBe("r");
   return {
-    attribute: root[":@"]?.["a"] ?? "",
-    text: root.r.map((child) => child["#text"] ?? "").join(""),
+    attribute: String(root?.attributes?.["a"] ?? ""),
+    text: (root?.elements ?? []).map(({ text }) => String(text ?? "")).join(""),
   };
 };
 
@@ -145,7 +134,7 @@ describe("the escaper always produces a well-formed document", () => {
     fc.assert(
       fc.property(hostileString, (value) => {
         const xml = documentFor(value);
-        expect(() => readWithFastXmlParser(xml)).not.toThrow();
+        expect(() => readWithFolioReader(xml)).not.toThrow();
         expect(() => readWithDomParser(xml)).not.toThrow();
       }),
       propertyConfig({ numRuns: 500 }),
@@ -159,7 +148,7 @@ describe("the escaper preserves the value it was given", () => {
       fc.property(hostileString, (value) => {
         const expected = legalCharactersOf(value);
         const xml = documentFor(value);
-        expect(readWithFastXmlParser(xml)).toEqual({
+        expect(readWithFolioReader(xml)).toEqual({
           attribute: expected,
           text: expected,
         });

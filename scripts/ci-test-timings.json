@@ -43,6 +43,7 @@
   "packages/cli/src/render.test.ts": 381,
   "packages/cli/src/save.test.ts": 199,
   "packages/cli/src/serve.test.ts": 321,
+  "packages/cli/src/xmlGoldens.test.ts": 30000,
   "packages/cli/src/zipEntryNames.property.test.ts": 32596,
   "packages/core/scripts/bundledFontSource.test.ts": 11,
   "packages/core/scripts/selective-save-census-identity.test.ts": 260,
@@ -642,6 +643,7 @@
   "packages/core/src/docx/watermarkCoverage.test.ts": 10,
   "packages/core/src/docx/wmfSvg.test.ts": 68,
   "packages/core/src/docx/wrapPolygon.test.ts": 1,
+  "packages/core/src/docx/xmlGoldens.test.ts": 4000,
   "packages/core/src/docx/xmlParser.test.ts": 7,
   "packages/core/src/docx/xmlReservedPrefixSurvival.test.ts": 15,
   "packages/core/src/docx/xmlResourceCount.property.test.ts": 410,
@@ -1249,6 +1251,8 @@
   "packages/docx-core/src/validate/packageGraph.test.ts": 8,
   "packages/docx-core/src/validate/schemaAttributes.test.ts": 32,
   "packages/docx-core/src/validate/xmlEntityDecoder.test.ts": 3,
+  "packages/docx-core/src/xml/xmlResourceLimits.test.ts": 3,
+  "packages/docx-core/src/xmlGoldens.test.ts": 6000,
   "packages/docx-core/src/zip/archive.property.test.ts": 104,
   "packages/docx-core/src/zip/archive.test.ts": 273,
   "packages/docx-core/src/zip/hostile.test.ts": 40,
@@ -1544,6 +1548,7 @@
   "scripts/workflow-cache-policy.test.ts": 24,
   "scripts/workflow-runner-labels.test.ts": 6,
   "scripts/xml-escaping-lint.test.ts": 228,
+  "scripts/xml-goldens.test.ts": 8000,
   "scripts/xml-splice-owner-lint.test.ts": 175,
   "tests/visual/interleavingBridge.test.ts": 332
 }

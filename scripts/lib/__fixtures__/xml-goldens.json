@@ -1,0 +1,1629 @@
+{
+  "prepareXmlPruning": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": "ec56c460d104fd85023e8df44ab854dae91db4229994e936ad79807d1b7adbc1",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": "91152b354ab2c460eb2d8599b9f54aca429287874734f0095638165fb3395883",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": "80998abd8cfb3928ed111f63130de9c94feeb9393ee08333c9bf3211aa1910a2",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": "e5441c733c07586ec345a04ae6057f3714cc130c5a43f5141a38d2874598528d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": "34e12e5ff73e6de6ac37b44dfcd03224cf2197dc12083dd8f35e26c6ddc66a84",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": "e827b097941315059bcaaf8912b929dd42e70f54cb8c520e06cd3262539c8d33",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": "adc2efb3de90805823a158d14f9dc082b2e46042440a0a5f54dec807859e7b41",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": "119c42ea2c394806d0d1a7456dacedb8f818a953d0d7b538e7537d2c02cd63d3",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": "d731b6ffceac55bc91c651e4cab7f35e2d390680a21c247954a21536b4745f4f",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": "db9f4cb4a9fbd48e2271c46726e3e13841abf0f4c1f4da2fb42cfc84109c9e1a",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": "33f4f2aa4072faef5559eeff7c0508f0fd8e38432264f4c68d75b7d521ca6a33",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": "01c598bfaf34c4d14a8c810b7741ef6da2b9ed20a609602724199feb8c66a024",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": "d3696b6f3764b398a4a8b7f755c9c0f591a954a9ce006fbdf484418a4e3bf663",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": "3c7046f80a16d5fffb093658786f3707806effb0e540e254627abb022d61235a",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": "d7d4ee3ccde20cf7fe8bd63b63a923957a9bc40270633f8ad6c8850ba6e53bfd",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": "bba70a962bc7219fd1a32d157c181fdd19fd7088c088a89b0d974c1ea3c46d23",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": "4db0fdbfdfbcfc4feaeca787cea1554c6952190bd9957b24bdb0d643b73f0fa8",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": "7774d21cf0b481e31daa5f6fd3949f33226e21dcc266c07df7d43c57bbcc1d78",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": "f6f7594aa0303c2f64191bb6e1edce501c979467dd8971c516c5b2cba21f4a44",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": "ec165915c8441bd0555f45c855f09ad79d551a9903a7f188a432b3fd4ce5b8ac",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": "5b21679fffb9b27db547b0945f59034d8802beedc2decef90262d8ea0595ebac",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": "09ffdbe2ac9f5708a0f35e555b7fe26607468a4d6d5b4bc7374b21aaf9449910",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": "7ae747d1486a1c4c7521d94aa2e95a99ce3f140c84c3f1834f0b68a5aab2f9b2",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": "df5bc4b1923bb59f043fef3115614d7bd25dd621356037b213203418731e2207",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": "62bb5cb206d8128177f4eda205a922a3eb8b77dadc0e7983a3117b544e75aa54",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": "5e46feceec57e83b72abec0d0a68dc0bf586be10be6e2f93e4271e9fdcc9d825",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": "d44fe4cdfcc412ebd97ea6b943621432dc6bb87e7204df0d0b672253f27289c3",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": "33aab6ccf64c6ed90fbce925cb267adab679f549c075efcfd594aac74168d38f",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": "55d0e1154f0337c8b67f0eb875da581006ca00bf709fcd9199e2233c77a1ef0b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": "bfa134635d907f68ffbebfabce1e92c1d1085c2a004b729de3bcbb304a7c13eb",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": "275362a9deb8cc11ee61e2b2096084eae8c98bc6f16057faf92f0c911cb45c40",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": "b458801f89290b2f2af323b7671b521c555d4585533fcd1b7ee7f222f9c639ba",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": "1480a66bc6f77a2aab4cff449302b53883b0b98659e5e76ddc58b1f18fa25031",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": "2ff26416f3c7154159c8cfc54661d473b538e01acfb4119d49b2bc905a6c2cda",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": "8c39b45ea2fa83b43cd65aa798876eb4deefe20491e70e5e28ff0820ef1498a9",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": "12708f3f072a1716d67ec9c5c8b42be671687506ac5982301aeb17d641718e6d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": "0a2e1c13018dbc02df0aed380517899c7ee3e601f1a43a5162e5f83652a60fd1",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": "2a908995b6d7796d9e8c8f72d8e8a9a8f273e8eacd9b8badf2cbe541c83a7965",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": "6b7720af2504f4edf62551bf9edf64f883ff5f86b3a20adb76e3a056bce78be0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": "f349589bf1cce2d9480d73e332e9d88802a9c4c9d57a2598c4a39d2399e76dca",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": "10ec0ecc6952121295ca3ea0efb8962d19052cbce5e36adda6ba700dde3fca90",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": "5e1906a8bbc49659ee900d72b4b39f2684cfb2f1f20cca9a0ac0d80ce4531ee5",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": "75d1e870083d5009bd8872da5f56a658ed42793dadc083cd87d751e7d98270e0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": "921e8b114bfb20d225eb1599c16a8a7a3a4fd267b6d5399ae891a45cd4675a4d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": "de32ddebe14a71090945216117e0d7278d0dfdcab314c2c4d2a2e9b9cd7aaf03",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": "2571ef7c42e38d30c85bd3299782795d2b6379b1842040d7c5784d65041bcaf8",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": "fae9cf4a422c89f2271ed43e577fe60a5ac7885c75c8084b2d1f30b804079c03",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": "644402446deb0bc144cf0c21e9d225c06e2dbd05f11396a27b0eebfb1c17d91c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": "a93baaf32c3b50d5f62f75a69ec5eab6eb83babfe9ea44ee69ecf28cfbc5943b",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": "80cd9e4c1faabf1129adfe824ae713ab523671c93634d643531348074a05013f",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": "ee296aa0d79fefea10be47464eccf21272c099c74306b4d25a31f5dd70cbce1b",
+      "tests/visual/fixtures/cursive-face-change.docx": "79d99fa39e1548c823052a22f06d48b1929da23f4db04a3a20839df81171eb00",
+      "tests/visual/fixtures/docx-editor-demo.docx": "4a0dbccaf0a57ded716c451fad61cbbb5564767d6e5eb0a339845ecfaad7c038",
+      "tests/visual/fixtures/font-subsets.docx": "fd640d67c3bb7838197e8f26da2c92368ff4aa88ba3e82def5ce25b93b923f5f",
+      "tests/visual/fixtures/markup-views-final.docx": "90025d030d977137cf2ba3733bd58ead60b3c35970dd830a5778520989dfa6fc",
+      "tests/visual/fixtures/markup-views-original.docx": "f923bf4e2235e885be08cb3979746b8234d0d69d1be7bf24e66a59e7b6ee57e8",
+      "tests/visual/fixtures/markup-views.docx": "272a55f588944ecb9453fd211ae90814b782e005ebd378de25eac74a89db3700",
+      "tests/visual/fixtures/mixed-script-font-measure.docx": "64203347e23d5e5cd77be372249e32292172df38f7c0b85294d4ecc5b5beb7a2",
+      "tests/visual/fixtures/mixed-script-font-sample.docx": "eba3ea95d07dc9306ec0f8590520c62093c4a196e72b527c5fe3458fc79862f3",
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": "4518e9cdff5196a658a1fb6ba9b9b765fa0367dbc111bba6635eec97113506fd",
+      "tests/visual/fixtures/performance-long-split-table.docx": "ceba548c696e44ade027603d71c81e1c69f713b5e8fc90eff4f1e9c9091372ac",
+      "tests/visual/fixtures/podily-bps.docx": "8d354fdba1fbbd29438658201525965762eb90e22ac644adbd50c52899fcfe1c",
+      "tests/visual/fixtures/sample.docx": "8b0e7b36c52cd83d2c5d922c9dc4d2f44e0df9c7cfa9473660ad73e0eab22f87",
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": "6e90f513bb717658bc16eaba4d64c31c38c4d7912d655a4af69f3eb0ddeaaa45"
+    },
+    "edges": {
+      "ordinary": {
+        "digest": "ce819149d5c19fc6e2bd785f43dd8cd5b93945d5ffb325041769671ccab7ec1e"
+      },
+      "built-in entities": {
+        "digest": "cf5f86e8c5db87a513aca2b38321294797fdda6f9b7de9ff7eb49335fa21fb95"
+      },
+      "character references": {
+        "digest": "e63b1237bfeded5225ced6535c401f4175426930f3a51868a737e2ad61f5e6fb"
+      },
+      "CRLF text": {
+        "digest": "2908244a6b73f271a4ac42a7c3db42a2102669701f232f124b409d3b1603d121"
+      },
+      "CRLF and tab attribute": {
+        "digest": "7c089c32563fa97a6f5063a5e4e8595a8b4a870bd56c2f36c9bc594154b8eae9"
+      },
+      "CDATA": {
+        "digest": "f07a8d9ae1d76c45ce36eb307af317fbc7a02f027fbd4c86d2b9d878d0218364"
+      },
+      "comment and PI": {
+        "digest": "424d651a6578084187a452783d2ffda14bd76505fbcbe87607632490a2e3daf2"
+      },
+      "mismatched end tag": {
+        "digest": "fec7a509048d47d9dd1075285d5cd1d6cb485107ee5f3350fb72b4a5fc6404cb"
+      },
+      "unclosed element": {
+        "digest": "fec7a509048d47d9dd1075285d5cd1d6cb485107ee5f3350fb72b4a5fc6404cb"
+      },
+      "stray end tag": {
+        "digest": "299e266d31e0f55d1752535ddbebc9d25d14b816a76bb4544a5505496f7ae708"
+      },
+      "two roots": {
+        "digest": "36354311cc70f2f2831671acc21989034ed3ecf3120df435599d2c3cfd2e0e71"
+      },
+      "text before root": {
+        "digest": "ff4c2881dca71eec2d9bf247898df153864e8cac49cd02b02f7076f9b2450db1"
+      },
+      "text after root": {
+        "digest": "299e266d31e0f55d1752535ddbebc9d25d14b816a76bb4544a5505496f7ae708"
+      },
+      "duplicate attribute": {
+        "digest": "2a012775a2935d6b6141765fbda9ef854ba84d8b9d477793411203862558decb"
+      },
+      "attribute without value": {
+        "digest": "38c2cd877dcf97604d950c29f33b9cb56af06b85611823b2c27f426e057dc3d6"
+      },
+      "unquoted attribute": {
+        "digest": "38c2cd877dcf97604d950c29f33b9cb56af06b85611823b2c27f426e057dc3d6"
+      },
+      "attributes without separator": {
+        "digest": "40e5a8e61412afda5a17bd8aa1367dd46fc623f8e7d3536c10fffa246c17721f"
+      },
+      "less-than in attribute": {
+        "digest": "fa1168c45d2f59eaa7f1a006da6a4e3412d4186d7832c59ee8a70bbb61ad3036"
+      },
+      "HTML entity in text": {
+        "digest": "1addf73ebdabc90c69c6c97a136b98c1ace2c014bfd9a150fd40e022f54e2bc9"
+      },
+      "HTML entity in attribute": {
+        "digest": "b8ca678dea64be61ae8c52261f58b60213e44f9b49c4df5b2c61b174e33e4675"
+      },
+      "unknown entity": {
+        "digest": "d9c09002b438185ed86a6cb4d989bb3ca55d4eb7a83b39ca511c8f4a65800179"
+      },
+      "bare ampersand": {
+        "digest": "340dc0552951e3564658bb4f2f9d0b1cd7ee362e2d03c4bd9fc880c6fb5d7d63"
+      },
+      "ampersand without semicolon": {
+        "digest": "cbde562c00a1035389458e2bc2f460f18ffd1248e8571318b9e38ea64e4ea22f"
+      },
+      "null character reference": {
+        "digest": "18396f186b788b2193fcd5162ae862a8f6e87397f78d59e89a2526564507f652"
+      },
+      "C0 character reference": {
+        "digest": "18396f186b788b2193fcd5162ae862a8f6e87397f78d59e89a2526564507f652"
+      },
+      "surrogate character reference": {
+        "digest": "18396f186b788b2193fcd5162ae862a8f6e87397f78d59e89a2526564507f652"
+      },
+      "out-of-range character reference": {
+        "digest": "88c8c1e88770d7e69ded15767d0076647caba47764542125eeef78745beba02a"
+      },
+      "lenient character reference": {
+        "digest": "18396f186b788b2193fcd5162ae862a8f6e87397f78d59e89a2526564507f652"
+      },
+      "raw control character": {
+        "digest": "ad55e9508e6b906e2862ac51706a7150705e4988163fbbf12df9350397f37a98"
+      },
+      "CDATA terminator in text": {
+        "digest": "6d6c4c4ab44d87cb7d508fe25038d9b9a23fb27cb734a8d70d3e53a6d1b0d57a"
+      },
+      "double hyphen in comment": {
+        "digest": "299e266d31e0f55d1752535ddbebc9d25d14b816a76bb4544a5505496f7ae708"
+      },
+      "DOCTYPE": {
+        "digest": "299e266d31e0f55d1752535ddbebc9d25d14b816a76bb4544a5505496f7ae708"
+      },
+      "DOCTYPE entity expansion": {
+        "digest": "c67736f247c89e0868061236bbb867df687aea1a0e57501c29e8a6ba936f926e"
+      },
+      "prototype attribute": {
+        "digest": "7f5ab3519256e4e886425d87ac3606525745001dc88d1692d07f677cfc9fcbf8"
+      },
+      "constructor element": {
+        "thrown": "[SECURITY] Invalid name: \"constructor\" is a reserved JavaScript keyword that could cause prototype pollution"
+      },
+      "constructor attribute": {
+        "digest": "7c6954b0e8b2a9d826c2cf3ea8b6b43fdf04050a88ea8b5d1ce78f36f2dc8dd7"
+      },
+      "name starting with a digit": {
+        "digest": "1262ab9b89c276f6aef421e05abe0e4ac25720c4c39ab61ab898430d52866fd4"
+      },
+      "name with two colons": {
+        "digest": "8fb02eae33c8620b5fe34fe87afffc5f315724c3ddd7208d8343b81657dc35b9"
+      },
+      "unbound element prefix": {
+        "digest": "010514b6b980158efc06a12e238784c123efacf509523eaea19f6c0b4b5e0745"
+      },
+      "unbound attribute prefix": {
+        "digest": "5a95efe06f2e138e073bede1bf8f34a4604f7c6791886d2206c29b0d024fb6bb"
+      },
+      "declaration inside the root": {
+        "digest": "0e3a494994998ee1b943349166c4e3d3eace546b9d95ab23eeed052570c95a49"
+      },
+      "declaration after whitespace": {
+        "digest": "3827b679c2ebdffbd3ae3ff243b52d8ed7cbaabb49bb56b5190363f1c9359b83"
+      },
+      "byte-order mark": {
+        "digest": "0e3567dbd11ae15b53ca24134b0d4f8e422e12adaf5efabc8a991028d141c446"
+      },
+      "unclosed CDATA": {
+        "thrown": "CDATA is not closed."
+      },
+      "unclosed comment": {
+        "thrown": "Comment is not closed."
+      },
+      "depth 99": {
+        "digest": "a98c59702b97c7b6cecaa3ef959e3d45cfe24f1eed4949140ba34d2b9240b2b7"
+      },
+      "depth 101": {
+        "thrown": "Maximum nested tags exceeded"
+      },
+      "depth 150": {
+        "thrown": "Maximum nested tags exceeded"
+      },
+      "many attributes": {
+        "digest": "847e2c1f8a3a34c3a0711262f4c5a8a0b1ae434b9b36e39f58f69843ff27b965"
+      },
+      "space before tag name": {
+        "digest": "f405a017fdf8cd0caa341c00c39b54f3235c9fef7cb0edbca9919f625bcc6e79"
+      },
+      "space after self-closing slash": {
+        "digest": "050e436ddd1d61adaadbecd9ca29eb62cf2366c9f3fac4b98329514aa1c5c87a"
+      },
+      "space in end tag": {
+        "digest": "38c2cd877dcf97604d950c29f33b9cb56af06b85611823b2c27f426e057dc3d6"
+      },
+      "empty document": {
+        "digest": "a7905b4cd8db82d98b13b4ca6caf77a439f56f133bb31448aad60a8d5fb931e5"
+      },
+      "whitespace document": {
+        "digest": "a7905b4cd8db82d98b13b4ca6caf77a439f56f133bb31448aad60a8d5fb931e5"
+      },
+      "xml prefix rebound": {
+        "digest": "de99de0a50507d75c2c0819a42f253b67daad8fcb71fc7fa7418dc507db46c38"
+      },
+      "namespace URI with reference": {
+        "digest": "01bb3f7ac34625d446d0f31691158e792f3b7f8b739e6a409e31ea2a2f47074b"
+      },
+      "numeric identifier out of range": {
+        "digest": "3a55e9eed073f3276dd77506ba086256de07b710185b2e1d1590c1e4a8d8f0ed"
+      },
+      "numeric identifier with reference": {
+        "digest": "f4834172286a1157324aefb3207353688e05723714272d936d88e9e193e2814d"
+      },
+      "numeric identifier with HTML entity": {
+        "digest": "72769132c9ec847a0ae0f301bdf2696ab60cf07eac2fc0e79b5b3a7b38a296e5"
+      },
+      "relationship attribute": {
+        "digest": "6093f3ce60c077af45346130672be899756d60b2c440b800242fda90cc437edd"
+      }
+    }
+  },
+  "validateOoxmlPart": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": "9c2a4fe55b168701a44a784b58c6a13dc8f5e5f21def38eb23ad222b9c961e41",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": "9a4479a25f2969a13c6f6b47d97d7f0c24999d5da04f779acab83287236d6567",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": "d39fc62b5ff0612cdc3fac57c135e5a60fb8dfd48a1a8d8fcb76e17c33d6e11a",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": "7b77e751ee21bae25e472a9a106d285b0bd4ba3115f9c93b7ad6e74274e37619",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": "79316c083514578a28e14788e2345f23148f35f62c582b6c160d629e2fa1ae20",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": "9a4479a25f2969a13c6f6b47d97d7f0c24999d5da04f779acab83287236d6567",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": "bbab7270c9a6b638059c32726c7d08240fc127643424312ca9a3426ebcd48768",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": "f964a2154c18e4d8c11dc184d2b967327466fbb983ed295bc8076487eb983f6d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": "79316c083514578a28e14788e2345f23148f35f62c582b6c160d629e2fa1ae20",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": "9702a04857ec6cff9e1d58eb0ede6db50a9c973334ab61a8d5997c067b110dc8",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": "6fedc80861af8593c40df3fbd0176b141ee1b62a3b77f96afce7b070da6bbf38",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": "f59b8974705952cde950cb1c62b839bd5273288f4fbf20b540bde702dd2a31dc",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": "32400affef0c083f63c8fdd04ea28764e85e4371823e6aa530850ad0d303884a",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": "e432a19447e7443c12224f1c26d62570f884487365275e4aa4b31f7470c9adee",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": "e432a19447e7443c12224f1c26d62570f884487365275e4aa4b31f7470c9adee",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": "e432a19447e7443c12224f1c26d62570f884487365275e4aa4b31f7470c9adee",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": "e432a19447e7443c12224f1c26d62570f884487365275e4aa4b31f7470c9adee",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": "6d651d45ecd79797e39c3716d371d9d7eacd725248505675b8b801a36d8b5444",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": "5e4522234ff260df5846c369dbcbb27e5fec11c6f8b08911355e03a9470b876d",
+      "tests/visual/fixtures/cursive-face-change.docx": "4e32f8e13547ccc839b76d2822a9bf47d3107d16a20772abee1016204985a0e1",
+      "tests/visual/fixtures/docx-editor-demo.docx": "4b6d1608a10243eb3032f020270bc9054c3d86800da4f7aad37ff8d75f179a49",
+      "tests/visual/fixtures/font-subsets.docx": "4e32f8e13547ccc839b76d2822a9bf47d3107d16a20772abee1016204985a0e1",
+      "tests/visual/fixtures/markup-views-final.docx": "4e32f8e13547ccc839b76d2822a9bf47d3107d16a20772abee1016204985a0e1",
+      "tests/visual/fixtures/markup-views-original.docx": "4e32f8e13547ccc839b76d2822a9bf47d3107d16a20772abee1016204985a0e1",
+      "tests/visual/fixtures/markup-views.docx": "4e32f8e13547ccc839b76d2822a9bf47d3107d16a20772abee1016204985a0e1",
+      "tests/visual/fixtures/mixed-script-font-measure.docx": "e84d3af261ee00b1354755a79b7b904238607e3cf248008dea9e779e6612031c",
+      "tests/visual/fixtures/mixed-script-font-sample.docx": "aa932f306cd51ecfa7d7e5f6718b5b0662a09dbb4007bfcd1d9fbdf6d27ff286",
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": "fd587a7a3a19cba70b32db5f29e382fd75c1d11630a951e5c591c4fa36f1e51a",
+      "tests/visual/fixtures/performance-long-split-table.docx": "fd587a7a3a19cba70b32db5f29e382fd75c1d11630a951e5c591c4fa36f1e51a",
+      "tests/visual/fixtures/podily-bps.docx": "a870ccdd82ea338898c9f6b06f3cb1f60595899649827010a9a51917ef342e44",
+      "tests/visual/fixtures/sample.docx": "561fda8fe997ced4befc80c7efbeab117b6bf0e921eb5b74243ea3bcca59a82c",
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": "fd587a7a3a19cba70b32db5f29e382fd75c1d11630a951e5c591c4fa36f1e51a"
+    },
+    "edges": {
+      "ordinary": {
+        "value": []
+      },
+      "built-in entities": {
+        "value": []
+      },
+      "character references": {
+        "value": []
+      },
+      "CRLF text": {
+        "value": []
+      },
+      "CRLF and tab attribute": {
+        "value": []
+      },
+      "CDATA": {
+        "value": []
+      },
+      "comment and PI": {
+        "value": []
+      },
+      "mismatched end tag": {
+        "value": []
+      },
+      "unclosed element": {
+        "value": []
+      },
+      "stray end tag": {
+        "value": []
+      },
+      "two roots": {
+        "value": []
+      },
+      "text before root": {
+        "value": []
+      },
+      "text after root": {
+        "value": []
+      },
+      "duplicate attribute": {
+        "value": []
+      },
+      "attribute without value": {
+        "value": []
+      },
+      "unquoted attribute": {
+        "value": [
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "1",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          }
+        ]
+      },
+      "attributes without separator": {
+        "value": [
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}b",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          }
+        ]
+      },
+      "less-than in attribute": {
+        "value": []
+      },
+      "HTML entity in text": {
+        "value": []
+      },
+      "HTML entity in attribute": {
+        "value": []
+      },
+      "unknown entity": {
+        "value": []
+      },
+      "bare ampersand": {
+        "value": []
+      },
+      "ampersand without semicolon": {
+        "value": []
+      },
+      "null character reference": {
+        "value": []
+      },
+      "C0 character reference": {
+        "value": []
+      },
+      "surrogate character reference": {
+        "value": []
+      },
+      "out-of-range character reference": {
+        "value": []
+      },
+      "lenient character reference": {
+        "value": []
+      },
+      "raw control character": {
+        "value": []
+      },
+      "CDATA terminator in text": {
+        "value": []
+      },
+      "double hyphen in comment": {
+        "value": []
+      },
+      "DOCTYPE": {
+        "value": []
+      },
+      "DOCTYPE entity expansion": {
+        "value": []
+      },
+      "prototype attribute": {
+        "value": []
+      },
+      "constructor element": {
+        "value": []
+      },
+      "constructor attribute": {
+        "value": []
+      },
+      "name starting with a digit": {
+        "value": [
+          {
+            "kind": "unknown-element",
+            "path": "document/body/1p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}1p",
+            "detail": "element not declared in the content model of {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Body"
+          }
+        ]
+      },
+      "name with two colons": {
+        "value": [
+          {
+            "kind": "unknown-element",
+            "path": "document/body/a:p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a:p",
+            "detail": "element not declared in the content model of {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Body"
+          }
+        ]
+      },
+      "unbound element prefix": {
+        "value": []
+      },
+      "unbound attribute prefix": {
+        "value": []
+      },
+      "declaration inside the root": {
+        "value": []
+      },
+      "declaration after whitespace": {
+        "value": []
+      },
+      "byte-order mark": {
+        "value": []
+      },
+      "unclosed CDATA": {
+        "value": []
+      },
+      "unclosed comment": {
+        "value": []
+      },
+      "depth 99": {
+        "value": [
+          {
+            "kind": "unknown-element",
+            "path": "document/body/sdt/sdt",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt",
+            "detail": "element not declared in the content model of {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtBlock"
+          }
+        ]
+      },
+      "depth 101": {
+        "value": [
+          {
+            "kind": "unknown-element",
+            "path": "document/body/sdt/sdt",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt",
+            "detail": "element not declared in the content model of {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtBlock"
+          }
+        ]
+      },
+      "depth 150": {
+        "value": []
+      },
+      "many attributes": {
+        "value": [
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a0",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a1",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a2",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a3",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a4",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a5",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a6",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a7",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a8",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a9",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a10",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a11",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a12",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a13",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a14",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a15",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a16",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a17",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a18",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a19",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a20",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a21",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a22",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a23",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a24",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a25",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a26",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a27",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a28",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a29",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a30",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a31",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a32",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a33",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a34",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a35",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a36",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a37",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a38",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a39",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a40",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a41",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a42",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a43",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a44",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a45",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a46",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a47",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a48",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          },
+          {
+            "kind": "unknown-attribute",
+            "path": "document/body/p",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}a49",
+            "detail": "attribute not declared on {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_P"
+          }
+        ]
+      },
+      "space before tag name": {
+        "value": []
+      },
+      "space after self-closing slash": {
+        "value": [
+          {
+            "kind": "unknown-element",
+            "path": "document/body/p/",
+            "name": "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p/",
+            "detail": "element not declared in the content model of {http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Body"
+          }
+        ]
+      },
+      "space in end tag": {
+        "value": []
+      },
+      "empty document": {
+        "value": []
+      },
+      "whitespace document": {
+        "value": []
+      },
+      "xml prefix rebound": {
+        "value": []
+      },
+      "namespace URI with reference": {
+        "value": []
+      },
+      "numeric identifier out of range": {
+        "value": []
+      },
+      "numeric identifier with reference": {
+        "value": []
+      },
+      "numeric identifier with HTML entity": {
+        "value": []
+      },
+      "relationship attribute": {
+        "value": []
+      }
+    }
+  },
+  "classifyCorpusFile": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/cursive-face-change.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/docx-editor-demo.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/font-subsets.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/markup-views-final.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/markup-views-original.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/markup-views.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/mixed-script-font-measure.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/mixed-script-font-sample.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/performance-long-split-table.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/podily-bps.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/sample.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      }
+    },
+    "edges": {
+      "ordinary": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "built-in entities": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "character references": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "char '&' is not expected."
+        }
+      },
+      "CRLF text": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "CRLF and tab attribute": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "CDATA": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "comment and PI": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "mismatched end tag": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Expected closing tag 'w:r' (opened in line 2, col 175) instead of closing tag 'w:p'."
+        }
+      },
+      "unclosed element": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Invalid '[    \"w:document\",    \"w:body\",    \"w:p\",    \"w:r\"]' found."
+        }
+      },
+      "stray end tag": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Expected closing tag 'w:body' (opened in line 2, col 162) instead of closing tag 'w:p'."
+        }
+      },
+      "two roots": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "text before root": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "char 'j' is not expected."
+        }
+      },
+      "text after root": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Extra text at the end"
+        }
+      },
+      "duplicate attribute": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Attribute 'w:rsidR' is repeated."
+        }
+      },
+      "attribute without value": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "boolean attribute 'w:rsidR' is not allowed."
+        }
+      },
+      "unquoted attribute": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Attribute 'w:rsidR' is without value."
+        }
+      },
+      "attributes without separator": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Attribute 'w:b' has no space in starting."
+        }
+      },
+      "less-than in attribute": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "HTML entity in text": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "HTML entity in attribute": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "unknown entity": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "bare ampersand": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "char '&' is not expected."
+        }
+      },
+      "ampersand without semicolon": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "char '&' is not expected."
+        }
+      },
+      "null character reference": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "C0 character reference": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "surrogate character reference": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "out-of-range character reference": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "lenient character reference": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "char '&' is not expected."
+        }
+      },
+      "raw control character": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "CDATA terminator in text": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "double hyphen in comment": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "DOCTYPE": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "XML declaration allowed only at the start of the document."
+        }
+      },
+      "DOCTYPE entity expansion": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "prototype attribute": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "constructor element": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "constructor attribute": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "name starting with a digit": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "name with two colons": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "unbound element prefix": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "unbound attribute prefix": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "declaration inside the root": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "declaration after whitespace": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "XML declaration allowed only at the start of the document."
+        }
+      },
+      "byte-order mark": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "unclosed CDATA": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Invalid '[    \"w:document\",    \"w:body\"]' found."
+        }
+      },
+      "unclosed comment": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Invalid '[    \"w:document\",    \"w:body\"]' found."
+        }
+      },
+      "depth 99": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "depth 101": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "depth 150": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "many attributes": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "space before tag name": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Invalid space after '<'."
+        }
+      },
+      "space after self-closing slash": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Attribute '/' has no space in starting."
+        }
+      },
+      "space in end tag": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "empty document": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Start tag expected."
+        }
+      },
+      "whitespace document": {
+        "value": {
+          "kind": "not-a-docx",
+          "reason": "malformed-document-xml",
+          "detail": "Start tag expected."
+        }
+      },
+      "xml prefix rebound": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "namespace URI with reference": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "numeric identifier out of range": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "numeric identifier with reference": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "numeric identifier with HTML entity": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      },
+      "relationship attribute": {
+        "value": {
+          "kind": "docx",
+          "documentPart": "word/document.xml"
+        }
+      }
+    }
+  }
+}

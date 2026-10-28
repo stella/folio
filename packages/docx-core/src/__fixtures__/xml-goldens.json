@@ -1,0 +1,1696 @@
+{
+  "validateSchemaAttributes": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": "624cacbda303365f10ef7ae25383833a5519172ee6ec7abc4dce448d26659d61",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": "8eb2bb4a0bd924bbfbfc347562a6891c6f901ee36833972178d90d87608e64d0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": "016e71b281450bd8391eb2f7119b1210cf8fe9d308c36a9ba6b9e7e0c5c79945",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": "bdbc8c6d7177dfe56ea7966ad55498eb57625be0a94fd308f7df0eb44935b7aa",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": "3f1ec5d815dd752712d971ec991906207e25882543759973596fbbb6a8cf15f8",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": "8eb2bb4a0bd924bbfbfc347562a6891c6f901ee36833972178d90d87608e64d0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": "3f1ec5d815dd752712d971ec991906207e25882543759973596fbbb6a8cf15f8",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": "5daa0049a1cdbd8fdb1e483bbaaa774a537d00152adef0c37ed27f3ef833715c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": "db5e1d75df60ef44dc6d63361690381e8341bb904a719003beb4f9e396146210",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": "3f86aa49b27f263000d9afea78eec19e79d1c6d8195d6778c749df5abdd0528c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": "ec0dda5eb8c00b87e3e49d7f25472132eec328beba91d916cc63b725e27039bf",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": "705b24a26eb9edab77b80e872c67afef0b19a0245da073bcc246f27100598386",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": "705b24a26eb9edab77b80e872c67afef0b19a0245da073bcc246f27100598386",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": "705b24a26eb9edab77b80e872c67afef0b19a0245da073bcc246f27100598386",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": "705b24a26eb9edab77b80e872c67afef0b19a0245da073bcc246f27100598386",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": "8daadfde18a3edec039d7506248b2711a81ae56664beae689ebca3af9ac66254",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": "c0940af232257fc3423b19ee9960767ae3aea7416f509be9dbb3517b036acf07",
+      "tests/visual/fixtures/cursive-face-change.docx": "6f8a76ebc06e4137c0bbb7537ae594bd71f03b3686f47ff8aab7df93f332b561",
+      "tests/visual/fixtures/docx-editor-demo.docx": "ee947c63ec0ae1f86d57ab84322e91e6cdbec76f52f2afc296cc25efbd358bf7",
+      "tests/visual/fixtures/font-subsets.docx": "6f8a76ebc06e4137c0bbb7537ae594bd71f03b3686f47ff8aab7df93f332b561",
+      "tests/visual/fixtures/markup-views-final.docx": "6f8a76ebc06e4137c0bbb7537ae594bd71f03b3686f47ff8aab7df93f332b561",
+      "tests/visual/fixtures/markup-views-original.docx": "6f8a76ebc06e4137c0bbb7537ae594bd71f03b3686f47ff8aab7df93f332b561",
+      "tests/visual/fixtures/markup-views.docx": "6f8a76ebc06e4137c0bbb7537ae594bd71f03b3686f47ff8aab7df93f332b561",
+      "tests/visual/fixtures/mixed-script-font-measure.docx": "f4933a543d0467a6b6afc42f2b9ad8e51d0f5ab209028df99d9b933675e55e99",
+      "tests/visual/fixtures/mixed-script-font-sample.docx": "6033ac2a77d42f823f4a718ce5a9fd9e7c0c2a740be7c75f617380da18d580a6",
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": "2f16d72c52e11176d0e28f5e5fbba219c79a3319832daff98b455c5bac42c8ba",
+      "tests/visual/fixtures/performance-long-split-table.docx": "2f16d72c52e11176d0e28f5e5fbba219c79a3319832daff98b455c5bac42c8ba",
+      "tests/visual/fixtures/podily-bps.docx": "7debefe3de081aefd30ddb7ac6910277be2d28b07e9b5d32a21692b5937b3aea",
+      "tests/visual/fixtures/sample.docx": "dfb59b462e1844accd4564c2f9da897c9de2507289038cbab353822dd9e5d29b",
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": "2f16d72c52e11176d0e28f5e5fbba219c79a3319832daff98b455c5bac42c8ba"
+    },
+    "edges": {
+      "ordinary": {
+        "value": null
+      },
+      "built-in entities": {
+        "value": null
+      },
+      "character references": {
+        "value": "Malformed XML: char '&' is not expected."
+      },
+      "CRLF text": {
+        "value": null
+      },
+      "CRLF and tab attribute": {
+        "value": null
+      },
+      "CDATA": {
+        "value": null
+      },
+      "comment and PI": {
+        "value": null
+      },
+      "mismatched end tag": {
+        "value": "Malformed XML: Expected closing tag 'w:r' (opened in line 2, col 175) instead of closing tag 'w:p'."
+      },
+      "unclosed element": {
+        "value": "Malformed XML: Invalid '[    \"w:document\",    \"w:body\",    \"w:p\",    \"w:r\"]' found."
+      },
+      "stray end tag": {
+        "value": "Malformed XML: Expected closing tag 'w:body' (opened in line 2, col 162) instead of closing tag 'w:p'."
+      },
+      "two roots": {
+        "value": "Malformed XML: expected exactly one document element"
+      },
+      "text before root": {
+        "value": "Malformed XML: char 'j' is not expected."
+      },
+      "text after root": {
+        "value": "Malformed XML: Extra text at the end"
+      },
+      "duplicate attribute": {
+        "value": "Malformed XML: Attribute 'w:rsidR' is repeated."
+      },
+      "attribute without value": {
+        "value": "Malformed XML: boolean attribute 'w:rsidR' is not allowed."
+      },
+      "unquoted attribute": {
+        "value": "Malformed XML: Attribute 'w:rsidR' is without value."
+      },
+      "attributes without separator": {
+        "value": "Malformed XML: Attribute 'w:b' has no space in starting."
+      },
+      "less-than in attribute": {
+        "value": null
+      },
+      "HTML entity in text": {
+        "value": null
+      },
+      "HTML entity in attribute": {
+        "value": null
+      },
+      "unknown entity": {
+        "value": null
+      },
+      "bare ampersand": {
+        "value": "Malformed XML: char '&' is not expected."
+      },
+      "ampersand without semicolon": {
+        "value": "Malformed XML: char '&' is not expected."
+      },
+      "null character reference": {
+        "value": null
+      },
+      "C0 character reference": {
+        "value": null
+      },
+      "surrogate character reference": {
+        "value": null
+      },
+      "out-of-range character reference": {
+        "value": null
+      },
+      "lenient character reference": {
+        "value": "Malformed XML: char '&' is not expected."
+      },
+      "raw control character": {
+        "value": null
+      },
+      "CDATA terminator in text": {
+        "value": null
+      },
+      "double hyphen in comment": {
+        "value": null
+      },
+      "DOCTYPE": {
+        "value": "Malformed XML: XML declaration allowed only at the start of the document."
+      },
+      "DOCTYPE entity expansion": {
+        "value": "DOCTYPE is not allowed in DOCX XML"
+      },
+      "prototype attribute": {
+        "value": "Malformed XML: XML parser rejected the part"
+      },
+      "constructor element": {
+        "value": "Malformed XML: XML parser rejected the part"
+      },
+      "constructor attribute": {
+        "value": "Malformed XML: XML parser rejected the part"
+      },
+      "name starting with a digit": {
+        "value": null
+      },
+      "name with two colons": {
+        "value": null
+      },
+      "unbound element prefix": {
+        "value": "Unbound XML element prefix: x:p"
+      },
+      "unbound attribute prefix": {
+        "value": "Unbound XML attribute prefix: x:id"
+      },
+      "declaration inside the root": {
+        "value": null
+      },
+      "declaration after whitespace": {
+        "value": "Malformed XML: XML declaration allowed only at the start of the document."
+      },
+      "byte-order mark": {
+        "value": null
+      },
+      "unclosed CDATA": {
+        "value": "Malformed XML: Invalid '[    \"w:document\",    \"w:body\"]' found."
+      },
+      "unclosed comment": {
+        "value": "Malformed XML: Invalid '[    \"w:document\",    \"w:body\"]' found."
+      },
+      "depth 99": {
+        "value": null
+      },
+      "depth 101": {
+        "value": null
+      },
+      "depth 150": {
+        "value": "Malformed XML: XML parser rejected the part"
+      },
+      "many attributes": {
+        "value": null
+      },
+      "space before tag name": {
+        "value": "Malformed XML: Invalid space after '<'."
+      },
+      "space after self-closing slash": {
+        "value": "Malformed XML: Attribute '/' has no space in starting."
+      },
+      "space in end tag": {
+        "value": null
+      },
+      "empty document": {
+        "value": "Malformed XML: Start tag expected."
+      },
+      "whitespace document": {
+        "value": "Malformed XML: Start tag expected."
+      },
+      "xml prefix rebound": {
+        "value": null
+      },
+      "namespace URI with reference": {
+        "value": null
+      },
+      "numeric identifier out of range": {
+        "value": "w:bookmarkStart: Invalid attribute value for {15}id"
+      },
+      "numeric identifier with reference": {
+        "value": null
+      },
+      "numeric identifier with HTML entity": {
+        "value": "w:bookmarkStart: Invalid attribute value for {15}id"
+      },
+      "relationship attribute": {
+        "value": null
+      }
+    }
+  },
+  "validatePackageGraph": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": {
+        "value": "Invalid or duplicate relationship: word/_rels/document.xml.rels"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": {
+        "value": null
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/cursive-face-change.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/docx-editor-demo.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/font-subsets.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/markup-views-final.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/markup-views-original.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/markup-views.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/mixed-script-font-measure.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/mixed-script-font-sample.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/performance-long-split-table.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/podily-bps.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/sample.docx": {
+        "value": null
+      },
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": {
+        "value": null
+      }
+    },
+    "edges": {
+      "ordinary": {
+        "value": null
+      },
+      "built-in entities": {
+        "value": null
+      },
+      "character references": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "CRLF text": {
+        "value": null
+      },
+      "CRLF and tab attribute": {
+        "value": null
+      },
+      "CDATA": {
+        "value": null
+      },
+      "comment and PI": {
+        "value": null
+      },
+      "mismatched end tag": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "unclosed element": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "stray end tag": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "two roots": {
+        "value": null
+      },
+      "text before root": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "text after root": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "duplicate attribute": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "attribute without value": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "unquoted attribute": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "attributes without separator": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "less-than in attribute": {
+        "value": null
+      },
+      "HTML entity in text": {
+        "value": null
+      },
+      "HTML entity in attribute": {
+        "value": null
+      },
+      "unknown entity": {
+        "value": null
+      },
+      "bare ampersand": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "ampersand without semicolon": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "null character reference": {
+        "value": null
+      },
+      "C0 character reference": {
+        "value": null
+      },
+      "surrogate character reference": {
+        "value": null
+      },
+      "out-of-range character reference": {
+        "value": null
+      },
+      "lenient character reference": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "raw control character": {
+        "value": null
+      },
+      "CDATA terminator in text": {
+        "value": null
+      },
+      "double hyphen in comment": {
+        "value": null
+      },
+      "DOCTYPE": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "DOCTYPE entity expansion": {
+        "thrown": "[EntityDecoder] Registration of input entity \"&a;\" was rejected by hook"
+      },
+      "prototype attribute": {
+        "thrown": "[SECURITY] Invalid name: \"__proto__\" is a reserved JavaScript keyword that could cause prototype pollution"
+      },
+      "constructor element": {
+        "thrown": "[SECURITY] Invalid name: \"constructor\" is a reserved JavaScript keyword that could cause prototype pollution"
+      },
+      "constructor attribute": {
+        "thrown": "[SECURITY] Invalid name: \"constructor\" is a reserved JavaScript keyword that could cause prototype pollution"
+      },
+      "name starting with a digit": {
+        "value": null
+      },
+      "name with two colons": {
+        "value": null
+      },
+      "unbound element prefix": {
+        "value": null
+      },
+      "unbound attribute prefix": {
+        "value": null
+      },
+      "declaration inside the root": {
+        "value": null
+      },
+      "declaration after whitespace": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "byte-order mark": {
+        "value": null
+      },
+      "unclosed CDATA": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "unclosed comment": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "depth 99": {
+        "value": null
+      },
+      "depth 101": {
+        "value": null
+      },
+      "depth 150": {
+        "thrown": "Maximum nested tags exceeded"
+      },
+      "many attributes": {
+        "value": null
+      },
+      "space before tag name": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "space after self-closing slash": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "space in end tag": {
+        "value": null
+      },
+      "empty document": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "whitespace document": {
+        "value": "Malformed XML: word/document.xml"
+      },
+      "xml prefix rebound": {
+        "value": null
+      },
+      "namespace URI with reference": {
+        "value": null
+      },
+      "numeric identifier out of range": {
+        "value": null
+      },
+      "numeric identifier with reference": {
+        "value": null
+      },
+      "numeric identifier with HTML entity": {
+        "value": null
+      },
+      "relationship attribute": {
+        "value": "Unresolved relationship attribute: word/document.xml r:id=rIdMissing"
+      }
+    }
+  },
+  "validateDocxPackage": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": {
+        "value": {
+          "valid": false,
+          "code": "invalid_package_graph",
+          "error": "Invalid or duplicate relationship: word/_rels/document.xml.rels"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: w:pgMar: Missing required attribute {15}footer"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: w:pgMar: Missing required attribute {15}footer"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: w:pgMar: Missing required attribute {15}footer"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: w:pgMar: Missing required attribute {15}footer"
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/cursive-face-change.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/docx-editor-demo.docx": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: w:commentRangeStart: Invalid attribute value for {15}id"
+        }
+      },
+      "tests/visual/fixtures/font-subsets.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/markup-views-final.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/markup-views-original.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/markup-views.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/mixed-script-font-measure.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/mixed-script-font-sample.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/performance-long-split-table.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/podily-bps.docx": {
+        "value": {
+          "valid": true
+        }
+      },
+      "tests/visual/fixtures/sample.docx": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": {
+        "value": {
+          "valid": true
+        }
+      }
+    },
+    "edges": {
+      "ordinary": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "built-in entities": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "character references": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "CRLF text": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "CRLF and tab attribute": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "CDATA": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "comment and PI": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "mismatched end tag": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "unclosed element": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "stray end tag": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "two roots": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: Malformed XML: expected exactly one document element"
+        }
+      },
+      "text before root": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "text after root": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "duplicate attribute": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "attribute without value": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "unquoted attribute": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "attributes without separator": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "less-than in attribute": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "HTML entity in text": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "HTML entity in attribute": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "unknown entity": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "bare ampersand": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "ampersand without semicolon": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "null character reference": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "C0 character reference": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "surrogate character reference": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "out-of-range character reference": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "lenient character reference": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "raw control character": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "CDATA terminator in text": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "double hyphen in comment": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "DOCTYPE": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "DOCTYPE entity expansion": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: DOCTYPE is not allowed in DOCX XML"
+        }
+      },
+      "prototype attribute": {
+        "value": {
+          "valid": false,
+          "code": "invalid_archive",
+          "error": "[SECURITY] Invalid name: \"__proto__\" is a reserved JavaScript keyword that could cause prototype pollution"
+        }
+      },
+      "constructor element": {
+        "value": {
+          "valid": false,
+          "code": "invalid_archive",
+          "error": "[SECURITY] Invalid name: \"constructor\" is a reserved JavaScript keyword that could cause prototype pollution"
+        }
+      },
+      "constructor attribute": {
+        "value": {
+          "valid": false,
+          "code": "invalid_archive",
+          "error": "[SECURITY] Invalid name: \"constructor\" is a reserved JavaScript keyword that could cause prototype pollution"
+        }
+      },
+      "name starting with a digit": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "name with two colons": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "unbound element prefix": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: Unbound XML element prefix: x:p"
+        }
+      },
+      "unbound attribute prefix": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: Unbound XML attribute prefix: x:id"
+        }
+      },
+      "declaration inside the root": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "declaration after whitespace": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "byte-order mark": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "unclosed CDATA": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "unclosed comment": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "depth 99": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "depth 101": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "depth 150": {
+        "value": {
+          "valid": false,
+          "code": "invalid_archive",
+          "error": "Maximum nested tags exceeded"
+        }
+      },
+      "many attributes": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "space before tag name": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "space after self-closing slash": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "space in end tag": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "empty document": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has no word/document.xml root document."
+        }
+      },
+      "whitespace document": {
+        "value": {
+          "valid": false,
+          "code": "invalid_document_root",
+          "error": "Generated DOCX has malformed word/document.xml."
+        }
+      },
+      "xml prefix rebound": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "namespace URI with reference": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "numeric identifier out of range": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: w:bookmarkStart: Invalid attribute value for {15}id"
+        }
+      },
+      "numeric identifier with reference": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      },
+      "numeric identifier with HTML entity": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/document.xml: w:bookmarkStart: Invalid attribute value for {15}id"
+        }
+      },
+      "relationship attribute": {
+        "value": {
+          "valid": false,
+          "code": "invalid_schema_attribute",
+          "error": "word/settings.xml: w:zoom: Missing required attribute {15}percent"
+        }
+      }
+    }
+  },
+  "assertValidOoxmlNumericIds": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": "194e5dca86fe61ab25f2c81b7f306b0801f028ff87bab8ca6d3a101d54d5c5a6",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": "3d09c9579e062054f3f6d1820cb30f7d62ec293300da6d625fefc8e22ef69a77",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": "9393dd553a0a731f7c7fc7535a9d39ce979fd8bd3b5833e7f8d787df382bafa8",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": "bc17ee3b9e6609722e95ded52f7e7e85266a0baa84553443b1173ea0ac763b5d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": "46232995b8da42ea1a8761c96ef70d0917036d212142ba3fd7ec6d652c830561",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": "3d09c9579e062054f3f6d1820cb30f7d62ec293300da6d625fefc8e22ef69a77",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": "46232995b8da42ea1a8761c96ef70d0917036d212142ba3fd7ec6d652c830561",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": "8dd8a0de91d1db96bf55b497734203443ad2571614fff23056c19f298d562db4",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": "a48e6baf1ed9a835ba15f7c4b1f212f0a339939c5e561202c978ff6037a1148e",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": "5bbe547408a44b0d226dc3f2a316993ec9c3bcdd746f5ec878c57637deb77f47",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": "bb4af8e5293a8412e01f7a45bf8edfc9d34f065ff3139523fba5142c03cb85ae",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": "db7b004721eb0b1fddeb3f2d1eebfe9e7c80fa8629ff25c7ebf0f0c4afebbe35",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": "5716045c9b44d783706e3105b027ad01564ff401c8a94acb87eda992b141d342",
+      "tests/visual/fixtures/cursive-face-change.docx": "44c56c01c1b1a18577bb28abf3297ba00bb0a03c3de8a6abd2ecf25c8722603f",
+      "tests/visual/fixtures/docx-editor-demo.docx": "bfb9c06c26851e175df315df278448b0d6d37946492432d12e1de59a3be44c30",
+      "tests/visual/fixtures/font-subsets.docx": "44c56c01c1b1a18577bb28abf3297ba00bb0a03c3de8a6abd2ecf25c8722603f",
+      "tests/visual/fixtures/markup-views-final.docx": "44c56c01c1b1a18577bb28abf3297ba00bb0a03c3de8a6abd2ecf25c8722603f",
+      "tests/visual/fixtures/markup-views-original.docx": "44c56c01c1b1a18577bb28abf3297ba00bb0a03c3de8a6abd2ecf25c8722603f",
+      "tests/visual/fixtures/markup-views.docx": "44c56c01c1b1a18577bb28abf3297ba00bb0a03c3de8a6abd2ecf25c8722603f",
+      "tests/visual/fixtures/mixed-script-font-measure.docx": "fcea9b29d99165e1067935d23b6afac0f8d840ee52a0c0f1ba5abcf504d2182c",
+      "tests/visual/fixtures/mixed-script-font-sample.docx": "45eb216aee89bf3a32bba3c6900cc422a0dd46882b66ece19871096738721915",
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": "bba505f0d85cf6e9bf4c9ed14c429d9e526030c39b6dc9576708e8b9dc9a5b1e",
+      "tests/visual/fixtures/performance-long-split-table.docx": "bba505f0d85cf6e9bf4c9ed14c429d9e526030c39b6dc9576708e8b9dc9a5b1e",
+      "tests/visual/fixtures/podily-bps.docx": "99ec1dbf18898f1fc8e8eed08753c51a39f444808f0b920d435e7329e570aecd",
+      "tests/visual/fixtures/sample.docx": "12289cd72ba4d75e31cc432615a62c725ba246afcf39ab247efa7f1d5b8d2eb0",
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": "bba505f0d85cf6e9bf4c9ed14c429d9e526030c39b6dc9576708e8b9dc9a5b1e"
+    },
+    "edges": {
+      "ordinary": {},
+      "built-in entities": {},
+      "character references": {},
+      "CRLF text": {},
+      "CRLF and tab attribute": {},
+      "CDATA": {},
+      "comment and PI": {},
+      "mismatched end tag": {},
+      "unclosed element": {},
+      "stray end tag": {},
+      "two roots": {},
+      "text before root": {},
+      "text after root": {},
+      "duplicate attribute": {},
+      "attribute without value": {},
+      "unquoted attribute": {},
+      "attributes without separator": {},
+      "less-than in attribute": {},
+      "HTML entity in text": {},
+      "HTML entity in attribute": {},
+      "unknown entity": {},
+      "bare ampersand": {},
+      "ampersand without semicolon": {},
+      "null character reference": {},
+      "C0 character reference": {},
+      "surrogate character reference": {},
+      "out-of-range character reference": {},
+      "lenient character reference": {},
+      "raw control character": {},
+      "CDATA terminator in text": {},
+      "double hyphen in comment": {},
+      "DOCTYPE": {},
+      "DOCTYPE entity expansion": {},
+      "prototype attribute": {},
+      "constructor element": {},
+      "constructor attribute": {},
+      "name starting with a digit": {},
+      "name with two colons": {},
+      "unbound element prefix": {},
+      "unbound attribute prefix": {},
+      "declaration inside the root": {},
+      "declaration after whitespace": {},
+      "byte-order mark": {},
+      "unclosed CDATA": {},
+      "unclosed comment": {},
+      "depth 99": {},
+      "depth 101": {},
+      "depth 150": {},
+      "many attributes": {},
+      "space before tag name": {},
+      "space after self-closing slash": {},
+      "space in end tag": {},
+      "empty document": {},
+      "whitespace document": {},
+      "xml prefix rebound": {},
+      "namespace URI with reference": {},
+      "numeric identifier out of range": {
+        "thrown": "word/document.xml: w:bookmarkStart w:id must be an integer in [-2147483648, 2147483647], got 99999999999"
+      },
+      "numeric identifier with reference": {},
+      "numeric identifier with HTML entity": {
+        "thrown": "word/document.xml: w:bookmarkStart w:id must be an integer in [-2147483648, 2147483647], got 1&nbsp;"
+      },
+      "relationship attribute": {}
+    }
+  },
+  "isSafePreservedChildXml": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": "15d1fc852dbdca82c347b359611119cd69a3eb6a8ed6869fb453ab391c0c74f3",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": "e36a3aa12b815b5d30fe5a24b3bfecd425385f3d10d8699c40129b068208938d",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": "87601c06d8f6a4ab32e89d43ff09e31a9fe70c97aa9b60b47e32a8075ee682c0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": "eadee09deacae4065baf63a822abd900d1ae05c17dba7a135ee47aaf92f6b0d2",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": "87601c06d8f6a4ab32e89d43ff09e31a9fe70c97aa9b60b47e32a8075ee682c0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": "87601c06d8f6a4ab32e89d43ff09e31a9fe70c97aa9b60b47e32a8075ee682c0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": "1b2f3b3071e85b55fc07ee8afd10a60e70ccdf2f4e89c8704d7734b255e43bd7",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": "de0e4c10b6c834fdf66b8550e36b44bae6589b12e43656e20a7db6c7d1c3cc10",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": "a20fc6ff6d983c0e7e77eb64bbd4c3f3213d3202adfcada460191bfba1e84546",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": "4e12957b093f307015ca850c734a90098defc4c05fb811a76c3b0aca912b6934",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": "4e12957b093f307015ca850c734a90098defc4c05fb811a76c3b0aca912b6934",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": "0d35298ccffdf85df99edfe176178f58e0e52d697cc44fcd29581578d52892c6",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": "b9f1831575b50ce9c9a126594a50c0bc790d1a22de5e20dfd726e64307a33b1b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": "5aff7a5091ab97683cc76f4233cc633b01d3b37156738018f10fddd362f298d1",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": "0db7ae252e691aea66d07fb1058c6de8913db505e8c7b3adf955e4b007d7a82c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": "d40a698270046c563405d7450af748f7be8f4e0b0052e24a1a5f73021ffafae3",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": "df682b7601b79460795f1932438901062d81865b62a9a4b7dcb67e167393bb04",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": "86b51b363274568809fe64a8c8565d5a314720d55d6c81be66ac63c7d560f96b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": "710b3b019bfe2e9f932d3e606e678d8d1a4e3c3983bc5ca6d98e44885b2f1abb",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": "add6ad3daa59bef731b9e231a9833669f4ea7f9f49a1c2b60ec2f90f3bf128dd",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": "8a9237144ca8741c31b2160dac503de8c2ac31d0209f0178c31f4bef8310237e",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": "710b3b019bfe2e9f932d3e606e678d8d1a4e3c3983bc5ca6d98e44885b2f1abb",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": "84da0804fe3b2bf89e72f523432d55abd65484662b240938d024886aea46b0ea",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": "87601c06d8f6a4ab32e89d43ff09e31a9fe70c97aa9b60b47e32a8075ee682c0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": "87601c06d8f6a4ab32e89d43ff09e31a9fe70c97aa9b60b47e32a8075ee682c0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": "87601c06d8f6a4ab32e89d43ff09e31a9fe70c97aa9b60b47e32a8075ee682c0",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": "eadee09deacae4065baf63a822abd900d1ae05c17dba7a135ee47aaf92f6b0d2",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": "a20fc6ff6d983c0e7e77eb64bbd4c3f3213d3202adfcada460191bfba1e84546",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": "b9f1831575b50ce9c9a126594a50c0bc790d1a22de5e20dfd726e64307a33b1b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": "b9f1831575b50ce9c9a126594a50c0bc790d1a22de5e20dfd726e64307a33b1b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": "b9f1831575b50ce9c9a126594a50c0bc790d1a22de5e20dfd726e64307a33b1b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": "fca14d0b1eabadb62c7e56cba3f36473470e3cabbd1f4e7f37a61558bba2496b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": "8a9237144ca8741c31b2160dac503de8c2ac31d0209f0178c31f4bef8310237e",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": "84da0804fe3b2bf89e72f523432d55abd65484662b240938d024886aea46b0ea",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": "b6aa7c500f701dfa39867ab1462bbd86bbeadb96b188315a49623c8e9a4ea125",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": "b9f1831575b50ce9c9a126594a50c0bc790d1a22de5e20dfd726e64307a33b1b",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": "cea4ef23c25ea6d2e8ad8c57a80980ca0e206ee269de40b888fdff5f69448ea5",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": "4e12957b093f307015ca850c734a90098defc4c05fb811a76c3b0aca912b6934",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": "e607670fdf161a8b07967009ada6f2afc0837738678161511d8ec624748334ec",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": "44d3cd61c0000ab506cbc28e25fb245a16c322a02a785b956610713a3571276e",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": "6576ccea975119c529b3619cf7856635f387f57f38b9bb256e2a045101c92215",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": "84481f6fe67f6e8db76acf9ee71f92260df6c8c59c969ca5300b708dc45f307c",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": "de0e4c10b6c834fdf66b8550e36b44bae6589b12e43656e20a7db6c7d1c3cc10",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": "7ab354aae18c2e7f1cf89b3d527568a71e84434efb51bae668fd0fe09d907fc5",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": "6c4f4abf77a038ff5ca7aa92ae5150a5f2ec85182fb342c315979cb69b722efb",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": "aa93744b02c94d477870c42d5dbcd1126e5c58cae80e13c531b943f380a5edc9",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": "1da87e03cc70315731b945df9b3c2d7a3b759ace628a49afe19ac23238a02e58",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": "f6387787473ab411668fd9325dbe2881736ce9f544b935666cb951303253bc21",
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": "f79a904365bf2f3ae0fb3cc1d8478d84f27cae36c0614dbea09ba5b92466691f",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": "ded2e6ae16e4e413c15425eb97fed8b12951bba60c428bc19a2b9b9c4a9a82d0",
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": "b9c13ee6be718683bcc912a761a84acb9d9710c4303e7777da38152eb1e37354",
+      "tests/visual/fixtures/cursive-face-change.docx": "e70b733890500f7889d18678e41d05f792348a1ebd4dcf3b6e9f8e1ab76632e6",
+      "tests/visual/fixtures/docx-editor-demo.docx": "0bcbd90301e798847f550407e1a0345e31f75599f056ef4d8949e6f947e1a1c8",
+      "tests/visual/fixtures/font-subsets.docx": "eb90e077683c8b75964a3a8627245fbeb8c1456d5eb1506b2e19a27938df2a05",
+      "tests/visual/fixtures/markup-views-final.docx": "de337f9ec5389d225f8db7af0c976d31172b49b8539bc2c7b250678785d0c67a",
+      "tests/visual/fixtures/markup-views-original.docx": "7bffce01971564d9a7381651efcbe59bbb1713a47bfb841564d47a355fa7277c",
+      "tests/visual/fixtures/markup-views.docx": "7ec7d67c27082ddfccbaff8567e10a7e05b545550860068cef688dbaaafb46b6",
+      "tests/visual/fixtures/mixed-script-font-measure.docx": "aff859a46416a385f350cbf221d8148a5280de58541e3ded04c00cf6fd707051",
+      "tests/visual/fixtures/mixed-script-font-sample.docx": "06fe22f8c4a80d93c9392767ba0f0f09ea290066dffc26ffa60fa13f1ad4e75a",
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": "019e78a0200841b2a0bc1762daf0bfe86eeca039f90676b46c21f90e6ad084c8",
+      "tests/visual/fixtures/performance-long-split-table.docx": "019e78a0200841b2a0bc1762daf0bfe86eeca039f90676b46c21f90e6ad084c8",
+      "tests/visual/fixtures/podily-bps.docx": "d299dde784aa5d9acbeceefa5683757bd89a6d5269a6c005b62f458150c7524f",
+      "tests/visual/fixtures/sample.docx": "dceb027271a04d07a0f04f3eb81bea951178875cca806e916da6ad9b27b2543d",
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": "f9beb3dd29fbc01ea5f72b3cf167cba01c3a99724b4feb2bc073bcf9b051aa04"
+    },
+    "edges": {
+      "element": {
+        "value": true
+      },
+      "element with comment after": {
+        "value": true
+      },
+      "element with comment before": {
+        "value": true
+      },
+      "element with PI after": {
+        "value": false
+      },
+      "two elements": {
+        "value": false
+      },
+      "text and element": {
+        "value": false
+      },
+      "element and text": {
+        "value": false
+      },
+      "CDATA only": {
+        "value": false
+      },
+      "comment only": {
+        "value": false
+      },
+      "declaration": {
+        "value": false
+      },
+      "nested": {
+        "value": true
+      },
+      "foreign namespace": {
+        "value": true
+      },
+      "unbound prefix": {
+        "value": false
+      },
+      "unbound attribute prefix": {
+        "value": false
+      },
+      "rebinding w": {
+        "value": false
+      },
+      "duplicate expanded attribute": {
+        "value": false
+      },
+      "duplicate attribute": {
+        "value": false
+      },
+      "xml prefix bound elsewhere": {
+        "value": false
+      },
+      "xmlns prefix": {
+        "value": false
+      },
+      "empty prefix binding": {
+        "value": false
+      },
+      "reserved xml-prefixed binding": {
+        "value": false
+      },
+      "HTML entity": {
+        "value": false
+      },
+      "built-in entity": {
+        "value": true
+      },
+      "character reference": {
+        "value": true
+      },
+      "invalid character reference": {
+        "value": false
+      },
+      "DOCTYPE": {
+        "value": false
+      },
+      "ENTITY": {
+        "value": false
+      },
+      "mismatched": {
+        "value": false
+      },
+      "unclosed": {
+        "value": false
+      },
+      "prototype attribute": {
+        "value": false
+      },
+      "constructor element": {
+        "value": false
+      },
+      "whitespace around": {
+        "value": true
+      },
+      "empty": {
+        "value": false
+      },
+      "depth 101": {
+        "value": false
+      }
+    }
+  }
+}

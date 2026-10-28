@@ -1,105 +1,94 @@
 /**
- * `elementToXml` stopped going through fast-xml-parser's builder, and the
- * bytes it produces are replayed verbatim into saved packages. A difference of
- * one character is a corrupted document, so the old serializer lives on here,
- * reconstructed from the builder and the options it was configured with, and
- * the two are compared over arbitrary trees.
+ * `elementToXml` writes the bytes replayed verbatim into saved packages, so a
+ * difference of one character is a corrupted document.
  *
- * The generator covers what the old pair could disagree about: the five
- * escaped characters and the carriage return, in text and in attribute values;
- * empty and whitespace-only text; elements with no children, whose serialized
- * form self-closes, and elements whose children are all empty text, whose form
- * does too; attribute order; nesting deep enough that a per-node copy would
- * show up as a different answer rather than only as a slower one.
+ * Two references hold it in place. Over every element of the repository's
+ * fixtures, its output is pinned to a digest of what the general-purpose
+ * builder folio serialized with before produced for the same trees (the one
+ * deliberate difference below applied). Over arbitrary trees, reading the
+ * output back with folio's well-formed reader returns the tree it was written
+ * from: the five escaped characters and the carriage return, in text and in
+ * attribute values; empty and whitespace-only text; elements with no
+ * children, whose serialized form self-closes; attribute order; nesting.
  *
- * The serializer is deliberately not byte-identical in three places, and only
- * those three: a tab or a line feed between attribute quotes is written as a
+ * The serializer differs from that builder in three places, and only those
+ * three: a tab or a line feed between attribute quotes is written as a
  * character reference (§3.3.3), an attribute the model dropped is absent
  * rather than the word "undefined", and a character §2.2 admits no spelling
- * for is dropped. The first is applied to the reference below so the property
- * stays an equality; the other two are pinned by their own tests, since this
- * generator produces neither.
+ * for is dropped. Each is pinned by its own test below.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { XMLBuilder } from "fast-xml-parser";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { readXml } from "@stll/docx-core/xml";
 
 import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { elementToXml, type XmlElement } from "./xmlParser";
+import {
+  answerDigest,
+  readFixturePackages,
+} from "../../../../tests/support/xmlFixtureParts";
+import { elementToXml, parseXml, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-/** The builder, configured exactly as `xmlParser` configured it. */
-const fxpBuilder = new XMLBuilder({
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  textNodeName: "#text",
-  suppressEmptyNode: true,
-});
-
-/** The converter `elementToXml` used to build the builder's input with. */
-const elementToFxpNode = (el: XmlElement): Record<string, unknown> => {
-  if (el.type === "text") {
-    return { "#text": el.text ?? "" };
-  }
-  const name = el.name ?? "";
-  const children = el.elements ? el.elements.map(elementToFxpNode) : [];
-  const node: Record<string, unknown> = { [name]: children };
-  if (el.attributes && Object.keys(el.attributes).length > 0) {
-    node[":@"] = el.attributes;
-  }
-  return node;
+type SerializerGoldens = {
+  elementToXml: { fixtures: Record<string, string> };
 };
 
-/**
- * A tab or a line feed between attribute quotes is the one place the two are
- * meant to disagree: XML 1.0 §3.3.3 attribute-value normalisation flattens a
- * literal one to a space in every conformant reader, so `escapeXmlAttribute`
- * writes the character reference the builder wrote literally. Substituting a
- * private-use placeholder before the build and the reference after it keeps
- * the comparison exact, and keeps the difference in one readable place rather
- * than loosening the assertion. The generators below draw printable ASCII plus
- * the characters named here, so neither placeholder can arrive in the tree.
- */
-const ATTRIBUTE_TAB_PLACEHOLDER = "";
-const ATTRIBUTE_LINE_FEED_PLACEHOLDER = "";
+const GOLDENS: SerializerGoldens = JSON.parse(
+  readFileSync(
+    resolve(import.meta.dir, "__fixtures__/xml-goldens.json"),
+    "utf8",
+  ),
+);
 
-const withPlaceholderAttributes = (element: XmlElement): XmlElement => {
+/**
+ * The tree a reader returns for `element`: adjacent text merged, empty text
+ * gone, and an element left with no children written without the array.
+ */
+const asRead = (element: XmlElement): XmlElement => {
   if (element.type === "text") {
-    return element;
+    return { type: "text", text: String(element.text ?? "") };
   }
-  const next: XmlElement = { ...element };
-  if (element.attributes) {
-    next.attributes = Object.fromEntries(
+  const read: XmlElement = { type: "element", name: element.name ?? "" };
+  if (element.attributes && Object.keys(element.attributes).length > 0) {
+    read.attributes = Object.fromEntries(
       Object.entries(element.attributes).map(([name, value]) => [
         name,
-        String(value)
-          .replaceAll("\t", ATTRIBUTE_TAB_PLACEHOLDER)
-          .replaceAll("\n", ATTRIBUTE_LINE_FEED_PLACEHOLDER),
+        String(value),
       ]),
     );
   }
-  if (element.elements) {
-    next.elements = element.elements.map(withPlaceholderAttributes);
+  const children: XmlElement[] = [];
+  for (const child of element.elements ?? []) {
+    const next = asRead(child);
+    const previous = children.at(-1);
+    if (next.type === "text") {
+      if (next.text === "") continue;
+      if (previous?.type === "text") {
+        previous.text = `${String(previous.text)}${String(next.text)}`;
+        continue;
+      }
+    }
+    children.push(next);
   }
-  return next;
+  if (children.length > 0) {
+    read.elements = children;
+  }
+  return read;
 };
 
-/** The previous implementation, in full, with that one difference applied. */
-const previousElementToXml = (element: XmlElement): string =>
-  (
-    fxpBuilder.build([
-      elementToFxpNode(withPlaceholderAttributes(element)),
-    ]) as string
-  )
-    .replaceAll("\r", "&#13;")
-    .replaceAll(ATTRIBUTE_TAB_PLACEHOLDER, "&#9;")
-    .replaceAll(ATTRIBUTE_LINE_FEED_PLACEHOLDER, "&#10;");
+const readBack = (xml: string): XmlElement | undefined => {
+  const read = readXml(xml, { conformance: "well-formed" });
+  expect(read.status).toBe("parsed");
+  return read.status === "parsed" ? read.value.elements?.at(0) : undefined;
+};
 
 /**
  * Names are drawn from the XML Name production rather than from arbitrary
@@ -157,25 +146,34 @@ const elementNode = fc.letrec<{ node: XmlElement }>((tie) => ({
 })).node;
 
 describe("element serialization", () => {
-  test("matches the builder it replaced, on arbitrary trees", () => {
+  test("writes every fixture element as the previous builder did", async () => {
+    const packages = await readFixturePackages();
+    expect(Object.keys(GOLDENS.elementToXml.fixtures)).toEqual(
+      packages.map(({ path }) => path),
+    );
+    for (const { path, parts } of packages) {
+      const answers: [string, string][] = [];
+      for (const [part, xml] of parts) {
+        for (const root of parseXml(xml).elements ?? []) {
+          if (root.type === "element") answers.push([part, elementToXml(root)]);
+        }
+      }
+      expect(answerDigest(answers), path).toBe(
+        GOLDENS.elementToXml.fixtures[path],
+      );
+    }
+  });
+
+  test("reads back as the tree it was written from, on arbitrary trees", () => {
     fc.assert(
       fc.property(elementNode, (element) => {
-        expect(elementToXml(element)).toBe(previousElementToXml(element));
+        expect(readBack(elementToXml(element))).toEqual(asRead(element));
       }),
       propertyConfig({ numRuns: 2000 }),
     );
   });
 
-  test("matches it on a text node at the root", () => {
-    fc.assert(
-      fc.property(textNode, (node) => {
-        expect(elementToXml(node)).toBe(previousElementToXml(node));
-      }),
-      propertyConfig({ numRuns: 300 }),
-    );
-  });
-
-  test("matches it on trees nested deeply enough to copy", () => {
+  test("reads back on trees nested up to the depth limit", () => {
     const nest = (depth: number): XmlElement =>
       depth === 0
         ? {
@@ -190,14 +188,11 @@ describe("element serialization", () => {
             elements: [nest(depth - 1), { type: "text", text: "\r" }],
           };
 
-    // 100 levels is where the builder refused ("Maximum nested tags
-    // exceeded"), and it is also `xmlResourceLimits.maxDepth`, so it is the
-    // deepest tree a capture can be handed in the first place. The new
-    // serializer carries no limit of its own because that one already bounds
-    // it; the differential runs up to the boundary the old one accepted.
+    // `xmlResourceLimits.maxDepth` bounds every tree a capture can be handed,
+    // so the serializer carries no limit of its own.
     for (const depth of [1, 8, 64, 98]) {
       const tree = nest(depth);
-      expect(elementToXml(tree)).toBe(previousElementToXml(tree));
+      expect(readBack(elementToXml(tree))).toEqual(asRead(tree));
     }
   });
 
@@ -212,7 +207,6 @@ describe("element serialization", () => {
       ],
     };
     expect(elementToXml(element)).toBe('<w:t xml:space="preserve"/>');
-    expect(elementToXml(element)).toBe(previousElementToXml(element));
   });
 
   test("writes attribute whitespace as references and content whitespace as itself", () => {
@@ -226,12 +220,9 @@ describe("element serialization", () => {
     expect(elementToXml(element)).toBe(
       '<wp:docPr descr="two&#10;lines&#9;wide">two\nlines\twide</wp:docPr>',
     );
-    // The builder wrote both literally, and §3.3.3 flattens the attribute's
-    // to spaces on the way back in. That is the difference, and it is the
-    // only one this tree exposes.
-    expect(fxpBuilder.build([elementToFxpNode(element)])).toBe(
-      '<wp:docPr descr="two\nlines\twide">two\nlines\twide</wp:docPr>',
-    );
+    // Written literally, §3.3.3 would flatten the attribute's to spaces on
+    // the way back in; the references survive it.
+    expect(readBack(elementToXml(element))).toEqual(asRead(element));
   });
 
   test("omits an attribute the model dropped", () => {
@@ -284,7 +275,7 @@ describe("deeply nested serialization", () => {
     for (const depth of [1, 2, 4, 8, 16, 32]) {
       const tree = wrap(depth);
       const xml = elementToXml(tree);
-      expect(xml).toBe(previousElementToXml(tree));
+      expect(readBack(xml)).toEqual(asRead(tree));
       // Each level adds its own open and close tag and nothing else: the
       // content below it is written once, not once per level.
       if (previousLength > 0) {

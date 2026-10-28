@@ -12,18 +12,18 @@
  */
 import { describe, expect, mock, test } from "bun:test";
 
+import {
+  assertXmlResourceLimits,
+  createXmlPackageBudget,
+  FOLIO_XML_RESOURCE_LIMITS,
+  XmlResourceLimitError,
+} from "@stll/docx-core/xml/limits";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 import { loadDocxArchive } from "./server/boundedArchive";
 import { DocxSecurityError, unzipDocx } from "./unzip";
 import * as xmlParser from "./xmlParser";
-import {
-  assertXmlResourceLimits,
-  createXmlPackageBudget,
-  FOLIO_XML_RESOURCE_LIMITS,
-  XmlResourceLimitError,
-} from "./xmlResourceLimits";
 
 const CONTENT_TYPES = "<Types />";
 

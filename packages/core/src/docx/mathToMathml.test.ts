@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
+import { XmlResourceLimitError } from "@stll/docx-core/xml/limits";
+
 import { ommlToMathml, sharedMathRunFontSize } from "./mathToMathml";
 import { parseXmlDocument } from "./xmlParser";
-import { XmlResourceLimitError } from "./xmlResourceLimits";
 
 const MATH_NS =
   'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';

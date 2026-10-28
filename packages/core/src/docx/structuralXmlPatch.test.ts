@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { XMLValidator } from "fast-xml-parser";
+
+import { wellFormedXmlIssue } from "@stll/docx-core/xml";
 
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 import { getChildElements, parseXmlDocument } from "./xmlParser";
@@ -33,7 +34,7 @@ test("all deletion subsets and insertion gaps retain surviving source bytes and 
       });
       expect(result).not.toBeNull();
       if (result === null) continue;
-      expect(XMLValidator.validate(result)).toBe(true);
+      expect(wellFormedXmlIssue(result)).toBeNull();
       expect(ids(result)).toEqual(
         desired.map((id) => id.toString(16).padStart(8, "0")),
       );
@@ -175,7 +176,7 @@ test("structural splices preserve valid locally bound replay paragraphs at every
           `<w:p xmlns:w="${word}" xmlns:id="${namespace}" xmlns:${alias}="${mc}" ${alias}:Ignorable="id" `,
         );
       const serializedXml = wrap(desired.map(localParagraph).join(""));
-      expect(XMLValidator.validate(serializedXml)).toBe(true);
+      expect(wellFormedXmlIssue(serializedXml)).toBeNull();
       const result = buildStructuralDocumentPatch({
         originalXml: original,
         serializedXml,
@@ -183,7 +184,7 @@ test("structural splices preserve valid locally bound replay paragraphs at every
       });
       expect(result).not.toBeNull();
       if (result === null) continue;
-      expect(XMLValidator.validate(result)).toBe(true);
+      expect(wellFormedXmlIssue(result)).toBeNull();
       expect(ids(result)).toEqual(
         desired.map((id) => id.toString(16).padStart(8, "0")),
       );
