@@ -4,12 +4,6 @@ import { resolve } from "node:path";
 import { readXml } from "@stll/docx-core/xml";
 
 import { scanTestTimeout } from "../test/scan-timeout";
-import { XML_EDGE_INPUTS } from "../tests/support/xmlEdgeInputs";
-import {
-  answerDigest,
-  describeXmlTree,
-  readFixturePackages,
-} from "../tests/support/xmlFixtureParts";
 import {
   attempt,
   attemptAsync,
@@ -20,7 +14,13 @@ import {
   refusedWhen,
   SAMPLE_FIXTURE,
   withDocument,
-} from "../tests/support/xmlGoldens";
+} from "../test/xmlGoldens";
+import { XML_EDGE_INPUTS } from "../tests/support/xmlEdgeInputs";
+import {
+  answerDigest,
+  describeXmlTree,
+  readFixturePackages,
+} from "../tests/support/xmlFixtureParts";
 import { classifyCorpusFile } from "./lib/corpus-classify";
 import {
   loadSchemaGraph,

@@ -2,8 +2,6 @@ import { describe, setDefaultTimeout, test } from "bun:test";
 import { resolve } from "node:path";
 
 import { scanTestTimeout } from "../../../test/scan-timeout";
-import { XML_EDGE_INPUTS } from "../../../tests/support/xmlEdgeInputs";
-import { readFixturePackages } from "../../../tests/support/xmlFixtureParts";
 import {
   attemptAsync,
   expectEdgesMatch,
@@ -12,7 +10,9 @@ import {
   refusedWhen,
   SAMPLE_FIXTURE,
   withDocument,
-} from "../../../tests/support/xmlGoldens";
+} from "../../../test/xmlGoldens";
+import { XML_EDGE_INPUTS } from "../../../tests/support/xmlEdgeInputs";
+import { readFixturePackages } from "../../../tests/support/xmlFixtureParts";
 import { checkWordprocessingPackage } from "./main-document-part";
 import { checkPackageIntegrity } from "./package-parts";
 

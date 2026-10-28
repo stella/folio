@@ -3,14 +3,6 @@ import { resolve } from "node:path";
 
 import { scanTestTimeout } from "../../../test/scan-timeout";
 import {
-  XML_EDGE_FRAGMENTS,
-  XML_EDGE_INPUTS,
-} from "../../../tests/support/xmlEdgeInputs";
-import {
-  answerDigest,
-  readFixturePackages,
-} from "../../../tests/support/xmlFixtureParts";
-import {
   attempt,
   attemptAsync,
   expectEdgesMatch,
@@ -19,7 +11,15 @@ import {
   refusedWhen,
   SAMPLE_FIXTURE,
   withDocument,
-} from "../../../tests/support/xmlGoldens";
+} from "../../../test/xmlGoldens";
+import {
+  XML_EDGE_FRAGMENTS,
+  XML_EDGE_INPUTS,
+} from "../../../tests/support/xmlEdgeInputs";
+import {
+  answerDigest,
+  readFixturePackages,
+} from "../../../tests/support/xmlFixtureParts";
 import { isSafePreservedChildXml } from "./schema/sequenceChildren";
 import { assertValidOoxmlNumericIds } from "./serialize/numericIds";
 import { validateDocxPackage } from "./validate/docx";

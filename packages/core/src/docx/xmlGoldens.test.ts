@@ -3,6 +3,14 @@ import { resolve } from "node:path";
 
 import { scanTestTimeout } from "../../../../test/scan-timeout";
 import {
+  attempt,
+  expectEdgesMatch,
+  expectFixturesMatch,
+  NEVER,
+  readGoldens,
+  refusedWhen,
+} from "../../../../test/xmlGoldens";
+import {
   XML_EDGE_FRAGMENTS,
   XML_EDGE_INPUTS,
 } from "../../../../tests/support/xmlEdgeInputs";
@@ -11,14 +19,6 @@ import {
   describeXmlTree,
   readFixturePackages,
 } from "../../../../tests/support/xmlFixtureParts";
-import {
-  attempt,
-  expectEdgesMatch,
-  expectFixturesMatch,
-  NEVER,
-  readGoldens,
-  refusedWhen,
-} from "../../../../tests/support/xmlGoldens";
 import { parseXml } from "./xmlParser";
 import { getDocxXmlSafetyIssue } from "./xmlSafety";
 

@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { type FixturePackage } from "./xmlFixtureParts";
+import { type FixturePackage } from "../tests/support/xmlFixtureParts";
 
 export type Answer = { value: unknown } | { thrown: string };
 
