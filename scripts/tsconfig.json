@@ -1,0 +1,13 @@
+{
+  "extends": "@stll/typescript-config/bun.json",
+  "include": [
+    "**/*.js",
+    "**/*.jsx",
+    "**/*.mjs",
+    "**/*.cjs",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.mts",
+    "**/*.cts"
+  ]
+}
