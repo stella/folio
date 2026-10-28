@@ -1,5 +1,13 @@
 # @stll/folio-agents
 
+## 0.16.7
+
+### Patch Changes
+
+- Updated dependencies [[`28dab55`](https://github.com/stella/folio/commit/28dab5569647efe7907960de4dc6f47ed4976d9f)]:
+  - @stll/utf8-boundaries@0.2.0
+  - @stll/folio-core@0.65.0
+
 ## 0.16.6
 
 ### Patch Changes

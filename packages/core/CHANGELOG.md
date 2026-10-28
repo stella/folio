@@ -1,5 +1,17 @@
 # @stll/folio-core
 
+## 0.65.0
+
+### Minor Changes
+
+- [#2186](https://github.com/stella/folio/pull/2186) [`28dab55`](https://github.com/stella/folio/commit/28dab5569647efe7907960de4dc6f47ed4976d9f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read and write DOCX packages with `@stll/docx-core/zip`, a bounded ZIP archive built on the platform's DEFLATE, and add `@stll/docx-core/zip/stream` for streamed archives. Reads check every declared size, ratio and name before inflating and stop each entry at its declared size; writes pass unchanged entries through as their original compressed bytes. `writeZipPart`, `writeZipEntry` and the `no-string-zip-entry` lint rule are removed, `RawDocxContent.originalZip` is a `ZipArchive`, and JSZip is no longer a dependency.
+
+### Patch Changes
+
+- Updated dependencies [[`28dab55`](https://github.com/stella/folio/commit/28dab5569647efe7907960de4dc6f47ed4976d9f)]:
+  - @stll/docx-core@0.40.0
+  - @stll/utf8-boundaries@0.2.0
+
 ## 0.64.1
 
 ### Patch Changes
