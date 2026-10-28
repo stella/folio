@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 /**
  * An authored transform value survives a real save, including zero.
  *
@@ -13,10 +14,10 @@
  * The save is forced past replay the way the corpus gate forces it, so the
  * serializer has to build `a:xfrm` from the model.
  */
-
-import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import {
   propertyConfig,
@@ -68,16 +69,16 @@ const xfrmAttributes = ({ rot, flipH, flipV }: AuthoredTransform): string =>
   ].join("");
 
 const docxWith = (transform: AuthoredTransform): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${IMAGE_RELATIONSHIP_ID}" Type="${RELATIONSHIP_TYPES.image}" Target="media/picture.png"/></Relationships>`,
   );
@@ -88,12 +89,12 @@ const docxWith = (transform: AuthoredTransform): Promise<ArrayBuffer> => {
     `<pic:blipFill><a:blip r:embed="${IMAGE_RELATIONSHIP_ID}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
     `<pic:spPr><a:xfrm${xfrmAttributes(transform)}><a:off x="0" y="0"/><a:ext cx="1000000" cy="500000"/></a:xfrm>` +
     `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`;
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document ${NS}><w:body><w:p><w:r>${drawing}</w:r></w:p><w:sectPr/></w:body></w:document>`,
   );
-  zip.file("word/media/picture.png", PNG_1X1_BASE64, { base64: true });
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/media/picture.png", base64ToBytes(PNG_1X1_BASE64));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** The one image in the package, whichever run it landed in. */

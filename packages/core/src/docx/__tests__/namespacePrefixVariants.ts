@@ -10,7 +10,7 @@
  * string-level patcher to "same result or an explicit refusal".
  */
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { canonicalJson } from "../../utils/canonicalJson";
 import {
@@ -206,21 +206,23 @@ export const rewritePackagePrefixes = async (
   docx: Uint8Array | ArrayBuffer,
   variant: PrefixVariant,
 ): Promise<{ docx: Uint8Array; rewritten: string[] } | null> => {
-  const zip = await JSZip.loadAsync(docx);
+  const zip = await ZipArchive.read(docx);
   const rewritten: string[] = [];
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (file.dir || !isWordXmlPart(path)) continue;
+  for (const [path, file] of zip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
+    if (!isWordXmlPart(path)) continue;
     // oxlint-disable-next-line no-await-in-loop -- a handful of parts per fixture
-    const xml = await file.async("text");
+    const xml = await file.text();
     const respelled = rewritePartPrefixes(xml, variant);
     if (respelled === null) continue;
-    zip.file(path, respelled);
+    zip.set(path, respelled);
     rewritten.push(path);
   }
   if (!rewritten.some((path) => path.toLowerCase() === "word/document.xml")) {
     return null;
   }
-  return { docx: await zip.generateAsync({ type: "uint8array" }), rewritten };
+  return { docx: await zip.generate({ compression: "store" }), rewritten };
 };
 
 type CanonicalNode =

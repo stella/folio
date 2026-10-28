@@ -1,6 +1,5 @@
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 import { panic } from "better-result";
-import { writeZipEntry } from "@stll/utf8-boundaries";
 
 import { createEmptyDocx } from "../../docx/rezip";
 
@@ -11,33 +10,22 @@ const NUMBERING_RELATIONSHIP =
 
 /** A minimal DOCX with outline signals at paragraph, style, and numbering tiers. */
 export const createHeadingCollectorOoxmlFixture = async (): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
-  const relationships = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const contentTypes = await zip.entry("[Content_Types].xml")?.text();
+  const relationships = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (!contentTypes || !relationships) {
     return panic("The empty DOCX fixture is missing package relationships.");
   }
 
-  writeZipEntry(
-    zip,
-    "[Content_Types].xml",
-    contentTypes.replace(
+  zip.set("[Content_Types].xml", contentTypes.replace(
       "</Types>",
       `<Override PartName="/word/numbering.xml" ContentType="${NUMBERING_CONTENT_TYPE}"/></Types>`,
-    ),
-  );
-  writeZipEntry(
-    zip,
-    "word/_rels/document.xml.rels",
-    relationships.replace(
+    ));
+  zip.set("word/_rels/document.xml.rels", relationships.replace(
       "</Relationships>",
       `<Relationship Id="rIdOutlineFixture" Type="${NUMBERING_RELATIONSHIP}" Target="numbering.xml"/></Relationships>`,
-    ),
-  );
-  writeZipEntry(
-    zip,
-    "word/numbering.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    ));
+  zip.set("word/numbering.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:abstractNum w:abstractNumId="7">
     <w:lvl w:ilvl="0">
@@ -46,12 +34,8 @@ export const createHeadingCollectorOoxmlFixture = async (): Promise<ArrayBuffer>
     </w:lvl>
   </w:abstractNum>
   <w:num w:numId="7"><w:abstractNumId w:val="7"/></w:num>
-</w:numbering>`,
-  );
-  writeZipEntry(
-    zip,
-    "word/styles.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+</w:numbering>`);
+  zip.set("word/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
   <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>
@@ -62,12 +46,8 @@ export const createHeadingCollectorOoxmlFixture = async (): Promise<ArrayBuffer>
   <w:style w:type="paragraph" w:styleId="NumberedBody">
     <w:name w:val="Numbered body"/><w:basedOn w:val="Normal"/>
   </w:style>
-</w:styles>`,
-  );
-  writeZipEntry(
-    zip,
-    "word/document.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+</w:styles>`);
+  zip.set("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Real Heading 1</w:t></w:r></w:p>
@@ -79,8 +59,7 @@ export const createHeadingCollectorOoxmlFixture = async (): Promise<ArrayBuffer>
       <w:r><w:t>Direct paragraph outline</w:t></w:r></w:p>
     <w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>
   </w:body>
-</w:document>`,
-  );
+</w:document>`);
 
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };

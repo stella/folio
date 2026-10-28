@@ -1,5 +1,4 @@
 import { panic } from "better-result";
-import JSZip from "jszip";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -11,6 +10,7 @@ import type {
   Run,
   SimpleField,
 } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { createDocx, paragraph } from "@stll/folio-core/server";
 
@@ -774,16 +774,16 @@ test("a simple DATE field in a deleted paragraph keeps its resolved model and un
   const bytes = new Uint8Array(await createDocx(model));
   const reviewer = await openReviewer(bytes);
   const originalXml = await (
-    await JSZip.loadAsync(bytes)
+    await ZipArchive.read(bytes)
   )
-    .file("word/document.xml")
-    ?.async("string");
+    .entry("word/document.xml")
+    ?.text();
   assert.ok(originalXml?.includes("fldSimple"));
   const unchangedXml = await (
-    await JSZip.loadAsync(await reviewer.toBuffer())
+    await ZipArchive.read(await reviewer.toBuffer())
   )
-    .file("word/document.xml")
-    ?.async("string");
+    .entry("word/document.xml")
+    ?.text();
   assert.equal(unchangedXml, originalXml);
   const block = reviewer.getContent().at(0);
   if (!block) throw new Error("Expected field block");

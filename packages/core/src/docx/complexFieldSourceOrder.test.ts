@@ -13,7 +13,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -35,21 +36,21 @@ const TOC_OPEN = `${begin}${instruction(" TOC \\o &quot;1-3&quot; \\h \\z \\u ")
 const PAGE_REF = `${begin}${instruction(" PAGEREF _Toc1 \\h ")}${separate}${text("2")}${end}`;
 
 const savedDocumentXml = async (body: string) => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
   const parsed = await parseDocx(
-    await zip.generateAsync({ type: "arraybuffer" }),
+    (await zip.generate({ compression: "store" })).buffer,
     {
       preloadFonts: false,
     },
   );
-  const saved = await JSZip.loadAsync(
+  const saved = await ZipArchive.read(
     await repackDocx(parsed, { updateModifiedDate: false }),
   );
-  const xml = (await saved.file("word/document.xml")?.async("text")) ?? "";
+  const xml = (await saved.entry("word/document.xml")?.text()) ?? "";
   return xml.slice(
     xml.indexOf("<w:body>") + "<w:body>".length,
     xml.indexOf("<w:sectPr"),
@@ -84,13 +85,13 @@ describe("complex field runs keep their source order", () => {
   });
 
   test("a field closed in its own paragraph is still assembled", async () => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    zip.file(
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    zip.set(
       "word/document.xml",
       `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body><w:p>${PAGE_REF}</w:p><w:sectPr/></w:body></w:document>`,
     );
     const parsed = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },

@@ -14,7 +14,8 @@
  * add-header flow.
  */
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { HeaderFooter } from "../types/document";
 import { createEmptyHeaderFooter } from "../utils/headerFooter";
@@ -91,20 +92,20 @@ describe("header/footer part materialization on save", () => {
 
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
-    const headerFiles = Object.keys(zip.files).filter((p) =>
-      /^word\/header\d+\.xml$/u.test(p),
-    );
+    const zip = await ZipArchive.read(out);
+    const headerFiles = zip
+      .paths()
+      .filter((p) => /^word\/header\d+\.xml$/u.test(p));
     expect(headerFiles).toHaveLength(1);
     const headerPath = headerFiles[0]!;
-    expect(await zip.file(headerPath)!.async("text")).toContain("TOP SECRET");
+    expect(await zip.entry(headerPath)!.text()).toContain("TOP SECRET");
 
     const target = headerPath.replace(/^word\//u, "");
-    const rels = await zip.file("word/_rels/document.xml.rels")!.async("text");
+    const rels = await zip.entry("word/_rels/document.xml.rels")!.text();
     expect(rels).toContain(`Id="${synthRId}"`);
     expect(rels).toContain(`Target="${target}"`);
 
-    expect(await zip.file("[Content_Types].xml")!.async("text")).toContain(
+    expect(await zip.entry("[Content_Types].xml")!.text()).toContain(
       `PartName="/${headerPath}"`,
     );
 
@@ -141,20 +142,20 @@ describe("header/footer part materialization on save", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
-    const headerPath = Object.keys(zip.files).find((p) =>
-      /^word\/header\d+\.xml$/u.test(p),
-    );
+    const zip = await ZipArchive.read(out);
+    const headerPath = zip
+      .paths()
+      .find((p) => /^word\/header\d+\.xml$/u.test(p));
     expect(headerPath).toBeDefined();
     const headerRels = await zip
-      .file(`word/_rels/${headerPath!.replace(/^word\//u, "")}.rels`)!
-      .async("text");
+      .entry(`word/_rels/${headerPath!.replace(/^word\//u, "")}.rels`)!
+      .text();
     // The inserted image got a media part + an image relationship in the new
     // header's own rels.
     expect(headerRels).toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
-    expect(
-      Object.keys(zip.files).some((p) => /^word\/media\/image\d+\./u.test(p)),
-    ).toBe(true);
+    expect(zip.paths().some((p) => /^word\/media\/image\d+\./u.test(p))).toBe(
+      true,
+    );
   });
 
   test("materializes new header parts on the raw repack path too", async () => {
@@ -177,18 +178,18 @@ describe("header/footer part materialization on save", () => {
     });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
-    const headerPath = Object.keys(zip.files).find((p) =>
-      /^word\/header\d+\.xml$/u.test(p),
-    );
+    const zip = await ZipArchive.read(out);
+    const headerPath = zip
+      .paths()
+      .find((p) => /^word\/header\d+\.xml$/u.test(p));
     expect(headerPath).toBeDefined();
     const headerRels = await zip
-      .file(`word/_rels/${headerPath!.replace(/^word\//u, "")}.rels`)!
-      .async("text");
+      .entry(`word/_rels/${headerPath!.replace(/^word\//u, "")}.rels`)!
+      .text();
     expect(headerRels).toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
-    expect(
-      Object.keys(zip.files).some((p) => /^word\/media\/image\d+\./u.test(p)),
-    ).toBe(true);
+    expect(zip.paths().some((p) => /^word\/media\/image\d+\./u.test(p))).toBe(
+      true,
+    );
   });
 
   test("re-keys a materialized header whose rId collides with an existing relationship", async () => {
@@ -216,15 +217,15 @@ describe("header/footer part materialization on save", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
-    const docXml = await zip.file("word/document.xml")!.async("text");
+    const zip = await ZipArchive.read(out);
+    const docXml = await zip.entry("word/document.xml")!.text();
     const refRId = /<w:headerReference[^>]*\br:id="(?<rid>[^"]+)"/u.exec(docXml)
       ?.groups?.["rid"];
     expect(refRId).toBeDefined();
     // The section reference was re-pointed off the taken id to a fresh one...
     expect(refRId).not.toBe("rId_new_default");
     // ...and that fresh id maps to a header part.
-    const rels = await zip.file("word/_rels/document.xml.rels")!.async("text");
+    const rels = await zip.entry("word/_rels/document.xml.rels")!.text();
     expect(rels).toMatch(
       new RegExp(`Id="${refRId}"[^>]*Target="header\\d+\\.xml"`, "u"),
     );
@@ -281,14 +282,14 @@ describe("header/footer part materialization on save", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
-    const headerFiles = Object.keys(zip.files).filter((p) =>
-      /^word\/header\d+\.xml$/u.test(p),
-    );
+    const zip = await ZipArchive.read(out);
+    const headerFiles = zip
+      .paths()
+      .filter((p) => /^word\/header\d+\.xml$/u.test(p));
     // Two distinct header parts; neither header was overwritten/dropped.
     expect(headerFiles).toHaveLength(2);
     const allHeaderXml = (
-      await Promise.all(headerFiles.map((p) => zip.file(p)!.async("text")))
+      await Promise.all(headerFiles.map((p) => zip.entry(p)!.text()))
     ).join("\n");
     expect(allHeaderXml).toContain("HEADER-ONE");
     expect(allHeaderXml).toContain("HEADER-TWO");
@@ -315,20 +316,20 @@ describe("header/footer part materialization on save", () => {
     const out = await repackDocx(withHeader!, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
-    const headerPath = Object.keys(zip.files).find((p) =>
-      /^word\/header\d+\.xml$/u.test(p),
-    );
+    const zip = await ZipArchive.read(out);
+    const headerPath = zip
+      .paths()
+      .find((p) => /^word\/header\d+\.xml$/u.test(p));
     expect(headerPath).toBeDefined();
 
-    const documentXml = await zip.file("word/document.xml")!.async("text");
+    const documentXml = await zip.entry("word/document.xml")!.text();
     expect(documentXml).toContain(`r:id="${rId}"`);
 
-    const rels = await zip.file("word/_rels/document.xml.rels")!.async("text");
+    const rels = await zip.entry("word/_rels/document.xml.rels")!.text();
     expect(rels).toContain(`Id="${rId}"`);
     expect(rels).toContain(`Target="${headerPath!.replace(/^word\//u, "")}"`);
 
-    expect(await zip.file("[Content_Types].xml")!.async("text")).toContain(
+    expect(await zip.entry("[Content_Types].xml")!.text()).toContain(
       `PartName="/${headerPath}"`,
     );
   });

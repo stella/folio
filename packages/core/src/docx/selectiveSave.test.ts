@@ -6,7 +6,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { Paragraph, Run } from "../types/document";
 import { parseDocx } from "./parser";
@@ -184,31 +185,31 @@ const footerXml = `${XML_DECLARATION}
 async function createFixtureDocx(
   options: FixtureOptions,
 ): Promise<ArrayBuffer> {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const { includeHeaderFooter = false, includeImage = false } = options;
 
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     contentTypesXml(includeHeaderFooter, includeImage),
   );
-  zip.file("_rels/.rels", packageRelsXml);
-  zip.file(
+  zip.set("_rels/.rels", packageRelsXml);
+  zip.set(
     "word/_rels/document.xml.rels",
     documentRelsXml(includeHeaderFooter, includeImage),
   );
-  zip.file("word/document.xml", documentXml(options));
-  zip.file("word/styles.xml", stylesXml);
-  zip.file("docProps/core.xml", corePropertiesXml);
+  zip.set("word/document.xml", documentXml(options));
+  zip.set("word/styles.xml", stylesXml);
+  zip.set("docProps/core.xml", corePropertiesXml);
 
   if (includeHeaderFooter) {
-    zip.file("word/header1.xml", headerXml);
-    zip.file("word/footer1.xml", footerXml);
+    zip.set("word/header1.xml", headerXml);
+    zip.set("word/footer1.xml", footerXml);
   }
   if (includeImage) {
-    zip.file("word/media/image1.png", SAMPLE_PNG);
+    zip.set("word/media/image1.png", SAMPLE_PNG);
   }
 
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 async function loadFixture(name: string): Promise<ArrayBuffer> {
@@ -230,24 +231,24 @@ async function loadFixture(name: string): Promise<ArrayBuffer> {
 }
 
 async function getDocumentXml(buffer: ArrayBuffer): Promise<string> {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry("word/document.xml");
   if (!file) {
     throw new Error("No word/document.xml found");
   }
-  return file.async("text");
+  return file.text();
 }
 
 async function getBinaryEntry(
   buffer: ArrayBuffer,
   path: string,
 ): Promise<ArrayBuffer> {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file(path);
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry(path);
   if (!file) {
     throw new Error(`No ${path} found`);
   }
-  return file.async("arraybuffer");
+  return file.arrayBuffer();
 }
 
 // ============================================================================
@@ -303,15 +304,15 @@ describe("Selective XML Patch with real DOCX", () => {
 
 describe("attemptSelectiveSave", () => {
   test("retains unchanged comments when selectively saving Strict package metadata", async () => {
-    const zip = new JSZip();
+    const zip = new ZipArchive();
     const strictNamespace = "http://purl.oclc.org/ooxml/wordprocessingml/main";
     const commentsXml = serializeComments(planCommentParts([]));
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML_DECLARATION}<w:document xmlns:w="${strictNamespace}"><w:body><w:p><w:r><w:t>Text</w:t></w:r></w:p></w:body></w:document>`,
     );
-    zip.file("word/comments.xml", commentsXml);
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    zip.set("word/comments.xml", commentsXml);
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
     const saved = await attemptSelectiveSave(doc, buffer, {
@@ -327,22 +328,18 @@ describe("attemptSelectiveSave", () => {
       `xmlns:w="${strictNamespace}"`,
     );
     expect(
-      await (
-        await JSZip.loadAsync(saved)
-      )
-        .file("word/comments.xml")
-        ?.async("text"),
+      await (await ZipArchive.read(saved)).entry("word/comments.xml")?.text(),
     ).toBe(commentsXml);
   });
 
   test("keeps a no-op Strict package but sends changed Strict content to full repack", async () => {
-    const zip = new JSZip();
+    const zip = new ZipArchive();
     const strictNamespace = "http://purl.oclc.org/ooxml/wordprocessingml/main";
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML_DECLARATION}<w:document xmlns:w="${strictNamespace}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body><w:p w14:paraId="10000001"><w:pPr><w:ind w:start="36pt"/></w:pPr><w:r><w:t>Before</w:t></w:r></w:p></w:body></w:document>`,
     );
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
     const doc = await parseDocx(buffer, { preloadFonts: false });
     const options = {
       changedParaIds: new Set<string>(),
@@ -459,8 +456,8 @@ describe("attemptSelectiveSave", () => {
     expect(resultXml).toBe(originalXml);
 
     // Verify core properties were updated with new modification date
-    const zip = await JSZip.loadAsync(result);
-    const coreProps = await zip.file("docProps/core.xml")?.async("text");
+    const zip = await ZipArchive.read(result);
+    const coreProps = await zip.entry("docProps/core.xml")?.text();
     if (coreProps) {
       expect(coreProps).toContain("dcterms:modified");
     }
@@ -485,11 +482,11 @@ describe("attemptSelectiveSave", () => {
     const resultImage = await getBinaryEntry(result, "word/media/image1.png");
     expect(new Uint8Array(resultImage)).toEqual(new Uint8Array(originalImage));
 
-    const zip = await JSZip.loadAsync(result);
-    const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+    const zip = await ZipArchive.read(result);
+    const contentTypes = await zip.entry("[Content_Types].xml")?.text();
     const relationships = await zip
-      .file("word/_rels/document.xml.rels")
-      ?.async("text");
+      .entry("word/_rels/document.xml.rels")
+      ?.text();
     expect(contentTypes).toContain('ContentType="image/png"');
     expect(relationships).toContain('Target="media/image1.png"');
   });
@@ -834,13 +831,13 @@ describe("Selective save with comments", () => {
     expect(result.byteLength).not.toBe(buffer.byteLength);
 
     // Verify comments.xml exists and contains the comment
-    const zip = await JSZip.loadAsync(result);
-    const commentsFile = zip.file("word/comments.xml");
+    const zip = await ZipArchive.read(result);
+    const commentsFile = zip.entry("word/comments.xml");
     expect(commentsFile).not.toBeNull();
     if (!commentsFile) {
       throw new Error("Expected commentsFile");
     }
-    const commentsXml = await commentsFile.async("text");
+    const commentsXml = await commentsFile.text();
     expect(commentsXml).toContain("Test comment");
     expect(commentsXml).toContain('w:id="1"');
     expect(commentsXml).toContain("Test User");
@@ -851,10 +848,8 @@ describe("Selective save with comments", () => {
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
     // Check if original has comments entries (it probably doesn't)
-    const originalZip = await JSZip.loadAsync(buffer);
-    const originalCt = await originalZip
-      .file("[Content_Types].xml")
-      ?.async("text");
+    const originalZip = await ZipArchive.read(buffer);
+    const originalCt = await originalZip.entry("[Content_Types].xml")?.text();
     const hadCommentsEntry =
       originalCt?.includes("/word/comments.xml") ?? false;
 
@@ -888,16 +883,16 @@ describe("Selective save with comments", () => {
     if (!result) {
       throw new Error("Expected result");
     }
-    const resultZip = await JSZip.loadAsync(result);
+    const resultZip = await ZipArchive.read(result);
 
     // Content type should be present
-    const ctXml = await resultZip.file("[Content_Types].xml")?.async("text");
+    const ctXml = await resultZip.entry("[Content_Types].xml")?.text();
     expect(ctXml).toContain("/word/comments.xml");
 
     // Relationship should be present
     const relsXml = await resultZip
-      .file("word/_rels/document.xml.rels")
-      ?.async("text");
+      .entry("word/_rels/document.xml.rels")
+      ?.text();
     expect(relsXml).toContain("comments.xml");
 
     // If the original didn't have comments, verify the entries were added
@@ -958,12 +953,12 @@ describe("Selective save with comments", () => {
     if (!result) {
       throw new Error("Expected result");
     }
-    const zip = await JSZip.loadAsync(result);
-    const commentsFile = zip.file("word/comments.xml");
+    const zip = await ZipArchive.read(result);
+    const commentsFile = zip.entry("word/comments.xml");
     if (!commentsFile) {
       throw new Error("Expected word/comments.xml");
     }
-    const commentsXml = await commentsFile.async("text");
+    const commentsXml = await commentsFile.text();
 
     // Both comments should be present
     expect(commentsXml).toContain("Original comment");
@@ -1033,22 +1028,22 @@ describe("Selective save with comments", () => {
     });
 
     if (result) {
-      const zip = await JSZip.loadAsync(result);
+      const zip = await ZipArchive.read(result);
 
       // Verify document.xml has the paragraph change
-      const docXmlFile = zip.file("word/document.xml");
+      const docXmlFile = zip.entry("word/document.xml");
       if (!docXmlFile) {
         throw new Error("Expected word/document.xml");
       }
-      const docXml = await docXmlFile.async("text");
+      const docXml = await docXmlFile.text();
       expect(docXml).toContain("[WITH_COMMENT]");
 
       // Verify comments.xml exists with the comment
-      const commentsXmlFile = zip.file("word/comments.xml");
+      const commentsXmlFile = zip.entry("word/comments.xml");
       if (!commentsXmlFile) {
         throw new Error("Expected word/comments.xml");
       }
-      const commentsXml = await commentsXmlFile.async("text");
+      const commentsXml = await commentsXmlFile.text();
       expect(commentsXml).toContain("Comment text");
     }
   });
@@ -1102,12 +1097,14 @@ describe("Selective save with headers/footers", () => {
     if (!result) {
       throw new Error("Expected result");
     }
-    const zip = await JSZip.loadAsync(result);
+    const zip = await ZipArchive.read(result);
     let found = false;
-    for (const [filePath, file] of Object.entries(zip.files)) {
+    for (const [filePath, file] of zip
+      .entries()
+      .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
       if (/word\/(?:header|footer)\d*\.xml/u.test(filePath)) {
         // oxlint-disable-next-line no-await-in-loop -- sequential test scan that breaks on the first matching entry
-        const xml = await file.async("text");
+        const xml = await file.text();
         if (xml.includes("[HF_MODIFIED]")) {
           found = true;
           break;
@@ -1124,10 +1121,10 @@ describe("Selective save updates core properties", () => {
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
     // Get original modification date
-    const originalZip = await JSZip.loadAsync(buffer);
+    const originalZip = await ZipArchive.read(buffer);
     const originalCoreProps = await originalZip
-      .file("docProps/core.xml")
-      ?.async("text");
+      .entry("docProps/core.xml")
+      ?.text();
 
     const result = await attemptSelectiveSave(doc, buffer, {
       changedParaIds: new Set(),
@@ -1139,10 +1136,8 @@ describe("Selective save updates core properties", () => {
     if (!result) {
       throw new Error("Expected result");
     }
-    const resultZip = await JSZip.loadAsync(result);
-    const resultCoreProps = await resultZip
-      .file("docProps/core.xml")
-      ?.async("text");
+    const resultZip = await ZipArchive.read(result);
+    const resultCoreProps = await resultZip.entry("docProps/core.xml")?.text();
 
     if (originalCoreProps && resultCoreProps) {
       // The modification date should have been updated

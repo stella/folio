@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { panic } from "better-result";
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   buildLayoutInteractionMatrix,
@@ -357,8 +357,8 @@ const fixtures = (): Fixture[] => [
   },
 ];
 
-const addPart = (zip: JSZip, filePath: string, contents: string | Uint8Array): void => {
-  zip.file(filePath, contents, { createFolders: false, date: FIXED_DATE });
+const addPart = (zip: ZipArchive, filePath: string, contents: string | Uint8Array): void => {
+  zip.set(filePath, contents, { modified: FIXED_DATE });
 };
 
 const buildFixture = ({
@@ -368,7 +368,7 @@ const buildFixture = ({
   relationships,
   sectionProperties,
 }: Fixture): Promise<Uint8Array> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   addPart(zip, "[Content_Types].xml", contentTypes(overrides));
   addPart(zip, "_rels/.rels", PACKAGE_RELS);
   addPart(zip, "word/_rels/document.xml.rels", documentRelationships(relationships));
@@ -383,11 +383,7 @@ const buildFixture = ({
   for (const [partPath, contents] of Object.entries(parts ?? {})) {
     addPart(zip, partPath, contents);
   }
-  return zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-    compressionOptions: { level: 9 },
-  });
+  return zip.generate({ level: 9 });
 };
 
 export const buildLayoutInteractionCaseFixture = (

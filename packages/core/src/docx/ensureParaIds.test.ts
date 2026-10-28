@@ -7,7 +7,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -51,24 +52,24 @@ const buildDocx = async (
   parts: Record<string, string>,
   entryDate?: Date,
 ): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  const options = entryDate === undefined ? undefined : { date: entryDate };
-  zip.file("[Content_Types].xml", CONTENT_TYPES, options);
-  zip.file("_rels/.rels", ROOT_RELS, options);
-  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS, options);
+  const zip = new ZipArchive();
+  const options = entryDate === undefined ? {} : { modified: entryDate };
+  zip.set("[Content_Types].xml", CONTENT_TYPES, options);
+  zip.set("_rels/.rels", ROOT_RELS, options);
+  zip.set("word/_rels/document.xml.rels", DOCUMENT_RELS, options);
   for (const [path, content] of Object.entries(parts)) {
-    zip.file(path, content, options);
+    zip.set(path, content, options);
   }
-  return zip.generateAsync({ type: "uint8array" });
+  return zip.generate({ compression: "store" });
 };
 
 const getPart = async (docx: Uint8Array, path: string): Promise<string> => {
-  const zip = await JSZip.loadAsync(docx);
-  const entry = zip.file(path);
+  const zip = await ZipArchive.read(docx);
+  const entry = zip.entry(path);
   if (!entry) {
     throw new Error(`missing part: ${path}`);
   }
-  return entry.async("text");
+  return entry.text();
 };
 
 const collectIds = (xml: string): string[] =>
@@ -83,25 +84,6 @@ const collectTextIds = (xml: string): string[] =>
 
 const PARA = (text: string, attrs = ""): string =>
   `<w:p${attrs}><w:r><w:t>${text}</w:t></w:r></w:p>`;
-
-/** JSZip reports this capability at runtime; the published typings omit it. */
-const NODE_STREAM_SUPPORT = "nodestream";
-
-/**
- * Run `work` with JSZip reporting the capabilities of a browser or web worker,
- * where `readable-stream` is absent and `nodeStream` throws.
- */
-const withoutNodeStreamSupport = async <T>(
-  work: () => Promise<T>,
-): Promise<T> => {
-  const supported: unknown = Reflect.get(JSZip.support, NODE_STREAM_SUPPORT);
-  Reflect.set(JSZip.support, NODE_STREAM_SUPPORT, false);
-  try {
-    return await work();
-  } finally {
-    Reflect.set(JSZip.support, NODE_STREAM_SUPPORT, supported);
-  }
-};
 
 describe("ensureParaIds", () => {
   test("backfills paraId + textId on every paragraph, including table cells", async () => {
@@ -196,8 +178,8 @@ describe("ensureParaIds", () => {
     const second = await ensureParaIds(input);
     expect(first.docx).toEqual(second.docx);
 
-    const outputZip = await JSZip.loadAsync(first.docx);
-    expect(outputZip.file("word/document.xml")?.date).toEqual(entryDate);
+    const outputZip = await ZipArchive.read(first.docx);
+    expect(outputZip.entry("word/document.xml")?.modified).toEqual(entryDate);
   });
 
   test("is idempotent: a normalized document short-circuits to the input bytes", async () => {
@@ -474,9 +456,9 @@ describe("ensureParaIds", () => {
   });
 
   test("rejects a buffer without word/document.xml", async () => {
-    const zip = new JSZip();
-    zip.file("hello.txt", "not a docx");
-    const notDocx = await zip.generateAsync({ type: "uint8array" });
+    const zip = new ZipArchive();
+    zip.set("hello.txt", "not a docx");
+    const notDocx = await zip.generate({ compression: "store" });
 
     await expect(ensureParaIds(notDocx)).rejects.toThrow(EnsureParaIdsError);
   });
@@ -486,35 +468,17 @@ describe("ensureParaIds", () => {
     // loader (loadDocxArchive): an attacker-supplied ingest buffer with an
     // excessive entry count must fail fast instead of materializing every
     // part's XML with no cap.
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", CONTENT_TYPES);
-    zip.file("_rels/.rels", ROOT_RELS);
-    zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
-    zip.file("word/document.xml", documentXml(PARA("Body")));
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", CONTENT_TYPES);
+    zip.set("_rels/.rels", ROOT_RELS);
+    zip.set("word/_rels/document.xml.rels", DOCUMENT_RELS);
+    zip.set("word/document.xml", documentXml(PARA("Body")));
     for (let i = 0; i < DOCX_MAX_ENTRIES + 5; i++) {
-      zip.file(`word/media/filler${i}.bin`, "x");
+      zip.set(`word/media/filler${i}.bin`, "x");
     }
-    const input = await zip.generateAsync({ type: "uint8array" });
+    const input = await zip.generate({ compression: "store" });
 
     await expect(ensureParaIds(input)).rejects.toThrow(EnsureParaIdsError);
-  });
-
-  test("normalizes a package on a platform without Node streams", async () => {
-    // `@stll/folio-core/server` is DOM-free, not Node-only: browsers and web
-    // workers have no `readable-stream`, so no read path may reach
-    // `JSZipObject.nodeStream`.
-    const input = await buildDocx({
-      "word/document.xml": documentXml(`${PARA("First")}${PARA("Second")}`),
-    });
-
-    const result = await withoutNodeStreamSupport(
-      async () => await ensureParaIds(input),
-    );
-
-    expect(result.assigned).toBe(2);
-    expect(
-      collectIds(await getPart(result.docx, "word/document.xml")),
-    ).toHaveLength(2);
   });
 
   test("wraps malformed ZIP input in EnsureParaIdsError", async () => {

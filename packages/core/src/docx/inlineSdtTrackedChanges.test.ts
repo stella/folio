@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { Document, InlineSdt, Paragraph } from "../types/document";
@@ -113,12 +114,12 @@ const movedDocument = (): Document => {
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const part = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(buffer);
+  const part = zip.entry("word/document.xml");
   if (!part) {
     throw new Error("missing word/document.xml");
   }
-  return part.async("text");
+  return part.text();
 };
 
 const firstInlineSdt = (paragraph: Paragraph): InlineSdt => {

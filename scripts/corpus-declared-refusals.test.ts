@@ -1,8 +1,8 @@
 import { Result } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import {
   ENSURE_PARA_IDS_REASONS,
   ensureParaIds,
@@ -61,12 +61,12 @@ const refusedCensus = (refusals: readonly CorpusDeclaredRefusal[]) => {
 describe("declared operation refusals", () => {
   test("signed packages reach a typed refusal in both operation invariants and the file result", async () => {
     const unsigned = await unsignedPackage();
-    const zip = await JSZip.loadAsync(unsigned);
-    zip.file(
+    const zip = await ZipArchive.read(unsigned);
+    zip.set(
       "_xmlsignatures/sig1.xml",
       '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"/>',
     );
-    const signed = await zip.generateAsync({ type: "uint8array" });
+    const signed = await zip.generate({ compression: "store" });
     const result = await runCorpusChecks(signed, {
       invariantBudgetMs: 30_000,
       fileBudgetMs: 60_000,
@@ -88,12 +88,12 @@ describe("declared operation refusals", () => {
 
   test("unsigned work throwing identical message text remains a failure", async () => {
     const unsigned = await unsignedPackage();
-    const zip = await JSZip.loadAsync(unsigned);
-    zip.file(
+    const zip = await ZipArchive.read(unsigned);
+    zip.set(
       "_xmlsignatures/sig1.xml",
       '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"/>',
     );
-    const signed = await zip.generateAsync({ type: "uint8array" });
+    const signed = await zip.generate({ compression: "store" });
     const signedError = await Result.tryPromise({
       try: () => ensureParaIds(signed),
       catch: (cause: unknown) => cause,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createEmptyDocument } from "../utils/createDocument";
 import { createDocx } from "./rezip";
@@ -13,10 +14,10 @@ const APP_VERSION_SCHEMA_FORM = /^\d{1,2}\.\d{4}$/u;
 const partsOf = async (
   buffer: ArrayBuffer,
 ): Promise<{ coreProperties: string; extendedProperties: string }> => {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   const [coreProperties, extendedProperties] = await Promise.all([
-    zip.file(CORE_PROPERTIES_PATH)?.async("text"),
-    zip.file(EXTENDED_PROPERTIES_PATH)?.async("text"),
+    zip.entry(CORE_PROPERTIES_PATH)?.text(),
+    zip.entry(EXTENDED_PROPERTIES_PATH)?.text(),
   ]);
   expect(coreProperties).toBeString();
   expect(extendedProperties).toBeString();

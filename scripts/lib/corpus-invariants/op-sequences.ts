@@ -87,12 +87,10 @@ export const serializedOpParts = async (
   const raw = await unzipDocx(saved, { extractAllXml: true });
   return new Map(
     await Promise.all(
-      Object.entries(raw.originalZip.files)
-        .filter(([, file]) => !file.dir)
-        .map(
-          async ([path, file]) =>
-            [path, await file.async("uint8array")] as const,
-        ),
+      raw.originalZip
+        .entries()
+        .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)
+        .map(async ([path, file]) => [path, await file.bytes()] as const),
     ),
   );
 };

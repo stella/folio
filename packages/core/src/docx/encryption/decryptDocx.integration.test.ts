@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 /**
  * Integration tests for Agile-encrypted .docx open.
  *
@@ -9,6 +8,8 @@ import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "../parser";
 import { DOCX_ENCRYPTION_ERROR_CODES, DocxEncryptionError } from "./errors";
@@ -78,8 +79,8 @@ describe("decryptDocxIfNeeded — encrypted fixture integration", () => {
       doc.warnings?.some((warning) => warning.includes("password-protected")),
     ).toBe(true);
 
-    const zip = await JSZip.loadAsync(doc.originalBuffer!);
-    const documentXml = await zip.file("word/document.xml")!.async("text");
+    const zip = await ZipArchive.read(doc.originalBuffer!);
+    const documentXml = await zip.entry("word/document.xml")!.text();
     expect(documentXml).toContain("Lorem ipsum");
   }, 30_000);
 });

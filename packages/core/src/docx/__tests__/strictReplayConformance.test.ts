@@ -14,9 +14,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "../parser";
 import { serializeDocument } from "../serializer/documentSerializer";
@@ -124,9 +125,9 @@ const strictPackage = async (): Promise<ArrayBuffer> => {
   </w:body>
 </w:document>`;
 
-  const zip = new JSZip();
-  zip.file("word/document.xml", documentXml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = new ZipArchive();
+  zip.set("word/document.xml", documentXml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 describe("Strict content replayed into a Transitional part", () => {
@@ -134,8 +135,8 @@ describe("Strict content replayed into a Transitional part", () => {
     "%s introduces no Strict spelling",
     async (_name, file) => {
       const original = readFixture(file);
-      const source = await JSZip.loadAsync(original)
-        .then((zip) => zip.file("word/document.xml")?.async("text"))
+      const source = await ZipArchive.read(original)
+        .then((zip) => zip.entry("word/document.xml")?.text())
         .then((xml) =>
           xml === undefined ? new Set<string>() : strictSpellings(xml),
         );

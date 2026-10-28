@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   type TrackedSectionEndpointRemoval,
@@ -42,8 +42,8 @@ const repackAfterTrackedSectionEndpointRemoval = ({
   });
 
 async function createHeaderFixture(): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -53,26 +53,26 @@ async function createHeaderFixture(): Promise<ArrayBuffer> {
   <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.header}" Target="header1.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/header1.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -82,12 +82,12 @@ async function createHeaderFixture(): Promise<ArrayBuffer> {
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 function truncateAfterEndOfCentralDirectoryCounts(buffer: ArrayBuffer) {
@@ -107,8 +107,8 @@ function truncateAfterEndOfCentralDirectoryCounts(buffer: ArrayBuffer) {
 }
 
 async function createAlternateContentImageFixture(): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -118,21 +118,21 @@ async function createAlternateContentImageFixture(): Promise<ArrayBuffer> {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId5" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.emf"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -164,13 +164,13 @@ async function createAlternateContentImageFixture(): Promise<ArrayBuffer> {
   </w:body>
 </w:document>`,
   );
-  zip.file("word/media/image1.emf", new Uint8Array([1, 2, 3, 4]));
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/media/image1.emf", new Uint8Array([1, 2, 3, 4]));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 async function createHyperlinkedImageFixture(): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -180,14 +180,14 @@ async function createHyperlinkedImageFixture(): Promise<ArrayBuffer> {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -195,7 +195,7 @@ async function createHyperlinkedImageFixture(): Promise<ArrayBuffer> {
   <Relationship Id="rId6" Type="${RELATIONSHIP_TYPES.hyperlink}" Target="https://example.test/guide" TargetMode="External"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -222,8 +222,8 @@ async function createHyperlinkedImageFixture(): Promise<ArrayBuffer> {
   </w:body>
 </w:document>`,
   );
-  zip.file("word/media/image1.png", new Uint8Array([1, 2, 3, 4]));
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/media/image1.png", new Uint8Array([1, 2, 3, 4]));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 function getFirstImage(document: Document): Image {
@@ -243,8 +243,8 @@ function getFirstImage(document: Document): Image {
 }
 
 async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -256,14 +256,14 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
   <Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -271,14 +271,14 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
   <Relationship Id="rId12" Type="${RELATIONSHIP_TYPES.header}" Target="header2.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/header1.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -299,42 +299,42 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
   <w:p><w:r><w:drawing><wp:inline><wp:extent cx="9525" cy="9525"/><wp:docPr id="1" name="image1.png"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="image1.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9525" cy="9525"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>
 </w:hdr>`,
   );
-  zip.file(
+  zip.set(
     "word/header2.xml",
     `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Default header</w:t></w:r></w:p></w:hdr>`,
   );
-  zip.file("word/media/image1.png", new Uint8Array([1, 2, 3, 4]));
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/media/image1.png", new Uint8Array([1, 2, 3, 4]));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 describe("repackDocx", () => {
   test("ignores foreign-namespace section-like elements in fidelity checks", async () => {
     const source = await createEmptyDocx();
     const parsed = await parseDocx(source, { preloadFonts: false });
-    const sourceZip = await JSZip.loadAsync(source);
-    const documentFile = sourceZip.file("word/document.xml");
+    const sourceZip = await ZipArchive.read(source);
+    const documentFile = sourceZip.entry("word/document.xml");
     if (!documentFile) {
       throw new Error("expected word/document.xml");
     }
-    const documentXml = await documentFile.async("text");
-    sourceZip.file(
+    const documentXml = await documentFile.text();
+    sourceZip.set(
       "word/document.xml",
       documentXml.replace(
         "</w:body>",
         '<foreign:sectPr xmlns:foreign="urn:example:foreign"/></w:body>',
       ),
     );
-    parsed.originalBuffer = await sourceZip.generateAsync({
-      type: "arraybuffer",
-    });
+    parsed.originalBuffer = (
+      await sourceZip.generate({ compression: "store" })
+    ).buffer;
 
     await expect(
       repackDocx(parsed, { updateModifiedDate: false }),
@@ -344,22 +344,22 @@ describe("repackDocx", () => {
   test("counts Strict WordprocessingML section elements in fidelity checks", async () => {
     const source = await createEmptyDocx();
     const parsed = await parseDocx(source, { preloadFonts: false });
-    const sourceZip = await JSZip.loadAsync(source);
-    const documentFile = sourceZip.file("word/document.xml");
+    const sourceZip = await ZipArchive.read(source);
+    const documentFile = sourceZip.entry("word/document.xml");
     if (!documentFile) {
       throw new Error("expected word/document.xml");
     }
-    const documentXml = await documentFile.async("text");
-    sourceZip.file(
+    const documentXml = await documentFile.text();
+    sourceZip.set(
       "word/document.xml",
       documentXml.replace(
         "</w:body>",
         '<strict:sectPr xmlns:strict="http://purl.oclc.org/ooxml/wordprocessingml/main"/></w:body>',
       ),
     );
-    parsed.originalBuffer = await sourceZip.generateAsync({
-      type: "arraybuffer",
-    });
+    parsed.originalBuffer = (
+      await sourceZip.generate({ compression: "store" })
+    ).buffer;
 
     await expect(
       repackDocx(parsed, { updateModifiedDate: false }),
@@ -367,21 +367,21 @@ describe("repackDocx", () => {
   });
 
   test("preserves an explicit false final-section bidi setting across save and reopen", async () => {
-    const sourceZip = await JSZip.loadAsync(await createEmptyDocx());
-    const documentFile = sourceZip.file("word/document.xml");
+    const sourceZip = await ZipArchive.read(await createEmptyDocx());
+    const documentFile = sourceZip.entry("word/document.xml");
     if (!documentFile) {
       throw new Error("expected word/document.xml");
     }
-    const documentXml = await documentFile.async("text");
+    const documentXml = await documentFile.text();
     const explicitLtrXml = documentXml.replace(
       "</w:sectPr>",
       '<w:bidi w:val="0"/></w:sectPr>',
     );
     expect(explicitLtrXml).not.toBe(documentXml);
-    sourceZip.file("word/document.xml", explicitLtrXml);
+    sourceZip.set("word/document.xml", explicitLtrXml);
 
     const parsed = await parseDocx(
-      await sourceZip.generateAsync({ type: "arraybuffer" }),
+      (await sourceZip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },
@@ -407,8 +407,8 @@ describe("repackDocx", () => {
     });
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
-    const savedZip = await JSZip.loadAsync(saved);
-    expect(await savedZip.file("word/document.xml")?.async("text")).toContain(
+    const savedZip = await ZipArchive.read(saved);
+    expect(await savedZip.entry("word/document.xml")?.text()).toContain(
       '<a:hlinkClick r:id="rId6"/>',
     );
 
@@ -454,32 +454,33 @@ describe("repackDocx", () => {
     };
 
     const result = await createDocx(document);
-    const zip = await JSZip.loadAsync(result);
+    const zip = await ZipArchive.read(result);
 
-    expect(await zip.file("word/media/image1.svg")?.async("text")).toBe(
+    expect(await zip.entry("word/media/image1.svg")?.text()).toBe(
       URI_ENCODED_SVG,
     );
-    expect(await zip.file("word/document.xml")?.async("text")).toContain(
+    expect(await zip.entry("word/document.xml")?.text()).toContain(
       'r:embed="rId2"',
     );
-    expect(await zip.file("[Content_Types].xml")?.async("text")).toContain(
+    expect(await zip.entry("[Content_Types].xml")?.text()).toContain(
       'Extension="svg" ContentType="image/svg+xml"',
     );
   });
 
   test("reuses the cached source package while preserving later model edits", async () => {
-    const sourceZip = await JSZip.loadAsync(await createHeaderFixture());
-    sourceZip.file("word/vbaProject.bin", new Uint8Array([1, 2, 3]));
-    const sourceBuffer = await sourceZip.generateAsync({ type: "arraybuffer" });
+    const sourceZip = await ZipArchive.read(await createHeaderFixture());
+    sourceZip.set("word/vbaProject.bin", new Uint8Array([1, 2, 3]));
+    const sourceBuffer = (await sourceZip.generate({ compression: "store" }))
+      .buffer;
     const document = await parseDocx(sourceBuffer, { preloadFonts: false });
 
     const firstSave = await createDocx(document);
     expect(
       await (
-        await JSZip.loadAsync(firstSave)
+        await ZipArchive.read(firstSave)
       )
-        .file("word/vbaProject.bin")
-        ?.async("uint8array"),
+        .entry("word/vbaProject.bin")
+        ?.bytes(),
     ).toEqual(new Uint8Array([1, 2, 3]));
 
     const body = document.package.document.content.at(0);
@@ -497,14 +498,14 @@ describe("repackDocx", () => {
     text.text = "Edited after first save";
 
     const secondSave = await createDocx(document);
-    const secondZip = await JSZip.loadAsync(secondSave);
+    const secondZip = await ZipArchive.read(secondSave);
 
-    expect(await secondZip.file("word/document.xml")?.async("text")).toContain(
+    expect(await secondZip.entry("word/document.xml")?.text()).toContain(
       "Edited after first save",
     );
-    expect(
-      await secondZip.file("word/vbaProject.bin")?.async("uint8array"),
-    ).toEqual(new Uint8Array([1, 2, 3]));
+    expect(await secondZip.entry("word/vbaProject.bin")?.bytes()).toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
   });
 
   test("drops orphan comment references before full repack validation", async () => {
@@ -526,8 +527,8 @@ describe("repackDocx", () => {
     };
 
     const result = await repackDocx(document, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(result);
-    const documentXml = await zip.file("word/document.xml")?.async("text");
+    const zip = await ZipArchive.read(result);
+    const documentXml = await zip.entry("word/document.xml")?.text();
 
     expect(documentXml).not.toContain("commentReference");
     expect(documentXml).not.toContain('w:id="404"');
@@ -611,32 +612,29 @@ describe("repackDocx", () => {
     };
 
     const result = await repackDocx(document, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(result);
-    const headerRels = await zip
-      .file("word/_rels/header1.xml.rels")
-      ?.async("text");
-    const headerXml = await zip.file("word/header1.xml")?.async("text");
+    const zip = await ZipArchive.read(result);
+    const headerRels = await zip.entry("word/_rels/header1.xml.rels")?.text();
+    const headerXml = await zip.entry("word/header1.xml")?.text();
 
     expect(headerRels).toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
     expect(headerRels).toContain('Target="media/image1.png"');
     expect(headerXml).toContain('r:embed="rId1"');
-    expect(zip.file("word/media/image1.png")).not.toBeNull();
+    expect(zip.entry("word/media/image1.png")).toBeDefined();
   });
 
   test("does not repackage existing header images that already have relationships", async () => {
     const originalBuffer = await createHeaderFixture();
-    const originalZip = await JSZip.loadAsync(originalBuffer);
-    originalZip.file("word/media/image1.png", new Uint8Array([1, 2, 3, 4]));
-    originalZip.file(
+    const originalZip = await ZipArchive.read(originalBuffer);
+    originalZip.set("word/media/image1.png", new Uint8Array([1, 2, 3, 4]));
+    originalZip.set(
       "word/_rels/header1.xml.rels",
       `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
 </Relationships>`,
     );
-    const sourceBuffer = await originalZip.generateAsync({
-      type: "arraybuffer",
-    });
+    const sourceBuffer = (await originalZip.generate({ compression: "store" }))
+      .buffer;
     const document: Document = {
       originalBuffer: sourceBuffer,
       package: {
@@ -699,14 +697,12 @@ describe("repackDocx", () => {
     };
 
     const result = await repackDocx(document, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(result);
-    const headerRels = await zip
-      .file("word/_rels/header1.xml.rels")
-      ?.async("text");
-    const headerXml = await zip.file("word/header1.xml")?.async("text");
-    const mediaFiles = Object.entries(zip.files)
-      .filter(([path, file]) => path.startsWith("word/media/") && !file.dir)
-      .map(([path]) => path);
+    const zip = await ZipArchive.read(result);
+    const headerRels = await zip.entry("word/_rels/header1.xml.rels")?.text();
+    const headerXml = await zip.entry("word/header1.xml")?.text();
+    const mediaFiles = zip
+      .paths()
+      .filter((path) => path.startsWith("word/media/"));
 
     expect(headerRels?.match(/relationships\/image/gu)).toHaveLength(1);
     expect(headerRels).toContain('Target="media/image1.png"');
@@ -719,10 +715,10 @@ describe("repackDocx", () => {
     const doc = await parseDocx(originalBuffer, { preloadFonts: false });
 
     const result = await repackDocx(doc, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(result);
-    const documentXml = await zip.file("word/document.xml")?.async("text");
+    const zip = await ZipArchive.read(result);
+    const documentXml = await zip.entry("word/document.xml")?.text();
 
-    expect(zip.file("word/media/image1.emf")).not.toBeNull();
+    expect(zip.entry("word/media/image1.emf")).toBeDefined();
     expect(documentXml).toContain("<mc:AlternateContent>");
     expect(documentXml).toContain('r:embed="rId5"');
   });
@@ -732,18 +728,18 @@ describe("repackDocx", () => {
     const doc = await parseDocx(originalBuffer, { preloadFonts: false });
 
     const result = await repackDocx(doc, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(result);
-    const documentXml = await zip.file("word/document.xml")?.async("text");
+    const zip = await ZipArchive.read(result);
+    const documentXml = await zip.entry("word/document.xml")?.text();
     const headerRelsXml = await zip
-      .file("word/_rels/header1.xml.rels")
-      ?.async("text");
+      .entry("word/_rels/header1.xml.rels")
+      ?.text();
 
     expect(documentXml).toContain(
       '<w:headerReference w:type="first" r:id="rId11"/>',
     );
     expect(documentXml).toContain("<w:titlePg/>");
     expect(headerRelsXml).toContain('Target="media/image1.png"');
-    expect(zip.file("word/media/image1.png")).not.toBeNull();
+    expect(zip.entry("word/media/image1.png")).toBeDefined();
   });
 
   // `ST_HdrFtr` is `even`, `default` and `first`; `default` is the odd-page
@@ -752,14 +748,12 @@ describe("repackDocx", () => {
   // read that normalisation as a lost reference.
   test("keeps a header reference whose w:type is outside ST_HdrFtr", async () => {
     const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
-    const sourceZip = await JSZip.loadAsync(originalBuffer);
-    const documentXml = await sourceZip
-      .file("word/document.xml")
-      ?.async("text");
+    const sourceZip = await ZipArchive.read(originalBuffer);
+    const documentXml = await sourceZip.entry("word/document.xml")?.text();
     if (documentXml === undefined) {
       throw new Error("expected word/document.xml");
     }
-    sourceZip.file(
+    sourceZip.set(
       "word/document.xml",
       documentXml.replace(
         'w:type="default" r:id="rId12"',
@@ -767,20 +761,20 @@ describe("repackDocx", () => {
       ),
     );
     const doc = await parseDocx(
-      await sourceZip.generateAsync({ type: "arraybuffer" }),
+      (await sourceZip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },
     );
 
-    const zip = await JSZip.loadAsync(
+    const zip = await ZipArchive.read(
       await repackDocx(doc, { updateModifiedDate: false }),
     );
 
-    expect(await zip.file("word/document.xml")?.async("text")).toContain(
+    expect(await zip.entry("word/document.xml")?.text()).toContain(
       '<w:headerReference w:type="default" r:id="rId12"/>',
     );
-    expect(zip.file("word/header2.xml")).not.toBeNull();
+    expect(zip.entry("word/header2.xml")).toBeDefined();
   });
 
   test("fails closed when a repack would still orphan a header reference", async () => {
@@ -861,10 +855,10 @@ describe("repackDocx", () => {
   test.each(["transitional", "strict"])(
     "reference loss guard resolves alternate prefixes in %s XML",
     async (profile) => {
-      const zip = await JSZip.loadAsync(
+      const zip = await ZipArchive.read(
         await createMultiSectionFirstHeaderImageFixture(),
       );
-      const originalXml = await zip.file("word/document.xml")!.async("text");
+      const originalXml = await zip.entry("word/document.xml")!.text();
       let xml = originalXml
         .replaceAll("xmlns:w=", "xmlns:word=")
         .replaceAll("w:", "word:")
@@ -881,9 +875,9 @@ describe("repackDocx", () => {
             "http://purl.oclc.org/ooxml/officeDocument/relationships",
           );
       }
-      zip.file("word/document.xml", xml);
+      zip.set("word/document.xml", xml);
       const doc = await parseDocx(
-        await zip.generateAsync({ type: "arraybuffer" }),
+        (await zip.generate({ compression: "store" })).buffer,
         {
           preloadFonts: false,
         },
@@ -932,11 +926,11 @@ describe("repackDocx", () => {
       document: doc,
       resolution,
     });
-    const savedZip = await JSZip.loadAsync(saved);
-    const savedXml = await savedZip.file("word/document.xml")?.async("text");
+    const savedZip = await ZipArchive.read(saved);
+    const savedXml = await savedZip.entry("word/document.xml")?.text();
 
     expect(savedXml).not.toContain("rId11");
-    expect(savedZip.file("word/header1.xml")).not.toBeNull();
+    expect(savedZip.entry("word/header1.xml")).toBeDefined();
   });
 
   test("consumes an internal section-removal allowance in one repack call", async () => {
@@ -1026,23 +1020,21 @@ describe("repackDocx", () => {
 
   test("does not let one removed endpoint excuse a shared reference on a surviving endpoint", async () => {
     const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
-    const originalZip = await JSZip.loadAsync(originalBuffer);
-    const originalXml = await originalZip
-      .file("word/document.xml")
-      ?.async("text");
+    const originalZip = await ZipArchive.read(originalBuffer);
+    const originalXml = await originalZip.entry("word/document.xml")?.text();
     if (!originalXml) {
       throw new Error("Expected document XML");
     }
-    originalZip.file(
+    originalZip.set(
       "word/document.xml",
       originalXml.replace(
         '<w:headerReference w:type="default" r:id="rId12"/>',
         '<w:headerReference w:type="first" r:id="rId11"/>',
       ),
     );
-    const sharedReferenceBuffer = await originalZip.generateAsync({
-      type: "arraybuffer",
-    });
+    const sharedReferenceBuffer = (
+      await originalZip.generate({ compression: "store" })
+    ).buffer;
     const doc = await parseDocx(sharedReferenceBuffer, { preloadFonts: false });
     const firstParagraph = doc.package.document.content.find(
       (block) => block.type === "paragraph" && block.sectionProperties,
@@ -1087,18 +1079,18 @@ describe("repackDocx", () => {
       throw new Error("Expected selective save result");
     }
 
-    const zip = await JSZip.loadAsync(result);
-    const documentXml = await zip.file("word/document.xml")?.async("text");
+    const zip = await ZipArchive.read(result);
+    const documentXml = await zip.entry("word/document.xml")?.text();
     const headerRelsXml = await zip
-      .file("word/_rels/header1.xml.rels")
-      ?.async("text");
+      .entry("word/_rels/header1.xml.rels")
+      ?.text();
 
     expect(documentXml).toContain(
       '<w:headerReference w:type="first" r:id="rId11"/>',
     );
     expect(documentXml).toContain("<w:titlePg/>");
     expect(headerRelsXml).toContain('Target="media/image1.png"');
-    expect(zip.file("word/media/image1.png")).not.toBeNull();
+    expect(zip.entry("word/media/image1.png")).toBeDefined();
   });
 });
 
@@ -1137,10 +1129,10 @@ describe("createDocx style numbering references", () => {
   });
 
   test("keeps the numId 0 sentinel that switches inherited numbering off", async () => {
-    const zip = await JSZip.loadAsync(
+    const zip = await ZipArchive.read(
       await createDocx(styleNumberingDocument(0)),
     );
-    const stylesXml = await zip.file("word/styles.xml")?.async("text");
+    const stylesXml = await zip.entry("word/styles.xml")?.text();
 
     // Dropping the <w:numPr> would hand the style its parent's numbering back.
     expect(stylesXml).toContain(
@@ -1176,8 +1168,8 @@ describe("createDocx style numbering references", () => {
       ],
     });
 
-    const zip = await JSZip.loadAsync(await createDocx(document));
-    expect(await zip.file("word/styles.xml")?.async("text")).toContain(
+    const zip = await ZipArchive.read(await createDocx(document));
+    expect(await zip.entry("word/styles.xml")?.text()).toContain(
       '<w:numId w:val="7"/>',
     );
   });
@@ -1186,9 +1178,9 @@ describe("createDocx style numbering references", () => {
     const document = styleNumberingDocument(0);
     document.package.numbering?.nums.push(brokenNumbering);
 
-    const zip = await JSZip.loadAsync(await createDocx(document));
+    const zip = await ZipArchive.read(await createDocx(document));
 
-    expect(await zip.file("word/numbering.xml")?.async("text")).toContain(
+    expect(await zip.entry("word/numbering.xml")?.text()).toContain(
       '<w:num w:numId="7">',
     );
   });
@@ -1217,12 +1209,12 @@ describe("the section count a repack may write", () => {
     [...xml.matchAll(/<w:sectPr[\s/>]/gu)].length;
 
   const documentXmlOf = async (buffer: ArrayBuffer) => {
-    const zip = await JSZip.loadAsync(buffer);
-    const file = zip.file("word/document.xml");
+    const zip = await ZipArchive.read(buffer);
+    const file = zip.entry("word/document.xml");
     if (!file) {
       throw new Error("expected word/document.xml");
     }
-    return file.async("text");
+    return file.text();
   };
 
   test("refuses a save whose second carrier is the first one's split half", async () => {

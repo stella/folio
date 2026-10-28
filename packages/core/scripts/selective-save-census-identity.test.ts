@@ -1,7 +1,8 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "../src/docx/parser";
 import { createEmptyDocx } from "../src/docx/rezip";
@@ -26,10 +27,10 @@ for (const coverage of ["authored", "none"] as const) {
         '<w:bookmarkEnd w:id="1"/>' +
         paragraph(coverage === "authored" ? "10000001" : undefined),
     );
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    zip.file("word/document.xml", source);
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    zip.set("word/document.xml", source);
     const parsed = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
     );
     const state = ensureParaIdsInState(
       EditorState.create({ doc: toProseDoc(parsed) }),

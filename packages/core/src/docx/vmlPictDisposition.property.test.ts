@@ -24,7 +24,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -179,15 +180,15 @@ const relsPathOf = (partPath: string): string =>
   );
 
 const buildDocx = async (pict: PictCase): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/media/image1.png", PNG);
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/media/image1.png", PNG);
 
   const inBody = pict.container === CONTAINERS.body;
   const reference =
     pict.container === CONTAINERS.header
       ? `<w:headerReference w:type="default" r:id="${HEADER_RID}"/>`
       : `<w:footerReference w:type="default" r:id="${FOOTER_RID}"/>`;
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document ${NAMESPACES}><w:body>` +
       `${inBody ? paragraphMarkup(pict) : "<w:p><w:r><w:t>x</w:t></w:r></w:p>"}` +
@@ -198,17 +199,17 @@ const buildDocx = async (pict: PictCase): Promise<ArrayBuffer> => {
   if (!inBody) {
     const root = pict.container === CONTAINERS.header ? "hdr" : "ftr";
     const partPath = PART_PATHS[pict.container];
-    zip.file(
+    zip.set(
       partPath,
       `${XML_DECLARATION}<w:${root} ${NAMESPACES}>${paragraphMarkup(pict)}</w:${root}>`,
     );
-    zip.file(relsPathOf(partPath), relationships([IMAGE_RELATIONSHIP]));
+    zip.set(relsPathOf(partPath), relationships([IMAGE_RELATIONSHIP]));
     const type = pict.container === CONTAINERS.header ? "header" : "footer";
     documentRelationships.push(
       `<Relationship Id="${pict.container === CONTAINERS.header ? HEADER_RID : FOOTER_RID}" Type="${R_NAMESPACE}/${type}" Target="${partPath.slice("word/".length)}"/>`,
     );
-    const types = await zip.file("[Content_Types].xml")!.async("text");
-    zip.file(
+    const types = await zip.entry("[Content_Types].xml")!.text();
+    zip.set(
       "[Content_Types].xml",
       types.replace(
         "</Types>",
@@ -216,10 +217,8 @@ const buildDocx = async (pict: PictCase): Promise<ArrayBuffer> => {
       ),
     );
   }
-  const existingRels = await zip
-    .file("word/_rels/document.xml.rels")!
-    .async("text");
-  zip.file(
+  const existingRels = await zip.entry("word/_rels/document.xml.rels")!.text();
+  zip.set(
     "word/_rels/document.xml.rels",
     existingRels.replace(
       "</Relationships>",
@@ -227,9 +226,9 @@ const buildDocx = async (pict: PictCase): Promise<ArrayBuffer> => {
     ),
   );
 
-  const types = await zip.file("[Content_Types].xml")!.async("text");
+  const types = await zip.entry("[Content_Types].xml")!.text();
   if (!types.includes('Extension="png"')) {
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
       types.replace(
         "</Types>",
@@ -237,7 +236,7 @@ const buildDocx = async (pict: PictCase): Promise<ArrayBuffer> => {
       ),
     );
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /**
@@ -285,7 +284,7 @@ const stripRebuildableCaptures = (
 };
 
 const textOf = async (buffer: ArrayBuffer, path: string): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file(path)?.async("text")) ?? "";
+  (await (await ZipArchive.read(buffer)).entry(path)?.text()) ?? "";
 
 const pictCase = fc.record({
   kind: fc.constantFrom(...SHAPE_KINDS),

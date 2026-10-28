@@ -4,8 +4,6 @@
 
 ```ts
 
-import JSZip from 'jszip';
-
 // @public
 export const base64ToBytes: (text: string) => Uint8Array<ArrayBuffer>;
 
@@ -54,12 +52,6 @@ export const truncateCodePoints: (text: string, limit: number) => string;
 
 // @public
 export const truncateGraphemes: (text: string, limit: number) => string;
-
-// @public
-export const writeZipEntry: (zip: JSZip, path: string, content: ZipEntryInput, options?: JSZip.JSZipFileOptions) => JSZip;
-
-// @public
-export type ZipEntryInput = Parameters<JSZip["loadAsync"]>[0] | ArrayBufferView;
 
 // (No @packageDocumentation comment for this package)
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createEmptyDocx } from "../rezip";
 import type {
@@ -17,14 +18,14 @@ const checkStatus = (
   id: FolioDocxConformanceCheckId,
 ) => report.checks.find((check) => check.id === id)?.status;
 
-type MutatePackage = (zip: JSZip) => void;
+type MutatePackage = (zip: ZipArchive) => void;
 
 const mutateEmptyPackage = async (
   mutate: MutatePackage,
 ): Promise<Uint8Array> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const zip = await ZipArchive.read(await createEmptyDocx());
   mutate(zip);
-  return await zip.generateAsync({ type: "uint8array" });
+  return await zip.generate({ compression: "store" });
 };
 
 describe("validateDocxConformance", () => {
@@ -48,7 +49,7 @@ describe("validateDocxConformance", () => {
 
   test("fails a malformed XML part and does not run semantic checks", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file("word/document.xml", "<w:document>");
+      zip.set("word/document.xml", "<w:document>");
     });
 
     const report = await validateDocxConformance(bytes);
@@ -67,7 +68,7 @@ describe("validateDocxConformance", () => {
 
   test("rejects document type declarations in XML package parts", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file("custom.xml", "<!DOCTYPE root [<!ELEMENT root EMPTY>]><root/>");
+      zip.set("custom.xml", "<!DOCTYPE root [<!ELEMENT root EMPTY>]><root/>");
     });
 
     const report = await validateDocxConformance(bytes);
@@ -84,7 +85,7 @@ describe("validateDocxConformance", () => {
     "rejects invalid entity references in XML package parts: %s",
     async (xml) => {
       const bytes = await mutateEmptyPackage((zip) => {
-        zip.file("custom.xml", xml);
+        zip.set("custom.xml", xml);
       });
 
       const report = await validateDocxConformance(bytes);
@@ -104,7 +105,7 @@ describe("validateDocxConformance", () => {
 
   test("fails missing required parts with their package paths", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.remove("_rels/.rels");
+      zip.delete("_rels/.rels");
     });
 
     const report = await validateDocxConformance(bytes);
@@ -122,7 +123,7 @@ describe("validateDocxConformance", () => {
 
   test("fails an invalid main document package binding", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file(
+      zip.set(
         "_rels/.rels",
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>',
       );
@@ -137,13 +138,13 @@ describe("validateDocxConformance", () => {
 
   test("accepts prefixed package vocabulary roots", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file(
+      zip.set(
         "[Content_Types].xml",
         `<ct:Types xmlns:ct="http://schemas.openxmlformats.org/package/2006/content-types">
           <ct:Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
         </ct:Types>`,
       );
-      zip.file(
+      zip.set(
         "_rels/.rels",
         `<r:Relationships xmlns:r="http://schemas.openxmlformats.org/package/2006/relationships">
           <r:Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
@@ -159,7 +160,7 @@ describe("validateDocxConformance", () => {
 
   test("accepts a package-root-relative main document target", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file(
+      zip.set(
         "_rels/.rels",
         `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
           <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="/word/document.xml"/>
@@ -175,7 +176,7 @@ describe("validateDocxConformance", () => {
 
   test("reports an unknown main document namespace as indeterminate", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
-      zip.file(
+      zip.set(
         "word/document.xml",
         '<x:document xmlns:x="urn:example"><x:body><x:p/></x:body></x:document>',
       );
@@ -217,15 +218,12 @@ describe("validateDocxConformance", () => {
   });
 
   test("fails packages whose parts pass the compression-ratio limit", async () => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    zip.file(
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    zip.set(
       "word/header1.xml",
       `<w:hdr>${"x".repeat(5 * 1024 * 1024)}</w:hdr>`,
     );
-    const bytes = await zip.generateAsync({
-      type: "uint8array",
-      compression: "DEFLATE",
-    });
+    const bytes = await zip.generate();
 
     const report = await validateDocxConformance(bytes);
 

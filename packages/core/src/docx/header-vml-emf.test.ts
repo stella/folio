@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { getHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import { parseDocx } from "./parser";
@@ -40,12 +41,10 @@ describe("parseDocx — header with EMF media", () => {
     // Conversion is driven by references, not by what the ZIP happens to hold:
     // a `word/media/` entry no relationship points at is kept byte for byte so
     // the round-trip is unchanged, but nothing decodes or re-encodes it.
-    const zip = await JSZip.loadAsync(load(FIXTURE));
-    const referencedBytes = await zip
-      .file("word/media/image1.emf")!
-      .async("uint8array");
-    zip.file("word/media/orphan.emf", referencedBytes);
-    const seeded = await zip.generateAsync({ type: "arraybuffer" });
+    const zip = await ZipArchive.read(load(FIXTURE));
+    const referencedBytes = await zip.entry("word/media/image1.emf")!.bytes();
+    zip.set("word/media/orphan.emf", referencedBytes);
+    const seeded = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(seeded, { preloadFonts: false });
 
@@ -78,22 +77,18 @@ describe("parseDocx — header with EMF media", () => {
 describe("repackDocx — header round-trip", () => {
   test("unedited header/footer XML is byte-identical after round-trip", async () => {
     const inBuf = load(FIXTURE);
-    const inZip = await JSZip.loadAsync(inBuf);
-    const headerIn = await inZip.file("word/header1.xml")!.async("string");
-    const footerIn = await inZip.file("word/footer1.xml")!.async("string");
-    const emfIn = await inZip
-      .file("word/media/image1.emf")!
-      .async("uint8array");
+    const inZip = await ZipArchive.read(inBuf);
+    const headerIn = await inZip.entry("word/header1.xml")!.text();
+    const footerIn = await inZip.entry("word/footer1.xml")!.text();
+    const emfIn = await inZip.entry("word/media/image1.emf")!.bytes();
 
     const doc = await parseDocx(inBuf, { preloadFonts: false });
     const outBuf = await repackDocx(doc);
-    const outZip = await JSZip.loadAsync(outBuf);
+    const outZip = await ZipArchive.read(outBuf);
 
-    const headerOut = await outZip.file("word/header1.xml")!.async("string");
-    const footerOut = await outZip.file("word/footer1.xml")!.async("string");
-    const emfOut = await outZip
-      .file("word/media/image1.emf")!
-      .async("uint8array");
+    const headerOut = await outZip.entry("word/header1.xml")!.text();
+    const footerOut = await outZip.entry("word/footer1.xml")!.text();
+    const emfOut = await outZip.entry("word/media/image1.emf")!.bytes();
 
     expect(headerOut).toBe(headerIn);
     expect(footerOut).toBe(footerIn);

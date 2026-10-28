@@ -1,12 +1,12 @@
 import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import {
   NO_PARAGRAPH_NUMBERING,
   paragraphNumberingReference,
 } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../test/paragraphBlock";
 import {
@@ -125,16 +125,16 @@ const undefinedReferenceFixture = ({
     if (resource !== "numbering" || side !== "revised") return buffer;
     // The model writer requires defined resources. External packages can carry
     // dangling references, so remove the definition after valid serialization.
-    const zip = await JSZip.loadAsync(buffer);
+    const zip = await ZipArchive.read(buffer);
     const part =
-      zip.file("word/numbering.xml") ??
+      zip.entry("word/numbering.xml") ??
       panic("Fixture lost its numbering part");
-    const xml = await part.async("text");
+    const xml = await part.text();
     const start =
       xml.match(/<w:numbering\b[^>]*>/u)?.at(0) ??
       panic("Fixture lost its numbering root");
-    zip.file("word/numbering.xml", `${start}</w:numbering>`);
-    return zip.generateAsync({ type: "arraybuffer" });
+    zip.set("word/numbering.xml", `${start}</w:numbering>`);
+    return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
   });
 };
 
@@ -229,8 +229,8 @@ test("undefined inserted references stay dangling or are cleared before binding 
               inserted.previewRuns?.some(({ bold }) => bold === true) ?? false,
             ).toBe(false);
             if (resource === "style") {
-              const zip = await JSZip.loadAsync(acceptedBuffer);
-              const xml = await zip.file("word/document.xml")?.async("text");
+              const zip = await ZipArchive.read(acceptedBuffer);
+              const xml = await zip.entry("word/document.xml")?.text();
               expect(xml).toBeDefined();
               const authoredStyle = new RegExp(
                 `<w:pStyle\\b[^>]*\\bw:val="${UNKNOWN_STYLE}"`,

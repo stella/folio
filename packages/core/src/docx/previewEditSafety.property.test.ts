@@ -24,8 +24,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -88,28 +89,28 @@ const diagramRelationships = (kind: PreviewKindUnderTest): string =>
     : "";
 
 const packageWith = (kind: PreviewKindUnderTest): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${diagramRelationships(kind)}</Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document ${DOCUMENT_NAMESPACES}><w:body><w:p><w:r>${AUTHORED_MARKUP[kind]}</w:r></w:p></w:body></w:document>`,
   );
   if (kind === "diagram") {
-    zip.file("word/diagrams/data1.xml", DIAGRAM_DATA_XML);
-    zip.file("word/diagrams/drawing1.xml", DIAGRAM_DRAWING_XML);
+    zip.set("word/diagrams/data1.xml", DIAGRAM_DATA_XML);
+    zip.set("word/diagrams/drawing1.xml", DIAGRAM_DRAWING_XML);
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** Every edit the image commit seam can make to a drawing's projection. */
@@ -184,14 +185,14 @@ type SavedPackage = {
 };
 
 const savedPackageOf = async (document: Document): Promise<SavedPackage> => {
-  const zip = await JSZip.loadAsync(
+  const zip = await ZipArchive.read(
     await repackDocx(document, { updateModifiedDate: false }),
   );
   return {
-    documentXml: (await zip.file("word/document.xml")?.async("string")) ?? "",
+    documentXml: (await zip.entry("word/document.xml")?.text()) ?? "",
     relationshipsXml:
-      (await zip.file("word/_rels/document.xml.rels")?.async("string")) ?? "",
-    entries: Object.keys(zip.files),
+      (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? "",
+    entries: zip.paths(),
   };
 };
 

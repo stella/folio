@@ -11,7 +11,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import {
@@ -50,10 +51,10 @@ const deleteBlock = (
 
 const documentXml = async (bytes: ArrayBuffer): Promise<string> => {
   const xml = await (
-    await JSZip.loadAsync(bytes)
+    await ZipArchive.read(bytes)
   )
-    .file("word/document.xml")
-    ?.async("string");
+    .entry("word/document.xml")
+    ?.text();
   if (xml === undefined) throw new Error("no document part");
   return xml;
 };
@@ -62,10 +63,10 @@ const markParagraphBreakDeleted = async (
   bytes: ArrayBuffer,
   text: string,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(bytes);
-  const part = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(bytes);
+  const part = zip.entry("word/document.xml");
   if (!part) throw new Error("no document part");
-  const xml = await part.async("string");
+  const xml = await part.text();
   const run = `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
   const marked =
     `<w:p><w:pPr><w:rPr>` +
@@ -73,8 +74,8 @@ const markParagraphBreakDeleted = async (
     `</w:rPr></w:pPr>${run}</w:p>`;
   if (!xml.includes(`<w:p>${run}</w:p>`))
     throw new Error("paragraph not found");
-  zip.file("word/document.xml", xml.replace(`<w:p>${run}</w:p>`, marked));
-  return await zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/document.xml", xml.replace(`<w:p>${run}</w:p>`, marked));
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 const firstCellParagraph = (reviewer: FolioDocxReviewer) => {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { buildEditExpectationSeeds } from "../fixtures/build-edit-expectation-fixtures";
 import { EDIT_OPERATION_SCRIPTS } from "../fixtures/edit-operation-scripts";
@@ -24,8 +25,8 @@ describe("synthetic edit expectation seeds", () => {
         ).arrayBuffer(),
       );
       expect(Buffer.from(bytes).equals(Buffer.from(committed))).toBeTrue();
-      const zip = await JSZip.loadAsync(bytes);
-      const document = await zip.file("word/document.xml")?.async("text");
+      const zip = await ZipArchive.read(bytes);
+      const document = await zip.entry("word/document.xml")?.text();
       if (!document)
         throw new TypeError(`${name} is missing word/document.xml`);
       if (name === "edit-final-paragraph-seed.docx") {
@@ -49,7 +50,7 @@ describe("synthetic edit expectation seeds", () => {
         expect(document).toContain("w:commentRangeStart");
         expect(document).toContain("w:commentRangeEnd");
         expect(document).toContain("w:commentReference");
-        expect(zip.file("word/comments.xml")).not.toBeNull();
+        expect(zip.entry("word/comments.xml")).toBeDefined();
       }
       if (name === "edit-notes-fields-sections-seed.docx") {
         expect(document).toContain("w:footnoteReference");
@@ -57,8 +58,8 @@ describe("synthetic edit expectation seeds", () => {
         expect(document).toContain("w:fldChar");
         expect(document).toContain("w:fldSimple");
         expect(document).toContain('w:type w:val="nextPage"');
-        expect(zip.file("word/footnotes.xml")).not.toBeNull();
-        expect(zip.file("word/endnotes.xml")).not.toBeNull();
+        expect(zip.entry("word/footnotes.xml")).toBeDefined();
+        expect(zip.entry("word/endnotes.xml")).toBeDefined();
       }
     }
   });

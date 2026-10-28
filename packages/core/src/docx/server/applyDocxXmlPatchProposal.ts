@@ -1,10 +1,8 @@
 import { panic, TaggedError, type TaggedErrorClass } from "better-result";
-import JSZip from "jszip";
 import { createHash } from "node:crypto";
 
-import { writeZipPart } from "@stll/docx-core/zip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
-import { encodeUtf8 } from "../../utils/textEncoding";
 import type { DocxArchiveOptions } from "./boundedArchive";
 import { loadDocxArchive } from "./boundedArchive";
 import {
@@ -237,9 +235,6 @@ const verifyArchiveContents = async (
     ({ path: left }, { path: right }) =>
       left < right ? -1 : Number(left > right),
   )) {
-    if (entry.directory) {
-      continue;
-    }
     try {
       // oxlint-disable-next-line no-await-in-loop -- serialized reads enforce the archive budget
       const content = await archive.readEntryUint8(entry.path);
@@ -274,9 +269,9 @@ const applyReplacements = async ({
   bytes,
   proposal,
 }: ApplyReplacementsOptions): Promise<Uint8Array> => {
-  let zip: JSZip;
+  let zip: ZipArchive;
   try {
-    zip = await JSZip.loadAsync(bytes);
+    zip = await ZipArchive.read(bytes);
   } catch (cause) {
     throw new FolioDocxXmlPatchApplicationError({
       message: "The evaluated package could not be loaded for replacement.",
@@ -286,35 +281,21 @@ const applyReplacements = async ({
   }
 
   for (const replacement of proposal.replacements) {
-    const current = zip.file(replacement.path);
-    if (current === null) {
+    const current = zip.entry(replacement.path);
+    if (current === undefined) {
       throw new FolioDocxXmlPatchApplicationError({
         message:
           "An evaluated package part was unavailable during replacement.",
         stage: "replace",
       });
     }
-    writeZipPart({
-      zip,
-      path: replacement.path,
-      data: encodeUtf8(replacement.replacementXml),
-      options: {
-        date: current.date,
-        comment: current.comment,
-        unixPermissions: current.unixPermissions,
-        dosPermissions: current.dosPermissions,
-        compression: "DEFLATE",
-        compressionOptions: { level: 6 },
-      },
+    zip.set(replacement.path, replacement.replacementXml, {
+      modified: current.modified,
     });
   }
 
   try {
-    return await zip.generateAsync({
-      type: "uint8array",
-      compression: "DEFLATE",
-      compressionOptions: { level: 6 },
-    });
+    return await zip.generate({ level: 6 });
   } catch (cause) {
     throw new FolioDocxXmlPatchApplicationError({
       message: "The replacement package could not be generated.",

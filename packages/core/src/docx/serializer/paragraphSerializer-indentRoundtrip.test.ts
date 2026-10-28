@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "../parser";
 import { createEmptyDocx, repackDocx } from "../rezip";
@@ -8,8 +9,8 @@ const DOCUMENT_XML_PATH = "word/document.xml";
 
 describe("paragraph indentation round-trip", () => {
   test("preserves an explicit zero first-line indent through a full save", async () => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    zip.file(
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    zip.set(
       DOCUMENT_XML_PATH,
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -22,7 +23,8 @@ describe("paragraph indentation round-trip", () => {
   </w:body>
 </w:document>`,
     );
-    const originalBuffer = await zip.generateAsync({ type: "arraybuffer" });
+    const originalBuffer = (await zip.generate({ compression: "store" }))
+      .buffer;
     const document = await parseDocx(originalBuffer, { preloadFonts: false });
 
     expect(

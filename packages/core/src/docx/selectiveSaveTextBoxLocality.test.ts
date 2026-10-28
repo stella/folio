@@ -13,7 +13,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 
@@ -80,12 +81,12 @@ const documentXml = (coverage: Coverage): string =>
   "<w:sectPr/></w:body></w:document>";
 
 const buildPackage = async (xml: string): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
-  zip.file("_rels/.rels", ROOT_RELS);
-  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
-  zip.file("word/document.xml", xml);
-  const bytes = await zip.generateAsync({ type: "uint8array" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", CONTENT_TYPES);
+  zip.set("_rels/.rels", ROOT_RELS);
+  zip.set("word/_rels/document.xml.rels", DOCUMENT_RELS);
+  zip.set("word/document.xml", xml);
+  const bytes = await zip.generate({ compression: "store" });
   return bytes.buffer.slice(
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength,
@@ -93,11 +94,11 @@ const buildPackage = async (xml: string): Promise<ArrayBuffer> => {
 };
 
 const documentPartOf = async (docx: ArrayBuffer): Promise<string> => {
-  const entry = (await JSZip.loadAsync(docx)).file("word/document.xml");
+  const entry = (await ZipArchive.read(docx)).entry("word/document.xml");
   if (!entry) {
     throw new Error("saved package has no word/document.xml");
   }
-  return entry.async("text");
+  return entry.text();
 };
 
 describe("a body edit beside a text box with a Fallback", () => {

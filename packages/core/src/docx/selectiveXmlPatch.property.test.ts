@@ -17,9 +17,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import { validateDocxPackage } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -163,10 +163,10 @@ describe("buildPatchedDocumentXml property invariants", () => {
             },
           ];
           const source = await createDocx(initial);
-          const zip = await JSZip.loadAsync(source);
-          expect(
-            await zip.file("word/document.xml")?.async("text"),
-          ).not.toContain("xmlns:folio=");
+          const zip = await ZipArchive.read(source);
+          expect(await zip.entry("word/document.xml")?.text()).not.toContain(
+            "xmlns:folio=",
+          );
           const document = await parseDocx(source, {
             preloadFonts: false,
             detectVariables: false,

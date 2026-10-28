@@ -1,10 +1,10 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
 
 import { validateDocxPackage } from "@stll/docx-core";
 import { findStoryBody, freshCommentId } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
 import {
@@ -125,30 +125,28 @@ const openCommentSource = async (
       at: { story: "main", blockId: block.paraId, offset: 1 },
     },
   });
-  const zip = await JSZip.loadAsync(await createDocx(source.session.document));
-  const comments = await zip.file("word/comments.xml")?.async("text");
+  const zip = await ZipArchive.read(await createDocx(source.session.document));
+  const comments = await zip.entry("word/comments.xml")?.text();
   if (!comments) throw new Error("Missing source comments part");
-  expect(zip.file("word/commentsExtended.xml")).toBeNull();
-  zip.remove("word/comments.xml");
-  zip.file(path, comments);
-  const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
-  const relationships = await zip
-    .file("word/_rels/document.xml.rels")
-    ?.async("text");
+  expect(zip.entry("word/commentsExtended.xml")).toBeUndefined();
+  zip.delete("word/comments.xml");
+  zip.set(path, comments);
+  const contentTypes = await zip.entry("[Content_Types].xml")?.text();
+  const relationships = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (!contentTypes || !relationships)
     throw new Error("Missing source comment packaging");
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     contentTypes.replace("/word/comments.xml", `/${path}`),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     relationships.replace(
       'Target="comments.xml"',
       `Target="${path.slice("word/".length)}"`,
     ),
   );
-  const buffer = await zip.generateAsync({ type: "arraybuffer" });
+  const buffer = (await zip.generate({ compression: "store" })).buffer;
   expect(await validateDocxPackage(new Uint8Array(buffer))).toEqual({
     valid: true,
   });
@@ -299,11 +297,11 @@ test("generated point/range comment histories preserve exact undo, projection an
         expect(
           await validateDocxPackage(new Uint8Array(deletion.buffer)),
         ).toEqual({ valid: true });
-        const deletedZip = await JSZip.loadAsync(deletion.buffer);
+        const deletedZip = await ZipArchive.read(deletion.buffer);
         expect(
-          Object.keys(deletedZip.files).filter(
-            (path) => path.toLowerCase() === "word/comments.xml",
-          ),
+          deletedZip
+            .paths()
+            .filter((path) => path.toLowerCase() === "word/comments.xml"),
         ).toEqual([sourcePath]);
         expect(
           describePackageDifferences(

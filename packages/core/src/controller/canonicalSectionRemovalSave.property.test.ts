@@ -1,10 +1,10 @@
 import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
 
 import { OP_STORIES } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -89,8 +89,8 @@ const removeCanonicalSectionEndpoints = async (
 };
 
 const documentXmlOf = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const xml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(buffer);
+  const xml = await zip.entry("word/document.xml")?.text();
   if (!xml) panic("Expected word/document.xml");
   return xml;
 };
@@ -128,19 +128,19 @@ test("canonical section removal does not authorize loss already present in the s
   const generated = await createDocx(documentWithSectionEndpoints(1), {
     updateModifiedDate: false,
   });
-  const zip = await JSZip.loadAsync(generated);
-  const originalXml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(generated);
+  const originalXml = await zip.entry("word/document.xml")?.text();
   if (!originalXml) panic("Expected source document XML");
-  zip.file(
+  zip.set(
     "word/document.xml",
     originalXml.replace(
       "</w:body>",
       "<w:customXml><w:sectPr/></w:customXml></w:body>",
     ),
   );
-  const sourceWithUnmodeledEndpoint = await zip.generateAsync({
-    type: "arraybuffer",
-  });
+  const sourceWithUnmodeledEndpoint = (
+    await zip.generate({ compression: "store" })
+  ).buffer;
   expect(
     readDocumentSectionFacts(await documentXmlOf(sourceWithUnmodeledEndpoint))
       .sectionCount,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createEmptyDocx } from "./rezip";
@@ -10,9 +11,9 @@ const WORDPROCESSINGML_NAMESPACE =
 const sourceWithDeletedRunPropertyChange = async (
   wrapper: "del" | "moveFrom",
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const documentPart = zip.file("word/document.xml");
-  const documentXml = await documentPart?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const documentPart = zip.entry("word/document.xml");
+  const documentXml = await documentPart?.text();
   if (!documentXml) {
     throw new Error(
       "Expected the generated package to contain word/document.xml",
@@ -34,19 +35,19 @@ const sourceWithDeletedRunPropertyChange = async (
     </x:p>
     <w:sectPr/>
   </w:body>`;
-  zip.file(
+  zip.set(
     "word/document.xml",
     documentXml.replace(/<w:body>[\s\S]*<\/w:body>/u, body),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const part = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const part = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!part) {
     throw new Error("Expected word/document.xml");
   }
-  return part.async("text");
+  return part.text();
 };
 
 describe("deleted-run property-change lifecycle", () => {

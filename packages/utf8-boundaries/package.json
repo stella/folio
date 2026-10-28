@@ -1,7 +1,7 @@
 {
   "name": "@stll/utf8-boundaries",
   "version": "0.1.2",
-  "description": "Shared Unicode text, streaming codec, and ZIP entry boundaries.",
+  "description": "Shared Unicode text and streaming codec boundaries.",
   "homepage": "https://github.com/stella/folio/tree/main/packages/utf8-boundaries",
   "bugs": {
     "url": "https://github.com/stella/folio/issues"
@@ -45,14 +45,10 @@
     "tsdown": "0.23.1"
   },
   "peerDependencies": {
-    "fast-check": "^4.9.0",
-    "jszip": "^3.10.2"
+    "fast-check": "^4.9.0"
   },
   "peerDependenciesMeta": {
     "fast-check": {
-      "optional": true
-    },
-    "jszip": {
       "optional": true
     }
   }

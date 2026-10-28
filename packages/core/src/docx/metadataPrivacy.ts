@@ -1,15 +1,9 @@
-import { TaggedError, type TaggedErrorClass } from "better-result";
-import JSZip from "jszip";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
-import { writeZipPart } from "@stll/docx-core/zip";
+import { ZipArchive, type ZipEntry, ZipError } from "@stll/docx-core/zip";
 
-import { decodeText, encodeUtf8 } from "../utils/textEncoding";
-import {
-  countCentralDirectoryRecords,
-  createInflationBudget,
-  DOCX_MAX_COMPRESSION_RATIO,
-  inflateEntryWithinLimits,
-} from "./archiveInflation";
+import { decodeText } from "../utils/textEncoding";
+import { DOCX_MAX_COMPRESSION_RATIO } from "./archiveInflation";
 import { elementToXml, getLocalName, parseXmlDocument } from "./xmlParser";
 
 export const FOLIO_DOCUMENT_METADATA_PROPERTIES: readonly [
@@ -150,70 +144,50 @@ const CORE_PROPERTIES_PATH_LOWER = "docprops/core.xml";
  * buffer round-trips untouched.
  */
 const findZipEntryCaseInsensitive = (
-  zip: JSZip,
+  zip: ZipArchive,
   lowerPath: string,
-): JSZip.JSZipObject | null => {
-  const direct = zip.file(lowerPath);
-  if (direct) {
-    return direct;
-  }
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (!file.dir && path.toLowerCase() === lowerPath) {
-      return file;
-    }
-  }
-  return null;
-};
+): ZipEntry | null =>
+  zip.entry(lowerPath) ??
+  zip.entries().find(({ path }) => path.toLowerCase() === lowerPath) ??
+  null;
 
-const loadPrivacyArchive = async (buffer: ArrayBuffer): Promise<JSZip> => {
+const loadPrivacyArchive = async (buffer: ArrayBuffer): Promise<ZipArchive> => {
   if (buffer.byteLength > MAX_INPUT_BYTES) {
     throw new FolioDocumentPrivacyArchiveError({
       message: "Document privacy input exceeded the compressed-size limit",
       reason: "input-too-large",
     });
   }
-  if (
-    countCentralDirectoryRecords(new Uint8Array(buffer), MAX_ARCHIVE_ENTRIES) >
-    MAX_ARCHIVE_ENTRIES
-  ) {
-    throw new FolioDocumentPrivacyArchiveError({
-      message: "Document privacy input exceeded the package-entry limit",
-      reason: "too-many-entries",
-    });
-  }
-  let zip: JSZip;
-  try {
-    zip = await JSZip.loadAsync(buffer);
-  } catch (cause) {
+  const read = await Result.tryPromise({
+    try: async () =>
+      await ZipArchive.read(buffer, {
+        limits: {
+          maxEntries: MAX_ARCHIVE_ENTRIES,
+          maxCompressionRatio: DOCX_MAX_COMPRESSION_RATIO,
+        },
+      }),
+    catch: (cause) => cause,
+  });
+  if (Result.isError(read)) {
+    const cause = read.error;
+    if (cause instanceof ZipError && cause.reason === "too-many-entries") {
+      throw new FolioDocumentPrivacyArchiveError({
+        message: "Document privacy input exceeded the package-entry limit",
+        reason: "too-many-entries",
+      });
+    }
     throw new FolioDocumentPrivacyArchiveError({
       message: "Document privacy input is not a readable package",
       reason: "load-failed",
       cause,
     });
   }
-  const entries = Object.values(zip.files);
-  if (entries.length > MAX_ARCHIVE_ENTRIES) {
-    throw new FolioDocumentPrivacyArchiveError({
-      message: "Document privacy input exceeded the package-entry limit",
-      reason: "too-many-entries",
-    });
-  }
+  const zip = read.value;
   const coreProperties = findZipEntryCaseInsensitive(
     zip,
     CORE_PROPERTIES_PATH_LOWER,
   );
-  if (!coreProperties) {
-    return zip;
-  }
-  const data = "_data" in coreProperties ? coreProperties._data : undefined;
-  const declaredBytes =
-    typeof data === "object" && data !== null && "uncompressedSize" in data
-      ? data.uncompressedSize
-      : undefined;
-  if (
-    typeof declaredBytes !== "number" ||
-    declaredBytes > MAX_CORE_PROPERTIES_BYTES
-  ) {
+  if (coreProperties && coreProperties.size > MAX_CORE_PROPERTIES_BYTES) {
     throw new FolioDocumentPrivacyArchiveError({
       message: "Document privacy core properties exceeded the part-size limit",
       reason: "core-properties-too-large",
@@ -268,27 +242,32 @@ const rewriteCorePropertiesPrivacy = (
 };
 
 /**
- * Read the core-properties part within its size limit. The declared size was
- * checked when the archive loaded, but only the inflation itself can show that
- * the part is no larger than it claims.
+ * Read the core-properties part. Its declared size was checked when the
+ * archive loaded, and inflation stops at that size.
  */
-const readCoreProperties = async (
-  entry: JSZip.JSZipObject,
-): Promise<string> => {
-  const result = await inflateEntryWithinLimits({
-    entry,
-    maxEntryBytes: MAX_CORE_PROPERTIES_BYTES,
-    maxCompressionRatio: DOCX_MAX_COMPRESSION_RATIO,
-    budget: createInflationBudget(MAX_CORE_PROPERTIES_BYTES),
+const readCoreProperties = async (entry: ZipEntry): Promise<string> => {
+  const read = await Result.tryPromise({
+    try: async () => await entry.bytes(),
+    catch: (cause) => cause,
   });
-  if (!result.ok) {
-    throw new FolioDocumentPrivacyArchiveError({
-      message: "Document privacy core properties exceeded the part-size limit",
-      reason: "core-properties-too-large",
-    });
+  if (Result.isError(read)) {
+    const cause = read.error;
+    throw new FolioDocumentPrivacyArchiveError(
+      cause instanceof ZipError && cause.reason === "declared-size-exceeded"
+        ? {
+            message:
+              "Document privacy core properties exceeded the part-size limit",
+            reason: "core-properties-too-large",
+          }
+        : {
+            message: "Document privacy input is not a readable package",
+            reason: "load-failed",
+            cause,
+          },
+    );
   }
   // `ignoreBOM` keeps a leading U+FEFF, as the previous string read did.
-  return decodeText(result.bytes, { ignoreBOM: true });
+  return decodeText(read.value, { ignoreBOM: true });
 };
 
 /** Rewrite selected package metadata fields without changing other package parts. */
@@ -320,16 +299,9 @@ export const rewriteDocxMetadataPrivacy = async (
   }
   // Write back under the entry's original name/casing so a non-conventional
   // producer doesn't end up with two core-properties-shaped parts.
-  writeZipPart({
-    zip,
-    path: coreProperties.name,
-    data: encodeUtf8(rewritten.xml),
-  });
+  zip.set(coreProperties.path, rewritten.xml);
   return {
-    buffer: await zip.generateAsync({
-      type: "arraybuffer",
-      compression: "DEFLATE",
-    }),
+    buffer: (await zip.generate()).buffer,
     privacyReport: {
       appliedTransforms,
       removedMetadataProperties: rewritten.removedMetadataProperties,

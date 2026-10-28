@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type {
   DocumentBody,
@@ -109,9 +110,9 @@ describe("normalizeHeaderFooterReferences", () => {
     );
 
     const repacked = await repackDocx(doc, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(repacked);
-    expect(zip.file("word/customHeaders/defaultHeader.xml")).toBeTruthy();
-    expect(zip.file("word/customFooters/defaultFooter.xml")).toBeTruthy();
+    const zip = await ZipArchive.read(repacked);
+    expect(zip.entry("word/customHeaders/defaultHeader.xml")).toBeTruthy();
+    expect(zip.entry("word/customFooters/defaultFooter.xml")).toBeTruthy();
 
     const reparsed = await parseDocx(repacked, { preloadFonts: false });
     const reparsedBlock = reparsed.package.document.content.at(0);
@@ -160,8 +161,8 @@ const headerFooter = (type: "header" | "footer"): HeaderFooter => ({
 });
 
 const createDanglingFooterReferenceFixture = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -171,21 +172,21 @@ const createDanglingFooterReferenceFixture = async (): Promise<ArrayBuffer> => {
   <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.footer}" Target="footer1.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -202,20 +203,20 @@ const createDanglingFooterReferenceFixture = async (): Promise<ArrayBuffer> => {
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/footer1.xml",
     `${XML_DECLARATION}
 <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:p><w:r><w:t>Footer</w:t></w:r></w:p>
 </w:ftr>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const createNonNumberedHeaderFooterReferenceFixture =
   async (): Promise<ArrayBuffer> => {
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -226,14 +227,14 @@ const createNonNumberedHeaderFooterReferenceFixture =
   <Override PartName="/word/customFooters/defaultFooter.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -241,7 +242,7 @@ const createNonNumberedHeaderFooterReferenceFixture =
   <Relationship Id="rId2" Type="${RELATIONSHIP_TYPES.footer}" Target="customFooters/defaultFooter.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -258,26 +259,26 @@ const createNonNumberedHeaderFooterReferenceFixture =
   </w:body>
 </w:document>`,
     );
-    zip.file(
+    zip.set(
       "word/customHeaders/defaultHeader.xml",
       `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:p><w:r><w:t>Header</w:t></w:r></w:p>
 </w:hdr>`,
     );
-    zip.file(
+    zip.set(
       "word/customFooters/defaultFooter.xml",
       `${XML_DECLARATION}
 <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:p><w:r><w:t>Footer</w:t></w:r></w:p>
 </w:ftr>`,
     );
-    return zip.generateAsync({ type: "arraybuffer" });
+    return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
   };
 
 const createCollidingHeaderBasenameFixture = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -288,21 +289,21 @@ const createCollidingHeaderBasenameFixture = async (): Promise<ArrayBuffer> => {
   <Override PartName="/word/custom/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.header}" Target="custom/header1.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -318,19 +319,19 @@ const createCollidingHeaderBasenameFixture = async (): Promise<ArrayBuffer> => {
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:p><w:r><w:t>Top-level header</w:t></w:r></w:p>
 </w:hdr>`,
   );
-  zip.file(
+  zip.set(
     "word/custom/header1.xml",
     `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:p><w:r><w:t>Custom header</w:t></w:r></w:p>
 </w:hdr>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };

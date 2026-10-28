@@ -31,9 +31,10 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -240,8 +241,8 @@ const itemXml = (entry: Item, index: number): string => {
 };
 
 const createDocx = async (paragraphXml: string): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
       `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
@@ -250,17 +251,17 @@ const createDocx = async (paragraphXml: string): Promise<ArrayBuffer> => {
       `<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>` +
       `</Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
       `<Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
       `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/footnotes.xml",
     `${XML_DECLARATION}<w:footnotes xmlns:w="${W}">` +
       `<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>` +
@@ -271,14 +272,14 @@ const createDocx = async (paragraphXml: string): Promise<ArrayBuffer> => {
       ).join("") +
       `</w:footnotes>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W}"><w:body>` +
       `<w:p>${paragraphXml}</w:p>` +
       `<w:p><w:r><w:t>Untouched paragraph.</w:t></w:r></w:p>` +
       `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 type CleanCharacter = {
@@ -637,10 +638,10 @@ describe("a direct replacement changes only the characters it changes", () => {
           }
           const xml =
             (await (
-              await JSZip.loadAsync(saved)
+              await ZipArchive.read(saved)
             )
-              .file("word/document.xml")
-              ?.async("text")) ?? "";
+              .entry("word/document.xml")
+              ?.text()) ?? "";
           expect((xml.match(/<w:sdt>/gu) ?? []).length).toBe(
             countNodes(before.node, "sdt"),
           );
@@ -1140,11 +1141,8 @@ describe("a tracked or suggested replacement redlines only the characters it cha
  */
 const savedFirstParagraph = async (saved: ArrayBuffer): Promise<string> => {
   const xml =
-    (await (
-      await JSZip.loadAsync(saved)
-    )
-      .file("word/document.xml")
-      ?.async("text")) ?? "";
+    (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+    "";
   const start = xml.search(/<w:p[ >]/u);
   return xml
     .slice(start, xml.indexOf("</w:p>", start) + "</w:p>".length)

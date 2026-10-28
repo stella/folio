@@ -18,9 +18,8 @@
  * (a list item, a table cell, a paragraph holding a tracked change…).
  */
 
-import JSZip from "jszip";
-
 import { paragraphNumberingReference } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
@@ -119,7 +118,7 @@ const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
 /**
  * Serialize a package the way a word processor writes it. Timestamps are
- * fixed and JSZip is given a fixed date so the bytes are reproducible.
+ * fixed and ZipArchive is given a fixed date so the bytes are reproducible.
  */
 export const buildRawPackage = async ({
   body,
@@ -127,10 +126,10 @@ export const buildRawPackage = async ({
   parts = [],
   relationships = [],
 }: RawPackage): Promise<Uint8Array> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const date = new Date(FIXED_DATE);
   const add = (path: string, data: string | Uint8Array) =>
-    zip.file(path, data, { date });
+    zip.set(path, data, { modified: date });
 
   const allParts: RawPart[] = [
     ...(styles === null
@@ -189,10 +188,7 @@ export const buildRawPackage = async ({
     add(part.path, part.body);
   }
 
-  const bytes = await zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-  });
+  const bytes = await zip.generate();
   return withParaIds(bytes);
 };
 

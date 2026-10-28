@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { paragraphNumberingReference } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   createCanonicalEditorHarness,
@@ -59,8 +59,8 @@ test.each(CASES)(
         throw new TypeError("List command lost its paragraph.");
       expect(paragraph.formatting?.numPr?.kind).toBe("reference");
       const bytes = await createDocx(model);
-      const zip = await JSZip.loadAsync(bytes);
-      const xml = await zip.file("word/document.xml")?.async("string");
+      const zip = await ZipArchive.read(bytes);
+      const xml = await zip.entry("word/document.xml")?.text();
       if (xml === undefined)
         throw new TypeError("Saved list fixture has no main story.");
       // The level owns indentation: canonical list selection must not author a paragraph w:ind.
@@ -169,10 +169,10 @@ test.each(CACHE_CASES)(
     );
     expect(source).toEqual(authored);
     const xml = await (
-      await JSZip.loadAsync(bytes)
+      await ZipArchive.read(bytes)
     )
-      .file("word/document.xml")
-      ?.async("string");
+      .entry("word/document.xml")
+      ?.text();
     if (xml === undefined)
       throw new TypeError("Saved existing-list fixture has no main story.");
     const root = parseXmlDocument(xml);

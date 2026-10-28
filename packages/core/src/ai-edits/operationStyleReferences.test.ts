@@ -9,7 +9,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -171,11 +172,8 @@ const texts = (reviewer: FolioDocxReviewer) =>
   reviewer.getContent().map((block) => block.text);
 
 const documentXml = async (docx: Uint8Array): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(docx)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(docx)).entry("word/document.xml")?.text()) ??
+  "";
 
 describe("a paragraph style the document does not define is skipped before anything is applied", () => {
   test.each(cases)(

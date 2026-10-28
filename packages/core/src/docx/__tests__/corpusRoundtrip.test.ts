@@ -15,9 +15,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
@@ -70,12 +71,12 @@ async function fullRoundTripWithXml(
     stylesheetSource: { type: "package" },
   });
   const repacked = await repackDocx(back, { updateModifiedDate: false });
-  const zip = await JSZip.loadAsync(repacked);
-  const docFile = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(repacked);
+  const docFile = zip.entry("word/document.xml");
   if (!docFile) {
     throw new Error("word/document.xml missing from repacked package");
   }
-  const documentXml = await docFile.async("string");
+  const documentXml = await docFile.text();
   const document = await parseDocx(repacked);
   return { document, documentXml };
 }

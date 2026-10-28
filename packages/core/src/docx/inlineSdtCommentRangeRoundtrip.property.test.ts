@@ -1,11 +1,11 @@
 import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import { applyDocumentOp, DOCUMENT_OP_TYPES } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -171,11 +171,11 @@ const sourcePackage = async (
   documentXml: string,
   additionalComments: readonly Comment[] = [],
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(
+  const zip = await ZipArchive.read(
     await createDocx(sourceDocument(additionalComments)),
   );
-  zip.file("word/document.xml", documentXml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/document.xml", documentXml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const paragraphOf = (document: Document): Paragraph => {
@@ -308,8 +308,8 @@ const modelReferenceDepths = (
 };
 
 const xmlDocumentOf = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const documentXml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(buffer);
+  const documentXml = await zip.entry("word/document.xml")?.text();
   if (documentXml === undefined) {
     panic("The saved package lost document.xml");
   }

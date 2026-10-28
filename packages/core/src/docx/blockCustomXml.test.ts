@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { compareDocx } from "../compare/compare";
@@ -23,21 +24,18 @@ const wrap = (content: string): string =>
   `${content}</w:customXml>`;
 
 const makeDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `<w:document xmlns:w="${W}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">` +
       `<w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentXml = async (bytes: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(bytes)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(bytes)).entry("word/document.xml")?.text()) ??
+  "";
 
 describe("block-level custom XML", () => {
   test("parses multiple paragraphs and a table as children in source order", async () => {

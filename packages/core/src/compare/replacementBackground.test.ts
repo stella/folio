@@ -11,9 +11,10 @@
  */
 
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { applyFolioAIEditOperations } from "../ai-edits/apply";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
@@ -77,11 +78,11 @@ const buildDocx = (days: string) => {
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const entry = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const entry = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!entry) {
     throw new Error("The compared package has no main document part.");
   }
-  return await entry.async("string");
+  return await entry.text();
 };
 
 test("a replacement in a highlighted cell paragraph records no run-property change", async () => {

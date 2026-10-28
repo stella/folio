@@ -1,9 +1,10 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { Fragment, Slice } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -55,47 +56,47 @@ const packageBytes = async (
   source: string,
   options: PackageBytesOptions = {},
 ): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="bin" ContentType="application/octet-stream"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`,
   );
-  zip.file("word/document.xml", source);
-  zip.file(
+  zip.set("word/document.xml", source);
+  zip.set(
     "customXml/item1.xml",
     '<opaque xmlns="urn:structural-save-test">  preserved &amp; untouched  </opaque>',
   );
-  zip.file("word/media/opaque.bin", new Uint8Array([0, 255, 17, 128, 42]));
+  zip.set("word/media/opaque.bin", new Uint8Array([0, 255, 17, 128, 42]));
   if (options.commentsXml !== undefined) {
-    zip.file("word/comments.xml", options.commentsXml);
-    const contentTypes = zip.file("[Content_Types].xml");
-    const relationships = zip.file("word/_rels/document.xml.rels");
+    zip.set("word/comments.xml", options.commentsXml);
+    const contentTypes = zip.entry("[Content_Types].xml");
+    const relationships = zip.entry("word/_rels/document.xml.rels");
     if (!contentTypes || !relationships)
       panic("Expected fixture package metadata");
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
-      (await contentTypes.async("text")).replace(
+      (await contentTypes.text()).replace(
         "</Types>",
         '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>',
       ),
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
-      (await relationships.async("text")).replace(
+      (await relationships.text()).replace(
         "/>",
         '><Relationship Id="rId7" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>',
       ),
     );
   }
-  return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
+  return zip.generate().then((bytes) => bytes.buffer);
 };
 
 const openEditor = async (buffer: ArrayBuffer) => {
@@ -154,9 +155,9 @@ const bodyParagraphs = (doc: PMNode) => {
 };
 
 const readDocumentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const entry = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const entry = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!entry) panic("Expected word/document.xml");
-  return entry.async("text");
+  return entry.text();
 };
 
 type PreservedPartsOptions = { original: ArrayBuffer; saved: ArrayBuffer };
@@ -164,18 +165,16 @@ const expectOtherPartsUnchanged = async ({
   original,
   saved,
 }: PreservedPartsOptions) => {
-  const before = await JSZip.loadAsync(original);
-  const after = await JSZip.loadAsync(saved);
-  expect(Object.keys(after.files).sort()).toEqual(
-    Object.keys(before.files).sort(),
-  );
-  for (const [path, entry] of Object.entries(before.files)) {
-    if (entry.dir || path === "word/document.xml") continue;
-    const savedEntry = after.file(path);
+  const before = await ZipArchive.read(original);
+  const after = await ZipArchive.read(saved);
+  expect(after.paths().sort()).toEqual(before.paths().sort());
+  for (const [path, entry] of before
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
+    if (path === "word/document.xml") continue;
+    const savedEntry = after.entry(path);
     if (!savedEntry) panic(`Expected preserved part ${path}`);
-    expect(await savedEntry.async("uint8array")).toEqual(
-      await entry.async("uint8array"),
-    );
+    expect(await savedEntry.bytes()).toEqual(await entry.bytes());
   }
 };
 

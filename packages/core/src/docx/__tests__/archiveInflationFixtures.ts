@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 const MEBIBYTE = 1024 * 1024;
 
@@ -17,30 +17,25 @@ export const compressibleArchive = async ({
   entryPath: string;
   inflatedMebibytes: number;
 }): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", "<Types/>");
-  zip.file("_rels/.rels", "<Relationships/>");
-  zip.file("word/document.xml", "<w:document/>");
-  zip.file(entryPath, "x".repeat(inflatedMebibytes * MEBIBYTE));
-  return await zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-  });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", "<Types/>");
+  zip.set("_rels/.rels", "<Relationships/>");
+  zip.set("word/document.xml", "<w:document/>");
+  zip.set(entryPath, "x".repeat(inflatedMebibytes * MEBIBYTE));
+  return await zip.generate();
 };
 
 /** A small archive holding `entryCount` tiny entries. */
 export const manyEntryArchive = async (
   entryCount: number,
 ): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", "<Types/>");
-  zip.file("word/document.xml", "<w:document/>");
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", "<Types/>");
+  zip.set("word/document.xml", "<w:document/>");
   for (let index = 0; index < entryCount; index += 1) {
-    zip.file(`customXml/item${String(index)}.xml`, "<a/>", {
-      createFolders: false,
-    });
+    zip.set(`customXml/item${String(index)}.xml`, "<a/>");
   }
-  return await zip.generateAsync({ type: "uint8array" });
+  return await zip.generate({ compression: "store" });
 };
 
 type EntryHeaderPatch = {
@@ -227,7 +222,7 @@ export const rawDeflateOfZeros = (inflatedMebibytes: number): Uint8Array => {
 /**
  * An archive holding `entryPath` as the given raw DEFLATE data, declaring
  * `declaredBytes`. The data is written stored and then relabelled as
- * compressed, so JSZip never has to produce it.
+ * compressed, so ZipArchive never has to produce it.
  */
 export const archiveWithRawDeflate = async ({
   entryPath,
@@ -238,12 +233,12 @@ export const archiveWithRawDeflate = async ({
   deflated: Uint8Array;
   declaredBytes: number;
 }): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", "<Types/>");
-  zip.file("_rels/.rels", "<Relationships/>");
-  zip.file("word/document.xml", "<w:document/>");
-  zip.file(entryPath, deflated, { binary: true, compression: "STORE" });
-  const stored = await zip.generateAsync({ type: "uint8array" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", "<Types/>");
+  zip.set("_rels/.rels", "<Relationships/>");
+  zip.set("word/document.xml", "<w:document/>");
+  zip.set(entryPath, deflated, { compression: "store" });
+  const stored = await zip.generate({ compression: "store" });
   return withEntryHeaders(stored, entryPath, {
     declaredBytes,
     method: DEFLATE_METHOD,

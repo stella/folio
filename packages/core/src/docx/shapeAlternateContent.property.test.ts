@@ -14,8 +14,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { EditorState, TextSelection } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -126,9 +127,9 @@ const selfContainedAlternateContent = (xml: string): string => {
 };
 
 const open = async (xml: string): Promise<Document> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file("word/document.xml", xml);
-  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set("word/document.xml", xml);
+  return parseDocx((await zip.generate({ compression: "store" })).buffer, {
     preloadFonts: false,
   });
 };
@@ -136,11 +137,8 @@ const open = async (xml: string): Promise<Document> => {
 const savedDocumentPart = async (document: Document): Promise<string> => {
   const saved = await repackDocx(document, { updateModifiedDate: false });
   return (
-    (await (
-      await JSZip.loadAsync(saved)
-    )
-      .file("word/document.xml")
-      ?.async("text")) ?? ""
+    (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+    ""
   );
 };
 

@@ -16,7 +16,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 
@@ -38,10 +39,10 @@ const nestedTables = (depth: number): string => {
 };
 
 const packageOf = async (documentXml: string): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", "<Types />");
-  zip.file("word/document.xml", documentXml);
-  return await zip.generateAsync({ type: "arraybuffer" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", "<Types />");
+  zip.set("word/document.xml", documentXml);
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 /**

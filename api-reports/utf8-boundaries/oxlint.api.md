@@ -10,7 +10,6 @@ const plugin: {
         name: string;
     };
     rules: {
-        "no-string-zip-entry": Rule;
         "no-chunked-text-codec": Rule;
     };
 };

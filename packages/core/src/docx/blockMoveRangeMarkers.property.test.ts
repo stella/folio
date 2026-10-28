@@ -10,7 +10,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -64,12 +65,12 @@ const bodyFor = (
 };
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const parse = (bytes: ArrayBuffer) => parseDocx(bytes, { preloadFonts: false });
@@ -134,10 +135,10 @@ describe("move range markers between blocks", () => {
           const saved = await repackDocx(edited, { updateModifiedDate: false });
           const xml =
             (await (
-              await JSZip.loadAsync(saved)
+              await ZipArchive.read(saved)
             )
-              .file("word/document.xml")
-              ?.async("text")) ?? "";
+              .entry("word/document.xml")
+              ?.text()) ?? "";
           const startAt = xml.indexOf(marker.start);
           const endAt = xml.indexOf(marker.end);
           expect({ start: startAt !== -1, end: endAt !== -1 }).toEqual({

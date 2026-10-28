@@ -12,7 +12,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -79,11 +80,11 @@ const buildTableDocx = (rows: readonly RowSpec[]): Promise<ArrayBuffer> => {
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const entry = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const entry = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!entry) {
     throw new Error("expected word/document.xml");
   }
-  return entry.async("string");
+  return entry.text();
 };
 
 const tableRows = async (buffer: ArrayBuffer): Promise<TableRow[]> => {

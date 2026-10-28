@@ -3,7 +3,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 const FIXED_DATE = new Date("2026-01-01T00:00:00.000Z");
 const OUTPUT_DIR = import.meta.dir;
@@ -99,13 +99,13 @@ const SEEDS = {
 
 export type EditExpectationSeedName = (typeof SEED_NAMES)[number];
 
-const addPart = (zip: JSZip, name: string, contents: string): void => {
-  zip.file(name, contents, { createFolders: false, date: FIXED_DATE });
+const addPart = (zip: ZipArchive, name: string, contents: string): void => {
+  zip.set(name, contents, { modified: FIXED_DATE });
 };
 
 const buildSeed = (name: EditExpectationSeedName): Promise<Uint8Array> => {
   const seed = SEEDS[name];
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   addPart(zip, "[Content_Types].xml", CONTENT_TYPES);
   addPart(zip, "_rels/.rels", ROOT_RELS);
   addPart(
@@ -128,11 +128,7 @@ const buildSeed = (name: EditExpectationSeedName): Promise<Uint8Array> => {
     addPart(zip, "word/footnotes.xml", FOOTNOTES);
     addPart(zip, "word/endnotes.xml", ENDNOTES);
   }
-  return zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-    compressionOptions: { level: 9 },
-  });
+  return zip.generate({ level: 9 });
 };
 
 export const buildEditExpectationSeeds = async (): Promise<

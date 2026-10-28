@@ -10,10 +10,11 @@
 
 import { panic } from "better-result";
 import { describe, expect, spyOn, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { EditorState } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import {
@@ -280,12 +281,12 @@ const makeParaIdBaseline = async (
 };
 
 const partText = async (buffer: ArrayBuffer, part: string): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file(part);
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry(part);
   if (!file) {
     throw new Error(`missing part: ${part}`);
   }
-  return file.async("text");
+  return file.text();
 };
 
 const paragraphXmlContaining = (xml: string, text: string): string => {
@@ -332,12 +333,12 @@ const partBytes = async (
   buffer: ArrayBuffer,
   part: string,
 ): Promise<Uint8Array> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file(part);
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry(part);
   if (!file) {
     throw new Error(`missing part: ${part}`);
   }
-  return file.async("uint8array");
+  return file.bytes();
 };
 
 const buildTextBoxCellRevisionDocument = async (
@@ -2296,8 +2297,8 @@ describe("headless docx review round-trip", () => {
   ])(
     "persists insertion, deletion, and move resolution in a paraId-less $story.type",
     async ({ story, part, originalText, paraId }) => {
-      const zip = await JSZip.loadAsync(await makeHeaderFooterBaseline());
-      const file = zip.file(part);
+      const zip = await ZipArchive.read(await makeHeaderFooterBaseline());
+      const file = zip.entry(part);
       if (!file) {
         throw new Error(`fixture missing ${part}`);
       }
@@ -2307,16 +2308,16 @@ describe("headless docx review round-trip", () => {
         '<w:del w:id="42" w:author="Reviewer"><w:r><w:delText xml:space="preserve">DELETED </w:delText></w:r></w:del>' +
         '<w:moveFrom w:id="43" w:author="Reviewer"><w:r><w:t xml:space="preserve">MOVED FROM </w:t></w:r></w:moveFrom>' +
         '<w:moveTo w:id="44" w:author="Reviewer"><w:r><w:t>MOVED TO</w:t></w:r></w:moveTo>';
-      const rewrittenPart = (await file.async("text"))
+      const rewrittenPart = (await file.text())
         .replace(` w14:paraId="${paraId}"`, "")
         .replace(`<w:r><w:t>${originalText}</w:t></w:r>`, reviewedRuns);
       expect(rewrittenPart).not.toContain(`w14:paraId="${paraId}"`);
       expect(rewrittenPart).not.toContain(
         `<w:r><w:t>${originalText}</w:t></w:r>`,
       );
-      zip.file(part, rewrittenPart);
+      zip.set(part, rewrittenPart);
       const reviewer = await FolioDocxReviewer.fromBuffer(
-        await zip.generateAsync({ type: "arraybuffer" }),
+        (await zip.generate({ compression: "store" })).buffer,
       );
 
       expect(
@@ -3829,34 +3830,36 @@ const readNotesFixture = async (): Promise<ArrayBuffer> => {
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength,
   );
-  const zip = await JSZip.loadAsync(src);
-  const footnotesFile = zip.file("word/footnotes.xml");
+  const zip = await ZipArchive.read(src);
+  const footnotesFile = zip.entry("word/footnotes.xml");
   if (!footnotesFile) {
     throw new Error("fixture missing word/footnotes.xml");
   }
-  const footnotesXml = await footnotesFile.async("text");
+  const footnotesXml = await footnotesFile.text();
   const injected = footnotesXml.replace(
     "</w:footnotes>",
     '<w:footnote w:id="2"><w:p w14:paraId="32000001"><w:r><w:t>Injected footnote body text.</w:t></w:r></w:p></w:footnote></w:footnotes>',
   );
-  zip.file("word/footnotes.xml", injected);
-  zip.file(
+  zip.set("word/footnotes.xml", injected);
+  zip.set(
     "word/endnotes.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="32000002"><w:r><w:t>Injected endnote body text.</w:t></w:r></w:p></w:endnote></w:endnotes>',
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip
+    .generate({ compression: "store" })
+    .then((archive) => archive.buffer);
 };
 
 const SECONDARY_STORY_PROPERTY_SOURCE =
   '<w:pPr><w:ind w:left="720" w:leftChars="100"/><w:cnfStyle w:val="000000100000" w:oddHBand="1"/><w:rPr><w:bCs/><w:sz w:val="21"/><w:szCs w:val="22"/><w:noProof/></w:rPr></w:pPr>';
 
 /** Define the paragraph style the property edits below apply. */
-const defineStoryEditedStyle = async (zip: JSZip): Promise<void> => {
-  const styles = await zip.file("word/styles.xml")?.async("text");
+const defineStoryEditedStyle = async (zip: ZipArchive): Promise<void> => {
+  const styles = await zip.entry("word/styles.xml")?.text();
   if (!styles) {
     panic("fixture missing word/styles.xml");
   }
-  zip.file(
+  zip.set(
     "word/styles.xml",
     styles.replace(
       "</w:styles>",
@@ -3880,9 +3883,9 @@ const withSecondaryStoryPropertyParagraphs = async ({
   untouchedParaId: string;
   includeParaIds: boolean;
 }): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(source);
-  const file = zip.file(part);
-  const xml = await file?.async("text");
+  const zip = await ZipArchive.read(source);
+  const file = zip.entry(part);
+  const xml = await file?.text();
   if (!xml) {
     panic(`fixture missing ${part}`);
   }
@@ -3897,12 +3900,12 @@ const withSecondaryStoryPropertyParagraphs = async ({
   const replacement =
     `<w:p${editedId}>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>${originalText}</w:t></w:r></w:p>` +
     `<w:p${untouchedId}>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>${originalText} untouched</w:t></w:r></w:p>`;
-  zip.file(
+  zip.set(
     part,
     `${xml.slice(0, paragraphStart)}${replacement}${xml.slice(paragraphEnd + 6)}`,
   );
   await defineStoryEditedStyle(zip);
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const secondaryStoryPropertyCases = [
@@ -3949,13 +3952,13 @@ const secondaryStoryPropertyIdentityCases = secondaryStoryPropertyCases.flatMap(
 
 const mainDocumentWithIdlessPropertyParagraphs =
   async (): Promise<ArrayBuffer> => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    const documentFile = zip.file("word/document.xml");
-    const documentXml = await documentFile?.async("text");
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    const documentFile = zip.entry("word/document.xml");
+    const documentXml = await documentFile?.text();
     if (!documentXml) {
       panic("The generated package has no main document part.");
     }
-    zip.file(
+    zip.set(
       "word/document.xml",
       documentXml.replace(
         /<w:body>[\s\S]*<\/w:body>/u,
@@ -3965,7 +3968,7 @@ const mainDocumentWithIdlessPropertyParagraphs =
       ),
     );
     await defineStoryEditedStyle(zip);
-    return zip.generateAsync({ type: "arraybuffer" });
+    return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
   };
 
 test("preserves an id-less main paragraph source after a neighboring property edit", async () => {
@@ -4159,13 +4162,13 @@ test.each(secondaryStoryPropertyCases)(
 );
 
 const readRichNotesFixture = async (): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await readNotesFixture());
-  const footnotesFile = zip.file("word/footnotes.xml");
+  const zip = await ZipArchive.read(await readNotesFixture());
+  const footnotesFile = zip.entry("word/footnotes.xml");
   if (!footnotesFile) {
     throw new Error("fixture missing word/footnotes.xml");
   }
-  const footnotesXml = await footnotesFile.async("text");
-  zip.file(
+  const footnotesXml = await footnotesFile.text();
+  zip.set(
     "word/footnotes.xml",
     footnotesXml.replace(
       /<w:footnote w:id="2">.*?<\/w:footnote>/u,
@@ -4189,11 +4192,11 @@ const readRichNotesFixture = async (): Promise<ArrayBuffer> => {
       </w:footnote>`,
     ),
   );
-  zip.file(
+  zip.set(
     "word/endnotes.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="32000002"><w:r><w:t xml:space="preserve">Endnote </w:t></w:r><w:ins w:id="5" w:author="Reviewer"><w:r><w:t>INSERTED</w:t></w:r></w:ins><w:del w:id="6" w:author="Reviewer"><w:r><w:delText>DELETED</w:delText></w:r></w:del><w:moveFrom w:id="7" w:author="Reviewer"><w:r><w:t xml:space="preserve"> MOVED FROM </w:t></w:r></w:moveFrom><w:moveTo w:id="8" w:author="Reviewer"><w:r><w:t xml:space="preserve"> MOVED TO </w:t></w:r></w:moveTo></w:p><w:tbl><w:tr><w:tc><w:p w:rsidR="600D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:endnote></w:endnotes>',
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 describe("headless docx review notes read surface", () => {
@@ -4259,12 +4262,12 @@ describe("headless docx review notes read surface", () => {
       expectedText,
       preservedParagraph,
     }) => {
-      const zip = await JSZip.loadAsync(await readRichNotesFixture());
-      const notesFile = zip.file(part);
+      const zip = await ZipArchive.read(await readRichNotesFixture());
+      const notesFile = zip.entry(part);
       if (!notesFile) {
         throw new Error(`fixture missing ${part}`);
       }
-      const notesXml = await notesFile.async("text");
+      const notesXml = await notesFile.text();
       const rewrittenNotesXml =
         removedParaId === null
           ? notesXml
@@ -4274,9 +4277,9 @@ describe("headless docx review notes read surface", () => {
           `w14:paraId="${removedParaId}"`,
         );
       }
-      zip.file(part, rewrittenNotesXml);
+      zip.set(part, rewrittenNotesXml);
       const reviewer = await FolioDocxReviewer.fromBuffer(
-        await zip.generateAsync({ type: "arraybuffer" }),
+        (await zip.generate({ compression: "store" })).buffer,
       );
 
       expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(
@@ -4323,12 +4326,12 @@ describe("headless docx review notes read surface", () => {
   ])(
     "persists a resolved $story.type using the $prefix WordprocessingML prefix",
     async ({ story, part, prefix, namespace, expectedText }) => {
-      const zip = await JSZip.loadAsync(await readRichNotesFixture());
-      const notesFile = zip.file(part);
+      const zip = await ZipArchive.read(await readRichNotesFixture());
+      const notesFile = zip.entry(part);
       if (!notesFile) {
         throw new Error(`fixture missing ${part}`);
       }
-      const notesXml = (await notesFile.async("text"))
+      const notesXml = (await notesFile.text())
         .replace(
           'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
           `xmlns:${prefix}="${namespace}"`,
@@ -4336,9 +4339,9 @@ describe("headless docx review notes read surface", () => {
         .replaceAll("<w:", `<${prefix}:`)
         .replaceAll("</w:", `</${prefix}:`)
         .replaceAll(" w:", ` ${prefix}:`);
-      zip.file(part, notesXml);
+      zip.set(part, notesXml);
       const reviewer = await FolioDocxReviewer.fromBuffer(
-        await zip.generateAsync({ type: "arraybuffer" }),
+        (await zip.generate({ compression: "store" })).buffer,
       );
 
       expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(
@@ -4381,12 +4384,12 @@ describe("headless docx review notes read surface", () => {
   ])(
     "persists a resolved paragraph-break deletion in $article $story.type",
     async ({ story, part, element }) => {
-      const zip = await JSZip.loadAsync(await readNotesFixture());
-      const notesFile = zip.file(part);
+      const zip = await ZipArchive.read(await readNotesFixture());
+      const notesFile = zip.entry(part);
       if (!notesFile) {
         throw new Error(`fixture missing ${part}`);
       }
-      const notesXml = await notesFile.async("text");
+      const notesXml = await notesFile.text();
       const noteOpen = `<w:${element} w:id="${story.noteId}">`;
       const noteClose = `</w:${element}>`;
       const noteStart = notesXml.indexOf(noteOpen);
@@ -4395,12 +4398,12 @@ describe("headless docx review notes read surface", () => {
         throw new Error(`fixture missing ${element} ${story.noteId}`);
       }
       const replacement = `<w:${element} w:id="${story.noteId}"><w:p><w:pPr><w:rPr><w:del w:id="50" w:author="Reviewer"/></w:rPr></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>First</w:t></w:r></w:p><w:p><w:r><w:rPr><w:i/></w:rPr><w:t>Second</w:t></w:r></w:p></w:${element}>`;
-      zip.file(
+      zip.set(
         part,
         notesXml.slice(0, noteStart) + replacement + notesXml.slice(noteEnd),
       );
       const reviewer = await FolioDocxReviewer.fromBuffer(
-        await zip.generateAsync({ type: "arraybuffer" }),
+        (await zip.generate({ compression: "store" })).buffer,
       );
 
       expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(

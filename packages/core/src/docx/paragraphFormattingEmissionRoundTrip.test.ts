@@ -1,7 +1,8 @@
 import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -230,40 +231,40 @@ const paragraphProperties = (numbering: SourceNumbering): string => {
 const generatedDocument = async (
   numbering: SourceNumbering,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const contentTypes = await zip.entry("[Content_Types].xml")?.text();
   const documentRelationships = await zip
-    .file("word/_rels/document.xml.rels")
-    ?.async("text");
-  const documentXml = await zip.file("word/document.xml")?.async("text");
-  const stylesXml = await zip.file("word/styles.xml")?.async("text");
+    .entry("word/_rels/document.xml.rels")
+    ?.text();
+  const documentXml = await zip.entry("word/document.xml")?.text();
+  const stylesXml = await zip.entry("word/styles.xml")?.text();
   if (!contentTypes || !documentRelationships || !documentXml || !stylesXml) {
     panic("The generated package is missing a required part.");
   }
 
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     contentTypes.replace(
       "</Types>",
       `  <Override PartName="/word/numbering.xml" ContentType="${NUMBERING_CONTENT_TYPE}"/>\n</Types>`,
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     documentRelationships.replace(
       "</Relationships>",
       `  <Relationship Id="rId2" Type="${RELATIONSHIP_TYPES.numbering}" Target="numbering.xml"/>\n</Relationships>`,
     ),
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     stylesXml.replace(
       "</w:styles>",
       '<w:style w:type="paragraph" w:styleId="Numbered"><w:name w:val="Numbered"/><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr></w:pPr></w:style></w:styles>',
     ),
   );
-  zip.file("word/numbering.xml", NUMBERING_XML);
-  zip.file(
+  zip.set("word/numbering.xml", NUMBERING_XML);
+  zip.set(
     "word/document.xml",
     documentXml
       .replace(
@@ -276,7 +277,7 @@ const generatedDocument = async (
       ),
   );
 
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const firstParagraph = (document: Document): Paragraph => {
@@ -290,8 +291,8 @@ const firstParagraph = (document: Document): Paragraph => {
 const firstParagraphPropertiesXml = async (
   buffer: ArrayBuffer,
 ): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const documentXml = await zip.file("word/document.xml")?.async("text");
+  const zip = await ZipArchive.read(buffer);
+  const documentXml = await zip.entry("word/document.xml")?.text();
   if (!documentXml) {
     panic("The saved package has no main document part.");
   }

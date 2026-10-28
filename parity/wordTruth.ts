@@ -6,10 +6,11 @@
  * content>/` so a second call never reopens Word or re-runs mutool.
  */
 
-import JSZip from "jszip";
 import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   cacheDirFor,
@@ -249,16 +250,13 @@ export const stripEditRestrictions = (
 export const stageableDocxBytes = async (
   source: Uint8Array,
 ): Promise<Uint8Array> => {
-  const zip = await JSZip.loadAsync(source);
-  const settings = zip.file(SETTINGS_PART);
-  if (settings === null) return source;
-  const stripped = stripEditRestrictions(await settings.async("string"));
+  const zip = await ZipArchive.read(source);
+  const settings = zip.entry(SETTINGS_PART);
+  if (settings === undefined) return source;
+  const stripped = stripEditRestrictions(await settings.text());
   if (stripped === undefined) return source;
-  zip.file(SETTINGS_PART, stripped);
-  return await zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-  });
+  zip.set(SETTINGS_PART, stripped);
+  return await zip.generate();
 };
 
 /** Export `docxPath` to `destPdfPath` by scripting Word. Both sides of the

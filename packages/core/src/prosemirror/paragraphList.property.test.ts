@@ -1,6 +1,5 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import type {
   AbstractNumbering,
@@ -12,6 +11,7 @@ import {
   numberingLevelEntries,
   paragraphNumberingReference,
 } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -103,8 +103,8 @@ const paragraph = (text: string, numId: number, ilvl: number): Paragraph => ({
 });
 
 const numPrXml = async (buffer: ArrayBuffer): Promise<string[]> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const xml = await zip.file("word/document.xml")?.async("string");
+  const zip = await ZipArchive.read(buffer);
+  const xml = await zip.entry("word/document.xml")?.text();
   return xml?.match(/<w:numPr>[\s\S]*?<\/w:numPr>/gu) ?? [];
 };
 

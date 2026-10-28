@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   buildLayoutCorpus,
@@ -18,8 +19,8 @@ const FIXTURE_NAMES = [
 
 const loadFixture = async (
   name: (typeof FIXTURE_NAMES)[number],
-): Promise<JSZip> =>
-  JSZip.loadAsync(await Bun.file(path.join(FIXTURES_DIR, name)).arrayBuffer());
+): Promise<ZipArchive> =>
+  ZipArchive.read(await Bun.file(path.join(FIXTURES_DIR, name)).arrayBuffer());
 
 describe("synthetic layout corpus", () => {
   test("committed fixtures are deterministic generator outputs", async () => {
@@ -53,14 +54,12 @@ describe("synthetic layout corpus", () => {
     for (const name of FIXTURE_NAMES) {
       const zip = await loadFixture(name);
       for (const part of requiredParts) {
-        expect(zip.file(part), `${name} must contain ${part}`).not.toBeNull();
+        expect(zip.entry(part), `${name} must contain ${part}`).toBeDefined();
       }
     }
 
     const pairwise = await loadFixture("pairwise-layout-interactions.docx");
-    const pairwiseDocument = await pairwise
-      .file("word/document.xml")!
-      .async("text");
+    const pairwiseDocument = await pairwise.entry("word/document.xml")!.text();
     const scenarios = buildLayoutInteractionMatrix();
     const authoredFlowBreaks = scenarios.filter(
       ({ flow }) => flow === "hardPageBreak",
@@ -95,23 +94,23 @@ describe("synthetic layout corpus", () => {
 
     const kitchenSink = await loadFixture("layout-kitchen-sink.docx");
     const kitchenDocument = await kitchenSink
-      .file("word/document.xml")!
-      .async("text");
+      .entry("word/document.xml")!
+      .text();
     expect(kitchenDocument).toContain("<w:tbl>");
     expect(kitchenDocument).toContain("<w:footnoteReference");
     expect(kitchenDocument).toContain("<w:bidi/>");
     expect(kitchenDocument).toContain("<w:cols");
-    expect(kitchenSink.file("word/footnotes.xml")).not.toBeNull();
+    expect(kitchenSink.entry("word/footnotes.xml")).toBeDefined();
   });
 
   test("isolates every matrix case with an observable section boundary", async () => {
     for (const scenario of buildLayoutInteractionMatrix()) {
       // oxlint-disable-next-line no-await-in-loop -- validates each bounded generated case independently
-      const zip = await JSZip.loadAsync(
+      const zip = await ZipArchive.read(
         await buildLayoutInteractionCaseFixture(scenario),
       );
-      // oxlint-disable-next-line no-await-in-loop -- JSZip exposes async part reads
-      const document = await zip.file("word/document.xml")!.async("text");
+      // oxlint-disable-next-line no-await-in-loop -- ZipArchive exposes async part reads
+      const document = await zip.entry("word/document.xml")!.text();
       expect(document).toContain(`${scenario.id} post-boundary sentinel.`);
       if (scenario.section === "single") {
         expect(document).not.toContain("Section boundary");

@@ -11,7 +11,7 @@
  *   bun packages/core/scripts/build-corpus-fixtures.ts [filename ...]
  *
  * Naming a filename writes only that fixture. A bare run rewrites all of
- * them, and JSZip stamps each entry with the current time, so every fixture's
+ * them, and ZipArchive stamps each entry with the current time, so every fixture's
  * bytes change whether or not its content did; adding one fixture should not
  * churn the other twenty-five.
  *
@@ -19,9 +19,10 @@
  * checked in as binaries so tests stay offline and deterministic.
  */
 
-import JSZip from "jszip";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { importedIdCollisionFixtures } from "./imported-id-collision-fixtures";
 
@@ -993,13 +994,13 @@ const documentRelsFor = (fixture: Fixture): string => {
 };
 
 async function buildFixture(fixture: Fixture): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", contentTypesFor(fixture));
-  zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file("word/_rels/document.xml.rels", documentRelsFor(fixture));
-  zip.file("word/styles.xml", STYLES_XML);
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", contentTypesFor(fixture));
+  zip.set("_rels/.rels", PACKAGE_RELS);
+  zip.set("word/_rels/document.xml.rels", documentRelsFor(fixture));
+  zip.set("word/styles.xml", STYLES_XML);
   for (const [partPath, content] of Object.entries(fixture.parts ?? {})) {
-    zip.file(partPath, content);
+    zip.set(partPath, content);
   }
 
   const open = fixture.documentOpenTag ?? DEFAULT_DOC_OPEN;
@@ -1015,13 +1016,9 @@ async function buildFixture(fixture: Fixture): Promise<ArrayBuffer> {
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
     `${open}\n  <${bodyTag}>${fixture.body}${sectPr}\n  </${bodyTag}>\n${close}`;
 
-  zip.file("word/document.xml", documentXml);
+  zip.set("word/document.xml", documentXml);
 
-  return await zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
-  });
+  return (await zip.generate({ level: 6 })).buffer;
 }
 
 async function main(): Promise<void> {

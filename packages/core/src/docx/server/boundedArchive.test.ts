@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   compressibleArchive,
@@ -11,30 +12,11 @@ import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
 const makeZip = async (
   entries: Record<string, string | Uint8Array>,
 ): Promise<Uint8Array> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   for (const [path, content] of Object.entries(entries)) {
-    zip.file(path, content);
+    zip.set(path, content);
   }
-  return await zip.generateAsync({ type: "uint8array" });
-};
-
-/** JSZip reports this capability at runtime; the published typings omit it. */
-const NODE_STREAM_SUPPORT = "nodestream";
-
-/**
- * Run `work` with JSZip reporting the capabilities of a browser or web worker,
- * where `readable-stream` is absent and `nodeStream` throws.
- */
-const withoutNodeStreamSupport = async <T>(
-  work: () => Promise<T>,
-): Promise<T> => {
-  const supported: unknown = Reflect.get(JSZip.support, NODE_STREAM_SUPPORT);
-  Reflect.set(JSZip.support, NODE_STREAM_SUPPORT, false);
-  try {
-    return await work();
-  } finally {
-    Reflect.set(JSZip.support, NODE_STREAM_SUPPORT, supported);
-  }
+  return await zip.generate({ compression: "store" });
 };
 
 const rejection = async (promise: Promise<unknown>): Promise<unknown> => {
@@ -201,57 +183,6 @@ describe("loadDocxArchive", () => {
   });
 });
 
-describe("loadDocxArchive on a platform without Node streams", () => {
-  test("the simulation removes the Node stream path", async () => {
-    const zip = await JSZip.loadAsync(await makeZip({ entry: "content" }));
-    const entry = zip.file("entry");
-    if (!entry) {
-      throw new Error("Expected the fixture entry to exist");
-    }
-
-    await withoutNodeStreamSupport(async () => {
-      expect(() => entry.nodeStream()).toThrow(
-        "nodestream is not supported by this platform",
-      );
-    });
-  });
-
-  test("reads text and bytes and still enforces the entry cap", async () => {
-    await withoutNodeStreamSupport(async () => {
-      const archive = await loadDocxArchive(
-        await makeZip({ large: "12345", small: "123" }),
-      );
-
-      expect(await archive.readEntryString("large")).toBe("12345");
-      expect(await archive.readEntryUint8("small")).toEqual(
-        new Uint8Array([49, 50, 51]),
-      );
-      await expect(
-        archive.readEntryUint8("large", { maxBytes: 4 }),
-      ).rejects.toMatchObject({
-        reason: "entry-too-large",
-      });
-    });
-  });
-
-  test("still enforces the cumulative cap across reads", async () => {
-    await withoutNodeStreamSupport(async () => {
-      const archive = await loadDocxArchive(
-        await makeZip({ a: "12345", b: "678" }),
-        {
-          maxTotalBytes: 8,
-        },
-      );
-
-      expect(await archive.readEntryString("a")).toBe("12345");
-      expect(await archive.readEntryString("b")).toBe("678");
-      await expect(archive.readEntryString("a")).rejects.toMatchObject({
-        reason: "total-too-large",
-      });
-    });
-  });
-});
-
 describe("loadDocxArchive inflation limits", () => {
   test("stops a read that inflates past the entry's declared size", async () => {
     const archive = await loadDocxArchive(
@@ -279,14 +210,11 @@ describe("loadDocxArchive inflation limits", () => {
   });
 
   test("refuses a package whose entries together pass the ratio cap", async () => {
-    const zip = new JSZip();
+    const zip = new ZipArchive();
     for (const index of [1, 2, 3]) {
-      zip.file(`word/header${String(index)}.xml`, "x".repeat(2 * 1024 * 1024));
+      zip.set(`word/header${String(index)}.xml`, "x".repeat(2 * 1024 * 1024));
     }
-    const bytes = await zip.generateAsync({
-      type: "uint8array",
-      compression: "DEFLATE",
-    });
+    const bytes = await zip.generate();
 
     const error = await rejection(loadDocxArchive(bytes));
 
@@ -297,18 +225,16 @@ describe("loadDocxArchive inflation limits", () => {
   });
 
   test("leaves a highly compressible binary entry to the byte and package limits", async () => {
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "word/media/image1.bmp",
       new Uint8Array(5 * 1024 * 1024).fill(0xff),
-      {
-        compression: "DEFLATE",
-      },
+      { compression: "deflate" },
     );
     // Incompressible padding keeps the package as a whole under the ratio cap.
-    zip.file("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)));
+    zip.set("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)));
     const archive = await loadDocxArchive(
-      await zip.generateAsync({ type: "uint8array" }),
+      await zip.generate({ compression: "store" }),
     );
 
     expect(await archive.readEntryUint8("word/media/image1.bmp")).toHaveLength(

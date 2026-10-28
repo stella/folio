@@ -1517,6 +1517,5 @@
   "scripts/workflow-runner-labels.test.ts": 6,
   "scripts/xml-escaping-lint.test.ts": 261,
   "scripts/xml-splice-owner-lint.test.ts": 186,
-  "scripts/zip-part-writer.test.ts": 2886,
   "tests/visual/interleavingBridge.test.ts": 250
 }

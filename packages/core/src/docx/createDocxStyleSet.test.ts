@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createStellaStyleDocumentPreset } from "../style-sets/stellaStyle";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -12,8 +12,8 @@ import { createDocx } from "./rezip";
 describe("createDocx definition parts", () => {
   test("exports every in-memory style for a generic empty document", async () => {
     const document = createEmptyDocument();
-    const zip = await JSZip.loadAsync(await createDocx(document));
-    const stylesXml = await zip.file("word/styles.xml")!.async("string");
+    const zip = await ZipArchive.read(await createDocx(document));
+    const stylesXml = await zip.entry("word/styles.xml")!.text();
 
     expect(
       [...stylesXml.matchAll(/w:styleId="(?<id>[^"]+)"/gu)].map(
@@ -48,10 +48,10 @@ describe("createDocx definition parts", () => {
         "u",
       ).exec(stylesXml)?.groups?.["name"];
 
-    const generic = await JSZip.loadAsync(
+    const generic = await ZipArchive.read(
       await createDocx(createEmptyDocument()),
     );
-    const genericXml = await generic.file("word/styles.xml")!.async("string");
+    const genericXml = await generic.entry("word/styles.xml")!.text();
     expect({
       Normal: nameOf(genericXml, "Normal"),
       Title: nameOf(genericXml, "Title"),
@@ -68,12 +68,12 @@ describe("createDocx definition parts", () => {
       Quote: "Quote",
     });
 
-    const stella = await JSZip.loadAsync(
+    const stella = await ZipArchive.read(
       await createDocx(
         createEmptyDocument({ preset: createStellaStyleDocumentPreset() }),
       ),
     );
-    const stellaXml = await stella.file("word/styles.xml")!.async("string");
+    const stellaXml = await stella.entry("word/styles.xml")!.text();
     expect({
       Normal: nameOf(stellaXml, "Normal"),
       BodyText: nameOf(stellaXml, "BodyText"),
@@ -118,16 +118,16 @@ describe("createDocx definition parts", () => {
       preset: createStellaStyleDocumentPreset(),
     });
     const buffer = await createDocx(document);
-    const zip = await JSZip.loadAsync(buffer);
+    const zip = await ZipArchive.read(buffer);
 
-    expect(zip.file("word/styles.xml")).not.toBeNull();
-    expect(zip.file("word/numbering.xml")).not.toBeNull();
-    expect(zip.file("word/fontTable.xml")).not.toBeNull();
-    expect(zip.file("word/settings.xml")).not.toBeNull();
+    expect(zip.entry("word/styles.xml")).toBeDefined();
+    expect(zip.entry("word/numbering.xml")).toBeDefined();
+    expect(zip.entry("word/fontTable.xml")).toBeDefined();
+    expect(zip.entry("word/settings.xml")).toBeDefined();
 
     const [contentTypes, relationships] = await Promise.all([
-      zip.file("[Content_Types].xml")!.async("string"),
-      zip.file("word/_rels/document.xml.rels")!.async("string"),
+      zip.entry("[Content_Types].xml")!.text(),
+      zip.entry("word/_rels/document.xml.rels")!.text(),
     ]);
     expect(contentTypes).toContain("/word/numbering.xml");
     expect(contentTypes).toContain("/word/fontTable.xml");
@@ -159,15 +159,15 @@ describe("createDocx definition parts", () => {
       fontScheme: { minorFont: { latin: "Arial" } },
     };
     const buffer = await createDocx(createEmptyDocument({ preset }));
-    const zip = await JSZip.loadAsync(buffer);
+    const zip = await ZipArchive.read(buffer);
 
-    expect(zip.file("word/theme/theme1.xml")).not.toBeNull();
-    expect(await zip.file("[Content_Types].xml")!.async("string")).toContain(
+    expect(zip.entry("word/theme/theme1.xml")).toBeDefined();
+    expect(await zip.entry("[Content_Types].xml")!.text()).toContain(
       "/word/theme/theme1.xml",
     );
-    expect(
-      await zip.file("word/_rels/document.xml.rels")!.async("string"),
-    ).toContain('Target="theme/theme1.xml"');
+    expect(await zip.entry("word/_rels/document.xml.rels")!.text()).toContain(
+      'Target="theme/theme1.xml"',
+    );
 
     const parsed = await parseDocx(buffer, { preloadFonts: false });
     expect(parsed.package.theme?.name).toBe("Imported theme");

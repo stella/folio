@@ -6,7 +6,8 @@
  * resolve on the reviewer on the first try.
  */
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
@@ -33,8 +34,8 @@ const DOCUMENTS = {
 
 const docxWithoutParaIds = async (markdown: string): Promise<ArrayBuffer> => {
   const bytes = await createDocx(fromMarkdown(markdown));
-  const zip = await JSZip.loadAsync(bytes);
-  const body = await zip.file("word/document.xml")?.async("string");
+  const zip = await ZipArchive.read(bytes);
+  const body = await zip.entry("word/document.xml")?.text();
   // The case under test: no paragraph carries an id of its own.
   expect(body).toBeDefined();
   expect(body).not.toContain("w14:paraId");

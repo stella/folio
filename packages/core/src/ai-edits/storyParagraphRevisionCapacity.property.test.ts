@@ -1,7 +1,8 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import {
@@ -150,11 +151,11 @@ const capacity = async ({
   kind,
   occupiedParaId,
 }: CapacityOptions) => {
-  const zip = await JSZip.loadAsync(await reviewer.toBuffer());
-  const part = zip.file(PARTS[kind]);
+  const zip = await ZipArchive.read(await reviewer.toBuffer());
+  const part = zip.entry(PARTS[kind]);
   if (!part)
     panic("The story capacity fixture lost its package part", { kind });
-  const xml = await part.async("string");
+  const xml = await part.text();
   const paragraphs = xml.match(/<w:p\b[\s\S]*?<\/w:p>/gu) ?? [];
   expect(paragraphs.length).toBeGreaterThan(0);
   for (const paragraph of paragraphs) {

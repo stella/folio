@@ -9,7 +9,6 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
@@ -18,6 +17,7 @@ import {
   OP_STORIES,
   REVISION_DECISIONS,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -165,8 +165,8 @@ const markedText = (
 
 describe("comment-range boundaries inside tracked changes", () => {
   test("an unedited range crossing an insertion saves its affected parts byte for byte", async () => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    const emptyDocumentXml = await zip.file("word/document.xml")?.async("text");
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    const emptyDocumentXml = await zip.entry("word/document.xml")?.text();
     if (emptyDocumentXml === undefined)
       throw new Error("The empty package lost document.xml");
     const bodyXml =
@@ -182,48 +182,48 @@ describe("comment-range boundaries inside tracked changes", () => {
       `${XML_DECLARATION}<w:comments xmlns:w="${WORDPROCESSINGML_NAMESPACE}">` +
       '<w:comment w:id="5" w:author="Reviewer"><w:p><w:r><w:t>Note</w:t></w:r></w:p></w:comment>' +
       "</w:comments>";
-    zip.file("word/document.xml", documentXml);
-    zip.file("word/comments.xml", commentsXml);
-    const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+    zip.set("word/document.xml", documentXml);
+    zip.set("word/comments.xml", commentsXml);
+    const contentTypes = await zip.entry("[Content_Types].xml")?.text();
     const relationships = await zip
-      .file("word/_rels/document.xml.rels")
-      ?.async("text");
+      .entry("word/_rels/document.xml.rels")
+      ?.text();
     if (contentTypes === undefined || relationships === undefined) {
       throw new Error("The empty package lost its packaging parts");
     }
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
       contentTypes.replace(
         "</Types>",
         `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
       ),
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       relationships.replace(
         "</Relationships>",
         `<Relationship Id="rIdComments" Type="${COMMENTS_RELATIONSHIP}" Target="comments.xml"/></Relationships>`,
       ),
     );
-    const seeded = await zip.generateAsync({ type: "arraybuffer" });
+    const seeded = (await zip.generate({ compression: "store" })).buffer;
     const source = await repackDocx(
       await parseDocx(seeded, { preloadFonts: false }),
       {
         updateModifiedDate: false,
       },
     );
-    const sourceZip = await JSZip.loadAsync(source);
+    const sourceZip = await ZipArchive.read(source);
     const loaded = await parseDocx(source, { preloadFonts: false });
     const unedited = fromProseDoc(toProseDoc(loaded), loaded, {
       stylesheetSource: { type: "package" },
     });
-    const saved = await JSZip.loadAsync(
+    const saved = await ZipArchive.read(
       await repackDocx(unedited, { updateModifiedDate: false }),
     );
 
     for (const part of ["word/document.xml", "word/comments.xml"]) {
-      expect(await saved.file(part)?.async("text")).toBe(
-        await sourceZip.file(part)?.async("text"),
+      expect(await saved.entry(part)?.text()).toBe(
+        await sourceZip.entry(part)?.text(),
       );
     }
   });

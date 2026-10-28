@@ -1,7 +1,7 @@
-import JSZip from "jszip";
 import path from "node:path";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
 export const ZIP_MUTATIONS = [
   "drop-part",
@@ -18,20 +18,16 @@ export type ZipMutation = (typeof ZIP_MUTATIONS)[number];
 const decodeUtf8 = (bytes: Uint8Array): string =>
   new TextDecoder().decode(bytes);
 
-const requirePart = (zip: JSZip, part: string): JSZip.JSZipObject => {
-  const file = zip.file(part);
-  if (file === null) {
+const requirePart = (zip: ZipArchive, part: string): ZipEntry => {
+  const file = zip.entry(part);
+  if (file === undefined) {
     throw new Error(`ZIP mutation target does not exist: ${part}`);
   }
   return file;
 };
 
-const generated = (zip: JSZip): Promise<Uint8Array> =>
-  zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
-  });
+const generated = (zip: ZipArchive): Promise<Uint8Array> =>
+  zip.generate({ level: 6 });
 
 const packagePathForRelationship = (
   relationshipFile: string,
@@ -51,11 +47,9 @@ const wrongContentType = async (
   source: Uint8Array,
   targetPart: string,
 ): Promise<Uint8Array> => {
-  const zip = await JSZip.loadAsync(source);
+  const zip = await ZipArchive.read(source);
   requirePart(zip, targetPart);
-  const contentTypes = await requirePart(zip, "[Content_Types].xml").async(
-    "string",
-  );
+  const contentTypes = await requirePart(zip, "[Content_Types].xml").text();
   const partName = `/${targetPart.replace(/^\/+/, "")}`;
   const overridePattern = /<Override\b[^>]*>/gu;
   let matched = false;
@@ -79,7 +73,7 @@ const wrongContentType = async (
         "ZIP mutation could not find the [Content_Types].xml closing tag",
       );
     }
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
       updated.replace(
         closing,
@@ -87,7 +81,7 @@ const wrongContentType = async (
       ),
     );
   } else {
-    zip.file("[Content_Types].xml", updated);
+    zip.set("[Content_Types].xml", updated);
   }
   return generated(zip);
 };
@@ -96,13 +90,15 @@ const missingRelationshipTarget = async (
   source: Uint8Array,
   targetPart: string,
 ): Promise<Uint8Array> => {
-  const zip = await JSZip.loadAsync(source);
+  const zip = await ZipArchive.read(source);
   const wanted = path.posix.normalize(targetPart.replace(/^\/+/, ""));
-  for (const [relationshipFile, entry] of Object.entries(zip.files)) {
-    if (entry.dir || !relationshipFile.endsWith(".rels")) {
+  for (const [relationshipFile, entry] of zip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
+    if (!relationshipFile.endsWith(".rels")) {
       continue;
     }
-    const xml = await entry.async("string");
+    const xml = await entry.text();
     let changed = false;
     const updated = xml.replace(/<Relationship\b[^>]*>/gu, (tag) => {
       const target = tag.match(/\bTarget\s*=\s*(["'])(.*?)\1/u)?.[2];
@@ -120,7 +116,7 @@ const missingRelationshipTarget = async (
       );
     });
     if (changed) {
-      zip.file(relationshipFile, updated);
+      zip.set(relationshipFile, updated);
       return generated(zip);
     }
   }
@@ -267,20 +263,20 @@ export const mutateZip = async (
 ): Promise<Uint8Array> => {
   switch (mutation) {
     case "drop-part": {
-      const zip = await JSZip.loadAsync(source);
+      const zip = await ZipArchive.read(source);
       requirePart(zip, targetPart);
-      zip.remove(targetPart);
+      zip.delete(targetPart);
       return generated(zip);
     }
     case "rename-part": {
-      const zip = await JSZip.loadAsync(source);
+      const zip = await ZipArchive.read(source);
       const part = requirePart(zip, targetPart);
       const renamed = `${targetPart}.renamed`;
-      if (zip.file(renamed) !== null) {
+      if (zip.has(renamed)) {
         throw new Error(`ZIP mutation destination already exists: ${renamed}`);
       }
-      zip.file(renamed, await part.async("uint8array"));
-      zip.remove(targetPart);
+      zip.set(renamed, await part.bytes());
+      zip.delete(targetPart);
       return generated(zip);
     }
     case "duplicate-part": {

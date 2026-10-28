@@ -18,7 +18,7 @@ import { generateDocxFixture } from "../../support/validatedDocxFixture";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 const OUTPUT_DIR = import.meta.dir;
 const OUTPUT_PATH = path.join(OUTPUT_DIR, "font-subsets.docx");
@@ -111,12 +111,12 @@ const DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   </w:body>
 </w:document>`;
 
-const addXml = (zip: JSZip, filePath: string, contents: string): void => {
-  zip.file(filePath, contents, { date: FIXED_DATE, createFolders: false });
+const addXml = (zip: ZipArchive, filePath: string, contents: string): void => {
+  zip.set(filePath, contents, { modified: FIXED_DATE });
 };
 
 const build = async (): Promise<void> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   addXml(zip, "[Content_Types].xml", CONTENT_TYPES);
   addXml(zip, "_rels/.rels", PACKAGE_RELS);
   addXml(zip, "word/_rels/document.xml.rels", DOCUMENT_RELS);

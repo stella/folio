@@ -15,7 +15,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { docxToMarkdown } from "../server";
@@ -42,9 +43,9 @@ const createDocx = async (
     secondParagraphInner,
   }: { footnoteInner?: string; secondParagraphInner?: string } = {},
 ): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const hasFootnote = footnoteInner !== undefined;
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -54,7 +55,7 @@ const createDocx = async (
   ${hasFootnote ? '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>' : ""}
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -62,14 +63,14 @@ const createDocx = async (
 </Relationships>`,
   );
   if (hasFootnote) {
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId30" Type="${RELATIONSHIP_TYPES.footnotes}" Target="footnotes.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/footnotes.xml",
       `${XML_DECLARATION}
 <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -84,7 +85,7 @@ const createDocx = async (
     secondParagraphInner !== undefined
       ? `<w:p>${secondParagraphInner}</w:p>`
       : "";
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -96,12 +97,12 @@ const createDocx = async (
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECLARATION}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const mainBlockText = async (buffer: ArrayBuffer): Promise<string> => {
@@ -279,8 +280,8 @@ describe("a nested field's instruction-region result stays hidden", () => {
     // The untouched field paragraph's own structure — both begin/separate/end
     // triples — survives the save byte-identifiably, not merely by
     // coincidence of text.
-    const zip = await JSZip.loadAsync(saved);
-    const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+    const zip = await ZipArchive.read(saved);
+    const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
     expect(xml.match(/w:fldCharType="begin"/g)).toHaveLength(2);
     expect(xml.match(/w:fldCharType="separate"/g)).toHaveLength(2);
     expect(xml.match(/w:fldCharType="end"/g)).toHaveLength(2);

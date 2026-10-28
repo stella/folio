@@ -17,9 +17,9 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -129,30 +129,30 @@ const PNG_BYTES = Uint8Array.from(
 );
 
 const buildPackage = async (spec: PackageSpec): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECL}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECL}<Relationships xmlns="${PACKAGE_RELATIONSHIPS}"><Relationship Id="rId1" Type="${OFFICE_RELATIONSHIPS}/officeDocument" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file("word/document.xml", documentXml(spec));
-  zip.file(
+  zip.set("word/document.xml", documentXml(spec));
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECL}<Relationships xmlns="${PACKAGE_RELATIONSHIPS}"><Relationship Id="${STYLES_RID}" Type="${OFFICE_RELATIONSHIPS}/styles" Target="styles.xml"/><Relationship Id="${IMAGE_RID}" Type="${OFFICE_RELATIONSHIPS}/image" Target="media/image1.png"/><Relationship Id="${HYPERLINK_RID}" Type="${OFFICE_RELATIONSHIPS}/hyperlink" Target="https://example.invalid/a" TargetMode="External"/><Relationship Id="${HEADER_RID}" Type="${OFFICE_RELATIONSHIPS}/header" Target="header1.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECL}<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`,
   );
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML_DECL}<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Header</w:t></w:r></w:p></w:hdr>`,
   );
-  zip.file("word/media/image1.png", PNG_BYTES);
-  return await zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/media/image1.png", PNG_BYTES);
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 /**
@@ -260,8 +260,8 @@ const referenceProjection = (document: Document): string[] => {
  * if the reparse happens to read it back as nothing.
  */
 const writtenReferences = async (buffer: ArrayBuffer): Promise<string[]> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const zip = await ZipArchive.read(buffer);
+  const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
   return [...xml.matchAll(/\sr:(?:id|embed|link)="([^"]*)"/gu)].map(
     ([, id]) => id ?? "",
   );

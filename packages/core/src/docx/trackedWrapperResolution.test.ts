@@ -8,7 +8,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { Document } from "../types/document";
@@ -55,11 +56,11 @@ const insertedInsideWrapper = (): Document => {
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const part = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const part = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!part) {
     throw new Error("missing word/document.xml");
   }
-  return part.async("text");
+  return part.text();
 };
 
 describe("resolving a revision that holds a bidirectional wrapper", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { createHash } from "node:crypto";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createEmptyDocx } from "../rezip";
 import {
@@ -30,14 +31,14 @@ type PackageFixture = {
 
 const packageFixture = async (): Promise<PackageFixture> => {
   const bytes = new Uint8Array(await createEmptyDocx());
-  const zip = await JSZip.loadAsync(bytes);
-  const document = zip.file(DOCUMENT_PATH);
-  const styles = zip.file(STYLES_PATH);
-  if (document === null || styles === null) {
+  const zip = await ZipArchive.read(bytes);
+  const document = zip.entry(DOCUMENT_PATH);
+  const styles = zip.entry(STYLES_PATH);
+  if (document === undefined || styles === undefined) {
     throw new Error("Expected document and styles package parts");
   }
-  const documentBytes = await document.async("uint8array");
-  const stylesBytes = await styles.async("uint8array");
+  const documentBytes = await document.bytes();
+  const stylesBytes = await styles.bytes();
   return {
     bytes,
     documentXml: new TextDecoder().decode(documentBytes),
@@ -114,15 +115,13 @@ describe("applyDocxXmlPatchProposal", () => {
       ],
     });
 
-    const outputZip = await JSZip.loadAsync(result.bytes);
-    expect(await outputZip.file(DOCUMENT_PATH)?.async("text")).toBe(
-      REPLACEMENT_XML,
-    );
-    expect(await outputZip.file(STYLES_PATH)?.async("text")).toBe(
+    const outputZip = await ZipArchive.read(result.bytes);
+    expect(await outputZip.entry(DOCUMENT_PATH)?.text()).toBe(REPLACEMENT_XML);
+    expect(await outputZip.entry(STYLES_PATH)?.text()).toBe(
       replacementStylesXml,
     );
-    const inputZip = await JSZip.loadAsync(fixture.bytes);
-    expect(await inputZip.file(DOCUMENT_PATH)?.async("text")).toBe(
+    const inputZip = await ZipArchive.read(fixture.bytes);
+    expect(await inputZip.entry(DOCUMENT_PATH)?.text()).toBe(
       fixture.documentXml,
     );
   });

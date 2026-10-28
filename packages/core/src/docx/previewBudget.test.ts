@@ -12,9 +12,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type {
   Document,
@@ -121,7 +121,7 @@ const PART_TYPES = {
 } as const;
 
 const packageOf = async (parts: PackageParts): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const overrides: string[] = [];
   const relationships: string[] = [];
   const addPart = (
@@ -130,7 +130,7 @@ const packageOf = async (parts: PackageParts): Promise<ArrayBuffer> => {
     relationshipType: string,
     xml: string,
   ): void => {
-    zip.file(`word/${name}`, `${XML}${xml}`);
+    zip.set(`word/${name}`, `${XML}${xml}`);
     overrides.push(
       `<Override PartName="/word/${name}" ContentType="${type}"/>`,
     );
@@ -182,23 +182,23 @@ const packageOf = async (parts: PackageParts): Promise<ArrayBuffer> => {
     parts.comment === undefined
       ? ""
       : `<w:p><w:commentRangeStart w:id="0"/><w:r><w:t>a</w:t></w:r><w:commentRangeEnd w:id="0"/><w:r><w:commentReference w:id="0"/></w:r></w:p>`;
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>${overrides.join("")}</Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML}<w:document ${NAMESPACES}><w:body>${parts.body}${commentAnchor}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** A model node the parse built as a preview. */
@@ -516,10 +516,10 @@ describe("package preview budget", () => {
     const saved = await repackDocx(document, { updateModifiedDate: false });
     expect((await validateDocx(saved)).valid).toBe(true);
     const savedXml = await (
-      await JSZip.loadAsync(saved)
+      await ZipArchive.read(saved)
     )
-      .file("word/document.xml")!
-      .async("text");
+      .entry("word/document.xml")!
+      .text();
     expect(savedXml).toContain("<wpg:wgp>");
     expect(savedXml).toContain('<a:srgbClr val="DBEDF3"/>');
     expect(savedXml).not.toContain("svg");

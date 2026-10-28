@@ -24,7 +24,6 @@
 
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import {
   propertyConfig,
@@ -33,6 +32,7 @@ import {
 import type { Document } from "../model/document";
 import type { TextFormatting } from "../model/formatting";
 import { SEQUENCE_CHILDREN } from "../schema/sequenceChildren";
+import { ZipArchive } from "../zip/archive";
 import { serializeDocumentToDocx } from "./docx";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -97,10 +97,10 @@ const documentWith = (formatting: TextFormatting): Document => ({
 
 const readDocumentXml = async (buf: ArrayBuffer): Promise<string> => {
   const xml = await (
-    await JSZip.loadAsync(buf)
+    await ZipArchive.read(buf)
   )
-    .file("word/document.xml")
-    ?.async("string");
+    .entry("word/document.xml")
+    ?.text();
   if (xml === undefined) {
     throw new Error("word/document.xml missing from serialized docx");
   }

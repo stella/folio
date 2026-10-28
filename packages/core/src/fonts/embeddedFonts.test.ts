@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseFontTable } from "../docx/fontTableParser";
 import { parseDocx } from "../docx/parser";
@@ -89,22 +90,22 @@ async function buildDocx(options?: {
   bold?: Uint8Array;
   fontTableRels?: string;
 }): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
-  zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file("word/document.xml", DOCUMENT_XML);
-  zip.file("word/fontTable.xml", FONT_TABLE_XML);
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", CONTENT_TYPES);
+  zip.set("_rels/.rels", PACKAGE_RELS);
+  zip.set("word/document.xml", DOCUMENT_XML);
+  zip.set("word/fontTable.xml", FONT_TABLE_XML);
+  zip.set(
     "word/_rels/fontTable.xml.rels",
     options?.fontTableRels ?? FONT_TABLE_RELS,
   );
   if (options?.regular) {
-    zip.file("word/fonts/font1.odttf", options.regular);
+    zip.set("word/fonts/font1.odttf", options.regular);
   }
   if (options?.bold) {
-    zip.file("word/fonts/font2.odttf", options.bold);
+    zip.set("word/fonts/font2.odttf", options.bold);
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 describe("deobfuscateFont", () => {
@@ -336,11 +337,11 @@ describe("extractEmbeddedFonts (buffer)", () => {
   });
 
   test("a document with no embedded fonts yields an empty list", async () => {
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", CONTENT_TYPES);
-    zip.file("_rels/.rels", PACKAGE_RELS);
-    zip.file("word/document.xml", DOCUMENT_XML);
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const zip = new ZipArchive();
+    zip.set("[Content_Types].xml", CONTENT_TYPES);
+    zip.set("_rels/.rels", PACKAGE_RELS);
+    zip.set("word/document.xml", DOCUMENT_XML);
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
     expect(await extractEmbeddedFonts(buffer)).toEqual([]);
   });
 
@@ -396,21 +397,21 @@ describe("round-trip preservation", () => {
     const obfuscated = deobfuscateFont(font, GUID);
     const buffer = await buildDocx({ regular: obfuscated, bold: obfuscated });
 
-    const originalZip = await JSZip.loadAsync(buffer);
+    const originalZip = await ZipArchive.read(buffer);
     const originalFontTable = await originalZip
-      .file("word/fontTable.xml")!
-      .async("text");
+      .entry("word/fontTable.xml")!
+      .text();
     const originalFontBytes = new Uint8Array(
-      await originalZip.file("word/fonts/font1.odttf")!.async("arraybuffer"),
+      await originalZip.entry("word/fonts/font1.odttf")!.arrayBuffer(),
     );
 
     const doc = await parseDocx(buffer, { preloadFonts: false });
     const repacked = await repackDocx(doc, { updateModifiedDate: false });
 
-    const outZip = await JSZip.loadAsync(repacked);
-    const outFontTable = await outZip.file("word/fontTable.xml")!.async("text");
+    const outZip = await ZipArchive.read(repacked);
+    const outFontTable = await outZip.entry("word/fontTable.xml")!.text();
     const outFontBytes = new Uint8Array(
-      await outZip.file("word/fonts/font1.odttf")!.async("arraybuffer"),
+      await outZip.entry("word/fonts/font1.odttf")!.arrayBuffer(),
     );
 
     expect(outFontTable).toBe(originalFontTable);

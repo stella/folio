@@ -6,11 +6,12 @@
 
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
@@ -48,11 +49,7 @@ const readFixture = ({
   return new Uint8Array(bytes).buffer;
 };
 
-const packageFileNames = (zip: JSZip): string[] =>
-  Object.values(zip.files)
-    .filter((file) => !file.dir)
-    .map((file) => file.name)
-    .sort();
+const packageFileNames = (zip: ZipArchive): string[] => zip.paths().toSorted();
 
 type ExpectUnrelatedPartsPreservedOptions = {
   importedBytes: ArrayBuffer;
@@ -64,8 +61,8 @@ const expectUnrelatedPartsPreserved = async ({
   savedBytes,
 }: ExpectUnrelatedPartsPreservedOptions): Promise<void> => {
   const [originalZip, savedZip] = await Promise.all([
-    JSZip.loadAsync(importedBytes),
-    JSZip.loadAsync(savedBytes),
+    ZipArchive.read(importedBytes),
+    ZipArchive.read(savedBytes),
   ]);
   const originalNames = packageFileNames(originalZip);
   expect(packageFileNames(savedZip)).toEqual(originalNames);
@@ -75,17 +72,17 @@ const expectUnrelatedPartsPreserved = async ({
       continue;
     }
 
-    const originalFile = originalZip.file(filename);
-    const savedFile = savedZip.file(filename);
+    const originalFile = originalZip.entry(filename);
+    const savedFile = savedZip.entry(filename);
     if (!originalFile || !savedFile) {
       throw new Error(`Expected package part is missing: ${filename}`);
     }
 
     const [originalPart, savedPart] = await Promise.all([
-      originalFile.async("nodebuffer"),
-      savedFile.async("nodebuffer"),
+      originalFile.bytes(),
+      savedFile.bytes(),
     ]);
-    expect(savedPart.equals(originalPart)).toBe(true);
+    expect(savedPart).toEqual(originalPart);
   }
 };
 

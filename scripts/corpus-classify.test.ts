@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { classifyCorpusFile } from "./lib/corpus-classify";
 
@@ -18,11 +19,11 @@ const documentXml = (namespace: string): string =>
 type PackageParts = Record<string, string>;
 
 const packageBytes = async (parts: PackageParts): Promise<Uint8Array> => {
-  const archive = new JSZip();
+  const archive = new ZipArchive();
   for (const [name, content] of Object.entries(parts)) {
-    archive.file(name, content);
+    archive.set(name, content);
   }
-  return await archive.generateAsync({ type: "uint8array" });
+  return await archive.generate({ compression: "store" });
 };
 
 const conventionalPackage = (

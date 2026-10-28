@@ -135,7 +135,6 @@ import {
   UNBALANCED_MOVE_RANGE_WARNING,
 } from "./trackedMoveRangeNormalization";
 import {
-  getEntryUncompressedSize,
   getMediaMimeType,
   mediaToDataUrl,
   replaceRawDocxXmlParts,
@@ -326,14 +325,12 @@ const extractAltChunkPlainText = async (
   ) {
     return undefined;
   }
-  const file = context.raw.originalZip.file(partPath);
+  const file = context.raw.originalZip.entry(partPath);
   if (!file) {
     return undefined;
   }
-  const declaredSize = getEntryUncompressedSize(file);
-  if (declaredSize === null || declaredSize > context.budget.remainingBytes)
-    return undefined;
-  const bytes = await file.async("uint8array");
+  if (file.size > context.budget.remainingBytes) return undefined;
+  const bytes = await file.bytes();
   if (bytes.byteLength > context.budget.remainingBytes) {
     return undefined;
   }

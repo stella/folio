@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { buildDocx, CONTRACT_PARAGRAPHS } from "./__tests__/fixtures";
 import {
@@ -14,11 +15,11 @@ const R_NS =
 
 const rewrite = async (
   bytes: Uint8Array,
-  edit: (zip: JSZip) => void,
+  edit: (zip: ZipArchive) => void,
 ): Promise<Uint8Array<ArrayBuffer>> => {
-  const zip = await JSZip.loadAsync(bytes);
+  const zip = await ZipArchive.read(bytes);
   edit(zip);
-  return await zip.generateAsync({ type: "uint8array" });
+  return await zip.generate({ compression: "store" });
 };
 
 const documentXml = (body: string, prefix = "w"): string =>
@@ -29,9 +30,9 @@ describe("diffPackages", () => {
   test("reports added, modified, and removed parts by content", async () => {
     const before = await buildDocx(CONTRACT_PARAGRAPHS);
     const after = await rewrite(before, (zip) => {
-      zip.file("word/document.xml", documentXml("<w:p/>"));
-      zip.file("word/comments.xml", "<comments/>");
-      zip.remove("word/styles.xml");
+      zip.set("word/document.xml", documentXml("<w:p/>"));
+      zip.set("word/comments.xml", "<comments/>");
+      zip.delete("word/styles.xml");
     });
     const recompressed = await rewrite(before, () => undefined);
 
@@ -47,14 +48,14 @@ describe("diffPackages", () => {
 describe("nextRevisionIdSeed", () => {
   test("sits above every WordprocessingML id, whatever the prefix", async () => {
     const bytes = await rewrite(await buildDocx([]), (zip) => {
-      zip.file(
+      zip.set(
         "word/document.xml",
         documentXml(
           '<x:p><x:ins x:id="41"/><x:bookmarkStart x:id="7"/></x:p>',
           "x",
         ),
       );
-      zip.file(
+      zip.set(
         "word/other.xml",
         '<root xmlns:w="urn:not-wordprocessingml"><w:ins w:id="900"/></root>',
       );
@@ -76,16 +77,16 @@ describe("checkPackageIntegrity", () => {
   test("refuses malformed XML, dangling references, and missing targets", async () => {
     const base = await buildDocx(CONTRACT_PARAGRAPHS);
     const malformed = await rewrite(base, (zip) => {
-      zip.file("word/document.xml", "<w:document><w:body>");
+      zip.set("word/document.xml", "<w:document><w:body>");
     });
     const dangling = await rewrite(base, (zip) => {
-      zip.file(
+      zip.set(
         "word/document.xml",
         documentXml('<w:p><w:hyperlink rel:id="rId99"/></w:p>'),
       );
     });
     const missingTarget = await rewrite(base, (zip) => {
-      zip.remove("word/styles.xml");
+      zip.delete("word/styles.xml");
     });
 
     for (const [bytes, parts] of [

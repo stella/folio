@@ -11,7 +11,8 @@
  * than at the end of the input.
  */
 import { describe, expect, mock, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 import { loadDocxArchive } from "./server/boundedArchive";
@@ -37,15 +38,12 @@ const STRUCTURE_ONLY = {
 type Part = { path: string; xml: string };
 
 const packageOf = async (parts: readonly Part[]): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", CONTENT_TYPES);
   for (const { path, xml } of parts) {
-    zip.file(path, xml);
+    zip.set(path, xml);
   }
-  return await zip.generateAsync({
-    compression: "DEFLATE",
-    type: "arraybuffer",
-  });
+  return (await zip.generate()).buffer;
 };
 
 const document = (body: string): Part => ({

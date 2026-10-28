@@ -1,4 +1,4 @@
-import type JSZip from "jszip";
+import type { ZipArchive } from "@stll/docx-core/zip";
 
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 
@@ -13,12 +13,5 @@ export const validateDocxFixture = async (bytes: Uint8Array, name: string) => {
 };
 
 /** Shared ZIP producers cannot return or write an unvalidated package. */
-export const generateDocxFixture = async (zip: JSZip, name: string) =>
-  validateDocxFixture(
-    await zip.generateAsync({
-      type: "uint8array",
-      compression: "DEFLATE",
-      compressionOptions: { level: 9 },
-    }),
-    name,
-  );
+export const generateDocxFixture = async (zip: ZipArchive, name: string) =>
+  validateDocxFixture(await zip.generate({ level: 9 }), name);

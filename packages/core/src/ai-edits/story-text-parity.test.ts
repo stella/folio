@@ -10,7 +10,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { FolioDocxReviewer } from "./headless";
@@ -56,8 +57,8 @@ const divergentParagraphs = (label: string) =>
   `<w:p>${divergentRuns(label)}</w:p>`;
 
 const createStoryDocx = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -70,14 +71,14 @@ const createStoryDocx = async (): Promise<ArrayBuffer> => {
   <Override PartName="/word/endnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="${RELATIONSHIP_NAMESPACE}">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="${RELATIONSHIP_NAMESPACE}">
@@ -94,29 +95,29 @@ const createStoryDocx = async (): Promise<ArrayBuffer> => {
     `xmlns:r="${RELATIONSHIP_NAMESPACE}" ` +
     'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
 
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML_DECLARATION}\n<w:hdr ${namespaces}>${divergentParagraphs("header")}</w:hdr>`,
   );
-  zip.file(
+  zip.set(
     "word/footer1.xml",
     `${XML_DECLARATION}\n<w:ftr ${namespaces}>${divergentParagraphs("footer")}</w:ftr>`,
   );
-  zip.file(
+  zip.set(
     "word/footnotes.xml",
     `${XML_DECLARATION}
 <w:footnotes ${namespaces}>
   <w:footnote w:id="2"><w:p w14:paraId="42000002">${divergentRuns("footnote")}</w:p></w:footnote>
 </w:footnotes>`,
   );
-  zip.file(
+  zip.set(
     "word/endnotes.xml",
     `${XML_DECLARATION}
 <w:endnotes ${namespaces}>
   <w:endnote w:id="2"><w:p w14:paraId="43000002">${divergentRuns("endnote")}</w:p></w:endnote>
 </w:endnotes>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document ${namespaces}>
@@ -132,11 +133,11 @@ const createStoryDocx = async (): Promise<ArrayBuffer> => {
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECLARATION}\n<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** Secondary stories only: the body has no unloaded projection to differ from. */

@@ -1,6 +1,8 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import {
   assertProperty,
@@ -28,30 +30,28 @@ const fixture = async ({
   state,
   prefixed,
 }: RelationshipFixtureOptions) => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  zip.set(
     "[Content_Types].xml",
     types?.replace(
       "</Types>",
       '<Default Extension="png" ContentType="image/png"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>',
     ) ?? "",
   );
-  const documentRels = await zip
-    .file("word/_rels/document.xml.rels")
-    ?.async("text");
-  zip.file(
+  const documentRels = await zip.entry("word/_rels/document.xml.rels")?.text();
+  zip.set(
     "word/_rels/document.xml.rels",
     documentRels?.replace(
       "</Relationships>",
       `<Relationship Id="rIdHeader99" Type="${RELATIONSHIP_TYPES.header}" Target="header1.xml"/></Relationships>`,
     ) ?? "",
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p w14:paraId="00000001"><w:r><w:t>Untouched body</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="rIdHeader99"/></w:sectPr></w:body></w:document>',
   );
-  zip.file(
+  zip.set(
     HEADER,
     '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:p w14:paraId="00000002"/></w:hdr>',
   );
@@ -66,11 +66,11 @@ const fixture = async ({
       : "";
   const alias = `<${prefix}Relationship Id="rIdAlias" Type="${RELATIONSHIP_TYPES.image}" Target="media/watermark.png"/>`;
   const rels = `<${prefix}Relationships ${root}>${foreign}${occupied}${alias}</${prefix}Relationships>`;
-  zip.file(HEADER_RELS, rels);
-  zip.file(IMAGE, PNG, { base64: true });
-  zip.file("word/media/other.png", PNG, { base64: true });
-  zip.file("custom/opaque.bin", new Uint8Array([17, 29, 41]));
-  const source = await zip.generateAsync({ type: "arraybuffer" });
+  zip.set(HEADER_RELS, rels);
+  zip.set(IMAGE, base64ToBytes(PNG));
+  zip.set("word/media/other.png", base64ToBytes(PNG));
+  zip.set("custom/opaque.bin", new Uint8Array([17, 29, 41]));
+  const source = (await zip.generate({ compression: "store" })).buffer;
   const document = await parseDocx(source, { preloadFonts: false });
   const header = document.package.headers?.get("rIdHeader99");
   if (!header) throw new Error("Missing header fixture");
@@ -114,8 +114,8 @@ test("generated canonical watermark relationships preserve free and matching ids
             bodyAuthority: "canonical",
             updateModifiedDate: false,
           });
-          const zip = await JSZip.loadAsync(saved);
-          const rels = await zip.file(HEADER_RELS)?.async("text");
+          const zip = await ZipArchive.read(saved);
+          const rels = await zip.entry(HEADER_RELS)?.text();
           expect(rels).toContain(input.foreign);
           if (state === "matching") expect(rels).toBe(input.rels);
           const requested = parseRelationships(rels ?? "").get(requestedId);
@@ -140,8 +140,8 @@ test("generated canonical watermark relationships preserve free and matching ids
             "custom/opaque.bin",
             "word/styles.xml",
           ]) {
-            expect(await zip.file(path)?.async("uint8array")).toEqual(
-              await input.sourceZip.file(path)?.async("uint8array"),
+            expect(await zip.entry(path)?.bytes()).toEqual(
+              await input.sourceZip.entry(path)?.bytes(),
             );
           }
         }
@@ -170,6 +170,6 @@ test("default watermark rebinding still reuses an existing matching relationship
       imageTarget: IMAGE,
     },
   );
-  const zip = await JSZip.loadAsync(saved);
-  expect(await zip.file(HEADER_RELS)?.async("text")).toBe(input.rels);
+  const zip = await ZipArchive.read(saved);
+  expect(await zip.entry(HEADER_RELS)?.text()).toBe(input.rels);
 });

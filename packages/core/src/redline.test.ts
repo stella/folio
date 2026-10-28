@@ -14,9 +14,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { paragraphNumberingReference } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../test/paragraphBlock";
 import {
@@ -135,9 +135,9 @@ const blockTexts = (reviewer: FolioDocxReviewer): string[] =>
 const withCoreProperties = async (
   buffer: ArrayBuffer,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(buffer);
-  zip.file("docProps/core.xml", CORE_PROPERTIES_XML);
-  return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
+  const zip = await ZipArchive.read(buffer);
+  zip.set("docProps/core.xml", CORE_PROPERTIES_XML);
+  return zip.generate().then((bytes) => bytes.buffer);
 };
 
 const storyParagraph = (text: string, paraId: string): Paragraph => ({
@@ -203,14 +203,14 @@ const buildStoryDocument = async ({
     return materialized;
   }
 
-  const zip = await JSZip.loadAsync(materialized);
-  const contentTypesFile = zip.file("[Content_Types].xml");
-  const relationshipsFile = zip.file("word/_rels/document.xml.rels");
+  const zip = await ZipArchive.read(materialized);
+  const contentTypesFile = zip.entry("[Content_Types].xml");
+  const relationshipsFile = zip.entry("word/_rels/document.xml.rels");
   if (!contentTypesFile || !relationshipsFile) {
     throw new Error("expected package metadata parts");
   }
-  const contentTypes = await contentTypesFile.async("text");
-  const relationships = await relationshipsFile.async("text");
+  const contentTypes = await contentTypesFile.text();
+  const relationships = await relationshipsFile.text();
   const contentTypeOverrides = [
     footnoteText === undefined
       ? ""
@@ -227,11 +227,11 @@ const buildStoryDocument = async ({
       ? ""
       : '<Relationship Id="rIdEndnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes" Target="endnotes.xml"/>',
   ].join("");
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     contentTypes.replace("</Types>", `${contentTypeOverrides}</Types>`),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     relationships.replace(
       "</Relationships>",
@@ -239,18 +239,18 @@ const buildStoryDocument = async ({
     ),
   );
   if (footnoteText !== undefined) {
-    zip.file(
+    zip.set(
       "word/footnotes.xml",
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:footnote w:id="2"><w:p w14:paraId="51000001"><w:r><w:t>${footnoteText}</w:t></w:r></w:p></w:footnote></w:footnotes>`,
     );
   }
   if (endnoteText !== undefined) {
-    zip.file(
+    zip.set(
       "word/endnotes.xml",
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="61000001"><w:r><w:t>${endnoteText}</w:t></w:r></w:p></w:endnote></w:endnotes>`,
     );
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const storyTextByType = (
@@ -801,8 +801,8 @@ describe("generateRedlineDocx", () => {
         "modified",
       ],
     });
-    const zip = await JSZip.loadAsync(result.buffer);
-    const coreProperties = await zip.file("docProps/core.xml")?.async("text");
+    const zip = await ZipArchive.read(result.buffer);
+    const coreProperties = await zip.entry("docProps/core.xml")?.text();
     expect(coreProperties).not.toContain("Private creator");
     expect(coreProperties).not.toContain("Private modifier");
     expect(coreProperties).not.toContain("dcterms:created");
@@ -908,11 +908,9 @@ describe("generateRedlineDocx inserted list items", () => {
 
   /** Every `w:numId` the document part references, and every one numbering.xml defines. */
   const numIdsOf = async (buffer: ArrayBuffer) => {
-    const zip = await JSZip.loadAsync(buffer);
-    const documentXml =
-      (await zip.file("word/document.xml")?.async("text")) ?? "";
-    const numberingXml =
-      (await zip.file("word/numbering.xml")?.async("text")) ?? "";
+    const zip = await ZipArchive.read(buffer);
+    const documentXml = (await zip.entry("word/document.xml")?.text()) ?? "";
+    const numberingXml = (await zip.entry("word/numbering.xml")?.text()) ?? "";
     const referenced = new Set(
       [...documentXml.matchAll(/<w:numId w:val="(\d+)"/gu)].map((match) =>
         Number(match[1]),

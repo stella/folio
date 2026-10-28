@@ -13,7 +13,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { Endnote, Footnote } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -95,25 +96,25 @@ const documentRelsXml = `${XML_DECLARATION}
 </Relationships>`;
 
 async function createNotesFixture(): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", contentTypesXml);
-  zip.file("_rels/.rels", packageRelsXml);
-  zip.file("word/_rels/document.xml.rels", documentRelsXml);
-  zip.file("word/document.xml", documentXml);
-  zip.file("word/styles.xml", stylesXml);
-  zip.file("word/footnotes.xml", footnotesXml);
-  zip.file("word/endnotes.xml", endnotesXml);
-  zip.file("docProps/core.xml", corePropertiesXml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", contentTypesXml);
+  zip.set("_rels/.rels", packageRelsXml);
+  zip.set("word/_rels/document.xml.rels", documentRelsXml);
+  zip.set("word/document.xml", documentXml);
+  zip.set("word/styles.xml", stylesXml);
+  zip.set("word/footnotes.xml", footnotesXml);
+  zip.set("word/endnotes.xml", endnotesXml);
+  zip.set("docProps/core.xml", corePropertiesXml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 async function readPart(buffer: ArrayBuffer, path: string): Promise<string> {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file(path);
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry(path);
   if (!file) {
     throw new Error(`No ${path} in package`);
   }
-  return file.async("text");
+  return file.text();
 }
 
 function setFirstNoteText(note: Footnote | Endnote, newText: string): void {
@@ -407,7 +408,7 @@ describe("footnote / endnote body write path (full repack)", () => {
   });
 
   test("raw repack persists an edited paraId-less footnote", async () => {
-    const sourceZip = await JSZip.loadAsync(await createNotesFixture());
+    const sourceZip = await ZipArchive.read(await createNotesFixture());
     const paraIdLessFootnotesXml = footnotesXml.replace(
       ` w14:paraId="${FOOTNOTE_PARA_ID}"`,
       "",
@@ -415,8 +416,8 @@ describe("footnote / endnote body write path (full repack)", () => {
     expect(paraIdLessFootnotesXml).not.toContain(
       `w14:paraId="${FOOTNOTE_PARA_ID}"`,
     );
-    sourceZip.file("word/footnotes.xml", paraIdLessFootnotesXml);
-    const source = await sourceZip.generateAsync({ type: "arraybuffer" });
+    sourceZip.set("word/footnotes.xml", paraIdLessFootnotesXml);
+    const source = (await sourceZip.generate({ compression: "store" })).buffer;
     const doc = await parseDocx(source, { preloadFonts: false });
     const footnote = doc.package.footnotes?.[0];
     if (!footnote) {
@@ -449,9 +450,9 @@ describe("footnote / endnote body write path (full repack)", () => {
       `</w:p><w:p w14:paraId="${removedParaId}"><w:r><w:t>Second paragraph</w:t></w:r></w:p></w:footnote></w:footnotes>`,
     );
     expect(twoParagraphFootnotesXml).toContain(`w14:paraId="${removedParaId}"`);
-    const sourceZip = await JSZip.loadAsync(await createNotesFixture());
-    sourceZip.file("word/footnotes.xml", twoParagraphFootnotesXml);
-    const source = await sourceZip.generateAsync({ type: "arraybuffer" });
+    const sourceZip = await ZipArchive.read(await createNotesFixture());
+    sourceZip.set("word/footnotes.xml", twoParagraphFootnotesXml);
+    const source = (await sourceZip.generate({ compression: "store" })).buffer;
     const doc = await parseDocx(source, { preloadFonts: false });
     const footnote = doc.package.footnotes?.at(0);
     if (!footnote) {

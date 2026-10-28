@@ -1,6 +1,5 @@
 import { panic } from "better-result";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import {
   link,
   mkdir,
@@ -12,6 +11,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import {
@@ -403,18 +403,18 @@ test("compare_documents forwards cleared-reference warnings in its file receipt"
     trailing,
   ]);
   const styleId = "UndefinedInsertionStyle";
-  const baseZip = await JSZip.loadAsync(await readFile(source));
+  const baseZip = await ZipArchive.read(await readFile(source));
   const stylesPart =
-    baseZip.file("word/styles.xml") ?? panic("Fixture lost its styles part");
-  const stylesXml = await stylesPart.async("text");
-  baseZip.file(
+    baseZip.entry("word/styles.xml") ?? panic("Fixture lost its styles part");
+  const stylesXml = await stylesPart.text();
+  baseZip.set(
     "word/styles.xml",
     stylesXml.replace(
       "</w:styles>",
       `<w:style w:type="paragraph" w:styleId="${styleId}"><w:name w:val="Collision style"/><w:rPr><w:b/></w:rPr></w:style></w:styles>`,
     ),
   );
-  await writeFile(source, await baseZip.generateAsync({ type: "uint8array" }));
+  await writeFile(source, await baseZip.generate({ compression: "store" }));
   const revisedPath = await writeDocx(dir, "warning-revised.docx", [
     leading,
     middle,

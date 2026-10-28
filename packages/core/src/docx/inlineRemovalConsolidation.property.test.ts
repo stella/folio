@@ -22,7 +22,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -103,42 +104,39 @@ const buildDocx = async ({
   items,
   withComments,
 }: Package): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:r="${R_NAMESPACE}"><w:body>` +
       `<w:p>${items.map(itemMarkup).join("")}</w:p>` +
       "<w:sectPr/></w:body></w:document>",
   );
   if (!withComments) {
-    return zip.generateAsync({ type: "arraybuffer" });
+    return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
   }
-  zip.file("word/comments.xml", COMMENTS_PART);
-  const types = await zip.file("[Content_Types].xml")!.async("text");
-  zip.file(
+  zip.set("word/comments.xml", COMMENTS_PART);
+  const types = await zip.entry("[Content_Types].xml")!.text();
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
       `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
     ),
   );
-  const rels = await zip.file("word/_rels/document.xml.rels")!.async("text");
-  zip.file(
+  const rels = await zip.entry("word/_rels/document.xml.rels")!.text();
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
       `<Relationship Id="rIdComments" Type="${R_NAMESPACE}/comments" Target="comments.xml"/></Relationships>`,
     ),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentPart = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(buffer)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(buffer)).entry("word/document.xml")?.text()) ??
+  "";
 
 const bodyText = ({
   package: { document },

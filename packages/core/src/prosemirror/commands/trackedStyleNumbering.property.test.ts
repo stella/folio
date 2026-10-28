@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { paragraphNumberingReference } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -220,10 +220,10 @@ const exercise = async ({
   expect(paragraph.propertyChanges).toBeUndefined();
   if (decision === "reject" || operation === "carry") {
     const xml = await (
-      await JSZip.loadAsync(bytes)
+      await ZipArchive.read(bytes)
     )
-      .file("word/document.xml")
-      ?.async("string");
+      .entry("word/document.xml")
+      ?.text();
     expect(xml).toBeDefined();
     const root = parseXml(xml ?? "");
     const body = findChild(findChild(root, "w", "document"), "w", "body");

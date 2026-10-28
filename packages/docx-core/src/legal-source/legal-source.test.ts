@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
+import { ZipArchive } from "../zip/archive";
 import {
   compileLegalSourceToDocument,
   compileLegalSourceToDocx,
@@ -288,15 +288,13 @@ describe("Stella Legal Source", () => {
       return;
     }
 
-    const zip = await JSZip.loadAsync(docxResult.buffer);
-    expect(zip.file("word/numbering.xml")).toBeNull();
-    const contentTypesXml = await zip
-      .file("[Content_Types].xml")
-      ?.async("string");
+    const zip = await ZipArchive.read(docxResult.buffer);
+    expect(zip.entry("word/numbering.xml")).toBeUndefined();
+    const contentTypesXml = await zip.entry("[Content_Types].xml")?.text();
     const documentRelsXml = await zip
-      .file("word/_rels/document.xml.rels")
-      ?.async("string");
-    const documentXml = await zip.file("word/document.xml")?.async("string");
+      .entry("word/_rels/document.xml.rels")
+      ?.text();
+    const documentXml = await zip.entry("word/document.xml")?.text();
     expect(contentTypesXml).not.toContain("numbering.xml");
     expect(documentRelsXml).not.toContain("numbering.xml");
     expect(documentXml).not.toContain("<w:numPr>");
@@ -350,12 +348,12 @@ describe("Stella Legal Source", () => {
     }
 
     expect(result.buffer).toBeInstanceOf(Buffer);
-    const zip = await JSZip.loadAsync(result.buffer);
-    expect(zip.file("word/document.xml")).toBeTruthy();
-    expect(zip.file("word/styles.xml")).toBeTruthy();
-    expect(zip.file("word/numbering.xml")).toBeTruthy();
+    const zip = await ZipArchive.read(result.buffer);
+    expect(zip.entry("word/document.xml")).toBeTruthy();
+    expect(zip.entry("word/styles.xml")).toBeTruthy();
+    expect(zip.entry("word/numbering.xml")).toBeTruthy();
 
-    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const documentXml = await zip.entry("word/document.xml")?.text();
     // Title text is stored in original case; the Title style's allCaps renders it
     // uppercase in Word (a manual toUpperCase would corrupt non-English casing).
     expect(documentXml).toContain("Mutual Non-Disclosure Agreement");
@@ -364,7 +362,7 @@ describe("Stella Legal Source", () => {
     expect(documentXml).toContain("<w:tbl>");
     expect(documentXml).toContain("<w:tblGrid>");
 
-    const numberingXml = await zip.file("word/numbering.xml")?.async("string");
+    const numberingXml = await zip.entry("word/numbering.xml")?.text();
     expect(numberingXml).toContain("<w:nsid");
     expect(numberingXml).toContain("<w:lvlJc");
     // CT_Lvl child order (ECMA-376): isLgl and suff must precede lvlText.

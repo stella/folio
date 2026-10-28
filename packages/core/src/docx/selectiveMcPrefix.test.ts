@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 
@@ -23,13 +24,13 @@ const documentXml = (nestedRebinding: boolean): string =>
   `<w:sectPr/></w:body></w:document>`;
 
 const packageWith = async (xml: string): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
-  zip.file("_rels/.rels", ROOT_RELS);
-  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
-  zip.file("word/document.xml", xml);
-  zip.file("word/numbering.xml", NUMBERING_XML);
-  const bytes = await zip.generateAsync({ type: "uint8array" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", CONTENT_TYPES);
+  zip.set("_rels/.rels", ROOT_RELS);
+  zip.set("word/_rels/document.xml.rels", DOCUMENT_RELS);
+  zip.set("word/document.xml", xml);
+  zip.set("word/numbering.xml", NUMBERING_XML);
+  const bytes = await zip.generate({ compression: "store" });
   return bytes.buffer.slice(
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength,
@@ -61,8 +62,8 @@ describe("selective save with an aliased markup-compatibility prefix", () => {
       );
       expect(result.applied).toHaveLength(1);
 
-      const saved = await JSZip.loadAsync(await reviewer.toBuffer());
-      const savedXml = await saved.file("word/document.xml")?.async("text");
+      const saved = await ZipArchive.read(await reviewer.toBuffer());
+      const savedXml = await saved.entry("word/document.xml")?.text();
       expect(savedXml).toBeDefined();
       expect(savedXml).toContain("Beto");
       expect(savedXml).not.toContain("w14:paraId=");
@@ -71,7 +72,7 @@ describe("selective save with an aliased markup-compatibility prefix", () => {
         sourceXml.indexOf("</w:p>", targetStart) + "</w:p>".length;
       expect(savedXml?.startsWith(sourceXml.slice(0, targetStart))).toBe(true);
       expect(savedXml?.endsWith(sourceXml.slice(targetEnd))).toBe(true);
-      expect(await saved.file("word/numbering.xml")?.async("text")).toBe(
+      expect(await saved.entry("word/numbering.xml")?.text()).toBe(
         NUMBERING_XML,
       );
     });

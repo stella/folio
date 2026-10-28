@@ -14,7 +14,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -138,38 +139,38 @@ const buildPackage = async ({
     )
     .join("")}${overrides.join("")}</Types>`;
 
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", contentTypes);
-  zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", contentTypes);
+  zip.set("_rels/.rels", PACKAGE_RELS);
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}">${relationships.join("")}</Relationships>`,
   );
-  zip.file("word/document.xml", DOCUMENT_XML);
-  zip.file("word/styles.xml", STYLES_XML);
-  zip.file("docProps/core.xml", CORE_PROPS_XML);
+  zip.set("word/document.xml", DOCUMENT_XML);
+  zip.set("word/styles.xml", STYLES_XML);
+  zip.set("docProps/core.xml", CORE_PROPS_XML);
   for (const extra of extras) {
-    zip.file(extra.path, extra.bytes);
+    zip.set(extra.path, extra.bytes);
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
-const repack = async (buffer: ArrayBuffer): Promise<JSZip> => {
+const repack = async (buffer: ArrayBuffer): Promise<ZipArchive> => {
   const document = await parseDocx(buffer, {
     detectVariables: false,
     preloadFonts: false,
   });
-  return JSZip.loadAsync(
+  return ZipArchive.read(
     await repackDocx(document, { updateModifiedDate: false }),
   );
 };
 
 const partBytes = async (
-  zip: JSZip,
+  zip: ZipArchive,
   path: string,
 ): Promise<Uint8Array | null> => {
-  const entry = zip.file(path);
-  return entry ? entry.async("uint8array") : null;
+  const entry = zip.entry(path);
+  return entry ? entry.bytes() : null;
 };
 
 const MACRO_PROJECT: ExtraPart = {
@@ -198,17 +199,13 @@ describe("the repack carries the parts the model does not represent", () => {
       expect(await partBytes(output, extra.path)).toEqual(extra.bytes);
     }
 
-    const rels = await output
-      .file("word/_rels/document.xml.rels")
-      ?.async("text");
+    const rels = await output.entry("word/_rels/document.xml.rels")?.text();
     expect(rels).toContain(
       'Target="embeddings/Microsoft_Excel_Worksheet.xlsx"',
     );
     expect(rels).toContain('Target="media/image9.bin"');
 
-    const contentTypes = await output
-      .file("[Content_Types].xml")
-      ?.async("text");
+    const contentTypes = await output.entry("[Content_Types].xml")?.text();
     expect(contentTypes).toContain(
       'PartName="/word/embeddings/Microsoft_Excel_Worksheet.xlsx"',
     );
@@ -239,15 +236,11 @@ describe("the repack carries the parts the model does not represent", () => {
       expect(await partBytes(output, extra.path)).toEqual(extra.bytes);
     }
 
-    const rels = await output
-      .file("word/_rels/document.xml.rels")
-      ?.async("text");
+    const rels = await output.entry("word/_rels/document.xml.rels")?.text();
     expect(rels).toContain('Target="vbaProject.bin"');
     expect(rels).toContain('Target="activeX/activeX1.xml"');
 
-    const contentTypes = await output
-      .file("[Content_Types].xml")
-      ?.async("text");
+    const contentTypes = await output.entry("[Content_Types].xml")?.text();
     expect(contentTypes).toContain('PartName="/word/vbaProject.bin"');
     expect(contentTypes).toContain('PartName="/word/activeX/activeX1.xml"');
   });
@@ -260,9 +253,7 @@ describe("the repack carries the parts the model does not represent", () => {
       }),
     );
 
-    const contentTypes = await output
-      .file("[Content_Types].xml")
-      ?.async("text");
+    const contentTypes = await output.entry("[Content_Types].xml")?.text();
     expect(contentTypes).toContain(DOCM_MAIN_CONTENT_TYPE);
     expect(contentTypes).not.toContain(DOCX_MAIN_CONTENT_TYPE);
   });
@@ -313,25 +304,25 @@ describe("a path that would escape the package is refused", () => {
   });
 
   test("an escaping entry leaves with its relationship and its override", async () => {
-    const zip = await JSZip.loadAsync(
+    const zip = await ZipArchive.read(
       await buildPackage({ extras: [EMBEDDED_WORKBOOK] }),
     );
-    zip.file("../escape.bin", new Uint8Array([1, 2, 3]));
-    zip.file("escape.bin", new Uint8Array([4]));
-    zip.file(
+    zip.set("../escape.bin", new Uint8Array([1, 2, 3]));
+    zip.set("escape.bin", new Uint8Array([4]));
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}"><Relationship Id="rIdEscape" Type="${OFFICE_RELATIONSHIP}/package" Target="../../escape.bin"/></Relationships>`,
     );
 
     removeUnsafeEntries(zip);
-    expect(zip.file("../escape.bin")).toBeNull();
+    expect(zip.entry("../escape.bin")).toBeUndefined();
     expect(
-      zip.file("word/embeddings/Microsoft_Excel_Worksheet.xlsx"),
-    ).not.toBeNull();
+      zip.entry("word/embeddings/Microsoft_Excel_Worksheet.xlsx"),
+    ).toBeDefined();
 
     const repair = await reconcilePackageReferences(zip, 6);
     expect(repair.danglingRelationships).toEqual(["../../escape.bin"]);
-    const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
     expect(rels).not.toContain("escape.bin");
   });
 });
@@ -356,15 +347,15 @@ const OLE_OBJECT_XML = `${XML_DECL}
 
 describe("a relationship pruned for a missing target loses its r:id reference too", () => {
   test("the owning part's r:id attribute is scrubbed alongside the dangling relationship", async () => {
-    const zip = await JSZip.loadAsync(
+    const zip = await ZipArchive.read(
       await buildPackage({ extras: [OLE_MEDIA] }),
     );
     // The embedded binary never made it into this package — the shape under
     // test in the corpus defect this reproduces (the media the header's own
     // `.rels` still declares is simply absent from the package it was found
     // in), not a path a save refuses.
-    zip.remove(OLE_MEDIA.path);
-    zip.file("word/document.xml", OLE_OBJECT_XML);
+    zip.delete(OLE_MEDIA.path);
+    zip.set("word/document.xml", OLE_OBJECT_XML);
 
     expect(await checkPackageIntegrity(zip)).toEqual({
       unresolvedReferences: [],
@@ -379,10 +370,10 @@ describe("a relationship pruned for a missing target loses its r:id reference to
       "word/document.xml|rIdExtra0",
     ]);
 
-    const documentXml = await zip.file("word/document.xml")?.async("text");
+    const documentXml = await zip.entry("word/document.xml")?.text();
     expect(documentXml).not.toContain("rIdExtra0");
     expect(documentXml).toContain("<o:OLEObject"); // the element survives; only the dead reference is gone
-    const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
     expect(rels).not.toContain("rIdExtra0");
 
     // The repair is a fixed point: nothing is left for the checker to find.
@@ -393,13 +384,13 @@ describe("a relationship pruned for a missing target loses its r:id reference to
   });
 
   test("checkPackageIntegrity reports an r:id a part's own .rels never declared", async () => {
-    const zip = await JSZip.loadAsync(
+    const zip = await ZipArchive.read(
       await buildPackage({ extras: [OLE_MEDIA] }),
     );
-    zip.file("word/document.xml", OLE_OBJECT_XML);
+    zip.set("word/document.xml", OLE_OBJECT_XML);
     // Drop the relationship by hand, without going through reconciliation, so
     // this test exercises the checker on its own rather than on its repair.
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}"></Relationships>`,
     );
@@ -415,12 +406,12 @@ describe("internal relationship fragments", () => {
   test.each(["#", "#section", "styles.xml#section"])(
     "keeps a link to an existing part through %s",
     async (target) => {
-      const zip = await JSZip.loadAsync(await buildPackage());
-      zip.file(
+      const zip = await ZipArchive.read(await buildPackage());
+      zip.set(
         "word/_rels/document.xml.rels",
         `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}"><Relationship Id="rIdBookmark" Type="${OFFICE_RELATIONSHIP}/hyperlink" Target="${target}"/></Relationships>`,
       );
-      zip.file(
+      zip.set(
         "word/document.xml",
         DOCUMENT_XML.replace(
           '<w:p w14:paraId="60000001"><w:r><w:t>Hello world</w:t></w:r></w:p>',
@@ -437,32 +428,32 @@ describe("internal relationship fragments", () => {
         danglingOverrides: [],
         orphanedIdReferences: [],
       });
-      expect(await zip.file("word/document.xml")?.async("text")).toContain(
+      expect(await zip.entry("word/document.xml")?.text()).toContain(
         'r:id="rIdBookmark"',
       );
-      expect(
-        await zip.file("word/_rels/document.xml.rels")?.async("text"),
-      ).toContain(`Target="${target}"`);
+      expect(await zip.entry("word/_rels/document.xml.rels")?.text()).toContain(
+        `Target="${target}"`,
+      );
 
       const saved = await repack(
-        await zip.generateAsync({ type: "arraybuffer" }),
+        (await zip.generate({ compression: "store" })).buffer,
       );
       expect(await checkPackageIntegrity(saved)).toEqual({
         unresolvedReferences: [],
         danglingRelationshipTargets: [],
       });
-      expect(await saved.file("word/document.xml")?.async("text")).toContain(
+      expect(await saved.entry("word/document.xml")?.text()).toContain(
         'r:id="rIdBookmark"',
       );
       expect(
-        await saved.file("word/_rels/document.xml.rels")?.async("text"),
+        await saved.entry("word/_rels/document.xml.rels")?.text(),
       ).toContain(`Target="${target}"`);
     },
   );
 
   test("still removes a relationship whose part is missing before the fragment", async () => {
-    const zip = await JSZip.loadAsync(await buildPackage());
-    zip.file(
+    const zip = await ZipArchive.read(await buildPackage());
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}"><Relationship Id="rIdMissing" Type="${OFFICE_RELATIONSHIP}/hyperlink" Target="missing.xml#section"/></Relationships>`,
     );

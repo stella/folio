@@ -15,7 +15,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -84,8 +85,8 @@ const buildDocument = (): Document => {
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  return (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const zip = await ZipArchive.read(buffer);
+  return (await zip.entry("word/document.xml")?.text()) ?? "";
 };
 
 const markerIds = (xml: string, marker: string): number[] =>
@@ -274,10 +275,8 @@ describe("replaceInBlock over a block whose text is a hyperlink", () => {
       const saved = await reviewer.toBuffer();
       const xml = await documentXml(saved);
       const relationships = await (async () => {
-        const zip = await JSZip.loadAsync(saved);
-        return (
-          (await zip.file("word/_rels/document.xml.rels")?.async("text")) ?? ""
-        );
+        const zip = await ZipArchive.read(saved);
+        return (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? "";
       })();
 
       // The link still wraps the replacement, and still points where it did.

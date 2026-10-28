@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { compareDocx } from "../compare/compare";
@@ -48,13 +48,13 @@ const buildDocx = async (
     relationshipMode === "External"
       ? "https://example.test/afchunk.txt"
       : `afchunk.${extension}`;
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `<w:document xmlns:w="${W}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
       `<w:body><w:p><w:r><w:t>Visible</w:t></w:r></w:p>${chunk}<w:sectPr/></w:body></w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
@@ -62,26 +62,23 @@ const buildDocx = async (
       `${relationshipMode === "External" ? ' TargetMode="External"' : ""}/>` +
       "</Relationships>",
   );
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
-    (await zip.file("[Content_Types].xml")?.async("text"))?.replace(
+    (await zip.entry("[Content_Types].xml")?.text())?.replace(
       "</Types>",
       `${defaultContentType ? `<Default Extension="${extension}" ContentType="${defaultContentType}"/>` : ""}` +
         `<Override PartName="/word/afchunk.${extension}" ContentType="${contentType}"/></Types>`,
     ) ?? "",
   );
   if (relationshipMode === "Internal") {
-    zip.file(`word/afchunk.${extension}`, payload);
+    zip.set(`word/afchunk.${extension}`, payload);
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentXml = async (bytes: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(bytes)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(bytes)).entry("word/document.xml")?.text()) ??
+  "";
 
 describe("w:altChunk", () => {
   test("resolves the relationship id by expanded name", () => {
@@ -132,12 +129,12 @@ describe("w:altChunk", () => {
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     expect(await documentXml(saved)).toContain(CHUNK);
-    const savedZip = await JSZip.loadAsync(saved);
-    expect(await savedZip.file("word/afchunk.htm")?.async("text")).toBe(
+    const savedZip = await ZipArchive.read(saved);
+    expect(await savedZip.entry("word/afchunk.htm")?.text()).toBe(
       "<html><body>Imported payload sentinel</body></html>",
     );
     expect(
-      await savedZip.file("word/_rels/document.xml.rels")?.async("text"),
+      await savedZip.entry("word/_rels/document.xml.rels")?.text(),
     ).toContain('Id="rIdChunk"');
   });
 
@@ -198,7 +195,7 @@ describe("w:altChunk", () => {
   });
 
   test("extracts each secondary story through its own relationship part", async () => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
+    const zip = await ZipArchive.read(await createEmptyDocx());
     const stories = [
       {
         kind: "header",
@@ -233,20 +230,20 @@ describe("w:altChunk", () => {
         relationshipKind: "endnotes",
       },
     ] as const;
-    zip.file(
+    zip.set(
       "word/document.xml",
       `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body><w:p/>${CHUNK}` +
         `<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/>` +
         `<w:footerReference w:type="default" r:id="rIdFooter"/></w:sectPr></w:body></w:document>`,
     );
     const documentRels = await zip
-      .file("word/_rels/document.xml.rels")
-      ?.async("text");
-    const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+      .entry("word/_rels/document.xml.rels")
+      ?.text();
+    const contentTypes = await zip.entry("[Content_Types].xml")?.text();
     if (!documentRels || !contentTypes) {
       throw new Error("The fixture is missing its package declarations");
     }
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       documentRels.replace(
         "</Relationships>",
@@ -260,7 +257,7 @@ describe("w:altChunk", () => {
           "</Relationships>",
       ),
     );
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
       contentTypes.replace(
         "</Types>",
@@ -274,25 +271,25 @@ describe("w:altChunk", () => {
           "</Types>",
       ),
     );
-    zip.file("word/body.txt", "Body payload");
+    zip.set("word/body.txt", "Body payload");
     for (const { kind, file, root, text } of stories) {
       const content =
         kind === "footnote" || kind === "endnote"
           ? `<w:${kind} w:id="1">${CHUNK}</w:${kind}>`
           : CHUNK;
-      zip.file(
+      zip.set(
         `word/${file}`,
         `<w:${root} xmlns:w="${W}" xmlns:r="${R}">${content}</w:${root}>`,
       );
-      zip.file(
+      zip.set(
         `word/_rels/${file}.rels`,
         `<Relationships xmlns="${PACKAGE_RELATIONSHIPS}">` +
           `<Relationship Id="rIdChunk" Type="${R}/aFChunk" Target="${kind}.txt"/>` +
           "</Relationships>",
       );
-      zip.file(`word/${kind}.txt`, text);
+      zip.set(`word/${kind}.txt`, text);
     }
-    const input = await zip.generateAsync({ type: "arraybuffer" });
+    const input = (await zip.generate({ compression: "store" })).buffer;
     const parsed = await parseDocx(input, {
       preloadFonts: false,
     });
@@ -325,12 +322,12 @@ describe("w:altChunk", () => {
       readerText: "Endnote payload",
     });
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
-    const savedZip = await JSZip.loadAsync(saved);
-    expect(await savedZip.file("word/header1.xml")?.async("text")).toBe(
-      await zip.file("word/header1.xml")?.async("text"),
+    const savedZip = await ZipArchive.read(saved);
+    expect(await savedZip.entry("word/header1.xml")?.text()).toBe(
+      await zip.entry("word/header1.xml")?.text(),
     );
-    expect(await savedZip.file("word/footer1.xml")?.async("text")).toBe(
-      await zip.file("word/footer1.xml")?.async("text"),
+    expect(await savedZip.entry("word/footer1.xml")?.text()).toBe(
+      await zip.entry("word/footer1.xml")?.text(),
     );
     const reopened = await parseDocx(saved, { preloadFonts: false });
     expect(reopened.package.footnotes?.at(0)?.content.at(0)).toMatchObject({
@@ -347,17 +344,17 @@ describe("w:altChunk", () => {
     const largeText = "x".repeat(
       Math.floor(ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES / 2) + 1,
     );
-    const zip = await JSZip.loadAsync(
+    const zip = await ZipArchive.read(
       await buildDocx(CHUNK, { contentType: "text/plain", payload: largeText }),
     );
     const documentRels = await zip
-      .file("word/_rels/document.xml.rels")
-      ?.async("text");
-    const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+      .entry("word/_rels/document.xml.rels")
+      ?.text();
+    const contentTypes = await zip.entry("[Content_Types].xml")?.text();
     if (!documentRels || !contentTypes) {
       throw new Error("The fixture is missing its package declarations");
     }
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       documentRels.replace(
         "</Relationships>",
@@ -365,7 +362,7 @@ describe("w:altChunk", () => {
           "</Relationships>",
       ),
     );
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
       contentTypes.replace(
         "</Types>",
@@ -373,19 +370,19 @@ describe("w:altChunk", () => {
           '<Override PartName="/word/header.txt" ContentType="text/plain"/></Types>',
       ),
     );
-    zip.file(
+    zip.set(
       "word/header1.xml",
       `<w:hdr xmlns:w="${W}" xmlns:r="${R}">${CHUNK}</w:hdr>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/header1.xml.rels",
       `<Relationships xmlns="${PACKAGE_RELATIONSHIPS}">` +
         `<Relationship Id="rIdChunk" Type="${R}/aFChunk" Target="header.txt"/>` +
         "</Relationships>",
     );
-    zip.file("word/header.txt", largeText);
+    zip.set("word/header.txt", largeText);
     const parsed = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },

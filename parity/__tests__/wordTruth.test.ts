@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   buildCloseStagedDocumentScript,
@@ -140,13 +141,13 @@ const settingsXml = (body: string): string =>
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings ${W_NS}><w:zoom w:percent="100"/>${body}<w:defaultTabStop w:val="720"/></w:settings>`;
 
 const buildDocx = async (settings: string | undefined): Promise<Uint8Array> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "word/document.xml",
     `<w:document ${W_NS}><w:body><w:p><w:r><w:t>Text</w:t></w:r></w:p></w:body></w:document>`,
   );
-  if (settings !== undefined) zip.file("word/settings.xml", settings);
-  return await zip.generateAsync({ type: "uint8array" });
+  if (settings !== undefined) zip.set("word/settings.xml", settings);
+  return await zip.generate({ compression: "store" });
 };
 
 describe("export staging", () => {
@@ -180,14 +181,14 @@ describe("export staging", () => {
     const sourceCopy = source.slice();
 
     const staged = await stageableDocxBytes(source);
-    const stagedZip = await JSZip.loadAsync(staged);
+    const stagedZip = await ZipArchive.read(staged);
 
-    expect(await stagedZip.file("word/settings.xml")?.async("string")).toBe(
+    expect(await stagedZip.entry("word/settings.xml")?.text()).toBe(
       settingsXml(""),
     );
-    expect(
-      await stagedZip.file("word/document.xml")?.async("string"),
-    ).toContain("<w:t>Text</w:t>");
+    expect(await stagedZip.entry("word/document.xml")?.text()).toContain(
+      "<w:t>Text</w:t>",
+    );
     expect(source).toEqual(sourceCopy);
   });
 

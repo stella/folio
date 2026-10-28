@@ -1,8 +1,8 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import { assertValidOoxmlNumericIds } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -243,17 +243,15 @@ test("range repair leaves malformed lexical identities for the parser's existing
 });
 
 test("invalid imported notes are readable and saveable through both save paths", async () => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/footnotes.xml",
     `<x:footnotes xmlns:x="${WORD_NAMESPACES[0]}"><x:footnote x:type="separator" x:id="2147483648"><x:p/></x:footnote></x:footnotes>`,
   );
-  const source = await zip.generateAsync({ type: "arraybuffer" });
+  const source = (await zip.generate({ compression: "store" })).buffer;
   const document = await parseDocx(source, { preloadFonts: false });
-  const raw = await JSZip.loadAsync(document.originalBuffer);
-  expect(await raw.file("word/footnotes.xml")?.async("text")).toContain(
-    'x:id="1"',
-  );
+  const raw = await ZipArchive.read(document.originalBuffer);
+  expect(await raw.entry("word/footnotes.xml")?.text()).toContain('x:id="1"');
   const full = await repackDocx(document, { updateModifiedDate: false });
   const selective = await attemptSelectiveSave(
     document,
@@ -329,15 +327,15 @@ test("the same invalid source id in separate annotation families stays stable ac
           ],
         },
       ];
-      const zip = await JSZip.loadAsync(await createDocx(document));
+      const zip = await ZipArchive.read(await createDocx(document));
       for (const path of ["word/document.xml", "word/comments.xml"]) {
-        const xml = await zip.file(path)?.async("text");
+        const xml = await zip.entry(path)?.text();
         expect(xml).toBeDefined();
         if (xml === undefined) return;
-        zip.file(path, xml.replaceAll(/w:id="\d+"/gu, `w:id="${id}"`));
+        zip.set(path, xml.replaceAll(/w:id="\d+"/gu, `w:id="${id}"`));
       }
       const imported = await parseDocx(
-        await zip.generateAsync({ type: "arraybuffer" }),
+        (await zip.generate({ compression: "store" })).buffer,
         {
           preloadFonts: false,
         },

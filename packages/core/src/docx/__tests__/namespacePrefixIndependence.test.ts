@@ -15,9 +15,10 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../../document-operations";
@@ -81,18 +82,19 @@ const toArrayBuffer = (bytes: Uint8Array | ArrayBuffer): ArrayBuffer =>
 const readParts = async (
   docx: Uint8Array | ArrayBuffer,
 ): Promise<Map<string, string>> => {
-  const zip = await JSZip.loadAsync(docx);
+  const zip = await ZipArchive.read(docx);
   const parts = new Map<string, string>();
-  for (const [name, file] of Object.entries(zip.files)) {
+  for (const [name, file] of zip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
     const lower = name.toLowerCase();
     if (
-      !file.dir &&
       lower.startsWith("word/") &&
       lower.endsWith(".xml") &&
       !lower.includes("_rels")
     ) {
       // oxlint-disable-next-line no-await-in-loop -- a handful of parts per fixture
-      parts.set(name, await file.async("text"));
+      parts.set(name, await file.text());
     }
   }
   return parts;
@@ -100,14 +102,16 @@ const readParts = async (
 
 /** Drop every paragraph id folio's own scan would recognize, so `ensureParaIds` has work. */
 const withoutParagraphIds = async (docx: Uint8Array): Promise<Uint8Array> => {
-  const zip = await JSZip.loadAsync(docx);
-  for (const [name, file] of Object.entries(zip.files)) {
-    if (file.dir || !TARGET_PART.test(name)) continue;
+  const zip = await ZipArchive.read(docx);
+  for (const [name, file] of zip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
+    if (!TARGET_PART.test(name)) continue;
     // oxlint-disable-next-line no-await-in-loop -- a handful of parts per fixture
-    const xml = await file.async("text");
-    zip.file(name, xml.replace(/\sw14:(?:paraId|textId)=(["'])[^"']*\1/gu, ""));
+    const xml = await file.text();
+    zip.set(name, xml.replace(/\sw14:(?:paraId|textId)=(["'])[^"']*\1/gu, ""));
   }
-  return zip.generateAsync({ type: "uint8array" });
+  return zip.generate({ compression: "store" });
 };
 
 /** The two sides of one comparison: the fixture as written, and respelled. */

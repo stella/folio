@@ -1,8 +1,8 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { SETTINGS_CHILDREN } from "@stll/docx-core/schema";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
@@ -47,10 +47,10 @@ test("even header/footer setting materializes a missing part and survives subseq
   const initial = await createDocx(
     createEmptyDocument({ initialText: "Body" }),
   );
-  const zip = await JSZip.loadAsync(initial);
-  zip.remove("word/settings.xml");
+  const zip = await ZipArchive.read(initial);
+  zip.delete("word/settings.xml");
   const document = await parseDocx(
-    await zip.generateAsync({ type: "arraybuffer" }),
+    (await zip.generate({ compression: "store" })).buffer,
     {
       preloadFonts: false,
     },
@@ -61,12 +61,12 @@ test("even header/footer setting materializes a missing part and survives subseq
     evenAndOddHeaders: true,
   };
   const saved = await createDocx(document);
-  const savedZip = await JSZip.loadAsync(saved);
-  expect(await savedZip.file("[Content_Types].xml")?.async("text")).toContain(
+  const savedZip = await ZipArchive.read(saved);
+  expect(await savedZip.entry("[Content_Types].xml")?.text()).toContain(
     'PartName="/word/settings.xml"',
   );
   expect(
-    await savedZip.file("word/_rels/document.xml.rels")?.async("text"),
+    await savedZip.entry("word/_rels/document.xml.rels")?.text(),
   ).toContain('/settings"');
   const reopened = await parseDocx(saved, { preloadFonts: false });
   expect(reopened.package.settings?.evenAndOddHeaders).toBe(true);

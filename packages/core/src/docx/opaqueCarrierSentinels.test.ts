@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { compareDocx } from "../compare/compare";
@@ -115,28 +115,28 @@ const makeDocx = async (
   body: string,
   chunkText = SENTINEL,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
   if (body.includes("<w:altChunk")) {
-    zip.file("word/chunk.txt", chunkText);
-    const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
-    const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+    zip.set("word/chunk.txt", chunkText);
+    const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
+    const contentTypes = await zip.entry("[Content_Types].xml")?.text();
     if (!rels || !contentTypes) {
       throw new Error(
         "The empty DOCX must carry relationship and content type parts",
       );
     }
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       rels.replace(
         "</Relationships>",
         `<Relationship Id="rIdChunk" Type="${R}/aFChunk" Target="chunk.txt"/></Relationships>`,
       ),
     );
-    zip.file(
+    zip.set(
       "[Content_Types].xml",
       contentTypes.replace(
         "</Types>",
@@ -145,7 +145,7 @@ const makeDocx = async (
       ),
     );
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const occurrences = (text: string): number => text.split(SENTINEL).length - 1;
@@ -260,10 +260,10 @@ describe("content carrier sentinels", () => {
       if (fragment !== undefined) {
         const saved = await repackDocx(parsed, { updateModifiedDate: false });
         const savedXml = await (
-          await JSZip.loadAsync(saved)
+          await ZipArchive.read(saved)
         )
-          .file("word/document.xml")
-          ?.async("text");
+          .entry("word/document.xml")
+          ?.text();
         expect(savedXml).toContain(fragment);
       }
     });

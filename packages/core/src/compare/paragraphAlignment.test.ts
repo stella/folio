@@ -1,9 +1,9 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { EditorState, type Transaction } from "prosemirror-state";
 
 import { finalizeParagraphFormatting } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { applyFolioAIEditOperations } from "../ai-edits/apply";
@@ -468,11 +468,11 @@ const tableCellDocumentModel = (inheritedAlignment: ParagraphAlignment) => {
 };
 
 const mainDocumentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const part = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const part = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!part) {
     panic("expected word/document.xml");
   }
-  return await part.async("string");
+  return await part.text();
 };
 
 const firstParagraphXml = (xml: string): string => {

@@ -72,7 +72,7 @@ export type FolioDocxPackagePart = {
   readonly path: string;
   readonly kind: FolioDocxPackagePartKind;
   readonly contentType: string | null;
-  readonly declaredUncompressedBytes: number | null;
+  readonly declaredUncompressedBytes: number;
 };
 
 export type FolioDocxInspectedXmlPart = {
@@ -415,7 +415,6 @@ export const inspectDocxPackage = async (
       : decodeXml(contentTypesBytes, CONTENT_TYPES_PATH),
   );
   const parts = archive.entryMetadata
-    .filter(({ directory }) => !directory)
     .map((entry) => toPackagePart(entry, declarations))
     .toSorted(({ path: left }, { path: right }) =>
       comparePackagePaths(left, right),

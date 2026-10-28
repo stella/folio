@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 
 import {
@@ -101,24 +101,24 @@ const buildPackage = (extras: readonly ExtraPart[]): Promise<ArrayBuffer> => {
     ? `<w:headerReference w:type="default" r:id="${HEADER_RELATIONSHIP_ID}"/>`
     : "";
 
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECL}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/>${overrides.join("")}</Types>`,
   );
-  zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file(
+  zip.set("_rels/.rels", PACKAGE_RELS);
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}">${relationships.join("")}</Relationships>`,
   );
-  zip.file(DOCUMENT_PART, documentXml(headerReference));
-  zip.file("word/styles.xml", STYLES_XML);
-  zip.file("docProps/core.xml", CORE_PROPS_XML);
-  zip.file("docProps/app.xml", APP_PROPS_XML);
+  zip.set(DOCUMENT_PART, documentXml(headerReference));
+  zip.set("word/styles.xml", STYLES_XML);
+  zip.set("docProps/core.xml", CORE_PROPS_XML);
+  zip.set("docProps/app.xml", APP_PROPS_XML);
   for (const { path, content } of extras) {
-    zip.file(path, content);
+    zip.set(path, content);
   }
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const invariantInput = async (

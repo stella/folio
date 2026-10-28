@@ -18,7 +18,7 @@
  * census keyed on the raw string would carry one key per LibreOffice build hash.
  */
 
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 /**
  * The census key for each family. Four families are keyed by a neutral code
@@ -171,21 +171,21 @@ export const readCorpusProducer = async ({
   bytes,
   documentPart,
 }: ReadProducerOptions): Promise<CorpusProducer> => {
-  const archive = await JSZip.loadAsync(bytes).catch(() => null);
+  const archive = await ZipArchive.read(bytes).catch(() => null);
   if (archive === null) {
     return {
       family: PRODUCER_FAMILIES.unknown,
       label: PRODUCER_FAMILIES.unknown,
     };
   }
-  const part = archive.file(EXTENDED_PROPERTIES_PART);
-  if (part === null) {
+  const part = archive.entry(EXTENDED_PROPERTIES_PART);
+  if (part === undefined) {
     return {
       family: PRODUCER_FAMILIES.noExtendedProperties,
       label: PRODUCER_FAMILIES.noExtendedProperties,
     };
   }
-  const xml = await part.async("string").catch(() => null);
+  const xml = await part.text().catch(() => null);
   if (xml === null) {
     return {
       family: PRODUCER_FAMILIES.unknown,

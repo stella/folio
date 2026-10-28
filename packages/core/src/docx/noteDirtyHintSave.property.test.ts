@@ -7,7 +7,8 @@ import { panic } from "better-result";
  */
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -39,9 +40,9 @@ const setText = (block: Paragraph, text: string): void => {
 };
 
 const readPart = async (buffer: ArrayBuffer, path: string): Promise<string> => {
-  const entry = (await JSZip.loadAsync(buffer)).file(path);
+  const entry = (await ZipArchive.read(buffer)).entry(path);
   if (!entry) panic(`Expected fixture part ${path}`);
-  return entry.async("text");
+  return entry.text();
 };
 
 const createFixture = async (
@@ -75,17 +76,17 @@ describe("note dirty hints preserve semantic edits and unchanged parts", () => {
         async () => {
           const originalWithIds = await createFixture(kind);
           const partPath = `word/${kind}s.xml`;
-          const sourceZip = await JSZip.loadAsync(originalWithIds);
-          sourceZip.file(
+          const sourceZip = await ZipArchive.read(originalWithIds);
+          sourceZip.set(
             partPath,
             (await readPart(originalWithIds, partPath)).replace(
               / w14:paraId="[^"]+"/gu,
               "",
             ),
           );
-          const originalWithoutIds = await sourceZip.generateAsync({
-            type: "arraybuffer",
-          });
+          const originalWithoutIds = (
+            await sourceZip.generate({ compression: "store" })
+          ).buffer;
           await fc.assert(
             fc.asyncProperty(
               fc.subarray(NOTE_PARA_IDS),

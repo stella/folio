@@ -24,7 +24,7 @@
 //                   wildcard subpath loads with the expected exports.
 //     2. Types    — a `.ts` consumer importing every surface typechecks under
 //                   both `moduleResolution: node16` and `bundler`.
-//     3. External — React is never bundled; prosemirror/jszip stay external.
+//     3. External — React is never bundled; prosemirror stays external.
 //
 //   react — 6 checks (the five below plus the messages subpath declaration):
 //     1. Runtime  — ESM `import` of `@stll/folio-react` and
@@ -297,7 +297,6 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "encodeUtf8",
       "decodeText",
       "createTextReader",
-      "writeZipEntry",
       "sliceText",
       "truncateGraphemes",
     ],
@@ -319,6 +318,12 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "applyDocumentOps",
       "DocumentOpRefusal",
     ],
+    "@stll/docx-core/zip": [
+      "ZipArchive",
+      "ZipError",
+      "ZIP_DEFAULT_READ_LIMITS",
+    ],
+    "@stll/docx-core/zip/stream": ["createZipStream", "zipStream", "ZipError"],
     "@stll/docx-core/projection": [
       "DocxProjectionError",
       "DocxProjectionInitializationError",
@@ -520,15 +525,20 @@ if (target === "cli") {
 // --- Check 2: types resolve under node16 AND bundler ------------------------
 const consumerTsByTarget: Record<string, string> = {
   "utf8-boundaries": `
-import JSZip from "jszip";
-import { encodeUtf8, createTextReader, writeZipEntry, truncateGraphemes } from "@stll/utf8-boundaries";
+import {
+  encodeUtf8,
+  createTextReader,
+  truncateGraphemes,
+} from "@stll/utf8-boundaries";
 import plugin from "@stll/utf8-boundaries/oxlint";
-import { astralText, boundaryTextCases, assertTextRoundTrip } from "@stll/utf8-boundaries/testing";
+import {
+  astralText,
+  boundaryTextCases,
+  assertTextRoundTrip,
+} from "@stll/utf8-boundaries/testing";
 
-const zip = new JSZip();
-const written = writeZipEntry(zip, "word/document.xml", "👩🏽‍⚖️");
 const decoded = createTextReader().read(encodeUtf8(truncateGraphemes("👩🏽‍⚖️x", 1)));
-export const used = [written, decoded, plugin, astralText, boundaryTextCases, assertTextRoundTrip];
+export const used = [decoded, plugin, astralText, boundaryTextCases, assertTextRoundTrip];
 export type Surface = typeof plugin;
 `,
   "docx-core": `
@@ -573,9 +583,20 @@ export type Surface = [
 ];
 `,
   core: `
-import { createEmptyDocument, createDocx, type Document } from "@stll/folio-core";
-import { fromMarkdown, toMarkdown, type MarkdownOptions } from "@stll/folio-core/markdown";
-import { generateRedlineDocx, type GenerateRedlineDocxResult } from "@stll/folio-core/redline";
+import {
+  createEmptyDocument,
+  createDocx,
+  type Document,
+} from "@stll/folio-core";
+import {
+  fromMarkdown,
+  toMarkdown,
+  type MarkdownOptions,
+} from "@stll/folio-core/markdown";
+import {
+  generateRedlineDocx,
+  type GenerateRedlineDocxResult,
+} from "@stll/folio-core/redline";
 import { deriveBlockId, type FolioBlockId } from "@stll/folio-core/server";
 import { isFolioBlockId } from "@stll/folio-core/types/block-id";
 
@@ -583,8 +604,16 @@ export const used = [createEmptyDocument, createDocx, fromMarkdown, toMarkdown, 
 export type Surface = [Document, MarkdownOptions, GenerateRedlineDocxResult, FolioBlockId];
 `,
   react: `
-import { DocxEditor, FolioUIProvider, createDocx, type DocxEditorProps } from "@stll/folio-react";
-import { getFolioMessages, type FolioMessages } from "@stll/folio-react/messages";
+import {
+  DocxEditor,
+  FolioUIProvider,
+  createDocx,
+  type DocxEditorProps,
+} from "@stll/folio-react";
+import {
+  getFolioMessages,
+  type FolioMessages,
+} from "@stll/folio-react/messages";
 
 export const used = [DocxEditor, FolioUIProvider, createDocx, getFolioMessages];
 export type Surface = [DocxEditorProps, FolioMessages];
@@ -889,13 +918,8 @@ const { present: leaked } = scanReactSentinels(allJs);
 // therefore cannot be asserted here.
 const externalsByTarget: Record<string, string[]> = {
   "utf8-boundaries": ["better-result", "fast-check"],
-  "docx-core": ["better-result", "jszip", "@stll/utf8-boundaries"],
-  core: [
-    "prosemirror-state",
-    "prosemirror-model",
-    "jszip",
-    "@stll/utf8-boundaries",
-  ],
+  "docx-core": ["better-result", "@stll/utf8-boundaries"],
+  core: ["prosemirror-state", "prosemirror-model", "@stll/utf8-boundaries"],
   react: [
     "react",
     "react-dom",
@@ -924,7 +948,7 @@ const externalOk =
   leaked.length === 0 && notExternalized.length === 0 && !dataFontInlined;
 const externalLabels: Record<string, string> = {
   "utf8-boundaries": "external: better-result and fast-check stay external",
-  "docx-core": "external: better-result and JSZip stay external",
+  "docx-core": "external: better-result and utf8-boundaries stay external",
   core: "external: React never bundled; deps stay external",
   react:
     "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
@@ -962,18 +986,15 @@ if (target === "utf8-boundaries") {
   const declarationByEntry = new Map(
     declarationContents.map(({ file, code }) => [file, code]),
   );
-  const expectedTypePeers = [
-    { file: "index.d.ts", peer: "jszip" },
-    { file: "testing.d.ts", peer: "fast-check" },
-  ];
+  const expectedTypePeers = [{ file: "testing.d.ts", peer: "fast-check" }];
   const missingTypePeers = expectedTypePeers.filter(
     ({ file, peer }) => !declarationByEntry.get(file)?.includes(`"${peer}"`),
   );
   record(
-    "types: ZIP and testing peers stay external",
+    "types: the testing peer stays external",
     missingTypePeers.length === 0,
     missingTypePeers.length === 0
-      ? "jszip and fast-check remain declaration imports"
+      ? "fast-check remains a declaration import"
       : `missing peer declaration import(s): ${missingTypePeers.map(({ file, peer }) => `${file} → ${peer}`).join(", ")}`,
   );
 }

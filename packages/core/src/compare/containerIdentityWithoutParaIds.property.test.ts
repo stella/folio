@@ -18,9 +18,10 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -66,15 +67,15 @@ const PARAGRAPH_IDS = /\sw14:(?:para|text)Id="[0-9A-Fa-f]{8}"/gu;
  * of a document some other producer wrote.
  */
 const withAlternatingIds = async (docx: Uint8Array): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(docx);
-  const xml = await zip.file("word/document.xml")!.async("text");
+  const zip = await ZipArchive.read(docx);
+  const xml = await zip.entry("word/document.xml")!.text();
   let ordinal = -1;
   const stripped = xml.replaceAll(/<w:p(?:\s[^>]*)?>/gu, (openTag) => {
     ordinal += 1;
     return ordinal % 2 === 0 ? openTag : openTag.replace(PARAGRAPH_IDS, "");
   });
-  zip.file("word/document.xml", stripped);
-  return toArrayBuffer(await zip.generateAsync({ type: "uint8array" }));
+  zip.set("word/document.xml", stripped);
+  return toArrayBuffer(await zip.generate({ compression: "store" }));
 };
 
 const baseForCoverage = async (coverage: IdCoverage): Promise<ArrayBuffer> => {

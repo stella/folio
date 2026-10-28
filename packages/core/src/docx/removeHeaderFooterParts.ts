@@ -1,12 +1,11 @@
 import { panic } from "better-result";
-import type JSZip from "jszip";
 
-import { writeZipPart } from "@stll/docx-core/zip";
+import type { ZipArchive } from "@stll/docx-core/zip";
 import { OOXML_NS } from "@stll/docx-utils";
 
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import type { Document } from "../types/document";
-import { decodeText, encodeUtf8 } from "../utils/textEncoding";
+import { decodeText } from "../utils/textEncoding";
 import { isUnsafePackagePath } from "./packageParts";
 import { parseRelationships, resolveRelativePath } from "./relsParser";
 import { captureVerbatimXml } from "./verbatimCapture";
@@ -45,7 +44,7 @@ const withoutChildren = (
 
 type RemoveResolvedHeaderFooterPartsOptions = {
   document: Document;
-  zip: JSZip;
+  zip: ZipArchive;
   removedReferences: readonly RemovedSectionReference[];
   compressionLevel: number;
 };
@@ -58,11 +57,11 @@ export const removeResolvedHeaderFooterParts = async ({
   compressionLevel,
 }: RemoveResolvedHeaderFooterPartsOptions): Promise<void> => {
   if (removedReferences.length === 0) return;
-  const relsFile = zip.file(DOCUMENT_RELS_PATH);
+  const relsFile = zip.entry(DOCUMENT_RELS_PATH);
   if (!relsFile)
     return panic("A resolved header/footer part has no document relationships");
   const relsXml = await relsFile
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   const relationships = parseRelationships(relsXml);
   const removedIds = new Set<string>();
@@ -99,21 +98,17 @@ export const removeResolvedHeaderFooterParts = async ({
     );
   }
   // Another package part may share the retired story part through its own relationship.
-  for (const file of Object.values(zip.files)) {
-    if (
-      file.dir ||
-      !file.name.endsWith(".rels") ||
-      file.name === DOCUMENT_RELS_PATH
-    )
+  for (const file of zip.entries()) {
+    if (!file.path.endsWith(".rels") || file.path === DOCUMENT_RELS_PATH)
       continue;
     const otherRelationships = parseRelationships(
       await file
-        .async("uint8array")
+        .bytes()
         .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     );
     for (const relationship of otherRelationships.values()) {
       if (relationship.targetMode !== "External") {
-        candidates.delete(resolveRelativePath(file.name, relationship.target));
+        candidates.delete(resolveRelativePath(file.path, relationship.target));
       }
     }
   }
@@ -121,11 +116,11 @@ export const removeResolvedHeaderFooterParts = async ({
   for (const path of candidates) {
     const slash = path.lastIndexOf("/");
     const relsPath = `${path.slice(0, slash + 1)}_rels/${path.slice(slash + 1)}.rels`;
-    const partRels = zip.file(relsPath);
+    const partRels = zip.entry(relsPath);
     if (!partRels) continue;
     for (const relationship of parseRelationships(
       await partRels
-        .async("uint8array")
+        .bytes()
         .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     ).values()) {
       if (
@@ -142,67 +137,61 @@ export const removeResolvedHeaderFooterParts = async ({
     }
   }
   const compressionOptions = { level: compressionLevel };
-  writeZipPart({
-    zip,
-    path: DOCUMENT_RELS_PATH,
-    data: encodeUtf8(
-      withoutChildren(
-        relsXml,
-        (child) =>
-          getNamespaceUri(child) === OOXML_NS.pr &&
-          getLocalName(child.name) === "Relationship" &&
-          removedIds.has(getAttribute(child, null, "Id") ?? ""),
-      ),
+  zip.set(
+    DOCUMENT_RELS_PATH,
+    withoutChildren(
+      relsXml,
+      (child) =>
+        getNamespaceUri(child) === OOXML_NS.pr &&
+        getLocalName(child.name) === "Relationship" &&
+        removedIds.has(getAttribute(child, null, "Id") ?? ""),
     ),
-    options: { compression: "DEFLATE", compressionOptions },
-  });
+    compressionOptions,
+  );
   if (document.package.relationships) {
     document.package.relationships = new Map(document.package.relationships);
     for (const id of removedIds) document.package.relationships.delete(id);
   }
   for (const path of candidates) {
-    zip.remove(path);
+    zip.delete(path);
     const slash = path.lastIndexOf("/");
-    zip.remove(
+    zip.delete(
       `${path.slice(0, slash + 1)}_rels/${path.slice(slash + 1)}.rels`,
     );
   }
-  for (const file of Object.values(zip.files)) {
-    if (file.dir || !file.name.endsWith(".rels")) continue;
+  for (const file of zip.entries()) {
+    if (!file.path.endsWith(".rels")) continue;
     for (const relationship of parseRelationships(
       await file
-        .async("uint8array")
+        .bytes()
         .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
     ).values()) {
       if (relationship.targetMode !== "External")
         retiredMedia.delete(
-          resolveRelativePath(file.name, relationship.target),
+          resolveRelativePath(file.path, relationship.target),
         );
     }
   }
   for (const path of retiredMedia) {
-    zip.remove(path);
+    zip.delete(path);
     candidates.add(path);
   }
-  const contentTypes = zip.file("[Content_Types].xml");
+  const contentTypes = zip.entry("[Content_Types].xml");
   if (!contentTypes) return panic("The package has no content types");
   const contentTypesXml = await contentTypes
-    .async("uint8array")
+    .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
-  writeZipPart({
-    zip,
-    path: "[Content_Types].xml",
-    data: encodeUtf8(
-      withoutChildren(
-        contentTypesXml,
-        (child) =>
-          getNamespaceUri(child) === OOXML_NS.ct &&
-          getLocalName(child.name) === "Override" &&
-          candidates.has(
-            (getAttribute(child, null, "PartName") ?? "").replace(/^\//u, ""),
-          ),
-      ),
+  zip.set(
+    "[Content_Types].xml",
+    withoutChildren(
+      contentTypesXml,
+      (child) =>
+        getNamespaceUri(child) === OOXML_NS.ct &&
+        getLocalName(child.name) === "Override" &&
+        candidates.has(
+          (getAttribute(child, null, "PartName") ?? "").replace(/^\//u, ""),
+        ),
     ),
-    options: { compression: "DEFLATE", compressionOptions },
-  });
+    compressionOptions,
+  );
 };

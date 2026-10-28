@@ -11,7 +11,9 @@
  * Ported alongside eigenpal/docx-editor `vmlImageParser.ts`.
  */
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import type {
   BlockContent,
@@ -42,8 +44,8 @@ async function pictDocx(options: PictDocxOptions): Promise<ArrayBuffer> {
   const imageRel = options.imageRel ?? true;
   const withMedia = options.media ?? true;
   const withControl = options.runXml.includes('r:id="rIdControl"');
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -54,14 +56,14 @@ async function pictDocx(options: PictDocxOptions): Promise<ArrayBuffer> {
 ${withControl ? '  <Override PartName="/word/activeX/activeX1.xml" ContentType="application/vnd.ms-office.activeX+xml"/>' : ""}
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -69,7 +71,7 @@ ${imageRel ? `  <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Tar
 ${withControl ? '  <Relationship Id="rIdControl" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/control" Target="activeX/activeX1.xml"/>' : ""}
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -80,20 +82,20 @@ ${withControl ? '  <Relationship Id="rIdControl" Type="http://schemas.openxmlfor
 </w:document>`,
   );
   if (withMedia) {
-    zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
+    zip.set("word/media/image1.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
   }
   if (withControl) {
-    zip.file(
+    zip.set(
       "word/activeX/activeX1.xml",
       `${XML}<ax:ocx xmlns:ax="http://schemas.microsoft.com/office/2006/activeX" ax:classid="{D7053240-CE69-11CD-A777-00DD01143C57}" ax:persistence="persistPropertyBag"/>`,
     );
   }
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 /** Pull the first drawing content out of a paragraph's first run. */
@@ -184,8 +186,8 @@ function firstDrawingInInlineSdt(
  * wrapper element (`w:hyperlink`, inline `w:sdt`, …) it is exercising.
  */
 async function bodyScopedPictDocx(bodyInnerXml: string): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -195,21 +197,21 @@ async function bodyScopedPictDocx(bodyInnerXml: string): Promise<ArrayBuffer> {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -219,13 +221,13 @@ async function bodyScopedPictDocx(bodyInnerXml: string): Promise<ArrayBuffer> {
   </w:body>
 </w:document>`,
   );
-  zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-  zip.file(
+  zip.set("word/media/image1.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+  zip.set(
     "word/styles.xml",
     `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
 const PICT_WITH_IMAGE = `<w:pict><v:shape id="Picture 1" type="#_x0000_t75" style="width:2in;height:1in"><v:imagedata r:id="rIdImg" o:title="logo"/></v:shape></w:pict>`;
@@ -316,8 +318,8 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
-    const docXml = await zip.file("word/document.xml")!.async("text");
+    const zip = await ZipArchive.read(out);
+    const docXml = await zip.entry("word/document.xml")!.text();
     // The VML round-trips as VML, not a synthesized <w:drawing>.
     expect(docXml).toContain("<w:pict");
     expect(docXml).toContain("<v:imagedata");
@@ -325,7 +327,7 @@ describe("VML w:pict inline images", () => {
     expect(docXml).not.toContain("<w:drawing");
     expect(docXml).not.toContain("wp:inline");
     // The referenced media part survives the round-trip.
-    expect(zip.file("word/media/image1.png")).not.toBeNull();
+    expect(zip.entry("word/media/image1.png")).toBeDefined();
   });
 
   test("keeps captured VML XML stable after save and reopen", async () => {
@@ -403,8 +405,8 @@ describe("VML w:pict inline images", () => {
     const validation = await validateDocx(out);
     expect(validation.errors).toEqual([]);
     expect(validation.valid).toBe(true);
-    const zip = await JSZip.loadAsync(out);
-    const docXml = await zip.file("word/document.xml")!.async("text");
+    const zip = await ZipArchive.read(out);
+    const docXml = await zip.entry("word/document.xml")!.text();
     expect(docXml).toContain("<w:object");
     expect(docXml).toContain("<w:control");
     expect(docXml).toContain('r:id="rIdImg"');
@@ -503,12 +505,12 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect(drawing?.image.rId).toBeUndefined();
 
-    const zip = await JSZip.loadAsync(out);
-    const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const zip = await ZipArchive.read(out);
+    const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
     expect(rels).not.toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
-    expect(
-      Object.keys(zip.files).some((path) => path.startsWith("word/media/")),
-    ).toBe(false);
+    expect(zip.paths().some((path) => path.startsWith("word/media/"))).toBe(
+      false,
+    );
 
     const reopened = await parseDocx(out, { preloadFonts: false });
     const reopenedDrawing = firstDrawing(
@@ -792,8 +794,8 @@ describe("VML w:pict inline images", () => {
     expect(drawing?.image.src).toBeUndefined();
 
     const out = await repackDocx(doc, { updateModifiedDate: false });
-    const zip = await JSZip.loadAsync(out);
-    const docXml = await zip.file("word/document.xml")!.async("text");
+    const zip = await ZipArchive.read(out);
+    const docXml = await zip.entry("word/document.xml")!.text();
     expect(docXml).toContain("<w:pict");
     expect(docXml).toContain('r:id="rIdImg"');
   });
@@ -859,8 +861,8 @@ describe("VML w:pict inline images", () => {
     // A DOCX whose root binds VML (`v2`), office (`o2`), and relationship (`r2`)
     // namespaces to non-canonical prefixes the serializer's root does not
     // declare. The captured VML must carry those declarations so it resolves.
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -870,21 +872,21 @@ describe("VML w:pict inline images", () => {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v2="urn:schemas-microsoft-com:vml" xmlns:o2="urn:schemas-microsoft-com:office:office" xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -894,13 +896,13 @@ describe("VML w:pict inline images", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-    zip.file(
+    zip.set("word/media/image1.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     const drawing = firstDrawing(doc.package.document.content.at(0));
@@ -911,8 +913,8 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
-    const docXml = await outZip.file("word/document.xml")!.async("text");
+    const outZip = await ZipArchive.read(out);
+    const docXml = await outZip.entry("word/document.xml")!.text();
     // The non-canonical prefix bindings travel with the captured VML.
     expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
     expect(docXml).toContain("<v2:shape");
@@ -928,8 +930,8 @@ describe("VML w:pict inline images", () => {
   test("routes a w:pict inside mc:AlternateContent/mc:Fallback and prefers the fallback image", async () => {
     // A common compatibility form: a modern DrawingML Choice plus a VML `w:pict`
     // Fallback carrying the picture. folio renders (and keeps) the Fallback image.
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -939,14 +941,14 @@ describe("VML w:pict inline images", () => {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -954,7 +956,7 @@ describe("VML w:pict inline images", () => {
   <Relationship Id="rIdFallback" Type="${RELATIONSHIP_TYPES.image}" Target="media/fallback.png"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -969,14 +971,14 @@ describe("VML w:pict inline images", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file("word/media/choice.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-    zip.file("word/media/fallback.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-    zip.file(
+    zip.set("word/media/choice.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+    zip.set("word/media/fallback.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     const drawing = firstDrawing(doc.package.document.content.at(0));
@@ -988,21 +990,21 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
-    const docXml = await outZip.file("word/document.xml")!.async("text");
+    const outZip = await ZipArchive.read(out);
+    const docXml = await outZip.entry("word/document.xml")!.text();
     expect(docXml).toContain("<w:pict");
     expect(docXml).toContain('r:id="rIdFallback"');
     // The whole mc:AlternateContent is preserved on save (the Choice is not lost).
     expect(docXml).toContain('r:embed="rIdChoice"');
-    expect(outZip.file("word/media/fallback.png")).not.toBeNull();
+    expect(outZip.entry("word/media/fallback.png")).toBeDefined();
   });
 
   test("captures xmlns declarations scoped on an ancestor paragraph (not just the root)", async () => {
     // The non-canonical VML / relationship prefixes are bound on the <w:p>, not
     // the document root. The in-scope set must accumulate down the ancestor
     // chain so the captured pict still carries them.
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -1012,14 +1014,14 @@ describe("VML w:pict inline images", () => {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -1027,7 +1029,7 @@ describe("VML w:pict inline images", () => {
 </Relationships>`,
     );
     // Root declares only w; v2/r2 are scoped on the paragraph.
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -1037,13 +1039,13 @@ describe("VML w:pict inline images", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-    zip.file(
+    zip.set("word/media/image1.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     const drawing = firstDrawing(doc.package.document.content.at(0));
@@ -1053,8 +1055,8 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
-    const docXml = await outZip.file("word/document.xml")!.async("text");
+    const outZip = await ZipArchive.read(out);
+    const docXml = await outZip.entry("word/document.xml")!.text();
     // The paragraph-scoped bindings are carried onto the captured pict.
     expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
     expect(docXml).toContain("<v2:shape");
@@ -1069,8 +1071,8 @@ describe("VML w:pict inline images", () => {
   test("uses the Choice image when the Fallback pict's relationship cannot be resolved", async () => {
     // The Fallback VML references a missing relationship, so it cannot resolve
     // to a media part; the resolvable Choice DrawingML image must win.
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -1080,7 +1082,7 @@ describe("VML w:pict inline images", () => {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -1088,14 +1090,14 @@ describe("VML w:pict inline images", () => {
 </Relationships>`,
     );
     // Only the Choice image resolves; the Fallback's rIdMissing is absent.
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdChoice" Type="${RELATIONSHIP_TYPES.image}" Target="media/choice.png"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -1110,13 +1112,13 @@ describe("VML w:pict inline images", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file("word/media/choice.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-    zip.file(
+    zip.set("word/media/choice.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     const drawing = firstDrawing(doc.package.document.content.at(0));
@@ -1128,8 +1130,8 @@ describe("VML w:pict inline images", () => {
   test("captures xmlns declarations scoped on a table cell containing a w:pict", async () => {
     // The non-canonical VML / relationship prefixes are bound on the <w:tc>, so
     // the in-scope set must accumulate through tbl -> tr -> tc into the cell.
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -1139,14 +1141,14 @@ describe("VML w:pict inline images", () => {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -1154,7 +1156,7 @@ describe("VML w:pict inline images", () => {
 </Relationships>`,
     );
     // Root declares only w; v2/r2 are scoped on the <w:tc>.
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -1172,13 +1174,13 @@ describe("VML w:pict inline images", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-    zip.file(
+    zip.set("word/media/image1.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     const table = doc.package.document.content.at(0);
@@ -1193,8 +1195,8 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
-    const docXml = await outZip.file("word/document.xml")!.async("text");
+    const outZip = await ZipArchive.read(out);
+    const docXml = await outZip.entry("word/document.xml")!.text();
     // The cell-scoped bindings are carried onto the captured pict.
     expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
     expect(docXml).toContain("<v2:shape");
@@ -1218,8 +1220,8 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
-    const docXml = await outZip.file("word/document.xml")!.async("text");
+    const outZip = await ZipArchive.read(out);
+    const docXml = await outZip.entry("word/document.xml")!.text();
     // The hyperlink-scoped bindings are carried onto the captured pict.
     expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
     expect(docXml).toContain("<v2:shape");
@@ -1251,8 +1253,8 @@ describe("VML w:pict inline images", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
-    const docXml = await outZip.file("word/document.xml")!.async("text");
+    const outZip = await ZipArchive.read(out);
+    const docXml = await outZip.entry("word/document.xml")!.text();
     // The sdt-scoped bindings are carried onto the captured pict.
     expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
     expect(docXml).toContain("<v2:shape");
@@ -1291,8 +1293,8 @@ describe("VML w:pict inline images", () => {
 
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
-    const outZip = await JSZip.loadAsync(out);
-    const docXml = await outZip.file("word/document.xml")!.async("text");
+    const outZip = await ZipArchive.read(out);
+    const docXml = await outZip.entry("word/document.xml")!.text();
     expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
     expect(docXml).toContain(
       'xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships"',

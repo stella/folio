@@ -12,7 +12,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createDocx } from "../docx/rezip";
 import { endnote, run } from "../docx/server/build";
@@ -21,7 +22,7 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
 const partText = async (buffer: ArrayBuffer, part: string): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file(part)?.async("string")) ?? "";
+  (await (await ZipArchive.read(buffer)).entry(part)?.text()) ?? "";
 
 /** One paragraph holding a deletion, an insertion and a relocation. */
 const reviewedParagraph = (paraId?: string): BlockContent => ({

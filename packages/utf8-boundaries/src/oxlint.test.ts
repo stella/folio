@@ -112,41 +112,6 @@ const lint = async (
   }
 };
 
-test("no-string-zip-entry catches computed writes and permits Bun and literal callbacks", async () => {
-  const source = [
-    'zip.file("doc.xml", xml);',
-    'zip["file"](path, content);',
-    "Bun.file(path, options);",
-    "entry.file((file) => accept(file), (error) => reject(error));",
-    "entry.file(function (file) {}, onError);",
-    "zip.file(path);",
-  ].join("\n");
-  expect(await lint("no-string-zip-entry", source)).toEqual([1, 2]);
-});
-
-test("no-string-zip-entry exempts only the configured owner path", async () => {
-  const source = "zip.file(path, content);";
-  const options = { ownerPath: "src/zip-owner.ts" };
-  expect(
-    await lint("no-string-zip-entry", source, {
-      filename: "src/zip-owner.ts",
-      options,
-    }),
-  ).toEqual([]);
-  expect(
-    await lint("no-string-zip-entry", source, {
-      filename: "src/consumer.ts",
-      options,
-    }),
-  ).toEqual([1]);
-  expect(
-    await lint("no-string-zip-entry", source, {
-      filename: "other-src/zip-owner.ts",
-      options,
-    }),
-  ).toEqual([1]);
-});
-
 test("no-chunked-text-codec tracks decoder receivers across loops and stream callbacks", async () => {
   const source = [
     "const decoder = new TextDecoder();",
@@ -171,16 +136,10 @@ test("no-chunked-text-codec tracks decoder receivers across loops and stream cal
   ]);
 });
 
-test("fixtures exercise both rules", async () => {
-  const zipFixture = await Bun.file(
-    path.resolve(import.meta.dir, "../test/fixtures/no-string-zip-entry.ts"),
-  ).text();
+test("the fixture exercises the rule", async () => {
   const codecFixture = await Bun.file(
     path.resolve(import.meta.dir, "../test/fixtures/no-chunked-text-codec.ts"),
   ).text();
-  expect(await lint("no-string-zip-entry", zipFixture)).toEqual([
-    2, 3, 4, 5, 6, 7,
-  ]);
   expect(await lint("no-chunked-text-codec", codecFixture)).toEqual([
     3, 4, 5, 5, 6,
   ]);

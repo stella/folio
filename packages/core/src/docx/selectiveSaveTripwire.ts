@@ -14,7 +14,8 @@
  */
 
 import { panic } from "better-result";
-import type JSZipType from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 const IGNORED_PATHS = new Set<string>(["docProps/core.xml"]);
 
@@ -34,7 +35,7 @@ export type TripwireResult =
     };
 
 type LoadedEntries = {
-  zip: JSZipType;
+  zip: ZipArchive;
   paths: string[];
 };
 
@@ -45,19 +46,11 @@ type EntryBytes = {
 };
 
 async function listEntries(buffer: ArrayBuffer): Promise<LoadedEntries> {
-  const JSZip = (await import("jszip")).default;
-  const zip = await JSZip.loadAsync(buffer);
-  const paths: string[] = [];
-  for (const [path, entry] of Object.entries(zip.files)) {
-    if (entry.dir) {
-      continue;
-    }
-    if (IGNORED_PATHS.has(path)) {
-      continue;
-    }
-    paths.push(path);
-  }
-  paths.sort();
+  const zip = await ZipArchive.read(buffer);
+  const paths = zip
+    .paths()
+    .filter((path) => !IGNORED_PATHS.has(path))
+    .toSorted();
   return { zip, paths };
 }
 
@@ -74,15 +67,15 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 function readEntryBytes(
-  zip: JSZipType,
+  zip: ZipArchive,
   path: string,
   side: "selective" | "full",
 ): Promise<Uint8Array> {
-  const entry = zip.file(path);
+  const entry = zip.entry(path);
   if (!entry) {
     panic(`Missing ${side} zip entry: ${path}`);
   }
-  return entry.async("uint8array");
+  return entry.bytes();
 }
 
 function readCommonEntryBytes(

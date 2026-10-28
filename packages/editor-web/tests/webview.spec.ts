@@ -9,9 +9,10 @@
 
 import { expect, test } from "@playwright/test";
 import type { Page, Request } from "@playwright/test";
-import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { EditorMessage, HostMessage } from "../src/protocol";
 import {
@@ -166,8 +167,8 @@ test("the VS Code bundle round-trips a document under the webview policy", async
     reason: "structuralChange",
   });
   const savedBytes = await serializedBytes(page, 1);
-  const savedZip = await JSZip.loadAsync(savedBytes);
-  const savedXml = await savedZip.file("word/document.xml")?.async("text");
+  const savedZip = await ZipArchive.read(savedBytes);
+  const savedXml = await savedZip.entry("word/document.xml")?.text();
   expect(savedXml).toContain("Alpha");
   expect(savedXml).toContain("Beta");
   expect((await sentOfType(page, "dirty")).at(-1)).toEqual({

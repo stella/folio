@@ -9,7 +9,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { toMarkdown } from "../markdown";
@@ -58,11 +59,8 @@ const referencelessDocument = (): Document => ({
 });
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(buffer)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(buffer)).entry("word/document.xml")?.text()) ??
+  "";
 
 const referenceCount = (xml: string): number =>
   xml.split("<w:commentReference").length - 1;

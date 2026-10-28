@@ -215,9 +215,10 @@ const readUnrelatedParts = async (
   buffer: ArrayBuffer,
 ): Promise<Map<string, PackagePart>> => {
   const raw = await unzipDocx(buffer, { extractAllXml: true });
-  const entries = Object.entries(raw.originalZip.files).filter(
-    ([path, file]) => !file.dir && isUnrelatedPart(path),
-  );
+  const entries = raw.originalZip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)
+    .filter(([path]) => isUnrelatedPart(path));
   return new Map(
     await Promise.all(
       entries.map(
@@ -226,10 +227,7 @@ const readUnrelatedParts = async (
           if (xml !== undefined) {
             return [path, { kind: PART_KINDS.xml, text: xml }];
           }
-          return [
-            path,
-            { kind: PART_KINDS.binary, bytes: await file.async("uint8array") },
-          ];
+          return [path, { kind: PART_KINDS.binary, bytes: await file.bytes() }];
         },
       ),
     ),

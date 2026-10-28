@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { setDocumentBodyComments } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
@@ -51,23 +51,23 @@ const buildFixture = async ({
     );
   }
 
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/comments.xml" ContentType="${COMMENTS_CONTENT_TYPE}"/><Override PartName="/word/commentsExtended.xml" ContentType="${COMMENTS_EXTENDED_CONTENT_TYPE}"/></Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`,
   );
-  zip.file("word/document.xml", documentXml(comments === "one"));
-  zip.file("word/comments.xml", commentsXml(comments));
-  zip.file("word/commentsExtended.xml", commentsExtendedXml);
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/document.xml", documentXml(comments === "one"));
+  zip.set("word/comments.xml", commentsXml(comments));
+  zip.set("word/commentsExtended.xml", commentsExtendedXml);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 describe("empty comment package preservation", () => {
@@ -78,24 +78,24 @@ describe("empty comment package preservation", () => {
       commentsExtendedRelationship: true,
     });
     const parsed = await parseDocx(source, { preloadFonts: false });
-    const sourceZip = await JSZip.loadAsync(source);
+    const sourceZip = await ZipArchive.read(source);
     const sourceRelationships = await sourceZip
-      .file("word/_rels/document.xml.rels")!
-      .async("text");
+      .entry("word/_rels/document.xml.rels")!
+      .text();
 
     expect(parsed.package.document.comments).toBeUndefined();
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
-    const savedZip = await JSZip.loadAsync(saved);
-    expect(
-      await savedZip.file("word/_rels/document.xml.rels")!.async("text"),
-    ).toBe(sourceRelationships);
-    expect(await savedZip.file("word/comments.xml")!.async("text")).toBe(
+    const savedZip = await ZipArchive.read(saved);
+    expect(await savedZip.entry("word/_rels/document.xml.rels")!.text()).toBe(
+      sourceRelationships,
+    );
+    expect(await savedZip.entry("word/comments.xml")!.text()).toBe(
       commentsXml("empty"),
     );
-    expect(
-      await savedZip.file("word/commentsExtended.xml")!.async("text"),
-    ).toBe(commentsExtendedXml);
+    expect(await savedZip.entry("word/commentsExtended.xml")!.text()).toBe(
+      commentsExtendedXml,
+    );
 
     const reopened = await parseDocx(saved, { preloadFonts: false });
     expect(reopened.package.relationships).toEqual(
@@ -114,13 +114,11 @@ describe("empty comment package preservation", () => {
 
     setDocumentBodyComments(parsed.package.document, []);
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
-    const savedZip = await JSZip.loadAsync(saved);
-    const savedComments = await savedZip
-      .file("word/comments.xml")!
-      .async("text");
+    const savedZip = await ZipArchive.read(saved);
+    const savedComments = await savedZip.entry("word/comments.xml")!.text();
     const savedRelationships = await savedZip
-      .file("word/_rels/document.xml.rels")!
-      .async("text");
+      .entry("word/_rels/document.xml.rels")!
+      .text();
 
     expect(savedComments).not.toContain("<w:comment ");
     expect(savedRelationships).toContain(

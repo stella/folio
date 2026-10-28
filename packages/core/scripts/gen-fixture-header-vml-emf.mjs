@@ -1,3 +1,6 @@
+import { writeFileSync } from "node:fs";
+import { deflateSync } from "node:zlib";
+
 /**
  * Generate src/docx/__fixtures__/header-vml-emf.docx — a clean-room fixture for the
  * "first-page header with a VML→EMF letterhead image" code path.
@@ -16,9 +19,7 @@
  * original bytes round-trip via `verbatimXml`, so Word never has to
  * read this EMF.
  */
-import JSZip from "jszip";
-import { writeFileSync } from "node:fs";
-import { deflateSync } from "node:zlib";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 // ---------------------------------------------------------------------------
 // 1. Build a tiny PNG (96×80 solid teal) without external assets.
@@ -134,25 +135,22 @@ const pkgRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 // ---------------------------------------------------------------------------
 // 4. Assemble the package.
 // ---------------------------------------------------------------------------
-const zip = new JSZip();
-zip.file("[Content_Types].xml", contentTypes);
-zip.file("_rels/.rels", pkgRels);
-zip.file("word/document.xml", documentXml);
-zip.file("word/_rels/document.xml.rels", documentRels);
-zip.file("word/styles.xml", stylesXml);
-zip.file("word/header1.xml", headerXml);
-zip.file("word/_rels/header1.xml.rels", headerRels);
-zip.file("word/footer1.xml", footerXml);
-zip.file("word/media/image1.emf", emf);
-zip.file(
+const zip = new ZipArchive();
+zip.set("[Content_Types].xml", contentTypes);
+zip.set("_rels/.rels", pkgRels);
+zip.set("word/document.xml", documentXml);
+zip.set("word/_rels/document.xml.rels", documentRels);
+zip.set("word/styles.xml", stylesXml);
+zip.set("word/header1.xml", headerXml);
+zip.set("word/_rels/header1.xml.rels", headerRels);
+zip.set("word/footer1.xml", footerXml);
+zip.set("word/media/image1.emf", emf);
+zip.set(
   "word/embeddings/oleObject1.bin",
   Buffer.from([0xd0, 0xcf, 0x11, 0xe0]),
 );
 
-const out = await zip.generateAsync({
-  type: "nodebuffer",
-  compression: "DEFLATE",
-});
+const out = Buffer.from(await zip.generate());
 writeFileSync("src/docx/__fixtures__/header-vml-emf.docx", out);
 console.log(
   `wrote src/docx/__fixtures__/header-vml-emf.docx (${out.length} bytes, EMF ${emf.length}b wrapping PNG ${png.length}b)`,

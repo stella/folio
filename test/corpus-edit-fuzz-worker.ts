@@ -85,12 +85,10 @@ const partsOf = async (bytes: Uint8Array): Promise<Map<string, Uint8Array>> => {
   const raw = await unzipDocx(toArrayBuffer(bytes), { extractAllXml: true });
   return new Map(
     await Promise.all(
-      Object.entries(raw.originalZip.files)
-        .filter(([, file]) => !file.dir)
-        .map(
-          async ([name, file]) =>
-            [name, await file.async("uint8array")] as const,
-        ),
+      raw.originalZip
+        .entries()
+        .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)
+        .map(async ([name, file]) => [name, await file.bytes()] as const),
     ),
   );
 };

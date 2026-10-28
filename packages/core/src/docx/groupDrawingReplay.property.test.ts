@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 /**
  * A drawing folio cannot project is written back untouched, in every part.
  *
@@ -17,10 +18,10 @@
  * part must come back carrying the source `w:drawing` byte for byte and its
  * relationship must still resolve to the same target.
  */
-
-import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import {
   propertyConfig,
@@ -102,16 +103,16 @@ const partRels = (
   }</Relationships>`;
 
 const docxFor = (placement: PartPlacement): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/></Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     partRels(
       placement,
@@ -124,23 +125,23 @@ const docxFor = (placement: PartPlacement): Promise<ArrayBuffer> => {
       ].join(""),
     ),
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document ${NS}><w:body>${contentFor(placement, "body")}<w:sectPr><w:headerReference w:type="default" r:id="rIdHdr"/><w:footerReference w:type="default" r:id="rIdFtr"/></w:sectPr></w:body></w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML_DECLARATION}<w:hdr ${NS}>${contentFor(placement, "header")}</w:hdr>`,
   );
-  zip.file(
+  zip.set(
     "word/footer1.xml",
     `${XML_DECLARATION}<w:ftr ${NS}>${contentFor(placement, "footer")}</w:ftr>`,
   );
-  zip.file(
+  zip.set(
     "word/footnotes.xml",
     `${XML_DECLARATION}<w:footnotes ${NS}><w:footnote w:id="1">${contentFor(placement, "footnote")}</w:footnote></w:footnotes>`,
   );
-  zip.file(
+  zip.set(
     "word/endnotes.xml",
     `${XML_DECLARATION}<w:endnotes ${NS}><w:endnote w:id="1">${contentFor(placement, "endnote")}</w:endnote></w:endnotes>`,
   );
@@ -151,13 +152,13 @@ const docxFor = (placement: PartPlacement): Promise<ArrayBuffer> => {
     endnotes: "endnote",
   } as const satisfies Record<string, PartPlacement>;
   for (const [part, placementForPart] of Object.entries(SIDECAR_PARTS)) {
-    zip.file(
+    zip.set(
       `word/_rels/${part}.xml.rels`,
       partRels(placement, placementForPart),
     );
   }
-  zip.file("word/media/group-child.png", PNG_1X1_BASE64, { base64: true });
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/media/group-child.png", base64ToBytes(PNG_1X1_BASE64));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /**
@@ -206,11 +207,11 @@ const applyState = (document: Document, state: ModelState): Document => {
 };
 
 const partText = async (buffer: ArrayBuffer, path: string): Promise<string> => {
-  const file = (await JSZip.loadAsync(buffer)).file(path);
+  const file = (await ZipArchive.read(buffer)).entry(path);
   if (!file) {
     throw new Error(`saved package has no ${path}`);
   }
-  return file.async("string");
+  return file.text();
 };
 
 describe("a group drawing is replayed, never rebuilt", () => {

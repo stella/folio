@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
@@ -68,12 +68,12 @@ const expectProjectionWarning = (
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const file = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(buffer);
+  const file = zip.entry("word/document.xml");
   if (!file) {
     throw new Error("Missing word/document.xml");
   }
-  return file.async("text");
+  return file.text();
 };
 
 describe("page-break run field ownership", () => {

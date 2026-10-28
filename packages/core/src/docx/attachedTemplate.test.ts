@@ -12,7 +12,8 @@
  * `r:id` values must keep resolving.
  */
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx, withoutAttachedTemplate } from "./rezip";
@@ -104,20 +105,22 @@ describe("attached template reference", () => {
   });
 
   const seedSource = async (): Promise<ArrayBuffer> => {
-    const seeded = new JSZip();
+    const seeded = new ZipArchive();
     await seeded.loadAsync(await createEmptyDocx());
-    seeded.file("word/settings.xml", SETTINGS_XML);
-    seeded.file("word/_rels/settings.xml.rels", SETTINGS_RELS);
-    return seeded.generateAsync({ type: "arraybuffer" });
+    seeded.set("word/settings.xml", SETTINGS_XML);
+    seeded.set("word/_rels/settings.xml.rels", SETTINGS_RELS);
+    return seeded
+      .generate({ compression: "store" })
+      .then((bytes) => bytes.buffer);
   };
 
   const expectFiltered = async (out: ArrayBuffer): Promise<void> => {
-    const zip = await JSZip.loadAsync(out);
-    const settings = await zip.file("word/settings.xml")!.async("text");
+    const zip = await ZipArchive.read(out);
+    const settings = await zip.entry("word/settings.xml")!.text();
     expect(settings).not.toContain("attachedTemplate");
     expect(settings).toContain('w:defaultTabStop w:val="720"');
 
-    const rels = await zip.file("word/_rels/settings.xml.rels")!.async("text");
+    const rels = await zip.entry("word/_rels/settings.xml.rels")!.text();
     expect(rels).not.toContain("template.dotm");
     expect(rels).toContain("recipients.csv");
   };

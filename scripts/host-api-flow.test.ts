@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { makeTempDir } from "../packages/cli/src/__tests__/fixtures";
 import { runFolioCli } from "../packages/cli/src/cli";
@@ -31,12 +32,12 @@ test(
   "host flow fixtures remain schema valid through replacement and headless edits",
   async () => {
     const source = await buildScrollRootDocument();
-    const zip = await JSZip.loadAsync(source);
-    const part = zip.file("word/document.xml");
+    const zip = await ZipArchive.read(source);
+    const part = zip.entry("word/document.xml");
     if (!part) throw new Error("Missing fixture document part");
-    zip.file(
+    zip.set(
       "word/document.xml",
-      (await part.async("string")).replace("First page", "Replacement page"),
+      (await part.text()).replace("First page", "Replacement page"),
     );
     const replacement = await generateDocxFixture(zip, "host-flow-replacement");
     const { dir, cleanup } = await makeTempDir();
@@ -173,20 +174,18 @@ test("scroll fixture schema validation rejects each omitted required margin", as
     "footer",
     "gutter",
   ]) {
-    const zip = await JSZip.loadAsync(source);
-    const part = zip.file("word/document.xml");
+    const zip = await ZipArchive.read(source);
+    const part = zip.entry("word/document.xml");
     if (!part) throw new Error("Missing fixture document part");
-    zip.file(
+    zip.set(
       "word/document.xml",
-      (await part.async("string")).replace(
+      (await part.text()).replace(
         new RegExp(` w:${attribute}="[0-9]+"`, "u"),
         "",
       ),
     );
     expect(
-      await validateDocxPackage(
-        await zip.generateAsync({ type: "uint8array" }),
-      ),
+      await validateDocxPackage(await zip.generate({ compression: "store" })),
     ).toMatchObject({
       valid: false,
       code: "invalid_schema_attribute",

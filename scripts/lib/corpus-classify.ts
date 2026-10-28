@@ -20,7 +20,8 @@
  */
 
 import { XMLValidator } from "fast-xml-parser";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 export const NOT_A_DOCX_REASONS = {
   encryptedPackage: "encrypted-package",
@@ -158,9 +159,9 @@ export const classifyCorpusFile = async (
     };
   }
 
-  let archive: JSZip;
+  let archive: ZipArchive;
   try {
-    archive = await JSZip.loadAsync(bytes);
+    archive = await ZipArchive.read(bytes);
   } catch (cause) {
     return {
       kind: "not-a-docx",
@@ -169,8 +170,8 @@ export const classifyCorpusFile = async (
     };
   }
 
-  const relationships = archive.file(PACKAGE_RELATIONSHIPS_PART);
-  if (archive.file(CONTENT_TYPES_PART) === null || relationships === null) {
+  const relationships = archive.entry(PACKAGE_RELATIONSHIPS_PART);
+  if (!archive.has(CONTENT_TYPES_PART) || relationships === undefined) {
     return {
       kind: "not-a-docx",
       reason: NOT_A_DOCX_REASONS.notAnOpcPackage,
@@ -181,7 +182,7 @@ export const classifyCorpusFile = async (
   let mainPart: string | null;
   let documentXml: string;
   try {
-    mainPart = mainPartName(await relationships.async("string"));
+    mainPart = mainPartName(await relationships.text());
     if (mainPart === null) {
       return {
         kind: "not-a-docx",
@@ -189,15 +190,15 @@ export const classifyCorpusFile = async (
         detail: "no officeDocument relationship",
       };
     }
-    const documentPart = archive.file(mainPart);
-    if (documentPart === null) {
+    const documentPart = archive.entry(mainPart);
+    if (documentPart === undefined) {
       return {
         kind: "not-a-docx",
         reason: NOT_A_DOCX_REASONS.notAWordprocessingPackage,
         detail: `the officeDocument relationship targets a missing part (${mainPart})`,
       };
     }
-    documentXml = await documentPart.async("string");
+    documentXml = await documentPart.text();
   } catch (cause) {
     return {
       kind: "not-a-docx",

@@ -1,8 +1,9 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { withFixedPackageDates } from "../../compare/reproducible-package";
 import { ensureParaIds } from "../ensureParaIds";
@@ -26,7 +27,7 @@ const CORE_PROPERTIES_XML = `<?xml version="1.0" encoding="UTF-8"?><cp:corePrope
 const entryNames = async (
   buffer: ArrayBuffer | Uint8Array,
 ): Promise<string[]> =>
-  Object.keys((await JSZip.loadAsync(buffer)).files).sort();
+  Object.keys((await ZipArchive.read(buffer)).files).sort();
 
 type EntryNamesPreservedOptions = {
   source: ArrayBuffer;
@@ -41,33 +42,28 @@ const expectEntryNamesPreserved = async ({
 };
 
 const directoryFreeFixture = async (filename: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(
+  const zip = await ZipArchive.read(
     readFileSync(path.join(FIXTURES_DIR, filename)),
   );
-  // zip.remove(directory) also deletes its children; retain every file part.
-  zip.files = Object.fromEntries(
-    Object.entries(zip.files).filter(([, entry]) => !entry.dir),
-  );
-  return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
+  return zip.generate().then((bytes) => bytes.buffer);
 };
 
 const withPrivateMetadata = async (
   buffer: ArrayBuffer,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   // The corpus currently has no core properties. Seed them in the source so
   // privacy, date restamping, and selective saves must actually rewrite a part.
-  zip.file(CORE_PROPERTIES_PATH, CORE_PROPERTIES_XML, {
-    createFolders: false,
-    date: PACKAGE_DATE,
+  zip.set(CORE_PROPERTIES_PATH, CORE_PROPERTIES_XML, {
+    modified: PACKAGE_DATE,
   });
-  return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
+  return zip.generate().then((bytes) => bytes.buffer);
 };
 
 const corePropertiesText = async (buffer: ArrayBuffer): Promise<string> => {
-  const part = (await JSZip.loadAsync(buffer)).file(CORE_PROPERTIES_PATH);
+  const part = (await ZipArchive.read(buffer)).entry(CORE_PROPERTIES_PATH);
   if (part === null) panic("Expected source core properties to survive save");
-  return part.async("text");
+  return part.text();
 };
 
 describe("save paths preserve corpus package entry names", () => {
@@ -79,14 +75,14 @@ describe("save paths preserve corpus package entry names", () => {
     expect((await entryNames(source)).some((name) => name.endsWith("/"))).toBe(
       false,
     );
-    const zip = await JSZip.loadAsync(source);
-    const document = zip.file("word/document.xml");
-    if (document === null) panic("Expected a source document part");
-    const documentXml = await document.async("text");
-    // Deliberately reproduce JSZip's default to prove the oracle sees the
+    const zip = await ZipArchive.read(source);
+    const document = zip.entry("word/document.xml");
+    if (document === undefined) panic("Expected a source document part");
+    const documentXml = await document.text();
+    // Deliberately reproduce ZipArchive's default to prove the oracle sees the
     // invented parent, even though every file part remains unchanged.
-    zip.file("word/document.xml", documentXml);
-    const wrong = await zip.generateAsync({ type: "arraybuffer" });
+    zip.set("word/document.xml", documentXml);
+    const wrong = (await zip.generate({ compression: "store" })).buffer;
     expect(await entryNames(wrong)).toContain("word/");
     expect(await entryNames(wrong)).not.toEqual(await entryNames(source));
   });

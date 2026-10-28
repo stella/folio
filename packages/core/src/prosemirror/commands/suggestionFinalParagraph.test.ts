@@ -1,8 +1,9 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { getTrackedChangesFromDoc } from "../../ai-edits/read";
@@ -264,11 +265,11 @@ const documentBuffer = async (state: EditorState): Promise<Uint8Array> =>
 
 const documentXml = async (state: EditorState): Promise<string> => {
   const buffer = await documentBuffer(state);
-  const part = (await JSZip.loadAsync(buffer)).file("word/document.xml");
+  const part = (await ZipArchive.read(buffer)).entry("word/document.xml");
   if (!part) {
     return panic("expected word/document.xml");
   }
-  return await part.async("string");
+  return await part.text();
 };
 
 const reopenedState = async (state: EditorState): Promise<EditorState> => {

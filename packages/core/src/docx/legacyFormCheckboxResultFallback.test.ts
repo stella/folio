@@ -19,7 +19,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -33,20 +34,17 @@ const W_NAMESPACE =
 const W14_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordml";
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  zip.file(
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:w14="${W14_NAMESPACE}"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
-  (await (
-    await JSZip.loadAsync(saved)
-  )
-    .file("word/document.xml")
-    ?.async("text")) ?? "";
+  (await (await ZipArchive.read(saved)).entry("word/document.xml")?.text()) ??
+  "";
 
 /** The part a plain save writes, and the part the editor round trip writes. */
 const savedAndProjected = async (

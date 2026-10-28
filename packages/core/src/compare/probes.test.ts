@@ -17,9 +17,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { FolioDocxReviewer } from "../ai-edits/headless";
@@ -95,7 +96,7 @@ const buildColumnTableDocx = (
 };
 
 const partOf = async (buffer: ArrayBuffer, name: string): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file(name)?.async("string")) ?? "";
+  (await (await ZipArchive.read(buffer)).entry(name)?.text()) ?? "";
 
 type NumberingFormatOverride = { level: number; format: string };
 
@@ -103,12 +104,12 @@ const withNumberingFormats = async (
   buffer: ArrayBuffer,
   overrides: readonly NumberingFormatOverride[],
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const entry = zip.file("word/numbering.xml");
+  const zip = await ZipArchive.read(buffer);
+  const entry = zip.entry("word/numbering.xml");
   if (!entry) {
     throw new Error("The numbered-list fixture has no numbering part.");
   }
-  let xml = await entry.async("string");
+  let xml = await entry.text();
   for (const { level, format } of overrides) {
     const levelFormat = new RegExp(
       `(<w:lvl w:ilvl="${String(level)}">[\\s\\S]*?<w:numFmt w:val=")[^"]+("/>)`,
@@ -126,8 +127,8 @@ const withNumberingFormats = async (
     }
     xml = replaced;
   }
-  zip.file("word/numbering.xml", xml);
-  return await zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/numbering.xml", xml);
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
@@ -222,12 +223,12 @@ const booleanFormattingProjection = async (
 const withoutTerminalBodyParagraph = async (
   buffer: ArrayBuffer,
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const documentEntry = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(buffer);
+  const documentEntry = zip.entry("word/document.xml");
   if (!documentEntry) {
     throw new Error("The fixture has no main document part.");
   }
-  const documentXml = await documentEntry.async("string");
+  const documentXml = await documentEntry.text();
   const withoutCarrier = documentXml.replace(
     /<w:p\b[^>]*><\/w:p>(?=<w:sectPr>)/u,
     "",
@@ -235,8 +236,8 @@ const withoutTerminalBodyParagraph = async (
   if (withoutCarrier === documentXml) {
     throw new Error("The fixture has no terminal empty body paragraph.");
   }
-  zip.file("word/document.xml", withoutCarrier);
-  return await zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/document.xml", withoutCarrier);
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 /** Every `w:p` element of a document part, as raw XML. */

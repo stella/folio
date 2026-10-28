@@ -70,9 +70,9 @@ const readPackageParts = async (
   buffer: ArrayBuffer,
 ): Promise<Map<string, PackagePart>> => {
   const raw = await unzipDocx(buffer, { extractAllXml: true });
-  const entries = Object.entries(raw.originalZip.files).filter(
-    ([, file]) => !file.dir,
-  );
+  const entries = raw.originalZip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const);
   return new Map(
     await Promise.all(
       entries.map(
@@ -81,10 +81,7 @@ const readPackageParts = async (
           if (xml !== undefined) {
             return [path, { kind: PART_KINDS.xml, text: xml }];
           }
-          return [
-            path,
-            { kind: PART_KINDS.binary, bytes: await file.async("uint8array") },
-          ];
+          return [path, { kind: PART_KINDS.binary, bytes: await file.bytes() }];
         },
       ),
     ),

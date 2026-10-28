@@ -1,6 +1,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -403,31 +404,29 @@ describe("chart previews", () => {
       `<c:barDir val="col"/><c:grouping val="clustered"/>${series([1, 2])}`,
     );
     const chartRels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/chart.png"/></Relationships>`;
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    zip.file(
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    zip.set(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:c="${NS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r>${drawingXml()}</w:r></w:p><w:sectPr/></w:body></w:document>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rChart" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="charts/chart1.xml"/></Relationships>`,
     );
-    zip.file("word/charts/chart1.xml", chartXml);
-    zip.file("word/charts/_rels/chart1.xml.rels", chartRels);
-    zip.file("word/media/chart.png", new Uint8Array([0]));
-    const source = await zip.generateAsync({ type: "arraybuffer" });
+    zip.set("word/charts/chart1.xml", chartXml);
+    zip.set("word/charts/_rels/chart1.xml.rels", chartRels);
+    zip.set("word/media/chart.png", new Uint8Array([0]));
+    const source = (await zip.generate({ compression: "store" })).buffer;
     const saved = await repackDocx(
       await parseDocx(source, { preloadFonts: false }),
       {
         updateModifiedDate: false,
       },
     );
-    const result = await JSZip.loadAsync(saved);
-    expect(await result.file("word/charts/chart1.xml")?.async("text")).toBe(
-      chartXml,
-    );
+    const result = await ZipArchive.read(saved);
+    expect(await result.entry("word/charts/chart1.xml")?.text()).toBe(chartXml);
     expect(
-      await result.file("word/charts/_rels/chart1.xml.rels")?.async("text"),
+      await result.entry("word/charts/_rels/chart1.xml.rels")?.text(),
     ).toBe(chartRels);
   });
 });

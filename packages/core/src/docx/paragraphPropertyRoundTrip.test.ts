@@ -1,9 +1,9 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { Fragment, Slice } from "prosemirror-model";
 
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { tableFromTemplate } from "../ai-edits/table-template";
 import { expectTableCellAttrs } from "../prosemirror/attrs";
@@ -78,31 +78,31 @@ const documentWithSourceProperties = async (
   paragraphProperties = SOURCE_PROPERTIES,
   paraId: string | null = "12345678",
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const documentFile = zip.file("word/document.xml");
-  const documentXml = await documentFile?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const documentFile = zip.entry("word/document.xml");
+  const documentXml = await documentFile?.text();
   if (!documentXml) {
     panic("The generated package has no main document part.");
   }
-  zip.file(
+  zip.set(
     "word/document.xml",
     documentXml.replace(
       /<w:body>[\s\S]*<\/w:body>/u,
       `<w:body><w:p${paraId ? ` w14:paraId="${paraId}"` : ""}>${paragraphProperties}<w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/></w:body>`,
     ),
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 const documentWithInheritedStrictProperties =
   async (): Promise<ArrayBuffer> => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    const documentFile = zip.file("word/document.xml");
-    const documentXml = await documentFile?.async("text");
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    const documentFile = zip.entry("word/document.xml");
+    const documentXml = await documentFile?.text();
     if (!documentXml) {
       panic("The generated package has no main document part.");
     }
-    zip.file(
+    zip.set(
       "word/document.xml",
       documentXml
         .replaceAll(NAMESPACES.w, STRICT_WORDPROCESSINGML_NAMESPACE)
@@ -111,26 +111,26 @@ const documentWithInheritedStrictProperties =
           '<w:body><w:p w14:paraId="12345678"><w:pPr><w:spacing w:before="12pt"/></w:pPr><w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/></w:body>',
         ),
     );
-    return await zip.generateAsync({ type: "arraybuffer" });
+    return (await zip.generate({ compression: "store" })).buffer;
   };
 
 const documentWithDuplicateParagraphIds = async (): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const documentFile = zip.file("word/document.xml");
-  const documentXml = await documentFile?.async("text");
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  const documentFile = zip.entry("word/document.xml");
+  const documentXml = await documentFile?.text();
   if (!documentXml) {
     panic("The generated package has no main document part.");
   }
   const paragraph = (text: string, left: string) =>
     `<w:p w14:paraId="12345678">${SOURCE_PROPERTIES.replace('w:left="720"', `w:left="${left}"`)}<w:r><w:t>${text}</w:t></w:r></w:p>`;
-  zip.file(
+  zip.set(
     "word/document.xml",
     documentXml.replace(
       /<w:body>[\s\S]*<\/w:body>/u,
       `<w:body>${paragraph("First", "720")}${paragraph("Second", "1440")}<w:sectPr/></w:body>`,
     ),
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 const canonicalElement = (element: XmlElement): string => {

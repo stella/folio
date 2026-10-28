@@ -18,12 +18,12 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import {
   PARSE_WARNING_CODES,
   type ParseWarningCode,
 } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -118,8 +118,8 @@ const commentsXml = (seed: Seed, comments?: string): string =>
 </w:comments>`;
 
 const docxFor = async (seed: Seed, comments?: string): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -128,14 +128,14 @@ const docxFor = async (seed: Seed, comments?: string): Promise<ArrayBuffer> => {
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -144,15 +144,15 @@ const docxFor = async (seed: Seed, comments?: string): Promise<ArrayBuffer> => {
   <Relationship Id="rIdCm" Type="${RELATIONSHIP_TYPES.comments}" Target="comments.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>H</w:t></w:r></w:p></w:hdr>`,
   );
-  zip.file("word/document.xml", documentXml(seed));
-  zip.file("word/footnotes.xml", footnotesXml(seed));
-  zip.file("word/comments.xml", commentsXml(seed, comments));
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/document.xml", documentXml(seed));
+  zip.set("word/footnotes.xml", footnotesXml(seed));
+  zip.set("word/comments.xml", commentsXml(seed, comments));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const codesIn = (

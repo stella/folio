@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   archiveWithRawDeflate,
@@ -47,7 +48,7 @@ const makeDocx = async ({
   orphanParts = {},
   wordNamespace = W_NS,
 }: MakeDocxOptions): Promise<Uint8Array> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const relationships: string[] = [];
   const sectionReferences: string[] = [];
   let nextRId = 1;
@@ -59,7 +60,7 @@ const makeDocx = async ({
   ): void => {
     const rootName = kind === "header" ? "hdr" : "ftr";
     for (const [path, content] of Object.entries(parts)) {
-      zip.file(
+      zip.set(
         path,
         `<w:${rootName} xmlns:w="${wordNamespace}">${content}</w:${rootName}>`,
       );
@@ -79,7 +80,7 @@ const makeDocx = async ({
 
   for (const [path, kind] of Object.entries(orphanParts)) {
     const rootName = kind === "header" ? "hdr" : "ftr";
-    zip.file(
+    zip.set(
       path,
       `<w:${rootName} xmlns:w="${wordNamespace}">${paragraph("Orphan")}</w:${rootName}>`,
     );
@@ -91,18 +92,18 @@ const makeDocx = async ({
     sectionReferences.length > 0
       ? `<w:sectPr>${sectionReferences.join("")}</w:sectPr>`
       : "";
-  zip.file(
+  zip.set(
     "word/document.xml",
     `<w:document xmlns:w="${wordNamespace}" xmlns:r="${R_NS}"><w:body>${body}${sectPr}</w:body></w:document>`,
   );
   if (relationships.length > 0) {
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
         `<Relationships xmlns="${PACKAGE_RELATIONSHIPS_NS}">${relationships.join("")}</Relationships>`,
     );
   }
-  return await zip.generateAsync({ type: "uint8array" });
+  return await zip.generate({ compression: "store" });
 };
 
 const paragraph = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
@@ -253,12 +254,12 @@ describe("extractDocxText", () => {
   });
 
   test("supports alternate prefixes for the main OOXML namespace", async () => {
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "word/document.xml",
       `<x:document xmlns:x="${W_NS}"><x:body><x:p><x:pPr><x:pStyle x:val="Title"/></x:pPr><x:r><x:t>Alternate</x:t></x:r></x:p></x:body></x:document>`,
     );
-    const bytes = await zip.generateAsync({ type: "uint8array" });
+    const bytes = await zip.generate({ compression: "store" });
 
     const result = await extractDocxText(bytes);
 
@@ -695,9 +696,9 @@ describe("extractDocxText", () => {
   });
 
   test("returns an empty result when the main document part is absent", async () => {
-    const zip = new JSZip();
-    zip.file("other.xml", "<root/>");
-    const bytes = await zip.generateAsync({ type: "uint8array" });
+    const zip = new ZipArchive();
+    zip.set("other.xml", "<root/>");
+    const bytes = await zip.generate({ compression: "store" });
 
     expect(await extractDocxText(bytes)).toEqual({
       paragraphs: [],

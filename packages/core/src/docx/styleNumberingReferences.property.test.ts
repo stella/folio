@@ -23,7 +23,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -211,13 +212,11 @@ describe("createDocx style numbering (property)", () => {
         fc.asyncProperty(
           stylePackageArbitrary(FOLIO_BUILT_KINDS),
           async (stylePackage) => {
-            const zip = await JSZip.loadAsync(
+            const zip = await ZipArchive.read(
               await createDocx(documentFor(stylePackage)),
             );
-            const stylesXml = await zip.file("word/styles.xml")?.async("text");
-            const numberingXml = await zip
-              .file("word/numbering.xml")
-              ?.async("text");
+            const stylesXml = await zip.entry("word/styles.xml")?.text();
+            const numberingXml = await zip.entry("word/numbering.xml")?.text();
             expect(stylesXml).toBeDefined();
             expect(numberingXml).toBeDefined();
 
@@ -302,13 +301,13 @@ describe("source style numbering through parse and extraction (property)", () =>
             const styleSet = extractDocumentStyleSet(document, {
               name: "Extracted",
             });
-            const zip = await JSZip.loadAsync(
+            const zip = await ZipArchive.read(
               await createDocx(createEmptyDocument({ styleSet })),
             );
             const stylesXml =
-              (await zip.file("word/styles.xml")?.async("text")) ?? "";
+              (await zip.entry("word/styles.xml")?.text()) ?? "";
             const numberingXml =
-              (await zip.file("word/numbering.xml")?.async("text")) ?? "";
+              (await zip.entry("word/numbering.xml")?.text()) ?? "";
 
             for (const [index] of stylePackage.styles.entries()) {
               const numbering = effectiveNumbering(stylePackage.styles, index);
@@ -375,8 +374,8 @@ const numberingXmlFor = ({ numIds }: StylePackage): string =>
 
 /** A minimal source package carrying the generated styles and numbering. */
 const docxFor = async (stylePackage: StylePackage): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -387,14 +386,14 @@ const docxFor = async (stylePackage: StylePackage): Promise<ArrayBuffer> => {
   <Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -402,14 +401,14 @@ const docxFor = async (stylePackage: StylePackage): Promise<ArrayBuffer> => {
   <Relationship Id="rId2" Type="${RELATIONSHIP_TYPES.numbering}" Target="numbering.xml"/>
 </Relationships>`,
   );
-  zip.file("word/styles.xml", stylesXmlFor(stylePackage));
-  zip.file("word/numbering.xml", numberingXmlFor(stylePackage));
-  zip.file(
+  zip.set("word/styles.xml", stylesXmlFor(stylePackage));
+  zip.set("word/numbering.xml", numberingXmlFor(stylePackage));
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body><w:p><w:r><w:t>Body</w:t></w:r></w:p></w:body>
 </w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };

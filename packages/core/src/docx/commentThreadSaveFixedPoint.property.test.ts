@@ -15,7 +15,8 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -79,7 +80,7 @@ const buildDocx = async (
     replyRanges: "anchored" | "missing";
   },
 ): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const zip = await ZipArchive.read(await createEmptyDocx());
   const anchored = forest.flatMap(({ parent }, index) =>
     options.replyRanges === "missing" &&
     parent !== null &&
@@ -101,11 +102,11 @@ const buildDocx = async (
               `<w:p>${start(index)}<w:r><w:t>anchor</w:t></w:r>${end(index)}</w:p>`,
           )
           .join("");
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body>${anchors}<w:sectPr/></w:body></w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/comments.xml",
     `${XML_DECLARATION}<w:comments xmlns:w="${W_NAMESPACE}" xmlns:w14="${W14_NAMESPACE}">` +
       forest
@@ -117,7 +118,7 @@ const buildDocx = async (
         .join("") +
       "</w:comments>",
   );
-  zip.file(
+  zip.set(
     "word/commentsExtended.xml",
     `${XML_DECLARATION}<w15:commentsEx xmlns:w="${W_NAMESPACE}" xmlns:w15="${W15_NAMESPACE}">` +
       forest
@@ -131,12 +132,12 @@ const buildDocx = async (
         .join("") +
       "</w15:commentsEx>",
   );
-  const types = await zip.file("[Content_Types].xml")?.async("text");
-  const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  const types = await zip.entry("[Content_Types].xml")?.text();
+  const rels = await zip.entry("word/_rels/document.xml.rels")?.text();
   if (types === undefined || rels === undefined) {
     throw new Error("the empty package lost its packaging parts");
   }
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     types.replace(
       "</Types>",
@@ -144,7 +145,7 @@ const buildDocx = async (
         '<Override PartName="/word/commentsExtended.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"/></Types>',
     ),
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     rels.replace(
       "</Relationships>",
@@ -152,7 +153,7 @@ const buildDocx = async (
         '<Relationship Id="rIdPropCommentsEx" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/></Relationships>',
     ),
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /**
@@ -180,13 +181,15 @@ const stripParaIds = (
 const packageParts = async (
   buffer: ArrayBuffer,
 ): Promise<Map<string, string>> => {
-  const zip = await JSZip.loadAsync(buffer);
-  const entries = Object.entries(zip.files).filter(([, file]) => !file.dir);
+  const zip = await ZipArchive.read(buffer);
+  const entries = zip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const);
   return new Map(
     await Promise.all(
       entries.map(async ([path, file]): Promise<readonly [string, string]> => [
         path,
-        await file.async("base64"),
+        Buffer.from(await file.bytes()).toString("base64"),
       ]),
     ),
   );
@@ -235,9 +238,7 @@ describe("saving threaded comments is a fixed point after the first save", () =>
         const documentXml = async (
           buffer: ArrayBuffer,
         ): Promise<string | undefined> =>
-          (await JSZip.loadAsync(buffer))
-            .file("word/document.xml")
-            ?.async("text");
+          (await ZipArchive.read(buffer)).entry("word/document.xml")?.text();
         const markers = (xml: string | undefined): string[] =>
           xml?.match(
             /<w:comment(?:RangeStart|RangeEnd|Reference)\b[^>]*\/>/gu,

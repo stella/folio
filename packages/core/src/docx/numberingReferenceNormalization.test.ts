@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
 import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { extractDocumentStyleSet } from "../style-sets/extract";
 import type {
@@ -437,7 +437,7 @@ const styleElement = (stylesXml: string, styleId: string): string => {
 };
 
 const readPart = async (docx: ArrayBuffer, path: string): Promise<string> => {
-  const part = await (await JSZip.loadAsync(docx)).file(path)?.async("string");
+  const part = await (await ZipArchive.read(docx)).entry(path)?.text();
   if (part === undefined) {
     throw new Error(`Expected ${path} in the package`);
   }
@@ -517,7 +517,7 @@ const createDocxFixture = async ({
   stylesXml: styles,
   numberingXml: numbering,
 }: DocxFixtureOptions): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const parts = [
     ...(styles === undefined
       ? []
@@ -526,7 +526,7 @@ const createDocxFixture = async ({
       ? []
       : [{ name: "numbering", type: RELATIONSHIP_TYPES.numbering }]),
   ];
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -541,14 +541,14 @@ const createDocxFixture = async ({
     .join("")}
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -561,17 +561,17 @@ const createDocxFixture = async ({
 </Relationships>`,
   );
   if (styles !== undefined) {
-    zip.file("word/styles.xml", styles);
+    zip.set("word/styles.xml", styles);
   }
   if (numbering !== undefined) {
-    zip.file("word/numbering.xml", numbering);
+    zip.set("word/numbering.xml", numbering);
   }
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>${bodyXml}</w:body>
 </w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };

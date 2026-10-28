@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { history, undo } from "prosemirror-history";
 import { EditorState } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { initProseMirrorDoc, prosemirrorToYXmlFragment } from "y-prosemirror";
 import * as Y from "yjs";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { splitTrackedVerticalTableCell } from "../../ai-edits/table-cell-mutations";
 import { expectTableCellAttrs } from "../../prosemirror/attrs";
@@ -86,8 +87,8 @@ const createCollaborativeUpdate = async (
 
 const sourceWithDistinctParagraphProperties =
   async (): Promise<ArrayBuffer> => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    const documentXml = await zip.file("word/document.xml")?.async("text");
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    const documentXml = await zip.entry("word/document.xml")?.text();
     if (!documentXml) {
       throw new Error("Generated DOCX has no main document part");
     }
@@ -98,7 +99,7 @@ const sourceWithDistinctParagraphProperties =
       paraId?: string,
     ) =>
       `<w:p${paraId ? ` w14:paraId="${paraId}"` : ""}><w:pPr><w:ind w:left="${String(left)}"/><x:sentinel x:id="${sentinel}"/></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
-    zip.file(
+    zip.set(
       "word/document.xml",
       documentXml
         .replace(
@@ -110,17 +111,17 @@ const sourceWithDistinctParagraphProperties =
           `<w:body>${paragraph("Idless", "idless", 720)}<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="7200"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="7200" w:type="dxa"/></w:tcPr>${paragraph("Duplicate A", "duplicate-a", 1440, "12345678")}</w:tc></w:tr></w:tbl>${paragraph("Duplicate B", "duplicate-b", 2160, "12345678")}<w:sectPr/></w:body>`,
         ),
     );
-    return await zip.generateAsync({ type: "arraybuffer" });
+    return (await zip.generate({ compression: "store" })).buffer;
   };
 
 const sourceWithCollapsedVerticalMergeProperties =
   async (): Promise<ArrayBuffer> => {
-    const zip = await JSZip.loadAsync(await createEmptyDocx());
-    const documentXml = await zip.file("word/document.xml")?.async("text");
+    const zip = await ZipArchive.read(await createEmptyDocx());
+    const documentXml = await zip.entry("word/document.xml")?.text();
     if (!documentXml) {
       throw new Error("Generated DOCX has no main document part");
     }
-    zip.file(
+    zip.set(
       "word/document.xml",
       documentXml
         .replace(
@@ -136,7 +137,7 @@ const sourceWithCollapsedVerticalMergeProperties =
             "</w:tbl><w:sectPr/></w:body>",
         ),
     );
-    return await zip.generateAsync({ type: "arraybuffer" });
+    return (await zip.generate({ compression: "store" })).buffer;
   };
 
 const collapsedContinuation = (document: EditorState["doc"]) => {
@@ -347,8 +348,8 @@ describe("materializeYjsDocx", () => {
     const output = await materializeYjsDocx({ sourceDocx, yjsUpdate });
     const extracted = await extractDocxText(output);
     const [sourceZip, outputZip] = await Promise.all([
-      JSZip.loadAsync(sourceDocx),
-      JSZip.loadAsync(output),
+      ZipArchive.read(sourceDocx),
+      ZipArchive.read(output),
     ]);
 
     expect(extracted.paragraphs.map(({ text }) => text)).toContain(
@@ -357,8 +358,8 @@ describe("materializeYjsDocx", () => {
     expect(extracted.paragraphs.map(({ text }) => text)).not.toContain(
       "Original text",
     );
-    expect(await outputZip.file("word/styles.xml")?.async("text")).toBe(
-      await sourceZip.file("word/styles.xml")?.async("text"),
+    expect(await outputZip.entry("word/styles.xml")?.text()).toBe(
+      await sourceZip.entry("word/styles.xml")?.text(),
     );
   });
 
@@ -386,10 +387,10 @@ describe("materializeYjsDocx", () => {
 
     const output = await materializeYjsDocx({ sourceDocx, yjsUpdate });
     const outputXml = await (
-      await JSZip.loadAsync(output)
+      await ZipArchive.read(output)
     )
-      .file("word/document.xml")
-      ?.async("text");
+      .entry("word/document.xml")
+      ?.text();
 
     expect(outputXml).toContain('<x:sentinel x:id="idless"/>');
     expect(outputXml).toContain('<x:sentinel x:id="duplicate-a"/>');
@@ -433,10 +434,10 @@ describe("materializeYjsDocx", () => {
       });
     }
     const outputXml = await (
-      await JSZip.loadAsync(output)
+      await ZipArchive.read(output)
     )
-      .file("word/document.xml")
-      ?.async("text");
+      .entry("word/document.xml")
+      ?.text();
 
     expect(outputXml).toContain('<x:sentinel x:id="hidden-continuation"/>');
     expect(outputXml).toContain('<w:ind w:left="1440"/>');
@@ -497,10 +498,10 @@ describe("materializeYjsDocx", () => {
     });
     const output = await repackDocx(restored);
     const outputXml = await (
-      await JSZip.loadAsync(output)
+      await ZipArchive.read(output)
     )
-      .file("word/document.xml")
-      ?.async("text");
+      .entry("word/document.xml")
+      ?.text();
 
     expect(outputXml).toContain('<x:sentinel x:id="hidden-continuation"/>');
     expect(outputXml).toContain('<w:ind w:left="1440"/>');

@@ -1,8 +1,9 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -419,12 +420,14 @@ describe("parseStreamingXml", () => {
     expect(paths.length).toBeGreaterThan(30);
 
     for (const path of paths) {
-      const zip = await JSZip.loadAsync(readFileSync(resolve(REPO_ROOT, path)));
-      expect(zip.file("word/document.xml"), path).not.toBeNull();
-      for (const file of zip.file(/\.(?:xml|rels)$/iu)) {
+      const zip = await ZipArchive.read(readFileSync(resolve(REPO_ROOT, path)));
+      expect(zip.entry("word/document.xml"), path).toBeDefined();
+      for (const file of zip
+        .entries()
+        .filter((entry) => /\.(?:xml|rels)$/iu.test(entry.path))) {
         expectStreamingMatchesFallback(
-          await file.async("string"),
-          `${path}:${file.name}`,
+          await file.text(),
+          `${path}:${file.path}`,
         );
       }
     }

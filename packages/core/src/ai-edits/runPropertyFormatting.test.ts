@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { EditorState, type Transaction } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
 import { parseDocx } from "../docx/parser";
@@ -401,8 +402,8 @@ const packagePart = async (
   buffer: ArrayBuffer,
   path: string,
 ): Promise<string | null> => {
-  const zip = await JSZip.loadAsync(buffer);
-  return zip.file(path)?.async("text") ?? null;
+  const zip = await ZipArchive.read(buffer);
+  return zip.entry(path)?.text() ?? null;
 };
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {

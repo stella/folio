@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { createHash } from "node:crypto";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createEmptyDocx } from "../rezip";
 import {
@@ -23,8 +24,8 @@ type PackageFixture = {
 
 const packageFixture = async (): Promise<PackageFixture> => {
   const bytes = await createEmptyDocx();
-  const zip = await JSZip.loadAsync(bytes);
-  const documentBytes = await zip.file(DOCUMENT_PATH)?.async("uint8array");
+  const zip = await ZipArchive.read(bytes);
+  const documentBytes = await zip.entry(DOCUMENT_PATH)?.bytes();
   if (documentBytes === undefined) {
     throw new Error("Expected document package part");
   }
@@ -336,9 +337,9 @@ describe("evaluateDocxXmlPatchProposal", () => {
       },
       allowedParts: ["missing.xml"],
     });
-    const zip = await JSZip.loadAsync(bytes);
-    zip.file("word/media/payload.bin", "binary");
-    const withBinary = await zip.generateAsync({ type: "uint8array" });
+    const zip = await ZipArchive.read(bytes);
+    zip.set("word/media/payload.bin", "binary");
+    const withBinary = await zip.generate({ compression: "store" });
     const binary = await evaluateDocxXmlPatchProposal({
       bytes: withBinary,
       proposal: {

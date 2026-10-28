@@ -11,7 +11,9 @@
  * eigenpal/docx-editor#684 (OOXML watermark fidelity), BUG1.
  */
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import { getDocumentWatermark, setDocumentWatermark } from "../watermark";
 import {
@@ -29,8 +31,8 @@ const ONE_PIXEL_PNG_BASE64 =
 
 // A two-header DOCX whose picture watermark lives only in header1's rels.
 async function twoHeaderPictureWatermarkDocx(): Promise<ArrayBuffer> {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -42,14 +44,14 @@ async function twoHeaderPictureWatermarkDocx(): Promise<ArrayBuffer> {
   <Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -57,7 +59,7 @@ async function twoHeaderPictureWatermarkDocx(): Promise<ArrayBuffer> {
   <Relationship Id="rId11" Type="${RELATIONSHIP_TYPES.header}" Target="header2.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -72,36 +74,36 @@ async function twoHeaderPictureWatermarkDocx(): Promise<ArrayBuffer> {
 </w:document>`,
   );
   // header1 owns the picture watermark and the image relationship.
-  zip.file(
+  zip.set(
     "word/header1.xml",
     `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:p><w:r><w:pict><v:shape id="WordPictureWatermark1" type="#_x0000_t75" style="position:absolute;width:300pt;height:400pt"><v:imagedata r:id="rIdImg" o:title=""/></v:shape></w:pict></w:r></w:p>
 </w:hdr>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/header1.xml.rels",
     `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/header2.xml",
     `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>even</w:t></w:r></w:p></w:hdr>`,
   );
-  zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-  zip.file(
+  zip.set("word/media/image1.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+  zip.set(
     "word/styles.xml",
     `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 }
 
-const countMediaImages = async (zip: JSZip): Promise<number> =>
-  Object.keys(zip.files).filter((p) => /^word\/media\/image/u.test(p)).length;
+const countMediaImages = async (zip: ZipArchive): Promise<number> =>
+  zip.paths().filter((p) => /^word\/media\/image/u.test(p)).length;
 
 describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   test("keeps an untouched picture watermark header byte-stable after save and reopen", async () => {
@@ -118,10 +120,8 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     expect(sourceXml).toBeDefined();
     expect(canReplayHeaderFooterVerbatim(header)).toBe(true);
     const out = await repackDocx(doc, { updateModifiedDate: false });
-    const outZip = await JSZip.loadAsync(out);
-    expect(await outZip.file("word/header1.xml")?.async("text")).toBe(
-      sourceXml,
-    );
+    const outZip = await ZipArchive.read(out);
+    expect(await outZip.entry("word/header1.xml")?.text()).toBe(sourceXml);
 
     const reopened = await parseDocx(out, { preloadFonts: false });
     const reopenedHeader = reopened.package.headers?.get("rId10");
@@ -164,17 +164,15 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
 
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
+    const zip = await ZipArchive.read(out);
     // No duplicate media: both headers share the single image part.
     expect(await countMediaImages(zip)).toBe(1);
 
-    const header2Rels = await zip
-      .file("word/_rels/header2.xml.rels")!
-      .async("text");
+    const header2Rels = await zip.entry("word/_rels/header2.xml.rels")!.text();
     expect(header2Rels).toContain('Target="media/image1.png"');
 
     // header2's imagedata rId must resolve in header2's own rels.
-    const header2Xml = await zip.file("word/header2.xml")!.async("text");
+    const header2Xml = await zip.entry("word/header2.xml")!.text();
     const usedRId = /<v:imagedata[^>]*\br:id="(?<rid>[^"]+)"/u.exec(header2Xml)
       ?.groups?.["rid"];
     expect(usedRId).toBeDefined();
@@ -197,11 +195,9 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     const out = await repackDocx(doc, { updateModifiedDate: false });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const zip = await JSZip.loadAsync(out);
+    const zip = await ZipArchive.read(out);
     expect(await countMediaImages(zip)).toBe(1);
-    const header2Rels = await zip
-      .file("word/_rels/header2.xml.rels")!
-      .async("text");
+    const header2Rels = await zip.entry("word/_rels/header2.xml.rels")!.text();
     expect(header2Rels).toContain('Target="media/image1.png"');
   });
 
@@ -233,8 +229,8 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     // watermark also carries "rIdImg" (header1's), which means the watermark
     // image — not header2's logo. The rebind must point header2 at the
     // watermark media, not skip because the id happens to resolve locally.
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -246,14 +242,14 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   <Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -261,7 +257,7 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   <Relationship Id="rId11" Type="${RELATIONSHIP_TYPES.header}" Target="header2.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -273,43 +269,41 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file(
+    zip.set(
       "word/header1.xml",
       `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:p><w:r><w:pict><v:shape id="WordPictureWatermark1" type="#_x0000_t75" style="position:absolute;width:300pt;height:400pt"><v:imagedata r:id="rIdImg" o:title=""/></v:shape></w:pict></w:r></w:p>
 </w:hdr>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/header1.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/watermark.png"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/header2.xml",
       `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>even</w:t></w:r></w:p></w:hdr>`,
     );
     // header2 already uses rIdImg for a DIFFERENT image (its own logo).
-    zip.file(
+    zip.set(
       "word/_rels/header2.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/logo.png"/>
 </Relationships>`,
     );
-    zip.file("word/media/watermark.png", ONE_PIXEL_PNG_BASE64, {
-      base64: true,
-    });
-    zip.file("word/media/logo.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-    zip.file(
+    zip.set("word/media/watermark.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+    zip.set("word/media/logo.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     const out = await repackDocx(
@@ -320,14 +314,14 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     );
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
-    const header2Xml = await outZip.file("word/header2.xml")!.async("text");
+    const outZip = await ZipArchive.read(out);
+    const header2Xml = await outZip.entry("word/header2.xml")!.text();
     const usedRId = /<v:imagedata[^>]*\br:id="(?<rid>[^"]+)"/u.exec(header2Xml)
       ?.groups?.["rid"];
     expect(usedRId).toBeDefined();
     const header2Rels = await outZip
-      .file("word/_rels/header2.xml.rels")!
-      .async("text");
+      .entry("word/_rels/header2.xml.rels")!
+      .text();
     // The watermark in header2 must resolve to the watermark image, not the logo.
     expect(header2Rels).toMatch(
       new RegExp(`Id="${usedRId}"[^>]*Target="media/watermark.png"`, "u"),
@@ -337,8 +331,8 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   test("writes a subdirectory header's image relationship to the correct rels path", async () => {
     // A header part in a subdirectory keeps its rels at
     // word/headers/_rels/header1.xml.rels, not a flattened word/_rels/...
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -349,21 +343,21 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   <Override PartName="/word/headers/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId10" Type="${RELATIONSHIP_TYPES.header}" Target="headers/header1.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -372,17 +366,17 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file(
+    zip.set(
       "word/headers/header1.xml",
       `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>hdr</w:t></w:r></w:p></w:hdr>`,
     );
-    zip.file(
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     // Insert a new (data-URL) image into the subdirectory header.
@@ -415,12 +409,12 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     }
 
     const out = await repackDocx(doc, { updateModifiedDate: false });
-    const outZip = await JSZip.loadAsync(out);
-    const paths = Object.keys(outZip.files);
+    const outZip = await ZipArchive.read(out);
+    const paths = outZip.paths();
     // The image relationship landed in the subdirectory rels part...
     const subdirRels = await outZip
-      .file("word/headers/_rels/header1.xml.rels")
-      ?.async("text");
+      .entry("word/headers/_rels/header1.xml.rels")
+      ?.text();
     expect(subdirRels).toBeDefined();
     expect(subdirRels).toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
     // Target is relative to word/headers/, so the media (word/media/...) is up one.
@@ -434,8 +428,8 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     // header1 (root) owns the watermark image; header2 lives in a subdirectory.
     // The rebound relationship target must be relative to header2's part
     // (../media/...), or Word resolves it under word/headers/.
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -447,14 +441,14 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   <Override PartName="/word/headers/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -462,7 +456,7 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   <Relationship Id="rId11" Type="${RELATIONSHIP_TYPES.header}" Target="headers/header2.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -474,34 +468,32 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file(
+    zip.set(
       "word/header1.xml",
       `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:p><w:r><w:pict><v:shape id="WordPictureWatermark1" type="#_x0000_t75" style="position:absolute;width:300pt;height:400pt"><v:imagedata r:id="rIdImg" o:title=""/></v:shape></w:pict></w:r></w:p>
 </w:hdr>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/header1.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/watermark.png"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/headers/header2.xml",
       `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>even</w:t></w:r></w:p></w:hdr>`,
     );
-    zip.file("word/media/watermark.png", ONE_PIXEL_PNG_BASE64, {
-      base64: true,
-    });
-    zip.file(
+    zip.set("word/media/watermark.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     const out = await repackDocx(
@@ -512,18 +504,18 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     );
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
+    const outZip = await ZipArchive.read(out);
     const header2Rels = await outZip
-      .file("word/headers/_rels/header2.xml.rels")!
-      .async("text");
+      .entry("word/headers/_rels/header2.xml.rels")!
+      .text();
     // Relative to word/headers/, the shared media is one level up.
     expect(header2Rels).toContain('Target="../media/watermark.png"');
     expect(header2Rels).not.toContain('Target="media/watermark.png"');
   });
 
   test("leaves an external (linked) picture watermark relationship intact", async () => {
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -533,21 +525,21 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId10" Type="${RELATIONSHIP_TYPES.header}" Target="header1.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -556,7 +548,7 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file(
+    zip.set(
       "word/header1.xml",
       `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -564,19 +556,19 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
 </w:hdr>`,
     );
     // The watermark image is a LINKED (external) relationship — a URL target.
-    zip.file(
+    zip.set(
       "word/_rels/header1.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="https://example.com/wm.png" TargetMode="External"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     // The external target is anchored as the URL, not a package path.
@@ -592,10 +584,8 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     });
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
-    const rels = await outZip
-      .file("word/_rels/header1.xml.rels")!
-      .async("text");
+    const outZip = await ZipArchive.read(out);
+    const rels = await outZip.entry("word/_rels/header1.xml.rels")!.text();
     // The external relationship is preserved, not rewritten into a bogus
     // internal "../https:/..." target.
     expect(rels).toContain('Target="https://example.com/wm.png"');
@@ -604,8 +594,8 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   });
 
   test("propagates an external picture watermark to sibling headers", async () => {
-    const zip = new JSZip();
-    zip.file(
+    const zip = new ZipArchive();
+    zip.set(
       "[Content_Types].xml",
       `${XML}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -616,14 +606,14 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   <Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
 </Types>`,
     );
-    zip.file(
+    zip.set(
       "_rels/.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/document.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -631,7 +621,7 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   <Relationship Id="rId11" Type="${RELATIONSHIP_TYPES.header}" Target="header2.xml"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/document.xml",
       `${XML}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -643,31 +633,31 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   </w:body>
 </w:document>`,
     );
-    zip.file(
+    zip.set(
       "word/header1.xml",
       `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:p><w:r><w:pict><v:shape id="WordPictureWatermark1" type="#_x0000_t75" style="position:absolute;width:300pt;height:400pt"><v:imagedata r:id="rIdImg" o:title=""/></v:shape></w:pict></w:r></w:p>
 </w:hdr>`,
     );
-    zip.file(
+    zip.set(
       "word/_rels/header1.xml.rels",
       `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="https://example.com/wm.png" TargetMode="External"/>
 </Relationships>`,
     );
-    zip.file(
+    zip.set(
       "word/header2.xml",
       `${XML}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>even</w:t></w:r></w:p></w:hdr>`,
     );
-    zip.file(
+    zip.set(
       "word/styles.xml",
       `${XML}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
     );
-    const original = await zip.generateAsync({ type: "arraybuffer" });
+    const original = (await zip.generate({ compression: "store" })).buffer;
 
     const doc = await parseDocx(original, { preloadFonts: false });
     const out = await repackDocx(
@@ -678,14 +668,14 @@ describe("picture watermark relationship rebinding (eigenpal #684)", () => {
     );
     expect((await validateDocx(out)).valid).toBe(true);
 
-    const outZip = await JSZip.loadAsync(out);
-    const header2Xml = await outZip.file("word/header2.xml")!.async("text");
+    const outZip = await ZipArchive.read(out);
+    const header2Xml = await outZip.entry("word/header2.xml")!.text();
     const usedRId = /<v:imagedata[^>]*\br:id="(?<rid>[^"]+)"/u.exec(header2Xml)
       ?.groups?.["rid"];
     expect(usedRId).toBeDefined();
     const header2Rels = await outZip
-      .file("word/_rels/header2.xml.rels")!
-      .async("text");
+      .entry("word/_rels/header2.xml.rels")!
+      .text();
     // The sibling header gets an external relationship to the same URL.
     expect(header2Rels).toMatch(
       new RegExp(

@@ -9,7 +9,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { Document, Hyperlink, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -38,11 +39,11 @@ const documentWith = (content: Paragraph["content"]): Document => {
 };
 
 const partText = async (buffer: ArrayBuffer, name: string): Promise<string> => {
-  const part = (await JSZip.loadAsync(buffer)).file(name);
+  const part = (await ZipArchive.read(buffer)).entry(name);
   if (!part) {
     throw new Error(`missing ${name}`);
   }
-  return part.async("text");
+  return part.text();
 };
 
 describe("a link inside a bidirectional wrapper", () => {

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
+
+import { ZipArchive } from "@stll/docx-core/zip";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import { expectImageAttrs, mergeImageAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -48,8 +50,8 @@ const picturePartsXml = (
 const createPictureDocx = async (
   graphicFramePr: string,
 ): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -59,22 +61,22 @@ const createPictureDocx = async (
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
 </Relationships>`,
   );
-  zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
-  zip.file(
+  zip.set("word/media/image1.png", base64ToBytes(ONE_PIXEL_PNG_BASE64));
+  zip.set(
     "word/document.xml",
     `${XML_DECLARATION}
 <w:document ${XML_NAMESPACES}>
@@ -84,12 +86,12 @@ const createPictureDocx = async (
   </w:body>
 </w:document>`,
   );
-  zip.file(
+  zip.set(
     "word/styles.xml",
     `${XML_DECLARATION}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 const firstDrawing = (document: Document): DrawingContent => {

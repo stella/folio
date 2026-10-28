@@ -14,9 +14,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
@@ -125,13 +126,15 @@ const namespaceDefects = (xml: string): Set<string> => {
 type PartDefects = Map<string, Set<string>>;
 
 const packageDefects = async (buffer: ArrayBuffer): Promise<PartDefects> => {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await ZipArchive.read(buffer);
   const defects: PartDefects = new Map();
-  for (const [name, file] of Object.entries(zip.files)) {
-    if (file.dir || !name.toLowerCase().endsWith(".xml")) {
+  for (const [name, file] of zip
+    .entries()
+    .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)) {
+    if (!name.toLowerCase().endsWith(".xml")) {
       continue;
     }
-    defects.set(name, namespaceDefects(await file.async("text")));
+    defects.set(name, namespaceDefects(await file.text()));
   }
   return defects;
 };

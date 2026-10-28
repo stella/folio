@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "./parser";
 import type { RasterMimeType } from "./rasterMime";
@@ -33,12 +34,12 @@ const RASTER_EXTENSIONS = [
 ];
 
 const createPackage = () => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
   );
-  zip.file(
+  zip.set(
     "word/document.xml",
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>',
   );
@@ -55,11 +56,11 @@ describe("raster package MIME detection", () => {
           const path = `word/media/raster${cases.length}.${extension}`;
           const bytes = new Uint8Array(signature);
           cases.push({ path, mimeType, bytes });
-          zip.file(path, bytes);
+          zip.set(path, bytes);
         }
       }
     }
-    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const buffer = (await zip.generate({ compression: "store" })).buffer;
     const raw = await unzipDocx(buffer);
     const document = await parseDocx(buffer, { preloadFonts: false });
 
@@ -75,16 +76,16 @@ describe("raster package MIME detection", () => {
 
   test("requires both declared and detected raster types to satisfy the allowlist", async () => {
     const zip = createPackage();
-    zip.file(
+    zip.set(
       "word/media/declared.png",
       new Uint8Array(RASTER_HEADERS["image/gif"][0]),
     );
-    zip.file(
+    zip.set(
       "word/media/declared.gif",
       new Uint8Array(RASTER_HEADERS["image/png"][0]),
     );
     const raw = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         allowedMediaMimeTypes: new Set(["image/png"]),
       },
@@ -108,14 +109,14 @@ describe("raster package MIME detection", () => {
       "word/media/malformed.tiff": new Uint8Array([0x49, 0x49, 0, 0]),
     };
     for (const [path, bytes] of Object.entries(rejected)) {
-      zip.file(path, bytes);
+      zip.set(path, bytes);
     }
     const raw = await unzipDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
     );
     expect(raw.media.size).toBe(0);
     for (const path of Object.keys(rejected)) {
-      expect(raw.originalZip.file(path)).not.toBeNull();
+      expect(raw.originalZip.entry(path)).toBeDefined();
     }
   });
 });

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   captureDocumentSourceBaseline,
@@ -21,11 +22,11 @@ const untouched =
 const source = `<?xml version='1.0' encoding='UTF-8'?>\n<q:document xmlns:q='${WORD}'><q:background q:color='FFFFFF'/>\n<q:body>\n${untouched}\n<!-- authored gap -->\t<q:p><q:r><q:t>before</q:t></q:r></q:p>\n<q:sectPr><q:pgSz q:w='12240' q:h='15840'/></q:sectPr>\n</q:body></q:document>`;
 
 const parsedSource = async () => {
-  const zip = await JSZip.loadAsync(
+  const zip = await ZipArchive.read(
     await createDocx(createSimpleDocument([{ text: "seed" }])),
   );
-  zip.file("word/document.xml", source);
-  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }));
+  zip.set("word/document.xml", source);
+  return parseDocx((await zip.generate({ compression: "store" })).buffer);
 };
 
 test("trusted body replay preserves authored shell, metadata, gaps and untouched blocks after cloning", async () => {
@@ -39,10 +40,10 @@ test("trusted body replay preserves authored shell, metadata, gaps and untouched
   ];
   const saved = await repackDocx(document, { bodyAuthority: "canonical" });
   const xml = await (
-    await JSZip.loadAsync(saved)
+    await ZipArchive.read(saved)
   )
-    .file("word/document.xml")
-    ?.async("text");
+    .entry("word/document.xml")
+    ?.text();
   expect(xml).toContain(untouched);
   expect(xml).toContain("<!-- authored gap -->\t");
   expect(xml).toStartWith(
@@ -196,10 +197,10 @@ test("model authority serializes independently of captured canonical replay stat
   ).toBe(modelXml);
   const saved = await repackDocx(document);
   const xml = await (
-    await JSZip.loadAsync(saved)
+    await ZipArchive.read(saved)
   )
-    .file("word/document.xml")
-    ?.async("text");
+    .entry("word/document.xml")
+    ?.text();
   expect(xml).toBe(
     serializeDocument(document, readRootNamespaceBindings(source)),
   );
@@ -209,15 +210,15 @@ test("model authority serializes independently of captured canonical replay stat
 test.each(["removed", "renamed"] as const)(
   "parsed styles remain captured when the main part is %s",
   async (disposition) => {
-    const zip = await JSZip.loadAsync(
+    const zip = await ZipArchive.read(
       await createDocx(createSimpleDocument([{ text: "seed" }])),
     );
-    const xml = await zip.file("word/document.xml")?.async("text");
+    const xml = await zip.entry("word/document.xml")?.text();
     if (xml === undefined) throw new Error("Expected the main document part");
-    zip.remove("word/document.xml");
-    if (disposition === "renamed") zip.file("word/renamed-document.xml", xml);
+    zip.delete("word/document.xml");
+    if (disposition === "renamed") zip.set("word/renamed-document.xml", xml);
     const parsed = await parseDocx(
-      await zip.generateAsync({ type: "arraybuffer" }),
+      (await zip.generate({ compression: "store" })).buffer,
       {
         preloadFonts: false,
       },

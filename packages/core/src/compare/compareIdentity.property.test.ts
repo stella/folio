@@ -18,7 +18,8 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -130,33 +131,33 @@ const buildPackage = async ({
   items,
   styleDefinitions,
 }: PackageSpec): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
+  const zip = new ZipArchive();
   const stylesOverride = styleDefinitions
     ? `<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>`
     : "";
-  zip.file(
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECL}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>${stylesOverride}</Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECL}<Relationships xmlns="${PACKAGE_RELATIONSHIPS}"><Relationship Id="rId1" Type="${OFFICE_RELATIONSHIPS}/officeDocument" Target="word/document.xml"/></Relationships>`,
   );
   const stylesRelationship = styleDefinitions
     ? `<Relationship Id="rId1" Type="${OFFICE_RELATIONSHIPS}/styles" Target="styles.xml"/>`
     : "";
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECL}<Relationships xmlns="${PACKAGE_RELATIONSHIPS}">${stylesRelationship}<Relationship Id="${IMAGE_RID}" Type="${OFFICE_RELATIONSHIPS}/image" Target="media/image1.png"/></Relationships>`,
   );
   if (styleDefinitions) {
-    zip.file(
+    zip.set(
       "word/styles.xml",
       `${XML_DECL}<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`,
     );
   }
-  zip.file("word/media/image1.png", PNG_BYTES);
-  zip.file(
+  zip.set("word/media/image1.png", PNG_BYTES);
+  zip.set(
     "word/document.xml",
     `${XML_DECL}<w:document ${NAMESPACES}><w:body>${items
       .map(bodyItemXml)
@@ -164,7 +165,7 @@ const buildPackage = async ({
         "",
       )}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>`,
   );
-  return await zip.generateAsync({ type: "arraybuffer" });
+  return (await zip.generate({ compression: "store" })).buffer;
 };
 
 const sentence = fc.constantFrom(

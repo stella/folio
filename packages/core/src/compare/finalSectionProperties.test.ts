@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
@@ -66,10 +67,10 @@ describe("final section property comparison", () => {
       location: { story: { type: "main" } },
     });
     const pendingXml = await (
-      await JSZip.loadAsync(result.value.buffer)
+      await ZipArchive.read(result.value.buffer)
     )
-      .file("word/document.xml")
-      ?.async("text");
+      .entry("word/document.xml")
+      ?.text();
     expect(pendingXml).toContain("<w:sectPrChange");
 
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
@@ -150,14 +151,14 @@ describe("final section property comparison", () => {
         ],
       },
     ];
-    const archive = await JSZip.loadAsync(await createDocx(document));
-    const xml = await archive.file("word/document.xml")?.async("text");
+    const archive = await ZipArchive.read(await createDocx(document));
+    const xml = await archive.entry("word/document.xml")?.text();
     if (xml === undefined) throw new Error("Missing synthetic document part");
-    archive.file(
+    archive.set(
       "word/document.xml",
       xml.replace(/(<w:sectPrChange[^>]*w:id=")[^"]+/, "$173"),
     );
-    const buffer = await archive.generateAsync({ type: "arraybuffer" });
+    const buffer = (await archive.generate({ compression: "store" })).buffer;
     for (const mode of ["accept", "reject"] as const) {
       const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
       expect(
@@ -241,11 +242,11 @@ test("Folio-exact header removal restores references on reject and removes retir
   expect(accepting.acceptAll()).toBe(1);
   expect(accepting.listStories()).toHaveLength(1);
   const acceptedBuffer = await accepting.toBuffer();
-  const acceptedZip = await JSZip.loadAsync(acceptedBuffer);
+  const acceptedZip = await ZipArchive.read(acceptedBuffer);
   expect(
-    Object.keys(acceptedZip.files).filter((name) =>
-      /^word\/(?:header|footer)\d*\.xml$/u.test(name),
-    ),
+    acceptedZip
+      .paths()
+      .filter((name) => /^word\/(?:header|footer)\d*\.xml$/u.test(name)),
   ).toEqual([]);
   const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
   expect(finalSection(accepted)).toEqual(

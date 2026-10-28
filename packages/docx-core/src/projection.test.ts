@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -17,6 +16,7 @@ import type {
   DocxReviewFactSet,
   DocxReviewFactsWire,
 } from "./projection";
+import { ZipArchive } from "./zip/archive";
 
 const unavailableStylesFormatting = {
   bold: ["unknown-missing-styles", "styles-part-unavailable"],
@@ -57,14 +57,14 @@ const documentXml = `<?xml version="1.0" encoding="UTF-8"?>
 </w:document>`;
 
 const createDocument = async (): Promise<Uint8Array> => {
-  const archive = new JSZip();
-  archive.file("word/document.xml", documentXml);
-  return archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+  const archive = new ZipArchive();
+  archive.set("word/document.xml", documentXml);
+  return archive.generate();
 };
 
-const addStylesPart = (archive: JSZip, stylesXml: string) => {
-  archive.file("word/styles.xml", stylesXml);
-  archive.file(
+const addStylesPart = (archive: ZipArchive, stylesXml: string) => {
+  archive.set("word/styles.xml", stylesXml);
+  archive.set(
     "word/_rels/document.xml.rels",
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
   );
@@ -114,15 +114,15 @@ describe("DOCX projection TypeScript binding", () => {
     const documentRelationship =
       "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
     const mainXml = `<doc:document xmlns:doc="${documentNamespace}"><doc:body><doc:p><doc:r><doc:t>Main</doc:t></doc:r></doc:p></doc:body></doc:document>`;
-    const archive = new JSZip();
-    archive.file("content/main.xml", mainXml);
+    const archive = new ZipArchive();
+    archive.set("content/main.xml", mainXml);
     const stylesXml = `<doc:styles xmlns:doc="${documentNamespace}"><doc:docDefaults><doc:rPrDefault><doc:rPr><doc:b/></doc:rPr></doc:rPrDefault></doc:docDefaults></doc:styles>`;
     const numberingXml = `<doc:numbering xmlns:doc="${documentNamespace}"/>`;
     const documentRelationships = `<Relationships xmlns="${relationshipNamespace}"><Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="numbering" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`;
-    archive.file("content/styles.xml", stylesXml);
-    archive.file("content/numbering.xml", numberingXml);
-    archive.file("content/_rels/main.xml.rels", documentRelationships);
-    archive.file(
+    archive.set("content/styles.xml", stylesXml);
+    archive.set("content/numbering.xml", numberingXml);
+    archive.set("content/_rels/main.xml.rels", documentRelationships);
+    archive.set(
       "_rels/.rels",
       `<Relationships xmlns="${relationshipNamespace}"><Relationship Id="main" Type="${documentRelationship}" Target="content/main.xml"/></Relationships>`,
     );
@@ -137,12 +137,7 @@ describe("DOCX projection TypeScript binding", () => {
     const projection = await projectMainDocumentXml(
       new TextEncoder().encode(flat),
     );
-    const compressed = await projectCompressedDocx(
-      await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      }),
-    );
+    const compressed = await projectCompressedDocx(await archive.generate());
     expect(projection).toEqual(compressed);
     expect(projection[1].map(([, text]) => text)).toEqual(["Main"]);
     expect(projection[1][0]?.[3]).toEqual([[0, 4, "bold"]]);
@@ -185,18 +180,13 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("preserves every direct text style across the WebAssembly wire", async () => {
-    const archive = new JSZip();
-    archive.file(
+    const archive = new ZipArchive();
+    archive.set(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/><w:highlight w:val="yellow"/><w:vertAlign w:val="superscript"/></w:rPr><w:t>Styled</w:t></w:r></w:p></w:body></w:document>`,
     );
 
-    const projection = await projectCompressedDocx(
-      await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      }),
-    );
+    const projection = await projectCompressedDocx(await archive.generate());
 
     expect(projection[1][0]?.[3]).toEqual([
       [0, 6, "bold"],
@@ -219,8 +209,8 @@ describe("DOCX projection TypeScript binding", () => {
       .map((row) => row.split("\t"));
     expect(colours).toHaveLength(17);
     for (const [colour, classification] of colours) {
-      const archive = new JSZip();
-      archive.file(
+      const archive = new ZipArchive();
+      archive.set(
         "word/document.xml",
         `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
           <w:p><w:pPr><w:pStyle w:val="Marked"/></w:pPr><w:r><w:t>😀P</w:t></w:r></w:p>
@@ -235,10 +225,7 @@ describe("DOCX projection TypeScript binding", () => {
           <w:style w:type="character" w:styleId="MarkedCharacter"><w:rPr><w:b/><w:highlight w:val="${colour}"/></w:rPr></w:style>
         </w:styles>`,
       );
-      const bytes = await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      });
+      const bytes = await archive.generate();
       const projection = await projectCompressedDocx(bytes);
       const fused = await projectCompressedDocxWithReviewFacts(bytes);
       expect(fused[1]).toEqual(projection);
@@ -260,8 +247,8 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("projects effective styles, Office Math text, and font-bound symbols through WebAssembly", async () => {
-    const archive = new JSZip();
-    archive.file(
+    const archive = new ZipArchive();
+    archive.set(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body><w:p><w:pPr><w:pStyle w:val="Marked"/></w:pPr><w:r><w:t>A</w:t></w:r><w:r><w:rPr><w:b w:val="0"/></w:rPr><w:t>B</w:t></w:r><m:oMath><m:r><m:t>x&amp;1</m:t></m:r></m:oMath><w:r><w:sym w:font="Wingdings" w:char="F06C"/></w:r></w:p></w:body></w:document>`,
     );
@@ -270,12 +257,7 @@ describe("DOCX projection TypeScript binding", () => {
       `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Marked"><w:rPr><w:b/></w:rPr></w:style></w:styles>`,
     );
 
-    const projection = await projectCompressedDocx(
-      await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      }),
-    );
+    const projection = await projectCompressedDocx(await archive.generate());
 
     expect(projection[1][0]?.[1]).toBe("ABx&1●");
     expect(projection[1][0]?.[3]).toEqual([
@@ -286,18 +268,13 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("selects regular and complex-script bold at the WebAssembly boundary", async () => {
-    const archive = new JSZip();
-    archive.file(
+    const archive = new ZipArchive();
+    archive.set(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Aع</w:t></w:r><w:r><w:rPr><w:bCs/></w:rPr><w:t>Aع</w:t></w:r><w:r><w:rPr><w:bCs/><w:cs/></w:rPr><w:t>xy</w:t></w:r></w:p></w:body></w:document>`,
     );
 
-    const projection = await projectCompressedDocx(
-      await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      }),
-    );
+    const projection = await projectCompressedDocx(await archive.generate());
 
     expect(projection[1][0]?.[1]).toBe("AعAعxy");
     expect(projection[1][0]?.[3]).toEqual([
@@ -307,8 +284,8 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("exposes direct style identifiers separately from resolved outline levels", async () => {
-    const archive = new JSZip();
-    archive.file(
+    const archive = new ZipArchive();
+    archive.set(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Derived"/></w:pPr><w:r><w:t>Inherited</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="Derived"/><w:outlineLvl w:val="3"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p></w:body></w:document>`,
     );
@@ -317,12 +294,7 @@ describe("DOCX projection TypeScript binding", () => {
       `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Base"><w:pPr><w:outlineLvl w:val="1"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Derived"><w:basedOn w:val="Base"/></w:style></w:styles>`,
     );
 
-    const projection = await projectCompressedDocx(
-      await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      }),
-    );
+    const projection = await projectCompressedDocx(await archive.generate());
 
     expect(projection[1].map((paragraph) => paragraph[5])).toEqual([
       "Derived",
@@ -338,8 +310,8 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("resolves paragraph alignment from direct w:jc, styles, and document defaults", async () => {
-    const archive = new JSZip();
-    archive.file(
+    const archive = new ZipArchive();
+    archive.set(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="Justified"/></w:pPr><w:r><w:t>Styled</w:t></w:r></w:p><w:p><w:r><w:t>Absent</w:t></w:r></w:p></w:body></w:document>`,
     );
@@ -348,12 +320,7 @@ describe("DOCX projection TypeScript binding", () => {
       `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:pPrDefault><w:pPr><w:jc w:val="left"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:styleId="Justified"><w:pPr><w:jc w:val="both"/></w:pPr></w:style></w:styles>`,
     );
 
-    const projection = await projectCompressedDocx(
-      await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      }),
-    );
+    const projection = await projectCompressedDocx(await archive.generate());
 
     expect(projection[1].map((paragraph) => paragraph.length)).toEqual([
       8, 8, 8,
@@ -376,15 +343,12 @@ describe("DOCX projection TypeScript binding", () => {
         ["unknown-unread", "unsupported-alignment"],
       ],
     ] as const) {
-      const archive = new JSZip();
-      archive.file(
+      const archive = new ZipArchive();
+      archive.set(
         "word/document.xml",
         `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr>${properties}</w:pPr><w:r><w:t>Alignment</w:t></w:r></w:p></w:body></w:document>`,
       );
-      const bytes = await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      });
+      const bytes = await archive.generate();
       const projection = await projectCompressedDocx(bytes);
       const fused = await projectCompressedDocxWithReviewFacts(bytes);
       expect(fused[1]).toEqual(projection);
@@ -400,29 +364,26 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("returns document and review facts from one package projection", async () => {
-    const archive = new JSZip();
-    archive.file(
+    const archive = new ZipArchive();
+    archive.set(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:ins w:id="7" w:author="Ada"><w:r><w:t>new</w:t></w:r></w:ins></w:p></w:body></w:document>`,
     );
-    archive.file(
+    archive.set(
       "word/comments.xml",
       `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="1" w:author="Lin"><w:p w14:paraId="AAAAAAAA"/></w:comment></w:comments>`,
     );
-    archive.file(
+    archive.set(
       "word/commentsExtended.xml",
       `<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="AAAAAAAA" w15:done="1"/></w15:commentsEx>`,
     );
-    archive.file(
+    archive.set(
       "word/_rels/document.xml.rels",
       `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="comments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/><Relationship Id="commentsExtended" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/></Relationships>`,
     );
 
     const projection = await projectCompressedDocxWithReviewFacts(
-      await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      }),
+      await archive.generate(),
     );
 
     expect(projection[0]).toBe(2);
@@ -473,16 +434,13 @@ describe("DOCX projection TypeScript binding", () => {
       "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
       "http://purl.oclc.org/ooxml/wordprocessingml/main",
     ]) {
-      const archive = new JSZip();
-      archive.file(
+      const archive = new ZipArchive();
+      archive.set(
         "word/document.xml",
         `<w:document xmlns:w="${namespace}"><w:body><w:tbl><w:tr><w:tblPrEx><w:tblPrExChange w:id="1" w:author="A"><w:tblPrEx/></w:tblPrExChange></w:tblPrEx><w:tc><w:p><w:r><w:rPr><w:rPrChange w:id="2" w:author="A"><w:rPr><w:b/></w:rPr></w:rPrChange></w:rPr><w:t>é😀</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
       );
       addStylesPart(archive, `<w:styles xmlns:w="${namespace}"/>`);
-      const bytes = await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      });
+      const bytes = await archive.generate();
       const projection = await projectCompressedDocxWithReviewFacts(bytes);
       const expectedRevisions = [
         "known",
@@ -524,17 +482,14 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("locates a tracked paragraph mark at the paragraph join", async () => {
-    const archive = new JSZip();
-    archive.file(
+    const archive = new ZipArchive();
+    archive.set(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:rPr><w:del w:id="3" w:author="Lin"/></w:rPr></w:pPr><w:r><w:t>A</w:t></w:r></w:p><w:p><w:r><w:t>B</w:t></w:r></w:p></w:body></w:document>`,
     );
 
     const projection = await projectCompressedDocxWithReviewFacts(
-      await archive.generateAsync({
-        compression: "DEFLATE",
-        type: "uint8array",
-      }),
+      await archive.generate(),
     );
 
     expect(projection[1][1].map((paragraph) => paragraph[1])).toEqual(["AB"]);
@@ -562,23 +517,20 @@ describe("DOCX projection TypeScript binding", () => {
   });
 
   test("materializes footnote markers consistently in paragraphs and comment references", async () => {
-    const archive = new JSZip();
-    archive.file(
+    const archive = new ZipArchive();
+    archive.set(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:commentRangeStart w:id="1"/><w:r><w:t>Tit😀le</w:t><w:footnoteReference w:id="1"/></w:r><w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r></w:p></w:body></w:document>`,
     );
-    archive.file(
+    archive.set(
       "word/comments.xml",
       `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="1" w:author="Ada"><w:p><w:r><w:t>Review</w:t></w:r></w:p></w:comment></w:comments>`,
     );
-    archive.file(
+    archive.set(
       "word/_rels/document.xml.rels",
       `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="comments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>`,
     );
-    const bytes = await archive.generateAsync({
-      compression: "DEFLATE",
-      type: "uint8array",
-    });
+    const bytes = await archive.generate();
 
     const host = await projectCompressedDocxWithReviewFacts(bytes);
     const readable = await projectCompressedDocxWithReviewFacts(bytes, {

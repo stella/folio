@@ -3,11 +3,11 @@
  * reading of saved paragraph markup that does not go through the parser.
  */
 
-import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createHarnessState } from "../../__tests__/editorHarness";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
@@ -275,23 +275,23 @@ export const listNumberFieldDocx = (
       .join("") +
     `</w:comments>`;
 
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
-  zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
-  zip.file("word/document.xml", documentXml);
-  zip.file("word/numbering.xml", numberingXml());
-  zip.file("word/comments.xml", commentsXml);
-  zip.file("docProps/core.xml", CORE_PROPERTIES);
-  return zip.generateAsync({ type: "arraybuffer" });
+  const zip = new ZipArchive();
+  zip.set("[Content_Types].xml", CONTENT_TYPES);
+  zip.set("_rels/.rels", PACKAGE_RELS);
+  zip.set("word/_rels/document.xml.rels", DOCUMENT_RELS);
+  zip.set("word/document.xml", documentXml);
+  zip.set("word/numbering.xml", numberingXml());
+  zip.set("word/comments.xml", commentsXml);
+  zip.set("docProps/core.xml", CORE_PROPERTIES);
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 export const documentXmlOf = async (buffer: ArrayBuffer): Promise<string> => {
   const text = await (
-    await JSZip.loadAsync(buffer)
+    await ZipArchive.read(buffer)
   )
-    .file("word/document.xml")
-    ?.async("text");
+    .entry("word/document.xml")
+    ?.text();
   if (text === undefined) {
     throw new Error("The package has no word/document.xml");
   }

@@ -12,9 +12,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import { compileLegalSourceToDocument } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -41,11 +41,11 @@ const REFERENCING_PARTS =
   /^word\/(document|styles|comments|footnotes|endnotes|header\d*|footer\d*)\.xml$/u;
 
 const danglingIn = async (document: Document): Promise<string[]> => {
-  const zip = await JSZip.loadAsync(await createDocx(document));
+  const zip = await ZipArchive.read(await createDocx(document));
   const parts = new Map<string, string>();
-  for (const name of Object.keys(zip.files)) {
+  for (const name of zip.paths()) {
     if (REFERENCING_PARTS.test(name)) {
-      parts.set(name, await zip.file(name)!.async("string"));
+      parts.set(name, await zip.entry(name)!.text());
     }
   }
   return danglingStyleReferences(parts.get("word/styles.xml"), parts).map(

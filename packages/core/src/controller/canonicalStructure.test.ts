@@ -1,7 +1,6 @@
 import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { finalizeParagraphFormatting } from "@stll/docx-core/model";
@@ -10,6 +9,7 @@ import {
   paragraphLogicalText,
   type TextPosition,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
@@ -1483,8 +1483,8 @@ describe("canonical structural commands", () => {
     const authored = paragraphs(session).at(0)?.formatting?.numPr;
     expect(authored?.kind).toBe("reference");
     const buffer = await createDocx(session.document);
-    const zip = await JSZip.loadAsync(buffer);
-    expect(await zip.file("word/numbering.xml")?.async("string")).toContain(
+    const zip = await ZipArchive.read(buffer);
+    expect(await zip.entry("word/numbering.xml")?.text()).toContain(
       'w:numFmt w:val="decimal"',
     );
     const reopened = await parseDocx(buffer, { preloadFonts: false });

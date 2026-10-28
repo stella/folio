@@ -6,9 +6,10 @@
 
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   type FixtureBlock,
@@ -102,8 +103,8 @@ const fixture = async (
 };
 
 const documentXml = async (file: string): Promise<string> => {
-  const zip = await JSZip.loadAsync(await readFile(file));
-  return (await zip.file("word/document.xml")?.async("string")) ?? "";
+  const zip = await ZipArchive.read(await readFile(file));
+  return (await zip.entry("word/document.xml")?.text()) ?? "";
 };
 
 describe("read_document lines", () => {

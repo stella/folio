@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { createReviewerBridge } from "./bridges/reviewer";
@@ -9,8 +9,8 @@ import { executeFolioToolCall } from "./execute";
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const makeDocx = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "word/document.xml",
     `<w:document xmlns:w="${W}"><w:body>` +
       `<w:customXml w:element="clause">` +
@@ -20,7 +20,7 @@ const makeDocx = async (): Promise<ArrayBuffer> => {
       `<w:p><w:r><w:t>After.</w:t></w:r></w:p>` +
       `</w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 describe("read_document inside block custom XML", () => {

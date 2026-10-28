@@ -1,9 +1,10 @@
 import { TaggedError } from "better-result";
 import { XMLParser } from "fast-xml-parser";
-import JSZip from "jszip";
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import sourceManifest from "../specifications/sources.json";
 
@@ -873,23 +874,23 @@ const readNestedXsdBundle = async ({
   outerBytes: Uint8Array;
   innerPath: string;
 }): Promise<ReadonlyMap<string, string>> => {
-  const outer = await JSZip.loadAsync(outerBytes);
-  const innerEntry = outer.file(innerPath);
-  if (innerEntry === null) {
+  const outer = await ZipArchive.read(outerBytes);
+  const innerEntry = outer.entry(innerPath);
+  if (innerEntry === undefined) {
     throw new SchemaGraphError({
       message: `Missing nested schema archive: ${innerPath}`,
     });
   }
-  const inner = await JSZip.loadAsync(await innerEntry.async("uint8array"));
+  const inner = await ZipArchive.read(await innerEntry.bytes());
   const documents = new Map<string, string>();
-  for (const entry of Object.values(inner.files).toSorted((left, right) =>
-    compareStrings(left.name, right.name),
-  )) {
-    if (entry.dir || !entry.name.endsWith(".xsd")) {
+  for (const entry of inner
+    .entries()
+    .toSorted((left, right) => compareStrings(left.name, right.name))) {
+    if (!entry.path.endsWith(".xsd")) {
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- archive order is deterministic and bounded
-    documents.set(entry.name, await entry.async("text"));
+    documents.set(entry.path, await entry.text());
   }
   return documents;
 };

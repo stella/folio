@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import JSZip from "jszip";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { createReviewerBridge } from "./bridges/reviewer";
@@ -9,8 +9,8 @@ import { executeFolioToolCall } from "./execute";
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 const makeDocx = async (): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "word/document.xml",
     `<w:document xmlns:w="${W}"><w:body><w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>` +
       `<w:customXml w:element="row"><w:customXmlPr><w:attr w:name="row-key" w:val="row-value"/></w:customXmlPr><w:bookmarkStart w:id="31" w:name="row-wrapper-start"/><w:tr><w:customXml w:element="cell"><w:customXmlPr><w:attr w:name="cell-key" w:val="cell-value"/></w:customXmlPr><w:bookmarkStart w:id="32" w:name="cell-wrapper-start"/><w:tc><w:p><w:r><w:t>Table custom XML sentinel.</w:t></w:r></w:p></w:tc><w:bookmarkEnd w:id="32"/></w:customXml></w:tr><w:bookmarkEnd w:id="31"/></w:customXml>` +
@@ -20,7 +20,7 @@ const makeDocx = async (): Promise<ArrayBuffer> => {
       `<w:customXml w:element="duplicate"><w:tr><w:tc><w:p/></w:tc></w:tr></w:customXml>` +
       `</w:tbl></w:body></w:document>`,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 describe("read_document inside table custom XML", () => {
@@ -67,10 +67,10 @@ describe("read_document inside table custom XML", () => {
     const saved = await reviewer.toBuffer();
     const xml =
       (await (
-        await JSZip.loadAsync(saved)
+        await ZipArchive.read(saved)
       )
-        .file("word/document.xml")
-        ?.async("text")) ?? "";
+        .entry("word/document.xml")
+        ?.text()) ?? "";
     expect(xml).toContain('<w:customXml w:element="row">');
     expect(xml).toContain('<w:customXml w:element="cell">');
     const rowXml = xml

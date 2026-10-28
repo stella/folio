@@ -15,9 +15,9 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 
 import { assertValidOoxmlNumericIds } from "@stll/docx-core";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   propertyConfig,
@@ -60,8 +60,8 @@ const documentXmlFor = (ids: readonly number[]): string =>
 </w:document>`;
 
 const docxFor = async (ids: readonly number[]): Promise<ArrayBuffer> => {
-  const zip = new JSZip();
-  zip.file(
+  const zip = new ZipArchive();
+  zip.set(
     "[Content_Types].xml",
     `${XML_DECLARATION}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -71,23 +71,23 @@ const docxFor = async (ids: readonly number[]): Promise<ArrayBuffer> => {
   <Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>
 </Types>`,
   );
-  zip.file(
+  zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
-  zip.file(
+  zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.comments}" Target="comments.xml"/>
 </Relationships>`,
   );
-  zip.file("word/comments.xml", commentsXmlFor(ids));
-  zip.file("word/document.xml", documentXmlFor(ids));
-  return zip.generateAsync({ type: "arraybuffer" });
+  zip.set("word/comments.xml", commentsXmlFor(ids));
+  zip.set("word/document.xml", documentXmlFor(ids));
+  return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);
 };
 
 /** Ids drawn from a small pool, so duplicates are generated often. */
@@ -127,14 +127,12 @@ describe("duplicate comment ids (property)", () => {
               { ...parsed, originalBuffer },
               { updateModifiedDate: false },
             );
-            const zip = await JSZip.loadAsync(saved);
-            const xml = await zip.file("word/comments.xml")?.async("string");
+            const zip = await ZipArchive.read(saved);
+            const xml = await zip.entry("word/comments.xml")?.text();
             expect(xml).toBeDefined();
             if (xml !== undefined)
               assertValidOoxmlNumericIds(xml, "word/comments.xml");
-            const bodyXml = await zip
-              .file("word/document.xml")
-              ?.async("string");
+            const bodyXml = await zip.entry("word/document.xml")?.text();
             expect(bodyXml).toBeDefined();
             if (bodyXml !== undefined)
               assertValidOoxmlNumericIds(bodyXml, "word/document.xml");
@@ -210,10 +208,10 @@ describe("duplicate comment ids (property)", () => {
               { type: "run", content: [{ type: "text", text: "Body edit" }] },
             ],
           });
-          const saved = await JSZip.loadAsync(
+          const saved = await ZipArchive.read(
             await repackDocx(document, { updateModifiedDate: false }),
           );
-          expect(await saved.file("word/comments.xml")?.async("string")).toBe(
+          expect(await saved.entry("word/comments.xml")?.text()).toBe(
             commentsXmlFor(ids),
           );
         }),

@@ -1,6 +1,5 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { Fragment, type Node as ProseNode, Slice } from "prosemirror-model";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 
@@ -9,6 +8,7 @@ import {
   relationshipIdOf,
 } from "@stll/docx-core/model";
 import { paragraphLogicalText } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { assertExactModel } from "../../../../test/exactModel";
 import {
@@ -966,17 +966,16 @@ describe("canonical clipboard", () => {
                   { type: "run", content: [{ type: "text", text: "owned" }] },
                 ],
               });
-              const zip = await JSZip.loadAsync(await createDocx(destination));
+              const zip = await ZipArchive.read(await createDocx(destination));
               await Promise.all(
-                Object.values(zip.files)
+                zip
+                  .entries()
                   .filter(
                     (file) =>
-                      !file.dir &&
-                      (file.name.endsWith(".xml") ||
-                        file.name.endsWith(".rels")),
+                      file.path.endsWith(".xml") || file.path.endsWith(".rels"),
                   )
                   .map(async (file) => {
-                    let xml = await file.async("text");
+                    let xml = await file.text();
                     if (profile === "strict") {
                       xml = xml
                         .replaceAll(
@@ -988,7 +987,7 @@ describe("canonical clipboard", () => {
                           "http://purl.oclc.org/ooxml/officeDocument/relationships",
                         );
                     }
-                    if (file.name.endsWith(".rels")) {
+                    if (file.path.endsWith(".rels")) {
                       xml = xml
                         .replace(
                           "<Relationships xmlns=",
@@ -997,11 +996,11 @@ describe("canonical clipboard", () => {
                         .replaceAll("<Relationship ", "<pkg:Relationship ")
                         .replace("</Relationships>", "</pkg:Relationships>");
                     }
-                    zip.file(file.name, xml);
+                    zip.set(file.path, xml);
                   }),
               );
               destination = await parseDocx(
-                await zip.generateAsync({ type: "arraybuffer" }),
+                (await zip.generate({ compression: "store" })).buffer,
                 {
                   preloadFonts: false,
                   detectVariables: false,

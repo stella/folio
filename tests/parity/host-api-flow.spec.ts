@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { makeTempDir } from "../../packages/cli/src/__tests__/fixtures";
 import { runFolioCli } from "../../packages/cli/src/cli";
@@ -198,12 +199,12 @@ test("host APIs interleaved with edits save equally across React, Vue, headless 
     { name: "vue", page: vue },
   ] as const;
   const source = await buildScrollRootDocument();
-  const zip = await JSZip.loadAsync(source);
-  const part = zip.file("word/document.xml");
+  const zip = await ZipArchive.read(source);
+  const part = zip.entry("word/document.xml");
   if (!part) throw new Error("Missing fixture document part");
-  zip.file(
+  zip.set(
     "word/document.xml",
-    (await part.async("string")).replace("First page", "Replacement page"),
+    (await part.text()).replace("First page", "Replacement page"),
   );
   const replacement = await generateDocxFixture(zip, "host-flow-replacement");
   const { dir, cleanup } = await makeTempDir();
