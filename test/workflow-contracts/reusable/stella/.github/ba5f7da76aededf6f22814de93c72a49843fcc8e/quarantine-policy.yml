@@ -48,7 +48,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: "1.4.1"
+          bun-version: "1.4.4"
       - name: Resolve Bun roots
         id: bun-roots
         run: bun .quarantine-policy/.github/actions/quarantine-policy/check.ts --bun-roots-output
