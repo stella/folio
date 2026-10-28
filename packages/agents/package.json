@@ -49,6 +49,9 @@
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1"
   },
+  "devDependencies": {
+    "@stll/docx-core": "workspace:*"
+  },
   "peerDependencies": {
     "prosemirror-commands": "^1.7.1",
     "prosemirror-dropcursor": "^1.8.2",
