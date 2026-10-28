@@ -1,7 +1,15 @@
 import { TaggedError, type TaggedErrorClass } from "better-result";
-import { XMLParser } from "fast-xml-parser";
 
 import { MAX_REVISION_ID } from "../model/content";
+import { readXml, XmlReadError } from "../xml/streamingXmlParser";
+import type { XmlElement } from "../xml/xmlElement";
+import {
+  ID_VALUE_ELEMENTS,
+  localName,
+  NUMBERING_ATTRIBUTES,
+} from "./numericIdNames";
+
+export { isOoxmlNumericIdAttributeName } from "./numericIdNames";
 
 const WORD_NAMESPACES = new Set([
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
@@ -15,17 +23,6 @@ const DRAWING_NAMESPACES = new Set([
   "http://purl.oclc.org/ooxml/drawingml/picture",
   "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
   "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
-]);
-const NUMBERING_ATTRIBUTES = new Set([
-  "numId",
-  "abstractNumId",
-  "numPicBulletId",
-]);
-const ID_VALUE_ELEMENTS = new Set([
-  "id",
-  "numId",
-  "abstractNumId",
-  "lvlPicBulletId",
 ]);
 const STRING_ID_ELEMENTS = new Set(["permStart", "permEnd"]);
 const MAX_UNSIGNED_ID = 0xffff_ffff;
@@ -124,10 +121,6 @@ export const ooxmlNumericIdDomain = ({
   return undefined;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const localName = (name: string): string => name.slice(name.indexOf(":") + 1);
 const namespaceUri = (
   name: string,
   bindings: ReadonlyMap<string, string>,
@@ -173,23 +166,6 @@ const decodeAttributeReferences = (value: string): string =>
 
 const ID_ATTRIBUTE_NAMES = ["id", ...NUMBERING_ATTRIBUTES].join("|");
 const ID_ELEMENT_NAMES = [...ID_VALUE_ELEMENTS].join("|");
-type OoxmlNumericIdAttributeOptions = {
-  elementName: string;
-  attributeName: string;
-};
-
-/** Attributes an identity scan must retain, derived from the domain classifier. */
-export const isOoxmlNumericIdAttributeName = ({
-  elementName,
-  attributeName,
-}: OoxmlNumericIdAttributeOptions): boolean => {
-  const attribute = localName(attributeName);
-  return (
-    attribute === "id" ||
-    NUMBERING_ATTRIBUTES.has(attribute) ||
-    (attribute === "val" && ID_VALUE_ELEMENTS.has(localName(elementName)))
-  );
-};
 const ID_CANDIDATE = new RegExp(
   `\\b(?:${ID_ATTRIBUTE_NAMES})\\s*=|<(?:[^\\s<>/:]+:)?(?:${ID_ELEMENT_NAMES})(?:[\\s/>])`,
   "u",
@@ -297,72 +273,57 @@ export const assertValidOoxmlNumericIds = (
   partPath: string,
 ): void => {
   if (!mayContainInvalidOoxmlNumericIds(xml)) return;
-  const parser = new XMLParser({
-    preserveOrder: true,
-    ignoreAttributes: false,
-    attributeNamePrefix: "",
-    parseTagValue: false,
-    parseAttributeValue: false,
-    processEntities: false,
-    attributeValueProcessor: (_name, value) => decodeAttributeReferences(value),
-    htmlEntities: false,
-    ignoreDeclaration: true,
-  });
+  // Tolerant and raw: every part a writer can emit is checked, and attribute
+  // values are decoded once, below, rather than by the reader.
+  const read = readXml(xml, { conformance: "tolerant", references: "raw" });
+  if (read.status === "rejected") {
+    throw new XmlReadError({
+      message: `${partPath}: XML part could not be read: ${read.reason}`,
+      reason: read.reason,
+    });
+  }
   const visit = (
-    nodes: unknown,
+    nodes: readonly XmlElement[],
     inherited: ReadonlyMap<string, string>,
   ): void => {
-    if (!Array.isArray(nodes)) return;
     for (const node of nodes) {
-      if (!isRecord(node)) continue;
-      const attributes = node[":@"];
+      if (node.type !== "element" || node.name === undefined) continue;
+      const attributes = new Map<string, string>();
       let localBindings: Map<string, string> | undefined;
-      if (isRecord(attributes)) {
-        for (const [name, value] of Object.entries(attributes)) {
-          if (typeof value !== "string") continue;
-          if (name === "xmlns" || name.startsWith("xmlns:")) {
-            localBindings ??= new Map(inherited);
-            localBindings.set(name === "xmlns" ? "" : name.slice(6), value);
-          }
+      for (const [name, value] of Object.entries(node.attributes ?? {})) {
+        if (typeof value !== "string") continue;
+        const decoded = decodeAttributeReferences(value);
+        attributes.set(name, decoded);
+        if (name === "xmlns" || name.startsWith("xmlns:")) {
+          localBindings ??= new Map(inherited);
+          localBindings.set(name === "xmlns" ? "" : name.slice(6), decoded);
         }
       }
       const bindings = localBindings ?? inherited;
-      for (const [elementName, children] of Object.entries(node)) {
-        if (
-          elementName === ":@" ||
-          elementName.startsWith("#") ||
-          elementName.startsWith("?")
-        )
-          continue;
-        const elementNamespace = namespaceUri(elementName, bindings);
-        if (isRecord(attributes)) {
-          for (const [attributeName, value] of Object.entries(attributes)) {
-            if (typeof value !== "string" && typeof value !== "number")
-              continue;
-            const attributeNamespace = attributeName.includes(":")
-              ? namespaceUri(attributeName, bindings)
-              : undefined;
-            const domain = ooxmlNumericIdDomain({
-              elementName,
-              elementNamespace,
-              attributeName,
-              attributeNamespace,
-            });
-            if (domain !== undefined) {
-              assertValidOoxmlNumericId({
-                value,
-                partPath,
-                elementName,
-                attributeName,
-                domain,
-              });
-            }
-          }
+      const elementName = node.name;
+      const elementNamespace = namespaceUri(elementName, bindings);
+      for (const [attributeName, value] of attributes) {
+        const attributeNamespace = attributeName.includes(":")
+          ? namespaceUri(attributeName, bindings)
+          : undefined;
+        const domain = ooxmlNumericIdDomain({
+          elementName,
+          elementNamespace,
+          attributeName,
+          attributeNamespace,
+        });
+        if (domain !== undefined) {
+          assertValidOoxmlNumericId({
+            value,
+            partPath,
+            elementName,
+            attributeName,
+            domain,
+          });
         }
-        visit(children, bindings);
       }
+      visit(node.elements ?? [], bindings);
     }
   };
-  const parsed: unknown = parser.parse(xml);
-  visit(parsed, new Map());
+  visit(read.value.elements ?? [], new Map());
 };

@@ -1,3 +1,5 @@
+import { assertXmlResourceLimits } from "@stll/docx-core/xml/limits";
+
 import type { HeaderFooterType } from "../types/document";
 import { parseHeaderFooterType } from "./headerFooterRefParser";
 import {
@@ -10,7 +12,6 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
-import { assertXmlResourceLimits } from "./xmlResourceLimits";
 
 export type HeaderFooterReference = {
   element: "headerReference" | "footerReference";

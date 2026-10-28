@@ -28,6 +28,7 @@
  */
 
 import { escapeXmlText } from "@stll/docx-core";
+import { assertXmlResourceLimits } from "@stll/docx-core/xml/limits";
 
 import {
   findChildByLocalName,
@@ -39,7 +40,6 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
-import { assertXmlResourceLimits } from "./xmlResourceLimits";
 
 const MATH_NAMESPACE_URIS = new Set([
   "http://schemas.openxmlformats.org/officeDocument/2006/math",

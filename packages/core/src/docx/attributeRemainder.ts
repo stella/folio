@@ -37,13 +37,13 @@ import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 import type { PreservedAttribute } from "@stll/docx-core/model";
+import { XML_NAMESPACE_URI } from "@stll/docx-core/xml/namespaces";
 
 import {
   modelledAttributeNames,
   type ModelledAttributes,
 } from "./propertyElementAttributes";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
-import { XML_NAMESPACE_URI } from "./xmlNamespaceContext";
 import {
   getLocalName,
   resolveAttributeNamespaceUri,

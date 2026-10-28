@@ -5,6 +5,7 @@ import {
   type ImportedIdCollisionKind,
   PARSE_WARNING_CODES,
 } from "@stll/docx-core/model";
+import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 
 import { paraIdAttribute, textIdAttribute } from "./paraIdAttribute";
 import type { ParseContext } from "./parseContext";
@@ -12,7 +13,6 @@ import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
 import { scanSelectedStreamingXmlElements } from "./selectedXmlIdentityScan";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 import { toTransitionalNamespaceUri } from "./transitionalSpelling";
-import { resolveNamespaceUri } from "./xmlNamespaceContext";
 import {
   getLocalName,
   getNamespaceUri,

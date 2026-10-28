@@ -5,7 +5,7 @@
  * context without importing the module that dispatches to it.
  */
 
-import type { XmlElement, XmlNamespaceScope } from "./xmlParser";
+import type { XmlElement, XmlNamespaceScope } from "./xmlElement";
 
 export const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
 

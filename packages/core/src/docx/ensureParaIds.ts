@@ -58,14 +58,14 @@ const EnsureParaIdsErrorBase: TaggedErrorClass<"EnsureParaIdsError"> =
  */
 import { TaggedError, type TaggedErrorClass } from "better-result";
 
+import { scanStreamingXmlElements } from "@stll/docx-core/xml";
+import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { deterministicHexId } from "../utils/hexId";
 import { resolvePackageRelationshipTarget } from "./packageParts";
 import { spliceXml } from "./selectiveXmlPatch";
 import { loadDocxArchive } from "./server/boundedArchive";
-import { scanStreamingXmlElements } from "./streamingXmlParser";
-import { resolveNamespaceUri } from "./xmlNamespaceContext";
 import {
   getAttribute,
   getChildElements,

@@ -1,8 +1,7 @@
-import { panic, Result } from "better-result";
-import { XMLParser, XMLValidator } from "fast-xml-parser";
+import { panic } from "better-result";
 
+import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import { SCHEMA_ATTRIBUTE_FACTS } from "./schemaAttributes.gen";
-import { createXmlEntityDecoder } from "./xmlEntityDecoder";
 
 type Whitespace = "preserve" | "replace" | "collapse";
 type Constraint =
@@ -115,9 +114,6 @@ const accepts = (constraint: Constraint, value: string): boolean => {
   }
 };
 
-const record = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const validateAttributes = (
   model: Model,
   values: ReadonlyMap<string, string>,
@@ -146,51 +142,33 @@ const validateAttributes = (
  * Unknown extension vocabularies remain available for lossless round trips.
  */
 export const validateSchemaAttributes = (xml: string): string | null => {
-  const syntax = XMLValidator.validate(xml);
-  if (syntax !== true) return `Malformed XML: ${syntax.err.msg}`;
-  if (/<!DOCTYPE/i.test(xml)) return "DOCTYPE is not allowed in DOCX XML";
-  const parsed = Result.try(() =>
-    new XMLParser({
-      preserveOrder: true,
-      ignoreAttributes: false,
-      attributeNamePrefix: "",
-      parseTagValue: false,
-      parseAttributeValue: false,
-      trimValues: false,
-      processEntities: true,
-      entityDecoder: createXmlEntityDecoder(),
-      ignoreDeclaration: true,
-    }).parse(xml),
-  );
-  if (parsed.isErr()) return "Malformed XML: XML parser rejected the part";
-  if (!Array.isArray(parsed.value))
-    return "Malformed XML: expected a document element";
-  const roots = parsed.value.filter(
-    (node: unknown) =>
-      record(node) &&
-      Object.keys(node).some(
-        (tag) => tag !== ":@" && !tag.startsWith("#") && !tag.startsWith("?"),
-      ),
-  );
-  if (roots.length !== 1)
-    return "Malformed XML: expected exactly one document element";
+  // An entity no declaration defines stays as written, as it always has here.
+  const read = readXml(xml, {
+    conformance: "well-formed",
+    undeclaredEntities: "accept",
+  });
+  if (read.status === "rejected") {
+    return /<!DOCTYPE/i.test(xml)
+      ? "DOCTYPE is not allowed in DOCX XML"
+      : `Malformed XML: ${read.reason}`;
+  }
   const pending: Array<{
-    nodes: unknown;
+    nodes: readonly XmlElement[];
     scope: ReadonlyMap<string, string>;
     types: readonly string[];
   }> = [
     {
-      nodes: parsed.value,
+      nodes: read.value.elements ?? [],
       scope: new Map([["xml", XML_NAMESPACE]]),
       types: [],
     },
   ];
   while (pending.length > 0) {
     const current = pending.pop();
-    if (!current || !Array.isArray(current.nodes)) continue;
+    if (!current) continue;
     for (const node of current.nodes) {
-      if (!record(node)) continue;
-      const attributes = record(node[":@"]) ? node[":@"] : {};
+      if (node.type !== "element" || node.name === undefined) continue;
+      const attributes = node.attributes ?? {};
       const scope = new Map(current.scope);
       for (const [name, value] of Object.entries(attributes)) {
         if (typeof value !== "string") continue;
@@ -205,27 +183,24 @@ export const validateSchemaAttributes = (xml: string): string | null => {
         if (values.has(resolved)) return `Duplicate XML attribute: ${name}`;
         if (typeof value === "string") values.set(resolved, value);
       }
-      for (const [tag, nodes] of Object.entries(node)) {
-        if (tag === ":@" || tag.startsWith("#") || tag.startsWith("?"))
-          continue;
-        const name = resolveName({ name: tag, scope, attribute: false });
-        if (name === null) return `Unbound XML element prefix: ${tag}`;
-        const contextual = current.types.flatMap(
-          (type) => SCHEMA_ATTRIBUTE_FACTS.types[type]?.children[name] ?? [],
-        );
-        const types = contextual.length
-          ? contextual
-          : (SCHEMA_ATTRIBUTE_FACTS.elements[name] ?? []);
-        let issue: string | null = null;
-        for (const type of types) {
-          const model = SCHEMA_ATTRIBUTE_FACTS.types[type];
-          if (!model) continue;
-          issue = validateAttributes(model, values);
-          if (issue === null) break;
-        }
-        if (issue !== null) return `${tag}: ${issue}`;
-        pending.push({ nodes, scope, types });
+      const tag = node.name;
+      const name = resolveName({ name: tag, scope, attribute: false });
+      if (name === null) return `Unbound XML element prefix: ${tag}`;
+      const contextual = current.types.flatMap(
+        (type) => SCHEMA_ATTRIBUTE_FACTS.types[type]?.children[name] ?? [],
+      );
+      const types = contextual.length
+        ? contextual
+        : (SCHEMA_ATTRIBUTE_FACTS.elements[name] ?? []);
+      let issue: string | null = null;
+      for (const type of types) {
+        const model = SCHEMA_ATTRIBUTE_FACTS.types[type];
+        if (!model) continue;
+        issue = validateAttributes(model, values);
+        if (issue === null) break;
       }
+      if (issue !== null) return `${tag}: ${issue}`;
+      pending.push({ nodes: node.elements ?? [], scope, types });
     }
   }
   return null;

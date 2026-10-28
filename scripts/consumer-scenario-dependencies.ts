@@ -8,5 +8,4 @@ export const CONSUMER_DEPENDENCIES = [
   "prosemirror-model@^1.25.9",
   `better-result@${manifest.devDependencies["better-result"]}`,
   `marked@${docxCoreManifest.dependencies.marked}`,
-  `fast-xml-parser@${docxCoreManifest.dependencies["fast-xml-parser"]}`,
 ];

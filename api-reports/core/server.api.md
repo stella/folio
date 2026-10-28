@@ -18,6 +18,7 @@ import { ShadingProperties } from '@stll/docx-core/model';
 import { Table } from '@stll/docx-core/model';
 import { TaggedErrorClass } from 'better-result';
 import { TextFormatting } from '@stll/docx-core/model';
+import { XmlResourceLimits } from '@stll/docx-core/xml/limits';
 
 // @public
 export const applyDocxXmlPatchProposal: (input: ApplyDocxXmlPatchProposalArgs) => Promise<FolioDocxXmlPatchApplication>;

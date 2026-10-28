@@ -63,8 +63,7 @@
     "@stll/folio-core": "workspace:^",
     "@stll/fuzzy-search": "1.4.0",
     "@stll/utf8-boundaries": "workspace:*",
-    "better-result": "3.0.1",
-    "fast-xml-parser": "^5.11.2"
+    "better-result": "3.0.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.3.1",

@@ -12,12 +12,13 @@ import {
   mayContainOoxmlNumericIds,
   ooxmlNumericIdDomain,
 } from "@stll/docx-core";
-
-import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
 import {
   parseStreamingXmlWithIdentityVisitor,
   scanStreamingXmlNumericIdAttributes,
-} from "./streamingXmlParser";
+} from "@stll/docx-core/xml";
+import { XmlResourceLimitError } from "@stll/docx-core/xml/limits";
+
+import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
 import { type RawDocxContent, replaceRawDocxXmlParts } from "./unzip";
 import {
   getLocalName,
@@ -25,7 +26,6 @@ import {
   resolveAttributeNamespaceUri,
   type XmlElement,
 } from "./xmlParser";
-import { XmlResourceLimitError } from "./xmlResourceLimits";
 
 const identityKey = (value: string | number): string => {
   const spelling = String(value).trim();

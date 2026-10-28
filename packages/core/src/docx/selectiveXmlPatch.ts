@@ -6,10 +6,12 @@
  * with proper tag depth counting (not regex) to handle nested elements.
  */
 
+import { scanStreamingXmlElements } from "@stll/docx-core/xml";
+import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
+
 import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
 import { resolveParagraphIdentities } from "./paraIdAttribute";
 import { readRootNamespaceBindings } from "./serializer/partNamespaces";
-import { scanStreamingXmlElements } from "./streamingXmlParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   hasCanonicalWordprocessingPrefixes,
@@ -19,7 +21,6 @@ import {
   resolveSelectiveScanPrefixes,
   splicesAsCanonical,
 } from "./wordprocessingPrefixes";
-import { resolveNamespaceUri } from "./xmlNamespaceContext";
 import {
   cloneElement,
   findAttributeByNamespaceUri,

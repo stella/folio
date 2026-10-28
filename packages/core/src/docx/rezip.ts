@@ -15,6 +15,10 @@ import {
   mintRelationshipId,
   numberingInstanceResolves,
 } from "@stll/docx-core/model";
+import {
+  getXmlSourceRange,
+  parseStreamingXmlWithSourceRanges,
+} from "@stll/docx-core/xml";
 import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
@@ -169,10 +173,6 @@ import {
 import { serializeThemeXml } from "./serializer/themeSerializer";
 import { updateEvenAndOddHeaders } from "./settingsHeaderFooterUpdate";
 import { parseSettings } from "./settingsParser";
-import {
-  getXmlSourceRange,
-  parseStreamingXmlWithSourceRanges,
-} from "./streamingXmlParser";
 import type { RawDocxContent } from "./unzip";
 import { captureVerbatimXml } from "./verbatimCapture";
 import { hasCanonicalWordprocessingPrefixes } from "./wordprocessingPrefixes";

@@ -1,5 +1,11 @@
 import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
+import {
+  assertXmlResourceLimits,
+  createXmlPackageBudget,
+  FOLIO_XML_RESOURCE_LIMITS,
+  type XmlResourceLimits,
+} from "@stll/docx-core/xml/limits";
 import { ZipArchive, ZipError } from "@stll/docx-core/zip";
 
 import { decodeText } from "../../utils/textEncoding";
@@ -8,12 +14,6 @@ import {
   DOCX_MAX_COMPRESSION_RATIO,
   isRatioBoundedPart,
 } from "../archiveInflation";
-import {
-  assertXmlResourceLimits,
-  createXmlPackageBudget,
-  FOLIO_XML_RESOURCE_LIMITS,
-  type XmlResourceLimits,
-} from "../xmlResourceLimits";
 
 export const DOCX_MAX_ENTRY_BYTES: number = 128 * 1024 * 1024;
 export const DOCX_MAX_TOTAL_BYTES: number = 256 * 1024 * 1024;

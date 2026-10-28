@@ -1,11 +1,12 @@
 import { Result } from "better-result";
 
 import {
-  ZipArchive,
-  type ZipEntry,
-  ZipError,
-  type ZipReadOptions,
-} from "@stll/docx-core/zip";
+  assertXmlResourceLimits,
+  createXmlPackageBudget,
+  FOLIO_XML_RESOURCE_LIMITS,
+  type XmlPackageBudget,
+  type XmlResourceLimits,
+} from "@stll/docx-core/xml/limits";
 /**
  * DOCX Unzipper
  *
@@ -31,6 +32,12 @@ import {
  * - docProps/core.xml - Core properties
  * - docProps/app.xml - Application properties
  */
+import {
+  ZipArchive,
+  type ZipEntry,
+  ZipError,
+  type ZipReadOptions,
+} from "@stll/docx-core/zip";
 
 import { bytesToDataUrl } from "../utils/base64";
 import {
@@ -45,13 +52,6 @@ import {
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
 import { detectRasterMimeType, RASTER_MIME_TYPES } from "./rasterMime";
 import { decodeXmlBytes } from "./xmlEncoding";
-import {
-  assertXmlResourceLimits,
-  createXmlPackageBudget,
-  FOLIO_XML_RESOURCE_LIMITS,
-  type XmlPackageBudget,
-  type XmlResourceLimits,
-} from "./xmlResourceLimits";
 
 export class DocxSecurityError extends Error {
   constructor(message: string) {

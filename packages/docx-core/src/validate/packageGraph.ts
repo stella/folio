@@ -1,7 +1,6 @@
 import { Result, TaggedError, type TaggedErrorClass } from "better-result";
-import { XMLParser, XMLValidator } from "fast-xml-parser";
 
-import { createXmlEntityDecoder } from "./xmlEntityDecoder";
+import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 
 const CONTENT_TYPES_NS =
   "http://schemas.openxmlformats.org/package/2006/content-types";
@@ -23,18 +22,6 @@ const OFFICE_DOCUMENT_TYPES = new Set([
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
   "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument",
 ]);
-const parser = new XMLParser({
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  parseTagValue: false,
-  parseAttributeValue: false,
-  processEntities: true,
-  entityDecoder: createXmlEntityDecoder(),
-  ignoreDeclaration: true,
-});
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 const localName = (name: string) => name.slice(name.indexOf(":") + 1);
 const namespace = (name: string, scope: Record<string, unknown>) => {
   const separator = name.indexOf(":");
@@ -47,30 +34,30 @@ type PackageElement = {
   attributes: Record<string, unknown>;
 };
 const elements = (xml: string): PackageElement[] | null => {
-  if (XMLValidator.validate(xml) !== true) return null;
-  const tree: unknown = parser.parse(xml);
-  if (!Array.isArray(tree)) return null;
+  const read = readXml(xml, {
+    conformance: "well-formed",
+    undeclaredEntities: "accept",
+  });
+  if (read.status === "rejected") return null;
   const output: PackageElement[] = [];
-  const visit = (nodes: unknown[], parent: Record<string, unknown>) => {
+  const visit = (
+    nodes: readonly XmlElement[],
+    parent: Record<string, unknown>,
+  ) => {
     for (const node of nodes) {
-      if (!isRecord(node)) continue;
-      const name = Object.keys(node).find(
-        (key) => key !== ":@" && !key.startsWith("#") && !key.startsWith("?"),
-      );
-      if (!name) continue;
-      const attributes = isRecord(node[":@"]) ? node[":@"] : {};
+      if (node.type !== "element" || !node.name) continue;
+      const attributes = node.attributes ?? {};
       const scope = Object.assign({}, parent, attributes);
       output.push({
-        name: localName(name),
-        namespace: namespace(name, scope),
+        name: localName(node.name),
+        namespace: namespace(node.name, scope),
         scope,
         attributes,
       });
-      const children = node[name];
-      if (Array.isArray(children)) visit(children, scope);
+      if (node.elements) visit(node.elements, scope);
     }
   };
-  visit(tree, {});
+  visit(read.value.elements ?? [], {});
   return output;
 };
 const relationshipSource = (path: string): string | null => {
