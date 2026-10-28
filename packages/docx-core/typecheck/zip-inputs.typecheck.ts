@@ -1,15 +1,13 @@
-import JSZip from "jszip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
-import { writeZipPart } from "@stll/docx-core/zip";
+const zip = new ZipArchive();
 
-const zip = new JSZip();
-declare const publicInput: Parameters<JSZip["loadAsync"]>[0];
+zip.set("word/document.xml", "text");
+zip.set("word/document.xml", new Uint8Array());
+zip.set("word/document.xml", new ArrayBuffer(0));
 
-writeZipPart({ zip, path: "word/document.xml", data: "text" });
-writeZipPart({ zip, path: "word/document.xml", data: Promise.resolve("text") });
-writeZipPart({ zip, path: "word/document.xml", data: new Uint8Array() });
-writeZipPart({ zip, path: "word/document.xml", data: new ArrayBuffer(0) });
-writeZipPart({ zip, path: "word/document.xml", data: publicInput });
+// @ts-expect-error -- Entry content is settled before it is written; await a promise first.
+zip.set("word/document.xml", Promise.resolve("text"));
 
-// @ts-expect-error -- Archive generation takes output options, never text-part input.
-zip.generateAsync("text");
+// @ts-expect-error -- Archive generation takes output options, never entry content.
+void zip.generate("text");
