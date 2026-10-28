@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.check.json",
+  "include": [
+    "**/*.js",
+    "**/*.jsx",
+    "**/*.mjs",
+    "**/*.cjs",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.mts",
+    "**/*.cts"
+  ],
+  "files": ["reviewProjection.mjs"]
+}
