@@ -1,5 +1,13 @@
 # @stll/docx-core
 
+## 0.39.2
+
+### Patch Changes
+
+- [#2178](https://github.com/stella/folio/pull/2178) [`6f9ba85`](https://github.com/stella/folio/commit/6f9ba852f5a9015ab70c5fbd90465931e4f3d684) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Refresh native search and Rust dependency inputs while preserving canonical WebAssembly outputs.
+
+- [#2184](https://github.com/stella/folio/pull/2184) [`c42a79f`](https://github.com/stella/folio/commit/c42a79f531a346e0e437b685a2e93cd25e48d7b4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rebuild canonical WebAssembly artifacts with Rust 1.99.1 and record the updated compiler input provenance.
+
 ## 0.39.1
 
 ### Patch Changes
