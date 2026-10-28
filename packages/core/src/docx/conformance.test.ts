@@ -58,11 +58,16 @@ describe("DOCX conformance detection", () => {
         `not XML <x:document xmlns:x="${STRICT_MAIN_NAMESPACE}"/>`,
       ),
     ).toBe(DOCX_CONFORMANCE_CLASSES.STRICT);
+  });
+
+  test("does not read a profile from a part the reader refuses", () => {
+    // A DOCTYPE is refused outright; the package reader rejects such a part
+    // before any profile is asked of it.
     expect(
       detectDocxConformanceClass(
         `<!DOCTYPE x:document [<!ELEMENT x:document EMPTY>]><x:document xmlns:x="${STRICT_MAIN_NAMESPACE}"/>`,
       ),
-    ).toBe(DOCX_CONFORMANCE_CLASSES.STRICT);
+    ).toBe(DOCX_CONFORMANCE_CLASSES.UNKNOWN);
   });
 
   test("bounds the root scan without changing full-parser fallback behavior", () => {
