@@ -9,6 +9,8 @@
  */
 import { Result } from "better-result";
 
+import { decodeText, encodeUtf8 } from "@stll/utf8-boundaries";
+
 import { platformZipCodec, type ZipCodec } from "./codec";
 import { ZipError } from "./errors";
 import {
@@ -33,7 +35,7 @@ import {
   type ZipReadLimits,
 } from "./read";
 
-export type { InflateOutcome, ZipCodec } from "./codec";
+export type { InflateExpectation, InflateOutcome, ZipCodec } from "./codec";
 export { ZipError, type ZipErrorReason } from "./errors";
 export { isSafeZipPath, type ZipCompression } from "./format";
 export { ZIP_DEFAULT_READ_LIMITS, type ZipReadLimits } from "./read";
@@ -87,12 +89,8 @@ type StoredEntry =
       readonly dateTime: DosDateTime;
     };
 
-const utf8Encoder = new TextEncoder();
-// Keep a leading byte-order mark: callers that parse XML decide what it means.
-const utf8Decoder = new TextDecoder("utf-8", { ignoreBOM: true });
-
 const toEntryBytes = (data: ZipEntryData): Uint8Array<ArrayBuffer> => {
-  if (typeof data === "string") return utf8Encoder.encode(data);
+  if (typeof data === "string") return encodeUtf8(data);
   if (data instanceof ArrayBuffer) return new Uint8Array(data.slice(0));
   return data.slice();
 };
@@ -164,7 +162,10 @@ class ArchiveEntry implements ZipEntry {
     if (entry.method === METHOD_STORE) {
       bytes = raw.slice();
     } else {
-      const outcome = await this.#codec.inflate(raw, entry.uncompressedSize);
+      const outcome = await this.#codec.inflate(raw, {
+        size: entry.uncompressedSize,
+        crc32: entry.crc32,
+      });
       if (outcome.type === "overflow") {
         throw new ZipError({
           message: "Archive entry inflates past its declared size",
@@ -194,7 +195,8 @@ class ArchiveEntry implements ZipEntry {
 
   /** The entry decoded as UTF-8, keeping any byte-order mark. */
   async text(): Promise<string> {
-    return utf8Decoder.decode(await this.bytes());
+    // Keep a leading byte-order mark: callers that parse XML decide what it means.
+    return decodeText(await this.bytes(), { ignoreBOM: true });
   }
 
   /** The entry's bytes in an `ArrayBuffer` of exactly their length. */

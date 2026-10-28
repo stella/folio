@@ -885,7 +885,7 @@ const readNestedXsdBundle = async ({
   const documents = new Map<string, string>();
   for (const entry of inner
     .entries()
-    .toSorted((left, right) => compareStrings(left.name, right.name))) {
+    .toSorted((left, right) => compareStrings(left.path, right.path))) {
     if (!entry.path.endsWith(".xsd")) {
       continue;
     }

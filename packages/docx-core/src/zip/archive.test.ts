@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 import { readZipRecords, systemZipCheck } from "./__tests__/support";
 import { ZipArchive, ZipError } from "./archive";
-import { webZipCodec } from "./codec";
+import { streamZipCodec, webZipCodec } from "./codec";
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, "../../../..");
 
@@ -43,12 +43,19 @@ describe("fixture archives read the entries JSZip read", () => {
     expect(fixtures.length).toBeGreaterThan(70);
   });
 
-  for (const codec of ["platform", "web"] as const) {
-    test(`${codec} codec`, async () => {
+  // "gzip" is the stream codec on runtimes without "deflate-raw" streams.
+  const codecs = {
+    platform: undefined,
+    web: webZipCodec(),
+    gzip: streamZipCodec("gzip"),
+  } as const;
+  for (const [label, codec] of Object.entries(codecs)) {
+    test(`${label} codec`, async () => {
       for (const name of fixtures) {
-        const archive = await ZipArchive.read(fixture(name), {
-          ...(codec === "web" ? { codec: webZipCodec } : {}),
-        });
+        const archive = await ZipArchive.read(
+          fixture(name),
+          codec === undefined ? {} : { codec },
+        );
         expect({ name, entries: await entryHashes(archive) }).toEqual({
           name,
           entries: JSZIP_ENTRIES[name] ?? {},
@@ -254,13 +261,17 @@ describe("writing", () => {
     ]);
   });
 
-  test("the web codec writes archives the platform reads", async () => {
-    const archive = new ZipArchive({ codec: webZipCodec });
-    archive.set("word/document.xml", "<w:document>".repeat(500));
-    const reread = await ZipArchive.read(await archive.generate());
-    expect(await reread.entry("word/document.xml")?.text()).toBe(
-      "<w:document>".repeat(500),
-    );
+  test("the stream codecs write archives the platform reads", async () => {
+    for (const codec of [webZipCodec(), streamZipCodec("gzip")]) {
+      const archive = new ZipArchive({ codec });
+      archive.set("word/document.xml", "<w:document>".repeat(500));
+      // oxlint-disable-next-line no-await-in-loop -- each codec is checked in turn
+      const reread = await ZipArchive.read(await archive.generate());
+      // oxlint-disable-next-line no-await-in-loop -- each codec is checked in turn
+      expect(await reread.entry("word/document.xml")?.text()).toBe(
+        "<w:document>".repeat(500),
+      );
+    }
   });
 
   test.if(systemZipCheck.available)(

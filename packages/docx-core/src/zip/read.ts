@@ -11,6 +11,8 @@
  */
 import { Result } from "better-result";
 
+import { decodeText } from "@stll/utf8-boundaries";
+
 import { ZipError, type ZipErrorReason } from "./errors";
 import {
   CENTRAL_DIRECTORY_HEADER_SIZE,
@@ -282,12 +284,10 @@ const readZip64Extra = (
   return Result.ok(resolved);
 };
 
-const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
-
 // A name that is not UTF-8 has no unambiguous reading, so it is refused
 // rather than guessed at.
 const decodeName = (name: Uint8Array): string | null => {
-  const decoded = Result.try(() => utf8Decoder.decode(name));
+  const decoded = Result.try(() => decodeText(name, { fatal: true }));
   return Result.isOk(decoded) ? decoded.value : null;
 };
 

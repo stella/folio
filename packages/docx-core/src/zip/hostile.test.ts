@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { ZipArchive, ZipError, type ZipErrorReason } from "./archive";
-import { webZipCodec, type ZipCodec } from "./codec";
+import { streamZipCodec, webZipCodec, type ZipCodec } from "./codec";
 
 const MEBIBYTE = 1024 * 1024;
 
@@ -105,7 +105,8 @@ describe("declared sizes and ratios", () => {
 
   for (const [label, codec] of [
     ["platform", undefined],
-    ["web", webZipCodec],
+    ["web", webZipCodec()],
+    ["gzip", streamZipCodec("gzip")],
   ] as const) {
     test(`${label}: data that inflates past its declared size is cut off`, async () => {
       // Declare 100 bytes for an entry that inflates to 4096.

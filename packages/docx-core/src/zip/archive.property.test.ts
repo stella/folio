@@ -6,7 +6,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { ZipArchive, ZipError } from "./archive";
-import { webZipCodec, type ZipCodec } from "./codec";
+import { streamZipCodec, webZipCodec, type ZipCodec } from "./codec";
 
 const build = async (
   entries: Record<string, string | Uint8Array>,
@@ -54,7 +54,11 @@ describe("arbitrary corruption", () => {
             { minLength: 1, maxLength: 4 },
           ),
           fc.option(fc.nat({ max: source.byteLength }), { nil: undefined }),
-          fc.constantFrom<ZipCodec | undefined>(undefined, webZipCodec),
+          fc.constantFrom<ZipCodec | undefined>(
+            undefined,
+            webZipCodec(),
+            streamZipCodec("gzip"),
+          ),
           async (edits, truncate, codec) => {
             const bytes = source.slice(0, truncate ?? source.byteLength);
             for (const { offset, value } of edits) {
@@ -93,7 +97,11 @@ describe("arbitrary corruption", () => {
             }),
             { selector: ({ path }) => path, maxLength: 12 },
           ),
-          fc.constantFrom<ZipCodec | undefined>(undefined, webZipCodec),
+          fc.constantFrom<ZipCodec | undefined>(
+            undefined,
+            webZipCodec(),
+            streamZipCodec("gzip"),
+          ),
           async (entries, codec) => {
             const archive = new ZipArchive(
               codec === undefined ? {} : { codec },

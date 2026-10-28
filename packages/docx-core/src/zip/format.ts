@@ -1,4 +1,5 @@
 /** ZIP record layouts (APPNOTE 6.3.10) shared by the readers and writers. */
+import { encodeUtf8 } from "@stll/utf8-boundaries";
 
 export const LOCAL_FILE_HEADER_SIGNATURE = 0x04_03_4b_50;
 export const CENTRAL_DIRECTORY_SIGNATURE = 0x02_01_4b_50;
@@ -82,13 +83,11 @@ export const FIXED_DOS_DATE_TIME: DosDateTime = toDosDateTime(
   new Date(Date.UTC(2000, 0, 1)),
 );
 
-const utf8Encoder = new TextEncoder();
-
 /** Entry name bytes and the general-purpose flag they need. */
 export const encodeEntryName = (
   path: string,
 ): { readonly bytes: Uint8Array<ArrayBuffer>; readonly flags: number } => {
-  const bytes = utf8Encoder.encode(path);
+  const bytes = encodeUtf8(path);
   // ASCII names need no flag; any other byte is UTF-8 and says so.
   const ascii = bytes.every((byte) => byte < 0x80);
   return { bytes, flags: ascii ? 0 : FLAG_UTF8_NAME };

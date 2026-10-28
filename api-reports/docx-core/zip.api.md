@@ -7,6 +7,12 @@
 import { TaggedErrorClass } from 'better-result';
 
 // @public
+export type InflateExpectation = {
+    readonly size: number;
+    readonly crc32: number;
+};
+
+// @public
 export type InflateOutcome = {
     readonly type: "ok";
     readonly bytes: Uint8Array<ArrayBuffer>;
@@ -41,7 +47,7 @@ export class ZipArchive {
 
 // @public
 export type ZipCodec = {
-    readonly inflate: (data: Uint8Array, size: number) => Promise<InflateOutcome>;
+    readonly inflate: (data: Uint8Array, expected: InflateExpectation) => Promise<InflateOutcome>;
     readonly deflate: (data: Uint8Array, level: number) => Promise<Uint8Array<ArrayBuffer>>;
     readonly crc32: (data: Uint8Array, previous?: number) => number;
 };

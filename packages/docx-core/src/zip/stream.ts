@@ -8,6 +8,8 @@
  * holds one chunk at a time plus one small central-directory record per
  * entry.
  */
+import { encodeUtf8 } from "@stll/utf8-boundaries";
+
 import { platformZipCodec, type ZipCodec } from "./codec";
 import { ZipError } from "./errors";
 import {
@@ -41,14 +43,12 @@ export type ZipStreamEntry = {
   readonly modified?: Date;
 };
 
-const utf8Encoder = new TextEncoder();
-
 async function* entryChunks(
   data: ZipStreamData | undefined,
 ): AsyncGenerator<Uint8Array> {
   if (data === undefined) return;
   if (typeof data === "string") {
-    yield utf8Encoder.encode(data);
+    yield encodeUtf8(data);
     return;
   }
   if (data instanceof Uint8Array) {
