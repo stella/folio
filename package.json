@@ -157,7 +157,7 @@
     "@stll/docx-core": "workspace:*",
     "@stll/folio-core": "workspace:*",
     "@stll/fuzzy-search": "1.4.0",
-    "@stll/oxlint-config": "3.1.0",
+    "@stll/oxlint-config": "3.2.2",
     "@stll/regex-set": "1.0.9",
     "@stll/typescript-config": "0.10.0",
     "@stll/utf8-boundaries": "workspace:*",
