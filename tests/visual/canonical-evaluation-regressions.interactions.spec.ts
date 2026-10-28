@@ -258,7 +258,8 @@ const assertCollectedTransportEvidence = ({
       return (
         typeof sessionId === "string" &&
         sessions.has(sessionId) &&
-        event["error"] !== undefined
+        isProtocolRecord(event["error"]) &&
+        event["error"]["message"] === "Promise was collected"
       );
     });
     expect(
@@ -311,8 +312,8 @@ test("canonical load roots the awaited transport promise across forced collectio
       "released-call",
       "bridge",
       "handle",
-      "handle-released",
       "cdp",
+      "handle-released",
     ] as const) {
       entered = Promise.withResolvers<void>();
       await page.evaluate((fixtureTransport) => {
@@ -356,11 +357,23 @@ test("canonical load roots the awaited transport promise across forced collectio
           const retained = await page.evaluate(() =>
             globalThis.__folioCompleteTransportLoad?.(),
           );
-          const result = await loaded;
-          // The inspector retains awaited results even after the JS handle is released.
-          expect(retained).toBe(true);
-          expect(result.isOk()).toBe(true);
-          if (result.isOk()) expect(result.value).toBe(true);
+          if (transport === "handle-released") {
+            // Playwright awaits a wrapper promise. Its source becomes collectible
+            // after handle release, leaving the wrapper pending until cancellation.
+            expect(retained).toBe(false);
+            await page.goto("about:blank");
+            const result = await loaded;
+            expect(result.isErr()).toBe(true);
+            if (result.isErr())
+              expect(String(result.error)).toContain(
+                "Execution context was destroyed",
+              );
+          } else {
+            expect(retained).toBe(true);
+            const result = await loaded;
+            expect(result.isOk()).toBe(true);
+            if (result.isOk()) expect(result.value).toBe(true);
+          }
         } finally {
           await operation.dispose();
         }
