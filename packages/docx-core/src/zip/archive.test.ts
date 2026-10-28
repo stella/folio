@@ -224,6 +224,25 @@ describe("writing", () => {
     expect(await archive.entry("bom.xml")?.text()).toBe("\uFEFF<");
   });
 
+  test("entry bytes own an exact buffer even when read from a pooled Buffer", async () => {
+    const archive = new ZipArchive();
+    archive.set("stored.bin", Uint8Array.of(1, 2, 3), { compression: "store" });
+    archive.set("deflated.xml", "<w:document/>".repeat(100));
+    const generated = await archive.generate();
+    // A small Buffer is a view into a shared pool, and Buffer#slice is a view
+    // too; an entry's `.buffer` must hold its bytes and nothing else.
+    const pooled = Buffer.from(generated);
+    const reread = await ZipArchive.read(pooled);
+    reread.set("set.bin", Buffer.from([4, 5]));
+    for (const entry of reread.entries()) {
+      // oxlint-disable-next-line no-await-in-loop -- entries are checked in turn
+      const bytes = await entry.bytes();
+      expect(bytes.buffer.byteLength).toBe(entry.size);
+      // oxlint-disable-next-line no-await-in-loop -- entries are checked in turn
+      expect((await entry.arrayBuffer()).byteLength).toBe(entry.size);
+    }
+  });
+
   test("written data is copied, so later mutation does not leak in", async () => {
     const data = Uint8Array.of(1, 2, 3);
     const archive = new ZipArchive();

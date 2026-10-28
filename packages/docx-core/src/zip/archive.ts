@@ -11,7 +11,7 @@ import { Result } from "better-result";
 
 import { decodeText, encodeUtf8 } from "@stll/utf8-boundaries";
 
-import { platformZipCodec, type ZipCodec } from "./codec";
+import { copyBytes, platformZipCodec, type ZipCodec } from "./codec";
 import { ZipError } from "./errors";
 import {
   type DosDateTime,
@@ -92,7 +92,7 @@ type StoredEntry =
 const toEntryBytes = (data: ZipEntryData): Uint8Array<ArrayBuffer> => {
   if (typeof data === "string") return encodeUtf8(data);
   if (data instanceof ArrayBuffer) return new Uint8Array(data.slice(0));
-  return data.slice();
+  return copyBytes(data);
 };
 
 const toSourceBytes = (input: Uint8Array | ArrayBuffer): Uint8Array =>
@@ -152,7 +152,7 @@ class ArchiveEntry implements ZipEntry {
    */
   async bytes(): Promise<Uint8Array<ArrayBuffer>> {
     const stored = this.#stored;
-    if (stored.type === "data") return stored.bytes.slice();
+    if (stored.type === "data") return copyBytes(stored.bytes);
     const { entry } = stored;
     const raw = this.#source.subarray(
       entry.dataOffset,
@@ -160,7 +160,7 @@ class ArchiveEntry implements ZipEntry {
     );
     let bytes: Uint8Array<ArrayBuffer>;
     if (entry.method === METHOD_STORE) {
-      bytes = raw.slice();
+      bytes = copyBytes(raw);
     } else {
       const outcome = await this.#codec.inflate(raw, {
         size: entry.uncompressedSize,

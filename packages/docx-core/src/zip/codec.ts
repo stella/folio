@@ -97,6 +97,14 @@ const loadBunCrc32 = (): Crc32 | null => {
   return (data, previous) => crc32(data, previous);
 };
 
+/**
+ * A copy of `bytes` in a new `ArrayBuffer` of exactly its length. Node.js
+ * `Buffer#slice` returns a view into a shared pool, so copies never go
+ * through `slice`.
+ */
+export const copyBytes = (bytes: Uint8Array): Uint8Array<ArrayBuffer> =>
+  new Uint8Array(bytes);
+
 /** `bytes` backed by an `ArrayBuffer` of exactly its length. */
 export const exactBytes = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => {
   const { buffer } = bytes;
@@ -104,7 +112,7 @@ export const exactBytes = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => {
     bytes.byteOffset === 0 &&
     bytes.byteLength === buffer.byteLength
     ? new Uint8Array(buffer)
-    : bytes.slice();
+    : copyBytes(bytes);
 };
 
 let crcTable: Uint32Array | null = null;
