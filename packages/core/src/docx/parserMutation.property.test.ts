@@ -364,9 +364,9 @@ test(
         );
       }),
       {
+        ...localSeed(),
         id: "seeded parser mutation sequences refuse or round-trip",
         numRuns: Number(process.env["PARSER_FUZZ_RUNS"] ?? BASE_RUNS),
-        ...localSeed(),
       },
     );
   },
