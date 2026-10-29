@@ -4036,7 +4036,8 @@ function extractParagraphContent(
         currentTrackedChange = undefined;
         return;
       }
-      const { anchorId } = expectTextBoxAnchorAttrs(node);
+      const { anchorId, _docxRunFormatting: carried } =
+        expectTextBoxAnchorAttrs(node);
       if (textBoxAnchorMarkers.has(anchorId)) {
         flushCurrentInline();
         currentTrackedChange = undefined;
@@ -4050,12 +4051,20 @@ function extractParagraphContent(
         text: "",
       };
       const marker: Run = { type: "run", content: [anchorSlot] };
-      const formatting = getAtomRunFormattingFromMarks(
-        node.marks,
-        formattingContext,
-      );
-      if (formatting) {
-        marker.formatting = formatting;
+      // The `w:rPr` the anchor's run was read with, when it carries one: its
+      // marks were rendered in the cascade the paragraph had then, and read
+      // in a restyled paragraph's they would state the old look as direct
+      // formatting.
+      if (carried === undefined) {
+        const formatting = getAtomRunFormattingFromMarks(
+          node.marks,
+          formattingContext,
+        );
+        if (formatting) {
+          marker.formatting = formatting;
+        }
+      } else if (Object.keys(carried).length > 0) {
+        marker.formatting = structuredClone(carried);
       }
       restoreRunRecord(marker, node.marks);
       textBoxAnchorMarkers.set(anchorId, marker);

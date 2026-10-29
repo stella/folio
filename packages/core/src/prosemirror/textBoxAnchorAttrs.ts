@@ -1,6 +1,7 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
+import type { TextFormatting } from "../types/document";
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import type { TextBoxAnchorAttrs } from "./schema/nodes";
 
@@ -23,10 +24,30 @@ export const readTextBoxAnchorAttrs = (
       message: "Expected a non-empty string.",
     });
   }
+  const runFormatting: unknown = node.attrs["_docxRunFormatting"];
+  if (
+    runFormatting !== null &&
+    runFormatting !== undefined &&
+    (typeof runFormatting !== "object" || Array.isArray(runFormatting))
+  ) {
+    issues.push({
+      path: "textBoxAnchor.attrs._docxRunFormatting",
+      message: "Expected run formatting or null.",
+    });
+  }
   if (issues.length > 0 || typeof anchorId !== "string") {
     return { ok: false, issues };
   }
-  return { ok: true, value: { anchorId } };
+  return {
+    ok: true,
+    value:
+      runFormatting === null || runFormatting === undefined
+        ? { anchorId }
+        : {
+            anchorId,
+            _docxRunFormatting: runFormatting as TextFormatting,
+          },
+  };
 };
 
 export const expectTextBoxAnchorAttrs = (node: PMNode): TextBoxAnchorAttrs => {

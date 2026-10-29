@@ -1140,6 +1140,13 @@ export type TextBoxAttrs = {
 /** Internal inline position marker for an extracted text box block. */
 export type TextBoxAnchorAttrs = {
   anchorId: string;
+  /**
+   * The `w:rPr` of the run the text box came from, possibly empty. The
+   * anchor's formatting marks are rendered in the paragraph's style cascade
+   * and are not rebased when the paragraph is restyled, so the save writes
+   * this instead. Absent on an anchor not read from a package.
+   */
+  _docxRunFormatting?: TextFormatting;
 };
 
 /**
