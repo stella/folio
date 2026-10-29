@@ -530,6 +530,13 @@ type ResolvedOperationFields = {
    * was split into consecutive paragraphs (see {@link splitInsertParagraphTexts}).
    */
   insertTexts?: readonly string[];
+  /**
+   * The comments running across the boundary a block insertion lands on, as
+   * the batch read it. The inserted blocks carry them, so an edit that runs
+   * first and moves a comment's end (a deleted paragraph that held it)
+   * cannot leave them outside, as `tableRowComments` does for a row.
+   */
+  boundaryComments?: readonly Mark[];
   tableRowInsertion?: TableRowInsertion;
   /**
    * The comments running across the new row's place as the batch read it.
@@ -5857,6 +5864,9 @@ const applyFolioAIEditOperationsInternal = ({
           tr,
           at: item.from,
           blocks: built.nodes,
+          ...(item.boundaryComments !== undefined && {
+            carriedComments: item.boundaryComments,
+          }),
         });
         break;
       }
@@ -6476,7 +6486,7 @@ const applyFolioAIEditOperationsInternal = ({
         let at = usesRetractedSplit
           ? tr.mapping.map(item.blockFrom, -1)
           : item.from;
-        let insertionComments = carriedComments;
+        let insertionComments = carriedComments ?? item.boundaryComments;
         if (!usesRetractedSplit) {
           const boundary = tr.doc.resolve(at);
           const before = boundary.nodeBefore;
@@ -9141,6 +9151,7 @@ const resolveOperationTarget = ({
         blockTo,
         blockNode,
         insertTexts,
+        boundaryComments: commentsAcrossBlockBoundary(doc, insertFrom),
       },
     };
   }
@@ -9429,6 +9440,7 @@ const resolveOperationTarget = ({
         blockFrom,
         blockTo,
         blockNode,
+        boundaryComments: commentsAcrossBlockBoundary(doc, insertFrom),
       },
     };
   }
