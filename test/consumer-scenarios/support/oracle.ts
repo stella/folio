@@ -778,6 +778,12 @@ export type Model = {
   liveTextById: ReadonlyMap<string, string>;
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
+  /**
+   * The live document's numbering, for blocks the accepted package no longer
+   * holds (a paragraph pending deletion): what such a block states is what a
+   * copy of it inherits, and a list only it used is defined there alone.
+   */
+  liveNumberingFacts?: NumberingFacts;
   /** Note stories whose references were removed by applied structural operations. */
   removedNoteStories: Set<string>;
   /**
@@ -889,13 +895,24 @@ const inheritedListFields = (model: Model, row: Row): Fields => {
       }
     }
   }
-  if (row.kind !== "listItem" || !model.numberingFacts) return fields;
+  if (!model.numberingFacts) return fields;
+  if (row.kind !== "listItem" && row.kind !== "heading") return fields;
   const numbering = requestedStyleNumbering(model, row.styleId ?? null, row);
-  if (
-    numbering === UNKNOWN_NUMBERING ||
-    numberingKind(model, numbering) === "listItem"
-  )
-    return fields;
+  if (numbering === UNKNOWN_NUMBERING) return fields;
+  const listItem = numberingKind(model, numbering) === "listItem";
+  // A copy takes the numbering a heading states, not the marker it shows: a
+  // heading whose mark is pending deletion paints its original numbering,
+  // which accepting retires with it.
+  if (row.kind === "heading") {
+    return {
+      ...fields,
+      listLevel:
+        listItem && numbering?.kind === "reference"
+          ? (numbering.ilvl ?? 0)
+          : undefined,
+    };
+  }
+  if (listItem) return fields;
   return { ...fields, kind: "paragraph", listLevel: undefined };
 };
 
@@ -1189,9 +1206,13 @@ const requestedStyleNumbering = (
         outsideNumberingSource(model, row.id),
         `Numbering provenance missing for ${row.id}`,
       );
-      return UNKNOWN_NUMBERING;
+      const live = model.liveNumberingFacts;
+      if (live === undefined || !live.direct.has(row.id))
+        return UNKNOWN_NUMBERING;
+      direct = live.direct.get(row.id);
+    } else {
+      direct = facts.direct.get(row.id);
     }
-    direct = facts.direct.get(row.id);
   } else if (row.statedNumbering?.kind === "reference") {
     direct = row.statedNumbering;
   } else if (row.statedNumbering?.kind === "none") {
@@ -1436,11 +1457,13 @@ const numberingKind = (model: Model, numbering: Numbering): Fields["kind"] => {
     model.numberingFacts,
     "Numbering definitions are required to classify a reference",
   );
-  return model.numberingFacts.markerLevels
-    .get(numbering.numId)
-    ?.has(numbering.ilvl ?? 0)
-    ? "listItem"
-    : "paragraph";
+  // A list only a block pending deletion used is gone from the accepted
+  // package; the live document still defines it, and a copy stating it makes
+  // the save define it again.
+  const levels =
+    model.numberingFacts.markerLevels.get(numbering.numId) ??
+    model.liveNumberingFacts?.markerLevels.get(numbering.numId);
+  return levels?.has(numbering.ilvl ?? 0) ? "listItem" : "paragraph";
 };
 
 /**
@@ -3011,7 +3034,7 @@ export type Pre = {
   liveRows: Row[];
   /** Immutable pre-state; suggestions have not entered saved package bytes yet. */
   numberingSource:
-    | { type: "package"; bytes: Uint8Array }
+    | { type: "package"; bytes: Uint8Array; live: NumberingFacts }
     | { type: "live"; facts: NumberingFacts };
   comments: Comment[];
   links: LinkSnapshot;
@@ -3129,7 +3152,11 @@ export const capture = async (
     rows: accepted.rows,
     resolvedStory: accepted.story,
     liveRows: rowsOf(reviewer, story),
-    numberingSource: { type: "package", bytes: accepted.bytes },
+    numberingSource: {
+      type: "package",
+      bytes: accepted.bytes,
+      live: liveNumberingFacts(reviewer, story),
+    },
     comments: accepted.comments,
     links: accepted.links,
     liveComments,
@@ -3267,6 +3294,7 @@ export const assertRequestedOutcome = async (
         model.numberingFacts = await numberingFactsOf(
           pre.numberingSource.bytes,
         );
+        model.liveNumberingFacts = pre.numberingSource.live;
         break;
       case "live":
         model.numberingFacts = pre.numberingSource.facts;
