@@ -15,6 +15,31 @@ export const ZIP_MUTATIONS = [
 
 export type ZipMutation = (typeof ZIP_MUTATIONS)[number];
 
+/**
+ * How a mutation reaches the archive, in the order a sequence applies them.
+ * A rewrite reads the archive and generates a new one, so it needs an archive
+ * the reader accepts; a directory patch edits central-directory records in
+ * place and needs an intact end record; a cut removes that end record. Each
+ * stage leaves an archive every later stage can still mutate.
+ */
+const ZIP_MUTATION_STAGES = [
+  "rewrite-archive",
+  "patch-directory",
+  "cut-end",
+] as const;
+
+type ZipMutationStage = (typeof ZIP_MUTATION_STAGES)[number];
+
+const ZIP_MUTATION_STAGE = {
+  "drop-part": "rewrite-archive",
+  "rename-part": "rewrite-archive",
+  "duplicate-part": "patch-directory",
+  truncate: "cut-end",
+  "bad-crc": "patch-directory",
+  "wrong-content-type": "rewrite-archive",
+  "missing-relationship-target": "rewrite-archive",
+} as const satisfies Record<ZipMutation, ZipMutationStage>;
+
 const decodeUtf8 = (bytes: Uint8Array): string =>
   new TextDecoder().decode(bytes);
 
@@ -291,4 +316,24 @@ export const mutateZip = async (
     case "missing-relationship-target":
       return missingRelationshipTarget(source, targetPart);
   }
+};
+
+/**
+ * Apply several mutations to one part, stage by stage (ZIP_MUTATION_STAGES),
+ * keeping the given order within a stage: a rewrite after a directory patch
+ * would have to read an archive the reader refuses.
+ */
+export const mutateZipSequence = async (
+  source: Uint8Array,
+  mutations: readonly ZipMutation[],
+  targetPart: string,
+): Promise<Uint8Array> => {
+  let bytes = source;
+  for (const stage of ZIP_MUTATION_STAGES) {
+    for (const mutation of mutations) {
+      if (ZIP_MUTATION_STAGE[mutation] !== stage) continue;
+      bytes = await mutateZip(bytes, mutation, targetPart);
+    }
+  }
+  return bytes;
 };
