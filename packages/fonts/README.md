@@ -29,13 +29,13 @@ Each face is declared as `.woff2`, cut into the `unicode-range` subsets its
 source ships, so the browser downloads a file only when a page paints one of
 its code points. The `latin`, `latin-ext` and `arabic` subsets list their
 `.woff` after it, the file headless measurement reads, so a test page can
-measure the same bytes; a browser that reads `.woff2` never fetches it. Weights 400 and 700, upright and italic (Noto Sans Arabic
-has no italic).
+measure the same bytes; a browser that reads `.woff2` never fetches it.
+Weights 400 and 700, upright and italic (Noto Sans Arabic has no italic).
 
 ## In a bundler or React Native
 
-Every file is exported by its path, so a bundler that cannot read CSS can
-import a face directly:
+Every font file under `fonts/` is exported by its path, so a bundler that
+cannot read CSS can import a face directly:
 
 ```ts
 const carlito = require("@stll/folio-fonts/fonts/carlito/files/carlito-latin-400-normal.woff2");
