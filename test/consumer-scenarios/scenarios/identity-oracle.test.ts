@@ -10,6 +10,7 @@ import {
 import { openReviewer } from "../support/documents.ts";
 import {
   projectContentPair,
+  projectMarkdownIdentities,
   projectSnapshotIdentities,
 } from "../support/identity.ts";
 import { saveAndReopen, visibleState } from "../support/invariants.ts";
@@ -363,4 +364,51 @@ describe("save comparison block identity", () => {
       assert.equal(relationCheckCount("readerStability"), before + 1);
     },
   );
+});
+
+describe("markdown image paths carry paragraph identity", () => {
+  const markdownOf = (rows: readonly Row[]): string =>
+    rows
+      .map(({ id, text }) => `${text}![](./images/${id}-img1.png)`)
+      .join("\n\n");
+  const projectedMarkdown = ({ left, right }: PairRows) => {
+    const pair = projectContentPair({ leftRows: left, rightRows: right });
+    return {
+      left: projectMarkdownIdentities(markdownOf(left), pair.leftAliases),
+      right: projectMarkdownIdentities(markdownOf(right), pair.rightAliases),
+    };
+  };
+
+  test("an image path compares its paragraph id as the paragraph row does", () => {
+    for (let mask = 0; mask < 1 << 4; mask += 1) {
+      const left = Array.from({ length: 4 }, (_, index): Row => {
+        const provenance: Pick<Row, "idStability"> =
+          mask & (1 << index) ? { idStability: "positional" } : {};
+        return {
+          id: `LIVE000${String(index)}`,
+          ...provenance,
+          kind: "paragraph",
+          text: `Text ${String(index)}`,
+        };
+      });
+      const right = left.map((row, index): Row =>
+        row.idStability === "positional"
+          ? { ...row, id: `REOPEN0${String(index)}` }
+          : row,
+      );
+      const reminted = projectedMarkdown({ left, right });
+      assert.equal(reminted.left, reminted.right);
+      for (const [index, row] of left.entries()) {
+        if (row.idStability === "positional") continue;
+        const authored = projectedMarkdown({
+          left,
+          right: right.with(index, {
+            ...rowAt(right, index),
+            id: `MUTATED${String(index)}`,
+          }),
+        });
+        assert.notEqual(authored.left, authored.right);
+      }
+    }
+  });
 });

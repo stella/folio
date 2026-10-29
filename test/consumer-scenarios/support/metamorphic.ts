@@ -53,7 +53,11 @@ import {
 
 import { sequentialGroups } from "./batch-replay-order.ts";
 import { openReviewer } from "./documents.ts";
-import { projectContentPair, projectSnapshotIdentities } from "./identity.ts";
+import {
+  projectContentPair,
+  projectMarkdownIdentities,
+  projectSnapshotIdentities,
+} from "./identity.ts";
 import type { Finding } from "./known-issues.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Mode } from "./operations.ts";
@@ -1133,17 +1137,21 @@ export const startRelations = async ({
       leftRows: live.getContent(),
       rightRows: reopened.getContent(),
     });
-    const views = (target: Reviewer, side: "left" | "right") => ({
-      getContent: content[side],
-      snapshot: projectSnapshotIdentities(
-        createReviewerBridge(target).snapshot(),
-        content[side === "left" ? "leftAliases" : "rightAliases"],
-      ),
-      toMarkdown: comparableMarkdown(
-        toMarkdown(target.toDocument()),
-      ) as unknown,
-      getComments: target.getComments() as unknown,
-    });
+    const views = (target: Reviewer, side: "left" | "right") => {
+      const aliases = content[side === "left" ? "leftAliases" : "rightAliases"];
+      return {
+        getContent: content[side],
+        snapshot: projectSnapshotIdentities(
+          createReviewerBridge(target).snapshot(),
+          aliases,
+        ),
+        toMarkdown: projectMarkdownIdentities(
+          comparableMarkdown(toMarkdown(target.toDocument())),
+          aliases,
+        ) as unknown,
+        getComments: target.getComments() as unknown,
+      };
+    };
     const tolerances: Record<
       keyof ReturnType<typeof views>,
       Tolerance<unknown>[]

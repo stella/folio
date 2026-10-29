@@ -127,6 +127,45 @@ export type SaveOptions = {
   compare?: boolean;
 };
 
+type AssertReopenedShowsOptions = {
+  reviewer: Reviewer;
+  reopened: Reviewer;
+  expected: ReturnType<typeof visibleState>;
+  context: string;
+};
+
+/**
+ * The reopened package shows what the reviewer showed. A paragraph id folio
+ * minted (`idStability: "positional"`) comes from the paragraph's text and
+ * place and no package names it, so resolving tracked text before a save can
+ * make the reopen mint another; such rows compare by position. Authored ids
+ * and all content stay strict. Every save path compares through this.
+ */
+export const assertReopenedShows = ({
+  reviewer,
+  reopened,
+  expected,
+  context,
+}: AssertReopenedShowsOptions): void => {
+  const actual = visibleState(reopened);
+  const liveStableIds = new Set(
+    reviewer
+      .getContent()
+      .filter(({ idStability }) => idStability !== "positional")
+      .map(({ id }) => id),
+  );
+  const blocks = projectContentPair({
+    leftRows: expected.blocks,
+    rightRows: actual.blocks,
+    stableIds: liveStableIds,
+  });
+  assert.deepEqual(
+    { ...actual, blocks: blocks.right },
+    { ...expected, blocks: blocks.left },
+    `${context}: the reopened package shows something else than the reviewer that saved it`,
+  );
+};
+
 /** `toBuffer()`, reopen, and compare what the two reviewers show. */
 export const saveAndReopen = async (
   reviewer: Reviewer,
@@ -162,24 +201,12 @@ export const saveAndReopen = async (
   if (options.compare === false) {
     return { bytes, reopened };
   }
-  const expected = options.persisted ?? visibleState(reviewer);
-  const actual = visibleState(reopened);
-  const liveStableIds = new Set(
-    reviewer
-      .getContent()
-      .filter(({ idStability }) => idStability !== "positional")
-      .map(({ id }) => id),
-  );
-  const blocks = projectContentPair({
-    leftRows: expected.blocks,
-    rightRows: actual.blocks,
-    stableIds: liveStableIds,
+  assertReopenedShows({
+    reviewer,
+    reopened,
+    expected: options.persisted ?? visibleState(reviewer),
+    context,
   });
-  assert.deepEqual(
-    { ...actual, blocks: blocks.right },
-    { ...expected, blocks: blocks.left },
-    `${context}: the reopened package shows something else than the reviewer that saved it`,
-  );
   if (options.persisted === undefined)
     await assertReviewRoundTrip({ live: reviewer, reopened, context });
   return { bytes, reopened };
