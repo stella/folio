@@ -57,6 +57,7 @@
     "interactions": {
       "paths": [
         "packages/utf8-boundaries/**",
+        "packages/fonts/**",
         "packages/{core,docx-core,react,vue,playground,playground-vue,editor-web}/**",
         "tests/**",
         "!**/*.md",

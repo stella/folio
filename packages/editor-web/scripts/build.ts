@@ -21,7 +21,7 @@
 
 import { $ } from "bun";
 import { build, type Plugin } from "esbuild";
-import { readdir, readFile, rm, stat } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 const packageRoot = path.resolve(import.meta.dir, "..");
@@ -35,8 +35,6 @@ const outdir = path.join(packageRoot, "dist", "vscode");
 const STYLESHEET_FILTER = /\.css$/;
 // oxlint-disable-next-line require-unicode-regexp -- esbuild filter (Go syntax, no flags)
 const ANY_PATH_FILTER = /.*/;
-// oxlint-disable-next-line require-unicode-regexp -- esbuild filter (Go syntax, no flags)
-const FONTSOURCE_STYLESHEET_FILTER = /[\\/]@fontsource[\\/].*\.css$/;
 
 /**
  * The React sources import stylesheets for their bundler; `standalone.css`
@@ -62,29 +60,6 @@ const dropStylesheetImports: Plugin = {
         loader: "js",
       }),
     );
-  },
-};
-
-/**
- * `@fontsource` faces list a `.woff` fallback after each `.woff2`. The
- * webview's Chromium reads `.woff2`, so the fallbacks would only double the
- * shipped fonts.
- */
-const WOFF_FALLBACK = /,\s*url\([^)]*\.woff\)\s*format\(["']woff["']\)/gu;
-
-const woff2Only: Plugin = {
-  name: "folio-woff2-only",
-  setup: (builder) => {
-    builder.onLoad({ filter: FONTSOURCE_STYLESHEET_FILTER }, async (args) => {
-      const source = await readFile(args.path, "utf8");
-      const stripped = source.replace(WOFF_FALLBACK, "");
-      if (stripped.includes(".woff)")) {
-        throw new Error(
-          `${args.path} lists a .woff face this build cannot drop.`,
-        );
-      }
-      return { contents: stripped, loader: "css" };
-    });
   },
 };
 
@@ -130,7 +105,6 @@ await Promise.all([
     minify: true,
     loader: { ".woff2": "file" },
     assetNames: "fonts/[name]-[hash]",
-    plugins: [woff2Only],
     logLevel: "warning",
   }),
 ]);
@@ -138,6 +112,14 @@ await Promise.all([
 const sizeOf = async (file: string) => (await stat(file)).size;
 const kib = (bytes: number) => `${(bytes / 1024).toFixed(1)} KiB`;
 const fonts = await readdir(path.join(outdir, "fonts"));
+// `@stll/folio-fonts` declares `.woff2` alone, which the webview's Chromium
+// reads; a `.woff` here would only double the shipped fonts.
+const notWoff2 = fonts.filter((font) => !font.endsWith(".woff2"));
+if (notWoff2.length > 0) {
+  throw new Error(
+    `The editor bundle ships fonts other than .woff2: ${notWoff2.join(", ")}`,
+  );
+}
 const fontBytes = (
   await Promise.all(
     fonts.map((font) => sizeOf(path.join(outdir, "fonts", font))),

@@ -2,16 +2,13 @@
  * Render a document with folio's own layout and painters, headlessly: PDF
  * from the PDF backend, HTML from the DOM backend, and PNG by screenshotting
  * that HTML in Chromium. Every format paints the one display list built from
- * one layout, measured with the `@fontsource` faces the CLI installs.
+ * one layout, measured with the `@stll/folio-fonts` faces the CLI installs.
  *
  * PNG needs a browser. `playwright-core` is an optional peer dependency and
  * is imported only when a PNG is asked for.
  */
 
 import { Result } from "better-result";
-import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import path from "node:path";
 
 import { renderDisplayListToHtml } from "@stll/folio-core/display-list/html/renderDisplayListToHtml";
 import { selectDisplayPages } from "@stll/folio-core/display-list/selectDisplayPages";
@@ -24,6 +21,7 @@ import {
   createFontsourceFaces,
   type FontsourceFaces,
 } from "@stll/folio-core/fonts/fontsourceFaces";
+import { folioFontFiles } from "@stll/folio-fonts/node";
 
 import type { LoadedFile } from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
@@ -32,30 +30,11 @@ export const RENDER_FORMATS = ["pdf", "png", "html"] as const;
 
 export type RenderFormat = (typeof RENDER_FORMATS)[number];
 
-const requireFromHere = createRequire(import.meta.url);
-
-/** The installed `@fontsource/<name>` directory, or `null` when it is not installed. */
-const fontsourceDirectory = (packageName: string): string | null => {
-  const resolved = Result.try(() =>
-    requireFromHere.resolve(`@fontsource/${packageName}/package.json`),
-  );
-  return resolved.isOk() ? path.dirname(resolved.value) : null;
-};
-
 let faces: FontsourceFaces | undefined;
 
-/** The CLI's `@fontsource` faces, shared by every render in the process. */
+/** The CLI's bundled faces from `@stll/folio-fonts`, shared by every render in the process. */
 export const cliFontFaces = (): FontsourceFaces => {
-  faces ??= createFontsourceFaces({
-    read: (packageName, relativePath) => {
-      const directory = fontsourceDirectory(packageName);
-      if (directory === null) return null;
-      const filePath = path.join(directory, relativePath);
-      return existsSync(filePath)
-        ? new Uint8Array(readFileSync(filePath))
-        : null;
-    },
-  });
+  faces ??= createFontsourceFaces(folioFontFiles);
   return faces;
 };
 

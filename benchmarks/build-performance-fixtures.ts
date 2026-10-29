@@ -3,14 +3,13 @@
  *
  * Generated files are committed under `tests/visual/fixtures` so Vite's dev and
  * preview servers exercise identical bytes. Content is repository-authored;
- * the embedded Arimo face comes from the Apache-2.0 `@fontsource/arimo` package.
+ * the embedded Arimo face (OFL-1.1) comes from `@stll/folio-fonts`.
  *
  * Run from the repository root:
  *
  *   bun benchmarks/build-performance-fixtures.ts
  */
 import { readFile, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,11 +20,9 @@ import type { Document } from "@stll/folio-core";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..");
 const FIXTURES_DIR = resolve(REPO_ROOT, "tests/visual/fixtures");
-const requireFromReact = createRequire(
-  resolve(REPO_ROOT, "packages/react/package.json"),
-);
-const EMBEDDED_FONT_PATH = requireFromReact.resolve(
-  "@fontsource/arimo/files/arimo-hebrew-400-normal.woff2",
+const EMBEDDED_FONT_PATH = resolve(
+  REPO_ROOT,
+  "packages/fonts/fonts/arimo/files/arimo-hebrew-400-normal.woff2",
 );
 const PARAGRAPH_COUNT = 1500;
 const FIXED_ZIP_DATE = new Date(2000, 0, 1, 0, 0, 0);

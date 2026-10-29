@@ -1,10 +1,10 @@
 /**
  * The headless measurement backend over real font binaries.
  *
- * The bundled `@fontsource` faces are a dependency of `@stll/folio-react`, not
- * of this package, so these tests resolve them from disk and skip when they are
+ * The bundled faces are files of `@stll/folio-fonts`, not a dependency of this
+ * package, so these tests read them from the checkout and skip when they are
  * absent. That keeps the assertions honest (they run against the very faces
- * folio substitutes for Word's) without adding a dependency here for a test.
+ * folio substitutes for the authored ones) without a dependency for a test.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -18,7 +18,7 @@ import type { HeadlessFontSource } from "./headlessMeasure";
 
 /** The family folio substitutes for Arial, and the file that carries it. */
 const ARIMO_REGULAR = new URL(
-  "../../../react/node_modules/@fontsource/arimo/files/arimo-latin-400-normal.woff",
+  "../../../fonts/fonts/arimo/files/arimo-latin-400-normal.woff",
   import.meta.url,
 );
 
@@ -33,7 +33,7 @@ const arimo = await loadFace(ARIMO_REGULAR);
 
 /** The same family's Latin Extended-A subset, a disjoint binary. */
 const ARIMO_LATIN_EXT = new URL(
-  "../../../react/node_modules/@fontsource/arimo/files/arimo-latin-ext-400-normal.woff",
+  "../../../fonts/fonts/arimo/files/arimo-latin-ext-400-normal.woff",
   import.meta.url,
 );
 

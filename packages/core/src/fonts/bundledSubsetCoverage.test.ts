@@ -30,6 +30,7 @@ import {
   setMeasureProvider,
 } from "../layout-engine/measure/measureProvider";
 import { FONT_MAPPING } from "../utils/fontLoader";
+import { FONTSOURCE_PACKAGES } from "./bundledFonts";
 import type {
   HeadlessFontRequest,
   HeadlessFontSource,
@@ -44,9 +45,8 @@ const FONTSOURCE_DIR = path.join(
   "..",
   "..",
   "..",
-  "react",
-  "node_modules",
-  "@fontsource",
+  "fonts",
+  "fonts",
 );
 
 const FIXTURE_PATH = path.join(
@@ -65,16 +65,7 @@ const SUBSETS = ["latin", "latin-ext"] as const;
 const BOLD_WEIGHT = 700;
 const REGULAR_WEIGHT = 400;
 
-const FAMILY_DIRECTORIES = {
-  Arimo: "arimo",
-  Caladea: "caladea",
-  Carlito: "carlito",
-  Cousine: "cousine",
-  Lato: "lato",
-  "Noto Sans Arabic": "noto-sans-arabic",
-  "Source Sans 3": "source-sans-3",
-  Tinos: "tinos",
-} as const;
+const FAMILY_DIRECTORIES = FONTSOURCE_PACKAGES;
 
 type BundledFamily = keyof typeof FAMILY_DIRECTORIES;
 

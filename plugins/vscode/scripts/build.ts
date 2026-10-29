@@ -5,7 +5,7 @@
 //   dist/cli/folio.mjs     the folio CLI from packages/cli, bundled with its
 //                          dependencies, which the extension runs to save
 //                          and as the MCP server
-//   dist/cli/text_shaper_bg.wasm, dist/cli/node_modules/@fontsource/*
+//   dist/cli/text_shaper_bg.wasm, dist/cli/fonts/
 //                          the files the CLI loads at run time
 //   dist/editor/           the editor webview's bundle (editor.js, editor.css,
 //                          fonts/, licence notices), copied from
@@ -27,7 +27,6 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
-import { createRequire } from "node:module";
 import path from "node:path";
 
 import { copyFuzzyWasm, fuzzyFromDisk } from "./portable-fuzzy";
@@ -72,53 +71,59 @@ const shaperFromDisk: Plugin = {
   },
 };
 
-/** The `@fontsource` packages the CLI depends on, and so reads faces from. */
-const fontsourcePackages = async (): Promise<string[]> => {
-  const manifest: unknown = JSON.parse(
-    await readFile(path.join(cliRoot, "package.json"), "utf8"),
-  );
-  const dependencies =
-    typeof manifest === "object" &&
-    manifest !== null &&
-    "dependencies" in manifest
-      ? manifest.dependencies
-      : undefined;
-  if (typeof dependencies !== "object" || dependencies === null) {
-    throw new Error("packages/cli/package.json has no dependencies.");
-  }
-  return Object.keys(dependencies).filter((name) =>
-    name.startsWith("@fontsource/"),
-  );
-};
-
-/** Faces folio paints: regular and bold, upright and italic, as `.woff`. */
-const FACE_FILE = /-(?:400|700)-(?:normal|italic)\.woff$/u;
+const fontsRoot = path.join(repoRoot, "packages", "fonts");
+const FONTS_ROOT_SOURCE =
+  'const FONTS_ROOT = new URL("../fonts/", import.meta.url);';
 
 /**
- * Copy what the CLI's font loader reads (`package.json` to resolve the
- * package, `unicode.json`, the `.woff` faces) and each font's licence into
- * `dist/cli/node_modules`, where the bundled CLI's `require.resolve` finds them.
+ * `@stll/folio-fonts/node` finds its files one level above its module. Bundled
+ * into `dist/cli/folio.mjs`, the module and the copied files sit side by side.
+ */
+const fontsBesideCli: Plugin = {
+  name: "folio-fonts-beside-cli",
+  setup: (builder) => {
+    builder.onLoad(
+      { filter: /[\\/]packages[\\/]fonts[\\/]src[\\/]node\.ts$/ },
+      async (args) => {
+        const source = await readFile(args.path, "utf8");
+        if (!source.includes(FONTS_ROOT_SOURCE)) {
+          throw new Error(
+            `${args.path} no longer locates its fonts as this build expects.`,
+          );
+        }
+        return {
+          contents: source.replace(
+            FONTS_ROOT_SOURCE,
+            'const FONTS_ROOT = new URL("./fonts/", import.meta.url);',
+          ),
+          loader: "ts",
+        };
+      },
+    );
+  },
+};
+
+/**
+ * Copy what the CLI's font reader loads (each family's `unicode.json`, its
+ * `.woff` faces, and its licence) into `dist/cli/fonts`. The `.woff2` files
+ * are for browsers; the editor webview ships its own copies.
  */
 const copyFonts = async (): Promise<void> => {
-  const cliRequire = createRequire(path.join(cliRoot, "package.json"));
-  for (const name of await fontsourcePackages()) {
-    const source = path.dirname(cliRequire.resolve(`${name}/package.json`));
-    const target = path.join(cliDist, "node_modules", name);
-    await mkdir(path.join(target, "files"), { recursive: true });
-    for (const file of ["package.json", "unicode.json", "LICENSE"]) {
-      await copyFile(path.join(source, file), path.join(target, file));
-    }
-    const faces = (await readdir(path.join(source, "files"))).filter((file) =>
-      FACE_FILE.test(file),
-    );
-    if (faces.length === 0) throw new Error(`${name} has no faces to copy.`);
-    for (const face of faces) {
-      await copyFile(
-        path.join(source, "files", face),
-        path.join(target, "files", face),
-      );
-    }
+  const source = path.join(fontsRoot, "fonts");
+  const target = path.join(cliDist, "fonts");
+  let copied = 0;
+  for (const entry of await readdir(source, {
+    recursive: true,
+    withFileTypes: true,
+  })) {
+    if (!entry.isFile() || entry.name.endsWith(".woff2")) continue;
+    const from = path.join(entry.parentPath, entry.name);
+    const to = path.join(target, path.relative(source, from));
+    await mkdir(path.dirname(to), { recursive: true });
+    await copyFile(from, to);
+    if (entry.name.endsWith(".woff")) copied += 1;
   }
+  if (copied === 0) throw new Error(`${source} has no faces to copy.`);
 };
 
 const exists = async (file: string): Promise<boolean> => {
@@ -169,7 +174,7 @@ await Promise.all([
       // used by the browser-native document model. Initialize only this CLI process.
       js: "import { createRequire as __folioCreateRequire } from 'node:module'; import { webcrypto as __folioWebCrypto } from 'node:crypto'; const require = __folioCreateRequire(import.meta.url); globalThis.crypto ??= __folioWebCrypto;",
     },
-    plugins: [shaperFromDisk, fuzzyFromDisk],
+    plugins: [shaperFromDisk, fuzzyFromDisk, fontsBesideCli],
     logLevel: "warning",
   }),
 ]);

@@ -111,7 +111,7 @@ const installFixedWidthProvider = (): void => {
 };
 
 const ARIMO_REGULAR = new URL(
-  "../../react/node_modules/@fontsource/arimo/files/arimo-latin-400-normal.woff",
+  "../../fonts/fonts/arimo/files/arimo-latin-400-normal.woff",
   import.meta.url,
 );
 
