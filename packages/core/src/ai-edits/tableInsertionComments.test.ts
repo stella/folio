@@ -144,3 +144,104 @@ describe("a table insertion inside a comment whose end paragraph the batch delet
     },
   );
 });
+
+/**
+ * Paragraphs inserted on one boundary run as one insertion, and that run took
+ * no comments: two clauses added before the paragraph holding a comment's end
+ * fell outside the comment live, while the saved package, whose range is two
+ * points, covered them. Accepting a deletion of that paragraph then ended the
+ * comment in a different paragraph before and after a save.
+ */
+describe("paragraphs inserted together inside a comment", () => {
+  const commented = (): Document => ({
+    package: {
+      document: {
+        comments: [
+          {
+            id: 7,
+            author: "Earlier Reviewer",
+            content: [paragraph("Check both clauses.")],
+          },
+        ],
+        content: [
+          paragraph([
+            { type: "commentRangeStart", id: 7 },
+            run("The supplier delivers goods."),
+          ]),
+          paragraph([
+            run("The buyer gives notice."),
+            { type: "commentRangeEnd", id: 7 },
+            { type: "commentReference", id: 7 },
+          ]),
+          paragraph("Signed by both parties."),
+        ],
+      },
+    },
+  });
+
+  test.each(MODES)(
+    "stay inside it when the batch deletes the paragraph holding its end, %s",
+    async (mode) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(commented()),
+        { author: "Editor" },
+      );
+      const end = reviewer
+        .getContent()
+        .find((block) => block.text === "The buyer gives notice.")?.id;
+      if (end === undefined) throw new Error("fixture must expose the end");
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            { id: "delete", type: "deleteBlock", blockId: end },
+            {
+              id: "first",
+              type: "insertBeforeBlock",
+              blockId: end,
+              text: "First added clause.",
+            },
+            {
+              id: "second",
+              type: "insertBeforeBlock",
+              blockId: end,
+              text: "Second added clause.",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.skipped).toEqual([]);
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
+      const anchoredWhenAccepted = (source: FolioDocxReviewer) =>
+        source
+          .toResolvedDocument("accept")
+          .package.document.content.map((block) =>
+            block.type === "paragraph"
+              ? block.content
+                  .filter((item) => item.type === "commentRangeEnd")
+                  .map((item) => item.type)
+              : [],
+          );
+      expect(anchoredWhenAccepted(reviewer)).toEqual([
+        [],
+        [],
+        ["commentRangeEnd"],
+        [],
+      ]);
+      expect(anchoredWhenAccepted(reopened)).toEqual(
+        anchoredWhenAccepted(reviewer),
+      );
+      if (mode !== "direct") reviewer.acceptAll();
+      const saved = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
+      expect(saved.getComments()[0]?.anchoredText).toBe(
+        "The supplier delivers goods.First added clause.Second added clause.",
+      );
+    },
+  );
+});
