@@ -526,9 +526,10 @@ try {
   }
   const css = readFileSync(fileURLToPath(import.meta.resolve("@stll/folio-fonts/fonts.css")), "utf8");
   const urls = [...css.matchAll(/url\\(([^)]+)\\)/g)].map((match) => match[1]);
-  if (urls.length !== FOLIO_FONT_FACES.length || urls.some((url) => !url.endsWith(".woff2") || !existsSync(fileURLToPath(new URL(url, root))))) {
+  const expected = FOLIO_FONT_FACES.flatMap((face) => face.woff === null ? ["./" + face.woff2] : ["./" + face.woff2, "./" + face.woff]);
+  if (urls.join() !== expected.join() || urls.some((url) => !existsSync(fileURLToPath(new URL(url, root))))) {
     failed = true;
-    console.error("fonts.css names " + urls.length + " files for " + FOLIO_FONT_FACES.length + " faces, or a file the tarball lacks");
+    console.error("fonts.css names " + urls.length + " files where the catalogue lists " + expected.length + ", or a file the tarball lacks");
   }
   const face = FOLIO_FONT_FACES.find((candidate) => candidate.woff !== null);
   const [packageName, ...rest] = face.woff.slice("fonts/".length).split("/");

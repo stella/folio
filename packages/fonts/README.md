@@ -25,9 +25,11 @@ outside those packages. It has no runtime dependencies.
 @import "@stll/folio-fonts/fonts.css";
 ```
 
-Each face is declared as `.woff2` only, cut into the `unicode-range` subsets
-its source ships, so the browser downloads a file only when a page paints one
-of its code points. Weights 400 and 700, upright and italic (Noto Sans Arabic
+Each face is declared as `.woff2`, cut into the `unicode-range` subsets its
+source ships, so the browser downloads a file only when a page paints one of
+its code points. The `latin`, `latin-ext` and `arabic` subsets list their
+`.woff` after it, the file headless measurement reads, so a test page can
+measure the same bytes; a browser that reads `.woff2` never fetches it. Weights 400 and 700, upright and italic (Noto Sans Arabic
 has no italic).
 
 ## In a bundler or React Native

@@ -35,7 +35,7 @@ describe("@stll/folio-fonts", () => {
     expect(onDisk.toSorted()).toEqual([...shipped].toSorted());
   });
 
-  test("the stylesheet declares each face once, by its .woff2 only", () => {
+  test("the stylesheet declares each face once, its .woff2 first", () => {
     const css = readFileSync(
       path.join(PACKAGE_ROOT, FOLIO_FONTS_STYLESHEET),
       "utf8",
@@ -43,8 +43,12 @@ describe("@stll/folio-fonts", () => {
     const sources = [...css.matchAll(/url\((?<url>[^)]+)\)/gu)].map(
       (match) => match.groups?.["url"],
     );
-    expect(sources).toEqual(FOLIO_FONT_FACES.map(({ woff2 }) => `./${woff2}`));
-    expect(css).not.toMatch(/\.woff\)/u);
+    // A measured subset lists its `.woff` after the `.woff2`; no other does.
+    expect(sources).toEqual(
+      FOLIO_FONT_FACES.flatMap(({ woff2, woff }) =>
+        woff === null ? [`./${woff2}`] : [`./${woff2}`, `./${woff}`],
+      ),
+    );
   });
 
   test("every family serves 400 and 700, and measures its Latin subsets", () => {
