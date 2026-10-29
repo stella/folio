@@ -265,31 +265,13 @@ const showsMarker = (
   );
 };
 
-/** Package definitions and direct provenance, never an effective reader sample. */
-const numberingFactsFromDocument = (
+type ParsedParagraph = Extract<ParsedBlock, { type: "paragraph" }>;
+
+/** Every paragraph of `document`'s stories, text boxes and cells included, in document order. */
+const visitParsedParagraphs = (
   document: ParsedDocument,
-): NumberingFacts => {
-  const definitions = new Map(
-    (document.package.styles?.styles ?? []).map((style) => [
-      style.styleId,
-      style,
-    ]),
-  );
-  const styles = new Map<string, Numbering>();
-  const resolve = (id: string, path = new Set<string>()): Numbering => {
-    if (styles.has(id)) return styles.get(id);
-    if (path.has(id)) throw new Error(`Cyclic style inheritance at ${id}`);
-    path.add(id);
-    const style = definitions.get(id);
-    const value = numberingOver(
-      style?.basedOn ? resolve(style.basedOn, path) : undefined,
-      style?.pPr?.numPr,
-    );
-    styles.set(id, value);
-    return value;
-  };
-  for (const id of definitions.keys()) resolve(id);
-  const direct = new Map<string, Numbering>();
+  visitParagraph: (paragraph: ParsedParagraph) => void,
+): void => {
   const visitInline = (node: ParsedInline): void => {
     switch (node.type) {
       case "run":
@@ -337,8 +319,7 @@ const numberingFactsFromDocument = (
       switch (block.type) {
         case "paragraph": {
           for (const content of block.content) visitInline(content);
-          if (block.paraId === undefined) break;
-          direct.set(block.paraId, block.formatting?.numPr);
+          visitParagraph(block);
           break;
         }
         case "table":
@@ -371,6 +352,37 @@ const numberingFactsFromDocument = (
   for (const parts of [document.package.footnotes, document.package.endnotes]) {
     for (const part of parts ?? []) visit(part.content);
   }
+};
+
+/** Package definitions and direct provenance, never an effective reader sample. */
+const numberingFactsFromDocument = (
+  document: ParsedDocument,
+): NumberingFacts => {
+  const definitions = new Map(
+    (document.package.styles?.styles ?? []).map((style) => [
+      style.styleId,
+      style,
+    ]),
+  );
+  const styles = new Map<string, Numbering>();
+  const resolve = (id: string, path = new Set<string>()): Numbering => {
+    if (styles.has(id)) return styles.get(id);
+    if (path.has(id)) throw new Error(`Cyclic style inheritance at ${id}`);
+    path.add(id);
+    const style = definitions.get(id);
+    const value = numberingOver(
+      style?.basedOn ? resolve(style.basedOn, path) : undefined,
+      style?.pPr?.numPr,
+    );
+    styles.set(id, value);
+    return value;
+  };
+  for (const id of definitions.keys()) resolve(id);
+  const direct = new Map<string, Numbering>();
+  visitParsedParagraphs(document, (paragraph) => {
+    if (paragraph.paraId !== undefined)
+      direct.set(paragraph.paraId, paragraph.formatting?.numPr);
+  });
   const markerLevels = new Map<number, Set<number>>();
   const abstractNums = document.package.numbering?.abstractNums ?? [];
   for (const instance of document.package.numbering?.nums ?? []) {
@@ -949,6 +961,51 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => {
 };
 
 /**
+ * Which live blocks with words that accepting removes run on into the next
+ * block. `marked`: the paragraphs whose own mark is a pending deletion or a
+ * move's source, read from the saved live package; any other such block
+ * drops words the model does not place. `assumed`: every one of them (for
+ * hand-built rows with no package to read).
+ */
+export type JoinSources =
+  { type: "marked"; ids: ReadonlySet<string> } | { type: "assumed" };
+
+const ASSUMED_JOIN_SOURCES: JoinSources = { type: "assumed" };
+
+const joinsOnAccept = (sources: JoinSources, id: string): boolean => {
+  switch (sources.type) {
+    case "marked":
+      return sources.ids.has(id);
+    case "assumed":
+      return true;
+    default: {
+      const unhandled: never = sources;
+      throw new Error(`Unhandled join sources ${JSON.stringify(unhandled)}`);
+    }
+  }
+};
+
+/** Paragraph marks accepting removes: a pending deletion, or a move's source. */
+const JOINING_MARK_KINDS: ReadonlySet<string> = new Set(["del", "moveFrom"]);
+
+/** The paraIds of the paragraphs of `bytes` whose mark accepting removes. */
+const markedJoinSourcesOf = async (bytes: Uint8Array): Promise<JoinSources> => {
+  const ids = new Set<string>();
+  visitParsedParagraphs(
+    await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }),
+    (paragraph) => {
+      if (
+        paragraph.paraId !== undefined &&
+        paragraph.pPrMark !== undefined &&
+        JOINING_MARK_KINDS.has(paragraph.pPrMark.kind)
+      )
+        ids.add(paragraph.paraId);
+    },
+  );
+  return { type: "marked", ids };
+};
+
+/**
  * The model of `rows`. `live`, the reviewer's own blocks, adds the blocks a
  * reader still lists but accepting removes (a whole paragraph pending
  * deletion reads as a blank block): an operation may name one, and what it
@@ -957,6 +1014,7 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => {
 export const modelOf = (
   rows: readonly Row[],
   live: readonly Row[] = rows,
+  joinSources: JoinSources = ASSUMED_JOIN_SOURCES,
 ): Model => {
   const model: Model = {
     rows: rows.map((row) => modelRow(row.text, fieldsOf(row), row)),
@@ -1021,6 +1079,18 @@ export const modelOf = (
     known.add(row.id);
     const ghost = modelRow("", {}, row);
     ghost.outsidePreState = true;
+    if (row.text.length > 0 && !joinsOnAccept(joinSources, row.id)) {
+      // Accepting drops words whose paragraph mark stays (a row or cell
+      // pending deletion whose runs are not marked deleted, say). Where they
+      // go is not modelled; no join is guessed for them.
+      ghost.removed = true;
+      model.unmodelled.push(
+        `block ${row.id} has words accepting drops with no pending paragraph-mark deletion`,
+      );
+      model.rows.splice(indexOf(previous) + 1, 0, ghost);
+      previous = row.id;
+      continue;
+    }
     if (row.text.length > 0) {
       // Runs on into the block after it once accepted.
       joining = true;
@@ -3032,6 +3102,8 @@ export type Pre = {
   resolvedStory: StoryPresence;
   /** The reviewer's own blocks, when `rows` are another view of them. */
   liveRows: Row[];
+  /** Which live blocks accepting runs on into the next one. */
+  joinSources: JoinSources;
   /** Immutable pre-state; suggestions have not entered saved package bytes yet. */
   numberingSource:
     | { type: "package"; bytes: Uint8Array; live: NumberingFacts }
@@ -3134,6 +3206,9 @@ export const capture = async (
       rows,
       resolvedStory: "present",
       liveRows: rows,
+      // The suggested model reads the live rows themselves: no block is
+      // missing from them, so none joins another.
+      joinSources: { type: "marked", ids: new Set() },
       numberingSource: {
         type: "live",
         facts: liveNumberingFacts(reviewer, story),
@@ -3152,6 +3227,7 @@ export const capture = async (
     rows: accepted.rows,
     resolvedStory: accepted.story,
     liveRows: rowsOf(reviewer, story),
+    joinSources: await markedJoinSourcesOf(bytes),
     numberingSource: {
       type: "package",
       bytes: accepted.bytes,
@@ -3266,7 +3342,7 @@ export const assertRequestedOutcome = async (
     );
     return [];
   }
-  const model = modelOf(pre.rows, pre.liveRows);
+  const model = modelOf(pre.rows, pre.liveRows, pre.joinSources);
   if (
     outcome.applied.some(
       (operation) =>
