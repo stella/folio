@@ -2694,6 +2694,47 @@ export const compareWithModel = (
 
 type AnchorDisposition = "kept" | "removed" | "ambiguous";
 
+type RemovedLiveRun = { text: string; firstLength: number };
+
+/** Whether the batch leaves no live block `id`: it deletes or removes it. */
+const removedByBatch = (model: Model, id: string): boolean => {
+  if (model.deletedBlockIds.has(id)) return true;
+  const row = model.rows.find((candidate) => candidate.pre?.id === id);
+  return (
+    row !== undefined &&
+    ((row.removed && row.pendingJoin !== true) || row.pendingDeletion === true)
+  );
+};
+
+/**
+ * The live text of `blockId` and of the blocks after it that the batch also
+ * removes, joined as a comment quote joins the blocks its range spans (with
+ * no separator), and where the first block's text ends. A comment whose range
+ * runs from one removed block into the next goes with them.
+ */
+const removedLiveRun = (
+  model: Model,
+  blockId: string,
+): RemovedLiveRun | undefined => {
+  let run: RemovedLiveRun | undefined;
+  for (const [id, liveText] of model.liveTextById) {
+    if (run === undefined) {
+      if (id === blockId)
+        run = { text: liveText, firstLength: liveText.length };
+      continue;
+    }
+    if (!removedByBatch(model, id)) break;
+    run.text += liveText;
+  }
+  return run;
+};
+
+/** Whether `quote` starts inside the run's first block, where the comment is. */
+const quotedFromFirstBlock = (run: RemovedLiveRun, quote: string): boolean => {
+  const start = run.text.indexOf(quote);
+  return start !== -1 && start < Math.max(run.firstLength, 1);
+};
+
 /**
  * Decide whether the model removed the anchor, accounting for repeated text.
  * `acceptedAnchor` is the comment's quote in the accepted document: a live
@@ -2710,11 +2751,12 @@ const anchorDisposition = (
   );
   const explicitlyDeleted = model.deletedBlockIds.has(entry.blockId);
   if (explicitlyDeleted || (row?.removed && !row.pendingJoin)) {
-    const liveText = model.liveTextById.get(entry.blockId);
+    const removed = removedLiveRun(model, entry.blockId);
     return entry.anchor === "" ||
-      (liveText !== undefined &&
-        (liveText.includes(entry.anchor) ||
-          (acceptedAnchor !== "" && liveText.includes(acceptedAnchor))))
+      (removed !== undefined &&
+        (quotedFromFirstBlock(removed, entry.anchor) ||
+          (acceptedAnchor !== "" &&
+            quotedFromFirstBlock(removed, acceptedAnchor))))
       ? "removed"
       : "kept";
   }
