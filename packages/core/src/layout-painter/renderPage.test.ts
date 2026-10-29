@@ -104,7 +104,7 @@ describe("header/footer inline picture paper clipping", () => {
     }
     const imageElement = findByClass(header, PARAGRAPH_CLASS_NAMES.image);
 
-    expect(header?.style.overflow).not.toBe("clip");
+    expect(header?.style.overflowY).not.toBe("clip");
     expect(imageElement?.style.width).toBe("800px");
     expect(imageElement?.parent?.style.clipPath).toBe(
       "inset(0px 56px 0px 0px)",
@@ -660,7 +660,8 @@ describe("header and footer rendering", () => {
     const header = findByClass(pageElement, "layout-page-header");
     const rule = findByClass(pageElement, "layout-paragraph-border");
 
-    expect(header?.style.overflow).toBe("clip");
+    expect(header?.style.overflowY).toBe("clip");
+    expect(header?.style.overflowX).toBe("visible");
     expect(header?.style.overflowClipMargin).toBe("2px");
     expect(rule?.style.left).toBe("-2px");
     expect(rule?.style.right).toBe("-2px");
