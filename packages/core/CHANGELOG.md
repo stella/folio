@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.66.1
+
+### Patch Changes
+
+- [#2219](https://github.com/stella/folio/pull/2219) [`2871bf3`](https://github.com/stella/folio/commit/2871bf34755e6e2660fdaed113f397470a2382eb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The bundled font families, their directories, the measured subsets and weights are declared once, in `fonts/bundledFonts`, which the resolver, the editor's availability check and the `@stll/folio-fonts` generator all read. `FONTSOURCE_PACKAGES` is still exported from `fonts/fontsourceFaces`.
+
 ## 0.66.0
 
 ### Minor Changes

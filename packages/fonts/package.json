@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-fonts",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The document fonts folio measures and paints with: metric-compatible open-licence faces, their @font-face stylesheet, and a Node reader for headless layout.",
   "keywords": [
     "docx",
