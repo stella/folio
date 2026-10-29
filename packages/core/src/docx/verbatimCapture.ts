@@ -22,6 +22,7 @@ const UntranslatableStrictNamespaceErrorBase: TaggedErrorClass<"UntranslatableSt
 import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import { assertXmlResourceLimits } from "@stll/docx-core/xml/limits";
 
 import type { DocxConformanceClass } from "../types/document";
 import {
@@ -52,7 +53,6 @@ import {
   type XmlElement,
   type XmlNamespaceScope,
 } from "./xmlParser";
-import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { getDocxXmlSafetyIssue } from "./xmlSafety";
 
 /** A Strict fragment uses a namespace that has no Transitional counterpart. */

@@ -18,17 +18,17 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
+import {
+  assertXmlResourceLimits,
+  exceedsUtf8ByteLimit,
+  FOLIO_XML_RESOURCE_LIMITS,
+} from "@stll/docx-core/xml/limits";
 
 import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { parseXml, type XmlElement } from "./xmlParser";
-import {
-  assertXmlResourceLimits,
-  exceedsUtf8ByteLimit,
-  FOLIO_XML_RESOURCE_LIMITS,
-} from "./xmlResourceLimits";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 

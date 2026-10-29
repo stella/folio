@@ -137,8 +137,7 @@ const W15_LOCAL_NAMES = new Set(["repeatingSection", "repeatingSectionItem"]);
  * would produce invalid XML in the saved DOCX — Word refuses files
  * with unresolved namespace prefixes.
  *
- * Heuristics, since fast-xml-parser does not surface namespace URIs in
- * preserveOrder mode:
+ * Heuristics, from when the XML reader did not surface namespace URIs:
  *
  * 1. If the captured wrapper element itself uses a non-`w` prefix, that
  *    prefix is taken to be bound to the WP URI (the source DOCX would

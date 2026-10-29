@@ -1,4 +1,5 @@
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import { XmlResourceLimitError } from "@stll/docx-core/xml/limits";
 
 import type { DocxConformanceClass } from "../../types/document";
 import { decodeText } from "../../utils/textEncoding";
@@ -19,7 +20,6 @@ import {
   getNamespacePrefix,
   parseXmlDocument,
 } from "../xmlParser";
-import { XmlResourceLimitError } from "../xmlResourceLimits";
 import { type DocxXmlSafetyIssue, getDocxXmlSafetyIssue } from "../xmlSafety";
 import type { DocxArchive, DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";

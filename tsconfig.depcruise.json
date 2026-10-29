@@ -7,6 +7,15 @@
       "@stll/docx-core/model": ["packages/docx-core/src/model/document.ts"],
       "@stll/docx-core/ops": ["packages/docx-core/src/ops/documentOps.ts"],
       "@stll/docx-core/projection": ["packages/docx-core/src/projection.ts"],
+      "@stll/docx-core/xml": [
+        "packages/docx-core/src/xml/streamingXmlParser.ts"
+      ],
+      "@stll/docx-core/xml/limits": [
+        "packages/docx-core/src/xml/xmlResourceLimits.ts"
+      ],
+      "@stll/docx-core/xml/namespaces": [
+        "packages/docx-core/src/xml/xmlNamespaceContext.ts"
+      ],
       "@stll/docx-core/*": ["packages/docx-core/src/*"],
       "@stll/folio-agents": ["packages/agents/src/index.ts"],
       "@stll/folio-agents/*": ["packages/agents/src/*"],

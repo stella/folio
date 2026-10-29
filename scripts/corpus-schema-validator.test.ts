@@ -142,6 +142,21 @@ describe("validateOoxmlPart", () => {
     ]);
   });
 
+  test("reports a part the reader refuses instead of passing it", () => {
+    const deep = `${"<w:p>".repeat(101)}${"</w:p>".repeat(101)}`;
+    const violations = validate(
+      `<w:document xmlns:w="${WORDPROCESSINGML_NAMESPACE}"><w:body>${deep}</w:body></w:document>`,
+    );
+    expect(violations).toEqual([
+      {
+        kind: SCHEMA_VIOLATION_KINDS.unreadablePart,
+        path: "",
+        name: "",
+        detail: "nesting deeper than 100 elements",
+      },
+    ]);
+  });
+
   test("says nothing about a part rooted in foreign markup", () => {
     expect(
       validate(

@@ -1,14 +1,14 @@
 import { TaggedError } from "better-result";
-import { XMLParser } from "fast-xml-parser";
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import { readXml, type XmlElement } from "@stll/docx-core/xml";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import sourceManifest from "../specifications/sources.json";
 
-type XmlNode = Record<string, unknown>;
+type XmlNode = XmlElement;
 
 export type SchemaBundleInput = {
   documents: ReadonlyMap<string, string>;
@@ -179,15 +179,6 @@ const FACET_KINDS = new Set([
   "whiteSpace",
 ]);
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/iu;
-const xmlParser = new XMLParser({
-  attributeNamePrefix: "@_",
-  ignoreAttributes: false,
-  parseAttributeValue: false,
-  parseTagValue: false,
-  preserveOrder: true,
-  trimValues: true,
-});
-
 const compareStrings = (left: string, right: string): number => {
   if (left < right) {
     return -1;
@@ -202,51 +193,38 @@ const compareById = (left: { id: string }, right: { id: string }): number =>
   compareStrings(left.id, right.id);
 
 const nodeTag = (node: XmlNode): string | undefined =>
-  Object.keys(node).find(
-    (key) => key !== ":@" && key !== "#text" && !key.startsWith("?"),
-  );
+  node.type === "element" ? node.name : undefined;
 
 const localName = (qualifiedName: string): string =>
   qualifiedName.split(":").at(-1) ?? qualifiedName;
 
+/** Element children, and text children that are not only whitespace. */
 const nodeChildren = (node: XmlNode): XmlNode[] => {
-  const tag = nodeTag(node);
-  if (tag === undefined) {
+  if (nodeTag(node) === undefined) {
     return [];
   }
-  const value = node[tag];
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter(
-    (child): child is XmlNode => typeof child === "object" && child !== null,
+  return (node.elements ?? []).filter(
+    (child) =>
+      child.type === "element" || String(child.text ?? "").trim().length > 0,
   );
 };
 
 const nodeAttributes = (node: XmlNode): Record<string, string> => {
-  const raw = node[":@"];
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return {};
-  }
   const attributes: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (key.startsWith("@_") && typeof value === "string") {
-      attributes[key.slice(2)] = value;
+  for (const [key, value] of Object.entries(node.attributes ?? {})) {
+    if (typeof value === "string") {
+      attributes[key] = value;
     }
   }
   return attributes;
 };
 
-const findSchemaNode = (document: unknown, documentPath: string): XmlNode => {
-  if (!Array.isArray(document)) {
-    throw new SchemaGraphError({
-      message: `Invalid XML document: ${documentPath}`,
-    });
-  }
+const findSchemaNode = (
+  document: readonly XmlNode[],
+  documentPath: string,
+): XmlNode => {
   const schema = document.find(
-    (node): node is XmlNode =>
-      typeof node === "object" &&
-      node !== null &&
+    (node) =>
       nodeTag(node) !== undefined &&
       localName(nodeTag(node) ?? "") === "schema",
   );
@@ -602,16 +580,13 @@ const parseDocument = ({
   profile: "opc" | "transitional";
   sourceId: string;
 }): SchemaDocument => {
-  let parsed: unknown;
-  try {
-    parsed = xmlParser.parse(xml);
-  } catch (cause) {
+  const parsed = readXml(xml, { conformance: "ooxml" });
+  if (parsed.status === "rejected") {
     throw new SchemaGraphError({
-      message: `Failed to parse ${documentPath}`,
-      cause,
+      message: `Failed to parse ${documentPath}: ${parsed.reason}`,
     });
   }
-  const node = findSchemaNode(parsed, documentPath);
+  const node = findSchemaNode(parsed.value.elements ?? [], documentPath);
   const attributes = nodeAttributes(node);
   const targetNamespace = attributes["targetNamespace"];
   if (targetNamespace === undefined) {

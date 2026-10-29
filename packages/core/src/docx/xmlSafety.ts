@@ -1,4 +1,4 @@
-import { XMLValidator } from "fast-xml-parser";
+import { wellFormedXmlIssue } from "@stll/docx-core/xml";
 
 const DOCTYPE_PATTERN = /<!DOCTYPE(?:\s|>)/iu;
 const BUILT_IN_ENTITIES = new Set(["amp", "apos", "gt", "lt", "quot"]);
@@ -119,9 +119,9 @@ const scanName = (xml: string, start: number): ScannedName | null => {
 };
 
 /**
- * Reject lexical forms that fast-xml-parser's permissive validator repairs.
- * This is deliberately a small XML lexer, not a second tree parser: structural
- * nesting remains XMLValidator's job.
+ * Reject lexical forms with a DOCX-specific verdict before the reader's
+ * well-formedness check. This is deliberately a small XML lexer, not a second
+ * tree parser: structural nesting remains the reader's job.
  */
 const hasInvalidXmlLexicalForm = (xml: string): boolean => {
   if (!containsOnlyXmlCharacters(xml)) {
@@ -290,5 +290,5 @@ export const getDocxXmlSafetyIssue = (
   if (hasInvalidXmlLexicalForm(xml)) {
     return "not-well-formed";
   }
-  return XMLValidator.validate(xml) === true ? null : "not-well-formed";
+  return wellFormedXmlIssue(xml) === null ? null : "not-well-formed";
 };

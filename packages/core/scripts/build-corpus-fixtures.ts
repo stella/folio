@@ -617,7 +617,7 @@ const FIXTURES: Fixture[] = [
 
   // 22. OpenDoPE conventions v2.3 stores compound binding data inside
   // `w:tag` with literal ampersands, so the on-disk encoding is `&amp;`.
-  // fast-xml-parser decodes entities on read, so the parsed `tag` must
+  // The XML reader decodes entities on read, so the parsed `tag` must
   // contain a literal `&`; the serializer must re-escape it (no double
   // `&amp;amp;`, no raw `&`). Wrapped in an inline SDT so the inline
   // serializer (which runs the tag through `escapeXml`) is exercised.

@@ -19,174 +19,34 @@
  * - pic: Pictures
  */
 
-import { XMLParser } from "fast-xml-parser";
-
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import {
+  readXml,
+  type XmlElement,
+  type XmlNamespaceScope,
+  XmlReadError,
+} from "@stll/docx-core/xml";
+import {
+  attachXmlNamespaceContext,
+  EMPTY_NAMESPACE_SCOPE,
+  resolveNamespaceUri,
+} from "@stll/docx-core/xml/namespaces";
 import { OOXML_NS } from "@stll/docx-utils";
 
 import type { ParseContext } from "./parseContext";
-import { parseStreamingXml } from "./streamingXmlParser";
 import {
   NUMBERS_PER_PERCENT,
   percentageSpelling,
   transitionalSlotEncoding,
 } from "./transitionalSpelling";
 import { universalMeasureAs } from "./universalMeasure";
-import {
-  attachXmlNamespaceContext,
-  EMPTY_NAMESPACE_SCOPE,
-  resolveNamespaceUri,
-} from "./xmlNamespaceContext";
 
 /**
- * XML element tree node — drop-in replacement for the `Element` type
- * previously imported from `xml-js`. Every consumer imports this from
- * `xmlParser.ts`, so the shape must stay identical.
+ * XML element tree node, owned by `@stll/docx-core/xml` with the reader that
+ * builds it. Consumers in this package import it from here.
  */
-export type XmlElement = {
-  declaration?: {
-    attributes?: Record<string, string | number>;
-  };
-  instruction?: string;
-  attributes?: Record<string, string | number | undefined>;
-  cdata?: string;
-  doctype?: string;
-  comment?: string;
-  text?: string | number | boolean;
-  type?: string;
-  name?: string;
-  /** Resolved namespace URI; non-enumerable so legacy structural comparisons stay stable. */
-  namespaceUri?: string;
-  /** In-scope namespace declarations; non-enumerable so legacy comparisons stay stable. */
-  namespaceScope?: XmlNamespaceScope;
-  elements?: XmlElement[];
-};
-
-/** Parent-linked XML namespace declarations; each scope stores only local overrides. */
-export type XmlNamespaceScope = {
-  bindings: ReadonlyMap<string, string>;
-  parent?: XmlNamespaceScope;
-};
-
-// ---------------------------------------------------------------------------
-// fast-xml-parser instances (reused across calls)
-// ---------------------------------------------------------------------------
-
-const fxpParserOptions = {
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  trimValues: false,
-  textNodeName: "#text",
-  parseTagValue: false,
-  parseAttributeValue: false,
-  ignoreDeclaration: true,
-  ignorePiTags: true,
-  // Folio leaves the parser callbacks at their defaults, which do not consume
-  // the current-node path. Re-enable this if a callback needs a string path.
-  jPath: false,
-  // Security: only process the 5 built-in XML entities (&lt; &gt; &amp;
-  // &apos; &quot;). Custom/DOCTYPE-defined entities are blocked to
-  // prevent Billion Laughs exponential expansion DoS. OOXML does not
-  // use custom entities.
-  processEntities: true,
-  htmlEntities: true,
-};
-
-const fxpParserOptionsWithStopNodes = {
-  ...fxpParserOptions,
-  // Skip parsing large base64 blobs into memory early. Enabled only for
-  // XML parts that actually contain legacy inline binary payloads because
-  // fast-xml-parser's stop-node matcher runs on every tag.
-  stopNodes: ["*.w:binData"],
-};
-
-const fxpParser = new XMLParser(fxpParserOptions);
-const fxpParserWithStopNodes = new XMLParser(fxpParserOptionsWithStopNodes);
-
-// ---------------------------------------------------------------------------
-// Converters: fast-xml-parser preserveOrder <-> XmlElement
-// ---------------------------------------------------------------------------
-
-/** Text node key used by fast-xml-parser in preserveOrder mode. */
-const TEXT_KEY = "#text";
-/** Attribute group key used by fast-xml-parser in preserveOrder mode. */
-const ATTR_KEY = ":@";
-
-type MutableFxpNode = XmlElement & Record<string, unknown>;
-
-/**
- * Convert a fast-xml-parser preserveOrder node into an XmlElement.
- *
- * In preserveOrder mode every node is an object with exactly one "real" key
- * (the tag name or `#text`) whose value is the children array, plus an
- * optional `:@` key holding the attributes object.
- */
-function fxpNodeToElement(
-  node: Record<string, unknown>,
-  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
-): MutableFxpNode {
-  // Text node: { "#text": "some text" }
-  if (TEXT_KEY in node) {
-    return { type: "text", text: node[TEXT_KEY] as string };
-  }
-
-  // Element node: { "w:p": [...children], ":@": { ...attrs } }
-  const attrs = node[ATTR_KEY] as Record<string, string> | undefined;
-
-  // fast-xml-parser creates these nodes and rejects prototype-polluting tag
-  // names. Iterating directly avoids allocating a keys array for every node.
-  for (const key in node) {
-    if (key === ATTR_KEY) {
-      continue;
-    }
-
-    const children = node[key] as MutableFxpNode[];
-    const element: MutableFxpNode = { type: "element", name: key };
-
-    // fast-xml-parser only emits the attribute group when it contains an
-    // attribute, so a second Object.keys allocation is unnecessary.
-    if (attrs) {
-      element.attributes = attrs;
-    }
-
-    const namespaceScope = attachXmlNamespaceContext(
-      element,
-      inheritedNamespaceScope,
-    );
-
-    if (children.length > 0) {
-      for (let index = 0; index < children.length; index += 1) {
-        children[index] = fxpNodeToElement(children[index]!, namespaceScope);
-      }
-      element.elements = children;
-    }
-
-    return element;
-  }
-
-  // Shouldn't happen, but return an empty element as fallback
-  return { type: "element" };
-}
-
-/**
- * Convert the top-level fast-xml-parser preserveOrder array into an
- * XmlElement that matches xml-js's non-compact root structure:
- * `{ elements: [...] }`.
- */
-function fxpToRootElement(
-  nodes: MutableFxpNode[],
-  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
-): XmlElement {
-  for (let index = 0; index < nodes.length; index += 1) {
-    nodes[index] = fxpNodeToElement(nodes[index]!, inheritedNamespaceScope);
-  }
-
-  return {
-    elements: nodes,
-  };
-}
+export type { XmlElement, XmlNamespaceScope };
 
 /**
  * Common OOXML namespace URIs — re-exported from @stll/docx-utils.
@@ -235,41 +95,28 @@ export function parseXml(
   xml: string,
   inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
 ): XmlElement {
-  // The single-pass reader builds the same tree several times faster. It
-  // answers `unsupported` for anything outside ordinary OOXML (a DOCTYPE, an
-  // entity beyond the five built-ins, malformed markup), and those parts go
-  // to fast-xml-parser, which accepts or rejects them exactly as before.
-  const streamed = parseStreamingXml(xml, inheritedNamespaceScope);
-  return streamed.status === "parsed"
-    ? streamed.value
-    : parseXmlWithFastXmlParser(xml, inheritedNamespaceScope);
-}
-
-/**
- * The general-purpose reader {@link parseXml} falls back to, and the reference
- * the streaming reader's equivalence tests compare against.
- */
-export function parseXmlWithFastXmlParser(
-  xml: string,
-  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
-): XmlElement {
-  // fast-xml-parser with preserveOrder returns an array of nodes.
-  // We convert it into the same tree shape that xml-js used to produce
-  // (non-compact mode with attributesKey="attributes", textKey="text").
-  //
-  // IMPORTANT: trimValues is false so whitespace-only text nodes such as
-  // <w:t xml:space="preserve"> </w:t> are preserved — matching the old
-  // xml-js captureSpacesBetweenElements behaviour.
-  const parser = xml.includes("binData") ? fxpParserWithStopNodes : fxpParser;
-  const nodes = parser.parse(xml) as MutableFxpNode[];
-  return fxpToRootElement(nodes, inheritedNamespaceScope);
+  // The tolerant reader: anything outside ordinary OOXML that earlier
+  // releases opened (text beside the root, an HTML-named or unknown
+  // reference) reads as it did; a DOCTYPE, mismatched or unclosed markup and
+  // nesting past the resource limit are refused.
+  const read = readXml(xml, {
+    conformance: "tolerant",
+    inheritedNamespaceScope,
+  });
+  if (read.status === "rejected") {
+    throw new XmlReadError({
+      message: `XML part could not be read: ${read.reason}`,
+      reason: read.reason,
+    });
+  }
+  return read.value;
 }
 
 /**
  * Serialize an XmlElement back to an XML string.
  *
- * Written here rather than handed to `fast-xml-parser`'s builder for two
- * reasons. The builder writes a tab or a newline inside an attribute value
+ * Written here rather than handed to a general-purpose XML builder (the one
+ * folio used before) for two reasons. The builder writes a tab or a newline inside an attribute value
  * literally, and XML 1.0 §3.3.3 has every conformant reader normalise those to
  * a space: a `descr="two lines&#xA;"` a source file wrote came back as
  * `descr="two lines "`. `escapeXmlAttribute` writes the character references
@@ -1162,7 +1009,7 @@ export function parseBooleanElement(
 
   // OOXML binds prefixes to namespace URIs at the doc root; the source is
   // free to pick any prefix (`w14:checked` vs. `ns0:checked`) so long as
-  // it resolves to the right URI. fast-xml-parser keeps prefixes literal,
+  // it resolves to the right URI. The reader keeps prefixes literal,
   // so we have to be tolerant of the prefix actually written rather than
   // assuming the canonical one. Without this, a `<ns0:checked ns0:val="0"/>`
   // misses the val attribute, falls through to the bare-presence branch,

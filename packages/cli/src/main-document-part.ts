@@ -16,9 +16,12 @@ import { Result } from "better-result";
  * Transitional and the Strict relationship and WordprocessingML namespaces are
  * accepted.
  */
-import { XMLParser, XMLValidator } from "fast-xml-parser";
 import path from "node:path";
 
+import {
+  readXml,
+  type XmlElement as ReadXmlElement,
+} from "@stll/docx-core/xml";
 import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 import { createTextReader } from "@stll/folio-core/utils/textEncoding";
 
@@ -91,20 +94,6 @@ type XmlElement = {
   children: readonly XmlElement[];
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const orderedParser = new XMLParser({
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  parseAttributeValue: false,
-  parseTagValue: false,
-  processEntities: false,
-  ignoreDeclaration: true,
-  ignorePiTags: true,
-});
-
 const splitName = (
   qualified: string,
 ): { prefix: string; localName: string } => {
@@ -117,41 +106,37 @@ const splitName = (
       };
 };
 
-const stringAttributes = (value: unknown): Record<string, string> => {
+const stringAttributes = (
+  value: ReadXmlElement["attributes"],
+): Record<string, string> => {
   const attributes: Record<string, string> = {};
-  if (!isRecord(value)) return attributes;
-  for (const [name, attribute] of Object.entries(value)) {
+  for (const [name, attribute] of Object.entries(value ?? {})) {
     if (typeof attribute === "string") attributes[name] = attribute;
   }
   return attributes;
 };
 
-/** The element children of one ordered node list, with namespaces in scope resolved. */
+/** The element children of one node list, with namespaces in scope resolved. */
 const elementsOf = (
-  nodes: unknown,
+  nodes: readonly ReadXmlElement[],
   scope: ReadonlyMap<string, string>,
 ): XmlElement[] => {
-  if (!Array.isArray(nodes)) return [];
   const elements: XmlElement[] = [];
   for (const node of nodes) {
-    if (!isRecord(node)) continue;
-    const name = Object.keys(node).find(
-      (key) => key !== ":@" && key !== "#text",
-    );
-    if (name === undefined) continue;
-    const attributes = stringAttributes(node[":@"]);
+    if (node.type !== "element" || node.name === undefined) continue;
+    const attributes = stringAttributes(node.attributes);
     const inner = new Map(scope);
     for (const [attribute, value] of Object.entries(attributes)) {
       if (attribute === "xmlns") inner.set("", value);
       else if (attribute.startsWith("xmlns:"))
         inner.set(attribute.slice("xmlns:".length), value);
     }
-    const { prefix, localName } = splitName(name);
+    const { prefix, localName } = splitName(node.name);
     elements.push({
       namespace: inner.get(prefix),
       localName,
       attributes,
-      children: elementsOf(node[name], inner),
+      children: elementsOf(node.elements ?? [], inner),
     });
   }
   return elements;
@@ -159,10 +144,13 @@ const elementsOf = (
 
 /** The root element of a well-formed XML part, or `null`. */
 const parseRoot = (xml: string): XmlElement | null => {
-  if (/<!DOCTYPE/iu.test(xml) || XMLValidator.validate(xml) !== true)
-    return null;
-  const parsed: unknown = orderedParser.parse(xml);
-  const [root] = elementsOf(parsed, new Map());
+  const read = readXml(xml, {
+    conformance: "well-formed",
+    references: "raw",
+    undeclaredEntities: "accept",
+  });
+  if (read.status === "rejected") return null;
+  const [root] = elementsOf(read.value.elements ?? [], new Map());
   return root ?? null;
 };
 

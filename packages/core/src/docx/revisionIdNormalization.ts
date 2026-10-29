@@ -3,7 +3,12 @@
 
 import { TaggedError, type TaggedErrorClass } from "better-result";
 
-import { rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
+import { rewriteStreamingXmlDecimalAttributes } from "@stll/docx-core/xml";
+import {
+  assertXmlResourceLimits,
+  XmlResourceLimitError,
+} from "@stll/docx-core/xml/limits";
+
 import {
   findAttributeByNamespaceUri,
   getLocalName,
@@ -11,10 +16,6 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
-import {
-  assertXmlResourceLimits,
-  XmlResourceLimitError,
-} from "./xmlResourceLimits";
 
 const RevisionIdCollisionErrorBase: TaggedErrorClass<"RevisionIdCollisionError"> =
   TaggedError("RevisionIdCollisionError");

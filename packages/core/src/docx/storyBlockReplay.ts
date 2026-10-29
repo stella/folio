@@ -1,13 +1,13 @@
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import {
+  getXmlSourceRange,
+  parseStreamingXmlWithSourceRanges,
+} from "@stll/docx-core/xml";
 
 import type { BlockContent, DocumentBody } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import { spliceXml, type XmlSplice } from "./selectiveXmlPatch";
-import {
-  getXmlSourceRange,
-  parseStreamingXmlWithSourceRanges,
-} from "./streamingXmlParser";
 import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "./strictValueEncodings.gen";
 import {
   captureSourceProfileXml,

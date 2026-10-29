@@ -1,5 +1,7 @@
 import { panic } from "better-result";
 
+import { assertXmlResourceLimits } from "@stll/docx-core/xml/limits";
+
 import type {
   Shape,
   ShapeAlternateContent,
@@ -21,7 +23,6 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
-import { assertXmlResourceLimits } from "./xmlResourceLimits";
 
 /**
  * Every modeled field, text body included: the Fallback repeats the shape's

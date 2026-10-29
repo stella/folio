@@ -950,40 +950,46 @@ describe("pinned regression seeds", () => {
     }
   });
 
-  test("every imported property driver declares a literal ID in its options", async () => {
-    // Verify discovery works without executables on PATH.
-    const previousPath = process.env["PATH"];
-    process.env["PATH"] = "";
-    try {
-      const files = propertyDriverFiles(REPO_ROOT);
-      const analyses = await propertyDriverAnalyses(
-        files.map((file) => ({
-          text: readFileSync(path.join(REPO_ROOT, file), "utf8"),
-          file,
-        })),
-      );
-      const calls = files.flatMap((file, index) => {
-        const analysis = analyses[index] ?? { calls: [], problems: [] };
-        expect(analysis.problems).toEqual([]);
-        expect(duplicatePropertyDriverIds(analysis.calls)).toEqual([]);
-        return analysis.calls.map(({ id, argumentCount }) => ({
-          file,
-          id,
-          argumentCount,
-        }));
-      });
-      expect(calls.length).toBeGreaterThan(0);
-      expect(
-        calls.filter(
-          ({ id, argumentCount }) => !id?.trim() || argumentCount !== 2,
-        ),
-      ).toEqual([]);
-    } finally {
-      if (previousPath === undefined)
-        Reflect.deleteProperty(process.env, "PATH");
-      else process.env["PATH"] = previousPath;
-    }
-  });
+  test(
+    "every imported property driver declares a literal ID in its options",
+    async () => {
+      // Verify discovery works without executables on PATH.
+      const previousPath = process.env["PATH"];
+      process.env["PATH"] = "";
+      try {
+        const files = propertyDriverFiles(REPO_ROOT);
+        const analyses = await propertyDriverAnalyses(
+          files.map((file) => ({
+            text: readFileSync(path.join(REPO_ROOT, file), "utf8"),
+            file,
+          })),
+        );
+        const calls = files.flatMap((file, index) => {
+          const analysis = analyses[index] ?? { calls: [], problems: [] };
+          expect(analysis.problems).toEqual([]);
+          expect(duplicatePropertyDriverIds(analysis.calls)).toEqual([]);
+          return analysis.calls.map(({ id, argumentCount }) => ({
+            file,
+            id,
+            argumentCount,
+          }));
+        });
+        expect(calls.length).toBeGreaterThan(0);
+        expect(
+          calls.filter(
+            ({ id, argumentCount }) => !id?.trim() || argumentCount !== 2,
+          ),
+        ).toEqual([]);
+      } finally {
+        if (previousPath === undefined)
+          Reflect.deleteProperty(process.env, "PATH");
+        else process.env["PATH"] = previousPath;
+      }
+      // It starts the TypeScript server and analyses every property driver in
+      // the repository, so its cost grows with the repository, not the change.
+    },
+    propertyTestTimeout(30_000),
+  );
 });
 
 describe("test titles", () => {

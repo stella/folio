@@ -28,6 +28,7 @@ import {
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
 import { isCommentExhausted } from "@stll/docx-core/ops";
+import { FOLIO_XML_RESOURCE_LIMITS } from "@stll/docx-core/xml/limits";
 
 import type {
   BlockContent,
@@ -149,7 +150,6 @@ import {
   parseXml,
   parseXmlDocument,
 } from "./xmlParser";
-import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
 const EMF_MIME_TYPE = "image/x-emf";
 const WMF_MIME_TYPES = new Set(["image/x-wmf", "image/wmf"]);

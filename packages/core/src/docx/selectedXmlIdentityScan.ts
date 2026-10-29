@@ -1,4 +1,5 @@
-import { scanStreamingXmlElements } from "./streamingXmlParser";
+import { scanStreamingXmlElements } from "@stll/docx-core/xml";
+
 import {
   getLocalName,
   getNamespaceUri,

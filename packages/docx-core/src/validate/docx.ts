@@ -1,5 +1,4 @@
 import { panic, Result } from "better-result";
-import { XMLParser, XMLValidator } from "fast-xml-parser";
 
 import { decodeText } from "@stll/utf8-boundaries";
 
@@ -30,6 +29,7 @@ import {
   paragraphNumberingReferenceId,
 } from "../model/paragraphNumbering";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import { ZipArchive, type ZipEntry, ZipError } from "../zip/archive";
 import { validatePackageGraph } from "./packageGraph";
 import { validateSchemaAttributes } from "./schemaAttributes";
@@ -89,16 +89,6 @@ const WORDPROCESSINGML_NAMESPACES = new Set([
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
   "http://purl.oclc.org/ooxml/wordprocessingml/main",
 ]);
-
-const packageXmlParser = new XMLParser({
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  parseTagValue: false,
-  parseAttributeValue: false,
-  processEntities: false,
-  ignoreDeclaration: true,
-});
 
 const RATIO_BOUNDED_EXTENSIONS: ReadonlySet<string> = new Set([
   "xml",
@@ -214,14 +204,6 @@ const openArchive = async (
   };
 };
 
-type OrderedXmlNode = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const elementName = (node: OrderedXmlNode): string | null =>
-  Object.keys(node).find((key) => key !== ":@" && !key.startsWith("?")) ?? null;
-
 const localName = (name: string): string => name.slice(name.indexOf(":") + 1);
 
 const prefix = (name: string): string => {
@@ -229,10 +211,12 @@ const prefix = (name: string): string => {
   return separator === -1 ? "" : name.slice(0, separator);
 };
 
+type XmlAttributes = NonNullable<XmlElement["attributes"]>;
+
 const namespaceFor = (
   name: string,
-  attributes: Record<string, unknown>,
-  inherited: Record<string, unknown> = {},
+  attributes: XmlAttributes,
+  inherited: XmlAttributes = {},
 ): string | null => {
   const key = prefix(name) === "" ? "xmlns" : `xmlns:${prefix(name)}`;
   const value = attributes[key] ?? inherited[key];
@@ -240,19 +224,27 @@ const namespaceFor = (
 };
 
 const validateDocumentXml = (xml: string): string | null => {
-  if (XMLValidator.validate(xml) !== true) {
+  const read = readXml(xml, {
+    conformance: "well-formed",
+    references: "raw",
+    undeclaredEntities: "accept",
+    instructions: "retain",
+  });
+  if (read.status === "rejected") {
     return "Generated DOCX has malformed word/document.xml.";
   }
-  const parsed: unknown = packageXmlParser.parse(xml);
-  if (!Array.isArray(parsed)) {
-    return "Generated DOCX has no word/document.xml root document.";
-  }
-  const root = parsed.find(isRecord);
+  // The first node after the XML declaration; a processing instruction there
+  // is not a document root.
+  const root = read.value.elements?.find(
+    (node) =>
+      node.type !== "text" &&
+      !(node.type === "instruction" && node.name === "xml"),
+  );
   if (!root) {
     return "Generated DOCX has no word/document.xml root document.";
   }
-  const rootName = elementName(root);
-  const rootAttributes = isRecord(root[":@"]) ? root[":@"] : {};
+  const rootName = root.type === "element" ? (root.name ?? null) : null;
+  const rootAttributes = root.attributes ?? {};
   if (
     rootName === null ||
     localName(rootName) !== "document" ||
@@ -262,24 +254,15 @@ const validateDocumentXml = (xml: string): string | null => {
   ) {
     return "Generated DOCX has no WordprocessingML document root.";
   }
-  const children = root[rootName];
-  if (!Array.isArray(children)) {
-    return "Generated DOCX document root has no WordprocessingML body.";
-  }
-  const hasBody = children.some((child) => {
-    if (!isRecord(child)) {
-      return false;
-    }
-    const childName = elementName(child);
-    const childAttributes = isRecord(child[":@"]) ? child[":@"] : {};
-    return (
-      childName !== null &&
-      localName(childName) === "body" &&
+  const hasBody = (root.elements ?? []).some(
+    (child) =>
+      child.type === "element" &&
+      child.name !== undefined &&
+      localName(child.name) === "body" &&
       WORDPROCESSINGML_NAMESPACES.has(
-        namespaceFor(childName, childAttributes, rootAttributes) ?? "",
-      )
-    );
-  });
+        namespaceFor(child.name, child.attributes ?? {}, rootAttributes) ?? "",
+      ),
+  );
   return hasBody
     ? null
     : "Generated DOCX document root has no WordprocessingML body.";

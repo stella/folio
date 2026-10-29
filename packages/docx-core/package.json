@@ -36,6 +36,9 @@
     "./ops": "./src/ops/documentOps.ts",
     "./projection": "./src/projection.ts",
     "./schema": "./src/schema/sequenceChildren.ts",
+    "./xml": "./src/xml/streamingXmlParser.ts",
+    "./xml/limits": "./src/xml/xmlResourceLimits.ts",
+    "./xml/namespaces": "./src/xml/xmlNamespaceContext.ts",
     "./zip": "./src/zip/archive.ts",
     "./zip/stream": "./src/zip/stream.ts"
   },
@@ -53,11 +56,9 @@
     "prepack": "bun run build"
   },
   "dependencies": {
-    "@nodable/entities": "^3.0.0",
     "@stll/docx-utils": "^0.2.0",
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
-    "fast-xml-parser": "^5.11.2",
     "marked": "^18.1.1"
   },
   "devDependencies": {

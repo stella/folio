@@ -18,11 +18,11 @@
  */
 
 import { TaggedError, type TaggedErrorClass } from "better-result";
-import { XMLParser, XMLValidator } from "fast-xml-parser";
 
 import { OOXML_NS } from "@stll/docx-utils";
 
 import type { PreservedMarkup } from "../model/preservedMarkup";
+import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import {
   SEQUENCE_CHILDREN,
   type SequenceChild,
@@ -60,18 +60,6 @@ const MAX_PRESERVED_CHILD_XML_CHARACTERS = 1024 * 1024;
 const MAX_PRESERVED_CHILD_COUNT = 4096;
 const MAX_PRESERVED_MARKUP_CHARACTERS = 4 * 1024 * 1024;
 const PRESERVED_CHILD_WRAPPER = "folio-preserved-child-root";
-const preservedChildParser = new XMLParser({
-  preserveOrder: true,
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  trimValues: false,
-  parseTagValue: false,
-  parseAttributeValue: false,
-  ignoreDeclaration: false,
-  ignorePiTags: false,
-  processEntities: false,
-  htmlEntities: false,
-});
 
 const InvalidPreservedChildXmlErrorBase: TaggedErrorClass<"InvalidPreservedChildXmlError"> =
   TaggedError("InvalidPreservedChildXmlError");
@@ -160,7 +148,7 @@ const namespacePrefix = (qualifiedName: string): string | undefined => {
 };
 
 const applyNamespaceDeclarations = (
-  attributes: Readonly<Record<string, unknown>>,
+  attributes: NonNullable<XmlElement["attributes"]>,
   inherited: ReadonlyMap<string, string>,
 ): ReadonlyMap<string, string> | undefined => {
   let bindings: Map<string, string> | undefined;
@@ -194,11 +182,11 @@ const applyNamespaceDeclarations = (
 };
 
 const hasValidNamespaces = (
-  root: Record<string, unknown>,
+  root: XmlElement,
   inherited: ReadonlyMap<string, string>,
 ): boolean => {
   const pending: Array<{
-    node: Record<string, unknown>;
+    node: XmlElement;
     bindings: ReadonlyMap<string, string>;
   }> = [{ node: root, bindings: inherited }];
   while (pending.length > 0) {
@@ -207,17 +195,12 @@ const hasValidNamespaces = (
       continue;
     }
     const { node, bindings: parentBindings } = current;
-    const nodeNames = Object.keys(node).filter((name) => name !== ":@");
-    const name = nodeNames[0];
-    if (nodeNames.length !== 1 || name === undefined) {
-      return false;
-    }
-    if (name.startsWith("#") || name.startsWith("?") || name.startsWith("!")) {
+    const name = node.name;
+    if (node.type !== "element" || name === undefined) {
       continue;
     }
 
-    const rawAttributes = node[":@"];
-    const attributes = isRecord(rawAttributes) ? rawAttributes : {};
+    const attributes = node.attributes ?? {};
     const bindings = applyNamespaceDeclarations(attributes, parentBindings);
     if (bindings === undefined) {
       return false;
@@ -247,14 +230,7 @@ const hasValidNamespaces = (
       expandedAttributeNames.add(expandedName);
     }
 
-    const children = node[name];
-    if (!Array.isArray(children)) {
-      return false;
-    }
-    for (const child of children) {
-      if (!isRecord(child)) {
-        return false;
-      }
+    for (const child of node.elements ?? []) {
       pending.push({ node: child, bindings });
     }
   }
@@ -274,39 +250,21 @@ export const isSafePreservedChildXml = (xml: string): boolean => {
   }
 
   const wrapped = `<${PRESERVED_CHILD_WRAPPER}>${trimmed}</${PRESERVED_CHILD_WRAPPER}>`;
-  if (XMLValidator.validate(wrapped) !== true) {
+  // Raw references, and processing instructions kept as nodes, so a capture
+  // that carries one beside its element is not mistaken for a lone element.
+  const read = readXml(wrapped, {
+    conformance: "well-formed",
+    references: "raw",
+    instructions: "retain",
+  });
+  if (read.status === "rejected") {
     return false;
   }
-
-  let parsed: unknown;
-  try {
-    parsed = preservedChildParser.parse(wrapped);
-  } catch {
-    return false;
-  }
-  if (!Array.isArray(parsed) || parsed.length !== 1) {
-    return false;
-  }
-  const wrapper = parsed[0];
-  if (!isRecord(wrapper)) {
-    return false;
-  }
-  const children = wrapper[PRESERVED_CHILD_WRAPPER];
-  if (!Array.isArray(children) || children.length !== 1) {
-    return false;
-  }
-  const child = children[0];
-  if (!isRecord(child)) {
-    return false;
-  }
-  const nodeNames = Object.keys(child).filter((name) => name !== ":@");
-  const nodeName = nodeNames[0];
+  const children = read.value.elements?.at(0)?.elements ?? [];
+  const child = children.at(0);
   return (
-    nodeNames.length === 1 &&
-    nodeName !== undefined &&
-    !nodeName.startsWith("#") &&
-    !nodeName.startsWith("?") &&
-    !nodeName.startsWith("!") &&
+    children.length === 1 &&
+    child?.type === "element" &&
     hasValidNamespaces(child, INHERITED_NAMESPACE_BINDINGS)
   );
 };

@@ -77,7 +77,8 @@ export default library({
     "unicorn/no-useless-spread": "off",
     "unicorn/prefer-string-starts-ends-with": "off",
     // ZIP archives are read and written by @stll/docx-core/zip, which bounds
-    // every read and passes unchanged entries through.
+    // every read and passes unchanged entries through; XML is read by
+    // @stll/docx-core/xml, one bounded reader with a stated conformance.
     "no-restricted-imports": [
       "error",
       {
@@ -89,6 +90,16 @@ export default library({
           {
             name: "client-zip",
             message: "Use createZipStream from @stll/docx-core/zip/stream.",
+          },
+          {
+            name: "fast-xml-parser",
+            message:
+              "Read XML with readXml or wellFormedXmlIssue from @stll/docx-core/xml.",
+          },
+          {
+            name: "@nodable/entities",
+            message:
+              "References are decoded by the reader in @stll/docx-core/xml.",
           },
         ],
       },

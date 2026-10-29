@@ -20,6 +20,7 @@ import { resolveParagraphNumbering } from '@stll/docx-core/model';
 import { sameEffectiveParagraphNumbering } from '@stll/docx-core/model';
 import { sameStatedParagraphNumbering } from '@stll/docx-core/model';
 import { TaggedErrorClass } from 'better-result';
+import { XmlElement } from '@stll/docx-core/xml';
 
 // @public
 export const decryptDocxIfNeeded: (data: ArrayBuffer | Uint8Array, options?: DecryptDocxOptions) => Promise<DecryptDocxResult>;

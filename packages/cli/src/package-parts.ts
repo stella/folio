@@ -5,9 +5,9 @@ import { Result } from "better-result";
  * parts it changed are well formed with every relationship reference
  * resolved.
  */
-import { XMLParser, XMLValidator } from "fast-xml-parser";
 import path from "node:path";
 
+import { readXml, wellFormedXmlIssue } from "@stll/docx-core/xml";
 import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { decodeText } from "@stll/folio-core/utils/textEncoding";
@@ -132,28 +132,41 @@ export const nextRevisionIdSeed = async (
   return Result.ok(highest + 1);
 };
 
-const relationshipParser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  removeNSPrefix: true,
-  isArray: (name) => name === "Relationship",
-});
-
 type Relationship = { id: string; target: string; external: boolean };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/** A name without its namespace prefix, as the relationship reader matches it. */
+const unprefixed = (name: string): string => {
+  const parts = name.split(":");
+  return parts.length === 2 ? (parts[1] ?? name) : name;
+};
 
 const parseRelationships = (xml: string): Relationship[] => {
-  const parsed: unknown = relationshipParser.parse(xml);
-  const root = isRecord(parsed) ? parsed["Relationships"] : undefined;
-  const entries = isRecord(root) ? root["Relationship"] : undefined;
-  if (!Array.isArray(entries)) return [];
-  return entries.filter(isRecord).map((entry) => ({
-    id: typeof entry["Id"] === "string" ? entry["Id"] : "",
-    target: typeof entry["Target"] === "string" ? entry["Target"] : "",
-    external: entry["TargetMode"] === "External",
-  }));
+  const read = readXml(xml, { conformance: "tolerant" });
+  if (read.status === "rejected") return [];
+  const root = read.value.elements?.find((node) => node.type === "element");
+  if (root?.name === undefined || unprefixed(root.name) !== "Relationships")
+    return [];
+  const relationships: Relationship[] = [];
+  for (const entry of root.elements ?? []) {
+    if (
+      entry.type !== "element" ||
+      entry.name === undefined ||
+      unprefixed(entry.name) !== "Relationship" ||
+      entry.attributes === undefined
+    )
+      continue;
+    const attributes = new Map<string, string>();
+    for (const [name, value] of Object.entries(entry.attributes)) {
+      if (name.split(":")[0] === "xmlns" || typeof value !== "string") continue;
+      attributes.set(unprefixed(name), value.trim());
+    }
+    relationships.push({
+      id: attributes.get("Id") ?? "",
+      target: attributes.get("Target") ?? "",
+      external: attributes.get("TargetMode") === "External",
+    });
+  }
+  return relationships;
 };
 
 /** `word/document.xml` -> `word/_rels/document.xml.rels`; `_rels/.rels` belongs to the package. */
@@ -204,7 +217,7 @@ const checkChangedPart = async ({
   const xml = await entry
     .bytes()
     .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
-  if (XMLValidator.validate(xml) !== true) {
+  if (wellFormedXmlIssue(xml, "accept") !== null) {
     return `${part} is not well-formed XML.`;
   }
   if (part.endsWith(".rels")) {

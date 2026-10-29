@@ -15,7 +15,7 @@ import { normalizeImportedNumericIds } from "./numericIdNormalization";
 import { parseDocx } from "./parser";
 import { createDocx, createEmptyDocx, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
-import { parseXmlWithFastXmlParser, type XmlElement } from "./xmlParser";
+import { parseXml, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -84,7 +84,7 @@ test("the retained repair tree equals an independent parse of the normalized XML
         expect(rewritten).toBeDefined();
         expect(tree).toBeDefined();
         if (rewritten === undefined) return;
-        expect(tree).toEqual(parseXmlWithFastXmlParser(rewritten));
+        expect(tree).toEqual(parseXml(rewritten));
         expect(parts.get("word/document.xml")).toBe(xml);
       },
     ),

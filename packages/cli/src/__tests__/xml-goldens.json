@@ -1,0 +1,826 @@
+{
+  "checkWordprocessingPackage": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/cursive-face-change.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/docx-editor-demo.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/font-subsets.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/markup-views-final.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/markup-views-original.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/markup-views.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/mixed-script-font-measure.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/mixed-script-font-sample.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/performance-long-split-table.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/podily-bps.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/sample.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": {
+        "value": "ok"
+      }
+    },
+    "edges": {
+      "ordinary": {
+        "value": "ok"
+      },
+      "built-in entities": {
+        "value": "ok"
+      },
+      "character references": {
+        "value": "ok"
+      },
+      "CRLF text": {
+        "value": "ok"
+      },
+      "CRLF and tab attribute": {
+        "value": "ok"
+      },
+      "CDATA": {
+        "value": "ok"
+      },
+      "comment and PI": {
+        "value": "ok"
+      },
+      "mismatched end tag": {
+        "value": "ok"
+      },
+      "unclosed element": {
+        "value": "ok"
+      },
+      "stray end tag": {
+        "value": "ok"
+      },
+      "two roots": {
+        "value": "ok"
+      },
+      "text before root": {
+        "value": {
+          "error": "edge.docx is not a .docx package: its main part /word/document.xml is not a WordprocessingML document."
+        }
+      },
+      "text after root": {
+        "value": "ok"
+      },
+      "duplicate attribute": {
+        "value": "ok"
+      },
+      "attribute without value": {
+        "value": "ok"
+      },
+      "unquoted attribute": {
+        "value": "ok"
+      },
+      "attributes without separator": {
+        "value": "ok"
+      },
+      "less-than in attribute": {
+        "value": "ok"
+      },
+      "HTML entity in text": {
+        "value": "ok"
+      },
+      "HTML entity in attribute": {
+        "value": "ok"
+      },
+      "unknown entity": {
+        "value": "ok"
+      },
+      "bare ampersand": {
+        "value": "ok"
+      },
+      "ampersand without semicolon": {
+        "value": "ok"
+      },
+      "null character reference": {
+        "value": "ok"
+      },
+      "C0 character reference": {
+        "value": "ok"
+      },
+      "surrogate character reference": {
+        "value": "ok"
+      },
+      "out-of-range character reference": {
+        "value": "ok"
+      },
+      "lenient character reference": {
+        "value": "ok"
+      },
+      "raw control character": {
+        "value": "ok"
+      },
+      "CDATA terminator in text": {
+        "value": "ok"
+      },
+      "double hyphen in comment": {
+        "value": "ok"
+      },
+      "DOCTYPE": {
+        "value": {
+          "error": "edge.docx is not a .docx package: its main part /word/document.xml is not a WordprocessingML document."
+        }
+      },
+      "DOCTYPE entity expansion": {
+        "value": {
+          "error": "edge.docx is not a .docx package: its main part /word/document.xml is not a WordprocessingML document."
+        }
+      },
+      "prototype attribute": {
+        "value": "ok"
+      },
+      "constructor element": {
+        "value": "ok"
+      },
+      "constructor attribute": {
+        "value": "ok"
+      },
+      "name starting with a digit": {
+        "value": "ok"
+      },
+      "name with two colons": {
+        "value": "ok"
+      },
+      "unbound element prefix": {
+        "value": "ok"
+      },
+      "unbound attribute prefix": {
+        "value": "ok"
+      },
+      "declaration inside the root": {
+        "value": "ok"
+      },
+      "declaration after whitespace": {
+        "value": "ok"
+      },
+      "byte-order mark": {
+        "value": "ok"
+      },
+      "unclosed CDATA": {
+        "value": "ok"
+      },
+      "unclosed comment": {
+        "value": "ok"
+      },
+      "depth 99": {
+        "value": "ok"
+      },
+      "depth 101": {
+        "value": "ok"
+      },
+      "depth 150": {
+        "value": "ok"
+      },
+      "many attributes": {
+        "value": "ok"
+      },
+      "space before tag name": {
+        "value": "ok"
+      },
+      "space after self-closing slash": {
+        "value": "ok"
+      },
+      "space in end tag": {
+        "value": "ok"
+      },
+      "empty document": {
+        "value": {
+          "error": "edge.docx is not a .docx package: its main part /word/document.xml is not a WordprocessingML document."
+        }
+      },
+      "whitespace document": {
+        "value": {
+          "error": "edge.docx is not a .docx package: its main part /word/document.xml is not a WordprocessingML document."
+        }
+      },
+      "xml prefix rebound": {
+        "value": "ok"
+      },
+      "namespace URI with reference": {
+        "value": "ok"
+      },
+      "numeric identifier out of range": {
+        "value": "ok"
+      },
+      "numeric identifier with reference": {
+        "value": "ok"
+      },
+      "numeric identifier with HTML entity": {
+        "value": "ok"
+      },
+      "relationship attribute": {
+        "value": "ok"
+      }
+    }
+  },
+  "checkPackageIntegrity": {
+    "fixtures": {
+      "packages/core/src/docx/__fixtures__/header-vml-emf.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/alt-prefix-sdt.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/block-sdt-richtext.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-false.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/checkbox-val-true.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/datahash-sdt.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/date-fractional-seconds.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/dropdown-empty-value.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-bookmark-ids.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-abstractNumId.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-bookmark.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-comment.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-drawing.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-endnote.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-footnote.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-numId.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-paraId.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-relationship.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-revision.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/duplicate-imported-textId.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/empty-sdt-content.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-commentrange-sibling.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-checkbox.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-dropdown.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/inline-sdt-mixed-rpr.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-content-locked.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-content-locked.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/lock-sdt-locked.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/nested-block-sdt.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/opendope-encoded-ampersand-tag.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-docpart.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/placeholder-without-docpart.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/repeating-section.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-rpr-placeholder.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-self-closing.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/sdt-without-sdtpr.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-complex-styles.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-empty.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-styled-content.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/corpus/upstream-with-tables.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-image-count.docx": {
+        "value": "ok"
+      },
+      "packages/core/src/docx/__tests__/__fixtures__/regressions/repack-paragraph-sectpr.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/cursive-face-change.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/docx-editor-demo.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/font-subsets.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/markup-views-final.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/markup-views-original.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/markup-views.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/mixed-script-font-measure.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/mixed-script-font-sample.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/performance-1500-paragraphs.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/performance-long-split-table.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/podily-bps.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/sample.docx": {
+        "value": "ok"
+      },
+      "tests/visual/fixtures/tracked-insertion-boundary.docx": {
+        "value": "ok"
+      }
+    },
+    "edges": {
+      "ordinary": {
+        "value": "ok"
+      },
+      "built-in entities": {
+        "value": "ok"
+      },
+      "character references": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "CRLF text": {
+        "value": "ok"
+      },
+      "CRLF and tab attribute": {
+        "value": "ok"
+      },
+      "CDATA": {
+        "value": "ok"
+      },
+      "comment and PI": {
+        "value": "ok"
+      },
+      "mismatched end tag": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "unclosed element": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "stray end tag": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "two roots": {
+        "value": "ok"
+      },
+      "text before root": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "text after root": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "duplicate attribute": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "attribute without value": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "unquoted attribute": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "attributes without separator": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "less-than in attribute": {
+        "value": "ok"
+      },
+      "HTML entity in text": {
+        "value": "ok"
+      },
+      "HTML entity in attribute": {
+        "value": "ok"
+      },
+      "unknown entity": {
+        "value": "ok"
+      },
+      "bare ampersand": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "ampersand without semicolon": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "null character reference": {
+        "value": "ok"
+      },
+      "C0 character reference": {
+        "value": "ok"
+      },
+      "surrogate character reference": {
+        "value": "ok"
+      },
+      "out-of-range character reference": {
+        "value": "ok"
+      },
+      "lenient character reference": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "raw control character": {
+        "value": "ok"
+      },
+      "CDATA terminator in text": {
+        "value": "ok"
+      },
+      "double hyphen in comment": {
+        "value": "ok"
+      },
+      "DOCTYPE": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "DOCTYPE entity expansion": {
+        "value": {
+          "error": "The saved package is not a .docx package: its main part /word/document.xml is not a WordprocessingML document."
+        }
+      },
+      "prototype attribute": {
+        "value": {
+          "error": "The saved package does not reopen: Failed to parse DOCX: [SECURITY] Invalid name: \"__proto__\" is a reserved JavaScript keyword that could cause prototype pollution"
+        }
+      },
+      "constructor element": {
+        "value": {
+          "error": "The saved package does not reopen: Failed to parse DOCX: [SECURITY] Invalid name: \"constructor\" is a reserved JavaScript keyword that could cause prototype pollution"
+        }
+      },
+      "constructor attribute": {
+        "value": {
+          "error": "The saved package does not reopen: Failed to parse DOCX: [SECURITY] Invalid name: \"constructor\" is a reserved JavaScript keyword that could cause prototype pollution"
+        }
+      },
+      "name starting with a digit": {
+        "value": "ok"
+      },
+      "name with two colons": {
+        "value": "ok"
+      },
+      "unbound element prefix": {
+        "value": "ok"
+      },
+      "unbound attribute prefix": {
+        "value": "ok"
+      },
+      "declaration inside the root": {
+        "value": "ok"
+      },
+      "declaration after whitespace": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "byte-order mark": {
+        "value": "ok"
+      },
+      "unclosed CDATA": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "unclosed comment": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "depth 99": {
+        "value": "ok"
+      },
+      "depth 101": {
+        "value": {
+          "error": "The saved package does not reopen: Failed to parse DOCX: XML part is nested deeper than 100 elements (part word/document.xml)"
+        }
+      },
+      "depth 150": {
+        "value": {
+          "error": "The saved package does not reopen: Failed to parse DOCX: XML part is nested deeper than 100 elements (part word/document.xml)"
+        }
+      },
+      "many attributes": {
+        "value": "ok"
+      },
+      "space before tag name": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "space after self-closing slash": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "space in end tag": {
+        "value": "ok"
+      },
+      "empty document": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "whitespace document": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml is not well-formed XML."
+        }
+      },
+      "xml prefix rebound": {
+        "value": "ok"
+      },
+      "namespace URI with reference": {
+        "value": "ok"
+      },
+      "numeric identifier out of range": {
+        "value": "ok"
+      },
+      "numeric identifier with reference": {
+        "value": "ok"
+      },
+      "numeric identifier with HTML entity": {
+        "value": {
+          "error": "The saved package does not reopen: Failed to parse DOCX: Numeric-id normalization could not safely scan word/document.xml"
+        }
+      },
+      "relationship attribute": {
+        "value": {
+          "error": "The saved package failed validation: word/document.xml references relationship rIdMissing, which word/_rels/document.xml.rels does not define."
+        }
+      }
+    }
+  }
+}

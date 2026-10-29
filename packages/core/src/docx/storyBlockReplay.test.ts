@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 
+import { parseStreamingXmlWithSourceRanges } from "@stll/docx-core/xml";
+
 import type { BlockContent } from "../types/document";
 import { parseHeader } from "./headerFooterParser";
 import { buildStoryBlockReplay } from "./storyBlockReplay";
-import { parseStreamingXmlWithSourceRanges } from "./streamingXmlParser";
 import { getChildElements, getNamespaceUri } from "./xmlParser";
 
 const WORD = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";

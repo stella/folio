@@ -19,7 +19,7 @@
  * exists to find.
  */
 
-import { XMLValidator } from "fast-xml-parser";
+import { SaxesParser } from "saxes";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
@@ -129,6 +129,23 @@ const rootElement = (
   return { namespace, localName };
 };
 
+/**
+ * A conformant XML 1.0 parser's verdict, or `null` for a well-formed part.
+ *
+ * Deliberately not folio's own reader: that reader refuses some well-formed
+ * parts by policy (nesting past its resource limit, names it reserves), and a
+ * file it refuses is exactly what this gate must keep in scope.
+ */
+const wellFormednessError = (xml: string): string | null => {
+  let error: string | null = null;
+  const parser = new SaxesParser();
+  parser.on("error", (cause) => {
+    error ??= cause.message;
+  });
+  parser.write(xml).close();
+  return error;
+};
+
 export const classifyCorpusFile = async (
   bytes: Uint8Array,
 ): Promise<CorpusClassification> => {
@@ -207,12 +224,12 @@ export const classifyCorpusFile = async (
     };
   }
 
-  const validation = XMLValidator.validate(documentXml);
-  if (validation !== true) {
+  const malformed = wellFormednessError(documentXml);
+  if (malformed !== null) {
     return {
       kind: "not-a-docx",
       reason: NOT_A_DOCX_REASONS.malformedDocumentXml,
-      detail: validation.err.msg,
+      detail: malformed,
     };
   }
 

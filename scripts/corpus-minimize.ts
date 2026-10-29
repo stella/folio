@@ -16,7 +16,7 @@
  *     [--signature <text>] [--out <dir>] [--budget <evaluations>]
  */
 
-import { TaggedError } from "better-result";
+import { Result, TaggedError } from "better-result";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -238,7 +238,21 @@ const minimizeElements = async ({
     ) {
       continue;
     }
-    const prunable = prepareXmlPruning(decoder.decode(original));
+    const prepared = Result.try(() =>
+      prepareXmlPruning(decoder.decode(original)),
+    );
+    // A part the reader refuses cannot be pruned; keep it whole and go on to
+    // the next rather than abandon the run.
+    if (Result.isError(prepared)) {
+      parts.push({
+        part,
+        elementsKept: 0,
+        elementsTotal: 0,
+        prunable: false,
+      });
+      continue;
+    }
+    const prunable = prepared.value;
     const withPart = async (keep: ReadonlySet<number>): Promise<Uint8Array> => {
       contents.set(part, encoder.encode(prunable.render(keep)));
       return await writePackage(names, contents);
