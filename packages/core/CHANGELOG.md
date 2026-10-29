@@ -1,5 +1,33 @@
 # @stll/folio-core
 
+## 0.66.0
+
+### Minor Changes
+
+- [#2189](https://github.com/stella/folio/pull/2189) [`99bad6b`](https://github.com/stella/folio/commit/99bad6be1c13bb8c78ca845374c9c36fdf49f8a1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read XML with `@stll/docx-core/xml`, folio's single-pass reader, everywhere: DOCX parsing, package and schema validation, numeric identity checks, preserved-markup checks and the CLI's package checks. `readXml` states its conformance (`ooxml`, `well-formed` or `tolerant`), `wellFormedXmlIssue` replaces separate validation passes, and resource limits and namespace resolution move to `@stll/docx-core/xml/limits` and `@stll/docx-core/xml/namespaces`. Markup that is not well-formed (mismatched or unclosed tags, attributes without quoted values, a DOCTYPE) is refused rather than repaired, and validators also refuse `<` in attribute values, `]]>` in text, `--` in comments and a misplaced XML declaration. `parseXmlWithFastXmlParser` is removed, and fast-xml-parser is no longer a dependency.
+
+### Patch Changes
+
+- [#2217](https://github.com/stella/folio/pull/2217) [`468c77b`](https://github.com/stella/folio/commit/468c77b9d1795f4e2313f798f42d5e726d03a3a4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paragraphs a batch inserts together at one place inside a comment's range stay inside the comment, as a single inserted paragraph does, so the live document and its saved package agree on where the comment ends.
+
+- [#2203](https://github.com/stella/folio/pull/2203) [`b0e8e96`](https://github.com/stella/folio/commit/b0e8e964ecea7e8067e9891a4d49106aaa10a21f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph or table inserted inside a comment's range stays inside it when the same batch deletes the paragraph holding the comment's end, directly as when tracked.
+
+- [#2207](https://github.com/stella/folio/pull/2207) [`f421a3d`](https://github.com/stella/folio/commit/f421a3ded7fff2baf6904738ac1ada5ad10a6490) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paragraphs inserted together after a paragraph whose break is pending deletion keep the style and numbering each asked for once the changes are accepted.
+
+- [#2202](https://github.com/stella/folio/pull/2202) [`8d56fb7`](https://github.com/stella/folio/commit/8d56fb71df43b61a60e679a1c3ce0b8e963b5a64) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a direct split of a paragraph whose mark has a pending revision when the changes are accepted: the new break no longer copies that revision.
+
+- [#2194](https://github.com/stella/folio/pull/2194) [`cb71a3d`](https://github.com/stella/folio/commit/cb71a3d2cd76c603ee78fe18f2ebde8e95b8dbc4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Headers and footers no longer cut off text indented into the side margins. Their height cap clipped both axes, so a paragraph with a negative `w:ind` (a right-aligned "Version" line, a licence footer spanning the margins) lost the part that belongs in the margin.
+
+- [#2199](https://github.com/stella/folio/pull/2199) [`8588250`](https://github.com/stella/folio/commit/8588250feae406d8b67d277bee8703ac8bdbfc28) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Count the list items inside a text box when numbering Markdown lists, so the items after the box take the labels the page shows.
+
+- [#2206](https://github.com/stella/folio/pull/2206) [`e957680`](https://github.com/stella/folio/commit/e957680eb2a1db7c418e6a7366f07208ecb2bbd7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked replacement no longer carries a comment or link from text an earlier edit already deleted, so accepting it reads as the direct edit does.
+
+- [#2216](https://github.com/stella/folio/pull/2216) [`2006b87`](https://github.com/stella/folio/commit/2006b8735dcc1e05730669f752172c8f10eab35b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked split of words an earlier change inserted, in the paragraph a pending merge runs into, keeps its new break on the first half: accepting no longer runs the halves back together and leaves the merging paragraph apart.
+
+- [#2212](https://github.com/stella/folio/pull/2212) [`ffbaa0b`](https://github.com/stella/folio/commit/ffbaa0bbf24ec16cef553b7c2cea3ad91f4532a8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A text box's run keeps its own formatting when the paragraph holding it is restyled, so a tracked merge or style change that names a new paragraph style no longer writes the old style's look into that run as untracked direct formatting, and rejecting it after a save restores the document.
+- Updated dependencies [[`99bad6b`](https://github.com/stella/folio/commit/99bad6be1c13bb8c78ca845374c9c36fdf49f8a1)]:
+  - @stll/docx-core@0.41.0
+
 ## 0.65.0
 
 ### Minor Changes
