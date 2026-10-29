@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 1430158958,
+  "steps": [
+    {
+      "action": "mistake",
+      "seed": 2629889101
+    },
+    {
+      "action": "accept all",
+      "seed": 3765678047
+    },
+    {
+      "action": "save and reopen",
+      "seed": 1302276564
+    },
+    {
+      "action": "story batch",
+      "seed": 3133842377,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " "
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Clause goods schedule party period payment payment party.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1046511776,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@2",
+            "startOffset": 51,
+            "endOffset": 56,
+            "selectedTextHash": "h4h3o5z"
+          },
+          "comment": {
+            "text": "Check this word."
+          }
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@2",
+            "startOffset": 51,
+            "endOffset": 56,
+            "selectedTextHash": "h4h3o5z"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 2246241919
+    },
+    {
+      "action": "reject one",
+      "seed": 4077807732
+    },
+    {
+      "action": "mistake",
+      "seed": 3445972062
+    },
+    {
+      "action": "core batch",
+      "seed": 2814136392,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "5E88C024",
+          "quote": "two",
+          "comment": {
+            "text": "Term agreement schedule invoice party supplier goods buyer."
+          }
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " "
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 9
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "core batch",
+      "seed": 2558371604,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "31617F9A",
+          "offset": 51
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "title": "#1356, reported seed 1430158958: a tracked split of inserted words that a pending merge runs into keeps its break in a batch and one operation at a time"
+}

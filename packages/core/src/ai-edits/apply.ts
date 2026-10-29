@@ -2868,6 +2868,30 @@ const holdsOnlyInsertedContent = (
   return whollyInserted;
 };
 
+/** Whether every inline of `paragraph` is an ordinary insertion one of `revisionIds` made. */
+const holdsOnlyContentInsertedBy = (
+  paragraph: PMNode,
+  revisionIds: ReadonlySet<number>,
+): boolean => {
+  let whollyInserted = true;
+  paragraph.descendants((node) => {
+    if (!whollyInserted) {
+      return false;
+    }
+    if (!node.isInline || isZeroWidthAnchor(node)) {
+      return true;
+    }
+    whollyInserted = node.marks.some(
+      (mark) =>
+        mark.type.name === "insertion" &&
+        mark.attrs["moveKind"] !== "moveTo" &&
+        revisionIds.has(mark.attrs["revisionId"]),
+    );
+    return false;
+  });
+  return whollyInserted;
+};
+
 /**
  * Remove the paragraph between `from` and `to`, its content with it but not
  * the range boundaries it holds: those stay where it was, as rejecting a
@@ -3952,8 +3976,13 @@ const withRotatedAddedFinalBreaks = ({
           deletedBreakRevisionId !== null &&
           !batchRevisionIds.has(deletedBreakRevisionId) &&
           !holdsOnlyDeletedContent(previous.node) &&
-          (trackedInsertion || suggestedInsertion) &&
-          holdsOnlyInsertedContent(node, "ordinary")
+          // A paragraph this batch inserted, not the first half of a split
+          // whose words an earlier change inserted: accepting that split joins
+          // the deleted break's words into the half, and the break it adds
+          // stays where it is.
+          ((trackedInsertion &&
+            holdsOnlyContentInsertedBy(node, batchRevisionIds)) ||
+            (suggestedInsertion && holdsOnlyInsertedContent(node, "ordinary")))
         ) {
           supersededDeletedBreaks.push({
             preceding: previous.position,
