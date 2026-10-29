@@ -9,6 +9,7 @@
  */
 
 import { Result } from "better-result";
+import path from "node:path";
 
 import { renderDisplayListToHtml } from "@stll/folio-core/display-list/html/renderDisplayListToHtml";
 import { selectDisplayPages } from "@stll/folio-core/display-list/selectDisplayPages";
