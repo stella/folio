@@ -8,6 +8,7 @@ const DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>';
 describe("wellFormedXmlIssue", () => {
   test("admits only XML whitespace beside the root", () => {
     expect(wellFormedXmlIssue(`${DECLARATION}\n<a/>\r\n\t `)).toBeNull();
+    expect(wellFormedXmlIssue(`\ufeff${DECLARATION}<a/>`)).toBeNull();
     for (const space of [" ", " ", "﻿"]) {
       expect(wellFormedXmlIssue(`<a/>${space}`)).not.toBeNull();
     }
@@ -43,8 +44,13 @@ describe("the nesting limit", () => {
 
   test("counts a self-closing element like an open one", () => {
     for (const innermost of ["<b/>", "<b></b>"]) {
-      expect(readXml(nested(maxDepth, innermost)).status).toBe("parsed");
-      expect(readXml(nested(maxDepth + 1, innermost)).status).toBe("rejected");
+      expect(
+        readXml(nested(maxDepth, innermost), { conformance: "ooxml" }).status,
+      ).toBe("parsed");
+      expect(
+        readXml(nested(maxDepth + 1, innermost), { conformance: "ooxml" })
+          .status,
+      ).toBe("rejected");
     }
   });
 });

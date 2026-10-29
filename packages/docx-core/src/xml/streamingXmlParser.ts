@@ -230,7 +230,8 @@ const parseStreamingXmlInternal = (
   const replacements: XmlReplacement[] = [];
   const documentStart = xml.charCodeAt(0) === 0xfeff ? 1 : 0;
   let rootElements = 0;
-  let cursor = 0;
+  // A byte-order mark is the encoding's signature, not text before the root.
+  let cursor = documentStart;
   let mergeAdjacentText = false;
   const acceptText = (text: string, merge: boolean): boolean => {
     if (wellFormed && text.includes("]]>")) return false;

@@ -172,6 +172,8 @@ describe("validateOoxmlPart", () => {
     const graph = await loadSchemaGraph();
     const malformed =
       "a part the reader refuses has no schema signature to report";
+    const unreadable =
+      "a part the reader refuses is reported unreadable rather than passed";
     expectEdgesMatch({
       golden: GOLDENS.validateOoxmlPart,
       answers: Object.fromEntries(
@@ -185,6 +187,22 @@ describe("validateOoxmlPart", () => {
         "unquoted attribute": malformed,
         "depth 101": malformed,
         "space after self-closing slash": malformed,
+        ...Object.fromEntries(
+          [
+            "mismatched end tag",
+            "unclosed element",
+            "stray end tag",
+            "attribute without value",
+            "DOCTYPE",
+            "DOCTYPE entity expansion",
+            "prototype attribute",
+            "constructor element",
+            "constructor attribute",
+            "unclosed CDATA",
+            "unclosed comment",
+            "depth 150",
+          ].map((name) => [name, unreadable]),
+        ),
       },
     });
   });
