@@ -88,19 +88,22 @@ describe("a restyled paragraph holding a text box", () => {
   test("a tracked merge naming a style rejects to the same document after a save", async () => {
     const { reviewer, idOf } = await openWithIds();
     const original = hostRunFormatting(reviewer.toDocument());
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "merge",
-          type: "mergeBlockWithNext",
-          blockId: idOf("Delivery follows the schedule."),
-          separator: " ",
-          mergedParagraphProperties: { styleId: "Heading2" },
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: idOf("Delivery follows the schedule."),
+            separator: " ",
+            mergedParagraphProperties: { styleId: "Heading2" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.skipped).toEqual([]);
 
     const reopened = await reopen(reviewer);
@@ -114,18 +117,21 @@ describe("a restyled paragraph holding a text box", () => {
 
   test("a direct restyle writes no old look into the text box's run", async () => {
     const { reviewer, idOf } = await openWithIds();
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        {
-          id: "restyle",
-          type: "setBlockParagraphProperties",
-          blockId: idOf(BOX_HOST),
-          properties: { styleId: "Heading2" },
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "restyle",
+            type: "setBlockParagraphProperties",
+            blockId: idOf(BOX_HOST),
+            properties: { styleId: "Heading2" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.skipped).toEqual([]);
 
     const box = hostRunFormatting((await reopen(reviewer)).toDocument()).find(
