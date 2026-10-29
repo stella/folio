@@ -18,7 +18,7 @@ mod support;
 #[test]
 fn the_reconstructed_face_keeps_its_layout_tables() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
-        "../../packages/react/node_modules/@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff",
+        "../../packages/fonts/fonts/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff",
     );
     let Ok(bytes) = fs::read(path) else {
         return;

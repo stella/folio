@@ -2,10 +2,12 @@
  * Font Loader
  *
  * Manages font availability for the DOCX editor. Fonts are bundled via
- * fontsource packages (WOFF2, no external requests). This module
+ * `@stll/folio-fonts` (WOFF2, no external requests). This module
  * tracks which fonts are loaded and provides callbacks for re-rendering
  * when fonts become available.
  */
+
+import { FONTSOURCE_PACKAGES } from "../fonts/bundledFonts";
 
 // Track loaded fonts to avoid duplicate work
 const loadedFonts = new Set<string>();
@@ -44,17 +46,9 @@ export const FONT_MAPPING: Record<string, string> = {
 };
 
 /** Bundled font families (available without network requests). */
-const BUNDLED_FONTS = new Set([
-  "Carlito",
-  "Caladea",
-  "Arimo",
-  "Tinos",
-  "Cousine",
-  "Lato",
-  "Source Sans 3",
-  // Arabic-script coverage for the Latin Croscore fonts.
-  "Noto Sans Arabic",
-]);
+const BUNDLED_FONTS: ReadonlySet<string> = new Set(
+  Object.keys(FONTSOURCE_PACKAGES),
+);
 
 /**
  * Mark a font as loaded. For bundled fonts this is immediate;

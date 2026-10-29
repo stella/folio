@@ -33,6 +33,7 @@ export const utf8BoundariesDir = path.join(
   "packages",
   "utf8-boundaries",
 );
+export const fontsDir = path.join(repoRoot, "packages", "fonts");
 export const coreDir = path.join(repoRoot, "packages", "core");
 export const reactDir = path.join(repoRoot, "packages", "react");
 export const consumerSrc = path.join(repoRoot, "test", "packaged-consumer");
@@ -130,6 +131,7 @@ type WriteConsumerPackageJsonOptions = {
   consumerDir: string;
   coreTarball: string;
   docxCoreTarball: string;
+  fontsTarball: string;
   utf8BoundariesTarball: string;
 };
 
@@ -139,6 +141,7 @@ export const writeConsumerPackageJson = async ({
   consumerDir,
   coreTarball,
   docxCoreTarball,
+  fontsTarball,
   utf8BoundariesTarball,
 }: WriteConsumerPackageJsonOptions): Promise<void> => {
   const consumerPkg = {
@@ -149,6 +152,7 @@ export const writeConsumerPackageJson = async ({
     overrides: {
       "@stll/docx-core": docxCoreTarball,
       "@stll/folio-core": coreTarball,
+      "@stll/folio-fonts": fontsTarball,
       "@stll/utf8-boundaries": utf8BoundariesTarball,
     },
   };

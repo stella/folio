@@ -8,6 +8,7 @@ export const nonReactPackageOverride = {
     "packages/cli/**",
     "packages/core/**",
     "packages/docx-core/**",
+    "packages/fonts/**",
     "packages/utf8-boundaries/**",
     "packages/nuxt/**",
     "packages/playground-vue/**",

@@ -64,7 +64,7 @@ const shared = {
   // @stll/folio-core), fonts, etc. themselves. tsdown auto-externalizes
   // `dependencies` + `peerDependencies` already; these explicit patterns also
   // cover subpath imports (`react/jsx-runtime`, `@stll/folio-core/prosemirror/...`,
-  // `@fontsource/*`, `prosemirror-view/...`).
+  // `prosemirror-view/...`).
   deps: {
     // Force `.css` specifiers to be "bundled" so tsdown's auto-externalization
     // of dependency subpaths (e.g. `prosemirror-view/style/prosemirror.css`)
@@ -79,7 +79,6 @@ const shared = {
       // its subpaths (`@stll/folio-core/prosemirror/plugins/...`).
       /^@stll\//u,
       /^@base-ui\/react(?:$|\/)/u,
-      /^@fontsource\//u,
       // Keep JS subpaths external; CSS still passes through the strip plugin.
       /^prosemirror-[a-z-]+(?:$|\/(?!.*\.css$))/u,
       /^y-prosemirror(?:$|\/)/u,

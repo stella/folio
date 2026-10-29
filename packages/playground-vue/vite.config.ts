@@ -1,6 +1,4 @@
 import vue from "@vitejs/plugin-vue";
-import fs from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig, type Plugin, searchForWorkspaceRoot } from "vite";
 
@@ -9,21 +7,6 @@ import { fixtureMiddleware } from "../../scripts/playground-fixtures";
 const playgroundRoot = import.meta.dirname;
 const repoRoot = path.resolve(playgroundRoot, "../..");
 const fixturesDir = path.join(repoRoot, "tests/visual/fixtures");
-const vuePackageJsonPath = path.join(repoRoot, "packages/vue/package.json");
-
-function bundledFontPackageDirs(): string[] {
-  const vuePackage: { dependencies?: Record<string, string> } = JSON.parse(
-    fs.readFileSync(vuePackageJsonPath, "utf8"),
-  );
-  const requireFromVue = createRequire(vuePackageJsonPath);
-  return Object.keys(vuePackage.dependencies ?? {})
-    .filter((name) => name.startsWith("@fontsource/"))
-    .map((name) =>
-      path.dirname(
-        fs.realpathSync(requireFromVue.resolve(`${name}/package.json`)),
-      ),
-    );
-}
 
 // Both lifecycle hooks serve the same repository fixture bytes and path policy.
 function serveFixtures(): Plugin {
@@ -76,10 +59,8 @@ export default defineConfig({
     strictPort: true,
     open: false,
     fs: {
-      allow: [
-        searchForWorkspaceRoot(playgroundRoot),
-        ...bundledFontPackageDirs(),
-      ],
+      // The bundled faces come from packages/fonts, inside the workspace.
+      allow: [searchForWorkspaceRoot(playgroundRoot)],
     },
   },
   preview: {

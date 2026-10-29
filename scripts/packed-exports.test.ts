@@ -112,3 +112,29 @@ test("type-only public exports are resolved by tsc without runtime imports", () 
     },
   ]);
 });
+
+test("font, licence and directory exports are files to read, not modules", () => {
+  const entries = publicEntries({
+    name: "@example/fonts",
+    exports: {
+      ".": { types: "./dist/index.d.ts", import: "./dist/index.js" },
+      "./fonts.css": "./fonts.css",
+      "./fonts/*": "./fonts/*",
+      "./package.json": "./package.json",
+    },
+    files: [
+      "dist/index.js",
+      "dist/index.d.ts",
+      "fonts.css",
+      "fonts/arimo/LICENSE",
+      "fonts/arimo/files/arimo-latin-400-normal.woff2",
+      "package.json",
+    ],
+  });
+  expect(
+    entries.filter(({ asset }) => !asset).map(({ specifier }) => specifier),
+  ).toEqual(["@example/fonts"]);
+  expect(entries.map(({ specifier }) => specifier)).toContain(
+    "@example/fonts/fonts/arimo/files/arimo-latin-400-normal.woff2",
+  );
+});

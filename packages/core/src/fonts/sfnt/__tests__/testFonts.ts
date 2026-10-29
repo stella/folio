@@ -1,10 +1,9 @@
 /**
- * Test support: real font bytes borrowed from the `@fontsource` packages that
- * `@stll/folio-react` installs.
+ * Test support: real font bytes borrowed from `@stll/folio-fonts`, which keeps
+ * the bundled faces in this repository under `packages/fonts/fonts`.
  *
- * No font binary is copied into this repository. A checkout without those
- * packages installed simply has no fixtures, and the suites that need them
- * skip themselves rather than failing.
+ * A checkout without them simply has no fixtures, and the suites that need
+ * them skip themselves rather than failing.
  */
 
 import { existsSync } from "node:fs";
@@ -36,7 +35,7 @@ type TestFontFaceOptions = {
   readonly subset?: TestFontSubset;
 };
 
-/** Path of one `@fontsource` WOFF face, resolved from this module's location. */
+/** Path of one bundled WOFF face, resolved from this module's location. */
 export const testFontPath = ({
   family,
   weight = 400,
@@ -45,7 +44,7 @@ export const testFontPath = ({
 }: TestFontFaceOptions): string =>
   join(
     import.meta.dir,
-    "../../../../../react/node_modules/@fontsource",
+    "../../../../../fonts/fonts",
     family,
     "files",
     `${family}-${subset}-${weight}-${style}.woff`,
@@ -63,7 +62,7 @@ export const TEST_FONTS_INSTALLED = TEST_FONT_FAMILIES.every((family) =>
 
 /** Reason shown on skipped suites, so an absent fixture is never a mystery. */
 export const TEST_FONTS_SKIP_REASON =
-  "needs the @fontsource fixtures installed under packages/react/node_modules";
+  "needs the bundled faces under packages/fonts/fonts";
 
 export const readTestFont = async (
   options: TestFontFaceOptions,
@@ -72,13 +71,13 @@ export const readTestFont = async (
 
 /**
  * Faces for the scripts that shape. Kept apart from the Latin fixtures because
- * they come from this package's own devDependencies rather than the adapter's
- * runtime ones: a consumer of `@stll/folio-react` has no use for a Devanagari
- * face, and a test of shaping cannot do without one.
+ * Devanagari and Hebrew come from this package's own devDependencies rather
+ * than the bundled faces: a consumer of `@stll/folio-fonts` has no use for a
+ * Devanagari face, and a test of shaping cannot do without one.
  */
 export const SHAPING_TEST_FACES = {
   arabic:
-    "../../../../../react/node_modules/@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff",
+    "../../../../../fonts/fonts/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff",
   devanagari:
     "../../../../node_modules/@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-400-normal.woff",
   hebrew:

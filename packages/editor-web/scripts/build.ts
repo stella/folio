@@ -36,7 +36,8 @@ const STYLESHEET_FILTER = /\.css$/;
 // oxlint-disable-next-line require-unicode-regexp -- esbuild filter (Go syntax, no flags)
 const ANY_PATH_FILTER = /.*/;
 // oxlint-disable-next-line require-unicode-regexp -- esbuild filter (Go syntax, no flags)
-const FONTSOURCE_STYLESHEET_FILTER = /[\\/]@fontsource[\\/].*\.css$/;
+const FOLIO_FONTS_STYLESHEET_FILTER =
+  /[\\/](?:fonts|folio-fonts)[\\/]fonts\.css$/;
 
 /**
  * The React sources import stylesheets for their bundler; `standalone.css`
@@ -66,16 +67,16 @@ const dropStylesheetImports: Plugin = {
 };
 
 /**
- * `@fontsource` faces list a `.woff` fallback after each `.woff2`. The
- * webview's Chromium reads `.woff2`, so the fallbacks would only double the
- * shipped fonts.
+ * `@stll/folio-fonts` lists a `.woff` after the `.woff2` of each measured
+ * subset, for headless measurement. The webview's Chromium reads `.woff2`, so
+ * the fallbacks would only double the shipped fonts.
  */
 const WOFF_FALLBACK = /,\s*url\([^)]*\.woff\)\s*format\(["']woff["']\)/gu;
 
 const woff2Only: Plugin = {
   name: "folio-woff2-only",
   setup: (builder) => {
-    builder.onLoad({ filter: FONTSOURCE_STYLESHEET_FILTER }, async (args) => {
+    builder.onLoad({ filter: FOLIO_FONTS_STYLESHEET_FILTER }, async (args) => {
       const source = await readFile(args.path, "utf8");
       const stripped = source.replace(WOFF_FALLBACK, "");
       if (stripped.includes(".woff)")) {
@@ -138,6 +139,14 @@ await Promise.all([
 const sizeOf = async (file: string) => (await stat(file)).size;
 const kib = (bytes: number) => `${(bytes / 1024).toFixed(1)} KiB`;
 const fonts = await readdir(path.join(outdir, "fonts"));
+// The plugin above drops every `.woff` fallback; a `.woff` here would mean a
+// stylesheet it did not see.
+const notWoff2 = fonts.filter((font) => !font.endsWith(".woff2"));
+if (notWoff2.length > 0) {
+  throw new Error(
+    `The editor bundle ships fonts other than .woff2: ${notWoff2.join(", ")}`,
+  );
+}
 const fontBytes = (
   await Promise.all(
     fonts.map((font) => sizeOf(path.join(outdir, "fonts", font))),

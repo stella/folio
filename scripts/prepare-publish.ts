@@ -70,13 +70,34 @@ const resolveDist = (subpath: string, srcPath: string, ext: string): string => {
 /** Exports that name a file to read rather than a module to import. */
 const ASSET_EXTENSIONS = new Set([".css", ".wasm"]);
 
+/**
+ * A file the package ships as itself, outside `src/` and `dist/` (a
+ * stylesheet, a directory of font files, the manifest): its export publishes
+ * unchanged. Anything compiled must live under `src/`.
+ */
+const isPackageAsset = (target: string): boolean =>
+  target.startsWith("./") &&
+  !/^\.\/(?:src|dist)(?:\/|$)/u.test(target) &&
+  !/\.[cm]?tsx?$/u.test(target) &&
+  !target.split("/").includes("..");
+
 type ExportTarget = string | JsEntry | null;
 const distExports: Record<string, ExportTarget> = {};
+/** Top-level files and directories that asset exports name, kept in `files`. */
+const assetRoots = new Set<string>();
 for (const [subpath, target] of Object.entries(pkg.exports)) {
   // An exact null target blocks a private module that the package's wildcard
   // export would otherwise expose. Keep that exception in the published map.
   if (target === null) {
     distExports[subpath] = null;
+    continue;
+  }
+  if (typeof target === "string" && isPackageAsset(target)) {
+    distExports[subpath] = target;
+    const root = target.slice(2).split("/")[0] ?? "";
+    if (root !== "package.json" && root !== "" && !root.includes("*")) {
+      assetRoots.add(root);
+    }
     continue;
   }
   if (typeof target !== "string" || !target.startsWith("./src/")) {
@@ -144,8 +165,19 @@ pkg.exports = distExports;
 pkg.main = root.import;
 pkg.types = root.types;
 // "skills" ships TanStack Intent agent skills (skills/*/SKILL.md) for packages
-// that have them; pack ignores entries that do not exist in a given package.
-pkg.files = ["dist", "skills", "README.md", "LICENSE", "NOTICE.md"];
+// that have them, and "licenses" + "THIRD_PARTY_NOTICES.md" the third-party
+// licences of bundled assets; pack ignores entries that do not exist in a
+// given package. Asset exports keep the files they name.
+pkg.files = [
+  "dist",
+  "skills",
+  ...assetRoots,
+  "README.md",
+  "LICENSE",
+  "NOTICE.md",
+  "licenses",
+  "THIRD_PARTY_NOTICES.md",
+];
 
 await Bun.write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 console.log(

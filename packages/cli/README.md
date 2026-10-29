@@ -194,8 +194,9 @@ paints it with folio's painters, with no word processor involved: `.pdf` from
 the PDF backend (every page, or `--page n`), `.html` from the DOM backend,
 and `.png` by screenshotting that page in headless Chromium (page 1 unless
 `--page`, `--scale` pixels per CSS pixel, default 2). Text is measured and
-painted with the metric-compatible `@fontsource` faces the CLI installs. PNG
-needs `playwright-core` and its Chromium, which the CLI does not install:
+painted with the metric-compatible faces of `@stll/folio-fonts`, which the CLI
+installs. PNG needs `playwright-core` and its Chromium, which the CLI does not
+install:
 
 ```sh
 npm install playwright-core && npx playwright-core install chromium

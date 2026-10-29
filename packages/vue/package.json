@@ -79,15 +79,8 @@
     "test": "bun test --preload ./test/vueDom.preload.ts src"
   },
   "dependencies": {
-    "@fontsource/arimo": "^5.2.8",
-    "@fontsource/caladea": "^5.2.8",
-    "@fontsource/carlito": "^5.2.8",
-    "@fontsource/cousine": "^5.2.7",
-    "@fontsource/lato": "^5.2.7",
-    "@fontsource/noto-sans-arabic": "^5.2.7",
-    "@fontsource/source-sans-3": "^5.3.1",
-    "@fontsource/tinos": "^5.2.7",
     "@stll/folio-core": "workspace:^",
+    "@stll/folio-fonts": "workspace:^",
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
     "use-intl": "^4.14.9"

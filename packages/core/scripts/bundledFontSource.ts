@@ -1,7 +1,7 @@
 /**
- * The repository's `@fontsource` faces for the paint harness: the shared
- * `createFontsourceFaces` table, reading the packages the React adapter
- * installs. Measurement, the PDF writer, and the browser's `@font-face` rules
+ * The repository's bundled faces for the paint harness: the shared
+ * `createFontsourceFaces` table, reading the files `@stll/folio-fonts` keeps
+ * under `packages/fonts/fonts`. Measurement, the PDF writer, and the browser's `@font-face` rules
  * resolve each code point to the same binary.
  */
 
@@ -19,17 +19,11 @@ export { cssString } from "../src/fonts/fontsourceFaces";
 /** `<root>/packages/core/scripts`, resolved from this file, never from the cwd. */
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 
-const FONTSOURCE_DIR = path.join(
-  REPO_ROOT,
-  "packages",
-  "react",
-  "node_modules",
-  "@fontsource",
-);
+const FONTS_DIR = path.join(REPO_ROOT, "packages", "fonts", "fonts");
 
 const faces = createFontsourceFaces({
   read: (packageName, relativePath) => {
-    const filePath = path.join(FONTSOURCE_DIR, packageName, relativePath);
+    const filePath = path.join(FONTS_DIR, packageName, relativePath);
     return existsSync(filePath) ? new Uint8Array(readFileSync(filePath)) : null;
   },
 });

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Clean-room validation that the *published* shape of a folio package works.
 //
-// Usage: `bun scripts/validate-dist.ts <utf8-boundaries|docx-core|core|react|agents|cli|vue|nuxt>`
+// Usage: `bun scripts/validate-dist.ts <utf8-boundaries|fonts|docx-core|core|react|agents|cli|vue|nuxt>`
 //
 // For the named package it builds, transforms its package.json to the dist
 // shape exactly like the publish workflow (`prepare-publish.ts`), packs a
@@ -18,6 +18,9 @@
 //
 //   docx-core — runtime, types, externals, packaged assets, and attribution.
 //   utf8-boundaries — runtime, types, and externals for `.`, `./oxlint`, and `./testing`.
+//   fonts — runtime and types for `.` and `./node`; every face `fonts.css`
+//           declares and the catalogue lists is in the tarball, and the Node
+//           reader returns real `.woff` bytes from the installed package.
 //
 //   core  — 4 checks:
 //     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, `/redline`, and a `./*`
@@ -34,7 +37,8 @@
 //                   `{ folio }` catalog for a bundled and a fallback locale.
 //     2. Types    — node16 + bundler.
 //     3. CSS      — `dist/editor.css` exists, parses, carries the bundled rules,
-//                   and preserves `@fontsource` `@import`s (not inlined).
+//                   and preserves the `@stll/folio-fonts` `@import` (not
+//                   inlined), which resolves in the clean room.
 //     4. External — React / react-dom / React Compiler runtime / ProseMirror
 //                   AND `@stll/folio-core` are imported as externals, never
 //                   bundled into the JS. Requiring the compiler runtime import
@@ -108,6 +112,7 @@ const target = process.argv[2];
 if (
   target !== "docx-core" &&
   target !== "utf8-boundaries" &&
+  target !== "fonts" &&
   target !== "core" &&
   target !== "react" &&
   target !== "agents" &&
@@ -116,7 +121,7 @@ if (
   target !== "nuxt"
 ) {
   panic(
-    "usage: bun scripts/validate-dist.ts <utf8-boundaries|docx-core|core|react|agents|cli|vue|nuxt>",
+    "usage: bun scripts/validate-dist.ts <utf8-boundaries|fonts|docx-core|core|react|agents|cli|vue|nuxt>",
   );
 }
 
@@ -131,6 +136,7 @@ const record = (name: string, ok: boolean, detail: string): void => {
 
 const dirs: Record<string, string> = {
   "utf8-boundaries": path.join(repoRoot, "packages", "utf8-boundaries"),
+  fonts: path.join(repoRoot, "packages", "fonts"),
   "docx-core": path.join(repoRoot, "packages", "docx-core"),
   core: path.join(repoRoot, "packages", "core"),
   react: path.join(repoRoot, "packages", "react"),
@@ -150,6 +156,7 @@ const docxCorePackDir = await mkdtemp(
 const utf8BoundariesPackDir = await mkdtemp(
   path.join(tmpdir(), "folio-utf8-boundaries-pack-"),
 );
+const fontsPackDir = await mkdtemp(path.join(tmpdir(), "folio-fonts-pack-"));
 const corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
 const agentsPackDir = await mkdtemp(path.join(tmpdir(), "folio-agents-pack-"));
 const vuePackDir = await mkdtemp(path.join(tmpdir(), "folio-vue-pack-"));
@@ -167,8 +174,12 @@ const tarball = await buildAndPack(pkgDir, packDir);
 // the clean room resolves coordinated workspace changes npm-style (no
 // workspace leak). `overrides` pins transitive dependencies to these exact
 // tarballs, since their next versions are not yet on a registry.
+/** Packages with no folio dependency of their own, and no host peers. */
+const isLeafTarget =
+  target === "docx-core" || target === "utf8-boundaries" || target === "fonts";
+
 let docxCoreTarball: string | null = null;
-if (target !== "docx-core" && target !== "utf8-boundaries") {
+if (!isLeafTarget) {
   docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir);
 }
 
@@ -176,6 +187,19 @@ const utf8BoundariesTarball =
   target === "utf8-boundaries"
     ? tarball
     : await buildAndPack(utf8BoundariesDir, utf8BoundariesPackDir);
+
+// The adapters and the CLI install the bundled fonts.
+const needsFonts =
+  target === "react" ||
+  target === "cli" ||
+  target === "vue" ||
+  target === "nuxt";
+let fontsTarball: string | null = null;
+if (target === "fonts") {
+  fontsTarball = tarball;
+} else if (needsFonts) {
+  fontsTarball = await buildAndPack(dirs.fonts, fontsPackDir);
+}
 
 // react, agents, cli, and vue all depend on @stll/folio-core.
 let coreTarball: string | null = null;
@@ -218,6 +242,9 @@ if (docxCoreTarball) {
 if (target !== "utf8-boundaries") {
   overrides["@stll/utf8-boundaries"] = utf8BoundariesTarball;
 }
+if (fontsTarball && target !== "fonts") {
+  overrides["@stll/folio-fonts"] = fontsTarball;
+}
 if (coreTarball) {
   overrides["@stll/folio-core"] = coreTarball;
 }
@@ -236,13 +263,17 @@ await writeFile(
 );
 
 const installArgs: string[] = [tarball];
-if (target !== "docx-core" && target !== "utf8-boundaries") {
+if (!isLeafTarget) {
   installArgs.push(...hostPeerInstallArgs());
+}
+if (fontsTarball && target !== "fonts") {
+  installArgs.push(fontsTarball);
 }
 if (docxCoreTarball) {
   installArgs.push(docxCoreTarball);
 }
-if (target !== "utf8-boundaries") installArgs.push(utf8BoundariesTarball);
+if (target !== "utf8-boundaries" && target !== "fonts")
+  installArgs.push(utf8BoundariesTarball);
 if (target === "utf8-boundaries") {
   installArgs.push(
     ...Object.entries(utf8BoundariesManifest.peerDependencies).map(
@@ -292,6 +323,21 @@ const installedDist = path.join(installedDir, "dist");
 
 // --- runtime expectations ---------------------------------------------------
 const runtimeExpect: Record<string, Record<string, string[]>> = {
+  fonts: {
+    "@stll/folio-fonts": [
+      "FOLIO_FONT_PACKAGES",
+      "FOLIO_FONT_FAMILIES",
+      "FOLIO_FONT_FACES",
+      "FOLIO_FONT_FILES",
+      "FOLIO_FONTS_STYLESHEET",
+      "folioFontPath",
+    ],
+    "@stll/folio-fonts/node": [
+      "folioFontFiles",
+      "createFolioFontFiles",
+      "folioFontsDirectory",
+    ],
+  },
   "utf8-boundaries": {
     "@stll/utf8-boundaries": [
       "encodeUtf8",
@@ -462,6 +508,44 @@ try {
 `
     : "";
 
+// The tarball must carry every file the catalogue and the stylesheet name, and
+// the Node reader must find them from wherever the package is installed.
+const fontsRuntimeCheck =
+  target === "fonts"
+    ? `
+try {
+  const { existsSync, readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const { FOLIO_FONT_FILES, FOLIO_FONT_FACES } = await import("@stll/folio-fonts");
+  const { folioFontFiles } = await import("@stll/folio-fonts/node");
+  const root = new URL("./node_modules/@stll/folio-fonts/", import.meta.url);
+  const absent = FOLIO_FONT_FILES.filter((file) => !existsSync(fileURLToPath(new URL(file, root))));
+  if (absent.length > 0) {
+    failed = true;
+    console.error("catalogued files missing from the tarball: " + absent.slice(0, 5).join(", "));
+  }
+  const css = readFileSync(fileURLToPath(import.meta.resolve("@stll/folio-fonts/fonts.css")), "utf8");
+  const urls = [...css.matchAll(/url\\(([^)]+)\\)/g)].map((match) => match[1]);
+  const expected = FOLIO_FONT_FACES.flatMap((face) => face.woff === null ? ["./" + face.woff2] : ["./" + face.woff2, "./" + face.woff]);
+  if (urls.join() !== expected.join() || urls.some((url) => !existsSync(fileURLToPath(new URL(url, root))))) {
+    failed = true;
+    console.error("fonts.css names " + urls.length + " files where the catalogue lists " + expected.length + ", or a file the tarball lacks");
+  }
+  const face = FOLIO_FONT_FACES.find((candidate) => candidate.woff !== null);
+  const [packageName, ...rest] = face.woff.slice("fonts/".length).split("/");
+  const bytes = folioFontFiles.read(packageName, rest.join("/"));
+  if (bytes === null || String.fromCharCode(...bytes.subarray(0, 4)) !== "wOFF") {
+    failed = true;
+    console.error("the Node reader did not return " + face.woff + " from the installed package");
+  }
+  if (!existsSync(fileURLToPath(import.meta.resolve("@stll/folio-fonts/" + face.woff2)))) {
+    failed = true;
+    console.error("a face does not resolve by its package path: " + face.woff2);
+  }
+} catch (err) { failed = true; console.error("fonts check threw: " + (err?.message ?? err)); }
+`
+    : "";
+
 const nuxtRuntimeCheck =
   target === "nuxt"
     ? `
@@ -488,6 +572,7 @@ for (const [spec, names] of Object.entries(expect)) {
 }
 ${messagesRuntimeCheck}
 ${shaperBytesRuntimeCheck}
+${fontsRuntimeCheck}
 ${nuxtRuntimeCheck}
 process.exit(failed ? 1 : 0);
 `;
@@ -524,6 +609,26 @@ if (target === "cli") {
 
 // --- Check 2: types resolve under node16 AND bundler ------------------------
 const consumerTsByTarget: Record<string, string> = {
+  fonts: `
+import {
+  FOLIO_FONT_FACES,
+  FOLIO_FONT_PACKAGES,
+  folioFontPath,
+  type FolioFontFace,
+  type FolioFontFamilyName,
+} from "@stll/folio-fonts";
+import {
+  createFolioFontFiles,
+  folioFontFiles,
+  type FolioFontFiles,
+} from "@stll/folio-fonts/node";
+
+const family: FolioFontFamilyName = "Carlito";
+const face: FolioFontFace | undefined = FOLIO_FONT_FACES[0];
+const files: FolioFontFiles = createFolioFontFiles(new URL("./fonts/", import.meta.url));
+const bytes: Uint8Array | null = folioFontFiles.read(FOLIO_FONT_PACKAGES[family], "unicode.json");
+export const used = [face, files, bytes, folioFontPath("carlito", "LICENSE")];
+`,
   "utf8-boundaries": `
 import {
   encodeUtf8,
@@ -740,18 +845,24 @@ for (const reactVersion of typeCheckReactVersions) {
 }
 
 // --- Check 3 (react only): bundled stylesheet -------------------------------
+/** The one bare import that brings in the bundled fonts. */
+const FOLIO_FONTS_IMPORT = /@import\s*["']@stll\/folio-fonts\/fonts\.css["']/gu;
+/** Font data a stylesheet would carry if the font import had been inlined. */
+const FONT_DATA_INLINED =
+  /url\([^)]*(?:@fontsource|folio-fonts|\.woff2?\b)|url\(["']?data:font/u;
+const fontsStylesheetInstalled = existsSync(
+  path.join(consumerDir, "node_modules", "@stll", "folio-fonts", "fonts.css"),
+);
 if (target === "react") {
   const cssPath = path.join(installedDist, "editor.css");
   if (!existsSync(cssPath)) {
     record("css: dist/editor.css present", false, "missing from tarball");
   } else {
     const css = await readFile(cssPath, "utf-8");
-    const fontImports =
-      css.match(/@import\s+["']@fontsource\/[^"']+["']/gu) ?? [];
+    const fontImports = css.match(FOLIO_FONTS_IMPORT) ?? [];
     const { missing: missingRules } = scanReactRules(css);
-    // @fontsource must stay a bare @import, never inlined as font data.
-    const fontsourceInlined =
-      /url\([^)]*@fontsource/u.test(css) || /url\(["']?data:font/u.test(css);
+    // The fonts must stay a bare @import, never inlined as font data.
+    const fontsourceInlined = FONT_DATA_INLINED.test(css);
 
     let parses = true;
     let parseDetail = "";
@@ -770,22 +881,25 @@ if (target === "react") {
       css.length > 10_000 &&
       parses &&
       missingRules.length === 0 &&
-      fontImports.length >= 20 &&
+      fontImports.length === 1 &&
+      fontsStylesheetInstalled &&
       !fontsourceInlined;
     const detail = ok
-      ? `${(css.length / 1024).toFixed(1)} kB, ${fontImports.length} @fontsource imports preserved, all bundled rules present`
+      ? `${(css.length / 1024).toFixed(1)} kB, @stll/folio-fonts import preserved and installed, all bundled rules present`
       : [
           css.length <= 10_000 && `too small (${css.length}B)`,
           !parses && `invalid CSS: ${parseDetail}`,
           missingRules.length > 0 &&
             `missing rules: ${missingRules.join(", ")}`,
-          fontImports.length < 20 &&
-            `only ${fontImports.length} @fontsource imports`,
-          fontsourceInlined && "@fontsource appears inlined as font data",
+          fontImports.length !== 1 &&
+            `${fontImports.length} @stll/folio-fonts imports, not 1`,
+          !fontsStylesheetInstalled &&
+            "@stll/folio-fonts/fonts.css is not installed beside the adapter",
+          fontsourceInlined && "font data appears inlined",
         ]
           .filter(Boolean)
           .join("; ");
-    record("css: bundled, valid, @fontsource preserved", ok, detail);
+    record("css: bundled, valid, font import preserved", ok, detail);
   }
 
   // --- Check 3b: self-sufficient standalone.css -----------------------------
@@ -793,14 +907,13 @@ if (target === "react") {
   // utilities scoped under `.folio-root`, so a consumer needs no Tailwind of
   // their own. Must be fully compiled (no un-expanded `@tailwind`/`@config`/
   // `@source` directives), carry scoped utilities + token fallbacks, and still
-  // preserve the @fontsource `@import`s.
+  // preserve the @stll/folio-fonts `@import`.
   const standalonePath = path.join(installedDist, "standalone.css");
   if (!existsSync(standalonePath)) {
     record("css: dist/standalone.css present", false, "missing from tarball");
   } else {
     const css = await readFile(standalonePath, "utf-8");
-    const fontImports =
-      css.match(/@import\s+["']@fontsource\/[^"']+["']/gu) ?? [];
+    const fontImports = css.match(FOLIO_FONTS_IMPORT) ?? [];
     // Scoped utilities (`.folio-root .<utility>`) plus low-specificity token
     // fallbacks are what make the sheet self-sufficient.
     const hasScopedUtilities = /\.folio-root \.[a-z]/u.test(css);
@@ -810,8 +923,7 @@ if (target === "react") {
       css.includes(".ProseMirror") && css.includes(".folio-default-button");
     // No Tailwind source directive may survive into the shipped file.
     const uncompiled = /@tailwind\b|@config\b|@source\b|@apply\b/u.test(css);
-    const fontsourceInlined =
-      /url\([^)]*@fontsource/u.test(css) || /url\(["']?data:font/u.test(css);
+    const fontsourceInlined = FONT_DATA_INLINED.test(css);
 
     let parses = true;
     let parseDetail = "";
@@ -833,10 +945,10 @@ if (target === "react") {
       hasTokenFallback &&
       hasDocRules &&
       !uncompiled &&
-      fontImports.length >= 20 &&
+      fontImports.length === 1 &&
       !fontsourceInlined;
     const detail = ok
-      ? `${(css.length / 1024).toFixed(1)} kB, scoped utilities + token fallbacks + doc rules, ${fontImports.length} @fontsource imports preserved`
+      ? `${(css.length / 1024).toFixed(1)} kB, scoped utilities + token fallbacks + doc rules, @stll/folio-fonts import preserved`
       : [
           css.length <= 10_000 && `too small (${css.length}B)`,
           !parses && `invalid CSS: ${parseDetail}`,
@@ -844,9 +956,9 @@ if (target === "react") {
           !hasTokenFallback && "no `:where(.folio-root)` token fallbacks",
           !hasDocRules && "missing bundled document/chrome rules",
           uncompiled && "un-expanded Tailwind directive present",
-          fontImports.length < 20 &&
-            `only ${fontImports.length} @fontsource imports`,
-          fontsourceInlined && "@fontsource appears inlined as font data",
+          fontImports.length !== 1 &&
+            `${fontImports.length} @stll/folio-fonts imports, not 1`,
+          fontsourceInlined && "font data appears inlined",
         ]
           .filter(Boolean)
           .join("; ");
@@ -918,6 +1030,7 @@ const { present: leaked } = scanReactSentinels(allJs);
 // therefore cannot be asserted here.
 const externalsByTarget: Record<string, string[]> = {
   "utf8-boundaries": ["better-result", "fast-check"],
+  fonts: ["node:fs", "node:path", "node:url"],
   "docx-core": ["better-result", "@stll/utf8-boundaries"],
   core: ["prosemirror-state", "prosemirror-model", "@stll/utf8-boundaries"],
   react: [
@@ -931,6 +1044,7 @@ const externalsByTarget: Record<string, string[]> = {
   cli: [
     "@stll/folio-core",
     "@stll/folio-agents",
+    "@stll/folio-fonts",
     "@modelcontextprotocol/server",
   ],
   vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
@@ -948,12 +1062,13 @@ const externalOk =
   leaked.length === 0 && notExternalized.length === 0 && !dataFontInlined;
 const externalLabels: Record<string, string> = {
   "utf8-boundaries": "external: better-result and fast-check stay external",
+  fonts: "external: Node built-ins only, no runtime dependency",
   "docx-core": "external: better-result and utf8-boundaries stay external",
   core: "external: React never bundled; deps stay external",
   react:
     "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
   agents: "external: @stll/folio-core not bundled into JS",
-  cli: "external: @stll/folio-core / @stll/folio-agents / MCP server SDK not bundled into JS",
+  cli: "external: @stll/folio-core / @stll/folio-agents / @stll/folio-fonts / MCP server SDK not bundled into JS",
   vue: "external: Vue / ProseMirror / @stll/folio-core not bundled into JS",
   nuxt: "external: Nuxt Kit / @stll/folio-vue not bundled into JS",
 };
@@ -1168,6 +1283,7 @@ if (target === "react") {
 await rm(packDir, { recursive: true, force: true });
 await rm(docxCorePackDir, { recursive: true, force: true });
 await rm(utf8BoundariesPackDir, { recursive: true, force: true });
+await rm(fontsPackDir, { recursive: true, force: true });
 await rm(corePackDir, { recursive: true, force: true });
 await rm(vuePackDir, { recursive: true, force: true });
 await rm(consumerDir, { recursive: true, force: true });

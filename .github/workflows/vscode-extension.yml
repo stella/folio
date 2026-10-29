@@ -17,6 +17,7 @@ on:
       - "packages/core/**"
       - "packages/docx-core/**"
       - "packages/editor-web/**"
+      - "packages/fonts/**"
       - "packages/playground/public/folio-showcase.docx"
       - "packages/react/**"
       - "packages/utf8-boundaries/**"

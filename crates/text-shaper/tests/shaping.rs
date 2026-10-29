@@ -21,11 +21,11 @@ use stella_text_shaper::{Direction, ShapeRequest, shape_run};
 
 mod support;
 
-/// Faces are a dependency of the React package, not of this crate, so a
+/// Faces are files of the `@stll/folio-fonts` package, not of this crate, so a
 /// checkout without them skips rather than fails.
 fn face(relative: &str) -> Option<Vec<u8>> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../packages/react/node_modules/@fontsource")
+        .join("../../packages/fonts/fonts")
         .join(relative);
     let bytes = fs::read(path).ok()?;
     support::to_sfnt(&bytes)

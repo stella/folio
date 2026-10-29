@@ -4,10 +4,10 @@
 // The JS build (tsdown) strips every component-level `import "*.css"`, so all
 // the styling a consumer needs has to live in one file. This script composes
 // it: folio's own stylesheets and the ProseMirror base CSS are inlined, while
-// the `@fontsource/*` `@import`s are preserved as bare `@import` statements
-// (inlining them would break their relative `url()` font references — the
-// consumer installs the `@fontsource/*` packages, which are folio deps, and
-// their bundler resolves the imports).
+// the `@stll/folio-fonts` `@import` is preserved as a bare `@import` statement
+// (inlining it would break its relative `url()` font references — the
+// consumer installs `@stll/folio-fonts`, which is a folio dep, and their
+// bundler resolves the import).
 //
 // Run after `tsdown` (the package `build` script does both). Output:
 // `dist/editor.css`.
@@ -28,7 +28,7 @@ const outFile = path.join(pkgDir, "dist", "editor.css");
 
 // ProseMirror's base stylesheet — the components that import it are stripped
 // from the JS, so its rules have to be in the bundle. No relative `url()`s, so
-// inlining is safe (unlike @fontsource).
+// inlining is safe (unlike the font stylesheet).
 const prosemirrorViewCss = Bun.resolveSync(
   "prosemirror-view/style/prosemirror.css",
   pkgDir,
@@ -46,11 +46,11 @@ const entrySource = [
   `@import "./ai-suggestions.css";`,
 ].join("\n");
 
-// `@fontsource/*` bare imports inside fonts.css: capture and drop them so the
-// bundler does not try to resolve (and inline) them, then re-emit them hoisted
-// to the top of the output as bare `@import`s.
-const FONTSOURCE_IMPORT =
-  /^[^\S\n]*@import\s+["'](?<spec>@fontsource\/[^"']+)["'][^\S\n]*;[^\S\n]*$/gmu;
+// The `@stll/folio-fonts` bare import inside fonts.css: capture and drop it so
+// the bundler does not try to resolve (and inline) it, then re-emit it hoisted
+// to the top of the output as a bare `@import`.
+const FONT_IMPORT =
+  /^[^\S\n]*@import\s+["'](?<spec>@stll\/folio-fonts\/[^"']+)["'][^\S\n]*;[^\S\n]*$/gmu;
 const fontImports = new Set<string>();
 
 const bundled = await bundleAsync({
@@ -77,7 +77,7 @@ const bundled = await bundleAsync({
       if (path.resolve(file) !== fontsCss) {
         return css;
       }
-      return css.replace(FONTSOURCE_IMPORT, (_match, spec: string) => {
+      return css.replace(FONT_IMPORT, (_match, spec: string) => {
         fontImports.add(spec);
         return "";
       });
@@ -87,7 +87,7 @@ const bundled = await bundleAsync({
 
 if (fontImports.size === 0) {
   panic(
-    "build-css: expected to capture @fontsource imports from fonts.css, found none",
+    "build-css: expected to capture the @stll/folio-fonts import from fonts.css, found none",
   );
 }
 
@@ -99,8 +99,8 @@ const bundledBody = new TextDecoder().decode(bundled.code);
 const composed = `${fontImportBlock}\n${bundledBody}`;
 
 // Final validation + minification pass over the combined stylesheet. `transform`
-// (unlike `bundle`) preserves `@import` rules, so the hoisted @fontsource lines
-// survive at the top where the spec requires them.
+// (unlike `bundle`) preserves `@import` rules, so the hoisted font import
+// survives at the top where the spec requires it.
 const { code } = transform({
   filename: "editor.css",
   code: Buffer.from(composed),
@@ -109,7 +109,7 @@ const { code } = transform({
 
 await Bun.write(outFile, code);
 console.log(
-  `built dist/editor.css (${(code.length / 1024).toFixed(1)} kB, ${fontImports.size} @fontsource imports preserved)`,
+  `built dist/editor.css (${(code.length / 1024).toFixed(1)} kB, ${fontImports.size} font import preserved)`,
 );
 
 // ---------------------------------------------------------------------------
@@ -153,10 +153,10 @@ if (twResult.exitCode !== 0) {
 const utilitiesCss = await Bun.file(utilitiesTmp).text();
 await rm(utilitiesTmp, { force: true });
 
-// Order: hoisted @fontsource imports (must lead the file), then the bundled
+// Order: the hoisted font import (must lead the file), then the bundled
 // document/chrome CSS, then the compiled utilities layer last so a component's
 // utility className wins over the chrome defaults it decorates. The compiled
-// utilities carry no `@import`, so the @fontsource lines stay at the top.
+// utilities carry no `@import`, so the font import stays at the top.
 const standaloneComposed = `${fontImportBlock}\n${bundledBody}\n${utilitiesCss}`;
 const { code: standaloneCode } = transform({
   filename: "standalone.css",

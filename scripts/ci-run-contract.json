@@ -57,6 +57,10 @@
       "if": null
     },
     {
+      "run": "bun run generate:folio-fonts:check",
+      "if": null
+    },
+    {
       "run": "bun run check:i18n",
       "if": null
     },

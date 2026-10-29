@@ -79,10 +79,10 @@ the existing `markupView` layout configuration (`final` uses `no-markup`).
 
 ## Exports
 
-| Import                         | What it is                                                                                                                                              |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@stll/folio-react`            | the React editor and its components                                                                                                                     |
-| `@stll/folio-react/editor.css` | the single bundled stylesheet — import once; it `@import`s the document fonts from `@fontsource/*` (installed as deps), so no external network requests |
+| Import                         | What it is                                                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@stll/folio-react`            | the React editor and its components                                                                                                                          |
+| `@stll/folio-react/editor.css` | the single bundled stylesheet — import once; it `@import`s the document fonts from `@stll/folio-fonts` (installed as a dep), so no external network requests |
 
 For headless, framework-neutral use (OOXML parsing, the document model, the
 layout engine, DOCX ↔ Markdown), depend on `@stll/folio-core` directly.

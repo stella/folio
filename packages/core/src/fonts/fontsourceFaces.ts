@@ -18,14 +18,27 @@ import { bytesToDataUrl } from "../utils/base64";
 import { FONT_MAPPING } from "../utils/fontLoader";
 import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
 import { decodeText } from "../utils/textEncoding";
+import {
+  BUNDLED_WEIGHTS,
+  type BundledFamily,
+  bundledFontFilePath,
+  FONTSOURCE_PACKAGES,
+  MEASURED_SUBSETS,
+  type MeasuredSubset,
+  UNICODE_RANGE_FILE,
+} from "./bundledFonts";
 import type {
   HeadlessFontRequest,
   HeadlessFontSource,
 } from "./headlessMeasure";
 
-/** Where `@fontsource` files come from: `null` when the package or file is absent. */
+/**
+ * Where the face files come from: `null` when the family or file is absent.
+ * Each family is a directory laid out like its `@fontsource` package;
+ * `@stll/folio-fonts/node` reads the copies that package ships.
+ */
 export type FontsourceFiles = {
-  /** Bytes of `@fontsource/<packageName>/<relativePath>`. */
+  /** Bytes of `<relativePath>` in the family directory `<packageName>`. */
   readonly read: (
     packageName: string,
     relativePath: string,
@@ -36,27 +49,14 @@ export type FontsourceFiles = {
  * The subsets served, in resolution priority: a code point two subsets cover
  * resolves to the earlier one on both sides.
  */
-const SUBSET_PRIORITY = ["latin", "latin-ext", "arabic"] as const;
+const SUBSET_PRIORITY = MEASURED_SUBSETS;
 
-type ServedSubset = (typeof SUBSET_PRIORITY)[number];
+type ServedSubset = MeasuredSubset;
 
-/** Folio paints 400 and 700 only, as `DisplayFontFace` states. */
-const REGULAR_WEIGHT = 400;
-const BOLD_WEIGHT = 700;
+const [REGULAR_WEIGHT, BOLD_WEIGHT] = BUNDLED_WEIGHTS;
 
 /** Each bundled family and the `@fontsource` package that ships it. */
-export const FONTSOURCE_PACKAGES = {
-  Arimo: "arimo",
-  Caladea: "caladea",
-  Carlito: "carlito",
-  Cousine: "cousine",
-  Lato: "lato",
-  "Noto Sans Arabic": "noto-sans-arabic",
-  "Source Sans 3": "source-sans-3",
-  Tinos: "tinos",
-} as const;
-
-type BundledFamily = keyof typeof FONTSOURCE_PACKAGES;
+export { FONTSOURCE_PACKAGES };
 
 /** A CSS stack ends in a generic, so a generic must resolve to a bundled family too. */
 const GENERIC_FAMILIES = {
@@ -147,9 +147,6 @@ const weightOf = (bold: boolean): number =>
 
 /** An inclusive `[first, last]` span of code points. */
 type CodePointRange = readonly [number, number];
-
-/** `@fontsource` ships the ranges it cut each subset with, beside the files. */
-const UNICODE_RANGE_FILE = "unicode.json";
 
 const RANGE_TOKEN_RE = /^U\+([0-9A-Fa-f]+)(?:-([0-9A-Fa-f]+))?$/u;
 
@@ -317,7 +314,13 @@ export const createFontsourceFaces = (
     const binaries = SUBSET_PRIORITY.flatMap((subset) => {
       const bytes = files.read(
         packageName,
-        `files/${packageName}-${subset}-${String(weight)}-${style}.woff`,
+        bundledFontFilePath({
+          packageName,
+          subset,
+          weight,
+          style,
+          format: "woff",
+        }),
       );
       return bytes === null ? [] : [{ subset, bytes }];
     });

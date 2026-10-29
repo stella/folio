@@ -28,6 +28,7 @@ import {
   consumerSrc,
   coreDir,
   docxCoreDir,
+  fontsDir,
   hostPeerInstallArgs,
   isDocxKernelWasmAsset,
   REACT_PEER_FLOOR,
@@ -86,6 +87,7 @@ let docxCorePackDir = "";
 let corePackDir = "";
 let reactPackDir = "";
 let utf8BoundariesPackDir = "";
+let fontsPackDir = "";
 const consumerDirs: string[] = [];
 try {
   docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
@@ -94,11 +96,13 @@ try {
   utf8BoundariesPackDir = await mkdtemp(
     path.join(tmpdir(), "folio-utf8-boundaries-pack-"),
   );
+  fontsPackDir = await mkdtemp(path.join(tmpdir(), "folio-fonts-pack-"));
 
   const utf8BoundariesTarball = await buildAndPack(
     utf8BoundariesDir,
     utf8BoundariesPackDir,
   );
+  const fontsTarball = await buildAndPack(fontsDir, fontsPackDir);
   const docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir);
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
@@ -142,6 +146,7 @@ try {
         consumerDir,
         coreTarball,
         docxCoreTarball,
+        fontsTarball,
         utf8BoundariesTarball,
       });
 
@@ -152,6 +157,7 @@ try {
           reactTarball,
           coreTarball,
           docxCoreTarball,
+          fontsTarball,
           utf8BoundariesTarball,
           ...reactPeerInstallArgs(),
           ...hostPeerInstallArgs(),
@@ -248,6 +254,7 @@ try {
     corePackDir,
     reactPackDir,
     utf8BoundariesPackDir,
+    fontsPackDir,
     ...consumerDirs,
   ]) {
     if (dir !== "") {

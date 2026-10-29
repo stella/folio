@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-// Keep @fontsource imports in the published stylesheet so consumer bundlers
-// resolve the font files from this package's dependencies.
+// Keep the @stll/folio-fonts import in the published stylesheet so consumer
+// bundlers resolve the font files from this package's dependencies.
 import { panic } from "better-result";
 import { join } from "node:path";
 
@@ -13,7 +13,7 @@ const stylesDir = join(packageDir, "src", "styles");
 const fonts = await Bun.file(join(stylesDir, "fonts.css")).text();
 const editor = scopeEditorCss(await Bun.file(cssPath).text());
 
-if (!fonts.includes('@import "@fontsource/')) {
+if (!fonts.includes('@import "@stll/folio-fonts/fonts.css";')) {
   panic("Vue stylesheet has no bundled font imports");
 }
 

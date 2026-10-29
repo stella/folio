@@ -5,6 +5,12 @@
     "declarationBytes": 5014,
     "declarationLines": 107
   },
+  "fonts": {
+    "reportBytes": 2047,
+    "reportLines": 80,
+    "declarationBytes": 3684,
+    "declarationLines": 74
+  },
   "docx-core": {
     "reportBytes": 138453,
     "reportLines": 4328,

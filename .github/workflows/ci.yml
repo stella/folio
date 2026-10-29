@@ -45,6 +45,9 @@ jobs:
             crates/text-shaper/Cargo.toml
             crates/text-shaper/src/**
             packages/utf8-boundaries/src/**
+            packages/fonts/src/**
+            packages/fonts/fonts/**
+            packages/fonts/fonts.css
             packages/docx-core/src/**
             packages/core/src/**
             packages/react/src/**
@@ -60,6 +63,8 @@ jobs:
             packages/core/src/generated/**
             packages/utf8-boundaries/CHANGELOG.md
             packages/utf8-boundaries/package.json
+            packages/fonts/CHANGELOG.md
+            packages/fonts/package.json
             packages/docx-core/CHANGELOG.md
             packages/docx-core/package.json
             packages/core/CHANGELOG.md
@@ -81,6 +86,7 @@ jobs:
             plugins/vscode/package.json
           package-files: |
             packages/utf8-boundaries/package.json
+            packages/fonts/package.json
             packages/docx-core/package.json
             packages/core/package.json
             packages/react/package.json
@@ -349,6 +355,12 @@ jobs:
 
       - name: Format check
         run: bun fmt --check
+
+      # @stll/folio-fonts ships copies of the @fontsource files and a stylesheet
+      # and catalogue derived from them and from core's bundled-font table; a
+      # family, face or file that drifts from either fails here.
+      - name: Bundled fonts up to date
+        run: bun run generate:folio-fonts:check
 
       - name: i18n check
         run: bun run check:i18n
