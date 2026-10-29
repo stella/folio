@@ -40,6 +40,7 @@ import {
   wrapMoveFrom,
   wrapMoveTo,
 } from "./annotations";
+import { countTextBoxLists } from "./countParagraphList";
 import { escapeAltText, escapeInline, escapeLinkUrl } from "./escape";
 import { registerImage } from "./images";
 import { numberNoteReference, pushWarning } from "./internals";
@@ -410,6 +411,8 @@ function renderRunContent(
         break;
       }
       case "shape":
+        // Markdown writes no text box, but the page counts its list items.
+        countTextBoxLists(ctx, pkg, item.shape);
         pushWarning(ctx, "shape not representable in markdown");
         break;
       case "fieldChar":

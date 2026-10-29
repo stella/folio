@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 1107395983,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2051361338,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "5CFDAD72",
+          "properties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "numbered"
+            }
+          }
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 11
+        }
+      ]
+    },
+    {
+      "action": "mistake",
+      "seed": 1291643274
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "title": "PINNED #2044, reported seed 1107395983: a numbered paragraph in a text box counts in Markdown as it does in content"
+}
