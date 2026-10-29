@@ -18,7 +18,7 @@ import {
   plainDocument,
 } from "../../../../test/consumer-scenarios/support/documents";
 import {
-  propertyConfig,
+  assertProperty,
   propertyTestSeed,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
@@ -29,6 +29,7 @@ import {
 } from "./__tests__/parserXmlMutations";
 import {
   mutateZip,
+  mutateZipSequence,
   ZIP_MUTATIONS,
   type ZipMutation,
 } from "./__tests__/parserZipMutations";
@@ -291,6 +292,9 @@ const composition = fc.oneof(
     .map((mutations) => ({ type: "zip" as const, mutations })),
 );
 
+type Composition =
+  typeof composition extends fc.Arbitrary<infer Drawn> ? Drawn : never;
+
 /**
  * Locally a fixed sequence. Under CI, or with PROPERTY_TEST_SEED, the shared
  * seed discipline applies, so a per-commit search counts as exploration.
@@ -303,27 +307,67 @@ const localSeed = (): { seed?: number } => {
     : { seed: DEFAULT_SEED };
 };
 
+const composeMutations = async ({
+  type,
+  mutations,
+}: Composition): Promise<Uint8Array> => {
+  const bytes = await fixtureBytes("plain");
+  switch (type) {
+    case "xml": {
+      let mutated = bytes;
+      for (const mutation of mutations) {
+        mutated = await mutateXml(mutated, mutation, "word/document.xml");
+      }
+      return mutated;
+    }
+    case "zip":
+      return mutateZipSequence(bytes, mutations, "word/document.xml");
+    default: {
+      const unhandled: never = type;
+      throw new Error(`Unhandled composition ${JSON.stringify(unhandled)}`);
+    }
+  }
+};
+
+/** Every non-empty sequence of distinct items, in every order. */
+const sequences = <T>(items: readonly T[]): T[][] => {
+  const found: T[][] = [];
+  for (const [index, item] of items.entries()) {
+    found.push([item]);
+    for (const rest of sequences(items.toSpliced(index, 1))) {
+      found.push([item].concat(rest));
+    }
+  }
+  return found;
+};
+
+test("every order of composable ZIP mutations produces a mutated package", async () => {
+  const original = await fixtureBytes("plain");
+  for (const mutations of sequences(COMPOSABLE_ZIP)) {
+    const mutated = await composeMutations({ type: "zip", mutations });
+    assert.notDeepEqual(
+      mutated,
+      original,
+      `zip: ${mutations.join(" + ")} made no change`,
+    );
+  }
+});
+
 test(
   "seeded parser mutation sequences refuse or round-trip",
   async () => {
-    await fc.assert(
-      fc.asyncProperty(composition, async ({ type, mutations }) => {
-        let bytes = await fixtureBytes("plain");
-        if (type === "xml") {
-          for (const mutation of mutations) {
-            bytes = await mutateXml(bytes, mutation, "word/document.xml");
-          }
-        } else {
-          for (const mutation of mutations) {
-            bytes = await mutateZip(bytes, mutation, "word/document.xml");
-          }
-        }
-        await assertSurvives(bytes, `${type}: ${mutations.join(" + ")}`);
+    await assertProperty(
+      fc.asyncProperty(composition, async (entry) => {
+        await assertSurvives(
+          await composeMutations(entry),
+          `${entry.type}: ${entry.mutations.join(" + ")}`,
+        );
       }),
-      propertyConfig({
+      {
+        id: "seeded parser mutation sequences refuse or round-trip",
         numRuns: Number(process.env["PARSER_FUZZ_RUNS"] ?? BASE_RUNS),
         ...localSeed(),
-      }),
+      },
     );
   },
   propertyTestTimeout(60_000),

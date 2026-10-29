@@ -1,0 +1,22 @@
+{
+  "seeded parser mutation sequences refuse or round-trip": [
+    {
+      "seed": 1904049102,
+      "path": "4:2",
+      "note": "A content-type rewrite composed after a duplicated central-directory entry must still apply to a readable archive.",
+      "date": "2026-10-29"
+    },
+    {
+      "seed": 429961022,
+      "path": "4",
+      "note": "A content-type rewrite composed after a duplicated central-directory entry must still apply to a readable archive.",
+      "date": "2026-10-29"
+    },
+    {
+      "seed": -162484750,
+      "path": "0",
+      "note": "A content-type rewrite composed after a duplicated central-directory entry must still apply to a readable archive.",
+      "date": "2026-10-29"
+    }
+  ]
+}
