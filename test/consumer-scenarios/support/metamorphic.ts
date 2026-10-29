@@ -10,7 +10,9 @@
  *   saved, reopened, and with the fixture's own changes accepted). The direct
  *   replay applies only what the tracked one applied; once direct refuses an
  *   operation tracked applied, the two documents part and the relation stops
- *   for the flow.
+ *   for the flow. A comment one of whose ends a pending deletion held when a
+ *   later batch inserted content is no longer compared: directly that end
+ *   had moved, so the insertion lies inside the comment in one replay only.
  * - `rejectAll`: the tracked replay, and a `suggested` one, with every change
  *   rejected read as the fixture with every change rejected.
  * - `saveIdempotent`: saving the reopened package gives the same package
@@ -626,6 +628,14 @@ type Shadows = {
   suggested: Reviewer | null;
   /** Where direct first refused what tracked applied; the two part there. */
   parted: string | null;
+  /**
+   * Comments (by text) one of whose ends a pending deletion still held in the
+   * tracked replay when a later batch inserted content. Directly that end had
+   * already moved, so what lands between the two places is outside the
+   * comment in one replay and inside it in the other; `directTracked` no
+   * longer compares them.
+   */
+  heldComments: Set<string>;
   /** Every batch replayed that tracked applied something of, as sent. */
   trace: TraceEntry[];
 };
@@ -638,6 +648,7 @@ const openShadows = async (
   tracked: await openReviewer(fixture),
   suggested: suggested ? await openReviewer(fixture) : null,
   parted: null,
+  heldComments: new Set(),
   trace: [],
 });
 
@@ -667,6 +678,46 @@ const targetText = (
   return `${blocks[index]?.text}${next}`;
 };
 
+/** Operations that put new content at a block boundary. */
+const BOUNDARY_INSERTIONS: ReadonlySet<string> = new Set([
+  "insertAfterBlock",
+  "insertBeforeBlock",
+  "insertTable",
+  "insertSignatureTable",
+  "insertTableRow",
+  "insertTableColumn",
+]);
+
+/**
+ * Comments whose tracked anchor strictly extends the direct one at one end:
+ * a pending deletion still holds that end, which directly has moved. (The
+ * tracked anchor reads pending deleted text; a deletion inside the range
+ * extends neither end.)
+ */
+const heldEndComments = (direct: Reviewer, tracked: Reviewer): string[] => {
+  const settled = new Map(
+    commentsOf(direct).map(({ text, anchor }) => [text, anchor]),
+  );
+  return commentsOf(tracked).flatMap(({ text, anchor }) => {
+    const directAnchor = settled.get(text);
+    if (directAnchor === undefined || directAnchor === anchor) return [];
+    return anchor.startsWith(directAnchor) || anchor.endsWith(directAnchor)
+      ? [text]
+      : [];
+  });
+};
+
+/** `view` without the comments `held` names, for a comparison that cannot judge them. */
+const withoutHeldComments = <View extends { comments: string[] }>(
+  view: View,
+  held: ReadonlySet<string>,
+): View => ({
+  ...view,
+  comments: view.comments.filter(
+    (entry) => !held.has(entry.slice(0, entry.indexOf(" @ "))),
+  ),
+});
+
 /**
  * Replay one batch: tracked (and suggested) as sent, direct with only what
  * tracked applied. Whether tracked applied anything.
@@ -686,6 +737,13 @@ const replayInto = (
     shadows.parted === null ? targetsBefore(shadows.direct) : [];
   const trackedTargets =
     shadows.parted === null ? targetsBefore(shadows.tracked) : [];
+  if (
+    shadows.parted === null &&
+    operations.some((operation) => BOUNDARY_INSERTIONS.has(operation.type))
+  ) {
+    for (const text of heldEndComments(shadows.direct, shadows.tracked))
+      shadows.heldComments.add(text);
+  }
   const apply = (
     reviewer: Reviewer,
     mode: Mode,
@@ -755,8 +813,14 @@ const shadowProblems = async (
     switch (check) {
       case "directTracked":
         found = tolerantDifferences<BlocksView>(
-          await resolvedView(await save(shadows.direct), "accept", story),
-          await resolvedView(await save(shadows.tracked), "accept", story),
+          withoutHeldComments(
+            await resolvedView(await save(shadows.direct), "accept", story),
+            shadows.heldComments,
+          ),
+          withoutHeldComments(
+            await resolvedView(await save(shadows.tracked), "accept", story),
+            shadows.heldComments,
+          ),
           [],
         );
         break;
