@@ -204,7 +204,7 @@
     "postcss": "8.5.30",
     "postcss-selector-parser": "7.1.6",
     "prosemirror-model": "1.25.12",
-    "prosemirror-view": "1.42.7",
+    "prosemirror-view": "1.42.8",
     "seroval": "1.6.12",
     "shell-quote": "1.11.0",
     "source-map-js": "1.2.2",
