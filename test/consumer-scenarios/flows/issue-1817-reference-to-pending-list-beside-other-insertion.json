@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "suggested",
+  "seed": 774775079,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2350576104,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Buyer clause payment buyer buyer goods warranty term.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2279058607,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "An added clause."
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1015387267,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@2",
+          "text": "Warranty payment supplier period term warranty.",
+          "numbering": {
+            "kind": "reference",
+            "numId": 1,
+            "ilvl": 0
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "insertAfterBlock",
+    "replaceBlock",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "title": "PINNED #1817, reported seed 774775079: a reference to a list a pending insertion started numbers its paragraph when another insertion sits between that one and its anchor"
+}

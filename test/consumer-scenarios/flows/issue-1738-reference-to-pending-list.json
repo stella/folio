@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "suggested",
+  "seed": 314182257,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1442394903,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "6FFB97E7",
+          "text": "Delivery party invoice warranty schedule supplier delivery supplier.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "682BB056",
+          "text": "Agreement period written payment period.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3962161283,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Party notice delivery buyer warranty schedule agreement warranty.",
+          "numbering": {
+            "kind": "reference",
+            "numId": 2,
+            "ilvl": 0
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "replaceBlock",
+    "insertTableColumn"
+  ],
+  "title": "PINNED #1738, reported seed 314182257: a reference to a list a pending insertion started numbers its paragraph"
+}
