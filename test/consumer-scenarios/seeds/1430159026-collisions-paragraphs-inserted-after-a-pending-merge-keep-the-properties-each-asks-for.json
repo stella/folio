@@ -1,0 +1,7 @@
+{
+  "seed": 1430159026,
+  "steps": 16,
+  "kind": "collisions",
+  "generation": "targeted",
+  "title": "paragraphs inserted after a pending merge keep the properties each asks for"
+}
