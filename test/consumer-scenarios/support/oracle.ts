@@ -113,15 +113,62 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
   }
 };
 
-/** Capture the authored story, including proposals omitted from the saved model. */
-const liveNumberingFacts = (
+type LiveNumberingLevel = ReturnType<
+  Reviewer["readNumberingDefinitions"]
+>[number];
+
+/**
+ * The marker levels of the main story's lists that only their paragraphs
+ * define so far (lists its operations started, pending or applied). The
+ * reviewer reads each one whole, so a reference to any of its levels, and a
+ * paragraph anywhere among the other insertions beside its anchor, is
+ * classified by the list's own definition.
+ */
+const addLiveListMarkerLevels = (
+  facts: NumberingFacts,
+  definitions: readonly LiveNumberingLevel[],
+): void => {
+  const lists = new Map<number, Map<number, LiveNumberingLevel>>();
+  for (const definition of definitions) {
+    if (facts.markerLevels.has(definition.numId)) continue;
+    const levels =
+      lists.get(definition.numId) ?? new Map<number, LiveNumberingLevel>();
+    levels.set(definition.level, definition);
+    lists.set(definition.numId, levels);
+  }
+  for (const [numId, levels] of lists) {
+    facts.markerLevels.set(
+      numId,
+      new Set(
+        [...levels.values()]
+          .filter((level) =>
+            showsMarker(
+              {
+                text: level.levelText,
+                format: level.format,
+                legal: false,
+                hidden: false,
+              },
+              (ilvl) => levels.get(ilvl)?.format,
+            ),
+          )
+          .map(({ level }) => level),
+      ),
+    );
+  }
+};
+
+/**
+ * A header, footer or note story starts its lists against the package alone,
+ * so its new ids can repeat another story's and the reviewer's numbering
+ * read (the main story's) does not define them. The level a pending
+ * insertion beside its anchor states is all that marks such a list.
+ */
+const addPendingInsertionListLevels = (
+  facts: NumberingFacts,
   reviewer: Reviewer,
-  story: Story,
-): NumberingFacts => {
-  const facts = numberingFactsFromDocument(reviewer.toDocument());
-  const snapshot = reviewer.snapshotStory(story);
-  if (!snapshot) return facts;
-  const { anchors, blocks } = snapshot;
+  blocks: NonNullable<ReturnType<Reviewer["snapshotStory"]>>["blocks"],
+): void => {
   const pendingInsertionBlockIds = new Set<string>();
   for (const { operation } of reviewer.exportPendingSuggestions()) {
     if (
@@ -163,6 +210,22 @@ const liveNumberingFacts = (
     levels.add(level);
     facts.markerLevels.set(inserted.statedNumbering.numId, levels);
   }
+};
+
+/** Capture the authored story, including proposals omitted from the saved model. */
+const liveNumberingFacts = (
+  reviewer: Reviewer,
+  story: Story,
+): NumberingFacts => {
+  const facts = numberingFactsFromDocument(reviewer.toDocument());
+  const snapshot = reviewer.snapshotStory(story);
+  if (!snapshot) return facts;
+  const { anchors, blocks } = snapshot;
+  if (story.type === "main") {
+    addLiveListMarkerLevels(facts, reviewer.readNumberingDefinitions());
+  } else {
+    addPendingInsertionListLevels(facts, reviewer, blocks);
+  }
   for (const block of blocks) {
     if (block.kind === "diagnostic") continue;
     const anchor = anchors[block.id];
@@ -175,6 +238,31 @@ const liveNumberingFacts = (
     );
   }
   return facts;
+};
+
+type MarkerLevel = {
+  text: string;
+  format: string;
+  legal: boolean;
+  hidden: boolean;
+};
+
+/** Whether a numbering level shows a marker, given the formats of its list's other levels. */
+const showsMarker = (
+  { text, format, legal, hidden }: MarkerLevel,
+  formatAt: (ilvl: number) => string | undefined,
+): boolean => {
+  if (hidden) return false;
+  // A legal level counts in decimal whatever its own format says.
+  if (text.length === 0) return legal || format !== "none";
+  // Only marker presence matters here; counter values and numbering glyphs do not.
+  return (
+    text
+      .replace(/%([1-9])/gu, (_, slot: string) =>
+        !legal && formatAt(Number(slot) - 1) === "none" ? "" : "1",
+      )
+      .trim().length > 0
+  );
 };
 
 /** Package definitions and direct provenance, never an effective reader sample. */
@@ -308,23 +396,17 @@ const numberingFactsFromDocument = (
       instance.numId,
       new Set(
         [...levels.values()]
-          .filter((level) => {
-            if (level.rPr?.hidden) return false;
-            // A legal level counts in decimal whatever its own format says.
-            if (level.lvlText.length === 0)
-              return level.isLgl === true || level.numFmt !== "none";
-            // Only marker presence matters here; counter values and numbering glyphs do not.
-            return (
-              level.lvlText
-                .replace(/%([1-9])/gu, (_, slot: string) =>
-                  !level.isLgl &&
-                  levels.get(Number(slot) - 1)?.numFmt === "none"
-                    ? ""
-                    : "1",
-                )
-                .trim().length > 0
-            );
-          })
+          .filter((level) =>
+            showsMarker(
+              {
+                text: level.lvlText,
+                format: level.numFmt,
+                legal: level.isLgl === true,
+                hidden: Boolean(level.rPr?.hidden),
+              },
+              (ilvl) => levels.get(ilvl)?.numFmt,
+            ),
+          )
           .map((level) => level.ilvl),
       ),
     );
