@@ -43,6 +43,16 @@
         "version-update:semver-patch"
       ],
       "reason": "The VS Code extension's engine floor: plugins/vscode/scripts/check-engine-floor.ts requires engines.vscode to equal ^<@types/vscode>, so raising it drops older editors and is a deliberate change."
+    },
+    {
+      "ecosystem": "bun",
+      "dependency": "tsdown",
+      "updateTypes": [
+        "version-update:semver-major",
+        "version-update:semver-minor",
+        "version-update:semver-patch"
+      ],
+      "reason": "tsdown 0.23.2 brings rolldown-plugin-dts 0.29.0-beta.2, whose declaration build needs the TypeScript 7.1 beta; tsdown moves with the pinned TypeScript, which Dependabot also leaves alone."
     }
   ]
 }
