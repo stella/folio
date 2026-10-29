@@ -31,10 +31,11 @@ const standaloneListRendering = (para: Paragraph): ListRendering | undefined =>
   para.listRendering;
 
 export type CountedParagraphList = {
-  /** The list the paragraph's own numbering resolves to, when it shows a marker. */
-  resolvedRendering: ListRendering | undefined;
-  /** The list a pending property change's earlier numbering showed. */
-  originalList: ListRendering | undefined;
+  /**
+   * The list the paragraph shows: its own numbering's, or, while a pending
+   * property change removed it, the one that numbering showed.
+   */
+  visibleList: ListRendering | undefined;
   /** The label the counter gave the paragraph; absent when it shows none. */
   label: string | undefined;
 };
@@ -136,8 +137,9 @@ export function countParagraphList(
   }
   const countedList = ctx.nextListLabel(counterAttrs, resolvedRendering);
   return {
-    resolvedRendering,
-    originalList,
+    visibleList:
+      resolvedRendering ??
+      (sources.numPr?.kind === "levelOnly" ? undefined : originalList),
     label: countedList.kind === "marker" ? countedList.label : undefined,
   };
 }

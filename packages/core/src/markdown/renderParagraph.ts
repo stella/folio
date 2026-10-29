@@ -51,11 +51,7 @@ export function renderParagraphBlock(
   para: Paragraph,
 ): RenderedParagraph {
   // Every paragraph advances the list counter, whatever it renders as.
-  const { resolvedRendering, originalList, label } = countParagraphList(
-    ctx,
-    pkg,
-    para,
-  );
+  const { visibleList, label } = countParagraphList(ctx, pkg, para);
   const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
   const styleId = para.formatting?.styleId;
 
@@ -82,9 +78,6 @@ export function renderParagraphBlock(
     };
   }
 
-  const visibleList =
-    resolvedRendering ??
-    (sources.numPr?.kind === "levelOnly" ? undefined : originalList);
   if (visibleList && label !== undefined) {
     return renderListItem(ctx, visibleList, label, inline);
   }
