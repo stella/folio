@@ -22,6 +22,8 @@
       "@stll/folio-cli": ["packages/cli/src/cli.ts"],
       "@stll/folio-core": ["packages/core/src/index.ts"],
       "@stll/folio-core/*": ["packages/core/src/*"],
+      "@stll/folio-fonts": ["packages/fonts/src/index.ts"],
+      "@stll/folio-fonts/node": ["packages/fonts/src/node.ts"],
       "@stll/folio-nuxt": ["packages/nuxt/src/module.ts"],
       "@stll/folio-nuxt/*": ["packages/nuxt/src/*"],
       "@stll/folio-react": ["packages/react/src/index.ts"],

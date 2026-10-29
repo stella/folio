@@ -37,7 +37,6 @@ packages/core/src/docx/strictNames.gen.ts:STRICT_NAMES_BY_TRANSITIONAL_NAME
 packages/core/src/docx/strictNames.gen.ts:TRANSITIONAL_NAME_BY_STRICT_NAME
 packages/core/src/docx/tableLook.ts:TABLE_LOOK_FLAGS
 packages/core/src/docx/wordprocessingPrefixes.ts:PARAGRAPH_SCAN_NAMES
-packages/core/src/fonts/fontsourceFaces.ts:FONTSOURCE_PACKAGES
 packages/core/src/fonts/sfnt/tables.ts:SFNT_TABLE
 packages/core/src/fonts/sfnt/tables.ts:SFNT_VERSION
 packages/core/src/i18n/messages/catalogs.gen.ts:CATALOGS

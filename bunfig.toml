@@ -84,6 +84,11 @@ ignorePatterns = [
   "api-reports/**",
   "packages/docx-core/src/generated/**",
   "packages/core/src/generated/**",
+  # @stll/folio-fonts: copied from @fontsource and generated from it
+  # (scripts/generate-folio-fonts.ts), checked byte for byte.
+  "packages/fonts/fonts/**",
+  "packages/fonts/fonts.css",
+  "packages/fonts/THIRD_PARTY_NOTICES.md",
   "packages/react/src/i18n/messages/**",
   "packages/vue/src/i18n/messages/**",
 ]

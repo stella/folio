@@ -1,4 +1,5 @@
-import path from "node:path";
+/** A target a module loader or the type checker reads. */
+const MODULE_TARGET = /\.(?:[cm]?jsx?|d\.[cm]?ts|[cm]?tsx?)$/u;
 
 const targets = (value: unknown): string[] => {
   if (typeof value === "string") return [value];
@@ -84,9 +85,9 @@ export const publicEntries = ({
     if (!key) throw new TypeError(`Export has no matching key: ${subpath}`);
     const value = exports[key];
     if (value === null) return [];
-    const asset = targets(value).every((target) =>
-      [".css", ".wasm", ".json"].includes(path.extname(target)),
-    );
+    // Anything but a module or a declaration is a file to read: a stylesheet,
+    // WebAssembly, JSON, a font, a licence.
+    const asset = targets(value).every((target) => !MODULE_TARGET.test(target));
     return [
       {
         specifier: subpath === "." ? name : `${name}/${subpath.slice(2)}`,
