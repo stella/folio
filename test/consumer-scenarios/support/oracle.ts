@@ -3173,6 +3173,7 @@ export const assertRequestedOutcome = async (
   const replayOperations = sequentialGroups({
     applied: outcome.applied,
     preRows: pre.rows,
+    liveRows: pre.liveRows,
     mode: pre.mode,
   }).flat();
   for (const operation of replayOperations) {

@@ -107,13 +107,22 @@ const sameContainerRows = (left: Row, right: Row | undefined): boolean =>
 
 type SequentialGroupsOptions = {
   applied: readonly AnyOperation[];
+  /** The rows the batch's outcome is read against (accepted, for tracked changes). */
   preRows: readonly Row[];
+  /**
+   * The live rows the operations name, when `preRows` are not those. A
+   * column edit may anchor in a cell of a row pending deletion, which only
+   * the live table still has; column edits order among themselves, so they
+   * all take live coordinates.
+   */
+  liveRows?: readonly Row[];
   mode: Mode;
 };
 
 export const sequentialGroups = ({
   applied,
   preRows,
+  liveRows = preRows,
   mode,
 }: SequentialGroupsOptions): AnyOperation[][] => {
   const indexed = applied.map((operation, index) => ({ operation, index }));
@@ -200,7 +209,7 @@ export const sequentialGroups = ({
   );
   const columnLocation = (operation: AnyOperation): [number, number] => {
     const targetId = blockIdOf(operation);
-    const target = preRows.find((row) => row.id === targetId);
+    const target = liveRows.find((row) => row.id === targetId);
     if (!target?.table)
       throw new Error(
         `Applied ${operation.type} anchor ${targetId} has no source table.`,
