@@ -5378,7 +5378,16 @@ const applyFolioAIEditOperationsInternal = ({
           nodes.push(node);
         }
       }
-      tr = tr.insert(item.from, nodes);
+      // The run lands on one boundary, so it takes the comments running
+      // across it as the batch read them, as a single insertion does.
+      tr = insertBlocksInsideComments({
+        tr,
+        at: item.from,
+        blocks: nodes,
+        ...(item.boundaryComments !== undefined && {
+          carriedComments: item.boundaryComments,
+        }),
+      });
       applied.push(...runApplied);
       continue;
     }
