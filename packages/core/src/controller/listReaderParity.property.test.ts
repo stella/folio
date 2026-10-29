@@ -68,7 +68,7 @@ const PRODUCER_READERS = {
     "model",
   "packages/core/src/prosemirror/listLabels.ts::createListLabelCounter":
     "snapshot",
-  "packages/core/src/markdown/renderParagraph.ts::renderParagraphBlock":
+  "packages/core/src/markdown/countParagraphList.ts::countParagraphList":
     "markdown",
   "packages/core/src/markdown/internals.ts::newContext": "markdown",
   "packages/core/src/ai-edits/snapshot.ts::createFolioAIEditSnapshotInternal":
