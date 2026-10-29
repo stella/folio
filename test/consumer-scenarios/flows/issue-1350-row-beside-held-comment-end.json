@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "suggested",
+  "seed": 1107396522,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2555315153,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3BEFEC68"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2299550365,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTableRow",
+          "blockId": "6FFB97E7",
+          "position": "after",
+          "cellTexts": ["Row cell 1", "Row cell 2"]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "formatRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "insertTableRow"
+  ],
+  "title": "PINNED #1350, reported seed 1107396522: a row inserted where a pending deletion still holds a comment end is not compared across direct and tracked"
+}
