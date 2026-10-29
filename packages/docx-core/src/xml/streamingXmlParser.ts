@@ -239,7 +239,7 @@ const parseStreamingXmlInternal = (
     return (
       decoded !== null &&
       (stack.length > 0 ||
-        decoded.trim().length === 0 ||
+        isXmlWhitespaceText(decoded) ||
         rules.conformance === "tolerant")
     );
   };
@@ -283,12 +283,16 @@ const parseStreamingXmlInternal = (
       if (close === -1) {
         return reject("an unclosed CDATA section");
       }
+      // XML 1.0 admits CDATA only inside the root element, whatever it holds.
+      if (wellFormed && stack.length === 0) {
+        return reject("a CDATA section outside the root element");
+      }
       const text = normalizeLineEndings(xml.slice(open + 9, close));
       if (
         !(options.mode === "tree"
           ? appendRawText(text, stack, rules)
           : stack.length > 0 ||
-            text.trim().length === 0 ||
+            isXmlWhitespaceText(text) ||
             rules.conformance === "tolerant")
       ) {
         return reject("text outside the root element");
@@ -407,14 +411,16 @@ const parseStreamingXmlInternal = (
         replacements.push({ ...span, value });
       }
     }
+    // A self-closing element sits at the same depth an open one would, so
+    // the limit applies to both, as the resource preflight counts them.
+    if (stack.length >= FOLIO_XML_RESOURCE_LIMITS.maxDepth) {
+      return reject(
+        `nesting deeper than ${String(FOLIO_XML_RESOURCE_LIMITS.maxDepth)} elements`,
+      );
+    }
     if (options.mode === "tree")
       appendElement(parent ?? root, parsedTag.element);
     if (!parsedTag.selfClosing) {
-      if (stack.length >= FOLIO_XML_RESOURCE_LIMITS.maxDepth) {
-        return reject(
-          `nesting deeper than ${String(FOLIO_XML_RESOURCE_LIMITS.maxDepth)} elements`,
-        );
-      }
       stack.push(
         options.mode === "tree" && options.sourceRanges === "tracked"
           ? { element: parsedTag.element, name: parsedTag.name, start: open }
@@ -482,7 +488,15 @@ export const readXml = (
     : { status: "rejected", reason: parsed.reason };
 };
 
-/** The reason `xml` is not well-formed XML, or `null` when it is. */
+/**
+ * The reason `xml` is not well-formed XML, or `null` when it is.
+ *
+ * Stricter than XML 1.0 in one respect: an element or attribute named like a
+ * built-in object property (`__proto__`, `constructor`, `toString`, ...) is
+ * refused even though XML allows the name, because every folio reader keys
+ * plain objects by name and refuses it too; a part this accepts is one they
+ * can read.
+ */
 export const wellFormedXmlIssue = (
   xml: string,
   undeclaredEntities: XmlUndeclaredEntities = "refuse",
@@ -802,7 +816,7 @@ const appendRawText = (
 ): boolean => {
   const parent = stack.at(-1)?.element;
   if (!parent) {
-    return text.trim().length === 0 || rules.conformance === "tolerant";
+    return isXmlWhitespaceText(text) || rules.conformance === "tolerant";
   }
   appendElement(parent, { type: "text", text });
   return true;
@@ -832,8 +846,11 @@ type InstructionIssueOptions = {
   rules: ReadRules;
 };
 
+/** XML 1.0 §2.8: a declaration opens with `version="1.<digits>"`. */
+const XML_DECLARATION_VERSION = /^version\s*=\s*(["'])1\.\d+\1(?:\s|$)/u;
+
 const instructionIssue = ({
-  instruction: { target },
+  instruction: { target, body },
   open,
   documentStart,
   rules,
@@ -844,9 +861,12 @@ const instructionIssue = ({
   if (target.toLowerCase() !== "xml") {
     return null;
   }
-  return target === "xml" && open === documentStart
+  if (target !== "xml" || open !== documentStart) {
+    return "an XML declaration after the start of the document";
+  }
+  return XML_DECLARATION_VERSION.test(body)
     ? null
-    : "an XML declaration after the start of the document";
+    : "an XML declaration without a version";
 };
 
 const findTagClose = (xml: string, start: number): number => {
@@ -872,6 +892,18 @@ const findTagClose = (xml: string, start: number): number => {
 
 const isXmlWhitespace = (code: number): boolean =>
   code === 9 || code === 10 || code === 13 || code === 32;
+
+/**
+ * Whether `text` is only the whitespace XML 1.0 admits outside the root:
+ * space, tab, CR and LF. `String.prototype.trim` also strips U+00A0 and
+ * other Unicode spaces, which XML does not.
+ */
+const isXmlWhitespaceText = (text: string): boolean => {
+  for (let index = 0; index < text.length; index += 1) {
+    if (!isXmlWhitespace(text.charCodeAt(index))) return false;
+  }
+  return true;
+};
 
 const skipWhitespace = (xml: string, start: number, limit: number): number => {
   let cursor = start;
