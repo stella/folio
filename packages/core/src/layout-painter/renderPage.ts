@@ -2331,7 +2331,10 @@ export function renderPage(
     }
     if (shouldClipHeader) {
       headerEl.style.maxHeight = `${availableHeaderHeight}px`;
-      headerEl.style.overflow = "clip";
+      // The cap is vertical: a paragraph indented into the side margins
+      // (a negative `w:ind`, as letterhead and form footers use) paints there.
+      headerEl.style.overflowX = "visible";
+      headerEl.style.overflowY = "clip";
       headerEl.style.overflowClipMargin = `${HEADER_FOOTER_RULE_CLIP_MARGIN}px`;
     }
     pageEl.append(headerEl);
@@ -2432,7 +2435,10 @@ export function renderPage(
     }
     if (shouldClipFooter) {
       footerEl.style.maxHeight = `${availableFooterHeight}px`;
-      footerEl.style.overflow = "clip";
+      // The cap is vertical: a paragraph indented into the side margins
+      // (a negative `w:ind`, as letterhead and form footers use) paints there.
+      footerEl.style.overflowX = "visible";
+      footerEl.style.overflowY = "clip";
       footerEl.style.overflowClipMargin = `${HEADER_FOOTER_RULE_CLIP_MARGIN}px`;
     }
     pageEl.append(footerEl);
