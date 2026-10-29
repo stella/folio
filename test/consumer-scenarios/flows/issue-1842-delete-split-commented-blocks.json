@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "direct",
+  "seed": 1511248647,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2710978790,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        }
+      ]
+    },
+    {
+      "action": "new reviewer",
+      "seed": 999719071
+    },
+    {
+      "action": "story batch",
+      "seed": 2831284884,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "31617F9A",
+          "offset": 40
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1439731150,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "@1"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "commentOnBlock",
+    "deleteTableRow",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "title": "PINNED #1842, reported seed 1511248647: deleting both halves of a split commented paragraph removes its comment"
+}
