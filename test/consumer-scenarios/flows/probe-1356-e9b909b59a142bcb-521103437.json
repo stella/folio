@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "direct",
+  "seed": 521103437,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3928470275,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "31617F9A",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "story batch",
+      "seed": 9573861,
+      "operations": [
+        {
+          "type": "insertTableRow",
+          "blockId": "@4",
+          "position": "after",
+          "cellTexts": ["Row cell 1", "Row cell 2"]
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "core batch",
+      "seed": 2409034147,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTableRow",
+          "blockId": "@8",
+          "position": "after",
+          "cellTexts": ["Row cell 1", "Row cell 2"]
+        },
+        {
+          "type": "insertTableColumn",
+          "blockId": "@5",
+          "position": "after"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2281151753,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@14",
+          "text": "Schedule party schedule period payment written agreement payment.",
+          "alignment": "right"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@10",
+          "text": "Supplier warranty goods notice.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        },
+        {
+          "type": "insertTableColumn",
+          "blockId": "@5",
+          "position": "after"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "commentOnRange",
+    "insertAfterBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableRow",
+    "insertTableColumn"
+  ],
+  "title": "probe 1356 e9b909b59a142bcb"
+}

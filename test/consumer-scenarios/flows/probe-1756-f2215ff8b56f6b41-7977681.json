@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "suggested",
+  "seed": 7977681,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1207707824,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "483CD5EB",
+            "startOffset": 10,
+            "endOffset": 13,
+            "selectedTextHash": "h377j8f"
+          },
+          "replace": "updated"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1079825430,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "483CD5EB",
+            "startOffset": 10,
+            "endOffset": 17,
+            "selectedTextHash": "hhdwygq"
+          },
+          "replace": "updated"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 256166169,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "3CEFFC83",
+          "find": "This",
+          "replace": "revised"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 192224972,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "reject one",
+      "seed": 1959849588
+    },
+    {
+      "action": "reject one",
+      "seed": 64342578
+    },
+    {
+      "action": "story batch",
+      "seed": 3727474204,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "412DDC7F",
+          "text": "Payment buyer invoice payment invoice buyer written goods."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Warranty delivery party term delivery delivery delivery written.",
+          "styleId": "Heading2"
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 496778357
+    },
+    {
+      "action": "reject one",
+      "seed": 4159909983
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "insertAfterBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "title": "probe 1756 f2215ff8b56f6b41"
+}

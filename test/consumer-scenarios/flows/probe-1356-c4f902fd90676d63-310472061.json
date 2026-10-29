@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "tracked-changes",
+  "seed": 310472061,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3398132914,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "04D9A0FF",
+            "startOffset": 24,
+            "endOffset": 28,
+            "selectedTextHash": "hykhlyz"
+          },
+          "formatting": {
+            "bold": true
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 359260658,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "04D9A0FF",
+          "text": "Period delivery delivery delivery party schedule buyer clause."
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "04D9A0FF",
+            "startOffset": 18,
+            "endOffset": 23,
+            "selectedTextHash": "h4gr0cj"
+          },
+          "formatting": {
+            "underline": true
+          }
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "04D9A0FF",
+          "properties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "bullet"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "commentOnRange",
+    "insertBeforeBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties"
+  ],
+  "title": "probe 1356 c4f902fd90676d63"
+}

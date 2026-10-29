@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "suggested",
+  "seed": 314181779,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3281536538,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "A second-level heading.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "A new bullet.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2017865198,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "@2",
+          "text": "Warranty delivery goods goods supplier."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "insertTableColumn"
+  ],
+  "title": "probe 2163 04b43c8a29765712"
+}

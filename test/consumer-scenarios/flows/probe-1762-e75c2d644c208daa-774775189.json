@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 774775189,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 4294871821,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "7735D914",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "styleId": "Heading2"
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "title": "probe 1762 e75c2d644c208daa"
+}

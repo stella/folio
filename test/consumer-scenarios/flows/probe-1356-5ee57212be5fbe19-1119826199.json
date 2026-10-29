@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 1119826199,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1999850357,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "0406D732",
+          "text": "Invoice notice term term invoice buyer."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "0C0A0460",
+          "text": "Buyer buyer written goods.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "commentOnRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "deleteTable"
+  ],
+  "title": "probe 1356 5ee57212be5fbe19"
+}

@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "suggested",
+  "seed": 1119826316,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2319556459,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "7B806329",
+            "startOffset": 15,
+            "endOffset": 20,
+            "selectedTextHash": "h46twa5"
+          },
+          "replace": "updated"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3895357484,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Agreement goods supplier delivery term schedule notice.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "reject all",
+      "seed": 672237937
+    },
+    {
+      "action": "add_comment",
+      "seed": 2503803750
+    },
+    {
+      "action": "story batch",
+      "seed": 3575651499,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "581FD868",
+          "text": "Notice schedule goods supplier goods period warranty invoice.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 856485228,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "7735D914",
+          "text": "Invoice party written."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Schedule period schedule invoice buyer invoice.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Warranty payment warranty period notice."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "insertTableRow",
+    "insertTableColumn"
+  ],
+  "title": "probe 1356 269f8510cad77bb6"
+}

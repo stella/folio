@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 1339715958,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3420419519,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "bullet"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "title": "probe 1350 24e996d99fd086cb"
+}

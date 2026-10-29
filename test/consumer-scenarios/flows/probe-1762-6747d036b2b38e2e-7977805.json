@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1026398514,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 4241941761,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " "
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "accept all",
+      "seed": 323045347
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 624187064,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "5E88C024",
+          "text": "Delivery term notice payment agreement written."
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "title": "probe 1762 6747d036b2b38e2e"
+}

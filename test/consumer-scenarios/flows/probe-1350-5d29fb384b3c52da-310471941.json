@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "direct",
+  "seed": 310471941,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 246530744,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Delivery term invoice clause buyer period.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 54707153,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ],
+      "atomic": true
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "title": "probe 1350 5d29fb384b3c52da"
+}

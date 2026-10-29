@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "suggested",
+  "seed": 7977479,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 4047179987,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 696178046,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    }
+  ],
+  "swarm": ["formatRange", "deleteBlock", "insertTableRow"],
+  "title": "probe 1350 86a532e6ead44ab1"
+}

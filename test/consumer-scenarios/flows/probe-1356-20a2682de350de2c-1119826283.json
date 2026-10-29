@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1119826283,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 4151122239,
+      "operations": [
+        {
+          "type": "deleteTable",
+          "blockId": "31617F9A"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 2255615229,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "0406D732",
+          "text": "Term warranty supplier agreement schedule."
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1999850441,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 0,
+            "endOffset": 5,
+            "selectedTextHash": "h3uv5ju"
+          },
+          "comment": {
+            "text": "Buyer delivery agreement."
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1240132377,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "alignment": null
+          }
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 3511710269
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 416473116,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "3CEFFC83",
+          "offset": 4
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "0C0A0460",
+          "text": "Warranty buyer buyer invoice."
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "0406D732",
+          "text": "Delivery term goods payment notice."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "commentOnRange",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "title": "probe 1356 20a2682de350de2c"
+}

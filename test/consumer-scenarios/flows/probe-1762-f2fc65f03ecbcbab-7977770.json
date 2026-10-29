@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "tracked-changes",
+  "seed": 7977770,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2023790874,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "31617F9A",
+          "quote": "time",
+          "comment": {
+            "text": "Buyer delivery buyer period delivery."
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3911721584,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "31617F9A",
+          "quote": "The",
+          "comment": {
+            "text": "Period schedule buyer period warranty goods payment buyer."
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1688932289,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "31617F9A",
+          "text": "Invoice delivery payment agreement supplier buyer payment term."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "commentOnRange",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "mergeBlockWithNext",
+    "commentOnBlock",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "title": "probe 1762 f2fc65f03ecbcbab"
+}

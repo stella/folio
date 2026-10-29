@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "direct",
+  "seed": 1119826200,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 104343348,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteTable",
+          "blockId": "46B80D85"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "6FFB97E7"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "deleteTable"
+  ],
+  "title": "probe 1350 f185862f162dbd69"
+}

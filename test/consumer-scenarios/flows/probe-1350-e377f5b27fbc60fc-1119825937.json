@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "direct",
+  "seed": 1119825937,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1687720410,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "story batch",
+      "seed": 672237558,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Period payment clause agreement clause invoice invoice.",
+          "numbering": {
+            "kind": "reference",
+            "numId": 7,
+            "ilvl": 0
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "insertTableRow"
+  ],
+  "title": "probe 1350 e377f5b27fbc60fc"
+}

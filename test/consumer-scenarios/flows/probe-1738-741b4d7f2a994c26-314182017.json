@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "suggested",
+  "seed": 787497594,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "0C0A0460",
+          "text": "Notice invoice payment supplier.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "mistake",
+      "seed": 926786060
+    }
+  ],
+  "title": "probe 1738 741b4d7f2a994c26"
+}

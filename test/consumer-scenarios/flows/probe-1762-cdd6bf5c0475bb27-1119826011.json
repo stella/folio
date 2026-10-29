@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1119826011,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 4151121967,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "6FFB97E7",
+          "text": "Goods clause schedule term."
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "core batch",
+      "seed": 2823509430,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "6FFB97E7",
+          "text": "Party schedule goods."
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1495896893,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "6FFB97E7",
+          "text": "Supplier supplier buyer party party."
+        }
+      ]
+    },
+    {
+      "action": "reject one",
+      "seed": 672237632
+    },
+    {
+      "action": "story batch",
+      "seed": 40401962,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "6FFB97E7",
+            "startOffset": 30,
+            "endOffset": 35,
+            "selectedTextHash": "h4h3o5z"
+          },
+          "replace": "updated"
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "6FFB97E7",
+          "offset": 18
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "5CFDAD72",
+            "startOffset": 0,
+            "endOffset": 9,
+            "selectedTextHash": "ho5az99"
+          },
+          "replace": "updated"
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 3951722076
+    },
+    {
+      "action": "reject one",
+      "seed": 3255945209
+    },
+    {
+      "action": "new reviewer",
+      "seed": 2624109539
+    },
+    {
+      "action": "accept one",
+      "seed": 160708056
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3823839682,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "6FFB97E7",
+          "offset": 24
+        },
+        {
+          "type": "replaceBlock",
+          "blockId": "79D25458",
+          "text": "Term clause term schedule warranty period warranty notice."
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "46B80D85",
+            "startOffset": 0,
+            "endOffset": 4,
+            "selectedTextHash": "hyjr3gl"
+          },
+          "replace": "updated"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 536778938,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "6FFB97E7",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "alignment": "center"
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2680474436,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "79D25458",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "reject one",
+      "seed": 784967426
+    },
+    {
+      "action": "accept one",
+      "seed": 153131756
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "replaceBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "insertTable",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "title": "probe 1762 cdd6bf5c0475bb27"
+}

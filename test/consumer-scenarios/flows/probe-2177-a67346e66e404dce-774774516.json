@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 774774516,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1974504659,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "412DDC7F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "insertTable",
+          "blockId": "5E88C024",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "accept all",
+      "seed": 263244940
+    },
+    {
+      "action": "story batch",
+      "seed": 2094810753,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "@11"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 703257019,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTableColumn",
+          "blockId": "@11",
+          "position": "after"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "commentOnRange",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "title": "probe 2177 a67346e66e404dce"
+}

@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 521103322,
+  "steps": [
+    {
+      "action": "add_comment",
+      "seed": 1465068677
+    },
+    {
+      "action": "story batch",
+      "seed": 2600857623,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "581FD868",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "581FD868",
+          "text": "Notice clause clause term agreement supplier supplier."
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "581FD868",
+          "properties": {
+            "styleId": null,
+            "numbering": {
+              "kind": "inherit"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "insertBeforeBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "deleteTable"
+  ],
+  "title": "probe 1356 865c9c708580cbcc"
+}

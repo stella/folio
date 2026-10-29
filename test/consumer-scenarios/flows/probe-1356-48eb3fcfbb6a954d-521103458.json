@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "suggested",
+  "seed": 521103458,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3424517020,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Clause payment buyer supplier notice.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3225117129,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@4"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Invoice warranty payment party schedule warranty.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "title": "probe 1356 48eb3fcfbb6a954d"
+}

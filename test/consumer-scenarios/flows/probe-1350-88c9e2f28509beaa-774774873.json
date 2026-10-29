@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 774774873,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1214786952,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1462975440,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "31617F9A",
+          "offset": 10
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "title": "probe 1350 88c9e2f28509beaa"
+}

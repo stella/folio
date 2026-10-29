@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 7977654,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1711661073,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "3CEFFC83",
+          "properties": {
+            "styleId": null
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "formatRange",
+    "insertBeforeBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTable"
+  ],
+  "title": "probe 1754 0108d4b3047b112f"
+}

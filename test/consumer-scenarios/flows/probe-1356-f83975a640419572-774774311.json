@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "suggested",
+  "seed": 774774212,
+  "steps": [
+    {
+      "action": "mistake",
+      "seed": 3358481789
+    },
+    {
+      "action": "new reviewer",
+      "seed": 2094810449
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3926376262,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Goods schedule delivery schedule payment party delivery.",
+          "alignment": "right"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Term period party period party clause period delivery.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "3CEFFC83",
+          "find": " today",
+          "replace": "the Customer",
+          "precondition": {
+            "blockTextHash": "hcc24a1"
+          }
+        }
+      ]
+    },
+    {
+      "action": "reject one",
+      "seed": 2974834607
+    },
+    {
+      "action": "story batch",
+      "seed": 3482223877,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@3"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Warranty notice agreement warranty.",
+          "numbering": {
+            "kind": "reference",
+            "numId": 1,
+            "ilvl": 0
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "insertTableRow"
+  ],
+  "title": "probe 1356 f83975a640419572"
+}

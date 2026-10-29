@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1107396413,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2115302965,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Second added clause."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2683197438,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "@0",
+          "find": "First",
+          "replace": "revised"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1419526098,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "7735D914"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1291643704,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "6FFB97E7",
+          "text": "Notice invoice supplier."
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "6FFB97E7"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "commentOnBlock",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "title": "probe 1356 87e26e01c5613def"
+}
