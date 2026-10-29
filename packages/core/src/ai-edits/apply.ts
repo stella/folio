@@ -3969,6 +3969,13 @@ const withRotatedAddedFinalBreaks = ({
     });
   };
   collectSupersededDeletedBreaks(tr.doc, 0);
+  // Consecutive insertions after one deleted break form a chain: the break
+  // moves on one paragraph per entry and ends on the last inserted paragraph,
+  // the only one accepting joins into the survivor. A paragraph the break
+  // only passes through keeps its own requested properties.
+  const passedThrough = new Set(
+    supersededDeletedBreaks.map(({ preceding }) => preceding),
+  );
   for (const {
     preceding,
     inserted,
@@ -4006,6 +4013,9 @@ const withRotatedAddedFinalBreaks = ({
     tr.setNodeAttribute(preceding, "pPrMark", precedingMark);
     tr.setNodeAttribute(inserted, "pPrMark", deletedMark);
     if (insertionRevisionId === null) continue;
+    // Not the chain's end: the break moves on past this paragraph, so the
+    // paragraph after it is the next insertion, not the survivor.
+    if (passedThrough.has(inserted)) continue;
     // The shifted deletion joins the insertion into the surviving paragraph
     // on accept. Its mark must carry the inserted paragraph's properties too;
     // otherwise the final carrier still renders like the old last survivor.
