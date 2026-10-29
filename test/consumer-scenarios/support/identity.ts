@@ -95,6 +95,29 @@ export const projectContentPair = <
   return { left, right, ...identity };
 };
 
+/** Markdown's default image path names an image after its paragraph: `./images/{paraId}-img{n}.{ext}`. */
+const IMAGE_PATH_PREFIX = "./images/";
+const IMAGE_PATH_INFIX = "-img";
+
+/**
+ * Markdown carries a paragraph id where its default image path names it, so a
+ * positional id there compares by position just as the paragraph's own row
+ * does. Authored ids, the image index and the extension stay strict.
+ */
+export const projectMarkdownIdentities = (
+  markdown: string,
+  aliases: ReadonlyMap<string, string>,
+): string => {
+  let projected = markdown;
+  for (const [id, positional] of aliases) {
+    projected = projected.replaceAll(
+      `${IMAGE_PATH_PREFIX}${id}${IMAGE_PATH_INFIX}`,
+      `${IMAGE_PATH_PREFIX}${positional}${IMAGE_PATH_INFIX}`,
+    );
+  }
+  return projected;
+};
+
 /** The bridge snapshot exposes block ids in blocks, anchor keys and anchor.id. */
 export const projectSnapshotIdentities = (
   snapshot: Snapshot,

@@ -66,6 +66,7 @@ import {
 } from "./flow-file.ts";
 import {
   assertReadersAgree,
+  assertReopenedShows,
   assertStoryInventory,
   saveAndReopen,
   visibleState,
@@ -646,11 +647,12 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
       if (result.type !== "selective") return RAN;
       const reopened = await openReviewer(new Uint8Array(result.buffer));
       if (saveOptions(flow).compare !== false) {
-        assertSameState(
+        assertReopenedShows({
+          reviewer: flow.reviewer,
           reopened,
-          flow.reviewer,
-          `step ${flow.log.length - 1}: selective save`,
-        );
+          expected: visibleState(flow.reviewer),
+          context: `step ${flow.log.length - 1}: selective save`,
+        });
       }
       return RAN;
     }
@@ -658,20 +660,6 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
 };
 
 export const SECOND_REVIEWER = "Second Reviewer";
-
-const assertSameState = (
-  reopened: Reviewer,
-  reviewer: Reviewer,
-  context: string,
-): void => {
-  const got = JSON.stringify(visibleState(reopened));
-  const want = JSON.stringify(visibleState(reviewer));
-  if (got !== want) {
-    throw new Error(
-      `${context}: the reopened package shows something else than the reviewer that saved it\n  expected ${want}\n  got      ${got}`,
-    );
-  }
-};
 
 /**
  * `"suggested"` edits stay out of the package until accepted, so while any
