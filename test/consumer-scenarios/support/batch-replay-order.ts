@@ -100,7 +100,7 @@ const isOperationType = (
 ): type is FolioDocumentOperation["type"] =>
   Object.hasOwn(PARAGRAPH_PROPERTY_REPLAY, type);
 
-const sameContainerRows = (left: Row, right: Row | undefined): boolean =>
+const sameContainerRows = (left: Row, right: Row | undefined): right is Row =>
   right !== undefined &&
   `${left.table?.tableIndex}:${left.table?.rowIndex}:${left.table?.cellIndex}` ===
     `${right.table?.tableIndex}:${right.table?.rowIndex}:${right.table?.cellIndex}`;
@@ -140,6 +140,22 @@ export const sequentialGroups = ({
     rows.push(row);
     containers.set(key, rows);
   }
+  /**
+   * The paragraph whose break a deleted container-final paragraph retires:
+   * the nearest earlier one of its container the batch keeps, with only
+   * paragraphs the batch deletes between them. A table between them (rows of
+   * another container, `preRows` being in document order) leaves none, and
+   * the final paragraph stays emptied, as the engine's
+   * `finalParagraphPredecessor` has it.
+   */
+  const breakCarrierOf = (last: Row): Row | undefined => {
+    for (let at = preRows.indexOf(last) - 1; at >= 0; at -= 1) {
+      const row = preRows.at(at);
+      if (!sameContainerRows(last, row)) return undefined;
+      if (!deleted.has(row.id)) return row;
+    }
+    return undefined;
+  };
   const retiringCarriers = new Set<string>();
   const finalBlocks = new Set<string>();
   const uncarriedFinals = new Set<string>();
@@ -153,7 +169,7 @@ export const sequentialGroups = ({
         blockIdOf(operation) === last.id,
     );
     if (appended || !deleted.has(last.id)) continue;
-    const carrier = rows.findLast((row) => !deleted.has(row.id));
+    const carrier = breakCarrierOf(last);
     if (carrier) retiringCarriers.add(carrier.id);
     else uncarriedFinals.add(last.id);
   }
