@@ -4568,8 +4568,18 @@ function convertRunContent({
       const shp = content.shape;
       if (shp.textBody) {
         const anchorId = textBoxAnchors?.get(shp);
+        // The anchor keeps the run's own `w:rPr` beside its marks: the marks
+        // are rendered in the paragraph's style cascade, and a restyle of the
+        // paragraph does not re-render a zero-width anchor.
         return anchorId
-          ? [schema.node("textBoxAnchor", { anchorId }).mark(marks)]
+          ? [
+              schema
+                .node("textBoxAnchor", {
+                  anchorId,
+                  _docxRunFormatting: { ...authoredFormatting },
+                })
+                .mark(marks),
+            ]
           : [];
       }
       return [

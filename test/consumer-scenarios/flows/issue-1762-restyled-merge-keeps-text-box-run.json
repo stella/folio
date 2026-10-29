@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 774775189,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 4294871821,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "7735D914",
+          "separator": " ",
+          "mergedParagraphProperties": { "styleId": "Heading2" }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "title": "#1762, reported seed 774775189: a tracked merge restyling the paragraph that holds a text box rejects to the same document after save"
+}

@@ -30,6 +30,7 @@ export const TextBoxAnchorExtension: (
     selectable: false,
     attrs: {
       anchorId: {},
+      _docxRunFormatting: { default: null },
     },
     parseDOM: [
       {
