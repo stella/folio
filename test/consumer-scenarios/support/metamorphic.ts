@@ -598,21 +598,130 @@ const appliedIds = (result: Result): Set<string> =>
 const types = (operations: readonly AnyOperation[]): string =>
   operations.map((operation) => operation.type).join(", ");
 
-/** What a batch left, as the relation compares it in `mode`. */
-const outcomeView = async (reviewer: Reviewer, mode: Mode, story: Story) => {
+/** The list instances (`w:numId`) a row states or resolves to. */
+const listIdsOf = (row: Row): number[] => [
+  ...(row.listReference ? [row.listReference.numId] : []),
+  ...(row.statedNumbering?.kind === "reference"
+    ? [row.statedNumbering.numId]
+    : []),
+];
+
+/** A started list's name: negative, so it never reads as a `w:numId`. */
+const startedListName = (ordinal: number): number => -(ordinal + 1);
+
+/**
+ * `rows` with every list the edits started named by where it first appears
+ * rather than by its `w:numId`. A batch mints against the numbering it
+ * starts from; one at a time, each operation mints against what the ones
+ * before it left, where a list whose last paragraph went is gone and its id
+ * free again. The id is the allocator's choice; which paragraphs share a
+ * list, and how it renders, is the outcome. An id a block from before the
+ * edits still states as it did then is the document's own and stays.
+ */
+const nameStartedLists = (
+  rows: readonly Row[],
+  preRows: readonly Row[],
+): Row[] => {
+  const before = new Map(preRows.map((row) => [row.id, listIdsOf(row)]));
+  const kept = new Set(
+    rows.flatMap((row) =>
+      listIdsOf(row).filter((numId) => before.get(row.id)?.includes(numId)),
+    ),
+  );
+  const names = new Map<number, number>();
+  const nameOf = (numId: number): number => {
+    if (kept.has(numId)) return numId;
+    const known = names.get(numId);
+    if (known !== undefined) return known;
+    const name = startedListName(names.size);
+    names.set(numId, name);
+    return name;
+  };
+  return rows.map((row) => ({
+    ...row,
+    ...(row.listReference && {
+      listReference: {
+        ...row.listReference,
+        numId: nameOf(row.listReference.numId),
+      },
+    }),
+    ...(row.statedNumbering?.kind === "reference" && {
+      statedNumbering: {
+        ...row.statedNumbering,
+        numId: nameOf(row.statedNumbering.numId),
+      },
+    }),
+  }));
+};
+
+type OutcomeViewOptions = {
+  reviewer: Reviewer;
+  mode: Mode;
+  story: Story;
+  /** The rows before the batch, whose list ids stay the document's own. */
+  preRows: readonly Row[];
+};
+
+/** What a batch left, as `batchSequential` compares it in `mode`: started lists by name. */
+const outcomeView = async ({
+  reviewer,
+  mode,
+  story,
+  preRows,
+}: OutcomeViewOptions) => {
+  const view = (state: {
+    rows: readonly Row[];
+    comments: readonly Comment[];
+  }) =>
+    settledView({
+      rows: nameStartedLists(state.rows, preRows),
+      comments: state.comments,
+    });
   if (mode === "suggested")
-    return settledView({
+    return view({
       rows: rowsOf(reviewer, story),
       comments: commentsOf(reviewer),
     });
   const bytes = await save(reviewer);
-  if (mode !== "direct") return resolvedView(bytes, "accept", story);
+  if (mode !== "direct")
+    return view(await resolvedState(bytes, "accept", story));
   const reopened = await openReviewer(bytes);
-  return settledView({
+  return view({
     rows: rowsOf(reopened, story),
     comments: commentsOf(reopened),
   });
 };
+
+/** The list instances `reviewer`'s document defines, those only its paragraphs define included. */
+const definedListIds = (reviewer: Reviewer): ReadonlySet<number> =>
+  new Set(reviewer.readNumberingDefinitions().map(({ numId }) => numId));
+
+/** The list instance a numbering request names, if it names one. */
+const referencedListIds = (numbering: unknown): number[] =>
+  typeof numbering === "object" &&
+  numbering !== null &&
+  "kind" in numbering &&
+  numbering.kind === "reference" &&
+  "numId" in numbering &&
+  typeof numbering.numId === "number"
+    ? [numbering.numId]
+    : [];
+
+const propertiesListIds = (properties: unknown): number[] =>
+  typeof properties === "object" &&
+  properties !== null &&
+  "numbering" in properties
+    ? referencedListIds(properties.numbering)
+    : [];
+
+/** Every list instance an operation names by id. */
+const statedListIds = (operation: AnyOperation): number[] => [
+  ...referencedListIds(operation["numbering"]),
+  ...propertiesListIds(operation["properties"]),
+  ...propertiesListIds(operation["firstParagraphProperties"]),
+  ...propertiesListIds(operation["secondParagraphProperties"]),
+  ...propertiesListIds(operation["mergedParagraphProperties"]),
+];
 
 // ---------------------------------------------------------------------------
 // Direct ≡ tracked, reject-all ≡ original: replays of a flow's batches
@@ -1040,7 +1149,12 @@ export const startRelations = async ({
     );
     const batchOutcome =
       sequential && applied.length >= 2
-        ? await outcomeView(copy, batchMode, story)
+        ? await outcomeView({
+            reviewer: copy,
+            mode: batchMode,
+            story,
+            preRows,
+          })
         : null;
 
     if (on("undo")) {
@@ -1071,6 +1185,7 @@ export const startRelations = async ({
       return;
     }
     const oneByOne = cloneReviewer(pre);
+    const listsBefore = definedListIds(pre);
     const problems: string[] = [];
     for (const group of sequentialGroups({
       applied,
@@ -1098,6 +1213,24 @@ export const startRelations = async ({
         );
         return;
       }
+      // A list only paragraphs define goes with its last paragraph. The batch
+      // still names it after an earlier operation removed that paragraph (it
+      // resolves against the document as read), but no single operation can:
+      // the instance is gone by the time it is sent.
+      const listsNow = definedListIds(oneByOne);
+      if (
+        group.some((operation) =>
+          statedListIds(operation).some(
+            (numId) => listsBefore.has(numId) && !listsNow.has(numId),
+          ),
+        )
+      ) {
+        skipped(
+          "batchSequential",
+          "an operation names a list an earlier operation left without paragraphs",
+        );
+        return;
+      }
       const alone = applyToCopy(
         oneByOne,
         batchOf(batch, batchMode, restated as AnyOperation[]),
@@ -1107,7 +1240,12 @@ export const startRelations = async ({
           problems.push(`${id} refused one at a time: ${reason}`);
       }
     }
-    const sequentialOutcome = await outcomeView(oneByOne, batchMode, story);
+    const sequentialOutcome = await outcomeView({
+      reviewer: oneByOne,
+      mode: batchMode,
+      story,
+      preRows,
+    });
     if (problems.length === 0) {
       problems.push(
         ...differences(batchOutcome, sequentialOutcome).map(

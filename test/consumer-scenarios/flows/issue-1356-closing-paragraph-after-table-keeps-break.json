@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1107396413,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2115302965,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Second added clause."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2683197438,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "@0",
+          "find": "First",
+          "replace": "revised"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1419526098,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "7735D914"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1291643704,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "6FFB97E7",
+          "text": "Notice invoice supplier."
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "6FFB97E7"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "commentOnBlock",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "title": "PINNED #1356, reported seed 1107396413: a closing paragraph deleted after a table stays emptied when the batch inserts before it"
+}
