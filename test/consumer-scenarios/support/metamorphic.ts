@@ -651,7 +651,34 @@ const contractBatch = (
     operations,
   }) as unknown as Batch;
 
-/** What an operation names reads as in `reviewer`: its block, and the next one a merge pulls in. */
+/** Operations whose payload is laid over the rows or cells of the anchor's table. */
+const TABLE_INDEXED_OPERATIONS: ReadonlySet<string> = new Set([
+  "insertTableRow",
+  "insertTableColumn",
+]);
+
+/**
+ * The cells of `block`'s table as the reader lists them. A row or column
+ * pending deletion still counts: by contract its cells take their place in
+ * a row or column payload, so two replays whose tables list different cells
+ * lay the same payload over different cells.
+ */
+const tableShape = (blocks: readonly Row[], block: Row | undefined): string => {
+  const tableIndex = block?.table?.tableIndex;
+  if (tableIndex === undefined) return "";
+  return blocks
+    .flatMap(({ table }) =>
+      table?.tableIndex === tableIndex
+        ? [`${table.rowIndex}:${table.cellIndex}`]
+        : [],
+    )
+    .join(",");
+};
+
+/**
+ * What an operation names reads as in `reviewer`: its block, the next one a
+ * merge pulls in, and the table a row or column payload is laid over.
+ */
 const targetText = (
   reviewer: Reviewer,
   story: Story,
@@ -664,7 +691,10 @@ const targetText = (
     operation.type === "mergeBlockWithNext"
       ? `\u0000${blocks[index + 1]?.text}`
       : "";
-  return `${blocks[index]?.text}${next}`;
+  const shape = TABLE_INDEXED_OPERATIONS.has(operation.type)
+    ? `\u0000${tableShape(blocks, blocks[index])}`
+    : "";
+  return `${blocks[index]?.text}${next}${shape}`;
 };
 
 /**
