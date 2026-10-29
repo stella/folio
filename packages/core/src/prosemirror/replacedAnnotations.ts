@@ -309,14 +309,31 @@ export const hasReplacedAnnotations = ({
   carried.length > 0 || leading.length > 0 || trailing.length > 0;
 
 /**
- * The annotations carried by `[from, to)`. An anchor counts only when the
- * range covers it whole: a partially covered atom is not deleted by the
- * replacement either.
+ * Which content of a replaced span lends its marks to the replacement.
+ * `asWritten`: every leaf. `asAccepted`: the leaves an earlier edit has not
+ * already deleted. A pending deletion's text is gone once accepted and is
+ * not what a direct edit replaces, so its comments and links stay on it.
  */
-export const surveyReplacedAnnotations = (
+type ReplacedContent = "asWritten" | "asAccepted";
+
+const lendsMarks = (node: PMNode, content: ReplacedContent): boolean => {
+  switch (content) {
+    case "asWritten":
+      return true;
+    case "asAccepted":
+      return !node.marks.some(({ type }) => type.name === "deletion");
+    default: {
+      const unhandled: never = content;
+      throw new Error(`Unhandled replaced content ${String(unhandled)}`);
+    }
+  }
+};
+
+type SurveyOptions = { from: number; to: number; content: ReplacedContent };
+
+const surveyAnnotations = (
   doc: PMNode,
-  from: number,
-  to: number,
+  { from, to, content }: SurveyOptions,
 ): ReplacedAnnotations => {
   if (to <= from) {
     return NOTHING_REPLACED;
@@ -330,7 +347,7 @@ export const surveyReplacedAnnotations = (
     if (!node.isInline) {
       return true;
     }
-    for (const mark of node.marks) {
+    for (const mark of lendsMarks(node, content) ? node.marks : []) {
       if (isCarried(mark) && !alreadyCarried(mark, carried)) {
         carried.push(mark);
       }
@@ -349,6 +366,30 @@ export const surveyReplacedAnnotations = (
 
   return { carried, leading, trailing };
 };
+
+/**
+ * The annotations carried by `[from, to)`. An anchor counts only when the
+ * range covers it whole: a partially covered atom is not deleted by the
+ * replacement either.
+ */
+export const surveyReplacedAnnotations = (
+  doc: PMNode,
+  from: number,
+  to: number,
+): ReplacedAnnotations =>
+  surveyAnnotations(doc, { from, to, content: "asWritten" });
+
+/**
+ * {@link surveyReplacedAnnotations} over the span as it reads once accepted:
+ * what a replacement of it carries, which a direct edit of the same text
+ * carries too.
+ */
+export const surveyAcceptedReplacedAnnotations = (
+  doc: PMNode,
+  from: number,
+  to: number,
+): ReplacedAnnotations =>
+  surveyAnnotations(doc, { from, to, content: "asAccepted" });
 
 /**
  * Whether the span already contributed this mark, or one the mark would evict.

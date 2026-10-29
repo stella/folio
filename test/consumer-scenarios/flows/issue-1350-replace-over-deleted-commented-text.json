@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 774774902,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2918470400,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "483CD5EB",
+          "find": "two",
+          "replace": "",
+          "precondition": {
+            "blockTextHash": "hhe7sgr"
+          }
+        },
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "483CD5EB",
+            "startOffset": 10,
+            "endOffset": 13,
+            "selectedTextHash": "h377j8f"
+          },
+          "comment": {
+            "text": "Term term period goods party."
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3726977061,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "483CD5EB",
+          "text": "Written period written payment warranty delivery supplier term."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "commentOnRange",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "title": "PINNED #1350, reported seed 774774902: replacing a block carries no comment from text an earlier edit deleted, directly as tracked"
+}
