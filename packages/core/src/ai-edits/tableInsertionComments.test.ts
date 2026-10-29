@@ -1,11 +1,11 @@
 /**
- * A row or column added to a table a comment runs across lies inside that
- * comment, even when the same batch deletes the paragraph that held the
+ * A row, column, paragraph or table added where a comment runs lies inside
+ * that comment, even when the same batch deletes the paragraph that held the
  * comment's end. Operations run from the end of the document backwards, so
  * directly the deletion ran first and moved the end into the table's last
- * cell: the new row after it, and the new column's last cell, fell outside.
- * Tracked, the deleted paragraph keeps the end until accepted, and the new
- * cells stayed inside.
+ * cell: what the insertion added after it fell outside. Tracked, the deleted
+ * paragraph keeps the end until accepted, and the insertion stayed inside.
+ * Every insertion takes the comments its place ran in as the batch read it.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -46,8 +46,10 @@ const buildDocument = (): Document => ({
 });
 
 type Insert =
-  | { type: "insertTableRow"; cellTexts: string[] }
-  | { type: "insertTableColumn"; cellTexts: string[] };
+  | { type: "insertTableRow"; cellTexts: string[]; position: "after" }
+  | { type: "insertTableColumn"; cellTexts: string[]; position: "after" }
+  | { type: "insertAfterBlock"; text: string }
+  | { type: "insertTable"; rows: string[][]; position: "after" };
 
 const anchoredAfterAccept = async (
   mode: (typeof MODES)[number],
@@ -75,7 +77,7 @@ const anchoredAfterAccept = async (
           type: "deleteBlock",
           blockId: idOf("Prices exclude taxes."),
         },
-        { id: "insert", ...insert, blockId: idOf("20"), position: "after" },
+        { id: "insert", ...insert, blockId: idOf("20") },
       ],
     },
     { undefinedReferences: "refuse" },
@@ -96,6 +98,7 @@ describe("a table insertion inside a comment whose end paragraph the batch delet
         await anchoredAfterAccept(mode, {
           type: "insertTableRow",
           cellTexts: ["Widget", "10"],
+          position: "after",
         }),
       ).toBe("The schedule below is binding.ItemPriceGadget20Widget10");
     },
@@ -108,8 +111,36 @@ describe("a table insertion inside a comment whose end paragraph the batch delet
         await anchoredAfterAccept(mode, {
           type: "insertTableColumn",
           cellTexts: ["Tax", "5"],
+          position: "after",
         }),
       ).toBe("The schedule below is binding.ItemPriceTaxGadget205");
+    },
+  );
+
+  test.each(MODES)(
+    "a paragraph added after the table stays inside the comment, %s",
+    async (mode) => {
+      expect(
+        await anchoredAfterAccept(mode, {
+          type: "insertAfterBlock",
+          text: "Taxes are due on delivery.",
+        }),
+      ).toBe(
+        "The schedule below is binding.ItemPriceGadget20Taxes are due on delivery.",
+      );
+    },
+  );
+
+  test.each(MODES)(
+    "a table added after the table stays inside the comment, %s",
+    async (mode) => {
+      expect(
+        await anchoredAfterAccept(mode, {
+          type: "insertTable",
+          rows: [["Tax", "5"]],
+          position: "after",
+        }),
+      ).toBe("The schedule below is binding.ItemPriceGadget20Tax5");
     },
   );
 });
