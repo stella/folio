@@ -6721,6 +6721,11 @@ const applyFolioAIEditOperationsInternal = ({
             tr = tr.delete(item.from, item.to);
           }
           tr = tr.split(item.from);
+          // The break the split writes is new and untracked. A pending
+          // revision on the paragraph's mark stays with that mark, which now
+          // ends the second half; the copy ProseMirror gives the first half
+          // would resolve it twice.
+          tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", null);
           if (splitsFromItsTextBoxes) {
             gatherTextBoxesAfterParagraph(tr, item.blockFrom);
           }

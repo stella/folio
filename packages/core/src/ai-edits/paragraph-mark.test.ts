@@ -127,6 +127,55 @@ describe("splitBlock", () => {
     expect(final).toEqual(["The buyer shall", "pay the seller."]);
   });
 
+  test("a direct split of a paragraph whose mark is pending deletion keeps its new break", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildParagraphsDocx([
+        "The buyer shall pay the seller.",
+        "Delivery follows.",
+      ]),
+      { author: "compare" },
+    );
+    const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+    const merge = reviewer.applyOperations(
+      [{ id: "merge", type: "mergeBlockWithNext", blockId }],
+      {
+        undefinedReferences: "refuse",
+        mode: "tracked-changes",
+        snapshot: reviewer.snapshot(),
+        revisionStamp: STAMP,
+      },
+    );
+    expect(merge.skipped).toEqual([]);
+    const split = reviewer.applyOperations(
+      [
+        {
+          id: "split",
+          type: "splitBlock",
+          blockId,
+          offset: 15,
+          separator: " ",
+        },
+      ],
+      {
+        undefinedReferences: "refuse",
+        mode: "direct",
+        snapshot: reviewer.snapshot(),
+        revisionStamp: STAMP,
+      },
+    );
+    expect(split.skipped).toEqual([]);
+    const buffer = await reviewer.toBuffer();
+
+    // Accepting joins only the paragraph whose mark was pending deletion.
+    const final = await textsOf(buffer, "final");
+    expect(final).toHaveLength(2);
+    expect(final[0]).toBe("The buyer shall");
+    expect((await textsOf(buffer, "original")).slice(0, 2)).toEqual([
+      "The buyer shall",
+      "pay the seller.",
+    ]);
+  });
+
   test("refuses a separator that is not there any more", async () => {
     const { skipped } = await run({
       paragraphs: ["The buyer shall pay the seller."],
