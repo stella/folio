@@ -35,6 +35,8 @@ export const SCHEMA_VIOLATION_KINDS = {
   outOfOrderChild: "out-of-order-child",
   /** The part's root element is not a global element in the graph. */
   unknownRoot: "unknown-root",
+  /** The reader refused the part (nesting past its limit, broken markup). */
+  unreadablePart: "unreadable-part",
 } as const;
 
 export type SchemaViolationKind =
@@ -750,10 +752,17 @@ export const validateOoxmlPart = ({
   limit = DEFAULT_VIOLATION_LIMIT,
 }: ValidatePartOptions): SchemaViolation[] => {
   const parsed = readXml(xml, { conformance: "tolerant" });
-  // Well-formedness is the corpus classifier's verdict (`malformed-document-xml`);
-  // a part that never parsed has no schema signature to report here.
+  // A part the reader refuses has no schema to check, but it is still a
+  // finding: a save that leaves a part unreadable must not pass as valid.
   if (parsed.status === "rejected") {
-    return [];
+    return [
+      {
+        kind: SCHEMA_VIOLATION_KINDS.unreadablePart,
+        path: "",
+        name: "",
+        detail: parsed.reason,
+      },
+    ];
   }
   const index = indexFor(graph);
   const root = elementsOf(parsed.value.elements ?? []).at(0);
