@@ -377,10 +377,19 @@ describe("required shared toolchain policy", () => {
         path.join(directory, ".github/dependabot.yml"),
         readFileSync(path.join(repo, ".github/dependabot.yml"), "utf8"),
       );
+      // The repository's own Dependabot ignores, which the copied
+      // configuration carries; nothing else of the manifest applies here.
+      const { dependabotIgnores } = JSON.parse(
+        readFileSync(path.join(repo, "stll-toolchain.json"), "utf8"),
+      );
+      writeFileSync(
+        path.join(directory, "stll-toolchain.json"),
+        `${JSON.stringify({ dependabotIgnores }, null, 2)}\n`,
+      );
       writeWorkflow(action.sha);
       for (const args of [
         ["init", "--quiet"],
-        ["add", ".github"],
+        ["add", ".github", "stll-toolchain.json"],
       ]) {
         expect(
           Bun.spawnSync(["git", ...args], { cwd: directory }).exitCode,

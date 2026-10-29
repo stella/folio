@@ -32,5 +32,17 @@
     "tools": {
       "wasm-bindgen-cli": "0.2.129"
     }
-  }
+  },
+  "dependabotIgnores": [
+    {
+      "ecosystem": "bun",
+      "dependency": "@types/vscode",
+      "updateTypes": [
+        "version-update:semver-major",
+        "version-update:semver-minor",
+        "version-update:semver-patch"
+      ],
+      "reason": "The VS Code extension's engine floor: plugins/vscode/scripts/check-engine-floor.ts requires engines.vscode to equal ^<@types/vscode>, so raising it drops older editors and is a deliberate change."
+    }
+  ]
 }
