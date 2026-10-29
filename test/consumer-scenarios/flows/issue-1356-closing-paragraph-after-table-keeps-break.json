@@ -19,19 +19,6 @@
       ]
     },
     {
-      "action": "story batch",
-      "seed": 2683197438,
-      "atomic": true,
-      "operations": [
-        {
-          "type": "replaceInBlock",
-          "blockId": "@0",
-          "find": "First",
-          "replace": "revised"
-        }
-      ]
-    },
-    {
       "action": "suggest_changes",
       "seed": 1419526098,
       "operations": [
