@@ -119,6 +119,7 @@ import {
   joinCommentStretches,
   NON_INCLUSIVE_MARK_DISPOSITION,
   placeTrackedInsertion,
+  surveyAcceptedReplacedAnnotations,
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
 import {
@@ -8189,7 +8190,7 @@ const directReplacementMarks = ({
       }
       marks = addCarriedMarks(
         inheritedReplacementMarks(doc, first.from, first.to),
-        surveyReplacedAnnotations(doc, first.from, last.to).carried,
+        surveyAcceptedReplacedAnnotations(doc, first.from, last.to).carried,
       );
     }
     // Direct writes onto a touched stretch after clearing it, and a pure
@@ -8649,7 +8650,7 @@ const applyMinimalTrackedReplacement = ({
       removedFrom = first.from;
       marks = addCarriedMarks(
         inheritedReplacementMarks(doc, styleSource.from, styleSource.to),
-        surveyReplacedAnnotations(doc, first.from, last.to).carried,
+        surveyAcceptedReplacedAnnotations(doc, first.from, last.to).carried,
       );
       for (const piece of change.pieces) {
         addTrackedDeletionMark({
