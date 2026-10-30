@@ -343,3 +343,41 @@ describe("a pending join from an empty paragraph", () => {
     });
   }
 });
+
+describe("a block after a pending join whose paragraph the batch splits", () => {
+  test("follows the half the join runs into, in a batch as one at a time", async () => {
+    const read = async (batched: boolean) => {
+      const reviewer = await open();
+      const [heading, item] = reviewer.snapshot().blocks;
+      if (!heading || !item) throw new Error("Missing fixture");
+      reviewer.applyOperations(
+        [
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: heading.id,
+            separator: " ",
+          },
+        ],
+        { mode: "tracked-changes" },
+      );
+      // One at a time, the split runs first too: it edits further into the document.
+      const operations: FolioDocumentOperation[] = [
+        { id: "split", type: "splitBlock", blockId: item.id, offset: 8 },
+        insertions["a table after it"](heading.id),
+      ];
+      for (const batch of batched
+        ? [operations]
+        : operations.map((operation) => [operation])) {
+        expect(
+          reviewer.applyOperations(batch, { mode: "tracked-changes" }).skipped,
+        ).toEqual([]);
+      }
+      reviewer.acceptAll();
+      return reviewer.snapshot().blocks.map(({ text }) => text);
+    };
+    const sequential = await read(false);
+    expect(sequential.slice(0, 2)).toEqual(["Terms Numbered", "Term"]);
+    expect(await read(true)).toEqual(sequential);
+  });
+});
