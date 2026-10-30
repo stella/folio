@@ -55,6 +55,8 @@ export type BatchClaim =
        * any other does — see `followedByInsertion`.
        */
       keepsParagraph: boolean;
+      /** The paragraph ends its container, before anything the batch adds. */
+      endsContainer: boolean;
     }
   /**
    * Joins `block` with the block starting at `next`, where `block` ends.
@@ -111,7 +113,7 @@ export type BatchClaim =
 type BlockRole =
   | { kind: InlineClaim["type"]; claim: InlineClaim }
   | { kind: "rewriteBlock" | "paragraphProperties" }
-  | { kind: "deleteBlock"; keepsParagraph: boolean }
+  | { kind: "deleteBlock"; keepsParagraph: boolean; endsContainer: boolean }
   /** The block a merge ends (`own`), or the one it pulls in (`next`). */
   | {
       kind: "mergeOwn" | "mergeNext";
@@ -139,6 +141,7 @@ const blockRolesOf = (
           role: {
             kind: "deleteBlock",
             keepsParagraph: claim.keepsParagraph,
+            endsContainer: claim.endsContainer,
           },
         },
       ];
@@ -223,9 +226,14 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
   switch (left.kind) {
     case "deleteBlock":
       switch (right.kind) {
-        // An emptied paragraph that stays is still a paragraph to format.
+        // A property edit of the block runs before its deletion
+        // (`orderAddressingBeforeRemoval`) and formats a paragraph that then
+        // goes. A container's last paragraph keeps its own rules: one that
+        // stays emptied is still a paragraph to format; one whose break the
+        // deletion retires onto the paragraph before takes that one's
+        // properties, which a format of it would contradict.
         case "paragraphProperties":
-          return !left.keepsParagraph;
+          return left.endsContainer && !left.keepsParagraph;
         // A merge into the deleted block joins across it, in either mode, as
         // one at a time: tracked, across its deleted mark; applied directly,
         // into whatever follows once it is gone. Where nothing does (the

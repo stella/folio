@@ -2283,6 +2283,7 @@ const batchClaimOf = ({
         block,
         end: item.blockTo,
         keepsParagraph,
+        endsContainer: endsItsContainer,
       };
     }
     case "insertAfterBlock":
@@ -2770,21 +2771,10 @@ const readNow = (
     from = mapping.map(item.from, 1);
     to = Math.max(from, mapping.map(item.to, -1));
   }
-  // The node as it stands, when it is still the block the item named.
-  const node = tr.doc.nodeAt(blockFrom);
-  const paraId: unknown = item.blockNode.attrs["paraId"];
-  const same =
-    node?.type === item.blockNode.type &&
-    (typeof paraId !== "string" || node.attrs["paraId"] === paraId);
-  return {
-    ...item,
-    from,
-    to,
-    blockFrom,
-    blockTo,
-    blockNode: node && same ? node : item.blockNode,
-    readAt: steps,
-  };
+  // `blockNode` stays the block as the batch read it: an operation reads the
+  // content it was resolved against, not what an earlier one of the batch
+  // added to the block (a merge's separator), as one at a time it would.
+  return { ...item, from, to, blockFrom, blockTo, readAt: steps };
 };
 
 type PendingJoinSurvivorOptions = {
@@ -5069,17 +5059,19 @@ const applyFolioAIEditOperationsInternal = ({
     const continuesMergeChain =
       operation.type === "mergeBlockWithNext" &&
       removedBy?.type === "mergeBlockWithNext";
-    // A property edit of the paragraph a merge joins away runs before the
-    // merge (`orderAddressingBeforeRemoval`), whichever the batch names
-    // first, and the merge then gives the merged paragraph the first one's
-    // properties in either mode.
-    const formatsBeforeMerge =
+    // A property edit of a paragraph a merge joins away or a deletion takes
+    // out runs before it (`orderAddressingBeforeRemoval`), whichever the
+    // batch names first: the merge then gives the merged paragraph the first
+    // one's properties, and the deletion removes the formatted paragraph, in
+    // either mode. A container's last paragraph is left to the batch claims.
+    const formatsBeforeRemoval =
       operation.type === "setBlockParagraphProperties" &&
-      removedBy?.type === "mergeBlockWithNext";
+      (removedBy?.type === "mergeBlockWithNext" ||
+        removedBy?.type === "deleteBlock");
     if (
       removedBy !== undefined &&
       !continuesMergeChain &&
-      !formatsBeforeMerge
+      !formatsBeforeRemoval
     ) {
       skipped.push({
         id: operation.id,
@@ -6717,8 +6709,12 @@ const applyFolioAIEditOperationsInternal = ({
         const carriedComments = tableAfterDeletedSplit.get(
           item.batchBlockFrom ?? item.blockFrom,
         );
+        // Only once the deletion has retracted the split anchor; an
+        // insertion that addresses it runs first and finds it standing.
         const usesRetractedSplit =
-          carriedComments !== undefined && item.from === item.blockTo;
+          carriedComments !== undefined &&
+          item.from === item.blockTo &&
+          liveBlockResult(tr, item, 1).deletedAcross;
         let at = usesRetractedSplit
           ? sinceRead(tr, item).map(item.blockFrom, -1)
           : item.from;
