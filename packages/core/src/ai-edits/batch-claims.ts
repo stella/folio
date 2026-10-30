@@ -264,17 +264,15 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
           return true;
       }
     case "mergeNext":
-      // Applied directly, the join keeps the first paragraph's properties
-      // and discards the joined one's: setting them edits a paragraph that
-      // goes away. Tracked, the joined paragraph's mark is the one that
-      // survives acceptance, so its properties are the merged paragraph's.
-      // Its text, its own break and its own merge (a chain) survive either way.
-      // Tracked, a merge that sets the merged paragraph's properties sets the
-      // joined paragraph's, so another property edit of it conflicts too.
-      return (
-        right.kind === "paragraphProperties" &&
-        (left.joinsNow || left.setsProperties)
-      );
+      // A property edit of the joined paragraph runs before the merge that
+      // takes it away (`orderAddressingBeforeRemoval`), and the merge then
+      // gives the merged paragraph the first one's properties in either
+      // mode: applied directly the join keeps them, tracked the joined
+      // paragraph takes them with the removed break. Its text, its own break
+      // and its own merge (a chain) survive either way. A merge that sets the
+      // merged paragraph's properties is a second property edit of it, and
+      // conflicts.
+      return right.kind === "paragraphProperties" && left.setsProperties;
     case "paragraphProperties":
       // Two property edits of one paragraph run from the end backwards, so the
       // earlier one would land last and override the later one; tracked, the

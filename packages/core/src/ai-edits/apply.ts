@@ -9,7 +9,7 @@ import {
 } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
-import { canSplit } from "prosemirror-transform";
+import { canSplit, type Mapping } from "prosemirror-transform";
 
 import {
   type BatchBlockAccess,
@@ -566,6 +566,14 @@ type ResolvedOperationFields = {
    * ordering when applied bottom-up.
    */
   originalIndex: number;
+  /**
+   * How many steps of the batch's transaction `from`, `to`, `blockFrom` and
+   * `blockTo` already account for: 0 as resolved, against the document the
+   * batch read. Nested table coordinates stay in that document's positions.
+   */
+  readAt?: number;
+  /** `blockFrom` in the document the batch read, for lookups made there. */
+  batchBlockFrom?: number;
 };
 
 const REPLACE_BLOCK_IMPACT = {
@@ -1108,8 +1116,9 @@ const withoutRevisionsOnZeroWidthAnchors = (
 const undeletedContentAtomRanges = (
   tr: Transaction,
   blockFrom: number,
+  readAt: number,
 ): { from: number; to: number }[] => {
-  const position = tr.mapping.map(blockFrom);
+  const position = tr.mapping.slice(readAt).map(blockFrom);
   const block = tr.doc.nodeAt(position);
   if (!block?.isTextblock) {
     return [];
@@ -1432,7 +1441,7 @@ const applyReplaceBlockStyleId = ({
     return { tr, revisionId: null, revisionIds: [] };
   }
 
-  const blockPosition = tr.mapping.map(item.blockFrom, -1);
+  const blockPosition = sinceRead(tr, item).map(item.blockFrom, -1);
   const block = tr.doc.nodeAt(blockPosition);
   if (!block) {
     return { tr, revisionId: null, revisionIds: [] };
@@ -2679,7 +2688,7 @@ const insertionWithLiveAnchor = (
       operationId: item.operation.id,
     });
   }
-  const mapped = tr.mapping.mapResult(item.blockFrom, 1);
+  const mapped = liveBlockResult(tr, item, 1);
   const anchor = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
   const paraId: unknown = item.blockNode.attrs["paraId"];
   if (
@@ -2690,6 +2699,92 @@ const insertionWithLiveAnchor = (
     return null;
   }
   return { ...item, blockNode: anchor };
+};
+
+/** Operations that place a block in a gap between blocks. */
+const BLOCK_INSERTION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> =
+  new Set([
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "insertTable",
+    "insertSignatureTable",
+  ]);
+
+/** The steps of `tr` since `item` read its positions. */
+const sinceRead = (tr: Transaction, item: ResolvedOperation): Mapping =>
+  tr.mapping.slice(item.readAt ?? 0);
+
+/**
+ * Where the block `item` names stands now, mapped from the document the
+ * batch read, so the result also says whether an earlier step deleted it.
+ */
+const liveBlockResult = (
+  tr: Transaction,
+  item: ResolvedOperation,
+  assoc?: -1 | 1,
+) => tr.mapping.mapResult(item.batchBlockFrom ?? item.blockFrom, assoc);
+
+/** The side of its gap a block insertion keeps when another lands there first. */
+const insertionSide = (item: ResolvedOperation): -1 | 1 => {
+  const { operation } = item;
+  switch (operation.type) {
+    case "insertAfterBlock":
+      return -1;
+    case "insertBeforeBlock":
+      return 1;
+    case "insertTable":
+    case "insertSignatureTable":
+      return (operation.position ?? "after") === "after" ? -1 : 1;
+    default:
+      return 1;
+  }
+};
+
+/**
+ * `item` with its positions read in the document as it stands now. A batch
+ * runs its operations in the shared order (`orderAddressingBeforeRemoval`),
+ * which can run an edit before one further left; every operation therefore
+ * reads its positions through the steps already taken rather than the
+ * document the batch read. A block's start stays with its content and its
+ * end with what precedes it; a gap stays on the side its insertion names.
+ */
+const readNow = (
+  item: ResolvedOperation,
+  tr: Transaction,
+): ResolvedOperation => {
+  const steps = tr.mapping.maps.length;
+  if ((item.readAt ?? 0) === steps) return item;
+  const mapping = sinceRead(tr, item);
+  const blockFrom = mapping.map(item.blockFrom, 1);
+  const blockTo = Math.max(blockFrom, mapping.map(item.blockTo, -1));
+  let from: number;
+  let to: number;
+  if (item.from === item.to) {
+    let side: -1 | 1 = item.from === item.blockTo ? -1 : 1;
+    if (BLOCK_INSERTION_TYPES.has(item.operation.type)) {
+      side = insertionSide(item);
+    }
+    from = mapping.map(item.from, side);
+    to = from;
+  } else {
+    from = mapping.map(item.from, 1);
+    to = Math.max(from, mapping.map(item.to, -1));
+  }
+  // The node as it stands, when it is still the block the item named.
+  const node = tr.doc.nodeAt(blockFrom);
+  const paraId: unknown = item.blockNode.attrs["paraId"];
+  const same =
+    node?.type === item.blockNode.type &&
+    (typeof paraId !== "string" || node.attrs["paraId"] === paraId);
+  return {
+    ...item,
+    from,
+    to,
+    blockFrom,
+    blockTo,
+    blockNode: node && same ? node : item.blockNode,
+    readAt: steps,
+  };
 };
 
 type RotateAddedFinalBreaksOptions = {
@@ -4986,6 +5081,7 @@ const applyFolioAIEditOperationsInternal = ({
 
     resolved.push({
       ...resolution.operation,
+      batchBlockFrom: resolution.operation.blockFrom,
       originalIndex: index,
       ...(commentText !== undefined && { commentText }),
     });
@@ -5272,7 +5368,8 @@ const applyFolioAIEditOperationsInternal = ({
     // Recheck every insertion against the live anchor, including insertions
     // sharing a gap. Earlier edits can delete its text or its containing row.
     const insertionState = tr;
-    const insertionRun = executionGroup.flatMap((candidate) => {
+    const insertionRun = executionGroup.flatMap((resolvedCandidate) => {
+      const candidate = readNow(resolvedCandidate, insertionState);
       if (
         candidate.operation.type !== "insertAfterBlock" &&
         candidate.operation.type !== "insertBeforeBlock"
@@ -5292,7 +5389,10 @@ const applyFolioAIEditOperationsInternal = ({
         return [];
       }
       if (isSuggested) {
-        const blockFrom = insertionState.mapping.map(candidate.blockFrom, 1);
+        const blockFrom = sinceRead(insertionState, candidate).map(
+          candidate.blockFrom,
+          1,
+        );
         if (
           isPendingDeletion(
             insertionState.doc,
@@ -5670,7 +5770,9 @@ const applyFolioAIEditOperationsInternal = ({
         if (
           changesStyle &&
           isDeletedPPrMark(
-            tr.doc.nodeAt(tr.mapping.map(item.blockFrom, -1))?.attrs["pPrMark"],
+            tr.doc.nodeAt(sinceRead(tr, item).map(item.blockFrom, -1))?.attrs[
+              "pPrMark"
+            ],
           )
         ) {
           skipped.push({
@@ -6298,7 +6400,11 @@ const applyFolioAIEditOperationsInternal = ({
           // field sits outside it whenever it leads or trails the words.
           // Deleting a block deletes what is in it: left unmarked, accepting
           // the deletion kept a paragraph standing around an orphan image.
-          const atomRanges = undeletedContentAtomRanges(tr, item.blockFrom);
+          const atomRanges = undeletedContentAtomRanges(
+            tr,
+            item.blockFrom,
+            item.readAt ?? 0,
+          );
           for (const { from, to } of atomRanges) {
             addTrackedDeletionMark({
               insertionPolicy: "preserve-pending",
@@ -6310,8 +6416,8 @@ const applyFolioAIEditOperationsInternal = ({
           }
           for (const anchorId of textBoxAnchorIdsBetween(
             tr.doc,
-            tr.mapping.map(item.blockFrom),
-            tr.mapping.map(item.blockTo),
+            sinceRead(tr, item).map(item.blockFrom),
+            sinceRead(tr, item).map(item.blockTo),
           )) {
             deletedTextBoxAnchorIds.add(anchorId);
           }
@@ -6352,7 +6458,7 @@ const applyFolioAIEditOperationsInternal = ({
           // A relocation's source break is `w:moveFrom`, not `w:del`: the two
           // resolve alike, and the kind is what tells a reader this end has a
           // matching one elsewhere rather than being a deletion of its own.
-          let markPosition = tr.mapping.map(item.blockFrom);
+          let markPosition = sinceRead(tr, item).map(item.blockFrom);
           const markOwner = tr.doc.nodeAt(markPosition);
           const across =
             markOwner &&
@@ -6515,11 +6621,13 @@ const applyFolioAIEditOperationsInternal = ({
         if (producesTrackedChanges) {
           appliedRevisionIds = [operationRevisionSeed++];
         }
-        const carriedComments = tableAfterDeletedSplit.get(item.blockFrom);
+        const carriedComments = tableAfterDeletedSplit.get(
+          item.batchBlockFrom ?? item.blockFrom,
+        );
         const usesRetractedSplit =
           carriedComments !== undefined && item.from === item.blockTo;
         let at = usesRetractedSplit
-          ? tr.mapping.map(item.blockFrom, -1)
+          ? sinceRead(tr, item).map(item.blockFrom, -1)
           : item.from;
         let insertionComments = carriedComments ?? item.boundaryComments;
         if (!usesRetractedSplit) {
@@ -6694,7 +6802,7 @@ const applyFolioAIEditOperationsInternal = ({
         // not this one, still never receives its properties. `deletedAfter`
         // cannot say so: a paragraph inserted right before this one sets it
         // as well, though this one is still there.
-        const mapped = tr.mapping.mapResult(item.blockFrom);
+        const mapped = liveBlockResult(tr, item);
         const liveBlock = mapped.deletedAcross
           ? null
           : tr.doc.nodeAt(mapped.pos);
@@ -6852,7 +6960,7 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "mergeBlockWithNext": {
-        const mapped = tr.mapping.mapResult(item.blockFrom, 1);
+        const mapped = liveBlockResult(tr, item, 1);
         const live = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
         const paraId = item.blockNode.attrs["paraId"];
         if (
