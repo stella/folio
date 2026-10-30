@@ -101,6 +101,8 @@ export type ActiveTrackedChangeInfo = {
 };
 
 export type DocxEditorProps = {
+  /** Accessible name announced for the editor or read-only document. */
+  accessibleName: string;
   /** Active document search result, including the zero-based current match index. */
   onFindResultChange?: (result: FindResult | null) => void;
   /** Document data — ArrayBuffer, Uint8Array, Blob, or File */

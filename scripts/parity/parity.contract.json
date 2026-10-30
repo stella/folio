@@ -78,7 +78,9 @@
       "theme",
       "toolbarExtra"
     ],
-    "deferredInVue": {},
+    "deferredInVue": {
+      "accessibleName": "React requires an accessible name for its paged editor root; the matching Vue prop and root semantics are deferred."
+    },
     "pairedNotes": {
       "outlineDepth": "Both adapters apply the shared heading-depth filter, default to two levels, and forward selector changes through onOutlineDepthChange; the host can control and persist the value.",
       "components": "Both wired with the full ten-primitive contract and real defaults. Vue uses monolithic, data-driven primitives where React uses compound parts, while preserving the same host-override capability. DatePickerPopover is consumed by the shared-controller-backed content-control overlay in both adapters; Button renders the Vue dropdown items. Dialog, Select, Menu, Popover, Input, Checkbox, ColorPicker, and OutlineRail remain threaded through their documented chrome consumers.",

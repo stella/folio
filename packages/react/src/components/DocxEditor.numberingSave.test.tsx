@@ -59,6 +59,7 @@ test("save carries editor-created numbering definitions into the document packag
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            accessibleName="Document editor"
             ref={editor}
             document={document}
             onEditorViewReady={onEditorViewReady}

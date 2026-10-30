@@ -219,6 +219,7 @@ for (const shape of SHAPES) {
                 const renderEditor = () => (
                   <IntlProvider locale="en" timeZone="UTC" messages={messages}>
                     <DocxEditor
+                      accessibleName="Document editor"
                       ref={editor}
                       documentBuffer={bytes}
                       experimentalSession="canonical"
@@ -428,6 +429,7 @@ test("committed comments are derived once across caret and composition renders",
   const renderEditor = () => (
     <IntlProvider locale="en" timeZone="UTC" messages={messages}>
       <DocxEditor
+        accessibleName="Document editor"
         ref={editor}
         documentBuffer={bytes}
         experimentalSession="canonical"
@@ -557,6 +559,7 @@ test("external loads refresh committed comments when selection and history stay 
       root.render(
         <IntlProvider locale="en" timeZone="UTC" messages={messages}>
           <DocxEditor
+            accessibleName="Document editor"
             ref={editor}
             document={first}
             experimentalSession="canonical"
@@ -580,6 +583,7 @@ test("external loads refresh committed comments when selection and history stay 
       root.render(
         <IntlProvider locale="en" timeZone="UTC" messages={messages}>
           <DocxEditor
+            accessibleName="Document editor"
             ref={editor}
             document={second}
             experimentalSession="canonical"

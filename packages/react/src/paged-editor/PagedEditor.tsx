@@ -283,6 +283,8 @@ import { useVisualLineNavigation } from "./useVisualLineNavigation";
 // =============================================================================
 
 export type PagedEditorProps = {
+  /** Accessible name announced for the editor or read-only document. */
+  accessibleName: string;
   /** The document to edit. */
   document: Document | null;
   experimentalSession?: "canonical";
@@ -1466,6 +1468,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
   // eslint-disable-next-line prefer-arrow-callback -- preserve the component name in React DevTools without reindenting this large component.
   function PagedEditor(props, ref) {
     const {
+      accessibleName,
       document,
       documentIO,
       documentIdentity,
@@ -6523,8 +6526,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         className={`folio-root paged-editor ${className ?? ""}`}
         style={{ ...containerStyles, ...style }}
         tabIndex={0}
-        role="textbox"
-        aria-multiline
+        role={readOnly ? "document" : "textbox"}
+        aria-label={accessibleName}
+        aria-multiline={readOnly ? undefined : true}
         onFocus={handleContainedFocus}
         onBlur={handleContainerBlur}
         onKeyDown={handleKeyDown}

@@ -82,6 +82,7 @@ const editAndSave = async (
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            accessibleName="Document editor"
             ref={editor}
             documentBuffer={bytes}
             mode={mode}
