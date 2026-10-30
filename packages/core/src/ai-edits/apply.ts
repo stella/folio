@@ -3759,7 +3759,7 @@ const paragraphPropertyRevisionTargets = ({
   tr,
   deletedFinalParagraphs,
 }: ParagraphPropertyRevisionTargetsOptions): PMNode[] => {
-  const position = tr.mapping.map(
+  const position = sinceRead(tr, item).map(
     item.blockFrom,
     item.operation.type === "replaceBlock" ? -1 : 1,
   );
