@@ -1598,3 +1598,87 @@ describe("a merge retracting an inserted break before the last paragraph the bat
     }
   }
 });
+
+// The batch contract: a batch equals its operations applied one at a time
+// with every operation that addresses a block before the one that removes it.
+describe("properties, a removal and an insertion on one block", () => {
+  const PERMUTATIONS = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ] as const;
+  const classOf = (block: number) =>
+    [
+      [
+        {
+          kind: "setBlockParagraphProperties",
+          block,
+          properties: { alignment: "center" },
+        },
+        { kind: "mergeBlockWithNext", block: block - 1 },
+        { kind: "insertAfterBlock", block },
+      ],
+      [
+        {
+          kind: "setBlockParagraphProperties",
+          block,
+          properties: { alignment: "center" },
+        },
+        { kind: "deleteBlock", block },
+        { kind: "insertAfterBlock", block },
+      ],
+    ] as const satisfies readonly (readonly GeneratedOperation[])[];
+  const cases = Array.from({ length: BLOCK_COUNT - 1 }, (_, index) => index + 1)
+    .flatMap(classOf)
+    .flatMap((trio) =>
+      PERMUTATIONS.map((order) =>
+        order.flatMap((index) => trio.at(index) ?? []),
+      ),
+    );
+
+  test.each(MODES)(
+    "leaves what its operations one at a time leave, addressing first (%s)",
+    async (mode) => {
+      const problems: string[] = [];
+      for (const generated of cases) {
+        problems.push(...(await batchAgainstOneAtATime({ generated, mode })));
+      }
+      expect(problems).toEqual([]);
+    },
+    240_000,
+  );
+
+  test("accepts tracked to what the batch leaves applied directly", async () => {
+    const run = async (
+      mode: Mode,
+      generated: readonly GeneratedOperation[],
+    ) => {
+      const session = await freshSession();
+      const blockIds = session.snapshot().blocks.map((block) => block.id);
+      const operations = generated.flatMap((operation, index) => {
+        const materialized = materialize(session, blockIds, operation, index);
+        return materialized === null ? [] : [materialized];
+      });
+      const { applied } = session.apply(mode, operations);
+      if (mode !== "direct") session.acceptAll();
+      return {
+        applied: applied.map(({ id }) => id),
+        presentation: session.presentation({ withAnchors: false }),
+      };
+    };
+    const problems: string[] = [];
+    for (const generated of cases) {
+      const direct = await run("direct", generated);
+      const tracked = await run("tracked-changes", generated);
+      if (JSON.stringify(tracked) !== JSON.stringify(direct)) {
+        problems.push(
+          `${JSON.stringify(generated)}: direct ${JSON.stringify(direct)}, tracked and accepted ${JSON.stringify(tracked)}`,
+        );
+      }
+    }
+    expect(problems).toEqual([]);
+  }, 240_000);
+});

@@ -12,9 +12,12 @@ import { TableMap } from "prosemirror-tables";
 import { canSplit } from "prosemirror-transform";
 
 import {
+  type BatchBlockAccess,
   type BatchOrderAddress,
   contentRank,
+  deletionRemovesBlock,
   groupInsertionRuns,
+  orderAddressingBeforeRemoval,
   orderBatchOperations,
 } from "@stll/docx-core/ops";
 
@@ -80,10 +83,8 @@ import {
 } from "../prosemirror/paragraphIndentation";
 import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import {
-  carriedParagraphProperties,
   carryParagraphProperties,
   paragraphLeftAfter,
-  propertiesSetInBatch,
   recordReplacedParagraphProperties,
 } from "../prosemirror/paragraphPropertyCarry";
 import {
@@ -3446,39 +3447,6 @@ const collapsedFinalRunSource = (
   return source;
 };
 
-type CrossesBatchDeletionOptions = {
-  doc: PMNode;
-  /** Where the predecessor `finalParagraphPredecessor` found ends. */
-  from: number;
-  /** Where the emptied final paragraph starts. */
-  to: number;
-  batchRevisionIds: ReadonlySet<number>;
-};
-
-/**
- * Whether a sibling between a final carrier's predecessor and the carrier
- * has its break deleted by this batch.
- */
-const crossesBatchDeletion = ({
-  doc,
-  from,
-  to,
-  batchRevisionIds,
-}: CrossesBatchDeletionOptions): boolean => {
-  const $to = doc.resolve(to);
-  let position = to;
-  for (let index = $to.index() - 1; index >= 0 && position > from; index--) {
-    const node = $to.parent.child(index);
-    position -= node.nodeSize;
-    const mark: unknown = node.attrs["pPrMark"];
-    const revisionId = isPlainDeletedPPrMark(mark)
-      ? addedOrDeletedBreakRevisionId(mark)
-      : null;
-    if (revisionId !== null && batchRevisionIds.has(revisionId)) return true;
-  }
-  return false;
-};
-
 type CanRetractFinalBreakOptions = { predecessor: PMNode; target: PMNode };
 
 const canRetractFinalBreak = ({
@@ -3516,22 +3484,19 @@ type FinalParagraphCarryOptions = Pick<
   RetireFinalParagraphsOptions,
   "tr" | "batchRevisionIds" | "styleResolver" | "numbering"
 > & {
-  at: number;
   target: PMNode;
   predecessor: { node: PMNode; position: number };
 };
 
 /** An unoccupied final carrier takes admissible writes from the finished batch. */
 const finalParagraphCarry = ({
-  tr,
-  at,
   target,
   predecessor,
   batchRevisionIds,
   styleResolver,
   numbering,
 }: FinalParagraphCarryOptions) => {
-  const { node: previous, position } = predecessor;
+  const { node: previous } = predecessor;
   // An occupied survivor keeps the established revision ownership: a later
   // batch write cannot replace the properties its pending receipt restores.
   const beforeBatch = hasSerializableParagraphPropertyChange(
@@ -3550,20 +3515,12 @@ const finalParagraphCarry = ({
     source: beforeBatch
       ? previous.type.create(beforeBatch, previous.content, previous.marks)
       : previous,
-    keep: crossesBatchDeletion({
-      doc: tr.doc,
-      from: position + previous.nodeSize,
-      to: at,
-      batchRevisionIds,
-    })
-      ? new Set<string>()
-      : propertiesSetInBatch(target, batchRevisionIds),
   };
 };
 
 type DeferredParagraphPropertyWriteOptions = Omit<
   FinalParagraphCarryOptions,
-  "at" | "target" | "predecessor"
+  "target" | "predecessor"
 > & {
   deletions: readonly DeletedFinalParagraph[];
   targets: readonly PMNode[];
@@ -3615,22 +3572,16 @@ const hasDeferredParagraphPropertyWrite = ({
       mark == null
         ? finalParagraphCarry({
             tr,
-            at,
             target,
             predecessor,
             batchRevisionIds,
             styleResolver,
             numbering,
           })
-        : {
-            source: predecessor.node,
-            keep: propertiesSetInBatch(writeTarget, batchRevisionIds),
-          };
+        : { source: predecessor.node };
     if (
       JSON.stringify(paragraphPropertiesSnapshot(writeTarget)) !==
-      JSON.stringify(
-        carriedParagraphProperties({ ...transfer, target: writeTarget }),
-      )
+      JSON.stringify(paragraphPropertiesSnapshot(transfer.source))
     )
       return true;
   }
@@ -3759,7 +3710,6 @@ const withRetiredFinalParagraphs = ({
         styleResolver,
         numbering,
         revision: { id: revisionId, author, date, ...revisionExtras },
-        keep: new Set<string>(),
       });
       if (carried.tracked) {
         nextRevisionId++;
@@ -3798,7 +3748,6 @@ const withRetiredFinalParagraphs = ({
           position: at,
           ...finalParagraphCarry({
             tr,
-            at,
             target: emptied,
             predecessor,
             batchRevisionIds,
@@ -3856,7 +3805,6 @@ const withRetiredFinalParagraphs = ({
         ? (paragraphLeftAfter({ doc: tr.doc, paragraphPos: position }) ??
           position)
         : position;
-      const carryTarget = tr.doc.nodeAt(carryPosition) ?? following;
       const revisionId = nextRevisionId;
       const carried = carryParagraphProperties({
         tr,
@@ -3865,7 +3813,6 @@ const withRetiredFinalParagraphs = ({
         styleResolver,
         numbering,
         revision: { id: revisionId, author, date, ...revisionExtras },
-        keep: propertiesSetInBatch(carryTarget, batchRevisionIds),
       });
       if (carried.tracked) {
         nextRevisionId++;
@@ -5244,7 +5191,57 @@ const applyFolioAIEditOperationsInternal = ({
       inputIndex: item.originalIndex,
     };
   };
-  const executionOrder = orderBatchOperations(executableResolved, batchAddress);
+  const batchDeletions = new Set(
+    executableResolved.flatMap((item) =>
+      item.operation.type === "deleteBlock" ? [item.blockFrom] : [],
+    ),
+  );
+  // Blocks by their position before the batch.
+  const blockAccess = (item: ResolvedOperation): BatchBlockAccess<number> => {
+    const doc = view.state.doc;
+    if (item.operation.type === "mergeBlockWithNext") {
+      const next = paragraphJoinAfter(doc, item.blockTo);
+      return {
+        addresses: [item.blockFrom],
+        removes: next ? [next.nextPosition] : [],
+      };
+    }
+    if (item.operation.type !== "deleteBlock") {
+      return { addresses: [item.blockFrom], removes: [] };
+    }
+    const at = doc.resolve(item.blockFrom);
+    // The nearest paragraph before it the batch keeps, past ones it deletes;
+    // anything else (a table) leaves none to take the break.
+    let hasKeptParagraphBefore = false;
+    let position = at.pos;
+    for (let index = at.index() - 1; index >= 0; index -= 1) {
+      const previous = at.parent.child(index);
+      position -= previous.nodeSize;
+      if (previous.type !== item.blockNode.type) break;
+      if (!batchDeletions.has(position)) {
+        hasKeptParagraphBefore = true;
+        break;
+      }
+    }
+    // A block the batch puts after it ends the container instead.
+    const appended = executableResolved.some(
+      (other) =>
+        other.blockFrom === item.blockFrom &&
+        (other.operation.type === "insertAfterBlock" ||
+          (other.operation.type === "insertTable" &&
+            other.operation.position !== "before")),
+    );
+    const removes = deletionRemovesBlock({
+      endsContainer:
+        !appended && paragraphEndsItsContainer(at, item.blockNode.type.name),
+      hasKeptParagraphBefore,
+    });
+    return { addresses: [], removes: removes ? [item.blockFrom] : [] };
+  };
+  const executionOrder = orderAddressingBeforeRemoval(
+    orderBatchOperations(executableResolved, batchAddress),
+    blockAccess,
+  );
   type WillApplyNewListOperations = {
     status: "willApply";
     items: ResolvedOperation[];

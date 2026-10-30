@@ -99,9 +99,12 @@ export { transformBatch } from "./sequencing/transform";
 export { createSequencer } from "./sequencing/sequencer";
 export { createClient } from "./sequencing/client";
 export {
+  type BatchBlockAccess,
   compareBatchOrder,
   contentRank,
+  deletionRemovesBlock,
   groupInsertionRuns,
+  orderAddressingBeforeRemoval,
   orderBatchOperations,
   type BatchOrderAddress,
 } from "./batchOrder";
