@@ -1511,13 +1511,7 @@ const numberingFields = (
 ): Fields => {
   const numbering = requestedStyleNumbering(model, styleId, row);
   if (numbering === UNKNOWN_NUMBERING) return { listLevel: ANY };
-  return {
-    listLevel:
-      numbering?.kind === "reference" &&
-      numberingKind(model, numbering) === "listItem"
-        ? (numbering.ilvl ?? 0)
-        : undefined,
-  };
+  return { listLevel: shownReference(model, numbering)?.level };
 };
 
 /** A retained reference alone is not a rendered marker: its level must exist and be visible. */
@@ -1535,6 +1529,19 @@ const numberingKind = (model: Model, numbering: Numbering): Fields["kind"] => {
     model.liveNumberingFacts?.markerLevels.get(numbering.numId);
   return levels?.has(numbering.ilvl ?? 0) ? "listItem" : "paragraph";
 };
+
+/**
+ * The list reference a reader shows for `numbering`: one only where its level
+ * renders a marker. Every check of a row's `listReference` derives it here.
+ */
+const shownReference = (
+  model: Model,
+  numbering: Numbering,
+): { numId: number; level: number } | undefined =>
+  numbering?.kind === "reference" &&
+  numberingKind(model, numbering) === "listItem"
+    ? { numId: numbering.numId, level: numbering.ilvl ?? 0 }
+    : undefined;
 
 /**
  * The fields a style id asks for on `pre` (absent: a new block, formatted
@@ -1647,11 +1654,12 @@ const paragraphRequest = ({
       !("numbering" in request) &&
       numbering !== UNKNOWN_NUMBERING
     ) {
+      const reference = shownReference(model, numbering);
       const styleNumberingCheck: ModelRow["checks"][number] = (row) => {
-        if (numbering?.kind === "reference") {
-          return row.listReference?.numId === numbering.numId
+        if (reference) {
+          return row.listReference?.numId === reference.numId
             ? null
-            : `style/direct numbering ${numbering.numId} was lost or changed`;
+            : `style/direct numbering ${reference.numId} was lost or changed`;
         }
         return row.listReference === undefined
           ? null
@@ -1733,11 +1741,7 @@ const paragraphRequest = ({
       fields.listLevel = ANY;
     } else if (numbering["kind"] === "inherit") {
       const effective = styleNumbering;
-      const reference =
-        effective?.kind === "reference" &&
-        numberingKind(model, effective) === "listItem"
-          ? { numId: effective.numId, level: effective.ilvl ?? 0 }
-          : undefined;
+      const reference = shownReference(model, effective);
       fields.listLevel = reference?.level;
       if ((pre ?? inherited) && preKind !== "heading")
         fields.kind = numberingKind(model, effective);
@@ -1792,11 +1796,7 @@ const paragraphRequest = ({
           ? { ilvl: numbering["ilvl"] }
           : {}),
       });
-      const reference =
-        effective?.kind === "reference" &&
-        numberingKind(model, effective) === "listItem"
-          ? { numId: effective.numId, level: effective.ilvl ?? 0 }
-          : undefined;
+      const reference = shownReference(model, effective);
       fields.listLevel = reference?.level;
       if ((pre ?? inherited) && preKind !== "heading")
         fields.kind = numberingKind(model, effective);
@@ -1812,11 +1812,7 @@ const paragraphRequest = ({
         kind: "levelOnly",
         ilvl: numbering["ilvl"] as number,
       });
-      const reference =
-        effective?.kind === "reference" &&
-        numberingKind(model, effective) === "listItem"
-          ? { numId: effective.numId, level: effective.ilvl ?? 0 }
-          : undefined;
+      const reference = shownReference(model, effective);
       fields.listLevel = reference?.level;
       if ((pre ?? inherited) && preKind !== "heading")
         fields.kind = numberingKind(model, effective);

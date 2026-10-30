@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 414446122,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1294470280,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "reference",
+              "numId": 7,
+              "ilvl": 0
+            }
+          }
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Invoice invoice warranty buyer delivery delivery written period."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow"
+  ],
+  "origin": "shrunk from random flow seed 414446122",
+  "title": "#1817, reported seed 414446122: a paragraph inserted before one a tracked merge joins takes the joined paragraph's numbering"
+}

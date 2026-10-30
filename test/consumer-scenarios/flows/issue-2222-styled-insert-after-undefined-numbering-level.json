@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 1492413172,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1387064996,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Agreement goods warranty clause."
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1924848951,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1BF99289",
+          "text": "x",
+          "numbering": {
+            "kind": "reference",
+            "numId": 5,
+            "ilvl": 8
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 4261824513,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@9",
+          "text": "Agreement schedule period.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "deleteTableRow"
+  ],
+  "origin": "shrunk from reseed of 0b5e3ae040b02e17",
+  "title": "styled insert after a paragraph numbered at an undefined level"
+}
