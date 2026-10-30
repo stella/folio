@@ -1,5 +1,14 @@
 # @stll/folio-react
 
+## 0.32.3
+
+### Patch Changes
+
+- [#2219](https://github.com/stella/folio/pull/2219) [`2871bf3`](https://github.com/stella/folio/commit/2871bf34755e6e2660fdaed113f397470a2382eb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The bundled document fonts now come from `@stll/folio-fonts` instead of eight `@fontsource` packages, so an application installs folio's packages only. The stylesheets declare the same families, weights, styles and unicode ranges as before; only the latin, latin-ext and arabic subsets keep a `.woff` fallback, and the CLI measures and renders with those same `.woff` files.
+- Updated dependencies [[`2871bf3`](https://github.com/stella/folio/commit/2871bf34755e6e2660fdaed113f397470a2382eb), [`2871bf3`](https://github.com/stella/folio/commit/2871bf34755e6e2660fdaed113f397470a2382eb)]:
+  - @stll/folio-core@0.66.1
+  - @stll/folio-fonts@0.1.0
+
 ## 0.32.2
 
 ### Patch Changes
