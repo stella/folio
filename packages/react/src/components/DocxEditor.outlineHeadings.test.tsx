@@ -140,6 +140,7 @@ const mountEditor = async () => {
         messages={getFolioMessages("en")}
       >
         <DocxEditor
+          accessibleName="Document editor"
           ref={editor}
           document={createLongDocument()}
           components={PROBE_COMPONENTS}

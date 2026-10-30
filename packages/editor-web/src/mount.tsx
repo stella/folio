@@ -120,6 +120,7 @@ const FolioEditorApp = ({
       timeZone={new Intl.DateTimeFormat().resolvedOptions().timeZone}
     >
       <DocxEditor
+        accessibleName="Document editor"
         ref={editorRef}
         author={author}
         mode={mode}

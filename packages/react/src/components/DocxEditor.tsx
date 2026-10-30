@@ -576,6 +576,7 @@ type InitialScrollState =
 const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
   function DocxEditor(
     {
+      accessibleName,
       documentBuffer,
       password,
       document: initialDocument,
@@ -5989,6 +5990,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             </div>
                           )}
                           <PagedEditor
+                            accessibleName={accessibleName}
                             ref={attachPagedEditor}
                             document={history.state}
                             documentIO={documentIO}
