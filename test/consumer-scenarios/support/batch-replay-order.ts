@@ -119,6 +119,74 @@ type SequentialGroupsOptions = {
   mode: Mode;
 };
 
+type RemovedBlockIdsOptions = {
+  preRows: readonly Row[];
+  /** Container-final paragraphs a deletion empties but leaves standing. */
+  standing: ReadonlySet<string>;
+};
+
+/** The pre-batch blocks an operation takes out of the document. */
+const removedBlockIds = (
+  operation: AnyOperation,
+  { preRows, standing }: RemovedBlockIdsOptions,
+): string[] => {
+  if (operation.type === "deleteBlock") {
+    const id = blockIdOf(operation);
+    return standing.has(id) ? [] : [id];
+  }
+  if (operation.type !== "mergeBlockWithNext") return [];
+  const index = preRows.findIndex((row) => row.id === blockIdOf(operation));
+  const row = preRows.at(index);
+  const next = preRows.at(index + 1);
+  return row !== undefined && sameContainerRows(row, next) ? [next.id] : [];
+};
+
+/**
+ * One at a time, an operation can address a block only while it stands: a
+ * replay that deletes or merges a block away before an operation the batch
+ * aimed at it states what no single edit can, and direct mode refuses it.
+ * Move each run that addresses a block ahead of the earliest run removing
+ * it, keeping every other run where it was. A container's final paragraph
+ * with no paragraph before it to take its break stays, emptied, and can
+ * still be addressed after its deletion.
+ */
+const addressedBeforeRemoval = (
+  groups: AnyOperation[][],
+  removal: RemovedBlockIdsOptions,
+): void => {
+  const removes = (group: readonly AnyOperation[], blockId: string) =>
+    group.some((operation) =>
+      removedBlockIds(operation, removal).includes(blockId),
+    );
+  const addressed = (group: readonly AnyOperation[]) =>
+    group.flatMap((operation) =>
+      operation.type === "deleteBlock" ? [] : [blockIdOf(operation)],
+    );
+  // Every move takes a run earlier, so each run moves at most once per
+  // run ahead of it; the bound only guards against a cycle.
+  for (let round = 0; round <= groups.length * groups.length; round += 1) {
+    const from = groups.findIndex((group, at) =>
+      groups
+        .slice(0, at)
+        .some((earlier) =>
+          addressed(group).some((blockId) => removes(earlier, blockId)),
+        ),
+    );
+    if (from < 0) return;
+    const group = groups[from];
+    if (group === undefined) return;
+    const ids = addressed(group);
+    const target = groups.findIndex((candidate) =>
+      ids.some((blockId) => removes(candidate, blockId)),
+    );
+    groups.splice(from, 1);
+    groups.splice(target, 0, group);
+  }
+  throw new Error(
+    "Sequential replay found no order addressing each block before removing it",
+  );
+};
+
 export const sequentialGroups = ({
   applied,
   preRows,
@@ -328,6 +396,7 @@ export const sequentialGroups = ({
       groups.splice(target, 0, moved);
     }
   }
+  addressedBeforeRemoval(groups, { preRows, standing: uncarriedFinals });
   const annotations = orderBatchOperations(
     indexed.filter(({ operation }) => ANNOTATIONS.has(operation.type)),
     ({ operation, index }): BatchOrderAddress => {
