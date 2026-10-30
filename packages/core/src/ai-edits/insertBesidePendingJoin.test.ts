@@ -381,3 +381,51 @@ describe("a block after a pending join whose paragraph the batch splits", () => 
     expect(await read(true)).toEqual(sequential);
   });
 });
+
+describe("a block before a pending join whose first paragraph the batch deletes", () => {
+  const read = async (batched: boolean, resolution: "accept" | "reject") => {
+    const reviewer = await open();
+    const [heading, item] = reviewer.snapshot().blocks;
+    if (!heading || !item) throw new Error("Missing fixture");
+    reviewer.applyOperations(
+      [
+        {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: heading.id,
+          separator: " ",
+        },
+      ],
+      { mode: "tracked-changes" },
+    );
+    // One at a time, the insertion runs first: it is stated further into the document.
+    const operations: FolioDocumentOperation[] = [
+      {
+        id: "before",
+        type: "insertBeforeBlock",
+        blockId: item.id,
+        text: "Before.",
+      },
+      { id: "delete", type: "deleteBlock", blockId: heading.id },
+    ];
+    for (const batch of batched
+      ? [operations]
+      : operations.map((operation) => [operation])) {
+      expect(
+        reviewer.applyOperations(batch, { mode: "tracked-changes" }).skipped,
+      ).toEqual([]);
+    }
+    if (resolution === "accept") reviewer.acceptAll();
+    else reviewer.rejectAll();
+    return reviewer.snapshot().blocks.map(({ text }) => text);
+  };
+
+  test("rejects to the document it started from", async () => {
+    const original = (await open()).snapshot().blocks.map(({ text }) => text);
+    expect(await read(true, "reject")).toEqual(original);
+  });
+
+  test("accepts in a batch as one at a time", async () => {
+    expect(await read(true, "accept")).toEqual(await read(false, "accept"));
+  });
+});

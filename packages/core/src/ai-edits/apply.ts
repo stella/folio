@@ -540,9 +540,10 @@ type ResolvedOperationFields = {
   /**
    * Which side of a pending join around the anchor a block insertion lands
    * on, read when it runs: an earlier edit of the batch (a split of the
-   * paragraph the join leaves) can move where the join ends. `from` stays
-   * the anchor's own gap, which orders the insertion among the batch's edits
-   * as one at a time.
+   * paragraph the join leaves, or a deletion of one it takes in) can move
+   * where the join ends or starts. `from` orders the insertion among the
+   * batch's edits: the anchor's own gap after the join, where the block
+   * lands before it.
    */
   joinSide?: "before" | "after";
   tableRowInsertion?: TableRowInsertion;
@@ -9301,12 +9302,18 @@ const resolveOperationTarget = ({
   const beside = (
     side: "before" | "after",
   ): { from: number; at: number; joinSide?: "before" | "after" } => {
-    const from =
+    // A block after the join orders by the anchor's own gap: edits inside
+    // the paragraph the join leaves run first, and the block follows where
+    // they leave the join's end. A block before it orders by where it lands,
+    // ahead of the paragraphs the join takes in: edits inside them run first
+    // and keep the positions they were read at.
+    const plain =
       side === "after"
         ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
         : blockFrom;
     const at = joinBounds()[side];
-    return at === from ? { from, at } : { from, at, joinSide: side };
+    const from = side === "after" ? plain : at;
+    return at === plain ? { from, at } : { from, at, joinSide: side };
   };
 
   if (
