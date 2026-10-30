@@ -75,7 +75,7 @@ describe("expected failures and the failure markers fuzz reporters file", () => 
   });
 
   test("markers logged outside an expected failure are logged at once", () => {
-    expect(failWith(KNOWN)).toThrow("accepting glues");
+    expect(failWith(KNOWN)).toThrow("writes no text-box paragraph");
     expect(markers()).toHaveLength(1);
   });
 });
