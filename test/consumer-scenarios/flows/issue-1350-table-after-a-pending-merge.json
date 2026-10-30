@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "direct",
+  "seed": 414445751,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2550564949,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "styleId": "Heading2"
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2734812240,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "31617F9A",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "formatRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from collisions flow seed 414445751",
+  "title": "#1350, reported seed 414445751: a table inserted after a paragraph a pending merge joins goes after the paragraph the join leaves"
+}

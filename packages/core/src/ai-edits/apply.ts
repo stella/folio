@@ -2755,6 +2755,80 @@ const insertionFormattingAnchor = ({
   return source ? { ...item, blockNode: source } : item;
 };
 
+type PendingJoinBoundsOptions = {
+  doc: PMNode;
+  paragraphPos: number;
+  noteReferences: NoteReferenceLabels;
+};
+
+const keepsWords = ({
+  doc,
+  paragraphPos,
+  noteReferences,
+}: PendingJoinBoundsOptions): boolean => {
+  const paragraph = doc.nodeAt(paragraphPos);
+  if (paragraph?.type.name !== "paragraph") return false;
+  const cleanText = buildCleanBlockText(paragraph, paragraphPos, {
+    fieldResults: "text",
+    noteReferences,
+  }).text;
+  return (
+    cleanText.length > 0 &&
+    !isPendingDeletion(doc, paragraphPos, paragraph, cleanText)
+  );
+};
+
+/**
+ * Where a block goes before and after the paragraph at `paragraphPos`, read
+ * as the joined paragraph a pending join makes of it. A join runs the words
+ * of each paragraph whose break is pending removal into the paragraph it
+ * leaves, so a block put between them would take those words once accepted,
+ * as the same edits applied directly never do. Where words run into a
+ * paragraph the join leaves that keeps words of its own, a block after any
+ * paragraph of the join goes after the paragraph it leaves, and a block
+ * before that one goes before the first paragraph whose words the join takes
+ * in. A join into a paragraph with no words left (an emptied final carrier,
+ * or one going whole) runs nothing together: blocks keep their places.
+ */
+const pendingJoinBounds = (
+  options: PendingJoinBoundsOptions,
+): { before: number; after: number } => {
+  const { doc, paragraphPos, noteReferences } = options;
+  const paragraph = doc.nodeAt(paragraphPos);
+  let after = paragraphPos;
+  if (
+    paragraph &&
+    isDeletedPPrMark(paragraph.attrs["pPrMark"]) &&
+    keepsWords(options)
+  ) {
+    const survivor = paragraphLeftAfter({ doc, paragraphPos });
+    if (
+      survivor !== null &&
+      keepsWords({ doc, paragraphPos: survivor, noteReferences })
+    ) {
+      after = survivor;
+    }
+  }
+  let before = paragraphPos;
+  if (paragraph?.type.name === "paragraph" && keepsWords(options)) {
+    let start = paragraphPos;
+    for (;;) {
+      const previous = doc.resolve(start).nodeBefore;
+      if (
+        previous?.type !== paragraph.type ||
+        !isDeletedPPrMark(previous.attrs["pPrMark"])
+      ) {
+        break;
+      }
+      start -= previous.nodeSize;
+      if (keepsWords({ doc, paragraphPos: start, noteReferences })) {
+        before = start;
+      }
+    }
+  }
+  return { before, after: endOfParagraphWithItsTextBoxes(doc, after) };
+};
+
 type RotateAddedFinalBreaksOptions = {
   tr: Transaction;
   /** Revision ids this batch minted, so marks it did not write are left alone. */
@@ -4934,6 +5008,7 @@ const applyFolioAIEditOperationsInternal = ({
       liveBlocksByParaId,
       noteReferences,
       doc: view.state.doc,
+      mode,
     });
     if (resolution.type === "skip") {
       skipped.push({
@@ -8982,11 +9057,12 @@ type ResolveOperationArgs = {
   liveBlocksByParaId: Map<string, LiveBlockEntry>;
   noteReferences: NoteReferenceLabels;
   doc: PMNode;
+  mode: FolioAIEditApplyMode;
 };
 
 type ResolveStableBlockArgs = Omit<
   ResolveOperationArgs,
-  "operation" | "doc"
+  "operation" | "doc" | "mode"
 > & {
   blockId: string;
 };
@@ -9134,6 +9210,7 @@ const resolveOperationTarget = ({
   liveBlocksByParaId,
   noteReferences,
   doc,
+  mode,
 }: ResolveOperationArgs):
   { type: "resolved"; operation: ResolvedBase } | OperationResolutionSkip => {
   const blockId =
@@ -9166,6 +9243,16 @@ const resolveOperationTarget = ({
   ) {
     return { type: "skip", reason: "preconditionFailed" };
   }
+  // A suggestion is read against the document as it stands, where a pending
+  // join has not run anything together yet; tracked and direct edits are
+  // read as accepting leaves them.
+  const joinBounds = (): { before: number; after: number } =>
+    mode === "suggested"
+      ? {
+          before: blockFrom,
+          after: endOfParagraphWithItsTextBoxes(doc, blockFrom),
+        }
+      : pendingJoinBounds({ doc, paragraphPos: blockFrom, noteReferences });
 
   if (
     operation.type === "replaceRange" ||
@@ -9243,9 +9330,8 @@ const resolveOperationTarget = ({
     } else {
       // After a paragraph is after the text boxes drawn in it too: a block
       // between the two is read after the boxes once the package is saved.
-      insertFrom = isInsertAfter
-        ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
-        : blockFrom;
+      const bounds = joinBounds();
+      insertFrom = isInsertAfter ? bounds.after : bounds.before;
     }
     const splitParagraphs =
       operation.lineBreakMode !== "inline" &&
@@ -9280,9 +9366,7 @@ const resolveOperationTarget = ({
         position === "after" ? tableBoundary.after : tableBoundary.before;
     } else {
       insertFrom =
-        position === "after"
-          ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
-          : blockFrom;
+        position === "after" ? joinBounds().after : joinBounds().before;
     }
     return {
       type: "resolved",
@@ -9535,10 +9619,7 @@ const resolveOperationTarget = ({
   if (operation.type === "insertTable") {
     // A whole table is a document-level peer, like every other block
     // insertion: `insertTableRow` is the operation for growing one in place.
-    const boundary = findOutermostTableBoundary(doc, blockFrom) ?? {
-      before: blockFrom,
-      after: endOfParagraphWithItsTextBoxes(doc, blockFrom),
-    };
+    const boundary = findOutermostTableBoundary(doc, blockFrom) ?? joinBounds();
     const insertFrom =
       (operation.position ?? "after") === "after"
         ? boundary.after
