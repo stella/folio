@@ -546,6 +546,8 @@ type ResolvedOperationFields = {
    * lands before it.
    */
   joinSide?: "before" | "after";
+  /** Where the batch read the join to put the block, which `boundaryComments` describes. */
+  joinAt?: number;
   tableRowInsertion?: TableRowInsertion;
   /**
    * The comments running across the new row's place as the batch read it.
@@ -2871,6 +2873,29 @@ const insertionAt = ({
     paragraphPos: position,
     noteReferences,
   })[item.joinSide];
+};
+
+/**
+ * Where a block insertion lands as it runs, with the comments running across
+ * that boundary. They are the ones the batch read there, so an edit that runs
+ * first cannot move a comment's end out from around the block; but where an
+ * earlier edit moved the join the block follows, the block lands at another
+ * boundary, and carries the comments across that one.
+ */
+const insertionPlacement = (
+  options: InsertionAtOptions,
+): { at: number; comments: readonly Mark[] | undefined } => {
+  const { item, tr } = options;
+  const at = insertionAt(options);
+  if (item.joinAt === undefined) return { at, comments: item.boundaryComments };
+  const read = tr.mapping.map(item.joinAt, item.joinSide === "after" ? -1 : 1);
+  return {
+    at,
+    comments:
+      at === read
+        ? item.boundaryComments
+        : commentsAcrossBlockBoundary(tr.doc, at),
+  };
 };
 
 type RotateAddedFinalBreaksOptions = {
@@ -6091,12 +6116,13 @@ const applyFolioAIEditOperationsInternal = ({
         if (built.revisionIds.length > 0) {
           appliedRevisionIds = built.revisionIds;
         }
+        const placement = insertionPlacement({ item, tr, noteReferences });
         tr = insertBlocksInsideComments({
           tr,
-          at: insertionAt({ item, tr, noteReferences }),
+          at: placement.at,
           blocks: built.nodes,
-          ...(item.boundaryComments !== undefined && {
-            carriedComments: item.boundaryComments,
+          ...(placement.comments !== undefined && {
+            carriedComments: placement.comments,
           }),
         });
         break;
@@ -6714,10 +6740,11 @@ const applyFolioAIEditOperationsInternal = ({
         const carriedComments = tableAfterDeletedSplit.get(item.blockFrom);
         const usesRetractedSplit =
           carriedComments !== undefined && item.from === item.blockTo;
+        const placement = insertionPlacement({ item, tr, noteReferences });
         let at = usesRetractedSplit
           ? tr.mapping.map(item.blockFrom, -1)
-          : insertionAt({ item, tr, noteReferences });
-        let insertionComments = carriedComments ?? item.boundaryComments;
+          : placement.at;
+        let insertionComments = carriedComments ?? placement.comments;
         if (!usesRetractedSplit) {
           const boundary = tr.doc.resolve(at);
           const before = boundary.nodeBefore;
@@ -9301,7 +9328,12 @@ const resolveOperationTarget = ({
   // pending join around it puts the block (see `joinSide`).
   const beside = (
     side: "before" | "after",
-  ): { from: number; at: number; joinSide?: "before" | "after" } => {
+  ): {
+    from: number;
+    at: number;
+    joinSide?: "before" | "after";
+    joinAt?: number;
+  } => {
     // A block after the join orders by the anchor's own gap: edits inside
     // the paragraph the join leaves run first, and the block follows where
     // they leave the join's end. A block before it orders by where it lands,
@@ -9313,7 +9345,9 @@ const resolveOperationTarget = ({
         : blockFrom;
     const at = joinBounds()[side];
     const from = side === "after" ? plain : at;
-    return at === plain ? { from, at } : { from, at, joinSide: side };
+    return at === plain
+      ? { from, at }
+      : { from, at, joinSide: side, joinAt: at };
   };
 
   if (
@@ -9409,7 +9443,10 @@ const resolveOperationTarget = ({
         blockNode,
         insertTexts,
         boundaryComments: commentsAcrossBlockBoundary(doc, placed.at),
-        ...(placed.joinSide !== undefined && { joinSide: placed.joinSide }),
+        ...(placed.joinSide !== undefined && {
+          joinSide: placed.joinSide,
+          joinAt: placed.joinAt,
+        }),
       },
     };
   }
@@ -9432,7 +9469,10 @@ const resolveOperationTarget = ({
         blockFrom,
         blockTo,
         blockNode,
-        ...(placed.joinSide !== undefined && { joinSide: placed.joinSide }),
+        ...(placed.joinSide !== undefined && {
+          joinSide: placed.joinSide,
+          joinAt: placed.joinAt,
+        }),
       },
     };
   }
@@ -9691,7 +9731,10 @@ const resolveOperationTarget = ({
         blockTo,
         blockNode,
         boundaryComments: commentsAcrossBlockBoundary(doc, placed.at),
-        ...(placed.joinSide !== undefined && { joinSide: placed.joinSide }),
+        ...(placed.joinSide !== undefined && {
+          joinSide: placed.joinSide,
+          joinAt: placed.joinAt,
+        }),
       },
     };
   }

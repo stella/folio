@@ -296,11 +296,13 @@ describe("a pending join from an empty paragraph", () => {
     test(`takes ${placed} after the paragraph it leaves, as direct edits do`, async () => {
       const batches = ({ empty }: { empty: string }) => [[insertion(empty)]];
       const direct = await fromEmptySource("direct", batches);
-      expect(direct.indexOf("Bravo.")).toBeLessThan(
-        direct.findIndex(
-          (text) => text === "Inserted clause." || text === "Term",
-        ),
+      const bravo = direct.indexOf("Bravo.");
+      const inserted = direct.findIndex(
+        (text) => text === "Inserted clause." || text === "Term",
       );
+      expect(bravo).toBeGreaterThan(-1);
+      expect(inserted).toBeGreaterThan(-1);
+      expect(bravo).toBeLessThan(inserted);
       expect(await fromEmptySource("tracked-changes", batches)).toEqual(direct);
     });
   }
@@ -427,5 +429,50 @@ describe("a block before a pending join whose first paragraph the batch deletes"
 
   test("accepts in a batch as one at a time", async () => {
     expect(await read(true, "accept")).toEqual(await read(false, "accept"));
+  });
+});
+
+describe("a block after a pending join whose paragraph the batch splits, inside a comment", () => {
+  test("carries the comment running across the boundary it lands on, in a batch as one at a time", async () => {
+    const read = async (batched: boolean) => {
+      const reviewer = await open();
+      const [heading, item] = reviewer.snapshot().blocks;
+      if (!heading || !item) throw new Error("Missing fixture");
+      for (const operation of [
+        {
+          id: "comment",
+          type: "commentOnBlock",
+          blockId: item.id,
+          comment: { text: "Review this clause." },
+        },
+        {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: heading.id,
+          separator: " ",
+        },
+      ] satisfies FolioDocumentOperation[]) {
+        expect(
+          reviewer.applyOperations([operation], { mode: "tracked-changes" })
+            .skipped,
+        ).toEqual([]);
+      }
+      // One at a time, the split runs first: it edits further into the document.
+      const operations: FolioDocumentOperation[] = [
+        { id: "split", type: "splitBlock", blockId: item.id, offset: 8 },
+        insertions["a table after it"](heading.id),
+      ];
+      for (const batch of batched
+        ? [operations]
+        : operations.map((operation) => [operation])) {
+        expect(
+          reviewer.applyOperations(batch, { mode: "tracked-changes" }).skipped,
+        ).toEqual([]);
+      }
+      return reviewer.getComments().map(({ anchoredText }) => anchoredText);
+    };
+    const sequential = await read(false);
+    expect(sequential.some((text) => text.includes("Term"))).toBe(true);
+    expect(await read(true)).toEqual(sequential);
   });
 });
