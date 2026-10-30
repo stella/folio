@@ -1,5 +1,13 @@
 # @stll/folio-core
 
+## 0.66.2
+
+### Patch Changes
+
+- [#2225](https://github.com/stella/folio/pull/2225) [`958c582`](https://github.com/stella/folio/commit/958c582cbb6eeb678121765dad74f83bc5d700c1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph or table inserted beside paragraphs a pending merge joins, in direct or tracked-changes mode, goes after the paragraph the merge leaves, or before the first one whose words it takes in: accepting no longer runs the merged words into the inserted block. Merges into a paragraph with no words left keep today's placement.
+
+- [#2224](https://github.com/stella/folio/pull/2224) [`1596aa4`](https://github.com/stella/folio/commit/1596aa4a6afa1baab845f7c504d45a576a30ab2b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph inserted beside one whose break a tracked merge removes copies the properties the joined paragraph will have (its style and list), as the same edits applied directly do, rather than the removed break's own.
+
 ## 0.66.1
 
 ### Patch Changes
