@@ -2691,6 +2691,70 @@ const insertionWithLiveAnchor = (
   return { ...item, blockNode: anchor };
 };
 
+type PendingJoinSurvivorOptions = {
+  doc: PMNode;
+  paragraphPos: number;
+  /** The paragraph's text as accepting leaves it. */
+  cleanText: string;
+};
+
+/**
+ * The paragraph a pending join makes of the one at `paragraphPos`: where its
+ * break is pending removal while its words stay, accepting runs them into the
+ * paragraph the join leaves, which already carries the joined paragraph's
+ * properties (see `carryParagraphProperties`). Null when the paragraph stands
+ * alone, or goes whole as a pending deletion.
+ */
+const pendingJoinSurvivor = ({
+  doc,
+  paragraphPos,
+  cleanText,
+}: PendingJoinSurvivorOptions): number | null => {
+  const paragraph = doc.nodeAt(paragraphPos);
+  if (
+    paragraph?.type.name !== "paragraph" ||
+    !isDeletedPPrMark(paragraph.attrs["pPrMark"]) ||
+    isPendingDeletion(doc, paragraphPos, paragraph, cleanText)
+  ) {
+    return null;
+  }
+  const survivor = paragraphLeftAfter({ doc, paragraphPos });
+  return survivor !== null && doc.nodeAt(survivor)?.type === paragraph.type
+    ? survivor
+    : null;
+};
+
+type InsertionFormattingAnchorOptions = {
+  item: ResolvedOperation;
+  tr: Transaction;
+  noteReferences: NoteReferenceLabels;
+};
+
+/**
+ * The insertion with the paragraph its new paragraphs copy properties from as
+ * its anchor: a paragraph a pending join runs into another reads as that one,
+ * as the joined paragraph does when the merge is applied directly.
+ */
+const insertionFormattingAnchor = ({
+  item,
+  tr,
+  noteReferences,
+}: InsertionFormattingAnchorOptions): ResolvedOperation => {
+  const position = tr.mapping.map(item.blockFrom, 1);
+  const anchor = tr.doc.nodeAt(position);
+  if (anchor?.type !== item.blockNode.type) return item;
+  const survivor = pendingJoinSurvivor({
+    doc: tr.doc,
+    paragraphPos: position,
+    cleanText: buildCleanBlockText(anchor, position, {
+      fieldResults: "text",
+      noteReferences,
+    }).text,
+  });
+  const source = survivor === null ? null : tr.doc.nodeAt(survivor);
+  return source ? { ...item, blockNode: source } : item;
+};
+
 type RotateAddedFinalBreaksOptions = {
   tr: Transaction;
   /** Revision ids this batch minted, so marks it did not write are left alone. */
@@ -5372,10 +5436,15 @@ const applyFolioAIEditOperationsInternal = ({
         const insertionSuggestionId = isSuggested
           ? (insertion.operation.suggestionId ?? insertion.operation.id)
           : null;
-        const built = buildInsertedParagraphs({
+        const formatted = insertionFormattingAnchor({
           item: insertion,
+          tr,
+          noteReferences,
+        });
+        const built = buildInsertedParagraphs({
+          item: formatted,
           schema: view.state.schema,
-          formattingFromStyle: formattingFromStyleForInsertion(insertion),
+          formattingFromStyle: formattingFromStyleForInsertion(formatted),
           mode,
           author,
           date,
@@ -5879,10 +5948,15 @@ const applyFolioAIEditOperationsInternal = ({
       case "insertBeforeBlock": {
         allocateNewLists({ status: "willApply", items: [item] });
         assertNewListsAllocated(item.operation);
-        const built = buildInsertedParagraphs({
+        const formatted = insertionFormattingAnchor({
           item,
+          tr,
+          noteReferences,
+        });
+        const built = buildInsertedParagraphs({
+          item: formatted,
           schema: view.state.schema,
-          formattingFromStyle: formattingFromStyleForInsertion(item),
+          formattingFromStyle: formattingFromStyleForInsertion(formatted),
           mode,
           author,
           date,
