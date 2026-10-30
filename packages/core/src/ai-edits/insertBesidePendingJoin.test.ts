@@ -254,3 +254,92 @@ describe("an insertion after a paragraph whose break a final deletion retires", 
     expect(texts.indexOf("After.")).toBe(texts.indexOf(item.text) + 1);
   });
 });
+
+const EMPTY_SOURCE_MARKDOWN = "Alpha.\n\nBravo.\n\nCharlie.";
+
+/** An empty paragraph after "Alpha.", merged into "Bravo.", then `edit` in `mode`. */
+const fromEmptySource = async (
+  mode: "direct" | "tracked-changes",
+  batches: (ids: {
+    empty: string;
+    bravo: string;
+  }) => FolioDocumentOperation[][],
+) => {
+  const bytes = (
+    await ensureParaIds(await createDocx(fromMarkdown(EMPTY_SOURCE_MARKDOWN)))
+  ).docx;
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+    author: "Test",
+  });
+  const alpha = reviewer.snapshot().blocks.at(0);
+  if (!alpha) throw new Error("Missing fixture");
+  reviewer.applyOperations(
+    [{ id: "empty", type: "insertAfterBlock", blockId: alpha.id, text: "" }],
+    { mode: "direct" },
+  );
+  const [, empty, bravo] = reviewer.snapshot().blocks;
+  if (!empty || !bravo) throw new Error("Missing fixture");
+  reviewer.applyOperations(
+    [{ id: "merge", type: "mergeBlockWithNext", blockId: empty.id }],
+    { mode },
+  );
+  for (const batch of batches({ empty: empty.id, bravo: bravo.id })) {
+    expect(reviewer.applyOperations(batch, { mode }).skipped).toEqual([]);
+  }
+  if (mode !== "direct") reviewer.acceptAll();
+  return reviewer.snapshot().blocks.map(({ text }) => text);
+};
+
+describe("a pending join from an empty paragraph", () => {
+  for (const [placed, insertion] of Object.entries(insertions)) {
+    if (placed.endsWith("before it")) continue;
+    test(`takes ${placed} after the paragraph it leaves, as direct edits do`, async () => {
+      const batches = ({ empty }: { empty: string }) => [[insertion(empty)]];
+      const direct = await fromEmptySource("direct", batches);
+      expect(direct.indexOf("Bravo.")).toBeLessThan(
+        direct.findIndex(
+          (text) => text === "Inserted clause." || text === "Term",
+        ),
+      );
+      expect(await fromEmptySource("tracked-changes", batches)).toEqual(direct);
+    });
+  }
+  for (const order of ["after first", "before first"] as const) {
+    test(`keeps insertions on both sides in a batch as one at a time (${order})`, async () => {
+      const operations = ({
+        empty,
+        bravo,
+      }: {
+        empty: string;
+        bravo: string;
+      }) => {
+        const after: FolioDocumentOperation = {
+          id: "after",
+          type: "insertAfterBlock",
+          blockId: empty,
+          text: "After.",
+        };
+        const before: FolioDocumentOperation = {
+          id: "before",
+          type: "insertBeforeBlock",
+          blockId: bravo,
+          text: "Before.",
+        };
+        return order === "after first" ? [after, before] : [before, after];
+      };
+      const sequential = await fromEmptySource("tracked-changes", (ids) =>
+        operations(ids).map((operation) => [operation]),
+      );
+      expect(
+        await fromEmptySource("tracked-changes", (ids) => [operations(ids)]),
+      ).toEqual(sequential);
+      expect(sequential).toEqual([
+        "Alpha.",
+        "Before.",
+        "Bravo.",
+        "After.",
+        "Charlie.",
+      ]);
+    });
+  }
+});

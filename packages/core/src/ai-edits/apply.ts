@@ -2779,16 +2779,26 @@ const keepsWords = ({
 };
 
 /**
+ * Whether accepting runs the paragraph into the one its pending join leaves:
+ * it keeps words, or it is empty. One whose words are all pending deletion
+ * goes whole instead.
+ */
+const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
+  options.doc.nodeAt(options.paragraphPos)?.content.size === 0 ||
+  keepsWords(options);
+
+/**
  * Where a block goes before and after the paragraph at `paragraphPos`, read
  * as the joined paragraph a pending join makes of it. A join runs the words
  * of each paragraph whose break is pending removal into the paragraph it
  * leaves, so a block put between them would take those words once accepted,
- * as the same edits applied directly never do. Where words run into a
- * paragraph the join leaves that keeps words of its own, a block after any
+ * as the same edits applied directly never do. Where a paragraph runs into
+ * one the join leaves that keeps words of its own, a block after any
  * paragraph of the join goes after the paragraph it leaves, and a block
- * before that one goes before the first paragraph whose words the join takes
- * in. A join into a paragraph with no words left (an emptied final carrier,
- * or one going whole) runs nothing together: blocks keep their places.
+ * before that one goes before the first paragraph the join takes in, empty
+ * ones included. A join into a paragraph with no words left (an emptied
+ * final carrier, or one going whole) runs nothing together, nor does a
+ * paragraph going whole: blocks keep their places.
  */
 const pendingJoinBounds = (
   options: PendingJoinBoundsOptions,
@@ -2797,9 +2807,9 @@ const pendingJoinBounds = (
   const paragraph = doc.nodeAt(paragraphPos);
   let after = paragraphPos;
   if (
-    paragraph &&
+    paragraph?.type.name === "paragraph" &&
     isDeletedPPrMark(paragraph.attrs["pPrMark"]) &&
-    keepsWords(options)
+    joinsIn(options)
   ) {
     const survivor = paragraphLeftAfter({ doc, paragraphPos });
     if (
@@ -2821,7 +2831,7 @@ const pendingJoinBounds = (
         break;
       }
       start -= previous.nodeSize;
-      if (keepsWords({ doc, paragraphPos: start, noteReferences })) {
+      if (joinsIn({ doc, paragraphPos: start, noteReferences })) {
         before = start;
       }
     }
