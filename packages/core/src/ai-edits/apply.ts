@@ -5069,7 +5069,18 @@ const applyFolioAIEditOperationsInternal = ({
     const continuesMergeChain =
       operation.type === "mergeBlockWithNext" &&
       removedBy?.type === "mergeBlockWithNext";
-    if (removedBy !== undefined && !continuesMergeChain) {
+    // A property edit of the paragraph a merge joins away runs before the
+    // merge (`orderAddressingBeforeRemoval`), whichever the batch names
+    // first, and the merge then gives the merged paragraph the first one's
+    // properties in either mode.
+    const formatsBeforeMerge =
+      operation.type === "setBlockParagraphProperties" &&
+      removedBy?.type === "mergeBlockWithNext";
+    if (
+      removedBy !== undefined &&
+      !continuesMergeChain &&
+      !formatsBeforeMerge
+    ) {
       skipped.push({
         id: operation.id,
         reason: "overlappingOperation",
@@ -5365,6 +5376,14 @@ const applyFolioAIEditOperationsInternal = ({
         addresses: [item.blockFrom],
         removes: next ? [next.nextPosition] : [],
       };
+    }
+    // Removing a table row or table takes its blocks with it: it names its
+    // anchor only to find what it removes.
+    if (
+      item.operation.type === "deleteTableRow" ||
+      item.operation.type === "deleteTable"
+    ) {
+      return { addresses: [], removes: [item.blockFrom] };
     }
     if (item.operation.type !== "deleteBlock") {
       return { addresses: [item.blockFrom], removes: [] };

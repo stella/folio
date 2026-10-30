@@ -360,7 +360,11 @@ export const sequentialGroups = ({
   };
   const reordered = orderAddressingBeforeRemoval(groups, (group) => ({
     addresses: group.flatMap((operation) =>
-      operation.type === "deleteBlock" ? [] : [blockIdOf(operation)],
+      operation.type === "deleteBlock" ||
+      operation.type === "deleteTableRow" ||
+      operation.type === "deleteTable"
+        ? []
+        : [blockIdOf(operation)],
     ),
     removes: group.flatMap(removedBy),
   }));
