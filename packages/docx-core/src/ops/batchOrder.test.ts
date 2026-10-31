@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { groupInsertionRuns } from "./batchOrder";
+import {
+  deletionRemovesBlock,
+  groupInsertionRuns,
+  orderAddressingBeforeRemoval,
+} from "./batchOrder";
 
 type Operation = { id: string; gap: number | null; writesProperties?: true };
 
@@ -73,5 +77,65 @@ describe("groupInsertionRuns", () => {
         ),
       ),
     ).toEqual([["a"], ["props"], ["b"]]);
+  });
+});
+
+describe("orderAddressingBeforeRemoval", () => {
+  type Access = { id: string; addresses: string[]; removes: string[] };
+  const order = (operations: Access[]) =>
+    orderAddressingBeforeRemoval(operations, (operation) => operation).map(
+      ({ id }) => id,
+    );
+
+  test("moves an operation on a block ahead of the one that removes it", () => {
+    expect(
+      order([
+        { id: "delete-b", addresses: [], removes: ["b"] },
+        { id: "edit-a", addresses: ["a"], removes: [] },
+        { id: "edit-b", addresses: ["b"], removes: [] },
+      ]),
+    ).toEqual(["edit-b", "delete-b", "edit-a"]);
+  });
+
+  test("keeps every other operation in place", () => {
+    const operations: Access[] = [
+      { id: "edit-b", addresses: ["b"], removes: [] },
+      { id: "merge-a", addresses: ["a"], removes: ["b"] },
+      { id: "edit-c", addresses: ["c"], removes: [] },
+    ];
+    expect(order(operations)).toEqual(["edit-b", "merge-a", "edit-c"]);
+  });
+
+  test("puts a merge that addresses a deleted block before the deletion", () => {
+    expect(
+      order([
+        { id: "delete-a", addresses: [], removes: ["a"] },
+        { id: "merge-a", addresses: ["a"], removes: ["b"] },
+        { id: "edit-b", addresses: ["b"], removes: [] },
+      ]),
+    ).toEqual(["edit-b", "merge-a", "delete-a"]);
+  });
+});
+
+describe("deletionRemovesBlock", () => {
+  test("only a container's last paragraph with nothing to take its break stays", () => {
+    expect(
+      deletionRemovesBlock({
+        endsContainer: true,
+        hasKeptParagraphBefore: false,
+      }),
+    ).toBe(false);
+    expect(
+      deletionRemovesBlock({
+        endsContainer: true,
+        hasKeptParagraphBefore: true,
+      }),
+    ).toBe(true);
+    expect(
+      deletionRemovesBlock({
+        endsContainer: false,
+        hasKeptParagraphBefore: false,
+      }),
+    ).toBe(true);
   });
 });

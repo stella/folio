@@ -7,7 +7,10 @@ import { directNumberedDocument, openReviewer } from "../support/documents.ts";
 import { type FlowFile, parseFlowFile } from "../support/flow-file.ts";
 import { runFlowFile } from "../support/fuzz.ts";
 
-test("seed 877798201 refuses insertion on a deleted anchor and rolls back only atomic batches", async () => {
+// The insertion addresses the anchor before the deletion removes it, as one
+// at a time, so both apply whether or not the batch is atomic; the next test
+// covers an atomic batch with a conflict.
+test("seed 877798201 applies an insertion before an anchor the same batch deletes, atomic or not", async () => {
   const pinned = readFlowDir(
     fileURLToPath(new URL("../flows/", import.meta.url)),
   ).find(({ file }) => file === "suggested-insert-before-deleted-anchor.json");
@@ -19,7 +22,7 @@ test("seed 877798201 refuses insertion on a deleted anchor and rolls back only a
         Object.assign({}, step, { atomic }),
       ),
     });
-    assert.deepEqual(run.effects, [{ type: "batch", applied: atomic ? 0 : 1 }]);
+    assert.deepEqual(run.effects, [{ type: "batch", applied: 2 }]);
   }
 });
 

@@ -1,7 +1,9 @@
 import {
   type BatchOrderAddress,
   contentRank,
+  deletionRemovesBlock,
   groupInsertionRuns,
+  orderAddressingBeforeRemoval,
   orderBatchOperations,
 } from "@stll/docx-core/ops";
 import type { FolioDocumentOperation } from "@stll/folio-core/server";
@@ -328,6 +330,44 @@ export const sequentialGroups = ({
       groups.splice(target, 0, moved);
     }
   }
+  // The shared batch order: a run addressing a block goes before the run that
+  // deletes or merges it away, as the engine executes the batch.
+  const appendedAfter = (id: string) =>
+    applied.some(
+      (operation) =>
+        blockIdOf(operation) === id &&
+        (operation.type === "insertAfterBlock" ||
+          (operation.type === "insertTable" &&
+            operation["position"] !== "before")),
+    );
+  const removedBy = (operation: AnyOperation): string[] => {
+    const id = blockIdOf(operation);
+    if (operation.type === "deleteBlock") {
+      const row = preRows.find((candidate) => candidate.id === id);
+      return row === undefined ||
+        deletionRemovesBlock({
+          endsContainer: finalBlocks.has(id) && !appendedAfter(id),
+          hasKeptParagraphBefore: breakCarrierOf(row) !== undefined,
+        })
+        ? [id]
+        : [];
+    }
+    if (operation.type !== "mergeBlockWithNext") return [];
+    const index = preRows.findIndex((row) => row.id === id);
+    const row = preRows.at(index);
+    const next = preRows.at(index + 1);
+    return row !== undefined && sameContainerRows(row, next) ? [next.id] : [];
+  };
+  const reordered = orderAddressingBeforeRemoval(groups, (group) => ({
+    addresses: group.flatMap((operation) =>
+      operation.type === "deleteBlock" ||
+      operation.type === "deleteTableRow" ||
+      operation.type === "deleteTable"
+        ? []
+        : [blockIdOf(operation)],
+    ),
+    removes: group.flatMap(removedBy),
+  }));
   const annotations = orderBatchOperations(
     indexed.filter(({ operation }) => ANNOTATIONS.has(operation.type)),
     ({ operation, index }): BatchOrderAddress => {
@@ -350,7 +390,7 @@ export const sequentialGroups = ({
   return [
     ...annotations.map(({ operation }) => [operation]),
     ...early.map(({ operation }) => [operation]),
-    ...groups,
+    ...reordered,
     ...columns.map(({ operation }) => [operation]),
   ];
 };

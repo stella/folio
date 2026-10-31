@@ -202,7 +202,9 @@ test("rejected adjacent deletions keep direct run sizes after save", async () =>
 });
 
 describe("suggested insertion admission uses the live anchor for every gap run", () => {
-  test("refuses an insertion after its inserted anchor is retracted before a table", async () => {
+  // A batch equals its operations one at a time with the insertion, which
+  // addresses the anchor, before the retraction that removes it.
+  test("applies an insertion before an inserted anchor the same batch retracts, as one at a time", async () => {
     const reviewer = await open(await tableDocument());
     expect(
       apply(reviewer, "suggested", [
@@ -226,15 +228,16 @@ describe("suggested insertion admission uses the live anchor for every gap run",
       },
     ]);
 
-    expect(result.applied.map(({ id }) => id)).toEqual(["retract-anchor"]);
-    expect(result.skipped).toContainEqual({
-      id: "insert",
-      reason: "pendingDeletion",
-    });
-    expect(textsOf(reviewer)).not.toContain("Must not appear.");
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "insert",
+      "retract-anchor",
+    ]);
+    expect(result.skipped).toEqual([]);
+    expect(textsOf(reviewer)).toContain("Must not appear.");
+    expect(textsOf(reviewer)).not.toContain("Temporary anchor.");
   });
 
-  test("degrades a move deletion when its refused insertion loses the anchor", async () => {
+  test("applies a move destination before the source the same batch removes, unpaired", async () => {
     const reviewer = await open(await tableDocument());
     expect(
       apply(reviewer, "suggested", [
@@ -259,11 +262,11 @@ describe("suggested insertion admission uses the live anchor for every gap run",
       },
     ]);
 
-    expect(result.applied.map(({ id }) => id)).toEqual(["move-from"]);
-    expect(result.skipped).toContainEqual({
-      id: "move-to",
-      reason: "pendingDeletion",
-    });
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "move-from",
+      "move-to",
+    ]);
+    expect(result.skipped).toEqual([]);
     expect(result.normalizations).toEqual([
       { id: "move-from", code: "unpairedMove", moveId: "move" },
       { id: "move-to", code: "unpairedMove", moveId: "move" },
@@ -278,8 +281,9 @@ describe("suggested insertion admission uses the live anchor for every gap run",
     for (const count of [1, 2, 3]) {
       for (const timing of ["same batch", "earlier batch", "saved"] as const) {
         for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
-          // After-insertions execute before deletions in the right-to-left sweep.
-          if (timing === "same batch" && type === "insertAfterBlock") continue;
+          // In the same batch the insertions address the target before the
+          // deletion removes it, as one at a time; that is covered below.
+          if (timing === "same batch") continue;
           test(`${deletion}, ${count} ${type}, deletion in ${timing}`, async () => {
             let reviewer = await open(
               await (deletion === "deleteBlock"
@@ -307,9 +311,7 @@ describe("suggested insertion admission uses the live anchor for every gap run",
               ...(timing === "same batch" ? [remove] : []),
               ...insertions,
             ]);
-            expect(result.applied.map(({ id }) => id)).toEqual(
-              timing === "same batch" ? ["delete"] : [],
-            );
+            expect(result.applied.map(({ id }) => id)).toEqual([]);
             expect(result.skipped).toEqual(
               expect.arrayContaining(
                 insertions.map(({ id }) => ({ id, reason: "pendingDeletion" })),
@@ -326,6 +328,32 @@ describe("suggested insertion admission uses the live anchor for every gap run",
           });
         }
       }
+    }
+  }
+
+  for (const deletion of ["deleteBlock", "deleteTableRow"] as const) {
+    for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+      test(`${deletion} and ${type} in one batch apply as one at a time, the insertion first`, async () => {
+        const reviewer = await open(
+          await (deletion === "deleteBlock"
+            ? plainDocument()
+            : tableDocument()),
+        );
+        const target = blockId(
+          reviewer,
+          deletion === "deleteBlock" ? SUPPLIER : "Goods",
+        );
+        const result = apply(reviewer, "suggested", [
+          { id: "delete", type: deletion, blockId: target },
+          { id: "insert", type, blockId: target, text: "Added clause." },
+        ]);
+        expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+          "delete",
+          "insert",
+        ]);
+        expect(result.skipped).toEqual([]);
+        expect(textsOf(reviewer)).toContain("Added clause.");
+      });
     }
   }
 });

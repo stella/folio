@@ -44,31 +44,7 @@ type CarryParagraphPropertiesOptions = {
   numbering: NumberingMap | null;
   /** Records the change as a tracked property change; applied directly when omitted. */
   revision?: ParagraphPropertyChangeAttrs["info"];
-  /** Properties the paragraph keeps its own values of: ones its own batch set. */
-  keep?: ReadonlySet<string>;
 };
-
-type CarriedParagraphPropertiesOptions = Pick<
-  CarryParagraphPropertiesOptions,
-  "source" | "keep"
-> & {
-  target: PMNode;
-};
-
-/** The exact formatting transfer, shared with pre-mutation capacity checks. */
-export const carriedParagraphProperties = ({
-  source,
-  target,
-  keep,
-}: CarriedParagraphPropertiesOptions): RecordedFormatting =>
-  Object.fromEntries([
-    ...Object.entries(paragraphPropertiesSnapshot(source)).filter(
-      ([key]) => !keep?.has(key),
-    ),
-    ...Object.entries(paragraphPropertiesSnapshot(target)).filter(([key]) =>
-      keep?.has(key),
-    ),
-  ]);
 
 /**
  * Give a paragraph another one's properties: the pPr a property change
@@ -84,7 +60,6 @@ export const carryParagraphProperties = ({
   styleResolver,
   numbering,
   revision,
-  keep,
 }: CarryParagraphPropertiesOptions): {
   tr: Transaction;
   changed: boolean;
@@ -97,11 +72,7 @@ export const carryParagraphProperties = ({
     return { tr, changed: false, tracked: false };
   }
   const previousFormatting = paragraphPropertiesSnapshot(target);
-  const formatting = carriedParagraphProperties({
-    source,
-    target,
-    ...(keep === undefined ? {} : { keep }),
-  });
+  const formatting = paragraphPropertiesSnapshot(source);
   if (JSON.stringify(previousFormatting) === JSON.stringify(formatting)) {
     return { tr, changed: false, tracked: false };
   }
@@ -150,7 +121,9 @@ export const carryParagraphProperties = ({
   ];
   tr.setNodeMarkup(position, undefined, {
     ...carried,
-    ...carriedNumberingProvenance(source, target, keep),
+    // The record holds only stated numbering: a style's numbering stays the
+    // style's rather than becoming the paragraph's own `w:numPr`.
+    numPrFromStyle: expectParagraphAttrs(source).numPrFromStyle,
     // The hand-over covers pPr only: the section and its pending change stay.
     _sectionProperties: target.attrs["_sectionProperties"],
     _propertyChanges: changes.length > 0 ? changes : null,
@@ -165,20 +138,6 @@ export const carryParagraphProperties = ({
   }
   return { tr, changed: true, tracked };
 };
-
-/**
- * Whether the carried numbering is the paragraph's own or its style's: the
- * record holds only stated numbering, and a style's numbering
- * stays the style's rather than becoming the paragraph's own `w:numPr`.
- */
-const carriedNumberingProvenance = (
-  source: PMNode,
-  target: PMNode,
-  keep: ReadonlySet<string> | undefined,
-): Record<string, unknown> => ({
-  numPrFromStyle: expectParagraphAttrs(keep?.has("numPr") ? target : source)
-    .numPrFromStyle,
-});
 
 type ParagraphLeftAfterOptions = {
   doc: PMNode;
@@ -266,26 +225,4 @@ export const recordReplacedParagraphProperties = ({
     } satisfies ParagraphPropertyChangeAttrs,
   ]);
   return true;
-};
-
-/**
- * The properties a batch's own property change set on a paragraph: the ones
- * whose value differs from what that change records as before.
- */
-export const propertiesSetInBatch = (
-  node: PMNode,
-  batchRevisionIds: ReadonlySet<number>,
-): ReadonlySet<string> => {
-  const changes = expectParagraphAttrs(node)._propertyChanges;
-  const change = Array.isArray(changes)
-    ? changes.find(({ info }) => batchRevisionIds.has(info.id))
-    : undefined;
-  if (change === undefined) return new Set();
-  const before = (change.previousFormatting ?? {}) as Record<string, unknown>;
-  const now = paragraphPropertiesSnapshot(node) as Record<string, unknown>;
-  return new Set(
-    [...new Set([...Object.keys(before), ...Object.keys(now)])].filter(
-      (key) => JSON.stringify(before[key]) !== JSON.stringify(now[key]),
-    ),
-  );
 };

@@ -38,14 +38,18 @@ import {
   type AppliedOperation,
   type Block,
   COLLISIONS,
+  coreBatch,
   type Mode,
   MODES,
   type Operation,
 } from "../support/operations.ts";
 import {
   applyChecked,
+  assertRequestedOutcome,
+  capture,
   compareComments,
   compareWithModel,
+  deletionKeptBlock,
   EXPECTATIONS,
   expectOperation,
   KEEPS_NOTE_REFERENCES,
@@ -1720,6 +1724,157 @@ describe("a style an operation names is a paragraph style of the saved package, 
       test(`${name} (${mode})`, () => runStyleRequest(name, mode));
     }
   }
+});
+
+describe("a paragraph property edit replayed after its block's deletion", () => {
+  const row = (id: string, text: string, cellIndex?: number): Row => ({
+    id,
+    text,
+    kind: "paragraph",
+    ...(cellIndex === undefined ? {} : { table: location(cellIndex) }),
+  });
+
+  test("formats a block only when the deletion kept it, emptied and last", () => {
+    const before = [row("a", "Alpha."), row("b", "Bravo.")];
+    // The story's last block, emptied and still last.
+    assert.equal(
+      deletionKeptBlock({
+        before,
+        after: [row("a", "Alpha."), row("b", "")],
+        id: "b",
+      }),
+      true,
+    );
+    // Not the last block before the batch: the deletion removes it, whatever
+    // the result holds.
+    assert.equal(
+      deletionKeptBlock({
+        before,
+        after: [row("a", ""), row("b", "Bravo.")],
+        id: "a",
+      }),
+      false,
+    );
+    // The last block, but the result no longer holds it.
+    assert.equal(
+      deletionKeptBlock({ before, after: [row("a", "Alpha.")], id: "b" }),
+      false,
+    );
+    // Still there, but not emptied.
+    assert.equal(deletionKeptBlock({ before, after: before, id: "b" }), false);
+    // Emptied, but no longer last.
+    assert.equal(
+      deletionKeptBlock({
+        before,
+        after: [row("a", "Alpha."), row("b", ""), row("c", "Charlie.")],
+        id: "b",
+      }),
+      false,
+    );
+    // A table cell ends with its own last block, whatever follows the table.
+    const cells = [row("x", "Item", 0), row("y", "Price", 1), row("z", "End.")];
+    assert.equal(
+      deletionKeptBlock({
+        before: cells,
+        after: [row("x", "", 0), row("y", "Price", 1), row("z", "End.")],
+        id: "x",
+      }),
+      true,
+    );
+  });
+
+  const finalParagraph = (reviewer: Reviewer): Block => {
+    const blocks = blocksOf(reviewer);
+    const block = blocks.at(-1);
+    assert.ok(block);
+    assert.equal(block.text, "Schedules may change by agreement.");
+    assert.ok(
+      block.table === undefined && blocks.at(-2)?.table !== undefined,
+      "the fixture ends with a paragraph after a table",
+    );
+    return block;
+  };
+  const center = (block: Block): Operation => ({
+    type: "setBlockParagraphProperties",
+    blockId: block.id,
+    properties: { alignment: "center" },
+  });
+  const apply = (
+    reviewer: Reviewer,
+    operations: readonly Operation[],
+  ): AppliedOperation[] => {
+    const batch = coreBatch(operations, "direct");
+    const result = reviewer.applyDocumentOperations(batch as never, {
+      undefinedReferences: "refuse",
+    });
+    assert.equal(result.applied.length, operations.length);
+    return batch.operations;
+  };
+
+  for (const mode of ["direct", "tracked-changes"] as const) {
+    test(`formats the closing paragraph after a table that its deletion empties (${mode})`, async () => {
+      const reviewer = await openReviewer(await ALL_FIXTURES.tables());
+      const closing = finalParagraph(reviewer);
+      const { applied } = await applyChecked(
+        reviewer,
+        [{ type: "deleteBlock", blockId: closing.id }, center(closing)],
+        mode,
+        `delete then format the closing paragraph (${mode})`,
+      );
+      assert.deepEqual(applied, ["op-1", "op-2"]);
+    });
+  }
+
+  test("reports a requested property the kept block lacks", async () => {
+    const reviewer = await openReviewer(await ALL_FIXTURES.tables());
+    const closing = finalParagraph(reviewer);
+    const pre = await capture(reviewer, "direct");
+    // Only the deletion runs; the receipt claims the format too.
+    const [deletion] = apply(reviewer, [
+      { type: "deleteBlock", blockId: closing.id },
+    ]);
+    assert.ok(deletion);
+    const [, format] = coreBatch(
+      [{ type: "deleteBlock", blockId: closing.id }, center(closing)],
+      "direct",
+    ).operations;
+    assert.ok(format);
+    await assert.rejects(
+      assertRequestedOutcome(
+        reviewer,
+        pre,
+        { applied: [deletion, format] },
+        "a format the engine dropped",
+      ),
+      /the emptied block .*directAlignment is undefined, expected "center"/u,
+    );
+  });
+
+  test("reports a format of a block its deletion really removed", async () => {
+    const reviewer = await openReviewer(await ALL_FIXTURES.tables());
+    const closing = finalParagraph(reviewer);
+    const pre = await capture(reviewer, "direct");
+    // A paragraph after it first, so the deletion takes the block out; the
+    // receipt claims the deletion and a format of the removed block.
+    apply(reviewer, [
+      { type: "insertAfterBlock", blockId: closing.id, text: "Added." },
+    ]);
+    apply(reviewer, [{ type: "deleteBlock", blockId: closing.id }]);
+    assert.ok(!blocksOf(reviewer).some((block) => block.id === closing.id));
+    const claimed = coreBatch(
+      [{ type: "deleteBlock", blockId: closing.id }, center(closing)],
+      "direct",
+    ).operations;
+    await assert.rejects(
+      assertRequestedOutcome(
+        reviewer,
+        pre,
+        { applied: claimed },
+        "a format of a removed block",
+      ),
+      /which an earlier one of the batch removed/u,
+    );
+  });
 });
 
 describe("findings the oracle pins", () => {

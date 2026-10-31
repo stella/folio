@@ -36,7 +36,9 @@ const buildReviewer = async (): Promise<FolioDocxReviewer> => {
 };
 
 describe("a batch that removes a block and then formats it", () => {
-  test("refuses the formatting and leaves the next paragraph alone", async () => {
+  // The format addresses the paragraph the deletion takes out, so it runs
+  // first, as one at a time, and goes with the paragraph.
+  test("formats the block before removing it and leaves the next paragraph alone", async () => {
     const reviewer = await buildReviewer();
     const second = reviewer
       .getContent()
@@ -61,15 +63,11 @@ describe("a batch that removes a block and then formats it", () => {
       { undefinedReferences: "refuse" },
     );
 
-    expect(result.applied.map(({ id }) => id)).toEqual(["delete"]);
-    expect(result.skipped).toEqual([
-      {
-        id: "center",
-        reason: "overlappingOperation",
-        message:
-          'operation "delete", earlier in this batch, already claims its target.',
-      },
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "center",
+      "delete",
     ]);
+    expect(result.skipped).toEqual([]);
     expect(reviewer.getContent().map(({ text }) => text)).toEqual([
       "First clause.",
       "Third clause.",
@@ -93,7 +91,10 @@ describe("a batch that removes a block and then formats it", () => {
     await reviewer.toBuffer();
   });
 
-  test("refuses an edit of the block an earlier direct merge removes", async () => {
+  // The format addresses the paragraph the merge joins away, so it runs
+  // first, as one at a time; the merge then keeps the first paragraph's
+  // properties, as it does tracked.
+  test("applies a format of the block a direct merge removes before the merge", async () => {
     const reviewer = await buildReviewer();
     const [first, second] = reviewer.getContent();
     if (!first || !second)
@@ -121,15 +122,14 @@ describe("a batch that removes a block and then formats it", () => {
       { undefinedReferences: "refuse" },
     );
 
-    expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
-    expect(result.skipped).toEqual([
-      {
-        id: "format-removed",
-        reason: "overlappingOperation",
-        message:
-          'operation "merge", earlier in this batch, already claims its target.',
-      },
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "format-removed",
+      "merge",
     ]);
+    expect(result.skipped).toEqual([]);
+    expect(reviewer.getContent().at(0)?.text).toBe(
+      `${first.text} ${second.text}`,
+    );
   });
 
   test("allows an edit of the neighbor preserved by a tracked merge", async () => {
