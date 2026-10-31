@@ -2739,29 +2739,13 @@ const liveBlockResult = (
   assoc?: -1 | 1,
 ) => tr.mapping.mapResult(item.batchBlockFrom ?? item.blockFrom, assoc);
 
-/** The side of its gap a block insertion keeps when another lands there first. */
-const insertionSide = (item: ResolvedOperation): -1 | 1 => {
-  const { operation } = item;
-  switch (operation.type) {
-    case "insertAfterBlock":
-      return -1;
-    case "insertBeforeBlock":
-      return 1;
-    case "insertTable":
-    case "insertSignatureTable":
-      return (operation.position ?? "after") === "after" ? -1 : 1;
-    default:
-      return 1;
-  }
-};
-
 /**
  * `item` with its positions read in the document as it stands now. A batch
  * runs its operations in the shared order (`orderAddressingBeforeRemoval`),
  * which can run an edit before one further left; every operation therefore
  * reads its positions through the steps already taken rather than the
  * document the batch read. A block's start stays with its content and its
- * end with what precedes it; a gap stays on the side its insertion names.
+ * end with what precedes it.
  */
 const readNow = (
   item: ResolvedOperation,
@@ -2775,10 +2759,14 @@ const readNow = (
   let from: number;
   let to: number;
   if (item.from === item.to) {
-    let side: -1 | 1 = item.from === item.blockTo ? -1 : 1;
-    if (BLOCK_INSERTION_TYPES.has(item.operation.type)) {
-      side = insertionSide(item);
-    }
+    // A block insertion lands ahead of the blocks already inserted into its
+    // gap: operations at one gap run in reverse of the order the batch names
+    // them (`compareBatchOrder`), so those come after it.
+    const side: -1 | 1 =
+      item.from === item.blockTo ||
+      BLOCK_INSERTION_TYPES.has(item.operation.type)
+        ? -1
+        : 1;
     from = mapping.map(item.from, side);
     to = from;
   } else {
