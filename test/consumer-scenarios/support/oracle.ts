@@ -1150,6 +1150,87 @@ const sameParagraphContainer = (left: Row, right: Row): boolean => {
   );
 };
 
+/** Whether block `id` is in `rows` and the last of its story or table cell there. */
+const endsContainer = (rows: readonly Row[], id: string): boolean => {
+  const index = rows.findIndex((row) => row.id === id);
+  const row = rows[index];
+  return (
+    row !== undefined &&
+    rows.slice(index + 1).every((later) => !sameParagraphContainer(row, later))
+  );
+};
+
+/**
+ * Whether a deletion of block `id` kept it. A story or table cell ends with a
+ * paragraph, so deleting the last block of one (`before`, the rows before the
+ * batch) may only empty it; it is kept when it is still in `after`, empty and
+ * still the last of its story or cell. A paragraph property edit replayed
+ * after such a deletion formats that block; after any other, the block is gone.
+ */
+export const deletionKeptBlock = ({
+  before,
+  after,
+  id,
+}: {
+  before: readonly Row[];
+  after: readonly Row[];
+  id: string;
+}): boolean =>
+  endsContainer(before, id) &&
+  after.find((row) => row.id === id)?.text === "" &&
+  endsContainer(after, id);
+
+/** How the kept block `row` differs from what a paragraph property edit asked of it. */
+const keptBlockProblems = (
+  requested: ParagraphPropertiesRequest,
+  row: Row,
+): string[] => {
+  const problems: string[] = [];
+  const name = `the emptied block ${row.id}`;
+  for (const [key, value] of Object.entries(requested.fields)) {
+    if (value === ANY) continue;
+    const actualValue = row[key as keyof Row];
+    if (JSON.stringify(actualValue) !== JSON.stringify(value)) {
+      problems.push(
+        `${name}: ${key} is ${JSON.stringify(actualValue)}, expected ${JSON.stringify(value)}\n    after ${JSON.stringify(row)}`,
+      );
+    }
+  }
+  for (const check of requested.checks) {
+    const problem = check(row);
+    if (problem !== null) problems.push(`${name}: ${problem}`);
+  }
+  const lineage = requested.listLineage;
+  switch (lineage?.type) {
+    case "reference":
+      if (row.listReference?.numId !== lineage.numId) {
+        problems.push(
+          `${name}: numbering list reference ${JSON.stringify(row.listReference)} differs from modeled reference ${lineage.numId}`,
+        );
+      }
+      break;
+    case "none":
+      if (row.listReference !== undefined) {
+        problems.push(
+          `${name}: unexpected numbering list reference ${JSON.stringify(row.listReference)}`,
+        );
+      }
+      break;
+    case "newList":
+      if (row.listReference === undefined)
+        problems.push(`${name}: new list has no list reference`);
+      break;
+    case "unknown":
+    case undefined:
+      break;
+    default: {
+      const unhandled: never = lineage;
+      throw new Error(`Unhandled list lineage ${JSON.stringify(unhandled)}`);
+    }
+  }
+  return problems;
+};
+
 const isContainerCarrier = (model: Model, row: ModelRow): boolean => {
   const pre = row.pre;
   if (pre === undefined) return false;
@@ -1874,6 +1955,49 @@ const untouchedText = (row: ModelRow): boolean =>
 
 type Expect = (model: Model, operation: Operation) => void;
 
+/** What a paragraph property edit asks of its block's result. */
+type ParagraphPropertiesRequest = {
+  fields: Fields;
+  checks: ModelRow["checks"];
+  /** The list the block reads, when the edit names a style or numbering. */
+  listLineage?: ListLineage;
+};
+
+/** Give `row` the paragraph properties `operation` sets; what that asks of the result. */
+const setParagraphProperties = (
+  model: Model,
+  row: ModelRow,
+  operation: Operation,
+): ParagraphPropertiesRequest => {
+  const properties = operation["properties"];
+  if (isRecord(properties)) {
+    row.listLineage = operationListLineage({
+      model,
+      request: properties,
+      operationId: String(operation["id"]),
+      source: row,
+      inheritsFormatting: true,
+      replacesDirect: true,
+    });
+  }
+  const { fields, checks } = paragraphRequestForLiveRow({
+    model,
+    request: properties as ParagraphRequest,
+    row,
+  });
+  if (isRecord(properties)) retireStyleNumberingChecks(row, properties);
+  Object.assign(row.fields, fields);
+  row.checks.push(...checks);
+  return {
+    fields,
+    checks,
+    ...(isRecord(properties) &&
+      ("styleId" in properties || "numbering" in properties) && {
+        listLineage: row.listLineage,
+      }),
+  };
+};
+
 /**
  * The paragraphs of the text boxes drawn in `row`, which a reader lists just
  * after it; none for a paragraph inside a text box.
@@ -2290,26 +2414,11 @@ export const EXPECTATIONS = {
     }
   },
   setBlockParagraphProperties: (model, operation) => {
-    const row = target(model, operation["blockId"]);
-    const properties = operation["properties"];
-    if (isRecord(properties)) {
-      row.listLineage = operationListLineage({
-        model,
-        request: properties,
-        operationId: String(operation["id"]),
-        source: row,
-        inheritsFormatting: true,
-        replacesDirect: true,
-      });
-    }
-    const { fields, checks } = paragraphRequestForLiveRow({
+    setParagraphProperties(
       model,
-      request: operation["properties"] as ParagraphRequest,
-      row,
-    });
-    if (isRecord(properties)) retireStyleNumberingChecks(row, properties);
-    Object.assign(row.fields, fields);
-    row.checks.push(...checks);
+      target(model, operation["blockId"]),
+      operation,
+    );
   },
   insertTable: (model, operation) => {
     const position = operation["position"] === "before" ? "before" : "after";
@@ -3390,6 +3499,12 @@ export const assertRequestedOutcome = async (
   model.mode = pre.mode;
   model.story = pre.resolvedStory;
   const removedBlocksBy = new Map<string, { id: string; type: string }>();
+  /** Paragraph property edits of blocks a deletion empties and keeps. */
+  const keptBlockFormats: {
+    id: string;
+    /** Absent when the oracle cannot model the edit (an oracle gap). */
+    requested: ParagraphPropertiesRequest | undefined;
+  }[] = [];
   // The note references each live block holds, followed through merges.
   const noteReferences = new Map<string, readonly FolioDocumentStoryHandle[]>(
     pre.targets.noteReferences,
@@ -3428,23 +3543,43 @@ export const assertRequestedOutcome = async (
       operation.type === "mergeBlockWithNext" &&
       removedBy?.type === "mergeBlockWithNext";
     // The shared order runs a property edit of a paragraph before a deletion
-    // that takes the paragraph out (`orderAddressingBeforeRemoval`), so one
-    // replayed after the deletion formats the paragraph the deletion keeps,
-    // emptied, at its container's end. A reader lists no blank block, so
-    // nothing of it is compared.
-    const formatsKeptParagraph =
+    // that takes the paragraph out (`orderAddressingBeforeRemoval`). One
+    // replayed after the deletion formats the paragraph that deletion keeps:
+    // the last of its story or table cell before the batch, which it only
+    // empties. The result must still hold that block, emptied and last, with
+    // the requested properties (`deletionKeptBlock`, checked once it is read).
+    const formatsKeptBlock =
       operation.type === "setBlockParagraphProperties" &&
-      removedBy?.type === "deleteBlock";
-    if (
-      removedBy !== undefined &&
-      !continuesMergeChain &&
-      !formatsKeptParagraph
-    ) {
+      removedBy?.type === "deleteBlock" &&
+      typeof targetBlockId === "string" &&
+      endsContainer(pre.rows, targetBlockId);
+    if (removedBy !== undefined && !continuesMergeChain && !formatsKeptBlock) {
       throw new Error(
         `applied an operation on block ${targetBlockId}, which an earlier one of the batch removed`,
       );
     }
-    if (!formatsKeptParagraph) expectOperation(model, operation);
+    if (formatsKeptBlock) {
+      // The model row stays removed, so the text comparison skips it; the
+      // edit's expectation is checked on the kept block itself.
+      const row = model.rows.find(
+        (candidate) => candidate.pre?.id === targetBlockId,
+      );
+      let requested: ParagraphPropertiesRequest | undefined;
+      try {
+        if (row === undefined) {
+          throw new Unmodelled(
+            `block ${targetBlockId} is not in the resolved pre-state`,
+          );
+        }
+        requested = setParagraphProperties(model, row, operation);
+      } catch (error) {
+        if (!(error instanceof Unmodelled)) throw error;
+        model.unmodelled.push(`${operation.type}: ${error.message}`);
+      }
+      keptBlockFormats.push({ id: targetBlockId, requested });
+    } else {
+      expectOperation(model, operation);
+    }
 
     if (pre.mode !== "direct" && operation.type === "mergeBlockWithNext") {
       const anchorIndex = pre.rows.findIndex(
@@ -3538,7 +3673,24 @@ export const assertRequestedOutcome = async (
       );
     }
   }
+  const keptBlocks = keptBlockFormats.map(({ id, requested }) => {
+    const row = rows.find((candidate) => candidate.id === id);
+    if (
+      row === undefined ||
+      !deletionKeptBlock({ before: pre.rows, after: rows, id })
+    ) {
+      throw new Error(
+        `applied an operation on block ${id}, which an earlier one of the batch removed`,
+      );
+    }
+    return { row, requested };
+  });
   const problems = [
+    ...(predictable
+      ? keptBlocks.flatMap(({ row, requested }) =>
+          requested === undefined ? [] : keptBlockProblems(requested, row),
+        )
+      : []),
     ...(predictable ? compareWithModel(model, rows) : []),
     ...(model.tableGaps.length === 0
       ? compareTableGeometry(model.tables, rows)
