@@ -538,6 +538,17 @@ type ResolvedOperationFields = {
    * cannot leave them outside, as `tableRowComments` does for a row.
    */
   boundaryComments?: readonly Mark[];
+  /**
+   * Which side of a pending join around the anchor a block insertion lands
+   * on, read when it runs: an earlier edit of the batch (a split of the
+   * paragraph the join leaves, or a deletion of one it takes in) can move
+   * where the join ends or starts. `from` orders the insertion among the
+   * batch's edits: the anchor's own gap after the join, where the block
+   * lands before it.
+   */
+  joinSide?: "before" | "after";
+  /** Where the batch read the join to put the block, which `boundaryComments` describes. */
+  joinAt?: number;
   tableRowInsertion?: TableRowInsertion;
   /**
    * The comments running across the new row's place as the batch read it.
@@ -2661,6 +2672,9 @@ const isBatchableParagraphInsertion = (
   ) {
     return false;
   }
+  // One beside a pending join lands where the join puts it, not in the gap
+  // the run shares.
+  if (item.joinSide !== undefined) return false;
   // A comment id is committed only after its operation has produced a real
   // anchor. Keep commented insertions on the per-operation path so no batch
   // can expose another operation's provisional anchor.
@@ -2839,6 +2853,135 @@ const insertionFormattingAnchor = ({
   });
   const source = survivor === null ? null : tr.doc.nodeAt(survivor);
   return source ? { ...item, blockNode: source } : item;
+};
+
+type PendingJoinBoundsOptions = {
+  doc: PMNode;
+  paragraphPos: number;
+  noteReferences: NoteReferenceLabels;
+};
+
+const keepsWords = ({
+  doc,
+  paragraphPos,
+  noteReferences,
+}: PendingJoinBoundsOptions): boolean => {
+  const paragraph = doc.nodeAt(paragraphPos);
+  if (paragraph?.type.name !== "paragraph") return false;
+  const cleanText = buildCleanBlockText(paragraph, paragraphPos, {
+    fieldResults: "text",
+    noteReferences,
+  }).text;
+  return (
+    cleanText.length > 0 &&
+    !isPendingDeletion(doc, paragraphPos, paragraph, cleanText)
+  );
+};
+
+/**
+ * Whether accepting runs the paragraph into the one its pending join leaves:
+ * it keeps words, or it is empty. One whose words are all pending deletion
+ * goes whole instead.
+ */
+const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
+  options.doc.nodeAt(options.paragraphPos)?.content.size === 0 ||
+  keepsWords(options);
+
+/**
+ * Where a block goes before and after the paragraph at `paragraphPos`, read
+ * as the joined paragraph a pending join makes of it. A join runs the words
+ * of each paragraph whose break is pending removal into the paragraph it
+ * leaves, so a block put between them would take those words once accepted,
+ * as the same edits applied directly never do. Where a paragraph runs into
+ * one the join leaves that keeps words of its own, a block after any
+ * paragraph of the join goes after the paragraph it leaves, and a block
+ * before that one goes before the first paragraph the join takes in, empty
+ * ones included. A join into a paragraph with no words left (an emptied
+ * final carrier, or one going whole) runs nothing together, nor does a
+ * paragraph going whole: blocks keep their places.
+ */
+const pendingJoinBounds = (
+  options: PendingJoinBoundsOptions,
+): { before: number; after: number } => {
+  const { doc, paragraphPos, noteReferences } = options;
+  const paragraph = doc.nodeAt(paragraphPos);
+  let after = paragraphPos;
+  if (
+    paragraph?.type.name === "paragraph" &&
+    isDeletedPPrMark(paragraph.attrs["pPrMark"]) &&
+    joinsIn(options)
+  ) {
+    const survivor = paragraphLeftAfter({ doc, paragraphPos });
+    if (
+      survivor !== null &&
+      keepsWords({ doc, paragraphPos: survivor, noteReferences })
+    ) {
+      after = survivor;
+    }
+  }
+  let before = paragraphPos;
+  if (paragraph?.type.name === "paragraph" && keepsWords(options)) {
+    let start = paragraphPos;
+    for (;;) {
+      const previous = doc.resolve(start).nodeBefore;
+      if (
+        previous?.type !== paragraph.type ||
+        !isDeletedPPrMark(previous.attrs["pPrMark"])
+      ) {
+        break;
+      }
+      start -= previous.nodeSize;
+      if (joinsIn({ doc, paragraphPos: start, noteReferences })) {
+        before = start;
+      }
+    }
+  }
+  return { before, after: endOfParagraphWithItsTextBoxes(doc, after) };
+};
+
+type InsertionAtOptions = {
+  item: ResolvedOperation;
+  tr: Transaction;
+  noteReferences: NoteReferenceLabels;
+};
+
+/** Where a block insertion lands as it runs (see `joinSide`). */
+const insertionAt = ({
+  item,
+  tr,
+  noteReferences,
+}: InsertionAtOptions): number => {
+  if (item.joinSide === undefined) return item.from;
+  const position = tr.mapping.map(item.blockFrom, 1);
+  if (tr.doc.nodeAt(position)?.type.name !== "paragraph") return item.from;
+  return pendingJoinBounds({
+    doc: tr.doc,
+    paragraphPos: position,
+    noteReferences,
+  })[item.joinSide];
+};
+
+/**
+ * Where a block insertion lands as it runs, with the comments running across
+ * that boundary. They are the ones the batch read there, so an edit that runs
+ * first cannot move a comment's end out from around the block; but where an
+ * earlier edit moved the join the block follows, the block lands at another
+ * boundary, and carries the comments across that one.
+ */
+const insertionPlacement = (
+  options: InsertionAtOptions,
+): { at: number; comments: readonly Mark[] | undefined } => {
+  const { item, tr } = options;
+  const at = insertionAt(options);
+  if (item.joinAt === undefined) return { at, comments: item.boundaryComments };
+  const read = tr.mapping.map(item.joinAt, item.joinSide === "after" ? -1 : 1);
+  return {
+    at,
+    comments:
+      at === read
+        ? item.boundaryComments
+        : commentsAcrossBlockBoundary(tr.doc, at),
+  };
 };
 
 type RotateAddedFinalBreaksOptions = {
@@ -4966,6 +5109,7 @@ const applyFolioAIEditOperationsInternal = ({
       liveBlocksByParaId,
       noteReferences,
       doc: view.state.doc,
+      mode,
     });
     if (resolution.type === "skip") {
       skipped.push({
@@ -5588,7 +5732,7 @@ const applyFolioAIEditOperationsInternal = ({
       // across it as the batch read them, as a single insertion does.
       tr = insertBlocksInsideComments({
         tr,
-        at: item.from,
+        at: insertionAt({ item, tr, noteReferences }),
         blocks: nodes,
         ...(item.boundaryComments !== undefined && {
           carriedComments: item.boundaryComments,
@@ -6082,12 +6226,13 @@ const applyFolioAIEditOperationsInternal = ({
         if (built.revisionIds.length > 0) {
           appliedRevisionIds = built.revisionIds;
         }
+        const placement = insertionPlacement({ item, tr, noteReferences });
         tr = insertBlocksInsideComments({
           tr,
-          at: item.from,
+          at: placement.at,
           blocks: built.nodes,
-          ...(item.boundaryComments !== undefined && {
-            carriedComments: item.boundaryComments,
+          ...(placement.comments !== undefined && {
+            carriedComments: placement.comments,
           }),
         });
         break;
@@ -6138,7 +6283,7 @@ const applyFolioAIEditOperationsInternal = ({
           );
           appliedRevisionIds = [revisionId];
         }
-        tr = tr.insert(item.from, node);
+        tr = tr.insert(insertionAt({ item, tr, noteReferences }), node);
         break;
       }
       case "insertTableRow": {
@@ -6715,10 +6860,11 @@ const applyFolioAIEditOperationsInternal = ({
           carriedComments !== undefined &&
           item.from === item.blockTo &&
           liveBlockResult(tr, item, 1).deletedAcross;
+        const placement = insertionPlacement({ item, tr, noteReferences });
         let at = usesRetractedSplit
           ? sinceRead(tr, item).map(item.blockFrom, -1)
-          : item.from;
-        let insertionComments = carriedComments ?? item.boundaryComments;
+          : placement.at;
+        let insertionComments = carriedComments ?? placement.comments;
         if (!usesRetractedSplit) {
           const boundary = tr.doc.resolve(at);
           const before = boundary.nodeBefore;
@@ -9102,11 +9248,12 @@ type ResolveOperationArgs = {
   liveBlocksByParaId: Map<string, LiveBlockEntry>;
   noteReferences: NoteReferenceLabels;
   doc: PMNode;
+  mode: FolioAIEditApplyMode;
 };
 
 type ResolveStableBlockArgs = Omit<
   ResolveOperationArgs,
-  "operation" | "doc"
+  "operation" | "doc" | "mode"
 > & {
   blockId: string;
 };
@@ -9254,6 +9401,7 @@ const resolveOperationTarget = ({
   liveBlocksByParaId,
   noteReferences,
   doc,
+  mode,
 }: ResolveOperationArgs):
   { type: "resolved"; operation: ResolvedBase } | OperationResolutionSkip => {
   const blockId =
@@ -9286,6 +9434,41 @@ const resolveOperationTarget = ({
   ) {
     return { type: "skip", reason: "preconditionFailed" };
   }
+  // A suggestion is read against the document as it stands, where a pending
+  // join has not run anything together yet; tracked and direct edits are
+  // read as accepting leaves them.
+  const joinBounds = (): { before: number; after: number } =>
+    mode === "suggested"
+      ? {
+          before: blockFrom,
+          after: endOfParagraphWithItsTextBoxes(doc, blockFrom),
+        }
+      : pendingJoinBounds({ doc, paragraphPos: blockFrom, noteReferences });
+  // A block beside the anchor: `from` is the anchor's own gap, `at` where a
+  // pending join around it puts the block (see `joinSide`).
+  const beside = (
+    side: "before" | "after",
+  ): {
+    from: number;
+    at: number;
+    joinSide?: "before" | "after";
+    joinAt?: number;
+  } => {
+    // A block after the join orders by the anchor's own gap: edits inside
+    // the paragraph the join leaves run first, and the block follows where
+    // they leave the join's end. A block before it orders by where it lands,
+    // ahead of the paragraphs the join takes in: edits inside them run first
+    // and keep the positions they were read at.
+    const plain =
+      side === "after"
+        ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
+        : blockFrom;
+    const at = joinBounds()[side];
+    const from = side === "after" ? plain : at;
+    return at === plain
+      ? { from, at }
+      : { from, at, joinSide: side, joinAt: at };
+  };
 
   if (
     operation.type === "replaceRange" ||
@@ -9356,17 +9539,13 @@ const resolveOperationTarget = ({
     // outer boundary so the synthesized sibling lands as a peer of
     // the table at doc level.
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
-    const isInsertAfter = operation.type === "insertAfterBlock";
-    let insertFrom: number;
-    if (tableBoundary) {
-      insertFrom = isInsertAfter ? tableBoundary.after : tableBoundary.before;
-    } else {
-      // After a paragraph is after the text boxes drawn in it too: a block
-      // between the two is read after the boxes once the package is saved.
-      insertFrom = isInsertAfter
-        ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
-        : blockFrom;
-    }
+    const side = operation.type === "insertAfterBlock" ? "after" : "before";
+    // After a paragraph is after the text boxes drawn in it too: a block
+    // between the two is read after the boxes once the package is saved.
+    const placed = tableBoundary
+      ? { from: tableBoundary[side], at: tableBoundary[side] }
+      : beside(side);
+    const insertFrom = placed.from;
     const splitParagraphs =
       operation.lineBreakMode !== "inline" &&
       LINE_BREAK_PATTERN.test(operation.text);
@@ -9383,7 +9562,11 @@ const resolveOperationTarget = ({
         blockTo,
         blockNode,
         insertTexts,
-        boundaryComments: commentsAcrossBlockBoundary(doc, insertFrom),
+        boundaryComments: commentsAcrossBlockBoundary(doc, placed.at),
+        ...(placed.joinSide !== undefined && {
+          joinSide: placed.joinSide,
+          joinAt: placed.joinAt,
+        }),
       },
     };
   }
@@ -9394,25 +9577,22 @@ const resolveOperationTarget = ({
     }
     const position = operation.position ?? "after";
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
-    let insertFrom: number;
-    if (tableBoundary) {
-      insertFrom =
-        position === "after" ? tableBoundary.after : tableBoundary.before;
-    } else {
-      insertFrom =
-        position === "after"
-          ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
-          : blockFrom;
-    }
+    const placed = tableBoundary
+      ? { from: tableBoundary[position], at: tableBoundary[position] }
+      : beside(position);
     return {
       type: "resolved",
       operation: {
         operation,
-        from: insertFrom,
-        to: insertFrom,
+        from: placed.from,
+        to: placed.from,
         blockFrom,
         blockTo,
         blockNode,
+        ...(placed.joinSide !== undefined && {
+          joinSide: placed.joinSide,
+          joinAt: placed.joinAt,
+        }),
       },
     };
   }
@@ -9655,24 +9835,26 @@ const resolveOperationTarget = ({
   if (operation.type === "insertTable") {
     // A whole table is a document-level peer, like every other block
     // insertion: `insertTableRow` is the operation for growing one in place.
-    const boundary = findOutermostTableBoundary(doc, blockFrom) ?? {
-      before: blockFrom,
-      after: endOfParagraphWithItsTextBoxes(doc, blockFrom),
-    };
-    const insertFrom =
-      (operation.position ?? "after") === "after"
-        ? boundary.after
-        : boundary.before;
+    const side =
+      (operation.position ?? "after") === "after" ? "after" : "before";
+    const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
+    const placed = tableBoundary
+      ? { from: tableBoundary[side], at: tableBoundary[side] }
+      : beside(side);
     return {
       type: "resolved",
       operation: {
         operation,
-        from: insertFrom,
-        to: insertFrom,
+        from: placed.from,
+        to: placed.from,
         blockFrom,
         blockTo,
         blockNode,
-        boundaryComments: commentsAcrossBlockBoundary(doc, insertFrom),
+        boundaryComments: commentsAcrossBlockBoundary(doc, placed.at),
+        ...(placed.joinSide !== undefined && {
+          joinSide: placed.joinSide,
+          joinAt: placed.joinAt,
+        }),
       },
     };
   }
