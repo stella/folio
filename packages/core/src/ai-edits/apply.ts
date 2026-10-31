@@ -2247,6 +2247,29 @@ const foldedBlankCellRanges = (
   });
 };
 
+/**
+ * The paragraphs before `paragraph`, which ends its container, nearest first,
+ * up to the container's start or another block, past those that go whole, as
+ * `finalParagraphPredecessor` looks past them. See the `deleteBlock` claim's
+ * `paragraphsBefore`.
+ */
+const paragraphsBeforeFinal = (
+  $paragraph: ResolvedPos,
+  paragraph: PMNode,
+): { block: number; keepsBreak: boolean }[] => {
+  const paragraphs: { block: number; keepsBreak: boolean }[] = [];
+  let position = $paragraph.pos;
+  for (let index = $paragraph.index() - 1; index >= 0; index--) {
+    const node = $paragraph.parent.child(index);
+    position -= node.nodeSize;
+    if (node.type !== paragraph.type) break;
+    const mark: unknown = node.attrs["pPrMark"];
+    if (isPlainDeletedPPrMark(mark) && holdsOnlyDeletedContent(node)) continue;
+    paragraphs.push({ block: position, keepsBreak: mark == null });
+  }
+  return paragraphs;
+};
+
 /** What `item` claims of the document its batch resolved against; see `batch-claims.ts`. */
 const batchClaimOf = ({
   item,
@@ -2295,6 +2318,10 @@ const batchClaimOf = ({
         end: item.blockTo,
         keepsParagraph,
         endsContainer: endsItsContainer,
+        paragraphsBefore:
+          producesTrackedChanges && endsItsContainer
+            ? paragraphsBeforeFinal(at, item.blockNode)
+            : [],
       };
     }
     case "insertAfterBlock":

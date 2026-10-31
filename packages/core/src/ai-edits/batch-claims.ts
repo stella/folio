@@ -29,6 +29,13 @@ export const compareBatchTieOrder = (
 
 type PositionRange = { from: number; to: number };
 
+/** A paragraph before a deleted one that ends its container; see `paragraphsBefore`. */
+type ParagraphBefore = {
+  block: number;
+  /** Its break is not already pending deletion. */
+  keepsBreak: boolean;
+};
+
 /** The text an operation rewrites (`text`), only marks (`annotation`), or breaks (`split`). */
 type InlineClaim = {
   type: "text" | "annotation" | "split";
@@ -57,6 +64,15 @@ export type BatchClaim =
       keepsParagraph: boolean;
       /** The paragraph ends its container, before anything the batch adds. */
       endsContainer: boolean;
+      /**
+       * Tracked, the paragraphs before one that ends its container, nearest
+       * first, up to the container's start or a block that is not one. The
+       * nearest the batch keeps, when its break stays, is the one whose break
+       * the deletion retires: accepting runs it into this paragraph with its
+       * own properties, as applied directly this one goes. Empty applied
+       * directly, and for a paragraph that ends nothing.
+       */
+      paragraphsBefore: readonly ParagraphBefore[];
     }
   /**
    * Joins `block` with the block starting at `next`, where `block` ends.
@@ -113,7 +129,14 @@ export type BatchClaim =
 type BlockRole =
   | { kind: InlineClaim["type"]; claim: InlineClaim }
   | { kind: "rewriteBlock" | "paragraphProperties" }
-  | { kind: "deleteBlock"; keepsParagraph: boolean; endsContainer: boolean }
+  | {
+      kind: "deleteBlock";
+      keepsParagraph: boolean;
+      endsContainer: boolean;
+      paragraphsBefore: readonly ParagraphBefore[];
+      /** Settled against the batch's other claims: see `retiresBreakBefore`. */
+      retiresBreakBefore: boolean;
+    }
   /** The block a merge ends (`own`), or the one it pulls in (`next`). */
   | {
       kind: "mergeOwn" | "mergeNext";
@@ -142,6 +165,8 @@ const blockRolesOf = (
             kind: "deleteBlock",
             keepsParagraph: claim.keepsParagraph,
             endsContainer: claim.endsContainer,
+            paragraphsBefore: claim.paragraphsBefore,
+            retiresBreakBefore: false,
           },
         },
       ];
@@ -229,11 +254,15 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
         // A property edit of the block runs before its deletion
         // (`orderAddressingBeforeRemoval`) and formats a paragraph that then
         // goes. A container's last paragraph keeps its own rules: one that
-        // stays emptied is still a paragraph to format; one whose break the
-        // deletion retires onto the paragraph before takes that one's
-        // properties, which a format of it would contradict.
+        // stays emptied is still a paragraph to format; one that goes into
+        // the paragraph before (applied directly, or tracked through the
+        // break the deletion retires) takes that one's properties, which a
+        // format of it would contradict.
         case "paragraphProperties":
-          return left.endsContainer && !left.keepsParagraph;
+          return (
+            left.endsContainer &&
+            (!left.keepsParagraph || left.retiresBreakBefore)
+          );
         // A merge into the deleted block joins across it, in either mode, as
         // one at a time: tracked, across its deleted mark; applied directly,
         // into whatever follows once it is gone. Where nothing does (the
@@ -365,6 +394,32 @@ export class BatchClaims {
     { block: number; operationId: string }
   >();
 
+  /**
+   * Whether a tracked deletion of a paragraph that ends its container retires
+   * the break of the paragraph before, given the claims accepted so far: the
+   * nearest paragraph before it the batch does not delete keeps its break,
+   * and no merge of the batch deletes that break first.
+   */
+  private retiresBreakBefore(role: DeleteBlockRole): boolean {
+    for (const { block, keepsBreak } of role.paragraphsBefore) {
+      const entries = this.blocks.get(block) ?? [];
+      if (entries.some((entry) => entry.role.kind === "deleteBlock")) {
+        continue;
+      }
+      return (
+        keepsBreak && !entries.some((entry) => entry.role.kind === "mergeOwn")
+      );
+    }
+    return false;
+  }
+
+  /** `role` with what it takes from the batch's other claims settled. */
+  private settled(role: BlockRole): BlockRole {
+    return role.kind === "deleteBlock"
+      ? { ...role, retiresBreakBefore: this.retiresBreakBefore(role) }
+      : role;
+  }
+
   /** `claim`'s roles, given the insertions accepted so far. */
   private rolesOf(claim: BatchClaim): { block: number; role: BlockRole }[] {
     return blockRolesOf(claim).map(({ block, role }) =>
@@ -408,9 +463,10 @@ export class BatchClaims {
    * conflicts with none.
    */
   conflictOf(claim: BatchClaim): string | null {
-    for (const { block, role } of this.rolesOf(claim)) {
+    for (const { block, role: claimed } of this.rolesOf(claim)) {
+      const role = this.settled(claimed);
       for (const entry of this.blocks.get(block) ?? []) {
-        if (rolesConflict(entry.role, role)) {
+        if (rolesConflict(this.settled(entry.role), role)) {
           return entry.operationId;
         }
       }

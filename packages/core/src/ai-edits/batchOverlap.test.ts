@@ -1651,17 +1651,18 @@ describe("properties, a removal and an insertion on one block", () => {
     240_000,
   );
 
-  // Deleting the story's last paragraph meets the last-paragraph refusals,
-  // which differ by mode; both modes still leave the same document. The
-  // operations each mode refuses there are pinned, so a change to either
-  // refusal shows here.
+  // Deleting the story's last paragraph meets the last-paragraph refusals:
+  // a format of the paragraph conflicts with a deletion that runs it into
+  // the one before, applied directly or tracked through the retired break,
+  // and both modes leave the same document. The operations each mode
+  // refuses there are pinned, so a change to either refusal shows here.
   const LAST_PARAGRAPH_REFUSALS: Record<
     string,
     { direct: string[]; tracked: string[] }
   > = {
     "setBlockParagraphProperties,deleteBlock,insertAfterBlock": {
       direct: ["deleteBlock"],
-      tracked: ["insertAfterBlock"],
+      tracked: ["deleteBlock"],
     },
     "setBlockParagraphProperties,insertAfterBlock,deleteBlock": {
       direct: ["deleteBlock"],
