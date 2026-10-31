@@ -3427,12 +3427,24 @@ export const assertRequestedOutcome = async (
     const continuesMergeChain =
       operation.type === "mergeBlockWithNext" &&
       removedBy?.type === "mergeBlockWithNext";
-    if (removedBy !== undefined && !continuesMergeChain) {
+    // The shared order runs a property edit of a paragraph before a deletion
+    // that takes the paragraph out (`orderAddressingBeforeRemoval`), so one
+    // replayed after the deletion formats the paragraph the deletion keeps,
+    // emptied, at its container's end. A reader lists no blank block, so
+    // nothing of it is compared.
+    const formatsKeptParagraph =
+      operation.type === "setBlockParagraphProperties" &&
+      removedBy?.type === "deleteBlock";
+    if (
+      removedBy !== undefined &&
+      !continuesMergeChain &&
+      !formatsKeptParagraph
+    ) {
       throw new Error(
         `applied an operation on block ${targetBlockId}, which an earlier one of the batch removed`,
       );
     }
-    expectOperation(model, operation);
+    if (!formatsKeptParagraph) expectOperation(model, operation);
 
     if (pre.mode !== "direct" && operation.type === "mergeBlockWithNext") {
       const anchorIndex = pre.rows.findIndex(

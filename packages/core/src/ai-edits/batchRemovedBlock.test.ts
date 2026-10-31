@@ -36,7 +36,9 @@ const buildReviewer = async (): Promise<FolioDocxReviewer> => {
 };
 
 describe("a batch that removes a block and then formats it", () => {
-  test("refuses the formatting and leaves the next paragraph alone", async () => {
+  // The format addresses the paragraph the deletion takes out, so it runs
+  // first, as one at a time, and goes with the paragraph.
+  test("formats the block before removing it and leaves the next paragraph alone", async () => {
     const reviewer = await buildReviewer();
     const second = reviewer
       .getContent()
@@ -61,15 +63,11 @@ describe("a batch that removes a block and then formats it", () => {
       { undefinedReferences: "refuse" },
     );
 
-    expect(result.applied.map(({ id }) => id)).toEqual(["delete"]);
-    expect(result.skipped).toEqual([
-      {
-        id: "center",
-        reason: "overlappingOperation",
-        message:
-          'operation "delete", earlier in this batch, already claims its target.',
-      },
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "center",
+      "delete",
     ]);
+    expect(result.skipped).toEqual([]);
     expect(reviewer.getContent().map(({ text }) => text)).toEqual([
       "First clause.",
       "Third clause.",
