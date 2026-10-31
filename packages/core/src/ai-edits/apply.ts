@@ -2952,7 +2952,7 @@ const insertionAt = ({
   noteReferences,
 }: InsertionAtOptions): number => {
   if (item.joinSide === undefined) return item.from;
-  const position = tr.mapping.map(item.blockFrom, 1);
+  const position = sinceRead(tr, item).map(item.blockFrom, 1);
   if (tr.doc.nodeAt(position)?.type.name !== "paragraph") return item.from;
   return pendingJoinBounds({
     doc: tr.doc,
