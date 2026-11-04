@@ -29,19 +29,13 @@ export function DefaultColorPicker({
   onClear,
   presets = EMPTY_PRESETS,
   columns = 8,
-  children,
+  trigger,
 }: FolioColorPickerProps): JSX.Element {
   const t = useTranslations("folio");
-  const trigger = useMemo(
-    () => <div className="folio-default-color-picker-trigger" />,
-    [],
-  );
 
   return (
     <PopoverPrimitive.Root>
-      <PopoverPrimitive.Trigger nativeButton={false} render={trigger}>
-        {children}
-      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Trigger render={trigger} />
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Positioner
           align="start"

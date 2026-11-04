@@ -4,6 +4,7 @@ import type {
   ComponentType,
   CSSProperties,
   JSX,
+  ReactElement,
   ReactNode,
   RefAttributes,
   RefObject,
@@ -272,8 +273,8 @@ export type ColorPreset = {
 };
 
 /**
- * The ColorPicker prop subset folio's chrome relies on. The picker wraps a
- * trigger (`children`) in a popover exposing the `presets` plus a custom-color
+ * The ColorPicker prop subset folio's chrome relies on. The picker opens a
+ * popover from `trigger`, exposing the `presets` plus a custom-color
  * input; `onSelect` fires with a preset value or a 6-char hex (no `#`), and
  * `onClear` clears the color. The design-system ColorPicker accepts a superset
  * (placement, expansion, className) so it stays assignable as an override.
@@ -284,7 +285,12 @@ export type FolioColorPickerProps = {
   onClear?: () => void;
   presets?: ColorPreset[];
   columns?: number;
-  children: ReactNode;
+  /**
+   * One focusable element, normally a `<button>`, that becomes the popover
+   * trigger itself. It must accept and forward props and a ref, so the picker
+   * never wraps it in a second, unnamed button.
+   */
+  trigger: ReactElement;
 };
 
 // ============================================================================

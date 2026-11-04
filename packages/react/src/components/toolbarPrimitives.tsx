@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ComponentPropsWithRef, CSSProperties, ReactNode } from "react";
 
 import type {
   ColorValue,
@@ -225,7 +225,24 @@ export type ToolbarProps = {
 /**
  * Props for individual toolbar buttons
  */
-export type ToolbarButtonProps = {
+/**
+ * Native button attributes and a ref a parent primitive may add, so a toolbar
+ * button can itself be a popover or menu trigger rather than sit inside one.
+ */
+type ToolbarButtonPassThroughProps = Omit<
+  ComponentPropsWithRef<"button">,
+  | "aria-label"
+  | "aria-pressed"
+  | "children"
+  | "className"
+  | "disabled"
+  | "onClick"
+  | "onDoubleClick"
+  | "title"
+  | "type"
+>;
+
+export type ToolbarButtonProps = ToolbarButtonPassThroughProps & {
   /** Whether the button is in active/pressed state */
   active?: boolean | undefined;
   /** Whether the button is disabled */
@@ -279,6 +296,8 @@ export function ToolbarButton({
   className,
   ariaLabel,
   testId,
+  onMouseDown,
+  ...passThrough
 }: ToolbarButtonProps): React.JSX.Element {
   const derivedTestId =
     toToolbarTestId(ariaLabel) ||
@@ -286,12 +305,15 @@ export function ToolbarButton({
   const resolvedTestId =
     testId ?? (derivedTestId ? `toolbar-${derivedTestId}` : undefined);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Keep the editor's selection while the toolbar is clicked.
     e.preventDefault();
+    onMouseDown?.(e);
   };
 
   const button = (
     <button
+      {...passThrough}
       type="button"
       className={cn(
         "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",

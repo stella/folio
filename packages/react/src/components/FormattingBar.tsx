@@ -587,6 +587,37 @@ export function FormattingBar(props: FormattingBarProps): React.JSX.Element {
     requestAnimationFrame(() => onRefocusEditor?.());
   }, [onRefocusEditor]);
 
+  const fontColorLabel = t("fontColor");
+  const fontColorSwatch = (() => {
+    if (!currentFormatting.color) {
+      return "#000000";
+    }
+    if (currentFormatting.color.startsWith("#")) {
+      return currentFormatting.color;
+    }
+    return `#${currentFormatting.color}`;
+  })();
+  // The picker renders this button as its own popover trigger.
+  const fontColorTrigger = useMemo(
+    () => (
+      <ToolbarButton
+        disabled={disabled}
+        title={fontColorLabel}
+        ariaLabel={fontColorLabel}
+      >
+        <div className="flex flex-col items-center gap-0">
+          <BaselineIcon size={ICON_SIZE} />
+          <span
+            className="mt-[-2px] h-1 w-4 rounded-sm"
+            style={{ backgroundColor: fontColorSwatch }}
+          />
+        </div>
+        <ChevronDownIcon size={10} />
+      </ToolbarButton>
+    ),
+    [disabled, fontColorLabel, fontColorSwatch],
+  );
+
   const moreFormattingLabel = t("moreFormatting");
   const overflowTrigger = useMemo(
     () => (
@@ -632,34 +663,8 @@ export function FormattingBar(props: FormattingBarProps): React.JSX.Element {
             value={currentFormatting.color?.replace(/^#/u, "").toUpperCase()}
             onSelect={handleTextColorSelect}
             onClear={handleTextColorClear}
-          >
-            <ToolbarButton
-              disabled={disabled}
-              title={t("fontColor")}
-              ariaLabel={t("fontColor")}
-            >
-              <div className="flex flex-col items-center gap-0">
-                <BaselineIcon size={ICON_SIZE} />
-                <span
-                  className="mt-[-2px] h-1 w-4 rounded-sm"
-                  style={{
-                    backgroundColor: (() => {
-                      if (currentFormatting.color) {
-                        return (() => {
-                          if (currentFormatting.color.startsWith("#")) {
-                            return currentFormatting.color;
-                          }
-                          return `#${currentFormatting.color}`;
-                        })();
-                      }
-                      return "#000000";
-                    })(),
-                  }}
-                />
-              </div>
-              <ChevronDownIcon size={10} />
-            </ToolbarButton>
-          </ColorPicker>
+            trigger={fontColorTrigger}
+          />
         )}
       </ToolbarGroup>
 

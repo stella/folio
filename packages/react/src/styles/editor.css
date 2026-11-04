@@ -1325,10 +1325,6 @@
 /* ── Default chrome ColorPicker ────────────────────────────────────────
    Styling for the built-in, dependency-free ColorPicker used when a consumer
    does not inject one (see `ui/defaults/color-picker.tsx`). */
-.folio-default-color-picker-trigger {
-  display: inline-flex;
-}
-
 .folio-default-color-picker-popup {
   display: flex;
   flex-direction: column;
