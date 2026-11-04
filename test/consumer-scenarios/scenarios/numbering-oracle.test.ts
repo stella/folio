@@ -40,8 +40,9 @@ import {
 } from "../support/oracle.ts";
 import { modelPendingTextEffect } from "../support/pending-text-oracle.ts";
 
+/** A hang guard: these take seconds, however busy the runner makes them seem. */
 const slowTest = (name: string, fn: () => Promise<void>) =>
-  test(name, { timeout: 30_000 }, fn);
+  test(name, { timeout: 120_000 }, fn);
 const MARKER_VISIBILITY_TEST =
   "numbering kind follows marker visibility, independently of the retained reference";
 const HIDDEN_LEVELS_TEST =

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 160976178,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 4264119883,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "5CFDAD72",
+          "text": "Goods goods notice party notice."
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3624707913,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "5CFDAD72",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "bullet"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 160976178"
+}

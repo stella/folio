@@ -50,6 +50,13 @@ export const AUTO_PARAGRAPH_SPACING_PX: number = pointsToPixels(14);
 // ============================================================================
 
 /**
+ * The `indentFirstLine` a hanging indent of `magnitude` twips stores: negated,
+ * but never as `-0`, which compares unequal to the `0` a model holds elsewhere.
+ */
+export const hangingFirstLineIndent = (magnitude: number): number =>
+  magnitude === 0 ? 0 : -Math.abs(magnitude);
+
+/**
  * Convert twips to pixels (at 96 DPI)
  *
  * 1 inch = 1440 twips = 96 pixels

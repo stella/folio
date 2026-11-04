@@ -64,6 +64,35 @@ export const sectionPropertiesOf = (
     SectionProperties | null | undefined) ?? null;
 
 /**
+ * The positions of paragraphs that hold only a copy of a section record: every
+ * carrier of a record but its last. The from-leg writes the record on the last
+ * carrier alone (`keepTheSectionBreakOnTheLastParagraphThatCarriesIt`), so a
+ * resolution that lets the last carrier's mark go must not leave a copy to
+ * inherit the section a saved package no longer has.
+ */
+export const sectionRecordCopyPositions = (doc: PMNode): number[] => {
+  const lastCarrier = new Map<SectionProperties, number>();
+  const copies: number[] = [];
+  const visit = (parent: PMNode, parentStart: number): void => {
+    parent.forEach((node, offset) => {
+      const position = parentStart + offset;
+      if (!node.isTextblock) {
+        if (!node.isLeaf) visit(node, position + 1);
+        return;
+      }
+      if (node.type.name !== "paragraph") return;
+      const record = sectionPropertiesOf(node);
+      if (record === null) return;
+      const earlier = lastCarrier.get(record);
+      if (earlier !== undefined) copies.push(earlier);
+      lastCarrier.set(record, position);
+    });
+  };
+  visit(doc, 0);
+  return copies;
+};
+
+/**
  * The break type a section record states, or `null` when it states none.
  *
  * The single derivation every reader goes through. Every producer of a record
