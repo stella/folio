@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "Could not save DOCX",
     "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.",
     "editor": {
+      "accessibleName": "Document editor",
       "editing": "Editing",
       "editingDescription": "Edit the document directly",
       "outlineDepthAll": "All levels",

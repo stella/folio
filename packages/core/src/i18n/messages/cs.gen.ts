@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "DOCX se nepodařilo uložit",
     "editSessionTakenOver": "Tento dokument byl otevřen k úpravám v jiné kartě, okně nebo zařízení, takže byla tato relace ukončena. Neuložené místní změny zůstávají zachovány — otevřete dokument znovu a pokračujte.",
     "editor": {
+      "accessibleName": "Editor dokumentů",
       "editing": "Úpravy",
       "editingDescription": "Upravovat dokument přímo",
       "outlineDepthAll": "Vše",

@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "No se pudo guardar el DOCX",
     "editSessionTakenOver": "Esta sesión de edición se tomó en otro lugar.",
     "editor": {
+      "accessibleName": "Editor de documentos",
       "editing": "Edición",
       "editingDescription": "Editar el documento directamente",
       "outlineDepthAll": "Todos los niveles",

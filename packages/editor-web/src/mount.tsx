@@ -112,15 +112,16 @@ const FolioEditorApp = ({
     createHistoryBridgePlugin(onHistoryChange),
   ]);
   const [locale] = useState(() => canonicalLocale(hostLocale));
+  const messages = getFolioMessages(locale);
 
   return (
     <IntlProvider
       locale={locale}
-      messages={getFolioMessages(locale)}
+      messages={messages}
       timeZone={new Intl.DateTimeFormat().resolvedOptions().timeZone}
     >
       <DocxEditor
-        accessibleName="Document editor"
+        accessibleName={messages.folio.editor.accessibleName}
         ref={editorRef}
         author={author}
         mode={mode}
