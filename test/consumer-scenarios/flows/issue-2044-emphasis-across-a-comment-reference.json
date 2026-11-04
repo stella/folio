@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "tracked-changes",
+  "seed": 825139411,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3856435367,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "79D25458",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hck7qhw"
+          },
+          "formatting": {
+            "bold": true
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "story batch",
+      "seed": 3160658500,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "79D25458",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hck7qhw"
+          },
+          "comment": {
+            "text": "Party supplier agreement schedule invoice."
+          }
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "79D25458",
+            "startOffset": 8,
+            "endOffset": 15,
+            "selectedTextHash": "hhecxly"
+          },
+          "formatting": {
+            "bold": true
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3472788185,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "79D25458",
+            "startOffset": 0,
+            "endOffset": 8,
+            "selectedTextHash": "hnuyzkf"
+          },
+          "replace": "updated"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "formatRange",
+    "commentOnRange",
+    "setBlockParagraphProperties",
+    "insertTableRow",
+    "deleteTableRow"
+  ],
+  "origin": "shrunk from collisions flow seed 825139411"
+}

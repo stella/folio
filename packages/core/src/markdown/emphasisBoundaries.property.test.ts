@@ -209,6 +209,53 @@ describe("markdown emphasis boundaries (properties)", () => {
     );
   });
 
+  test("content that writes nothing leaves the markdown around it unchanged", () => {
+    const silent: readonly ParagraphContent[] = [
+      { type: "bookmarkStart", id: 1, name: "mark" },
+      { type: "bookmarkEnd", id: 1 },
+      { type: "commentRangeStart", id: 2 },
+      { type: "commentRangeEnd", id: 2 },
+      { type: "commentReference", id: 2 },
+      { type: "moveFromRangeStart", id: 3, name: "move", author: "Reviewer" },
+      { type: "moveFromRangeEnd", id: 3 },
+      { type: "moveToRangeStart", id: 4, name: "move", author: "Reviewer" },
+      { type: "moveToRangeEnd", id: 4 },
+      { type: "preservedInline", xml: "<w:proofErr/>", text: "" },
+      { type: "mathEquation", display: "inline", ommlXml: "<m:oMath/>" },
+      {
+        type: "inlineWrapper",
+        kind: "bidi",
+        control: "embedding",
+        content: [{ type: "commentReference", id: 2 }],
+      },
+    ];
+    const segmentWithMarker = fc.record({
+      segment: segmentOf(WORDS_AND_PUNCTUATION),
+      marker: fc.option(fc.constantFrom(...silent), { nil: undefined }),
+    });
+    fc.assert(
+      fc.property(
+        fc.array(segmentWithMarker, { minLength: 1, maxLength: 6 }),
+        (segments) => {
+          const source = documentOf(segments.map(({ segment }) => segment));
+          const expected = toMarkdown(source, CLEAN);
+          const paragraph = source.package.document.content.at(0);
+          if (paragraph?.type !== "paragraph")
+            throw new Error("no source paragraph");
+          paragraph.content = [
+            run({ text: "Start ", bold: false, italic: false, strike: false }),
+            ...segments.flatMap(({ segment, marker }) =>
+              marker === undefined ? [run(segment)] : [run(segment), marker],
+            ),
+            run({ text: " end", bold: false, italic: false, strike: false }),
+          ];
+          expect(toMarkdown(source, CLEAN)).toBe(expected);
+        },
+      ),
+      propertyConfig({ numRuns: 300 }),
+    );
+  });
+
   test("emphasis on words and on either part of a word reads back as written", () => {
     // Words apart, each emphasized whole or in two parts. (Three differently
     // emphasized parts of one word can overlap in a way the reader cannot
