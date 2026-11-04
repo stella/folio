@@ -43,7 +43,7 @@ const movedAway = (name: string, { range, revision }: MoveIds): string =>
 const movedAwayContent = (name: string, { range, revision }: MoveIds): string =>
   `<w:moveFromRangeStart w:id="${range}" w:name="${name}" ${AUTHORED}/>` +
   `<w:moveFrom w:id="${revision}" ${AUTHORED}>` +
-  `<w:r><w:delText>relocated</w:delText></w:r></w:moveFrom>` +
+  `<w:r><w:t>relocated</w:t></w:r></w:moveFrom>` +
   `<w:moveFromRangeEnd w:id="${range}"/>`;
 
 const movedHere = (name: string, { range, revision }: MoveIds): string =>
@@ -139,7 +139,7 @@ describe("a tracked move keeps its name across the editor", () => {
             saved.indexOf("<w:moveFrom "),
           );
           expect(saved.indexOf("<w:moveFromRangeEnd")).toBeGreaterThan(
-            saved.indexOf("<w:delText>relocated</w:delText>"),
+            saved.indexOf("<w:t>relocated</w:t>"),
           );
         },
       ),

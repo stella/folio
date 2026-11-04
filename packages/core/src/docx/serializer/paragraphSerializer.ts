@@ -26,13 +26,9 @@ import {
 } from "../../internal/paragraphFormattingSerialization";
 import type {
   ComplexField,
-  Deletion,
   Hyperlink,
   InlineSdt,
   InlineWrapper,
-  Insertion,
-  MoveFrom,
-  MoveTo,
   Paragraph,
   ParagraphContent,
   ParagraphFormatting,
@@ -601,21 +597,21 @@ function hyperlinkAttributes(hyperlink: Hyperlink): string {
   return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
 }
 
-/** One `w:hyperlink` child, written with the link's own disposition. */
+/** One `w:hyperlink` child, written with the link's own spelling. */
 function serializeHyperlinkChild(
   child: Hyperlink["children"][number],
-  disposition: InlineTextDisposition,
+  spelling: RunTextSpelling,
 ): string {
   switch (child.type) {
     case "run":
-      return serializeInlineRun(child, disposition);
+      return serializeInlineRun(child, spelling);
     case "bookmarkStart":
       return serializeBookmarkMarker(child);
     case "bookmarkEnd":
       return serializeBookmarkMarker(child);
     case "commentRangeStart":
     case "commentRangeEnd":
-      return serializeParagraphContent(child, disposition);
+      return serializeParagraphContent(child, spelling);
     case "commentReference":
       return serializeCommentReferenceRun(child.id);
     case "moveFromRangeStart":
@@ -624,9 +620,9 @@ function serializeHyperlinkChild(
     case "moveToRangeEnd":
       return serializeMoveRangeMarker(child);
     // A transparent wrapper the link was authored around, written where the
-    // author put it and carrying the link's disposition down to its runs.
+    // author put it and carrying the link's spelling down to its runs.
     case "inlineWrapper":
-      return serializeParagraphContent(child, disposition);
+      return serializeParagraphContent(child, spelling);
     // Opaque markup, replayed between the same two children it was read
     // between, so a permission range or a proofing error does not leave the
     // link it was authored inside.
@@ -644,10 +640,10 @@ function serializeHyperlinkChild(
  */
 function serializeHyperlink(
   hyperlink: Hyperlink,
-  disposition: InlineTextDisposition = "kept",
+  spelling: RunTextSpelling = "text",
 ): string {
   const childrenXml = hyperlink.children
-    .map((child) => serializeHyperlinkChild(child, disposition))
+    .map((child) => serializeHyperlinkChild(child, spelling))
     .join("");
   return `<w:hyperlink${hyperlinkAttributes(hyperlink)}>${childrenXml}</w:hyperlink>`;
 }
@@ -745,21 +741,40 @@ class UnrepresentableTrackedCaptureError extends UnrepresentableTrackedCaptureEr
   message: string;
 }> {}
 
+/** Whether a capture is plain runs whose text a respelling can reach. */
+const isPlainRunCapture = (xml: string): boolean =>
+  /^<w:r[\s>]/u.test(xml) &&
+  !/<w:(?:drawing|pict|object)\b|<mc:AlternateContent\b/u.test(xml);
+
 /**
- * Preserved markup inside a removal. Markup captured from a removal already
- * spells its text as deleted text. Markup captured outside one and put under
- * a removal afterwards does not: plain runs are respelled here, as a deleted
- * run is. A folded list-number capture that cannot be respelled is refused,
- * rather than written as live text inside the removal.
+ * Preserved markup inside a revision, spelled the way the revision spells its
+ * typed runs. Markup captured inside a `w:del` already spells its text as
+ * deleted text; markup captured elsewhere and put under one afterwards does
+ * not, and markup captured from a move source that spelled its text as
+ * deleted text holds the reverse. Plain runs are respelled here, as a typed
+ * run is. A folded list-number capture that cannot be respelled into a
+ * deletion is refused, rather than written as live text inside it.
  */
-function serializeRemovedPreservedInline(item: PreservedInline): string {
+function serializeTrackedPreservedInline(
+  item: PreservedInline,
+  spelling: RunTextSpelling,
+): string {
+  switch (spelling) {
+    case "text":
+      return isPlainRunCapture(item.xml)
+        ? rewriteRunTextAsText(item.xml)
+        : item.xml;
+    case "deletedText":
+      break;
+    default: {
+      const unwritten: never = spelling;
+      return unwritten;
+    }
+  }
   if (!/<w:(?:t|instrText)[\s>]/u.test(item.xml)) {
     return item.xml;
   }
-  const plainRuns =
-    /^<w:r[\s>]/u.test(item.xml) &&
-    !/<w:(?:drawing|pict|object)\b|<mc:AlternateContent\b/u.test(item.xml);
-  if (plainRuns) {
+  if (isPlainRunCapture(item.xml)) {
     return rewriteRunTextAsDeleted(item.xml);
   }
   if (item.foldedListNumber) {
@@ -878,7 +893,7 @@ const trackedSimpleFieldContent = (
  */
 function serializeInlineSdt(
   sdt: InlineSdt,
-  disposition: InlineTextDisposition = "kept",
+  spelling: RunTextSpelling = "text",
 ): string {
   const props = sdt.properties;
 
@@ -886,17 +901,17 @@ function serializeInlineSdt(
     .map((item): string => {
       switch (item.type) {
         case "run":
-          return serializeInlineRun(item, disposition);
+          return serializeInlineRun(item, spelling);
         case "hyperlink":
-          return serializeHyperlink(item, disposition);
+          return serializeHyperlink(item, spelling);
         case "simpleField":
           return serializeSimpleField(item);
         case "complexField":
           return serializeComplexField(item);
         case "inlineSdt":
-          return serializeInlineSdt(item, disposition);
+          return serializeInlineSdt(item, spelling);
         case "inlineWrapper":
-          return serializeParagraphContent(item, disposition);
+          return serializeParagraphContent(item, spelling);
         // Inside the control, where the source put it: a marker written beside
         // the control is a bookmark whose extent has changed.
         case "bookmarkStart":
@@ -905,7 +920,7 @@ function serializeInlineSdt(
           return serializeBookmarkMarker(item);
         case "commentRangeStart":
         case "commentRangeEnd":
-          return serializeParagraphContent(item, disposition);
+          return serializeParagraphContent(item, spelling);
         case "commentReference":
           return serializeCommentReferenceRun(item.id);
         case "moveFromRangeStart":
@@ -914,13 +929,10 @@ function serializeInlineSdt(
         case "moveToRangeEnd":
           return serializeMoveRangeMarker(item);
         case "insertion":
-          return serializeTrackedChange("ins", item);
         case "deletion":
-          return serializeTrackedChange("del", item);
         case "moveFrom":
-          return serializeTrackedChange("moveFrom", item);
         case "moveTo":
-          return serializeTrackedChange("moveTo", item);
+          return serializeTrackedChange(item);
         case "mathEquation":
           // Round-trip the raw OMML XML directly
           return item.ommlXml || "";
@@ -944,9 +956,7 @@ function serializeInlineSdt(
   return serializeSdtWrapper(props, contentXml);
 }
 
-/**
- * Serialize a tracked change wrapper (ins/del/moveFrom/moveTo)
- */
+/** Respell a run's text and field code as deleted text and field code. */
 function rewriteRunTextAsDeleted(xml: string): string {
   return xml
     .replace(/<w:t\b/gu, "<w:delText")
@@ -955,15 +965,50 @@ function rewriteRunTextAsDeleted(xml: string): string {
     .replace(/<\/w:instrText>/gu, "</w:delInstrText>");
 }
 
+/** Respell a run's deleted text and field code as plain text and field code. */
+function rewriteRunTextAsText(xml: string): string {
+  return xml
+    .replace(/<w:delText\b/gu, "<w:t")
+    .replace(/<\/w:delText>/gu, "</w:t>")
+    .replace(/<w:delInstrText\b/gu, "<w:instrText")
+    .replace(/<\/w:delInstrText>/gu, "</w:instrText>");
+}
+
 /**
- * Whether the revision that encloses this content removes it.
+ * How a run inside a revision spells its text: `w:t` and `w:instrText`, or
+ * `w:delText` and `w:delInstrText`.
  *
- * `w:del` and `w:moveFrom` write `w:delText` where `w:t` would stand, and
- * that holds however deeply a transparent wrapper (`w:bdo`, `w:dir`, `w:sdt`)
- * nests the run inside the revision, so the answer travels with the recursion
+ * The answer holds however deeply a transparent wrapper (`w:bdo`, `w:dir`,
+ * `w:sdt`) nests the run inside the revision, so it travels with the recursion
  * rather than being decided again at each level.
  */
-type InlineTextDisposition = "kept" | "removed";
+type RunTextSpelling = "text" | "deletedText";
+
+/** The element each tracked run change is written as. */
+const TRACKED_CHANGE_ELEMENT = {
+  insertion: "ins",
+  deletion: "del",
+  moveFrom: "moveFrom",
+  moveTo: "moveTo",
+} as const satisfies Record<TrackedRunChange["type"], string>;
+
+type TrackedChangeElement =
+  (typeof TRACKED_CHANGE_ELEMENT)[TrackedRunChange["type"]];
+
+/**
+ * The text spelling of the runs each revision holds.
+ *
+ * ISO/IEC 29500-1 §17.3.3.7 reserves `w:delText` for runs in a deleted region
+ * (`w:del`, §17.13.5.14), and `w:delInstrText` likewise. A move source
+ * (`w:moveFrom`, §17.13.5.22) is not a deletion: its content moved elsewhere,
+ * and the spec's own example spells its run text `w:t`.
+ */
+const TRACKED_CHANGE_TEXT_SPELLING = {
+  ins: "text",
+  del: "deletedText",
+  moveFrom: "text",
+  moveTo: "text",
+} as const satisfies Record<TrackedChangeElement, RunTextSpelling>;
 
 function serializeDeletedRun(run: Run): string {
   const xml = serializeRun(run);
@@ -996,35 +1041,15 @@ function serializeDeletedRun(run: Run): string {
 // `<w:t>`, and a shape's nested textbox text (`<w:txbxContent><w:t>`) must NOT
 // be rewritten to `<w:delText>` — that markup belongs only to a run's own
 // deleted text, not to a nested textbox document. eigenpal #641.
-function serializeInlineRun(
-  run: Run,
-  disposition: InlineTextDisposition,
-): string {
-  return disposition === "removed"
+function serializeInlineRun(run: Run, spelling: RunTextSpelling): string {
+  return spelling === "deletedText"
     ? serializeDeletedRun(run)
     : serializeRun(run);
 }
 
-function trackedChangeTag(
-  change: Insertion | Deletion | MoveFrom | MoveTo,
-): "ins" | "del" | "moveFrom" | "moveTo" {
-  switch (change.type) {
-    case "insertion":
-      return "ins";
-    case "deletion":
-      return "del";
-    case "moveFrom":
-      return "moveFrom";
-    case "moveTo":
-      return "moveTo";
-  }
-}
-
-function serializeTrackedChange(
-  tag: "ins" | "del" | "moveFrom" | "moveTo",
-  change: Insertion | Deletion | MoveFrom | MoveTo,
-): string {
-  return emitTrackedInlineSegments(trackedChangeSegments({ tag, change }));
+/** Serialize a tracked change wrapper (ins/del/moveFrom/moveTo). */
+function serializeTrackedChange(change: TrackedRunChange): string {
+  return emitTrackedInlineSegments(trackedChangeSegments(change));
 }
 
 type TrackedInlineSegment =
@@ -1085,18 +1110,12 @@ const wrapTrackedInlineSegments = (
   return result;
 };
 
-type TrackedChangeSegmentsOptions = {
-  tag: "ins" | "del" | "moveFrom" | "moveTo";
-  change: TrackedRunChange;
-};
-
-const trackedChangeSegments = ({
-  tag,
-  change,
-}: TrackedChangeSegmentsOptions): TrackedInlineSegment[] => {
-  const disposition: InlineTextDisposition =
-    tag === "del" || tag === "moveFrom" ? "removed" : "kept";
-  const segments = walkTrackedInlineContent(change.content, disposition);
+const trackedChangeSegments = (
+  change: TrackedRunChange,
+): TrackedInlineSegment[] => {
+  const tag = TRACKED_CHANGE_ELEMENT[change.type];
+  const spelling = TRACKED_CHANGE_TEXT_SPELLING[tag];
+  const segments = walkTrackedInlineContent(change.content, spelling);
   // This is the only revision-wrapping boundary. The execution's own segments
   // decide refusal, so no separate detector can miss a nested container.
   if (
@@ -1129,13 +1148,13 @@ class UnrepresentableNestedHyperlinkError extends UnrepresentableNestedHyperlink
 /** One exhaustive recursive owner for all containers inside a tracked revision. */
 const walkTrackedInlineContent = (
   content: readonly ParagraphContent[],
-  disposition: InlineTextDisposition,
+  spelling: RunTextSpelling,
 ): TrackedInlineSegment[] => {
   const segments: TrackedInlineSegment[] = [];
   for (const item of content) {
     switch (item.type) {
       case "hyperlink": {
-        const children = walkTrackedInlineContent(item.children, disposition);
+        const children = walkTrackedInlineContent(item.children, spelling);
         if (children.some((child) => child.type === "hyperlink")) {
           throw new UnrepresentableNestedHyperlinkError({
             message: "A tracked hyperlink cannot contain another hyperlink.",
@@ -1152,7 +1171,7 @@ const walkTrackedInlineContent = (
         segments.push(
           ...walkTrackedInlineContent(
             trackedSimpleFieldContent(item),
-            disposition,
+            spelling,
           ),
         );
         break;
@@ -1160,17 +1179,12 @@ const walkTrackedInlineContent = (
       case "deletion":
       case "moveFrom":
       case "moveTo":
-        segments.push(
-          ...trackedChangeSegments({
-            tag: trackedChangeTag(item),
-            change: item,
-          }),
-        );
+        segments.push(...trackedChangeSegments(item));
         break;
       case "inlineWrapper":
         segments.push(
           ...wrapTrackedInlineSegments(
-            walkTrackedInlineContent(item.content, disposition),
+            walkTrackedInlineContent(item.content, spelling),
             (xml) => serializeInlineWrapperMarkup(item, xml),
           ),
         );
@@ -1183,7 +1197,7 @@ const walkTrackedInlineContent = (
           xml: serializeSdtWrapper(
             item.properties,
             emitTrackedInlineSegments(
-              walkTrackedInlineContent(item.content, disposition),
+              walkTrackedInlineContent(item.content, spelling),
             ),
           ),
         });
@@ -1195,7 +1209,7 @@ const walkTrackedInlineContent = (
         const xml = serializeComplexField(item);
         segments.push({
           type: "plain",
-          xml: disposition === "removed" ? rewriteRunTextAsDeleted(xml) : xml,
+          xml: spelling === "deletedText" ? rewriteRunTextAsDeleted(xml) : xml,
         });
         break;
       }
@@ -1223,10 +1237,7 @@ const walkTrackedInlineContent = (
         }
         segments.push({
           type: "plain",
-          xml:
-            disposition === "removed"
-              ? serializeRemovedPreservedInline(item)
-              : item.xml,
+          xml: serializeTrackedPreservedInline(item, spelling),
         });
         break;
       }
@@ -1243,7 +1254,7 @@ const walkTrackedInlineContent = (
       case "commentReference":
         segments.push({
           type: "plain",
-          xml: serializeParagraphContent(item, disposition),
+          xml: serializeParagraphContent(item, spelling),
         });
         break;
       default: {
@@ -1353,13 +1364,13 @@ function serializeInlineWrapperMarkup(
  */
 function serializeParagraphContent(
   content: ParagraphContent,
-  disposition: InlineTextDisposition = "kept",
+  spelling: RunTextSpelling = "text",
 ): string {
   switch (content.type) {
     case "run":
-      return serializeInlineRun(content, disposition);
+      return serializeInlineRun(content, spelling);
     case "hyperlink":
-      return serializeHyperlink(content, disposition);
+      return serializeHyperlink(content, spelling);
     case "bookmarkStart":
     case "bookmarkEnd":
       return serializeBookmarkMarker(content);
@@ -1368,7 +1379,7 @@ function serializeParagraphContent(
     case "complexField":
       return serializeComplexField(content);
     case "inlineSdt":
-      return serializeInlineSdt(content, disposition);
+      return serializeInlineSdt(content, spelling);
     case "commentRangeStart":
       return `<w:commentRangeStart ${markupRangeAttributes(content).join(" ")}/>`;
     case "commentRangeEnd":
@@ -1376,13 +1387,10 @@ function serializeParagraphContent(
     case "commentReference":
       return serializeCommentReferenceRun(content.id);
     case "insertion":
-      return serializeTrackedChange("ins", content);
     case "deletion":
-      return serializeTrackedChange("del", content);
     case "moveFrom":
-      return serializeTrackedChange("moveFrom", content);
     case "moveTo":
-      return serializeTrackedChange("moveTo", content);
+      return serializeTrackedChange(content);
     case "moveFromRangeStart":
     case "moveFromRangeEnd":
     case "moveToRangeStart":
@@ -1390,7 +1398,7 @@ function serializeParagraphContent(
       return serializeMoveRangeMarker(content);
     case "inlineWrapper": {
       const inner = content.content
-        .map((child) => serializeParagraphContent(child, disposition))
+        .map((child) => serializeParagraphContent(child, spelling))
         .join("");
       return serializeInlineWrapperMarkup(content, inner);
     }

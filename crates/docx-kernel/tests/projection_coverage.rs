@@ -109,6 +109,12 @@ impl Tracked {
         matches!(self, Self::Deletion | Self::MoveFrom)
     }
 
+    /// Whether the runs inside spell their text `w:delText`: only a deletion's
+    /// do (ISO/IEC 29500-1 §17.3.3.7); a move source's are `w:t`.
+    const fn spells_deleted_text(self) -> bool {
+        matches!(self, Self::Deletion)
+    }
+
     /// Content the view does not show: removed content in the current view,
     /// added content in the original view.
     const fn hidden_in(self, view: RevisionView) -> bool {
@@ -727,7 +733,7 @@ impl Markup {
                 write!(self.xml, "<w:{tag} {attributes}>").unwrap();
                 self.inlines(
                     &revision.children,
-                    removed || revision.kind.removes_content(),
+                    removed || revision.kind.spells_deleted_text(),
                 );
                 write!(self.xml, "</w:{tag}>").unwrap();
             }

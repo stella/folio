@@ -235,6 +235,12 @@ impl Tracked {
         matches!(self, Self::Deletion | Self::MoveFrom)
     }
 
+    /// Whether the runs inside spell their text `w:delText`: only a deletion's
+    /// do (ISO/IEC 29500-1 §17.3.3.7); a move source's are `w:t`.
+    const fn spells_deleted_text(self) -> bool {
+        matches!(self, Self::Deletion)
+    }
+
     const fn hidden_in(self, view: RevisionView) -> bool {
         match view {
             RevisionView::Current => self.removes_content(),
@@ -363,7 +369,7 @@ impl Markup {
                 let attributes = self.revision_attributes();
                 write!(self.xml, "<w:{} {attributes}>", kind.tag()).unwrap();
                 for child in children {
-                    self.inline(child, removed || kind.removes_content());
+                    self.inline(child, removed || kind.spells_deleted_text());
                 }
                 write!(self.xml, "</w:{}>", kind.tag()).unwrap();
             }
