@@ -748,7 +748,7 @@ describe("what a paragraph whose mark goes runs on into", () => {
     ).toEqual(["Words Term", "Value", "kept"]);
   });
 
-  test("an inserted first row stays under an acceptance and takes the words", () => {
+  test("an inserted first row keeps the paragraph in its place under an acceptance", () => {
     expect(
       resolved(
         [
@@ -760,7 +760,7 @@ describe("what a paragraph whose mark goes runs on into", () => {
         ],
         "accept",
       ),
-    ).toEqual(["Words Term", "Value", "kept"]);
+    ).toEqual(["Words ", "Term", "Value", "kept"]);
   });
 
   test("a first row that goes keeps the paragraph in its place", () => {

@@ -9,10 +9,10 @@
  *
  * A paragraph with nothing left to carry is simply removed by the resolvers;
  * one that ends a section keeps its place, as does one before a table whose
- * first row or cell may not stay: resolving every change knows which do, while
- * resolving only some leaves any recorded row open. A table that resolving
- * every change removes never stood in the way: the paragraph runs on into what
- * follows that table.
+ * first row or cell may not stay. Rejecting every change gives the document
+ * before back, so a deleted row stays for it. A table that resolving every
+ * change removes never stood in the way: the paragraph runs on into what follows
+ * that table.
  */
 
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
@@ -49,54 +49,45 @@ type ResolutionMode = "accept" | "reject";
 /**
  * Whether the cell a paragraph's words would run into is itself pending: its
  * row or the cell (through nested tables' first cells) is inserted, deleted
- * or merged, so resolving may not keep it. With `everyChange`, only what that
- * resolution removes counts. Pending rows or cells elsewhere in the table leave
+ * or merged, so resolving may not keep it. A deletion is not pending for a
+ * rejection of every change. Pending rows or cells elsewhere in the table leave
  * that cell where it is.
  */
 export const runInCellPending = (
   table: PMNode,
   everyChange?: ResolutionMode,
 ): boolean => {
+  // Rejecting everything keeps what was deleted, as if it had never been.
+  const deletionStays = everyChange === "reject";
   let node: PMNode | null = table;
   while (node?.type.spec["tableRole"] === "table") {
     const row: PMNode | null = node.firstChild;
     if (!row) return false;
-    if (!rowStays(row, everyChange)) return true;
+    if (row.attrs["trIns"] != null) return true;
+    if (row.attrs["trDel"] != null && !deletionStays) return true;
     const cell: PMNode | null = row.firstChild;
     if (!cell) return false;
-    if (!cellStays(cell, everyChange)) return true;
+    const marker = cell.attrs["cellMarker"] as { kind: string } | null;
+    if (marker != null && !(deletionStays && marker.kind === "del"))
+      return true;
     node = cell.firstChild;
   }
   return false;
 };
 
 /**
- * Whether a row certainly stays: it records nothing, or `everyChange` resolves
- * what it records in its favour. A resolution of only some changes leaves any
- * recorded row open.
+ * Whether resolving every change takes this row out with what it records. The
+ * table it stands in goes when all its rows do.
  */
-const rowStays = (row: PMNode, everyChange?: ResolutionMode): boolean => {
-  const inserted = row.attrs["trIns"] != null;
-  const deleted = row.attrs["trDel"] != null;
-  if (!inserted && !deleted) return true;
-  if (everyChange === undefined) return false;
-  return everyChange === "accept" ? !deleted : !inserted;
-};
-
-const cellStays = (cell: PMNode, everyChange?: ResolutionMode): boolean => {
-  const marker = cell.attrs["cellMarker"] as
-    { kind: string } | null | undefined;
-  if (marker == null) return true;
-  if (everyChange === undefined) return false;
-  return marker.kind === (everyChange === "accept" ? "ins" : "del");
-};
+const rowGoes = (row: PMNode, mode: ResolutionMode): boolean =>
+  row.attrs[mode === "accept" ? "trDel" : "trIns"] != null;
 
 /** Whether resolving every change in `mode` removes the whole table. */
 const tableGoes = (table: PMNode, mode: ResolutionMode): boolean => {
   if (table.type.spec["tableRole"] !== "table" || table.childCount === 0)
     return false;
   for (let index = 0; index < table.childCount; index++) {
-    if (rowStays(table.child(index), mode)) return false;
+    if (!rowGoes(table.child(index), mode)) return false;
   }
   return true;
 };
@@ -131,7 +122,8 @@ type RunParagraphIntoTableOptions = {
   styleResolver: RunStyleResolver | null;
   /**
    * Set when every change of the story resolves this way, not only some: what
-   * it removes does not count as words left, and a row it keeps takes words.
+   * it removes does not count as words left, and a rejection takes a deleted
+   * row as staying.
    */
   everyChange?: ResolutionMode | undefined;
 };
