@@ -253,8 +253,9 @@ export type PruneResult = {
 };
 
 /**
- * Drops the entries whose expiry has passed. Only the entry line goes: the
- * comments above the block explain why the remaining entries are there.
+ * Drops the entries whose expiry has passed. A comment run explains the
+ * entries below it up to the next comment, so it goes with them once every
+ * one of those entries is pruned, and stays while any of them remains.
  */
 export const pruneExpiredExcludes = ({
   bunfig,
@@ -271,18 +272,45 @@ export const pruneExpiredExcludes = ({
   // Each line is judged by its own annotation. Matching by name instead would
   // delete every entry sharing that name, including one whose expiry was
   // renewed and has not passed.
-  const lines = bunfig
-    .slice(blockStart, blockEnd)
-    .split("\n")
-    .filter((line) => {
-      if (!line.includes(EXPIRY_MARKER)) return true;
-      const parsed = parseTemporaryExcludeLine(line);
-      // A malformed annotation is the guard's to report, not this to delete.
-      if (parsed.kind !== "entry") return true;
-      if (now.getTime() < Date.parse(parsed.expiresAt)) return true;
-      pruned.push(parsed.name);
-      return false;
-    });
+  const isExpired = (line: string): boolean => {
+    if (!line.includes(EXPIRY_MARKER)) return false;
+    const parsed = parseTemporaryExcludeLine(line);
+    // A malformed annotation is the guard's to report, not this to delete.
+    if (parsed.kind !== "entry") return false;
+    if (now.getTime() < Date.parse(parsed.expiresAt)) return false;
+    pruned.push(parsed.name);
+    return true;
+  };
+  const isComment = (line: string) => line.trimStart().startsWith("#");
+
+  // Group each comment run with the temporary entries right below it (a
+  // permanent entry ends the group), then keep a run only while one of its
+  // entries survives.
+  const lines: string[] = [];
+  let comments: string[] = [];
+  let entries: string[] = [];
+  let removedAny = false;
+  const flush = () => {
+    if (!(removedAny && entries.length === 0)) lines.push(...comments);
+    lines.push(...entries);
+    comments = [];
+    entries = [];
+    removedAny = false;
+  };
+  for (const line of bunfig.slice(blockStart, blockEnd).split("\n")) {
+    if (isComment(line)) {
+      if (entries.length > 0 || removedAny) flush();
+      comments.push(line);
+    } else if (!line.includes(EXPIRY_MARKER)) {
+      flush();
+      lines.push(line);
+    } else if (isExpired(line)) {
+      removedAny = true;
+    } else {
+      entries.push(line);
+    }
+  }
+  flush();
 
   if (pruned.length === 0) return { bunfig, pruned: [] };
 
