@@ -42,7 +42,7 @@ import {
   type RunStyleResolver,
 } from "../prosemirror/runStyleFormatting";
 import {
-  paragraphBeforeRemovedTable,
+  paragraphBeforeRemovedBlock,
   runParagraphsIntoTables,
   runsIntoFollowingTable,
 } from "../prosemirror/tableRunIn";
@@ -103,7 +103,7 @@ const resolveProperties = ({
         const options = { parent: node, index, mode };
         if (
           runsIntoFollowingTable(options) ||
-          paragraphBeforeRemovedTable(options)
+          paragraphBeforeRemovedBlock(options)
         ) {
           runsIntoTable = true;
           break;

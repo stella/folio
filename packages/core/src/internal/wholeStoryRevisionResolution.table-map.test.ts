@@ -776,7 +776,7 @@ describe("what a paragraph whose mark goes runs on into", () => {
     ).toEqual(["Words ", "Value", "kept"]);
   });
 
-  test("a deletion nested in an insertion leaves no words to run in", () => {
+  test("a paragraph a deletion nested in an insertion empties does not stand in the way", () => {
     const insertion = schema.mark("insertion", {
       revisionId: 11,
       author: "Reviewer",
@@ -793,16 +793,19 @@ describe("what a paragraph whose mark goes runs on into", () => {
         },
       ],
     });
-    const added = withInsertedMark([
+    const emptied = withInsertedMark([
       schema.text("A ", [insertion]),
       schema.text("new", [nested]),
       schema.text(" one", [insertion]),
     ]);
+    const heading = () => withInsertedMark([schema.text("Heading ")]);
     expect(
-      resolved(
-        [withInsertedMark([schema.text("Heading")]), added, standing(), kept()],
-        "reject",
-      ),
-    ).toEqual(["Heading", "Term", "Value", "kept"]);
+      resolved([heading(), emptied, standing(), kept()], "reject"),
+    ).toEqual(resolved([heading(), standing(), kept()], "reject"));
+    expect(resolved([heading(), standing(), kept()], "reject")).toEqual([
+      "Heading Term",
+      "Value",
+      "kept",
+    ]);
   });
 });

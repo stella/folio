@@ -261,23 +261,56 @@ type RunsIntoFollowingTableOptions = {
   mode: ResolutionMode;
 };
 
+/** Whether resolving every change in `mode` leaves nothing of this paragraph. */
+const paragraphGoes = (paragraph: PMNode, mode: ResolutionMode): boolean => {
+  if (
+    paragraph.type.name !== "paragraph" ||
+    !markGoes(paragraph, mode) ||
+    expectParagraphAttrs(paragraph)._sectionProperties != null
+  )
+    return false;
+  const left = paragraphAfterContentRemoval(paragraph, mode);
+  if (paragraphContentOf(left)) return false;
+  const remains = paragraphRemainsOf(left);
+  return (
+    remains.blocks.length === 0 &&
+    remains.comments.length === 0 &&
+    remains.inline.length === 0
+  );
+};
+
 /**
- * Whether a table this resolution removes stands right after a paragraph whose
- * mark goes. The paragraph runs on into what stands after that table, as it
- * would had the table never been inserted.
+ * Whether what stands right after a paragraph whose mark goes is itself removed
+ * by this resolution, so the paragraph runs on into what stands after that, as
+ * it would had the removed block never been there: a table it removes, or an
+ * emptied paragraph with a table after it. (Paragraphs join among themselves
+ * without help.)
  */
-export const paragraphBeforeRemovedTable = ({
+export const paragraphBeforeRemovedBlock = ({
   parent,
   index,
   mode,
 }: RunsIntoFollowingTableOptions): boolean => {
   const paragraph = parent.child(index);
   const next = parent.maybeChild(index + 1);
+  if (
+    paragraph.type.name !== "paragraph" ||
+    !next ||
+    !markGoes(paragraph, mode)
+  ) {
+    return false;
+  }
+  if (tableGoes(next, mode)) return true;
+  if (paragraphGoes(paragraph, mode)) return false;
+  let following = index + 1;
+  while (following < parent.childCount) {
+    const block = parent.child(following);
+    if (!paragraphGoes(block, mode)) break;
+    following += 1;
+  }
   return (
-    paragraph.type.name === "paragraph" &&
-    next !== null &&
-    tableGoes(next, mode) &&
-    markGoes(paragraph, mode)
+    following > index + 1 &&
+    parent.maybeChild(following)?.type.spec["tableRole"] === "table"
   );
 };
 
@@ -338,53 +371,53 @@ export const runsIntoFollowingTable = ({
 };
 
 /**
- * Stand each table this resolution removes before the paragraph whose mark goes
- * right before it, so that paragraph meets what it will run on into. The table
+ * Stand each block this resolution removes before the paragraph whose mark goes
+ * right before it, so that paragraph meets what it will run on into. The block
  * is going, so where it goes from does not show; the paragraph's words keep
  * mapping to themselves.
  */
-const moveRemovedTablesBeforeParagraphs = (
+const moveRemovedBlocksBeforeParagraphs = (
   tr: Transform,
   mode: ResolutionMode,
 ): StepMap[] => {
   const maps: StepMap[] = [];
   for (;;) {
-    let move: { position: number; paragraph: PMNode; table: PMNode } | null =
+    let move: { position: number; paragraph: PMNode; block: PMNode } | null =
       null;
     tr.doc.descendants((node, position, parent, index) => {
       if (move !== null) return false;
       if (node.type.name !== "paragraph") return !node.isTextblock;
-      const table = parent?.maybeChild(index + 1);
+      const block = parent?.maybeChild(index + 1);
       if (
         parent &&
-        table &&
-        paragraphBeforeRemovedTable({ parent, index, mode })
+        block &&
+        paragraphBeforeRemovedBlock({ parent, index, mode })
       ) {
-        move = { position, paragraph: node, table };
+        move = { position, paragraph: node, block };
       }
       return false;
     });
     if (move === null) return maps;
-    const { position, paragraph, table } = move as {
+    const { position, paragraph, block } = move as {
       position: number;
       paragraph: PMNode;
-      table: PMNode;
+      block: PMNode;
     };
-    const tablePosition = position + paragraph.nodeSize;
+    const blockPosition = position + paragraph.nodeSize;
     tr.step(
       new ReplaceStep(
         position,
-        tablePosition + table.nodeSize,
-        new Slice(Fragment.fromArray([table, paragraph]), 0, 0),
+        blockPosition + block.nodeSize,
+        new Slice(Fragment.fromArray([block, paragraph]), 0, 0),
       ),
     );
     maps.push(
       new StepMap([
         position,
         0,
-        table.nodeSize,
-        tablePosition,
-        table.nodeSize,
+        block.nodeSize,
+        blockPosition,
+        block.nodeSize,
         0,
       ]),
     );
@@ -409,7 +442,7 @@ export const runParagraphsIntoTables = (
   const tried = new Set<number>();
   const targets: { position: number; step: number }[] = [];
   const transfers: ParagraphPropertySourceTransfer[] = [];
-  const maps: StepMap[] = moveRemovedTablesBeforeParagraphs(tr, mode);
+  const maps: StepMap[] = moveRemovedBlocksBeforeParagraphs(tr, mode);
   for (;;) {
     let candidate: number | null = null;
     tr.doc.descendants((node, pos, parent, index) => {
