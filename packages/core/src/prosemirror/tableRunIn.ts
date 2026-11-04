@@ -9,17 +9,16 @@
  *
  * A paragraph with nothing left to carry is simply removed by the resolvers;
  * one that ends a section keeps its place, as does one before a table whose
- * rows or cells are themselves pending.
+ * first row or cell may not stay: resolving every change knows which do, while
+ * resolving only some leaves any recorded row open. A table that resolving
+ * every change removes never stood in the way: the paragraph runs on into what
+ * follows that table.
  */
 
-import {
-  Fragment,
-  type MarkType,
-  type Node as PMNode,
-  Slice,
-} from "prosemirror-model";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import {
   ReplaceAroundStep,
+  ReplaceStep,
   StepMap,
   type Transform,
 } from "prosemirror-transform";
@@ -32,38 +31,81 @@ import {
   recreateProseNodeWithParagraphPropertySource as rebuild,
 } from "../docx/paragraphPropertySource";
 import { expectParagraphAttrs } from "./attrs";
-import { paragraphRemainsOf } from "./keptRangeBoundaries";
+import {
+  paragraphRemainsOf,
+  REVISION_MARK_NAMES,
+  revisionLayerRemovesContent,
+} from "./keptRangeBoundaries";
 import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
 import {
   paragraphRunStyleContext,
   type RunStyleResolver,
 } from "./runStyleFormatting";
+import { trackedRevisionPathOf } from "./trackedRevisionPath";
 import { paragraphContentOf } from "./zeroWidthAnchors";
+
+type ResolutionMode = "accept" | "reject";
 
 /**
  * Whether the cell a paragraph's words would run into is itself pending: its
  * row or the cell (through nested tables' first cells) is inserted, deleted
- * or merged, so resolving may not keep it. Pending rows or cells elsewhere in
- * the table leave that cell where it is.
+ * or merged, so resolving may not keep it. With `everyChange`, only what that
+ * resolution removes counts. Pending rows or cells elsewhere in the table leave
+ * that cell where it is.
  */
-export const runInCellPending = (table: PMNode): boolean => {
+export const runInCellPending = (
+  table: PMNode,
+  everyChange?: ResolutionMode,
+): boolean => {
   let node: PMNode | null = table;
   while (node?.type.spec["tableRole"] === "table") {
     const row: PMNode | null = node.firstChild;
     if (!row) return false;
-    if (row.attrs["trIns"] != null || row.attrs["trDel"] != null) return true;
+    if (!rowStays(row, everyChange)) return true;
     const cell: PMNode | null = row.firstChild;
     if (!cell) return false;
-    if (cell.attrs["cellMarker"] != null) return true;
+    if (!cellStays(cell, everyChange)) return true;
     node = cell.firstChild;
   }
   return false;
+};
+
+/**
+ * Whether a row certainly stays: it records nothing, or `everyChange` resolves
+ * what it records in its favour. A resolution of only some changes leaves any
+ * recorded row open.
+ */
+const rowStays = (row: PMNode, everyChange?: ResolutionMode): boolean => {
+  const inserted = row.attrs["trIns"] != null;
+  const deleted = row.attrs["trDel"] != null;
+  if (!inserted && !deleted) return true;
+  if (everyChange === undefined) return false;
+  return everyChange === "accept" ? !deleted : !inserted;
+};
+
+const cellStays = (cell: PMNode, everyChange?: ResolutionMode): boolean => {
+  const marker = cell.attrs["cellMarker"] as
+    { kind: string } | null | undefined;
+  if (marker == null) return true;
+  if (everyChange === undefined) return false;
+  return marker.kind === (everyChange === "accept" ? "ins" : "del");
+};
+
+/** Whether resolving every change in `mode` removes the whole table. */
+const tableGoes = (table: PMNode, mode: ResolutionMode): boolean => {
+  if (table.type.spec["tableRole"] !== "table" || table.childCount === 0)
+    return false;
+  for (let index = 0; index < table.childCount; index++) {
+    if (rowStays(table.child(index), mode)) return false;
+  }
+  return true;
 };
 
 /** The first paragraph of a table's first cell, descending into nested tables. */
 const runInTarget = (
   doc: PMNode,
   tablePos: number,
+  everyChange: ResolutionMode | undefined,
 ): { pos: number; node: PMNode } | null => {
   let node = doc.nodeAt(tablePos);
   let pos = tablePos;
@@ -73,7 +115,7 @@ const runInTarget = (
     return null;
   // A pending row or cell may not keep the cell the words would run into:
   // the paragraph keeps its own place instead.
-  if (runInCellPending(table)) return null;
+  if (runInCellPending(table, everyChange)) return null;
   while (node && node.type.name !== "paragraph") {
     const child: PMNode | null = node.firstChild;
     if (!child || child.isInline) return null;
@@ -87,19 +129,29 @@ type RunParagraphIntoTableOptions = {
   tr: Transform;
   paragraphPos: number;
   styleResolver: RunStyleResolver | null;
-  /** Content a resolution in progress removes: it does not count as words left. */
-  removedMark?: MarkType | undefined;
+  /**
+   * Set when every change of the story resolves this way, not only some: what
+   * it removes does not count as words left, and a row it keeps takes words.
+   */
+  everyChange?: ResolutionMode | undefined;
 };
 
 const paragraphAfterContentRemoval = (
   paragraph: PMNode,
-  removedMark: MarkType | undefined,
+  everyChange: ResolutionMode | undefined,
 ) =>
-  removedMark
+  everyChange
     ? paragraph.copy(
         Fragment.fromArray(
           paragraph.children.filter(
-            (child) => !removedMark.isInSet(child.marks),
+            (child) =>
+              !child.marks.some(
+                (mark) =>
+                  REVISION_MARK_NAMES.has(mark.type.name) &&
+                  trackedRevisionPathOf(mark).some((layer) =>
+                    revisionLayerRemovesContent(layer, everyChange),
+                  ),
+              ),
           ),
         ),
       )
@@ -115,7 +167,7 @@ export const runParagraphIntoTable = ({
   tr,
   paragraphPos,
   styleResolver,
-  removedMark,
+  everyChange,
 }: RunParagraphIntoTableOptions): {
   position: number;
   map: StepMap;
@@ -125,7 +177,7 @@ export const runParagraphIntoTable = ({
   if (paragraph?.type.name !== "paragraph") return null;
   if (expectParagraphAttrs(paragraph)._sectionProperties !== undefined)
     return null;
-  const left = paragraphAfterContentRemoval(paragraph, removedMark);
+  const left = paragraphAfterContentRemoval(paragraph, everyChange);
   const remains = paragraphRemainsOf(left);
   if (
     !paragraphContentOf(left) &&
@@ -133,7 +185,7 @@ export const runParagraphIntoTable = ({
   )
     return null;
   const tablePos = paragraphPos + paragraph.nodeSize;
-  const target = runInTarget(tr.doc, tablePos);
+  const target = runInTarget(tr.doc, tablePos, everyChange);
   if (!target) return null;
 
   // One step that keeps the words where they are and moves the table's
@@ -192,7 +244,7 @@ export const runParagraphIntoTable = ({
 };
 
 /** Whether resolving every change in `mode` removes this paragraph's mark. */
-const markGoes = (paragraph: PMNode, mode: "accept" | "reject"): boolean => {
+const markGoes = (paragraph: PMNode, mode: ResolutionMode): boolean => {
   const mark = expectParagraphAttrs(paragraph).pPrMark;
   if (!mark) return false;
   const added = mark.kind === "ins" || mark.kind === "moveTo";
@@ -206,7 +258,27 @@ const markGoes = (paragraph: PMNode, mode: "accept" | "reject"): boolean => {
 type RunsIntoFollowingTableOptions = {
   parent: PMNode;
   index: number;
-  mode: "accept" | "reject";
+  mode: ResolutionMode;
+};
+
+/**
+ * Whether a table this resolution removes stands right after a paragraph whose
+ * mark goes. The paragraph runs on into what stands after that table, as it
+ * would had the table never been inserted.
+ */
+export const paragraphBeforeRemovedTable = ({
+  parent,
+  index,
+  mode,
+}: RunsIntoFollowingTableOptions): boolean => {
+  const paragraph = parent.child(index);
+  const next = parent.maybeChild(index + 1);
+  return (
+    paragraph.type.name === "paragraph" &&
+    next !== null &&
+    tableGoes(next, mode) &&
+    markGoes(paragraph, mode)
+  );
 };
 
 export const runsIntoFollowingTable = ({
@@ -227,8 +299,6 @@ export const runsIntoFollowingTable = ({
   const holdsContent = paragraphContentOf(paragraph);
   const needsCommentHost =
     !holdsContent && remains.blocks.length === 0 && remains.comments.length > 0;
-  const removedMark =
-    paragraph.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
   let hasPrecedingCommentHost = false;
   for (
     let previousIndex = needsCommentHost ? index - 1 : -1;
@@ -244,7 +314,7 @@ export const runsIntoFollowingTable = ({
       hasPrecedingCommentHost = true;
       break;
     }
-    const retained = paragraphAfterContentRemoval(previous, removedMark);
+    const retained = paragraphAfterContentRemoval(previous, mode);
     if (paragraphContentOf(retained)) break;
     if (paragraphRemainsOf(retained).blocks.length > 0) {
       hasPrecedingCommentHost = true;
@@ -261,10 +331,64 @@ export const runsIntoFollowingTable = ({
       containerStillEndsWithParagraph: false,
       followingTableCanReceiveRunIn:
         expectParagraphAttrs(paragraph)._sectionProperties === undefined &&
-        !runInCellPending(next),
+        !runInCellPending(next, mode),
       needsFollowingCommentHost: needsCommentHost && !hasPrecedingCommentHost,
     }).kind === "run-in"
   );
+};
+
+/**
+ * Stand each table this resolution removes before the paragraph whose mark goes
+ * right before it, so that paragraph meets what it will run on into. The table
+ * is going, so where it goes from does not show; the paragraph's words keep
+ * mapping to themselves.
+ */
+const moveRemovedTablesBeforeParagraphs = (
+  tr: Transform,
+  mode: ResolutionMode,
+): StepMap[] => {
+  const maps: StepMap[] = [];
+  for (;;) {
+    let move: { position: number; paragraph: PMNode; table: PMNode } | null =
+      null;
+    tr.doc.descendants((node, position, parent, index) => {
+      if (move !== null) return false;
+      if (node.type.name !== "paragraph") return !node.isTextblock;
+      const table = parent?.maybeChild(index + 1);
+      if (
+        parent &&
+        table &&
+        paragraphBeforeRemovedTable({ parent, index, mode })
+      ) {
+        move = { position, paragraph: node, table };
+      }
+      return false;
+    });
+    if (move === null) return maps;
+    const { position, paragraph, table } = move as {
+      position: number;
+      paragraph: PMNode;
+      table: PMNode;
+    };
+    const tablePosition = position + paragraph.nodeSize;
+    tr.step(
+      new ReplaceStep(
+        position,
+        tablePosition + table.nodeSize,
+        new Slice(Fragment.fromArray([table, paragraph]), 0, 0),
+      ),
+    );
+    maps.push(
+      new StepMap([
+        position,
+        0,
+        table.nodeSize,
+        tablePosition,
+        table.nodeSize,
+        0,
+      ]),
+    );
+  }
 };
 
 /**
@@ -275,19 +399,17 @@ export const runsIntoFollowingTable = ({
  */
 export const runParagraphsIntoTables = (
   tr: Transform,
-  mode: "accept" | "reject",
+  mode: ResolutionMode,
   styleResolver: RunStyleResolver | null,
 ): {
   targets: { position: number; step: number }[];
   maps: StepMap[];
   transfers: ParagraphPropertySourceTransfer[];
 } => {
-  const removedMark =
-    tr.doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
   const tried = new Set<number>();
   const targets: { position: number; step: number }[] = [];
   const transfers: ParagraphPropertySourceTransfer[] = [];
-  const maps: StepMap[] = [];
+  const maps: StepMap[] = moveRemovedTablesBeforeParagraphs(tr, mode);
   for (;;) {
     let candidate: number | null = null;
     tr.doc.descendants((node, pos, parent, index) => {
@@ -311,7 +433,7 @@ export const runParagraphsIntoTables = (
       tr,
       paragraphPos: candidate,
       styleResolver,
-      removedMark,
+      everyChange: mode,
     });
     if (ranIn !== null) {
       targets.push({ position: ranIn.position, step: tr.steps.length });

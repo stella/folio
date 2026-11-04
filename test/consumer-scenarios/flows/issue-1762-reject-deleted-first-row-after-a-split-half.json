@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 1430158958,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3133842377,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Clause goods schedule party period payment payment party.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2814136392,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 9
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2661821926,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 7
+        },
+        {
+          "type": "insertTable",
+          "blockId": "5E88C024",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 2214233547
+    },
+    {
+      "action": "core batch",
+      "seed": 950562207,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "@7"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from dropOperation+swap of 36417eed87844bf4"
+}

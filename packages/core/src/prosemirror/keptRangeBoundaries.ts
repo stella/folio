@@ -64,7 +64,7 @@ type BoundaryItem = Extract<
 >;
 
 /** The marks that say a node is in a revision: its wrappers, in the engine. */
-const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
+export const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
   "insertion",
   "deletion",
 ]);

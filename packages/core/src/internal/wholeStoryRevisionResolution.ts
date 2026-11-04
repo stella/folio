@@ -42,6 +42,7 @@ import {
   type RunStyleResolver,
 } from "../prosemirror/runStyleFormatting";
 import {
+  paragraphBeforeRemovedTable,
   runParagraphsIntoTables,
   runsIntoFollowingTable,
 } from "../prosemirror/tableRunIn";
@@ -99,12 +100,10 @@ const resolveProperties = ({
     if (node.isText) return node;
     if (!runsIntoTable && !node.isTextblock) {
       for (let index = 0; index + 1 < node.childCount; index++) {
+        const options = { parent: node, index, mode };
         if (
-          runsIntoFollowingTable({
-            parent: node,
-            index,
-            mode,
-          })
+          runsIntoFollowingTable(options) ||
+          paragraphBeforeRemovedTable(options)
         ) {
           runsIntoTable = true;
           break;
