@@ -20,11 +20,13 @@ const lockWith = (overrides: Record<string, string>, viewRange: string) =>
   }) as const;
 
 const intentional = {
-  "prosemirror-model": {
-    dependent: "prosemirror-view",
-    range: "^1.25.12",
-    reason: "test",
-  },
+  "prosemirror-model": [
+    {
+      dependent: "prosemirror-view",
+      range: "^1.25.12",
+      reason: "test",
+    },
+  ],
 };
 
 describe("lockfile override ranges", () => {
@@ -77,6 +79,35 @@ describe("lockfile override ranges", () => {
     ]);
     expect(overrideViolations(lockWith({}, "^1.25.12"), intentional)).toEqual([
       "prosemirror-model: intentional break listed without an override; remove it.",
+    ]);
+  });
+
+  test("a package may list a break per dependent, and each one must stay in use", () => {
+    const root = {
+      name: "root",
+      devDependencies: { "prosemirror-model": "^1.25.13" },
+    };
+    const lock = {
+      ...lockWith({ "prosemirror-model": "1.25.11" }, "^1.25.12"),
+      workspaces: { "": root },
+    };
+    const both = {
+      "prosemirror-model": [
+        ...intentional["prosemirror-model"],
+        { dependent: "root", range: "^1.25.13", reason: "test" },
+      ],
+    };
+    expect(overrideViolations(lock, both)).toEqual([]);
+    expect(overrideViolations(lock, intentional)).toEqual([
+      "root declares prosemirror-model ^1.25.13; the override pins 1.25.11.",
+    ]);
+    expect(
+      overrideViolations(
+        lockWith({ "prosemirror-model": "1.25.11" }, "^1.25.12"),
+        both,
+      ),
+    ).toEqual([
+      "prosemirror-model: root no longer declares ^1.25.13 outside the override; remove the intentional break.",
     ]);
   });
 });
