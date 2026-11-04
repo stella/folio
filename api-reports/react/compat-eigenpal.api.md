@@ -84,34 +84,34 @@ export const de: {
 
 // @public (undocumented)
 export const DocxEditor: ForwardRefExoticComponent<DocxEditorProps & {
-agentPanel?: unknown;
-colorMode?: "light" | "dark" | "system";
-commentsSidebarOpen?: boolean;
-disableFindReplaceShortcuts?: boolean;
-documentName?: string;
-documentNameEditable?: boolean;
-externalContent?: boolean;
-externalPlugins?: unknown[];
-i18n?: LegacyTranslations;
-locale?: string;
-onCommentAdd?: unknown;
-onCommentDelete?: unknown;
-onCommentReply?: unknown;
-onCommentResolve?: unknown;
-onCommentsSidebarOpenChange?: unknown;
-onDocumentNameChange?: unknown;
-onOpen?: unknown;
-onRenderedDomContextReady?: unknown;
-pluginOverlays?: ReactNode;
-pluginRenderedDomContext?: unknown;
-pluginSidebarItems?: unknown[];
-printOptions?: unknown;
-renderLogo?: unknown;
-renderTitleBarRight?: unknown;
-showFileOpen?: boolean;
-showHelpMenu?: boolean;
-showOutlineButton?: boolean;
-watermarkPresets?: readonly string[];
+    agentPanel?: unknown;
+    colorMode?: "light" | "dark" | "system";
+    commentsSidebarOpen?: boolean;
+    disableFindReplaceShortcuts?: boolean;
+    documentName?: string;
+    documentNameEditable?: boolean;
+    externalContent?: boolean;
+    externalPlugins?: unknown[];
+    i18n?: LegacyTranslations;
+    locale?: string;
+    onCommentAdd?: unknown;
+    onCommentDelete?: unknown;
+    onCommentReply?: unknown;
+    onCommentResolve?: unknown;
+    onCommentsSidebarOpenChange?: unknown;
+    onDocumentNameChange?: unknown;
+    onOpen?: unknown;
+    onRenderedDomContextReady?: unknown;
+    pluginOverlays?: ReactNode;
+    pluginRenderedDomContext?: unknown;
+    pluginSidebarItems?: unknown[];
+    printOptions?: unknown;
+    renderLogo?: unknown;
+    renderTitleBarRight?: unknown;
+    showFileOpen?: boolean;
+    showHelpMenu?: boolean;
+    showOutlineButton?: boolean;
+    watermarkPresets?: readonly string[];
 } & RefAttributes<DocxEditorRef>>;
 
 // @public
