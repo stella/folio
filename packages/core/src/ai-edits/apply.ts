@@ -22,6 +22,10 @@ import {
 } from "@stll/docx-core/ops";
 
 import type { FolioContentStatedNumbering } from "../compare/content-types";
+import {
+  NO_NUMBERING_IDS_IN_USE,
+  type NumberingIdsInUse,
+} from "../docx/numberingIds";
 import type { NumberingMap } from "../docx/numberingParser";
 import { isNumberingReference } from "../docx/numberingReference";
 import { formattingEquals } from "../docx/runConsolidator";
@@ -349,8 +353,19 @@ type ApplyFolioAIEditOperationsOptions = {
   undefinedReferences: FolioUndefinedReferencePolicy;
 };
 
-type ApplyFolioAIEditOperationsInternalOptions =
+/**
+ * Options of a caller that holds every story of the package. Numbering ids
+ * are package-wide while a story's state completes its numbering from its own
+ * paragraphs, so the caller names the ids the other stories define and a list
+ * the batch starts takes none of them.
+ */
+type ApplyFolioAIEditOperationsInPackageOptions =
   ApplyFolioAIEditOperationsOptions & {
+    numberingIdsElsewhere: NumberingIdsInUse;
+  };
+
+type ApplyFolioAIEditOperationsInternalOptions =
+  ApplyFolioAIEditOperationsInPackageOptions & {
     revisionIdSeed?: number;
     wordDiffMode?: "bounded" | "coarse";
   };
@@ -4984,6 +4999,7 @@ const applyFolioAIEditOperationsInternal = ({
   tableTemplates,
   replacementBackground = "clear",
   undefinedReferences,
+  numberingIdsElsewhere,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   seedRevisionIdsFromDoc(view.state.doc);
   const applied: FolioAIEditAppliedOperation[] = [];
@@ -5580,6 +5596,7 @@ const applyFolioAIEditOperationsInternal = ({
     const allocated = resolveNewListOperations(
       items.map(({ operation }) => operation),
       numbering,
+      numberingIdsElsewhere,
     );
     numbering = allocated.numbering;
     for (const [index, candidate] of items.entries()) {
@@ -7792,12 +7809,24 @@ const applyFolioAIEditOperationsInternal = ({
 
 export const applyFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
+): FolioAIEditApplyOutcome =>
+  applyFolioAIEditOperationsInternal({
+    ...options,
+    numberingIdsElsewhere: NO_NUMBERING_IDS_IN_USE,
+  });
+
+/** {@link applyFolioAIEditOperations} for a caller holding every story. Internal. */
+export const applyFolioAIEditOperationsInPackage = (
+  options: ApplyFolioAIEditOperationsInPackageOptions,
 ): FolioAIEditApplyOutcome => applyFolioAIEditOperationsInternal(options);
 
 export const previewFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
 ): FolioAIEditApplyOutcome =>
-  previewFolioAIEditOperationsWithResult(options).outcome;
+  previewFolioAIEditOperationsWithResult({
+    ...options,
+    numberingIdsElsewhere: NO_NUMBERING_IDS_IN_USE,
+  }).outcome;
 
 /**
  * A preview together with the document it would leave and the provisional
@@ -7805,7 +7834,7 @@ export const previewFolioAIEditOperations = (
  * it. Internal: not re-exported from the package entry points.
  */
 export const previewFolioAIEditOperationsWithResult = (
-  options: ApplyFolioAIEditOperationsOptions,
+  options: ApplyFolioAIEditOperationsInPackageOptions,
 ): {
   outcome: FolioAIEditApplyOutcome;
   doc: PMNode;

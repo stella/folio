@@ -32,7 +32,11 @@ import type {
   ParagraphAlignment,
   ParagraphFormatting,
 } from "../types/document";
-import { createNumberingIdAllocator, mintNumberingId } from "./numberingIds";
+import {
+  createNumberingIdAllocator,
+  mintNumberingId,
+  type NumberingIdsInUse,
+} from "./numberingIds";
 
 /** The two kinds of list a command can create. */
 export const LIST_KINDS = ["bullet", "numbered"] as const;
@@ -163,21 +167,29 @@ const EMPTY_DEFINITIONS: NumberingDefinitions = { abstractNums: [], nums: [] };
 /** A fresh `w:numId` for `definitions`; zero is reserved for "no numbering". */
 const nextNumId = (
   definitions: NumberingDefinitions | null | undefined,
+  elsewhere: NumberingIdsInUse,
 ): number =>
   mintNumberingId({
     kind: "num",
-    existingIds: (definitions?.nums ?? []).map(({ numId }) => numId),
+    existingIds: [
+      ...(definitions?.nums ?? []).map(({ numId }) => numId),
+      ...elsewhere.numIds,
+    ],
   });
 
 /** A fresh `w:abstractNumId` for `definitions`. */
 const nextAbstractNumId = (
   definitions: NumberingDefinitions | null | undefined,
+  elsewhere: NumberingIdsInUse,
 ): number =>
   mintNumberingId({
     kind: "abstract",
-    existingIds: (definitions?.abstractNums ?? []).map(
-      ({ abstractNumId }) => abstractNumId,
-    ),
+    existingIds: [
+      ...(definitions?.abstractNums ?? []).map(
+        ({ abstractNumId }) => abstractNumId,
+      ),
+      ...elsewhere.abstractNumIds,
+    ],
   });
 
 type MintedListInstance = {
@@ -188,16 +200,18 @@ type MintedListInstance = {
 /**
  * Define a new list: a new `w:abstractNum` of the requested kind and the
  * `w:num` naming it. `definitions` must already hold every instance the
- * document references (see {@link completeListNumbering}), so the new ids
- * collide with none of them.
+ * story references (see {@link completeListNumbering}), and `elsewhere` the
+ * ids the package's other stories define, so the new ids collide with none of
+ * them.
  */
 export const mintListInstance = (
   definitions: NumberingDefinitions | null | undefined,
   { kind, format, start }: NewListDefinition,
+  elsewhere: NumberingIdsInUse,
 ): MintedListInstance => {
   const current = definitions ?? EMPTY_DEFINITIONS;
-  const numId = nextNumId(current);
-  const abstractNumId = nextAbstractNumId(current);
+  const numId = nextNumId(current, elsewhere);
+  const abstractNumId = nextAbstractNumId(current, elsewhere);
   const levelOverrides = levelZeroStart(start);
   const instance: NumberingInstance = {
     numId,
@@ -232,9 +246,10 @@ type RestartListInstanceOptions = {
 export const restartListInstance = (
   definitions: NumberingDefinitions | null | undefined,
   { abstractNumId, ilvl, start }: RestartListInstanceOptions,
+  elsewhere: NumberingIdsInUse,
 ): MintedListInstance => {
   const current = definitions ?? EMPTY_DEFINITIONS;
-  const numId = nextNumId(current);
+  const numId = nextNumId(current, elsewhere);
   const instance: NumberingInstance = {
     numId,
     abstractNumId,

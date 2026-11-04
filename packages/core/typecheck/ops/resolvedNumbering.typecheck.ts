@@ -8,6 +8,7 @@ import type {
   FolioAIParagraphBlock,
   FolioAIResolvedEditOperation,
 } from "../../src/ai-edits/types";
+import { NO_NUMBERING_IDS_IN_USE } from "../../src/docx/numberingIds";
 import { listLevelAttrPatch } from "../../src/prosemirror/styles/resolvedStyleAttrs";
 
 const request = {
@@ -23,6 +24,7 @@ const unresolved: FolioAIResolvedEditOperation = request;
 const resolved = resolveNewListOperations(
   stageNewListOperations([request]),
   null,
+  NO_NUMBERING_IDS_IN_USE,
 ).operations;
 const applied: readonly FolioAIResolvedEditOperation[] = resolved;
 

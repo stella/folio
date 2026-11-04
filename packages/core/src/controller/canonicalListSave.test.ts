@@ -23,6 +23,7 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { mintListInstance } from "../docx/listNumberingInstances";
+import { NO_NUMBERING_IDS_IN_USE } from "../docx/numberingIds";
 import { createNumberingMap } from "../docx/numberingParser";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
@@ -56,7 +57,11 @@ test(
         fc.integer({ min: 1, max: 3 }),
         fc.constantFrom("leading", "inside"),
         async (level, fieldCount, position) => {
-          const minted = mintListInstance(undefined, { kind: "numbered" });
+          const minted = mintListInstance(
+            undefined,
+            { kind: "numbered" },
+            NO_NUMBERING_IDS_IN_USE,
+          );
           for (const abstract of minted.definitions.abstractNums) {
             for (const entry of abstract.levels) {
               entry.numFmt = "decimal";
@@ -192,8 +197,16 @@ test(
         fc.integer({ min: 0, max: 4 }),
         fc.constantFrom("bullet" as const, "numbered" as const),
         async (styleLevel, directLevel, kind) => {
-          const original = mintListInstance(undefined, { kind });
-          const replacement = mintListInstance(original.definitions, { kind });
+          const original = mintListInstance(
+            undefined,
+            { kind },
+            NO_NUMBERING_IDS_IN_USE,
+          );
+          const replacement = mintListInstance(
+            original.definitions,
+            { kind },
+            NO_NUMBERING_IDS_IN_USE,
+          );
           const authored = [
             undefined,
             { kind: "levelOnly", ilvl: directLevel },
@@ -376,7 +389,11 @@ test(
           state = state.apply(
             state.tr.setSelection(TextSelection.create(state.doc, 1, 6)),
           );
-          const minted = mintListInstance(undefined, { kind: "bullet" });
+          const minted = mintListInstance(
+            undefined,
+            { kind: "bullet" },
+            NO_NUMBERING_IDS_IN_USE,
+          );
           const numbering = createNumberingMap(minted.definitions);
           const attrs = expectParagraphAttrs(schema.node("paragraph"));
           const slice = new Slice(
@@ -514,7 +531,11 @@ test(
         fc.integer({ min: 0, max: 12 }),
         fc.constantFrom("inherited", "zero", "matching", "custom"),
         async (kind, level, text, provenance, start, indentationProfile) => {
-          const minted = mintListInstance(undefined, { kind, start });
+          const minted = mintListInstance(
+            undefined,
+            { kind, start },
+            NO_NUMBERING_IDS_IN_USE,
+          );
           const source = await createDocx({
             package: {
               numbering: minted.definitions,
@@ -794,7 +815,11 @@ test(
         }),
         fc.constantFrom("bullet" as const, "numbered" as const),
         async (levels, kind) => {
-          const minted = mintListInstance(undefined, { kind });
+          const minted = mintListInstance(
+            undefined,
+            { kind },
+            NO_NUMBERING_IDS_IN_USE,
+          );
           const document = createEmptyDocument();
           document.package.numbering = minted.definitions;
           document.package.document.content = levels.map((ilvl) => ({
@@ -934,10 +959,14 @@ test(
         fc.integer({ min: 1, max: 9 }),
         fc.integer({ min: 1, max: 4 }),
         async (start, count) => {
-          const minted = mintListInstance(undefined, {
-            kind: "numbered",
-            start,
-          });
+          const minted = mintListInstance(
+            undefined,
+            {
+              kind: "numbered",
+              start,
+            },
+            NO_NUMBERING_IDS_IN_USE,
+          );
           const buffer = await createDocx({
             package: {
               numbering: minted.definitions,
@@ -1065,7 +1094,11 @@ test(
 
 // The reverse transition: a style without numbering drops the style-derived list.
 test("changing to a style without numbering drops style numbering before and after saving", async () => {
-  const minted = mintListInstance(undefined, { kind: "numbered", start: 1 });
+  const minted = mintListInstance(
+    undefined,
+    { kind: "numbered", start: 1 },
+    NO_NUMBERING_IDS_IN_USE,
+  );
   const buffer = await createDocx({
     package: {
       numbering: minted.definitions,

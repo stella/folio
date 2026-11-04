@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 1394129031,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1322611534,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1BF99289",
+          "text": "Supplier party invoice period period payment.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3530248229,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "29821FD2",
+          "text": "Goods goods supplier invoice payment buyer.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 619258367,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "@0",
+          "properties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "numbered"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "deleteTable"
+  ],
+  "origin": "shrunk from collisions flow seed 1394129031",
+  "title": "PINNED #2236: a new list started in a header paragraph takes an id no other story uses, direct"
+}
