@@ -119,13 +119,15 @@ export const projectMarkdownIdentities = (
 };
 
 /** A comment names the block it anchors to, which a positional id compares by position. */
-export const projectCommentIdentities = <Comment extends { blockId?: string }>(
+export const projectCommentIdentities = <
+  Comment extends { blockId: string | null },
+>(
   comments: readonly Comment[],
   aliases: ReadonlyMap<string, string>,
 ): Comment[] =>
   comments.map((comment) => {
     const blockId =
-      comment.blockId === undefined ? undefined : aliases.get(comment.blockId);
+      comment.blockId === null ? undefined : aliases.get(comment.blockId);
     return blockId === undefined ? comment : { ...comment, blockId };
   });
 
