@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 1707362376,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2907092519,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "6FFB97E7",
+          "quote": "Gadget",
+          "comment": {
+            "text": "Clause buyer buyer invoice notice goods period."
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3851057874,
+      "operations": [
+        {
+          "type": "insertTableColumn",
+          "blockId": "461701F4",
+          "position": "after",
+          "cellTexts": ["Column cell 1", "Column cell 2", "Column cell 3"]
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 755820721,
+      "operations": [
+        {
+          "type": "deleteTable",
+          "blockId": "@19"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "reply and resolve",
+      "seed": 2395562943
+    },
+    {
+      "action": "save and reopen",
+      "seed": 1252197697
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3083763510,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 17
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 1707362376"
+}

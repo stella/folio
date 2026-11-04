@@ -313,6 +313,65 @@ describe("save comparison block identity", () => {
   });
 
   test(
+    "readerStability afterStep reads a comment's positional block id by position",
+    { skip: !ENABLED_RELATIONS.has("readerStability") },
+    async () => {
+      const fixture = new Uint8Array(
+        await createDocx(
+          fromMarkdown("First source text.\n\nSecond paragraph."),
+        ),
+      );
+      const reviewer = await openReviewer(fixture);
+      const first = reviewer.getContent().at(0);
+      assert.ok(first);
+      const before = relationCheckCount("readerStability");
+      const relations = await startRelations({
+        fixture,
+        reviewer,
+        mode: "tracked-changes",
+        seed: 72,
+      });
+      const receipt = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "reader-stability-comment",
+              type: "commentOnBlock",
+              blockId: first.id,
+              quote: "source",
+              comment: { text: "A note." },
+            },
+            {
+              id: "reader-stability-merge",
+              type: "mergeBlockWithNext",
+              blockId: first.id,
+              separator: " ",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      assert.equal(receipt.applied.length, 2);
+      const saved = await saveAndReopen(
+        reviewer,
+        "reader stability comment block ids",
+        { compare: false },
+      );
+      const liveBlock = reviewer.getComments().at(0)?.blockId;
+      const savedBlock = saved.reopened.getComments().at(0)?.blockId;
+      assert.notEqual(liveBlock, savedBlock);
+      await relations.afterStep(
+        reviewer,
+        saved,
+        "reader stability comment block ids",
+      );
+      assert.equal(relationCheckCount("readerStability"), before + 1);
+    },
+  );
+
+  test(
     "readerStability afterStep compares resolved tracked content through shared identity maps",
     { skip: !ENABLED_RELATIONS.has("readerStability") },
     async () => {

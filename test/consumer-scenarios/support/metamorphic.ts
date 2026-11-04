@@ -56,6 +56,7 @@ import {
 import { sequentialGroups } from "./batch-replay-order.ts";
 import { openReviewer } from "./documents.ts";
 import {
+  projectCommentIdentities,
   projectContentPair,
   projectMarkdownIdentities,
   projectSnapshotIdentities,
@@ -1381,7 +1382,10 @@ export const startRelations = async ({
           comparableMarkdown(toMarkdown(target.toDocument())),
           aliases,
         ) as unknown,
-        getComments: target.getComments() as unknown,
+        getComments: projectCommentIdentities(
+          target.getComments(),
+          aliases,
+        ) as unknown,
       };
     };
     const tolerances: Record<
