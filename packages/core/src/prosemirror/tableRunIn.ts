@@ -282,9 +282,10 @@ const paragraphGoes = (paragraph: PMNode, mode: ResolutionMode): boolean => {
 /**
  * Whether what stands right after a paragraph whose mark goes is itself removed
  * by this resolution, so the paragraph runs on into what stands after that, as
- * it would had the removed block never been there: a table it removes, or an
- * emptied paragraph with a table after it. (Paragraphs join among themselves
- * without help.)
+ * it would had the removed block never been there: a table it removes, or, when
+ * rejecting, an inserted paragraph it empties with a table after it. (Accepted,
+ * a deleted paragraph did stand there, and the join ended at it. Paragraphs join
+ * among themselves without help.)
  */
 export const paragraphBeforeRemovedBlock = ({
   parent,
@@ -301,7 +302,7 @@ export const paragraphBeforeRemovedBlock = ({
     return false;
   }
   if (tableGoes(next, mode)) return true;
-  if (paragraphGoes(paragraph, mode)) return false;
+  if (mode !== "reject" || paragraphGoes(paragraph, mode)) return false;
   let following = index + 1;
   while (following < parent.childCount) {
     const block = parent.child(following);
