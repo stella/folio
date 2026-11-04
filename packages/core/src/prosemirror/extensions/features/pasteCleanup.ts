@@ -196,6 +196,11 @@ const INTERNAL_CLIPBOARD_ATTR_PATTERN =
 // zero-width `<span>` instead of a `textBoxAnchor` node.
 const TEXTBOX_ANCHOR_ATTR =
   /\s+data-docx-textbox-anchor(?:="[^"]*"|='[^']*')?/gi;
+// A hyphen carrier saves as `w:softHyphen` or `w:noBreakHyphen`. A character in
+// external HTML is that character, so only an internal slice may claim the
+// element; without the attribute the span parses as its plain text.
+const HYPHEN_ELEMENT_ATTR =
+  /\s+data-docx-hyphen-element(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 // Bookmark boundaries use the same internal reconstruction pattern. Their
 // complete attribute family must either survive together in an internal slice
 // or be removed together before external HTML reaches the schema parser.
@@ -237,6 +242,13 @@ function stripForeignTextBoxAnchors(html: string, internal: boolean): string {
     return html;
   }
   return html.replace(TEXTBOX_ANCHOR_ATTR, "");
+}
+
+function stripForeignHyphenElements(html: string, internal: boolean): string {
+  if (internal) {
+    return html;
+  }
+  return html.replace(HYPHEN_ELEMENT_ATTR, "");
 }
 
 function stripForeignBookmarkBoundaries(
@@ -327,6 +339,7 @@ export function cleanPastedHtml(
     cleaned = stripMsoStyles(cleaned);
     cleaned = stripEmptySpans(cleaned, internal);
     cleaned = stripForeignTextBoxAnchors(cleaned, internal);
+    cleaned = stripForeignHyphenElements(cleaned, internal);
     cleaned = stripForeignBookmarkBoundaries(cleaned, internal);
     cleaned = stripForeignRangeCarriers(cleaned, internal);
     cleaned = stripForeignStructuredFields(cleaned, internal);

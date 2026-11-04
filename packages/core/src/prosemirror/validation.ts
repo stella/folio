@@ -46,7 +46,9 @@ import {
 import { readBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { readCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
+import { HYPHEN_ELEMENT_MARK_NAME } from "./conversion/hyphenTextCarriers";
 import { fieldRequiresStructuredContent } from "./fieldRepresentation";
+import { readHyphenElementMarkAttrs } from "./hyphenElementAttrs";
 import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import { isRunContentInlineNodeName } from "./runContentProjection";
@@ -58,6 +60,7 @@ import { readTextBoxAnchorAttrs } from "./textBoxAnchorAttrs";
 const COMPLEX_FIELD_RESULT_MARK_NAMES = new Set([
   ...RUN_FORMATTING_MARK_NAMES,
   RUN_IDENTITY_MARK_NAME,
+  HYPHEN_ELEMENT_MARK_NAME,
   "runPropertyChange",
   "footnoteRef",
 ]);
@@ -659,6 +662,10 @@ const validateMark = (
     case "textShadow":
     case "textOutline":
     case "rtl":
+      return;
+
+    case "hyphenElement":
+      appendAttrIssues(markPath, readHyphenElementMarkAttrs(mark), issues);
       return;
 
     case "textEffect":

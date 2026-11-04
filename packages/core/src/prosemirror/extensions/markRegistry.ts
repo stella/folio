@@ -23,6 +23,7 @@ import { FootnoteRefExtension } from "./marks/FootnoteRefExtension";
 import { HiddenTextExtension } from "./marks/HiddenTextExtension";
 import { HighlightExtension } from "./marks/HighlightExtension";
 import { HyperlinkExtension } from "./marks/HyperlinkExtension";
+import { HyphenElementExtension } from "./marks/HyphenElementExtension";
 import { InlineWrapperExtension } from "./marks/InlineWrapperExtension";
 import { ItalicExtension } from "./marks/ItalicExtension";
 import { LanguageExtension } from "./marks/LanguageExtension";
@@ -133,6 +134,7 @@ export const MARK_EXTENSIONS: {
   readonly characterStyle: (
     options?: Partial<Record<string, unknown>> | undefined,
   ) => MarkExtension;
+  readonly hyphenElement: typeof HyphenElementExtension;
   readonly runIdentity: (
     options?: Partial<Record<string, unknown>> | undefined,
   ) => MarkExtension;
@@ -179,6 +181,7 @@ export const MARK_EXTENSIONS: {
   textEffect: TextEffectExtension,
   runFormattingOverride: RunFormattingOverrideExtension,
   characterStyle: CharacterStyleExtension,
+  hyphenElement: HyphenElementExtension,
   runIdentity: RunIdentityExtension,
   comment: CommentExtension,
   insertion: InsertionExtension,
@@ -242,6 +245,7 @@ export const MARK_NESTING_ORDER: readonly [
   "textEffect",
   "runFormattingOverride",
   "characterStyle",
+  "hyphenElement",
   "comment",
   "inlineWrapper",
   "insertion",
@@ -279,6 +283,9 @@ export const MARK_NESTING_ORDER: readonly [
   "textEffect",
   "runFormattingOverride",
   "characterStyle",
+  // Names run content, not a wrapper, so the save leg ranks it against
+  // nothing.
+  "hyphenElement",
   // The container tier, in the save leg's order.
   "comment",
   // An editor-created revision belongs inside the wrapper stack already on

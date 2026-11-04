@@ -139,6 +139,7 @@ import type {
   PreservedInline,
   PreservedMarkup,
   Run,
+  RunContent,
   SdtProperties,
   Shape,
   ShapeContent,
@@ -154,7 +155,6 @@ import type {
   TableFormatting,
   TableRow,
   TableRowFormatting,
-  TextContent,
   TextFormatting,
   TrackedChangeInfo,
 } from "../../types/document";
@@ -283,6 +283,10 @@ import {
   trackedRevisionLayerOf,
 } from "../trackedRevisionPath";
 import { assertValidProseMirrorDocument } from "../validation";
+import {
+  HYPHEN_ELEMENT_MARK_NAME,
+  hyphenElementRunContent,
+} from "./hyphenTextCarriers";
 import { hasSinkChildren } from "./preservedSinkCarriers";
 import {
   decodeSdtListItems,
@@ -3520,9 +3524,7 @@ function extractParagraphContent(
     const currentOwnerId = currentRun
       ? sourceRunOwners.get(currentRun)
       : undefined;
-    const currentRunIsPlainText = currentRun?.content.every(
-      (runContent) => runContent.type === "text",
-    );
+    const currentRunIsPlainText = currentRun?.content.every(isTextLeafContent);
     const joinsOwnedSourceRun =
       ownerId !== undefined &&
       ownerId === currentOwnerId &&
@@ -3540,6 +3542,8 @@ function extractParagraphContent(
         for (const runContent of run.content) {
           if (runContent.type === "text") {
             appendTextToRun(currentRun, runContent.text);
+          } else {
+            currentRun.content.push(runContent);
           }
         }
       } else {
@@ -4546,7 +4550,7 @@ function createTrackedChangeRun({
     const formatting = marksToTextFormatting(marks, formattingContext);
     run = {
       type: "run",
-      content: node.text ? [{ type: "text", text: node.text }] : [],
+      content: node.text ? textLeafRunContent(node.text, marks) : [],
       ...(Object.keys(formatting).length > 0 ? { formatting } : {}),
     };
     restoreRunRecord(run, marks);
@@ -4671,7 +4675,11 @@ function getLinkKey(mark: Mark): string {
  * Create a unique key for a set of marks (excluding hyperlink)
  */
 function getMarksKey(marks: readonly Mark[]): string {
-  const nonLinkMarks = marks.filter((m) => m.type.name !== "hyperlink");
+  // A hyphen element is run content, so it is no run boundary either.
+  const nonLinkMarks = marks.filter(
+    (m) =>
+      m.type.name !== "hyperlink" && m.type.name !== HYPHEN_ELEMENT_MARK_NAME,
+  );
   if (nonLinkMarks.length === 0) {
     return "";
   }
@@ -4944,6 +4952,31 @@ function createNoteReferenceRun(
 }
 
 /**
+ * The run content one ProseMirror text leaf writes.
+ *
+ * Text by default; a leaf carrying the hyphen-element mark writes its
+ * carriers back as the elements they were read from.
+ */
+function textLeafRunContent(
+  text: string,
+  marks: readonly Mark[],
+): RunContent[] {
+  if (marks.some(({ type }) => type.name === HYPHEN_ELEMENT_MARK_NAME)) {
+    return hyphenElementRunContent(text);
+  }
+  return [{ type: "text", text }];
+}
+
+/** Content an ordinary text run may hold and still join the next text leaf. */
+function isTextLeafContent(content: RunContent): boolean {
+  return (
+    content.type === "text" ||
+    content.type === "softHyphen" ||
+    content.type === "noBreakHyphen"
+  );
+}
+
+/**
  * Create a Run from text and marks
  */
 type CreateRunFromTextOptions = RunFormattingContext & {
@@ -4967,12 +5000,7 @@ function createRunFromText({
     paragraphMarkPrecedesStyle,
     styleResolver,
   });
-  const textContent: TextContent = {
-    type: "text",
-    text,
-  };
-
-  const run: Run = { type: "run", content: [textContent] };
+  const run: Run = { type: "run", content: textLeafRunContent(text, marks) };
   if (formatting) {
     run.formatting = formatting;
   }
@@ -5514,12 +5542,53 @@ const reconcileEmptyFieldResultRuns = (
   return reconciled;
 };
 
+/**
+ * A result without its hyphen elements, and without a run that held nothing
+ * else. They are part of the text a new display text replaces.
+ */
+const withoutHyphenElements = <Item extends ParagraphContent>(
+  items: Item[],
+): Item[] =>
+  items.filter((item) => {
+    switch (item.type) {
+      case "run": {
+        const kept = item.content.filter(
+          ({ type }) => type !== "softHyphen" && type !== "noBreakHyphen",
+        );
+        if (kept.length === item.content.length) {
+          return true;
+        }
+        item.content = kept;
+        return kept.length > 0;
+      }
+      case "hyperlink":
+        item.children = withoutHyphenElements(item.children);
+        return true;
+      case "inlineWrapper":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        item.content = withoutHyphenElements(item.content);
+        return true;
+      default:
+        return true;
+    }
+  });
+
 const synchronizeFieldDisplayText = (
-  content: SimpleField["content"],
+  fieldContent: SimpleField["content"],
   displayText: string,
   fallbackRun: Run,
 ): SimpleField["content"] => {
-  const currentText = getFindParagraphText({ type: "paragraph", content });
+  const currentText = getFindParagraphText({
+    type: "paragraph",
+    content: fieldContent,
+  });
+  if (currentText === displayText) {
+    return fieldContent;
+  }
+  const content = withoutHyphenElements(fieldContent);
   // A transparent wrapper is stepped through rather than stopped at: the runs
   // it holds carry the field's cached display, so a field whose result was
   // authored inside a `w:bdo` must not read as holding no text at all.
@@ -5550,10 +5619,6 @@ const synchronizeFieldDisplayText = (
   const visitRuns = (visit: (run: Run) => void): void => {
     visitRunsIn(content, visit);
   };
-  if (currentText === displayText) {
-    return content;
-  }
-
   let replacedText = false;
   visitRuns((run) => {
     for (const runContent of run.content) {
