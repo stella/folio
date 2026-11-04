@@ -59,7 +59,6 @@ export type {
   TrackedRevisionAncestor,
   RunPropertyChangeMarkAttrs,
   RunIdentityMarkAttrs,
-  HyphenElementMarkAttrs,
   RunFormattingOverrideAttrs,
   RunShadingAttrs,
   HyperlinkAttrs,

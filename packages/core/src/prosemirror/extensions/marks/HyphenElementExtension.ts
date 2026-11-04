@@ -18,8 +18,8 @@
  * `toDOM` stamps that capability on every carrier it writes.
  */
 
-import { expectHyphenElementMarkAttrs } from "../../attrs";
 import { HYPHEN_ELEMENT_MARK_NAME } from "../../conversion/hyphenTextCarriers";
+import { expectHyphenElementMarkAttrs } from "../../hyphenElementAttrs";
 import { createMarkExtension } from "../create";
 import type { MarkExtension } from "../types";
 

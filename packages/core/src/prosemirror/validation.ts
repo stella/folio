@@ -17,7 +17,6 @@ import {
   readHardBreakAttrs,
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
-  readHyphenElementMarkAttrs,
   readImageAttrs,
   readInlineWrapperMarkAttrs,
   readLanguageMarkAttrs,
@@ -49,6 +48,7 @@ import { readCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { HYPHEN_ELEMENT_MARK_NAME } from "./conversion/hyphenTextCarriers";
 import { fieldRequiresStructuredContent } from "./fieldRepresentation";
+import { readHyphenElementMarkAttrs } from "./hyphenElementAttrs";
 import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import { isRunContentInlineNodeName } from "./runContentProjection";
