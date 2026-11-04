@@ -2918,6 +2918,26 @@ const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
   keepsWords(options);
 
 /**
+ * Whether a pending join runs earlier words on through the paragraph at
+ * `paragraphPos`: the paragraphs before it, back to one that keeps words,
+ * all have their breaks pending removal.
+ */
+const joinRunsWordsInto = (doc: PMNode, paragraphPos: number): boolean => {
+  const $paragraph = doc.resolve(paragraphPos);
+  for (let index = $paragraph.index() - 1; index >= 0; index--) {
+    const previous = $paragraph.parent.child(index);
+    if (
+      previous.type.name !== "paragraph" ||
+      !isDeletedPPrMark(previous.attrs["pPrMark"])
+    ) {
+      return false;
+    }
+    if (!holdsOnlyDeletedContent(previous)) return true;
+  }
+  return false;
+};
+
+/**
  * Where a block goes before and after the paragraph at `paragraphPos`, read
  * as the joined paragraph a pending join makes of it. A join runs the words
  * of each paragraph whose break is pending removal into the paragraph it
@@ -2928,7 +2948,8 @@ const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
  * before that one goes before the first paragraph the join takes in, empty
  * ones included. A join into a paragraph with no words left (an emptied
  * final carrier, or one going whole) runs nothing together, nor does a
- * paragraph going whole: blocks keep their places.
+ * paragraph going whole with no join running through it: blocks keep their
+ * places.
  */
 const pendingJoinBounds = (
   options: PendingJoinBoundsOptions,
@@ -2939,7 +2960,7 @@ const pendingJoinBounds = (
   if (
     paragraph?.type.name === "paragraph" &&
     isDeletedPPrMark(paragraph.attrs["pPrMark"]) &&
-    joinsIn(options)
+    (joinsIn(options) || joinRunsWordsInto(doc, paragraphPos))
   ) {
     const survivor = paragraphLeftAfter({ doc, paragraphPos });
     if (
