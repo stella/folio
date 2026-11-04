@@ -172,14 +172,38 @@ const canonicalRun = (run: Run): Run => {
   return next;
 };
 
-const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] => {
+/** Adjacent records merged as far as they are alike, at every level. */
+const mergedRecords = (nodes: readonly InlineNode[]): InlineNode[] => {
+  const out: InlineNode[] = [];
+  for (const node of nodes) {
+    const children = childNodes(node);
+    const own =
+      children === undefined
+        ? node
+        : rebuildNode(node, mergedRecords(children));
+    const last = out.at(-1);
+    if (last === undefined) out.push(own);
+    else out.splice(-1, 1, ...mergeAtSeam(last, own));
+  }
+  return out;
+};
+
+/**
+ * Alike records merge before rendered page breaks are dropped: a piece of a
+ * cut container that holds only a break is still content of that container,
+ * not a container holding nothing, which stays apart as markup of its own.
+ */
+const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] =>
+  withoutLayoutCaches(mergedRecords(nodes));
+
+const withoutLayoutCaches = (nodes: readonly InlineNode[]): InlineNode[] => {
   const out: InlineNode[] = [];
   for (const node of nodes) {
     const children = childNodes(node);
     const rebuilt =
       children === undefined
         ? node
-        : rebuildNode(node, canonicalList(children));
+        : rebuildNode(node, withoutLayoutCaches(children));
     const own = rebuilt.type === "run" ? canonicalRun(rebuilt) : rebuilt;
     // A run that held only rendered page breaks is not content.
     if (
