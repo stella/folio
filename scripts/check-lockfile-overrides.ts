@@ -28,17 +28,44 @@ type Lockfile = {
 /** A deliberate override outside a dependent's range: the dependent's name and the range it declares. */
 type IntentionalBreak = { dependent: string; range: string; reason: string };
 
-const INTENTIONAL_BREAKS: Readonly<Record<string, IntentionalBreak>> = {
-  archiver: {
-    dependent: "nitropack",
-    range: "^7.0.1",
-    reason: "archiver 8 resolves a dependency advisory",
-  },
-  valibot: {
-    dependent: "@stll/conditions",
-    range: "1.4.2",
-    reason: "one valibot across workspaces (#1279)",
-  },
+type IntentionalBreaks = Readonly<Record<string, readonly IntentionalBreak[]>>;
+
+const INTENTIONAL_BREAKS: IntentionalBreaks = {
+  archiver: [
+    {
+      dependent: "nitropack",
+      range: "^7.0.1",
+      reason: "archiver 8 resolves a dependency advisory",
+    },
+  ],
+  glob: [
+    {
+      dependent: "@vercel/nft",
+      range: "^13.0.0",
+      reason: "glob 14.0.2 is the first release that fixes GHSA-3g3m-2fjr-6pw4",
+    },
+  ],
+  minimatch: [
+    {
+      dependent: "@microsoft/api-extractor",
+      range: "10.2.3",
+      reason:
+        "minimatch 11.0.1 is the first release that fixes GHSA-g3hv-75wg-m249",
+    },
+    {
+      dependent: "readdir-glob",
+      range: "^10.2.2",
+      reason:
+        "minimatch 11.0.1 is the first release that fixes GHSA-g3hv-75wg-m249",
+    },
+  ],
+  valibot: [
+    {
+      dependent: "@stll/conditions",
+      range: "1.4.2",
+      reason: "one valibot across workspaces (#1279)",
+    },
+  ],
 };
 
 const DEPENDENCY_FIELDS = [
@@ -81,27 +108,31 @@ const isSemverRange = (range: string): boolean =>
 /** Every override outside a declared range that no entry permits, plus every stale entry. */
 export const overrideViolations = (
   lock: Lockfile,
-  intentional: Readonly<Record<string, IntentionalBreak>>,
+  intentional: IntentionalBreaks,
 ): string[] => {
   const violations: string[] = [];
   const overrides = lock.overrides ?? {};
   for (const [name, version] of Object.entries(overrides)) {
-    const allowed = intentional[name];
-    let allowedUsed = false;
+    const allowed = intentional[name] ?? [];
+    const used = new Set<IntentionalBreak>();
     for (const { dependent, range } of declarationsOf(lock, name)) {
       if (!isSemverRange(range) || Bun.semver.satisfies(version, range))
         continue;
-      if (allowed?.dependent === dependent && allowed.range === range) {
-        allowedUsed = true;
+      const permit = allowed.find(
+        (entry) => entry.dependent === dependent && entry.range === range,
+      );
+      if (permit) {
+        used.add(permit);
         continue;
       }
       violations.push(
         `${dependent} declares ${name} ${range}; the override pins ${version}.`,
       );
     }
-    if (allowed && !allowedUsed) {
+    for (const entry of allowed) {
+      if (used.has(entry)) continue;
       violations.push(
-        `${name}: ${allowed.dependent} no longer declares ${allowed.range} outside the override; remove the intentional break.`,
+        `${name}: ${entry.dependent} no longer declares ${entry.range} outside the override; remove the intentional break.`,
       );
     }
   }
