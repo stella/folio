@@ -255,6 +255,62 @@ describe("an insertion after a paragraph whose break a final deletion retires", 
   });
 });
 
+describe("a block after a paragraph deleted whole that a join runs through", () => {
+  /** "Alpha." merged into "Bravo.", "Bravo." deleted, then `insertion` after "Bravo.", tracked. */
+  const joinThrough = async (
+    insertion: (blockId: string) => FolioDocumentOperation,
+  ) => {
+    const bytes = (
+      await ensureParaIds(
+        await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
+      )
+    ).docx;
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      author: "Test",
+    });
+    const [alpha, bravo] = reviewer.snapshot().blocks;
+    if (!alpha || !bravo) throw new Error("Missing fixture");
+    for (const operation of [
+      { id: "delete", type: "deleteBlock", blockId: bravo.id },
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: alpha.id,
+        separator: " ",
+      },
+      insertion(bravo.id),
+    ] satisfies FolioDocumentOperation[]) {
+      expect(
+        reviewer.applyOperations([operation], { mode: "tracked-changes" })
+          .skipped,
+      ).toEqual([]);
+    }
+    return reviewer;
+  };
+  const textsOf = (reviewer: FolioDocxReviewer) =>
+    reviewer.snapshot().blocks.map(({ text }) => text);
+
+  for (const placed of ["a paragraph after it", "a table after it"] as const) {
+    const insertion = insertions[placed];
+    test(`takes ${placed} after the paragraph the join leaves`, async () => {
+      const reviewer = await joinThrough(insertion);
+      reviewer.acceptAll();
+      const texts = textsOf(reviewer);
+      const joined = texts.indexOf("Alpha. Charlie.");
+      expect(joined).toBe(0);
+      expect(texts.at(joined + 1)).toBe(
+        placed === "a table after it" ? "Term" : "Inserted clause.",
+      );
+    });
+
+    test(`rejects ${placed} to the document it started from`, async () => {
+      const reviewer = await joinThrough(insertion);
+      reviewer.rejectAll();
+      expect(textsOf(reviewer)).toEqual(["Alpha.", "Bravo.", "Charlie."]);
+    });
+  }
+});
+
 const EMPTY_SOURCE_MARKDOWN = "Alpha.\n\nBravo.\n\nCharlie.";
 
 /** An empty paragraph after "Alpha.", merged into "Bravo.", then `edit` in `mode`. */

@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 1797766430,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 534095090,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1101989563,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "styleId": null,
+            "numbering": {
+              "kind": "inherit"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1542001642,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 846224775,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Goods warranty agreement term agreement clause agreement payment."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "insertAfterBlock",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from collisions flow seed 1797766430"
+}
