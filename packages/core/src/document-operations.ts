@@ -2508,10 +2508,10 @@ const inOperationOrder = (
 };
 
 export const applyFolioDocumentOperations = (
-  options: ApplyFolioDocumentOperationsOptions,
+  input: ApplyFolioDocumentOperationsOptions,
 ): FolioDocumentOperationResult =>
   applyFolioDocumentOperationsInPackage({
-    ...options,
+    ...input,
     numberingIdsElsewhere: NO_NUMBERING_IDS_IN_USE,
   });
 
