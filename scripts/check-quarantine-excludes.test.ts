@@ -270,6 +270,33 @@ minimumReleaseAgeExcludes = [
   "@stll/oxlint-config",`);
   });
 
+  test("a blank line does not separate a comment run from its entries", () => {
+    const bunfig = `
+[install]
+minimumReleaseAge = 432_000
+minimumReleaseAgeExcludes = [
+  # Dropped: its only entry expired.
+
+  "glob", # quarantine-expires: 2026-08-08T14:16:00.210Z
+
+  "@stll/conditions",
+]
+`;
+    const result = pruneExpiredExcludes({
+      bunfig,
+      now: new Date("2026-08-08T15:00:00.000Z"),
+    });
+
+    expect(result.pruned).toEqual(["glob"]);
+    expect(result.bunfig).toBe(`
+[install]
+minimumReleaseAge = 432_000
+minimumReleaseAgeExcludes = [
+  "@stll/conditions",
+]
+`);
+  });
+
   // The prune deletes at the instant the guard starts warning, so the removal
   // PR is already open for the whole notice window.
   test("prunes at the exact expiry", () => {

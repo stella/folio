@@ -283,34 +283,39 @@ export const pruneExpiredExcludes = ({
   };
   const isComment = (line: string) => line.trimStart().startsWith("#");
 
-  // Group each comment run with the temporary entries right below it (a
-  // permanent entry ends the group), then keep a run only while one of its
-  // entries survives.
+  // Group each comment run with the temporary entries below it (blank lines
+  // stay inside the group, a permanent entry ends it), then keep a group only
+  // while one of its entries survives or none was pruned.
+  const body = bunfig.slice(blockStart, blockEnd).split("\n");
+  const closingIndent = body.pop() ?? "";
   const lines: string[] = [];
-  let comments: string[] = [];
-  let entries: string[] = [];
+  let group: string[] = [];
+  let survives = false;
   let removedAny = false;
   const flush = () => {
-    if (!(removedAny && entries.length === 0)) lines.push(...comments);
-    lines.push(...entries);
-    comments = [];
-    entries = [];
+    if (survives || !removedAny) lines.push(...group);
+    group = [];
+    survives = false;
     removedAny = false;
   };
-  for (const line of bunfig.slice(blockStart, blockEnd).split("\n")) {
+  for (const line of body) {
     if (isComment(line)) {
-      if (entries.length > 0 || removedAny) flush();
-      comments.push(line);
+      if (survives || removedAny) flush();
+      group.push(line);
+    } else if (line.trim() === "") {
+      group.push(line);
     } else if (!line.includes(EXPIRY_MARKER)) {
       flush();
       lines.push(line);
     } else if (isExpired(line)) {
       removedAny = true;
     } else {
-      entries.push(line);
+      group.push(line);
+      survives = true;
     }
   }
   flush();
+  lines.push(closingIndent);
 
   if (pruned.length === 0) return { bunfig, pruned: [] };
 
