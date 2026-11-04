@@ -100,6 +100,66 @@ export const orderBatchOperations = <T>(
     compareBatchOrder(addressOf(left), addressOf(right)),
   );
 
+/** The pre-batch blocks an operation names and the ones it takes away. */
+export type BatchBlockAccess<Block> = {
+  /** Blocks the operation edits or places something beside. */
+  addresses: readonly Block[];
+  /** Blocks the operation deletes, or merges into the block before them. */
+  removes: readonly Block[];
+};
+
+/**
+ * Whether deleting a block takes it out of the document. A container (a
+ * story, cell, note or text box) has to end with a paragraph, so deleting its
+ * last one with no paragraph the batch keeps before it to take its break only
+ * empties it: it stays, and can still be addressed.
+ */
+export const deletionRemovesBlock = (deletion: {
+  endsContainer: boolean;
+  hasKeptParagraphBefore: boolean;
+}): boolean => !deletion.endsContainer || deletion.hasKeptParagraphBefore;
+
+/**
+ * A batch equals its operations applied one at a time with every operation
+ * that addresses a block before any operation that removes that block: a
+ * single edit can only address a block that still stands. Each operation
+ * that addresses a block another one ahead of it removes moves to just before
+ * the earliest such remover; every other operation keeps its place.
+ */
+export const orderAddressingBeforeRemoval = <T, Block>(
+  ordered: readonly T[],
+  accessOf: (operation: T) => BatchBlockAccess<Block>,
+): T[] => {
+  const result = [...ordered];
+  const removesAny = (remover: T, blocks: readonly Block[]) => {
+    const { removes } = accessOf(remover);
+    return blocks.some((block) => removes.includes(block));
+  };
+  // Every move takes an operation earlier, past at least one remover, so the
+  // order settles; the bound only guards against a cycle.
+  for (let round = 0; round <= result.length * result.length; round += 1) {
+    const from = result.findIndex((operation, at) => {
+      const { addresses } = accessOf(operation);
+      return (
+        addresses.length > 0 &&
+        result.slice(0, at).some((earlier) => removesAny(earlier, addresses))
+      );
+    });
+    if (from < 0) return result;
+    const operation = result[from];
+    if (operation === undefined) return result;
+    const { addresses } = accessOf(operation);
+    const to = result.findIndex((candidate) =>
+      removesAny(candidate, addresses),
+    );
+    result.splice(from, 1);
+    result.splice(to, 0, operation);
+  }
+  throw new Error(
+    "A batch has no order that addresses each block before removing it",
+  );
+};
+
 /**
  * Partition an ordered batch into execution runs. Insertions at the same
  * position share a run; every other operation remains a singleton.

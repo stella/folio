@@ -1598,3 +1598,153 @@ describe("a merge retracting an inserted break before the last paragraph the bat
     }
   }
 });
+
+// The batch contract: a batch equals its operations applied one at a time
+// with every operation that addresses a block before the one that removes it.
+describe("properties, a removal and an insertion on one block", () => {
+  const PERMUTATIONS = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ] as const;
+  const classOf = (block: number) =>
+    [
+      [
+        {
+          kind: "setBlockParagraphProperties",
+          block,
+          properties: { alignment: "center" },
+        },
+        { kind: "mergeBlockWithNext", block: block - 1 },
+        { kind: "insertAfterBlock", block },
+      ],
+      [
+        {
+          kind: "setBlockParagraphProperties",
+          block,
+          properties: { alignment: "center" },
+        },
+        { kind: "deleteBlock", block },
+        { kind: "insertAfterBlock", block },
+      ],
+    ] as const satisfies readonly (readonly GeneratedOperation[])[];
+  const cases = Array.from({ length: BLOCK_COUNT - 1 }, (_, index) => index + 1)
+    .flatMap(classOf)
+    .flatMap((trio) =>
+      PERMUTATIONS.map((order) =>
+        order.flatMap((index) => trio.at(index) ?? []),
+      ),
+    );
+
+  test.each(MODES)(
+    "leaves what its operations one at a time leave, addressing first (%s)",
+    async (mode) => {
+      const problems: string[] = [];
+      for (const generated of cases) {
+        problems.push(...(await batchAgainstOneAtATime({ generated, mode })));
+      }
+      expect(problems).toEqual([]);
+    },
+    240_000,
+  );
+
+  // Deleting the story's last paragraph meets the last-paragraph refusals:
+  // a format of the paragraph conflicts with a deletion that runs it into
+  // the one before, applied directly or tracked through the retired break,
+  // and both modes leave the same document. The operations each mode
+  // refuses there are pinned, so a change to either refusal shows here.
+  const LAST_PARAGRAPH_REFUSALS: Record<
+    string,
+    { direct: string[]; tracked: string[] }
+  > = {
+    "setBlockParagraphProperties,deleteBlock,insertAfterBlock": {
+      direct: ["deleteBlock"],
+      tracked: ["deleteBlock"],
+    },
+    "setBlockParagraphProperties,insertAfterBlock,deleteBlock": {
+      direct: ["deleteBlock"],
+      tracked: ["deleteBlock"],
+    },
+    "deleteBlock,setBlockParagraphProperties,insertAfterBlock": {
+      direct: ["setBlockParagraphProperties"],
+      tracked: ["setBlockParagraphProperties"],
+    },
+    "deleteBlock,insertAfterBlock,setBlockParagraphProperties": {
+      direct: ["setBlockParagraphProperties"],
+      tracked: ["setBlockParagraphProperties"],
+    },
+    "insertAfterBlock,setBlockParagraphProperties,deleteBlock": {
+      direct: ["deleteBlock"],
+      tracked: ["deleteBlock"],
+    },
+    "insertAfterBlock,deleteBlock,setBlockParagraphProperties": {
+      direct: ["setBlockParagraphProperties"],
+      tracked: ["setBlockParagraphProperties"],
+    },
+  };
+
+  const deletesLastParagraph = (generated: readonly GeneratedOperation[]) =>
+    generated.some(
+      (operation) =>
+        operation.kind === "deleteBlock" && operation.block === BLOCK_COUNT - 1,
+    );
+
+  test("accepts tracked to what the batch leaves applied directly", async () => {
+    const run = async (
+      mode: Mode,
+      generated: readonly GeneratedOperation[],
+    ) => {
+      const session = await freshSession();
+      const blockIds = session.snapshot().blocks.map((block) => block.id);
+      const operations = generated.flatMap((operation, index) => {
+        const materialized = materialize(session, blockIds, operation, index);
+        return materialized === null ? [] : [materialized];
+      });
+      const { applied } = session.apply(mode, operations);
+      if (mode !== "direct") session.acceptAll();
+      const appliedIds = new Set(applied.map(({ id }) => id));
+      return {
+        refused: generated.flatMap((operation, index) =>
+          appliedIds.has(`op${String(index)}`) ? [] : [operation.kind],
+        ),
+        presentation: JSON.stringify(
+          session.presentation({ withAnchors: false }),
+        ),
+      };
+    };
+    const problems: string[] = [];
+    for (const generated of cases) {
+      const direct = await run("direct", generated);
+      const tracked = await run("tracked-changes", generated);
+      const label = JSON.stringify(generated);
+      if (tracked.presentation !== direct.presentation) {
+        problems.push(
+          `${label}: direct ${direct.presentation}, tracked and accepted ${tracked.presentation}`,
+        );
+      }
+      if (!deletesLastParagraph(generated)) {
+        if (direct.refused.length > 0 || tracked.refused.length > 0) {
+          problems.push(
+            `${label}: refused directly ${JSON.stringify(direct.refused)}, tracked ${JSON.stringify(tracked.refused)}`,
+          );
+        }
+        continue;
+      }
+      const pinned = LAST_PARAGRAPH_REFUSALS[
+        generated.map(({ kind }) => kind).join(",")
+      ] ?? { direct: [], tracked: [] };
+      if (
+        JSON.stringify(direct.refused) !== JSON.stringify(pinned.direct) ||
+        JSON.stringify(tracked.refused) !== JSON.stringify(pinned.tracked)
+      ) {
+        problems.push(
+          `${label}: refused directly ${JSON.stringify(direct.refused)}, tracked ${JSON.stringify(tracked.refused)}; pinned ${JSON.stringify(pinned)}`,
+        );
+      }
+    }
+    expect(problems).toEqual([]);
+  }, 240_000);
+});

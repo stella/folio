@@ -60,6 +60,12 @@ export const BATCH_REJECTION_REASONS: {
 export const BATCH_WIRE_OP_TYPES: readonly string[];
 
 // @public
+export type BatchBlockAccess<Block> = {
+    addresses: readonly Block[];
+    removes: readonly Block[];
+};
+
+// @public
 export type BatchOrderAddress = {
     type: "annotation";
     position: number;
@@ -308,6 +314,12 @@ export type DeleteTableOp = {
     revision?: RevisionStamp;
     newIds?: NewIds;
 };
+
+// @public
+export const deletionRemovesBlock: (deletion: {
+    endsContainer: boolean;
+    hasKeptParagraphBefore: boolean;
+}) => boolean;
 
 // @public
 export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
@@ -732,6 +744,9 @@ export const OP_STORIES: Readonly<{
 
 // @public (undocumented)
 export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
+
+// @public
+export const orderAddressingBeforeRemoval: <T, Block>(ordered: readonly T[], accessOf: (operation: T) => BatchBlockAccess<Block>) => T[];
 
 // @public
 export const orderBatchOperations: <T>(operations: readonly T[], addressOf: (operation: T) => BatchOrderAddress) => T[];

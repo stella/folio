@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "direct",
+  "seed": 1518300418,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 0,
+            "endOffset": 5,
+            "selectedTextHash": "h3wo069"
+          },
+          "comment": {
+            "text": "Warranty supplier term delivery supplier buyer."
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "1BF99289",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hck7qhw"
+          },
+          "comment": {
+            "text": "Invoice buyer party payment payment."
+          }
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "3CEFFC83",
+          "find": "Scope",
+          "replace": "amended",
+          "precondition": {
+            "blockTextHash": "h3wo069"
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "7B806329"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "7B806329",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "1BF99289"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "collisions flow seed 1518300418",
+  "title": "#1356, reported seed 1518300418 (direct): a batch that inserts a table after the final paragraph it deletes equals its operations one at a time"
+}
