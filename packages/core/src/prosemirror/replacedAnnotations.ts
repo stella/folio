@@ -97,6 +97,7 @@ export const NON_INCLUSIVE_MARK_DISPOSITION: {
   readonly hyperlink: "carry";
   readonly footnoteRef: "followsTheText";
   readonly runIdentity: "followsTheText";
+  readonly hyphenElement: "followsTheText";
   readonly insertion: "followsTheText";
   readonly deletion: "followsTheText";
   readonly runPropertyChange: "followsTheText";
@@ -106,6 +107,7 @@ export const NON_INCLUSIVE_MARK_DISPOSITION: {
   hyperlink: "carry",
   footnoteRef: "followsTheText",
   runIdentity: "followsTheText",
+  hyphenElement: "followsTheText",
   insertion: "followsTheText",
   deletion: "followsTheText",
   runPropertyChange: "followsTheText",

@@ -659,6 +659,7 @@ const validateMark = (
     case "textShadow":
     case "textOutline":
     case "rtl":
+    case "hyphenElement":
       return;
 
     case "textEffect":

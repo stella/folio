@@ -220,7 +220,10 @@ import {
   type TableCellMarginsAttrs,
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
-import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
+import {
+  HYPHEN_ELEMENT_MARK_NAME,
+  HYPHEN_TEXT_CARRIERS,
+} from "./hyphenTextCarriers";
 import { createMarkInterner } from "./markInterner";
 import { hasSinkChildren } from "./preservedSinkCarriers";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
@@ -4637,11 +4640,16 @@ function convertRunContent({
           .mark(marks),
       ];
 
+    // The element's character, marked so the save leg writes the element back
+    // rather than the character inside `w:t`.
     case "noBreakHyphen":
-      return [schema.text(HYPHEN_TEXT_CARRIERS.noBreakHyphen, marks)];
-
     case "softHyphen":
-      return [schema.text(HYPHEN_TEXT_CARRIERS.softHyphen, marks)];
+      return [
+        schema.text(HYPHEN_TEXT_CARRIERS[content.type], [
+          ...marks,
+          schema.mark(HYPHEN_ELEMENT_MARK_NAME),
+        ]),
+      ];
 
     case "symbol":
       return [
