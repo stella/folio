@@ -6453,8 +6453,7 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}noBreakHyphen": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}object": {
       "disposition": "captured-verbatim"
@@ -6479,8 +6478,7 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}softHyphen": {
-      "disposition": "dropped",
-      "reason": "editorProjection"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_R/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sym": {
       "disposition": "modelled"

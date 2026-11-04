@@ -1,5 +1,6 @@
 import { Mark, type Node as PMNode } from "prosemirror-model";
 
+import { HYPHEN_ELEMENT_MARK_NAME } from "./conversion/hyphenTextCarriers";
 import { INLINE_WRAPPER_MARK_NAME } from "./extensions/marks/InlineWrapperExtension";
 import { getInlineDisplayText } from "./inlineDisplayText";
 import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
@@ -26,6 +27,9 @@ export const fieldRequiresStructuredContent = (
       child.marks.some(
         (mark) =>
           mark.type.name === RUN_IDENTITY_MARK_NAME ||
+          // A plain field atom keeps only its display text, which cannot
+          // tell a hyphen element from the same character.
+          mark.type.name === HYPHEN_ELEMENT_MARK_NAME ||
           mark.type.name === "footnoteRef" ||
           mark.type.name === "hyperlink" ||
           mark.type.name === INLINE_WRAPPER_MARK_NAME ||
