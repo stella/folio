@@ -31,7 +31,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@fc5f380b18234429cb60682ccfe1537561311e61
+      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
         with:
           bun-version-file: "package.json"
 
@@ -113,7 +113,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@fc5f380b18234429cb60682ccfe1537561311e61
+      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
         with:
           bun-version-file: "package.json"
 
@@ -170,7 +170,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@fc5f380b18234429cb60682ccfe1537561311e61
+      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
         with:
           bun-version-file: "package.json"
 
@@ -208,7 +208,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@fc5f380b18234429cb60682ccfe1537561311e61
+      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
         with:
           bun-version-file: "package.json"
 
@@ -244,7 +244,7 @@ jobs:
           fetch-depth: 0 # need history to compute the merge base with the target branch
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@fc5f380b18234429cb60682ccfe1537561311e61
+      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
         with:
           bun-version-file: "package.json"
 
