@@ -748,6 +748,12 @@ type ModelRow = {
    */
   pendingDeletion?: boolean;
   /**
+   * A paragraph pending deletion that holds nothing at all: its join runs
+   * into the paragraph after it, so a block inserted after it goes after
+   * that paragraph when it keeps words.
+   */
+  emptyJoinSource?: boolean;
+  /**
    * A block the reviewer still lists but the resolved pre-state does not
    * hold: nothing read from that pre-state describes it.
    */
@@ -964,11 +970,18 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => {
  * Which live blocks with words that accepting removes run on into the next
  * block. `marked`: the paragraphs whose own mark is a pending deletion or a
  * move's source, read from the saved live package; any other such block
- * drops words the model does not place. `assumed`: every one of them (for
- * hand-built rows with no package to read).
+ * drops words the model does not place. `emptyIds` are those holding nothing
+ * at all, not even deleted words: a pending join starts from them, while a
+ * paragraph with only deleted words goes whole. `assumed`: every one of them
+ * (for hand-built rows with no package to read).
  */
 export type JoinSources =
-  { type: "marked"; ids: ReadonlySet<string> } | { type: "assumed" };
+  | {
+      type: "marked";
+      ids: ReadonlySet<string>;
+      emptyIds: ReadonlySet<string>;
+    }
+  | { type: "assumed" };
 
 const ASSUMED_JOIN_SOURCES: JoinSources = { type: "assumed" };
 
@@ -991,18 +1004,21 @@ const JOINING_MARK_KINDS: ReadonlySet<string> = new Set(["del", "moveFrom"]);
 /** The paraIds of the paragraphs of `bytes` whose mark accepting removes. */
 const markedJoinSourcesOf = async (bytes: Uint8Array): Promise<JoinSources> => {
   const ids = new Set<string>();
+  const emptyIds = new Set<string>();
   visitParsedParagraphs(
     await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }),
     (paragraph) => {
       if (
-        paragraph.paraId !== undefined &&
-        paragraph.pPrMark !== undefined &&
-        JOINING_MARK_KINDS.has(paragraph.pPrMark.kind)
+        paragraph.paraId === undefined ||
+        paragraph.pPrMark === undefined ||
+        !JOINING_MARK_KINDS.has(paragraph.pPrMark.kind)
       )
-        ids.add(paragraph.paraId);
+        return;
+      ids.add(paragraph.paraId);
+      if (paragraph.content.length === 0) emptyIds.add(paragraph.paraId);
     },
   );
-  return { type: "marked", ids };
+  return { type: "marked", ids, emptyIds };
 };
 
 /**
@@ -1101,6 +1117,8 @@ export const modelOf = (
       continue;
     }
     ghost.pendingDeletion = true;
+    if (joinSources.type === "marked" && joinSources.emptyIds.has(row.id))
+      ghost.emptyJoinSource = true;
     // Words joining a later block run on through it: what lands beside it
     // decides where they stop.
     if (joining) ghost.pendingJoin = true;
@@ -2022,6 +2040,34 @@ const textBoxRowsOf = (model: Model, row: ModelRow): ModelRow[] => {
 const pastTextBoxes = (model: Model, row: ModelRow): ModelRow =>
   textBoxRowsOf(model, row).at(-1) ?? row;
 
+type Container = TableLocation | undefined;
+
+const sameContainer = (left: Container, right: Container): boolean =>
+  left === undefined
+    ? right === undefined
+    : right !== undefined &&
+      left.tableIndex === right.tableIndex &&
+      left.rowIndex === right.rowIndex &&
+      left.cellIndex === right.cellIndex;
+
+/**
+ * The paragraph an insertion after `row` follows: the one a pending join from
+ * an empty `row` leaves, when that paragraph keeps words of its own; `row`
+ * itself otherwise. Other blocks the reader lists but accepting removes go
+ * with the join on the way there.
+ */
+const pastEmptyJoin = (model: Model, row: ModelRow): ModelRow => {
+  if (row.emptyJoinSource !== true) return row;
+  const next = model.rows
+    .slice(model.rows.indexOf(row) + 1)
+    .find((candidate) => candidate.outsidePreState !== true);
+  return next !== undefined &&
+    next.text.length > 0 &&
+    sameContainer(row.pre?.table, next.pre?.table)
+    ? next
+    : row;
+};
+
 /**
  * Where a block inserted next to `row` goes: next to the row itself, or, for
  * a row inside a table, next to the outermost table (the documented rule:
@@ -2032,7 +2078,8 @@ const insertionAnchor = (
   row: ModelRow,
   position: "before" | "after",
 ): ModelRow => {
-  if (position === "after") row = pastTextBoxes(model, row);
+  if (position === "after")
+    row = pastTextBoxes(model, pastEmptyJoin(model, row));
   const table = row.pre?.table;
   if (!table) return row;
   const rows = model.rows.filter(
@@ -2673,15 +2720,7 @@ const applyEdits = (
 const materialize = (model: Model): Expected[] => {
   if (model.story === "removed") return [];
   const out: Expected[] = [];
-  type Container = TableLocation | undefined;
   let joinNext: { separator: string; container: Container } | undefined;
-  const sameContainer = (left: Container, right: Container): boolean =>
-    left === undefined
-      ? right === undefined
-      : right !== undefined &&
-        left.tableIndex === right.tableIndex &&
-        left.rowIndex === right.rowIndex &&
-        left.cellIndex === right.cellIndex;
   const push = (entry: Expected, container: Container) => {
     if (joinNext !== undefined) {
       const previous = out.at(-1);
@@ -3313,7 +3352,7 @@ export const capture = async (
       liveRows: rows,
       // The suggested model reads the live rows themselves: no block is
       // missing from them, so none joins another.
-      joinSources: { type: "marked", ids: new Set() },
+      joinSources: { type: "marked", ids: new Set(), emptyIds: new Set() },
       numberingSource: {
         type: "live",
         facts: liveNumberingFacts(reviewer, story),

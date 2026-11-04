@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "tracked-changes",
+  "seed": 1847978713,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 11,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 1
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 13,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Warranty buyer clause.",
+          "alignment": "right"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 1847978713"
+}
