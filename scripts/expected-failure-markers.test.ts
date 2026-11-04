@@ -14,15 +14,15 @@ const FLOW = {
   test: "consumer known issues / suggested",
   seed: 774176929,
   repro:
-    "bun scripts/consumer-scenarios.ts --only '^a paragraph inserted after a block with a pending tracked merge'",
+    "bun scripts/consumer-scenarios.ts --only '^docxToMarkdown reads a text box'",
 };
-const KNOWN = "accepting glues the inserted paragraph onto the merged one";
+const KNOWN = "docxToMarkdown writes no text-box paragraph";
 const OTHER =
   "[batchSequential] the batch (suggested: insertBeforeBlock, insertBeforeBlock, insertTableRow) leaves otherwise than its operations one at a time:\n" +
   "  op-1 applied one at a time, refused in the batch";
-const FINDING = "INSERT_AFTER_PENDING_MERGE";
+const FINDING = "MARKDOWN_DROPS_TEXT_BOX";
 const SYMPTOM = FINDING_SYMPTOMS[FINDING];
-const NAME = "insert after a pending merge";
+const NAME = "markdown reads a text box";
 
 const failWith = (message: string) => () => {
   reportScenarioFailure({ ...FLOW, failure: new Error(message) });
@@ -75,7 +75,7 @@ describe("expected failures and the failure markers fuzz reporters file", () => 
   });
 
   test("markers logged outside an expected failure are logged at once", () => {
-    expect(failWith(KNOWN)).toThrow("accepting glues");
+    expect(failWith(KNOWN)).toThrow("writes no text-box paragraph");
     expect(markers()).toHaveLength(1);
   });
 });

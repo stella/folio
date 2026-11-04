@@ -22,8 +22,6 @@ export const FINDINGS = {
     "Legacy generateTOC replaces existing _Toc bookmark names while prior TOC hyperlinks and PAGEREF instructions keep those names",
   LEGACY_PARAGRAPH_TAB_EDITS_LOST:
     "legacy paragraph tab commands edit PM attrs, but imported paragraph serialization retains original tabs; canonical descriptors retire this defect for canonical sessions",
-  INSERT_AFTER_PENDING_MERGE:
-    "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
 } as const;
@@ -87,8 +85,6 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
   LEGACY_PARAGRAPH_TAB_EDITS_LOST:
     /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
-  INSERT_AFTER_PENDING_MERGE:
-    /accepting glues the inserted paragraph onto the merged one/u,
 };
 
 /**
