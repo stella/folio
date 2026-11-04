@@ -241,6 +241,62 @@ minimumReleaseAgeExcludes = [
     ).toEqual([]);
   });
 
+  test("drops a comment run once every entry it explains is pruned", () => {
+    const bunfig = `
+[install]
+minimumReleaseAge = 432_000
+minimumReleaseAgeExcludes = [
+  # Kept: one of its entries is still quarantined.
+  "dompurify", # quarantine-expires: 2026-08-08T14:16:00.210Z
+  "nanoid", # quarantine-expires: 2026-09-09T10:39:22.487Z
+  # Dropped: both of its entries expired.
+  "glob", # quarantine-expires: 2026-08-08T14:16:00.210Z
+  "minimatch", # quarantine-expires: 2026-08-08T14:16:00.210Z
+  "@stll/conditions",
+  "@stll/oxlint-config",
+]
+`;
+    const result = pruneExpiredExcludes({
+      bunfig,
+      now: new Date("2026-08-08T15:00:00.000Z"),
+    });
+
+    expect(result.pruned).toEqual(["dompurify", "glob", "minimatch"]);
+    expect(result.bunfig).toContain("# Kept:");
+    expect(result.bunfig).not.toContain("# Dropped:");
+    expect(result.bunfig)
+      .toContain(`"nanoid", # quarantine-expires: 2026-09-09T10:39:22.487Z
+  "@stll/conditions",
+  "@stll/oxlint-config",`);
+  });
+
+  test("a blank line does not separate a comment run from its entries", () => {
+    const bunfig = `
+[install]
+minimumReleaseAge = 432_000
+minimumReleaseAgeExcludes = [
+  # Dropped: its only entry expired.
+
+  "glob", # quarantine-expires: 2026-08-08T14:16:00.210Z
+
+  "@stll/conditions",
+]
+`;
+    const result = pruneExpiredExcludes({
+      bunfig,
+      now: new Date("2026-08-08T15:00:00.000Z"),
+    });
+
+    expect(result.pruned).toEqual(["glob"]);
+    expect(result.bunfig).toBe(`
+[install]
+minimumReleaseAge = 432_000
+minimumReleaseAgeExcludes = [
+  "@stll/conditions",
+]
+`);
+  });
+
   // The prune deletes at the instant the guard starts warning, so the removal
   // PR is already open for the whole notice window.
   test("prunes at the exact expiry", () => {
