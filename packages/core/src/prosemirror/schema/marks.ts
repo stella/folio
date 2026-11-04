@@ -184,6 +184,14 @@ export type RunPropertyChangeMarkAttrs = {
 };
 
 /**
+ * The text that stands for a `w:softHyphen` or `w:noBreakHyphen`.
+ */
+export type HyphenElementMarkAttrs = {
+  /** Tells this carrier from its neighbours. Monotonic within one paragraph. */
+  id: number;
+};
+
+/**
  * Editor-side identity for one authored `w:r`, and everything about that
  * element the model holds but no formatting mark carries.
  *

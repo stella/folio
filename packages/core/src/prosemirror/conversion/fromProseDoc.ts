@@ -5542,12 +5542,53 @@ const reconcileEmptyFieldResultRuns = (
   return reconciled;
 };
 
+/**
+ * A result without its hyphen elements, and without a run that held nothing
+ * else. They are part of the text a new display text replaces.
+ */
+const withoutHyphenElements = <Item extends ParagraphContent>(
+  items: Item[],
+): Item[] =>
+  items.filter((item) => {
+    switch (item.type) {
+      case "run": {
+        const kept = item.content.filter(
+          ({ type }) => type !== "softHyphen" && type !== "noBreakHyphen",
+        );
+        if (kept.length === item.content.length) {
+          return true;
+        }
+        item.content = kept;
+        return kept.length > 0;
+      }
+      case "hyperlink":
+        item.children = withoutHyphenElements(item.children);
+        return true;
+      case "inlineWrapper":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        item.content = withoutHyphenElements(item.content);
+        return true;
+      default:
+        return true;
+    }
+  });
+
 const synchronizeFieldDisplayText = (
-  content: SimpleField["content"],
+  fieldContent: SimpleField["content"],
   displayText: string,
   fallbackRun: Run,
 ): SimpleField["content"] => {
-  const currentText = getFindParagraphText({ type: "paragraph", content });
+  const currentText = getFindParagraphText({
+    type: "paragraph",
+    content: fieldContent,
+  });
+  if (currentText === displayText) {
+    return fieldContent;
+  }
+  const content = withoutHyphenElements(fieldContent);
   // A transparent wrapper is stepped through rather than stopped at: the runs
   // it holds carry the field's cached display, so a field whose result was
   // authored inside a `w:bdo` must not read as holding no text at all.
@@ -5578,10 +5619,6 @@ const synchronizeFieldDisplayText = (
   const visitRuns = (visit: (run: Run) => void): void => {
     visitRunsIn(content, visit);
   };
-  if (currentText === displayText) {
-    return content;
-  }
-
   let replacedText = false;
   visitRuns((run) => {
     for (const runContent of run.content) {

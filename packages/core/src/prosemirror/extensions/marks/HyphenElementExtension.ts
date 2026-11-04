@@ -7,25 +7,65 @@
  * authored inside `w:t`, so without this mark the save leg could not tell
  * which of the two the source held. Nothing is painted for it.
  *
- * Not inclusive: text typed beside a carrier is text, not another element.
+ * Not inclusive, and each carrier in a paragraph has its own `id`: ProseMirror
+ * keeps a non-inclusive mark only where both neighbours hold an equal mark, so
+ * distinct ids mean a character typed beside or between carriers is text. The
+ * ids only tell neighbours apart. They can repeat after a paste beside the
+ * source or a paragraph join, which `hyphenElementRunContent` describes.
+ *
+ * External HTML must not be able to claim the element: `cleanPastedHtml` strips
+ * the attribute unless the slice carries the internal clipboard capability, so
+ * `toDOM` stamps that capability on every carrier it writes.
  */
 
+import { expectHyphenElementMarkAttrs } from "../../attrs";
 import { HYPHEN_ELEMENT_MARK_NAME } from "../../conversion/hyphenTextCarriers";
 import { createMarkExtension } from "../create";
 import type { MarkExtension } from "../types";
 
 const HYPHEN_ELEMENT_ATTRIBUTE = "data-docx-hyphen-element";
+const CANONICAL_HYPHEN_ELEMENT_ID = /^(?:0|[1-9]\d*)$/u;
+
+type HyphenElementOptions = {
+  getInternalClipboardToken?: () => string;
+};
 
 export const HyphenElementExtension: (
-  options?: Partial<Record<string, unknown>> | undefined,
-) => MarkExtension = createMarkExtension({
+  options?: Partial<HyphenElementOptions> | undefined,
+) => MarkExtension = createMarkExtension<HyphenElementOptions>({
   name: HYPHEN_ELEMENT_MARK_NAME,
   schemaMarkName: HYPHEN_ELEMENT_MARK_NAME,
-  markSpec: {
+  markSpec: (options) => ({
+    attrs: { id: {} },
     inclusive: false,
-    parseDOM: [{ tag: `span[${HYPHEN_ELEMENT_ATTRIBUTE}]` }],
-    toDOM() {
-      return ["span", { [HYPHEN_ELEMENT_ATTRIBUTE]: "" }, 0];
+    parseDOM: [
+      {
+        tag: `span[${HYPHEN_ELEMENT_ATTRIBUTE}]`,
+        getAttrs(dom) {
+          const rawId = dom.getAttribute(HYPHEN_ELEMENT_ATTRIBUTE);
+          if (rawId === null || !CANONICAL_HYPHEN_ELEMENT_ID.test(rawId)) {
+            return false;
+          }
+          const id = Number(rawId);
+          return Number.isSafeInteger(id) ? { id } : false;
+        },
+      },
+    ],
+    toDOM(mark) {
+      const { id } = expectHyphenElementMarkAttrs(mark);
+      return [
+        "span",
+        {
+          [HYPHEN_ELEMENT_ATTRIBUTE]: String(id),
+          ...(options.getInternalClipboardToken
+            ? {
+                "data-docx-internal-clipboard":
+                  options.getInternalClipboardToken(),
+              }
+            : {}),
+        },
+        0,
+      ];
     },
-  },
+  }),
 });

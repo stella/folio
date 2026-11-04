@@ -134,9 +134,7 @@ export const MARK_EXTENSIONS: {
   readonly characterStyle: (
     options?: Partial<Record<string, unknown>> | undefined,
   ) => MarkExtension;
-  readonly hyphenElement: (
-    options?: Partial<Record<string, unknown>> | undefined,
-  ) => MarkExtension;
+  readonly hyphenElement: typeof HyphenElementExtension;
   readonly runIdentity: (
     options?: Partial<Record<string, unknown>> | undefined,
   ) => MarkExtension;

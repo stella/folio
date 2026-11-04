@@ -17,6 +17,7 @@ import {
   readHardBreakAttrs,
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
+  readHyphenElementMarkAttrs,
   readImageAttrs,
   readInlineWrapperMarkAttrs,
   readLanguageMarkAttrs,
@@ -661,7 +662,10 @@ const validateMark = (
     case "textShadow":
     case "textOutline":
     case "rtl":
+      return;
+
     case "hyphenElement":
+      appendAttrIssues(markPath, readHyphenElementMarkAttrs(mark), issues);
       return;
 
     case "textEffect":

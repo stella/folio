@@ -303,6 +303,7 @@ type RunIdentityIdAllocator = () => number;
 /** What converting one paragraph's runs shares across them. */
 type RunConversionScope = {
   nextRunIdentityId: RunIdentityIdAllocator;
+  nextHyphenElementId: () => number;
   nextNoteReferenceOccurrenceId: () => string;
   /** The conversion's mark interner. */
   createMark: MarkFactory;
@@ -859,8 +860,10 @@ function convertParagraph(
     openCommentIds,
   } = context;
   let runIdentityId = 0;
+  let hyphenElementId = 0;
   const runScope = {
     nextRunIdentityId: () => runIdentityId++,
+    nextHyphenElementId: () => hyphenElementId++,
     nextNoteReferenceOccurrenceId: context.nextNoteReferenceOccurrenceId,
     createMark: context.createMark,
   };
@@ -3616,6 +3619,7 @@ function convertRun(
       formatting: mergedFormatting,
       textBoxAnchors,
       authoredFormatting: run.formatting,
+      nextHyphenElementId: runScope.nextHyphenElementId,
       nextNoteReferenceOccurrenceId: runScope.nextNoteReferenceOccurrenceId,
     });
     for (const node of contentNodes) {
@@ -4478,6 +4482,7 @@ type ConvertRunContentOptions = {
    * the run as direct formatting.
    */
   authoredFormatting: TextFormatting | undefined;
+  nextHyphenElementId: () => number;
   nextNoteReferenceOccurrenceId: () => string;
 };
 
@@ -4487,6 +4492,7 @@ function convertRunContent({
   formatting,
   textBoxAnchors,
   authoredFormatting,
+  nextHyphenElementId,
   nextNoteReferenceOccurrenceId,
 }: ConvertRunContentOptions): PMNode[] {
   switch (content.type) {
@@ -4647,7 +4653,7 @@ function convertRunContent({
       return [
         schema.text(HYPHEN_TEXT_CARRIERS[content.type], [
           ...marks,
-          schema.mark(HYPHEN_ELEMENT_MARK_NAME),
+          schema.mark(HYPHEN_ELEMENT_MARK_NAME, { id: nextHyphenElementId() }),
         ]),
       ];
 
@@ -5196,6 +5202,7 @@ function convertHyperlink(
               formatting: mergedFormatting,
               textBoxAnchors,
               authoredFormatting: child.formatting,
+              nextHyphenElementId: runScope.nextHyphenElementId,
               nextNoteReferenceOccurrenceId:
                 runScope.nextNoteReferenceOccurrenceId,
             }),

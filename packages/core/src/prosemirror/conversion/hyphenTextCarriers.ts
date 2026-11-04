@@ -43,16 +43,17 @@ const HYPHEN_ELEMENT_BY_CARRIER: ReadonlyMap<string, HyphenElementType> =
   );
 
 type HyphenElementRunContent =
-  | TextContent
-  | SoftHyphenContent
-  | NoBreakHyphenContent;
+  TextContent | SoftHyphenContent | NoBreakHyphenContent;
 
 /**
  * The run content a leaf carrying {@link HYPHEN_ELEMENT_MARK_NAME} writes back.
  *
- * Each carrier becomes its element again. Any other character stays text:
- * the mark is not inclusive, but a character typed between two adjacent
- * carriers still inherits it, and that character was never an element.
+ * Each carrier becomes its element again and any other character stays text.
+ * Typing does not normally reach a marked leaf: the mark is not inclusive and
+ * neighbouring carriers hold different ids. Ids only repeat when a copy is pasted
+ * beside its source or two paragraphs join; a character typed exactly between
+ * two such carriers takes the mark, so a letter stays text here and a typed
+ * U+00AD or U+2011 saves as the element.
  */
 export const hyphenElementRunContent = (
   text: string,

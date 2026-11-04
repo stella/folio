@@ -87,6 +87,7 @@ import type {
   HardBreakAttrs,
   HighlightAttrs,
   HyperlinkAttrs,
+  HyphenElementMarkAttrs,
   ImageAttrs,
   InlineWrapperAttrs,
   InlineWrapperKind,
@@ -395,6 +396,7 @@ const runPropertyChangeAttrsCache = new WeakMap<
   RunPropertyChangeMarkAttrs
 >();
 const runIdentityAttrsCache = new WeakMap<Mark, RunIdentityMarkAttrs>();
+const hyphenElementAttrsCache = new WeakMap<Mark, HyphenElementMarkAttrs>();
 const inlineWrapperAttrsCache = new WeakMap<Mark, InlineWrapperAttrs>();
 const runFormattingOverrideAttrsCache = new WeakMap<
   Mark,
@@ -2750,6 +2752,32 @@ export const expectRunIdentityMarkAttrs = (mark: Mark): RunIdentityMarkAttrs =>
     runIdentityAttrsCache,
     readRunIdentityMarkAttrs,
     "run identity attrs",
+  );
+
+export const readHyphenElementMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<HyphenElementMarkAttrs> => {
+  const attrs = attrsRecord(mark.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectMarkType(mark, "hyphenElement", issues);
+  const id = attrs["id"];
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) {
+    issues.push({
+      path: "hyphenElement.attrs.id",
+      message: "Expected a non-negative safe integer.",
+    });
+  }
+  return attrsResult(attrs, issues);
+};
+
+export const expectHyphenElementMarkAttrs = (
+  mark: Mark,
+): HyphenElementMarkAttrs =>
+  expectCachedMarkAttrs(
+    mark,
+    hyphenElementAttrsCache,
+    readHyphenElementMarkAttrs,
+    "hyphen element attrs",
   );
 
 type InlineWrapperLayerValidator = (

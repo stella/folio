@@ -122,9 +122,7 @@ const buildPackage = async (runs: readonly RunSpec[]): Promise<ArrayBuffer> => {
 const statedTokens = (runs: readonly RunSpec[]): string[] =>
   runs.flatMap(({ children }) =>
     children.flatMap((child) =>
-      child.kind === "text"
-        ? [...child.payload]
-        : [childXml(child, false)],
+      child.kind === "text" ? [...child.payload] : [childXml(child, false)],
     ),
   );
 
@@ -137,10 +135,16 @@ const savedTokens = async (saved: ArrayBuffer): Promise<string[]> => {
     throw new Error("the saved package has no word/document.xml");
   }
   const xml = await part.text();
-  return [...xml.matchAll(SAVED_TOKEN)].flatMap((match) => {
+  const tokens: string[] = [];
+  for (const match of xml.matchAll(SAVED_TOKEN)) {
     const text = match.groups?.["text"];
-    return text === undefined ? [match[0]] : [...text];
-  });
+    if (text === undefined) {
+      tokens.push(match[0]);
+    } else {
+      tokens.push(...text);
+    }
+  }
+  return tokens;
 };
 
 const repack = (document: Document): Promise<ArrayBuffer> =>

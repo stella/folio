@@ -126,7 +126,7 @@ export function createStarterKit(
   // Marks. Registration order is DOM nesting order, outermost first, and
   // `MARK_NESTING_ORDER` is where that order is decided.
   for (const name of MARK_NESTING_ORDER) {
-    add(name, MARK_EXTENSIONS[name]());
+    add(name, MARK_EXTENSIONS[name]({ getInternalClipboardToken }));
   }
 
   // Nodes
