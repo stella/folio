@@ -55,7 +55,7 @@ const WRAPPERS = [
  * `w:bdo`, `w:dir`, `w:smartTag` and the run-level `w:customXml` are model
  * members now, and `taggedInlineWrapper.property.test.ts` holds their nesting
  * against a revision. The assertion there is about the model rather than about
- * a byte range, which a `w:moveFrom` rewrites as `w:delText` anyway.
+ * a byte range, which a `w:del` rewrites as `w:delText` anyway.
  */
 const UNMODELLED_CHILDREN = [
   '<w:permStart w:id="7" w:edGrp="everyone"/>',

@@ -463,9 +463,9 @@ describe("comment-range boundaries inside tracked changes", () => {
         const paragraph = parseParagraphXml(
           `<w:p xmlns:w="${WORDPROCESSINGML_NAMESPACE}">` +
             `<w:${wrapper.tag} w:id="7" w:author="Reviewer">` +
-            `<w:r><w:${wrapper.tag === "del" || wrapper.tag === "moveFrom" ? "delText" : "t"} xml:space="preserve"> </w:${wrapper.tag === "del" || wrapper.tag === "moveFrom" ? "delText" : "t"}></w:r>` +
+            `<w:r><w:${wrapper.tag === "del" ? "delText" : "t"} xml:space="preserve"> </w:${wrapper.tag === "del" ? "delText" : "t"}></w:r>` +
             `<w:${marker} w:id="5"/>` +
-            `<w:r><w:${wrapper.tag === "del" || wrapper.tag === "moveFrom" ? "delText" : "t"}>packed</w:${wrapper.tag === "del" || wrapper.tag === "moveFrom" ? "delText" : "t"}></w:r>` +
+            `<w:r><w:${wrapper.tag === "del" ? "delText" : "t"}>packed</w:${wrapper.tag === "del" ? "delText" : "t"}></w:r>` +
             `</w:${wrapper.tag}></w:p>`,
         );
 

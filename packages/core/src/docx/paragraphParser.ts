@@ -360,6 +360,23 @@ type TrackedChangeParseContext = "default" | "deletion";
 type TrackedChangeWrapperType =
   "insertion" | "deletion" | "moveFrom" | "moveTo";
 
+/**
+ * How each revision's content is read. A deletion's runs spell their text
+ * `w:delText` (ISO/IEC 29500-1 §17.3.3.7), read here as the text it stands
+ * for. A move source's runs spell it `w:t` (§17.13.5.22), which that reading
+ * leaves as it is; it also accepts the `w:delText` some writers put there, so
+ * both spellings give the same model, which the serializer writes as `w:t`.
+ */
+const TRACKED_CHANGE_PARSE_CONTEXT = {
+  insertion: "default",
+  deletion: "deletion",
+  moveFrom: "deletion",
+  moveTo: "default",
+} as const satisfies Record<
+  TrackedChangeWrapperType,
+  TrackedChangeParseContext
+>;
+
 function replaceLocalName(name: string | undefined, localName: string): string {
   if (!name) {
     return `w:${localName}`;
@@ -777,7 +794,7 @@ const hoistRevision =
       rels,
       media,
       previews,
-      wrapper === "deletion" || wrapper === "moveFrom" ? "deletion" : "default",
+      TRACKED_CHANGE_PARSE_CONTEXT[wrapper],
       inScopeXmlns,
       "hyperlink",
     );
@@ -1013,7 +1030,7 @@ const fieldTrackedChange =
       rels,
       media,
       previews,
-      type === "deletion" || type === "moveFrom" ? "deletion" : "default",
+      TRACKED_CHANGE_PARSE_CONTEXT[type],
       inScopeXmlns,
     );
     // Field children outside the typed revision model keep their authored XML.
@@ -1712,7 +1729,7 @@ const trackedParagraphRevision =
       rels,
       media,
       previews,
-      type === "deletion" || type === "moveFrom" ? "deletion" : "default",
+      TRACKED_CHANGE_PARSE_CONTEXT[type],
       inScopeXmlns,
       inlineScope,
     );

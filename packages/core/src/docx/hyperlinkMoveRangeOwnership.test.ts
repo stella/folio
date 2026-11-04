@@ -21,7 +21,7 @@ const WORD_NAMESPACES = {
 const DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body>
 <w:p w14:paraId="00000001"><w:bookmarkStart w:id="1" w:name="target"/><w:r><w:t>target</w:t></w:r><w:bookmarkEnd w:id="1"/></w:p>
-<w:p w14:paraId="00000002"><w:hyperlink w:anchor="target"><w:moveFromRangeStart w:id="2" w:name="move1" ${AUTHORED}/><w:moveFrom w:id="10" ${AUTHORED}><w:r><w:delText>moved</w:delText></w:r></w:moveFrom><w:moveFromRangeEnd w:id="2"/></w:hyperlink></w:p>
+<w:p w14:paraId="00000002"><w:hyperlink w:anchor="target"><w:moveFromRangeStart w:id="2" w:name="move1" ${AUTHORED}/><w:moveFrom w:id="10" ${AUTHORED}><w:r><w:t>moved</w:t></w:r></w:moveFrom><w:moveFromRangeEnd w:id="2"/></w:hyperlink></w:p>
 <w:p w14:paraId="00000003"><w:ins w:id="20" ${AUTHORED}><w:hyperlink w:anchor="target"><w:moveToRangeStart w:id="3" w:name="move1" ${AUTHORED}/><w:moveTo w:id="11" ${AUTHORED}><w:r><w:t>moved</w:t></w:r></w:moveTo><w:moveToRangeEnd w:id="3"/></w:hyperlink></w:ins></w:p>
 <w:sectPr/></w:body></w:document>`;
 

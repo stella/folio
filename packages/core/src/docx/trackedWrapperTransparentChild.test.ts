@@ -35,7 +35,7 @@ const roundTrip = (inner: string): string => {
 const REVISIONS = [
   { tag: "ins", removes: false },
   { tag: "del", removes: true },
-  { tag: "moveFrom", removes: true },
+  { tag: "moveFrom", removes: false },
   { tag: "moveTo", removes: false },
 ] as const;
 

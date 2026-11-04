@@ -273,8 +273,7 @@ test("keeps comment endpoints in their tracked hyperlink source host", () => {
   for (const [wrapper, type] of Object.entries(wrappers)) {
     for (const referenceHost of ["hyperlink", "paragraph"] as const) {
       const reference = `<w:r><w:commentReference w:id="72"/></w:r>`;
-      const textTag =
-        type === "deletion" || type === "moveFrom" ? "delText" : "t";
+      const textTag = type === "deletion" ? "delText" : "t";
       const paragraph = paragraphFromXml(
         `<w:p xmlns:w="${WORDPROCESSING_NAMESPACE}">` +
           `<w:${wrapper} w:id="71" w:author="Reviewer"><w:hyperlink w:anchor="target">` +

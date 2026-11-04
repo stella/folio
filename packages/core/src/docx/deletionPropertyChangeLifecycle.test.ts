@@ -19,6 +19,8 @@ const sourceWithDeletedRunPropertyChange = async (
       "Expected the generated package to contain word/document.xml",
     );
   }
+  // A deletion spells its text `w:delText`; a move source spells it `w:t`.
+  const text = wrapper === "del" ? "delText" : "t";
   const body = `<w:body>
     <x:p xmlns:x="${WORDPROCESSINGML_NAMESPACE}">
       <x:${wrapper} x:id="91" x:author="Reviewer" x:date="2026-09-09T00:00:00Z">
@@ -29,7 +31,7 @@ const sourceWithDeletedRunPropertyChange = async (
               <x:rPr><x:i/></x:rPr>
             </x:rPrChange>
           </x:rPr>
-          <x:delText>removed</x:delText>
+          <x:${text}>removed</x:${text}>
         </x:r>
       </x:${wrapper}>
     </x:p>

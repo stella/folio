@@ -21,7 +21,7 @@ const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const REVISIONS = [
   { tag: "ins", textTag: "t" },
   { tag: "del", textTag: "delText" },
-  { tag: "moveFrom", textTag: "delText" },
+  { tag: "moveFrom", textTag: "t" },
   { tag: "moveTo", textTag: "t" },
 ] as const;
 
