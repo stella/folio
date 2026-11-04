@@ -528,6 +528,55 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       expect(view.state.doc.child(0).attrs["_sectionProperties"]).toBeNull();
     });
 
+    // A split copies the record by reference; the saved package holds it on
+    // the last carrier alone, so that carrier's mark takes it from both.
+    const leadingCopyDoc = () => {
+      const record = { sectionStart: "nextPage" };
+      return schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          { _sectionProperties: record },
+          schema.text("copy"),
+        ),
+        schema.node(
+          "paragraph",
+          { pPrMark: delMark({ id: 2 }), _sectionProperties: record },
+          schema.text("carrier"),
+        ),
+        schema.node("paragraph", null, schema.text("next")),
+      ]);
+    };
+
+    test("accepting every change leaves no section on a leading copy", () => {
+      const view = dispatcher(
+        EditorState.create({ schema, doc: leadingCopyDoc() }),
+      );
+
+      acceptAllChanges()(view.state, view.dispatch);
+
+      expect(view.state.doc.childCount).toBe(2);
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toBeNull();
+      expect(view.state.doc.child(1).textContent).toBe("carriernext");
+      expect(view.state.doc.child(1).attrs["_sectionProperties"]).toBeNull();
+    });
+
+    test("accepting the mark alone leaves no section on a leading copy", () => {
+      const view = dispatcher(
+        EditorState.create({ schema, doc: leadingCopyDoc() }),
+      );
+      const from = view.state.doc.child(0).nodeSize;
+
+      acceptChange(from, from + view.state.doc.child(1).nodeSize)(
+        view.state,
+        view.dispatch,
+      );
+
+      expect(view.state.doc.childCount).toBe(2);
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toBeNull();
+      expect(view.state.doc.child(1).textContent).toBe("carriernext");
+      expect(view.state.doc.child(1).attrs["_sectionProperties"]).toBeNull();
+    });
+
     test("removes only the source endpoint when the next paragraph owns one", () => {
       const state = EditorState.create({
         schema,

@@ -4,6 +4,7 @@ import {
   AUTO_PARAGRAPH_SPACING_PX,
   emuToPixels,
   emuToTwips,
+  hangingFirstLineIndent,
   pixelsToEmu,
   pointsToPixels,
   twipsToEmu,
@@ -49,5 +50,17 @@ describe("EMU/twip conversions return integers", () => {
     expect(emuToPixels(null)).toBe(0);
     expect(emuToPixels(undefined)).toBe(0);
     expect(emuToPixels(Number.NaN)).toBe(0);
+  });
+});
+
+describe("hangingFirstLineIndent", () => {
+  test("negates a hanging indent whichever sign it comes with", () => {
+    expect(hangingFirstLineIndent(360)).toBe(-360);
+    expect(hangingFirstLineIndent(-360)).toBe(-360);
+  });
+
+  test("keeps zero a plain zero", () => {
+    expect(Object.is(hangingFirstLineIndent(0), 0)).toBe(true);
+    expect(Object.is(hangingFirstLineIndent(-0), 0)).toBe(true);
   });
 });

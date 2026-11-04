@@ -51,6 +51,7 @@ import {
   formatPx,
   halfPointsToPixels,
   halfPointsToPoints,
+  hangingFirstLineIndent,
   twipsToPixels,
 } from "./units";
 
@@ -401,7 +402,7 @@ export function paragraphToStyle(
   if (formatting.indentFirstLine !== undefined) {
     // ProseMirror stores hanging indents as a positive magnitude plus this flag.
     const textIndent = formatting.hangingIndent
-      ? -Math.abs(formatting.indentFirstLine)
+      ? hangingFirstLineIndent(formatting.indentFirstLine)
       : formatting.indentFirstLine;
     style.textIndent = formatPx(twipsToPixels(textIndent));
   }
