@@ -23,6 +23,7 @@ import {
   mintListInstance,
   restartListInstance,
 } from "../docx/listNumberingInstances";
+import { NO_NUMBERING_IDS_IN_USE } from "../docx/numberingIds";
 import {
   createNumberingMap,
   isBulletLevel,
@@ -392,7 +393,13 @@ export const resolveListTarget = ({
   if (numbering && unused !== undefined) {
     return { numId: unused, ilvl: 0, numbering };
   }
-  const minted = mintListInstance(numbering?.definitions, first);
+  // An editor holds one story; an id another story also defines moves to a
+  // fresh one when the story is written back (see storyListNumbering.ts).
+  const minted = mintListInstance(
+    numbering?.definitions,
+    first,
+    NO_NUMBERING_IDS_IN_USE,
+  );
   return {
     numId: minted.numId,
     ilvl: 0,
@@ -566,11 +573,11 @@ export const setNumberingValue = (value: number): Command =>
       if (!dispatch) {
         return true;
       }
-      const restarted = restartListInstance(numbering.definitions, {
-        abstractNumId,
-        ilvl: selected.membership.ilvl,
-        start: value,
-      });
+      const restarted = restartListInstance(
+        numbering.definitions,
+        { abstractNumId, ilvl: selected.membership.ilvl, start: value },
+        NO_NUMBERING_IDS_IN_USE,
+      );
       dispatch(
         moveItems({
           state,

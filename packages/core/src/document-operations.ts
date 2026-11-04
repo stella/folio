@@ -12,7 +12,7 @@ import {
 } from "@stll/docx-core/model";
 
 import {
-  applyFolioAIEditOperations,
+  applyFolioAIEditOperationsInPackage,
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
   type FolioReplacementBackground,
@@ -45,6 +45,10 @@ import type {
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
 import { LIST_KINDS, type ListKind } from "./docx/listNumberingInstances";
+import {
+  NO_NUMBERING_IDS_IN_USE,
+  type NumberingIdsInUse,
+} from "./docx/numberingIds";
 import { getSuggestions } from "./prosemirror/commands/comments";
 import { completeNumberingForDoc } from "./prosemirror/listInstanceReferences";
 import { outlineLevelFromAttrValue } from "./prosemirror/outlineLevelAttr";
@@ -2503,7 +2507,27 @@ const inOperationOrder = (
   );
 };
 
-export const applyFolioDocumentOperations = ({
+export const applyFolioDocumentOperations = (
+  options: ApplyFolioDocumentOperationsOptions,
+): FolioDocumentOperationResult =>
+  applyFolioDocumentOperationsInPackage({
+    ...options,
+    numberingIdsElsewhere: NO_NUMBERING_IDS_IN_USE,
+  });
+
+/**
+ * Options of a caller that holds every story of the package: the numbering
+ * ids (`w:num`, `w:abstractNum`) the other stories define. A list the batch
+ * starts takes none of them, so its id names it in every story and survives a
+ * save.
+ */
+type ApplyFolioDocumentOperationsInPackageOptions =
+  ApplyFolioDocumentOperationsOptions & {
+    numberingIdsElsewhere: NumberingIdsInUse;
+  };
+
+/** {@link applyFolioDocumentOperations} for a caller holding every story. Internal. */
+export const applyFolioDocumentOperationsInPackage = ({
   view,
   snapshot,
   batch,
@@ -2517,8 +2541,9 @@ export const applyFolioDocumentOperations = ({
   replacementBackground,
   undefinedReferences,
   pendingSuggestionIds,
+  numberingIdsElsewhere,
   restagesSuggestions,
-}: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
+}: ApplyFolioDocumentOperationsInPackageOptions): FolioDocumentOperationResult => {
   const validatedBatch = parseFolioDocumentOperationBatch(batch);
   const parsedBatch =
     restagesSuggestions === true
@@ -2553,6 +2578,7 @@ export const applyFolioDocumentOperations = ({
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
+      numberingIdsElsewhere,
       undefinedReferences,
     } as const;
     if (preview) {
@@ -2574,7 +2600,7 @@ export const applyFolioDocumentOperations = ({
     // canonical-gap: publicOps.pendingParagraphMarkProperties
     // canonical-gap: publicOps.secondaryStories
     // canonical-gap: pm-document-operations
-    const outcome = applyFolioAIEditOperations({
+    const outcome = applyFolioAIEditOperationsInPackage({
       ...common,
       view: {
         state: view.state,

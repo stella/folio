@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 787497590,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1766645178,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "29821FD2",
+          "text": "Agreement payment party delivery.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "story batch",
+      "seed": 1950892469,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "15A72052",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "15A72052",
+          "text": "Term delivery agreement clause term clause.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2071198563,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@4",
+          "text": "Invoice written schedule clause period.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from splice+splice of 0de57605e7a7299c",
+  "title": "PINNED #2236: new lists started in a header and then twice in a footer keep distinct list ids, tracked"
+}

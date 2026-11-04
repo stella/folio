@@ -16,6 +16,7 @@ import {
   type ListKind,
   mintListInstance,
 } from "../docx/listNumberingInstances";
+import type { NumberingIdsInUse } from "../docx/numberingIds";
 import { createNumberingMap, type NumberingMap } from "../docx/numberingParser";
 import { paragraphNumberingReference } from "../docx/numberingReference";
 import type { NumberingDefinitions } from "../types/document";
@@ -175,10 +176,13 @@ export const stageNewListOperations = (
  * Replace every new-list request with a reference to an instance minted for
  * its operation: one instance per operation and kind. `numbering` is the map
  * the batch applies against; the result's map adds the minted instances.
+ * `elsewhere` holds the ids the package's other stories define, which no
+ * minted instance takes.
  */
 export const resolveNewListOperations = (
   operations: readonly FolioAIStagedEditOperation[],
   numbering: NumberingMap | null,
+  elsewhere: NumberingIdsInUse,
 ): ResolvedNewLists => {
   let definitions: NumberingDefinitions | undefined = numbering?.definitions;
   let minted = false;
@@ -191,9 +195,11 @@ export const resolveNewListOperations = (
       if (value.kind !== "deferredNewList") return value;
       let numId = instances.get(value.allocation);
       if (numId === undefined) {
-        const instance = mintListInstance(definitions, {
-          kind: value.allocation.format,
-        });
+        const instance = mintListInstance(
+          definitions,
+          { kind: value.allocation.format },
+          elsewhere,
+        );
         definitions = instance.definitions;
         minted = true;
         numId = instance.numId;
