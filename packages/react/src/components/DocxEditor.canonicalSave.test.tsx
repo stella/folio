@@ -85,6 +85,7 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
             messages={getFolioMessages("en")}
           >
             <DocxEditor
+              accessibleName="Document editor"
               document={initialDocument}
               {...(experimentalSession ? { experimentalSession } : {})}
               showToolbar={false}
@@ -144,6 +145,7 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            accessibleName="Document editor"
             ref={editor}
             documentBuffer={bytes}
             experimentalSession="canonical"
@@ -282,6 +284,7 @@ test.each(["immediate", "deferred"] as const)(
     const renderEditor = () => (
       <IntlProvider locale="en" timeZone="UTC" messages={messages}>
         <DocxEditor
+          accessibleName="Document editor"
           ref={editor}
           documentBuffer={bytes}
           experimentalSession="canonical"
@@ -445,6 +448,7 @@ test.each(["resolution", "content"] as const)(
     const renderEditor = () => (
       <IntlProvider locale="en" timeZone="UTC" messages={messages}>
         <DocxEditor
+          accessibleName="Document editor"
           ref={editor}
           documentBuffer={bytes}
           experimentalSession="canonical"
@@ -609,6 +613,7 @@ test("canonical header edits and new footer and note stories survive adapter sav
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            accessibleName="Document editor"
             ref={editor}
             documentBuffer={bytes}
             experimentalSession="canonical"
@@ -798,6 +803,7 @@ test("canonical toolbar capture shortcuts publish formatting and break intents w
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            accessibleName="Document editor"
             ref={editor}
             document={initialDocument}
             experimentalSession="canonical"
@@ -947,6 +953,7 @@ test.each(["uncontrolled", "controlled"] as const)(
         messages={getFolioMessages("en")}
       >
         <DocxEditor
+          accessibleName="Document editor"
           ref={editor}
           documentBuffer={bytes}
           experimentalSession="canonical"
@@ -1136,6 +1143,7 @@ for (const mode of ["editing", "suggesting"] as const) {
               messages={getFolioMessages("en")}
             >
               <DocxEditor
+                accessibleName="Document editor"
                 ref={editor}
                 documentBuffer={bytes}
                 experimentalSession="canonical"
@@ -1283,6 +1291,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
             messages={getFolioMessages("en")}
           >
             <DocxEditor
+              accessibleName="Document editor"
               ref={editor}
               documentBuffer={bytes}
               experimentalSession="canonical"

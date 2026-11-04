@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "DOCX-i ei saanud salvestada",
     "editSessionTakenOver": "See muutmisseanss võeti mujal üle.",
     "editor": {
+      "accessibleName": "Dokumendiredaktor",
       "editing": "Redigeerimine",
       "editingDescription": "Redigeerige dokumenti otse",
       "outlineDepthAll": "Kõik tasemed",

@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "A DOCX nem menthető",
     "editSessionTakenOver": "Ezt a szerkesztési munkamenetet máshol vették át.",
     "editor": {
+      "accessibleName": "Dokumentumszerkesztő",
       "editing": "Szerkesztés",
       "editingDescription": "A dokumentum közvetlen szerkesztése",
       "outlineDepthAll": "Minden szint",

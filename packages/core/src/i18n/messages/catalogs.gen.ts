@@ -343,6 +343,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "Could not save DOCX",
       "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.",
       "editor": {
+        "accessibleName": "Document editor",
         "editing": "Editing",
         "editingDescription": "Edit the document directly",
         "outlineDepthAll": "All levels",
@@ -1003,6 +1004,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "DOCX-Datei konnte nicht gespeichert werden",
       "editSessionTakenOver": "Diese Bearbeitungssitzung wurde an anderer Stelle übernommen.",
       "editor": {
+        "accessibleName": "Dokumenteditor",
         "editing": "Bearbeiten",
         "editingDescription": "Dokument direkt bearbeiten",
         "outlineDepthAll": "Alle Ebenen",
@@ -1663,6 +1665,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "Impossible d’enregistrer le DOCX",
       "editSessionTakenOver": "Cette session de modification a été reprise ailleurs.",
       "editor": {
+        "accessibleName": "Éditeur de documents",
         "editing": "Modification",
         "editingDescription": "Modifier directement le document",
         "outlineDepthAll": "Tous les niveaux",
@@ -2323,6 +2326,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "No se pudo guardar el DOCX",
       "editSessionTakenOver": "Esta sesión de edición se tomó en otro lugar.",
       "editor": {
+        "accessibleName": "Editor de documentos",
         "editing": "Edición",
         "editingDescription": "Editar el documento directamente",
         "outlineDepthAll": "Todos los niveles",
@@ -2983,6 +2987,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "DOCX se nepodařilo uložit",
       "editSessionTakenOver": "Tento dokument byl otevřen k úpravám v jiné kartě, okně nebo zařízení, takže byla tato relace ukončena. Neuložené místní změny zůstávají zachovány — otevřete dokument znovu a pokračujte.",
       "editor": {
+        "accessibleName": "Editor dokumentů",
         "editing": "Úpravy",
         "editingDescription": "Upravovat dokument přímo",
         "outlineDepthAll": "Vše",
@@ -3643,6 +3648,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "تعذّر حفظ ملف DOCX",
       "editSessionTakenOver": "فتح علامة تبويب أو نافذة أو جهاز آخر هذا المستند للتعديل، لذا تم تحرير هذه الجلسة. تم الحفاظ على التغييرات المحلية غير المحفوظة؛ أعد فتح المستند للمتابعة.",
       "editor": {
+        "accessibleName": "محرر المستندات",
         "editing": "تحرير",
         "editingDescription": "تحرير المستند مباشرةً",
         "outlineDepthAll": "كل المستويات",
@@ -4303,6 +4309,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "DOCX-i ei saanud salvestada",
       "editSessionTakenOver": "See muutmisseanss võeti mujal üle.",
       "editor": {
+        "accessibleName": "Dokumendiredaktor",
         "editing": "Redigeerimine",
         "editingDescription": "Redigeerige dokumenti otse",
         "outlineDepthAll": "Kõik tasemed",
@@ -4963,6 +4970,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "לא ניתן לשמור את ה-DOCX",
       "editSessionTakenOver": "כרטיסייה, חלון או מכשיר אחר פתחו מסמך זה לעריכה, ולכן הפעלה זו שוחררה. שינויים מקומיים שלא נשמרו נשמרו — פתח מחדש את המסמך כדי להמשיך.",
       "editor": {
+        "accessibleName": "עורך מסמכים",
         "editing": "עריכה",
         "editingDescription": "ערוך את המסמך ישירות",
         "outlineDepthAll": "כל הרמות",
@@ -5623,6 +5631,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "DOCX सहेजा नहीं जा सका",
       "editSessionTakenOver": "किसी अन्य टैब, विंडो या डिवाइस ने इस दस्तावेज़ को संपादन के लिए खोला, इसलिए यह सत्र बंद कर दिया गया। सहेजे नहीं गए स्थानीय परिवर्तन सुरक्षित हैं — जारी रखने के लिए दस्तावेज़ फिर से खोलें।",
       "editor": {
+        "accessibleName": "दस्तावेज़ संपादक",
         "editing": "संपादन",
         "editingDescription": "दस्तावेज़ को सीधे संपादित करें",
         "outlineDepthAll": "सभी स्तर",
@@ -6283,6 +6292,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "A DOCX nem menthető",
       "editSessionTakenOver": "Ezt a szerkesztési munkamenetet máshol vették át.",
       "editor": {
+        "accessibleName": "Dokumentumszerkesztő",
         "editing": "Szerkesztés",
         "editingDescription": "A dokumentum közvetlen szerkesztése",
         "outlineDepthAll": "Minden szint",
@@ -6943,6 +6953,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "Nepavyko išsaugoti DOCX",
       "editSessionTakenOver": "Ši redagavimo sesija buvo perimta kitur.",
       "editor": {
+        "accessibleName": "Dokumentų redaktorius",
         "editing": "Redagavimas",
         "editingDescription": "Redaguokite dokumentą tiesiogiai",
         "outlineDepthAll": "Visi lygiai",
@@ -7603,6 +7614,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "Neizdevās saglabāt DOCX",
       "editSessionTakenOver": "Šo rediģēšanas sesiju pārņēma citur.",
       "editor": {
+        "accessibleName": "Dokumentu redaktors",
         "editing": "Rediģēšana",
         "editingDescription": "Rediģējiet dokumentu tieši",
         "outlineDepthAll": "Visi līmeņi",
@@ -8263,6 +8275,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "Nie udało się zapisać pliku DOCX",
       "editSessionTakenOver": "Ta sesja edycji została przejęta gdzie indziej.",
       "editor": {
+        "accessibleName": "Edytor dokumentów",
         "editing": "Edytowanie",
         "editingDescription": "Edytuj dokument bezpośrednio",
         "outlineDepthAll": "Wszystkie poziomy",
@@ -8923,6 +8936,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "Não foi possível salvar DOCX",
       "editSessionTakenOver": "Esta sessão de edição foi assumida em outro lugar.",
       "editor": {
+        "accessibleName": "Editor de documentos",
         "editing": "Editando",
         "editingDescription": "Edite o documento diretamente",
         "outlineDepthAll": "Todos os níveis",
@@ -9583,6 +9597,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "DOCX sa nepodarilo uložiť",
       "editSessionTakenOver": "Túto reláciu úprav prevzalo iné okno.",
       "editor": {
+        "accessibleName": "Editor dokumentov",
         "editing": "Úpravy",
         "editingDescription": "Upravujte dokument priamo",
         "outlineDepthAll": "Všetky úrovne",
@@ -10243,6 +10258,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "DOCX kaydedilemedi",
       "editSessionTakenOver": "Başka bir sekme, pencere veya cihaz bu belgeyi düzenlemek için açtığından bu oturum sonlandırıldı. Kaydedilmemiş yerel değişiklikler korunur; devam etmek için belgeyi yeniden açın.",
       "editor": {
+        "accessibleName": "Belge düzenleyici",
         "editing": "Düzenleme",
         "editingDescription": "Belgeyi doğrudan düzenleyin",
         "outlineDepthAll": "Tüm düzeyler",
@@ -10903,6 +10919,7 @@ export const CATALOGS = {
       "editSaveFailedTitle": "无法保存 DOCX",
       "editSessionTakenOver": "另一个标签页、窗口或设备已打开此文档进行编辑，因此本会话已释放。未保存的本地更改会保留，请重新打开文档以继续。",
       "editor": {
+        "accessibleName": "文档编辑器",
         "editing": "编辑",
         "editingDescription": "直接编辑文档",
         "outlineDepthAll": "所有级别",

@@ -38,7 +38,13 @@ import { DocxEditor } from "@stll/folio-react";
 import "@stll/folio-react/editor.css";
 
 export function Editor({ docx }: { docx: ArrayBuffer }) {
-  return <DocxEditor documentBuffer={docx} onSave={(out) => download(out)} />;
+  return (
+    <DocxEditor
+      accessibleName="Document editor"
+      documentBuffer={docx}
+      onSave={(out) => download(out)}
+    />
+  );
 }
 ```
 
@@ -49,6 +55,7 @@ import.
 
 ```tsx
 <DocxEditor
+  accessibleName="Document editor"
   documentBuffer={docx}
   readOnly
   reviewDisplayMode="final"

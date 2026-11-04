@@ -181,6 +181,7 @@ test("host review display modes change visible layout without changing saved DOC
             messages={getFolioMessages("en")}
           >
             <DocxEditor
+              accessibleName="Document editor"
               ref={editor}
               document={parsedDocument}
               reviewDisplayMode={mode}

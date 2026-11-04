@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "Neizdevās saglabāt DOCX",
     "editSessionTakenOver": "Šo rediģēšanas sesiju pārņēma citur.",
     "editor": {
+      "accessibleName": "Dokumentu redaktors",
       "editing": "Rediģēšana",
       "editingDescription": "Rediģējiet dokumentu tieši",
       "outlineDepthAll": "Visi līmeņi",

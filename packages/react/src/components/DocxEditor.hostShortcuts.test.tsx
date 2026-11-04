@@ -81,6 +81,7 @@ const renderEditor = async (
         messages={getFolioMessages("en")}
       >
         <DocxEditor
+          accessibleName="Document editor"
           ref={editor}
           document={createEmptyDocument({ initialText: "Hello" })}
           {...(hostShortcuts === undefined ? {} : { hostShortcuts })}

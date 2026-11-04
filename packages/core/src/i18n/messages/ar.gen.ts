@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "تعذّر حفظ ملف DOCX",
     "editSessionTakenOver": "فتح علامة تبويب أو نافذة أو جهاز آخر هذا المستند للتعديل، لذا تم تحرير هذه الجلسة. تم الحفاظ على التغييرات المحلية غير المحفوظة؛ أعد فتح المستند للمتابعة.",
     "editor": {
+      "accessibleName": "محرر المستندات",
       "editing": "تحرير",
       "editingDescription": "تحرير المستند مباشرةً",
       "outlineDepthAll": "كل المستويات",

@@ -986,6 +986,7 @@ const DocumentPlayground = () => {
       <div className="pg-shell" dir={RTL_LOCALES.has(locale) ? "rtl" : "ltr"}>
         <main className="pg-editor-area">
           <DocxEditor
+            accessibleName="Document editor"
             ref={attachEditor}
             document={documentBuffer ? null : currentDocument}
             documentBuffer={documentBuffer}

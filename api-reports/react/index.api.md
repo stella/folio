@@ -375,6 +375,7 @@ export type DocxEditorHandle = EditorHandle & {
 
 // @public (undocumented)
 export type DocxEditorProps = {
+    accessibleName: string;
     onFindResultChange?: (result: FindResult | null) => void;
     documentBuffer?: DocxInput | null;
     password?: string | undefined;
@@ -942,7 +943,7 @@ export { PictureWatermark }
 export { PositionalText }
 
 // @public
-export const renderAsync: (input: DocxInput, container: HTMLElement, options?: RenderAsyncOptions) => Promise<DocxEditorHandle>;
+export const renderAsync: (input: DocxInput, container: HTMLElement, options: RenderAsyncOptions) => Promise<DocxEditorHandle>;
 
 // @public
 export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "document"> & {
