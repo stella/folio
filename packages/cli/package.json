@@ -48,8 +48,8 @@
     "test": "bun test src"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.3.1",
-    "@stll/agent-input": "0.2.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@stll/agent-input": "0.2.2",
     "@stll/docx-core": "workspace:^",
     "@stll/folio-agents": "workspace:^",
     "@stll/folio-core": "workspace:^",
@@ -59,7 +59,7 @@
     "better-result": "3.0.1"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/client": "2.4.0",
     "playwright-core": "1.64.1"
   },
   "peerDependencies": {

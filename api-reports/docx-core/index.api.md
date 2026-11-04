@@ -4,7 +4,7 @@
 
 ```ts
 
-import { Buffer as Buffer_2 } from 'node:buffer';
+import { Buffer } from 'node:buffer';
 import { TaggedErrorClass } from 'better-result';
 
 // @public (undocumented)
@@ -237,7 +237,7 @@ export type LegalSourceCompileResult = ({
 // @public (undocumented)
 export type LegalSourceDocxCompileResult = ({
     status: "ok";
-    buffer: Buffer_2;
+    buffer: Buffer;
 } & CompiledLegalDocument) | Extract<LegalSourceCompileResult, {
     status: "needs_llm_repair";
 }>;

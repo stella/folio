@@ -92,11 +92,11 @@
     "prosemirror-model": "^1.25.9",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
-    "prosemirror-view": "^1.42.7",
+    "prosemirror-view": "^1.42.8",
     "vite": "8.3.5",
     "vite-plugin-dts": "^5.1.2",
     "vue": "^3.5.44",
-    "vue-tsc": "^3.3.13",
+    "vue-tsc": "^3.3.14",
     "yjs": "^13.6.33"
   },
   "peerDependencies": {
