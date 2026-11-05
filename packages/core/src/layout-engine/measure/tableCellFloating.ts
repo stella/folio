@@ -1,3 +1,4 @@
+import type { PreviewDescriptor } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
 import {
   type ImageRun,
@@ -12,6 +13,7 @@ import { createTableCellFlowState, placeTableCellBlock } from "./tableCellFlow";
 
 export type TableCellFloatingImage = {
   src: string;
+  preview?: PreviewDescriptor;
   width: number;
   height: number;
   alt?: string;
@@ -163,6 +165,7 @@ export function getTableCellFloatingImages(
 
       result.push({
         src: run.src,
+        ...(run.preview ? { preview: run.preview } : {}),
         width: run.width,
         height: run.height,
         ...(run.alt !== undefined ? { alt: run.alt } : {}),

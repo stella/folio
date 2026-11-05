@@ -109,6 +109,7 @@ import {
   setAuthoredBackgroundColor,
   setAuthoredTextColor,
 } from "./documentColors";
+import { paintedImageSource } from "./previewSvg";
 import {
   applyImageBorder,
   applyImageColorAttrs,
@@ -1164,7 +1165,7 @@ function renderInlineImageRun({
   const img = doc.createElement("img");
   img.className = `${PARAGRAPH_CLASS_NAMES.run} ${PARAGRAPH_CLASS_NAMES.image}`;
 
-  applyImageRunSource(img, run.src);
+  applyImageRunSource(img, paintedImageSource(run));
   img.width = run.width;
   img.height = run.height;
   img.style.width = `${run.width}px`;
@@ -1292,7 +1293,7 @@ function renderBlockImage(run: ImageRun, doc: Document): HTMLElement {
   container.style.marginBottom = `${run.distBottom ?? 6}px`;
 
   const img = doc.createElement("img");
-  applyImageRunSource(img, run.src);
+  applyImageRunSource(img, paintedImageSource(run));
   img.width = run.width;
   img.height = run.height;
   if (run.alt) {

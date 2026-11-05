@@ -15,6 +15,7 @@ import type {
 import { imageLuminanceFilter } from "../utils/imageLuminance";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
+import { paintedImageSource } from "./previewSvg";
 import type { RenderContext } from "./renderUtils";
 
 /**
@@ -274,7 +275,7 @@ export function renderImageFragment(
   // Create the actual image element. Only local data:/blob: sources are
   // painted — remote or executable schemes are dropped (src left unset).
   const imgEl = doc.createElement("img");
-  applySanitizedImageSrc(imgEl, block.src);
+  applySanitizedImageSrc(imgEl, paintedImageSource(block));
   imgEl.alt = block.alt ?? "";
 
   // Image sizing

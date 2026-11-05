@@ -453,16 +453,52 @@ const chartPart = (
   return root ? { root, path } : null;
 };
 
-/** Describe a supported cached chart. AlternateContent fallbacks are resolved by the run parser. */
+/**
+ * Describe a chart: the marks of a supported cached chart, or an empty frame of
+ * the same size. AlternateContent fallbacks are resolved by the run parser.
+ */
 export const parseChartPreview = (
   drawing: XmlElement,
   rels?: RelationshipMap,
   media?: Map<string, MediaFile>,
 ): Image | null => {
+  const size = extentOf(drawing);
+  if (!isChartDrawing(drawing) || size.width <= 0 || size.height <= 0) {
+    return null;
+  }
+  // A chart with nothing drawable still occupies the box the document gives it:
+  // losing the height would move every line that follows.
+  return {
+    type: "image",
+    preview: {
+      kind: "chart",
+      extent: size,
+      shapes: chartMarks(drawing, size, rels, media) ?? [],
+    },
+    size,
+    wrap: { type: "inline" },
+  };
+};
+
+const isChartDrawing = (drawing: XmlElement): boolean => {
+  const graphicData = firstDescendant(drawing, DRAWINGML, "graphicData");
+  return (
+    graphicData !== null &&
+    CHART.has(getAttribute(graphicData, null, "uri") ?? "") &&
+    firstDescendant(graphicData, CHART, "chart") !== null
+  );
+};
+
+/** The marks a chart's cached data draws, or null when it cannot draw them. */
+const chartMarks = (
+  drawing: XmlElement,
+  size: { width: number; height: number },
+  rels: RelationshipMap | undefined,
+  media: Map<string, MediaFile> | undefined,
+): PreviewShape[] | null => {
   if (!rels || !media) return null;
   const part = chartPart(drawing, rels, media);
-  const size = extentOf(drawing);
-  if (!part || size.width <= 0 || size.height <= 0) return null;
+  if (!part) return null;
   const plotArea = firstDescendant(part.root, CHART, "plotArea");
   if (!plotArea) return null;
   const supported = getChildElements(plotArea).find(
@@ -506,11 +542,5 @@ export const parseChartPreview = (
         )
       : [shape.x, shape.y, shape.width, shape.height].every(Number.isFinite),
   );
-  if (!finite) return null;
-  return {
-    type: "image",
-    preview: { kind: "chart", extent: size, shapes },
-    size,
-    wrap: { type: "inline" },
-  };
+  return finite ? shapes : null;
 };
