@@ -395,9 +395,9 @@ const drive = async (page: Page, action: BrowserInputAction) => {
       }
       return;
     case "selectionDrag":
-      if (!(await selectTarget(page, action.target))) {
-        throw new Error(`fixture has no ${action.target} drag target`);
-      }
+      // An earlier action can remove the target, in one mode and not the other.
+      // Such a trace states no edit to compare.
+      fc.pre(await selectTarget(page, action.target));
       return;
     default: {
       const unreachable: never = action;
