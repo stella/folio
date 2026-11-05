@@ -1034,7 +1034,12 @@ test("a refused canonical activation reports once per loaded document across ret
   let identity = "first";
   const { deps } = makeDeps({
     getHost: () => host,
-    getDocument: () => createEmptyDocument(),
+    // A session refuses a story paragraph without an id.
+    getDocument: () => ({
+      package: {
+        document: { content: [{ type: "paragraph", content: [] }] },
+      },
+    }),
     getDocumentIdentity: () => identity,
     getExperimentalSession: () => "canonical",
     onSessionRefusal: (reason) => reasons.push(reason),
