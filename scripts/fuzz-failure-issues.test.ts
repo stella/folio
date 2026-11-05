@@ -25,6 +25,7 @@ import { extractFailureMarkers } from "./failure-fingerprints";
 import {
   artifactInputs,
   AUTO_CLOSE_CLEAN_RUNS,
+  brokenRunFindings,
   cliRepro,
   type CloseReason,
   collectFindings,
@@ -1469,6 +1470,42 @@ test("a malformed signature body fails instead of opening a duplicate", async ()
   await expect(
     fileFindings({ findings: [], context, store: fake.store }),
   ).rejects.toThrow("Issue #1 has a malformed");
+});
+
+test("a failed run without markers still files one issue per lane, and stays red", () => {
+  const run = (lane: string) =>
+    Bun.spawnSync(
+      [
+        "bun",
+        "scripts/fuzz-failure-issues.ts",
+        "--dry-run",
+        "--lane",
+        lane,
+        "--result",
+        "failure",
+        "--trigger",
+        "scheduled",
+        "--run-url",
+        "https://example.test/runs/1",
+      ],
+      { cwd: path.join(import.meta.dir, "..") },
+    );
+  const browser = run("browser");
+  const output = browser.stdout.toString();
+  expect(browser.exitCode).not.toBe(0);
+  expect(output).toContain("fuzz lane browser");
+  expect(output).toContain("The run failed without checking anything");
+  expect(output).toContain("https://example.test/runs/1");
+  expect(browser.stderr.toString()).toContain("0 FOLIO_FAILURE fingerprints");
+  const [first] = brokenRunFindings("browser", "a");
+  const [again] = brokenRunFindings("browser", "b");
+  const [other] = brokenRunFindings("cross-host", "a");
+  expect(again?.record.marker.fingerprint).toBe(
+    first?.record.marker.fingerprint,
+  );
+  expect(other?.record.marker.fingerprint).not.toBe(
+    first?.record.marker.fingerprint,
+  );
 });
 
 test("failed runs without markers fail; malformed marker lines carry a clear location", () => {
