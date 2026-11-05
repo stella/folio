@@ -8,7 +8,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { layoutDocument } from "./index";
 import { clearAllCaches } from "./measure";
 import {
@@ -2550,50 +2553,54 @@ describe("a row without a nested table", () => {
     };
   };
 
-  test("offers exactly the line bottoms that clear every line of both cells", () => {
-    fc.assert(
-      fc.property(
-        fc.record({
-          leftLines: fc.integer({ min: 1, max: 30 }),
-          leftHeight: fc.integer({ min: 8, max: 30 }),
-          rightLines: fc.integer({ min: 1, max: 30 }),
-          rightHeight: fc.integer({ min: 8, max: 30 }),
-        }),
-        ({ leftLines, leftHeight, rightLines, rightHeight }) => {
-          const { block, measure } = twoColumnRow(
-            { lines: leftLines, lineHeight: leftHeight },
-            { lines: rightLines, lineHeight: rightHeight },
-          );
-          const rowHeight = measure.rows[0]?.height ?? 0;
-          const linesOf = (lines: number, lineHeight: number) =>
-            Array.from({ length: lines }, (_, index) => ({
-              top: index * lineHeight,
-              bottom: (index + 1) * lineHeight,
-            }));
-          const allLines = [
-            ...linesOf(leftLines, leftHeight),
-            ...linesOf(rightLines, rightHeight),
-          ];
-          const expected = [
-            ...new Set([...allLines.map(({ bottom }) => bottom), rowHeight]),
-          ]
-            .filter(
-              (offset) =>
-                offset === rowHeight ||
-                allLines.every(
-                  ({ top, bottom }) => offset <= top || offset >= bottom,
-                ),
-            )
-            .sort((a, b) => a - b);
+  test(
+    "offers exactly the line bottoms that clear every line of both cells",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.record({
+            leftLines: fc.integer({ min: 1, max: 30 }),
+            leftHeight: fc.integer({ min: 8, max: 30 }),
+            rightLines: fc.integer({ min: 1, max: 30 }),
+            rightHeight: fc.integer({ min: 8, max: 30 }),
+          }),
+          ({ leftLines, leftHeight, rightLines, rightHeight }) => {
+            const { block, measure } = twoColumnRow(
+              { lines: leftLines, lineHeight: leftHeight },
+              { lines: rightLines, lineHeight: rightHeight },
+            );
+            const rowHeight = measure.rows[0]?.height ?? 0;
+            const linesOf = (lines: number, lineHeight: number) =>
+              Array.from({ length: lines }, (_, index) => ({
+                top: index * lineHeight,
+                bottom: (index + 1) * lineHeight,
+              }));
+            const allLines = [
+              ...linesOf(leftLines, leftHeight),
+              ...linesOf(rightLines, rightHeight),
+            ];
+            const expected = [
+              ...new Set([...allLines.map(({ bottom }) => bottom), rowHeight]),
+            ]
+              .filter(
+                (offset) =>
+                  offset === rowHeight ||
+                  allLines.every(
+                    ({ top, bottom }) => offset <= top || offset >= bottom,
+                  ),
+              )
+              .sort((a, b) => a - b);
 
-          const info = buildTableRowBreakInfo(block, measure);
-          expect(info.breakOffsets[0]).toEqual(expected);
-          expect(info.oversizedBreakOffsets[0]).toEqual(expected);
-        },
-      ),
-      propertyConfig({ numRuns: 100 }),
-    );
-  });
+            const info = buildTableRowBreakInfo(block, measure);
+            expect(info.breakOffsets[0]).toEqual(expected);
+            expect(info.oversizedBreakOffsets[0]).toEqual(expected);
+          },
+        ),
+        propertyConfig({ numRuns: 100 }),
+      );
+    },
+    propertyTestTimeout(5_000),
+  );
 
   test("breaks aligned columns between whole lines on every page", () => {
     const { block, measure } = twoColumnRow(
