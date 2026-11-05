@@ -180,7 +180,6 @@ import {
   hasDirectRunFormatting,
   isParagraphMarkSuppressionEligible,
   resolveParagraphInheritedRunFormatting,
-  stripParagraphMarkFormattingForBodyRuns,
   stripParagraphMarkOnlyFormatting,
   suppressParagraphMarkFormatting,
 } from "../runStyleFormatting";
@@ -201,6 +200,7 @@ import type {
 } from "../schema/nodes";
 import {
   extractTableParagraphOverlay,
+  inheritableParagraphMarkFormatting,
   paragraphStyleCascadeAttrs,
   resolveRunFormattingWithoutDefaults,
 } from "../styles/paragraphStyleCascade";
@@ -992,22 +992,13 @@ function convertParagraph(
     emitInlineNodes([node]);
   };
 
-  const paragraphRunFormatting = resolveRunFormattingWithoutDefaults(
-    paragraph.formatting?.runProperties,
-    styleResolver,
-  );
-  // Paragraph-mark-only visual decorations (highlight, shading) paint the
-  // paragraph glyph alone. Strip them from the body-run inheritance path.
-  let inheritableParagraphRunFormatting: TextFormatting | undefined;
-  if (
-    paragraphRunFormatting &&
-    !isTocParagraph &&
-    paragraph.formatting?.styleId === undefined
-  ) {
-    inheritableParagraphRunFormatting = stripParagraphMarkFormattingForBodyRuns(
-      paragraphRunFormatting,
-    );
-  }
+  const inheritableParagraphRunFormatting = isTocParagraph
+    ? undefined
+    : inheritableParagraphMarkFormatting({
+        runProperties: paragraph.formatting?.runProperties,
+        styleId: paragraph.formatting?.styleId,
+        styleResolver,
+      });
   const {
     baseFormatting: baseRunFormatting,
     baseToggleCascade: orderedToggleFormatting,

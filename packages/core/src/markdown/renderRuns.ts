@@ -767,6 +767,50 @@ const cleanRevisionContent = (
     }
   });
 
+const COMMENT_MARKER_TYPES: ReadonlySet<string> = new Set([
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+]);
+
+/**
+ * A comment marker bounds its comment wherever it stands; a save may write it
+ * inside the revision wrapper of the text it starts at, or beside it. Revision
+ * wrappers are split around their comment markers, so either reads the same.
+ */
+const commentMarkersOutsideRevisions = (
+  content: readonly ParagraphContent[],
+): ParagraphContent[] =>
+  content.flatMap((item) => {
+    switch (item.type) {
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        break;
+      default:
+        return [item];
+    }
+    const parts: ParagraphContent[] = [];
+    let held: typeof item.content = [];
+    const flush = () => {
+      if (held.length > 0) parts.push({ ...item, content: held });
+      held = [];
+    };
+    for (const child of commentMarkersOutsideRevisions(
+      item.content,
+    ) as typeof item.content) {
+      if (COMMENT_MARKER_TYPES.has(child.type)) {
+        flush();
+        parts.push(child);
+      } else {
+        held.push(child);
+      }
+    }
+    flush();
+    return parts;
+  });
+
 /**
  * Render the full inline content of a paragraph, tracking comment-range
  * boundaries to apply the configured wrapper.
@@ -781,10 +825,11 @@ export function renderParagraphInline(
   let out = "";
   // Stack of open comment ranges (document order) so nested comments wrap right.
   const openComments: CommentSlot[] = [];
+  const hoistedContent = commentMarkersOutsideRevisions(content);
   const visibleContent =
     ctx.opts.trackedChanges === "clean"
-      ? cleanRevisionContent(content)
-      : content;
+      ? cleanRevisionContent(hoistedContent)
+      : hoistedContent;
   const items = visibleContent.filter((item) => !writesNothing(ctx, item));
   const around = (index: number): RunNeighbors => {
     const next = items[index + 1];
