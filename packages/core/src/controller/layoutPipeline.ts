@@ -162,7 +162,8 @@ const sameMeasureInputs = (
     ([name, alternate]) => right.fontAlternates.get(name) === alternate,
   ) &&
   left.markupView === right.markupView &&
-  left.showCommentHighlights === right.showCommentHighlights;
+  left.showCommentHighlights === right.showCommentHighlights &&
+  left.altChunkMarkerText === right.altChunkMarkerText;
 
 type IncrementalDirtyRangeOptions = {
   session: LayoutSession;
@@ -314,6 +315,8 @@ export type LayoutPipelineDeps<THfPMs> = {
   markupView: DisplayMode;
   /** Independent highlight visibility in All Markup; resolved views always hide comments. */
   showCommentHighlights?: boolean;
+  /** Localised text for a `w:altChunk` that has no text of its own to show. */
+  altChunkMarkerText?: string;
 };
 
 type BodyMarginClearanceOptions = {
@@ -509,6 +512,7 @@ function runLayoutPipelineMeasured<THfPMs>(
     emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
     markupView,
     showCommentHighlights = true,
+    altChunkMarkerText,
   } = deps;
   // Reassigned to {} in the catch so a failed run returns no outcome (the
   // adapter then keeps the previously painted layout instead of advancing React
@@ -566,9 +570,11 @@ function runLayoutPipelineMeasured<THfPMs>(
       fontAlternates,
       markupView,
       showCommentHighlights: displayCommentHighlights,
+      ...(altChunkMarkerText === undefined ? {} : { altChunkMarkerText }),
     };
     const flowOpts: ToFlowBlocksOptions = {
       showCommentHighlights: displayCommentHighlights,
+      ...(altChunkMarkerText === undefined ? {} : { altChunkMarkerText }),
       ...embeddedFontFamilies,
       ...(documentFontFacts === undefined ? {} : { documentFontFacts }),
       pageContentHeight,
@@ -792,6 +798,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       return {
         markupView,
         showCommentHighlights: displayCommentHighlights,
+        ...(altChunkMarkerText === undefined ? {} : { altChunkMarkerText }),
         ...(flowOpts.styles ? { styles: flowOpts.styles } : {}),
         ...(document?.package.numbering === undefined
           ? {}
@@ -1050,6 +1057,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       } = {
         measureBlocks,
         showCommentHighlights: displayCommentHighlights,
+        ...(altChunkMarkerText === undefined ? {} : { altChunkMarkerText }),
         markupView,
       };
       if (flowOpts.styles) {

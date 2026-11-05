@@ -6000,6 +6000,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             documentIdentity={loadedDocumentIdentity}
                             markupView={displayMode}
                             showCommentHighlights={showCommentHighlights}
+                            altChunkMarkerText={t("contentNotDisplayed")}
                             {...(fonts !== undefined ? { fonts } : {})}
                             theme={history.state.package.theme || theme || null}
                             sectionProperties={

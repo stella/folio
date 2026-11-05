@@ -946,6 +946,7 @@ const {
   pageRenderer: () => props.pageRenderer,
   markupView: displayMode,
   showCommentHighlights: () => props.showCommentHighlights,
+  altChunkMarkerText: () => t("contentNotDisplayed"),
   showMarginGuides: () => props.showMarginGuides,
   marginGuideColor: () => props.marginGuideColor,
   externalPlugins,

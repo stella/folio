@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "Izvēlieties datumu",
     "contentControlDropdownAriaLabel": "Nolaižamā saraksta opcijas",
     "contentControlDropdownNoOptions": "Nav opciju",
+    "contentNotDisplayed": "Saturs netiek rādīts",
     "contextMenu": {
       "continueNumbering": "Turpināt numerāciju",
       "copy": "Kopēt",

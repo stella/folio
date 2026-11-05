@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "Vali kuupäev",
     "contentControlDropdownAriaLabel": "Rippmenüü valikud",
     "contentControlDropdownNoOptions": "Valikuid pole",
+    "contentNotDisplayed": "Sisu ei kuvata",
     "contextMenu": {
       "continueNumbering": "Jätka nummerdamist",
       "copy": "Kopeeri",

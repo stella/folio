@@ -341,6 +341,8 @@ export type PagedEditorProps = {
    */
   markupView: DisplayMode;
   showCommentHighlights?: boolean;
+  /** Localised text for a `w:altChunk` that has no text of its own to show. */
+  altChunkMarkerText?: string;
   showMarginGuides?: boolean;
   /** CSS color used for margin guides. */
   marginGuideColor?: string;
@@ -1000,6 +1002,7 @@ type LayoutInputSignatureOptions = {
   columns: ColumnLayout | undefined;
   markupView: DisplayMode;
   showCommentHighlights?: boolean;
+  altChunkMarkerText?: string | undefined;
   contentWidth: number;
   defaultTabStop: number | undefined;
   mirrorMargins: boolean;
@@ -1491,6 +1494,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       pageRenderer,
       markupView,
       showCommentHighlights = true,
+      altChunkMarkerText,
       showMarginGuides = false,
       marginGuideColor,
       onDocumentChange,
@@ -2069,6 +2073,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           columns,
           markupView,
           showCommentHighlights,
+          altChunkMarkerText,
           contentWidth,
           defaultTabStop,
           mirrorMargins,
@@ -2092,6 +2097,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         columns,
         markupView,
         showCommentHighlights,
+        altChunkMarkerText,
         contentWidth,
         defaultTabStop,
         mirrorMargins,
@@ -2199,6 +2205,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             hyphenationReadiness,
             markupView,
             showCommentHighlights,
+            ...(altChunkMarkerText === undefined ? {} : { altChunkMarkerText }),
           },
           state,
           options,
@@ -2256,6 +2263,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         styles,
         markupView,
         showCommentHighlights,
+        altChunkMarkerText,
         layoutInputSignature,
         hyphenationReadiness,
       ],

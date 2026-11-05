@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "Pasirinkite datą",
     "contentControlDropdownAriaLabel": "Išskleidžiamojo sąrašo parinktys",
     "contentControlDropdownNoOptions": "Parinkčių nėra",
+    "contentNotDisplayed": "Turinys nerodomas",
     "contextMenu": {
       "continueNumbering": "Tęsti numeravimą",
       "copy": "Kopijuoti",

@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "Wybierz datę",
     "contentControlDropdownAriaLabel": "Opcje listy rozwijanej",
     "contentControlDropdownNoOptions": "Brak opcji",
+    "contentNotDisplayed": "Treść nie jest wyświetlana",
     "contextMenu": {
       "continueNumbering": "Kontynuuj numerowanie",
       "copy": "Kopiuj",

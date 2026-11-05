@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "Dátum kiválasztása",
     "contentControlDropdownAriaLabel": "Legördülő lehetőségek",
     "contentControlDropdownNoOptions": "Nincsenek lehetőségek",
+    "contentNotDisplayed": "A tartalom nem jelenik meg",
     "contextMenu": {
       "continueNumbering": "Számozás folytatása",
       "copy": "Másolás",

@@ -21,6 +21,8 @@ import type { StyleDefinitions, Theme } from "../../types/document";
  * Options for the conversion.
  */
 export type ToFlowBlocksOptions = {
+  /** Localised text for a `w:altChunk` that has no text of its own to show. */
+  altChunkMarkerText?: string;
   /** Paint comment anchors and highlights; false leaves authored marks intact. */
   showCommentHighlights?: boolean;
   /** Embedded families owned by this editor, never ambient process state. */
