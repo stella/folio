@@ -28,19 +28,23 @@ const openView = async () => {
 const direction = (view: HeadlessEditorView) =>
   textblocks(view.state.doc).at(0)?.node.attrs["direction"];
 
-const compose = (view: HeadlessEditorView, text: string) => {
-  view.dispatch(view.state.tr.insertText(text, 1, 1).setMeta("composition", 1));
+const domEvent = (
+  view: HeadlessEditorView,
+  name: "compositionstart" | "compositionend",
+) => {
+  view.someProp("handleDOMEvents", (events) => {
+    (
+      events as unknown as Record<
+        string,
+        ((view: unknown, event: unknown) => boolean) | undefined
+      >
+    )[name]?.(view, {});
+    return false;
+  });
 };
 
 const endComposition = async (view: HeadlessEditorView) => {
-  view.someProp("handleDOMEvents", (events) => {
-    (
-      events as unknown as {
-        compositionend?: (view: unknown, event: unknown) => boolean;
-      }
-    ).compositionend?.(view, {});
-    return false;
-  });
+  domEvent(view, "compositionend");
   await Promise.resolve();
   await Promise.resolve();
 };
@@ -50,10 +54,36 @@ describe("a paragraph's direction during a composition", () => {
     const view = await openView();
     const before = direction(view);
 
-    compose(view, "مرحبا");
+    domEvent(view, "compositionstart");
+    view.dispatch(
+      view.state.tr.insertText("مرحبا", 1, 1).setMeta("composition", 1),
+    );
     expect(direction(view)).toEqual(before);
 
     await endComposition(view);
+    expect(direction(view)).toEqual({ source: "auto" });
+  });
+
+  test("waits for it through another writer's edit too", async () => {
+    const view = await openView();
+    const before = direction(view);
+
+    domEvent(view, "compositionstart");
+    view.dispatch(view.state.tr.insertText("مرحبا", 1, 1));
+    expect(direction(view)).toEqual(before);
+
+    await endComposition(view);
+    expect(direction(view)).toEqual({ source: "auto" });
+  });
+
+  test("follows text a late flush brings after it has ended", async () => {
+    const view = await openView();
+
+    domEvent(view, "compositionstart");
+    await endComposition(view);
+    view.dispatch(
+      view.state.tr.insertText("مرحبا", 1, 1).setMeta("composition", 1),
+    );
     expect(direction(view)).toEqual({ source: "auto" });
   });
 

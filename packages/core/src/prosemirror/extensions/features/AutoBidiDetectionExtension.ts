@@ -1,6 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import type { EditorState, PluginKey } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 
 import { setProseParagraphMarkupWithPropertySource } from "../../../docx/paragraphPropertySource";
 import type { DirtyRange } from "../../../paged-layout/incrementalMeasure";
@@ -202,21 +203,40 @@ export const ensureBaseDirectionInState = (state: EditorState): EditorState => {
 const createAutoBidiDetectionPlugin = (): Plugin => {
   // Changing a paragraph's direction redraws it, which takes the composing text
   // from under the browser's IME: the composition ends without a commit, and the
-  // text is inserted twice. A composition's paragraphs wait until it has ended.
+  // text is inserted twice. While one runs, whatever its edits or another
+  // writer's, paragraphs wait until it has ended.
+  const composing = new Set<EditorView>();
   let deferred = false;
+  const finish = (view: EditorView) => {
+    composing.delete(view);
+    if (!deferred || composing.size > 0 || view.isDestroyed) return;
+    deferred = false;
+    const updates = collectBidiUpdates(view.state.doc);
+    if (updates.length > 0) {
+      view.dispatch(applyBidiUpdates(view.state, updates));
+    }
+  };
   return new Plugin({
     key: autoBidiDetectionKey.createKey(),
+    view: (view) => ({
+      destroy: () => {
+        composing.delete(view);
+      },
+    }),
     props: {
       handleDOMEvents: {
+        compositionstart(view) {
+          composing.add(view);
+          return false;
+        },
         compositionend(view) {
           afterNativeCompositionFlush(() => {
-            if (!deferred || view.composing) return;
-            deferred = false;
-            const updates = collectBidiUpdates(view.state.doc);
-            if (updates.length > 0) {
-              view.dispatch(applyBidiUpdates(view.state, updates));
-            }
+            finish(view);
           });
+          return false;
+        },
+        blur(view) {
+          finish(view);
           return false;
         },
       },
@@ -226,9 +246,7 @@ const createAutoBidiDetectionPlugin = (): Plugin => {
       if (!transactions.some((t) => t.docChanged)) {
         return null;
       }
-      if (
-        transactions.some((t) => typeof t.getMeta("composition") === "number")
-      ) {
+      if (composing.size > 0) {
         deferred = true;
         return null;
       }
