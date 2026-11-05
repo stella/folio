@@ -391,6 +391,21 @@ export const CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521 = {
   trace: BrowserInputTrace;
 };
 
+export const BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83 = {
+  seed: 83,
+  path: "3",
+  fingerprint: "0ae2a73b64015980",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [{ kind: "delete" }, { kind: "enter" }],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_CANCELLED_COMPOSITION_SEED_431 = {
   seed: 431,
   path: "9:2:1:1:1:2:2",
@@ -525,6 +540,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_CANCELLED_COMPOSITION_SEED_263,
   BROWSER_CANCELLED_COMPOSITION_SEED_1793897521,
   BROWSER_CANCELLED_COMPOSITION_SEED_131,
+  BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83,
   CANONICAL_INSERTION_SEED_557,
   CANONICAL_DELETION_SEED_11,
   CANONICAL_CELL_PASTE_SEED_431,

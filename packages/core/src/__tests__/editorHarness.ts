@@ -167,13 +167,8 @@ export class HeadlessEditorView {
       }
       const { $head } = selection;
       const backward = event.key === "Backspace";
-      let from = backward ? $head.pos - 1 : $head.pos;
-      while (from >= $head.start() && from < $head.end()) {
-        const adjacent = this.state.doc.resolve(from).nodeAfter;
-        if (adjacent?.type.name !== "bookmarkBoundary") break;
-        from += backward ? -adjacent.nodeSize : adjacent.nodeSize;
-      }
-      // The browser's native text deletion skips zero-width bookmark spans.
+      const from = backward ? $head.pos - 1 : $head.pos;
+      // The browser removes whatever is next, an inline anchor's element too.
       if (from >= $head.start() && from < $head.end()) {
         this.dispatch(this.state.tr.delete(from, from + 1));
         return true;
