@@ -1006,11 +1006,26 @@ export const resolved = ({ lanes }: SignatureState): boolean =>
 
 type Tracked = { issue: Issue; state: SignatureState };
 
+/** A closure without a fix decided about the seeds it listed, not the signature's next one. */
+const closureCoversSeeds = (
+  { issue, state }: Tracked,
+  seeds: readonly number[],
+): boolean =>
+  issue.state === "closed" &&
+  issue.disposition.type !== "fixed" &&
+  seeds.every((seed) => state.seeds.includes(seed));
+
 const trackedIssue = (
   tracked: readonly Tracked[],
-  id: string,
+  { signature, seeds }: Pick<SignatureFinding, "signature" | "seeds">,
 ): Tracked | undefined => {
-  const matching = tracked.filter(({ state }) => state.signature.id === id);
+  const matching = tracked.filter(
+    (entry) =>
+      entry.state.signature.id === signature.id &&
+      (entry.issue.state === "open" ||
+        entry.issue.disposition.type === "fixed" ||
+        closureCoversSeeds(entry, seeds)),
+  );
   const open = matching
     .filter(({ issue }) => issue.state === "open")
     .toSorted((a, b) => a.issue.number - b.issue.number)
@@ -1100,7 +1115,7 @@ export const fileFindings = async ({
   );
   for (const finding of groupBySignature(unique)) {
     seen.add(finding.signature.id);
-    const existing = trackedIssue(tracked, finding.signature.id);
+    const existing = trackedIssue(tracked, finding);
     if (
       existing?.issue.state === "closed" &&
       existing.issue.disposition.type === "fixed"
