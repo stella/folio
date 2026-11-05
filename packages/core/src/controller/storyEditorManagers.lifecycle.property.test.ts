@@ -387,6 +387,7 @@ for (const target of [
             notes.sync();
             parts.sync();
           },
+          onCanonicalCompositionEnd: () => {},
           onSelectionChange: () => {},
           onKeyDown: () => false,
           onCopy: () => {},

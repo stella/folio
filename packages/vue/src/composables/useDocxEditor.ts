@@ -984,6 +984,7 @@ export function useDocxEditor(
     getDocumentIdentity: () => String(loadSequence),
     getDocumentContext: () => docModel.value,
     onTransaction: handleTransaction,
+    onCanonicalCompositionEnd: () => scheduler.schedule(),
     onSelectionChange: (state) => {
       editorState.value = state;
       onSelectionUpdate?.(state);

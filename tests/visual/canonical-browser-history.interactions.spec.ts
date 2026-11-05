@@ -138,6 +138,54 @@ test("canonical evaluation reports a failed mid-sequence navigation", async ({
   expect(callbackInvoked).toBe(false);
 });
 
+test("a layout pass during a composition does not outlive its cancellation", async ({
+  page,
+}) => {
+  await page.goto("/?session=canonical");
+  const source = await createDocx(
+    createEmptyDocument({ initialText: "alpha" }),
+  );
+  await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
+  await page.evaluate(() => {
+    globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView()
+      ?.focus();
+  });
+  const painted = () => page.locator(".layout-page-content").allTextContents();
+  await expect.poll(painted).toEqual(["alpha"]);
+  const cdp = await page.context().newCDPSession(page);
+  const text = "provisional";
+  await cdp.send("Input.imeSetComposition", {
+    text,
+    selectionStart: text.length,
+    selectionEnd: text.length,
+  });
+  // A pass already scheduled, or one a font or resize asks for, reads the live view.
+  await page.evaluate(() => {
+    globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.relayout();
+  });
+  await expect.poll(painted).toEqual([`${text}alpha`]);
+  await cdp.send("Input.imeSetComposition", {
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0,
+  });
+  await page.keyboard.press("Escape");
+  await expect
+    .poll(() =>
+      page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
+    )
+    .toBe(false);
+  await expect
+    .poll(painted, {
+      message: "a cancelled composition must leave the committed text painted",
+    })
+    .toEqual(["alpha"]);
+  await cdp.detach();
+});
+
 test("refused native IME commit ends composition before driver completion", async ({
   page,
 }) => {

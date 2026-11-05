@@ -6595,6 +6595,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           precomputedInitialState={validPrecomputedInitialState}
           readOnly={readOnly}
           onTransaction={handleTransaction}
+          onCanonicalCompositionEnd={scheduleLayout}
           onSelectionChange={handleSelectionChange}
           onRemoteSelectionsChange={setRemoteSelections}
           onEditorViewReady={handleEditorViewReady}
