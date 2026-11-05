@@ -7,7 +7,6 @@ import {
 import type { EditorView } from "prosemirror-view";
 
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
-import { RUN_IDENTITY_MARK_NAME } from "../prosemirror/runIdentity";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   CANONICAL_COMPOSITION_FLUSH_DELAY_MS,
@@ -71,11 +70,7 @@ type CompletedComposition =
   | { type: "completed"; receipt: CompletedReceipt }
   | { type: "authorized"; receipt: CompletedReceipt; text: string };
 
-type OmittedRunIdentityTolerance = {
-  type: "omittedRunIdentity";
-  from: number;
-  to: number;
-};
+type OmittedMarkRange = { from: number; to: number };
 type NativeReplacementComparisonOptions = {
   baseline: EditorState;
   proposed: EditorState;
@@ -83,6 +78,12 @@ type NativeReplacementComparisonOptions = {
   to: number;
   text: string;
 };
+/**
+ * Whether a native proposal is one plain replacement. A diff that reaches into
+ * untouched text goes through `insertText`, which keeps no mark declared
+ * `inclusive: false`: source identity, a review mark, a link. Such an omission
+ * says nothing about the edit, and the captured model owns those marks on commit.
+ */
 const matchesNativeReplacement = ({
   baseline,
   proposed,
@@ -95,47 +96,45 @@ const matchesNativeReplacement = ({
   if (!baseline.doc.resolve(from).sameParent(baseline.doc.resolve(to)))
     return false;
   if (expected.doc.content.size !== proposed.doc.content.size) return false;
-  const markType = baseline.schema.marks[RUN_IDENTITY_MARK_NAME];
-  if (markType === undefined) return false;
   const position = expected.doc.resolve(from);
   const paragraph = position.parent;
   const start = position.start();
   const native = proposed.doc.nodeAt(start - 1);
   if (native === null || native.type !== paragraph.type) return false;
-  let index = 0;
-  let offset = 0;
-  const missing: OmittedRunIdentityTolerance[] = [];
-  native.forEach((node, nodeOffset) => {
-    const end = nodeOffset + node.nodeSize;
-    let cursor = nodeOffset;
-    while (cursor < end && index < paragraph.childCount) {
-      const authored = paragraph.child(index);
-      const authoredEnd = offset + authored.nodeSize;
-      const overlapEnd = Math.min(end, authoredEnd);
-      if (
-        node.isText &&
-        authored.isText &&
-        markType.isInSet(authored.marks) !== undefined &&
-        markType.isInSet(node.marks) === undefined
-      ) {
-        const previous = missing.at(-1);
-        if (previous?.to === start + cursor) previous.to = start + overlapEnd;
-        else
-          missing.push({
-            type: "omittedRunIdentity",
-            from: start + cursor,
-            to: start + overlapEnd,
-          });
+  const omittable = Object.values(baseline.schema.marks).filter(
+    (markType) => markType.spec.inclusive === false,
+  );
+  for (const markType of omittable) {
+    let index = 0;
+    let offset = 0;
+    const missing: OmittedMarkRange[] = [];
+    native.forEach((node, nodeOffset) => {
+      const end = nodeOffset + node.nodeSize;
+      let cursor = nodeOffset;
+      while (cursor < end && index < paragraph.childCount) {
+        const authored = paragraph.child(index);
+        const authoredEnd = offset + authored.nodeSize;
+        const overlapEnd = Math.min(end, authoredEnd);
+        if (
+          node.isText &&
+          authored.isText &&
+          markType.isInSet(authored.marks) !== undefined &&
+          markType.isInSet(node.marks) === undefined
+        ) {
+          const previous = missing.at(-1);
+          if (previous?.to === start + cursor) previous.to = start + overlapEnd;
+          else missing.push({ from: start + cursor, to: start + overlapEnd });
+        }
+        cursor = overlapEnd;
+        if (cursor === authoredEnd) {
+          offset = authoredEnd;
+          index += 1;
+        }
       }
-      cursor = overlapEnd;
-      if (cursor === authoredEnd) {
-        offset = authoredEnd;
-        index += 1;
-      }
-    }
-  });
-  for (const range of missing)
-    expected.removeMark(range.from, range.to, markType);
+    });
+    for (const range of missing)
+      expected.removeMark(range.from, range.to, markType);
+  }
   return expected.doc.eq(proposed.doc);
 };
 

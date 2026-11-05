@@ -9,7 +9,7 @@ import {
 } from "bun:test";
 import fc from "fast-check";
 import { Schema } from "prosemirror-model";
-import type { Node as ProseMirrorNode } from "prosemirror-model";
+import type { Mark, Node as ProseMirrorNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -1261,6 +1261,73 @@ const compose = (
   mount.remove();
   return { inputs, refusals, state };
 };
+
+const reviewMark = (name: "insertion" | "deletion") => {
+  const markType = canonicalSchema.marks[name];
+  if (markType === undefined) throw new TypeError(`Missing mark ${name}`);
+  return markType.create({ revisionId: 1, author: "Ada" });
+};
+
+test("a native proposal may omit a non-inclusive mark from untouched text, and nothing else", () => {
+  const bold = canonicalSchema.marks.bold?.create();
+  if (bold === undefined) throw new TypeError("Missing bold mark");
+  const stateOf = (
+    markedText: string,
+    marks: readonly Mark[],
+    caret: number,
+  ) => {
+    const doc = canonicalSchema.node("doc", null, [
+      canonicalSchema.node("paragraph", null, [
+        canonicalSchema.text(markedText, marks),
+        canonicalSchema.text("Intro"),
+      ]),
+    ]);
+    return EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, caret),
+    });
+  };
+  assertProperty(
+    fc.property(
+      fc.constantFrom("insertion", "deletion"),
+      fc.constantFrom("alpha", "契約", "😀"),
+      (name, text) => {
+        const mark = reviewMark(name);
+        // ProseMirror widens the diff to the marked run, then inserts over it.
+        const typed = compose(stateOf("Body", [mark], 5), (state) =>
+          state.tr.insertText(`Body${text}`, 1, 5),
+        );
+        expect(typed.refusals).toEqual([]);
+        expect(typed.inputs).toEqual([{ from: 5, to: 5, text }]);
+
+        const cancelled = stateOf("Body", [mark], 5);
+        const restored = compose(cancelled, (state) =>
+          state.tr.insertText("Body", 1, 5),
+        );
+        expect(restored.refusals).toEqual([]);
+        expect(restored.inputs).toEqual([]);
+        expect(restored.state.doc.eq(cancelled.doc)).toBe(true);
+
+        // Gaining a review mark is an edit the proposal cannot make.
+        const gained = compose(stateOf("Body", [], 5), (state) =>
+          state.tr.addMark(1, 5, mark),
+        );
+        expect(gained.inputs).toEqual([]);
+        expect(gained.refusals).toHaveLength(1);
+
+        // Run formatting is inclusive, so losing it is not this omission.
+        const unbolded = compose(stateOf("Body", [bold], 5), (state) =>
+          state.tr.removeMark(1, 5, bold),
+        );
+        expect(unbolded.inputs).toEqual([]);
+        expect(unbolded.refusals).toHaveLength(1);
+      },
+    ),
+    {
+      id: "non-inclusive marks may be omitted from untouched composition text",
+    },
+  );
+});
 
 const loadCarrierSource = async () => {
   const source = createEmptyDocument({ initialText: "alpha😀café東京" });
