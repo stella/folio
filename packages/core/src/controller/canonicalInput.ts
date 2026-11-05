@@ -59,6 +59,22 @@ type NativeProposal =
   | { type: "replacement"; state: EditorState; input: ReplaceTextInput };
 
 /** Native changes require a preceding, classified input event at the same state. */
+/**
+ * ProseMirror treats the end of one text node and the start of the next run as
+ * one position and leaves whichever the browser holds. Chromium's IME resolves a
+ * caret at the start of a nested run against the wrong block, so a composition
+ * starts where the model's caret is: at the end of the text before it.
+ */
+const placeCompositionCaret = (view: EditorView): void => {
+  const { selection } = view.state;
+  const native = view.dom.ownerDocument.getSelection();
+  if (!selection.empty || !native?.isCollapsed) return;
+  const { node, offset } = view.domAtPos(selection.from, -1);
+  if (node.nodeType !== node.TEXT_NODE) return;
+  if (native.anchorNode !== node || native.anchorOffset !== offset)
+    native.collapse(node, offset);
+};
+
 export const createCanonicalInputBoundary = (
   options: CanonicalInputOptions,
 ): {
@@ -374,6 +390,7 @@ export const createCanonicalInputBoundary = (
       compositionstart: (view: EditorView) => {
         beginGesture();
         composition.start(view);
+        placeCompositionCaret(view);
         return false;
       },
       compositionend: (view: EditorView, event: Event) => {
