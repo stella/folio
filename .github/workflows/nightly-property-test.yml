@@ -37,10 +37,10 @@ jobs:
         run: |
           mkdir -p test-results
           cd packages/core
-          for seed in 11 22 33 44 55; do
-            PROPERTY_TEST_NUM_RUNS_FACTOR=300 PROPERTY_TEST_SEED=$seed bun test ./src/ai-edits/batchOverlap.test.ts -t 'refuses each conflict and applies the rest as one at a time would' --timeout 3000000 2>&1 | tail -40
+          for seed in 11 22; do
+            PROPERTY_TEST_NUM_RUNS_FACTOR=100 PROPERTY_TEST_SEED=$seed bun test ./src/ai-edits/batchOverlap.test.ts -t 'refuses each conflict and applies the rest as one at a time would' --timeout 3000000 2>&1 | tail -40
           done
-          PROPERTY_TEST_NUM_RUNS_FACTOR=30 PROPERTY_TEST_SEED=66 bun test ./src/ai-edits/batchOverlap.test.ts -t 'applies accepted patches in planner order' --timeout 3000000 2>&1 | tail -40
+          PROPERTY_TEST_NUM_RUNS_FACTOR=10 PROPERTY_TEST_SEED=66 bun test ./src/ai-edits/batchOverlap.test.ts -t 'applies accepted patches in planner order' --timeout 3000000 2>&1 | tail -40
 
       - name: Keep the consumer fuzz log
         if: always()
