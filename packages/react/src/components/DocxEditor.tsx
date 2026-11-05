@@ -1802,7 +1802,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     );
 
     const buildCurrentDocument = useCallback(() => {
-      if (!history.state) {
+      // A handle held across a load still reads the committed document: the
+      // live view is that document's, so its package must be too.
+      const committed = historyStateRef.current;
+      if (!committed) {
         return null;
       }
 
@@ -1818,7 +1821,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       )
         return null;
 
-      let doc = cloneDocumentWithParagraphPropertySources(history.state);
+      let doc = cloneDocumentWithParagraphPropertySources(committed);
       const pmDoc = pagedEditorRef.current?.getDocument();
       if (pmDoc) {
         doc.package.document.content = pmDoc.package.document.content;
@@ -1889,7 +1892,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         pruneOrphanedComments(commentsRef.current, referencedCommentIds),
       );
       return doc;
-    }, [history.state, commentsRef, experimentalSession]);
+    }, [commentsRef, experimentalSession]);
 
     const applyCanonicalComment = useCallback(
       (request: CanonicalCommentRequest) => {
