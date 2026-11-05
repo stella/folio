@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 1026397380,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1226482864,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3482223877,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "31617F9A",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Warranty payment warranty notice agreement warranty goods written.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from reseed+splice of 1ead893f6af46eae"
+}
