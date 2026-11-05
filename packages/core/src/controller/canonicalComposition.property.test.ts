@@ -1329,6 +1329,122 @@ test("a native proposal may omit a non-inclusive mark from untouched text, and n
   );
 });
 
+const composeToEnd = (
+  baseline: EditorState,
+  nativeEdit: (state: EditorState) => Transaction,
+  data: string,
+) => {
+  const inputs: { from: number; to: number; text: string }[] = [];
+  const refusals: string[] = [];
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const view = new EditorView(mount, { state: baseline });
+  const composition = createCanonicalComposition({
+    begin: () => true,
+    end: () => {},
+    replace: ({ from, to, text }) => inputs.push({ from, to, text }),
+    refuse: (reason) => refusals.push(reason),
+  });
+  composition.start(view);
+  composition.accept(view, nativeEdit(view.state).setMeta("composition", 1));
+  composition.ended(view, data);
+  const finished = composition.recover(view);
+  const state = view.state;
+  view.destroy();
+  mount.remove();
+  return { inputs, refusals, state, finished };
+};
+
+test("a composition's end event names its text when the browser restarted it", () => {
+  const doc = canonicalSchema.node("doc", null, [
+    canonicalSchema.node(
+      "paragraph",
+      null,
+      canonicalSchema.text("Closing Intro"),
+    ),
+  ]);
+  const caret = 9;
+  const baseline = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, caret),
+  });
+  assertProperty(
+    fc.property(
+      fc.constantFrom("alpha", "契約", "😀", "é buyer"),
+      fc.constantFrom("gamma", "東京", "shall"),
+      (final, orphan) => {
+        // The text the browser left behind stays beside the restarted composition.
+        const restarted = composeToEnd(
+          baseline,
+          (state) => state.tr.insertText(`${orphan}${final}`, caret),
+          final,
+        );
+        expect(restarted.refusals).toEqual([]);
+        expect(restarted.inputs).toEqual([
+          { from: caret, to: caret, text: final },
+        ]);
+        expect(restarted.finished).toEqual({
+          type: "committed",
+          text: final,
+        });
+
+        // The restart can also land before the caret, in the text next to it.
+        const misplaced = composeToEnd(
+          baseline,
+          (state) => state.tr.insertText(orphan, caret).insertText(final, 2),
+          final,
+        );
+        expect(misplaced.refusals).toEqual([]);
+        expect(misplaced.inputs).toEqual([
+          { from: caret, to: caret, text: final },
+        ]);
+
+        // A cancellation discards whatever the browser left behind.
+        const cancelled = composeToEnd(
+          baseline,
+          (state) => state.tr.insertText(orphan, caret),
+          "",
+        );
+        expect(cancelled.refusals).toEqual([]);
+        expect(cancelled.inputs).toEqual([]);
+        expect(cancelled.state.doc.eq(baseline.doc)).toBe(true);
+        expect(cancelled.finished).toEqual({ type: "cancelled" });
+
+        // An ordinary composition is unchanged.
+        const ordinary = composeToEnd(
+          baseline,
+          (state) => state.tr.insertText(final, caret),
+          final,
+        );
+        expect(ordinary.inputs).toEqual([
+          { from: caret, to: caret, text: final },
+        ]);
+
+        // A composition elsewhere in the paragraph is not moved to the caret.
+        const elsewhere = composeToEnd(
+          baseline,
+          (state) => state.tr.insertText(`${orphan}${final}`, 2, 3),
+          final,
+        );
+        expect(elsewhere.inputs).toEqual([
+          { from: 2, to: 3, text: `${orphan}${final}` },
+        ]);
+
+        // Text the end event does not name is not discarded.
+        const unnamed = composeToEnd(
+          baseline,
+          (state) => state.tr.insertText(orphan, caret),
+          "zzz",
+        );
+        expect(unnamed.inputs).toEqual([
+          { from: caret, to: caret, text: orphan },
+        ]);
+      },
+    ),
+    { id: "the end event names a restarted composition's text" },
+  );
+});
+
 const loadCarrierSource = async () => {
   const source = createEmptyDocument({ initialText: "alpha😀café東京" });
   const paragraph = source.package.document.content.at(0);

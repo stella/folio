@@ -154,6 +154,118 @@ export const CANONICAL_CELL_COMPOSITION_CANCEL = {
   trace: BrowserInputTrace;
 };
 
+/** The browser restarts a composition beside a tracked insertion; its end names the text. */
+export const CANONICAL_RESTARTED_COMPOSITION_SEED_47 = {
+  authority: "canonical",
+  seed: 47,
+  path: "15:1:0:3:2:2:2:2:2",
+  fingerprint: "8c764b826e4fb3b6",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+      {
+        kind: "imeReplacement",
+        updates: ["alpha", "alpha"],
+        completion: "commit",
+      },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** A restart that lands away from the caret still commits at the caret. */
+export const CANONICAL_MISPLACED_COMPOSITION_SEED_29 = {
+  authority: "canonical",
+  seed: 29,
+  path: "0",
+  fingerprint: "b0ac2c02d75b820c",
+  trace: {
+    shape: "single-bullet-list",
+    actions: [
+      { kind: "undo" },
+      { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+      { kind: "cut" },
+      {
+        kind: "imeReplacement",
+        updates: [
+          "buyer café",
+          "valid shall",
+          "é invoice café",
+          "مرحبا buyer café",
+        ],
+        completion: "commit",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["valid alpha"],
+        completion: "commit",
+      },
+      { kind: "cut" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** A multi-update composition in front of a tracked deletion leaves it deleted. */
+export const CANONICAL_DELETION_UPDATES_SEED_11 = {
+  authority: "canonical",
+  seed: 11,
+  path: "13",
+  fingerprint: "a70c021688cbc310",
+  trace: {
+    shape: "rtl-cjk",
+    actions: [
+      { kind: "delete" },
+      { kind: "backspace" },
+      {
+        kind: "imeReplacement",
+        updates: ["東京", "buyer", "invoice café", "buyer"],
+        completion: "commit",
+      },
+      { kind: "undo" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** A cancelled composition beside a bookmark keeps the bookmark. */
+export const CANONICAL_BOOKMARK_SEED_263 = {
+  authority: "canonical",
+  seed: 263,
+  path: "8:4:2:2:3:3:2",
+  fingerprint: "2cf9ea677cc3c57c",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [
+      { kind: "imeReplacement", updates: ["alpha"], completion: "cancel" },
+      { kind: "pastePlain", plain: "alpha", html: "" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
@@ -162,4 +274,8 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_DELETION_SEED_11,
   CANONICAL_CELL_PASTE_SEED_431,
   CANONICAL_CELL_COMPOSITION_CANCEL,
+  CANONICAL_RESTARTED_COMPOSITION_SEED_47,
+  CANONICAL_MISPLACED_COMPOSITION_SEED_29,
+  CANONICAL_DELETION_UPDATES_SEED_11,
+  CANONICAL_BOOKMARK_SEED_263,
 ];
