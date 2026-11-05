@@ -33,7 +33,7 @@ export const TextColorExtension: (
       {
         style: "color",
         getAttrs: (value) => {
-          const hexMatch = /#(?<hex>[0-9a-fA-F]{6}|[0-9a-fA-F]{3})/u.exec(
+          const hexMatch = /^#(?<hex>[0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/u.exec(
             value,
           );
           if (hexMatch) {

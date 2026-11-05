@@ -69,8 +69,53 @@ export const BROWSER_TABLE_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition after a tracked insertion leaves that insertion's marks alone. */
+export const CANONICAL_INSERTION_SEED_557 = {
+  authority: "canonical",
+  seed: 557,
+  path: "7:2:0:1:1",
+  fingerprint: "b470db459c2eaf7d",
+  trace: {
+    shape: "header-footer",
+    actions: [
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** A composition in front of a tracked deletion leaves that deletion's marks alone. */
+export const CANONICAL_DELETION_SEED_11 = {
+  authority: "canonical",
+  seed: 11,
+  path: "13:5:3:3:3:3",
+  fingerprint: "950f061a7bc5243d",
+  trace: {
+    shape: "rtl-cjk",
+    actions: [
+      { kind: "delete" },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
+  CANONICAL_INSERTION_SEED_557,
+  CANONICAL_DELETION_SEED_11,
 ];
