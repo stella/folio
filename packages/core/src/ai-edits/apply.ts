@@ -2834,6 +2834,7 @@ type PendingJoinSurvivorOptions = {
   /** The paragraph's text as accepting leaves it. */
   cleanText: string;
   noteReferences: NoteReferenceLabels;
+  removedBreakPositions?: ReadonlySet<number>;
 };
 
 /**
@@ -2848,6 +2849,7 @@ const pendingJoinSurvivor = ({
   paragraphPos,
   cleanText,
   noteReferences,
+  removedBreakPositions,
 }: PendingJoinSurvivorOptions): number | null => {
   const paragraph = doc.nodeAt(paragraphPos);
   if (
@@ -2857,7 +2859,11 @@ const pendingJoinSurvivor = ({
   ) {
     return null;
   }
-  const survivor = paragraphLeftAfter({ doc, paragraphPos });
+  const survivor = paragraphLeftAfter({
+    doc,
+    paragraphPos,
+    ...(removedBreakPositions ? { removedBreakPositions } : {}),
+  });
   const left = survivor === null ? null : doc.nodeAt(survivor);
   if (survivor === null || left?.type !== paragraph.type) return null;
   // A paragraph that is itself wholly pending deletion, its break too, is
@@ -2881,6 +2887,8 @@ type InsertionFormattingAnchorOptions = {
   tr: Transaction;
   mode: FolioAIEditApplyMode;
   noteReferences: NoteReferenceLabels;
+  /** Breaks this batch's final deletions will retire: the join reads past them. */
+  removedBreakPositions: ReadonlySet<number>;
 };
 
 /**
@@ -2895,6 +2903,7 @@ const insertionFormattingAnchor = ({
   tr,
   mode,
   noteReferences,
+  removedBreakPositions,
 }: InsertionFormattingAnchorOptions): ResolvedOperation => {
   if (mode === "suggested") return item;
   const position = sinceRead(tr, item).map(item.blockFrom, 1);
@@ -2908,6 +2917,7 @@ const insertionFormattingAnchor = ({
       noteReferences,
     }).text,
     noteReferences,
+    removedBreakPositions,
   });
   const source = survivor === null ? null : tr.doc.nodeAt(survivor);
   return source ? { ...item, blockNode: source } : item;
@@ -5873,6 +5883,10 @@ const applyFolioAIEditOperationsInternal = ({
           tr,
           mode,
           noteReferences,
+          removedBreakPositions: pendingRemovedFinalBreakPositions(
+            tr,
+            deletedFinalParagraphs,
+          ),
         });
         const built = buildInsertedParagraphs({
           item: formatted,
@@ -6388,6 +6402,10 @@ const applyFolioAIEditOperationsInternal = ({
           tr,
           mode,
           noteReferences,
+          removedBreakPositions: pendingRemovedFinalBreakPositions(
+            tr,
+            deletedFinalParagraphs,
+          ),
         });
         const built = buildInsertedParagraphs({
           item: formatted,

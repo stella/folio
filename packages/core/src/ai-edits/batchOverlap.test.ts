@@ -1352,6 +1352,27 @@ describe("a random batch with overlapping, nested and duplicate targets", () => 
   );
 });
 
+describe("an insertion before a chain of merges a final deletion extends", () => {
+  // The chain leaves the last paragraph once the deletion retires the break
+  // before it, so that paragraph is the one the insertion reads as.
+  for (const mode of MODES) {
+    test(`copies the paragraph the chain leaves (${mode})`, async () => {
+      const generated: GeneratedOperation[] = [
+        { kind: "insertBeforeBlock", block: 0 },
+        { kind: "mergeBlockWithNext", block: 0 },
+        {
+          kind: "setBlockParagraphProperties",
+          block: 2,
+          properties: { alignment: "center" },
+        },
+        { kind: "mergeBlockWithNext", block: 1 },
+        { kind: "deleteBlock", block: 3 },
+      ];
+      expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
+    });
+  }
+});
+
 describe("deletions beside a property write, an insertion or a merge", () => {
   // The batch retires a final paragraph's break once it has finished, and runs
   // what shares a gap in one order. Every shape of those, one at a time.
