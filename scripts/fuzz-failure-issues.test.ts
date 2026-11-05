@@ -770,7 +770,7 @@ test("a repeat signature updates its issue in place with the run's seeds and cou
   expect(fake.edits).toHaveLength(1);
 });
 
-test("a fixed signature reopens when it recurs; one closed without a fix only records it", async () => {
+test("a fixed signature reopens when it recurs; one closed without a fix keeps only its own seeds", async () => {
   for (const [disposition, reopened] of [
     ["fixed", true],
     ["superseded", false],
@@ -784,22 +784,32 @@ test("a fixed signature reopens when it recurs; one closed without a fix only re
     });
     const issue = created.issues.at(0);
     if (issue === undefined) throw new Error("Missing issue");
-    const fake = fakeClient([
-      {
-        ...issue,
-        state: "closed",
-        closedAt: "2026-10-10",
-        disposition: { type: disposition },
-      },
-    ]);
+    const closed = {
+      ...issue,
+      state: "closed",
+      closedAt: "2026-10-10",
+      disposition: { type: disposition },
+    } as const;
+    const fake = fakeClient([closed]);
     await fileFindings({
       findings: [flowFinding(9, "b")],
       context: runContext(200),
       store: fake.store,
     });
-    expect(fake.creates).toHaveLength(0);
     expect(fake.reopens).toEqual(reopened ? [1] : []);
-    expect(stateOf(fake.issues.at(0)).seeds).toEqual([1, 9]);
+    expect(fake.creates).toHaveLength(reopened ? 0 : 1);
+    expect(stateOf(fake.issues.at(0)).seeds).toEqual(reopened ? [1, 9] : [1]);
+    if (reopened) continue;
+    expect(stateOf(fake.issues.at(1)).seeds).toEqual([9]);
+    // The seed the closure listed stays with it.
+    const again = fakeClient([closed]);
+    await fileFindings({
+      findings: [flowFinding(1, "a")],
+      context: runContext(201),
+      store: again.store,
+    });
+    expect(again.creates).toHaveLength(0);
+    expect(again.reopens).toEqual([]);
   }
 });
 

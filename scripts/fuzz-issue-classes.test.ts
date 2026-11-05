@@ -617,11 +617,30 @@ describe("a class issue closed as a duplicate", () => {
     ]);
     await report(loop, [numberingFinding()]);
     expect(loop.reopens).toEqual([]);
-    expect(loop.edits).toHaveLength(1);
-    expect(loop.created).toEqual([]);
+    expect(loop.edits).toEqual([]);
+    expect(loop.created).toHaveLength(1);
   });
 
-  test("an unfixed closure with no duplicate target keeps rows and stays closed", async () => {
+  const GENERIC_FAILURE = {
+    test: "browser input preserves readers",
+    message: "expect(received).toEqual(expected) // deep equality",
+  };
+  const closedClassIssue = async (findings: Finding[]) => {
+    const created = fakeStore([]);
+    await report(created, findings);
+    const issue = created.issues.at(0);
+    if (issue === undefined) throw new Error("Missing issue");
+    return {
+      number: issue.number,
+      title: issue.title,
+      body: issue.body,
+      state: "closed",
+      closedAt: "2026-10-02T09:00:00Z",
+      disposition: SUPERSEDED,
+    } satisfies ClosedIssue;
+  };
+
+  test("a new failure of a class closed without a fix gets its own open issue", async () => {
     const dispositions = [SUPERSEDED, { type: "duplicate" }] as const;
     for (const disposition of dispositions) {
       for (const closedAt of ["2026-10-02T09:00:00Z", "2026-01-01T00:00:00Z"]) {
@@ -630,20 +649,115 @@ describe("a class issue closed as a duplicate", () => {
           duplicate({ duplicateOf: null, disposition, closedAt }),
         ]);
         const result = await report(fake, [numberingFinding()]);
-        expect(result.map(({ issue }) => issue)).toEqual(["#1454"]);
+        const opened = fake.created.at(0);
+        if (opened === undefined) throw new Error("Nothing was opened");
+        expect(result.map(({ issue }) => issue)).toEqual([`#${opened}`]);
         expect(fake.reopens).toEqual([]);
-        expect(fake.created).toEqual([]);
-        expect(fake.edits).toEqual([1454]);
+        expect(fake.edits).toEqual([]);
         expect(fake.issues.find(({ number }) => number === 1454)?.state).toBe(
           "closed",
         );
-        expect(rowCount(bodyOf(fake, 1454))).toBe(1);
-        expect(bodyOf(fake, 1454)).toContain("do not reopen it");
+        expect(bodyOf(fake, 1454)).toBe(oldMarker(signature));
+        expect(bodyOf(fake, opened)).toContain("Previous occurrence: #1454.");
+        expect(rowCount(bodyOf(fake, opened))).toBe(1);
         expect(bodyOf(fake, 1300)).toBe("Human notes");
+        // The open issue carries the class from here on.
         await report(fake, [numberingFinding()]);
-        expect(writes(fake)).toBe(1);
+        expect(fake.created).toEqual([opened]);
       }
     }
+  });
+
+  test("the failure a closure listed stays closed and writes nothing", async () => {
+    const finding = failing(GENERIC_FAILURE, 7);
+    const closed = await closedClassIssue([finding]);
+    const fake = fakeStore([closed]);
+    const result = await report(fake, [failing(GENERIC_FAILURE, 7)]);
+    expect(result.map(({ issue }) => issue)).toEqual([`#${closed.number}`]);
+    expect(writes(fake)).toBe(0);
+    expect(fake.reopens).toEqual([]);
+  });
+
+  test("a closed class issue does not take a different failure that shares its key", async () => {
+    const flowed = (flow: string, seed: number) => {
+      const failure = new Error(GENERIC_FAILURE.message);
+      const record = failureRecord(
+        failureMarker({
+          test: GENERIC_FAILURE.test,
+          seed,
+          repro: `FOLIO_FUZZ_SEEDS=${seed} bunx playwright test`,
+          failure,
+          flow,
+        }),
+        failure,
+      );
+      return { record, seeds: [seed], records: [record] } satisfies Finding;
+    };
+    const known = flowed("tables: dragCellDelete → typing", 29);
+    const closed = await closedClassIssue([known]);
+    const fake = fakeStore([closed]);
+    const unrelated = flowed("tables: imeReplacement → enter", 83);
+    expect(unrelated.record.marker.primary).toBe(known.record.marker.primary);
+    await report(fake, [unrelated]);
+    expect(fake.created).toHaveLength(1);
+    expect(fake.reopens).toEqual([]);
+    expect(fake.edits).toEqual([]);
+    const opened = fake.created.at(0);
+    if (opened === undefined) throw new Error("Nothing was opened");
+    expect(bodyOf(fake, opened)).toContain(unrelated.record.marker.fingerprint);
+    expect(bodyOf(fake, opened)).not.toContain(known.record.marker.fingerprint);
+  });
+
+  test("a closed issue predating class markers covers its fingerprint, not its primary", async () => {
+    const flowed = (flow: string) => {
+      const failure = new Error(GENERIC_FAILURE.message);
+      const record = failureRecord(
+        failureMarker({
+          test: GENERIC_FAILURE.test,
+          seed: 29,
+          repro: "FOLIO_FUZZ_SEEDS=29 bunx playwright test",
+          failure,
+          flow,
+        }),
+        failure,
+      );
+      return { record, seeds: [29], records: [record] } satisfies Finding;
+    };
+    const known = flowed("tables: dragCellDelete → typing");
+    const legacyBody = `Notes\n<!-- fuzz-failure-state ${JSON.stringify({
+      fingerprint: known.record.marker.fingerprint,
+      primary: known.record.marker.primary,
+    })} -->`;
+    const closed: ClosedIssue = {
+      number: 1341,
+      title: "Table input: accepted text differs",
+      body: legacyBody,
+      state: "closed",
+      closedAt: "2026-10-02T09:00:00Z",
+      disposition: SUPERSEDED,
+    };
+    const same = fakeStore([closed]);
+    await report(same, [known]);
+    expect(writes(same)).toBe(0);
+    const other = fakeStore([closed]);
+    await report(other, [flowed("tables: imeReplacement → enter")]);
+    expect(other.created).toHaveLength(1);
+    expect(bodyOf(other, 1341)).toBe(legacyBody);
+    expect(other.reopens).toEqual([]);
+  });
+
+  test("rows appended to a closed issue under the old policy decide nothing", async () => {
+    const finding = failing(GENERIC_FAILURE, 7);
+    const clean = await closedClassIssue([finding]);
+    const closed = {
+      ...clean,
+      body: `Closed without a fix; recurrences are recorded here and do not reopen it.\n${clean.body}`,
+    };
+    const fake = fakeStore([closed]);
+    await report(fake, [failing(GENERIC_FAILURE, 7)]);
+    expect(fake.created).toHaveLength(1);
+    expect(fake.reopens).toEqual([]);
+    expect(bodyOf(fake, closed.number)).toBe(closed.body);
   });
 
   test("a fixed closure reopens, even with a duplicate comment", async () => {

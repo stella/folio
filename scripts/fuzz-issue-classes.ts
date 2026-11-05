@@ -10,8 +10,9 @@ import type { Context, Filed, Finding } from "./fuzz-failure-issues";
 
 /**
  * Why a closed issue was closed, from GitHub's close reason. A `fixed` class
- * reopens when it recurs; a `superseded` (not planned) or `duplicate` one
- * never does.
+ * reopens when it recurs. A `superseded` (not planned) or `duplicate` one never
+ * does: the failures it decided about stay closed, and any other failure of the
+ * class gets an issue of its own.
  */
 export type ClosedIssueDisposition =
   { type: "fixed" } | { type: "superseded" } | { type: "duplicate" };
@@ -165,14 +166,19 @@ const markedKey = (issue: Issue): string | undefined => {
   return marker === undefined ? undefined : currentKey(marker);
 };
 
-const legacyIdentity = (issue: Issue): string[] => {
+const legacyState = (issue: Issue): Record<string, unknown> | null => {
   const marker = issue.body
     ?.match(/<!-- fuzz-failure-state (\{[^\n]*\}) -->/u)
     ?.at(1);
-  if (marker === undefined) return [];
+  if (marker === undefined) return null;
   const parsed = Result.try((): unknown => JSON.parse(marker));
-  if (parsed.isErr() || !isRecord(parsed.value)) return [];
-  return [parsed.value["fingerprint"], parsed.value["primary"]].filter(
+  return parsed.isOk() && isRecord(parsed.value) ? parsed.value : null;
+};
+
+const legacyIdentity = (issue: Issue): string[] => {
+  const state = legacyState(issue);
+  if (state === null) return [];
+  return [state["fingerprint"], state["primary"]].filter(
     (value): value is string =>
       typeof value === "string" && /^[0-9a-f]{16}$/u.test(value),
   );
@@ -384,17 +390,58 @@ type Recurrence =
   | { type: "update"; issue: OpenIssue }
   /** A class fixed recently came back: reopen it, with a comment. */
   | { type: "reopen"; issue: ClosedIssue }
-  /** Closed without a fix: keep the evidence, keep it closed. */
-  | { type: "record"; issue: ClosedIssue };
+  /** Closed without a fix, about exactly these failures: nothing to do. */
+  | { type: "covered"; issue: ClosedIssue };
 
-const recurrenceOf = (issue: Issue | undefined, date: string): Recurrence => {
+/**
+ * Written while any new failure of a class was appended to its closed issue, so
+ * the rows of a body carrying it are not what the closure decided about.
+ */
+const LEGACY_RECORDED_NOTE =
+  "Closed without a fix; recurrences are recorded here and do not reopen it.";
+
+type ClosureCoversOptions = {
+  issue: ClosedIssue;
+  key: string;
+  rows: readonly SeedRow[];
+};
+/**
+ * A class key can be as broad as a matcher's first line, so sharing one says
+ * nothing about sharing a cause. A closure covers the exact fingerprints it
+ * listed, never the rest of the class and never a shared `primary`.
+ */
+const closureCovers = ({ issue, key, rows }: ClosureCoversOptions): boolean => {
+  if (issue.body?.includes(LEGACY_RECORDED_NOTE) === true) return false;
+  const covered = new Set<unknown>([
+    legacyState(issue)?.["fingerprint"],
+    ...(readClassState(issue.body, key)?.seeds ?? []).map(
+      ({ fingerprint }) => fingerprint,
+    ),
+  ]);
+  return rows.every(({ fingerprint }) => covered.has(fingerprint));
+};
+
+type RecurrenceOfOptions = {
+  issue: Issue | undefined;
+  date: string;
+  key: string;
+  rows: readonly SeedRow[];
+};
+const recurrenceOf = ({
+  issue,
+  date,
+  key,
+  rows,
+}: RecurrenceOfOptions): Recurrence => {
   if (issue === undefined) return { type: "create", previous: null };
   if (issue.state === "open") return { type: "update", issue };
   const { disposition } = issue;
   switch (disposition.type) {
     case "superseded":
     case "duplicate":
-      return { type: "record", issue };
+      return closureCovers({ issue, key, rows })
+        ? { type: "covered", issue }
+        : { type: "create", previous: issue };
     case "fixed": {
       const age = Date.parse(date) - Date.parse(issue.closedAt ?? "");
       return age >= 0 && age < REOPEN_WINDOW_MS
@@ -409,9 +456,6 @@ const recurrenceOf = (issue: Issue | undefined, date: string): Recurrence => {
     }
   }
 };
-
-const RECORDED_NOTE =
-  "Closed without a fix; recurrences are recorded here and do not reopen it.";
 
 /** Why an issue reopens: the run that saw its class again, and which fingerprints. */
 type ReopenCommentOptions = {
@@ -513,7 +557,16 @@ export const fileClasses = async ({
       file(fingerprints, previous);
       continue;
     }
-    const recurrence = recurrenceOf(previous, context.date);
+    const recurrence = recurrenceOf({
+      issue: previous,
+      date: context.date,
+      key: signature.key,
+      rows,
+    });
+    if (recurrence.type === "covered") {
+      file(fingerprints, recurrence.issue.number);
+      continue;
+    }
     const reused = recurrence.type === "create" ? null : recurrence.issue;
     const previousState =
       reused === null ? null : readClassState(reused.body, signature.key);
@@ -589,9 +642,6 @@ export const fileClasses = async ({
       case "reopen":
         note = `Regressed: this class recurred in ${run}.`;
         break;
-      case "record":
-        note = RECORDED_NOTE;
-        break;
       default: {
         const unhandled: never = recurrence;
         return panic(`Unhandled class recurrence ${JSON.stringify(unhandled)}`);
@@ -630,11 +680,7 @@ export const fileClasses = async ({
         duplicateOf: issue.duplicateOf ?? null,
       };
       await store.edit(issue.number, body);
-    } else if (
-      changed ||
-      (recurrence.type === "record" &&
-        issue.body?.includes(RECORDED_NOTE) !== true)
-    ) {
+    } else if (changed) {
       issue.body = body;
       await store.edit(issue.number, body);
     }
