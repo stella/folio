@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 654091961,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1853822104,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "5E88C024",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 4125399996
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2982034750,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    },
+    {
+      "action": "reject one",
+      "seed": 3422046829
+    },
+    {
+      "action": "core batch",
+      "seed": 326809676,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Buyer agreement clause clause buyer party clause.",
+          "styleId": "Heading2"
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 654091961"
+}
