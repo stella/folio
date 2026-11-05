@@ -1,10 +1,11 @@
 import { afterEach, describe, test } from "bun:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -291,6 +292,32 @@ describe("incremental playground build cache", () => {
       ).status,
       "built",
     );
+  });
+});
+
+describe("run output in the checkout", () => {
+  test("a workflow's logs and test output are ignored, so they are no build input", () => {
+    const repoRoot = join(import.meta.dir, "..");
+    const workflows = join(repoRoot, ".github", "workflows");
+    const written = new Set<string>();
+    for (const file of readdirSync(workflows)) {
+      const text = readFileSync(join(workflows, file), "utf8");
+      for (const match of text.matchAll(
+        /(?:\btee (?:-a )?|--output=)([\w.-][\w./-]*)/gu,
+      )) {
+        const path = match[1];
+        if (path !== undefined) written.add(path.replace(/^(?:\.\.\/)+/u, ""));
+      }
+    }
+    assert.ok(written.has("fuzz-artifacts/browser/browser-fuzz.log"));
+    assert.ok(written.has("fuzz-playwright/browser"));
+    const tracked = [...written].filter((path) => {
+      const { status } = spawnSync("git", ["check-ignore", "-q", path], {
+        cwd: repoRoot,
+      });
+      return status !== 0;
+    });
+    assert.deepEqual(tracked, []);
   });
 });
 

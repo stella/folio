@@ -8,6 +8,10 @@ coverage/
 test-results/
 playwright-report/
 blob-report/
+*.log
+!scripts/fixtures/**/*.log
+fuzz-artifacts/
+fuzz-playwright/
 .DS_Store
 .claude/worktrees/
 
