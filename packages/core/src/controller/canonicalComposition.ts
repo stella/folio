@@ -398,6 +398,9 @@ export const createCanonicalComposition = (
       range: { from: number; to: number },
     ) => {
       if (state.type === "committed" || state.view !== view) return false;
+      // A refused composition already restored the document, so the browser
+      // removing its proposal must not land on the restored selection.
+      if (state.type === "refused") return true;
       const text = selectedText(state.baseline, view.state);
       if (text === null || text.length === 0) return false;
       const from = state.baseline.selection.from;

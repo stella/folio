@@ -112,10 +112,54 @@ export const CANONICAL_DELETION_SEED_11 = {
   trace: BrowserInputTrace;
 };
 
+/** Pasting over selected cells refuses and leaves the document as it was. */
+export const CANONICAL_CELL_PASTE_SEED_431 = {
+  authority: "canonical",
+  seed: 431,
+  path: "9:0:1:0:0:1",
+  fingerprint: "52b2a7dfe8a76372",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "selectionDrag", target: "table" },
+      { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** Cancelling a composition over selected cells keeps their text. */
+export const CANONICAL_CELL_COMPOSITION_CANCEL = {
+  authority: "canonical",
+  seed: 431,
+  path: "selected-cells",
+  fingerprint: "composition-cancel",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "selectionDrag", target: "table" },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "cancel" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
   CANONICAL_INSERTION_SEED_557,
   CANONICAL_DELETION_SEED_11,
+  CANONICAL_CELL_PASTE_SEED_431,
+  CANONICAL_CELL_COMPOSITION_CANCEL,
 ];

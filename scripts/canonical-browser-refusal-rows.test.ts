@@ -67,6 +67,46 @@ test("canonical browser refusal matching rejects unknown and mismatched refusals
   ).toEqual([]);
 });
 
+test("input over selected cells declares its refusal; deleting them stays strict", () => {
+  const cells = { selection: "cells" } as const;
+  const paste = canonicalBrowserRefusalRows(
+    { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+    cells,
+  );
+  validateHarnessRefusalRows(paste);
+  expect(
+    matchCanonicalRefusalRow({
+      rows: paste,
+      refusal: {
+        gap: CANONICAL_GAP.dispatch,
+        message:
+          "Pasting over selected cells requires a per-cell paste operation.",
+      },
+    })?.id,
+  ).toBe("selected-cells-paste");
+  // The same refusal over a text selection is a finding.
+  expect(
+    canonicalBrowserRefusalRows({
+      kind: "pasteWordHtml",
+      ...BROWSER_PASTE_PAYLOADS.pasteWordHtml,
+    }),
+  ).toEqual([]);
+  expect(
+    canonicalBrowserRefusalRows({ kind: "typing", text: "alpha" }, cells).map(
+      ({ id }) => id,
+    ),
+  ).toEqual(["selected-cells-typing"]);
+  for (const action of [
+    { kind: "delete" },
+    { kind: "backspace" },
+    { kind: "cut" },
+  ] as const)
+    expect(canonicalBrowserRefusalRows(action, cells)).toEqual([]);
+  expect(
+    canonicalBrowserRefusalRows(tablePaste, cells).map(({ id }) => id),
+  ).toEqual(["clipboard-table", "clipboard-nested-blocks"]);
+});
+
 test("canonical browser refusal rows reject retired ledger gaps", () => {
   const rows = canonicalBrowserRefusalRows(tablePaste);
   expect(() => validateHarnessRefusalRows(rows, {})).toThrow(
