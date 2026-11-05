@@ -955,19 +955,31 @@ const shadowProblems = async (
   for (const [name, story] of stories) {
     let found: string[];
     switch (check) {
-      case "directTracked":
+      case "directTracked": {
+        // A paragraph pending deletion keeps a list's id taken that a direct
+        // deletion frees, so a later list can differ by id alone.
+        const preRows = (await resolvedState(fixture, "accept", story)).rows;
+        const accepted = async (reviewer: Reviewer) => {
+          const state = await resolvedState(
+            await save(reviewer),
+            "accept",
+            story,
+          );
+          return withoutHeldComments(
+            settledView({
+              rows: nameStartedLists(state.rows, preRows),
+              comments: state.comments,
+            }),
+            shadows.heldComments,
+          );
+        };
         found = tolerantDifferences<BlocksView>(
-          withoutHeldComments(
-            await resolvedView(await save(shadows.direct), "accept", story),
-            shadows.heldComments,
-          ),
-          withoutHeldComments(
-            await resolvedView(await save(shadows.tracked), "accept", story),
-            shadows.heldComments,
-          ),
+          await accepted(shadows.direct),
+          await accepted(shadows.tracked),
           [],
         );
         break;
+      }
       case "rejectTracked":
         found = tolerantDifferences<BlocksView>(
           { blocks: (await resolvedView(fixture, "reject", story)).blocks },
