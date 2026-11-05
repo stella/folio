@@ -523,6 +523,12 @@ export type HiddenEditorManagerDeps = {
   /** Document context for the API's `getDocument` (PM state -> Document). */
   getDocumentContext: () => Document | null;
   onTransaction: (update: HiddenEditorTransactionUpdate) => void;
+  /**
+   * A canonical composition ended. A layout pass reads the live view, so one
+   * that ran during the composition painted provisional text that only a new
+   * pass can replace, and a cancellation publishes no commit that would ask.
+   */
+  onCanonicalCompositionEnd: () => void;
   onSelectionChange: (state: EditorState) => void;
   onKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
   onCopy?: () => void;
@@ -986,8 +992,9 @@ export const createHiddenEditorManager = (
       return true;
     },
     endComposition: () => {
-      if (editorSession.type === "canonical")
-        editorSession.session.endComposition();
+      if (editorSession.type !== "canonical") return;
+      editorSession.session.endComposition();
+      deps.onCanonicalCompositionEnd();
     },
   };
   const input = createCanonicalInputBoundary({

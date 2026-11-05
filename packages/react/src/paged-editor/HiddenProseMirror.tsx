@@ -95,6 +95,8 @@ export type HiddenProseMirrorProps = {
   readOnly?: boolean;
   /** Callback when document changes via transaction */
   onTransaction?: (update: HiddenEditorTransactionUpdate) => void;
+  /** Callback when a canonical composition ends */
+  onCanonicalCompositionEnd?: () => void;
   /** Callback when selection changes */
   onSelectionChange?: (state: EditorState) => void;
   /** External ProseMirror plugins */
@@ -190,6 +192,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     widthPx = 612, // Default Letter width at 72dpi
     readOnly = false,
     onTransaction,
+    onCanonicalCompositionEnd,
     onSelectionChange,
     externalPlugins = EMPTY_EXTERNAL_PLUGINS,
     collaboration,
@@ -244,6 +247,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   // Store callbacks in refs to avoid dependency array issues that cause infinite loops
   // when the parent component passes unstable callback references
   const onTransactionRef = useRef(onTransaction);
+  const onCanonicalCompositionEndRef = useRef(onCanonicalCompositionEnd);
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onEditorViewReadyRef = useRef(onEditorViewReady);
   const onEditorViewDestroyRef = useRef(onEditorViewDestroy);
@@ -272,6 +276,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     externalPluginsRef.current = externalPlugins;
     precomputedInitialStateRef.current = precomputedInitialState;
     onTransactionRef.current = onTransaction;
+    onCanonicalCompositionEndRef.current = onCanonicalCompositionEnd;
     onSelectionChangeRef.current = onSelectionChange;
     onEditorViewReadyRef.current = onEditorViewReady;
     onEditorViewDestroyRef.current = onEditorViewDestroy;
@@ -307,6 +312,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,
         onTransaction: (update) => onTransactionRef.current?.(update),
+        onCanonicalCompositionEnd: () =>
+          onCanonicalCompositionEndRef.current?.(),
         onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
         onKeyDown: (view, event) =>
           onKeyDownRef.current?.(view, event) ?? false,

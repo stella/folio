@@ -246,6 +246,7 @@ const managerDeps = ({
     getDocumentIdentity: () => "section-fixture",
     getDocumentContext: () => source,
     onTransaction: () => undefined,
+    onCanonicalCompositionEnd: () => undefined,
     onSelectionChange: () => undefined,
     onKeyDown: () => false,
     onReadOnlyEditAttempt: () => undefined,

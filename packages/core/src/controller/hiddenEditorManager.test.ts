@@ -69,6 +69,7 @@ const makeDeps = (
 ): { deps: HiddenEditorManagerDeps; spies: Record<string, Spy> } => {
   const spies: Record<string, Spy> = {
     onTransaction: { calls: 0 },
+    onCanonicalCompositionEnd: { calls: 0 },
     onSelectionChange: { calls: 0 },
     onKeyDown: { calls: 0 },
     onCopy: { calls: 0 },
@@ -94,6 +95,9 @@ const makeDeps = (
     getDocumentContext: () => null,
     onTransaction: () => {
       spies["onTransaction"].calls += 1;
+    },
+    onCanonicalCompositionEnd: () => {
+      spies["onCanonicalCompositionEnd"].calls += 1;
     },
     onSelectionChange: (_state: EditorState) => {
       spies["onSelectionChange"].calls += 1;
@@ -935,7 +939,7 @@ test.each(["body", "story"] as const)(
     const paragraph = source.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
     paragraph.paraId = "12345678";
-    const { deps } = makeDeps({
+    const { deps, spies } = makeDeps({
       getHost: () => host,
       getDocument: () => source,
       getDocumentContext: () => source,
@@ -1013,6 +1017,7 @@ test.each(["body", "story"] as const)(
         manager.api.updateCanonicalInputLifecycle("endComposition");
         expect(manager.isCanonicalComposing()).toBe(false);
       }
+      expect(spies["onCanonicalCompositionEnd"]?.calls).toBe(1);
       expect(manager.api.getCanonicalDocument()).toEqual(initial);
       expect(
         manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN),
