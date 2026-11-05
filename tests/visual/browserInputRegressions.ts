@@ -675,6 +675,27 @@ export const BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition over a selection across list items replaces it once, in the first item. */
+export const CANONICAL_ACROSS_PARAGRAPHS_SEED_347 = {
+  authority: "canonical",
+  seed: 347,
+  path: "17:2:1:1:1",
+  fingerprint: "92b692379e90307a",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
@@ -702,4 +723,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_RESTARTED_AFTER_PASTE_SEED_197,
   CANONICAL_RESTARTED_AFTER_TYPING,
   CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
+  CANONICAL_ACROSS_PARAGRAPHS_SEED_347,
 ];

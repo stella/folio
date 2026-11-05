@@ -1613,6 +1613,76 @@ test("reading the DOM back may change only what the DOM cannot carry", () => {
   }
 });
 
+test("a composition across paragraphs may keep the last paragraph's element", () => {
+  const paragraph = (paraId: string, text: string, alignment?: string) =>
+    canonicalSchema.node(
+      "paragraph",
+      { paraId, ...(alignment === undefined ? {} : { alignment }) },
+      canonicalSchema.text(text),
+    );
+  const doc = canonicalSchema.node("doc", null, [
+    paragraph("11111111", "Alpha"),
+    paragraph("22222222", "Beta"),
+  ]);
+  const from = 1;
+  const to = 9;
+  const baseline = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, from, to),
+  });
+  const joined = (node: ProseMirrorNode) => (state: EditorState) =>
+    state.tr.replaceWith(0, state.doc.content.size, node);
+
+  // The browser removes the selection first, with no composition metadata yet.
+  const inputs: { from: number; to: number; text: string }[] = [];
+  const refusals: string[] = [];
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const view = new EditorView(mount, { state: baseline });
+  const composition = createCanonicalComposition({
+    begin: () => true,
+    end: () => {},
+    replace: (input) =>
+      inputs.push({ from: input.from, to: input.to, text: input.text }),
+    refuse: (reason) => refusals.push(reason),
+  });
+  composition.start(view);
+  composition.accept(view, joined(paragraph("22222222", "eta"))(view.state));
+  expect(refusals).toEqual([]);
+  composition.accept(
+    view,
+    view.state.tr.insertText("alpha", 1).setMeta("composition", 1),
+  );
+  expect(refusals).toEqual([]);
+  composition.ended(view, "alpha");
+  composition.recover(view);
+  expect(inputs).toEqual([{ from, to, text: "alpha" }]);
+  expect(view.state.doc.eq(baseline.doc)).toBe(true);
+  // That first permission is spent: a later edit without metadata is refused.
+  composition.start(view);
+  composition.accept(
+    view,
+    view.state.tr.insertText("x", from, to).setMeta("composition", 1),
+  );
+  expect(refusals).toEqual([]);
+  const refusedBefore = refusals.length;
+  composition.accept(view, view.state.tr.insertText("foreign", 1));
+  expect(refusals).toHaveLength(refusedBefore + 1);
+  composition.cancel(view);
+  view.destroy();
+  mount.remove();
+
+  for (const [name, node] of [
+    ["another paragraph's identity", paragraph("33333333", "alphaeta")],
+    ["changed properties", paragraph("22222222", "alphaeta", "right")],
+  ] as const) {
+    const refused = compose(baseline, joined(node));
+    expect(refused.inputs, name).toEqual([]);
+    expect(refused.refusals, name).toHaveLength(1);
+    expect(refused.state.doc.eq(baseline.doc), name).toBe(true);
+  }
+});
+
 const loadCarrierSource = async () => {
   const source = createEmptyDocument({ initialText: "alpha😀café東京" });
   const paragraph = source.package.document.content.at(0);
