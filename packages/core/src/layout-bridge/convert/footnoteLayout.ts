@@ -65,6 +65,7 @@ export type ConvertFootnoteOptions = Pick<
 > & {
   /** Whether comment highlights are painted. Defaults to true. */
   showCommentHighlights?: boolean;
+  altChunkMarkerText?: string;
   markupView?: DisplayMode;
   styles?: StyleDefinitions | null;
   numbering?: NumberingDefinitions;
@@ -411,6 +412,9 @@ export function convertNoteStoryToFlowBlocks(
       options.showCommentHighlights !== false &&
       options.markupView !== "no-markup" &&
       options.markupView !== "original",
+    ...(options.altChunkMarkerText === undefined
+      ? {}
+      : { altChunkMarkerText: options.altChunkMarkerText }),
   };
   if (options.defaultSize !== undefined) {
     flowOptions.defaultSize = options.defaultSize;

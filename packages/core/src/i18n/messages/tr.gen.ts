@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "Tarih seçin",
     "contentControlDropdownAriaLabel": "Açılan liste seçenekleri",
     "contentControlDropdownNoOptions": "Seçenek yok",
+    "contentNotDisplayed": "İçerik görüntülenmiyor",
     "contextMenu": {
       "continueNumbering": "Numaralandırmaya Devam Et",
       "copy": "Kopyala",

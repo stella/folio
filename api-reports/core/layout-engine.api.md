@@ -733,6 +733,7 @@ export type ParagraphAttrs = {
 export type ParagraphBlock = {
     kind: "paragraph";
     id: BlockId;
+    fixedPosition?: number;
     paraId?: string;
     runs: Run[];
     attrs?: ParagraphAttrs;

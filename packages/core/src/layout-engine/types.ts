@@ -667,6 +667,11 @@ export type ParagraphAttrs = {
 export type ParagraphBlock = {
   kind: "paragraph";
   id: BlockId;
+  /**
+   * Set on a block that exists only in layout: its text is in no ProseMirror
+   * node, so a click anywhere in it resolves to this position.
+   */
+  fixedPosition?: number;
   /** Stable Word `w14:paraId` / PM `paraId`, when available. */
   paraId?: string;
   runs: Run[];

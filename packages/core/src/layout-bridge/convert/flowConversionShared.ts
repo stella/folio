@@ -20,7 +20,24 @@ import type { StyleDefinitions, Theme } from "../../types/document";
 /**
  * Options for the conversion.
  */
+/** How much of a `w:altChunk` a story has room to show. */
+export const ALT_CHUNK_CONTENT: {
+  readonly text: "text";
+  readonly markerOnly: "markerOnly";
+} = {
+  /** Its own text when it has any, otherwise the marker. */
+  text: "text",
+  /** Only the marker: the story's height cannot follow the chunk's length. */
+  markerOnly: "markerOnly",
+} as const;
+export type AltChunkContent =
+  (typeof ALT_CHUNK_CONTENT)[keyof typeof ALT_CHUNK_CONTENT];
+
 export type ToFlowBlocksOptions = {
+  /** Localised text for a `w:altChunk` that has no text of its own to show. */
+  altChunkMarkerText?: string;
+  /** Defaults to the chunk's own text. */
+  altChunkContent?: AltChunkContent;
   /** Paint comment anchors and highlights; false leaves authored marks intact. */
   showCommentHighlights?: boolean;
   /** Embedded families owned by this editor, never ambient process state. */

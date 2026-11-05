@@ -65,6 +65,7 @@
     "contentControlDateAriaLabel": "दिनांक चुनें",
     "contentControlDropdownAriaLabel": "ड्रॉपडाउन विकल्प",
     "contentControlDropdownNoOptions": "कोई विकल्प नहीं",
+    "contentNotDisplayed": "सामग्री प्रदर्शित नहीं की गई",
     "contextMenu": {
       "continueNumbering": "क्रमांकन जारी रखें",
       "copy": "कॉपी करें",

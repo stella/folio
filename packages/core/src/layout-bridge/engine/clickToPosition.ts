@@ -431,6 +431,9 @@ export function clickToPositionInTableCell(
   if (!cellBlock || !cellMeasure) {
     return null;
   }
+  if (cellBlock.fixedPosition !== undefined) {
+    return cellBlock.fixedPosition;
+  }
 
   // Create a synthetic fragment hit for the cell's paragraph
   const syntheticHit: FragmentHit = {
@@ -481,6 +484,12 @@ export function clickToPosition(
   const { fragment } = fragmentHit;
 
   if (fragment.kind === "paragraph") {
+    if (
+      fragmentHit.block.kind === "paragraph" &&
+      fragmentHit.block.fixedPosition !== undefined
+    ) {
+      return fragmentHit.block.fixedPosition;
+    }
     const result = clickToPositionInParagraph(fragmentHit);
     return result?.pmPosition ?? null;
   }

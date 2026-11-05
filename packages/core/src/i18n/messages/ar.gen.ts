@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "اختر تاريخًا",
     "contentControlDropdownAriaLabel": "خيارات القائمة المنسدلة",
     "contentControlDropdownNoOptions": "لا توجد خيارات",
+    "contentNotDisplayed": "المحتوى غير معروض",
     "contextMenu": {
       "continueNumbering": "متابعة الترقيم",
       "copy": "نسخ",

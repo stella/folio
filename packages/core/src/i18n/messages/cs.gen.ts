@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "Vyberte datum",
     "contentControlDropdownAriaLabel": "Možnosti rozbalovací nabídky",
     "contentControlDropdownNoOptions": "Žádné možnosti",
+    "contentNotDisplayed": "Obsah se nezobrazuje",
     "contextMenu": {
       "continueNumbering": "Pokračovat v číslování",
       "copy": "Kopírovat",

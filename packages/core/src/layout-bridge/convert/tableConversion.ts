@@ -32,6 +32,7 @@ import type { TableAttrs } from "../../prosemirror/schema/nodes";
 import { textBoxHostParagraph } from "../../prosemirror/textBoxHostParagraph";
 import type { Theme } from "../../types/document";
 import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
+import { convertAltChunkPlaceholder } from "./altChunkPlaceholder";
 import { fixedTableColumnWidths } from "./fixedTableColumnWidths";
 import { convertBorderSpecToLayout } from "./flowBorders";
 import type { ConvertibleBorder } from "./flowBorders";
@@ -152,6 +153,8 @@ function convertTableCell(
       blocks.push(convertTable(child, childStart, options));
     } else if (child.type.name === "textBox") {
       blocks.push(convertTextBoxNode(child, childStart, options));
+    } else if (child.type.name === "preservedBlock") {
+      blocks.push(...convertAltChunkPlaceholder(child, childStart, options));
     } else if (
       child.type.name === "blockSdt" ||
       child.type.name === "blockCustomXml"

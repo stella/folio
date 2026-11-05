@@ -36,6 +36,7 @@ import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import { assertValidProseMirrorDocument } from "../../prosemirror/validation";
 import { createStyleEngine } from "../../style-engine";
 import { getColumns } from "../sectionColumns";
+import { convertAltChunkPlaceholder } from "./altChunkPlaceholder";
 import {
   mergeRunInParagraphs,
   reserveLeadingEmptyOutlineHeight,
@@ -662,6 +663,12 @@ export function toFlowBlocks(
 
       case "textBox":
         pushTextBox(node, pos);
+        break;
+
+      case "preservedBlock":
+        for (const block of convertAltChunkPlaceholder(node, pos, opts)) {
+          trackedPush(block);
+        }
         break;
 
       case "horizontalRule":

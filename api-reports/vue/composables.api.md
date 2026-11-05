@@ -137,6 +137,7 @@ export type UseDocxEditorOptions = {
     pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
     markupView?: MaybeRefOrGetter<DisplayMode>;
     showCommentHighlights?: MaybeRefOrGetter<boolean>;
+    altChunkMarkerText?: MaybeRefOrGetter<string>;
     showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
     marginGuideColor?: MaybeRefOrGetter<string | undefined>;
     password?: MaybeRefOrGetter<string | undefined>;

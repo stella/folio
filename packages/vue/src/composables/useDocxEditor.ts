@@ -384,6 +384,8 @@ export type UseDocxEditorOptions = {
   markupView?: MaybeRefOrGetter<DisplayMode>;
   /** Paint comment highlights in All Markup. Defaults to true. Reactive. */
   showCommentHighlights?: MaybeRefOrGetter<boolean>;
+  /** Localised text for a `w:altChunk` that has no text of its own to show. */
+  altChunkMarkerText?: MaybeRefOrGetter<string>;
   showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
   /** CSS color used for margin guides. Reactive. */
   marginGuideColor?: MaybeRefOrGetter<string | undefined>;
@@ -545,6 +547,7 @@ export function useDocxEditor(
     pageRenderer,
     markupView = "all-markup",
     showCommentHighlights = true,
+    altChunkMarkerText,
     showMarginGuides,
     marginGuideColor,
     password,
@@ -888,6 +891,9 @@ export function useDocxEditor(
           hyphenationReadiness,
           markupView: toValue(markupView),
           showCommentHighlights: toValue(showCommentHighlights),
+          ...(altChunkMarkerText === undefined
+            ? {}
+            : { altChunkMarkerText: toValue(altChunkMarkerText) }),
         },
         state,
         runOptions,
@@ -1614,6 +1620,7 @@ export function useDocxEditor(
       () => toValue(pageRenderer),
       () => toValue(markupView),
       () => toValue(showCommentHighlights),
+      () => toValue(altChunkMarkerText),
     ],
     () => reLayout(),
   );

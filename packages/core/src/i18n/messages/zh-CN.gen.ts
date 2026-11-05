@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "选择日期",
     "contentControlDropdownAriaLabel": "下拉选项",
     "contentControlDropdownNoOptions": "没有选项",
+    "contentNotDisplayed": "内容未显示",
     "contextMenu": {
       "continueNumbering": "继续编号",
       "copy": "复制",

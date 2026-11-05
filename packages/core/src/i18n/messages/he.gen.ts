@@ -69,6 +69,7 @@ export const messages: FolioMessages = {
     "contentControlDateAriaLabel": "בחר תאריך",
     "contentControlDropdownAriaLabel": "אפשרויות רשימה נפתחת",
     "contentControlDropdownNoOptions": "אין אפשרויות",
+    "contentNotDisplayed": "התוכן אינו מוצג",
     "contextMenu": {
       "continueNumbering": "המשך מספור",
       "copy": "העתק",
