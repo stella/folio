@@ -1,5 +1,59 @@
 # @stll/folio-core
 
+## 0.66.2
+
+### Patch Changes
+
+- [#2227](https://github.com/stella/folio/pull/2227) [`9cd0d03`](https://github.com/stella/folio/commit/9cd0d03924319bbfa1f16f3bd7821b1eb7e367f4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A batch now equals its operations applied one at a time with every operation that addresses a block before any operation that deletes or merges that block away. `@stll/docx-core/ops` exports the shared order (`orderAddressingBeforeRemoval`) and the rule for which deletions take a block out (`deletionRemovesBlock`). In tracked changes, properties a batch sets on a paragraph it merges away, or on the last paragraph it deletes, no longer survive the carried properties: accepting gives what the same batch applied directly gives.
+
+- [#2258](https://github.com/stella/folio/pull/2258) [`1fe7ad4`](https://github.com/stella/folio/commit/1fe7ad49f86e3bdc7b48defbbab43d40f6dacf28) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Insertions on either side of a block their batch deletes land in the order the batch names them, as they do one at a time.
+
+- [#2281](https://github.com/stella/folio/pull/2281) [`ccf83e2`](https://github.com/stella/folio/commit/ccf83e28da55e2b6004e54c22cbea58f8a91fea8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A document from `createEmptyDocument` starts with a paragraph id, so a canonical session opens a new blank document instead of refusing it.
+
+- [#2262](https://github.com/stella/folio/pull/2262) [`c6577d2`](https://github.com/stella/folio/commit/c6577d230231eaf88a3a73653f51fbd796c2aa57) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A column or cell edit anchored in a paragraph its batch deletes runs after that deletion again, so a direct batch no longer skips the deletion as having nothing to do.
+
+- [#2273](https://github.com/stella/folio/pull/2273) [`46629d1`](https://github.com/stella/folio/commit/46629d1eaeeecadd0f8e44ad66fed1afdadfb9d3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A table and a paragraph inserted in one tracked batch before a paragraph that retired the deleted final paragraph's break no longer leave an empty paragraph at the end once accepted.
+
+- [#2267](https://github.com/stella/folio/pull/2267) [`78e336e`](https://github.com/stella/folio/commit/78e336ef50c34c11c25e569e0406e450bc56f7c9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked batch that adds a paragraph after the last one, merges the paragraph before it with named properties and deletes the last one no longer throws. Rejecting gives the document back; accepting gives the merged paragraph the named properties.
+
+- [#2245](https://github.com/stella/folio/pull/2245) [`142ec84`](https://github.com/stella/folio/commit/142ec844a4b1522a193228fdeae23adf76e93329) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Saving from the editor writes `w:softHyphen` and `w:noBreakHyphen` back as elements instead of turning them into characters inside `w:t`; the same characters authored as text stay text.
+
+- [#2253](https://github.com/stella/folio/pull/2253) [`cdda4f5`](https://github.com/stella/folio/commit/cdda4f5f4dc24720dd66e6b992ffc0a6889313fd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph or table inserted after a paragraph pending deletion that a pending merge runs words through, in direct or tracked-changes mode, goes after the paragraph the merge leaves: it no longer splits the merge or takes the merged words.
+
+- [#2225](https://github.com/stella/folio/pull/2225) [`958c582`](https://github.com/stella/folio/commit/958c582cbb6eeb678121765dad74f83bc5d700c1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph or table inserted beside paragraphs a pending merge joins, in direct or tracked-changes mode, goes after the paragraph the merge leaves, or before the first one whose words it takes in: accepting no longer runs the merged words into the inserted block. Merges into a paragraph with no words left keep today's placement.
+
+- [#2269](https://github.com/stella/folio/pull/2269) [`4899a92`](https://github.com/stella/folio/commit/4899a92352c9cc90a092872d7d981dc073c5b16d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph inserted beside one whose pending join runs into a paragraph wholly pending deletion copies the paragraph that stays once accepted, not the one that goes, so it no longer picks up that paragraph's list numbering.
+
+- [#2259](https://github.com/stella/folio/pull/2259) [`bb52766`](https://github.com/stella/folio/commit/bb52766541f4ff1f0b24db1fa00eb173e62719f6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph inserted before one a tracked merge in the same batch joins at an inserted break copies the merged paragraph's properties, as it does in a direct batch.
+
+- [#2224](https://github.com/stella/folio/pull/2224) [`1596aa4`](https://github.com/stella/folio/commit/1596aa4a6afa1baab845f7c504d45a576a30ab2b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph inserted beside one whose break a tracked merge removes copies the properties the joined paragraph will have (its style and list), as the same edits applied directly do, rather than the removed break's own.
+
+- [#2249](https://github.com/stella/folio/pull/2249) [`9c6fb3d`](https://github.com/stella/folio/commit/9c6fb3d4a8dd2cf7c0f8f5a38be064f375dcfce6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `toMarkdown` and `docxToMarkdown` keep emphasis together across content that writes nothing, such as a stripped comment reference, instead of writing `**a****b**`, which reads back as literal asterisks.
+
+- [#2241](https://github.com/stella/folio/pull/2241) [`b6ba1af`](https://github.com/stella/folio/commit/b6ba1afe499240b66191c67c4520b6d67901b430) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked move source (`w:moveFrom`) is saved with its run text as `w:t` and its field code as `w:instrText`, as ISO/IEC 29500-1 §17.3.3.7 and §17.13.5.22 specify; `w:delText` and `w:delInstrText` stay reserved for runs inside a `w:del`. Move sources read with `w:delText` load as before and save with `w:t`.
+
+- [#2242](https://github.com/stella/folio/pull/2242) [`5005af7`](https://github.com/stella/folio/commit/5005af739fdb76fa036abf36e594ff4e32ca6914) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A list a headless document operation starts in one story (the body, a header, a footer or a note) takes a list id no other story of the package uses. Lists started in two stories no longer share an id until a save moves one of them, so the list id a reader reports stays the same across save and reopen.
+
+- [#2229](https://github.com/stella/folio/pull/2229) [`941ad25`](https://github.com/stella/folio/commit/941ad25df7d9aa87d3e360e31bb28b8e4c2fa76f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Require accessibleName for editor components and renderAsync; expose a named document role when read-only and a named multiline textbox when editable. The message catalogue gains `folio.editor.accessibleName`.
+
+- [#2251](https://github.com/stella/folio/pull/2251) [`2d30f59`](https://github.com/stella/folio/commit/2d30f59347920974c83e48eec0a0f3e307a4dc53) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `toMarkdown` keeps a comment whose start stands inside a revision wrapper, as it does one whose start stands beside it. Restoring a paragraph's properties, as a tracked merge's hand-over does, gives its body runs what a reopen reads from the paragraph mark, so those words read the same after a save.
+
+- [#2272](https://github.com/stella/folio/pull/2272) [`b270d83`](https://github.com/stella/folio/commit/b270d838635c1df1ff1988e5741150ee632b8184) Thanks [@jan-kubica](https://github.com/jan-kubica)! - An insertion of a paragraph right before the table that stops a pending join is refused with `pendingParagraphMarkDeletion`: once accepted, the paragraph would run together with the words before it or the table's first cell. Other insertions beside a pending join are unchanged.
+
+- [#2248](https://github.com/stella/folio/pull/2248) [`ea8b116`](https://github.com/stella/folio/commit/ea8b1169653dfb176a8a18dde0134e6d3d30784c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Accepting a pending join of a section-ending paragraph no longer gives the section to a paragraph split from it or inserted before it, so the live document and its saved package resolve alike. A `w:hanging` of zero now reads as a first-line indent of `0`, never `-0`.
+
+- [#2247](https://github.com/stella/folio/pull/2247) [`fb4d09b`](https://github.com/stella/folio/commit/fb4d09bc5aa448a7b8b488ba421631f897ea40ba) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph suggested beside one a pending merge joins copies the paragraph it names, as a suggestion's placement already reads the document as it stands, instead of the paragraph the merge leaves.
+
+- [#2250](https://github.com/stella/folio/pull/2250) [`77f212b`](https://github.com/stella/folio/commit/77f212be0393c961f1a0dc2818b05cfe5cfceffa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rejecting every change gives the document before back where a paragraph runs on into a following table: a table it removes or an inserted paragraph it empties no longer holds the paragraph in place, a deleted first row takes the words, and a deletion nested in an insertion no longer counts as words left. An acceptance also runs past a table it removes.
+
+- [#2260](https://github.com/stella/folio/pull/2260) [`fc45510`](https://github.com/stella/folio/commit/fc455101232d39ba0847e12631b9fe6b7122f098) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked `mergeBlockWithNext` on a paragraph whose break is a move's destination retracts that break, as it does an inserted one, so rejecting every change no longer leaves an empty paragraph.
+
+- [#2275](https://github.com/stella/folio/pull/2275) [`be6a66c`](https://github.com/stella/folio/commit/be6a66cac539cf43ad13a0f4c86dbec98c66f61e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked split of a paragraph with a pending merge gives the first half the properties of the joined paragraph, so accepting reads as splitting the merged paragraph directly.
+
+- [#2283](https://github.com/stella/folio/pull/2283) [`9c8c38f`](https://github.com/stella/folio/commit/9c8c38f4c8531feea6dafaa914f3eeecd4d8d9c0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Text typed over selected table cells or a selected block stays in order with the caret after it, wherever the keystroke reaches the editor from. With Track Changes on, it stays in the cell's paragraph, every selected cell is marked as deleted, and accepting gives the same result as making the edit directly.
+- Updated dependencies [[`9cd0d03`](https://github.com/stella/folio/commit/9cd0d03924319bbfa1f16f3bd7821b1eb7e367f4)]:
+  - @stll/docx-core@0.42.0
+
 ## 0.66.1
 
 ### Patch Changes
