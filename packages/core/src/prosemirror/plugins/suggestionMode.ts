@@ -461,11 +461,10 @@ export function handleSuggestionPaste(
 
   if (selection.empty) {
     const { $from } = selection;
-    const closedTable =
+    const closedBlocks =
       slice.openStart === 0 &&
       slice.openEnd === 0 &&
-      slice.content.firstChild?.type.name === "table" &&
-      slice.content.lastChild?.type.name === "table";
+      slice.content.firstChild?.isBlock === true;
     const prefix = $from.parent.content.cut(0, $from.parentOffset);
     let deletedPrefix = prefix.size > 0;
     prefix.forEach((node) => {
@@ -473,7 +472,7 @@ export function handleSuggestionPaste(
         deletedPrefix = false;
     });
     if (
-      !closedTable ||
+      !closedBlocks ||
       $from.parent.type.name !== "paragraph" ||
       !deletedPrefix
     ) {
@@ -485,7 +484,7 @@ export function handleSuggestionPaste(
       if (!node.marks.some((mark) => mark.type === deletionType))
         deletedSuffix = false;
     });
-    // The caret is at the visible start of this paragraph. Fit the table
+    // The caret is at the visible start of this paragraph. Fit the blocks
     // before it, as direct paste does after deleting the prefix; fitting at
     // the physical caret instead splits off a paragraph of only struck runs.
     const tr = view.state.tr
@@ -496,6 +495,21 @@ export function handleSuggestionPaste(
     const revision = makeMarkAttrs(pluginState);
     const end = tr.mapping.map(at, 1);
     enclosePastedRunRevisions({ tr, from: at, to: end, revision });
+    // Closed paragraphs brought their breaks along: rejecting removes those too.
+    tr.doc.nodesBetween(at, end, (node, pos) => {
+      if (node.type.name !== "paragraph" || node.attrs["pPrMark"] != null) {
+        return false;
+      }
+      tr.setNodeAttribute(pos, "pPrMark", {
+        kind: "ins",
+        info: {
+          id: revision.revisionId,
+          author: revision.author,
+          date: revision.date,
+        },
+      });
+      return false;
+    });
     markRangeAsInserted(
       tr,
       tr.doc,
@@ -756,7 +770,10 @@ export function handleSuggestionPaste(
   // original plus the pasted text stay selected, so the next keystroke would
   // delete them both. `near` keeps the selection valid even when the pasted
   // slice was block content and `insertTo` lands at a block boundary.
-  tr.setSelection(TextSelection.near(tr.doc.resolve(insertTo)));
+  // A table placed before struck words leaves text after them: the caret goes
+  // there, past the words, as the direct paste has none of them to pass.
+  const caret = beforeStruck && !wholeBlocks ? tr.mapping.map(to) : insertTo;
+  tr.setSelection(TextSelection.near(tr.doc.resolve(caret)));
 
   view.dispatch(tr.scrollIntoView());
   return true;
@@ -770,6 +787,17 @@ export function handleSuggestionPaste(
  * last one ends the cell, so its paragraph mark is tracked as added too:
  * rejecting then drops it and accepting joins the struck paragraphs into it.
  */
+const holdsOnlyStruckText = (
+  paragraph: PMNode,
+  deletion: MarkType,
+): boolean => {
+  let struck = true;
+  paragraph.forEach((node) => {
+    if (!node.marks.some((mark) => mark.type === deletion)) struck = false;
+  });
+  return struck;
+};
+
 export function handleSuggestionTableCellPaste(
   view: EditorView,
   slice: Slice,
@@ -842,25 +870,50 @@ export function handleSuggestionTableCellPaste(
         // Keep paragraphs carrying original struck content for rejection; the
         // new paste now supplies the required final paragraph of the cell.
         const emptyInsertions: { from: number; to: number }[] = [];
+        // A break our earlier paste added after struck words goes too: the words
+        // run on into the paragraph after, which accepting leaves alone.
+        const struckBreaks: number[] = [];
         const replacedCell = tr.doc.nodeAt(cellPos);
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-        replacedCell?.forEach((node, offset) => {
+        replacedCell?.forEach((node, offset, index) => {
           const pos = cellPos + 1 + offset;
           if (
-            pos < pastedFrom &&
-            node.type.name === "paragraph" &&
-            node.content.size === 0 &&
-            isCurrentAuthorParagraphInsertion(
+            pos >= pastedFrom ||
+            node.type.name !== "paragraph" ||
+            !isCurrentAuthorParagraphInsertion(
               node.attrs["pPrMark"],
               pluginState.author,
             )
           ) {
+            return;
+          }
+          if (node.content.size === 0) {
             emptyInsertions.push({ from: pos, to: pos + node.nodeSize });
+          } else if (
+            holdsOnlyStruckText(node, deletionType) &&
+            isCurrentAuthorParagraphInsertion(
+              cell.maybeChild(index)?.attrs["pPrMark"],
+              pluginState.author,
+            )
+          ) {
+            struckBreaks.push(pos + node.nodeSize);
           }
         });
         const retraction = tr.mapping.maps.length;
         for (const range of emptyInsertions.toReversed())
           tr.delete(range.from, range.to);
+        for (const boundary of struckBreaks.toReversed()) {
+          const at = tr.mapping.slice(retraction).map(boundary);
+          const $boundary = tr.doc.resolve(at);
+          const { nodeBefore, nodeAfter } = $boundary;
+          if (nodeBefore?.type.name !== "paragraph" || !nodeAfter) continue;
+          tr.setNodeMarkup(
+            at - nodeBefore.nodeSize,
+            undefined,
+            nodeAfter.attrs,
+          );
+          tr.join(at);
+        }
         const retracted = tr.mapping.slice(retraction);
         pastedFrom = retracted.map(pastedFrom);
         insertTo = retracted.map(insertTo);
@@ -1858,11 +1911,26 @@ function recordSplitParagraph(
   ) {
     return;
   }
+  const revision = {
+    id: attrs.revisionId,
+    author: attrs.author,
+    date: attrs.date,
+  };
+  // The split paragraph's break ends the last part, with any revision it has.
+  // The first part took the paragraph's attributes, and its break is new.
+  const { pPrMark } = expectParagraphAttrs(split);
+  if (pPrMark) {
+    tr.setNodeAttribute(lastPos, "pPrMark", pPrMark);
+    tr.setNodeAttribute($first.before(), "pPrMark", {
+      kind: "ins",
+      info: revision,
+    });
+  }
   recordReplacedParagraphProperties({
     tr,
     position: lastPos,
     replaced: split,
-    revision: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
+    revision,
   });
 }
 

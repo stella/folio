@@ -532,10 +532,112 @@ export const BROWSER_CANCELLED_COMPOSITION_SEED_131 = {
   trace: BrowserInputTrace;
 };
 
+export const BROWSER_PASTE_AFTER_TABLE_SEED_29 = {
+  seed: 29,
+  path: "1:3:3",
+  fingerprint: "44acba1a39ae6967",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const BROWSER_PASTE_BEFORE_STRUCK_SEED_431 = {
+  seed: 431,
+  path: "9",
+  fingerprint: "01f3a41c8510892a",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["buyer", "buyer shall"],
+        completion: "cancel",
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+      { kind: "redo" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const BROWSER_SECOND_CELL_PASTE_SEED_47 = {
+  seed: 47,
+  path: "14",
+  fingerprint: "4e71fdf9e51b2500",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "typing", text: "alpha" },
+      { kind: "selectionDrag", target: "table" },
+      { kind: "delete" },
+      {
+        kind: "pasteWordHtml",
+        plain: "Opening\nClosing",
+        html: '<html xmlns:o="urn:schemas-microsoft-com:office:office"><body><!--StartFragment--><p class="MsoNormal" style="margin:0;font-size:11pt">Opening<o:p></o:p></p><p class="MsoNormal" style="margin-top:0">Closing<o:p>&nbsp;</o:p></p><!--EndFragment--></body></html>',
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: '<meta charset="utf-8"><b id="docs-internal-guid-folio"><p dir="ltr" style="line-height:1.15;margin:0"><span style="font-size:11pt;font-weight:700;white-space:pre-wrap">First bold</span></p><p><span style="white-space:pre-wrap">Second</span></p></b>',
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
+  BROWSER_PASTE_AFTER_TABLE_SEED_29,
+  BROWSER_PASTE_BEFORE_STRUCK_SEED_431,
+  BROWSER_SECOND_CELL_PASTE_SEED_47,
   BROWSER_CANCELLED_COMPOSITION_SEED_431,
   BROWSER_CANCELLED_COMPOSITION_SEED_263,
   BROWSER_CANCELLED_COMPOSITION_SEED_1793897521,
