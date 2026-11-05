@@ -37,7 +37,7 @@
   "packages/react/src/paged-editor/useDragAutoScroll.ts": 5,
   "packages/react/src/paged-editor/useVisualLineNavigation.ts": 4,
   "packages/react/src/ui/defaults/button.tsx": 0,
-  "packages/react/src/ui/defaults/color-picker.tsx": 3,
+  "packages/react/src/ui/defaults/color-picker.tsx": 2,
   "packages/react/src/ui/defaults/date-picker-popover.tsx": 0,
   "packages/react/src/ui/defaults/input.tsx": 0,
   "packages/react/src/ui/defaults/menu.tsx": 0,
