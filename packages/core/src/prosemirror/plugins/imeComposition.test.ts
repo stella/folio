@@ -203,6 +203,20 @@ describe("SuggestionMode IME composition", () => {
     expect(insertionText(view.state)).toEqual(["abc"]);
   });
 
+  test("another writer's deletion during a composition leaves the composed text tracked", async () => {
+    const { view, domEvents } = setup("Hello");
+
+    domEvents.compositionstart(view);
+    view.dispatch(view.state.tr.delete(1, 4).setMeta("addToHistory", false));
+    view.dispatch(view.state.tr.insertText("日本語", 3, 3));
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.state.doc.textContent).toBe("lo日本語");
+    expect(insertionText(view.state)).toEqual(["日本語"]);
+  });
+
   test("a composition committed before existing text marks only what it added", async () => {
     const { view, domEvents } = setup("Hello");
     view.dispatch(

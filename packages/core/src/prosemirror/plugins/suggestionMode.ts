@@ -1657,6 +1657,8 @@ type MarkComposedAsInsertionOptions = {
   view: EditorView;
   from: number;
   startDoc: PMNode;
+  /** How much other writers' edits grew the document during the composition. */
+  foreignSize: number;
   pluginState: SuggestionModeState;
   replaced: Slice | null;
   compositionId: number | null;
@@ -1695,6 +1697,7 @@ function markComposedAsInsertion({
   view,
   from,
   startDoc,
+  foreignSize,
   pluginState,
   replaced,
   compositionId,
@@ -1704,15 +1707,18 @@ function markComposedAsInsertion({
   if (!insertionType || !deletionType) {
     return;
   }
-  // What the composition added, by how much the document grew. The caret alone
+  // What the composition added, by how much it grew the document. The caret alone
   // does not say: PM reads a cancelled composition back as the text around it
   // and leaves the caret at that text's end, though none of it is new.
   const { doc } = view.state;
   const composedSize =
-    doc.content.size - startDoc.content.size + (replaced?.size ?? 0);
+    doc.content.size -
+    startDoc.content.size -
+    foreignSize +
+    (replaced?.size ?? 0);
   const to = Math.min(from + composedSize, view.state.selection.to);
   if (composedSize === 0 && !replaced) {
-    restoreAfterCancelledComposition(view, startDoc);
+    if (foreignSize === 0) restoreAfterCancelledComposition(view, startDoc);
     return;
   }
   if (to <= from && !replaced) {
@@ -1948,6 +1954,7 @@ export function createSuggestionModePlugin(
   let composing = false;
   let compositionFrom: number | null = null;
   let compositionStartDoc: PMNode | null = null;
+  let compositionForeignSize = 0;
   let compositionReplaced: Slice | null = null;
   let compositionId: number | null = null;
 
@@ -1970,6 +1977,20 @@ export function createSuggestionModePlugin(
           typeof nativeCompositionId === "number"
         ) {
           compositionId = nativeCompositionId;
+        }
+        // Another writer's edit, while the composition runs: the composition's
+        // start moves with it, and its size is not the composition's.
+        if (
+          composing &&
+          tr.docChanged &&
+          typeof nativeCompositionId !== "number" &&
+          tr.getMeta("addToHistory") === false
+        ) {
+          compositionForeignSize +=
+            tr.doc.content.size - tr.before.content.size;
+          if (compositionFrom !== null) {
+            compositionFrom = tr.mapping.map(compositionFrom);
+          }
         }
         const meta = tr.getMeta(suggestionModeKey);
         if (meta) {
@@ -2017,6 +2038,7 @@ export function createSuggestionModePlugin(
           const { from, to } = view.state.selection;
           compositionFrom = from;
           compositionStartDoc = view.state.doc;
+          compositionForeignSize = 0;
           compositionReplaced =
             from === to ? null : view.state.doc.slice(from, to);
           return false;
@@ -2050,6 +2072,7 @@ export function createSuggestionModePlugin(
                   view,
                   from,
                   startDoc,
+                  foreignSize: compositionForeignSize,
                   pluginState: current,
                   replaced,
                   compositionId: nativeCompositionId,
