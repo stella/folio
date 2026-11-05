@@ -1551,6 +1551,68 @@ test("a repeated start before any update is not a restart", () => {
   mount.remove();
 });
 
+test("reading the DOM back may change only what the DOM cannot carry", () => {
+  const { bold, runFormattingOverride, insertion } = canonicalSchema.marks;
+  if (!bold || !runFormattingOverride || !insertion)
+    throw new TypeError("Missing a mark type");
+  const tracked = insertion.create({
+    revisionId: 1,
+    author: "Ada",
+    date: "2026-01-01T00:00:00Z",
+    utcDate: "2026-01-01T00:00:00Z",
+  });
+  // What a DOM read rebuilds: the same revision, without the attribute it cannot hold.
+  const reread = insertion.create({
+    revisionId: 1,
+    author: "Ada",
+    date: "2026-01-01T00:00:00Z",
+  });
+  const otherRevision = insertion.create({ revisionId: 2, author: "Ada" });
+  const override = runFormattingOverride.create();
+  const stateOf = (...marks: Mark[]) => {
+    const doc = canonicalSchema.node("doc", null, [
+      canonicalSchema.node("paragraph", null, [
+        canonicalSchema.text("東京", marks),
+        canonicalSchema.text("Intro"),
+      ]),
+    ]);
+    return EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 3),
+    });
+  };
+  const rewrite = (
+    state: EditorState,
+    marks: readonly Mark[],
+    composedMarks: readonly Mark[] = [],
+  ) =>
+    state.tr.replaceWith(1, 3, [
+      canonicalSchema.text("東京", marks),
+      canonicalSchema.text("alpha", composedMarks),
+    ]);
+
+  const accepted = compose(stateOf(tracked, override), (state) =>
+    rewrite(state, [reread], [reread]),
+  );
+  expect(accepted.refusals).toEqual([]);
+  expect(accepted.inputs).toEqual([{ from: 3, to: 3, text: "alpha" }]);
+
+  for (const [name, state, marks, composedMarks] of [
+    ["another revision", stateOf(tracked), [otherRevision], []],
+    ["a review mark on untouched text", stateOf(), [tracked], []],
+    ["a review mark with no tracked run beside it", stateOf(), [], [tracked]],
+    ["bold lost from untouched text", stateOf(bold.create()), [], []],
+    ["bold gained on composed text", stateOf(), [], [bold.create()]],
+  ] as const) {
+    const refused = compose(state, (current) =>
+      rewrite(current, marks, composedMarks),
+    );
+    expect(refused.inputs, name).toEqual([]);
+    expect(refused.refusals, name).toHaveLength(1);
+    expect(refused.state.doc.eq(state.doc), name).toBe(true);
+  }
+});
+
 const loadCarrierSource = async () => {
   const source = createEmptyDocument({ initialText: "alpha😀café東京" });
   const paragraph = source.package.document.content.at(0);
