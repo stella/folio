@@ -282,3 +282,47 @@ test("retracting an inserted paragraph first in its container keeps a comment th
   // Nothing of the retracted insertion stays pending.
   expect(xml).not.toMatch(/<w:ins\b/u);
 });
+
+test.each(
+  (["ins", "moveTo"] as const).flatMap((kind) =>
+    (["none", "bookmark"] as const).map((anchors) => ({ kind, anchors })),
+  ),
+)(
+  "merging an imported $kind paragraph ($anchors) with the next resolves alike in both modes",
+  async ({ kind, anchors }) => {
+    const bytes = await fixture({
+      kind,
+      following: "paragraph",
+      anchors,
+      text: "Moved clause.",
+    });
+    const expectedRejected = await resolved(await open(bytes), "reject");
+    const direct = await open(bytes);
+    const tracked = await open(bytes);
+    for (const [mode, reviewer] of [
+      ["direct", direct],
+      ["tracked-changes", tracked],
+    ] as const) {
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            {
+              id: "merge",
+              type: "mergeBlockWithNext",
+              blockId: "10000001",
+              separator: " ",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.applied).toHaveLength(1);
+    }
+    expect(await resolved(tracked, "reject")).toEqual(expectedRejected);
+    expect(await resolved(tracked, "accept")).toEqual(
+      await resolved(direct, "accept"),
+    );
+  },
+);
