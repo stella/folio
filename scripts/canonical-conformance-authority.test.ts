@@ -48,21 +48,40 @@ const standingFactoryIsCanonical = (source: string) => {
   return found;
 };
 
+/** The one trace oracle the random lane may reach `runMode` through. */
+const CANONICAL_TRACE_ORACLE = "checkCanonicalTrace";
+
 const randomBrowserAuthorityProblems = (source: string) => {
   const problems: string[] = [];
   let calls = 0;
   walkAst(parse(source), (node, ancestors) => {
-    const inLane = [...ancestors, node].some(
+    const scope = [...ancestors, node];
+    const inLane = scope.some(
       (lane) =>
         lane.type === "ForOfStatement" &&
         nodeText(source, lane.right) === "config.seeds",
     );
+    const inOracle = scope.some(
+      (declaration) =>
+        declaration.type === "VariableDeclarator" &&
+        declaration.id.type === "Identifier" &&
+        declaration.id.name === CANONICAL_TRACE_ORACLE,
+    );
+    if (
+      (inLane || inOracle) &&
+      node.type === "CallExpression" &&
+      node.callee.type === "Identifier" &&
+      node.callee.name === "runMode" &&
+      !fixedAuthority(node, "canonical")
+    )
+      problems.push("random browser authority");
     if (inLane && node.type === "CallExpression") {
-      if (node.callee.type === "Identifier" && node.callee.name === "runMode") {
+      if (
+        node.callee.type === "Identifier" &&
+        (node.callee.name === "runMode" ||
+          node.callee.name === CANONICAL_TRACE_ORACLE)
+      )
         calls += 1;
-        if (!fixedAuthority(node, "canonical"))
-          problems.push("random browser authority");
-      }
       if (
         node.callee.type === "MemberExpression" &&
         !node.callee.computed &&
@@ -121,6 +140,14 @@ test("random browser conformance is strict canonical; legacy acceptance stays in
   ).toHaveLength(1);
   expect(
     randomBrowserAuthorityProblems("for (const seed of config.seeds) {}"),
+  ).toHaveLength(1);
+  const throughOracle =
+    'const checkCanonicalTrace = () => runMode({ authority: "canonical" }); for (const seed of config.seeds) { checkCanonicalTrace(); }';
+  expect(randomBrowserAuthorityProblems(throughOracle)).toEqual([]);
+  expect(
+    randomBrowserAuthorityProblems(
+      throughOracle.replace('"canonical"', '"prosemirror"'),
+    ),
   ).toHaveLength(1);
 });
 
