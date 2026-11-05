@@ -1,5 +1,5 @@
 import { panic } from "better-result";
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { Step, Transform } from "prosemirror-transform";
@@ -665,4 +665,147 @@ test("rejecting the only paragraph of a cell keeps it as the cell terminator", (
   const resolvedCell = result.resolved.firstChild?.firstChild?.firstChild;
   expect(resolvedCell?.childCount).toBe(1);
   expect(resolvedCell?.firstChild?.type.name).toBe("paragraph");
+});
+
+describe("what a paragraph whose mark goes runs on into", () => {
+  const info = { id: 9, author: "Reviewer", date: "2026-10-19" };
+  const insertedMark = { kind: "ins", info };
+  const rowRevision = {
+    revisionId: 10,
+    author: "Reviewer",
+    date: "2026-10-19",
+  };
+  const kept = () => paragraph("kept");
+  const standing = (attrs?: Record<string, unknown>) =>
+    table([row([cell("Term")], attrs), row([cell("Value")])]);
+  const inserted = () => table([row([cell("Added")], { trIns: rowRevision })]);
+  const withInsertedMark = (content: PMNode["content"] | PMNode[]) =>
+    schema.node("paragraph", { pPrMark: insertedMark }, content);
+  const resolved = (blocks: PMNode[], mode: "accept" | "reject") => {
+    const doc = schema.node("doc", null, blocks);
+    const result = resolveWholeStory({
+      doc,
+      mode,
+      styleResolver: null,
+      numbering: null,
+    });
+    const replayed = new Transform(doc);
+    for (const step of result.steps) replayed.step(step);
+    expect(replayed.doc.eq(result.resolved)).toBe(true);
+    const texts: string[] = [];
+    result.resolved.descendants((node) => {
+      if (node.type.name !== "paragraph") return true;
+      texts.push(node.textContent);
+      return false;
+    });
+    return texts;
+  };
+
+  test("a table the rejection removes does not stand in the way", () => {
+    const without = [
+      withInsertedMark([schema.text("Words ")]),
+      standing(),
+      kept(),
+    ];
+    const between = [
+      withInsertedMark([schema.text("Words ")]),
+      inserted(),
+      standing(),
+      kept(),
+    ];
+    expect(resolved(between, "reject")).toEqual(resolved(without, "reject"));
+    expect(resolved(between, "reject")).toEqual([
+      "Words Term",
+      "Value",
+      "kept",
+    ]);
+  });
+
+  test("a table the rejection removes does not keep a paragraph from the next one", () => {
+    const without = [
+      withInsertedMark([schema.text("Words ")]),
+      paragraph("next"),
+    ];
+    const between = [
+      withInsertedMark([schema.text("Words ")]),
+      inserted(),
+      paragraph("next"),
+    ];
+    expect(resolved(between, "reject")).toEqual(resolved(without, "reject"));
+    expect(resolved(between, "reject")).toEqual(["Words next"]);
+  });
+
+  test("a deleted first row stays under a rejection and takes the words", () => {
+    expect(
+      resolved(
+        [
+          withInsertedMark([schema.text("Words ")]),
+          standing({ trDel: rowRevision }),
+          kept(),
+        ],
+        "reject",
+      ),
+    ).toEqual(["Words Term", "Value", "kept"]);
+  });
+
+  test("an inserted first row keeps the paragraph in its place under an acceptance", () => {
+    expect(
+      resolved(
+        [
+          schema.node("paragraph", { pPrMark: deletedParagraphMark }, [
+            schema.text("Words "),
+          ]),
+          standing({ trIns: rowRevision }),
+          kept(),
+        ],
+        "accept",
+      ),
+    ).toEqual(["Words ", "Term", "Value", "kept"]);
+  });
+
+  test("a first row that goes keeps the paragraph in its place", () => {
+    expect(
+      resolved(
+        [
+          withInsertedMark([schema.text("Words ")]),
+          standing({ trIns: rowRevision }),
+          kept(),
+        ],
+        "reject",
+      ),
+    ).toEqual(["Words ", "Value", "kept"]);
+  });
+
+  test("a paragraph a deletion nested in an insertion empties does not stand in the way", () => {
+    const insertion = schema.mark("insertion", {
+      revisionId: 11,
+      author: "Reviewer",
+    });
+    const nested = schema.mark("deletion", {
+      revisionId: 12,
+      author: "Reviewer",
+      _docxRevisionAncestors: [
+        {
+          type: "insertion",
+          revisionId: 11,
+          author: "Reviewer",
+          outerWrapperCount: 0,
+        },
+      ],
+    });
+    const emptied = withInsertedMark([
+      schema.text("A ", [insertion]),
+      schema.text("new", [nested]),
+      schema.text(" one", [insertion]),
+    ]);
+    const heading = () => withInsertedMark([schema.text("Heading ")]);
+    expect(
+      resolved([heading(), emptied, standing(), kept()], "reject"),
+    ).toEqual(resolved([heading(), standing(), kept()], "reject"));
+    expect(resolved([heading(), standing(), kept()], "reject")).toEqual([
+      "Heading Term",
+      "Value",
+      "kept",
+    ]);
+  });
 });

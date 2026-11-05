@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 825139662,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 761198465,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "1BF99289",
+          "find": "Closing",
+          "replace": "the Customer",
+          "precondition": {
+            "blockTextHash": "hbiiu2y"
+          }
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "1BF99289",
+          "offset": 8
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 945445756,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "7735D914",
+          "find": "Payment",
+          "replace": "the Customer",
+          "precondition": {
+            "blockTextHash": "hyoqgm2"
+          }
+        },
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 3657035727
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 4224930200,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "commentOnRange",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "insertTable",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from random flow seed 825139662"
+}

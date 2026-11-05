@@ -43,6 +43,7 @@ import {
 } from "../prosemirror/runStyleFormatting";
 import { sectionRecordCopyPositions } from "../prosemirror/sectionCarrier";
 import {
+  paragraphBeforeRemovedBlock,
   runParagraphsIntoTables,
   runsIntoFollowingTable,
 } from "../prosemirror/tableRunIn";
@@ -100,12 +101,10 @@ const resolveProperties = ({
     if (node.isText) return node;
     if (!runsIntoTable && !node.isTextblock) {
       for (let index = 0; index + 1 < node.childCount; index++) {
+        const options = { parent: node, index, mode };
         if (
-          runsIntoFollowingTable({
-            parent: node,
-            index,
-            mode,
-          })
+          runsIntoFollowingTable(options) ||
+          paragraphBeforeRemovedBlock(options)
         ) {
           runsIntoTable = true;
           break;
