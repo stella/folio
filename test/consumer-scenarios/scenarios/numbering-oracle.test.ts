@@ -1312,3 +1312,70 @@ for (const seed of [1339716047, 1339716277]) {
     });
   });
 }
+
+test("a heading inserted beside a join into a deleted list item takes no numbering from it", async () => {
+  const pending = await openReviewer(await directNumberedDocument());
+  const apply = (
+    reviewer: Awaited<ReturnType<typeof openReviewer>>,
+    mode: "direct" | "tracked-changes",
+    operations: Parameters<
+      typeof reviewer.applyDocumentOperations
+    >[0]["operations"],
+  ) => {
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations,
+      },
+      { undefinedReferences: "refuse" },
+    );
+    assert.deepEqual(result.skipped, []);
+  };
+  const resolveFirst = (kind: "rowInserted" | "deletion", accept: boolean) => {
+    const change = pending.getChanges().find(({ type }) => type === kind);
+    assert.ok(change);
+    assert.ok(
+      accept ? pending.acceptChange(change) : pending.rejectChange(change),
+    );
+  };
+  // The list item is wholly pending deletion before a table; the body text
+  // keeps its words but its break stays pending, running into the list item.
+  apply(pending, "tracked-changes", [
+    { id: "delete", type: "deleteBlock", blockId: "5E88C024" },
+    {
+      id: "table",
+      type: "insertTable",
+      blockId: "5E88C024",
+      rows: [["Term", "Value"]],
+    },
+  ]);
+  resolveFirst("rowInserted", true);
+  apply(pending, "tracked-changes", [
+    { id: "body", type: "deleteBlock", blockId: "31617F9A" },
+  ]);
+  resolveFirst("deletion", false);
+  const bytes = new Uint8Array(await pending.toBuffer());
+  for (const mode of ["direct", "tracked-changes"] as const) {
+    const reviewer = await openReviewer(bytes);
+    apply(reviewer, mode, [
+      {
+        id: "insert",
+        type: "insertAfterBlock",
+        blockId: "31617F9A",
+        text: "Inserted heading.",
+        styleId: "Heading2",
+      },
+    ]);
+    const inserted = reviewer
+      .getContent()
+      .find(({ text }) => text === "Inserted heading.");
+    assert.ok(inserted);
+    assert.equal(inserted.kind, "heading");
+    assert.equal(
+      inserted.kind === "heading" ? inserted.listReference : undefined,
+      undefined,
+      mode,
+    );
+  }
+});
