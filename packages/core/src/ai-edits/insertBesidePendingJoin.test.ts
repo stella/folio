@@ -311,6 +311,40 @@ describe("a block after a paragraph deleted whole that a join runs through", () 
   }
 });
 
+describe("a suggested paragraph beside a pending join", () => {
+  for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+    test(`copies the paragraph it names as it stands (${type})`, async () => {
+      const reviewer = await open();
+      const item = reviewer.snapshot().blocks.at(1);
+      if (!item) throw new Error("Missing fixture");
+      expect(
+        reviewer.applyOperations(
+          [{ id: "delete", type: "deleteBlock", blockId: item.id }],
+          { mode: "tracked-changes" },
+        ).skipped,
+      ).toEqual([]);
+      // Rejecting the words alone leaves the break pending deletion: the list
+      // item now joins the plain paragraph after it.
+      const words = reviewer
+        .getChanges()
+        .find(({ type: kind }) => kind === "deletion");
+      if (!words) throw new Error("Missing deletion");
+      expect(reviewer.rejectChange(words)).toBe(true);
+      expect(
+        reviewer.applyOperations(
+          [{ id: "insert", type, blockId: item.id, text: "Inserted." }],
+          { mode: "suggested" },
+        ).skipped,
+      ).toEqual([]);
+      const inserted = reviewer
+        .snapshot()
+        .blocks.find(({ text }) => text === "Inserted.");
+      expect(inserted?.kind).toBe("listItem");
+      expect(inserted?.listReference?.numId).toBe(item.listReference?.numId);
+    });
+  }
+});
+
 const EMPTY_SOURCE_MARKDOWN = "Alpha.\n\nBravo.\n\nCharlie.";
 
 /** An empty paragraph after "Alpha.", merged into "Bravo.", then `edit` in `mode`. */

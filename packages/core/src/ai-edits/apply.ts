@@ -2857,19 +2857,24 @@ const pendingJoinSurvivor = ({
 type InsertionFormattingAnchorOptions = {
   item: ResolvedOperation;
   tr: Transaction;
+  mode: FolioAIEditApplyMode;
   noteReferences: NoteReferenceLabels;
 };
 
 /**
  * The insertion with the paragraph its new paragraphs copy properties from as
  * its anchor: a paragraph a pending join runs into another reads as that one,
- * as the joined paragraph does when the merge is applied directly.
+ * as the joined paragraph does when the merge is applied directly. A
+ * suggestion is read against the document as it stands, where the join has
+ * not run anything together yet, so it copies the paragraph it names.
  */
 const insertionFormattingAnchor = ({
   item,
   tr,
+  mode,
   noteReferences,
 }: InsertionFormattingAnchorOptions): ResolvedOperation => {
+  if (mode === "suggested") return item;
   const position = sinceRead(tr, item).map(item.blockFrom, 1);
   const anchor = tr.doc.nodeAt(position);
   if (anchor?.type !== item.blockNode.type) return item;
@@ -5744,6 +5749,7 @@ const applyFolioAIEditOperationsInternal = ({
         const formatted = insertionFormattingAnchor({
           item: insertion,
           tr,
+          mode,
           noteReferences,
         });
         const built = buildInsertedParagraphs({
@@ -6258,6 +6264,7 @@ const applyFolioAIEditOperationsInternal = ({
         const formatted = insertionFormattingAnchor({
           item,
           tr,
+          mode,
           noteReferences,
         });
         const built = buildInsertedParagraphs({

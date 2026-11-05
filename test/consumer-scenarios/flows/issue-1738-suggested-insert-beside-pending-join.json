@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "suggested",
+  "seed": 322055882,
+  "steps": [
+    {
+      "action": "reject one",
+      "seed": 2025739301
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1393903631,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "5E88C024",
+          "text": "Term party supplier term period goods clause payment."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "formatRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "insertTableRow"
+  ],
+  "origin": "shrunk from random flow seed 322055882"
+}
