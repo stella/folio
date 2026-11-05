@@ -3612,6 +3612,28 @@ const deletedFinalParagraphAfter = (
   return null;
 };
 
+/** Whether every row of `node` is a table row one insertion revision of this batch added. */
+const isWhollyInsertedTable = (
+  node: PMNode,
+  batchRevisionIds: ReadonlySet<number>,
+): boolean => {
+  if (node.type.spec["tableRole"] !== "table" || node.childCount === 0) {
+    return false;
+  }
+  let revisionId: number | undefined;
+  for (let index = 0; index < node.childCount; index++) {
+    const row = node.child(index);
+    if (row.type.spec["tableRole"] !== "row") return false;
+    const { trIns, trDel } = expectTableRowAttrs(row);
+    if (!trIns || trDel || !batchRevisionIds.has(trIns.revisionId)) {
+      return false;
+    }
+    revisionId ??= trIns.revisionId;
+    if (trIns.revisionId !== revisionId) return false;
+  }
+  return true;
+};
+
 /**
  * Where the added break of the final paragraph at `at` rotates to: the free
  * mark `addedBreakCarrierBefore` finds, or else a paragraph the batch deletes
@@ -3630,20 +3652,7 @@ const finalBreakCarrierBefore = (
   const free = addedBreakCarrierBefore({
     at,
     paragraphTypeName,
-    canCrossTable: (table) => {
-      if (table.childCount === 0) return false;
-      let revisionId: number | undefined;
-      for (let index = 0; index < table.childCount; index++) {
-        const row = table.child(index);
-        if (row.type.spec["tableRole"] !== "row") return false;
-        const { trIns, trDel } = expectTableRowAttrs(row);
-        if (!trIns || trDel || !batchRevisionIds.has(trIns.revisionId))
-          return false;
-        revisionId ??= trIns.revisionId;
-        if (trIns.revisionId !== revisionId) return false;
-      }
-      return true;
-    },
+    canCrossTable: (table) => isWhollyInsertedTable(table, batchRevisionIds),
   });
   if (free) {
     return { ...free, cancelsDeletedBreak: false };
@@ -4268,6 +4277,9 @@ const withRotatedAddedFinalBreaks = ({
     > | null = null;
     parent.forEach((node, offset) => {
       const position = contentStart + offset;
+      // A table the batch wholly inserted goes first on rejecting, so the
+      // paragraph before it still meets the one after it.
+      if (isWhollyInsertedTable(node, batchRevisionIds)) return;
       if (node.type.name !== "paragraph") {
         previous = null;
         carriedDeletedMark = null;

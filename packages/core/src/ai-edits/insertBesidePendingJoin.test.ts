@@ -566,3 +566,62 @@ describe("a block after a pending join whose paragraph the batch splits, inside 
     expect(await read(true)).toEqual(sequential);
   });
 });
+
+describe("a table and a paragraph inserted before a deleted final paragraph", () => {
+  const beforeFinal = async (mode: "direct" | "tracked-changes") => {
+    const bytes = (
+      await ensureParaIds(
+        await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
+      )
+    ).docx;
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      author: "Test",
+    });
+    const [, bravo, charlie] = reviewer.snapshot().blocks;
+    if (!bravo || !charlie) throw new Error("Missing fixture");
+    for (const operations of [
+      [{ id: "delete", type: "deleteBlock", blockId: charlie.id }],
+      [
+        {
+          id: "table",
+          type: "insertTable",
+          blockId: bravo.id,
+          rows: [["Cell"]],
+        },
+        {
+          id: "after",
+          type: "insertAfterBlock",
+          blockId: bravo.id,
+          text: "After.",
+        },
+      ],
+    ] satisfies FolioDocumentOperation[][]) {
+      expect(reviewer.applyOperations(operations, { mode }).skipped).toEqual(
+        [],
+      );
+    }
+    return reviewer;
+  };
+  const textsOf = (reviewer: FolioDocxReviewer) =>
+    reviewer.snapshot().blocks.map(({ text }) => text);
+
+  test("leaves no empty paragraph once accepted, as direct edits leave none", async () => {
+    const direct = await beforeFinal("direct");
+    const tracked = await beforeFinal("tracked-changes");
+    tracked.acceptAll();
+    expect(textsOf(direct)).toEqual(["Alpha.", "Bravo.", "Cell", "After."]);
+    expect(textsOf(tracked)).toEqual(textsOf(direct));
+  });
+
+  test("rejects to the document it started from, before and after a reopen", async () => {
+    const tracked = await beforeFinal("tracked-changes");
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await tracked.toBuffer(),
+      { author: "Test" },
+    );
+    for (const reviewer of [tracked, reopened]) {
+      reviewer.rejectAll();
+      expect(textsOf(reviewer)).toEqual(["Alpha.", "Bravo.", "Charlie."]);
+    }
+  });
+});
