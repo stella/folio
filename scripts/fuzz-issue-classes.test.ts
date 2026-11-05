@@ -669,8 +669,8 @@ describe("a class issue closed as a duplicate", () => {
   });
 
   test("the failure a closure listed stays closed and writes nothing", async () => {
-    const finding = failing(GENERIC_FAILURE, 7);
-    const closed = await closedClassIssue([finding]);
+    const listed = failing(GENERIC_FAILURE, 7);
+    const closed = await closedClassIssue([listed]);
     const fake = fakeStore([closed]);
     const result = await report(fake, [failing(GENERIC_FAILURE, 7)]);
     expect(result.map(({ issue }) => issue)).toEqual([`#${closed.number}`]);
@@ -747,8 +747,8 @@ describe("a class issue closed as a duplicate", () => {
   });
 
   test("rows appended to a closed issue under the old policy decide nothing", async () => {
-    const finding = failing(GENERIC_FAILURE, 7);
-    const clean = await closedClassIssue([finding]);
+    const listed = failing(GENERIC_FAILURE, 7);
+    const clean = await closedClassIssue([listed]);
     const closed = {
       ...clean,
       body: `Closed without a fix; recurrences are recorded here and do not reopen it.\n${clean.body}`,
