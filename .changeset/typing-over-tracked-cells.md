@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-With Track Changes on, text typed over selected table cells stays in order in the cell's paragraph, rather than landing in a new paragraph with its first character last. Text typed over a selected block is marked as an insertion and leaves the caret after it.
+Text typed over selected table cells or a selected block stays in order with the caret after it, wherever the keystroke reaches the editor from. With Track Changes on, it stays in the cell's paragraph, every selected cell is marked as deleted, and accepting gives the same result as making the edit directly.

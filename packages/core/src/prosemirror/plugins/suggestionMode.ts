@@ -1013,12 +1013,29 @@ function applySuggestionInsert(
     from = Math.max(from, Selection.atStart(view.state.doc).from);
     to = Math.min(to, Selection.atEnd(view.state.doc).to);
   } else if (typesOverSelection && selection instanceof CellSelection) {
-    // A cell's range also spans block boundaries, the ones inside the cell. The
-    // typed text stays in the cell's last paragraph.
-    const first = Selection.findFrom(view.state.doc.resolve(from), 1, true);
+    // A cell's range spans the block boundaries inside the cell. Every selected
+    // cell clears, as outside suggesting mode, and the typed text stays in the
+    // last paragraph of the first one.
+    const cellDeletion = view.state.schema.marks["deletion"];
+    if (cellDeletion) {
+      const ranges = selection.ranges.toSorted(
+        (a, b) => b.$from.pos - a.$from.pos,
+      );
+      for (const range of ranges) {
+        markRangeAsDeleted(
+          tr,
+          view.state.doc,
+          range.$from.pos,
+          range.$to.pos,
+          cellDeletion,
+          pluginState,
+          view.state,
+        );
+      }
+    }
     const last = Selection.findFrom(view.state.doc.resolve(to), -1, true);
-    if (first && last && first.from >= from && last.to <= to) {
-      from = first.from;
+    if (last && last.to >= from) {
+      from = last.to;
       to = last.to;
     }
   }

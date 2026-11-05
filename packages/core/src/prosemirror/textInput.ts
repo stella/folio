@@ -91,11 +91,19 @@ export const dispatchEditorTextInput = <
       if (formattingMarks !== undefined) {
         tr.setStoredMarks(formattingMarks);
       }
+      const typesOverSelection =
+        !selection.empty && selection.from === from && selection.to === to;
+      // Selected cells or a selected block end between blocks, where the text
+      // needs a paragraph. The selection replaces itself, as it does for a key
+      // ProseMirror handles, and leaves the caret after the text.
+      if (typesOverSelection && !selection.$from.parent.inlineContent) {
+        return tr.insertText(text);
+      }
       tr.insertText(text, from, to);
       // Typing over a selection leaves the caret after the typed text;
       // `insertText` puts it at the selection's mapped end, which for a node
       // selection (an image, a field) is before the text.
-      return !selection.empty && selection.from === from && selection.to === to
+      return typesOverSelection
         ? tr.setSelection(TextSelection.create(tr.doc, from + text.length))
         : tr;
     }

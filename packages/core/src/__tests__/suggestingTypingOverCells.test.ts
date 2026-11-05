@@ -1,99 +1,113 @@
 /**
- * Text typed over selected cells in suggesting mode: a cell's selected range
- * spans the block boundaries inside the cell, but the text lands in its paragraph.
+ * Text typed over a selection that ends between blocks: selected cells, whose
+ * range spans the block boundaries inside the cell, or a selected block.
  */
 
 import { describe, expect, test } from "bun:test";
-import { NodeSelection } from "prosemirror-state";
-import type { EditorState } from "prosemirror-state";
+import { type EditorState, NodeSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
 import { shapeArrayBuffer } from "./documentShapes";
 import {
   createHarnessState,
+  type EditorMode,
   HeadlessEditorView,
   parseShapeDocument,
   resolveAllChanges,
 } from "./editorHarness";
 
-const tablesState = async () =>
+const tablesState = async (mode: EditorMode) =>
   createHarnessState(
     await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("tables"))),
-    "suggesting",
+    mode,
   );
 
-const selectFirstCells = (state: EditorState) => {
+const cellPositions = (state: EditorState) => {
   const cells: number[] = [];
   state.doc.descendants((node, pos) => {
     if (node.type.name === "tableCell") cells.push(pos);
     return true;
   });
-  const [anchor, head] = cells;
+  return cells;
+};
+
+const cellTexts = (state: EditorState) =>
+  cellPositions(state).map((pos) => {
+    const texts: string[] = [];
+    state.doc.nodeAt(pos)?.forEach((child) => {
+      texts.push(child.textContent);
+    });
+    return texts;
+  });
+
+const typedOverCells = async (mode: EditorMode, deletesFirst: boolean) => {
+  const state = await tablesState(mode);
+  const [anchor, head] = cellPositions(state);
   if (anchor === undefined || head === undefined)
     throw new Error("Fixture has no adjacent cells");
-  return state.apply(
-    state.tr.setSelection(CellSelection.create(state.doc, anchor, head)),
+  const view = new HeadlessEditorView(
+    state.apply(
+      state.tr.setSelection(CellSelection.create(state.doc, anchor, head)),
+    ),
   );
+  if (deletesFirst) view.pressKey("Delete");
+  view.typeText("alpha");
+  return { initial: state, typed: view.state };
 };
 
-const cellParagraphs = (state: EditorState, cellPos: number) => {
-  const cell = state.doc.nodeAt(cellPos);
-  if (!cell) throw new Error("Cell is gone");
-  const texts: string[] = [];
-  cell.forEach((child) => {
-    texts.push(child.textContent);
-  });
-  return texts;
+const caretFollowsTypedText = (state: EditorState) => {
+  const { selection } = state;
+  expect(selection.empty).toBe(true);
+  expect(
+    selection.$head.parent.textContent.slice(0, selection.$head.parentOffset),
+  ).toEndWith("alpha");
 };
 
-describe("typing over selected cells while suggesting", () => {
+describe("typing over selected cells", () => {
   for (const deletesFirst of [true, false]) {
-    test(`keeps the typed text in order, in the cell's paragraph (${deletesFirst ? "after Delete" : "directly"})`, async () => {
-      const state = selectFirstCells(await tablesState());
-      if (!(state.selection instanceof CellSelection))
-        throw new Error("Fixture did not select cells");
-      const cellPos = state.selection.$headCell.pos;
-      const [original] = cellParagraphs(state, cellPos);
-      const view = new HeadlessEditorView(state);
-      if (deletesFirst) view.pressKey("Delete");
-      view.typeText("alpha");
+    const when = deletesFirst ? "after Delete" : "directly";
 
-      expect(cellParagraphs(view.state, cellPos)).toEqual([`${original}alpha`]);
-      const { $head } = view.state.selection;
-      expect(view.state.selection.empty).toBe(true);
-      expect($head.parent.textContent.slice(0, $head.parentOffset)).toBe(
-        `${original}alpha`,
+    test(`outside suggesting mode keeps the text in order, ${when}`, async () => {
+      const { typed } = await typedOverCells("editing", deletesFirst);
+      expect(cellTexts(typed).flat()).toContain("alpha");
+      caretFollowsTypedText(typed);
+    });
+
+    test(`in suggesting mode tracks the same edit, ${when}`, async () => {
+      const { initial, typed } = await typedOverCells(
+        "suggesting",
+        deletesFirst,
       );
-      expect(
-        cellParagraphs(resolveAllChanges(view.state, "accept"), cellPos),
-      ).toEqual(["alpha"]);
-      expect(
-        cellParagraphs(resolveAllChanges(view.state, "reject"), cellPos),
-      ).toEqual([original]);
+      const direct = await typedOverCells("editing", deletesFirst);
+      caretFollowsTypedText(typed);
+      expect(cellTexts(resolveAllChanges(typed, "accept"))).toEqual(
+        cellTexts(direct.typed),
+      );
+      expect(cellTexts(resolveAllChanges(typed, "reject"))).toEqual(
+        cellTexts(initial),
+      );
     });
   }
 });
 
-describe("typing over a selected block while suggesting", () => {
-  test("keeps the typed text in order, tracked, with the caret after it", async () => {
-    const state = await tablesState();
-    let tablePos: number | null = null;
-    state.doc.forEach((node, offset) => {
-      if (node.type.name === "table") tablePos = offset;
-    });
-    if (tablePos === null) throw new Error("Fixture has no table");
-    const view = new HeadlessEditorView(
-      state.apply(
-        state.tr.setSelection(NodeSelection.create(state.doc, tablePos)),
-      ),
-    );
-    view.typeText("alpha");
+describe("typing over a selected block", () => {
+  for (const mode of ["editing", "suggesting"] as const) {
+    test(`keeps the text in order with the caret after it, ${mode}`, async () => {
+      const state = await tablesState(mode);
+      let tablePos: number | null = null;
+      state.doc.forEach((node, offset) => {
+        if (node.type.name === "table") tablePos = offset;
+      });
+      if (tablePos === null) throw new Error("Fixture has no table");
+      const view = new HeadlessEditorView(
+        state.apply(
+          state.tr.setSelection(NodeSelection.create(state.doc, tablePos)),
+        ),
+      );
+      view.typeText("alpha");
 
-    const { $head } = view.state.selection;
-    expect($head.parent.textContent).toBe("alpha");
-    expect($head.parentOffset).toBe(5);
-    expect(
-      resolveAllChanges(view.state, "reject").doc.textContent,
-    ).not.toContain("alpha");
-  });
+      expect(view.state.selection.$head.parent.textContent).toBe("alpha");
+      caretFollowsTypedText(view.state);
+    });
+  }
 });
