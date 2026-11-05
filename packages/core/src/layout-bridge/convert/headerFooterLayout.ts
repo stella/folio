@@ -53,6 +53,7 @@ import type {
   Theme,
 } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
+import { ALT_CHUNK_CONTENT } from "./flowConversionShared";
 import type { MeasureBlocksFn } from "./footnoteLayout";
 import { remapMarkupViewBlocks } from "./markupViewFlow";
 import { toFlowBlocks } from "./toFlowBlocks";
@@ -879,6 +880,8 @@ export function convertHeaderFooterPmDocToContent(
     return undefined;
   }
   const flowOptions: ToFlowBlocksOptions = {
+    // A header's height moves the body: a long chunk could leave no page for it.
+    altChunkContent: ALT_CHUNK_CONTENT.markerOnly,
     showCommentHighlights:
       options.showCommentHighlights !== false &&
       options.markupView !== "no-markup" &&

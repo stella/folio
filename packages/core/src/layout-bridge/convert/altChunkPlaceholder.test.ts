@@ -9,6 +9,7 @@ import type { ParagraphBlock } from "../../layout-engine/types";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { ALT_CHUNK_DEFAULT_MARKER_TEXT } from "./altChunkPlaceholder";
+import { ALT_CHUNK_CONTENT } from "./flowConversionShared";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -82,15 +83,36 @@ describe("the layout of a w:altChunk", () => {
     ]);
   });
 
-  test("gives a caret nothing to enter", async () => {
+  test("resolves every position in it to the boundary after the chunk", async () => {
     const blocks = await paragraphsOf(CHUNK_TEXT);
+    const after = blocks[0]?.pmEnd;
+    expect(after).toBe((blocks[0]?.pmStart ?? 0) + 1);
+    expect(blocks[1]?.pmStart).toBeUndefined();
     for (const block of blocks) {
+      expect(block.fixedPosition).toBe(after);
       for (const run of block.runs) {
-        expect(run.kind === "text" ? run.pmStart : undefined).toBeUndefined();
+        expect(run.kind).toBe("text");
+        if (run.kind === "text") {
+          expect([run.pmStart, run.pmEnd]).toEqual([after, after]);
+        }
       }
     }
-    expect(blocks[0]?.pmEnd).toBe((blocks[0]?.pmStart ?? 0) + 1);
-    expect(blocks[1]?.pmStart).toBeUndefined();
+  });
+
+  test("a marker in a right-to-left language lays out right to left", async () => {
+    const [rtl] = await paragraphsOf(CHUNK_HTML, {
+      altChunkMarkerText: "המכיל אינו מוצג",
+    });
+    const [ltr] = await paragraphsOf(CHUNK_HTML);
+    expect(rtl?.attrs?.bidi).toBe(true);
+    expect(ltr?.attrs?.bidi ?? false).toBe(false);
+  });
+
+  test("a story whose height moves the body shows only the marker", async () => {
+    const blocks = await paragraphsOf(CHUNK_TEXT, {
+      altChunkContent: ALT_CHUNK_CONTENT.markerOnly,
+    });
+    expect(blocks.map(textOf)).toEqual([ALT_CHUNK_DEFAULT_MARKER_TEXT]);
   });
 
   test("appears in a table cell too", async () => {

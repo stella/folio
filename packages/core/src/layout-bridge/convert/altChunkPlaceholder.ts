@@ -2,8 +2,8 @@
  * What a page shows for a `w:altChunk`, whose content Folio cannot import.
  *
  * The node stays a preserved leaf, so saving replays it untouched. These blocks
- * exist only in layout: their runs carry no ProseMirror positions, so a caret
- * cannot enter them.
+ * exist only in layout: every position in them is the boundary after the node,
+ * so a click lands outside the chunk, in the nearest text.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -11,7 +11,11 @@ import type { Node as PMNode } from "prosemirror-model";
 import { isAltChunkMarkup } from "../../docx/altChunk";
 import type { ParagraphBlock } from "../../layout-engine/types";
 import { expectPreservedBlockAttrs } from "../../prosemirror/attrs";
-import type { FlowConversionOptions } from "./flowConversionShared";
+import { detectBaseDirection } from "../../utils/baseDirection";
+import {
+  ALT_CHUNK_CONTENT,
+  type FlowConversionOptions,
+} from "./flowConversionShared";
 import { convertParagraph } from "./paragraphConversion";
 
 /** The marker where no editor supplies a localised one. */
@@ -59,7 +63,10 @@ export const convertAltChunkPlaceholder = (
     return [];
   }
   const { readerText } = expectPreservedBlockAttrs(node);
-  const hasText = typeof readerText === "string" && readerText.trim() !== "";
+  const hasText =
+    options.altChunkContent !== ALT_CHUNK_CONTENT.markerOnly &&
+    typeof readerText === "string" &&
+    readerText.trim() !== "";
   const isMarker = !hasText;
   const text = hasText
     ? readerText
@@ -69,10 +76,16 @@ export const convertAltChunkPlaceholder = (
   if (!paragraphType) {
     return [];
   }
+  const after = pos + node.nodeSize;
   const blocks: ParagraphBlock[] = [];
   for (const [index, line] of placeholderLines(text).entries()) {
     const block = convertParagraph(
-      paragraphType.create(null, line.length > 0 ? schema.text(line) : null),
+      paragraphType.create(
+        detectBaseDirection(line) === "rtl"
+          ? { direction: { source: "auto" } }
+          : null,
+        line.length > 0 ? schema.text(line) : null,
+      ),
       pos,
       options,
     );
@@ -80,15 +93,16 @@ export const convertAltChunkPlaceholder = (
     delete block.pmEnd;
     if (index === 0) {
       block.pmStart = pos;
-      block.pmEnd = pos + node.nodeSize;
+      block.pmEnd = after;
     }
+    block.fixedPosition = after;
     block.attrs = { ...block.attrs, shading: PLACEHOLDER_SHADING };
     for (const run of block.runs) {
       if (run.kind !== "text") {
         continue;
       }
-      delete run.pmStart;
-      delete run.pmEnd;
+      run.pmStart = after;
+      run.pmEnd = after;
       if (isMarker) {
         run.italic = true;
         run.color = MARKER_COLOR;
