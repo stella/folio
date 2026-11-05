@@ -391,6 +391,147 @@ export const CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521 = {
   trace: BrowserInputTrace;
 };
 
+export const BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83 = {
+  seed: 83,
+  path: "3",
+  fingerprint: "0ae2a73b64015980",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [{ kind: "delete" }, { kind: "enter" }],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const BROWSER_CANCELLED_COMPOSITION_SEED_431 = {
+  seed: 431,
+  path: "9:2:1:1:1:2:2",
+  fingerprint: "16b45becab03610e",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      {
+        kind: "imeReplacement",
+        updates: ["alpha"],
+        completion: "cancel",
+      },
+      {
+        kind: "redo",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const BROWSER_CANCELLED_COMPOSITION_SEED_263 = {
+  seed: 263,
+  path: "8",
+  fingerprint: "f833d2a2c838868e",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [
+      {
+        kind: "imeReplacement",
+        updates: ["valid", "invoice alpha shall", "buyer مرحبا é"],
+        completion: "cancel",
+      },
+      {
+        kind: "delete",
+      },
+      {
+        kind: "undo",
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "redo",
+      },
+      {
+        kind: "pastePlain",
+        plain: "café",
+        html: "",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const BROWSER_CANCELLED_COMPOSITION_SEED_1793897521 = {
+  seed: 1793897521,
+  path: "11",
+  fingerprint: "6b03aac751613037",
+  trace: {
+    shape: "notes",
+    actions: [
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["é 東京", "buyer", "invoice alpha alpha"],
+        completion: "cancel",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["valid buyer"],
+        completion: "commit",
+      },
+      {
+        kind: "pasteMultiBlock",
+        plain: "Title\nBody",
+        html: "<p>Title</p><p>Body</p>",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const BROWSER_CANCELLED_COMPOSITION_SEED_131 = {
+  seed: 131,
+  path: "5",
+  fingerprint: "4ae472e6389a2494",
+  trace: {
+    shape: "header-footer",
+    actions: [
+      { kind: "historyBurst", keys: ["undo", "redo", "redo", "undo"] },
+      { kind: "redo" },
+      { kind: "redo" },
+      { kind: "backspace" },
+      { kind: "typing", text: "café buyer" },
+      {
+        kind: "imeReplacement",
+        updates: ["shall alpha", "buyer alpha 東京", "東京 مرحبا", "é buyer"],
+        completion: "cancel",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_PASTE_AFTER_TABLE_SEED_29 = {
   seed: 29,
   path: "1:3:3",
@@ -497,6 +638,11 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_PASTE_AFTER_TABLE_SEED_29,
   BROWSER_PASTE_BEFORE_STRUCK_SEED_431,
   BROWSER_SECOND_CELL_PASTE_SEED_47,
+  BROWSER_CANCELLED_COMPOSITION_SEED_431,
+  BROWSER_CANCELLED_COMPOSITION_SEED_263,
+  BROWSER_CANCELLED_COMPOSITION_SEED_1793897521,
+  BROWSER_CANCELLED_COMPOSITION_SEED_131,
+  BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83,
   CANONICAL_INSERTION_SEED_557,
   CANONICAL_DELETION_SEED_11,
   CANONICAL_CELL_PASTE_SEED_431,
