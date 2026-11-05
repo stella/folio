@@ -36,6 +36,7 @@ import type {
   Style,
   TextContent,
 } from "../types/document";
+import { generateHexId } from "./hexId";
 
 /**
  * `compatibilityMode` a new document declares, so it is laid out, and read
@@ -481,6 +482,10 @@ export function createEmptyDocument(
 
   const paragraph: Paragraph = {
     type: "paragraph",
+    // A package gets its ids through `ensureParaIds`. This document is not read
+    // from a package, so it starts with an id of its own: its content may be
+    // merged with another's.
+    paraId: generateHexId(),
     content: [run],
     formatting: {
       styleId:
