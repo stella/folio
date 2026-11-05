@@ -53,6 +53,7 @@ import { OutlineDepth } from '@stll/folio-core/utils/outlineDepth';
 import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRenderer';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Popover } from '@base-ui/react/popover';
+import { ReactElement } from 'react';
 import { ReactNode } from 'react';
 import { RefAttributes } from 'react';
 import { RefObject } from 'react';
