@@ -187,6 +187,22 @@ describe("SuggestionMode IME composition", () => {
     expect(deletionText(view.state)).toEqual([]);
   });
 
+  test("a cancelled composition keeps the revision of the text it read back", async () => {
+    const { view, domEvents, handleTextInput } = setup("Hello");
+    handleTextInput(view, 6, 6, "abc");
+    expect(insertionText(view.state)).toEqual(["abc"]);
+
+    domEvents.compositionstart(view);
+    // Reading the removal back replaces the tracked text with an unmarked copy.
+    view.dispatch(view.state.tr.insertText("abc", 6, 9).removeMark(6, 9));
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.state.doc.textContent).toBe("Helloabc");
+    expect(insertionText(view.state)).toEqual(["abc"]);
+  });
+
   test("a composition committed before existing text marks only what it added", async () => {
     const { view, domEvents } = setup("Hello");
     view.dispatch(

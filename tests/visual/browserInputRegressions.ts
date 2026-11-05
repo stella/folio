@@ -366,6 +366,32 @@ export const BROWSER_CANCELLED_COMPOSITION_SEED_1793897521 = {
   trace: BrowserInputTrace;
 };
 
+export const BROWSER_CANCELLED_COMPOSITION_SEED_131 = {
+  seed: 131,
+  path: "5",
+  fingerprint: "4ae472e6389a2494",
+  trace: {
+    shape: "header-footer",
+    actions: [
+      { kind: "historyBurst", keys: ["undo", "redo", "redo", "undo"] },
+      { kind: "redo" },
+      { kind: "redo" },
+      { kind: "backspace" },
+      { kind: "typing", text: "café buyer" },
+      {
+        kind: "imeReplacement",
+        updates: ["shall alpha", "buyer alpha 東京", "東京 مرحبا", "é buyer"],
+        completion: "cancel",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
@@ -373,6 +399,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_CANCELLED_COMPOSITION_SEED_431,
   BROWSER_CANCELLED_COMPOSITION_SEED_263,
   BROWSER_CANCELLED_COMPOSITION_SEED_1793897521,
+  BROWSER_CANCELLED_COMPOSITION_SEED_131,
   CANONICAL_INSERTION_SEED_557,
   CANONICAL_DELETION_SEED_11,
   CANONICAL_CELL_PASTE_SEED_431,

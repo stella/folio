@@ -1656,16 +1656,45 @@ export const deleteSelectionAsSuggestion = (
 type MarkComposedAsInsertionOptions = {
   view: EditorView;
   from: number;
-  startSize: number;
+  startDoc: PMNode;
   pluginState: SuggestionModeState;
   replaced: Slice | null;
   compositionId: number | null;
 };
 
+/**
+ * PM reads the removal of cancelled text back from the DOM, which can take the
+ * text around it along and drop its revision marks. The same text was there when
+ * the composition started: put back what it was.
+ */
+function restoreAfterCancelledComposition(
+  view: EditorView,
+  startDoc: PMNode,
+): void {
+  const { doc } = view.state;
+  const start = startDoc.content.findDiffStart(doc.content);
+  const end = startDoc.content.findDiffEnd(doc.content);
+  if (start === null || end === null) return;
+  // Equal sizes, so both ends of the difference are at the same positions. Text
+  // that differs is another writer's, not the composition's.
+  if (
+    end.a !== end.b ||
+    end.a <= start ||
+    startDoc.textBetween(start, end.a, "\n", "\n") !==
+      doc.textBetween(start, end.a, "\n", "\n")
+  ) {
+    return;
+  }
+  const tr = view.state.tr.replace(start, end.a, startDoc.slice(start, end.a));
+  tr.setMeta(SUGGESTION_META, true);
+  tr.setMeta("addToHistory", false);
+  view.dispatch(tr);
+}
+
 function markComposedAsInsertion({
   view,
   from,
-  startSize,
+  startDoc,
   pluginState,
   replaced,
   compositionId,
@@ -1678,9 +1707,14 @@ function markComposedAsInsertion({
   // What the composition added, by how much the document grew. The caret alone
   // does not say: PM reads a cancelled composition back as the text around it
   // and leaves the caret at that text's end, though none of it is new.
+  const { doc } = view.state;
   const composedSize =
-    view.state.doc.content.size - startSize + (replaced?.size ?? 0);
+    doc.content.size - startDoc.content.size + (replaced?.size ?? 0);
   const to = Math.min(from + composedSize, view.state.selection.to);
+  if (composedSize === 0 && !replaced) {
+    restoreAfterCancelledComposition(view, startDoc);
+    return;
+  }
   if (to <= from && !replaced) {
     return;
   }
@@ -1913,7 +1947,7 @@ export function createSuggestionModePlugin(
   //     replacement until compositionend can record both revisions.
   let composing = false;
   let compositionFrom: number | null = null;
-  let compositionStartSize = 0;
+  let compositionStartDoc: PMNode | null = null;
   let compositionReplaced: Slice | null = null;
   let compositionId: number | null = null;
 
@@ -1982,7 +2016,7 @@ export function createSuggestionModePlugin(
           compositionId = null;
           const { from, to } = view.state.selection;
           compositionFrom = from;
-          compositionStartSize = view.state.doc.content.size;
+          compositionStartDoc = view.state.doc;
           compositionReplaced =
             from === to ? null : view.state.doc.slice(from, to);
           return false;
@@ -1995,11 +2029,12 @@ export function createSuggestionModePlugin(
         compositionend(view: EditorView) {
           const pluginState = suggestionModeKey.getState(view.state);
           const from = compositionFrom;
-          const startSize = compositionStartSize;
+          const startDoc = compositionStartDoc;
           const replaced = compositionReplaced;
           compositionFrom = null;
+          compositionStartDoc = null;
           compositionReplaced = null;
-          if (!pluginState?.active || from == null) {
+          if (!pluginState?.active || from == null || !startDoc) {
             composing = false;
             compositionId = null;
             return false;
@@ -2014,7 +2049,7 @@ export function createSuggestionModePlugin(
                 markComposedAsInsertion({
                   view,
                   from,
-                  startSize,
+                  startDoc,
                   pluginState: current,
                   replaced,
                   compositionId: nativeCompositionId,
