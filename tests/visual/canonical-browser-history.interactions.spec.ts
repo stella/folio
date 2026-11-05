@@ -85,7 +85,7 @@ test("canonical evaluation waits for a mid-sequence navigation to mount", async 
   expect(await evaluated).toEqual({
     ready: true,
     documentState: "complete",
-    composing: null,
+    composing: false,
   });
   expect(callbackInvoked).toBe(true);
   await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
@@ -303,7 +303,7 @@ test("refused native IME commit ends composition before driver completion", asyn
   }
 });
 
-test("canonical history checks a lazy first view and rejects composition before reload", async ({
+test("canonical history checks a first view and rejects composition before reload", async ({
   page,
 }) => {
   await page.goto("/?session=canonical");
@@ -312,7 +312,7 @@ test("canonical history checks a lazy first view and rejects composition before 
     await evaluateCanonicalPage(page, () =>
       page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
     ),
-  ).toBe(null);
+  ).toBe(false);
   const source = await createDocx(
     createEmptyDocument({ initialText: "alpha😀café東京" }),
   );
