@@ -1659,6 +1659,8 @@ type MarkComposedAsInsertionOptions = {
   startDoc: PMNode;
   /** How much other writers' edits grew the document during the composition. */
   foreignSize: number;
+  /** Whether another writer edited the document, even with no change of size. */
+  foreignEdit: boolean;
   pluginState: SuggestionModeState;
   replaced: Slice | null;
   compositionId: number | null;
@@ -1698,6 +1700,7 @@ function markComposedAsInsertion({
   from,
   startDoc,
   foreignSize,
+  foreignEdit,
   pluginState,
   replaced,
   compositionId,
@@ -1717,8 +1720,12 @@ function markComposedAsInsertion({
     foreignSize +
     (replaced?.size ?? 0);
   const to = Math.min(from + composedSize, view.state.selection.to);
+  // A cancellation can also put a selection it replaced back as it was.
+  if (doc.eq(startDoc)) {
+    return;
+  }
   if (composedSize === 0 && !replaced) {
-    if (foreignSize === 0) restoreAfterCancelledComposition(view, startDoc);
+    if (!foreignEdit) restoreAfterCancelledComposition(view, startDoc);
     return;
   }
   if (to <= from && !replaced) {
@@ -1955,6 +1962,7 @@ export function createSuggestionModePlugin(
   let compositionFrom: number | null = null;
   let compositionStartDoc: PMNode | null = null;
   let compositionForeignSize = 0;
+  let compositionForeignEdit = false;
   let compositionReplaced: Slice | null = null;
   let compositionId: number | null = null;
 
@@ -1986,6 +1994,7 @@ export function createSuggestionModePlugin(
           typeof nativeCompositionId !== "number" &&
           tr.getMeta("addToHistory") === false
         ) {
+          compositionForeignEdit = true;
           compositionForeignSize +=
             tr.doc.content.size - tr.before.content.size;
           if (compositionFrom !== null) {
@@ -2039,6 +2048,7 @@ export function createSuggestionModePlugin(
           compositionFrom = from;
           compositionStartDoc = view.state.doc;
           compositionForeignSize = 0;
+          compositionForeignEdit = false;
           compositionReplaced =
             from === to ? null : view.state.doc.slice(from, to);
           return false;
@@ -2073,6 +2083,7 @@ export function createSuggestionModePlugin(
                   from,
                   startDoc,
                   foreignSize: compositionForeignSize,
+                  foreignEdit: compositionForeignEdit,
                   pluginState: current,
                   replaced,
                   compositionId: nativeCompositionId,

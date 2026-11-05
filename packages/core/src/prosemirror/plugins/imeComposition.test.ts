@@ -217,6 +217,40 @@ describe("SuggestionMode IME composition", () => {
     expect(insertionText(view.state)).toEqual(["日本語"]);
   });
 
+  test("a cancelled composition over a selection that comes back as it was records nothing", async () => {
+    const { view, domEvents } = setup("Hello");
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)),
+    );
+
+    domEvents.compositionstart(view);
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.state.doc.textContent).toBe("Hello");
+    expect(insertionText(view.state)).toEqual([]);
+    expect(deletionText(view.state)).toEqual([]);
+  });
+
+  test("a cancelled composition keeps another writer's mark", async () => {
+    const { view, domEvents } = setup("Hello");
+    const mark = schema.marks["insertion"]!.create({
+      revisionId: 7,
+      author: "Other",
+    });
+
+    domEvents.compositionstart(view);
+    view.dispatch(
+      view.state.tr.addMark(1, 3, mark).setMeta("addToHistory", false),
+    );
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(insertionText(view.state)).toEqual(["He"]);
+  });
+
   test("a composition committed before existing text marks only what it added", async () => {
     const { view, domEvents } = setup("Hello");
     view.dispatch(
