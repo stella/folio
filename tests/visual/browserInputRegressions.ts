@@ -266,10 +266,77 @@ export const CANONICAL_BOOKMARK_SEED_263 = {
   trace: BrowserInputTrace;
 };
 
+export const BROWSER_PASTE_AFTER_TABLE_SEED_29 = {
+  seed: 29,
+  path: "1:3:3",
+  fingerprint: "44acba1a39ae6967",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const BROWSER_PASTE_BEFORE_STRUCK_SEED_431 = {
+  seed: 431,
+  path: "9",
+  fingerprint: "01f3a41c8510892a",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["buyer", "buyer shall"],
+        completion: "cancel",
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+      { kind: "redo" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
+  BROWSER_PASTE_AFTER_TABLE_SEED_29,
+  BROWSER_PASTE_BEFORE_STRUCK_SEED_431,
   CANONICAL_INSERTION_SEED_557,
   CANONICAL_DELETION_SEED_11,
   CANONICAL_CELL_PASTE_SEED_431,

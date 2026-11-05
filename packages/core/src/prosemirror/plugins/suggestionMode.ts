@@ -460,11 +460,10 @@ export function handleSuggestionPaste(
 
   if (selection.empty) {
     const { $from } = selection;
-    const closedTable =
+    const closedBlocks =
       slice.openStart === 0 &&
       slice.openEnd === 0 &&
-      slice.content.firstChild?.type.name === "table" &&
-      slice.content.lastChild?.type.name === "table";
+      slice.content.firstChild?.isBlock === true;
     const prefix = $from.parent.content.cut(0, $from.parentOffset);
     let deletedPrefix = prefix.size > 0;
     prefix.forEach((node) => {
@@ -472,7 +471,7 @@ export function handleSuggestionPaste(
         deletedPrefix = false;
     });
     if (
-      !closedTable ||
+      !closedBlocks ||
       $from.parent.type.name !== "paragraph" ||
       !deletedPrefix
     ) {
@@ -484,7 +483,7 @@ export function handleSuggestionPaste(
       if (!node.marks.some((mark) => mark.type === deletionType))
         deletedSuffix = false;
     });
-    // The caret is at the visible start of this paragraph. Fit the table
+    // The caret is at the visible start of this paragraph. Fit the blocks
     // before it, as direct paste does after deleting the prefix; fitting at
     // the physical caret instead splits off a paragraph of only struck runs.
     const tr = view.state.tr
@@ -495,6 +494,21 @@ export function handleSuggestionPaste(
     const revision = makeMarkAttrs(pluginState);
     const end = tr.mapping.map(at, 1);
     enclosePastedRunRevisions({ tr, from: at, to: end, revision });
+    // Closed paragraphs brought their breaks along: rejecting removes those too.
+    tr.doc.nodesBetween(at, end, (node, pos) => {
+      if (node.type.name !== "paragraph" || node.attrs["pPrMark"] != null) {
+        return false;
+      }
+      tr.setNodeAttribute(pos, "pPrMark", {
+        kind: "ins",
+        info: {
+          id: revision.revisionId,
+          author: revision.author,
+          date: revision.date,
+        },
+      });
+      return false;
+    });
     markRangeAsInserted(
       tr,
       tr.doc,
@@ -755,7 +769,10 @@ export function handleSuggestionPaste(
   // original plus the pasted text stay selected, so the next keystroke would
   // delete them both. `near` keeps the selection valid even when the pasted
   // slice was block content and `insertTo` lands at a block boundary.
-  tr.setSelection(TextSelection.near(tr.doc.resolve(insertTo)));
+  // A table placed before struck words leaves text after them: the caret goes
+  // there, past the words, as the direct paste has none of them to pass.
+  const caret = beforeStruck && !wholeBlocks ? tr.mapping.map(to) : insertTo;
+  tr.setSelection(TextSelection.near(tr.doc.resolve(caret)));
 
   view.dispatch(tr.scrollIntoView());
   return true;
@@ -1804,11 +1821,26 @@ function recordSplitParagraph(
   ) {
     return;
   }
+  const revision = {
+    id: attrs.revisionId,
+    author: attrs.author,
+    date: attrs.date,
+  };
+  // The split paragraph's break ends the last part, with any revision it has.
+  // The first part took the paragraph's attributes, and its break is new.
+  const { pPrMark } = expectParagraphAttrs(split);
+  if (pPrMark) {
+    tr.setNodeAttribute(lastPos, "pPrMark", pPrMark);
+    tr.setNodeAttribute($first.before(), "pPrMark", {
+      kind: "ins",
+      info: revision,
+    });
+  }
   recordReplacedParagraphProperties({
     tr,
     position: lastPos,
     replaced: split,
-    revision: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
+    revision,
   });
 }
 
