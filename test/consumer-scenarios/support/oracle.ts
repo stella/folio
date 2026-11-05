@@ -2433,7 +2433,10 @@ export const EXPECTATIONS = {
     if (
       model.mode !== "direct" &&
       next?.removed &&
-      isContainerCarrier(model, next)
+      isContainerCarrier(model, next) &&
+      // A block the batch puts after it ends the container instead: the
+      // paragraph goes, and the join runs across it into that block.
+      next.after.length === 0
     ) {
       // The batch runs the deletion first, so the join meets a paragraph with
       // no text left and has nothing to separate, as when no block survives.
