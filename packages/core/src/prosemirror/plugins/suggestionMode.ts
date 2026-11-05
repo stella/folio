@@ -1656,6 +1656,7 @@ export const deleteSelectionAsSuggestion = (
 type MarkComposedAsInsertionOptions = {
   view: EditorView;
   from: number;
+  startSize: number;
   pluginState: SuggestionModeState;
   replaced: Slice | null;
   compositionId: number | null;
@@ -1664,6 +1665,7 @@ type MarkComposedAsInsertionOptions = {
 function markComposedAsInsertion({
   view,
   from,
+  startSize,
   pluginState,
   replaced,
   compositionId,
@@ -1673,8 +1675,12 @@ function markComposedAsInsertion({
   if (!insertionType || !deletionType) {
     return;
   }
-  // PM leaves the cursor at the end of the committed composition.
-  const to = view.state.selection.to;
+  // What the composition added, by how much the document grew. The caret alone
+  // does not say: PM reads a cancelled composition back as the text around it
+  // and leaves the caret at that text's end, though none of it is new.
+  const composedSize =
+    view.state.doc.content.size - startSize + (replaced?.size ?? 0);
+  const to = Math.min(from + composedSize, view.state.selection.to);
   if (to <= from && !replaced) {
     return;
   }
@@ -1907,6 +1913,7 @@ export function createSuggestionModePlugin(
   //     replacement until compositionend can record both revisions.
   let composing = false;
   let compositionFrom: number | null = null;
+  let compositionStartSize = 0;
   let compositionReplaced: Slice | null = null;
   let compositionId: number | null = null;
 
@@ -1975,6 +1982,7 @@ export function createSuggestionModePlugin(
           compositionId = null;
           const { from, to } = view.state.selection;
           compositionFrom = from;
+          compositionStartSize = view.state.doc.content.size;
           compositionReplaced =
             from === to ? null : view.state.doc.slice(from, to);
           return false;
@@ -1987,6 +1995,7 @@ export function createSuggestionModePlugin(
         compositionend(view: EditorView) {
           const pluginState = suggestionModeKey.getState(view.state);
           const from = compositionFrom;
+          const startSize = compositionStartSize;
           const replaced = compositionReplaced;
           compositionFrom = null;
           compositionReplaced = null;
@@ -2005,6 +2014,7 @@ export function createSuggestionModePlugin(
                 markComposedAsInsertion({
                   view,
                   from,
+                  startSize,
                   pluginState: current,
                   replaced,
                   compositionId: nativeCompositionId,
@@ -2031,6 +2041,11 @@ export function createSuggestionModePlugin(
       handleKeyDown(view: EditorView, event: KeyboardEvent): boolean {
         const pluginState = suggestionModeKey.getState(view.state);
         if (!pluginState?.active) {
+          return false;
+        }
+        // While a composition runs, a key here is ProseMirror reading the
+        // composing text's removal as a Backspace; the IME owns that text.
+        if (composing) {
           return false;
         }
         if (selectLockedInlineControl(view, event)) {
