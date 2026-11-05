@@ -1012,6 +1012,32 @@ function applySuggestionInsert(
   if (selectsAll) {
     from = Math.max(from, Selection.atStart(view.state.doc).from);
     to = Math.min(to, Selection.atEnd(view.state.doc).to);
+  } else if (typesOverSelection && selection instanceof CellSelection) {
+    // A cell's range spans the block boundaries inside the cell. Every selected
+    // cell clears, as outside suggesting mode, and the typed text stays in the
+    // last paragraph of the first one.
+    const cellDeletion = view.state.schema.marks["deletion"];
+    if (cellDeletion) {
+      const ranges = selection.ranges.toSorted(
+        (a, b) => b.$from.pos - a.$from.pos,
+      );
+      for (const range of ranges) {
+        markRangeAsDeleted(
+          tr,
+          view.state.doc,
+          range.$from.pos,
+          range.$to.pos,
+          cellDeletion,
+          pluginState,
+          view.state,
+        );
+      }
+    }
+    const last = Selection.findFrom(view.state.doc.resolve(to), -1, true);
+    if (last && last.to >= from) {
+      from = last.to;
+      to = last.to;
+    }
   }
   const replacedFormatting = selectsAll
     ? (view.state.doc.resolve(from).nodeAfter?.marks ?? []).filter(({ type }) =>
@@ -1051,12 +1077,17 @@ function applySuggestionInsert(
   if (formattingMarks !== undefined) {
     tr.setStoredMarks(formattingMarks);
   }
+  // Text typed between blocks lands in a paragraph of its own.
+  const typedFrom = tr.doc.resolve(insertAt).parent.inlineContent
+    ? insertAt
+    : insertAt + 1;
+  const typedTo = typedFrom + text.length;
   tr.insertText(text, insertAt, insertAt);
 
   // Strip inherited deletion marks — new text must never be marked as deleted.
   const deletionType = view.state.schema.marks["deletion"];
   if (deletionType) {
-    tr.removeMark(insertAt, insertAt + text.length, deletionType);
+    tr.removeMark(typedFrom, typedTo, deletionType);
   }
 
   // Apply the correct insertion mark. If the cursor was inside an existing
@@ -1064,31 +1095,22 @@ function applySuggestionInsert(
   // insertAttrs will match — addMark is effectively a no-op that preserves
   // the continuous mark span. We intentionally do NOT removeMark(insertionType)
   // first, because that fragments the mark span and creates a nested change.
-  tr.addMark(
-    insertAt,
-    insertAt + text.length,
-    insertionType.create(insertAttrs),
-  );
+  tr.addMark(typedFrom, typedTo, insertionType.create(insertAttrs));
   if (replacedFormatting) {
-    for (const mark of tr.doc.resolve(insertAt).nodeAfter?.marks ?? []) {
+    for (const mark of tr.doc.resolve(typedFrom).nodeAfter?.marks ?? []) {
       if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name)) {
-        tr.removeMark(insertAt, insertAt + text.length, mark.type);
+        tr.removeMark(typedFrom, typedTo, mark.type);
       }
     }
     for (const mark of replacedFormatting) {
-      tr.addMark(insertAt, insertAt + text.length, mark);
+      tr.addMark(typedFrom, typedTo, mark);
     }
   }
-  separateSplitStretch(
-    tr,
-    insertAt,
-    insertAt + text.length,
-    insertAttrs.revisionId,
-  );
+  separateSplitStretch(tr, typedFrom, typedTo, insertAttrs.revisionId);
   if (typesOverSelection) {
     // `insertText` lands the caret at the selection's mapped end, which for a
     // node selection is before the typed text.
-    tr.setSelection(TextSelection.create(tr.doc, insertAt + text.length));
+    tr.setSelection(TextSelection.create(tr.doc, typedTo));
   }
 
   view.dispatch(tr.scrollIntoView());

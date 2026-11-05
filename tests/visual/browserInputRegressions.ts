@@ -54,7 +54,23 @@ export const BROWSER_LIST_SEED_47 = {
   trace: BrowserInputTrace;
 };
 
+export const BROWSER_TABLE_SEED_29 = {
+  seed: 29,
+  path: "1:0:3:1",
+  fingerprint: "5f0168fbf69566cd",
+  trace: {
+    shape: "tables",
+    actions: [{ kind: "dragCellDelete" }, { kind: "typing", text: "alpha" }],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
+  BROWSER_TABLE_SEED_29,
 ];

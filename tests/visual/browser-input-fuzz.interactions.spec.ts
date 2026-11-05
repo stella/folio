@@ -31,7 +31,6 @@ import {
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
 import { reportFuzzHealth } from "../../test/consumer-scenarios/support/fuzz-health";
 import { classifyFuzzRun } from "../../test/fuzz-health";
-import knownFailures from "../../test/known-failure-fingerprints.json" with { type: "json" };
 import type {} from "../parity/canonicalFuzzErrors";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import type { BrowserDragTarget } from "./browserDragTarget";
@@ -614,96 +613,6 @@ test.describe("pinned browser input", () => {
     );
   }
 });
-
-const browserAcceptances = knownFailures.known.flatMap(
-  ({ fingerprint, acceptance }) => {
-    if (acceptance?.type !== "browser") return [];
-    const trace = acceptance.trace;
-    if (!trace || !isBrowserShape(trace.shape))
-      throw new Error("Invalid browser acceptance shape");
-    const actions = trace.actions.map((action) => {
-      switch (action.kind) {
-        case "dragCellDelete":
-          return { kind: "dragCellDelete" } as const;
-        case "typing":
-          if (typeof action.text !== "string")
-            throw new Error("Invalid acceptance typing action");
-          return { kind: "typing", text: action.text } as const;
-        default:
-          throw new Error(`Unsupported acceptance action ${action.kind}`);
-      }
-    });
-    return [
-      {
-        ...acceptance,
-        fingerprint,
-        trace: { shape: trace.shape, actions } satisfies BrowserInputTrace,
-      },
-    ];
-  },
-);
-
-// A changed symptom or a passing replay requires reviewing and removing its acceptance entry.
-for (const acceptance of browserAcceptances) {
-  test(`known failure #${acceptance.issue} / seed ${acceptance.reportSeed} / ${acceptance.fingerprint}: ${acceptance.title}`, async ({
-    page,
-  }) => {
-    const { trace } = acceptance;
-    const source = await shapeArrayBuffer(trace.shape);
-    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-    const edited = await runMode({
-      page,
-      source,
-      baseline,
-      trace,
-      suggesting: false,
-      authority: "prosemirror",
-    });
-    const suggested = await runMode({
-      page,
-      source,
-      baseline,
-      trace,
-      suggesting: true,
-      authority: "prosemirror",
-    });
-    if (edited.type !== "ready" || suggested.type !== "ready")
-      throw new TypeError("Legacy replay unexpectedly refused activation.");
-    const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
-    accepting.acceptAll();
-    const accepted = await FolioDocxReviewer.fromBuffer(
-      await accepting.toBuffer(),
-    );
-    const editedCellIndex = edited.blocks.findIndex(
-      ({ text, table }) => text === "alpha" && table !== undefined,
-    );
-    if (editedCellIndex < 0)
-      throw new Error("#1341 trace did not edit a table cell to alpha");
-    const editedCell = edited.blocks[editedCellIndex];
-    const acceptedCell = project(accepted).at(editedCellIndex);
-    if (editedCell === undefined || acceptedCell === undefined) {
-      throw new Error("#1341 trace lost its edited table cell while accepting");
-    }
-    if (
-      JSON.stringify(acceptedCell.table) !== JSON.stringify(editedCell.table)
-    ) {
-      throw new Error("#1341 trace accepted a different table cell");
-    }
-    if (editedCell.text !== "alpha" || acceptedCell.text !== "a") {
-      throw new Error(
-        `#1341 expected editing alpha and accepting a; got ${JSON.stringify(editedCell.text)} and ${JSON.stringify(acceptedCell.text)}`,
-      );
-    }
-
-    // Mark the test expected-to-fail only after setup and the exact symptom pass.
-    // A setup regression fails normally; a fix fails at the final equality.
-    test.fail(
-      true,
-      "#1341: accepting tracked table input truncates alpha to a",
-    );
-    expect(acceptedCell.text).toBe(editedCell.text);
-  });
-}
 
 /** Replays the same action schedule through #1148's fresh-render scheduler oracle. */
 const checkFreshRender = (trace: BrowserInputTrace) => {

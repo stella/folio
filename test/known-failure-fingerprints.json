@@ -2,35 +2,6 @@
   "$comment": "Known open failure fingerprints. Consumer acceptance cases are exact minimized-flow replays.",
   "known": [
     {
-      "fingerprint": "5f0168fbf69566cd",
-      "issueOrPr": "#1341",
-      "firstSeen": "2026-10-01",
-      "acceptance": {
-        "type": "browser",
-        "issue": 1341,
-        "primary": "0b5cdf07d5da1fda",
-        "title": "Table input: accepted text differs after cell deletion and typing",
-        "reportSeed": 29,
-        "trace": {
-          "shape": "tables",
-          "actions": [
-            {
-              "kind": "dragCellDelete"
-            },
-            {
-              "kind": "typing",
-              "text": "alpha"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "fingerprint": "0b5cdf07d5da1fda",
-      "issueOrPr": "#1341",
-      "firstSeen": "2026-10-01"
-    },
-    {
       "fingerprint": "0564a4da20f1c987",
       "issueOrPr": "#1359",
       "firstSeen": "2026-10-02"
