@@ -11,6 +11,7 @@ import type {
   FailureMarker,
   FailureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
+import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
   CONSUMER_SCENARIO_REPLAY_INPUTS,
   consumerScenarioReplay,
@@ -446,6 +447,27 @@ export const requireFindings = (findings: readonly Finding[]): void => {
     });
   }
 };
+
+/**
+ * What a failed scheduled run with no failure markers files: it broke before it
+ * checked anything, so a finding-shaped issue is the only trace it can leave.
+ * One class per lane, so the same breakage updates one issue night after night.
+ */
+export const brokenRunFindings = (
+  lane: string,
+  runUrl: string | null,
+): Finding[] =>
+  collectFindings(
+    [],
+    [
+      failureMarker({
+        test: `fuzz lane ${lane}`,
+        seed: 0,
+        repro: `gh run view --log-failed ${runUrl ?? "<the failed run>"}`,
+        failure: new Error("The run failed without checking anything"),
+      }),
+    ],
+  );
 
 // Bound free text so it cannot displace the complete replay from GitHub's body limit.
 const FIELD_LIMIT = 4_000;
@@ -1161,7 +1183,9 @@ const main = async (): Promise<void> => {
     [...options.logs, ...artifacts.logs],
     [...options.records, ...artifacts.records],
   );
-  if (options.result === RUN_RESULT.failure) requireFindings(findings);
+  const broken = options.result === RUN_RESULT.failure && findings.length === 0;
+  if (broken && options.trigger === RUN_TRIGGER.mergeGroup)
+    requireFindings(findings);
   const context: Context = {
     runUrl: options.runUrl,
     sha: options.sha,
@@ -1171,7 +1195,9 @@ const main = async (): Promise<void> => {
     trigger: options.trigger,
   };
   const filed = await fileClasses({
-    findings,
+    findings: broken
+      ? brokenRunFindings(options.lane, options.runUrl)
+      : findings,
     context,
     store: options.dryRun
       ? {
@@ -1196,6 +1222,8 @@ const main = async (): Promise<void> => {
   for (const { fingerprint, issue } of filed) {
     console.log(`${fingerprint}: ${issue ?? "not filed"}`);
   }
+  // Filed, and still red: the lane did not do its job.
+  if (broken) requireFindings(findings);
 };
 
 if (import.meta.main) {
