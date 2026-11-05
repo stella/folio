@@ -631,6 +631,28 @@ export const BROWSER_SECOND_CELL_PASTE_SEED_47 = {
   trace: BrowserInputTrace;
 };
 
+export const BROWSER_RTL_COMPOSITION_SEED_1793914965 = {
+  seed: 1793914965,
+  path: "7:2:1:2:2",
+  fingerprint: "5736502082eb3a9b",
+  trace: {
+    shape: "single-bullet-list",
+    actions: [
+      { kind: "imeReplacement", updates: ["مرحبا"], completion: "commit" },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366 = {
   seed: 1793921366,
   path: "11:4",
@@ -658,6 +680,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
   BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
+  BROWSER_RTL_COMPOSITION_SEED_1793914965,
   BROWSER_PASTE_AFTER_TABLE_SEED_29,
   BROWSER_PASTE_BEFORE_STRUCK_SEED_431,
   BROWSER_SECOND_CELL_PASTE_SEED_47,

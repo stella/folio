@@ -1,6 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import type { EditorState, PluginKey } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 
 import { setProseParagraphMarkupWithPropertySource } from "../../../docx/paragraphPropertySource";
 import type { DirtyRange } from "../../../paged-layout/incrementalMeasure";
@@ -44,6 +45,7 @@ import type { ParagraphDirection } from "../../paragraphDirection";
  * `ParaIdAllocatorExtension`.
  */
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
+import { afterNativeCompositionFlush } from "../../textInput";
 import { createExtension } from "../create";
 import type { Extension, ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
@@ -198,12 +200,54 @@ export const ensureBaseDirectionInState = (state: EditorState): EditorState => {
   return state.apply(applyBidiUpdates(state, updates));
 };
 
-const createAutoBidiDetectionPlugin = (): Plugin =>
-  new Plugin({
+const createAutoBidiDetectionPlugin = (): Plugin => {
+  // Changing a paragraph's direction redraws it, which takes the composing text
+  // from under the browser's IME: the composition ends without a commit, and the
+  // text is inserted twice. While one runs, whatever its edits or another
+  // writer's, paragraphs wait until it has ended.
+  const composing = new Set<EditorView>();
+  let deferred = false;
+  const finish = (view: EditorView) => {
+    composing.delete(view);
+    if (!deferred || composing.size > 0 || view.isDestroyed) return;
+    deferred = false;
+    const updates = collectBidiUpdates(view.state.doc);
+    if (updates.length > 0) {
+      view.dispatch(applyBidiUpdates(view.state, updates));
+    }
+  };
+  return new Plugin({
     key: autoBidiDetectionKey.createKey(),
+    view: (view) => ({
+      destroy: () => {
+        composing.delete(view);
+      },
+    }),
+    props: {
+      handleDOMEvents: {
+        compositionstart(view) {
+          composing.add(view);
+          return false;
+        },
+        compositionend(view) {
+          afterNativeCompositionFlush(() => {
+            finish(view);
+          });
+          return false;
+        },
+        blur(view) {
+          finish(view);
+          return false;
+        },
+      },
+    },
     appendTransaction(transactions, _oldState, newState) {
       // Selection-only / mark-only transactions can't have changed paragraph text.
       if (!transactions.some((t) => t.docChanged)) {
+        return null;
+      }
+      if (composing.size > 0) {
+        deferred = true;
         return null;
       }
 
@@ -223,6 +267,7 @@ const createAutoBidiDetectionPlugin = (): Plugin =>
       return applyBidiUpdates(newState, updates);
     },
   });
+};
 
 export const AutoBidiDetectionExtension: (
   options?: Partial<{}> | undefined,
