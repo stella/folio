@@ -53,6 +53,8 @@ jobs:
         timeout-minutes: 8
         continue-on-error: true
         run: |
+          # A step killed by its timeout leaves its web server running.
+          lsof -tiTCP:4200 -tiTCP:4201 -sTCP:LISTEN | xargs -r kill || true
           set -o pipefail
           mkdir -p fuzz-artifacts/host-api
           bunx playwright test --project=parity-fuzzer tests/parity/host-api-flow.spec.ts --workers=1 --output=fuzz-playwright/host-api 2>&1 | tee fuzz-artifacts/host-api/host-api-fuzz.log
@@ -76,6 +78,8 @@ jobs:
         timeout-minutes: 35
         continue-on-error: true
         run: |
+          # A step killed by its timeout leaves its web server running.
+          lsof -tiTCP:4200 -tiTCP:4201 -sTCP:LISTEN | xargs -r kill || true
           set -o pipefail
           mkdir -p fuzz-artifacts/browser
           fresh_seed=$(date +%s)
@@ -111,6 +115,8 @@ jobs:
           FOLIO_FUZZ_SEEDS: "11,29,${{ github.run_number }}"
           FOLIO_FUZZ_RUNS: "10"
         run: |
+          # A step killed by its timeout leaves its web server running.
+          lsof -tiTCP:4200 -tiTCP:4201 -sTCP:LISTEN | xargs -r kill || true
           set -o pipefail
           mkdir -p fuzz-artifacts/interleaving
           bunx playwright test --project=interleaving-fuzzer --workers=1 --output=fuzz-playwright/interleaving 2>&1 | tee fuzz-artifacts/interleaving/interleaving.log
