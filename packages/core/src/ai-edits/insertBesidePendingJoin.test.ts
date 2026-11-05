@@ -345,6 +345,195 @@ describe("a suggested paragraph beside a pending join", () => {
   }
 });
 
+describe("a paragraph between a pending join and the table that stops it", () => {
+  /** "Alpha." merged into "Bravo." and "Bravo." deleted, tracked, before a table. */
+  const beforeTable = async () => {
+    const bytes = (
+      await ensureParaIds(
+        await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
+      )
+    ).docx;
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      author: "Test",
+    });
+    const [alpha, bravo] = reviewer.snapshot().blocks;
+    if (!alpha || !bravo) throw new Error("Missing fixture");
+    expect(
+      reviewer.applyOperations(
+        [{ id: "t", type: "insertTable", blockId: bravo.id, rows: [["Cell"]] }],
+        { mode: "direct" },
+      ).skipped,
+    ).toEqual([]);
+    const cell = reviewer.snapshot().blocks.find(({ text }) => text === "Cell");
+    if (!cell) throw new Error("Missing table");
+    for (const operation of [
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: alpha.id,
+        separator: " ",
+      },
+      { id: "delete", type: "deleteBlock", blockId: bravo.id },
+    ] satisfies FolioDocumentOperation[]) {
+      expect(
+        reviewer.applyOperations([operation], { mode: "tracked-changes" })
+          .skipped,
+      ).toEqual([]);
+    }
+    return { reviewer, alpha: alpha.id, bravo: bravo.id, cell: cell.id };
+  };
+
+  for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+    for (const anchor of ["bravo", "cell"] as const) {
+      test(`is refused and changes nothing (${mode}, named by ${anchor})`, async () => {
+        const target = await beforeTable();
+        const before = target.reviewer.snapshot();
+        const result = target.reviewer.applyOperations(
+          [
+            {
+              id: "insert",
+              type:
+                anchor === "bravo" ? "insertAfterBlock" : "insertBeforeBlock",
+              blockId: target[anchor],
+              text: "Inserted.",
+            },
+          ],
+          { mode },
+        );
+        expect(result.applied).toEqual([]);
+        expect(result.skipped.map(({ reason }) => reason)).toEqual([
+          "pendingParagraphMarkDeletion",
+        ]);
+        expect(target.reviewer.snapshot()).toEqual(before);
+      });
+    }
+  }
+
+  test("is applied and stands apart with a paragraph going whole before the table", async () => {
+    const { reviewer, alpha } = await beforeTable();
+    expect(
+      reviewer.applyOperations(
+        [
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: alpha,
+            text: "Inserted.",
+          },
+        ],
+        { mode: "tracked-changes" },
+      ).skipped,
+    ).toEqual([]);
+    reviewer.acceptAll();
+    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual([
+      "Alpha. ",
+      "Inserted.",
+      "Cell",
+      "Charlie.",
+    ]);
+  });
+
+  describe("when the table's first cell is pending", () => {
+    const beforePendingTable = async () => {
+      const bytes = (
+        await ensureParaIds(
+          await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
+        )
+      ).docx;
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+        author: "Test",
+      });
+      const [alpha, bravo] = reviewer.snapshot().blocks;
+      if (!alpha || !bravo) throw new Error("Missing fixture");
+      for (const operation of [
+        { id: "t", type: "insertTable", blockId: bravo.id, rows: [["Cell"]] },
+        {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: alpha.id,
+          separator: " ",
+        },
+        { id: "delete", type: "deleteBlock", blockId: bravo.id },
+      ] satisfies FolioDocumentOperation[]) {
+        expect(
+          reviewer.applyOperations([operation], { mode: "tracked-changes" })
+            .skipped,
+        ).toEqual([]);
+      }
+      return { reviewer, alpha: alpha.id, bravo: bravo.id };
+    };
+
+    test("right after the words, it is applied and stands apart", async () => {
+      const { reviewer, alpha } = await beforePendingTable();
+      expect(
+        reviewer.applyOperations(
+          [
+            {
+              id: "insert",
+              type: "insertAfterBlock",
+              blockId: alpha,
+              text: "Inserted.",
+            },
+          ],
+          { mode: "tracked-changes" },
+        ).skipped,
+      ).toEqual([]);
+      reviewer.acceptAll();
+      expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual([
+        "Alpha. ",
+        "Inserted.",
+        "Cell",
+        "Charlie.",
+      ]);
+    });
+
+    test("past a paragraph going whole, it is refused", async () => {
+      const { reviewer, bravo } = await beforePendingTable();
+      expect(
+        reviewer
+          .applyOperations(
+            [
+              {
+                id: "insert",
+                type: "insertAfterBlock",
+                blockId: bravo,
+                text: "Inserted.",
+              },
+            ],
+            { mode: "tracked-changes" },
+          )
+          .skipped.map(({ reason }) => reason),
+      ).toEqual(["pendingParagraphMarkDeletion"]);
+    });
+  });
+
+  test("is applied once the join is rejected", async () => {
+    const { reviewer, cell } = await beforeTable();
+    const join = reviewer
+      .getChanges()
+      .find(({ type }) => type === "paragraphMarkDeleted");
+    if (!join) throw new Error("Missing join");
+    expect(reviewer.rejectChange(join)).toBe(true);
+    expect(
+      reviewer.applyOperations(
+        [
+          {
+            id: "insert",
+            type: "insertBeforeBlock",
+            blockId: cell,
+            text: "Inserted.",
+          },
+        ],
+        { mode: "tracked-changes" },
+      ).skipped,
+    ).toEqual([]);
+    reviewer.acceptAll();
+    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toContain(
+      "Inserted.",
+    );
+  });
+});
+
 const EMPTY_SOURCE_MARKDOWN = "Alpha.\n\nBravo.\n\nCharlie.";
 
 /** An empty paragraph after "Alpha.", merged into "Bravo.", then `edit` in `mode`. */

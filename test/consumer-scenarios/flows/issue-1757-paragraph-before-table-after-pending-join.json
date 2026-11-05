@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 10585378,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "5E88C024",
+          "text": "Clause period notice invoice term."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 10585378"
+}

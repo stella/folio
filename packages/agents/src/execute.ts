@@ -714,7 +714,7 @@ const explainSkipReason = (reason: string): string => {
     return "this block is pending deletion (a tracked change deletes it; it reads as a blank block); nothing was applied, since text written there would join the next paragraph once the deletion is accepted. Reject that deletion first, or insert a new block next to it (insertAfterBlock / insertBeforeBlock).";
   }
   if (reason === "pendingParagraphMarkDeletion") {
-    return "this paragraph's mark is pending tracked deletion; resolve that change before editing its properties separately, or provide mergedParagraphProperties on the merge operation.";
+    return "a paragraph mark this operation depends on is pending tracked deletion; nothing was applied. Resolve that change first.";
   }
   if (reason === "missingNumbering") {
     return '`numbering` names a numbering instance this document does not define; nothing was applied. Re-read the document and use a `{ kind: "reference", numId, ilvl? }` the document defines (the one a neighbouring list item carries), or choose another numbering state.';
