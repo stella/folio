@@ -162,7 +162,7 @@ type RenderCellContentOptions = {
   doc: Document;
   contentWidthOverride?: number;
   pageContentPosition?: PageContentPosition;
-  /** What of this content the page shows; the rest stays unbuilt but in flow. */
+  /** What of this content the page shows; a nested table outside it stays unbuilt. */
   visibleBand?: VisibleBand;
 };
 
@@ -276,17 +276,6 @@ function renderCellContent({
   const flowState = createTableCellFlowState();
   let anchorParagraphY = 0;
   let floatingTextBoxesLayer: HTMLElement | undefined;
-  // Consecutive unbuilt blocks share one spacer, so the node count follows what
-  // the page shows rather than how long the cell is.
-  let unbuiltRun: { element: HTMLElement; height: number } | undefined;
-  const holdUnbuiltFlow = (height: number): void => {
-    if (!unbuiltRun) {
-      unbuiltRun = { element: doc.createElement("div"), height: 0 };
-      contentEl.append(unbuiltRun.element);
-    }
-    unbuiltRun.height += height;
-    unbuiltRun.element.style.height = `${unbuiltRun.height}px`;
-  };
   for (let i = 0; i < cell.blocks.length; i++) {
     const block = cell.blocks[i];
     const measure = cellMeasure.blocks[i];
@@ -313,18 +302,6 @@ function renderCellContent({
         paragraphBlock,
         paragraphMeasure,
       );
-      if (
-        isOutsideBand(
-          visibleBand,
-          placement.top,
-          placement.contentTop + placement.contentHeight,
-        )
-      ) {
-        holdUnbuiltFlow(placement.leadingSpacing + placement.contentHeight);
-        anchorParagraphY = placement.contentTop;
-        continue;
-      }
-      unbuiltRun = undefined;
 
       // Create synthetic fragment for the paragraph
       const syntheticFragment: ParagraphFragment = {
@@ -411,11 +388,12 @@ function renderCellContent({
           placement.contentTop + placement.contentHeight,
         )
       ) {
-        holdUnbuiltFlow(placement.leadingSpacing + placement.contentHeight);
+        const unbuilt = doc.createElement("div");
+        unbuilt.style.height = `${placement.leadingSpacing + placement.contentHeight}px`;
+        contentEl.append(unbuilt);
         anchorParagraphY = flowState.height;
         continue;
       }
-      unbuiltRun = undefined;
 
       const nestedTableEl = renderNestedTable(
         tableBlock,
@@ -438,7 +416,6 @@ function renderCellContent({
       // anchor Y for the following floating text box.
       anchorParagraphY = flowState.height;
     } else if (block?.kind === "textBox" && measure?.kind === "textBox") {
-      unbuiltRun = undefined;
       const textBoxBlock = block as TextBoxBlock;
       const textBoxMeasure = measure as TextBoxMeasure;
       const syntheticFragment: TextBoxFragment = {
@@ -763,7 +740,7 @@ type RenderTableCellOptions = {
   context: RenderContext;
   doc: Document;
   contentClip?: CellContentClip;
-  /** What of this cell box the page shows. Unbuilt content stays in flow. */
+  /** What of this cell box the page shows; nested rows outside it stay unbuilt. */
   visibleBand?: VisibleBand;
   pageContentPosition?: PageContentPosition;
 };

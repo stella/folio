@@ -329,7 +329,7 @@ const paintCellBlocks = ({
     }
     const placement = placeTableCellBlock(flowState, block, measure);
     if (
-      (block.kind === "paragraph" || block.kind === "table") &&
+      block.kind === "table" &&
       isOutsideBand(
         visibleBand,
         yPx + placement.top,

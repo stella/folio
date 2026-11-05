@@ -437,7 +437,7 @@ const assertShape = (outer: TableShape, pageHeight: number): void => {
           }
         }
 
-        // A clipped row builds nothing its slice cannot show. The display list
+        // A clipped row builds no nested row its slice cannot show. The display list
         // reports a page's text, so it can only answer for a page it has alone.
         const fragmentsOnPage = (pageIndex: number): number =>
           tableFragments(layout).filter(([, index]) => index === pageIndex)

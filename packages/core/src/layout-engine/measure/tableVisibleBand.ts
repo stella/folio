@@ -1,7 +1,8 @@
 /**
  * What a clipped table row shows. A row that continues across flow regions is
- * painted once per region and clipped to that region's slice of it, so anything
- * wholly outside the slice can stay unbuilt. Both painters share these rules.
+ * painted once per region and clipped to that region's slice of it, so a nested
+ * row or table wholly outside the slice can stay unbuilt. Both painters share
+ * these rules.
  */
 
 import type { TableBlock, TableRow } from "../types";
