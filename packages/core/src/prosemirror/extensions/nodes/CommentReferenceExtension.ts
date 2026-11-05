@@ -9,6 +9,7 @@ import {
 } from "../../commentReferenceIntegrity";
 import { createNodeExtension } from "../create";
 import type { NodeExtension } from "../types";
+import { INLINE_ANCHOR_DOM_STYLE } from "./inlineAnchorDom";
 
 export { COMMENT_REFERENCE_NODE_NAME };
 
@@ -53,7 +54,7 @@ export const CommentReferenceExtension: (
           ),
           "aria-hidden": "true",
           contenteditable: "false",
-          style: "display: none;",
+          style: INLINE_ANCHOR_DOM_STYLE,
           ...(options.getInternalClipboardToken
             ? {
                 "data-docx-internal-clipboard":

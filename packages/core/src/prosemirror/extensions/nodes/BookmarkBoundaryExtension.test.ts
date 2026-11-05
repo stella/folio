@@ -14,6 +14,7 @@ import {
   parseBookmarkBoundaryDom,
 } from "./bookmarkBoundaryDom";
 import { BookmarkBoundaryExtension } from "./BookmarkBoundaryExtension";
+import { INLINE_ANCHOR_DOM_STYLE } from "./inlineAnchorDom";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 
@@ -154,7 +155,7 @@ describe("BookmarkBoundaryExtension DOM round-trip", () => {
         "data-docx-bookmark-col-last": "4",
         "aria-hidden": "true",
         contenteditable: "false",
-        style: "display: none;",
+        style: INLINE_ANCHOR_DOM_STYLE,
         "data-docx-internal-clipboard": expect.any(String),
       }),
     ]);

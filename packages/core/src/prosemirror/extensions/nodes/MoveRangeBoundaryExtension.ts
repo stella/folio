@@ -12,6 +12,7 @@ import {
 } from "../../moveRangeBoundaryAttrs";
 import { createNodeExtension } from "../create";
 import type { NodeExtension } from "../types";
+import { INLINE_ANCHOR_DOM_STYLE } from "./inlineAnchorDom";
 
 type MoveRangeBoundaryOptions = {
   getInternalClipboardToken?: () => string;
@@ -69,7 +70,7 @@ export const MoveRangeBoundaryExtension: (
           [MOVE_RANGE_BOUNDARY_DOM_ATTRIBUTE]: JSON.stringify(marker),
           "aria-hidden": "true",
           contenteditable: "false",
-          style: "display: none;",
+          style: INLINE_ANCHOR_DOM_STYLE,
           ...(internalClipboardToken
             ? {
                 [INTERNAL_CLIPBOARD_TOKEN_ATTRIBUTE]: internalClipboardToken,

@@ -4,6 +4,7 @@ import {
 } from "../../commentRangeBoundaryAttrs";
 import { createNodeExtension } from "../create";
 import type { NodeExtension } from "../types";
+import { INLINE_ANCHOR_DOM_STYLE } from "./inlineAnchorDom";
 
 type CommentRangeBoundaryOptions = {
   getInternalClipboardToken?: () => string;
@@ -49,7 +50,7 @@ export const CommentRangeBoundaryExtension: (
           [COMMENT_RANGE_BOUNDARY_DOM_ATTRIBUTE]: JSON.stringify(marker),
           "aria-hidden": "true",
           contenteditable: "false",
-          style: "display: none;",
+          style: INLINE_ANCHOR_DOM_STYLE,
           ...(options.getInternalClipboardToken
             ? {
                 "data-docx-internal-clipboard":
