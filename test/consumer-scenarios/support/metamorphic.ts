@@ -957,8 +957,9 @@ const shadowProblems = async (
     switch (check) {
       case "directTracked": {
         // A paragraph pending deletion keeps a list's id taken that a direct
-        // deletion frees, so a later list can differ by id alone.
-        const preRows = (await resolvedState(fixture, "accept", story)).rows;
+        // deletion frees, and a split half that outlives a join can be another
+        // block than directly, so neither side's ids or block ids line up.
+        // Which paragraphs share a list, and how it renders, is the outcome.
         const accepted = async (reviewer: Reviewer) => {
           const state = await resolvedState(
             await save(reviewer),
@@ -967,7 +968,7 @@ const shadowProblems = async (
           );
           return withoutHeldComments(
             settledView({
-              rows: nameStartedLists(state.rows, preRows),
+              rows: nameStartedLists(state.rows, []),
               comments: state.comments,
             }),
             shadows.heldComments,
