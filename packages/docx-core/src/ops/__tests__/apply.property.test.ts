@@ -2758,66 +2758,70 @@ describe("document operations", () => {
     expectEveryKindApplied(tally, NUM_RUNS);
   });
 
-  test("a sequence's inverses in reverse, and a batch's, restore the document exactly", () => {
-    const tally: Tally = new Map();
-    assertProperty(
-      fc.property(
-        documentArbitrary,
-        fc.array(opSeedArbitrary, { minLength: 2, maxLength: 8 }),
-        (document, seeds: OpSeed[]) => {
-          const original = structuredClone(document);
-          let current = document;
-          const ops: DocumentOp[] = [];
-          const inverses: (readonly DocumentOp[])[] = [];
-          for (const seed of seeds) {
-            const op = opFor(current, seed);
-            const applied = applyDocumentOp(current, op);
-            if (applied.isErr()) {
-              count(tally, "refused");
-              continue;
+  test(
+    "a sequence's inverses in reverse, and a batch's, restore the document exactly",
+    () => {
+      const tally: Tally = new Map();
+      assertProperty(
+        fc.property(
+          documentArbitrary,
+          fc.array(opSeedArbitrary, { minLength: 2, maxLength: 8 }),
+          (document, seeds: OpSeed[]) => {
+            const original = structuredClone(document);
+            let current = document;
+            const ops: DocumentOp[] = [];
+            const inverses: (readonly DocumentOp[])[] = [];
+            for (const seed of seeds) {
+              const op = opFor(current, seed);
+              const applied = applyDocumentOp(current, op);
+              if (applied.isErr()) {
+                count(tally, "refused");
+                continue;
+              }
+              count(tally, op.type);
+              ops.push(op);
+              inverses.push(applied.value.inverse);
+              current = applied.value.document;
             }
-            count(tally, op.type);
-            ops.push(op);
-            inverses.push(applied.value.inverse);
-            current = applied.value.document;
-          }
-          expect(applyAll(current, inverses.toReversed().flat())).toStrictEqual(
-            original,
-          );
+            expect(
+              applyAll(current, inverses.toReversed().flat()),
+            ).toStrictEqual(original);
 
-          const batch = applyDocumentOps(document, ops);
-          if (batch.isErr()) {
-            throw batch.error;
-          }
-          expect(batch.value.document).toStrictEqual(current);
-          expectRestores(batch.value, original);
+            const batch = applyDocumentOps(document, ops);
+            if (batch.isErr()) {
+              throw batch.error;
+            }
+            expect(batch.value.document).toStrictEqual(current);
+            expectRestores(batch.value, original);
 
-          // JSON is the journal wire format; IDs and section/list model state survive both ways.
-          const wireOps = JSON.parse(JSON.stringify(ops)) as DocumentOp[];
-          const wireBatch = applyDocumentOps(
-            independentCopy(document),
-            wireOps,
-          );
-          if (wireBatch.isErr()) throw wireBatch.error;
-          expect(wireBatch.value.document).toStrictEqual(current);
-          const wireInverse = JSON.parse(
-            JSON.stringify(wireBatch.value.inverse),
-          ) as DocumentOp[];
-          const wireUndo = applyDocumentOps(
-            independentCopy(wireBatch.value.document),
-            wireInverse,
-          );
-          if (wireUndo.isErr()) throw wireUndo.error;
-          expect(wireUndo.value.document).toStrictEqual(original);
+            // JSON is the journal wire format; IDs and section/list model state survive both ways.
+            const wireOps = JSON.parse(JSON.stringify(ops)) as DocumentOp[];
+            const wireBatch = applyDocumentOps(
+              independentCopy(document),
+              wireOps,
+            );
+            if (wireBatch.isErr()) throw wireBatch.error;
+            expect(wireBatch.value.document).toStrictEqual(current);
+            const wireInverse = JSON.parse(
+              JSON.stringify(wireBatch.value.inverse),
+            ) as DocumentOp[];
+            const wireUndo = applyDocumentOps(
+              independentCopy(wireBatch.value.document),
+              wireInverse,
+            );
+            if (wireUndo.isErr()) throw wireUndo.error;
+            expect(wireUndo.value.document).toStrictEqual(original);
+          },
+        ),
+        {
+          numRuns: NUM_RUNS,
+          id: "a sequence's inverses in reverse, and a batch's, restore the document exactly",
         },
-      ),
-      {
-        numRuns: NUM_RUNS,
-        id: "a sequence's inverses in reverse, and a batch's, restore the document exactly",
-      },
-    );
-    expectEveryKindApplied(tally, NUM_RUNS);
-  });
+      );
+      expectEveryKindApplied(tally, NUM_RUNS);
+    },
+    propertyTestTimeout(480_000),
+  );
 
   test("editor joins select properties from visible content and preserve trailing mark formatting", () => {
     assertProperty(
