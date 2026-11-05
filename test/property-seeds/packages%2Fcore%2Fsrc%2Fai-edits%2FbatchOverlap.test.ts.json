@@ -65,6 +65,12 @@
       "path": "125:12:13:13",
       "note": "An insertion named after a property write on a paragraph a final deletion retires copies it as read.",
       "date": "2026-11-05"
+    },
+    {
+      "seed": -264447896,
+      "path": "11:13:14:14:12:12",
+      "note": "A property write on a paragraph in a final run of deletions applies: the batch retires the final break only once it has finished.",
+      "date": "2026-11-05"
     }
   ],
   "applies accepted patches in planner order against an independent replay": [

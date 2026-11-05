@@ -564,6 +564,42 @@ const batchAgainstOneAtATime = async ({
     appliedIds.has(`op${String(index)}`) ? [{ operation, index }] : [],
   );
 
+  // Tracked, a batch deleting every paragraph gives the emptied last one the
+  // first one's properties, so that accepting reads as the direct edit does.
+  // Deleted one at a time, no batch sees the whole run: a property write on
+  // either end is compared with the direct edit instead.
+  const deletesEveryBlock = Array.from(
+    { length: BLOCK_COUNT },
+    (_, block) => block,
+  ).every((block) =>
+    applied.some(
+      ({ operation }) =>
+        operation.kind === "deleteBlock" && operation.block === block,
+    ),
+  );
+  const writesProperties = applied.some(
+    ({ operation }) => operation.kind === "setBlockParagraphProperties",
+  );
+  if (mode === "tracked-changes" && deletesEveryBlock && writesProperties) {
+    const direct = await initializedSession();
+    const directOperations = applied.flatMap(({ operation, index }) => {
+      const materialized = materialize(direct, blockIds, operation, index);
+      return materialized === null ? [] : [materialized];
+    });
+    // Applied directly the last paragraph goes into the one before, so its
+    // write can be refused there; the edits are then not the same edit.
+    if (direct.apply("direct", directOperations).skipped.length > 0) {
+      return problems;
+    }
+    batch.acceptAll();
+    const accepted = JSON.stringify(batch.presentation({ withAnchors: false }));
+    const edited = JSON.stringify(direct.presentation({ withAnchors: false }));
+    if (accepted !== edited) {
+      report(`accepting left ${accepted}, the direct edit left ${edited}`);
+    }
+    return problems;
+  }
+
   const oracle = await initializedSession();
   const materializeAll = (
     entries: readonly { operation: GeneratedOperation; index: number }[],
@@ -1313,6 +1349,65 @@ describe("a random batch with overlapping, nested and duplicate targets", () => 
       );
     },
     propertyTestTimeout(300_000),
+  );
+});
+
+describe("deletions beside a property write, an insertion or a merge", () => {
+  // The batch retires a final paragraph's break once it has finished, and runs
+  // what shares a gap in one order. Every shape of those, one at a time.
+  const blocks = Array.from({ length: BLOCK_COUNT }, (_, block) => block);
+  const deletionSets = Array.from({ length: 2 ** BLOCK_COUNT }, (_, set) =>
+    blocks.filter((block) => (set >> block) % 2 === 1),
+  );
+  const companions = (block: number): GeneratedOperation[] => [
+    { kind: "insertBeforeBlock", block },
+    { kind: "insertAfterBlock", block },
+    ...(block > 0
+      ? [{ kind: "mergeBlockWithNext" as const, block: block - 1 }]
+      : []),
+  ];
+
+  test(
+    "applies as one at a time would, whichever order the batch names them",
+    async () => {
+      const problems: string[] = [];
+      for (const mode of MODES) {
+        for (const deleted of deletionSets) {
+          for (let block = 0; block < BLOCK_COUNT; block += 1) {
+            const write: GeneratedOperation = {
+              kind: "setBlockParagraphProperties",
+              block,
+              properties: { alignment: "center" },
+            };
+            const deletions = deleted.map((target): GeneratedOperation => ({
+              kind: "deleteBlock",
+              block: target,
+            }));
+            const others = companions(block);
+            const sets: GeneratedOperation[][] = [
+              [write],
+              ...others.map((companion) => [companion]),
+              ...others.map((companion) => [companion, write]),
+            ];
+            for (const set of sets) {
+              for (const generated of [
+                [...set, ...deletions],
+                [...deletions, ...set],
+                [...set.toReversed(), ...deletions],
+                [...deletions, ...set.toReversed()],
+              ]) {
+                if (generated.length < 2) continue;
+                problems.push(
+                  ...(await batchAgainstOneAtATime({ generated, mode })),
+                );
+              }
+            }
+          }
+        }
+      }
+      expect(problems).toEqual([]);
+    },
+    propertyTestTimeout(120_000),
   );
 });
 
