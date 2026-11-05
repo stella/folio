@@ -299,15 +299,16 @@ export const sequentialGroups = ({
   // A deletion removes or retires its block, so an insertion before it can
   // only be stated one at a time while the block still stands. The batch
   // keeps that gap, so the oracle runs the whole run ahead of the deletion.
-  // A container's final paragraph differs. In tracked changes, with no
-  // surviving paragraph to retire its mark onto, a paragraph inserted first
-  // would carry the break and the batch deletes first. In a suggestion the batch hands
-  // the break to a paragraph inserted into the gap before it, whichever side
-  // of the gap the insertion is stated from.
+  // A container's final paragraph differs. With no surviving paragraph to
+  // retire its mark onto, a paragraph inserted first would carry the break,
+  // or take the deleted paragraph's place directly, and the batch deletes
+  // first. In a suggestion the batch hands the break to a paragraph inserted
+  // into the gap before it, whichever side of the gap the insertion is stated
+  // from.
   const gapDeletion = (operation: AnyOperation): string | undefined => {
     const id = blockIdOf(operation);
     if (operation.type === "insertBeforeBlock") {
-      const retires = mode === "tracked-changes" && uncarriedFinals.has(id);
+      const retires = mode !== "suggested" && uncarriedFinals.has(id);
       return deleted.has(id) && !retires ? id : undefined;
     }
     if (operation.type !== "insertAfterBlock" || mode === "direct") {
@@ -360,6 +361,9 @@ export const sequentialGroups = ({
         ? [id]
         : [];
     }
+    // Removing a table row or table takes its anchor with it.
+    if (operation.type === "deleteTableRow" || operation.type === "deleteTable")
+      return [id];
     if (operation.type !== "mergeBlockWithNext") return [];
     const index = preRows.findIndex((row) => row.id === id);
     const row = preRows.at(index);

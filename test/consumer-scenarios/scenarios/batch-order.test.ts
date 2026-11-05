@@ -488,3 +488,85 @@ test("a block addressed and taken out in one batch replays the address first, in
     }
   }
 });
+
+/** Apply `operations` as one batch and in the replay's order, to independent copies. */
+const compareWithReplay = async (
+  fixture: Uint8Array,
+  mode: "direct" | "tracked-changes" | "suggested",
+  operations: readonly FolioDocumentOperation[],
+) => {
+  const batched = await openReviewer(fixture);
+  const preRows = batched.getContent() as Row[];
+  const batch = batched.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [...operations],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  assert.deepEqual(batch.skipped, [], `${mode}: batch`);
+  const sequential = await openReviewer(fixture);
+  for (const group of sequentialGroups({
+    applied: operations,
+    preRows,
+    mode,
+  })) {
+    const replayed = sequential.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: group as FolioDocumentOperation[],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    assert.deepEqual(replayed.skipped, [], `${mode}: one at a time`);
+  }
+  assert.deepEqual(view(sequential), view(batched), mode);
+};
+
+test("a row deletion replays after an insertion anchored in that row", async () => {
+  const fixture = await packDocument(
+    fromMarkdown("Alpha.\n\n| Term | Value |\n| --- | --- |\n| A | B |"),
+  );
+  const rows = (await openReviewer(fixture)).getContent() as Row[];
+  const cell = rows.find(({ table }) => table !== undefined);
+  assert.ok(cell);
+  const remove: FolioDocumentOperation = {
+    id: "remove",
+    type: "deleteTableRow",
+    blockId: cell.id,
+  };
+  const insert: FolioDocumentOperation = {
+    id: "insert",
+    type: "insertBeforeBlock",
+    blockId: cell.id,
+    text: "Before.",
+  };
+  for (const mode of [...MODES, "suggested"] as const) {
+    await compareWithReplay(fixture, mode, [remove, insert]);
+    await compareWithReplay(fixture, mode, [insert, remove]);
+  }
+});
+
+test("a sole paragraph's deletion replays first, as the batch runs it", async () => {
+  const fixture = await packDocument(fromMarkdown("Only."));
+  const rows = (await openReviewer(fixture)).getContent() as Row[];
+  const only = rows.at(0);
+  assert.ok(only);
+  const remove: FolioDocumentOperation = {
+    id: "remove",
+    type: "deleteBlock",
+    blockId: only.id,
+  };
+  const insert: FolioDocumentOperation = {
+    id: "insert",
+    type: "insertBeforeBlock",
+    blockId: only.id,
+    text: "Before.",
+  };
+  for (const mode of MODES) {
+    await compareWithReplay(fixture, mode, [remove, insert]);
+    await compareWithReplay(fixture, mode, [insert, remove]);
+  }
+});
