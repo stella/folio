@@ -24,6 +24,12 @@ import {
   getTableCellSpacingInsetsY,
 } from "../../layout-engine/measure/tableCellGrid";
 import { tableFragmentBottomBorders } from "../../layout-engine/measure/tableFragmentBorderGeometry";
+import {
+  isOutsideBand,
+  tableHasFloatingCellContent,
+  tableRowPaintBottom,
+  type VisibleBand,
+} from "../../layout-engine/measure/tableVisibleBand";
 import { resolveTableCellPadding } from "../../layout-engine/types";
 import type {
   CellBorderSpec,
@@ -96,6 +102,7 @@ type PaintCellOptions = {
   readonly box: CellBox;
   readonly context: BuildContext;
   readonly paintTextBox: PaintTextBox;
+  readonly visibleBand: VisibleBand | undefined;
   readonly sides: {
     readonly top: boolean;
     readonly bottom: boolean;
@@ -111,6 +118,7 @@ const paintCell = ({
   box,
   context,
   paintTextBox,
+  visibleBand,
   sides,
 }: PaintCellOptions): void => {
   const primitives: DisplayPrimitive[] = [];
@@ -242,6 +250,7 @@ const paintCell = ({
     inlinePictureViewport: cellPictureViewport,
     context,
     paintTextBox,
+    visibleBand,
   });
 
   const diagonals = [
@@ -276,6 +285,7 @@ type PaintCellBlocksOptions = {
   readonly inlinePictureViewport: HorizontalClipViewport;
   readonly context: BuildContext;
   readonly paintTextBox: PaintTextBox;
+  readonly visibleBand: VisibleBand | undefined;
 };
 
 type PaintTextBox = (options: {
@@ -300,6 +310,7 @@ const paintCellBlocks = ({
   inlinePictureViewport,
   context,
   paintTextBox,
+  visibleBand,
 }: PaintCellBlocksOptions): void => {
   const flowState = createTableCellFlowState();
 
@@ -317,6 +328,16 @@ const paintCellBlocks = ({
       continue;
     }
     const placement = placeTableCellBlock(flowState, block, measure);
+    if (
+      (block.kind === "paragraph" || block.kind === "table") &&
+      isOutsideBand(
+        visibleBand,
+        yPx + placement.top,
+        yPx + placement.contentTop + placement.contentHeight,
+      )
+    ) {
+      continue;
+    }
 
     if (block.kind === "paragraph" && measure.kind === "paragraph") {
       const previous = blocks[index - 1];
@@ -376,6 +397,7 @@ const paintCellBlocks = ({
               inlinePictureViewport,
             },
             paintTextBox,
+            visibleBand,
           });
         },
       );
@@ -437,6 +459,8 @@ type PaintTableBodyOptions = {
   readonly headerRowCount: number;
   readonly context: BuildContext;
   readonly paintTextBox: PaintTextBox;
+  /** What of this table the page shows, in page coordinates. */
+  readonly visibleBand: VisibleBand | undefined;
 };
 
 const rowIsPainted = (row: TableRow | undefined): row is TableRow =>
@@ -453,6 +477,7 @@ const paintTableBody = ({
   headerRowCount,
   context,
   paintTextBox,
+  visibleBand,
 }: PaintTableBodyOptions): void => {
   const grid = buildTableCellGrid(block.rows, measure.columnWidths.length);
   const placements = buildTableCellPlacements({
@@ -470,12 +495,25 @@ const paintTableBody = ({
     rowTops.push((rowTops.at(-1) ?? 0) + rowMeasure.height);
   }
 
+  // The first row a continuation shows whole has no painted row above it.
+  let firstShownRow: number | undefined;
   const paintRow = (rowIndex: number, rowYPx: number): void => {
     const row = block.rows[rowIndex];
     const rowMeasure = measure.rows[rowIndex];
     if (!rowIsPainted(row) || !rowMeasure) {
       return;
     }
+    const rowTop = rowTops[rowIndex] ?? 0;
+    if (
+      isOutsideBand(
+        visibleBand,
+        rowYPx,
+        rowYPx + tableRowPaintBottom(row, rowIndex, rowTops) - rowTop,
+      )
+    ) {
+      return;
+    }
+    firstShownRow ??= rowIndex;
     composer.region(
       {
         kind: HIT_REGION_KINDS.tableRow,
@@ -502,6 +540,10 @@ const paintTableBody = ({
     rowIndex: number,
     rowYPx: number,
   ): void => {
+    const opensContinuation =
+      visibleBand !== undefined &&
+      rowIndex === firstShownRow &&
+      rowYPx >= visibleBand.top;
     for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex += 1) {
       const cell = row.cells[cellIndex];
       const cellMeasure = rowMeasure.cells[cellIndex];
@@ -564,6 +606,7 @@ const paintTableBody = ({
             box,
             context,
             paintTextBox,
+            visibleBand,
             sides: {
               // The shared edge belongs to the upper / leading cell; the other
               // side suppresses its own only when that owner actually draws one.
@@ -571,6 +614,7 @@ const paintTableBody = ({
               top:
                 bordersSeparated ||
                 rowIndex === fromRow ||
+                opensContinuation ||
                 !hasVisibleBorder(aboveCell?.borders?.bottom),
               bottom: true,
               left:
@@ -652,6 +696,7 @@ export type TableBlockPaintOptions = {
   readonly yPx: number;
   readonly context: BuildContext;
   readonly paintTextBox: PaintTextBox;
+  readonly visibleBand?: VisibleBand | undefined;
 };
 
 /** A whole, unpaginated table: what a nested table inside a cell or box is. */
@@ -663,6 +708,7 @@ export const paintTableBlock = ({
   yPx,
   context,
   paintTextBox,
+  visibleBand,
 }: TableBlockPaintOptions): void =>
   paintTableBody({
     composer,
@@ -675,6 +721,7 @@ export const paintTableBlock = ({
     headerRowCount: 0,
     context,
     paintTextBox,
+    visibleBand,
   });
 
 export type TablePaintOptions = {
@@ -721,11 +768,12 @@ export const paintTableFragment = ({
       headerRowCount,
       context,
       paintTextBox,
+      visibleBand: undefined,
     });
   };
 
   const topClipPx = fragment.topClip ?? 0;
-  const paintBody = (into: PageComposer): void => {
+  const paintBody = (into: PageComposer, visibleBand?: VisibleBand): void => {
     paintTableBody({
       composer: into,
       block,
@@ -737,6 +785,7 @@ export const paintTableFragment = ({
       headerRowCount: 0,
       context,
       paintTextBox,
+      visibleBand,
     });
   };
 
@@ -751,14 +800,19 @@ export const paintTableFragment = ({
   // structured backend can preserve row, cell and text ancestry while paint
   // backends ignore the hit data.
   paintHeaders(composer);
-  const clipped = createPageComposer();
-  paintBody(clipped);
   const clip: DisplayRect = {
     xPx: fragment.x,
     yPx: fragment.y + headerHeightPx,
     widthPx: fragment.width,
     heightPx: Math.max(0, fragment.height - headerHeightPx),
   };
+  const clipped = createPageComposer();
+  paintBody(
+    clipped,
+    tableHasFloatingCellContent(block)
+      ? undefined
+      : { top: clip.yPx, bottom: clip.yPx + clip.heightPx },
+  );
   composer.push([
     {
       kind: "clipGroup",

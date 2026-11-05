@@ -38,6 +38,13 @@ import {
   resolveTableInlineOffset,
   resolveTableInlinePlacement,
 } from "../layout-engine/measure/tableInlinePlacement";
+import {
+  bandFromOrigin,
+  isOutsideBand,
+  tableHasFloatingCellContent,
+  tableRowPaintBottom,
+  type VisibleBand,
+} from "../layout-engine/measure/tableVisibleBand";
 import type {
   CellBorderSpec,
   ParagraphBlock,
@@ -53,7 +60,6 @@ import type {
   TextBoxMeasure,
 } from "../layout-engine/types";
 import {
-  isFloatingImageRun,
   isFloatingTextBoxBlock,
   resolveTableCellPadding,
   tableColumnsArePinned,
@@ -156,6 +162,8 @@ type RenderCellContentOptions = {
   doc: Document;
   contentWidthOverride?: number;
   pageContentPosition?: PageContentPosition;
+  /** What of this content the page shows; the rest stays unbuilt but in flow. */
+  visibleBand?: VisibleBand;
 };
 
 type CellContentClip = {
@@ -170,6 +178,7 @@ function renderCellContent({
   doc,
   contentWidthOverride,
   pageContentPosition,
+  visibleBand,
 }: RenderCellContentOptions): RenderedCellContent {
   const contentEl = doc.createElement("div");
   contentEl.className = TABLE_CLASS_NAMES.cellContent;
@@ -267,6 +276,17 @@ function renderCellContent({
   const flowState = createTableCellFlowState();
   let anchorParagraphY = 0;
   let floatingTextBoxesLayer: HTMLElement | undefined;
+  // Consecutive unbuilt blocks share one spacer, so the node count follows what
+  // the page shows rather than how long the cell is.
+  let unbuiltRun: { element: HTMLElement; height: number } | undefined;
+  const holdUnbuiltFlow = (height: number): void => {
+    if (!unbuiltRun) {
+      unbuiltRun = { element: doc.createElement("div"), height: 0 };
+      contentEl.append(unbuiltRun.element);
+    }
+    unbuiltRun.height += height;
+    unbuiltRun.element.style.height = `${unbuiltRun.height}px`;
+  };
   for (let i = 0; i < cell.blocks.length; i++) {
     const block = cell.blocks[i];
     const measure = cellMeasure.blocks[i];
@@ -293,6 +313,18 @@ function renderCellContent({
         paragraphBlock,
         paragraphMeasure,
       );
+      if (
+        isOutsideBand(
+          visibleBand,
+          placement.top,
+          placement.contentTop + placement.contentHeight,
+        )
+      ) {
+        holdUnbuiltFlow(placement.leadingSpacing + placement.contentHeight);
+        anchorParagraphY = placement.contentTop;
+        continue;
+      }
+      unbuiltRun = undefined;
 
       // Create synthetic fragment for the paragraph
       const syntheticFragment: ParagraphFragment = {
@@ -367,6 +399,23 @@ function renderCellContent({
       // and compounding offsets can produce enormous heights on deeply nested tables.
       const tableBlock = block as TableBlock;
       const tableMeasure = measure as TableMeasure;
+      const placement = placeTableCellBlock(
+        flowState,
+        tableBlock,
+        tableMeasure,
+      );
+      if (
+        isOutsideBand(
+          visibleBand,
+          placement.top,
+          placement.contentTop + placement.contentHeight,
+        )
+      ) {
+        holdUnbuiltFlow(placement.leadingSpacing + placement.contentHeight);
+        anchorParagraphY = flowState.height;
+        continue;
+      }
+      unbuiltRun = undefined;
 
       const nestedTableEl = renderNestedTable(
         tableBlock,
@@ -374,13 +423,9 @@ function renderCellContent({
         context,
         doc,
         contentWidth,
+        visibleBand && bandFromOrigin(visibleBand, placement.contentTop),
       );
       nestedTableEl.style.position = "relative";
-      const placement = placeTableCellBlock(
-        flowState,
-        tableBlock,
-        tableMeasure,
-      );
       if (placement.leadingSpacing > 0) {
         const spacer = doc.createElement("div");
         spacer.style.height = `${placement.leadingSpacing}px`;
@@ -393,6 +438,7 @@ function renderCellContent({
       // anchor Y for the following floating text box.
       anchorParagraphY = flowState.height;
     } else if (block?.kind === "textBox" && measure?.kind === "textBox") {
+      unbuiltRun = undefined;
       const textBoxBlock = block as TextBoxBlock;
       const textBoxMeasure = measure as TextBoxMeasure;
       const syntheticFragment: TextBoxFragment = {
@@ -491,35 +537,10 @@ function resolveCellTextBoxY(block: TextBoxBlock): number {
   return 0;
 }
 
-function tableHasFloatingCellContent(block: TableBlock): boolean {
-  for (const row of block.rows) {
-    for (const cell of row.cells) {
-      for (const cellBlock of cell.blocks) {
-        if (cellBlock.kind === "textBox" && isFloatingTextBoxBlock(cellBlock)) {
-          return true;
-        }
-        if (
-          cellBlock.kind === "paragraph" &&
-          cellBlock.runs.some(
-            (run) => run.kind === "image" && isFloatingImageRun(run),
-          )
-        ) {
-          return true;
-        }
-        if (
-          cellBlock.kind === "table" &&
-          tableHasFloatingCellContent(cellBlock)
-        ) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
 /**
- * Render a nested table (within a cell)
+ * Render a nested table (within a cell). A `visibleBand` builds only the rows
+ * that band shows; the table keeps its full height, so the rest of the cell
+ * flows the same.
  */
 export function renderNestedTable(
   block: TableBlock,
@@ -527,6 +548,7 @@ export function renderNestedTable(
   context: RenderContext,
   doc: Document,
   frameWidth: number = context.contentWidth ?? measure.totalWidth,
+  visibleBand?: VisibleBand,
 ): HTMLElement {
   const tableEl = doc.createElement("div");
   tableEl.className = `${TABLE_CLASS_NAMES.table} layout-nested-table`;
@@ -581,6 +603,7 @@ export function renderNestedTable(
     cellSpacing: block.cellSpacing,
   });
   let y = 0;
+  let paintedRow = false;
   for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
     const row = block.rows[rowIndex];
     const rowMeasure = measure.rows[rowIndex];
@@ -588,7 +611,14 @@ export function renderNestedTable(
     if (!row || !rowMeasure) {
       continue;
     }
-    if (row.hidden) {
+    if (
+      row.hidden ||
+      isOutsideBand(
+        visibleBand,
+        y,
+        tableRowPaintBottom(row, rowIndex, rowYPositions),
+      )
+    ) {
       y += rowMeasure.height;
       continue;
     }
@@ -603,11 +633,15 @@ export function renderNestedTable(
       context,
       doc,
       rowYPositions,
+      // The first row a continuation shows whole has no painted row above it.
+      isFirstRowInFragment:
+        visibleBand !== undefined && !paintedRow && y >= visibleBand.top,
       bidi: block.bidi === true,
       columnsPinned,
       cellGrid,
       cellPlacements,
       cellSpacing: block.cellSpacing,
+      ...(visibleBand ? { visibleBand: bandFromOrigin(visibleBand, y) } : {}),
       inlineOffset:
         resolveTableInlineOffset({
           table: block,
@@ -617,6 +651,7 @@ export function renderNestedTable(
         }) - tableInlineOffset,
     });
     tableEl.append(rowEl);
+    paintedRow = true;
     y += rowMeasure.height;
   }
 
@@ -728,6 +763,8 @@ type RenderTableCellOptions = {
   context: RenderContext;
   doc: Document;
   contentClip?: CellContentClip;
+  /** What of this cell box the page shows. Unbuilt content stays in flow. */
+  visibleBand?: VisibleBand;
   pageContentPosition?: PageContentPosition;
 };
 
@@ -743,6 +780,7 @@ function renderTableCell({
   context,
   doc,
   contentClip,
+  visibleBand,
   pageContentPosition,
 }: RenderTableCellOptions): HTMLElement {
   const cellEl = doc.createElement("div");
@@ -835,11 +873,25 @@ function renderTableCell({
     cellTextRotation === 0
       ? undefined
       : Math.max(1, rowHeight - padTop - padBottom);
+  // Rotated content does not map onto the band, and neither does content a
+  // flexbox moves; a clipped cell's content box fills it, so nothing moves there.
+  const contentMovesInCell =
+    contentClip === undefined &&
+    (cell.verticalAlign === "center" || cell.verticalAlign === "bottom");
+  const topBorderHeight =
+    borderFlags.drawTop && hasVisibleBorder(cell.borders?.top)
+      ? (cell.borders?.top?.width ?? 0)
+      : 0;
+  const contentBand =
+    visibleBand && cellTextRotation === 0 && !contentMovesInCell
+      ? bandFromOrigin(visibleBand, padTop + topBorderHeight)
+      : undefined;
   const renderedContent = renderCellContent({
     cell,
     cellMeasure,
     context,
     doc,
+    ...(contentBand ? { visibleBand: contentBand } : {}),
     ...(contentWidthOverride !== undefined ? { contentWidthOverride } : {}),
     ...(pageContentPosition
       ? {
@@ -1002,6 +1054,7 @@ type RenderTableRowOptions = {
   cellPlacements: TableCellPlacements;
   cellSpacing?: number | undefined;
   contentClip?: CellContentClip;
+  visibleBand?: VisibleBand;
   pageContentPosition?: PageContentPosition;
   inlineOffset?: number;
   bottomBorderOffset?: number;
@@ -1024,6 +1077,7 @@ function renderTableRow({
   cellPlacements,
   cellSpacing,
   contentClip,
+  visibleBand,
   pageContentPosition,
   inlineOffset = 0,
   bottomBorderOffset = 0,
@@ -1133,6 +1187,9 @@ function renderTableRow({
       context,
       doc,
       ...(boxClip ? { contentClip: boxClip } : {}),
+      ...(visibleBand
+        ? { visibleBand: bandFromOrigin(visibleBand, spacing.top) }
+        : {}),
       ...(pageContentPosition
         ? {
             pageContentPosition: {
@@ -1204,9 +1261,8 @@ export function renderTableFragment(
   tableEl.style.position = "absolute";
   tableEl.style.width = `${fragment.width}px`;
   tableEl.style.height = `${fragment.height}px`;
-  tableEl.style.overflow = tableHasFloatingCellContent(block)
-    ? "visible"
-    : "hidden";
+  const hasFloatingCellContent = tableHasFloatingCellContent(block);
+  tableEl.style.overflow = hasFloatingCellContent ? "visible" : "hidden";
 
   // Store metadata
   tableEl.dataset["blockId"] = String(fragment.blockId);
@@ -1390,6 +1446,9 @@ export function renderTableFragment(
       bottomBorderOffset:
         contentRowBottomBorderOffsets[rowIndex - fragment.fromRow] ?? 0,
       ...(contentClip ? { contentClip } : {}),
+      ...(contentClip && !hasFloatingCellContent
+        ? { visibleBand: contentClip }
+        : {}),
       ...(tablePageContentPosition
         ? {
             pageContentPosition: {

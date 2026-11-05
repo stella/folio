@@ -9,8 +9,10 @@
  *
  * This computes, per row, the safe break offsets (the y of every line bottom in
  * the row's cells) so the paginator can snap a break to the deepest whole line
- * that still fits. Vertically-merged cells that span into a row are not modeled
- * here yet (a separate follow-up); each row uses its own cells' content.
+ * that still fits. A nested table contributes the lines and row bottoms of its
+ * own rows, so it continues across regions like the table that holds it.
+ * Vertically-merged cells that span into a row of the top-level table are not
+ * modeled here yet (a separate follow-up); each row uses its own cells' content.
  */
 
 import { measuredLineAdvance } from "./lineFlow";
@@ -32,6 +34,7 @@ import {
   type TableCell,
   type TableCellMeasure,
   type TableMeasure,
+  type TableRow,
 } from "./types";
 
 type UnsafeBreakRange = {
@@ -47,15 +50,62 @@ type RenderedRowBreakHint = {
 type CellBreakGeometry = {
   bottoms: number[];
   renderedBreakHints: RenderedRowBreakHint[];
+  /** Text lines and atomic blocks; nothing ever breaks through one. */
   unsafeRanges: UnsafeBreakRange[];
+  /**
+   * Nested rows that stay whole while a flow region can hold them. A region
+   * too short for one breaks it between its lines instead of losing the rest.
+   */
+  keepTogetherRanges: UnsafeBreakRange[];
   suppressibleLeadingRanges: UnsafeBreakRange[];
 };
 
 const BREAK_OFFSET_EPSILON = 0.01;
 
-function isInsideRange(offset: number, range: UnsafeBreakRange): boolean {
-  return offset > range.top && offset < range.bottom;
-}
+/**
+ * Sorted, disjoint form of `ranges`. Ranges that only touch stay separate:
+ * their shared edge is a clean break.
+ */
+const mergeBreakRanges = (ranges: UnsafeBreakRange[]): UnsafeBreakRange[] => {
+  const merged: UnsafeBreakRange[] = [];
+  for (const range of ranges.toSorted((a, b) => a.top - b.top)) {
+    const previous = merged.at(-1);
+    if (previous && range.top < previous.bottom) {
+      previous.bottom = Math.max(previous.bottom, range.bottom);
+      continue;
+    }
+    merged.push({ ...range });
+  }
+  return merged;
+};
+
+/**
+ * Binary search over the output of `mergeBreakRanges`. An offset within rounding
+ * of an edge is on that edge: nested positions are sums of more line heights
+ * than the sibling line they have to meet.
+ */
+const isInsideMergedRanges = (
+  offset: number,
+  ranges: UnsafeBreakRange[],
+): boolean => {
+  let low = 0;
+  let high = ranges.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const range = ranges[middle];
+    if (!range) {
+      return false;
+    }
+    if (offset <= range.top + BREAK_OFFSET_EPSILON) {
+      high = middle - 1;
+    } else if (offset >= range.bottom - BREAK_OFFSET_EPSILON) {
+      low = middle + 1;
+    } else {
+      return true;
+    }
+  }
+  return false;
+};
 
 function getVerticalAlignmentOffset(
   cell: TableCell | undefined,
@@ -72,6 +122,21 @@ function getVerticalAlignmentOffset(
   return 0;
 }
 
+/** A nested table can outgrow the argument count `push(...items)` allows. */
+const appendAll = <T>(target: T[], items: readonly T[]): void => {
+  for (const item of items) {
+    target.push(item);
+  }
+};
+
+const shiftRange = (
+  range: UnsafeBreakRange,
+  offset: number,
+): UnsafeBreakRange => ({
+  top: range.top + offset,
+  bottom: range.bottom + offset,
+});
+
 function shiftCellGeometry(
   geometry: CellBreakGeometry,
   offset: number,
@@ -85,17 +150,105 @@ function shiftCellGeometry(
       offset: hint.offset + offset,
       lineAdvance: hint.lineAdvance,
     })),
-    unsafeRanges: geometry.unsafeRanges.map((range) => ({
-      top: range.top + offset,
-      bottom: range.bottom + offset,
-    })),
-    suppressibleLeadingRanges: geometry.suppressibleLeadingRanges.map(
-      (range) => ({
-        top: range.top + offset,
-        bottom: range.bottom + offset,
-      }),
+    unsafeRanges: geometry.unsafeRanges.map((range) =>
+      shiftRange(range, offset),
+    ),
+    keepTogetherRanges: geometry.keepTogetherRanges.map((range) =>
+      shiftRange(range, offset),
+    ),
+    suppressibleLeadingRanges: geometry.suppressibleLeadingRanges.map((range) =>
+      shiftRange(range, offset),
     ),
   };
+}
+
+/** Each measured cell's geometry in one table row, relative to the row top. */
+function rowCellGeometries(
+  block: TableBlock,
+  measure: TableMeasure,
+  rowIndex: number,
+): CellBreakGeometry[] {
+  const rowHeight = measure.rows[rowIndex]?.height ?? 0;
+  const sourceCells = block.rows[rowIndex]?.cells ?? [];
+  const measuredCells = measure.rows[rowIndex]?.cells ?? [];
+  const geometries: CellBreakGeometry[] = [];
+  for (let c = 0; c < measuredCells.length; c++) {
+    const measuredCell = measuredCells[c];
+    if (!measuredCell) {
+      continue;
+    }
+    const sourceCell = sourceCells[c];
+    const spacing = getTableCellSpacingInsetsY(
+      block.cellSpacing,
+      rowIndex,
+      sourceCell?.rowSpan ?? 1,
+      block.rows.length,
+    );
+    geometries.push(
+      shiftCellGeometry(
+        cellBreakGeometry(sourceCell, measuredCell),
+        spacing.top +
+          getVerticalAlignmentOffset(
+            sourceCell,
+            measuredCell,
+            Math.max(0, rowHeight - spacing.top - spacing.bottom),
+          ),
+      ),
+    );
+  }
+  return geometries;
+}
+
+/** `w:cantSplit` (§17.4.6) and header rows stay whole while a region can hold them. */
+const nestedRowKeepsTogether = (row: TableRow | undefined): boolean =>
+  row?.cantSplit === true || row?.isHeader === true;
+
+/**
+ * Break geometry of a table nested in a cell, relative to its top. The cells of
+ * all its rows join one flat geometry: a break must clear every line of every
+ * cell, including a merged cell that spans several rows. Whitespace that a
+ * continuation may consume is left out, because it would have to be shared with
+ * the sibling cells flattening no longer tells apart.
+ */
+function nestedTableBreakGeometry(
+  block: TableBlock,
+  measure: TableMeasure,
+): CellBreakGeometry {
+  const nested: CellBreakGeometry = {
+    bottoms: [],
+    renderedBreakHints: [],
+    unsafeRanges: [],
+    keepTogetherRanges: [],
+    suppressibleLeadingRanges: [],
+  };
+  let rowTop = 0;
+  for (let r = 0; r < measure.rows.length; r++) {
+    const rowHeight = measure.rows[r]?.height ?? 0;
+    const sourceRow = block.rows[r];
+    if (sourceRow?.hidden !== true && rowHeight > 0) {
+      const rowBand = { top: rowTop, bottom: rowTop + rowHeight };
+      nested.bottoms.push(rowBand.bottom);
+      if (nestedRowKeepsTogether(sourceRow)) {
+        nested.keepTogetherRanges.push(rowBand);
+      }
+      // A fixed `w:trHeight` box never splits, and it clips its content, so
+      // nothing past the box can constrain a break either.
+      const fixedBox = sourceRow?.heightRule === "exact";
+      if (fixedBox) {
+        nested.unsafeRanges.push(rowBand);
+      }
+      const cells = fixedBox ? [] : rowCellGeometries(block, measure, r);
+      for (const cell of cells) {
+        const geometry = shiftCellGeometry(cell, rowTop);
+        appendAll(nested.bottoms, geometry.bottoms);
+        appendAll(nested.renderedBreakHints, geometry.renderedBreakHints);
+        appendAll(nested.unsafeRanges, geometry.unsafeRanges);
+        appendAll(nested.keepTogetherRanges, geometry.keepTogetherRanges);
+      }
+    }
+    rowTop += rowHeight;
+  }
+  return nested;
 }
 
 /** Cumulative break geometry within a single cell's content. */
@@ -108,6 +261,7 @@ function cellBreakGeometry(
   const bottoms: number[] = [];
   const renderedBreakHints: RenderedRowBreakHint[] = [];
   const unsafeRanges: UnsafeBreakRange[] = [];
+  const keepTogetherRanges: UnsafeBreakRange[] = [];
   const suppressibleLeadingRanges: UnsafeBreakRange[] = [];
   const cellBlocks = cell?.blocks;
   const blockMeasures = measure.blocks;
@@ -174,8 +328,19 @@ function cellBreakGeometry(
       if (blockHeight > 0) {
         const top = padTop + placement.contentTop;
         const y = top + blockHeight;
-        unsafeRanges.push({ top, bottom: y });
         bottoms.push(y);
+        if (block.kind === "table" && blockMeasure.kind === "table") {
+          const nested = shiftCellGeometry(
+            nestedTableBreakGeometry(block, blockMeasure),
+            top,
+          );
+          appendAll(bottoms, nested.bottoms);
+          appendAll(renderedBreakHints, nested.renderedBreakHints);
+          appendAll(unsafeRanges, nested.unsafeRanges);
+          appendAll(keepTogetherRanges, nested.keepTogetherRanges);
+        } else {
+          unsafeRanges.push({ top, bottom: y });
+        }
       }
     }
   }
@@ -183,6 +348,7 @@ function cellBreakGeometry(
     bottoms,
     renderedBreakHints,
     unsafeRanges,
+    keepTogetherRanges,
     suppressibleLeadingRanges,
   };
 }
@@ -205,14 +371,16 @@ const mergeRenderedBreakHints = (
   return merged;
 };
 
+type ContinuationCell = {
+  geometry: CellBreakGeometry;
+  contentBottom: number;
+};
+
 const continuationSkipForCell = (
-  geometry: CellBreakGeometry,
+  { geometry, contentBottom }: ContinuationCell,
   offset: number,
 ): number | undefined => {
-  const hasRemainingContent = geometry.unsafeRanges.some(
-    ({ bottom }) => bottom > offset + BREAK_OFFSET_EPSILON,
-  );
-  if (!hasRemainingContent) {
+  if (contentBottom <= offset + BREAK_OFFSET_EPSILON) {
     return undefined;
   }
 
@@ -231,11 +399,11 @@ const continuationSkipForCell = (
  * line boxes, cell padding, and explicit row height retain authored space.
  */
 const continuationSkipAfter = (
-  geometries: CellBreakGeometry[],
+  cells: ContinuationCell[],
   offset: number,
 ): number => {
-  const skips = geometries
-    .map((geometry) => continuationSkipForCell(geometry, offset))
+  const skips = cells
+    .map((cell) => continuationSkipForCell(cell, offset))
     .filter((skip): skip is number => skip !== undefined);
   if (
     skips.length === 0 ||
@@ -256,6 +424,11 @@ export type TableRowBreakInfo = {
    * final boundary.
    */
   breakOffsets: number[][];
+  /**
+   * `breakOffsets` plus the line bottoms inside nested rows that stay whole
+   * while a flow region can hold them: where to break once none can.
+   */
+  oversizedBreakOffsets: number[][];
   /** Safe cached page boundaries within each row, relative to the row top. */
   renderedBreakHints: RenderedRowBreakHint[][];
   /** Suppressible leading paragraph whitespace after each matching break offset. */
@@ -310,52 +483,40 @@ export function buildTableRowBreakInfo(
   rowTops.push(acc);
 
   const breakOffsets: number[][] = [];
+  const oversizedBreakOffsets: number[][] = [];
   const renderedBreakHints: RenderedRowBreakHint[][] = [];
   const continuationSkips: number[][] = [];
   for (let r = 0; r < rowCount; r++) {
     const rowHeight = measure.rows[r]?.height ?? 0;
+    const cellGeometries = rowCellGeometries(block, measure, r);
     const offsets = new Set<number>();
     offsets.add(rowHeight); // a row boundary is always a clean break
-    const sourceCells = block.rows[r]?.cells ?? [];
-    const measuredCells = measure.rows[r]?.cells ?? [];
-    const cellGeometries: CellBreakGeometry[] = [];
-    for (let c = 0; c < measuredCells.length; c++) {
-      const measuredCell = measuredCells[c];
-      if (!measuredCell) {
-        continue;
-      }
-      const sourceCell = sourceCells[c];
-      const spacing = getTableCellSpacingInsetsY(
-        block.cellSpacing,
-        r,
-        sourceCell?.rowSpan ?? 1,
-        block.rows.length,
-      );
-      const geometry = shiftCellGeometry(
-        cellBreakGeometry(sourceCell, measuredCell),
-        spacing.top +
-          getVerticalAlignmentOffset(
-            sourceCell,
-            measuredCell,
-            Math.max(0, rowHeight - spacing.top - spacing.bottom),
-          ),
-      );
-      cellGeometries.push(geometry);
+    for (const geometry of cellGeometries) {
       for (const b of geometry.bottoms) {
         if (b > 0 && b < rowHeight) {
           offsets.add(b);
         }
       }
     }
-    const safeOffsets = [...offsets].filter(
+    const unsafeRanges = mergeBreakRanges(
+      cellGeometries.flatMap((geometry) => geometry.unsafeRanges),
+    );
+    const keepTogetherRanges = mergeBreakRanges(
+      cellGeometries.flatMap((geometry) => geometry.keepTogetherRanges),
+    );
+    const lineSafeOffsets = [...offsets]
+      .filter(
+        (offset) =>
+          offset === rowHeight || !isInsideMergedRanges(offset, unsafeRanges),
+      )
+      .sort((a, b) => a - b);
+    const sortedOffsets = lineSafeOffsets.filter(
       (offset) =>
         offset === rowHeight ||
-        cellGeometries.every((geometry) =>
-          geometry.unsafeRanges.every((range) => !isInsideRange(offset, range)),
-        ),
+        !isInsideMergedRanges(offset, keepTogetherRanges),
     );
-    const sortedOffsets = safeOffsets.sort((a, b) => a - b);
     breakOffsets.push(sortedOffsets);
+    oversizedBreakOffsets.push(lineSafeOffsets);
     renderedBreakHints.push(
       mergeRenderedBreakHints(
         cellGeometries
@@ -364,22 +525,32 @@ export function buildTableRowBreakInfo(
             ({ offset }) =>
               offset > BREAK_OFFSET_EPSILON &&
               offset < rowHeight - BREAK_OFFSET_EPSILON &&
-              cellGeometries.every((geometry) =>
-                geometry.unsafeRanges.every(
-                  (range) => !isInsideRange(offset, range),
-                ),
-              ),
+              !isInsideMergedRanges(offset, unsafeRanges) &&
+              !isInsideMergedRanges(offset, keepTogetherRanges),
           ),
       ),
     );
+    const continuationCells = cellGeometries.map((geometry) => {
+      let contentBottom = Number.NEGATIVE_INFINITY;
+      for (const range of geometry.unsafeRanges) {
+        contentBottom = Math.max(contentBottom, range.bottom);
+      }
+      return { geometry, contentBottom };
+    });
     continuationSkips.push(
       sortedOffsets.map((offset) =>
-        continuationSkipAfter(cellGeometries, offset),
+        continuationSkipAfter(continuationCells, offset),
       ),
     );
   }
 
-  return { rowTops, breakOffsets, renderedBreakHints, continuationSkips };
+  return {
+    rowTops,
+    breakOffsets,
+    oversizedBreakOffsets,
+    renderedBreakHints,
+    continuationSkips,
+  };
 }
 
 /** Leading empty-paragraph whitespace to consume when a row resumes after `offset`. */
@@ -410,7 +581,31 @@ export function snapRowBreak(
   fromOffset: number,
   maxSlice: number,
 ): number {
-  const offsets = info.breakOffsets[rowIndex];
+  return snapToOffsets(info.breakOffsets[rowIndex], fromOffset, maxSlice);
+}
+
+/**
+ * `snapRowBreak` for a region that starts empty and still cannot hold the next
+ * unit: nested rows that stay whole give way so their content stays reachable.
+ */
+export function snapOversizedRowBreak(
+  info: TableRowBreakInfo,
+  rowIndex: number,
+  fromOffset: number,
+  maxSlice: number,
+): number {
+  return snapToOffsets(
+    info.oversizedBreakOffsets[rowIndex],
+    fromOffset,
+    maxSlice,
+  );
+}
+
+function snapToOffsets(
+  offsets: number[] | undefined,
+  fromOffset: number,
+  maxSlice: number,
+): number {
   if (!offsets || offsets.length === 0) {
     return 0;
   }
