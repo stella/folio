@@ -732,7 +732,7 @@ export type FolioAIEditSkipReason =
    * next to it.
    */
   | "pendingDeletion"
-  /** Resolve the removed paragraph mark before editing its properties separately. */
+  /** Resolve the removed paragraph mark before editing its properties separately, or before inserting a paragraph between it and a table. */
   | "pendingParagraphMarkDeletion";
 
 export type FolioAIEditAppliedOperation = {

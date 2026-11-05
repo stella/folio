@@ -160,6 +160,7 @@ import {
   removeRowsWithoutCellsAfterBatch,
   type RowsEmptiedInBatch,
 } from "../prosemirror/tableGridMutation";
+import { runInCellPending } from "../prosemirror/tableRunIn";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -2945,21 +2946,54 @@ const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
   keepsWords(options);
 
 /**
- * Whether a pending join runs earlier words on through the paragraph at
- * `paragraphPos`: the paragraphs before it, back to one that keeps words,
- * all have their breaks pending removal.
+ * Whether a pending join runs earlier words on to `paragraphPos`, the start of
+ * a paragraph or a place between blocks: the paragraphs before it, back to one
+ * that keeps words, all have their breaks pending removal.
  */
-const joinRunsWordsInto = (doc: PMNode, paragraphPos: number): boolean => {
-  const $paragraph = doc.resolve(paragraphPos);
-  for (let index = $paragraph.index() - 1; index >= 0; index--) {
-    const previous = $paragraph.parent.child(index);
+const joinRunsWordsInto = ({
+  doc,
+  paragraphPos,
+  noteReferences,
+}: PendingJoinBoundsOptions): boolean => {
+  const $place = doc.resolve(paragraphPos);
+  let position = paragraphPos;
+  for (let index = $place.index() - 1; index >= 0; index--) {
+    const previous = $place.parent.child(index);
+    position -= previous.nodeSize;
     if (
       previous.type.name !== "paragraph" ||
       !isDeletedPPrMark(previous.attrs["pPrMark"])
     ) {
       return false;
     }
-    if (!holdsOnlyDeletedContent(previous)) return true;
+    if (keepsWords({ doc, paragraphPos: position, noteReferences })) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * Whether a pending join runs earlier words on to `paragraphPos`, right before
+ * a table. A paragraph put there cannot stand apart once accepted: keeping its
+ * own break, it takes the words, and taking the deleted break from them, it
+ * runs into the table's first cell. Where that cell is itself pending nothing
+ * runs into it, so a paragraph right after the words can take their break and
+ * stand; so can one with a paragraph going whole between it and the table.
+ */
+const joinStopsAtTableAfter = (options: PendingJoinBoundsOptions): boolean => {
+  if (!joinRunsWordsInto(options)) return false;
+  const $place = options.doc.resolve(options.paragraphPos);
+  for (let index = $place.index(); index < $place.parent.childCount; index++) {
+    const next = $place.parent.child(index);
+    if (next.type.name === "paragraph") return false;
+    if (next.type.spec["tableRole"] === "table") {
+      const before = $place.nodeBefore;
+      return (
+        !runInCellPending(next) ||
+        (before !== null && holdsOnlyDeletedContent(before))
+      );
+    }
   }
   return false;
 };
@@ -2987,7 +3021,7 @@ const pendingJoinBounds = (
   if (
     paragraph?.type.name === "paragraph" &&
     isDeletedPPrMark(paragraph.attrs["pPrMark"]) &&
-    (joinsIn(options) || joinRunsWordsInto(doc, paragraphPos))
+    (joinsIn(options) || joinRunsWordsInto(options))
   ) {
     const survivor = paragraphLeftAfter({ doc, paragraphPos });
     if (
@@ -3156,6 +3190,12 @@ const isDeletedPPrMark = (value: unknown): boolean =>
   value !== null &&
   "kind" in value &&
   (value.kind === "del" || value.kind === "moveFrom");
+
+const pendingJoinInsertionRefusal = {
+  reason: "pendingParagraphMarkDeletion",
+  message:
+    "Accepting the pending paragraph mark deletion before this place would run the paragraph together with the words before it or the table after it. Resolve that change first, or insert elsewhere.",
+} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
 
 const pendingParagraphMarkPropertyRefusal = {
   reason: "pendingParagraphMarkDeletion",
@@ -9692,6 +9732,11 @@ const resolveOperationTarget = ({
     const placed = tableBoundary
       ? { from: tableBoundary[side], at: tableBoundary[side] }
       : beside(side);
+    if (
+      joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences })
+    ) {
+      return { type: "skip", ...pendingJoinInsertionRefusal };
+    }
     const insertFrom = placed.from;
     const splitParagraphs =
       operation.lineBreakMode !== "inline" &&
