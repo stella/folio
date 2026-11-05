@@ -87,6 +87,7 @@ import type {
   Paragraph,
   StyleDefinitions,
 } from "../types/document";
+import { deterministicHexId } from "../utils/hexId";
 import {
   type CanonicalInlineGap,
   canonicalInlineSourceIssue,
@@ -474,6 +475,22 @@ const changedStories = ({
   return stories;
 };
 
+const collectParagraphs = (blocks: readonly BlockContent[]): Paragraph[] => {
+  const paragraphs: Paragraph[] = [];
+  for (const block of blocks) {
+    if (block.type === "paragraph") {
+      paragraphs.push(block);
+      continue;
+    }
+    if (block.type !== "table") continue;
+    for (const row of block.rows) {
+      for (const cell of row.cells)
+        paragraphs.push(...collectParagraphs(cell.content));
+    }
+  }
+  return paragraphs;
+};
+
 /** Carry private paragraph source captures across immutable story operations. */
 type PreservePropertySourcesOptions = {
   target: Document;
@@ -487,21 +504,6 @@ const preservePropertySources = ({
   stories = documentStories(source),
   indentation = "derive",
 }: PreservePropertySourcesOptions): void => {
-  const collectParagraphs = (blocks: readonly BlockContent[]): Paragraph[] => {
-    const paragraphs: Paragraph[] = [];
-    for (const block of blocks) {
-      if (block.type === "paragraph") {
-        paragraphs.push(block);
-        continue;
-      }
-      if (block.type !== "table") continue;
-      for (const row of block.rows) {
-        for (const cell of row.cells)
-          paragraphs.push(...collectParagraphs(cell.content));
-      }
-    }
-    return paragraphs;
-  };
   for (const story of stories) {
     const originals = findStoryBody(source, story)?.content ?? [];
     const derived = findStoryBody(target, story)?.content ?? [];
@@ -2201,6 +2203,28 @@ class CanonicalSession {
 
 export type { CanonicalProjection, CanonicalSession };
 
+/**
+ * Give every story paragraph without one a `paraId`, as a package gets through
+ * `ensureParaIds` before it is read: a document built in memory (a new blank
+ * one, or from Markdown) has not been through that. Deterministic, so one source
+ * opens with the same ids each time.
+ */
+const establishParagraphIds = (document: Document): void => {
+  const paragraphs = documentStories(document).flatMap((story) =>
+    collectParagraphs(findStoryBody(document, story)?.content ?? []),
+  );
+  const taken = new Set(paragraphs.flatMap(({ paraId }) => paraId ?? []));
+  for (const [ordinal, paragraph] of paragraphs.entries()) {
+    if (paragraph.paraId !== undefined) continue;
+    let paraId = deterministicHexId(`canonical-session:${ordinal}`);
+    for (let salt = 1; taken.has(paraId); salt += 1) {
+      paraId = deterministicHexId(`canonical-session:${ordinal}:${salt}`);
+    }
+    taken.add(paraId);
+    paragraph.paraId = paraId;
+  }
+};
+
 export const createCanonicalSession = (
   document: Document,
   styles?: StyleDefinitions | null,
@@ -2208,6 +2232,7 @@ export const createCanonicalSession = (
   const unsupported = unsupportedSeedReason(document);
   if (unsupported !== null) return refuse(unsupported);
   const owned = cloneDocumentWithParagraphPropertySources(document);
+  establishParagraphIds(owned);
   const identified = normalizeForOps(owned);
   preservePropertySources({ target: identified, source: owned });
   const validated = validateOpsDocument(identified);

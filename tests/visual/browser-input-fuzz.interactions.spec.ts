@@ -120,6 +120,8 @@ type LoadFuzzOptions = {
   suggesting: boolean;
   authority: FuzzAuthority;
 };
+const LOAD_TIMEOUT_MS = 60_000;
+
 const load = async ({
   page,
   bytes,
@@ -138,13 +140,16 @@ const load = async ({
       : undefined;
   if (activationRow) validateHarnessRefusalRows([activationRow]);
   await page.goto(authority === "canonical" ? "/?session=canonical" : "/");
-  await page.waitForSelector(".layout-page");
+  // A page that cannot mount fails here, not at the test's long fuzz budget.
+  await page.waitForSelector(".layout-page", { timeout: LOAD_TIMEOUT_MS });
   await page.evaluate(() =>
     globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView(),
   );
   await page.waitForFunction(
     () =>
       !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
+    undefined,
+    { timeout: LOAD_TIMEOUT_MS },
   );
   if (authority === "canonical")
     await page.evaluate(() => {
