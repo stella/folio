@@ -296,6 +296,34 @@ export const createCanonicalComposition = (
       semantic: "composition" as const,
     };
   };
+  /**
+   * The browser can lose its composition range when the projection redraws a
+   * neighbouring node, and then starts again beside the text it left behind. The
+   * end event still names what was composed, and the captured caret says where.
+   * A proposal that reaches the caret and holds that text is this restart.
+   */
+  const finalInput = (
+    pending: Extract<CompositionState, { type: "provisional" }>,
+    native: NonNullable<ReturnType<typeof replacement>>,
+  ) => {
+    const { phase, baseline } = pending;
+    if (phase.type !== "ended" || !phase.data || native.text === phase.data)
+      return native;
+    const { from, empty } = baseline.selection;
+    if (
+      !empty ||
+      native.from > from ||
+      native.to < from ||
+      !native.text.includes(phase.data)
+    )
+      return native;
+    return {
+      from,
+      to: from,
+      text: phase.data,
+      semantic: "composition" as const,
+    };
+  };
   const applyNative = (view: EditorView, transaction: Transaction) =>
     Result.try({
       try: () => view.state.applyTransaction(transaction),
@@ -311,15 +339,22 @@ export const createCanonicalComposition = (
     authorizedNativeState = null;
     const pending = state;
     if (pending.type === "committed") return { type: "idle" };
-    const input =
+    const native =
       commit && pending.type === "provisional"
         ? replacement(pending.baseline, view.state)
         : null;
+    const input =
+      native && pending.type === "provisional"
+        ? finalInput(pending, native)
+        : native;
     // A final beforeinput carries the whole selected replacement, even when
     // the native observer produced a smaller diff with a shared prefix/suffix.
     // Acceptance is validated by replacement(); payload identity depends on text,
     // including when the accepted minimal diff retains non-inclusive metadata.
-    const committedText = selectedText(pending.baseline, view.state);
+    const committedText =
+      input && input !== native
+        ? input.text
+        : selectedText(pending.baseline, view.state);
     const proposed = view.state;
     const from = pending.baseline.selection.from;
     completed = { type: "idle" };
@@ -337,8 +372,7 @@ export const createCanonicalComposition = (
       view.isDestroyed ||
       (pending.phase.type === "ended" &&
         pending.phase.data === "" &&
-        pending.phase.completion === "provisional" &&
-        committedText === "")
+        pending.phase.completion === "provisional")
     )
       return { type: "cancelled" };
     if (pending.type === "refused")
