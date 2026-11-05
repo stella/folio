@@ -453,10 +453,12 @@ const driveWithAuthority = async ({
   authority,
 }: DriveFuzzOptions) => {
   if (authority === "prosemirror") return drive(page, action);
-  const rows = canonicalBrowserRefusalRows(action);
-  validateHarnessRefusalRows(rows);
   expect(await drainCanonicalErrors(page)).toEqual([]);
   const before = await canonicalSnapshot(page);
+  const rows = canonicalBrowserRefusalRows(action, {
+    selection: before.selection["type"] === "cell" ? "cells" : "other",
+  });
+  validateHarnessRefusalRows(rows);
   await drive(page, action);
   const after = await canonicalSnapshot(page);
   const errors = await drainCanonicalErrors(page);
