@@ -11,6 +11,7 @@ import { paragraphFormattingWithAuthoredIndentation } from "../../docx/paragraph
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import type { Document } from "../../types/document";
+import { hangingFirstLineIndent } from "../../utils/units";
 import { expectParagraphAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
@@ -53,7 +54,7 @@ const indentation = fc
           : {
               indentFirstLine:
                 firstLine.flag === "hanging"
-                  ? -firstLine.value
+                  ? hangingFirstLineIndent(firstLine.value)
                   : firstLine.value,
             },
         firstLine === undefined || firstLine.flag === "absent"
