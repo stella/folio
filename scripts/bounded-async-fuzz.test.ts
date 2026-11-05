@@ -1,9 +1,11 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { readFileSync } from "node:fs";
 
 import {
   BROWSER_FUZZ_BUDGET,
   checkWithBoundedShrink,
+  DEFAULT_EDITOR_FUZZ_BUDGET,
 } from "../test/bounded-async-fuzz";
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 
@@ -13,6 +15,39 @@ test("browser fuzz budgets leave time for setup and durable reporting", () => {
   expect(
     BROWSER_FUZZ_BUDGET.discoveryMs + BROWSER_FUZZ_BUDGET.shrinkMs,
   ).toBeLessThan(BROWSER_FUZZ_BUDGET.testMs);
+  expect(
+    DEFAULT_EDITOR_FUZZ_BUDGET.discoveryMs +
+      DEFAULT_EDITOR_FUZZ_BUDGET.shrinkMs,
+  ).toBeLessThan(BROWSER_FUZZ_BUDGET.testMs);
+});
+
+test("the default editor's seeds cannot take more than 15 of the step's 35 minutes", () => {
+  const workflow = Bun.YAML.parse(
+    readFileSync(
+      new URL(
+        "../.github/workflows/nightly-browser-input-fuzzer.yml",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ) as {
+    jobs: Record<
+      string,
+      { steps: { id?: string; env?: Record<string, string> }[] }
+    >;
+  };
+  const step = Object.values(workflow.jobs)
+    .flatMap(({ steps }) => steps)
+    .find(({ id }) => id === "fuzz");
+  const fixed =
+    step?.env?.["FOLIO_FUZZ_DEFAULT_EDITOR_SEEDS"]?.split(",") ?? [];
+  expect(fixed.length).toBeGreaterThan(0);
+  // The step adds one fresh seed to the fixed ones.
+  const worstCaseMs =
+    (fixed.length + 1) *
+    (DEFAULT_EDITOR_FUZZ_BUDGET.discoveryMs +
+      DEFAULT_EDITOR_FUZZ_BUDGET.shrinkMs);
+  expect(worstCaseMs).toBeLessThanOrEqual(15 * 60_000);
 });
 
 test("a stalled shrink retains the first assertion and seeded witness", async () => {

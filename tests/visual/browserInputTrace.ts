@@ -217,7 +217,19 @@ export const browserInputTraceArbitrary = (
 
 export type BrowserInputTraceConfig = {
   seeds: readonly number[];
+  /** Seeds through the default editor. A lane asks for these explicitly. */
+  defaultEditorSeeds: readonly number[];
   runs: number;
+};
+
+const parseSeeds = (name: string, text: string): readonly number[] => {
+  const seeds = text.split(",");
+  if (seeds.some((seed) => seed.trim().length === 0))
+    throw new Error(`${name} must be comma-separated safe integers`);
+  const parsed = seeds.map(Number);
+  if (parsed.some((seed) => !Number.isSafeInteger(seed)))
+    throw new Error(`${name} must be comma-separated safe integers`);
+  return parsed;
 };
 
 /** Read explicit PR/nightly overrides; defaults keep both lanes reproducible. */
@@ -227,19 +239,20 @@ export const parseBrowserInputTraceConfig = (
 ): BrowserInputTraceConfig => {
   const seedsText = env["FOLIO_FUZZ_SEEDS"];
   const runsText = env["FOLIO_FUZZ_RUNS"];
+  const defaultEditorText = env["FOLIO_FUZZ_DEFAULT_EDITOR_SEEDS"];
   const seeds =
     seedsText === undefined
       ? BROWSER_TRACE_FIXED_SEEDS[lane]
-      : seedsText.split(",").map(Number);
+      : parseSeeds("FOLIO_FUZZ_SEEDS", seedsText);
+  const defaultEditorSeeds =
+    defaultEditorText === undefined
+      ? []
+      : parseSeeds("FOLIO_FUZZ_DEFAULT_EDITOR_SEEDS", defaultEditorText);
   const defaultRuns = lane === "nightly" ? 20 : 2;
   const runs = runsText === undefined ? defaultRuns : Number(runsText);
-  if (
-    seedsText?.split(",").some((seed) => seed.trim().length === 0) ||
-    seeds.length === 0 ||
-    seeds.some((seed) => !Number.isSafeInteger(seed))
-  )
+  if (seeds.length === 0)
     throw new Error("FOLIO_FUZZ_SEEDS must be comma-separated safe integers");
   if (!Number.isSafeInteger(runs) || runs < 1)
     throw new Error("FOLIO_FUZZ_RUNS must be a positive safe integer");
-  return { seeds, runs };
+  return { seeds, defaultEditorSeeds, runs };
 };

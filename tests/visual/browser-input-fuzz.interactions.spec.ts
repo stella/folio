@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test, type TestInfo } from "@playwright/test";
 import fc from "fast-check";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
@@ -15,6 +15,7 @@ import type { DocxEditorRef } from "../../packages/react/src/components/DocxEdit
 import {
   BROWSER_FUZZ_BUDGET,
   checkWithBoundedShrink,
+  DEFAULT_EDITOR_FUZZ_BUDGET,
 } from "../../test/bounded-async-fuzz";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import {
@@ -505,7 +506,10 @@ const runMode = async ({
   const painted = await page.locator(".layout-page-content").allTextContents();
   const buffer = await save(page);
   const reopened = await reopenSaved(buffer);
-  expect(projectLive(project(reopened))).toEqual(live);
+  expect(
+    projectLive(project(reopened)),
+    "the saved package reads as the live editor did",
+  ).toEqual(live);
   if (authority === "canonical") {
     if (!(await evaluateCanonicalLoad(page, [...new Uint8Array(buffer)])))
       throw new TypeError("Canonical saved load unavailable.");
@@ -520,7 +524,9 @@ const runMode = async ({
     );
   }
   await expect
-    .poll(() => page.locator(".layout-page-content").allTextContents())
+    .poll(() => page.locator(".layout-page-content").allTextContents(), {
+      message: "a fresh load paints what the page showed before it",
+    })
     .toEqual(painted);
   return {
     type: "ready",
@@ -560,6 +566,11 @@ const resolveCanonicalSaved = async ({
   );
   return reopenSaved(await save(page));
 };
+
+// Each oracle names itself, so failures of two of them are never one class.
+const ACCEPTED_EQUALS_EDITED = "accepting tracked input equals the direct edit";
+const REJECTED_EQUALS_SOURCE = "rejecting tracked input restores the source";
+const TRACKED_INPUT_LEAVES_A_CHANGE = "tracked input leaves a revision";
 
 type CanonicalTraceOptions = {
   page: Page;
@@ -610,17 +621,60 @@ const checkCanonicalTrace = async ({
     revisionIds: suggested.changes.map(({ id }) => id),
     decision: "accept",
   });
-  expect(project(accepted)).toEqual(edited.blocks);
+  expect(project(accepted), ACCEPTED_EQUALS_EDITED).toEqual(edited.blocks);
   const rejected = await resolveCanonicalSaved({
     page,
     source: suggested.buffer,
     revisionIds: suggested.changes.map(({ id }) => id),
     decision: "reject",
   });
-  expect(project(rejected)).toEqual(baseline);
+  expect(project(rejected), REJECTED_EQUALS_SOURCE).toEqual(baseline);
   if (JSON.stringify(edited.blocks) !== JSON.stringify(baseline)) {
-    expect(suggested.changes.length).toBeGreaterThan(0);
+    expect(
+      suggested.changes.length,
+      TRACKED_INPUT_LEAVES_A_CHANGE,
+    ).toBeGreaterThan(0);
   }
+};
+
+type DefaultEditorTraceOptions = CanonicalTraceOptions;
+/** One trace through the default editor's two modes, then its review outcomes. */
+const checkDefaultEditorTrace = async ({
+  page,
+  source,
+  baseline,
+  trace,
+}: DefaultEditorTraceOptions) => {
+  const edited = await runMode({
+    page,
+    source,
+    baseline,
+    trace,
+    suggesting: false,
+    authority: "prosemirror",
+  });
+  const suggested = await runMode({
+    page,
+    source,
+    baseline,
+    trace,
+    suggesting: true,
+    authority: "prosemirror",
+  });
+  if (edited.type !== "ready" || suggested.type !== "ready")
+    throw new TypeError("The default editor unexpectedly refused activation.");
+  const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+  accepting.acceptAll();
+  expect(
+    project(await reopenSaved(await accepting.toBuffer())),
+    ACCEPTED_EQUALS_EDITED,
+  ).toEqual(edited.blocks);
+  const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+  rejecting.rejectAll();
+  expect(
+    project(await reopenSaved(await rejecting.toBuffer())),
+    REJECTED_EQUALS_SOURCE,
+  ).toEqual(baseline);
 };
 
 const paintedTargetReplays = [
@@ -679,34 +733,7 @@ test.describe("pinned browser input", () => {
           await checkCanonicalTrace({ page, source, baseline, trace });
           return;
         }
-        const edited = await runMode({
-          page,
-          source,
-          baseline,
-          trace,
-          suggesting: false,
-          authority: "prosemirror",
-        });
-        const suggested = await runMode({
-          page,
-          source,
-          baseline,
-          trace,
-          suggesting: true,
-          authority: "prosemirror",
-        });
-        if (edited.type !== "ready" || suggested.type !== "ready")
-          throw new TypeError("Legacy replay unexpectedly refused activation.");
-        const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
-        accepting.acceptAll();
-        expect(project(await reopenSaved(await accepting.toBuffer()))).toEqual(
-          edited.blocks,
-        );
-        const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
-        rejecting.rejectAll();
-        expect(project(await reopenSaved(await rejecting.toBuffer()))).toEqual(
-          baseline,
-        );
+        await checkDefaultEditorTrace({ page, source, baseline, trace });
       },
     );
   }
@@ -847,91 +874,144 @@ test("clipboard oracle accepts HTML serialization and detects text, attribute an
   );
 });
 
-for (const seed of config.seeds) {
-  test(`seed ${seed}: browser input preserves readers, fresh render, and suggesting equivalence`, async ({
+const INPUT_TEST_NAME =
+  "browser input preserves readers, fresh render, and suggesting equivalence";
+const DEFAULT_EDITOR_TEST_NAME = `default editor ${INPUT_TEST_NAME}`;
+
+type GeneratedLaneOptions = {
+  info: TestInfo;
+  seed: number;
+  testName: string;
+  /** The environment a replay of this lane needs, before its path. */
+  replayEnv: string;
+  budget: { discoveryMs: number; shrinkMs: number };
+  check: (trace: BrowserInputTrace) => Promise<void>;
+};
+/** One seed's generated traces, with failures reported the same way for every lane. */
+const runGeneratedLane = async ({
+  info,
+  seed,
+  testName,
+  replayEnv,
+  budget,
+  check,
+}: GeneratedLaneOptions) => {
+  reportFuzzHealth({ status: "started", completed: 0 });
+  const { verdict } = await checkWithBoundedShrink({
+    arbitrary: INPUT_TRACE,
+    evaluate: async (trace) => {
+      checkFreshRender(trace);
+      await check(trace);
+    },
+    seed,
+    numRuns: config.runs,
+    discoveryMs: budget.discoveryMs,
+    shrinkMs: budget.shrinkMs,
+    ...(replayPath ? { path: replayPath } : {}),
+    onFirstFailure: async ({
+      seed: originalSeed,
+      path,
+      value: trace,
+      error: failure,
+    }) => {
+      const marker = failureMarker({
+        test: testName,
+        seed: originalSeed,
+        path,
+        repro: `${replayEnv}=${originalSeed} FOLIO_FUZZ_RUNS=${config.runs} PROPERTY_TEST_PATH=${path} bunx playwright test --project=browser-fuzzer tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1`,
+        failure,
+        flow: `${trace.shape}: ${trace.actions.map(({ kind }) => kind).join(" → ")}`,
+      });
+      logFailureMarker(marker);
+      const artifact = writeFailureRecord(
+        "fuzz-artifacts/browser/original",
+        failureRecord(marker, failure, { flow: trace }),
+      );
+      await info.attach("browser-original-failure", {
+        path: artifact,
+        contentType: "application/json",
+      });
+    },
+  });
+  const health = classifyFuzzRun(verdict);
+  reportFuzzHealth(health);
+  if (health.status === "infrastructure") {
+    throw new Error(`Fuzz infrastructure: ${health.detail}`);
+  }
+  if (verdict.failed) {
+    const failure = verdict.errorInstance;
+    const trace = verdict.counterexample?.at(0);
+    if (trace !== undefined && failure !== undefined && failure !== null) {
+      const marker = failureMarker({
+        test: testName,
+        seed,
+        path: verdict.counterexamplePath,
+        repro: `${replayEnv}=${seed} FOLIO_FUZZ_RUNS=${config.runs} bunx playwright test --project=browser-fuzzer tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1`,
+        failure,
+        flow: `${trace.shape}: ${trace.actions.map(({ kind }) => kind).join(" → ")}`,
+      });
+      logFailureMarker(marker);
+      writeFailureRecord(
+        process.env["FOLIO_FUZZ_FAILURES_DIR"] ??
+          "fuzz-artifacts/browser/findings",
+        failureRecord(marker, failure, { flow: trace }),
+      );
+    }
+    const detail =
+      failure instanceof Error
+        ? (failure.stack ?? failure.message)
+        : fc.stringify(failure);
+    logFailureMarker(
+      failureMarker({
+        test: testName,
+        seed,
+        path: verdict.counterexamplePath,
+        repro: `${replayEnv}=${seed} FOLIO_FUZZ_RUNS=${config.runs} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=browser-fuzzer --workers=1`,
+        failure,
+        flow: fc.stringify(verdict.counterexample?.at(0)),
+      }),
+    );
+    throw new Error(
+      `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample?.at(0))}\n${detail}`,
+      { cause: failure },
+    );
+  }
+};
+
+// First in the file: when a slow night runs out of step time, the editor people
+// use keeps its seeds, and its smaller budget leaves the rest of the step.
+for (const seed of config.defaultEditorSeeds) {
+  test(`default editor seed ${seed}: ${INPUT_TEST_NAME}`, async ({
     page,
   }, info) => {
-    reportFuzzHealth({ status: "started", completed: 0 });
-    const { verdict } = await checkWithBoundedShrink({
-      arbitrary: INPUT_TRACE,
-      evaluate: async (trace) => {
-        checkFreshRender(trace);
+    await runGeneratedLane({
+      info,
+      seed,
+      testName: DEFAULT_EDITOR_TEST_NAME,
+      replayEnv: "FOLIO_FUZZ_DEFAULT_EDITOR_SEEDS",
+      budget: DEFAULT_EDITOR_FUZZ_BUDGET,
+      check: async (trace) => {
+        const source = await shapeArrayBuffer(trace.shape);
+        const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+        await checkDefaultEditorTrace({ page, source, baseline, trace });
+      },
+    });
+  });
+}
+
+for (const seed of config.seeds) {
+  test(`seed ${seed}: ${INPUT_TEST_NAME}`, async ({ page }, info) => {
+    await runGeneratedLane({
+      info,
+      seed,
+      testName: INPUT_TEST_NAME,
+      replayEnv: "FOLIO_FUZZ_SEEDS",
+      budget: BROWSER_FUZZ_BUDGET,
+      check: async (trace) => {
         const source = await shapeArrayBuffer(trace.shape);
         const baseline = project(await FolioDocxReviewer.fromBuffer(source));
         await checkCanonicalTrace({ page, source, baseline, trace });
       },
-      seed,
-      numRuns: config.runs,
-      discoveryMs: BROWSER_FUZZ_BUDGET.discoveryMs,
-      shrinkMs: BROWSER_FUZZ_BUDGET.shrinkMs,
-      ...(replayPath ? { path: replayPath } : {}),
-      onFirstFailure: async ({
-        seed: originalSeed,
-        path,
-        value: trace,
-        error: failure,
-      }) => {
-        const marker = failureMarker({
-          test: "browser input preserves readers, fresh render, and suggesting equivalence",
-          seed: originalSeed,
-          path,
-          repro: `FOLIO_FUZZ_SEEDS=${originalSeed} FOLIO_FUZZ_RUNS=${config.runs} PROPERTY_TEST_PATH=${path} bunx playwright test --project=browser-fuzzer tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1`,
-          failure,
-          flow: `${trace.shape}: ${trace.actions.map(({ kind }) => kind).join(" → ")}`,
-        });
-        logFailureMarker(marker);
-        const artifact = writeFailureRecord(
-          "fuzz-artifacts/browser/original",
-          failureRecord(marker, failure, { flow: trace }),
-        );
-        await info.attach("browser-original-failure", {
-          path: artifact,
-          contentType: "application/json",
-        });
-      },
     });
-    const health = classifyFuzzRun(verdict);
-    reportFuzzHealth(health);
-    if (health.status === "infrastructure") {
-      throw new Error(`Fuzz infrastructure: ${health.detail}`);
-    }
-    if (verdict.failed) {
-      const failure = verdict.errorInstance;
-      const trace = verdict.counterexample?.at(0);
-      if (trace !== undefined && failure !== undefined && failure !== null) {
-        const marker = failureMarker({
-          test: "browser input preserves readers, fresh render, and suggesting equivalence",
-          seed,
-          path: verdict.counterexamplePath,
-          repro: `FOLIO_FUZZ_SEEDS=${seed} FOLIO_FUZZ_RUNS=${config.runs} bunx playwright test --project=browser-fuzzer tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1`,
-          failure,
-          flow: `${trace.shape}: ${trace.actions.map(({ kind }) => kind).join(" → ")}`,
-        });
-        logFailureMarker(marker);
-        writeFailureRecord(
-          process.env["FOLIO_FUZZ_FAILURES_DIR"] ??
-            "fuzz-artifacts/browser/findings",
-          failureRecord(marker, failure, { flow: trace }),
-        );
-      }
-      const detail =
-        failure instanceof Error
-          ? (failure.stack ?? failure.message)
-          : fc.stringify(failure);
-      logFailureMarker(
-        failureMarker({
-          test: "browser input preserves readers, fresh render, and suggesting equivalence",
-          seed,
-          path: verdict.counterexamplePath,
-          repro: `FOLIO_FUZZ_SEEDS=${seed} FOLIO_FUZZ_RUNS=${config.runs} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=browser-fuzzer --workers=1`,
-          failure,
-          flow: fc.stringify(verdict.counterexample?.at(0)),
-        }),
-      );
-      throw new Error(
-        `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample?.at(0))}\n${detail}`,
-        { cause: failure },
-      );
-    }
   });
 }

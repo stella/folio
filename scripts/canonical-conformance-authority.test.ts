@@ -75,6 +75,19 @@ const randomBrowserAuthorityProblems = (source: string) => {
       !fixedAuthority(node, "canonical")
     )
       problems.push("random browser authority");
+    const inDefaultEditorLane = scope.some(
+      (lane) =>
+        lane.type === "ForOfStatement" &&
+        nodeText(source, lane.right) === "config.defaultEditorSeeds",
+    );
+    if (
+      inDefaultEditorLane &&
+      node.type === "CallExpression" &&
+      node.callee.type === "MemberExpression" &&
+      !node.callee.computed &&
+      nodeText(source, node.callee) === "test.fail"
+    )
+      problems.push("default editor lane accepts a known failure");
     if (inLane && node.type === "CallExpression") {
       if (
         node.callee.type === "Identifier" &&
@@ -118,7 +131,7 @@ test("standing conformance cannot select legacy authority through its public fac
   ).toBe(false);
 });
 
-test("random browser conformance is strict canonical; legacy acceptance stays in explicit replay", () => {
+test("the canonical random lane is strict canonical, and no random lane accepts a known failure", () => {
   const source = readFileSync(
     new URL(
       "../tests/visual/browser-input-fuzz.interactions.spec.ts",
@@ -140,6 +153,11 @@ test("random browser conformance is strict canonical; legacy acceptance stays in
   ).toHaveLength(1);
   expect(
     randomBrowserAuthorityProblems("for (const seed of config.seeds) {}"),
+  ).toHaveLength(1);
+  expect(
+    randomBrowserAuthorityProblems(
+      `${lane} for (const seed of config.defaultEditorSeeds) { test.fail(true); }`,
+    ),
   ).toHaveLength(1);
   const throughOracle =
     'const checkCanonicalTrace = () => runMode({ authority: "canonical" }); for (const seed of config.seeds) { checkCanonicalTrace(); }';
