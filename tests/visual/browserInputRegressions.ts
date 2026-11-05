@@ -266,6 +266,131 @@ export const CANONICAL_BOOKMARK_SEED_263 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition at a paragraph's start stays there, after an empty paragraph. */
+export const CANONICAL_PARAGRAPH_START_SEED_263 = {
+  authority: "canonical",
+  seed: 263,
+  path: "12:2:2:2:2",
+  fingerprint: "156d4359b84edef4",
+  trace: {
+    shape: "image",
+    actions: [
+      { kind: "enter" },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+      { kind: "undo" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** A composition at a paragraph's start stays there, after a pasted list. */
+export const CANONICAL_PARAGRAPH_START_SEED_431 = {
+  authority: "canonical",
+  seed: 431,
+  path: "14:4:2:2:2",
+  fingerprint: "76156fa33702d1c6",
+  trace: {
+    shape: "sections",
+    actions: [
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+      { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** A restarted composition after a tracked paste commits once, at the caret. */
+export const CANONICAL_RESTARTED_AFTER_PASTE_SEED_197 = {
+  authority: "canonical",
+  seed: 197,
+  path: "19",
+  fingerprint: "855d1f9b6feaad45",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "typing", text: "valid invoice" },
+      { kind: "pastePlain", plain: "مرحبا valid", html: "" },
+      {
+        kind: "imeReplacement",
+        updates: ["invoice", "👩🏽‍⚖️ invoice", "café", "alpha buyer café"],
+        completion: "commit",
+      },
+      { kind: "cut" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** A restarted composition after tracked typing commits at the caret, not mid-word. */
+export const CANONICAL_RESTARTED_AFTER_TYPING = {
+  authority: "canonical",
+  seed: 197,
+  path: "typed-restart",
+  fingerprint: "restarted-after-typing",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "typing", text: "valid invoice" },
+      {
+        kind: "imeReplacement",
+        updates: ["invoice", "buyer", "alpha"],
+        completion: "commit",
+      },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** A composition inside a tracked run survives the DOM rebuilding its review mark. */
+export const CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521 = {
+  authority: "canonical",
+  seed: 1793897521,
+  path: "12",
+  fingerprint: "f9c052d5091f3dce",
+  trace: {
+    shape: "header-footer",
+    actions: [
+      { kind: "delete" },
+      { kind: "pastePlain", plain: "東京", html: "" },
+      {
+        kind: "imeReplacement",
+        updates: ["café alpha", "👩🏽‍⚖️ buyer"],
+        completion: "cancel",
+      },
+      { kind: "historyBurst", keys: ["redo", "redo"] },
+      { kind: "backspace" },
+      { kind: "cut" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_PASTE_AFTER_TABLE_SEED_29 = {
   seed: 29,
   path: "1:3:3",
@@ -380,4 +505,9 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_MISPLACED_COMPOSITION_SEED_29,
   CANONICAL_DELETION_UPDATES_SEED_11,
   CANONICAL_BOOKMARK_SEED_263,
+  CANONICAL_PARAGRAPH_START_SEED_263,
+  CANONICAL_PARAGRAPH_START_SEED_431,
+  CANONICAL_RESTARTED_AFTER_PASTE_SEED_197,
+  CANONICAL_RESTARTED_AFTER_TYPING,
+  CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
 ];

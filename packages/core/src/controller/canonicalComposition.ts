@@ -70,7 +70,10 @@ type CompletedComposition =
   | { type: "completed"; receipt: CompletedReceipt }
   | { type: "authorized"; receipt: CompletedReceipt; text: string };
 
-type OmittedMarkRange = { from: number; to: number };
+const REVIEW_MARK_NAMES: ReadonlySet<string> = new Set([
+  "insertion",
+  "deletion",
+]);
 type NativeReplacementComparisonOptions = {
   baseline: EditorState;
   proposed: EditorState;
@@ -79,10 +82,12 @@ type NativeReplacementComparisonOptions = {
   text: string;
 };
 /**
- * Whether a native proposal is one plain replacement. A diff that reaches into
- * untouched text goes through `insertText`, which keeps no mark declared
- * `inclusive: false`: source identity, a review mark, a link. Such an omission
- * says nothing about the edit, and the captured model owns those marks on commit.
+ * Whether a native proposal is one plain replacement. The commit is a text
+ * replacement over the captured model, so this only has to tell DOM noise from a
+ * real change. Reading the DOM back can lose a mark with no parse rule or, through
+ * `insertText`, a non-inclusive one. It rebuilds a review mark from fewer attributes,
+ * and composed text sits in the DOM wrapper of the tracked run beside it. Gaining
+ * any other mark, losing an inclusive one, or another revision is a real change.
  */
 const matchesNativeReplacement = ({
   baseline,
@@ -93,48 +98,64 @@ const matchesNativeReplacement = ({
 }: NativeReplacementComparisonOptions) => {
   const expected = baseline.tr.insertText(text, from, to);
   if (expected.doc.eq(proposed.doc)) return true;
-  if (!baseline.doc.resolve(from).sameParent(baseline.doc.resolve(to)))
-    return false;
+  const $from = baseline.doc.resolve(from);
+  const $to = baseline.doc.resolve(to);
+  if (!$from.sameParent($to)) return false;
   if (expected.doc.content.size !== proposed.doc.content.size) return false;
   const position = expected.doc.resolve(from);
   const paragraph = position.parent;
   const start = position.start();
   const native = proposed.doc.nodeAt(start - 1);
   if (native === null || native.type !== paragraph.type) return false;
-  const omittable = Object.values(baseline.schema.marks).filter(
-    (markType) => markType.spec.inclusive === false,
-  );
-  for (const markType of omittable) {
-    let index = 0;
-    let offset = 0;
-    const missing: OmittedMarkRange[] = [];
-    native.forEach((node, nodeOffset) => {
-      const end = nodeOffset + node.nodeSize;
-      let cursor = nodeOffset;
-      while (cursor < end && index < paragraph.childCount) {
-        const authored = paragraph.child(index);
-        const authoredEnd = offset + authored.nodeSize;
-        const overlapEnd = Math.min(end, authoredEnd);
-        if (
-          node.isText &&
-          authored.isText &&
-          markType.isInSet(authored.marks) !== undefined &&
-          markType.isInSet(node.marks) === undefined
-        ) {
-          const previous = missing.at(-1);
-          if (previous?.to === start + cursor) previous.to = start + overlapEnd;
-          else missing.push({ from: start + cursor, to: start + overlapEnd });
-        }
-        cursor = overlapEnd;
-        if (cursor === authoredEnd) {
-          offset = authoredEnd;
-          index += 1;
+  const composedFrom = from;
+  const composedTo = from + text.length;
+  const types = Object.values(baseline.schema.marks);
+  const beside = [$from.nodeBefore, $to.nodeAfter];
+  const corrections: (() => void)[] = [];
+  let index = 0;
+  let offset = 0;
+  native.forEach((node, nodeOffset) => {
+    const end = nodeOffset + node.nodeSize;
+    let cursor = nodeOffset;
+    while (cursor < end && index < paragraph.childCount) {
+      const authored = paragraph.child(index);
+      const authoredEnd = offset + authored.nodeSize;
+      const overlapEnd = Math.min(end, authoredEnd);
+      if (node.isText && authored.isText) {
+        const rangeFrom = start + cursor;
+        const rangeTo = start + overlapEnd;
+        for (const type of types) {
+          const held = type.isInSet(authored.marks);
+          const read = type.isInSet(node.marks);
+          if (held && !read) {
+            if (
+              type.spec.inclusive === false ||
+              (type.spec.parseDOM ?? []).length === 0
+            )
+              corrections.push(() =>
+                expected.removeMark(rangeFrom, rangeTo, type),
+              );
+            continue;
+          }
+          if (!read || !REVIEW_MARK_NAMES.has(type.name)) continue;
+          const sameRevision =
+            held?.attrs["revisionId"] === read.attrs["revisionId"];
+          const inWrapperBeside =
+            rangeFrom >= composedFrom &&
+            rangeTo <= composedTo &&
+            beside.some((neighbour) => type.isInSet(neighbour?.marks ?? []));
+          if (held ? sameRevision : inWrapperBeside)
+            corrections.push(() => expected.addMark(rangeFrom, rangeTo, read));
         }
       }
-    });
-    for (const range of missing)
-      expected.removeMark(range.from, range.to, markType);
-  }
+      cursor = overlapEnd;
+      if (cursor === authoredEnd) {
+        offset = authoredEnd;
+        index += 1;
+      }
+    }
+  });
+  for (const correction of corrections) correction();
   return expected.doc.eq(proposed.doc);
 };
 
@@ -156,6 +177,7 @@ export const createCanonicalComposition = (
   authorizeNative: (
     view: EditorView,
     completion: CompositionCompletionEvidence,
+    finalText?: string | null,
   ) => void;
   flushed: (view: EditorView) => void;
   recover: (view: EditorView) => CompositionFinish;
@@ -167,6 +189,10 @@ export const createCanonicalComposition = (
   let authorizedNativeState: EditorState | null = null;
   let completed: CompletedComposition = { type: "idle" };
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** The browser began again mid-composition; its proposals no longer say where. */
+  let restarted = false;
+  let acceptedUpdate = false;
+  let explicitFinal: string | null = null;
   const clearTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
@@ -298,31 +324,26 @@ export const createCanonicalComposition = (
   };
   /**
    * The browser can lose its composition range when the projection redraws a
-   * neighbouring node, and then starts again beside the text it left behind. The
-   * end event still names what was composed, and the captured caret says where.
-   * A proposal that reaches the caret and holds that text is this restart.
+   * neighbouring node, and then starts again from a position it computes itself.
+   * Its final text still names what was composed, and the captured selection says
+   * where. A proposal that reaches the caret and holds that text is such a restart
+   * even when the restart event went unseen.
    */
   const finalInput = (
     pending: Extract<CompositionState, { type: "provisional" }>,
     native: NonNullable<ReturnType<typeof replacement>>,
   ) => {
     const { phase, baseline } = pending;
-    if (phase.type !== "ended" || !phase.data || native.text === phase.data)
-      return native;
-    const { from, empty } = baseline.selection;
-    if (
-      !empty ||
-      native.from > from ||
-      native.to < from ||
-      !native.text.includes(phase.data)
-    )
-      return native;
-    return {
-      from,
-      to: from,
-      text: phase.data,
-      semantic: "composition" as const,
-    };
+    const final = explicitFinal ?? (phase.type === "ended" ? phase.data : null);
+    if (!final || native.text === final) return native;
+    const { from, to, empty } = baseline.selection;
+    const atCaret =
+      empty &&
+      native.from <= from &&
+      native.to >= from &&
+      native.text.includes(final);
+    if (!restarted && !atCaret) return native;
+    return { from, to, text: final, semantic: "composition" as const };
   };
   const applyNative = (view: EditorView, transaction: Transaction) =>
     Result.try({
@@ -455,8 +476,17 @@ export const createCanonicalComposition = (
       );
     },
     start: (view: EditorView) => {
+      if (
+        state.type === "provisional" &&
+        state.phase.type === "active" &&
+        acceptedUpdate
+      )
+        restarted = true;
       if (state.type !== "committed") return;
       if (!options.begin()) return;
+      restarted = false;
+      acceptedUpdate = false;
+      explicitFinal = null;
       state = {
         type: "provisional",
         baseline: view.state,
@@ -513,7 +543,10 @@ export const createCanonicalComposition = (
     authorizeNative: (
       view: EditorView,
       completion: CompositionCompletionEvidence,
+      finalText?: string | null,
     ) => {
+      if (completion === "explicitFinal" && typeof finalText === "string")
+        explicitFinal = finalText;
       authorizedNativeState = view.state;
       if (state.type !== "committed" && completion === "explicitFinal") {
         state.phase =
@@ -620,6 +653,10 @@ export const createCanonicalComposition = (
         view.updateState(state.baseline);
         return true;
       }
+      if (restarted) {
+        view.updateState(state.baseline);
+        return true;
+      }
       if (
         typeof transaction.getMeta("composition") !== "number" &&
         authorizedNativeState !== view.state
@@ -656,6 +693,7 @@ export const createCanonicalComposition = (
         );
         return true;
       }
+      acceptedUpdate = true;
       view.updateState(applied.value.state);
       return true;
     },
