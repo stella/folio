@@ -1473,14 +1473,14 @@ test("a malformed signature body fails instead of opening a duplicate", async ()
 });
 
 test("a failed run without markers still files one issue per lane, and stays red", () => {
-  const run = (lane: string) =>
+  const run = (laneName: string) =>
     Bun.spawnSync(
       [
         "bun",
         "scripts/fuzz-failure-issues.ts",
         "--dry-run",
         "--lane",
-        lane,
+        laneName,
         "--result",
         "failure",
         "--trigger",
