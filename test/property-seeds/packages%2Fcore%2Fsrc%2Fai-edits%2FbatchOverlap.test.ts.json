@@ -59,6 +59,12 @@
       "path": "308:1:4:7:7",
       "note": "A final-paragraph property edit survives retirement when the third operation annotates another block.",
       "date": "2026-10-09"
+    },
+    {
+      "seed": 1536736470,
+      "path": "125:12:13:13",
+      "note": "An insertion named after a property write on a paragraph a final deletion retires copies it as read.",
+      "date": "2026-11-05"
     }
   ],
   "applies accepted patches in planner order against an independent replay": [
