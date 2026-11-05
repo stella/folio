@@ -786,6 +786,17 @@ export function handleSuggestionPaste(
  * last one ends the cell, so its paragraph mark is tracked as added too:
  * rejecting then drops it and accepting joins the struck paragraphs into it.
  */
+const holdsOnlyStruckText = (
+  paragraph: PMNode,
+  deletion: MarkType,
+): boolean => {
+  let struck = true;
+  paragraph.forEach((node) => {
+    if (!node.marks.some((mark) => mark.type === deletion)) struck = false;
+  });
+  return struck;
+};
+
 export function handleSuggestionTableCellPaste(
   view: EditorView,
   slice: Slice,
@@ -858,25 +869,50 @@ export function handleSuggestionTableCellPaste(
         // Keep paragraphs carrying original struck content for rejection; the
         // new paste now supplies the required final paragraph of the cell.
         const emptyInsertions: { from: number; to: number }[] = [];
+        // A break our earlier paste added after struck words goes too: the words
+        // run on into the paragraph after, which accepting leaves alone.
+        const struckBreaks: number[] = [];
         const replacedCell = tr.doc.nodeAt(cellPos);
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-        replacedCell?.forEach((node, offset) => {
+        replacedCell?.forEach((node, offset, index) => {
           const pos = cellPos + 1 + offset;
           if (
-            pos < pastedFrom &&
-            node.type.name === "paragraph" &&
-            node.content.size === 0 &&
-            isCurrentAuthorParagraphInsertion(
+            pos >= pastedFrom ||
+            node.type.name !== "paragraph" ||
+            !isCurrentAuthorParagraphInsertion(
               node.attrs["pPrMark"],
               pluginState.author,
             )
           ) {
+            return;
+          }
+          if (node.content.size === 0) {
             emptyInsertions.push({ from: pos, to: pos + node.nodeSize });
+          } else if (
+            holdsOnlyStruckText(node, deletionType) &&
+            isCurrentAuthorParagraphInsertion(
+              cell.maybeChild(index)?.attrs["pPrMark"],
+              pluginState.author,
+            )
+          ) {
+            struckBreaks.push(pos + node.nodeSize);
           }
         });
         const retraction = tr.mapping.maps.length;
         for (const range of emptyInsertions.toReversed())
           tr.delete(range.from, range.to);
+        for (const boundary of struckBreaks.toReversed()) {
+          const at = tr.mapping.slice(retraction).map(boundary);
+          const $boundary = tr.doc.resolve(at);
+          const { nodeBefore, nodeAfter } = $boundary;
+          if (nodeBefore?.type.name !== "paragraph" || !nodeAfter) continue;
+          tr.setNodeMarkup(
+            at - nodeBefore.nodeSize,
+            undefined,
+            nodeAfter.attrs,
+          );
+          tr.join(at);
+        }
         const retracted = tr.mapping.slice(retraction);
         pastedFrom = retracted.map(pastedFrom);
         insertTo = retracted.map(insertTo);

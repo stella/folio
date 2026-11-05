@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import { shapeArrayBuffer } from "./documentShapes";
 import {
@@ -83,6 +84,49 @@ describe("a paste beside struck text", () => {
     expect(texts(resolveAllChanges(view.state, "reject"))).toEqual(
       texts(state),
     );
+  });
+
+  test("a second paste over selected cells leaves no paragraph the first one split off", async () => {
+    const state = createHarnessState(
+      await parseShapeDocument(
+        new Uint8Array(await shapeArrayBuffer("tables")),
+      ),
+      "suggesting",
+    );
+    const cells: number[] = [];
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === "tableCell") cells.push(pos);
+      return true;
+    });
+    // The last cell of a row with text of its own, alone.
+    const target = cells.find(
+      (pos) => state.doc.nodeAt(pos)?.textContent === "Cell D3",
+    );
+    if (target === undefined) throw new Error("Fixture lost its cell");
+    const view = new HeadlessEditorView(
+      state.apply(
+        state.tr.setSelection(CellSelection.create(state.doc, target)),
+      ),
+    );
+    const cellParagraphs = (current: EditorState) => {
+      const lines: string[] = [];
+      current.doc.nodeAt(target)?.forEach((child) => {
+        lines.push(child.textContent);
+      });
+      return lines;
+    };
+    view.paste(new Slice(paragraphs(state, "One", "Two"), 1, 1));
+    view.dispatch(
+      view.state.tr.setSelection(CellSelection.create(view.state.doc, target)),
+    );
+    view.paste(new Slice(paragraphs(state, "Three"), 1, 1));
+
+    expect(cellParagraphs(resolveAllChanges(view.state, "accept"))).toEqual([
+      "Three",
+    ]);
+    expect(cellParagraphs(resolveAllChanges(view.state, "reject"))).toEqual([
+      "Cell D3",
+    ]);
   });
 
   test("a table over words across a break leaves the caret after them", async () => {
