@@ -6,7 +6,6 @@ import {
   orderAddressingBeforeRemoval,
   orderBatchOperations,
 } from "@stll/docx-core/ops";
-import type { FolioDocumentOperation } from "@stll/folio-core/server";
 
 import type { AppliedOperation, Mode } from "./operations.ts";
 import type { Row } from "./oracle.ts";
@@ -70,38 +69,6 @@ const placement = (
   }
 };
 
-const PARAGRAPH_PROPERTY_REPLAY = {
-  replaceInBlock: "other",
-  replaceRange: "other",
-  commentOnRange: "other",
-  formatRange: "other",
-  insertAfterBlock: "other",
-  insertBeforeBlock: "other",
-  replaceBlock: "restyle",
-  deleteBlock: "other",
-  splitBlock: "other",
-  mergeBlockWithNext: "other",
-  setBlockParagraphProperties: "patch",
-  insertTable: "other",
-  deleteTable: "other",
-  commentOnBlock: "other",
-  insertSignatureTable: "other",
-  insertTableRow: "other",
-  deleteTableRow: "other",
-  insertTableColumn: "other",
-  deleteTableColumn: "other",
-  mergeTableCells: "other",
-  splitTableCell: "other",
-} as const satisfies Record<
-  FolioDocumentOperation["type"],
-  "patch" | "restyle" | "other"
->;
-
-const isOperationType = (
-  type: string,
-): type is FolioDocumentOperation["type"] =>
-  Object.hasOwn(PARAGRAPH_PROPERTY_REPLAY, type);
-
 const sameContainerRows = (left: Row, right: Row | undefined): right is Row =>
   right !== undefined &&
   `${left.table?.tableIndex}:${left.table?.rowIndex}:${left.table?.cellIndex}` ===
@@ -158,7 +125,7 @@ export const sequentialGroups = ({
     }
     return undefined;
   };
-  const retiringCarriers = new Set<string>();
+  const retiringFinals = new Set<string>();
   const finalBlocks = new Set<string>();
   const uncarriedFinals = new Set<string>();
   // A suggestion reads the live rows, where a paragraph pending deletion is a
@@ -180,41 +147,25 @@ export const sequentialGroups = ({
     );
     if (appended || !deleted.has(last.id)) continue;
     const carrier = breakCarrierOf(last);
-    if (carrier) retiringCarriers.add(carrier.id);
-    else uncarriedFinals.add(last.id);
+    if (!carrier) uncarriedFinals.add(last.id);
+    // A sole paragraph with one inserted before it is deleted first, and the
+    // insertion takes its place. A paragraph that ends a deleted run stays until
+    // the run is gone. Applied directly only such a replacement waits, since
+    // nothing before it holds a break to retire.
+    const replaced = applied.some(
+      (operation) =>
+        operation.type === "insertBeforeBlock" &&
+        blockIdOf(operation) === last.id,
+    );
+    const lastAt = preRows.indexOf(last);
+    const endsARun =
+      lastAt > 0 && sameContainerRows(last, preRows.at(lastAt - 1));
+    const runsLate =
+      mode === "tracked-changes"
+        ? !replaced || endsARun
+        : mode === "direct" && carrier === undefined && replaced && endsARun;
+    if (runsLate) retiringFinals.add(last.id);
   }
-  const beforeFinalBreakRetirement = (operation: AnyOperation): boolean => {
-    if (!isOperationType(operation.type)) {
-      throw new Error(`Sequential replay has no policy for ${operation.type}`);
-    }
-    if (
-      mode !== "tracked-changes" ||
-      !retiringCarriers.has(blockIdOf(operation) ?? "")
-    ) {
-      return false;
-    }
-    const disposition = PARAGRAPH_PROPERTY_REPLAY[operation.type];
-    switch (disposition) {
-      case "patch":
-        return true;
-      case "restyle":
-        return (
-          operation["styleId"] !== undefined &&
-          operation["styleId"] !==
-            preRows.find((row) => row.id === blockIdOf(operation))?.styleId
-        );
-      case "other":
-        return false;
-      default: {
-        const unhandled: never = disposition;
-        throw new Error(
-          `Unhandled paragraph property replay policy: ${unhandled}`,
-        );
-      }
-    }
-  };
-  const earlyProperties = applied.filter(beforeFinalBreakRetirement);
-  const earlyIds = new Set(earlyProperties.map(({ id }) => id));
   const isColumnEdit = (operation: AnyOperation): boolean =>
     operation.type === "insertTableColumn" ||
     operation.type === "deleteTableColumn";
@@ -249,10 +200,7 @@ export const sequentialGroups = ({
     return [target.table.tableIndex, column];
   };
   const ordered = orderBatchOperations(
-    indexed.filter(
-      ({ operation }) =>
-        !ANNOTATIONS.has(operation.type) && !earlyIds.has(operation.id),
-    ),
+    indexed.filter(({ operation }) => !ANNOTATIONS.has(operation.type)),
     ({ operation, index }): BatchOrderAddress => {
       if (isColumnEdit(operation)) {
         const [tablePosition, columnIndex] = columnLocation(operation);
@@ -333,10 +281,12 @@ export const sequentialGroups = ({
         group[0]?.type === "deleteBlock" &&
         blockIdOf(group[0]) === deletedId,
     );
-    const moved = groups[from];
-    if (moved && target >= 0 && target < from) {
-      groups.splice(from, 1);
-      groups.splice(target, 0, moved);
+    // The deletion moves, not the run: what else is at the gap keeps its place
+    // beside the run, in the order the batch runs them.
+    const deletion = groups[target];
+    if (deletion && target >= 0 && target < from) {
+      groups.splice(target, 1);
+      groups.splice(from, 0, deletion);
     }
   }
   // The shared batch order: a run addressing a block goes before the run that
@@ -387,40 +337,26 @@ export const sequentialGroups = ({
       return { type: "annotation", position, inputIndex: index };
     },
   );
-  const early = orderBatchOperations(
-    indexed.filter(({ operation }) => earlyIds.has(operation.id)),
-    ({ operation, index }): BatchOrderAddress => {
-      const [block, inside, offset] = placement(operation, preRows);
-      return {
-        type: "content",
-        position: block * 1_000_000_000 + inside * 100_000_000 + offset,
-        rank: contentRank(operation, { hasDeletedSplit: false }),
-        inputIndex: index,
-      };
-    },
-  );
-  // At one gap the batch runs the operation named last first, and an insertion
-  // run goes ahead of a property write when any of it was named after that
-  // write (`groupInsertionRuns`), so it copies the paragraph as it was read. An
-  // early property write keeps that order with its gap's run.
-  const gapOf = (operation: AnyOperation): string => {
-    const [block, inside, offset] = placement(operation, preRows);
-    return `${block}:${inside}:${offset}`;
-  };
-  const leadsEarly = (group: readonly AnyOperation[]): boolean =>
-    group.every(({ type }) => INSERTIONS.has(type)) &&
-    early.some(({ operation, index }) =>
-      group.some(
-        (member) =>
-          gapOf(member) === gapOf(operation) &&
-          (inputOrder.get(member.id) ?? -1) > index,
-      ),
+  // The batch retires a final paragraph's break once, over the finished batch,
+  // when what precedes it is settled. Until then the paragraphs before it can
+  // still be written to and placed beside, so its deletion runs late. A merge
+  // already reads that break as gone, so the deletion runs before any merge.
+  const retiresBreak = (group: readonly AnyOperation[]): boolean =>
+    group.every(
+      (operation) =>
+        operation.type === "deleteBlock" &&
+        retiringFinals.has(blockIdOf(operation)),
     );
+  const others = reordered.filter((group) => !retiresBreak(group));
+  const firstMerge = others.findIndex((group) =>
+    group.some(({ type }) => type === "mergeBlockWithNext"),
+  );
+  const retirementsAt = firstMerge < 0 ? others.length : firstMerge;
   return [
     ...annotations.map(({ operation }) => [operation]),
-    ...reordered.filter(leadsEarly),
-    ...early.map(({ operation }) => [operation]),
-    ...reordered.filter((group) => !leadsEarly(group)),
+    ...others.slice(0, retirementsAt),
+    ...reordered.filter(retiresBreak),
+    ...others.slice(retirementsAt),
     ...columns.map(({ operation }) => [operation]),
   ];
 };
