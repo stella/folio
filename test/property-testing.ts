@@ -29,6 +29,7 @@ import {
   type ExplorationContext,
   explorationReportsOnly,
   isExplorationFailure,
+  pinnedReplayPath,
   type SeedSource,
 } from "./property-exploration";
 
@@ -434,9 +435,13 @@ const replayReporter =
       seed: details.seed,
       path: counterexamplePath,
     });
+    const pinPath =
+      counterexamplePath === null
+        ? undefined
+        : pinnedReplayPath(counterexamplePath, exploration.examples);
     const entry = {
       seed: details.seed,
-      ...(counterexamplePath === null ? {} : { path: counterexamplePath }),
+      ...(pinPath === undefined || pinPath === null ? {} : { path: pinPath }),
     };
     const lines = [fc.defaultReportMessage(details) ?? "Property failed", ""];
     if (pinned !== undefined) {
@@ -445,7 +450,11 @@ const replayReporter =
       );
     }
     lines.push(`Replay: ${replay}`);
-    if (pinned === undefined && identity.key !== undefined) {
+    if (
+      pinned === undefined &&
+      identity.key !== undefined &&
+      pinPath !== null
+    ) {
       lines.push(
         `Pin: add ${JSON.stringify(entry)} (with a note and date) under ${JSON.stringify(identity.id)} in ${registryFile}`,
       );

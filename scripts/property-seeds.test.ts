@@ -318,6 +318,58 @@ test("nightly replay fixture", () => {
     );
   });
 
+  test("a pin printed for a property with examples replays its counterexample", () => {
+    withEnv({});
+    const failing = (): string => {
+      try {
+        assertProperty(
+          fc.property(fc.nat(), (value) => value < 50),
+          {
+            id: "pin past examples",
+            seed: 1234,
+            numRuns: 200,
+            examples: [[1], [2], [3]],
+          },
+        );
+      } catch (error) {
+        return (error as Error).message;
+      }
+      return "";
+    };
+    const first = failing();
+    const pin = /Pin: add (\{.*?\}) \(with a note/.exec(first)?.[1];
+    const entry = JSON.parse(pin as string) as { seed: number; path: string };
+    expect(entry.path).not.toBe(
+      /PROPERTY_TEST_PATH='([\d:]+)'/.exec(first)?.[1] as string,
+    );
+    overridePinnedSeedsForTesting({
+      "scripts/property-seeds.test.ts::pin past examples": [
+        { ...entry, note: "test", date: "2026-11-05" },
+      ],
+    });
+    const replayed = failing();
+    overridePinnedSeedsForTesting(undefined);
+    expect(replayed).toContain("Pinned regression seed 1234");
+    expect(/Counterexample: (.*)/.exec(replayed)?.[1]).toBe(
+      /Counterexample: (.*)/.exec(first)?.[1] as string,
+    );
+  });
+
+  test("a failing example prints a replay line and no pin", () => {
+    withEnv({});
+    let message = "";
+    try {
+      assertProperty(
+        fc.property(fc.nat(), (value) => value !== 1_000_003),
+        { id: "failing example", numRuns: 1, examples: [[1_000_003]] },
+      );
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("Replay: ");
+    expect(message).not.toContain("Pin: add");
+  });
+
   test("the replay line replays the failure", () => {
     withEnv({});
     const failing = (): string => {
