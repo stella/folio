@@ -362,6 +362,35 @@ export const CANONICAL_RESTARTED_AFTER_TYPING = {
   trace: BrowserInputTrace;
 };
 
+/** A composition inside a tracked run survives the DOM rebuilding its review mark. */
+export const CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521 = {
+  authority: "canonical",
+  seed: 1793897521,
+  path: "12",
+  fingerprint: "f9c052d5091f3dce",
+  trace: {
+    shape: "header-footer",
+    actions: [
+      { kind: "delete" },
+      { kind: "pastePlain", plain: "東京", html: "" },
+      {
+        kind: "imeReplacement",
+        updates: ["café alpha", "👩🏽‍⚖️ buyer"],
+        completion: "cancel",
+      },
+      { kind: "historyBurst", keys: ["redo", "redo"] },
+      { kind: "backspace" },
+      { kind: "cut" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
@@ -378,4 +407,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_PARAGRAPH_START_SEED_431,
   CANONICAL_RESTARTED_AFTER_PASTE_SEED_197,
   CANONICAL_RESTARTED_AFTER_TYPING,
+  CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
 ];

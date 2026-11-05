@@ -70,7 +70,10 @@ type CompletedComposition =
   | { type: "completed"; receipt: CompletedReceipt }
   | { type: "authorized"; receipt: CompletedReceipt; text: string };
 
-type OmittedMarkRange = { from: number; to: number };
+const REVIEW_MARK_NAMES: ReadonlySet<string> = new Set([
+  "insertion",
+  "deletion",
+]);
 type NativeReplacementComparisonOptions = {
   baseline: EditorState;
   proposed: EditorState;
@@ -79,10 +82,12 @@ type NativeReplacementComparisonOptions = {
   text: string;
 };
 /**
- * Whether a native proposal is one plain replacement. A diff that reaches into
- * untouched text goes through `insertText`, which keeps no mark declared
- * `inclusive: false`: source identity, a review mark, a link. Such an omission
- * says nothing about the edit, and the captured model owns those marks on commit.
+ * Whether a native proposal is one plain replacement. The commit is a text
+ * replacement over the captured model, so this only has to tell DOM noise from a
+ * real change. Reading the DOM back can lose a mark with no parse rule or, through
+ * `insertText`, a non-inclusive one. It rebuilds a review mark from fewer attributes,
+ * and composed text sits in the DOM wrapper of the tracked run beside it. Gaining
+ * any other mark, losing an inclusive one, or another revision is a real change.
  */
 const matchesNativeReplacement = ({
   baseline,
@@ -93,48 +98,64 @@ const matchesNativeReplacement = ({
 }: NativeReplacementComparisonOptions) => {
   const expected = baseline.tr.insertText(text, from, to);
   if (expected.doc.eq(proposed.doc)) return true;
-  if (!baseline.doc.resolve(from).sameParent(baseline.doc.resolve(to)))
-    return false;
+  const $from = baseline.doc.resolve(from);
+  const $to = baseline.doc.resolve(to);
+  if (!$from.sameParent($to)) return false;
   if (expected.doc.content.size !== proposed.doc.content.size) return false;
   const position = expected.doc.resolve(from);
   const paragraph = position.parent;
   const start = position.start();
   const native = proposed.doc.nodeAt(start - 1);
   if (native === null || native.type !== paragraph.type) return false;
-  const omittable = Object.values(baseline.schema.marks).filter(
-    (markType) => markType.spec.inclusive === false,
-  );
-  for (const markType of omittable) {
-    let index = 0;
-    let offset = 0;
-    const missing: OmittedMarkRange[] = [];
-    native.forEach((node, nodeOffset) => {
-      const end = nodeOffset + node.nodeSize;
-      let cursor = nodeOffset;
-      while (cursor < end && index < paragraph.childCount) {
-        const authored = paragraph.child(index);
-        const authoredEnd = offset + authored.nodeSize;
-        const overlapEnd = Math.min(end, authoredEnd);
-        if (
-          node.isText &&
-          authored.isText &&
-          markType.isInSet(authored.marks) !== undefined &&
-          markType.isInSet(node.marks) === undefined
-        ) {
-          const previous = missing.at(-1);
-          if (previous?.to === start + cursor) previous.to = start + overlapEnd;
-          else missing.push({ from: start + cursor, to: start + overlapEnd });
-        }
-        cursor = overlapEnd;
-        if (cursor === authoredEnd) {
-          offset = authoredEnd;
-          index += 1;
+  const composedFrom = from;
+  const composedTo = from + text.length;
+  const types = Object.values(baseline.schema.marks);
+  const beside = [$from.nodeBefore, $to.nodeAfter];
+  const corrections: (() => void)[] = [];
+  let index = 0;
+  let offset = 0;
+  native.forEach((node, nodeOffset) => {
+    const end = nodeOffset + node.nodeSize;
+    let cursor = nodeOffset;
+    while (cursor < end && index < paragraph.childCount) {
+      const authored = paragraph.child(index);
+      const authoredEnd = offset + authored.nodeSize;
+      const overlapEnd = Math.min(end, authoredEnd);
+      if (node.isText && authored.isText) {
+        const rangeFrom = start + cursor;
+        const rangeTo = start + overlapEnd;
+        for (const type of types) {
+          const held = type.isInSet(authored.marks);
+          const read = type.isInSet(node.marks);
+          if (held && !read) {
+            if (
+              type.spec.inclusive === false ||
+              (type.spec.parseDOM ?? []).length === 0
+            )
+              corrections.push(() =>
+                expected.removeMark(rangeFrom, rangeTo, type),
+              );
+            continue;
+          }
+          if (!read || !REVIEW_MARK_NAMES.has(type.name)) continue;
+          const sameRevision =
+            held?.attrs["revisionId"] === read.attrs["revisionId"];
+          const inWrapperBeside =
+            rangeFrom >= composedFrom &&
+            rangeTo <= composedTo &&
+            beside.some((neighbour) => type.isInSet(neighbour?.marks ?? []));
+          if (held ? sameRevision : inWrapperBeside)
+            corrections.push(() => expected.addMark(rangeFrom, rangeTo, read));
         }
       }
-    });
-    for (const range of missing)
-      expected.removeMark(range.from, range.to, markType);
-  }
+      cursor = overlapEnd;
+      if (cursor === authoredEnd) {
+        offset = authoredEnd;
+        index += 1;
+      }
+    }
+  });
+  for (const correction of corrections) correction();
   return expected.doc.eq(proposed.doc);
 };
 
