@@ -1007,6 +1007,48 @@ describe("toMarkdown — clean preset for skills", () => {
     expect(out).toBe("text[^c1]\n\n## Comments\n[^c1]: R: note");
   });
 
+  test("a comment marker reads the same inside a revision wrapper or beside it", () => {
+    const info = { id: 1, author: "R", date: "2026-01-01T00:00:00Z" };
+    const render = (
+      content: Paragraph["content"],
+      trackedChanges: "clean" | "markup",
+    ) =>
+      toMarkdown(
+        {
+          package: {
+            document: {
+              content: [{ type: "paragraph", content }],
+              comments: [
+                { id: 5, author: "R", content: [para([run("note")])] },
+              ],
+            },
+          },
+        },
+        { comments: "sidecar", trackedChanges },
+      );
+    const inside: Paragraph["content"] = [
+      {
+        type: "deletion",
+        info,
+        content: [{ type: "commentRangeStart", id: 5 }, run("gone")],
+      },
+      { type: "commentRangeEnd", id: 5 },
+      run("kept"),
+    ];
+    const beside: Paragraph["content"] = [
+      { type: "commentRangeStart", id: 5 },
+      { type: "deletion", info, content: [run("gone")] },
+      { type: "commentRangeEnd", id: 5 },
+      run("kept"),
+    ];
+    for (const trackedChanges of ["clean", "markup"] as const) {
+      expect(render(inside, trackedChanges)).toBe(
+        render(beside, trackedChanges),
+      );
+      expect(render(inside, trackedChanges)).toContain("[^c1]");
+    }
+  });
+
   test("comment sidecar text includes hyperlink/field text, not just runs", () => {
     const commentPara: Paragraph = {
       type: "paragraph",

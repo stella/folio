@@ -5,12 +5,12 @@
  */
 
 import { createRef, useState, useSyncExternalStore } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
 import type { EditorState } from "prosemirror-state";
-import { IntlProvider } from "use-intl";
+import { IntlProvider, useTranslations } from "use-intl";
 
 import type { HostShortcut } from "@stll/folio-core/managers/editorShortcuts";
 import {
@@ -96,6 +96,16 @@ type FolioEditorAppProps = {
   onError: Session["onError"];
 };
 
+/** The editor's accessible name in the language of the surrounding provider. */
+const WithAccessibleName = ({
+  children,
+}: {
+  children: (accessibleName: string) => ReactNode;
+}) => {
+  const t = useTranslations("folio");
+  return children(t("editor.accessibleName"));
+};
+
 const FolioEditorApp = ({
   editorRef,
   modeStore,
@@ -119,20 +129,25 @@ const FolioEditorApp = ({
       messages={getFolioMessages(locale)}
       timeZone={new Intl.DateTimeFormat().resolvedOptions().timeZone}
     >
-      <DocxEditor
-        ref={editorRef}
-        author={author}
-        mode={mode}
-        onModeChange={onModeChange}
-        hostShortcuts={HOST_SHORTCUTS}
-        plugins={plugins}
-        onEditorViewReady={onEditorViewReady}
-        onError={onError}
-        preserveDocumentWhileLoading={true}
-        // Headers and footers keep undo stacks of their own, which the host's
-        // single stack cannot mirror yet.
-        showHeaderFooterEditing={false}
-      />
+      <WithAccessibleName>
+        {(accessibleName) => (
+          <DocxEditor
+            accessibleName={accessibleName}
+            ref={editorRef}
+            author={author}
+            mode={mode}
+            onModeChange={onModeChange}
+            hostShortcuts={HOST_SHORTCUTS}
+            plugins={plugins}
+            onEditorViewReady={onEditorViewReady}
+            onError={onError}
+            preserveDocumentWhileLoading={true}
+            // Headers and footers keep undo stacks of their own, which the host's
+            // single stack cannot mirror yet.
+            showHeaderFooterEditing={false}
+          />
+        )}
+      </WithAccessibleName>
     </IntlProvider>
   );
 };

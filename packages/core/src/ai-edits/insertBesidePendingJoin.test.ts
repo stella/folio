@@ -255,6 +255,96 @@ describe("an insertion after a paragraph whose break a final deletion retires", 
   });
 });
 
+describe("a block after a paragraph deleted whole that a join runs through", () => {
+  /** "Alpha." merged into "Bravo.", "Bravo." deleted, then `insertion` after "Bravo.", tracked. */
+  const joinThrough = async (
+    insertion: (blockId: string) => FolioDocumentOperation,
+  ) => {
+    const bytes = (
+      await ensureParaIds(
+        await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
+      )
+    ).docx;
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      author: "Test",
+    });
+    const [alpha, bravo] = reviewer.snapshot().blocks;
+    if (!alpha || !bravo) throw new Error("Missing fixture");
+    for (const operation of [
+      { id: "delete", type: "deleteBlock", blockId: bravo.id },
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: alpha.id,
+        separator: " ",
+      },
+      insertion(bravo.id),
+    ] satisfies FolioDocumentOperation[]) {
+      expect(
+        reviewer.applyOperations([operation], { mode: "tracked-changes" })
+          .skipped,
+      ).toEqual([]);
+    }
+    return reviewer;
+  };
+  const textsOf = (reviewer: FolioDocxReviewer) =>
+    reviewer.snapshot().blocks.map(({ text }) => text);
+
+  for (const placed of ["a paragraph after it", "a table after it"] as const) {
+    const insertion = insertions[placed];
+    test(`takes ${placed} after the paragraph the join leaves`, async () => {
+      const reviewer = await joinThrough(insertion);
+      reviewer.acceptAll();
+      const texts = textsOf(reviewer);
+      const joined = texts.indexOf("Alpha. Charlie.");
+      expect(joined).toBe(0);
+      expect(texts.at(joined + 1)).toBe(
+        placed === "a table after it" ? "Term" : "Inserted clause.",
+      );
+    });
+
+    test(`rejects ${placed} to the document it started from`, async () => {
+      const reviewer = await joinThrough(insertion);
+      reviewer.rejectAll();
+      expect(textsOf(reviewer)).toEqual(["Alpha.", "Bravo.", "Charlie."]);
+    });
+  }
+});
+
+describe("a suggested paragraph beside a pending join", () => {
+  for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+    test(`copies the paragraph it names as it stands (${type})`, async () => {
+      const reviewer = await open();
+      const item = reviewer.snapshot().blocks.at(1);
+      if (!item) throw new Error("Missing fixture");
+      expect(
+        reviewer.applyOperations(
+          [{ id: "delete", type: "deleteBlock", blockId: item.id }],
+          { mode: "tracked-changes" },
+        ).skipped,
+      ).toEqual([]);
+      // Rejecting the words alone leaves the break pending deletion: the list
+      // item now joins the plain paragraph after it.
+      const words = reviewer
+        .getChanges()
+        .find(({ type: kind }) => kind === "deletion");
+      if (!words) throw new Error("Missing deletion");
+      expect(reviewer.rejectChange(words)).toBe(true);
+      expect(
+        reviewer.applyOperations(
+          [{ id: "insert", type, blockId: item.id, text: "Inserted." }],
+          { mode: "suggested" },
+        ).skipped,
+      ).toEqual([]);
+      const inserted = reviewer
+        .snapshot()
+        .blocks.find(({ text }) => text === "Inserted.");
+      expect(inserted?.kind).toBe("listItem");
+      expect(inserted?.listReference?.numId).toBe(item.listReference?.numId);
+    });
+  }
+});
+
 const EMPTY_SOURCE_MARKDOWN = "Alpha.\n\nBravo.\n\nCharlie.";
 
 /** An empty paragraph after "Alpha.", merged into "Bravo.", then `edit` in `mode`. */

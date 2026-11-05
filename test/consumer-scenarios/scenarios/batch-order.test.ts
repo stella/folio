@@ -329,15 +329,14 @@ test("the batch comparator preserves phases within a table and visits nested tab
   );
 });
 
-test("deletion precedes a table insertion through every three-operation permutation", async () => {
+test("a table insertion replays before the deletion of its anchor through every three-operation permutation", async () => {
   const outcomes: ReturnType<typeof view>[] = [];
-  for (const order of ORDERS) {
+  const split = async () => {
     const fixture = await packDocument(fromMarkdown("Alpha bravo."));
     const reviewer = await openReviewer(fixture);
-    const original = reviewer.getContent() as Row[];
-    const anchor = original.at(0);
+    const anchor = (reviewer.getContent() as Row[]).at(0);
     assert.ok(anchor);
-    const split = reviewer.applyDocumentOperations(
+    const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
@@ -347,7 +346,12 @@ test("deletion precedes a table insertion through every three-operation permutat
       },
       { undefinedReferences: "refuse" },
     );
-    assert.deepEqual(split.skipped, []);
+    assert.deepEqual(result.skipped, []);
+    return reviewer;
+  };
+  for (const order of ORDERS) {
+    const reviewer = await split();
+    const sequential = await split();
     const splitAnchor = (reviewer.getContent() as Row[]).at(0);
     assert.ok(splitAnchor);
     const operations = [
@@ -365,14 +369,25 @@ test("deletion precedes a table insertion through every three-operation permutat
       },
       { id: "delete", type: "deleteBlock" as const, blockId: splitAnchor.id },
     ];
-    const orderedReplay = sequentialGroups({
+    const replay = sequentialGroups({
       applied: order.flatMap((index) => operations.at(index) ?? []),
       preRows: reviewer.getContent() as Row[],
       mode: "tracked-changes",
-    })
-      .flat()
-      .map(({ id }) => id);
-    assert.ok(orderedReplay.indexOf("delete") < orderedReplay.indexOf("table"));
+    });
+    const orderedReplay = replay.flat().map(({ id }) => id);
+    assert.ok(orderedReplay.indexOf("table") < orderedReplay.indexOf("delete"));
+    for (const group of replay) {
+      const replayed = sequential.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: group as FolioDocumentOperation[],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      assert.deepEqual(replayed.skipped, []);
+    }
+    sequential.acceptAll();
     const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -383,6 +398,7 @@ test("deletion precedes a table insertion through every three-operation permutat
     );
     assert.deepEqual(result.skipped, []);
     reviewer.acceptAll();
+    assert.deepEqual(view(sequential), view(reviewer));
     outcomes.push(view(reviewer));
   }
   for (const outcome of outcomes.slice(1))
@@ -403,5 +419,72 @@ test("generated adjacent insertion, merge and replacement mixes equal contract r
       mirrored: index % 2 === 1,
       inserted: insertedTexts[index % insertedTexts.length] ?? "Added clause.",
     });
+  }
+});
+
+test("a block addressed and taken out in one batch replays the address first, in either input order", async () => {
+  const fixture = await packDocument(
+    fromMarkdown("Alpha.\n\nBravo.\n\nCharlie."),
+  );
+  const rows = (await openReviewer(fixture)).getContent() as Row[];
+  const [alpha, bravo] = rows;
+  assert.ok(alpha && bravo);
+  const cases: [string, FolioDocumentOperation, FolioDocumentOperation][] = [
+    [
+      "deleted",
+      {
+        id: "address",
+        type: "insertTable",
+        blockId: bravo.id,
+        rows: [["Term", "Value"]],
+      },
+      { id: "remove", type: "deleteBlock", blockId: bravo.id },
+    ],
+    [
+      "merged away",
+      {
+        id: "address",
+        type: "insertBeforeBlock",
+        blockId: bravo.id,
+        text: "Before.",
+      },
+      {
+        id: "remove",
+        type: "mergeBlockWithNext",
+        blockId: alpha.id,
+        separator: " ",
+      },
+    ],
+  ];
+  for (const [name, address, remove] of cases) {
+    for (const operations of [
+      [address, remove],
+      [remove, address],
+    ]) {
+      for (const mode of MODES) {
+        const replay = sequentialGroups({
+          applied: operations,
+          preRows: rows,
+          mode,
+        });
+        const order = replay.flat().map(({ id }) => id);
+        assert.ok(
+          order.indexOf("address") < order.indexOf("remove"),
+          `${name}, ${mode}: ${order.join(", ")}`,
+        );
+        const sequential = await openReviewer(fixture);
+        for (const group of replay) {
+          const replayed = sequential.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode,
+              operations: group as FolioDocumentOperation[],
+            },
+            { undefinedReferences: "refuse" },
+          );
+          assert.deepEqual(replayed.skipped, [], `${name}, ${mode}`);
+        }
+      }
+    }
   }
 });

@@ -236,18 +236,46 @@ function wrapFlanking(
   );
 }
 
-/** Paragraph content that writes nothing to the line. */
-const SILENT_MARKERS = new Set([
-  "bookmarkStart",
-  "bookmarkEnd",
-  "moveFromRangeStart",
-  "moveFromRangeEnd",
-  "moveToRangeStart",
-  "moveToRangeEnd",
-]);
-
-/** Comment range markers, which write nothing when comments are stripped. */
-const COMMENT_MARKERS = new Set(["commentRangeStart", "commentRangeEnd"]);
+/**
+ * Whether paragraph content puts nothing on the line in this render. Left out
+ * of the content before runs group, so the runs on either side of it meet as
+ * they do on the line: emphasis closed and reopened around nothing reads as
+ * literal asterisks. Exhaustive, so new content decides here.
+ */
+const writesNothing = (ctx: RenderContext, item: ParagraphContent): boolean => {
+  switch (item.type) {
+    case "bookmarkStart":
+    case "bookmarkEnd":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
+    case "preservedInline":
+      return true;
+    case "commentRangeStart":
+    case "commentRangeEnd":
+    case "commentReference":
+      return ctx.opts.comments === "strip";
+    case "mathEquation":
+      return !item.plainText;
+    case "inlineSdt":
+    case "inlineWrapper":
+      return item.content.every((child) => writesNothing(ctx, child));
+    case "run":
+    case "hyperlink":
+    case "simpleField":
+    case "complexField":
+    case "insertion":
+    case "deletion":
+    case "moveFrom":
+    case "moveTo":
+      return false;
+    default: {
+      const unhandled: never = item;
+      return unhandled;
+    }
+  }
+};
 
 /** A run as rendered text, with the emphasis still to wrap around it. */
 type Piece = { text: string; marks: ReadonlySet<EmphasisKey> };
@@ -739,6 +767,50 @@ const cleanRevisionContent = (
     }
   });
 
+const COMMENT_MARKER_TYPES: ReadonlySet<string> = new Set([
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+]);
+
+/**
+ * A comment marker bounds its comment wherever it stands; a save may write it
+ * inside the revision wrapper of the text it starts at, or beside it. Revision
+ * wrappers are split around their comment markers, so either reads the same.
+ */
+const commentMarkersOutsideRevisions = (
+  content: readonly ParagraphContent[],
+): ParagraphContent[] =>
+  content.flatMap((item) => {
+    switch (item.type) {
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        break;
+      default:
+        return [item];
+    }
+    const parts: ParagraphContent[] = [];
+    let held: typeof item.content = [];
+    const flush = () => {
+      if (held.length > 0) parts.push({ ...item, content: held });
+      held = [];
+    };
+    for (const child of commentMarkersOutsideRevisions(
+      item.content,
+    ) as typeof item.content) {
+      if (COMMENT_MARKER_TYPES.has(child.type)) {
+        flush();
+        parts.push(child);
+      } else {
+        held.push(child);
+      }
+    }
+    flush();
+    return parts;
+  });
+
 /**
  * Render the full inline content of a paragraph, tracking comment-range
  * boundaries to apply the configured wrapper.
@@ -753,17 +825,12 @@ export function renderParagraphInline(
   let out = "";
   // Stack of open comment ranges (document order) so nested comments wrap right.
   const openComments: CommentSlot[] = [];
-  // Markers that write nothing are left out, so the runs on either side of
-  // one meet as they do on the line.
+  const hoistedContent = commentMarkersOutsideRevisions(content);
   const visibleContent =
     ctx.opts.trackedChanges === "clean"
-      ? cleanRevisionContent(content)
-      : content;
-  const items = visibleContent.filter(
-    (item) =>
-      !SILENT_MARKERS.has(item.type) &&
-      !(ctx.opts.comments === "strip" && COMMENT_MARKERS.has(item.type)),
-  );
+      ? cleanRevisionContent(hoistedContent)
+      : hoistedContent;
+  const items = visibleContent.filter((item) => !writesNothing(ctx, item));
   const around = (index: number): RunNeighbors => {
     const next = items[index + 1];
     return {
@@ -845,8 +912,7 @@ export function renderParagraphInline(
         }
         break;
       default:
-        // Range markers without inline payload (bookmark*, move*Range*,
-        // commentReference, math) contribute nothing here.
+        // `writesNothing` left these out above.
         break;
     }
   }

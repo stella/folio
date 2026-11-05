@@ -27,7 +27,7 @@ import {
   styleClosureNumberingReferences,
 } from "../compare/style-resources";
 import {
-  applyFolioDocumentOperations,
+  applyFolioDocumentOperationsInPackage,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
   type FolioDocumentOperationResult,
@@ -63,7 +63,10 @@ import {
   isSeparatorFootnote,
 } from "../docx/footnoteParser";
 import { normalizeListModelRendering } from "../docx/listModelNormalization";
-import { createNumberingIdAllocator } from "../docx/numberingIds";
+import {
+  createNumberingIdAllocator,
+  type NumberingIdsInUse,
+} from "../docx/numberingIds";
 import { getCachedNumberingMap } from "../docx/numberingParser";
 import { visitDocxParagraphs } from "../docx/paragraphTraversal";
 import { parseDocx } from "../docx/parser";
@@ -1608,6 +1611,32 @@ export class FolioDocxReviewer {
     return createStateSnapshot(this.state);
   }
 
+  /**
+   * The numbering ids every story but `story` defines: the package's and the
+   * lists each story started. Numbering ids are package-wide, while a story's
+   * state completes its numbering from its own paragraphs only.
+   */
+  private numberingIdsOutside(
+    story: FolioEditableDocumentStoryHandle,
+  ): NumberingIdsInUse {
+    const key = editableStoryKey(story);
+    const states = [
+      ...(story.type === "main" ? [] : [this.state]),
+      ...[...this.secondaryStoryStates.values()]
+        .filter(({ handle }) => editableStoryKey(handle) !== key)
+        .map(({ state }) => state),
+    ];
+    const numIds = new Set<number>();
+    const abstractNumIds = new Set<number>();
+    for (const state of states) {
+      const definitions = getDocumentNumbering(state)?.definitions;
+      for (const { numId } of definitions?.nums ?? []) numIds.add(numId);
+      for (const { abstractNumId } of definitions?.abstractNums ?? [])
+        abstractNumIds.add(abstractNumId);
+    }
+    return { numIds, abstractNumIds };
+  }
+
   /** Every suggestion id the document's stories still carry. */
   private activeSuggestionIds(): Set<string> {
     const active = new Set(
@@ -2011,7 +2040,7 @@ export class FolioDocxReviewer {
       },
     };
 
-    const result = applyFolioDocumentOperations({
+    const result = applyFolioDocumentOperationsInPackage({
       view,
       snapshot: sourceSnapshot,
       batch,
@@ -2022,6 +2051,7 @@ export class FolioDocxReviewer {
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
       undefinedReferences,
+      numberingIdsElsewhere: this.numberingIdsOutside(story),
       ...(restagesSuggestions === true
         ? { restagesSuggestions }
         : { pendingSuggestionIds: this.activeSuggestionIds() }),
@@ -3093,9 +3123,10 @@ export class FolioDocxReviewer {
           view.state = view.state.apply(transaction);
         },
       };
-      const result = applyFolioDocumentOperations({
+      const result = applyFolioDocumentOperationsInPackage({
         undefinedReferences: "refuse",
         restagesSuggestions: true,
+        numberingIdsElsewhere: this.numberingIdsOutside(story),
         view,
         snapshot,
         batch: {

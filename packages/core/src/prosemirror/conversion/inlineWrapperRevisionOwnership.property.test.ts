@@ -45,7 +45,7 @@ type RevisionFixture = {
 const REVISIONS = [
   { name: "ins", id: 101, textElement: "t" },
   { name: "del", id: 102, textElement: "delText" },
-  { name: "moveFrom", id: 103, textElement: "delText" },
+  { name: "moveFrom", id: 103, textElement: "t" },
   { name: "moveTo", id: 104, textElement: "t" },
 ] as const satisfies readonly RevisionFixture[];
 

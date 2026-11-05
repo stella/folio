@@ -132,7 +132,8 @@ const mutationGap = (
     )
       return CANONICAL_GAP.tableGeometry;
     if (
-      name === "applyFolioAIEditOperations" &&
+      (name === "applyFolioAIEditOperations" ||
+        name === "applyFolioAIEditOperationsInPackage") &&
       file.endsWith("/document-operations.ts")
     )
       return CANONICAL_GAP.documentOperations;

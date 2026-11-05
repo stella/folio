@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 322055674,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2322716108,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "483CD5EB",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "numbered"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 235385507,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "7735D914",
+          "text": "Written buyer agreement written.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "formatRange",
+    "commentOnRange",
+    "insertAfterBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTableRow",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from dropOperation+dropOperation+splice of fca0e216ed5ea01e"
+}

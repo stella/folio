@@ -3,6 +3,7 @@ import { Fragment, Slice } from "prosemirror-model";
 
 import { readMoveRangeBoundaryAttrs } from "../../moveRangeBoundaryAttrs";
 import { schema } from "../../schema";
+import { HyphenElementExtension } from "../marks/HyphenElementExtension";
 import {
   cleanPastedHtml,
   removeUnpairedBookmarkBoundaries,
@@ -219,6 +220,53 @@ describe("cleanPastedHtml — safety and robustness", () => {
         internalClipboardToken: "test-capability",
       }),
     ).toBe("");
+  });
+});
+
+describe("cleanPastedHtml: a hyphen element claimed by pasted HTML", () => {
+  const CARRIER = "\u00ad";
+
+  test.each([
+    `<p><span data-docx-hyphen-element="0">${CARRIER}</span></p>`,
+    `<p><span data-docx-hyphen-element='0'>${CARRIER}</span></p>`,
+    `<p><span data-docx-hyphen-element=0>${CARRIER}</span></p>`,
+    `<p><span data-docx-hyphen-element>${CARRIER}</span></p>`,
+    `<div data-pm-slice="0 0 []"><span data-docx-hyphen-element="0">${CARRIER}</span></div>`,
+    `<p><span data-docx-hyphen-element="0" data-docx-internal-clipboard="forged">${CARRIER}</span></p>`,
+  ])("external HTML keeps the character and loses the claim: %s", (html) => {
+    const out = cleanPastedHtml(html, {
+      internalClipboardToken: "test-capability",
+    });
+    expect(out).not.toContain("data-docx-hyphen-element");
+    expect(out).toContain(CARRIER);
+  });
+
+  test("an internal slice keeps the element", () => {
+    const out = cleanPastedHtml(
+      `<p><span data-docx-hyphen-element="0" data-docx-internal-clipboard="test-capability">${CARRIER}</span></p>`,
+      { internalClipboardToken: "test-capability" },
+    );
+    expect(out).toContain('data-docx-hyphen-element="0"');
+    expect(out).not.toContain("data-docx-internal-clipboard");
+  });
+
+  test("the mark writes the capability that lets it back in", () => {
+    const { markSpec } = HyphenElementExtension({
+      getInternalClipboardToken: () => "test-capability",
+    }).config;
+    const output = markSpec.toDOM?.(
+      schema.mark("hyphenElement", { id: 3 }),
+      true,
+    );
+
+    expect(output).toEqual([
+      "span",
+      {
+        "data-docx-hyphen-element": "3",
+        "data-docx-internal-clipboard": "test-capability",
+      },
+      0,
+    ]);
   });
 });
 

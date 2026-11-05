@@ -55,7 +55,11 @@ test.each(["accepted", "rejected"] as const)(
           timeZone="UTC"
           messages={getFolioMessages("en")}
         >
-          <DocxEditor ref={editor} {...props} />
+          <DocxEditor
+            accessibleName="Document editor"
+            ref={editor}
+            {...props}
+          />
         </IntlProvider>
       );
     };

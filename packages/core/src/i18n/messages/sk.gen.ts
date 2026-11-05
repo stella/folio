@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "DOCX sa nepodarilo uložiť",
     "editSessionTakenOver": "Túto reláciu úprav prevzalo iné okno.",
     "editor": {
+      "accessibleName": "Editor dokumentov",
       "editing": "Úpravy",
       "editingDescription": "Upravujte dokument priamo",
       "outlineDepthAll": "Všetky úrovne",

@@ -14,14 +14,13 @@ function parseParagraphXml(xml: string) {
 }
 
 describe("parseParagraph tracked-change hardening", () => {
-  for (const { tag, type, deleted } of [
-    { tag: "ins", type: "insertion", deleted: false },
-    { tag: "del", type: "deletion", deleted: true },
-    { tag: "moveFrom", type: "moveFrom", deleted: true },
-    { tag: "moveTo", type: "moveTo", deleted: false },
+  for (const { tag, type, textTag } of [
+    { tag: "ins", type: "insertion", textTag: "t" },
+    { tag: "del", type: "deletion", textTag: "delText" },
+    { tag: "moveFrom", type: "moveFrom", textTag: "t" },
+    { tag: "moveTo", type: "moveTo", textTag: "t" },
   ] as const) {
     test(`keeps bookmark boundaries inside w:${tag}`, () => {
-      const textTag = deleted ? "delText" : "t";
       const paragraph = parseParagraphXml(`
         <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
           <w:${tag} w:id="7" w:author="Reviewer">

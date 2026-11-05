@@ -15,6 +15,6 @@ jobs:
     if: github.repository == 'stella/folio'
     permissions:
       contents: read
-    uses: stella/.github/.github/workflows/quarantine-policy.yml@fc5f380b18234429cb60682ccfe1537561311e61
+    uses: stella/.github/.github/workflows/quarantine-policy.yml@042baebaf071329b956555c05caf5736504c278d
     with:
       bun-roots: plugins/vscode

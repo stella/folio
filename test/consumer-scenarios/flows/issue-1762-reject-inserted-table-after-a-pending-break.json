@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1797766757,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 278330629,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "6FFB97E7",
+            "startOffset": 24,
+            "endOffset": 33,
+            "selectedTextHash": "hs1tsq3"
+          },
+          "replace": "updated"
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "5E88C024",
+          "text": "Agreement written buyer warranty payment notice written period."
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 3302050285
+    },
+    {
+      "action": "core batch",
+      "seed": 3678121167,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "@2",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "splitBlock",
+    "commentOnBlock",
+    "insertTable",
+    "deleteTableRow"
+  ],
+  "origin": "shrunk from random flow seed 1797766757"
+}

@@ -152,9 +152,9 @@ const markerGroup = (subject: MarkerCase): string => {
     case "bookmarkEnd":
       return `<w:bookmarkStart w:id="${id}" w:name="bm"/>${inside}${written}`;
     case "moveFromRangeStart":
-      return `${written}<w:moveFrom ${TRACKED}><w:r><w:delText>gone</w:delText></w:r></w:moveFrom><w:moveFromRangeEnd w:id="${id}"/>`;
+      return `${written}<w:moveFrom ${TRACKED}><w:r><w:t>gone</w:t></w:r></w:moveFrom><w:moveFromRangeEnd w:id="${id}"/>`;
     case "moveFromRangeEnd":
-      return `<w:moveFromRangeStart w:id="${id}" w:name="mv" w:author="A" w:date="2024-01-01T00:00:00Z"/><w:moveFrom ${TRACKED}><w:r><w:delText>gone</w:delText></w:r></w:moveFrom>${written}`;
+      return `<w:moveFromRangeStart w:id="${id}" w:name="mv" w:author="A" w:date="2024-01-01T00:00:00Z"/><w:moveFrom ${TRACKED}><w:r><w:t>gone</w:t></w:r></w:moveFrom>${written}`;
     case "moveToRangeStart":
       return `${written}<w:moveTo ${TRACKED}><w:r><w:t>here</w:t></w:r></w:moveTo><w:moveToRangeEnd w:id="${id}"/>`;
     case "moveToRangeEnd":

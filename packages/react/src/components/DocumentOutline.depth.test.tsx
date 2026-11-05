@@ -174,6 +174,7 @@ test("DocxEditor defaults to two levels and forwards depth changes to the host",
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            accessibleName="Document editor"
             ref={editorRef}
             document={outlineDocument}
             onOutlineDepthChange={onOutlineDepthChange}

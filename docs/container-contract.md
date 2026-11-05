@@ -1009,11 +1009,11 @@ The honest remainder is 30:
   `w:displacedByCustomXml`, and `w:bookmarkEnd`'s `w:displacedByCustomXml` and
   `w:id`. The editor's bookmark boundary normalises the pair's position and
   keeps neither the table-column scope nor the displacement.
-- **2** — `w:softHyphen` and `w:noBreakHyphen` in a run. These are not lost:
-  the editor carries them as U+00AD and U+2011 inside the text, and the save
-  writes the character rather than the element. `present-with-a-different-value`
-  is the truer mechanism; the law does not reach it because it looks for the
-  element.
+- **2** — `w:softHyphen` and `w:noBreakHyphen` in a run, since fixed. The
+  editor carried them as U+00AD and U+2011 inside the text, and the save wrote
+  the character rather than the element. A `hyphenElement` mark now records
+  which carriers were elements, so the save writes those back, and both pairs
+  are `modelled`.
 
 **The census also under-reports, and that is the more serious half.**
 `pushTrackedChangeSegments` lifts out of the wrapper everything

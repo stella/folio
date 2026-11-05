@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 322055967,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2657575056,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "31617F9A",
+          "text": "Schedule payment warranty supplier agreement."
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "3CEFFC83",
+          "offset": 16
+        },
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2969704741,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "accept all",
+      "seed": 2905763544
+    },
+    {
+      "action": "core batch",
+      "seed": 2082104283,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@2",
+          "text": "A second-level heading.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@2",
+          "text": "A new bullet.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1322386219,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@2"
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 1890280692
+    },
+    {
+      "action": "story batch",
+      "seed": 1258445022,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "@2",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1002680234,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "@8",
+          "find": "new",
+          "replace": "revised"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "formatRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from collisions flow seed 322055967"
+}

@@ -43,15 +43,17 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
     // (@tailwindcss/cli, nuxt and @nuxt/module-builder -> @parcel/watcher ->
     // micromatch). No published package depends on it, and folio never
     // expands untrusted patterns. No patched braces exists yet.
+    // 2026-11-04: re-checked; braces 3.0.3 is still the latest release.
     advisory: "GHSA-vfj7-8cjw-p6xm",
     packageName: "braces",
     vulnerableThrough: "3.0.3",
     requiredBy: { type: "direct", parent: "micromatch" },
-    expires: "2026-11-01",
+    expires: "2026-12-01",
   },
   {
     // 2026-10-06: no patched sprintf-js is published. It arrives through
     // @rushstack/ts-command-line's argparse ~1.0.9 pin.
+    // 2026-11-04: re-checked; sprintf-js 1.1.3 is still the latest release.
     advisory: "GHSA-hp3w-g68c-fv3c",
     packageName: "sprintf-js",
     vulnerableThrough: "1.1.3",
@@ -61,7 +63,7 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
       dependency: "argparse",
       range: "~1.0.9",
     },
-    expires: "2026-11-01",
+    expires: "2026-12-01",
   },
 ];
 

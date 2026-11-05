@@ -10,6 +10,7 @@
  * import "@stll/folio-react/standalone.css";
  *
  * const editor = await renderAsync(buffer, document.getElementById("host")!, {
+ *   accessibleName: "Document editor",
  *   readOnly: false,
  *   showToolbar: true,
  * });
@@ -74,7 +75,7 @@ export type RenderAsyncOptions = Omit<
 export const renderAsync = (
   input: DocxInput,
   container: HTMLElement,
-  options: RenderAsyncOptions = {},
+  options: RenderAsyncOptions,
 ): Promise<DocxEditorHandle> => {
   const { locale = "en", ...editorOptions } = options;
 

@@ -14,9 +14,13 @@ import {
 } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
-import { createDocx } from "../docx/rezip";
+import { createDocx, createEmptyDocx, repackDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import { FolioDocxReviewer } from "./headless";
+import type { HeaderFooter } from "../types/document";
+import {
+  FolioDocxReviewer,
+  type FolioEditableDocumentStoryHandle,
+} from "./headless";
 
 const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
   const { docx } = await ensureParaIds(
@@ -344,4 +348,126 @@ describe("an operation that starts a new list", () => {
       }),
     );
   });
+});
+
+const HEADER = {
+  type: "header",
+  relationshipId: "rId_header_story",
+} as const satisfies FolioEditableDocumentStoryHandle;
+const FOOTER = {
+  type: "footer",
+  relationshipId: "rId_footer_story",
+} as const satisfies FolioEditableDocumentStoryHandle;
+const MAIN = {
+  type: "main",
+} as const satisfies FolioEditableDocumentStoryHandle;
+
+const storyOf = (
+  type: "header" | "footer",
+  text: string,
+  paraId: string,
+): HeaderFooter => ({
+  type,
+  hdrFtrType: "default",
+  content: [
+    {
+      type: "paragraph",
+      paraId,
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    },
+  ],
+});
+
+/** A body, a header and a footer, one paragraph each and no numbering part. */
+const storiesDocx = async (): Promise<ArrayBuffer> => {
+  const document = await parseDocx(await createEmptyDocx(), {
+    detectVariables: false,
+    preloadFonts: false,
+  });
+  document.package.headers = new Map([
+    [HEADER.relationshipId, storyOf("header", "Header.", "21000001")],
+  ]);
+  document.package.footers = new Map([
+    [FOOTER.relationshipId, storyOf("footer", "Footer.", "21000002")],
+  ]);
+  document.package.document.finalSectionProperties = {
+    ...document.package.document.finalSectionProperties,
+    headerReferences: [{ type: "default", rId: HEADER.relationshipId }],
+    footerReferences: [{ type: "default", rId: FOOTER.relationshipId }],
+  };
+  const { docx } = await ensureParaIds(
+    await repackDocx(document, { updateModifiedDate: false }),
+  );
+  return docx;
+};
+
+/** Every list item's text and the list id it reads, story by story. */
+const listIdsByText = (reviewer: FolioDocxReviewer): Record<string, number> => {
+  const ids: Record<string, number> = {};
+  for (const story of [MAIN, HEADER, FOOTER]) {
+    const blocks =
+      story.type === "main"
+        ? reviewer.getContent()
+        : (reviewer.snapshotStory(story)?.blocks ?? []);
+    for (const block of blocks) {
+      if (block.kind === "listItem" && block.listReference !== undefined)
+        ids[block.text] = block.listReference.numId;
+    }
+  }
+  return ids;
+};
+
+describe("new lists in different stories", () => {
+  const stories = [MAIN, HEADER, FOOTER] as const;
+  const pairs = stories.flatMap((first) =>
+    stories.flatMap((second) =>
+      first === second ? [] : [[first, second] as const],
+    ),
+  );
+
+  test.each(pairs)(
+    "a list started in %j and then in %j keep distinct ids across a save",
+    async (first, second) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(await storiesDocx(), {
+        author: "Agent",
+      });
+      const start = (
+        story: FolioEditableDocumentStoryHandle,
+        text: string,
+      ): void => {
+        const anchor =
+          story.type === "main"
+            ? reviewer.getContent().at(0)
+            : reviewer.snapshotStory(story)?.blocks.at(0);
+        if (anchor === undefined) throw new Error("the story has no block");
+        const result = reviewer.applyDocumentOperationsToStory({
+          story,
+          undefinedReferences: "refuse",
+          batch: {
+            version: 1,
+            mode: "direct",
+            operations: [
+              {
+                id: text,
+                type: "insertAfterBlock",
+                blockId: anchor.id,
+                text,
+                numbering: { kind: "newList", format: "numbered" },
+              },
+            ],
+          },
+        });
+        expect(result.skipped).toEqual([]);
+      };
+      start(first, "First list");
+      start(second, "Second list");
+
+      const live = listIdsByText(reviewer);
+      expect(live["First list"]).not.toBe(live["Second list"]);
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+      );
+      expect(listIdsByText(reopened)).toEqual(live);
+    },
+  );
 });

@@ -29,6 +29,6 @@
     "@types/react-dom": "^19.3.0",
     "esbuild": "0.28.2",
     "prosemirror-model": "^1.25.9",
-    "prosemirror-view": "^1.42.7"
+    "prosemirror-view": "^1.42.8"
   }
 }

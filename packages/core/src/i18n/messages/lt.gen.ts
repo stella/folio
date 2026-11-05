@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "Nepavyko išsaugoti DOCX",
     "editSessionTakenOver": "Ši redagavimo sesija buvo perimta kitur.",
     "editor": {
+      "accessibleName": "Dokumentų redaktorius",
       "editing": "Redagavimas",
       "editingDescription": "Redaguokite dokumentą tiesiogiai",
       "outlineDepthAll": "Visi lygiai",

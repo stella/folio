@@ -29,7 +29,7 @@ const sourceDocument = ({
   prefix: string;
   namespace: string;
 }) => {
-  const textTag = type === "del" || type === "moveFrom" ? "delText" : "t";
+  const textTag = type === "del" ? "delText" : "t";
   const linked = `<${prefix}:hyperlink ${prefix}:anchor="target"><${prefix}:${type} ${prefix}:id="37" ${prefix}:author="Reviewer"><${prefix}:sdt><${prefix}:sdtPr><${prefix}:alias ${prefix}:val="source-control"/></${prefix}:sdtPr><${prefix}:sdtContent><${prefix}:r><${prefix}:${textTag}>linked</${prefix}:${textTag}></${prefix}:r></${prefix}:sdtContent></${prefix}:sdt></${prefix}:${type}></${prefix}:hyperlink>`;
   const body =
     form === "simple"

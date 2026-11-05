@@ -81,6 +81,7 @@ export function Editor() {
       />
       {file && (
         <DocxEditor
+          accessibleName="文档编辑器"
           documentBuffer={file}
           author="Editor"
           onSave={downloadDocx}

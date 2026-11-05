@@ -118,6 +118,19 @@ export const projectMarkdownIdentities = (
   return projected;
 };
 
+/** A comment names the block it anchors to, which a positional id compares by position. */
+export const projectCommentIdentities = <
+  Comment extends { blockId: string | null },
+>(
+  comments: readonly Comment[],
+  aliases: ReadonlyMap<string, string>,
+): Comment[] =>
+  comments.map((comment) => {
+    const blockId =
+      comment.blockId === null ? undefined : aliases.get(comment.blockId);
+    return blockId === undefined ? comment : { ...comment, blockId };
+  });
+
 /** The bridge snapshot exposes block ids in blocks, anchor keys and anchor.id. */
 export const projectSnapshotIdentities = (
   snapshot: Snapshot,

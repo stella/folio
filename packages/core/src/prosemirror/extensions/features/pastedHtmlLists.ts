@@ -5,6 +5,7 @@ import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
 import { mintListInstance } from "../../../docx/listNumberingInstances";
+import { NO_NUMBERING_IDS_IN_USE } from "../../../docx/numberingIds";
 import {
   createNumberingMap,
   type NumberingMap,
@@ -140,10 +141,16 @@ export const numberPastedHtmlLists = (
       if (hint) {
         let group = groups.get(hint.group);
         if (!group || group.kind !== hint.kind) {
-          const minted = mintListInstance(definitions, {
-            kind: hint.kind,
-            ...(hint.start === undefined ? {} : { start: hint.start }),
-          });
+          // An editor holds one story; an id another story also defines
+          // moves when the story is written back (see storyListNumbering.ts).
+          const minted = mintListInstance(
+            definitions,
+            {
+              kind: hint.kind,
+              ...(hint.start === undefined ? {} : { start: hint.start }),
+            },
+            NO_NUMBERING_IDS_IN_USE,
+          );
           definitions = minted.definitions;
           numbering = createNumberingMap(definitions);
           group = { numId: minted.numId, kind: hint.kind };

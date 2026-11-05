@@ -41,7 +41,9 @@ import {
   paragraphRunStyleContext,
   type RunStyleResolver,
 } from "../prosemirror/runStyleFormatting";
+import { sectionRecordCopyPositions } from "../prosemirror/sectionCarrier";
 import {
+  paragraphBeforeRemovedBlock,
   runParagraphsIntoTables,
   runsIntoFollowingTable,
 } from "../prosemirror/tableRunIn";
@@ -99,12 +101,10 @@ const resolveProperties = ({
     if (node.isText) return node;
     if (!runsIntoTable && !node.isTextblock) {
       for (let index = 0; index + 1 < node.childCount; index++) {
+        const options = { parent: node, index, mode };
         if (
-          runsIntoFollowingTable({
-            parent: node,
-            index,
-            mode,
-          })
+          runsIntoFollowingTable(options) ||
+          paragraphBeforeRemovedBlock(options)
         ) {
           runsIntoTable = true;
           break;
@@ -596,7 +596,7 @@ const resolveStructure = ({
         markWasAdded,
         containerStillEndsWithParagraph: true,
         followingTableCanReceiveRunIn: false,
-        removedSectionProperties: markWasAdded && properties !== undefined,
+        removedSectionProperties: markWasAdded && ownsSection(paragraph),
         precedingSectionOwner: precedingSectionOwner(preceding, properties),
         followingHasSectionProperties: ownsSection(chain.node),
       });
@@ -869,7 +869,7 @@ type ResolveWholeStoryOptions = {
   numbering: NumberingMap | null;
 };
 export const resolveWholeStory = ({
-  doc,
+  doc: storyDoc,
   mode,
   styleResolver,
   numbering,
@@ -909,13 +909,18 @@ export const resolveWholeStory = ({
   /** The boundaries removed content left standing, for the range repair. */
   keptBoundaries: Set<PMNode>;
 } => {
+  const withoutCopies = new Transform(storyDoc);
+  for (const position of sectionRecordCopyPositions(storyDoc))
+    withoutCopies.setNodeAttribute(position, "_sectionProperties", null);
+  const doc = withoutCopies.doc;
   const { runsIntoTable, ...direct } = resolveStoryRevisions({
     doc,
     mode,
     styleResolver,
     numbering,
   });
-  if (!runsIntoTable) return direct;
+  if (!runsIntoTable)
+    return { ...direct, steps: [...withoutCopies.steps, ...direct.steps] };
   // A paragraph whose mark goes right before a table runs on into the table's
   // first cell before the rest resolves; both read as one resolution.
   const runIn = new Transform(doc);
@@ -924,7 +929,8 @@ export const resolveWholeStory = ({
     mode,
     styleResolver,
   );
-  if (!runIn.docChanged) return direct;
+  if (!runIn.docChanged)
+    return { ...direct, steps: [...withoutCopies.steps, ...direct.steps] };
   const { runsIntoTable: _rerun, ...result } = resolveStoryRevisions({
     doc: runIn.doc,
     mode,
@@ -945,7 +951,7 @@ export const resolveWholeStory = ({
   );
   return {
     ...result,
-    steps: [...runIn.steps, ...result.steps],
+    steps: [...withoutCopies.steps, ...runIn.steps, ...result.steps],
     positionMap,
     mapping: new Mapping([positionMap]),
     transfers: [...transfers, ...result.transfers],

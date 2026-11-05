@@ -15,6 +15,7 @@
 import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
 
 import type { ParagraphFormatting, TabStop, Theme } from "../types/document";
+import { hangingFirstLineIndent } from "../utils/units";
 import { readAttributeBag } from "./attributeRemainder";
 import { parseBorderSpec } from "./borderParser";
 import {
@@ -579,7 +580,7 @@ const readParagraphIndentation = (
   const hanging = parseNumericAttribute(ind, "w", "hanging");
   if (hanging !== undefined) {
     // Hanging indent is stored as negative first line indent
-    formatting.indentFirstLine = -hanging;
+    formatting.indentFirstLine = hangingFirstLineIndent(hanging);
     formatting.hangingIndent = true;
   }
 

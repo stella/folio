@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "לא ניתן לשמור את ה-DOCX",
     "editSessionTakenOver": "כרטיסייה, חלון או מכשיר אחר פתחו מסמך זה לעריכה, ולכן הפעלה זו שוחררה. שינויים מקומיים שלא נשמרו נשמרו — פתח מחדש את המסמך כדי להמשיך.",
     "editor": {
+      "accessibleName": "עורך מסמכים",
       "editing": "עריכה",
       "editingDescription": "ערוך את המסמך ישירות",
       "outlineDepthAll": "כל הרמות",

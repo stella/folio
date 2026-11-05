@@ -11,9 +11,15 @@ import {
   paragraphNumberingSourcesFromBoundary,
 } from "../numberingAttr";
 import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
-import type { RunStyleResolver } from "../runStyleFormatting";
+import {
+  resolveParagraphInheritedRunFormatting,
+  type RunStyleResolver,
+} from "../runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
-import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
+import {
+  inheritableParagraphMarkFormatting,
+  resolveParagraphDefaultTextFormatting,
+} from "../styles/paragraphStyleCascade";
 import { listIndentationProvenancePatch } from "../styles/resolvedStyleAttrs";
 import {
   paragraphRejectAttrPatch,
@@ -172,12 +178,27 @@ export const resolveParagraphChangeAttrs = ({
         Object.assign(nextAttrs, indentation);
         nextAttrs["_originalFormatting"] = restoredFormatting;
         if (styleResolver) {
+          const styleId = rejection.previousFormatting?.styleId;
+          // The paragraph-mark font paints an empty paragraph's glyph; one with
+          // body content defaults to the body-run cascade, as a reopen reads it.
           nextAttrs["defaultTextFormatting"] =
-            resolveParagraphDefaultTextFormatting(
-              rejection.previousFormatting?.styleId,
-              restoredFormatting ?? undefined,
-              styleResolver,
-            ) ?? null;
+            (node.content.size === 0
+              ? resolveParagraphDefaultTextFormatting(
+                  styleId,
+                  restoredFormatting ?? undefined,
+                  styleResolver,
+                )
+              : resolveParagraphInheritedRunFormatting({
+                  styleId,
+                  tableRunFormatting:
+                    expectParagraphAttrs(node)._tableRunFormatting,
+                  styleResolver,
+                  paragraphMarkFormatting: inheritableParagraphMarkFormatting({
+                    runProperties: restoredFormatting?.runProperties,
+                    styleId,
+                    styleResolver,
+                  }),
+                }).inheritedFormatting) ?? null;
         }
       }
     }

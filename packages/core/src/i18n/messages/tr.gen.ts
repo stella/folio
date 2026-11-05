@@ -339,6 +339,7 @@ export const messages: FolioMessages = {
     "editSaveFailedTitle": "DOCX kaydedilemedi",
     "editSessionTakenOver": "Başka bir sekme, pencere veya cihaz bu belgeyi düzenlemek için açtığından bu oturum sonlandırıldı. Kaydedilmemiş yerel değişiklikler korunur; devam etmek için belgeyi yeniden açın.",
     "editor": {
+      "accessibleName": "Belge düzenleyici",
       "editing": "Düzenleme",
       "editingDescription": "Belgeyi doğrudan düzenleyin",
       "outlineDepthAll": "Tüm düzeyler",

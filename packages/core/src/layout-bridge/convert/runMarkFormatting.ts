@@ -96,6 +96,9 @@ const MARK_PAINT_DISPOSITIONS = {
   // Resolved against the style engine by `applyCharacterStyleToggleFormatting`,
   // which reads the same mark list; a branch here would apply it twice.
   characterStyle: "resolvedElsewhere",
+  // Which element a hyphen carrier came from. The painter draws the carrier
+  // character itself, and both spellings of it paint alike.
+  hyphenElement: "notPainted",
   // One authored run's identity and the markup it carried, so a save can
   // rebuild that run. Nothing about it is drawn: an rsid records who edited
   // the text and when, and the `w:rPr` sink holds what no reader took a value

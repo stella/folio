@@ -32,7 +32,7 @@ type Layer = { open: string; close: string; removes: boolean | null };
 const REVISIONS: Layer[] = [
   { open: `<w:ins ${ATTRS}>`, close: "</w:ins>", removes: false },
   { open: `<w:del ${ATTRS}>`, close: "</w:del>", removes: true },
-  { open: `<w:moveFrom ${ATTRS}>`, close: "</w:moveFrom>", removes: true },
+  { open: `<w:moveFrom ${ATTRS}>`, close: "</w:moveFrom>", removes: false },
   { open: `<w:moveTo ${ATTRS}>`, close: "</w:moveTo>", removes: false },
 ];
 
@@ -50,9 +50,9 @@ const WRAPPERS: Layer[] = [
 /**
  * Write the stack around a run.
  *
- * The innermost revision decides how the run's text is spelled: `w:del` and
- * `w:moveFrom` hold `w:delText`, the other two hold `w:t`, and a transparent
- * wrapper between the revision and the run changes neither. A revision nested
+ * The innermost revision decides how the run's text is spelled: `w:del`
+ * holds `w:delText`, the other three hold `w:t`, and a transparent wrapper
+ * between the revision and the run changes neither. A revision nested
  * inside another is the inner one's answer, which is the spelling folio
  * writes for `<w:del><w:ins>`.
  */

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 1797766459,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2365660932,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "alignment": null
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 3309626287
+    },
+    {
+      "action": "accept one",
+      "seed": 214389134
+    },
+    {
+      "action": "accept one",
+      "seed": 3877520760
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2613849420,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "412DDC7F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "commentOnRange",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "insertTable",
+    "insertTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 1797766459"
+}

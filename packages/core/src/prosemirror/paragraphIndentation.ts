@@ -2,6 +2,7 @@ import { panic } from "better-result";
 
 import type { FolioContentParagraphIndentation } from "../compare/content-types";
 import type { ParagraphFormatting } from "../types/document";
+import { hangingFirstLineIndent } from "../utils/units";
 import {
   effectiveParagraphNumberingReference,
   paragraphNumberingSourcesFromBoundary,
@@ -135,7 +136,9 @@ export const directParagraphIndentation = (
     const hanging = attrs.hangingIndent === true;
     indentation.hangingIndent = hanging;
     if (hanging) {
-      indentation.indentFirstLine = -Math.abs(indentation.indentFirstLine);
+      indentation.indentFirstLine = hangingFirstLineIndent(
+        indentation.indentFirstLine,
+      );
     }
   } else if (
     original?.hangingIndent !== undefined &&

@@ -262,26 +262,31 @@ describe("canonical cutover guard", () => {
     const markers = sourceGaps
       .map((gap) => `// canonical-gap: ${gap}`)
       .join("\n");
-    for (const removed of sourceGaps) {
-      const fixture =
-        markers
-          .split("\n")
-          .filter((line) => line !== `// canonical-gap: ${removed}`)
-          .join("\n") +
-        '\napplyFolioAIEditOperations({ undefinedReferences: "refuse" });';
+    for (const applier of [
+      "applyFolioAIEditOperations",
+      "applyFolioAIEditOperationsInPackage",
+    ]) {
+      const call = `\n${applier}({ undefinedReferences: "refuse" });`;
+      for (const removed of sourceGaps) {
+        const fixture =
+          markers
+            .split("\n")
+            .filter((line) => line !== `// canonical-gap: ${removed}`)
+            .join("\n") + call;
+        expect(
+          failuresOf(fixture, "packages/core/src/document-operations.ts").some(
+            (failure) =>
+              failure.includes(`${removed} source needs its ledger marker`),
+          ),
+        ).toBe(true);
+      }
       expect(
-        failuresOf(fixture, "packages/core/src/document-operations.ts").some(
-          (failure) =>
-            failure.includes(`${removed} source needs its ledger marker`),
+        failuresOf(
+          `${markers}${call}`,
+          "packages/core/src/document-operations.ts",
         ),
-      ).toBe(true);
+      ).toEqual([]);
     }
-    expect(
-      failuresOf(
-        `${markers}\napplyFolioAIEditOperations({ undefinedReferences: "refuse" });`,
-        "packages/core/src/document-operations.ts",
-      ),
-    ).toEqual([]);
   });
 
   test("save conversions require the routing capability marker", () => {

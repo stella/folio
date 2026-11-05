@@ -93,6 +93,7 @@ import {
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import type { TrackedRevisionAncestor } from "../schema/marks";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
+import { sectionRecordCopyPositions } from "../sectionCarrier";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
 import {
@@ -774,6 +775,12 @@ function resolveChange(
         }
         return !node.isTextblock;
       });
+      // A mark that goes must not leave a copy of its section record behind.
+      if (pPrMarkOps.some(({ action }) => action !== "clear")) {
+        for (const position of sectionRecordCopyPositions(tr.doc)) {
+          tr.setNodeAttribute(position, "_sectionProperties", null);
+        }
+      }
       // Where two paragraphs' runs meet after a join: their runs stay apart.
       const joinSeams: { position: number; step: number }[] = [];
       for (const op of pPrMarkOps) {

@@ -105,6 +105,7 @@ export function CollaborationApp() {
         <main className="pg-editor-area">
           {collaboration ? (
             <DocxEditor
+              accessibleName="Document editor"
               document={seedDocument}
               author={user.name}
               collaboration={collaboration}

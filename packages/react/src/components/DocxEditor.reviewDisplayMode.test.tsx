@@ -46,7 +46,7 @@ const reviewDocument = async (): Promise<Uint8Array> => {
     ) +
     para(
       `<w:moveFromRangeStart w:id="3" w:name="move" w:author="Reviewer" w:date="${FIXED_DATE}"/>` +
-        `<w:moveFrom ${revision(4)}><w:r><w:delText xml:space="preserve">MOVE_FROM</w:delText></w:r></w:moveFrom>` +
+        `<w:moveFrom ${revision(4)}><w:r><w:t xml:space="preserve">MOVE_FROM</w:t></w:r></w:moveFrom>` +
         `<w:moveFromRangeEnd w:id="3"/> ${run("Here: ")}` +
         `<w:moveToRangeStart w:id="5" w:name="move" w:author="Reviewer" w:date="${FIXED_DATE}"/>` +
         `<w:moveTo ${revision(6)}>${run("MOVE_TO")}</w:moveTo>` +
@@ -181,6 +181,7 @@ test("host review display modes change visible layout without changing saved DOC
             messages={getFolioMessages("en")}
           >
             <DocxEditor
+              accessibleName="Document editor"
               ref={editor}
               document={parsedDocument}
               reviewDisplayMode={mode}

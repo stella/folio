@@ -9,16 +9,23 @@ import {
 } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
-import { canSplit } from "prosemirror-transform";
+import { canSplit, type Mapping } from "prosemirror-transform";
 
 import {
+  type BatchBlockAccess,
   type BatchOrderAddress,
   contentRank,
+  deletionRemovesBlock,
   groupInsertionRuns,
+  orderAddressingBeforeRemoval,
   orderBatchOperations,
 } from "@stll/docx-core/ops";
 
 import type { FolioContentStatedNumbering } from "../compare/content-types";
+import {
+  NO_NUMBERING_IDS_IN_USE,
+  type NumberingIdsInUse,
+} from "../docx/numberingIds";
 import type { NumberingMap } from "../docx/numberingParser";
 import { isNumberingReference } from "../docx/numberingReference";
 import { formattingEquals } from "../docx/runConsolidator";
@@ -80,10 +87,8 @@ import {
 } from "../prosemirror/paragraphIndentation";
 import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import {
-  carriedParagraphProperties,
   carryParagraphProperties,
   paragraphLeftAfter,
-  propertiesSetInBatch,
   recordReplacedParagraphProperties,
 } from "../prosemirror/paragraphPropertyCarry";
 import {
@@ -348,8 +353,19 @@ type ApplyFolioAIEditOperationsOptions = {
   undefinedReferences: FolioUndefinedReferencePolicy;
 };
 
-type ApplyFolioAIEditOperationsInternalOptions =
+/**
+ * Options of a caller that holds every story of the package. Numbering ids
+ * are package-wide while a story's state completes its numbering from its own
+ * paragraphs, so the caller names the ids the other stories define and a list
+ * the batch starts takes none of them.
+ */
+type ApplyFolioAIEditOperationsInPackageOptions =
   ApplyFolioAIEditOperationsOptions & {
+    numberingIdsElsewhere: NumberingIdsInUse;
+  };
+
+type ApplyFolioAIEditOperationsInternalOptions =
+  ApplyFolioAIEditOperationsInPackageOptions & {
     revisionIdSeed?: number;
     wordDiffMode?: "bounded" | "coarse";
   };
@@ -576,6 +592,14 @@ type ResolvedOperationFields = {
    * ordering when applied bottom-up.
    */
   originalIndex: number;
+  /**
+   * How many steps of the batch's transaction `from`, `to`, `blockFrom` and
+   * `blockTo` already account for: 0 as resolved, against the document the
+   * batch read. Nested table coordinates stay in that document's positions.
+   */
+  readAt?: number;
+  /** `blockFrom` in the document the batch read, for lookups made there. */
+  batchBlockFrom?: number;
 };
 
 const REPLACE_BLOCK_IMPACT = {
@@ -1118,8 +1142,9 @@ const withoutRevisionsOnZeroWidthAnchors = (
 const undeletedContentAtomRanges = (
   tr: Transaction,
   blockFrom: number,
+  readAt: number,
 ): { from: number; to: number }[] => {
-  const position = tr.mapping.map(blockFrom);
+  const position = tr.mapping.slice(readAt).map(blockFrom);
   const block = tr.doc.nodeAt(position);
   if (!block?.isTextblock) {
     return [];
@@ -1442,7 +1467,7 @@ const applyReplaceBlockStyleId = ({
     return { tr, revisionId: null, revisionIds: [] };
   }
 
-  const blockPosition = tr.mapping.map(item.blockFrom, -1);
+  const blockPosition = sinceRead(tr, item).map(item.blockFrom, -1);
   const block = tr.doc.nodeAt(blockPosition);
   if (!block) {
     return { tr, revisionId: null, revisionIds: [] };
@@ -2237,6 +2262,29 @@ const foldedBlankCellRanges = (
   });
 };
 
+/**
+ * The paragraphs before `paragraph`, which ends its container, nearest first,
+ * up to the container's start or another block, past those that go whole, as
+ * `finalParagraphPredecessor` looks past them. See the `deleteBlock` claim's
+ * `paragraphsBefore`.
+ */
+const paragraphsBeforeFinal = (
+  $paragraph: ResolvedPos,
+  paragraph: PMNode,
+): { block: number; keepsBreak: boolean }[] => {
+  const paragraphs: { block: number; keepsBreak: boolean }[] = [];
+  let position = $paragraph.pos;
+  for (let index = $paragraph.index() - 1; index >= 0; index--) {
+    const node = $paragraph.parent.child(index);
+    position -= node.nodeSize;
+    if (node.type !== paragraph.type) break;
+    const mark: unknown = node.attrs["pPrMark"];
+    if (isPlainDeletedPPrMark(mark) && holdsOnlyDeletedContent(node)) continue;
+    paragraphs.push({ block: position, keepsBreak: mark == null });
+  }
+  return paragraphs;
+};
+
 /** What `item` claims of the document its batch resolved against; see `batch-claims.ts`. */
 const batchClaimOf = ({
   item,
@@ -2284,6 +2332,11 @@ const batchClaimOf = ({
         block,
         end: item.blockTo,
         keepsParagraph,
+        endsContainer: endsItsContainer,
+        paragraphsBefore:
+          producesTrackedChanges && endsItsContainer
+            ? paragraphsBeforeFinal(at, item.blockNode)
+            : [],
       };
     }
     case "insertAfterBlock":
@@ -2683,6 +2736,7 @@ const isBatchableParagraphInsertion = (
 const insertionWithLiveAnchor = (
   item: ResolvedOperation,
   tr: Transaction,
+  joinedInto: ReadonlyMap<string, string>,
 ): ResolvedOperation | null => {
   if (
     item.operation.type !== "insertAfterBlock" &&
@@ -2692,9 +2746,14 @@ const insertionWithLiveAnchor = (
       operationId: item.operation.id,
     });
   }
-  const mapped = tr.mapping.mapResult(item.blockFrom, 1);
+  const mapped = liveBlockResult(tr, item, 1);
   const anchor = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
-  const paraId: unknown = item.blockNode.attrs["paraId"];
+  let paraId: unknown = item.blockNode.attrs["paraId"];
+  // A retracted break leaves the next paragraph, with its identity: the anchor
+  // reads as the paragraph it joined.
+  while (typeof paraId === "string" && joinedInto.has(paraId)) {
+    paraId = joinedInto.get(paraId);
+  }
   if (
     !anchor?.isTextblock ||
     anchor.type !== item.blockNode.type ||
@@ -2703,6 +2762,69 @@ const insertionWithLiveAnchor = (
     return null;
   }
   return { ...item, blockNode: anchor };
+};
+
+/** Operations that place a block in a gap between blocks. */
+const BLOCK_INSERTION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> =
+  new Set([
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "insertTable",
+    "insertSignatureTable",
+  ]);
+
+/** The steps of `tr` since `item` read its positions. */
+const sinceRead = (tr: Transaction, item: ResolvedOperation): Mapping =>
+  tr.mapping.slice(item.readAt ?? 0);
+
+/**
+ * Where the block `item` names stands now, mapped from the document the
+ * batch read, so the result also says whether an earlier step deleted it.
+ */
+const liveBlockResult = (
+  tr: Transaction,
+  item: ResolvedOperation,
+  assoc?: -1 | 1,
+) => tr.mapping.mapResult(item.batchBlockFrom ?? item.blockFrom, assoc);
+
+/**
+ * `item` with its positions read in the document as it stands now. A batch
+ * runs its operations in the shared order (`orderAddressingBeforeRemoval`),
+ * which can run an edit before one further left; every operation therefore
+ * reads its positions through the steps already taken rather than the
+ * document the batch read. A block's start stays with its content and its
+ * end with what precedes it.
+ */
+const readNow = (
+  item: ResolvedOperation,
+  tr: Transaction,
+): ResolvedOperation => {
+  const steps = tr.mapping.maps.length;
+  if ((item.readAt ?? 0) === steps) return item;
+  const mapping = sinceRead(tr, item);
+  const blockFrom = mapping.map(item.blockFrom, 1);
+  const blockTo = Math.max(blockFrom, mapping.map(item.blockTo, -1));
+  let from: number;
+  let to: number;
+  if (item.from === item.to) {
+    // A block insertion lands ahead of the blocks already inserted into its
+    // gap: operations at one gap run in reverse of the order the batch names
+    // them (`compareBatchOrder`), so those come after it.
+    const side: -1 | 1 =
+      item.from === item.blockTo ||
+      BLOCK_INSERTION_TYPES.has(item.operation.type)
+        ? -1
+        : 1;
+    from = mapping.map(item.from, side);
+    to = from;
+  } else {
+    from = mapping.map(item.from, 1);
+    to = Math.max(from, mapping.map(item.to, -1));
+  }
+  // `blockNode` stays the block as the batch read it: an operation reads the
+  // content it was resolved against, not what an earlier one of the batch
+  // added to the block (a merge's separator), as one at a time it would.
+  return { ...item, from, to, blockFrom, blockTo, readAt: steps };
 };
 
 type PendingJoinSurvivorOptions = {
@@ -2741,20 +2863,25 @@ const pendingJoinSurvivor = ({
 type InsertionFormattingAnchorOptions = {
   item: ResolvedOperation;
   tr: Transaction;
+  mode: FolioAIEditApplyMode;
   noteReferences: NoteReferenceLabels;
 };
 
 /**
  * The insertion with the paragraph its new paragraphs copy properties from as
  * its anchor: a paragraph a pending join runs into another reads as that one,
- * as the joined paragraph does when the merge is applied directly.
+ * as the joined paragraph does when the merge is applied directly. A
+ * suggestion is read against the document as it stands, where the join has
+ * not run anything together yet, so it copies the paragraph it names.
  */
 const insertionFormattingAnchor = ({
   item,
   tr,
+  mode,
   noteReferences,
 }: InsertionFormattingAnchorOptions): ResolvedOperation => {
-  const position = tr.mapping.map(item.blockFrom, 1);
+  if (mode === "suggested") return item;
+  const position = sinceRead(tr, item).map(item.blockFrom, 1);
   const anchor = tr.doc.nodeAt(position);
   if (anchor?.type !== item.blockNode.type) return item;
   const survivor = pendingJoinSurvivor({
@@ -2802,6 +2929,26 @@ const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
   keepsWords(options);
 
 /**
+ * Whether a pending join runs earlier words on through the paragraph at
+ * `paragraphPos`: the paragraphs before it, back to one that keeps words,
+ * all have their breaks pending removal.
+ */
+const joinRunsWordsInto = (doc: PMNode, paragraphPos: number): boolean => {
+  const $paragraph = doc.resolve(paragraphPos);
+  for (let index = $paragraph.index() - 1; index >= 0; index--) {
+    const previous = $paragraph.parent.child(index);
+    if (
+      previous.type.name !== "paragraph" ||
+      !isDeletedPPrMark(previous.attrs["pPrMark"])
+    ) {
+      return false;
+    }
+    if (!holdsOnlyDeletedContent(previous)) return true;
+  }
+  return false;
+};
+
+/**
  * Where a block goes before and after the paragraph at `paragraphPos`, read
  * as the joined paragraph a pending join makes of it. A join runs the words
  * of each paragraph whose break is pending removal into the paragraph it
@@ -2812,7 +2959,8 @@ const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
  * before that one goes before the first paragraph the join takes in, empty
  * ones included. A join into a paragraph with no words left (an emptied
  * final carrier, or one going whole) runs nothing together, nor does a
- * paragraph going whole: blocks keep their places.
+ * paragraph going whole with no join running through it: blocks keep their
+ * places.
  */
 const pendingJoinBounds = (
   options: PendingJoinBoundsOptions,
@@ -2823,7 +2971,7 @@ const pendingJoinBounds = (
   if (
     paragraph?.type.name === "paragraph" &&
     isDeletedPPrMark(paragraph.attrs["pPrMark"]) &&
-    joinsIn(options)
+    (joinsIn(options) || joinRunsWordsInto(doc, paragraphPos))
   ) {
     const survivor = paragraphLeftAfter({ doc, paragraphPos });
     if (
@@ -2866,7 +3014,7 @@ const insertionAt = ({
   noteReferences,
 }: InsertionAtOptions): number => {
   if (item.joinSide === undefined) return item.from;
-  const position = tr.mapping.map(item.blockFrom, 1);
+  const position = sinceRead(tr, item).map(item.blockFrom, 1);
   if (tr.doc.nodeAt(position)?.type.name !== "paragraph") return item.from;
   return pendingJoinBounds({
     doc: tr.doc,
@@ -3653,39 +3801,6 @@ const collapsedFinalRunSource = (
   return source;
 };
 
-type CrossesBatchDeletionOptions = {
-  doc: PMNode;
-  /** Where the predecessor `finalParagraphPredecessor` found ends. */
-  from: number;
-  /** Where the emptied final paragraph starts. */
-  to: number;
-  batchRevisionIds: ReadonlySet<number>;
-};
-
-/**
- * Whether a sibling between a final carrier's predecessor and the carrier
- * has its break deleted by this batch.
- */
-const crossesBatchDeletion = ({
-  doc,
-  from,
-  to,
-  batchRevisionIds,
-}: CrossesBatchDeletionOptions): boolean => {
-  const $to = doc.resolve(to);
-  let position = to;
-  for (let index = $to.index() - 1; index >= 0 && position > from; index--) {
-    const node = $to.parent.child(index);
-    position -= node.nodeSize;
-    const mark: unknown = node.attrs["pPrMark"];
-    const revisionId = isPlainDeletedPPrMark(mark)
-      ? addedOrDeletedBreakRevisionId(mark)
-      : null;
-    if (revisionId !== null && batchRevisionIds.has(revisionId)) return true;
-  }
-  return false;
-};
-
 type CanRetractFinalBreakOptions = { predecessor: PMNode; target: PMNode };
 
 const canRetractFinalBreak = ({
@@ -3723,22 +3838,19 @@ type FinalParagraphCarryOptions = Pick<
   RetireFinalParagraphsOptions,
   "tr" | "batchRevisionIds" | "styleResolver" | "numbering"
 > & {
-  at: number;
   target: PMNode;
   predecessor: { node: PMNode; position: number };
 };
 
 /** An unoccupied final carrier takes admissible writes from the finished batch. */
 const finalParagraphCarry = ({
-  tr,
-  at,
   target,
   predecessor,
   batchRevisionIds,
   styleResolver,
   numbering,
 }: FinalParagraphCarryOptions) => {
-  const { node: previous, position } = predecessor;
+  const { node: previous } = predecessor;
   // An occupied survivor keeps the established revision ownership: a later
   // batch write cannot replace the properties its pending receipt restores.
   const beforeBatch = hasSerializableParagraphPropertyChange(
@@ -3757,20 +3869,12 @@ const finalParagraphCarry = ({
     source: beforeBatch
       ? previous.type.create(beforeBatch, previous.content, previous.marks)
       : previous,
-    keep: crossesBatchDeletion({
-      doc: tr.doc,
-      from: position + previous.nodeSize,
-      to: at,
-      batchRevisionIds,
-    })
-      ? new Set<string>()
-      : propertiesSetInBatch(target, batchRevisionIds),
   };
 };
 
 type DeferredParagraphPropertyWriteOptions = Omit<
   FinalParagraphCarryOptions,
-  "at" | "target" | "predecessor"
+  "target" | "predecessor"
 > & {
   deletions: readonly DeletedFinalParagraph[];
   targets: readonly PMNode[];
@@ -3822,22 +3926,16 @@ const hasDeferredParagraphPropertyWrite = ({
       mark == null
         ? finalParagraphCarry({
             tr,
-            at,
             target,
             predecessor,
             batchRevisionIds,
             styleResolver,
             numbering,
           })
-        : {
-            source: predecessor.node,
-            keep: propertiesSetInBatch(writeTarget, batchRevisionIds),
-          };
+        : { source: predecessor.node };
     if (
       JSON.stringify(paragraphPropertiesSnapshot(writeTarget)) !==
-      JSON.stringify(
-        carriedParagraphProperties({ ...transfer, target: writeTarget }),
-      )
+      JSON.stringify(paragraphPropertiesSnapshot(transfer.source))
     )
       return true;
   }
@@ -3856,7 +3954,7 @@ const paragraphPropertyRevisionTargets = ({
   tr,
   deletedFinalParagraphs,
 }: ParagraphPropertyRevisionTargetsOptions): PMNode[] => {
-  const position = tr.mapping.map(
+  const position = sinceRead(tr, item).map(
     item.blockFrom,
     item.operation.type === "replaceBlock" ? -1 : 1,
   );
@@ -3966,7 +4064,6 @@ const withRetiredFinalParagraphs = ({
         styleResolver,
         numbering,
         revision: { id: revisionId, author, date, ...revisionExtras },
-        keep: new Set<string>(),
       });
       if (carried.tracked) {
         nextRevisionId++;
@@ -4005,7 +4102,6 @@ const withRetiredFinalParagraphs = ({
           position: at,
           ...finalParagraphCarry({
             tr,
-            at,
             target: emptied,
             predecessor,
             batchRevisionIds,
@@ -4063,7 +4159,6 @@ const withRetiredFinalParagraphs = ({
         ? (paragraphLeftAfter({ doc: tr.doc, paragraphPos: position }) ??
           position)
         : position;
-      const carryTarget = tr.doc.nodeAt(carryPosition) ?? following;
       const revisionId = nextRevisionId;
       const carried = carryParagraphProperties({
         tr,
@@ -4072,7 +4167,6 @@ const withRetiredFinalParagraphs = ({
         styleResolver,
         numbering,
         revision: { id: revisionId, author, date, ...revisionExtras },
-        keep: propertiesSetInBatch(carryTarget, batchRevisionIds),
       });
       if (carried.tracked) {
         nextRevisionId++;
@@ -4937,6 +5031,7 @@ const applyFolioAIEditOperationsInternal = ({
   tableTemplates,
   replacementBackground = "clear",
   undefinedReferences,
+  numberingIdsElsewhere,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   seedRevisionIdsFromDoc(view.state.doc);
   const applied: FolioAIEditAppliedOperation[] = [];
@@ -5171,7 +5266,20 @@ const applyFolioAIEditOperationsInternal = ({
     const continuesMergeChain =
       operation.type === "mergeBlockWithNext" &&
       removedBy?.type === "mergeBlockWithNext";
-    if (removedBy !== undefined && !continuesMergeChain) {
+    // A property edit of a paragraph a merge joins away or a deletion takes
+    // out runs before it (`orderAddressingBeforeRemoval`), whichever the
+    // batch names first: the merge then gives the merged paragraph the first
+    // one's properties, and the deletion removes the formatted paragraph, in
+    // either mode. A container's last paragraph is left to the batch claims.
+    const formatsBeforeRemoval =
+      operation.type === "setBlockParagraphProperties" &&
+      (removedBy?.type === "mergeBlockWithNext" ||
+        removedBy?.type === "deleteBlock");
+    if (
+      removedBy !== undefined &&
+      !continuesMergeChain &&
+      !formatsBeforeRemoval
+    ) {
       skipped.push({
         id: operation.id,
         reason: "overlappingOperation",
@@ -5247,6 +5355,7 @@ const applyFolioAIEditOperationsInternal = ({
 
     resolved.push({
       ...resolution.operation,
+      batchBlockFrom: resolution.operation.blockFrom,
       originalIndex: index,
       ...(commentText !== undefined && { commentText }),
     });
@@ -5452,7 +5561,90 @@ const applyFolioAIEditOperationsInternal = ({
       inputIndex: item.originalIndex,
     };
   };
-  const executionOrder = orderBatchOperations(executableResolved, batchAddress);
+  const batchDeletions = new Set(
+    executableResolved.flatMap((item) =>
+      item.operation.type === "deleteBlock" ? [item.blockFrom] : [],
+    ),
+  );
+  // Blocks by their position before the batch.
+  const blockAccess = (item: ResolvedOperation): BatchBlockAccess<number> => {
+    const doc = view.state.doc;
+    if (item.operation.type === "mergeBlockWithNext") {
+      const next = paragraphJoinAfter(doc, item.blockTo);
+      return {
+        addresses: [item.blockFrom],
+        removes: next ? [next.nextPosition] : [],
+      };
+    }
+    // Removing a table row or table takes its blocks with it: it names its
+    // anchor only to find what it removes.
+    if (
+      item.operation.type === "deleteTableRow" ||
+      item.operation.type === "deleteTable"
+    ) {
+      return { addresses: [], removes: [item.blockFrom] };
+    }
+    // A column or cell edit names a table through its anchor, and runs after
+    // ordinary content edits at coordinates it read (`compareBatchOrder`).
+    if (
+      item.tableColumnInsertion ??
+      item.tableColumnDeletion ??
+      item.tableCellMerge ??
+      item.tableCellSplit
+    ) {
+      return { addresses: [], removes: [] };
+    }
+    if (item.operation.type !== "deleteBlock") {
+      return { addresses: [item.blockFrom], removes: [] };
+    }
+    const at = doc.resolve(item.blockFrom);
+    // The nearest paragraph before it the batch keeps, past ones it deletes;
+    // anything else (a table) leaves none to take the break.
+    let hasKeptParagraphBefore = false;
+    let position = at.pos;
+    for (let index = at.index() - 1; index >= 0; index -= 1) {
+      const previous = at.parent.child(index);
+      position -= previous.nodeSize;
+      if (previous.type !== item.blockNode.type) break;
+      if (!batchDeletions.has(position)) {
+        hasKeptParagraphBefore = true;
+        break;
+      }
+    }
+    // A block the batch puts after it ends the container instead.
+    const appended = executableResolved.some(
+      (other) =>
+        other.blockFrom === item.blockFrom &&
+        (other.operation.type === "insertAfterBlock" ||
+          (other.operation.type === "insertTable" &&
+            other.operation.position !== "before")),
+    );
+    const removes = deletionRemovesBlock({
+      endsContainer:
+        !appended && paragraphEndsItsContainer(at, item.blockNode.type.name),
+      hasKeptParagraphBefore,
+    });
+    return { addresses: [], removes: removes ? [item.blockFrom] : [] };
+  };
+  const groupRuns = (items: readonly ResolvedOperation[]) =>
+    groupInsertionRuns(
+      items,
+      (candidate) =>
+        isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
+      (candidate) => candidate.operation.type === "setBlockParagraphProperties",
+    );
+  // Insertions at one gap land as one requested sequence, so a run moves ahead
+  // of what removes a block it names as a whole, as one at a time it would.
+  const executionOrder = orderAddressingBeforeRemoval(
+    groupRuns(orderBatchOperations(executableResolved, batchAddress)),
+    (run) => {
+      const access = run.map(blockAccess);
+      return {
+        addresses: access.flatMap(({ addresses }) => addresses),
+        removes: access.flatMap(({ removes }) => removes),
+      };
+    },
+  ).flat();
   type WillApplyNewListOperations = {
     status: "willApply";
     items: ResolvedOperation[];
@@ -5461,6 +5653,7 @@ const applyFolioAIEditOperationsInternal = ({
     const allocated = resolveNewListOperations(
       items.map(({ operation }) => operation),
       numbering,
+      numberingIdsElsewhere,
     );
     numbering = allocated.numbering;
     for (const [index, candidate] of items.entries()) {
@@ -5473,24 +5666,26 @@ const applyFolioAIEditOperationsInternal = ({
   };
   // A paragraph-property write places nothing in a gap, so equal-gap
   // insertions on either side of it run together and inherit alike.
-  const executionGroups = groupInsertionRuns(
-    executionOrder,
-    (candidate) =>
-      isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
-    (candidate) => candidate.operation.type === "setBlockParagraphProperties",
-  );
+  /** Paragraphs a retracted break of this batch joined, to the one it left. */
+  const joinedInto = new Map<string, string>();
+  const executionGroups = groupRuns(executionOrder);
   for (const executionGroup of executionGroups) {
     // Recheck every insertion against the live anchor, including insertions
     // sharing a gap. Earlier edits can delete its text or its containing row.
     const insertionState = tr;
-    const insertionRun = executionGroup.flatMap((candidate) => {
+    const insertionRun = executionGroup.flatMap((resolvedCandidate) => {
+      const candidate = readNow(resolvedCandidate, insertionState);
       if (
         candidate.operation.type !== "insertAfterBlock" &&
         candidate.operation.type !== "insertBeforeBlock"
       ) {
         return [candidate];
       }
-      const liveCandidate = insertionWithLiveAnchor(candidate, insertionState);
+      const liveCandidate = insertionWithLiveAnchor(
+        candidate,
+        insertionState,
+        joinedInto,
+      );
       if (!liveCandidate) {
         if (!isSuggested) return [candidate];
         if (candidate.operation.moveId !== undefined) {
@@ -5503,7 +5698,10 @@ const applyFolioAIEditOperationsInternal = ({
         return [];
       }
       if (isSuggested) {
-        const blockFrom = insertionState.mapping.map(candidate.blockFrom, 1);
+        const blockFrom = sinceRead(insertionState, candidate).map(
+          candidate.blockFrom,
+          1,
+        );
         if (
           isPendingDeletion(
             insertionState.doc,
@@ -5583,6 +5781,7 @@ const applyFolioAIEditOperationsInternal = ({
         const formatted = insertionFormattingAnchor({
           item: insertion,
           tr,
+          mode,
           noteReferences,
         });
         const built = buildInsertedParagraphs({
@@ -5886,7 +6085,9 @@ const applyFolioAIEditOperationsInternal = ({
         if (
           changesStyle &&
           isDeletedPPrMark(
-            tr.doc.nodeAt(tr.mapping.map(item.blockFrom, -1))?.attrs["pPrMark"],
+            tr.doc.nodeAt(sinceRead(tr, item).map(item.blockFrom, -1))?.attrs[
+              "pPrMark"
+            ],
           )
         ) {
           skipped.push({
@@ -6095,6 +6296,7 @@ const applyFolioAIEditOperationsInternal = ({
         const formatted = insertionFormattingAnchor({
           item,
           tr,
+          mode,
           noteReferences,
         });
         const built = buildInsertedParagraphs({
@@ -6520,7 +6722,11 @@ const applyFolioAIEditOperationsInternal = ({
           // field sits outside it whenever it leads or trails the words.
           // Deleting a block deletes what is in it: left unmarked, accepting
           // the deletion kept a paragraph standing around an orphan image.
-          const atomRanges = undeletedContentAtomRanges(tr, item.blockFrom);
+          const atomRanges = undeletedContentAtomRanges(
+            tr,
+            item.blockFrom,
+            item.readAt ?? 0,
+          );
           for (const { from, to } of atomRanges) {
             addTrackedDeletionMark({
               insertionPolicy: "preserve-pending",
@@ -6532,8 +6738,8 @@ const applyFolioAIEditOperationsInternal = ({
           }
           for (const anchorId of textBoxAnchorIdsBetween(
             tr.doc,
-            tr.mapping.map(item.blockFrom),
-            tr.mapping.map(item.blockTo),
+            sinceRead(tr, item).map(item.blockFrom),
+            sinceRead(tr, item).map(item.blockTo),
           )) {
             deletedTextBoxAnchorIds.add(anchorId);
           }
@@ -6574,7 +6780,7 @@ const applyFolioAIEditOperationsInternal = ({
           // A relocation's source break is `w:moveFrom`, not `w:del`: the two
           // resolve alike, and the kind is what tells a reader this end has a
           // matching one elsewhere rather than being a deletion of its own.
-          let markPosition = tr.mapping.map(item.blockFrom);
+          let markPosition = sinceRead(tr, item).map(item.blockFrom);
           const markOwner = tr.doc.nodeAt(markPosition);
           const across =
             markOwner &&
@@ -6737,12 +6943,18 @@ const applyFolioAIEditOperationsInternal = ({
         if (producesTrackedChanges) {
           appliedRevisionIds = [operationRevisionSeed++];
         }
-        const carriedComments = tableAfterDeletedSplit.get(item.blockFrom);
+        const carriedComments = tableAfterDeletedSplit.get(
+          item.batchBlockFrom ?? item.blockFrom,
+        );
+        // Only once the deletion has retracted the split anchor; an
+        // insertion that addresses it runs first and finds it standing.
         const usesRetractedSplit =
-          carriedComments !== undefined && item.from === item.blockTo;
+          carriedComments !== undefined &&
+          item.from === item.blockTo &&
+          liveBlockResult(tr, item, 1).deletedAcross;
         const placement = insertionPlacement({ item, tr, noteReferences });
         let at = usesRetractedSplit
-          ? tr.mapping.map(item.blockFrom, -1)
+          ? sinceRead(tr, item).map(item.blockFrom, -1)
           : placement.at;
         let insertionComments = carriedComments ?? placement.comments;
         if (!usesRetractedSplit) {
@@ -6917,7 +7129,7 @@ const applyFolioAIEditOperationsInternal = ({
         // not this one, still never receives its properties. `deletedAfter`
         // cannot say so: a paragraph inserted right before this one sets it
         // as well, though this one is still there.
-        const mapped = tr.mapping.mapResult(item.blockFrom);
+        const mapped = liveBlockResult(tr, item);
         const liveBlock = mapped.deletedAcross
           ? null
           : tr.doc.nodeAt(mapped.pos);
@@ -7075,7 +7287,7 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "mergeBlockWithNext": {
-        const mapped = tr.mapping.mapResult(item.blockFrom, 1);
+        const mapped = liveBlockResult(tr, item, 1);
         const live = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
         const paraId = item.blockNode.attrs["paraId"];
         if (
@@ -7262,12 +7474,12 @@ const applyFolioAIEditOperationsInternal = ({
           if (!paragraph || !next) {
             panic("A resolved merge lost its paragraphs");
           }
-          if (isInsertedPPrMark(paragraph.attrs["pPrMark"])) {
-            // The break is itself a pending insertion: removing it retracts
-            // that insertion, as deleting inserted text does. Marking it
-            // deleted instead would overwrite the insertion, and rejecting
-            // both would then keep a break that was never there. Accepting
-            // or rejecting either way joins, so it joins now, exactly as the
+          if (addedBreakRevisionId(paragraph.attrs["pPrMark"]) !== null) {
+            // The break is itself a pending insertion or a move's destination:
+            // removing it retracts that, as deleting inserted text does.
+            // Marking it deleted instead would overwrite it, and rejecting both
+            // would then keep a break that was never there. Accepting or
+            // rejecting either way joins, so it joins now, exactly as the
             // resolver joins a removed mark: the next paragraph is left.
             joinAtParagraphMark({
               tr,
@@ -7276,6 +7488,11 @@ const applyFolioAIEditOperationsInternal = ({
               next,
               styleResolver,
             });
+            const firstId: unknown = paragraph.attrs["paraId"];
+            const nextId: unknown = next.attrs["paraId"];
+            if (typeof firstId === "string" && typeof nextId === "string") {
+              joinedInto.set(firstId, nextId);
+            }
             // It reads as the first paragraph, as a direct merge does, under
             // a property change recording what the paragraph left had:
             // rejecting restores its own, whether or not the first's words
@@ -7657,12 +7874,24 @@ const applyFolioAIEditOperationsInternal = ({
 
 export const applyFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
+): FolioAIEditApplyOutcome =>
+  applyFolioAIEditOperationsInternal({
+    ...options,
+    numberingIdsElsewhere: NO_NUMBERING_IDS_IN_USE,
+  });
+
+/** {@link applyFolioAIEditOperations} for a caller holding every story. Internal. */
+export const applyFolioAIEditOperationsInPackage = (
+  options: ApplyFolioAIEditOperationsInPackageOptions,
 ): FolioAIEditApplyOutcome => applyFolioAIEditOperationsInternal(options);
 
 export const previewFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
 ): FolioAIEditApplyOutcome =>
-  previewFolioAIEditOperationsWithResult(options).outcome;
+  previewFolioAIEditOperationsWithResult({
+    ...options,
+    numberingIdsElsewhere: NO_NUMBERING_IDS_IN_USE,
+  }).outcome;
 
 /**
  * A preview together with the document it would leave and the provisional
@@ -7670,7 +7899,7 @@ export const previewFolioAIEditOperations = (
  * it. Internal: not re-exported from the package entry points.
  */
 export const previewFolioAIEditOperationsWithResult = (
-  options: ApplyFolioAIEditOperationsOptions,
+  options: ApplyFolioAIEditOperationsInPackageOptions,
 ): {
   outcome: FolioAIEditApplyOutcome;
   doc: PMNode;

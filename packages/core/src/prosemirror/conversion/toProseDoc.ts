@@ -180,7 +180,6 @@ import {
   hasDirectRunFormatting,
   isParagraphMarkSuppressionEligible,
   resolveParagraphInheritedRunFormatting,
-  stripParagraphMarkFormattingForBodyRuns,
   stripParagraphMarkOnlyFormatting,
   suppressParagraphMarkFormatting,
 } from "../runStyleFormatting";
@@ -201,6 +200,7 @@ import type {
 } from "../schema/nodes";
 import {
   extractTableParagraphOverlay,
+  inheritableParagraphMarkFormatting,
   paragraphStyleCascadeAttrs,
   resolveRunFormattingWithoutDefaults,
 } from "../styles/paragraphStyleCascade";
@@ -220,7 +220,10 @@ import {
   type TableCellMarginsAttrs,
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
-import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
+import {
+  HYPHEN_ELEMENT_MARK_NAME,
+  HYPHEN_TEXT_CARRIERS,
+} from "./hyphenTextCarriers";
 import { createMarkInterner } from "./markInterner";
 import { hasSinkChildren } from "./preservedSinkCarriers";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
@@ -300,6 +303,7 @@ type RunIdentityIdAllocator = () => number;
 /** What converting one paragraph's runs shares across them. */
 type RunConversionScope = {
   nextRunIdentityId: RunIdentityIdAllocator;
+  nextHyphenElementId: () => number;
   nextNoteReferenceOccurrenceId: () => string;
   /** The conversion's mark interner. */
   createMark: MarkFactory;
@@ -856,8 +860,10 @@ function convertParagraph(
     openCommentIds,
   } = context;
   let runIdentityId = 0;
+  let hyphenElementId = 0;
   const runScope = {
     nextRunIdentityId: () => runIdentityId++,
+    nextHyphenElementId: () => hyphenElementId++,
     nextNoteReferenceOccurrenceId: context.nextNoteReferenceOccurrenceId,
     createMark: context.createMark,
   };
@@ -986,22 +992,13 @@ function convertParagraph(
     emitInlineNodes([node]);
   };
 
-  const paragraphRunFormatting = resolveRunFormattingWithoutDefaults(
-    paragraph.formatting?.runProperties,
-    styleResolver,
-  );
-  // Paragraph-mark-only visual decorations (highlight, shading) paint the
-  // paragraph glyph alone. Strip them from the body-run inheritance path.
-  let inheritableParagraphRunFormatting: TextFormatting | undefined;
-  if (
-    paragraphRunFormatting &&
-    !isTocParagraph &&
-    paragraph.formatting?.styleId === undefined
-  ) {
-    inheritableParagraphRunFormatting = stripParagraphMarkFormattingForBodyRuns(
-      paragraphRunFormatting,
-    );
-  }
+  const inheritableParagraphRunFormatting = isTocParagraph
+    ? undefined
+    : inheritableParagraphMarkFormatting({
+        runProperties: paragraph.formatting?.runProperties,
+        styleId: paragraph.formatting?.styleId,
+        styleResolver,
+      });
   const {
     baseFormatting: baseRunFormatting,
     baseToggleCascade: orderedToggleFormatting,
@@ -3613,6 +3610,7 @@ function convertRun(
       formatting: mergedFormatting,
       textBoxAnchors,
       authoredFormatting: run.formatting,
+      nextHyphenElementId: runScope.nextHyphenElementId,
       nextNoteReferenceOccurrenceId: runScope.nextNoteReferenceOccurrenceId,
     });
     for (const node of contentNodes) {
@@ -4475,6 +4473,7 @@ type ConvertRunContentOptions = {
    * the run as direct formatting.
    */
   authoredFormatting: TextFormatting | undefined;
+  nextHyphenElementId: () => number;
   nextNoteReferenceOccurrenceId: () => string;
 };
 
@@ -4484,6 +4483,7 @@ function convertRunContent({
   formatting,
   textBoxAnchors,
   authoredFormatting,
+  nextHyphenElementId,
   nextNoteReferenceOccurrenceId,
 }: ConvertRunContentOptions): PMNode[] {
   switch (content.type) {
@@ -4637,11 +4637,16 @@ function convertRunContent({
           .mark(marks),
       ];
 
+    // The element's character, marked so the save leg writes the element back
+    // rather than the character inside `w:t`.
     case "noBreakHyphen":
-      return [schema.text(HYPHEN_TEXT_CARRIERS.noBreakHyphen, marks)];
-
     case "softHyphen":
-      return [schema.text(HYPHEN_TEXT_CARRIERS.softHyphen, marks)];
+      return [
+        schema.text(HYPHEN_TEXT_CARRIERS[content.type], [
+          ...marks,
+          schema.mark(HYPHEN_ELEMENT_MARK_NAME, { id: nextHyphenElementId() }),
+        ]),
+      ];
 
     case "symbol":
       return [
@@ -5188,6 +5193,7 @@ function convertHyperlink(
               formatting: mergedFormatting,
               textBoxAnchors,
               authoredFormatting: child.formatting,
+              nextHyphenElementId: runScope.nextHyphenElementId,
               nextNoteReferenceOccurrenceId:
                 runScope.nextNoteReferenceOccurrenceId,
             }),

@@ -173,6 +173,7 @@ function App() {
       timeZone={new Intl.DateTimeFormat().resolvedOptions().timeZone}
     >
       <DocxEditor
+        accessibleName="Document editor"
         ref={editorRef}
         documentBuffer={buffer}
         author="Folio Smoke"

@@ -297,7 +297,7 @@ export const ptBR: {
 };
 
 // @public
-export const renderAsync: (input: DocxInput, container: HTMLElement, options?: RenderAsyncOptions) => Promise<DocxEditorHandle>;
+export const renderAsync: (input: DocxInput, container: HTMLElement, options: RenderAsyncOptions) => Promise<DocxEditorHandle>;
 
 // @public
 export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "document"> & {

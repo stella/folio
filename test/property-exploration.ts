@@ -64,6 +64,23 @@ const isCi = (env: NodeJS.ProcessEnv): boolean => {
 };
 
 /**
+ * The path to pin for a counterexample. A pinned replay runs without the
+ * property's `examples`, so its path counts generated values only, while the
+ * path fast-check reports starts at the failing value's index in a stream that
+ * yields the examples first. `null`: the failure is one of the examples, which
+ * run on every pass and need no pin, or its index cannot be read.
+ */
+export const pinnedReplayPath = (
+  counterexamplePath: string,
+  examples: number,
+): string | null => {
+  if (examples === 0) return counterexamplePath;
+  const [head = "", ...rest] = counterexamplePath.split(":");
+  if (!/^\d+$/u.test(head) || Number(head) < examples) return null;
+  return [String(Number(head) - examples), ...rest].join(":");
+};
+
+/**
  * Whether exploration failures are reported instead of failing the run. Only
  * under CI, where the FOLIO_FAILURE line is always logged, so nothing is
  * dropped silently.

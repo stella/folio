@@ -88,6 +88,7 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
           <IntlProvider locale="en" timeZone="UTC" messages={messages}>
             <Profiler id="DocxEditor" onRender={onRender}>
               <DocxEditor
+                accessibleName="Document editor"
                 ref={editor}
                 {...documentProps}
                 onEditorViewReady={onReady}
