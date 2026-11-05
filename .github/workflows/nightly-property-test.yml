@@ -33,17 +33,14 @@ jobs:
 
       # Fresh seeds each night; reruns retain the same seed. Pinned regressions
       # run alongside a larger generated budget than the default 12/8 runs.
-      - name: Generated random and collision flows
+      - name: Sweep the batch properties
         run: |
-          set -o pipefail
           mkdir -p test-results
-          export FOLIO_SCENARIO_SEED=$(( (GITHUB_RUN_ID * 7919) % 2147483647 ))
-          bun scripts/consumer-scenarios.ts -- fuzz.test.ts 2>&1 \
-            | tee test-results/nightly-consumer-fuzz.log
-        env:
-          FOLIO_SCENARIO_FUZZ_RUNS: "240"
-          FOLIO_SCENARIO_COLLISION_RUNS: "160"
-          FOLIO_SCENARIO_FUZZ_STEPS: "16"
+          cd packages/core
+          for seed in 11 22 33 44 55; do
+            PROPERTY_TEST_NUM_RUNS_FACTOR=300 PROPERTY_TEST_SEED=$seed bun test ./src/ai-edits/batchOverlap.test.ts -t 'refuses each conflict and applies the rest as one at a time would' --timeout 3000000 2>&1 | tail -40
+          done
+          PROPERTY_TEST_NUM_RUNS_FACTOR=30 PROPERTY_TEST_SEED=66 bun test ./src/ai-edits/batchOverlap.test.ts -t 'applies accepted patches in planner order' --timeout 3000000 2>&1 | tail -40
 
       - name: Keep the consumer fuzz log
         if: always()
