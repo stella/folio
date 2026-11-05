@@ -286,9 +286,9 @@ export type FolioColorPickerProps = {
   presets?: ColorPreset[];
   columns?: number;
   /**
-   * One focusable element, normally a `<button>`, that becomes the popover
-   * trigger itself. It must accept and forward props and a ref, so the picker
-   * never wraps it in a second, unnamed button.
+   * One native `<button>` element that becomes the popover trigger itself. It
+   * must accept and forward props and a ref, so the picker never wraps it in a
+   * second, unnamed button.
    */
   trigger: ReactElement;
 };
