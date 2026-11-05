@@ -140,11 +140,11 @@ const navigate = async (page: Page, navigation: NavigationCase) => {
   }
   await page.evaluate(() => window.__folioScrollParity?.resetFlowScroll());
   const method = navigation.type === "document" ? navigation.method : undefined;
-  const before = await page.evaluate(
-    (api) => window.__folioScrollParity?.readTarget(api),
-    method,
-  );
-  expect(before).toBeTruthy();
+  const readTarget = () =>
+    page.evaluate((api) => window.__folioScrollParity?.readTarget(api), method);
+  // A target the last edit introduced exists once its layout has painted.
+  await expect.poll(readTarget).toBeTruthy();
+  const before = await readTarget();
   if (!before) throw new Error("Navigation target unavailable before call");
   expect(before.top).toBeGreaterThan(before.viewportBottom);
   const outerBefore = await page.evaluate(() => window.scrollY);
