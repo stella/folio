@@ -94,20 +94,24 @@ describe("typing over a selected block", () => {
   for (const mode of ["editing", "suggesting"] as const) {
     test(`keeps the text in order with the caret after it, ${mode}`, async () => {
       const state = await tablesState(mode);
-      let tablePos: number | null = null;
-      state.doc.forEach((node, offset) => {
-        if (node.type.name === "table") tablePos = offset;
-      });
-      if (tablePos === null) throw new Error("Fixture has no table");
+      const rule = state.schema.nodes["horizontalRule"];
+      if (!rule) throw new Error("Schema has no horizontal rule");
+      const withRule = state.apply(state.tr.insert(0, rule.create()));
       const view = new HeadlessEditorView(
-        state.apply(
-          state.tr.setSelection(NodeSelection.create(state.doc, tablePos)),
+        withRule.apply(
+          withRule.tr.setSelection(NodeSelection.create(withRule.doc, 0)),
         ),
       );
       view.typeText("alpha");
 
-      expect(view.state.selection.$head.parent.textContent).toBe("alpha");
+      const { selection } = view.state;
+      expect(selection.$head.parent.textContent).toBe("alpha");
       caretFollowsTypedText(view.state);
+      if (mode === "suggesting") {
+        expect(
+          selection.$head.parent.firstChild?.marks.map(({ type }) => type.name),
+        ).toContain("insertion");
+      }
     });
   }
 });
