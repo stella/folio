@@ -4494,28 +4494,50 @@ const withRotatedAddedFinalBreaks = ({
         }
         const existing = expectParagraphAttrs(liveCurrent)._propertyChanges;
         if (hasSerializableParagraphPropertyChange(existing)) {
-          panic("A final-mark rotation cannot append a second w:pPrChange", {
-            position: current.position,
+          // A paragraph holds one `w:pPrChange`. This batch wrote it (a merge
+          // handing the paragraph its properties), and what it restores is
+          // only what the batch made of the paragraph: it now restores what
+          // stood before the batch.
+          const serialized = (existing ?? []).filter(
+            ({ info }) => info.provenance !== "suggested",
+          );
+          if (!serialized.every(({ info }) => batchRevisionIds.has(info.id))) {
+            panic("A final-mark rotation met a w:pPrChange from outside", {
+              position: current.position,
+            });
+          }
+          const restated: ParagraphPropertyChangeAttrs[] = [];
+          for (const change of existing ?? []) {
+            restated.push(
+              serialized.includes(change)
+                ? { ...change, previousFormatting }
+                : change,
+            );
+          }
+          next = next.setNodeMarkup(current.position, undefined, {
+            ...liveCurrent.attrs,
+            _propertyChanges: restated,
           });
+        } else {
+          const revisionId = nextRevisionId++;
+          next = next.setNodeMarkup(current.position, undefined, {
+            ...liveCurrent.attrs,
+            _propertyChanges: [
+              ...(Array.isArray(existing) ? existing : []),
+              {
+                type: "paragraphPropertyChange",
+                info: {
+                  id: revisionId,
+                  author,
+                  date,
+                  ...(initials ? { initials } : {}),
+                },
+                previousFormatting,
+              } satisfies ParagraphPropertyChangeAttrs,
+            ],
+          });
+          synthesizedRevisions.push({ ownerRevisionId, revisionId });
         }
-        const revisionId = nextRevisionId++;
-        next = next.setNodeMarkup(current.position, undefined, {
-          ...liveCurrent.attrs,
-          _propertyChanges: [
-            ...(Array.isArray(existing) ? existing : []),
-            {
-              type: "paragraphPropertyChange",
-              info: {
-                id: revisionId,
-                author,
-                date,
-                ...(initials ? { initials } : {}),
-              },
-              previousFormatting,
-            } satisfies ParagraphPropertyChangeAttrs,
-          ],
-        });
-        synthesizedRevisions.push({ ownerRevisionId, revisionId });
       }
 
       if (cancels) {

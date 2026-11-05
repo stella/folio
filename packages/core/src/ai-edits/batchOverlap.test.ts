@@ -1227,6 +1227,38 @@ describe("insertions on either side of a block the batch deletes", () => {
   );
 });
 
+describe("a block added after the last paragraph, which a merge joins and the batch deletes", () => {
+  test("rejects to the document and accepts with the merge's properties", async () => {
+    const session = await freshSession();
+    const original = paragraphProjection(session.state.doc);
+    const ids = session.snapshot().blocks.map(({ id }) => id);
+    const merged = ids.at(-2);
+    const last = ids.at(-1);
+    if (merged === undefined || last === undefined)
+      throw new TypeError("The fixture needs two blocks");
+    const result = session.apply("tracked-changes", [
+      { id: "add", type: "insertAfterBlock", blockId: last, text: "added" },
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: merged,
+        separator: " ",
+        mergedParagraphProperties: { alignment: "center" },
+      },
+      { id: "delete", type: "deleteBlock", blockId: last },
+    ]);
+    expect(result.skipped).toEqual([]);
+    expect(
+      paragraphProjection(resolveStateStory(session.state, "reject").resolved),
+    ).toEqual(original);
+    const accepted = paragraphProjection(
+      resolveStateStory(session.state, "accept").resolved,
+    ).at(-1);
+    expect(accepted?.text.endsWith(" added")).toBe(true);
+    expect(accepted?.properties.alignment).toBe("center");
+  });
+});
+
 describe("two paragraph-property operations on one block", () => {
   test.each(MODES)(
     "refuse the later one and keep the earlier one's values (%s)",
