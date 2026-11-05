@@ -2736,6 +2736,7 @@ const isBatchableParagraphInsertion = (
 const insertionWithLiveAnchor = (
   item: ResolvedOperation,
   tr: Transaction,
+  joinedInto: ReadonlyMap<string, string>,
 ): ResolvedOperation | null => {
   if (
     item.operation.type !== "insertAfterBlock" &&
@@ -2747,7 +2748,12 @@ const insertionWithLiveAnchor = (
   }
   const mapped = liveBlockResult(tr, item, 1);
   const anchor = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
-  const paraId: unknown = item.blockNode.attrs["paraId"];
+  let paraId: unknown = item.blockNode.attrs["paraId"];
+  // A retracted break leaves the next paragraph, with its identity: the anchor
+  // reads as the paragraph it joined.
+  while (typeof paraId === "string" && joinedInto.has(paraId)) {
+    paraId = joinedInto.get(paraId);
+  }
   if (
     !anchor?.isTextblock ||
     anchor.type !== item.blockNode.type ||
@@ -5650,6 +5656,8 @@ const applyFolioAIEditOperationsInternal = ({
   };
   // A paragraph-property write places nothing in a gap, so equal-gap
   // insertions on either side of it run together and inherit alike.
+  /** Paragraphs a retracted break of this batch joined, to the one it left. */
+  const joinedInto = new Map<string, string>();
   const executionGroups = groupRuns(executionOrder);
   for (const executionGroup of executionGroups) {
     // Recheck every insertion against the live anchor, including insertions
@@ -5663,7 +5671,11 @@ const applyFolioAIEditOperationsInternal = ({
       ) {
         return [candidate];
       }
-      const liveCandidate = insertionWithLiveAnchor(candidate, insertionState);
+      const liveCandidate = insertionWithLiveAnchor(
+        candidate,
+        insertionState,
+        joinedInto,
+      );
       if (!liveCandidate) {
         if (!isSuggested) return [candidate];
         if (candidate.operation.moveId !== undefined) {
@@ -7466,6 +7478,11 @@ const applyFolioAIEditOperationsInternal = ({
               next,
               styleResolver,
             });
+            const firstId: unknown = paragraph.attrs["paraId"];
+            const nextId: unknown = next.attrs["paraId"];
+            if (typeof firstId === "string" && typeof nextId === "string") {
+              joinedInto.set(firstId, nextId);
+            }
             // It reads as the first paragraph, as a direct merge does, under
             // a property change recording what the paragraph left had:
             // rejecting restores its own, whether or not the first's words

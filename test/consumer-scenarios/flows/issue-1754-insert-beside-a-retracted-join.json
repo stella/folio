@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 7977654,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1207707797,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "1BF99289",
+          "offset": 8
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1711661073,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "1BF99289",
+          "text": "Agreement written buyer."
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "1BF99289",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "styleId": "Heading2"
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "formatRange",
+    "insertBeforeBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 7977654"
+}
