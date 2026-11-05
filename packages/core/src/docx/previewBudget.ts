@@ -67,6 +67,14 @@ type PreviewKindName = "vmlShape" | "wpGroup" | "smartArt";
 /** Both SVG producers encode their drawing into the URL rather than base64. */
 const SVG_PREVIEW_DATA_URL_PREFIX = "data:image/svg+xml;charset=utf-8,";
 
+/**
+ * A drawn preview as an `<img>` source. It is derived from a descriptor the
+ * ledger already charged and held only while a painter uses it, so it is not a
+ * second retained preview.
+ */
+export const svgPreviewDataUrl = (svg: string): string =>
+  `${SVG_PREVIEW_DATA_URL_PREFIX}${encodeURIComponent(svg)}`;
+
 const MEBIBYTE = 1024 * 1024;
 
 /**

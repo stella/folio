@@ -10,6 +10,7 @@ import { panic } from "better-result";
 
 import { paintPreview } from "../display-list/build/previewPrimitives";
 import type { DisplayColor, DisplayPrimitive } from "../display-list/types";
+import { svgPreviewDataUrl } from "../docx/previewBudget";
 import type { PreviewDescriptor } from "../types/document";
 
 const cssColor = ({ r, g, b, a }: DisplayColor): string =>
@@ -54,7 +55,7 @@ export const previewToSvgDataUrl = (preview: PreviewDescriptor): string => {
     heightPx,
   });
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${String(widthPx)} ${String(heightPx)}" width="${String(widthPx)}" height="${String(heightPx)}" preserveAspectRatio="none">${marks.map(svgMark).join("")}</svg>`;
-  const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  const url = svgPreviewDataUrl(svg);
   dataUrls.set(preview, url);
   return url;
 };
