@@ -1657,14 +1657,51 @@ export const deleteSelectionAsSuggestion = (
 type MarkComposedAsInsertionOptions = {
   view: EditorView;
   from: number;
+  startDoc: PMNode;
+  /** How much other writers' edits grew the document during the composition. */
+  foreignSize: number;
+  /** Whether another writer edited the document, even with no change of size. */
+  foreignEdit: boolean;
   pluginState: SuggestionModeState;
   replaced: Slice | null;
   compositionId: number | null;
 };
 
+/**
+ * PM reads the removal of cancelled text back from the DOM, which can take the
+ * text around it along and drop its revision marks. The same text was there when
+ * the composition started: put back what it was.
+ */
+function restoreAfterCancelledComposition(
+  view: EditorView,
+  startDoc: PMNode,
+): void {
+  const { doc } = view.state;
+  const start = startDoc.content.findDiffStart(doc.content);
+  const end = startDoc.content.findDiffEnd(doc.content);
+  if (start === null || end === null) return;
+  // Equal sizes, so both ends of the difference are at the same positions. Text
+  // that differs is another writer's, not the composition's.
+  if (
+    end.a !== end.b ||
+    end.a <= start ||
+    startDoc.textBetween(start, end.a, "\n", "\n") !==
+      doc.textBetween(start, end.a, "\n", "\n")
+  ) {
+    return;
+  }
+  const tr = view.state.tr.replace(start, end.a, startDoc.slice(start, end.a));
+  tr.setMeta(SUGGESTION_META, true);
+  tr.setMeta("addToHistory", false);
+  view.dispatch(tr);
+}
+
 function markComposedAsInsertion({
   view,
   from,
+  startDoc,
+  foreignSize,
+  foreignEdit,
   pluginState,
   replaced,
   compositionId,
@@ -1674,8 +1711,24 @@ function markComposedAsInsertion({
   if (!insertionType || !deletionType) {
     return;
   }
-  // PM leaves the cursor at the end of the committed composition.
-  const to = view.state.selection.to;
+  // What the composition added, by how much it grew the document. The caret alone
+  // does not say: PM reads a cancelled composition back as the text around it
+  // and leaves the caret at that text's end, though none of it is new.
+  const { doc } = view.state;
+  const composedSize =
+    doc.content.size -
+    startDoc.content.size -
+    foreignSize +
+    (replaced?.size ?? 0);
+  const to = Math.min(from + composedSize, view.state.selection.to);
+  // A cancellation can also put a selection it replaced back as it was.
+  if (doc.eq(startDoc)) {
+    return;
+  }
+  if (composedSize === 0 && !replaced) {
+    if (!foreignEdit) restoreAfterCancelledComposition(view, startDoc);
+    return;
+  }
   if (to <= from && !replaced) {
     return;
   }
@@ -1908,6 +1961,9 @@ export function createSuggestionModePlugin(
   //     replacement until compositionend can record both revisions.
   let composing = false;
   let compositionFrom: number | null = null;
+  let compositionStartDoc: PMNode | null = null;
+  let compositionForeignSize = 0;
+  let compositionForeignEdit = false;
   let compositionReplaced: Slice | null = null;
   let compositionId: number | null = null;
 
@@ -1930,6 +1986,21 @@ export function createSuggestionModePlugin(
           typeof nativeCompositionId === "number"
         ) {
           compositionId = nativeCompositionId;
+        }
+        // Another writer's edit, while the composition runs: the composition's
+        // start moves with it, and its size is not the composition's.
+        if (
+          composing &&
+          tr.docChanged &&
+          typeof nativeCompositionId !== "number" &&
+          tr.getMeta("addToHistory") === false
+        ) {
+          compositionForeignEdit = true;
+          compositionForeignSize +=
+            tr.doc.content.size - tr.before.content.size;
+          if (compositionFrom !== null) {
+            compositionFrom = tr.mapping.map(compositionFrom);
+          }
         }
         const meta = tr.getMeta(suggestionModeKey);
         if (meta) {
@@ -1976,6 +2047,9 @@ export function createSuggestionModePlugin(
           compositionId = null;
           const { from, to } = view.state.selection;
           compositionFrom = from;
+          compositionStartDoc = view.state.doc;
+          compositionForeignSize = 0;
+          compositionForeignEdit = false;
           compositionReplaced =
             from === to ? null : view.state.doc.slice(from, to);
           return false;
@@ -1988,10 +2062,12 @@ export function createSuggestionModePlugin(
         compositionend(view: EditorView) {
           const pluginState = suggestionModeKey.getState(view.state);
           const from = compositionFrom;
+          const startDoc = compositionStartDoc;
           const replaced = compositionReplaced;
           compositionFrom = null;
+          compositionStartDoc = null;
           compositionReplaced = null;
-          if (!pluginState?.active || from == null) {
+          if (!pluginState?.active || from == null || !startDoc) {
             composing = false;
             compositionId = null;
             return false;
@@ -2006,6 +2082,9 @@ export function createSuggestionModePlugin(
                 markComposedAsInsertion({
                   view,
                   from,
+                  startDoc,
+                  foreignSize: compositionForeignSize,
+                  foreignEdit: compositionForeignEdit,
                   pluginState: current,
                   replaced,
                   compositionId: nativeCompositionId,
@@ -2032,6 +2111,11 @@ export function createSuggestionModePlugin(
       handleKeyDown(view: EditorView, event: KeyboardEvent): boolean {
         const pluginState = suggestionModeKey.getState(view.state);
         if (!pluginState?.active) {
+          return false;
+        }
+        // While a composition runs, a key here is ProseMirror reading the
+        // composing text's removal as a Backspace; the IME owns that text.
+        if (composing) {
           return false;
         }
         if (selectLockedInlineControl(view, event)) {
