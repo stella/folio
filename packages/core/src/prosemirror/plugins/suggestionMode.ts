@@ -47,6 +47,7 @@ import { encloseWholeControls } from "../contentControlRevisions";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
+import { isInlineAnchor } from "../extensions/nodes/inlineAnchorDom";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -1304,7 +1305,7 @@ function caretDeleteTarget(
       : state.doc.resolve(cursor).nodeAfter;
     if (!adjacent) return { type: "paragraphEdge" };
     if (
-      adjacent.type.name !== "bookmarkBoundary" &&
+      !isInlineAnchor(adjacent) &&
       !adjacent.marks.some(
         (mark) => mark.type === state.schema.marks["deletion"],
       )
