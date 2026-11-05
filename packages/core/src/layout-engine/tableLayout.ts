@@ -16,6 +16,7 @@ import { isEmptyParagraph } from "./paragraphSpacing";
 import {
   buildTableRowBreakInfo,
   getRowContinuationSkip,
+  snapOversizedRowBreak,
   snapRowBreak,
 } from "./tableRowBreak";
 import type {
@@ -248,7 +249,7 @@ export function layoutTable(
     ) {
       return false;
     }
-    if ((breakInfo.breakOffsets[rowIndex]?.length ?? 0) <= 1) {
+    if ((breakInfo.oversizedBreakOffsets[rowIndex]?.length ?? 0) <= 1) {
       return false;
     }
     const freshHeaderOverhead =
@@ -380,13 +381,22 @@ export function layoutTable(
             advanceAfterNaturalFlowBreak(previousPageNumber);
             continue;
           }
-          // Fresh page and a single line still exceeds the page height: place
-          // the next whole line anyway so the loop always makes progress.
-          const from = consumed;
-          const next = breakInfo.breakOffsets[currentRowIndex]?.find(
-            (o) => o > from,
+          // Fresh page, and the next nested row that wants to stay whole is
+          // taller than it, so it breaks between its lines. If a single line
+          // still exceeds the page, place it anyway so the loop makes progress.
+          slice = snapOversizedRowBreak(
+            breakInfo,
+            currentRowIndex,
+            consumed,
+            sliceAvail,
           );
-          slice = (next ?? splittableRow.height) - consumed;
+          if (slice <= 0) {
+            const from = consumed;
+            const next = breakInfo.oversizedBreakOffsets[currentRowIndex]?.find(
+              (o) => o > from,
+            );
+            slice = (next ?? splittableRow.height) - consumed;
+          }
         }
         discardPassedRenderedBreakHints();
         const renderedBreakHint = renderedBreakHints[renderedBreakHintIndex];
