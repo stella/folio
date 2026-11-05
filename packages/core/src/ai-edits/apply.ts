@@ -7452,12 +7452,12 @@ const applyFolioAIEditOperationsInternal = ({
           if (!paragraph || !next) {
             panic("A resolved merge lost its paragraphs");
           }
-          if (isInsertedPPrMark(paragraph.attrs["pPrMark"])) {
-            // The break is itself a pending insertion: removing it retracts
-            // that insertion, as deleting inserted text does. Marking it
-            // deleted instead would overwrite the insertion, and rejecting
-            // both would then keep a break that was never there. Accepting
-            // or rejecting either way joins, so it joins now, exactly as the
+          if (addedBreakRevisionId(paragraph.attrs["pPrMark"]) !== null) {
+            // The break is itself a pending insertion or a move's destination:
+            // removing it retracts that, as deleting inserted text does.
+            // Marking it deleted instead would overwrite it, and rejecting both
+            // would then keep a break that was never there. Accepting or
+            // rejecting either way joins, so it joins now, exactly as the
             // resolver joins a removed mark: the next paragraph is left.
             joinAtParagraphMark({
               tr,
