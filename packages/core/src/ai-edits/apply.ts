@@ -5584,6 +5584,16 @@ const applyFolioAIEditOperationsInternal = ({
     ) {
       return { addresses: [], removes: [item.blockFrom] };
     }
+    // A column or cell edit names a table through its anchor, and runs after
+    // ordinary content edits at coordinates it read (`compareBatchOrder`).
+    if (
+      item.tableColumnInsertion ??
+      item.tableColumnDeletion ??
+      item.tableCellMerge ??
+      item.tableCellSplit
+    ) {
+      return { addresses: [], removes: [] };
+    }
     if (item.operation.type !== "deleteBlock") {
       return { addresses: [item.blockFrom], removes: [] };
     }
