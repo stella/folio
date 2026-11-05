@@ -161,10 +161,18 @@ export const sequentialGroups = ({
   const retiringCarriers = new Set<string>();
   const finalBlocks = new Set<string>();
   const uncarriedFinals = new Set<string>();
+  // A suggestion reads the live rows, where a paragraph pending deletion is a
+  // blank block: the block before such blocks ends its container as the batch
+  // sees it.
+  const finalBeforeBlanks = new Set<string>();
   for (const [container, rows] of containers) {
     const last = rows.at(-1);
     if (!last || (container === "story" && last !== preRows.at(-1))) continue;
     finalBlocks.add(last.id);
+    const beforeBlanks = rows.findLast(({ text }) => text.length > 0);
+    if (mode === "suggested" && beforeBlanks) {
+      finalBeforeBlanks.add(beforeBlanks.id);
+    }
     const appended = applied.some(
       (operation) =>
         operation.type === "insertAfterBlock" &&
@@ -309,7 +317,7 @@ export const sequentialGroups = ({
     const next = preRows.at(index + 1);
     return next !== undefined &&
       deleted.has(next.id) &&
-      finalBlocks.has(next.id) &&
+      (finalBlocks.has(next.id) || finalBeforeBlanks.has(next.id)) &&
       sameContainerRows(next, preRows.at(index))
       ? next.id
       : undefined;
