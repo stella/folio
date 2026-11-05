@@ -7332,6 +7332,29 @@ const applyFolioAIEditOperationsInternal = ({
             kind: "ins",
             info,
           });
+          // The second half keeps a pending join running into the paragraph
+          // it leaves, which holds the properties the join gives. Accepted,
+          // the first half is the rest of that joined paragraph, and reads as
+          // when the merged paragraph is split directly. Its break is new, and
+          // rejecting that break leaves the second half's properties, so
+          // nothing here needs recording. A suggestion is read against the
+          // document as it stands.
+          const second = tr.doc.nodeAt(item.from + 1);
+          const survivor =
+            mode === "tracked-changes" &&
+            isDeletedPPrMark(second?.attrs["pPrMark"])
+              ? paragraphLeftAfter({ doc: tr.doc, paragraphPos: item.from + 1 })
+              : null;
+          const source = survivor === null ? null : tr.doc.nodeAt(survivor);
+          if (source) {
+            tr = carryParagraphProperties({
+              tr,
+              position: item.blockFrom,
+              source,
+              styleResolver,
+              numbering,
+            }).tr;
+          }
         }
 
         const allocateSplitParagraphPropertyRevisionInfo = () => ({

@@ -8,11 +8,16 @@
  * at a time after deleting the merging paragraph, the split stood.
  */
 
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperation,
+} from "../document-operations";
+import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { paragraph } from "../docx/server/build";
+import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { Document } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
@@ -96,5 +101,76 @@ test("a tracked split of inserted words a pending merge runs into survives accep
       "Alpha words. Inserted clause.",
       "Beta words here.",
     ]);
+  }
+});
+
+describe("a tracked split of a paragraph a pending merge joins on", () => {
+  const FIXTURE = "1. Numbered clause one\n\nUnnumbered body text.";
+  const open = async () =>
+    FolioDocxReviewer.fromBuffer(
+      (await ensureParaIds(await createDocx(fromMarkdown(FIXTURE)))).docx,
+      { author: "Test" },
+    );
+  const edit = async (
+    mode: "direct" | "tracked-changes",
+    firstParagraphProperties?: { alignment: "center" },
+  ) => {
+    const reviewer = await open();
+    const item = reviewer.snapshot().blocks.at(0);
+    if (!item) throw new Error("Missing fixture");
+    for (const operation of [
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: item.id,
+        separator: " ",
+        mergedParagraphProperties: { numbering: { kind: "none" } },
+      },
+      {
+        id: "split",
+        type: "splitBlock",
+        blockId: item.id,
+        offset: 9,
+        ...(firstParagraphProperties && { firstParagraphProperties }),
+      },
+    ] satisfies FolioDocumentOperation[]) {
+      expect(reviewer.applyOperations([operation], { mode }).skipped).toEqual(
+        [],
+      );
+    }
+    return reviewer;
+  };
+  const read = (reviewer: FolioDocxReviewer) =>
+    reviewer
+      .snapshot()
+      .blocks.map(({ text, kind, listReference, alignment }) => ({
+        text,
+        kind,
+        listReference,
+        alignment,
+      }));
+
+  for (const [name, properties] of [
+    ["", undefined],
+    [" with first-half properties", { alignment: "center" }],
+  ] as const) {
+    test(`reads as the merged paragraph split directly, once accepted${name}`, async () => {
+      const edited = await edit("tracked-changes", properties);
+      edited.acceptAll();
+      expect(read(edited)).toEqual(read(await edit("direct", properties)));
+    });
+
+    test(`rejects to the document it started from, before and after a reopen${name}`, async () => {
+      const fresh = read(await open());
+      const edited = await edit("tracked-changes", properties);
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await edited.toBuffer(),
+        { author: "Test" },
+      );
+      for (const reviewer of [edited, reopened]) {
+        reviewer.rejectAll();
+        expect(read(reviewer)).toEqual(fresh);
+      }
+    });
   }
 });
