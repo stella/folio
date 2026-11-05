@@ -21,12 +21,16 @@ import type { MarkExtension } from "../types";
  * ProseMirror toDOM runs before the layout painter, so we set the
  * decoration here for correct rendering in both the layout-painter
  * path and the ProseMirror DOM path.
+ *
+ * The line is a longhand because the underline and strike parse rules read the
+ * `text-decoration` shorthand. A review mark's presentation is not run
+ * formatting, and ProseMirror reads this DOM back on every native edit.
  */
 const insertionStyle = (color: string): string =>
-  `color: ${color}; text-decoration: underline; text-decoration-color: ${color};`;
+  `color: ${color}; text-decoration-line: underline; text-decoration-color: ${color};`;
 
 const deletionStyle = (color: string): string =>
-  `color: ${color}; text-decoration: line-through; text-decoration-color: ${color};`;
+  `color: ${color}; text-decoration-line: line-through; text-decoration-color: ${color};`;
 
 /**
  * Suggested (AI-proposed) tracked changes reuse the insertion/deletion visual
@@ -45,10 +49,10 @@ const SUGGESTION_TINT =
 const SUGGESTION_TINT_LAYER = `linear-gradient(${SUGGESTION_TINT}, ${SUGGESTION_TINT})`;
 
 const suggestedInsertionStyle = (): string =>
-  `color: ${SUGGESTION_COLOR}; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: ${SUGGESTION_COLOR}; background-image: ${SUGGESTION_TINT_LAYER};`;
+  `color: ${SUGGESTION_COLOR}; text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: ${SUGGESTION_COLOR}; background-image: ${SUGGESTION_TINT_LAYER};`;
 
 const suggestedDeletionStyle = (): string =>
-  `color: ${SUGGESTION_COLOR}; text-decoration: line-through; text-decoration-style: dotted; text-decoration-color: ${SUGGESTION_COLOR}; background-image: ${SUGGESTION_TINT_LAYER};`;
+  `color: ${SUGGESTION_COLOR}; text-decoration-line: line-through; text-decoration-style: dotted; text-decoration-color: ${SUGGESTION_COLOR}; background-image: ${SUGGESTION_TINT_LAYER};`;
 
 const revisionAncestorsFromDom = (serialized: string | undefined) => {
   if (serialized === undefined) {
