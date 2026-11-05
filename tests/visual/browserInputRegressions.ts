@@ -266,6 +266,29 @@ export const CANONICAL_BOOKMARK_SEED_263 = {
   trace: BrowserInputTrace;
 };
 
+/** Backspace before tracked-deleted text at a paragraph's start joins the paragraph. */
+export const CANONICAL_JOIN_BESIDE_DELETION_SEED_29 = {
+  authority: "canonical",
+  seed: 29,
+  path: "15:2",
+  fingerprint: "bad194d7a1bfd1c6",
+  trace: {
+    shape: "image",
+    actions: [
+      { kind: "selectionDrag", target: "inlineObject" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "backspace" },
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
@@ -278,4 +301,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_MISPLACED_COMPOSITION_SEED_29,
   CANONICAL_DELETION_UPDATES_SEED_11,
   CANONICAL_BOOKMARK_SEED_263,
+  CANONICAL_JOIN_BESIDE_DELETION_SEED_29,
 ];
