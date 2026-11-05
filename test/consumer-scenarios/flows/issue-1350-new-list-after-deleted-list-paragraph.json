@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1847978692,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "3CEFFC83",
+          "properties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "bullet"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Warranty term invoice supplier clause buyer.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 1847978692"
+}
