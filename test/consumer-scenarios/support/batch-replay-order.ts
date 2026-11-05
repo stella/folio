@@ -399,10 +399,28 @@ export const sequentialGroups = ({
       };
     },
   );
+  // At one gap the batch runs the operation named last first, and an insertion
+  // run goes ahead of a property write when any of it was named after that
+  // write (`groupInsertionRuns`), so it copies the paragraph as it was read. An
+  // early property write keeps that order with its gap's run.
+  const gapOf = (operation: AnyOperation): string => {
+    const [block, inside, offset] = placement(operation, preRows);
+    return `${block}:${inside}:${offset}`;
+  };
+  const leadsEarly = (group: readonly AnyOperation[]): boolean =>
+    group.every(({ type }) => INSERTIONS.has(type)) &&
+    early.some(({ operation, index }) =>
+      group.some(
+        (member) =>
+          gapOf(member) === gapOf(operation) &&
+          (inputOrder.get(member.id) ?? -1) > index,
+      ),
+    );
   return [
     ...annotations.map(({ operation }) => [operation]),
+    ...reordered.filter(leadsEarly),
     ...early.map(({ operation }) => [operation]),
-    ...reordered,
+    ...reordered.filter((group) => !leadsEarly(group)),
     ...columns.map(({ operation }) => [operation]),
   ];
 };
