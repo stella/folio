@@ -77,6 +77,7 @@ import {
   setAuthoredBackgroundColor,
   setAuthoredTextColor,
 } from "./documentColors";
+import { paintedImageSource } from "./previewSvg";
 import {
   applyImageVisualAttrs,
   hasImageCrop,
@@ -246,7 +247,7 @@ function renderCellContent({
       }
 
       const imgEl = doc.createElement("img");
-      applySanitizedImageSrc(imgEl, img.src);
+      applySanitizedImageSrc(imgEl, paintedImageSource(img));
       imgEl.style.width = `${img.width}px`;
       imgEl.style.height = `${img.height}px`;
       imgEl.style.display = "block";

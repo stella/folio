@@ -62,6 +62,18 @@ const preview = (
   );
 };
 
+const parsedDrawing = (xml: string) => {
+  const drawing = parseXmlDocument(xml);
+  if (!drawing) throw new Error("drawing did not parse");
+  return drawing;
+};
+
+const expectEmptyFrame = (image: ReturnType<typeof preview>): void => {
+  expect(image?.preview?.kind).toBe("chart");
+  expect(image?.preview?.shapes).toEqual([]);
+  expect(image?.size).toEqual({ width: 1000, height: 1000 });
+};
+
 describe("chart previews", () => {
   test("identifies the descriptor as a chart", () => {
     expect(preview(chart("barChart", series([1])))?.preview?.kind).toBe(
@@ -197,17 +209,17 @@ describe("chart previews", () => {
     }
   });
 
-  test("fails closed when polyline points exceed the descriptor bound", () => {
+  test("draws no marks when polyline points exceed the descriptor bound", () => {
     const values = Array.from({ length: 64 }, (_unused, index) => index + 1);
     const seriesCount = Math.floor(MAX_PREVIEW_POINTS / values.length) + 1;
-    expect(
+    expectEmptyFrame(
       preview(
         chart(
           "lineChart",
           Array.from({ length: seriesCount }, () => series(values)).join(""),
         ),
       ),
-    ).toBeNull();
+    );
   });
 
   test("keeps sparse cache positions and breaks lines across missing values", () => {
@@ -264,14 +276,14 @@ describe("chart previews", () => {
       [0, 1],
       [0, 2],
     ]),
-  ])("fails closed for an invalid cache index", (values) => {
+  ])("draws no marks for an invalid cache index", (values) => {
     const categories = indexedCache("cat", 2, [
       [0, "A"],
       [1, "B"],
     ]);
-    expect(
+    expectEmptyFrame(
       preview(chart("barChart", `<c:ser>${categories}${values}</c:ser>`)),
-    ).toBeNull();
+    );
   });
 
   test("pie sectors start at twelve o'clock and use proportional angles", () => {
@@ -301,21 +313,49 @@ describe("chart previews", () => {
         }
   });
 
-  test("fails closed without caches and for non-finite values", () => {
-    expect(preview(chart("barChart", `<c:ser/>`))).toBeNull();
-    expect(preview(chart("barChart", series(["NaN"])))).toBeNull();
-    expect(preview(chart("barChart", series(["Infinity"])))).toBeNull();
+  test("draws no marks without caches and for non-finite values", () => {
+    expectEmptyFrame(preview(chart("barChart", `<c:ser/>`)));
+    expectEmptyFrame(preview(chart("barChart", series(["NaN"]))));
+    expectEmptyFrame(preview(chart("barChart", series(["Infinity"]))));
   });
 
-  test("fails closed when chart settings produce non-finite geometry", () => {
+  test.each(["areaChart", "scatterChart", "bar3DChart"])(
+    "keeps the frame of a %s, which draws no marks yet",
+    (kind) => {
+      expectEmptyFrame(preview(chart(kind, series([1, 2]))));
+    },
+  );
+
+  test("keeps the frame when the chart part is missing", () => {
+    expectEmptyFrame(
+      parseChartPreview(parsedDrawing(drawingXml()), relationships, new Map()),
+    );
+  });
+
+  test("a drawing that is not a chart is not given a frame", () => {
     expect(
+      parseChartPreview(
+        parsedDrawing(
+          drawingXml().replace(
+            `<c:chart r:id="rChart"/>`,
+            `<c:notAChart r:id="rChart"/>`,
+          ),
+        ),
+        relationships,
+        new Map(),
+      ),
+    ).toBeNull();
+  });
+
+  test("draws no marks when chart settings produce non-finite geometry", () => {
+    expectEmptyFrame(
       preview(
         chart(
           "pieChart",
           `${series([1, 2])}<c:firstSliceAng val="9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"/>`,
         ),
       ),
-    ).toBeNull();
+    );
   });
 
   test("caps oversized cached charts", () => {

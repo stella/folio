@@ -151,7 +151,9 @@ Additive throughout, so a minor bump for `@stll/docx-core` and
 3. The editor painting diagrams again. The attr carries the descriptor itself
    rather than an id into a side table: a bounded shape list is hundreds of
    bytes, so the cost this section was written to avoid is not there to move,
-   and a side table would have been a second lifetime to keep correct.
+   and a side table would have been a second lifetime to keep correct. The
+   legacy painter draws it through an SVG source built from the same primitives
+   (`layout-painter/previewSvg.ts`).
 4. Per-backend drawing in the DOM renderer and the PDF exporter, retiring the
    raster.
 

@@ -63,7 +63,12 @@ import type {
   TextBoxMeasure,
 } from "../layout-engine/types";
 import { getEditorScrollRoot } from "../paged-layout/editorScrollRoot";
-import type { BorderSpec, Theme, Watermark } from "../types/document";
+import type {
+  BorderSpec,
+  PreviewDescriptor,
+  Theme,
+  Watermark,
+} from "../types/document";
 import { cssBorderStyle } from "../utils/borderCss";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { borderToStyle } from "../utils/formatToStyle";
@@ -80,6 +85,7 @@ import {
   resolveAnchoredImagePosition as resolveAnchoredImagePositionShared,
 } from "./anchoredImagePosition";
 import type { BlockLookup } from "./index";
+import { paintedImageSource } from "./previewSvg";
 import { renderFragment } from "./renderFragment";
 import {
   applyImageVisualAttrs,
@@ -105,6 +111,7 @@ const TEXT_BOX_ANCHOR_BLOCK_ID = Symbol.for("stll.textBoxAnchorBlockId");
  */
 export type PageFloatingImage = {
   src: string;
+  preview?: PreviewDescriptor;
   width: number;
   height: number;
   alt?: string;
@@ -989,6 +996,7 @@ function extractFloatingImagesFromParagraph(
 
     floatingImages.push({
       src: imgRun.src,
+      ...(imgRun.preview ? { preview: imgRun.preview } : {}),
       width: imgRun.width,
       height: imgRun.height,
       ...(imgRun.alt !== undefined ? { alt: imgRun.alt } : {}),
@@ -1063,7 +1071,7 @@ export function renderFloatingImagesLayer(
     }
 
     const img = doc.createElement("img");
-    applySanitizedImageSrc(img, floatImg.src);
+    applySanitizedImageSrc(img, paintedImageSource(floatImg));
     img.style.width = `${floatImg.width}px`;
     img.style.height = `${floatImg.height}px`;
     img.style.display = "block";
@@ -1111,6 +1119,7 @@ function renderHeaderFooterContent(
   // Collect floating images to render separately, with their paragraph's Y position
   const floatingImages: {
     src: string;
+    preview?: PreviewDescriptor;
     width: number;
     height: number;
     alt?: string;
@@ -1178,6 +1187,7 @@ function renderHeaderFooterContent(
         if (run.kind === "image" && (isFloatingImageRun(run) || run.position)) {
           floatingImages.push({
             src: run.src,
+            ...(run.preview ? { preview: run.preview } : {}),
             width: run.width,
             height: run.height,
             ...(run.alt !== undefined ? { alt: run.alt } : {}),
@@ -1386,7 +1396,7 @@ function renderHeaderFooterContent(
   // Render floating images with absolute positioning
   for (const floatImg of floatingImages) {
     const img = doc.createElement("img");
-    applySanitizedImageSrc(img, floatImg.src);
+    applySanitizedImageSrc(img, paintedImageSource(floatImg));
     img.width = floatImg.width;
     img.height = floatImg.height;
     if (floatImg.alt) {
@@ -2954,7 +2964,7 @@ function runContentKey(run: Run): string {
     return "rpb";
   }
   if (run.kind === "image") {
-    return `img:${run.src}|${run.width}x${run.height}${run.transform ? `|tr:${run.transform}` : ""}`;
+    return `img:${paintedImageSource(run)}|${run.width}x${run.height}${run.transform ? `|tr:${run.transform}` : ""}`;
   }
 
   // Remaining kinds (text, tab, field, math) all carry RunFormatting.

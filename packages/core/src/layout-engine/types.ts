@@ -848,8 +848,8 @@ export type ImageBlock = {
   src: string;
   /**
    * Set instead of `src` for a drawing with no image data: the display list
-   * rasterises it when it interns it. `src` is then empty, and a block with
-   * neither paints nothing, as before.
+   * draws it as primitives and the legacy painter as an SVG source. `src` is
+   * then empty, and a block with neither paints nothing.
    */
   preview?: PreviewDescriptor;
   width: number;

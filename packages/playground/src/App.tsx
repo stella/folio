@@ -753,8 +753,8 @@ const DocumentPlayground = () => {
     query.get("session") === "canonical" ? "canonical" : undefined;
   const showMarginGuides = query.has("marginGuides");
   const marginGuideColor = query.get("marginGuideColor") ?? undefined;
-  // The editor paints from the display list. `?pageRenderer=legacy` selects the
-  // painter it replaced, so a spec can measure the two against each other.
+  // The editor paints with the legacy renderer by default. `?pageRenderer=display-list`
+  // selects the display list, so a spec can measure the two against each other.
   const pageRenderer = isPageRendererName(query.get("pageRenderer"))
     ? (query.get("pageRenderer") as PageRendererName)
     : undefined;
