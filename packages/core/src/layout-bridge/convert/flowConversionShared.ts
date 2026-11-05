@@ -21,7 +21,10 @@ import type { StyleDefinitions, Theme } from "../../types/document";
  * Options for the conversion.
  */
 /** How much of a `w:altChunk` a story has room to show. */
-export const ALT_CHUNK_CONTENT = {
+export const ALT_CHUNK_CONTENT: {
+  readonly text: "text";
+  readonly markerOnly: "markerOnly";
+} = {
   /** Its own text when it has any, otherwise the marker. */
   text: "text",
   /** Only the marker: the story's height cannot follow the chunk's length. */
