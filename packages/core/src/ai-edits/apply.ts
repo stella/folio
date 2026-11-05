@@ -5605,10 +5605,25 @@ const applyFolioAIEditOperationsInternal = ({
     });
     return { addresses: [], removes: removes ? [item.blockFrom] : [] };
   };
+  const groupRuns = (items: readonly ResolvedOperation[]) =>
+    groupInsertionRuns(
+      items,
+      (candidate) =>
+        isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
+      (candidate) => candidate.operation.type === "setBlockParagraphProperties",
+    );
+  // Insertions at one gap land as one requested sequence, so a run moves ahead
+  // of what removes a block it names as a whole, as one at a time it would.
   const executionOrder = orderAddressingBeforeRemoval(
-    orderBatchOperations(executableResolved, batchAddress),
-    blockAccess,
-  );
+    groupRuns(orderBatchOperations(executableResolved, batchAddress)),
+    (run) => {
+      const access = run.map(blockAccess);
+      return {
+        addresses: access.flatMap(({ addresses }) => addresses),
+        removes: access.flatMap(({ removes }) => removes),
+      };
+    },
+  ).flat();
   type WillApplyNewListOperations = {
     status: "willApply";
     items: ResolvedOperation[];
@@ -5630,12 +5645,7 @@ const applyFolioAIEditOperationsInternal = ({
   };
   // A paragraph-property write places nothing in a gap, so equal-gap
   // insertions on either side of it run together and inherit alike.
-  const executionGroups = groupInsertionRuns(
-    executionOrder,
-    (candidate) =>
-      isBatchableParagraphInsertion(candidate, mode) ? candidate.from : null,
-    (candidate) => candidate.operation.type === "setBlockParagraphProperties",
-  );
+  const executionGroups = groupRuns(executionOrder);
   for (const executionGroup of executionGroups) {
     // Recheck every insertion against the live anchor, including insertions
     // sharing a gap. Earlier edits can delete its text or its containing row.

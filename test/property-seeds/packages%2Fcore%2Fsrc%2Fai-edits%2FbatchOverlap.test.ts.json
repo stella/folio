@@ -67,6 +67,12 @@
       "path": "52:1:0:3:6:6:6:8:8:8",
       "note": "#2158: a direct insertion before a block an earlier merge in the batch formed",
       "date": "2026-10-25"
+    },
+    {
+      "seed": -887335125,
+      "path": "103:5:4:5:6:6:6:6:6",
+      "note": "Insertions on either side of a block the batch deletes keep the order it names them.",
+      "date": "2026-11-05"
     }
   ]
 }

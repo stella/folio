@@ -1194,6 +1194,39 @@ const operationArbitrary: fc.Arbitrary<GeneratedOperation> = fc.oneof(
     .map((block) => ({ kind: "mergeBlockWithNext" as const, block })),
 );
 
+describe("insertions on either side of a block the batch deletes", () => {
+  test.each(MODES)(
+    "land in the order the batch names them (%s)",
+    async (mode) => {
+      const session = await freshSession();
+      const ids = session.snapshot().blocks.map(({ id }) => id);
+      const [before, deleted] = ids;
+      if (before === undefined || deleted === undefined)
+        throw new TypeError("The fixture needs two blocks");
+      const result = session.apply(mode, [
+        { id: "delete", type: "deleteBlock", blockId: deleted },
+        {
+          id: "before-deleted",
+          type: "insertBeforeBlock",
+          blockId: deleted,
+          text: "first",
+        },
+        {
+          id: "after-previous",
+          type: "insertAfterBlock",
+          blockId: before,
+          text: "second",
+        },
+      ]);
+      expect(result.skipped).toEqual([]);
+      const texts = paragraphProjection(
+        resolveStateStory(session.state, "accept").resolved,
+      ).map(({ text }) => text);
+      expect(texts.slice(1, 3)).toEqual(["first", "second"]);
+    },
+  );
+});
+
 describe("two paragraph-property operations on one block", () => {
   test.each(MODES)(
     "refuse the later one and keep the earlier one's values (%s)",
