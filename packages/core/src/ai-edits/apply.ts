@@ -2832,6 +2832,7 @@ type PendingJoinSurvivorOptions = {
   paragraphPos: number;
   /** The paragraph's text as accepting leaves it. */
   cleanText: string;
+  noteReferences: NoteReferenceLabels;
 };
 
 /**
@@ -2845,6 +2846,7 @@ const pendingJoinSurvivor = ({
   doc,
   paragraphPos,
   cleanText,
+  noteReferences,
 }: PendingJoinSurvivorOptions): number | null => {
   const paragraph = doc.nodeAt(paragraphPos);
   if (
@@ -2855,9 +2857,22 @@ const pendingJoinSurvivor = ({
     return null;
   }
   const survivor = paragraphLeftAfter({ doc, paragraphPos });
-  return survivor !== null && doc.nodeAt(survivor)?.type === paragraph.type
-    ? survivor
-    : null;
+  const left = survivor === null ? null : doc.nodeAt(survivor);
+  if (survivor === null || left?.type !== paragraph.type) return null;
+  // A paragraph that is itself wholly pending deletion, its break too, is
+  // gone once accepted: the words stay in the paragraph they stood in.
+  return isDeletedPPrMark(left.attrs["pPrMark"]) &&
+    isPendingDeletion(
+      doc,
+      survivor,
+      left,
+      buildCleanBlockText(left, survivor, {
+        fieldResults: "text",
+        noteReferences,
+      }).text,
+    )
+    ? null
+    : survivor;
 };
 
 type InsertionFormattingAnchorOptions = {
@@ -2891,6 +2906,7 @@ const insertionFormattingAnchor = ({
       fieldResults: "text",
       noteReferences,
     }).text,
+    noteReferences,
   });
   const source = survivor === null ? null : tr.doc.nodeAt(survivor);
   return source ? { ...item, blockNode: source } : item;
