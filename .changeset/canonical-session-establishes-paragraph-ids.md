@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-A canonical session opens a document built in memory, such as a new blank one, by giving its paragraphs ids on its own copy, instead of refusing it.
+A document from `createEmptyDocument` starts with a paragraph id, so a canonical session opens a new blank document instead of refusing it.
