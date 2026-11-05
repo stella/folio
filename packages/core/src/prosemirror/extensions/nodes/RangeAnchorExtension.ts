@@ -12,6 +12,7 @@ import {
 } from "../../rangeAnchorAttrs";
 import { createNodeExtension } from "../create";
 import type { NodeExtension } from "../types";
+import { INLINE_ANCHOR_DOM_STYLE } from "./inlineAnchorDom";
 
 type RangeAnchorOptions = {
   getInternalClipboardToken?: () => string;
@@ -90,7 +91,7 @@ export const RangeAnchorExtension: (
           [RANGE_ANCHOR_DOM_ATTRIBUTE]: serializedMarkers,
           "aria-hidden": "true",
           contenteditable: "false",
-          style: "display: none;",
+          style: INLINE_ANCHOR_DOM_STYLE,
           ...(internalClipboardToken
             ? {
                 [INTERNAL_CLIPBOARD_TOKEN_ATTRIBUTE]: internalClipboardToken,

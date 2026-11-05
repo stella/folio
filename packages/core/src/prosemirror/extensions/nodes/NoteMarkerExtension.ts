@@ -2,6 +2,7 @@
 import { expectNoteMarkerAttrs } from "../../../internal/noteMarkerAttrs";
 import { createNodeExtension } from "../create";
 import type { NodeExtension } from "../types";
+import { INLINE_ANCHOR_DOM_STYLE } from "./inlineAnchorDom";
 
 export const NOTE_MARKER_NODE_NAME = "noteMarker";
 
@@ -35,7 +36,7 @@ export const NoteMarkerExtension: (
           "data-docx-note-marker": kind,
           "aria-hidden": "true",
           contenteditable: "false",
-          style: "display: none;",
+          style: INLINE_ANCHOR_DOM_STYLE,
         },
       ];
     },

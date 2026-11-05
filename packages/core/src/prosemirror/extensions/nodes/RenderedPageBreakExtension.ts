@@ -2,6 +2,7 @@
 
 import { createNodeExtension } from "../create";
 import type { NodeExtension } from "../types";
+import { INLINE_ANCHOR_DOM_STYLE } from "./inlineAnchorDom";
 
 /**
  * The node name, for callers that have to ask whether anything is LEFT in a
@@ -26,7 +27,7 @@ export const RenderedPageBreakExtension: (
         "span",
         {
           "data-docx-rendered-page-break": "true",
-          style: "display: none;",
+          style: INLINE_ANCHOR_DOM_STYLE,
         },
       ];
     },

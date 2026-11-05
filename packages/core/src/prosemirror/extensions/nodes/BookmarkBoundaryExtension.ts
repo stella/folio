@@ -22,6 +22,7 @@ import {
   bookmarkBoundaryDomAttributes,
   parseBookmarkBoundaryDom,
 } from "./bookmarkBoundaryDom";
+import { INLINE_ANCHOR_DOM_STYLE } from "./inlineAnchorDom";
 
 type BookmarkBoundaryOptions = {
   getInternalClipboardToken?: () => string;
@@ -139,10 +140,13 @@ export const BookmarkBoundaryExtension: (
     toDOM(node) {
       return [
         "span",
-        bookmarkBoundaryDomAttributes(
-          node,
-          options.getInternalClipboardToken?.(),
-        ),
+        {
+          ...bookmarkBoundaryDomAttributes(
+            node,
+            options.getInternalClipboardToken?.(),
+          ),
+          style: INLINE_ANCHOR_DOM_STYLE,
+        },
       ];
     },
   }),
