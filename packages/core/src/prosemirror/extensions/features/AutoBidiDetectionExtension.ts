@@ -44,6 +44,7 @@ import type { ParagraphDirection } from "../../paragraphDirection";
  * `ParaIdAllocatorExtension`.
  */
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
+import { afterNativeCompositionFlush } from "../../textInput";
 import { createExtension } from "../create";
 import type { Extension, ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
@@ -198,12 +199,37 @@ export const ensureBaseDirectionInState = (state: EditorState): EditorState => {
   return state.apply(applyBidiUpdates(state, updates));
 };
 
-const createAutoBidiDetectionPlugin = (): Plugin =>
-  new Plugin({
+const createAutoBidiDetectionPlugin = (): Plugin => {
+  // Changing a paragraph's direction redraws it, which takes the composing text
+  // from under the browser's IME: the composition ends without a commit, and the
+  // text is inserted twice. A composition's paragraphs wait until it has ended.
+  let deferred = false;
+  return new Plugin({
     key: autoBidiDetectionKey.createKey(),
+    props: {
+      handleDOMEvents: {
+        compositionend(view) {
+          afterNativeCompositionFlush(() => {
+            if (!deferred || view.composing) return;
+            deferred = false;
+            const updates = collectBidiUpdates(view.state.doc);
+            if (updates.length > 0) {
+              view.dispatch(applyBidiUpdates(view.state, updates));
+            }
+          });
+          return false;
+        },
+      },
+    },
     appendTransaction(transactions, _oldState, newState) {
       // Selection-only / mark-only transactions can't have changed paragraph text.
       if (!transactions.some((t) => t.docChanged)) {
+        return null;
+      }
+      if (
+        transactions.some((t) => typeof t.getMeta("composition") === "number")
+      ) {
+        deferred = true;
         return null;
       }
 
@@ -223,6 +249,7 @@ const createAutoBidiDetectionPlugin = (): Plugin =>
       return applyBidiUpdates(newState, updates);
     },
   });
+};
 
 export const AutoBidiDetectionExtension: (
   options?: Partial<{}> | undefined,
