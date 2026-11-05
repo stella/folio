@@ -156,6 +156,7 @@ export const createCanonicalComposition = (
   authorizeNative: (
     view: EditorView,
     completion: CompositionCompletionEvidence,
+    finalText?: string | null,
   ) => void;
   flushed: (view: EditorView) => void;
   recover: (view: EditorView) => CompositionFinish;
@@ -167,6 +168,10 @@ export const createCanonicalComposition = (
   let authorizedNativeState: EditorState | null = null;
   let completed: CompletedComposition = { type: "idle" };
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** The browser began again mid-composition; its proposals no longer say where. */
+  let restarted = false;
+  let acceptedUpdate = false;
+  let explicitFinal: string | null = null;
   const clearTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
@@ -298,31 +303,26 @@ export const createCanonicalComposition = (
   };
   /**
    * The browser can lose its composition range when the projection redraws a
-   * neighbouring node, and then starts again beside the text it left behind. The
-   * end event still names what was composed, and the captured caret says where.
-   * A proposal that reaches the caret and holds that text is this restart.
+   * neighbouring node, and then starts again from a position it computes itself.
+   * Its final text still names what was composed, and the captured selection says
+   * where. A proposal that reaches the caret and holds that text is such a restart
+   * even when the restart event went unseen.
    */
   const finalInput = (
     pending: Extract<CompositionState, { type: "provisional" }>,
     native: NonNullable<ReturnType<typeof replacement>>,
   ) => {
     const { phase, baseline } = pending;
-    if (phase.type !== "ended" || !phase.data || native.text === phase.data)
-      return native;
-    const { from, empty } = baseline.selection;
-    if (
-      !empty ||
-      native.from > from ||
-      native.to < from ||
-      !native.text.includes(phase.data)
-    )
-      return native;
-    return {
-      from,
-      to: from,
-      text: phase.data,
-      semantic: "composition" as const,
-    };
+    const final = explicitFinal ?? (phase.type === "ended" ? phase.data : null);
+    if (!final || native.text === final) return native;
+    const { from, to, empty } = baseline.selection;
+    const atCaret =
+      empty &&
+      native.from <= from &&
+      native.to >= from &&
+      native.text.includes(final);
+    if (!restarted && !atCaret) return native;
+    return { from, to, text: final, semantic: "composition" as const };
   };
   const applyNative = (view: EditorView, transaction: Transaction) =>
     Result.try({
@@ -455,8 +455,17 @@ export const createCanonicalComposition = (
       );
     },
     start: (view: EditorView) => {
+      if (
+        state.type === "provisional" &&
+        state.phase.type === "active" &&
+        acceptedUpdate
+      )
+        restarted = true;
       if (state.type !== "committed") return;
       if (!options.begin()) return;
+      restarted = false;
+      acceptedUpdate = false;
+      explicitFinal = null;
       state = {
         type: "provisional",
         baseline: view.state,
@@ -513,7 +522,10 @@ export const createCanonicalComposition = (
     authorizeNative: (
       view: EditorView,
       completion: CompositionCompletionEvidence,
+      finalText?: string | null,
     ) => {
+      if (completion === "explicitFinal" && typeof finalText === "string")
+        explicitFinal = finalText;
       authorizedNativeState = view.state;
       if (state.type !== "committed" && completion === "explicitFinal") {
         state.phase =
@@ -620,6 +632,10 @@ export const createCanonicalComposition = (
         view.updateState(state.baseline);
         return true;
       }
+      if (restarted) {
+        view.updateState(state.baseline);
+        return true;
+      }
       if (
         typeof transaction.getMeta("composition") !== "number" &&
         authorizedNativeState !== view.state
@@ -656,6 +672,7 @@ export const createCanonicalComposition = (
         );
         return true;
       }
+      acceptedUpdate = true;
       view.updateState(applied.value.state);
       return true;
     },
