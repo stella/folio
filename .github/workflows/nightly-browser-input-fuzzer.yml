@@ -84,12 +84,15 @@ jobs:
           mkdir -p fuzz-artifacts/browser
           fresh_seed=$(date +%s)
           export FOLIO_FUZZ_SEEDS="${FOLIO_FUZZ_SEEDS},${fresh_seed}"
+          export FOLIO_FUZZ_DEFAULT_EDITOR_SEEDS="${FOLIO_FUZZ_DEFAULT_EDITOR_SEEDS},${fresh_seed}"
           bunx playwright test --project=browser-fuzzer --workers=1 --output=fuzz-playwright/browser 2>&1 | tee fuzz-artifacts/browser/browser-fuzz.log
         env:
           CI: "true"
           FOLIO_FUZZ_HEALTH: "1"
           FOLIO_FUZZ_LANE: "nightly"
           FOLIO_FUZZ_SEEDS: "11,29,47,83,131,197,263,347,431,557"
+          # Shares this step's budget: five seeds with DEFAULT_EDITOR_FUZZ_BUDGET.
+          FOLIO_FUZZ_DEFAULT_EDITOR_SEEDS: "29,83,263,431"
           FOLIO_FUZZ_RUNS: "20"
 
       - name: Check fuzz health

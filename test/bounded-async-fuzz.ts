@@ -7,6 +7,16 @@ export const BROWSER_FUZZ_BUDGET = {
   shrinkMs: 60_000,
 } as const;
 
+/**
+ * The default editor's seeds share the canonical lane's 35-minute step, so each
+ * has a smaller cap. A finding ends discovery early, and 20 passing traces took
+ * about 41 seconds in that step, which leaves this cap well above a healthy seed.
+ */
+export const DEFAULT_EDITOR_FUZZ_BUDGET = {
+  discoveryMs: 150_000,
+  shrinkMs: 30_000,
+} as const;
+
 type FirstFuzzFailure<T> = {
   seed: number;
   path: string;

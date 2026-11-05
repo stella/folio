@@ -127,10 +127,12 @@ test("browser trace sequences shrink to one action", () => {
 test("browser lanes retain pinned seeds and reject malformed overrides", () => {
   expect(parseBrowserInputTraceConfig({}, "nightly")).toEqual({
     seeds: BROWSER_TRACE_FIXED_SEEDS.nightly,
+    defaultEditorSeeds: [],
     runs: 20,
   });
   expect(parseBrowserInputTraceConfig({}, "pullRequest")).toEqual({
     seeds: BROWSER_TRACE_FIXED_SEEDS.pullRequest,
+    defaultEditorSeeds: [],
     runs: 2,
   });
   expect(
@@ -138,10 +140,22 @@ test("browser lanes retain pinned seeds and reject malformed overrides", () => {
       { FOLIO_FUZZ_SEEDS: "11,-29", FOLIO_FUZZ_RUNS: "7" },
       "nightly",
     ),
-  ).toEqual({ seeds: [11, -29], runs: 7 });
+  ).toEqual({ seeds: [11, -29], defaultEditorSeeds: [], runs: 7 });
+  expect(
+    parseBrowserInputTraceConfig(
+      { FOLIO_FUZZ_DEFAULT_EDITOR_SEEDS: "29,83" },
+      "nightly",
+    ).defaultEditorSeeds,
+  ).toEqual([29, 83]);
   for (const seeds of ["", " ", "11,", ",29", "11,,29", "NaN", "1.5"]) {
     expect(() =>
       parseBrowserInputTraceConfig({ FOLIO_FUZZ_SEEDS: seeds }, "nightly"),
+    ).toThrow();
+    expect(() =>
+      parseBrowserInputTraceConfig(
+        { FOLIO_FUZZ_DEFAULT_EDITOR_SEEDS: seeds },
+        "nightly",
+      ),
     ).toThrow();
   }
   for (const runs of ["", "0", "-1", "1.5", "NaN"]) {
