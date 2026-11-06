@@ -187,15 +187,9 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
   {
     reason:
-      "Suggesting mode changes table structure (rows, columns, merges, whole tables) directly",
+      "Suggesting mode splits and merges cells and deletes whole tables directly",
     operations: [
-      "command:deleteRow",
-      "command:deleteColumn",
       "command:deleteTable",
-      "command:addRowAbove",
-      "command:addRowBelow",
-      "command:addColumnLeft",
-      "command:addColumnRight",
       "command:splitCell",
       "command:mergeCells",
     ],
