@@ -1,5 +1,25 @@
 # @stll/folio-core
 
+## 0.67.1
+
+### Patch Changes
+
+- [#2341](https://github.com/stella/folio/pull/2341) [`06a61cb`](https://github.com/stella/folio/commit/06a61cbba488a577bab12d5bd2f71c49ab49a9c3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A section break over a selection that changes what the last section starts with no longer refuses on the document-model editing path.
+
+- [#2349](https://github.com/stella/folio/pull/2349) [`89f01cf`](https://github.com/stella/folio/commit/89f01cfa0fa84dd0b911d55003c7ce4ed013f701) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A footnote too tall for the room on its page now continues on the next page, adding pages if it needs them, instead of its remaining lines not showing.
+
+- [#2343](https://github.com/stella/folio/pull/2343) [`44185f7`](https://github.com/stella/folio/commit/44185f78d8fcc206331268ca27f7e7025937e62d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A list added to a document whose numbering part ends in `w:numIdMacAtCleanup` now saves its definition before that element, as the schema requires.
+
+- [#2340](https://github.com/stella/folio/pull/2340) [`05463ce`](https://github.com/stella/folio/commit/05463cebeaa2f539f83e15cd20c7c2be778be3d1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A table row taller than a page continues on the next page when its cells share no line boundary, each cell breaking at its own lines, instead of overflowing and clipping.
+
+- [#2345](https://github.com/stella/folio/pull/2345) [`aa961c5`](https://github.com/stella/folio/commit/aa961c5a23850f80218ef1c9ba7fed8091584d61) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A `splitBlock` inside an inline content control is now refused in both modes. It used to break the control in two within one paragraph, and rejecting the tracked form joined the paragraph to the next one.
+
+- [#2342](https://github.com/stella/folio/pull/2342) [`4b5714e`](https://github.com/stella/folio/commit/4b5714ecdb40e34a92384ec3c254b149a95c8773) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A bookmark that opens in a table cell and closes on its row or table keeps its one end through an edit, instead of gaining a second one.
+
+- [#2347](https://github.com/stella/folio/pull/2347) [`4cb7cb7`](https://github.com/stella/folio/commit/4cb7cb7d740a588171a46d0d90104b3b31bf4884) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A text box keeps everything it holds. Content controls, custom XML, bookmarks, `w:altChunk` and other block markup in `w:txbxContent` used to be left out of the model and were dropped from the saved file when the paragraph hosting the box was edited, along with any text in them. Text in a control or custom XML now shows in the box, and an `w:altChunk` shows its marker.
+- Updated dependencies [[`5912d35`](https://github.com/stella/folio/commit/5912d350a009e2430cc848239a79bde00d1cafd9), [`4cb7cb7`](https://github.com/stella/folio/commit/4cb7cb7d740a588171a46d0d90104b3b31bf4884)]:
+  - @stll/docx-core@0.42.2
+
 ## 0.67.0
 
 ### Minor Changes
