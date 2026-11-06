@@ -178,9 +178,9 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
   {
     reason:
-      "A list marker typed over a selection becomes a list in suggesting mode and stays text in editing",
+      "A list marker typed over a selection: accepting gives another list instance than editing over the whole document, and across paragraphs the marker's run takes other formatting",
     operations: LIST_MARKERS,
-    placements: RANGE_PLACEMENTS,
+    placements: ["cross-paragraph", "document"],
     modes: ["suggesting"],
     kinds: ["accept-mismatch"],
     tier: "full",

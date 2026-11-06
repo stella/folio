@@ -6,7 +6,7 @@ import { panic } from "better-result";
  * Provides: toggle bullet/number, indent/outdent, enter/backspace handling.
  */
 import { InputRule, inputRules, undoInputRule } from "prosemirror-inputrules";
-import type { Node as PMNode } from "prosemirror-model";
+import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
 import {
   type Command,
   type EditorState,
@@ -711,6 +711,35 @@ const listAutoformatRule = (): InputRule =>
       : null;
   });
 
+const liveText = (paragraph: PMNode, end: number): string => {
+  let text = "";
+  paragraph.forEach((node, offset) => {
+    if (
+      offset < end &&
+      !node.marks.some(({ type }) => type.name === "deletion")
+    ) {
+      text += node.isText ? (node.text ?? "").slice(0, end - offset) : "\ufffc";
+    }
+  });
+  return text;
+};
+
+/**
+ * The text before the caret once what is struck has gone: what typing over a
+ * selection leaves. A paragraph whose break is struck joins the one after it.
+ */
+const textBeforeCaretLeft = ($head: ResolvedPos): string => {
+  let text = liveText($head.parent, $head.parentOffset);
+  const container = $head.node($head.depth - 1);
+  for (let index = $head.index($head.depth - 1) - 1; index >= 0; index--) {
+    const before = container.child(index);
+    const mark = before.attrs["pPrMark"] as { kind?: unknown } | null;
+    if (mark?.kind !== "del") break;
+    text = liveText(before, before.content.size) + text;
+  }
+  return text;
+};
+
 /**
  * List autoformat while suggesting. The suggestion plugin has already
  * recorded the typed space as a tracked insertion; this follows it with the
@@ -738,9 +767,7 @@ const suggestedListAutoformat = (autoformat: Plugin): Plugin =>
       ) {
         return null;
       }
-      const requests = listRequestsForMarker(
-        $head.parent.textBetween(0, $head.parentOffset, null, "\ufffc"),
-      );
+      const requests = listRequestsForMarker(textBeforeCaretLeft($head));
       if (!requests) {
         return null;
       }

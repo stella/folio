@@ -24,6 +24,7 @@ import {
   buildPlainTextSlice,
   pastePlainTextSlice,
 } from "./commands/pastePlainText";
+import { dispatchEditorTextInput } from "./textInput";
 
 type Edit = { id: string; run: (view: HeadlessEditorView) => unknown };
 
@@ -104,6 +105,77 @@ describe("replacing a selection across paragraphs in suggesting mode", () => {
       );
     },
   );
+
+  test("a replacement from a paragraph into a table restores on rejecting", async () => {
+    const shape = documentShape("tables");
+    const base = await parseShapeDocument(await shape.build());
+    const state = createHarnessState(base, "suggesting");
+    const blocks: number[] = [];
+    state.doc.descendants((node, position) => {
+      if (node.isTextblock && node.content.size > 0) blocks.push(position + 1);
+      return true;
+    });
+    const [first = 0, second = 0] = blocks;
+    const before = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, first + 1, second + 2),
+      ),
+    );
+    const after = edited(before, EDITS[0] as Edit);
+    expect(summarizeState(resolveAllChanges(after, "reject"))).toEqual(
+      summarizeState(resolveAllChanges(before, "reject")),
+    );
+  });
+
+  test("a list marker typed over the whole document makes a list, as in editing", async () => {
+    const typeMarker = (before: EditorState) => {
+      const view = new HeadlessEditorView(before);
+      for (const character of "- ") {
+        dispatchEditorTextInput(view as never, character);
+      }
+      return view.state;
+    };
+    const paragraphs = (state: EditorState) => {
+      const found: { text: string; listed: boolean }[] = [];
+      state.doc.descendants((node) => {
+        if (node.isTextblock) {
+          found.push({
+            text: node.textContent,
+            listed: Boolean(node.attrs["numPr"]),
+          });
+        }
+        return true;
+      });
+      return found;
+    };
+    const before = await open("plain-markdown", "document", "suggesting");
+    const suggesting = typeMarker(before);
+    expect(paragraphs(resolveAllChanges(suggesting, "accept"))).toEqual(
+      paragraphs(
+        typeMarker(await open("plain-markdown", "document", "editing")),
+      ),
+    );
+    expect(summarizeState(resolveAllChanges(suggesting, "reject"))).toEqual(
+      summarizeState(resolveAllChanges(before, "reject")),
+    );
+  });
+
+  test("a list marker after the text a joined paragraph keeps stays text", async () => {
+    const before = await open(
+      "plain-markdown",
+      "cross-paragraph",
+      "suggesting",
+    );
+    const view = new HeadlessEditorView(before);
+    for (const character of "- ") {
+      dispatchEditorTextInput(view as never, character);
+    }
+    const joined = resolveAllChanges(view.state, "accept").doc.children.find(
+      (paragraph) => paragraph.textContent.includes("- "),
+    );
+    expect(joined).toBeDefined();
+    expect(joined?.attrs["numPr"] ?? null).toBeNull();
+  });
 
   test("the caret follows what replaced the selection", async () => {
     const before = await open(
