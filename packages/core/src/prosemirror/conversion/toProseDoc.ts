@@ -90,6 +90,7 @@ import type {
   Paragraph,
   ParagraphContent,
   ParagraphFormatting,
+  PositionedBookmarkMarker,
   PreservedAttribute,
   PreservedBlock,
   PreservedInline,
@@ -391,6 +392,28 @@ export const collectPairedBookmarkIds = (
     counts.set(id, count);
   };
 
+  const countMarkersWhere = (
+    markers: readonly PositionedBookmarkMarker[] | undefined,
+    stands: (index: number) => boolean,
+  ): void => {
+    for (const { index, marker } of markers ?? []) {
+      if (stands(index)) {
+        countBoundary(
+          marker.id,
+          marker.type === "bookmarkStart" ? "start" : "end",
+        );
+      }
+    }
+  };
+  const countMarkersAt = (
+    markers: readonly PositionedBookmarkMarker[] | undefined,
+    at: number,
+  ): void => countMarkersWhere(markers, (index) => index === at);
+  const countMarkersFrom = (
+    markers: readonly PositionedBookmarkMarker[] | undefined,
+    from: number,
+  ): void => countMarkersWhere(markers, (index) => index >= from);
+
   const visitRun = (run: Run): void => {
     for (const content of run.content) {
       if (content.type === "shape" && content.shape.textBody) {
@@ -512,23 +535,17 @@ export const collectPairedBookmarkIds = (
           // because either half of a pair may be one: Word writes a bookmark
           // that selects whole rows as a child of `w:tr`, and closes it inside
           // a cell's paragraph as often as it closes it on the row.
-          for (const { marker } of block.bookmarks ?? []) {
-            countBoundary(
-              marker.id,
-              marker.type === "bookmarkStart" ? "start" : "end",
-            );
-          }
-          for (const row of block.rows) {
-            for (const { marker } of row.bookmarks ?? []) {
-              countBoundary(
-                marker.id,
-                marker.type === "bookmarkStart" ? "start" : "end",
-              );
-            }
-            for (const cell of row.cells) {
+          // In document order, since a pair opens before it closes: each marker
+          // stands before the child its index names.
+          for (const [rowIndex, row] of block.rows.entries()) {
+            countMarkersAt(block.bookmarks, rowIndex);
+            for (const [cellIndex, cell] of row.cells.entries()) {
+              countMarkersAt(row.bookmarks, cellIndex);
               visitBlocks(cell.content);
             }
+            countMarkersFrom(row.bookmarks, row.cells.length);
           }
+          countMarkersFrom(block.bookmarks, block.rows.length);
           break;
         case "blockSdt":
         case "blockCustomXml":
