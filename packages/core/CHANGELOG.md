@@ -1,5 +1,91 @@
 # @stll/folio-core
 
+## 0.67.0
+
+### Minor Changes
+
+- [#2298](https://github.com/stella/folio/pull/2298) [`7c5b076`](https://github.com/stella/folio/commit/7c5b076d831d87d35fb9e6a22030bef203db5d2e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A `w:altChunk` is no longer invisible: the page shows a tinted, non-editable block with the chunk's own text when it has any, otherwise a localised "Content not displayed" marker, and saving still keeps the chunk byte for byte. `useDocxEditor` gains an `altChunkMarkerText` option carrying that marker, and `ParagraphBlock` gains `fixedPosition` for a block that exists only in layout.
+
+- [#2325](https://github.com/stella/folio/pull/2325) [`0aaa50f`](https://github.com/stella/folio/commit/0aaa50f3f5ca9461aa0ba9c1e619957e0060cd7c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The editor's row and column commands, and merge and split, now work on tables with short rows, `w:gridBefore` or `w:gridAfter`, and a tracked column deletion works through such a gap. A new column at a position a row omits grows the omission instead of adding a cell. A merge through an omitted position is refused.
+
+### Patch Changes
+
+- [#2309](https://github.com/stella/folio/pull/2309) [`7aa5627`](https://github.com/stella/folio/commit/7aa56272bdea5ff89bf6185dc61cddd130ffc236) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked batch that inserts a paragraph before a chain of merges, with a final deletion extending that chain, no longer gives the inserted paragraph the properties of a paragraph the chain joins away. Accepting matches the same edit made directly.
+
+- [#2318](https://github.com/stella/folio/pull/2318) [`3cdd786`](https://github.com/stella/folio/commit/3cdd7865096b0bd7ab5d275e72b6fbc11e43cd5f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With Track Changes on, cancelling an IME composition next to deleted text keeps that text deleted, whichever editor plugins wrote during the composition.
+
+- [#2289](https://github.com/stella/folio/pull/2289) [`cc84835`](https://github.com/stella/folio/commit/cc848351e138578102fad27dfa422ba48dc0d595) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A cancelled composition no longer stays painted on the page. A layout pass that ran while composing could draw the provisional text, and nothing repainted the page once the composition was cancelled or refused.
+
+- [#2304](https://github.com/stella/folio/pull/2304) [`1d6efad`](https://github.com/stella/folio/commit/1d6efad014c365eb1a42058391a780189926b0ae) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With Track Changes on, cancelling an IME composition leaves the document as it was. It used to record the paragraph's existing text as an insertion, so rejecting that change removed the text, leave part of the cancelled text in the document, or drop the revision of text typed earlier. A committed composition records only the text it added.
+
+- [#2331](https://github.com/stella/folio/pull/2331) [`5be1693`](https://github.com/stella/folio/commit/5be1693fe1fe01ca38006927874405695b0697ae) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A comment covering only a field now reports the field's result as its anchored text, including after a reopen. It reported an empty quote.
+
+- [#2327](https://github.com/stella/folio/pull/2327) [`37a1051`](https://github.com/stella/folio/commit/37a1051dea2fae53aa2ce106992d99acbd88bc1c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - In the canonical session, a composition over a selection that crosses paragraphs replaces the selection once, in the first paragraph, instead of being refused.
+
+- [#2292](https://github.com/stella/folio/pull/2292) [`329212a`](https://github.com/stella/folio/commit/329212a1ab538cb465dbd31d01203f5681ad8bf3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - In the canonical session, a composition at the boundary of two runs starts at the caret. The browser could start it at the beginning of the document, and the session then refused it.
+
+- [#2310](https://github.com/stella/folio/pull/2310) [`ca5dbbe`](https://github.com/stella/folio/commit/ca5dbbe73aa119cca0ab900989e10eccfd8fe545) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The canonical session no longer refuses a composition inside a tracked run because of how the browser's DOM reads that run back. The session keeps its own marks on commit, so only the composed text changes.
+
+- [#2299](https://github.com/stella/folio/pull/2299) [`760e536`](https://github.com/stella/folio/commit/760e5360eee7f08c76f910adff726949046a6483) Thanks [@jan-kubica](https://github.com/jan-kubica)! - In the canonical session, a composition beside a tracked change commits the text it ended with, once, at the caret. A cancelled one leaves nothing behind. The browser could restart such a composition part way through, which left its earlier text in the document.
+
+- [#2291](https://github.com/stella/folio/pull/2291) [`20f62aa`](https://github.com/stella/folio/commit/20f62aac7e10f4bb435073503cf80faca24c27fd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The canonical session accepts a composition beside a tracked change, a link or another non-inclusive mark when the browser's reading of the edit leaves that mark off the untouched text. The session keeps the mark on commit, so the document is unchanged apart from the composed text.
+
+- [#2305](https://github.com/stella/folio/pull/2305) [`7f2efe4`](https://github.com/stella/folio/commit/7f2efe4780d8eafbe7b2fe2226169a6f0515cbe1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - In the canonical session, a composition is no longer refused when the browser restarts it part way through, or when it starts at the beginning of a paragraph. It commits its final text once, at the caret.
+
+- [#2306](https://github.com/stella/folio/pull/2306) [`d43e6f2`](https://github.com/stella/folio/commit/d43e6f230a7f60b8f008d0e98a24ef5025de543a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Delete and Backspace beside a bookmark, comment range or other invisible inline marker reach the text, and keep the marker. They used to remove the marker alone, leaving the text and anything that links to it.
+
+- [#2338](https://github.com/stella/folio/pull/2338) [`67f6778`](https://github.com/stella/folio/commit/67f67785ac3bdfe5f6f6dde4452e2c30d5820938) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With Track Changes on, the editor's add-column, delete-row and delete-column commands now make tracked changes. They applied directly, so a deleted row or column left no revision to reject.
+
+- [#2335](https://github.com/stella/folio/pull/2335) [`3f6f904`](https://github.com/stella/folio/commit/3f6f9042f3b433c7cd893f5ae569592cee3ef47e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Importing `@stll/folio-core/prosemirror/extensions` before anything else from the package no longer throws.
+
+- [#2333](https://github.com/stella/folio/pull/2333) [`0577924`](https://github.com/stella/folio/commit/0577924790bb43c2c588c451f632a846db5110a5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Applying a hyperlink over a selection holding a field no longer removes the field and its result on save. The runs around the field are linked and the field stands between them.
+
+- [#2290](https://github.com/stella/folio/pull/2290) [`f573a5f`](https://github.com/stella/folio/commit/f573a5fffe1c52cba5e5f84d494112ed23ea4591) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Composing text beside a bookmark, comment range or other invisible inline marker no longer loses the marker. The default editor dropped it from the document, and the canonical session refused the composition.
+
+- [#2295](https://github.com/stella/folio/pull/2295) [`3c3db43`](https://github.com/stella/folio/commit/3c3db43cca9e9fde4bb0960422784652fcce363e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - In the canonical session, cancelling a composition over selected table cells no longer deletes their text. The composition was refused and the document restored, and then the browser's removal of the proposal landed on the restored cell selection.
+
+- [#2307](https://github.com/stella/folio/pull/2307) [`2c055ee`](https://github.com/stella/folio/commit/2c055ee70bdf9d76e9bd6f4172fa34754ed81e9b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - In the canonical session, Backspace at the start of a paragraph that begins with tracked-deleted text joins the paragraphs instead of being refused.
+
+- [#2329](https://github.com/stella/folio/pull/2329) [`65939fb`](https://github.com/stella/folio/commit/65939fb4aa8c67d3a8f7fdbdc8ac3077e1f7bef6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A save no longer rewrites relationships, `r:embed` attributes or content-type overrides that named nothing in the source package. Only a reference the save itself broke is repaired. A relationship to a part whose entry name keeps its URI escapes is no longer mistaken for a dangling one.
+
+- [#2330](https://github.com/stella/folio/pull/2330) [`71becb0`](https://github.com/stella/folio/commit/71becb01bf0efb3e3e8df3705120205c6526633e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked batch that formats a container's last paragraph and also deletes every paragraph now refuses the deletion of that paragraph, as a direct batch does. It used to report both as applied and lose the format on accept.
+
+- [#2296](https://github.com/stella/folio/pull/2296) [`13eb424`](https://github.com/stella/folio/commit/13eb42497c579ec4f1e33d1c81c2dc5b5055a012) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The default painter now draws chart and diagram previews, which it used to leave blank, and a chart with no drawable data keeps the height of its frame on both painters instead of collapsing and moving the text after it. Chart text (titles, axis labels and legends) is still not drawn.
+
+- [#2324](https://github.com/stella/folio/pull/2324) [`84da3e2`](https://github.com/stella/folio/commit/84da3e27d0f6b3fd5aca444319fbaa1ad66f0114) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A document whose main part is not named `word/document.xml`, as some producers write it, now opens with its text instead of blank. It is saved at the standard path, with the package's relationships and content types updated, so an edit lands in the part other applications read.
+
+- [#2336](https://github.com/stella/folio/pull/2336) [`11a7964`](https://github.com/stella/folio/commit/11a79646399353cc2b39cd6591013347ef285f55) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With Track Changes on, a modified Backspace at the start of a list item records the join of the two paragraphs, so rejecting restores them.
+
+- [#2323](https://github.com/stella/folio/pull/2323) [`ed1dd14`](https://github.com/stella/folio/commit/ed1dd14490c8b0f8715f5ea1a6858d8d9ea3f97c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A field whose result is in more than one format now behaves like one with a plain result. Deleting it with Track Changes on no longer stops the document saving, and replacing all of its result works. An edit that cuts into its result is refused rather than reporting applied and being lost on save.
+
+- [#2294](https://github.com/stella/folio/pull/2294) [`325b74b`](https://github.com/stella/folio/commit/325b74ba1e78b3a5bdb1dc22c96c6d0a1ba67c91) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A table nested in a cell now continues across pages between its own rows and lines, so rows of an inner table taller than a page are no longer clipped away. A page paints only the nested rows it shows, which also keeps a caret in a nested row on the page where that row appears.
+
+- [#2326](https://github.com/stella/folio/pull/2326) [`a2e883e`](https://github.com/stella/folio/commit/a2e883eb14601b9ef63591fa86ba6ba510b14102) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A comment anchored only by its `w:commentReference`, as a file holds when the text it covered was deleted, no longer disappears on the first edit to the document. It goes only when its reference does.
+
+- [#2320](https://github.com/stella/folio/pull/2320) [`27c7719`](https://github.com/stella/folio/commit/27c77196c54ddc071652fc744c487bf4df9a3d5f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rejecting a tracked inserted paragraph no longer leaves a blank one behind when it ended a content control after a table, followed a paragraph with a text box drawn in it, or followed a table that ended the body. Accepting a removed paragraph break on a paragraph with a text box now joins the two paragraphs.
+
+- [#2312](https://github.com/stella/folio/pull/2312) [`f99aff1`](https://github.com/stella/folio/commit/f99aff1481d8946ca14b687886f44d647543fe39) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Composing right-to-left text in a left-to-right paragraph no longer inserts it twice. The paragraph's direction now changes once the composition has ended, rather than during it, which also ended the composition early and, with Track Changes on, left later edits untracked.
+
+- [#2322](https://github.com/stella/folio/pull/2322) [`52c2ef4`](https://github.com/stella/folio/commit/52c2ef4ae3bfbb4159d93f2991d832dd2b6165d0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A document with a text box written with a fallback branch now saves after an edit that rewrites that text box. The save failed because the rewritten paragraphs used namespace prefixes the captured branches did not declare.
+
+- [#2319](https://github.com/stella/folio/pull/2319) [`2bddae9`](https://github.com/stella/folio/commit/2bddae930d5e86808b17c6826a90a6f420bb48de) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A table row that stops short of the table's width now stays as it is in the file. An edit anywhere in such a table added empty cells to the row, and could move the last row's text a column to the right, without a tracked change and without rejecting bringing it back; inserting a row could throw. Row and column edits now treat these positions like a declared `w:gridAfter`: a row left with no cells of its own is removed, including when a tracked column deletion is accepted. The editor's row, column, merge and split commands decline on such a table, as they do on one with a declared `w:gridAfter`.
+
+- [#2321](https://github.com/stella/folio/pull/2321) [`a8713ac`](https://github.com/stella/folio/commit/a8713aca89eabab9846e1558d55e518087f9ce3c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A bookmark between a table's rows or a row's cells keeps its place when rows or cells come and go. Removing the last row of a table holding one, or the last cell of such a row, made the document fail to save.
+
+- [#2337](https://github.com/stella/folio/pull/2337) [`80c4d27`](https://github.com/stella/folio/commit/80c4d279d8e7b4716936bb102bfdae147e8f031d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A document with a table row holding no cells, which the file format allows, now opens instead of failing with an invalid document model. Row and column edits elsewhere in the table leave such a row where it is.
+
+- [#2287](https://github.com/stella/folio/pull/2287) [`f617d91`](https://github.com/stella/folio/commit/f617d91e09cad2546c961c6a6c5e7d6698c95361) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Text next to a tracked change no longer picks up underline, strikethrough or a text color when a native edit makes the editor read its own DOM back. Those were how the review mark is drawn, not formatting of the text, and they stayed behind once the change was rejected.
+
+- [#2308](https://github.com/stella/folio/pull/2308) [`b6573f1`](https://github.com/stella/folio/commit/b6573f131f7b09af446306f311334e82b952355b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With Track Changes on, a paste beside deleted text keeps its structure. Pasted paragraphs no longer take the deleted paragraph's break, which joined them on accepting and left an empty paragraph on rejecting. Closed blocks land before the deleted text, and the caret follows a table to the text after it.
+
+- [#2314](https://github.com/stella/folio/pull/2314) [`f963670`](https://github.com/stella/folio/commit/f96367005f919875024b36120514669a54f10978) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With Track Changes on, closed paragraphs pasted after deleted text at the start of a paragraph that begins with a bookmark no longer leave an empty paragraph on accepting.
+
+- [#2334](https://github.com/stella/folio/pull/2334) [`b963afc`](https://github.com/stella/folio/commit/b963afc91b7e0bb893be2610599893da909ec966) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With Track Changes on, a key or command that replaces a selection across paragraphs now keeps the selected text as a tracked deletion, so rejecting restores it. This covers Tab, line break, page break, inserting a link or note, and the context menu's delete and paste as plain text.
+
+- [#2339](https://github.com/stella/folio/pull/2339) [`8e18a73`](https://github.com/stella/folio/commit/8e18a735d20aa682431fe82211466039df123d70) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With Track Changes on, a key replacing a selection from a paragraph into a table keeps the selected text as a tracked deletion. A list marker typed over a selection makes a list on accepting, as the direct edit does.
+- Updated dependencies [[`0577924`](https://github.com/stella/folio/commit/0577924790bb43c2c588c451f632a846db5110a5), [`80c4d27`](https://github.com/stella/folio/commit/80c4d279d8e7b4716936bb102bfdae147e8f031d)]:
+  - @stll/docx-core@0.42.1
+
 ## 0.66.2
 
 ### Patch Changes

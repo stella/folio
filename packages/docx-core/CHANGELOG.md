@@ -1,5 +1,13 @@
 # @stll/docx-core
 
+## 0.42.1
+
+### Patch Changes
+
+- [#2333](https://github.com/stella/folio/pull/2333) [`0577924`](https://github.com/stella/folio/commit/0577924790bb43c2c588c451f632a846db5110a5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Applying a hyperlink over a selection holding a field no longer removes the field and its result on save. The runs around the field are linked and the field stands between them.
+
+- [#2337](https://github.com/stella/folio/pull/2337) [`80c4d27`](https://github.com/stella/folio/commit/80c4d279d8e7b4716936bb102bfdae147e8f031d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A document with a table row holding no cells, which the file format allows, now opens instead of failing with an invalid document model. Row and column edits elsewhere in the table leave such a row where it is.
+
 ## 0.42.0
 
 ### Minor Changes
