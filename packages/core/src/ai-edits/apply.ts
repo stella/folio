@@ -1995,14 +1995,14 @@ const applyTrackedInlineFormattingToRanges = ({
     suggestionId === null ? {} : { provenance: "suggested", suggestionId };
   const revisionIds: number[] = [];
   // A field's result reads as the field: one change, however many runs hold it.
-  let fieldChange: { id: number; end: number } | null = null;
+  let fieldChange = null as { id: number; end: number } | null;
   for (const segment of segments) {
     const { representation } = segment;
-    const insideField =
+    const insideField: boolean =
       fieldChange !== null &&
       representation.role === "serialized-result" &&
       representation.position < fieldChange.end;
-    const revisionId =
+    const revisionId: number =
       insideField && fieldChange !== null
         ? fieldChange.id
         : revisionIdSeed + revisionIds.length;

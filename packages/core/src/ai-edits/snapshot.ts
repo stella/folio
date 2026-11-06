@@ -1329,7 +1329,7 @@ const getPreviewRuns = ({
       sameDirectFormatting(previous.directFormatting, directFormatting)
     ) {
       previous.text += text;
-      return false;
+      return;
     }
 
     runs.push({
