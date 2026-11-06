@@ -2090,6 +2090,12 @@ class CanonicalSession {
         transaction.doc.content.size,
         projected.value.doc.content,
       );
+    // The document node's own attributes hold what the last section starts with.
+    for (const [name, value] of Object.entries(projected.value.doc.attrs)) {
+      if (transaction.doc.attrs[name] !== value) {
+        transaction.setDocAttribute(name, value);
+      }
+    }
     if (
       sameStory(selection.anchor.story, projectedStory) &&
       sameStory(selection.head.story, projectedStory)

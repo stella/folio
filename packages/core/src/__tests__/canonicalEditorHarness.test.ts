@@ -526,3 +526,35 @@ for (const mode of ["editing", "suggesting"] as const) {
     }
   });
 }
+
+test.each(["cross-paragraph", "document"] as const)(
+  "a section break over a %s selection changes what the last section starts with, and undoes",
+  async (placement) => {
+    const shape = "plain-markdown";
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer(shape)),
+    );
+    const driver = createCanonicalEditorHarness(source, "editing");
+    try {
+      const placed = placeSelection(
+        driver.state,
+        documentShape(shape).focus,
+        placement,
+      );
+      if (!placed) throw new TypeError("Section fixture lost selection");
+      driver.dispatch(driver.state.tr.setSelection(placed.selection));
+      const before = driver.state.doc;
+      expect(
+        driver.execute(
+          singletonManager.requireCommand("insertSectionBreak")("continuous"),
+        ),
+      ).toBe(true);
+      expect(driver.refusals).toEqual([]);
+      expect(driver.state.doc.attrs["_finalSectionStart"]).toBe("continuous");
+      expect(driver.history.undo()).toBe(true);
+      expect(driver.state.doc.eq(before)).toBe(true);
+    } finally {
+      driver.dispose();
+    }
+  },
+);
