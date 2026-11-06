@@ -184,7 +184,7 @@ export const reconcileOmittedGridSlots = (
       else tr.setNodeAttribute(position, "colspan", next);
     }
   }
-  removeRowsWithoutCells(tr, tablePosition);
+  removeRowsWithoutCells(tr, tablePosition, previousTable);
 };
 
 /** Whether a batch of structural deletions may have emptied rows. */
@@ -322,12 +322,37 @@ export const removeRowsWithoutCellsInRange = ({
   for (const position of tables.toReversed()) removeBatchRows(tr, position);
 };
 
-/** Close all cell-less rows after an immediate structural edit. */
+/**
+ * Close the rows an immediate structural edit left without cells. A row written
+ * with none is no row this edit emptied, and it stays.
+ */
 export const removeRowsWithoutCells = (
   tr: Transaction,
   tablePosition: number,
+  previousTable: PMNode,
 ): void => {
-  removeEmptyRows({ tr, tablePosition, shouldRemove: () => true });
+  const table = tr.doc.nodeAt(tablePosition);
+  if (!table || table.type.spec["tableRole"] !== "table") return;
+  const emptied: number[] = [];
+  table.forEach((row, _offset, index) => {
+    const before = previousTable.maybeChild(index);
+    if (rowHoldsNoCells(row) && before && !rowHoldsNoCells(before)) {
+      emptied.push(index);
+    }
+  });
+  for (const rowIndex of emptied.toReversed()) {
+    const current = tr.doc.nodeAt(tablePosition);
+    if (!current || current.childCount < 2) return;
+    removeTableRow(
+      tr,
+      {
+        map: TableMap.get(current),
+        table: current,
+        tableStart: tablePosition + 1,
+      },
+      rowIndex,
+    );
+  }
 };
 
 type ReconcileTableGridAfterColumnRemovalOptions = {
@@ -593,6 +618,8 @@ export const removeTableColumns = (
   left: number,
   right: number,
 ): void => {
+  const previousTable = tr.doc.nodeAt(tablePosition);
+  if (!previousTable) return;
   for (let column = right - 1; column >= left; column--) {
     const table = tr.doc.nodeAt(tablePosition);
     if (!table || table.type.spec["tableRole"] !== "table") {
@@ -643,5 +670,5 @@ export const removeTableColumns = (
       removedColumn: column,
     });
   }
-  removeRowsWithoutCells(tr, tablePosition);
+  removeRowsWithoutCells(tr, tablePosition, previousTable);
 };
