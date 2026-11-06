@@ -219,13 +219,20 @@ export const FOOTNOTE_FALLBACK_LINE_HEIGHT = 13;
 // @public
 export const FOOTNOTE_SEPARATOR_HEIGHT = 12;
 
-// @public
+// @public (undocumented)
 export type FootnoteContent = {
     id: number;
     displayNumber: number;
     blocks: FlowBlock[];
     measures: Measure[];
     height: number;
+};
+
+// @public
+export type FootnoteWindow = {
+    noteId: number;
+    from: number;
+    to: number;
 };
 
 // @public
@@ -567,6 +574,7 @@ export type Page = {
     footnoteIds?: number[];
     endnoteIds?: number[];
     footnoteReservedHeight?: number;
+    footnoteWindows?: readonly FootnoteWindow[];
     noteSeparators?: NoteSeparatorRule[];
     columns?: ColumnLayout;
 };
