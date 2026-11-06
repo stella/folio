@@ -75,6 +75,19 @@ describe("a table with rows shorter than its width", () => {
     expect(map.map).not.toContain(0);
   });
 
+  test("lists no block for a position the row omits", async () => {
+    const reviewer = await open();
+    expect(reviewer.getContent().map(({ text }) => text)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "Tail",
+    ]);
+  });
+
   test("saves untouched rows as it found them", async () => {
     const reviewer = await open();
     expect(await savedRows(await reviewer.toBuffer())).toEqual(SOURCE);
