@@ -136,6 +136,8 @@ type BlockRole =
       paragraphsBefore: readonly ParagraphBefore[];
       /** Settled against the batch's other claims: see `retiresBreakBefore`. */
       retiresBreakBefore: boolean;
+      /** The batch deletes every paragraph before this one in its container. */
+      everyParagraphBeforeGoes: boolean;
     }
   /** The block a merge ends (`own`), or the one it pulls in (`next`). */
   | {
@@ -167,6 +169,7 @@ const blockRolesOf = (
             endsContainer: claim.endsContainer,
             paragraphsBefore: claim.paragraphsBefore,
             retiresBreakBefore: false,
+            everyParagraphBeforeGoes: false,
           },
         },
       ];
@@ -257,11 +260,15 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
         // stays emptied is still a paragraph to format; one that goes into
         // the paragraph before (applied directly, or tracked through the
         // break the deletion retires) takes that one's properties, which a
-        // format of it would contradict.
+        // format of it would contradict. So does one left by deleting every
+        // paragraph before it too: a direct batch refuses that deletion, and
+        // accepting a tracked one would lose the format.
         case "paragraphProperties":
           return (
             left.endsContainer &&
-            (!left.keepsParagraph || left.retiresBreakBefore)
+            (!left.keepsParagraph ||
+              left.retiresBreakBefore ||
+              left.everyParagraphBeforeGoes)
           );
         // A merge into the deleted block joins across it, in either mode, as
         // one at a time: tracked, across its deleted mark; applied directly,
@@ -416,7 +423,17 @@ export class BatchClaims {
   /** `role` with what it takes from the batch's other claims settled. */
   private settled(role: BlockRole): BlockRole {
     return role.kind === "deleteBlock"
-      ? { ...role, retiresBreakBefore: this.retiresBreakBefore(role) }
+      ? {
+          ...role,
+          retiresBreakBefore: this.retiresBreakBefore(role),
+          everyParagraphBeforeGoes:
+            role.paragraphsBefore.length > 0 &&
+            role.paragraphsBefore.every(({ block }) =>
+              (this.blocks.get(block) ?? []).some(
+                (entry) => entry.role.kind === "deleteBlock",
+              ),
+            ),
+        }
       : role;
   }
 
