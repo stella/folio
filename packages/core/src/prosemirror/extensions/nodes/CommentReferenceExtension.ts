@@ -68,11 +68,14 @@ export const CommentReferenceExtension: (
   onSchemaReady: () => ({
     plugins: [
       new Plugin({
-        appendTransaction(transactions, _oldState, newState) {
+        appendTransaction(transactions, oldState, newState) {
           if (!transactions.some(({ docChanged }) => docChanged)) {
             return null;
           }
-          const resolution = resolveCommentReferences(newState.doc);
+          const resolution = resolveCommentReferences(
+            newState.doc,
+            oldState.doc,
+          );
           if (!resolution) return null;
           const transaction = newState.tr;
           for (const step of resolution.steps) transaction.step(step);
