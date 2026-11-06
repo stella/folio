@@ -114,12 +114,27 @@ const hasOmittedGridSlots = (table: PMNode): boolean => {
   return found;
 };
 
+/**
+ * A merged cell cannot run through a position a row omits, nor is that position
+ * a cell to split: the file has nothing there to hold either.
+ */
 const preserveOmittedGridSlots =
   (command: Command): Command =>
   (state, dispatch, view) => {
     const { table } = getTableContext(state);
     if (table && hasOmittedGridSlots(table)) {
-      return false;
+      const rect = selectedRect(state);
+      const touched = rect.map.cellsInRect(rect);
+      if (
+        touched.some((position) =>
+          isOmittedGridSlot(
+            expectTableCellAttrs(rect.table.nodeAt(position) ?? table)
+              ._omittedGridSlot,
+          ),
+        )
+      ) {
+        return false;
+      }
     }
     return command(state, dispatch, view);
   };
@@ -1433,8 +1448,7 @@ export const TablePluginExtension: (
         !context.isInTable ||
         context.rowIndex === undefined ||
         !context.table ||
-        context.tablePos === undefined ||
-        hasOmittedGridSlots(context.table)
+        context.tablePos === undefined
       ) {
         return false;
       }
@@ -1482,11 +1496,18 @@ export const TablePluginExtension: (
         }
         const templatePos = below ?? above;
         // A colspan cell reports the same position for every column it covers.
-        if (templatePos === undefined || templatePos === lastTemplatePos) {
+        const templateCell =
+          templatePos === undefined ? null : table.nodeAt(templatePos);
+        // A new row has a cell in every column, a row's omissions being its own.
+        const omitted = templateCell?.attrs["_omittedGridSlot"] != null;
+        if (
+          templatePos === undefined ||
+          (!omitted && templatePos === lastTemplatePos)
+        ) {
           continue;
         }
         lastTemplatePos = templatePos;
-        const template = table.nodeAt(templatePos);
+        const template = omitted ? null : templateCell;
         cells.push(
           (template?.type ?? tableNodeTypes(state.schema).cell).create(
             buildCellAttrsFromTemplate(template),
@@ -1541,9 +1562,6 @@ export const TablePluginExtension: (
         !context.table ||
         context.tablePos === undefined
       ) {
-        return false;
-      }
-      if (hasOmittedGridSlots(context.table)) {
         return false;
       }
       const tablePos = context.tablePos;
@@ -1630,8 +1648,7 @@ export const TablePluginExtension: (
         !context.isInTable ||
         context.columnIndex === undefined ||
         !context.table ||
-        context.tablePos === undefined ||
-        hasOmittedGridSlots(context.table)
+        context.tablePos === undefined
       ) {
         return false;
       }
@@ -1692,8 +1709,7 @@ export const TablePluginExtension: (
         context.columnIndex === undefined ||
         !context.table ||
         context.tablePos === undefined ||
-        (context.columnCount ?? 0) <= 1 ||
-        hasOmittedGridSlots(context.table)
+        (context.columnCount ?? 0) <= 1
       ) {
         return false;
       }

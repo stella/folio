@@ -149,17 +149,6 @@ describe("a table with rows shorter than its width", () => {
     ]);
   });
 
-  test("merges cells past a short row", async () => {
-    const reviewer = await open();
-    const result = apply(reviewer, "direct", {
-      type: "mergeTableCells",
-      blockId: block("3"),
-      endBlockId: block("6"),
-    });
-    expect(result.applied).toHaveLength(1);
-    await reviewer.toBuffer();
-  });
-
   describe("losing the only cell a row has", () => {
     const EXPECTED = [["2", "3"], ["6"]];
 
