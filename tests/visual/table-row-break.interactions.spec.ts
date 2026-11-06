@@ -100,6 +100,60 @@ for (const [painter, url] of [
       timeout: 30_000,
     });
     const painted = await paintedLines(page);
+    const dbg = await page.evaluate(() => {
+      const out: unknown[] = [];
+      const pages = [...document.querySelectorAll<HTMLElement>(".layout-page")];
+      for (const [index, pageElement] of pages.entries()) {
+        const pageBox = pageElement.getBoundingClientRect();
+        const walker = document.createTreeWalker(
+          pageElement,
+          NodeFilter.SHOW_TEXT,
+        );
+        const rows: unknown[] = [];
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const text = (node.textContent ?? "").trim();
+          if (!/^[AB]\d{3}$/u.test(text)) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const box = range.getBoundingClientRect();
+          const clips: number[][] = [];
+          for (
+            let owner = node.parentElement;
+            owner && owner !== pageElement;
+            owner = owner.parentElement
+          ) {
+            if (getComputedStyle(owner).overflowY === "visible") continue;
+            const c = owner.getBoundingClientRect();
+            clips.push([
+              Math.round((c.top - pageBox.top) * 100) / 100,
+              Math.round((c.bottom - pageBox.top) * 100) / 100,
+            ]);
+          }
+          rows.push([
+            text,
+            Math.round((box.top - pageBox.top) * 100) / 100,
+            Math.round((box.bottom - pageBox.top) * 100) / 100,
+            clips,
+          ]);
+        }
+        const wanted = rows as [string, number, number, number[][]][];
+        const firstA = wanted
+          .filter((r) => r[0].startsWith("A"))
+          .filter((r, _i, all) => {
+            const clip = r[3][0];
+            return clip
+              ? r[1] >= clip[0] - 0.5 && r[2] <= (clip[1] ?? 0) + 0.5
+              : true;
+          });
+        out.push({
+          page: index,
+          h: pageBox.height,
+          A: [firstA[0], firstA[1], firstA.at(-2), firstA.at(-1)],
+        });
+      }
+      return out;
+    });
+    console.log("ZZPAGES", JSON.stringify(dbg));
     expect(new Set(painted.map(({ page: at }) => at)).size).toBeGreaterThan(1);
     const expected = [
       ...Array.from(
