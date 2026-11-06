@@ -19,6 +19,8 @@ import {
   saveHarnessState,
 } from "../__tests__/editorHarness";
 import { createDocx } from "../docx/rezip";
+import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
+import type { FlowBlock } from "../layout-engine/types";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
@@ -467,5 +469,69 @@ describe("the editor's merge and split on a table with short rows", () => {
   test("refuses to merge through what a row omits", async () => {
     const { selected } = await stateWithCells("c", "f");
     expect(run(selected, "mergeCells").handled).toBe(false);
+  });
+});
+
+describe("what a row omits, as layout reads it after a column edit", () => {
+  const rowsOf = (table: FlowBlock | undefined) => {
+    if (table?.kind !== "table") throw new TypeError("Expected a table");
+    return table.rows.map(({ gridBefore, gridAfter }) => ({
+      gridBefore,
+      gridAfter,
+    }));
+  };
+
+  const insertColumnRightOfFirstCell = async (rows: readonly RowShape[]) => {
+    const base = await parseShapeDocument(
+      new Uint8Array(await docxOf(3, rows)),
+    );
+    const state = createHarnessState(base, "editing");
+    let first = -1;
+    state.doc.descendants((node, position) => {
+      if (first < 0 && node.isTextblock && node.content.size > 0) {
+        first = position + 1;
+      }
+      return first < 0;
+    });
+    const placed = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, first)),
+    );
+    const factory = harnessManager().getCommand("addColumnRight");
+    if (!factory) throw new Error("Missing command: addColumnRight");
+    let next = placed;
+    expect(
+      factory()(placed, (tr: Transaction) => {
+        next = placed.apply(tr);
+      }),
+    ).toBe(true);
+    return rowsOf(toFlowBlocks(next.doc).at(0));
+  };
+
+  test("a column inserted among what rows omit moves their cells with it", async () => {
+    expect(
+      await insertColumnRightOfFirstCell([
+        { cells: ["AAA", "BBB", "CCC"] },
+        { cells: ["DDD"], before: 2 },
+        { cells: ["EEE", "FFF"], before: 1 },
+      ]),
+    ).toEqual([
+      { gridBefore: undefined, gridAfter: undefined },
+      { gridBefore: 3, gridAfter: undefined },
+      { gridBefore: 1, gridAfter: undefined },
+    ]);
+  });
+
+  test("a column inserted among what rows omit after their cells keeps them there", async () => {
+    expect(
+      await insertColumnRightOfFirstCell([
+        { cells: ["AAA", "BBB", "CCC"] },
+        { cells: ["DDD"], after: 2 },
+        { cells: ["EEE", "FFF"], after: 1 },
+      ]),
+    ).toEqual([
+      { gridBefore: undefined, gridAfter: undefined },
+      { gridBefore: undefined, gridAfter: 2 },
+      { gridBefore: undefined, gridAfter: 1 },
+    ]);
   });
 });
