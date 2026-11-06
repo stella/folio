@@ -723,6 +723,64 @@ const isBrowserShape = (
 
 test.describe("pinned browser input", () => {
   test.setTimeout(60_000);
+  for (const shape of [
+    "plain-markdown",
+    "single-bullet-list",
+    "bare-package",
+  ] as const) {
+    for (const [name, keys] of [
+      ["within a line", ["Shift+End"]],
+      ["across paragraphs", ["Shift+ArrowDown", "Shift+End"]],
+      [
+        "across three paragraphs",
+        ["Shift+ArrowDown", "Shift+ArrowDown", "Shift+End"],
+      ],
+    ] as const) {
+      test(
+        `lab select then type ${shape} ${name}`,
+        { tag: PINNED_BROWSER_INPUT_TAG },
+        async ({ page }) => {
+          const source = await shapeArrayBuffer(shape);
+          const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+          const results: Record<string, unknown> = {};
+          for (const suggesting of [false, true]) {
+            const loaded = await load({
+              page,
+              bytes: source,
+              baseline,
+              suggesting,
+              authority: "prosemirror",
+            });
+            if (loaded.type === "activationRefused")
+              throw new TypeError("refused");
+            await page.keyboard.press("ControlOrMeta+Home");
+            await page.keyboard.press("ArrowRight");
+            for (const key of keys) await page.keyboard.press(key);
+            await page.keyboard.type("ZQ");
+            await page.waitForTimeout(350);
+            const buffer = await save(page);
+            const reopened = await reopenSaved(buffer);
+            const accepting = await FolioDocxReviewer.fromBuffer(buffer);
+            accepting.acceptAll();
+            const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
+            rejecting.rejectAll();
+            results[suggesting ? "tracked" : "direct"] = {
+              text: reopened.getContent().map(({ text }) => text),
+              changes: reopened
+                .getChanges()
+                .map(({ type, text }) => [type, (text ?? "").slice(0, 30)]),
+              accepted: accepting.getContent().map(({ text }) => text),
+              rejected: rejecting.getContent().map(({ text }) => text),
+            };
+          }
+          console.log(
+            `ZZLAB ${JSON.stringify({ shape, name, source: baseline.map((b: { text?: string }) => b.text), ...results })}`,
+          );
+        },
+      );
+    }
+  }
+
   for (const regression of BROWSER_INPUT_REGRESSIONS) {
     const { seed, path, fingerprint, trace } = regression;
     test(
