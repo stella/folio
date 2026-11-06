@@ -11,8 +11,7 @@
 
 import { Plugin } from "prosemirror-state";
 
-// oxlint-disable-next-line import/no-cycle -- runtime-only: singletonManager consumed inside the handlers, not at module load
-import { singletonManager } from "../../schema";
+import { setParagraphDirection } from "../core/ParagraphExtension";
 import { createExtension } from "../create";
 import { Priority } from "../types";
 import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
@@ -42,10 +41,7 @@ export const BidiShortcutExtension: (
                 if (!direction) {
                   return false;
                 }
-                const cmds = singletonManager.getCommands();
-                const command =
-                  direction === "ltr" ? cmds["setLtr"] : cmds["setRtl"];
-                command?.()(view.state, view.dispatch);
+                setParagraphDirection(direction)(view.state, view.dispatch);
                 return false;
               },
             },
