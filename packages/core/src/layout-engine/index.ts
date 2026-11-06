@@ -7,6 +7,7 @@
 import { panic } from "better-result";
 
 import { reflowFootnoteColumns } from "./footnoteColumnReflow";
+import { footnoteReservationHeights } from "./footnoteContinuation";
 import { layoutImage } from "./imageLayout";
 import {
   calculateChainHeight,
@@ -288,6 +289,16 @@ function layoutDocumentPass(
   let activeSectionMarginTop = initialConfig.margins.top;
   let activeSectionPageHeight = initialConfig.pageSize.h;
   let activeSectionMarginBottom = initialConfig.margins.bottom;
+  const noteHeightsForActiveSection = () =>
+    options.footnoteHeightById && options.footnoteContinuation
+      ? footnoteReservationHeights(
+          options.footnoteHeightById,
+          activeSectionPageHeight -
+            activeSectionMarginTop -
+            activeSectionMarginBottom,
+        )
+      : options.footnoteHeightById;
+  let footnoteHeightById = noteHeightsForActiveSection();
   let renderedBreakState = INITIAL_RENDERED_BREAK_STATE;
   const noteAreaContinuation = createNoteAreaContinuation(
     options.noteAreas,
@@ -374,7 +385,7 @@ function layoutDocumentPass(
           measure: measure as ParagraphMeasure,
           paginator,
           contentWidth: paginator.columnWidth,
-          footnoteHeightById: options.footnoteHeightById,
+          footnoteHeightById,
           suppressSpaceBefore:
             breakDecision.suppressSpaceBefore ||
             suppressDocumentStartAutomaticSpaceBefore,
@@ -394,7 +405,7 @@ function layoutDocumentPass(
             block,
             measure as TableMeasure,
             paginator,
-            options.footnoteHeightById,
+            footnoteHeightById,
           );
         }
         break;
@@ -469,6 +480,7 @@ function layoutDocumentPass(
         activeSectionMarginTop = nextSectionConfig.margins.top;
         activeSectionPageHeight = nextSectionConfig.pageSize.h;
         activeSectionMarginBottom = nextSectionConfig.margins.bottom;
+        footnoteHeightById = noteHeightsForActiveSection();
         sectionIdx++;
         break;
       }
@@ -490,6 +502,14 @@ function layoutDocumentPass(
   // Ensure at least one page exists
   if (paginator.states.length === 0) {
     paginator.getCurrentState();
+  }
+
+  for (
+    let added = 0;
+    added < (options.footnoteContinuation?.trailingPages ?? 0);
+    added += 1
+  ) {
+    paginator.forcePageBreak();
   }
 
   return {

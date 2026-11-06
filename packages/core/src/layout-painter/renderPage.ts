@@ -41,6 +41,7 @@ import {
 import type {
   FlowBlock,
   FootnoteContent,
+  FootnoteWindow,
   Fragment,
   HeaderFooterContent,
   ImageBlock,
@@ -211,6 +212,13 @@ export const getDefaultPageFontFamily = (): string =>
 // build it without importing across the layer boundary. Re-exported here
 // for back-compat with callers that imported it from this module.
 export type { HeaderFooterContent } from "../layout-engine/types";
+
+/** The part of a note a page shows, when the note continues across pages. */
+const windowOfNote = (
+  windows: readonly FootnoteWindow[] | undefined,
+  noteId: number | undefined,
+): FootnoteWindow | undefined =>
+  windows?.find((candidate) => candidate.noteId === noteId);
 
 /**
  * A single footnote item ready for rendering at page bottom.
@@ -1461,12 +1469,14 @@ function isPositionedHeaderFooterTextBoxBlock(block: TextBoxBlock): boolean {
  */
 export function calculateFootnoteAreaRenderHeight(
   footnotes: FootnoteRenderItem[],
+  windows?: readonly FootnoteWindow[],
 ): number {
   let height = FOOTNOTE_SEPARATOR_HEIGHT;
   for (const fn of footnotes) {
-    const entryHeight = fn.content
-      ? fn.content.height
-      : FOOTNOTE_FALLBACK_LINE_HEIGHT;
+    const noteWindow = windowOfNote(windows, fn.noteId);
+    const entryHeight = noteWindow
+      ? noteWindow.to - noteWindow.from
+      : (fn.content?.height ?? FOOTNOTE_FALLBACK_LINE_HEIGHT);
     height += entryHeight + FOOTNOTE_ENTRY_MARGIN_BOTTOM;
   }
   return height;
@@ -1509,6 +1519,7 @@ export function renderFootnoteArea(
   contentWidth: number,
   doc: Document,
   context?: RenderContext,
+  windows?: readonly FootnoteWindow[],
 ): HTMLElement {
   const container = doc.createElement("div");
   container.className = "layout-footnote-area";
@@ -1539,7 +1550,13 @@ export function renderFootnoteArea(
     fnEl.style.color = "var(--doc-canvas-text, #000)";
 
     if (fn.content) {
-      const contentEl = renderFootnoteContent(fn, contentWidth, doc, context);
+      const contentEl = renderFootnoteContent(
+        fn,
+        contentWidth,
+        doc,
+        context,
+        windowOfNote(windows, fn.noteId),
+      );
       fnEl.append(contentEl);
     } else {
       fnEl.style.fontSize = "10px";
@@ -1566,6 +1583,7 @@ function renderFootnoteContent(
   contentWidth: number,
   doc: Document,
   context?: RenderContext,
+  noteWindow?: FootnoteWindow,
 ): HTMLElement {
   const content = footnote.content;
   if (!content) {
@@ -1577,6 +1595,17 @@ function renderFootnoteContent(
   wrapper.style.position = "relative";
   wrapper.style.width = `${contentWidth}px`;
   wrapper.style.height = `${content.height}px`;
+  const shown = noteWindow ? doc.createElement("div") : wrapper;
+  if (noteWindow) {
+    // The whole note is laid out; this page shows the band between two lines.
+    shown.className = "layout-footnote-window";
+    shown.style.position = "relative";
+    shown.style.overflow = "hidden";
+    shown.style.width = `${contentWidth}px`;
+    shown.style.height = `${noteWindow.to - noteWindow.from}px`;
+    wrapper.style.top = `${-noteWindow.from}px`;
+    shown.append(wrapper);
+  }
 
   const renderContext: RenderContext = {
     pageNumber: context?.pageNumber ?? 0,
@@ -1614,7 +1643,7 @@ function renderFootnoteContent(
     y += getFootnoteMeasureHeight(measure);
   }
 
-  return wrapper;
+  return shown;
 }
 
 function renderFootnoteBlock(
@@ -2239,6 +2268,7 @@ export function renderPage(
       contentWidth,
       doc,
       context,
+      page.footnoteWindows,
     );
     fnAreaEl.style.position = "absolute";
     // Position at page bottom minus bottom margin (bottom of content
@@ -2250,7 +2280,10 @@ export function renderPage(
     // eigenpal/docx-editor#485.
     const reservedHeight = Math.max(
       page.footnoteReservedHeight ?? 0,
-      calculateFootnoteAreaRenderHeight(options.footnoteArea),
+      calculateFootnoteAreaRenderHeight(
+        options.footnoteArea,
+        page.footnoteWindows,
+      ),
     );
     const contentAreaBottom =
       page.size.h - page.margins.bottom - page.margins.top;
@@ -2737,18 +2770,22 @@ type PageContainer = {
 export function computePageFingerprint(
   page: Page,
   blockLookup?: BlockLookup,
+  footnotes?: readonly FootnoteRenderItem[],
 ): string {
   return computePageFingerprintInternal(page, blockLookup, {
     includePmPositions: true,
+    footnotes,
   });
 }
 
 function computePageRenderFingerprint(
   page: Page,
   blockLookup?: BlockLookup,
+  footnotes?: readonly FootnoteRenderItem[],
 ): string {
   return computePageFingerprintInternal(page, blockLookup, {
     includePmPositions: false,
+    footnotes,
   });
 }
 
@@ -2765,7 +2802,10 @@ const pageMarginsFingerprint = (margins: PageMargins): string =>
 function computePageFingerprintInternal(
   page: Page,
   blockLookup: BlockLookup | undefined,
-  options: { includePmPositions: boolean },
+  options: {
+    includePmPositions: boolean;
+    footnotes: readonly FootnoteRenderItem[] | undefined;
+  },
 ): string {
   const parts: string[] = [];
 
@@ -2788,6 +2828,21 @@ function computePageFingerprintInternal(
   }
   if (page.footnoteReservedHeight) {
     parts.push(`fn:${page.footnoteReservedHeight}`);
+    if (page.footnoteWindows) {
+      parts.push(`fnw:${JSON.stringify(page.footnoteWindows)}`);
+    }
+  }
+  // A note's text can change with its height, and so its page, staying the same.
+  for (const note of options.footnotes ?? []) {
+    parts.push(
+      `fnc:${note.noteId ?? ""},${note.displayNumber},${note.text ?? ""}`,
+    );
+    for (const block of note.content?.blocks ?? []) {
+      parts.push(
+        computeContentFingerprint(block),
+        computeAnnotationFingerprint(block, false),
+      );
+    }
   }
 
   // Each fragment's stable properties
@@ -3372,7 +3427,12 @@ export function renderPages(
         continue;
       }
 
-      const newFp = computePageFingerprint(page, options.blockLookup);
+      const pageFootnotes = options.footnotesByPage?.get(page.number);
+      const newFp = computePageFingerprint(
+        page,
+        options.blockLookup,
+        pageFootnotes,
+      );
 
       if (
         prev.fingerprint === newFp &&
@@ -3410,6 +3470,7 @@ export function renderPages(
       const newRenderFp = computePageRenderFingerprint(
         page,
         options.blockLookup,
+        pageFootnotes,
       );
 
       const renderChanged = prev.renderFingerprint !== newRenderFp;
@@ -4051,13 +4112,16 @@ function syncPageShellFingerprints(
     return;
   }
 
+  const pageFootnotes = options.footnotesByPage?.get(data.page.number);
   pageState.fingerprint = computePageFingerprint(
     data.page,
     options.blockLookup,
+    pageFootnotes,
   );
   pageState.renderFingerprint = computePageRenderFingerprint(
     data.page,
     options.blockLookup,
+    pageFootnotes,
   );
 }
 

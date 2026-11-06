@@ -34,6 +34,7 @@ import {
   renderFootnoteArea,
   renderPage,
 } from "./renderPage";
+import type { FootnoteRenderItem } from "./renderPage";
 import { PARAGRAPH_CLASS_NAMES } from "./renderParagraph";
 
 describe("floating table wrap zones", () => {
@@ -312,6 +313,28 @@ function textBoxMeasure(width: number, height: number): TextBoxMeasure {
 }
 
 describe("render page fingerprint", () => {
+  test("changes when a note on the page changes with the same height", () => {
+    const noteWith = (text: string): FootnoteRenderItem => ({
+      noteId: 1,
+      displayNumber: "1",
+      content: {
+        blocks: [
+          {
+            kind: "paragraph",
+            id: "note",
+            runs: [{ kind: "text", text }],
+            attrs: {},
+          },
+        ],
+        measures: [],
+        height: 20,
+      },
+    });
+    expect(computePageFingerprint(page, undefined, [noteWith("one")])).not.toBe(
+      computePageFingerprint(page, undefined, [noteWith("two")]),
+    );
+  });
+
   test("changes when the authored page number changes", () => {
     expect(computePageFingerprint(page)).not.toBe(
       computePageFingerprint({ ...page, logicalNumber: 13 }),

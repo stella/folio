@@ -57,6 +57,11 @@ import { getColumns } from "../layout-bridge/sectionColumns";
 import { layoutDocument } from "../layout-engine";
 import type { ColumnLayout, SectionLayoutConfig } from "../layout-engine";
 import { resolveAnchorLayoutInCellCompatibility } from "../layout-engine/anchorLayoutInCellCompatibility";
+import {
+  applyFootnoteContinuation,
+  footnoteContinuationSettled,
+  planFootnoteContinuation,
+} from "../layout-engine/footnoteContinuation";
 import { resolveJustificationCompatibility } from "../layout-engine/justificationCompatibility";
 import {
   recordLayoutComplete,
@@ -133,6 +138,8 @@ import type {
   LayoutSession,
   LayoutTemplatePreview,
 } from "./layoutSession";
+
+const MAX_FOOTNOTE_CONTINUATION_ROUNDS = 4;
 
 const formatEndnoteTexts = (
   numbers: ReadonlyMap<number, number>,
@@ -1128,6 +1135,33 @@ function runLayoutPipelineMeasured<THfPMs>(
       });
     };
 
+    const withFootnoteHeights = (
+      nextLayoutOpts: Parameters<typeof layoutDocument>[2],
+    ): Parameters<typeof layoutDocument>[2] => {
+      if (!hasFootnotes) {
+        return nextLayoutOpts;
+      }
+      // Any per-fn wrapper margin applied by the painter is reserved
+      // alongside content height. The value is zero for Word-like footnote
+      // spacing; source paragraph spacing inside each note carries the
+      // visible gaps. The layout engine adds the divider's height once per
+      // fn-bearing page (in paginator.addFootnoteHeight).
+      const footnoteHeightById = new Map<number, number>();
+      for (const [id, content] of footnoteContentMap) {
+        footnoteHeightById.set(
+          id,
+          content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+        );
+      }
+      return {
+        ...nextLayoutOpts,
+        footnoteHeightById,
+        footnoteContinuation: nextLayoutOpts.footnoteContinuation ?? {
+          trailingPages: 0,
+        },
+      };
+    };
+
     // Step 3: Layout blocks onto pages (two-pass if footnotes exist)
     phaseStartedAt = performance.now();
     let newLayout: Layout;
@@ -1207,22 +1241,7 @@ function runLayoutPipelineMeasured<THfPMs>(
         buildNoteOptions(),
       );
 
-      const footnoteHeightById = new Map<number, number>();
-      // Any per-fn wrapper margin applied by the painter is reserved
-      // alongside content height. The value is zero for Word-like footnote
-      // spacing; source paragraph spacing inside each note carries the
-      // visible gaps.
-      for (const [id, content] of footnoteContentMap) {
-        footnoteHeightById.set(
-          id,
-          content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
-        );
-      }
-      // Note: the layout engine adds the divider's height once per
-      // fn-bearing page (in paginator.addFootnoteHeight); we pass per-fn
-      // content plus any wrapper margin here.
-
-      layoutOptsUsed = { ...layoutOpts, footnoteHeightById };
+      layoutOptsUsed = withFootnoteHeights(layoutOpts);
       newLayout = layoutWithNoteAreas(newMeasures, layoutOptsUsed);
 
       // The layout engine assigned `page.footnoteIds` line-by-
@@ -1250,22 +1269,6 @@ function runLayoutPipelineMeasured<THfPMs>(
           pageFootnoteMap.set(page.number, page.footnoteIds);
         }
       }
-    };
-
-    const withFootnoteHeights = (
-      nextLayoutOpts: Parameters<typeof layoutDocument>[2],
-    ): Parameters<typeof layoutDocument>[2] => {
-      if (!hasFootnotes) {
-        return nextLayoutOpts;
-      }
-      const footnoteHeightById = new Map<number, number>();
-      for (const [id, content] of footnoteContentMap) {
-        footnoteHeightById.set(
-          id,
-          content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
-        );
-      }
-      return { ...nextLayoutOpts, footnoteHeightById };
     };
 
     const relayoutWithCurrentMeasures = (
@@ -1359,6 +1362,65 @@ function runLayoutPipelineMeasured<THfPMs>(
     // (typing) path to keep keystrokes cheap.
     let stabilizedFieldValues: Map<number, string> | undefined;
     stabilizeFieldWidths();
+
+    if (hasFootnotes) {
+      const usedTrailingPages = () =>
+        layoutOptsUsed.footnoteContinuation?.trailingPages ?? 0;
+      const planContinuation = () =>
+        planFootnoteContinuation({
+          pages: newLayout.pages,
+          contentById: footnoteContentMap,
+          trailingPages: usedTrailingPages(),
+        });
+      // Fields are measured against the page count, which the new layout changes.
+      const relayoutFor = (
+        reservedHeights: Map<number, number> | undefined,
+        trailingPages: number,
+      ) => {
+        relayoutWithCurrentMeasures({
+          ...layoutOptsUsed,
+          ...(reservedHeights === undefined
+            ? {}
+            : { footnoteReservedHeights: reservedHeights }),
+          footnoteContinuation: { trailingPages },
+        });
+        stabilizeFieldWidths();
+      };
+      // A re-layout can move a reference, so the reservations settle over a few
+      // rounds; the last plan is applied however far they got.
+      let continuation = planContinuation();
+      for (
+        let round = 0;
+        round < MAX_FOOTNOTE_CONTINUATION_ROUNDS &&
+        !footnoteContinuationSettled(
+          {
+            reservedHeights: layoutOptsUsed.footnoteReservedHeights,
+            trailingPages: usedTrailingPages(),
+          },
+          continuation,
+        );
+        round += 1
+      ) {
+        relayoutFor(continuation.reservedHeights, continuation.trailingPages);
+        continuation = planContinuation();
+      }
+      // Whatever the rounds left, every line of every note has a page: with the
+      // reservations held, more pages only extend the end of the document.
+      while (continuation.extraPages > 0) {
+        relayoutFor(
+          layoutOptsUsed.footnoteReservedHeights,
+          continuation.trailingPages,
+        );
+        continuation = planContinuation();
+      }
+      if (continuation.pages.size > 0) {
+        newLayout = {
+          ...newLayout,
+          pages: applyFootnoteContinuation(newLayout.pages, continuation),
+        };
+        rebuildFootnotePageMap();
+      }
+    }
 
     newLayout = attachAuthoredMarginsToLayoutPages(newLayout, {
       authoredMargins: margins,
