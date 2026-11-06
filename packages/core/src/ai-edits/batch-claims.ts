@@ -254,14 +254,17 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
         // A property edit of the block runs before its deletion
         // (`orderAddressingBeforeRemoval`) and formats a paragraph that then
         // goes. A container's last paragraph keeps its own rules: one that
-        // stays emptied is still a paragraph to format; one that goes into
-        // the paragraph before (applied directly, or tracked through the
-        // break the deletion retires) takes that one's properties, which a
-        // format of it would contradict.
+        // stays emptied is still a paragraph to format; one with a paragraph
+        // before it goes into that one and takes its properties, which a
+        // format of it would contradict. That holds in both modes and whatever
+        // else the batch deletes, so a tracked batch refuses what a direct one
+        // does rather than reporting a format the result then lacks.
         case "paragraphProperties":
           return (
             left.endsContainer &&
-            (!left.keepsParagraph || left.retiresBreakBefore)
+            (!left.keepsParagraph ||
+              left.retiresBreakBefore ||
+              left.paragraphsBefore.length > 0)
           );
         // A merge into the deleted block joins across it, in either mode, as
         // one at a time: tracked, across its deleted mark; applied directly,
