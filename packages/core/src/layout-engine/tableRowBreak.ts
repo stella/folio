@@ -553,6 +553,72 @@ export function buildTableRowBreakInfo(
   };
 }
 
+/** Each cell's whole lines and atomic blocks, relative to the row top. */
+export function rowCellLineBands(
+  block: TableBlock,
+  measure: TableMeasure,
+  rowIndex: number,
+): { top: number; bottom: number }[][] {
+  return rowCellGeometries(block, measure, rowIndex).map((geometry) =>
+    mergeBreakRanges(geometry.unsafeRanges),
+  );
+}
+
+type PerCellRowCutOptions = {
+  cellLines: readonly (readonly { top: number; bottom: number }[])[];
+  bandTop: number;
+  shownThrough: number;
+  maxSlice: number;
+};
+
+/**
+ * Cut a row that no shared line boundary lets a page hold. The cut itself runs
+ * through some cell's line, which then waits for the next band, so that band
+ * starts at the highest such line. Null when no line would finish on this page,
+ * which is a single line taller than the page: only clipping can place that.
+ */
+export function perCellRowCut({
+  cellLines,
+  bandTop,
+  shownThrough,
+  maxSlice,
+}: PerCellRowCutOptions): { cut: number; nextTop: number } | null {
+  const cut = bandTop + maxSlice;
+  let finishesLine = false;
+  let nextTop = cut;
+  for (const lines of cellLines) {
+    for (const line of lines) {
+      if (line.bottom <= shownThrough + BREAK_OFFSET_EPSILON) {
+        continue;
+      }
+      if (line.bottom <= cut + BREAK_OFFSET_EPSILON) {
+        finishesLine = true;
+        continue;
+      }
+      nextTop = Math.min(nextTop, line.top);
+      break;
+    }
+  }
+  return finishesLine ? { cut, nextTop } : null;
+}
+
+/** The part of one cell a `cellLineBand` shows, in the row's own coordinates. */
+export function cellBandFromLines(
+  lines: readonly { top: number; bottom: number }[],
+  { shownThrough, cut }: { shownThrough: number; cut: number },
+): { top: number; bottom: number } {
+  const shown = lines.filter(
+    ({ bottom }) =>
+      bottom > shownThrough + BREAK_OFFSET_EPSILON &&
+      bottom <= cut + BREAK_OFFSET_EPSILON,
+  );
+  const first = shown.at(0);
+  const last = shown.at(-1);
+  return first && last
+    ? { top: first.top, bottom: last.bottom }
+    : { top: cut, bottom: cut };
+}
+
 /** Leading empty-paragraph whitespace to consume when a row resumes after `offset`. */
 export function getRowContinuationSkip(
   info: TableRowBreakInfo,
