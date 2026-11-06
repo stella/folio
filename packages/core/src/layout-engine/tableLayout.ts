@@ -15,7 +15,10 @@ import type { PageState } from "./paginator";
 import { isEmptyParagraph } from "./paragraphSpacing";
 import {
   buildTableRowBreakInfo,
+  cellBandFromLines,
   getRowContinuationSkip,
+  perCellRowCut,
+  rowCellLineBands,
   snapOversizedRowBreak,
   snapRowBreak,
 } from "./tableRowBreak";
@@ -249,7 +252,13 @@ export function layoutTable(
     ) {
       return false;
     }
-    if ((breakInfo.oversizedBreakOffsets[rowIndex]?.length ?? 0) <= 1) {
+    // One offset is the row's own end, so only the cells' lines can break it.
+    if (
+      (breakInfo.oversizedBreakOffsets[rowIndex]?.length ?? 0) <= 1 &&
+      !rowCellLineBands(block, measure, rowIndex).some(
+        (lines) => lines.length > 1,
+      )
+    ) {
       return false;
     }
     const freshHeaderOverhead =
@@ -278,6 +287,14 @@ export function layoutTable(
       state.trailingSpacing;
     return oversized || row.height > currentAvailableHeight;
   };
+
+  const rowCellBands = (
+    rowIndex: number,
+    band: { shownThrough: number; cut: number },
+  ) =>
+    rowCellLineBands(block, measure, rowIndex).map((lines) =>
+      cellBandFromLines(lines, band),
+    );
 
   while (currentRowIndex < rows.length) {
     const rowState = paginator.getCurrentState();
@@ -324,6 +341,8 @@ export function layoutTable(
     const splittableRow = rows[currentRowIndex]!; // SAFETY: currentRowIndex < rows.length
     if (canSplitRow(currentRowIndex)) {
       let consumed = 0;
+      // Lines ending at or above this were shown by an earlier fragment.
+      let shownThrough = 0;
       const renderedBreakHints = tableRowHasTrackedChanges(
         block,
         currentRowIndex,
@@ -369,6 +388,7 @@ export function layoutTable(
           sliceAvail,
         );
         let forceRenderedPageBreak = false;
+        let perCellCut: { cut: number; nextTop: number } | null = null;
         if (slice <= 0) {
           const isFreshPage =
             sliceState.cursorY === sliceState.topMargin &&
@@ -396,11 +416,26 @@ export function layoutTable(
               (o) => o > from,
             );
             slice = (next ?? splittableRow.height) - consumed;
+            // No boundary every cell shares fits on a page: each cell breaks
+            // at its own lines instead of the row overflowing and clipping.
+            if (slice > sliceAvail) {
+              const cutPlan = perCellRowCut({
+                cellLines: rowCellLineBands(block, measure, currentRowIndex),
+                bandTop: consumed,
+                shownThrough: Math.max(shownThrough, consumed),
+                maxSlice: sliceAvail,
+              });
+              if (cutPlan) {
+                slice = sliceAvail;
+                perCellCut = cutPlan;
+              }
+            }
           }
         }
         discardPassedRenderedBreakHints();
         const renderedBreakHint = renderedBreakHints[renderedBreakHintIndex];
         if (
+          !perCellCut &&
           renderedBreakHint &&
           renderedBreakHint.offset <= consumed + slice &&
           sliceAvail - (renderedBreakHint.offset - consumed) <=
@@ -416,10 +451,9 @@ export function layoutTable(
           sliceBottom < splittableRow.height
             ? getRowContinuationSkip(breakInfo, currentRowIndex, sliceBottom)
             : 0;
-        const nextConsumed = Math.min(
-          splittableRow.height,
-          sliceBottom + continuationSkip,
-        );
+        const nextConsumed = perCellCut
+          ? perCellCut.nextTop
+          : Math.min(splittableRow.height, sliceBottom + continuationSkip);
         const reachesRowEnd = nextConsumed >= splittableRow.height;
         const moreAfter = !reachesRowEnd || currentRowIndex + 1 < rows.length;
         const fragmentHeight = headerOverhead + slice;
@@ -437,7 +471,7 @@ export function layoutTable(
           toRow: currentRowIndex + 1,
           ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),
           ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
-          ...(consumed > 0 || currentRowIndex > 0
+          ...(consumed > 0 || shownThrough > 0 || currentRowIndex > 0
             ? { continuesFromPrev: true }
             : {}),
           ...(moreAfter ? { continuesOnNext: true } : {}),
@@ -446,6 +480,18 @@ export function layoutTable(
           ...(sliceBottom >= splittableRow.height
             ? {}
             : { bottomClip: sliceBottom }),
+          ...(perCellCut || shownThrough > consumed
+            ? {
+                cellLineBand: {
+                  shownThrough,
+                  cut: sliceBottom,
+                  cells: rowCellBands(currentRowIndex, {
+                    shownThrough,
+                    cut: sliceBottom,
+                  }),
+                },
+              }
+            : {}),
           ...(block.sdtGroups ? { sdtGroups: block.sdtGroups } : {}),
         };
         const sliceResult = paginator.addFragment(
@@ -460,6 +506,7 @@ export function layoutTable(
           rowIndex: currentRowIndex,
         });
         consumed = nextConsumed;
+        shownThrough = perCellCut ? perCellCut.cut : consumed;
         if (consumed < splittableRow.height) {
           if (forceRenderedPageBreak) {
             paginator.forcePageBreak();
