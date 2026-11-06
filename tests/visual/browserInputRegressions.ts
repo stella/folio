@@ -70,7 +70,130 @@ export const BROWSER_TABLE_SEED_29 = {
 };
 
 export const BROWSER_INPUT_REGRESSIONS = [
-  BROWSER_NOTES_SEED_197,
-  BROWSER_LIST_SEED_47,
-  BROWSER_TABLE_SEED_29,
-];
+  [
+    {
+      seed: 8,
+      path: "full",
+      fingerprint: "zzfull",
+      trace: {
+        shape: "single-bullet-list",
+        actions: [
+          { kind: "enter" },
+          { kind: "selectionDrag", target: "list" },
+          { kind: "delete" },
+          {
+            kind: "imeReplacement",
+            updates: [
+              "shall مرحبا alpha",
+              "invoice valid",
+              "valid",
+              "shall café",
+            ],
+            completion: "cancel",
+          },
+          { kind: "pastePlain", plain: "é مرحبا invoice", html: "" },
+          { kind: "cut" },
+        ],
+      },
+    },
+    {
+      seed: 8,
+      path: "nocut",
+      fingerprint: "zznocut",
+      trace: {
+        shape: "single-bullet-list",
+        actions: [
+          { kind: "enter" },
+          { kind: "selectionDrag", target: "list" },
+          { kind: "delete" },
+          {
+            kind: "imeReplacement",
+            updates: [
+              "shall مرحبا alpha",
+              "invoice valid",
+              "valid",
+              "shall café",
+            ],
+            completion: "cancel",
+          },
+          { kind: "pastePlain", plain: "é مرحبا invoice", html: "" },
+        ],
+      },
+    },
+    {
+      seed: 8,
+      path: "noenter",
+      fingerprint: "zznoenter",
+      trace: {
+        shape: "single-bullet-list",
+        actions: [
+          { kind: "selectionDrag", target: "list" },
+          { kind: "delete" },
+          {
+            kind: "imeReplacement",
+            updates: [
+              "shall مرحبا alpha",
+              "invoice valid",
+              "valid",
+              "shall café",
+            ],
+            completion: "cancel",
+          },
+          { kind: "pastePlain", plain: "é مرحبا invoice", html: "" },
+          { kind: "cut" },
+        ],
+      },
+    },
+    {
+      seed: 8,
+      path: "noime",
+      fingerprint: "zznoime",
+      trace: {
+        shape: "single-bullet-list",
+        actions: [
+          { kind: "enter" },
+          { kind: "selectionDrag", target: "list" },
+          { kind: "delete" },
+          { kind: "pastePlain", plain: "é مرحبا invoice", html: "" },
+          { kind: "cut" },
+        ],
+      },
+    },
+    {
+      seed: 8,
+      path: "dragpaste",
+      fingerprint: "zzdragpaste",
+      trace: {
+        shape: "single-bullet-list",
+        actions: [
+          { kind: "selectionDrag", target: "list" },
+          { kind: "delete" },
+          { kind: "pastePlain", plain: "é مرحبا invoice", html: "" },
+        ],
+      },
+    },
+    {
+      seed: 8,
+      path: "dragimepaste",
+      fingerprint: "zzdragimepaste",
+      trace: {
+        shape: "single-bullet-list",
+        actions: [
+          { kind: "selectionDrag", target: "list" },
+          { kind: "delete" },
+          {
+            kind: "imeReplacement",
+            updates: [
+              "shall مرحبا alpha",
+              "invoice valid",
+              "valid",
+              "shall café",
+            ],
+            completion: "cancel",
+          },
+          { kind: "pastePlain", plain: "é مرحبا invoice", html: "" },
+        ],
+      },
+    },
+  ] as never[],
+][0] as never[];
