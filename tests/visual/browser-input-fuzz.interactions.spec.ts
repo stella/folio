@@ -38,7 +38,6 @@ import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import {
   BROWSER_INPUT_REGRESSIONS,
-  BROWSER_INVISIBLE_MARKER_TRACES,
   PINNED_BROWSER_INPUT_TAG,
 } from "./browserInputRegressions";
 import {
@@ -724,18 +723,6 @@ const isBrowserShape = (
 
 test.describe("pinned browser input", () => {
   test.setTimeout(60_000);
-  for (const [index, trace] of BROWSER_INVISIBLE_MARKER_TRACES.entries()) {
-    test(
-      `invisible markers ${String(index)} in ${trace.shape}`,
-      { tag: PINNED_BROWSER_INPUT_TAG },
-      async ({ page }) => {
-        const source = await shapeArrayBuffer(trace.shape);
-        const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-        await checkDefaultEditorTrace({ page, source, baseline, trace });
-      },
-    );
-  }
-
   for (const regression of BROWSER_INPUT_REGRESSIONS) {
     const { seed, path, fingerprint, trace } = regression;
     test(

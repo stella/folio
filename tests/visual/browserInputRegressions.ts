@@ -701,10 +701,15 @@ const INVISIBLE_MARKER_ACTIONS: readonly BrowserInputTrace["actions"][] = [
   ],
 ];
 
-export const BROWSER_INVISIBLE_MARKER_TRACES = (
+const BROWSER_INVISIBLE_MARKER_TRACES = (
   ["comments", "invisible-markers"] as const
 ).flatMap((shape) =>
-  INVISIBLE_MARKER_ACTIONS.map((actions) => ({ shape, actions })),
+  INVISIBLE_MARKER_ACTIONS.map((actions, index) => ({
+    seed: 0,
+    path: `${shape}-${String(index)}`,
+    fingerprint: "pinned-for-its-markers",
+    trace: { shape, actions },
+  })),
 );
 
 export const BROWSER_CANCELLED_COMPOSITION_SEED_1793946574 = {
@@ -734,6 +739,7 @@ export const BROWSER_CANCELLED_COMPOSITION_SEED_1793946574 = {
 };
 
 export const BROWSER_INPUT_REGRESSIONS = [
+  ...BROWSER_INVISIBLE_MARKER_TRACES,
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
