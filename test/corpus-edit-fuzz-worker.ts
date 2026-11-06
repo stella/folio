@@ -139,16 +139,28 @@ const localityProblems = async (
   return changed.sort();
 };
 
-const compareSdk = (
+/**
+ * An edit moves what follows it, so an error the source already had reads with
+ * another element index in its path. It is the same error: only a path's
+ * indexes are dropped, and a count above the source's still reads as new.
+ */
+const withoutPathIndexes = (error: string): string =>
+  error.replaceAll(/(?<=[\w)])\[\d+\]/gu, "");
+
+export const compareSdk = (
   original: readonly string[],
   saved: readonly string[],
 ): string[] => {
   const known = new Map<string, number>();
-  for (const error of original) known.set(error, (known.get(error) ?? 0) + 1);
+  for (const error of original) {
+    const key = withoutPathIndexes(error);
+    known.set(key, (known.get(key) ?? 0) + 1);
+  }
   return saved.filter((error) => {
-    const remaining = known.get(error) ?? 0;
+    const key = withoutPathIndexes(error);
+    const remaining = known.get(key) ?? 0;
     if (remaining === 0) return true;
-    known.set(error, remaining - 1);
+    known.set(key, remaining - 1);
     return false;
   });
 };

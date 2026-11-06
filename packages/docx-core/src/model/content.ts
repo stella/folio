@@ -1212,7 +1212,7 @@ export type ShapeTextBody = {
     right?: number;
   };
   /** Block content inside the shape */
-  content: (Paragraph | Table)[];
+  content: TableCellBlock[];
 };
 
 /**
@@ -1309,7 +1309,7 @@ export type TextBox = {
   /** DrawingML transform applied to the text-box frame and content. */
   transform?: ImageTransform;
   /** Text and table content */
-  content: (Paragraph | Table)[];
+  content: TableCellBlock[];
   /** Authored DrawingML WordArt metadata. */
   wordArt?: ShapeTextBody["wordArt"];
   /** Text fitting behavior */

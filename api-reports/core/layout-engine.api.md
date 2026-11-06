@@ -1049,6 +1049,14 @@ export type TableFragment = FragmentBase & {
     headerRowCount?: number;
     topClip?: number;
     bottomClip?: number;
+    cellLineBand?: {
+        shownThrough: number;
+        cut: number;
+        cells: readonly {
+            top: number;
+            bottom: number;
+        }[];
+    };
 };
 
 // @public

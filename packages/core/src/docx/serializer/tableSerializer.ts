@@ -1213,7 +1213,7 @@ const preservedChild = (
 /**
  * Serialize cell content (paragraphs, nested tables)
  */
-function serializeCellContent(
+export function serializeCellContent(
   content: readonly TableCellBlock[],
   serializeParagraph: ParagraphSerializer,
 ): string {

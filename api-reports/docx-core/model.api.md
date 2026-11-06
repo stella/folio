@@ -1722,7 +1722,7 @@ export type ShapeTextBody = {
         left?: number;
         right?: number;
     };
-    content: (Paragraph | Table)[];
+    content: TableCellBlock[];
 };
 
 // @public
@@ -2087,7 +2087,7 @@ export type TextBox = {
     fill?: ShapeFill;
     outline?: ShapeOutline;
     transform?: ImageTransform;
-    content: (Paragraph | Table)[];
+    content: TableCellBlock[];
     wordArt?: ShapeTextBody["wordArt"];
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];

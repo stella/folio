@@ -59,11 +59,15 @@ const editable = (items: readonly ParagraphContent[]): boolean =>
     switch (item.type) {
       case "run":
         return (item.propertyChanges?.length ?? 0) === 0;
-      // A field stays where it is, between the linked runs.
+      // Fields and zero-width markers stay where they are, between the linked runs.
       case "simpleField":
       case "complexField":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "preservedInline":
         return true;
       case "hyperlink":
         return editable(item.children);
@@ -111,6 +115,10 @@ const linkedChildren = (
       case "complexField":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "preservedInline":
         children.push(item);
         break;
       case "hyperlink":
