@@ -466,11 +466,19 @@ export function handleSuggestionPaste(
       slice.openEnd === 0 &&
       slice.content.firstChild?.isBlock === true;
     const prefix = $from.parent.content.cut(0, $from.parentOffset);
-    let deletedPrefix = prefix.size > 0;
+    // An invisible marker there, a bookmark's say, is no text to keep the caret
+    // from the paragraph's visible start. Some struck text still has to be there.
+    let deletedPrefix = false;
+    let keptPrefix = false;
     prefix.forEach((node) => {
-      if (!node.marks.some((mark) => mark.type === deletionType))
-        deletedPrefix = false;
+      if (isInlineAnchor(node)) return;
+      if (node.marks.some((mark) => mark.type === deletionType)) {
+        deletedPrefix = true;
+      } else {
+        keptPrefix = true;
+      }
     });
+    deletedPrefix &&= !keptPrefix;
     if (
       !closedBlocks ||
       $from.parent.type.name !== "paragraph" ||

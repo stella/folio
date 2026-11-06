@@ -653,10 +653,33 @@ export const BROWSER_RTL_COMPOSITION_SEED_1793914965 = {
   trace: BrowserInputTrace;
 };
 
+export const BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366 = {
+  seed: 1793921366,
+  path: "11:4",
+  fingerprint: "62177b2dda921e89",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [
+      { kind: "delete" },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
+  BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
   BROWSER_RTL_COMPOSITION_SEED_1793914965,
   BROWSER_PASTE_AFTER_TABLE_SEED_29,
   BROWSER_PASTE_BEFORE_STRUCK_SEED_431,

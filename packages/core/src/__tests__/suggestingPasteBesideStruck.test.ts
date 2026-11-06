@@ -129,6 +129,30 @@ describe("a paste beside struck text", () => {
     ]);
   });
 
+  test("closed paragraphs after a struck prefix behind a bookmark leave no empty paragraph", async () => {
+    const state = createHarnessState(
+      await parseShapeDocument(
+        new Uint8Array(await shapeArrayBuffer("fields-links-bookmarks")),
+      ),
+      "suggesting",
+    );
+    const view = new HeadlessEditorView(
+      state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1))),
+    );
+    view.pressKey("Delete");
+    view.paste(new Slice(paragraphs(state, "One", "Two"), 0, 0));
+
+    const accepted = texts(resolveAllChanges(view.state, "accept"));
+    expect(accepted.slice(0, 3)).toEqual([
+      "One",
+      "Two",
+      "ookmarked heading text",
+    ]);
+    expect(texts(resolveAllChanges(view.state, "reject"))).toEqual(
+      texts(state),
+    );
+  });
+
   test("a table over words across a break leaves the caret after them", async () => {
     const state = await opened();
     const blocks = textblocks(state.doc);
