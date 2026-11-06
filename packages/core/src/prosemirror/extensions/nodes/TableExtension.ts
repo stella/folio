@@ -1613,16 +1613,20 @@ export const TablePluginExtension: (
         const tr = state.tr;
         const revision = trackedTableRevision(state, lastRow - firstRow + 1);
         if (revision) {
-          const rowPositions: number[] = [];
-          table.forEach((_row, offset, index) => {
-            if (index >= firstRow && index <= lastRow) {
-              rowPositions.push(tablePos + 1 + offset);
+          const rows: { rowIndex: number; rowPosition: number }[] = [];
+          table.forEach((_row, offset, rowIndex) => {
+            if (rowIndex >= firstRow && rowIndex <= lastRow) {
+              rows.push({ rowIndex, rowPosition: tablePos + 1 + offset });
             }
           });
-          for (const [index, rowPosition] of rowPositions.entries()) {
+          for (const [index, row] of rows.entries()) {
             applyTableRowDeletion({
               tr,
-              deletion: { rowPosition },
+              deletion: {
+                ...row,
+                tablePosition: tablePos,
+                tableStart: tablePos + 1,
+              },
               revision: {
                 ...revision,
                 revisionId: revision.revisionId + index,
