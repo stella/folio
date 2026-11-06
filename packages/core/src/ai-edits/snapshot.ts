@@ -707,7 +707,8 @@ type StoryTableNodeDisposition =
 const classifyNonTextblockStoryTableNode = (
   node: PMNode,
 ): StoryTableNodeDisposition => {
-  if (isHiddenTableRow(node)) {
+  // A placeholder for an absent grid position holds nothing a reader could name.
+  if (isHiddenTableRow(node) || node.attrs["_omittedGridSlot"]) {
     return STORY_TABLE_HIDDEN_SUBTREE;
   }
   return node.type.spec["tableRole"] === TABLE_ROLE_TABLE

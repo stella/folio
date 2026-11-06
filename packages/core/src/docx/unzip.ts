@@ -50,6 +50,7 @@ import {
   DOCX_CONTAINER_TYPES,
 } from "./encryption/containerFormat";
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
+import { moveMainDocumentToStandardPath } from "./mainDocumentPart";
 import { detectRasterMimeType, RASTER_MIME_TYPES } from "./rasterMime";
 import { decodeXmlBytes } from "./xmlEncoding";
 
@@ -324,6 +325,10 @@ export async function unzipDocx(
 
   const wasEncrypted = containerType === DOCX_CONTAINER_TYPES.CFB;
   const loaded = await loadDocxZip(zipBuffer, limits);
+  if (await moveMainDocumentToStandardPath(loaded.zip)) {
+    // Whatever later reads the original package reads it from here too.
+    loaded.buffer = (await loaded.zip.generate()).slice().buffer;
+  }
   if (loaded.buffer.byteLength > limits.maxInputBytes) {
     throw new DocxSecurityError("DOCX file exceeds the maximum allowed size");
   }

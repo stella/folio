@@ -101,6 +101,7 @@ import {
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCellsAfterBatch,
   removeTableRow,
+  rowHoldsNoCells,
   type RowsEmptiedInBatch,
 } from "../tableGridMutation";
 import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
@@ -839,9 +840,11 @@ function resolveChange(
           holdsContent: paragraphContentOf(paragraph),
           markWasAdded: op.markWasAdded,
           // Removing this final paragraph leaves the block before it last.
+          // Only a content control may end with a table.
           containerStillEndsWithParagraph:
-            resolved.parent.maybeChild(resolved.index() - 1)?.type.name ===
-            "paragraph",
+            preceding?.type.name === "paragraph" ||
+            (preceding !== undefined &&
+              resolved.parent.type.name === "blockSdt"),
           followingTableCanReceiveRunIn:
             follows === "table" &&
             boundaries.length === 0 &&
@@ -1107,15 +1110,29 @@ const resolveTerminalTableReviewCarrier = (
   tr: Transaction,
   mode: ResolveMode,
 ): void => {
-  const carrier = tr.doc.lastChild;
+  let position = tr.doc.content.size;
+  let carrier: PMNode | null = null;
+  // Text boxes after it belong to paragraphs before it, wherever they stand.
+  for (let index = tr.doc.childCount - 1; index >= 0; index--) {
+    carrier = tr.doc.child(index);
+    position -= carrier.nodeSize;
+    if (carrier.type.name !== "textBox") break;
+  }
   if (
     carrier?.type.name !== "paragraph" ||
     carrier.attrs["reviewCarrier"] !== REVIEW_CARRIERS.TERMINAL_TABLE
   ) {
     return;
   }
-  const position = tr.doc.content.size - carrier.nodeSize;
-  if (mode === "accept") {
+  // Its own changes still pending, it is not yet what they leave it as.
+  let pending = carrier.attrs["pPrMark"] != null;
+  carrier.forEach((child) => {
+    pending ||= child.marks.some(({ type }) =>
+      ["insertion", "deletion"].includes(type.name),
+    );
+  });
+  if (pending) return;
+  if (mode === "accept" || carrier.content.size > 0) {
     tr.setNodeAttribute(position, "reviewCarrier", undefined);
     return;
   }
@@ -1474,8 +1491,9 @@ function deleteTableCellAt(
   // and the row it leaves empty is removed once the rest of the column has
   // gone too, when the table is rectangular again.
   const spansDown = Number(cell.attrs["rowspan"]) > 1;
-  if (row.childCount > 1 || spansDown) {
-    if (row.childCount === 1) {
+  const holdsOtherCells = !rowHoldsNoCells(row, cell);
+  if (holdsOtherCells || spansDown) {
+    if (!holdsOtherCells) {
       markRowEmptiedInBatch({ tr, rowPosition: resolved.start() - 1, emptied });
     }
     tr.delete(cellPos, cellPos + cell.nodeSize);

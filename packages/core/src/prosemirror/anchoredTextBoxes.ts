@@ -21,6 +21,7 @@
 
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
+import type { Transform } from "prosemirror-transform";
 
 import { expectTextBoxAttrs } from "./attrs";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "./extensions/nodes/TextBoxAnchorExtension";
@@ -197,7 +198,7 @@ export const textBoxAnchorIdsBetween = (
  * they follow the joined one. Returns whether any moved.
  */
 export const moveTextBoxesPastNextParagraph = (
-  tr: Transaction,
+  tr: Transform,
   position: number,
 ): boolean => {
   const paragraph = tr.doc.nodeAt(position);

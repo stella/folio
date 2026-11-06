@@ -62,6 +62,7 @@ import {
   removeTableColumns,
   removeTableRow,
 } from "../../tableGridMutation";
+import { tablePositionedBookmarksPlugin } from "../../tablePositionedBookmarks";
 import { createExtension, createNodeExtension } from "../create";
 import type {
   AnyExtension,
@@ -3162,6 +3163,7 @@ export const TablePluginExtension: (
         tableCellPastePlugin,
         // canonical-gap: pm-table-geometry
         tableEditing(),
+        tablePositionedBookmarksPlugin(),
         activeCellPlugin,
       ],
       keyboardShortcuts: {
