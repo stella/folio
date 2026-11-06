@@ -408,6 +408,45 @@ test.each(REVIEW_HYPERLINK_CASES)(
     }
   },
 );
+test.each(
+  (["editing", "suggesting"] as const).flatMap((mode) =>
+    REVIEW_HYPERLINK_COMMANDS.map((command) => ({ mode, command })),
+  ),
+)(
+  "$command.id hyperlink over selected cells changes nothing and refuses nothing in $mode",
+  async ({ mode, command }) => {
+    const shape = "tables";
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer(shape)),
+    );
+    const driver = createCanonicalEditorHarness(source, mode);
+    try {
+      const placed = placeSelection(
+        driver.state,
+        documentShape(shape).focus,
+        "cross-paragraph",
+      );
+      if (!placed) throw new TypeError("Cell fixture lost selection");
+      driver.dispatch(driver.state.tr.setSelection(placed.selection));
+      const before = driver.snapshot();
+      const state = driver.state;
+      driver.expectRefusals(
+        canonicalConformanceRefusalRows({
+          shape,
+          mode,
+          operation: command.operation,
+          placement: "cross-paragraph",
+        }),
+      );
+      driver.execute(command.create());
+      expect(driver.refusals).toEqual([]);
+      assertExactModel(driver.snapshot(), before);
+      expect(driver.state).toBe(state);
+    } finally {
+      driver.dispose();
+    }
+  },
+);
 test.each(STORY_PROJECTION_REFUSAL_CASES)(
   "$shape $operation/$placement projection refusal is exact and atomic in $mode",
   async ({ shape, mode, operation, placement }) => {
