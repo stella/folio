@@ -3336,6 +3336,71 @@ const suggestedProject = (rows: readonly Row[]) =>
     runs: authoredInlineProject([row]),
   }));
 
+/**
+ * The accepted rows under the ids their live rows hold. A paragraph the package
+ * names no id for gets one minted from its text and place when read, so the
+ * accepted view, read from a reopened file, can call a live row something else.
+ * Between rows both views name, rows pair by equal text, then in order when as
+ * many remain on each side. An authored id never changes, so nothing pairs there.
+ */
+export const withLiveMintedIds = (
+  accepted: readonly Row[],
+  live: readonly Row[],
+): Row[] => {
+  const liveIds = new Set(live.map(({ id }) => id));
+  const acceptedIds = new Set(accepted.map(({ id }) => id));
+  const renamed = new Map<Row, string>();
+  const pair = (rows: readonly Row[], others: readonly Row[]) => {
+    const left = new Set(others);
+    const unpaired: Row[] = [];
+    for (const row of rows) {
+      const same = [...left].find(({ text }) => text === row.text);
+      if (same) {
+        renamed.set(row, same.id);
+        left.delete(same);
+      } else {
+        unpaired.push(row);
+      }
+    }
+    if (unpaired.length === left.size) {
+      const remaining = [...left];
+      for (const [index, row] of unpaired.entries()) {
+        const other = remaining[index];
+        if (other) renamed.set(row, other.id);
+      }
+    }
+  };
+  let rows: Row[] = [];
+  let others: Row[] = [];
+  let at = 0;
+  for (const row of accepted) {
+    if (!liveIds.has(row.id)) {
+      rows.push(row);
+      continue;
+    }
+    while (at < live.length && live[at]?.id !== row.id) {
+      const other = live[at];
+      if (other && !acceptedIds.has(other.id)) others.push(other);
+      at += 1;
+    }
+    at += 1;
+    pair(rows, others);
+    rows = [];
+    others = [];
+  }
+  for (; at < live.length; at += 1) {
+    const other = live[at];
+    if (other && !acceptedIds.has(other.id)) others.push(other);
+  }
+  pair(rows, others);
+  const named: Row[] = [];
+  for (const row of accepted) {
+    const id = renamed.get(row);
+    named.push(id === undefined ? row : Object.assign({}, row, { id }));
+  }
+  return named;
+};
+
 /** Capture what the oracle needs before an apply. */
 export const capture = async (
   reviewer: Reviewer,
@@ -3368,12 +3433,13 @@ export const capture = async (
   }
   const bytes = await save(reviewer);
   const accepted = await resolvedState(bytes, "accept", story);
+  const liveRows = rowsOf(reviewer, story);
   return {
     mode,
     live,
-    rows: accepted.rows,
+    rows: withLiveMintedIds(accepted.rows, liveRows),
     resolvedStory: accepted.story,
-    liveRows: rowsOf(reviewer, story),
+    liveRows,
     joinSources: await markedJoinSourcesOf(bytes),
     numberingSource: {
       type: "package",

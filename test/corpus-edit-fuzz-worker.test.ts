@@ -8,7 +8,10 @@ import {
   plainDocument,
 } from "./consumer-scenarios/support/documents.ts";
 import { coreBatch } from "./consumer-scenarios/support/operations.ts";
-import { capture } from "./consumer-scenarios/support/oracle.ts";
+import {
+  capture,
+  withLiveMintedIds,
+} from "./consumer-scenarios/support/oracle.ts";
 import { assertSavedOutcome } from "./corpus-edit-fuzz-worker.ts";
 
 test("saved-only comment loss fails the edit outcome check", async () => {
@@ -138,5 +141,44 @@ test("saved-only revision loss fails the reject check", async () => {
       context: "flattened revisions",
     }),
     /rejecting every change/u,
+  );
+});
+
+const ROW = (id: string, text: string) => ({ id, text, kind: "paragraph" });
+const idsOf = (rows: readonly { id: string }[]) => rows.map(({ id }) => id);
+
+test("an accepted row takes the live id of the row with its text", () => {
+  assert.deepEqual(
+    idsOf(
+      withLiveMintedIds(
+        [ROW("A", "one"), ROW("X", "edited"), ROW("Y", "three")],
+        [ROW("A", "one"), ROW("B", "old edited"), ROW("C", "three")],
+      ),
+    ),
+    ["A", "B", "C"],
+  );
+});
+
+test("a live row the accepted view drops keeps no accepted row", () => {
+  assert.deepEqual(
+    idsOf(
+      withLiveMintedIds(
+        [ROW("A", "one"), ROW("X", "three")],
+        [ROW("A", "one"), ROW("B", "gone"), ROW("C", "three")],
+      ),
+    ),
+    ["A", "C"],
+  );
+});
+
+test("authored ids are left as they are", () => {
+  assert.deepEqual(
+    idsOf(
+      withLiveMintedIds(
+        [ROW("A", "one"), ROW("C", "three")],
+        [ROW("A", "one"), ROW("B", "gone"), ROW("C", "three")],
+      ),
+    ),
+    ["A", "C"],
   );
 });
