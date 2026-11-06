@@ -86,6 +86,51 @@ const paintedLines = (page: Page): Promise<Seen[]> =>
     return seen;
   });
 
+/** Body lines painted lower than a note line that shows on the same page. */
+const bodyLinesInsideNotes = (page: Page): Promise<string[]> =>
+  page.evaluate(() => {
+    const inside: string[] = [];
+    for (const pageElement of document.querySelectorAll<HTMLElement>(
+      ".layout-page",
+    )) {
+      let noteTop = Number.POSITIVE_INFINITY;
+      let lowestBody = 0;
+      let lowestText = "";
+      const pageBox = pageElement.getBoundingClientRect();
+      const walker = document.createTreeWalker(
+        pageElement,
+        NodeFilter.SHOW_TEXT,
+      );
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const text = (node.textContent ?? "").trim();
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const box = range.getBoundingClientRect();
+        if (box.bottom < pageBox.top || box.top > pageBox.bottom) continue;
+        if (/^G\d{3}$/u.test(text)) {
+          let clip = box.top;
+          for (
+            let owner = node.parentElement;
+            owner && owner !== pageElement;
+            owner = owner.parentElement
+          ) {
+            if (getComputedStyle(owner).overflowY !== "visible") {
+              clip = Math.max(clip, owner.getBoundingClientRect().top);
+            }
+          }
+          noteTop = Math.min(noteTop, clip);
+        } else if (/^(Body \d+|TAIL|Reference here)/u.test(text)) {
+          if (box.bottom > lowestBody) {
+            lowestBody = box.bottom;
+            lowestText = text;
+          }
+        }
+      }
+      if (lowestBody > noteTop + 1) inside.push(lowestText);
+    }
+    return inside;
+  });
+
 for (const [painter, url] of [
   ["the default painter", "/"],
   ["the display-list painter", "/?pageRenderer=display-list"],
@@ -129,6 +174,10 @@ for (const [painter, url] of [
       expect(
         painted.filter(({ visible, whole: all }) => visible && !all),
         "no line of the note is cut",
+      ).toEqual([]);
+      expect(
+        await bodyLinesInsideNotes(page),
+        "no body line stands in a note area",
       ).toEqual([]);
     });
   }
