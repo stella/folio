@@ -479,6 +479,9 @@ export type LayoutOptions = {
     mirrorMargins?: boolean;
     footnoteReservedHeights?: Map<number, number>;
     footnoteHeightById?: Map<number, number>;
+    footnoteContinuation?: {
+        trailingPages: number;
+    };
     sectionHeaderFooterRefs?: PageHeaderFooterRefs[];
     noteAreas?: NoteAreaLayout;
 };
