@@ -59,6 +59,9 @@ const editable = (items: readonly ParagraphContent[]): boolean =>
     switch (item.type) {
       case "run":
         return (item.propertyChanges?.length ?? 0) === 0;
+      // A field stays where it is, between the linked runs.
+      case "simpleField":
+      case "complexField":
       case "bookmarkStart":
       case "bookmarkEnd":
         return true;
@@ -104,6 +107,8 @@ const linkedChildren = (
           intent.type === "setHyperlink" ? styledRun(item, intent) : item,
         );
         break;
+      case "simpleField":
+      case "complexField":
       case "bookmarkStart":
       case "bookmarkEnd":
         children.push(item);

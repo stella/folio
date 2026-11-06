@@ -4314,7 +4314,9 @@ function extractParagraphContent(
       return;
     }
 
-    if (linkMark) {
+    const fieldUnderLink =
+      node.type.name === "field" || node.type.name === "structuredField";
+    if (linkMark && !fieldUnderLink) {
       // Start or continue hyperlink
       const linkKey = getLinkKey(linkMark);
 

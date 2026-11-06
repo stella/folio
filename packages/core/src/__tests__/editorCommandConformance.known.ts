@@ -232,11 +232,11 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   // -------------------------------------------------------------- other --
   {
     reason:
-      "A hyperlink or a character-format change applied across a field drops the field's result text on save, or on rejecting the change",
-    operations: ["command:setHyperlink", "command:clearFontSize"],
+      "A link applied over a selection holding an existing link repaints that link's colour differently after a reopen, and applies untracked in suggesting mode",
+    operations: ["command:setHyperlink"],
     shapes: ["fields-links-bookmarks"],
     placements: RANGE_PLACEMENTS,
-    kinds: ["readback-blocks", "readback-painted", "reject-mismatch"],
+    kinds: ["readback-blocks", "reject-mismatch"],
     tier: "full",
   },
 ];
