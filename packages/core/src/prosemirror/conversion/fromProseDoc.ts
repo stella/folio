@@ -32,6 +32,7 @@ import {
   effectiveParagraphNumbering,
   paragraphNumberingSourcesFromBoundary,
 } from "../numberingAttr";
+import { rowGridOmissions } from "../rowGridOmissions";
 import {
   marksToTextFormatting,
   type MarksToTextFormattingOptions,
@@ -6596,6 +6597,25 @@ export function tableAttrsToFormatting(
 /**
  * Convert a ProseMirror table row node to our TableRow type
  */
+/** What the row states it omits follows what column edits made of it. */
+const withOmittedGridSlots = (
+  formatting: ReturnType<typeof tableRowAttrsToFormatting>,
+  row: PMNode,
+): ReturnType<typeof tableRowAttrsToFormatting> => {
+  const statedBefore = formatting?.gridBefore ?? 0;
+  const statedAfter = formatting?.gridAfter ?? 0;
+  const { gridBefore, gridAfter } = rowGridOmissions(row, statedAfter);
+  if (gridBefore === statedBefore && gridAfter === statedAfter) {
+    return formatting;
+  }
+  const next = { ...formatting };
+  if (gridBefore > 0) next.gridBefore = gridBefore;
+  else delete next.gridBefore;
+  if (gridAfter > 0) next.gridAfter = gridAfter;
+  else delete next.gridAfter;
+  return next;
+};
+
 function convertPMTableRow(
   node: PMNode,
   documentCounts?: TrackedChangeCounts,
@@ -6676,7 +6696,10 @@ function convertPMTableRow(
   appendActiveVerticalMerges();
 
   const row: TableRow = { type: "tableRow", cells };
-  const rowFormatting = tableRowAttrsToFormatting(attrs);
+  const rowFormatting = withOmittedGridSlots(
+    tableRowAttrsToFormatting(attrs),
+    node,
+  );
   if (rowFormatting) {
     row.formatting = rowFormatting;
   }

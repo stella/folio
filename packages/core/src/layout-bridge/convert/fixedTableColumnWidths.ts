@@ -4,6 +4,7 @@ import {
   expectTableCellAttrs,
   expectTableRowAttrs,
 } from "../../prosemirror/attrs";
+import { rowGridOmissions } from "../../prosemirror/rowGridOmissions";
 
 /** Resolve absolute cell preferences for an unbounded fixed-layout grid (§17.4.53). */
 export const fixedTableColumnWidths = (
@@ -18,7 +19,7 @@ export const fixedTableColumnWidths = (
     if (rowAttrs.trIns || rowAttrs.trDel || rowAttrs.hidden) {
       return grid;
     }
-    let column = Math.max(0, rowAttrs._originalFormatting?.gridBefore ?? 0);
+    let column = rowGridOmissions(row, 0).gridBefore;
     for (let cellIndex = 0; cellIndex < row.childCount; cellIndex++) {
       const attrs = expectTableCellAttrs(row.child(cellIndex));
       if (attrs._omittedGridSlot) {

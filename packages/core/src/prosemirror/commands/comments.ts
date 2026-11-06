@@ -98,6 +98,7 @@ import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
 import {
   markRowEmptiedInBatch,
+  reconcileOmittedGridSlots,
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCellsAfterBatch,
   removeTableRow,
@@ -1497,6 +1498,7 @@ function deleteTableCellAt(
       markRowEmptiedInBatch({ tr, rowPosition: resolved.start() - 1, emptied });
     }
     tr.delete(cellPos, cellPos + cell.nodeSize);
+    reconcileOmittedGridSlots(tr, tablePosition, table, removedColumn);
     reconcileTableGridAfterColumnRemoval({
       tr,
       tablePosition,
@@ -1510,6 +1512,7 @@ function deleteTableCellAt(
     return;
   }
   deleteTableRowAt(tr, resolved.start() - 1);
+  reconcileOmittedGridSlots(tr, tablePosition, table, removedColumn);
   reconcileTableGridAfterColumnRemoval({
     tr,
     tablePosition,
