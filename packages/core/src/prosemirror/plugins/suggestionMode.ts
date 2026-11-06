@@ -47,6 +47,7 @@ import { encloseWholeControls } from "../contentControlRevisions";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
+import { isInlineAnchor } from "../extensions/nodes/inlineAnchorDom";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -460,19 +461,26 @@ export function handleSuggestionPaste(
 
   if (selection.empty) {
     const { $from } = selection;
-    const closedTable =
+    const closedBlocks =
       slice.openStart === 0 &&
       slice.openEnd === 0 &&
-      slice.content.firstChild?.type.name === "table" &&
-      slice.content.lastChild?.type.name === "table";
+      slice.content.firstChild?.isBlock === true;
     const prefix = $from.parent.content.cut(0, $from.parentOffset);
-    let deletedPrefix = prefix.size > 0;
+    // An invisible marker there, a bookmark's say, is no text to keep the caret
+    // from the paragraph's visible start. Some struck text still has to be there.
+    let deletedPrefix = false;
+    let keptPrefix = false;
     prefix.forEach((node) => {
-      if (!node.marks.some((mark) => mark.type === deletionType))
-        deletedPrefix = false;
+      if (isInlineAnchor(node)) return;
+      if (node.marks.some((mark) => mark.type === deletionType)) {
+        deletedPrefix = true;
+      } else {
+        keptPrefix = true;
+      }
     });
+    deletedPrefix &&= !keptPrefix;
     if (
-      !closedTable ||
+      !closedBlocks ||
       $from.parent.type.name !== "paragraph" ||
       !deletedPrefix
     ) {
@@ -484,7 +492,7 @@ export function handleSuggestionPaste(
       if (!node.marks.some((mark) => mark.type === deletionType))
         deletedSuffix = false;
     });
-    // The caret is at the visible start of this paragraph. Fit the table
+    // The caret is at the visible start of this paragraph. Fit the blocks
     // before it, as direct paste does after deleting the prefix; fitting at
     // the physical caret instead splits off a paragraph of only struck runs.
     const tr = view.state.tr
@@ -495,6 +503,21 @@ export function handleSuggestionPaste(
     const revision = makeMarkAttrs(pluginState);
     const end = tr.mapping.map(at, 1);
     enclosePastedRunRevisions({ tr, from: at, to: end, revision });
+    // Closed paragraphs brought their breaks along: rejecting removes those too.
+    tr.doc.nodesBetween(at, end, (node, pos) => {
+      if (node.type.name !== "paragraph" || node.attrs["pPrMark"] != null) {
+        return false;
+      }
+      tr.setNodeAttribute(pos, "pPrMark", {
+        kind: "ins",
+        info: {
+          id: revision.revisionId,
+          author: revision.author,
+          date: revision.date,
+        },
+      });
+      return false;
+    });
     markRangeAsInserted(
       tr,
       tr.doc,
@@ -755,7 +778,10 @@ export function handleSuggestionPaste(
   // original plus the pasted text stay selected, so the next keystroke would
   // delete them both. `near` keeps the selection valid even when the pasted
   // slice was block content and `insertTo` lands at a block boundary.
-  tr.setSelection(TextSelection.near(tr.doc.resolve(insertTo)));
+  // A table placed before struck words leaves text after them: the caret goes
+  // there, past the words, as the direct paste has none of them to pass.
+  const caret = beforeStruck && !wholeBlocks ? tr.mapping.map(to) : insertTo;
+  tr.setSelection(TextSelection.near(tr.doc.resolve(caret)));
 
   view.dispatch(tr.scrollIntoView());
   return true;
@@ -769,6 +795,17 @@ export function handleSuggestionPaste(
  * last one ends the cell, so its paragraph mark is tracked as added too:
  * rejecting then drops it and accepting joins the struck paragraphs into it.
  */
+const holdsOnlyStruckText = (
+  paragraph: PMNode,
+  deletion: MarkType,
+): boolean => {
+  let struck = true;
+  paragraph.forEach((node) => {
+    if (!node.marks.some((mark) => mark.type === deletion)) struck = false;
+  });
+  return struck;
+};
+
 export function handleSuggestionTableCellPaste(
   view: EditorView,
   slice: Slice,
@@ -841,25 +878,50 @@ export function handleSuggestionTableCellPaste(
         // Keep paragraphs carrying original struck content for rejection; the
         // new paste now supplies the required final paragraph of the cell.
         const emptyInsertions: { from: number; to: number }[] = [];
+        // A break our earlier paste added after struck words goes too: the words
+        // run on into the paragraph after, which accepting leaves alone.
+        const struckBreaks: number[] = [];
         const replacedCell = tr.doc.nodeAt(cellPos);
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-        replacedCell?.forEach((node, offset) => {
+        replacedCell?.forEach((node, offset, index) => {
           const pos = cellPos + 1 + offset;
           if (
-            pos < pastedFrom &&
-            node.type.name === "paragraph" &&
-            node.content.size === 0 &&
-            isCurrentAuthorParagraphInsertion(
+            pos >= pastedFrom ||
+            node.type.name !== "paragraph" ||
+            !isCurrentAuthorParagraphInsertion(
               node.attrs["pPrMark"],
               pluginState.author,
             )
           ) {
+            return;
+          }
+          if (node.content.size === 0) {
             emptyInsertions.push({ from: pos, to: pos + node.nodeSize });
+          } else if (
+            holdsOnlyStruckText(node, deletionType) &&
+            isCurrentAuthorParagraphInsertion(
+              cell.maybeChild(index)?.attrs["pPrMark"],
+              pluginState.author,
+            )
+          ) {
+            struckBreaks.push(pos + node.nodeSize);
           }
         });
         const retraction = tr.mapping.maps.length;
         for (const range of emptyInsertions.toReversed())
           tr.delete(range.from, range.to);
+        for (const boundary of struckBreaks.toReversed()) {
+          const at = tr.mapping.slice(retraction).map(boundary);
+          const $boundary = tr.doc.resolve(at);
+          const { nodeBefore, nodeAfter } = $boundary;
+          if (nodeBefore?.type.name !== "paragraph" || !nodeAfter) continue;
+          tr.setNodeMarkup(
+            at - nodeBefore.nodeSize,
+            undefined,
+            nodeAfter.attrs,
+          );
+          tr.join(at);
+        }
         const retracted = tr.mapping.slice(retraction);
         pastedFrom = retracted.map(pastedFrom);
         insertTo = retracted.map(insertTo);
@@ -1304,7 +1366,7 @@ function caretDeleteTarget(
       : state.doc.resolve(cursor).nodeAfter;
     if (!adjacent) return { type: "paragraphEdge" };
     if (
-      adjacent.type.name !== "bookmarkBoundary" &&
+      !isInlineAnchor(adjacent) &&
       !adjacent.marks.some(
         (mark) => mark.type === state.schema.marks["deletion"],
       )
@@ -1656,14 +1718,51 @@ export const deleteSelectionAsSuggestion = (
 type MarkComposedAsInsertionOptions = {
   view: EditorView;
   from: number;
+  startDoc: PMNode;
+  /** How much other writers' edits grew the document during the composition. */
+  foreignSize: number;
+  /** Whether another writer edited the document, even with no change of size. */
+  foreignEdit: boolean;
   pluginState: SuggestionModeState;
   replaced: Slice | null;
   compositionId: number | null;
 };
 
+/**
+ * PM reads the removal of cancelled text back from the DOM, which can take the
+ * text around it along and drop its revision marks. The same text was there when
+ * the composition started: put back what it was.
+ */
+function restoreAfterCancelledComposition(
+  view: EditorView,
+  startDoc: PMNode,
+): void {
+  const { doc } = view.state;
+  const start = startDoc.content.findDiffStart(doc.content);
+  const end = startDoc.content.findDiffEnd(doc.content);
+  if (start === null || end === null) return;
+  // Equal sizes, so both ends of the difference are at the same positions. Text
+  // that differs is another writer's, not the composition's.
+  if (
+    end.a !== end.b ||
+    end.a <= start ||
+    startDoc.textBetween(start, end.a, "\n", "\n") !==
+      doc.textBetween(start, end.a, "\n", "\n")
+  ) {
+    return;
+  }
+  const tr = view.state.tr.replace(start, end.a, startDoc.slice(start, end.a));
+  tr.setMeta(SUGGESTION_META, true);
+  tr.setMeta("addToHistory", false);
+  view.dispatch(tr);
+}
+
 function markComposedAsInsertion({
   view,
   from,
+  startDoc,
+  foreignSize,
+  foreignEdit,
   pluginState,
   replaced,
   compositionId,
@@ -1673,8 +1772,24 @@ function markComposedAsInsertion({
   if (!insertionType || !deletionType) {
     return;
   }
-  // PM leaves the cursor at the end of the committed composition.
-  const to = view.state.selection.to;
+  // What the composition added, by how much it grew the document. The caret alone
+  // does not say: PM reads a cancelled composition back as the text around it
+  // and leaves the caret at that text's end, though none of it is new.
+  const { doc } = view.state;
+  const composedSize =
+    doc.content.size -
+    startDoc.content.size -
+    foreignSize +
+    (replaced?.size ?? 0);
+  const to = Math.min(from + composedSize, view.state.selection.to);
+  // A cancellation can also put a selection it replaced back as it was.
+  if (doc.eq(startDoc)) {
+    return;
+  }
+  if (composedSize === 0 && !replaced) {
+    if (!foreignEdit) restoreAfterCancelledComposition(view, startDoc);
+    return;
+  }
   if (to <= from && !replaced) {
     return;
   }
@@ -1804,11 +1919,26 @@ function recordSplitParagraph(
   ) {
     return;
   }
+  const revision = {
+    id: attrs.revisionId,
+    author: attrs.author,
+    date: attrs.date,
+  };
+  // The split paragraph's break ends the last part, with any revision it has.
+  // The first part took the paragraph's attributes, and its break is new.
+  const { pPrMark } = expectParagraphAttrs(split);
+  if (pPrMark) {
+    tr.setNodeAttribute(lastPos, "pPrMark", pPrMark);
+    tr.setNodeAttribute($first.before(), "pPrMark", {
+      kind: "ins",
+      info: revision,
+    });
+  }
   recordReplacedParagraphProperties({
     tr,
     position: lastPos,
     replaced: split,
-    revision: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
+    revision,
   });
 }
 
@@ -1907,6 +2037,9 @@ export function createSuggestionModePlugin(
   //     replacement until compositionend can record both revisions.
   let composing = false;
   let compositionFrom: number | null = null;
+  let compositionStartDoc: PMNode | null = null;
+  let compositionForeignSize = 0;
+  let compositionForeignEdit = false;
   let compositionReplaced: Slice | null = null;
   let compositionId: number | null = null;
 
@@ -1929,6 +2062,21 @@ export function createSuggestionModePlugin(
           typeof nativeCompositionId === "number"
         ) {
           compositionId = nativeCompositionId;
+        }
+        // Another writer's edit, while the composition runs: the composition's
+        // start moves with it, and its size is not the composition's.
+        if (
+          composing &&
+          tr.docChanged &&
+          typeof nativeCompositionId !== "number" &&
+          tr.getMeta("addToHistory") === false
+        ) {
+          compositionForeignEdit = true;
+          compositionForeignSize +=
+            tr.doc.content.size - tr.before.content.size;
+          if (compositionFrom !== null) {
+            compositionFrom = tr.mapping.map(compositionFrom);
+          }
         }
         const meta = tr.getMeta(suggestionModeKey);
         if (meta) {
@@ -1975,6 +2123,9 @@ export function createSuggestionModePlugin(
           compositionId = null;
           const { from, to } = view.state.selection;
           compositionFrom = from;
+          compositionStartDoc = view.state.doc;
+          compositionForeignSize = 0;
+          compositionForeignEdit = false;
           compositionReplaced =
             from === to ? null : view.state.doc.slice(from, to);
           return false;
@@ -1987,10 +2138,12 @@ export function createSuggestionModePlugin(
         compositionend(view: EditorView) {
           const pluginState = suggestionModeKey.getState(view.state);
           const from = compositionFrom;
+          const startDoc = compositionStartDoc;
           const replaced = compositionReplaced;
           compositionFrom = null;
+          compositionStartDoc = null;
           compositionReplaced = null;
-          if (!pluginState?.active || from == null) {
+          if (!pluginState?.active || from == null || !startDoc) {
             composing = false;
             compositionId = null;
             return false;
@@ -2005,6 +2158,9 @@ export function createSuggestionModePlugin(
                 markComposedAsInsertion({
                   view,
                   from,
+                  startDoc,
+                  foreignSize: compositionForeignSize,
+                  foreignEdit: compositionForeignEdit,
                   pluginState: current,
                   replaced,
                   compositionId: nativeCompositionId,
@@ -2031,6 +2187,11 @@ export function createSuggestionModePlugin(
       handleKeyDown(view: EditorView, event: KeyboardEvent): boolean {
         const pluginState = suggestionModeKey.getState(view.state);
         if (!pluginState?.active) {
+          return false;
+        }
+        // While a composition runs, a key here is ProseMirror reading the
+        // composing text's removal as a Backspace; the IME owns that text.
+        if (composing) {
           return false;
         }
         if (selectLockedInlineControl(view, event)) {

@@ -28,6 +28,7 @@ import {
   expectRunFormattingOverrideMarkAttrs,
 } from "../../attrs";
 import { clearIndentOnBackspace } from "../../commands/clearParagraphIndent";
+import { deleteBesideInlineAnchor } from "../../commands/deleteBesideInlineAnchor";
 import { keepSectionBreaksOnSurvivingMarks } from "../../commands/sectionBreak";
 import { getDocumentStyleResolver } from "../../plugins/documentStyleState";
 import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
@@ -401,10 +402,19 @@ export const BaseKeymapExtension: (
         // break follows the mark that survived rather than the node whose
         // attrs ProseMirror happened to keep.
         Backspace: keepSectionBreaksOnSurvivingMarks(
-          chainCommands(deleteSelection, clearIndentOnBackspace, joinBackward),
+          chainCommands(
+            deleteSelection,
+            deleteBesideInlineAnchor(joinBackward, "backward"),
+            clearIndentOnBackspace,
+            joinBackward,
+          ),
         ),
         Delete: keepSectionBreaksOnSurvivingMarks(
-          chainCommands(deleteSelection, joinForward),
+          chainCommands(
+            deleteSelection,
+            deleteBesideInlineAnchor(joinForward, "forward"),
+            joinForward,
+          ),
         ),
         "Mod-a": selectAll,
         Escape: selectParentNode,

@@ -96,6 +96,7 @@ type DomEvents = Record<string, (view: unknown, event?: unknown) => boolean>;
 function setup(text: string): {
   view: MockView;
   domEvents: DomEvents;
+  handleKeyDown: (v: unknown, event: unknown) => boolean;
   handleTextInput: (
     v: unknown,
     from: number,
@@ -116,6 +117,7 @@ function setup(text: string): {
   // SAFETY: handleDOMEvents and handleTextInput are present on this plugin.
   const props = plugin.props as {
     handleDOMEvents: DomEvents;
+    handleKeyDown: (v: unknown, event: unknown) => boolean;
     handleTextInput: (
       v: unknown,
       from: number,
@@ -126,6 +128,7 @@ function setup(text: string): {
   return {
     view,
     domEvents: props.handleDOMEvents,
+    handleKeyDown: props.handleKeyDown,
     handleTextInput: props.handleTextInput,
   };
 }
@@ -161,6 +164,127 @@ describe("SuggestionMode IME composition", () => {
     // The caret stays collapsed right after the committed text (not before it).
     expect(view.state.selection.empty).toBe(true);
     expect(view.state.selection.from).toBe(9); // 'Hello'(5) + '日本語'(3) + 1 doc offset
+  });
+
+  test("a cancelled composition marks nothing, wherever it leaves the caret", async () => {
+    const { view, domEvents } = setup("Hello");
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)),
+    );
+
+    domEvents.compositionstart(view);
+    view.dispatch(view.state.tr.insertText("日本語", 1, 1));
+    // Removing the composing text reads back as the text around it, with the
+    // caret at that text's end.
+    const removed = view.state.tr.delete(1, 4);
+    view.dispatch(removed.setSelection(TextSelection.create(removed.doc, 6)));
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.state.doc.textContent).toBe("Hello");
+    expect(insertionText(view.state)).toEqual([]);
+    expect(deletionText(view.state)).toEqual([]);
+  });
+
+  test("a cancelled composition keeps the revision of the text it read back", async () => {
+    const { view, domEvents, handleTextInput } = setup("Hello");
+    handleTextInput(view, 6, 6, "abc");
+    expect(insertionText(view.state)).toEqual(["abc"]);
+
+    domEvents.compositionstart(view);
+    // Reading the removal back replaces the tracked text with an unmarked copy.
+    view.dispatch(view.state.tr.insertText("abc", 6, 9).removeMark(6, 9));
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.state.doc.textContent).toBe("Helloabc");
+    expect(insertionText(view.state)).toEqual(["abc"]);
+  });
+
+  test("another writer's deletion during a composition leaves the composed text tracked", async () => {
+    const { view, domEvents } = setup("Hello");
+
+    domEvents.compositionstart(view);
+    view.dispatch(view.state.tr.delete(1, 4).setMeta("addToHistory", false));
+    view.dispatch(view.state.tr.insertText("日本語", 3, 3));
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.state.doc.textContent).toBe("lo日本語");
+    expect(insertionText(view.state)).toEqual(["日本語"]);
+  });
+
+  test("a cancelled composition over a selection that comes back as it was records nothing", async () => {
+    const { view, domEvents } = setup("Hello");
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 3)),
+    );
+
+    domEvents.compositionstart(view);
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.state.doc.textContent).toBe("Hello");
+    expect(insertionText(view.state)).toEqual([]);
+    expect(deletionText(view.state)).toEqual([]);
+  });
+
+  test("a cancelled composition keeps another writer's mark", async () => {
+    const { view, domEvents } = setup("Hello");
+    const mark = schema.marks["insertion"]!.create({
+      revisionId: 7,
+      author: "Other",
+    });
+
+    domEvents.compositionstart(view);
+    view.dispatch(
+      view.state.tr.addMark(1, 3, mark).setMeta("addToHistory", false),
+    );
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(insertionText(view.state)).toEqual(["He"]);
+  });
+
+  test("a composition committed before existing text marks only what it added", async () => {
+    const { view, domEvents } = setup("Hello");
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)),
+    );
+
+    domEvents.compositionstart(view);
+    const typed = view.state.tr.insertText("日本語", 1, 1);
+    // The caret does not bound the composition: it can land past existing text.
+    view.dispatch(typed.setSelection(TextSelection.create(typed.doc, 9)));
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.state.doc.textContent).toBe("日本語Hello");
+    expect(insertionText(view.state)).toEqual(["日本語"]);
+  });
+
+  test("a Backspace read from a composition's own removal is not a tracked deletion", () => {
+    const { view, domEvents, handleKeyDown } = setup("Hello");
+
+    domEvents.compositionstart(view);
+    view.dispatch(view.state.tr.insertText("日本語", 6, 6));
+    const handled = handleKeyDown(view, {
+      key: "Backspace",
+      shiftKey: false,
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+    });
+
+    expect(handled).toBe(false);
+    expect(deletionText(view.state)).toEqual([]);
+    expect(view.state.doc.textContent).toBe("Hello日本語");
   });
 
   test("handleTextInput does NOT re-insert composed text while composing", () => {

@@ -1445,6 +1445,174 @@ test("a composition's end event names its text when the browser restarted it", (
   );
 });
 
+test("a restarted composition commits its final text at the captured caret", () => {
+  const doc = canonicalSchema.node("doc", null, [
+    canonicalSchema.node(
+      "paragraph",
+      null,
+      canonicalSchema.text("valid invoice Intro"),
+    ),
+  ]);
+  const caret = 15;
+  const baseline = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, caret),
+  });
+  const restart = (
+    finish: (
+      composition: ReturnType<typeof createCanonicalComposition>,
+      view: EditorView,
+    ) => void,
+  ) => {
+    const inputs: { from: number; to: number; text: string }[] = [];
+    const refusals: string[] = [];
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const view = new EditorView(mount, { state: baseline });
+    const composition = createCanonicalComposition({
+      begin: () => true,
+      end: () => {},
+      replace: ({ from, to, text }) => inputs.push({ from, to, text }),
+      refuse: (reason) => refusals.push(reason),
+    });
+    composition.start(view);
+    composition.accept(
+      view,
+      view.state.tr.insertText("orphan", caret).setMeta("composition", 1),
+    );
+    // The browser begins again, and its next proposal lands somewhere else.
+    composition.start(view);
+    composition.accept(
+      view,
+      view.state.tr.insertText("elsewhere", 8).setMeta("composition", 1),
+    );
+    expect(view.state.doc.eq(baseline.doc)).toBe(true);
+    finish(composition, view);
+    const state = view.state;
+    view.destroy();
+    mount.remove();
+    return { inputs, refusals, state };
+  };
+  const final = [{ from: caret, to: caret, text: "alpha" }];
+
+  const ended = restart((composition, view) => {
+    composition.ended(view, "alpha");
+    composition.recover(view);
+  });
+  expect(ended.inputs).toEqual(final);
+  expect(ended.refusals).toEqual([]);
+
+  // A commit can arrive as a plain final input, before any end event.
+  const explicit = restart((composition, view) => {
+    composition.authorizeNative(view, "explicitFinal", "alpha");
+    composition.recover(view);
+  });
+  expect(explicit.inputs).toEqual(final);
+  expect(explicit.refusals).toEqual([]);
+
+  const cancelled = restart((composition, view) => {
+    composition.ended(view, "");
+    composition.recover(view);
+  });
+  expect(cancelled.inputs).toEqual([]);
+  expect(cancelled.refusals).toEqual([]);
+  expect(cancelled.state.doc.eq(baseline.doc)).toBe(true);
+});
+
+test("a repeated start before any update is not a restart", () => {
+  const doc = canonicalSchema.node("doc", null, [
+    canonicalSchema.node("paragraph", null, canonicalSchema.text("Intro")),
+  ]);
+  const baseline = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, 3),
+  });
+  const inputs: { from: number; to: number; text: string }[] = [];
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const view = new EditorView(mount, { state: baseline });
+  const composition = createCanonicalComposition({
+    begin: () => true,
+    end: () => {},
+    replace: ({ from, to, text }) => inputs.push({ from, to, text }),
+    refuse: () => {},
+  });
+  composition.start(view);
+  composition.start(view);
+  composition.accept(
+    view,
+    view.state.tr.insertText("alpha", 3).setMeta("composition", 1),
+  );
+  expect(view.state.doc.textContent).toBe("Inalphatro");
+  composition.ended(view, "alpha");
+  composition.recover(view);
+  expect(inputs).toEqual([{ from: 3, to: 3, text: "alpha" }]);
+  view.destroy();
+  mount.remove();
+});
+
+test("reading the DOM back may change only what the DOM cannot carry", () => {
+  const { bold, runFormattingOverride, insertion } = canonicalSchema.marks;
+  if (!bold || !runFormattingOverride || !insertion)
+    throw new TypeError("Missing a mark type");
+  const tracked = insertion.create({
+    revisionId: 1,
+    author: "Ada",
+    date: "2026-01-01T00:00:00Z",
+    utcDate: "2026-01-01T00:00:00Z",
+  });
+  // What a DOM read rebuilds: the same revision, without the attribute it cannot hold.
+  const reread = insertion.create({
+    revisionId: 1,
+    author: "Ada",
+    date: "2026-01-01T00:00:00Z",
+  });
+  const otherRevision = insertion.create({ revisionId: 2, author: "Ada" });
+  const override = runFormattingOverride.create();
+  const stateOf = (...marks: Mark[]) => {
+    const doc = canonicalSchema.node("doc", null, [
+      canonicalSchema.node("paragraph", null, [
+        canonicalSchema.text("東京", marks),
+        canonicalSchema.text("Intro"),
+      ]),
+    ]);
+    return EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 3),
+    });
+  };
+  const rewrite = (
+    state: EditorState,
+    marks: readonly Mark[],
+    composedMarks: readonly Mark[] = [],
+  ) =>
+    state.tr.replaceWith(1, 3, [
+      canonicalSchema.text("東京", marks),
+      canonicalSchema.text("alpha", composedMarks),
+    ]);
+
+  const accepted = compose(stateOf(tracked, override), (state) =>
+    rewrite(state, [reread], [reread]),
+  );
+  expect(accepted.refusals).toEqual([]);
+  expect(accepted.inputs).toEqual([{ from: 3, to: 3, text: "alpha" }]);
+
+  for (const [name, state, marks, composedMarks] of [
+    ["another revision", stateOf(tracked), [otherRevision], []],
+    ["a review mark on untouched text", stateOf(), [tracked], []],
+    ["a review mark with no tracked run beside it", stateOf(), [], [tracked]],
+    ["bold lost from untouched text", stateOf(bold.create()), [], []],
+    ["bold gained on composed text", stateOf(), [], [bold.create()]],
+  ] as const) {
+    const refused = compose(state, (current) =>
+      rewrite(current, marks, composedMarks),
+    );
+    expect(refused.inputs, name).toEqual([]);
+    expect(refused.refusals, name).toHaveLength(1);
+    expect(refused.state.doc.eq(state.doc), name).toBe(true);
+  }
+});
+
 const loadCarrierSource = async () => {
   const source = createEmptyDocument({ initialText: "alpha😀café東京" });
   const paragraph = source.package.document.content.at(0);

@@ -61,18 +61,23 @@ type NativeProposal =
 /** Native changes require a preceding, classified input event at the same state. */
 /**
  * ProseMirror treats the end of one text node and the start of the next run as
- * one position and leaves whichever the browser holds. Chromium's IME resolves a
- * caret at the start of a nested run against the wrong block, so a composition
- * starts where the model's caret is: at the end of the text before it.
+ * one position, so it leaves whichever the browser holds. Chromium's IME can
+ * resolve that caret against the start of the document, even when it reports the
+ * right node, until the selection is set again. A composition starts where the
+ * model's caret is: in the text before it, or at a paragraph's start in the first.
  */
 const placeCompositionCaret = (view: EditorView): void => {
   const { selection } = view.state;
   const native = view.dom.ownerDocument.getSelection();
   if (!selection.empty || !native?.isCollapsed) return;
-  const { node, offset } = view.domAtPos(selection.from, -1);
+  const before = view.domAtPos(selection.from, -1);
+  const { node, offset } =
+    before.node.nodeType === before.node.TEXT_NODE
+      ? before
+      : view.domAtPos(selection.from, 1);
   if (node.nodeType !== node.TEXT_NODE) return;
-  if (native.anchorNode !== node || native.anchorOffset !== offset)
-    native.collapse(node, offset);
+  native.removeAllRanges();
+  native.collapse(node, offset);
 };
 
 export const createCanonicalInputBoundary = (
@@ -472,7 +477,8 @@ export const createCanonicalInputBoundary = (
             (event.inputType === "insertText" ||
               event.inputType === "insertReplacementText");
           const nativeStillComposing = view.composing;
-          if (nativeFinal) composition.authorizeNative(view, "explicitFinal");
+          if (nativeFinal)
+            composition.authorizeNative(view, "explicitFinal", event.data);
           const recovered = composition.recover(view);
           composition.forgetCompleted();
           proposal = { type: "idle" };

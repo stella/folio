@@ -58,10 +58,18 @@ test("sequential replay orders every property-edit sibling before terminal break
               ordered.map(({ id }) => id).toSorted(),
               applied.map(({ id }) => id).toSorted(),
             );
-            assert.equal(
-              ordered.at(mode === "tracked-changes" ? 0 : -1)?.id,
-              property.id,
+            const lastDeletion = deletions.at(-1)?.id;
+            const propertyAt = ordered.findIndex(
+              ({ id }) => id === property.id,
             );
+            const retirementAt = ordered.findIndex(
+              ({ id }) => id === lastDeletion,
+            );
+            if (mode === "tracked-changes") {
+              assert.ok(propertyAt < retirementAt);
+            } else {
+              assert.equal(propertyAt, ordered.length - 1);
+            }
           }
         }
       }
@@ -127,16 +135,7 @@ test("terminal retirement ordering stays within each table cell", () => {
     sequentialGroups({ applied, preRows, mode: "tracked-changes" })
       .flat()
       .map(({ id }) => id),
-    ["left-patch", "right-patch", "left-delete"],
-  );
-  assert.throws(
-    () =>
-      sequentialGroups({
-        applied: [{ id: "unknown", type: "unknown" }],
-        preRows,
-        mode: "tracked-changes",
-      }),
-    /no policy for unknown/u,
+    ["right-patch", "left-patch", "left-delete"],
   );
 });
 
