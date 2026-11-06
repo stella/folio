@@ -768,7 +768,35 @@ const BROWSER_KEY_OVER_SELECTION_TRACES = (
   trace: BrowserInputTrace;
 }[];
 
+/** Ctrl, Cmd or Shift with Backspace at the start of a list item joins it to the paragraph before. */
+const BROWSER_MODIFIED_BACKSPACE_TRACES = (
+  [
+    ["single-bullet-list", "ControlOrMeta+Backspace"],
+    ["single-bullet-list", "Shift+Backspace"],
+    ["single-decimal-list", "ControlOrMeta+Backspace"],
+  ] as const
+).map(([shape, key], index) => ({
+  seed: 0,
+  path: `${shape}-${String(index)}`,
+  fingerprint: "pinned-for-a-modified-backspace",
+  trace: {
+    shape,
+    actions: [
+      {
+        kind: "keys",
+        keys: ["ControlOrMeta+Home", "ArrowDown", "ArrowDown", "Home", key],
+      },
+    ],
+  },
+})) satisfies readonly {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+}[];
+
 export const BROWSER_INPUT_REGRESSIONS = [
+  ...BROWSER_MODIFIED_BACKSPACE_TRACES,
   ...BROWSER_KEY_OVER_SELECTION_TRACES,
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
