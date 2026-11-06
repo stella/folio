@@ -675,6 +675,38 @@ export const BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366 = {
   trace: BrowserInputTrace;
 };
 
+/**
+ * The marker kinds the bookmark traces do not reach, through the actions that
+ * found a defect beside a bookmark: deleting, then pasting behind what went;
+ * typing a break; cancelling a composition.
+ */
+const INVISIBLE_MARKER_ACTIONS: readonly BrowserInputTrace["actions"][] = [
+  [
+    { kind: "delete" },
+    {
+      kind: "pasteListHtml",
+      plain: "Alpha\nNested\nOmega",
+      html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+    },
+  ],
+  [{ kind: "delete" }, { kind: "pastePlain", plain: "Pasted", html: "" }],
+  [{ kind: "enter" }, { kind: "delete" }],
+  [
+    { kind: "delete" },
+    {
+      kind: "imeReplacement",
+      updates: ["shall", "shall café"],
+      completion: "cancel",
+    },
+  ],
+];
+
+export const BROWSER_INVISIBLE_MARKER_TRACES = (
+  ["comments", "invisible-markers"] as const
+).flatMap((shape) =>
+  INVISIBLE_MARKER_ACTIONS.map((actions) => ({ shape, actions })),
+);
+
 export const BROWSER_CANCELLED_COMPOSITION_SEED_1793946574 = {
   seed: 1793946574,
   path: "10",
