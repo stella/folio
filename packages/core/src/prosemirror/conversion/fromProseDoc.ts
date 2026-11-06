@@ -5396,7 +5396,9 @@ const withoutTheFieldsOwnMarks = (node: PMNode): PMNode => {
       ),
     );
   });
-  return node.copy(Fragment.fromArray(children));
+  return recreateProseNodeWithParagraphPropertySource(node, {
+    content: Fragment.fromArray(children),
+  });
 };
 
 function createFieldFromNode(

@@ -1293,57 +1293,7 @@ const getPreviewRuns = ({
     ReturnType<typeof paragraphRunStyleContext> | undefined;
   let cleanOffset = 0;
 
-  node.descendants((child, relativePosition) => {
-    const start = nodeFrom + 1 + relativePosition;
-    // A note reference previews as the marker the clean text shows for it.
-    const noteReference = cleanBlock.structuralBoundaries.find(
-      (
-        boundary,
-      ): boundary is Extract<
-        CleanTextStructuralBoundary,
-        { type: "noteReference" }
-      > => boundary.type === "noteReference" && boundary.from === start,
-    );
-    let text: string | null | undefined;
-    if (noteReference !== undefined) {
-      text = cleanBlock.text.slice(
-        noteReference.offset,
-        noteReference.offset + noteReference.length,
-      );
-    } else {
-      text = child.isText
-        ? child.text
-        : runFormattingInlineAtomCleanText(child);
-    }
-    if (text === undefined || text === null || text.length === 0) return true;
-    if (
-      child.marks.some(
-        (mark) =>
-          mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
-      )
-    ) {
-      return false;
-    }
-    while (
-      (cleanBlock.offsets[cleanOffset] ?? Number.POSITIVE_INFINITY) < start
-    ) {
-      cleanOffset++;
-    }
-    // A text node advances one PM position per character; an atom, and a note
-    // reference's marker, hold all of their characters at one position.
-    const lastCharacterPosition =
-      child.isText && noteReference === undefined
-        ? start + text.length - 1
-        : start;
-    if (
-      cleanBlock.offsets[cleanOffset] !== start ||
-      cleanBlock.offsets[cleanOffset + text.length - 1] !==
-        lastCharacterPosition
-    ) {
-      return false;
-    }
-    cleanOffset += text.length;
-
+  const pushRun = (child: PMNode, text: string): void => {
     const style = getPreviewRunStyle(child.marks, defaultStyle);
     const hasAuthorshipCarrier = child.marks.some(
       ({ type }) =>
@@ -1387,6 +1337,70 @@ const getPreviewRuns = ({
       ...style,
       ...(!isEmptyPreviewRunStyle(directFormatting) && { directFormatting }),
     });
+  };
+
+  node.descendants((child, relativePosition) => {
+    const start = nodeFrom + 1 + relativePosition;
+    // A note reference previews as the marker the clean text shows for it.
+    const noteReference = cleanBlock.structuralBoundaries.find(
+      (
+        boundary,
+      ): boundary is Extract<
+        CleanTextStructuralBoundary,
+        { type: "noteReference" }
+      > => boundary.type === "noteReference" && boundary.from === start,
+    );
+    let text: string | null | undefined;
+    if (noteReference !== undefined) {
+      text = cleanBlock.text.slice(
+        noteReference.offset,
+        noteReference.offset + noteReference.length,
+      );
+    } else if (child.type.name === "structuredField") {
+      // Read as one atom by the clean text, whatever its result's runs are.
+      text = child.textContent;
+    } else {
+      text = child.isText
+        ? child.text
+        : runFormattingInlineAtomCleanText(child);
+    }
+    if (text === undefined || text === null || text.length === 0) return true;
+    if (
+      child.marks.some(
+        (mark) =>
+          mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
+      )
+    ) {
+      return false;
+    }
+    while (
+      (cleanBlock.offsets[cleanOffset] ?? Number.POSITIVE_INFINITY) < start
+    ) {
+      cleanOffset++;
+    }
+    // A text node advances one PM position per character; an atom, and a note
+    // reference's marker, hold all of their characters at one position.
+    const lastCharacterPosition =
+      child.isText && noteReference === undefined
+        ? start + text.length - 1
+        : start;
+    if (
+      cleanBlock.offsets[cleanOffset] !== start ||
+      cleanBlock.offsets[cleanOffset + text.length - 1] !==
+        lastCharacterPosition
+    ) {
+      return false;
+    }
+    cleanOffset += text.length;
+
+    if (child.type.name === "structuredField") {
+      // One atom to the clean text, but its runs keep their own formatting.
+      child.forEach((run) => {
+        if (run.isText && run.text) pushRun(run, run.text);
+      });
+      return false;
+    }
+    pushRun(child, text);
     return false;
   });
 
