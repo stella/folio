@@ -171,8 +171,18 @@ const tableInsertIndex = (
       (row) => row.table?.tableIndex === anchor.table?.outerTableIndex,
     );
     if (!outerRow) return unsupported("the outer table is absent");
-    const index = model.tables.indexOf(sourceOf(model, outerRow.id).table);
-    return index + (position === "after" ? 1 : 0);
+    const outerRows = model.rows.filter(
+      (row) => row.table?.outerTableIndex === anchor.table?.outerTableIndex,
+    );
+    // Tables nested in the outer one are listed after it, and go with it.
+    const lastOwnedTable = Math.max(
+      ...outerRows.map((row) =>
+        model.tables.indexOf(sourceOf(model, row.id).table),
+      ),
+    );
+    return position === "after"
+      ? lastOwnedTable + 1
+      : model.tables.indexOf(sourceOf(model, outerRow.id).table);
   }
   // What a text box holds belongs to the paragraph it is drawn in, so a table
   // after that paragraph follows it, a table the box holds included.
@@ -189,9 +199,15 @@ const tableInsertIndex = (
         row.table !== undefined &&
         row.table.tableIndex === row.table.outerTableIndex,
     );
-  return priorOuter
+  let index = priorOuter
     ? model.tables.indexOf(sourceOf(model, priorOuter.id).table) + 1
     : 0;
+  // Pre-state rows do not hold a table this batch already put in that box.
+  const owned = new Set(
+    model.rows.slice(rowIndex + 1, lastOwned + 1).map((row) => row.id),
+  );
+  while (owned.has(model.tables[index]?.insertedBeside ?? "")) index += 1;
+  return index;
 };
 
 const rectangularTable = (rows: readonly (readonly string[])[]): Table => {
