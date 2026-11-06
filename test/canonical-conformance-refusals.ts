@@ -179,8 +179,7 @@ export const canonicalConformanceRefusalRows = (
         key.operation === "command:removeHyperlink"));
   if (!hyperlink) return [];
   if (key.mode === "suggesting") return [REFUSAL_ROWS.hyperlinkSuggestion];
-  if (key.shape === "comments" || key.shape === "tracked-changes")
-    return [REFUSAL_ROWS.hyperlinkReview];
+  if (key.shape === "tracked-changes") return [REFUSAL_ROWS.hyperlinkReview];
   return [];
 };
 

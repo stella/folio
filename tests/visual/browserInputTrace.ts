@@ -182,6 +182,8 @@ export const BROWSER_SHAPE_TARGETS = {
   "single-bullet-list": "list",
   notes: "note",
   "fields-links-bookmarks": "field",
+  comments: null,
+  "invisible-markers": null,
   image: "inlineObject",
   "bare-package": null,
   "plain-markdown": null,

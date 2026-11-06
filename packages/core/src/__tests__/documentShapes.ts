@@ -645,6 +645,49 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
       }),
   }),
   shape({
+    id: "invisible-markers",
+    description:
+      "Comment ranges, a permission range, a bookmark and proofing marks around ordinary words",
+    features: ["comment", "bookmark"],
+    focus: "Marked words stand between invisible markers here.",
+    build: () =>
+      buildRawPackage({
+        styles: WORD_STYLES,
+        body:
+          textParagraph("Intro paragraph.") +
+          paragraph(
+            '<w:commentRangeStart w:id="0"/><w:bookmarkStart w:id="1" w:name="Mark"/>' +
+              '<w:permStart w:id="2" w:edGrp="everyone"/><w:proofErr w:type="spellStart"/>' +
+              run("Marked words") +
+              '<w:proofErr w:type="spellEnd"/><w:permEnd w:id="2"/><w:bookmarkEnd w:id="1"/>' +
+              '<w:commentRangeEnd w:id="0"/>' +
+              '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="0"/></w:r>' +
+              run(" stand between invisible markers here."),
+          ) +
+          paragraph(
+            run("A point comment sits") +
+              '<w:commentRangeStart w:id="3"/><w:commentRangeEnd w:id="3"/>' +
+              '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="3"/></w:r>' +
+              run(" between these words."),
+          ) +
+          textParagraph("Tail.") +
+          SECTION(),
+        parts: [
+          {
+            path: "word/comments.xml",
+            contentType: `${WML_CT}.comments+xml`,
+            relationshipType: "comments",
+            relationshipId: "rIdComments",
+            body:
+              `${XML_DECL}<w:comments xmlns:w="${W_NS}">` +
+              `<w:comment w:id="0" w:author="Reviewer" w:date="${FIXED_DATE}" w:initials="R"><w:p>${run("Ranged.")}</w:p></w:comment>` +
+              `<w:comment w:id="3" w:author="Reviewer" w:date="${FIXED_DATE}" w:initials="R"><w:p>${run("Point.")}</w:p></w:comment>` +
+              "</w:comments>",
+          },
+        ],
+      }),
+  }),
+  shape({
     id: "tracked-changes",
     description:
       "Tracked insertion, deletion, paragraph-property and run-property changes",
