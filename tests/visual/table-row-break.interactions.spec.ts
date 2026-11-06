@@ -50,11 +50,14 @@ const paintedLines = (page: Page): Promise<Seen[]> =>
         const range = document.createRange();
         range.selectNodeContents(node);
         const box = range.getBoundingClientRect();
-        let top = box.top;
-        let bottom = box.bottom;
+        const pageBox = pageElement.getBoundingClientRect();
+        let top = Math.max(box.top, pageBox.top);
+        let bottom = Math.min(box.bottom, pageBox.bottom);
+        // What clips a line within its page. The scroller outside the page
+        // only hides what is out of view.
         for (
           let owner = node.parentElement;
-          owner && owner !== document.body;
+          owner && owner !== pageElement;
           owner = owner.parentElement
         ) {
           if (getComputedStyle(owner).overflowY === "visible") continue;
