@@ -8,8 +8,11 @@ import {
   plainDocument,
 } from "./consumer-scenarios/support/documents.ts";
 import { coreBatch } from "./consumer-scenarios/support/operations.ts";
-import { capture } from "./consumer-scenarios/support/oracle.ts";
-import { assertSavedOutcome } from "./corpus-edit-fuzz-worker.ts";
+import {
+  capture,
+  withoutMintedIds,
+} from "./consumer-scenarios/support/oracle.ts";
+import { assertSavedOutcome, compareSdk } from "./corpus-edit-fuzz-worker.ts";
 
 test("saved-only comment loss fails the edit outcome check", async () => {
   const original = await plainDocument();
@@ -138,5 +141,55 @@ test("saved-only revision loss fails the reject check", async () => {
       context: "flattened revisions",
     }),
     /rejecting every change/u,
+  );
+});
+
+const AT = (paragraph: number) =>
+  `Schema Sch_X at /w:document[1]/w:body[1]/w:p[${String(paragraph)}]/w:pPr[1]: The element has unexpected child element 'b'.`;
+
+test("an error the source had is not new because an edit moved it", () => {
+  assert.deepEqual(compareSdk([AT(846)], [AT(845)]), []);
+});
+
+test("an error the source had more of than the save is not new", () => {
+  assert.deepEqual(compareSdk([AT(1), AT(2)], [AT(1)]), []);
+});
+
+test("one error more than the source had is new", () => {
+  assert.deepEqual(compareSdk([AT(1)], [AT(1), AT(2)]), [AT(2)]);
+});
+
+test("another error is new", () => {
+  const other = "Semantic Sem_Y at /w:numbering[1]: unexpected child 'num'.";
+  assert.deepEqual(compareSdk([AT(1)], [AT(1), other]), [other]);
+});
+
+const LIVE = (...blocks: Record<string, unknown>[]) =>
+  JSON.stringify({ blocks, comments: 0 });
+
+test("a minted block id is not a change once saved", () => {
+  const before = LIVE({ id: "A", idStability: "positional", text: "x" });
+  const saved = LIVE({ id: "B", text: "x" });
+  assert.equal(
+    withoutMintedIds(saved, before),
+    withoutMintedIds(before, before),
+  );
+});
+
+test("a text change under a minted id is a change", () => {
+  const before = LIVE({ id: "A", idStability: "positional", text: "x" });
+  const saved = LIVE({ id: "A", text: "y" });
+  assert.notEqual(
+    withoutMintedIds(saved, before),
+    withoutMintedIds(before, before),
+  );
+});
+
+test("an authored id that changes is a change", () => {
+  const before = LIVE({ id: "A", text: "x" });
+  const saved = LIVE({ id: "B", text: "x" });
+  assert.notEqual(
+    withoutMintedIds(saved, before),
+    withoutMintedIds(before, before),
   );
 });
