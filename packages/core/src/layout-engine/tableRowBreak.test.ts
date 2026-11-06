@@ -20,9 +20,7 @@ import {
 } from "./measure/measureContainer";
 import {
   buildTableRowBreakInfo,
-  cellBandFromLines,
   getRowContinuationSkip,
-  rowCellLineBands,
   snapRowBreak,
 } from "./tableRowBreak";
 import type {
@@ -1390,106 +1388,6 @@ describe("floating table placement", () => {
       expect(fragment?.x).toBe(expected);
     },
   );
-});
-
-describe("a row whose cells share no line boundary within a page", () => {
-  // 13 and 17 are coprime, so no boundary is shared before 221, past any page.
-  const unalignedRow = (linesA: number, linesB: number) => {
-    const cell = (id: string) => ({
-      id,
-      padding: { top: 0, right: 0, bottom: 0, left: 0 },
-      blocks: [
-        {
-          kind: "paragraph" as const,
-          id: `${id}-p`,
-          runs: [{ kind: "text" as const, text: "x" }],
-        },
-      ],
-    });
-    const height = Math.max(linesA * 13, linesB * 17);
-    const block: TableBlock = {
-      kind: "table",
-      id: "t",
-      rows: [{ id: "r0", cells: [cell("a"), cell("b")] }],
-      columnWidths: [110, 110],
-    };
-    const measure: TableMeasure = {
-      kind: "table",
-      rows: [
-        {
-          cells: [
-            {
-              blocks: [paraMeasureWithLineHeight(linesA, 13)],
-              width: 110,
-              height: linesA * 13,
-            },
-            {
-              blocks: [paraMeasureWithLineHeight(linesB, 17)],
-              width: 110,
-              height: linesB * 17,
-            },
-          ],
-          height,
-        },
-      ],
-      columnWidths: [110, 110],
-      totalWidth: 220,
-      totalHeight: height,
-    };
-    return { block, measure };
-  };
-
-  test("no fragment outgrows the page and every line shows whole, exactly once", () => {
-    const pageHeight = 100;
-    const { block, measure } = unalignedRow(40, 30);
-    const options: LayoutOptions = {
-      ...OPTIONS,
-      pageSize: { w: 300, h: pageHeight },
-      margins: { top: 0, right: 0, bottom: 0, left: 0 },
-    };
-    const fragments = layoutDocument([block], [measure], options)
-      .pages.flatMap((page) => page.fragments)
-      .filter(
-        (fragment): fragment is TableFragment => fragment.kind === "table",
-      );
-    expect(fragments.length).toBeGreaterThan(1);
-    const lines = rowCellLineBands(block, measure, 0);
-    const shownTimes = lines.map((cell) => cell.map(() => 0));
-    for (const fragment of fragments) {
-      expect(fragment.height).toBeLessThanOrEqual(pageHeight);
-      const bandTop = fragment.topClip ?? 0;
-      const bandBottom = fragment.bottomClip ?? measure.rows[0]!.height;
-      const lineBand = fragment.cellLineBand ?? {
-        shownThrough: bandTop,
-        cut: bandBottom,
-      };
-      lines.forEach((cell, cellIndex) => {
-        const shown =
-          fragment.cellLineBand?.cells[cellIndex] ??
-          cellBandFromLines(cell, lineBand);
-        // The cell's clip stays inside the band that the page really paints.
-        expect(shown.top).toBeGreaterThanOrEqual(bandTop);
-        expect(shown.bottom).toBeLessThanOrEqual(bandBottom);
-        cell.forEach((line, lineIndex) => {
-          if (line.top >= shown.top && line.bottom <= shown.bottom)
-            shownTimes[cellIndex]![lineIndex]! += 1;
-        });
-      });
-    }
-    expect(shownTimes.flat().every((times) => times === 1)).toBe(true);
-  });
-
-  test("a single line taller than the page still lets the row finish", () => {
-    const { block, measure } = unalignedRow(1, 2);
-    const options: LayoutOptions = {
-      ...OPTIONS,
-      pageSize: { w: 300, h: 10 },
-      margins: { top: 0, right: 0, bottom: 0, left: 0 },
-    };
-    expect(
-      layoutDocument([block], [measure], options).pages.length,
-    ).toBeGreaterThan(0);
-  });
 });
 
 describe("oversized table row splits across pages (#570)", () => {

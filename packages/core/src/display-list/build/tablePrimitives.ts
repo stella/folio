@@ -103,8 +103,6 @@ type PaintCellOptions = {
   readonly context: BuildContext;
   readonly paintTextBox: PaintTextBox;
   readonly visibleBand: VisibleBand | undefined;
-  /** The band of this cell's content a line-by-line row cut shows, on the page. */
-  readonly contentBandPx?: { readonly top: number; readonly bottom: number };
   readonly sides: {
     readonly top: boolean;
     readonly bottom: boolean;
@@ -121,7 +119,6 @@ const paintCell = ({
   context,
   paintTextBox,
   visibleBand,
-  contentBandPx,
   sides,
 }: PaintCellOptions): void => {
   const primitives: DisplayPrimitive[] = [];
@@ -243,9 +240,8 @@ const paintCell = ({
   // blocks inside it open their regions here, then anything drawn over them.
   composer.push(primitives);
   primitives.length = 0;
-  const contentComposer = contentBandPx ? createPageComposer() : composer;
   paintCellBlocks({
-    composer: contentComposer,
+    composer,
     blocks: cell.blocks,
     measures: cellMeasure.blocks,
     xPx: contentXPx,
@@ -256,21 +252,6 @@ const paintCell = ({
     paintTextBox,
     visibleBand,
   });
-  if (contentBandPx) {
-    composer.push([
-      {
-        kind: "clipGroup",
-        rect: {
-          xPx: box.xPx,
-          yPx: contentBandPx.top,
-          widthPx: box.widthPx,
-          heightPx: Math.max(0, contentBandPx.bottom - contentBandPx.top),
-        },
-        children: [...contentComposer.primitives()],
-        regions: [...contentComposer.regions()],
-      },
-    ]);
-  }
 
   const diagonals = [
     { border: borders?.topLeftToBottomRight, from: "topLeft" as const },
@@ -480,7 +461,6 @@ type PaintTableBodyOptions = {
   readonly paintTextBox: PaintTextBox;
   /** What of this table the page shows, in page coordinates. */
   readonly visibleBand: VisibleBand | undefined;
-  readonly cellLineBand?: TableFragment["cellLineBand"];
 };
 
 const rowIsPainted = (row: TableRow | undefined): row is TableRow =>
@@ -498,7 +478,6 @@ const paintTableBody = ({
   context,
   paintTextBox,
   visibleBand,
-  cellLineBand,
 }: PaintTableBodyOptions): void => {
   const grid = buildTableCellGrid(block.rows, measure.columnWidths.length);
   const placements = buildTableCellPlacements({
@@ -565,7 +544,6 @@ const paintTableBody = ({
       visibleBand !== undefined &&
       rowIndex === firstShownRow &&
       rowYPx >= visibleBand.top;
-    const cellBands = rowIndex === fromRow ? cellLineBand?.cells : undefined;
     for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex += 1) {
       const cell = row.cells[cellIndex];
       const cellMeasure = rowMeasure.cells[cellIndex];
@@ -629,14 +607,6 @@ const paintTableBody = ({
             context,
             paintTextBox,
             visibleBand,
-            ...(cellBands?.[cellIndex]
-              ? {
-                  contentBandPx: {
-                    top: rowYPx + cellBands[cellIndex].top,
-                    bottom: rowYPx + cellBands[cellIndex].bottom,
-                  },
-                }
-              : {}),
             sides: {
               // The shared edge belongs to the upper / leading cell; the other
               // side suppresses its own only when that owner actually draws one.
@@ -816,7 +786,6 @@ export const paintTableFragment = ({
       context,
       paintTextBox,
       visibleBand,
-      ...(fragment.cellLineBand ? { cellLineBand: fragment.cellLineBand } : {}),
     });
   };
 

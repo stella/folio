@@ -1329,19 +1329,6 @@ export type TableFragment = FragmentBase & {
    */
   topClip?: number;
   bottomClip?: number;
-  /**
-   * Set when no line boundary is shared by every cell within a page: the band
-   * above cuts through some cell's line, so each cell shows only the lines that
-   * end in `(shownThrough, cut]`, in the row's own coordinates. The next band
-   * starts at the highest line left over, so a cell can show nothing twice and
-   * lose nothing, at the cost of a gap of up to one line beside a shorter cell.
-   */
-  cellLineBand?: {
-    shownThrough: number;
-    cut: number;
-    /** Each cell's visible band, by cell index, in the row's own coordinates. */
-    cells: readonly { top: number; bottom: number }[];
-  };
 };
 
 /**

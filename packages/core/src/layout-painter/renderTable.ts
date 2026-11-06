@@ -1032,7 +1032,6 @@ type RenderTableRowOptions = {
   cellPlacements: TableCellPlacements;
   cellSpacing?: number | undefined;
   contentClip?: CellContentClip;
-  cellBands?: readonly { top: number; bottom: number }[];
   visibleBand?: VisibleBand;
   pageContentPosition?: PageContentPosition;
   inlineOffset?: number;
@@ -1056,7 +1055,6 @@ function renderTableRow({
   cellPlacements,
   cellSpacing,
   contentClip,
-  cellBands,
   visibleBand,
   pageContentPosition,
   inlineOffset = 0,
@@ -1140,11 +1138,10 @@ function renderTableRow({
       totalRows,
     );
     const boxHeight = Math.max(0, cellHeight - spacing.top - spacing.bottom);
-    const cellClip = cellBands?.[cellIndex] ?? contentClip;
-    const boxClip = cellClip
+    const boxClip = contentClip
       ? {
-          top: cellClip.top - spacing.top,
-          bottom: cellClip.bottom - spacing.top,
+          top: contentClip.top - spacing.top,
+          bottom: contentClip.bottom - spacing.top,
         }
       : undefined;
 
@@ -1407,11 +1404,8 @@ export function renderTableFragment(
             bottom: rowBottomClip ?? rowMeasure.height,
           }
         : undefined;
-    const cellBands =
-      rowIndex === fragment.fromRow ? fragment.cellLineBand?.cells : undefined;
 
     const rowEl = renderTableRow({
-      ...(cellBands ? { cellBands } : {}),
       row,
       rowMeasure,
       rowIndex,
