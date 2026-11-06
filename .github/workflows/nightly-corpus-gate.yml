@@ -52,8 +52,15 @@ jobs:
         run: dotnet build packages/core/scripts/differential/dotnet -c Release
 
       - name: Run corpus edit fuzz
+        env:
+          ZZ_RAW_OUT: ${{ github.workspace }}/raw-${{ matrix.shard }}.jsonl
         run: bun scripts/corpus-edit-fuzz.ts run --shard ${{ matrix.shard }}/4 --out edit-fuzz-${{ matrix.shard }}.json
 
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: lab-raw-${{ matrix.shard }}
+          path: raw-${{ matrix.shard }}.jsonl
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() && hashFiles(format('edit-fuzz-{0}.json', matrix.shard)) != '' }}
         with:
