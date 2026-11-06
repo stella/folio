@@ -1995,9 +1995,28 @@ const applyTrackedInlineFormattingToRanges = ({
   const suggestionAttrs =
     suggestionId === null ? {} : { provenance: "suggested", suggestionId };
   const revisionIds: number[] = [];
+  // A field's result reads as the field: one change, however many runs hold it.
+  let fieldChange = null as { id: number; end: number } | null;
   for (const segment of segments) {
-    const revisionId = revisionIdSeed + revisionIds.length;
-    revisionIds.push(revisionId);
+    const { representation } = segment;
+    const insideField: boolean =
+      fieldChange !== null &&
+      representation.role === "serialized-result" &&
+      representation.position < fieldChange.end;
+    const revisionId: number =
+      insideField && fieldChange !== null
+        ? fieldChange.id
+        : revisionIdSeed + revisionIds.length;
+    if (!insideField) revisionIds.push(revisionId);
+    if (
+      representation.role === "owner" &&
+      representation.carrierDisposition === "structured-field"
+    ) {
+      fieldChange = {
+        id: revisionId,
+        end: representation.position + representation.node.nodeSize,
+      };
+    }
     const change: RunPropertyChange = {
       type: "runPropertyChange",
       info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },

@@ -81,7 +81,10 @@ const hasUnsupportedComplexFieldResultContent = (node: PMNode): boolean =>
       inlinePreservedXml ||
       !isRunContentInlineNodeName(child.type.name) ||
       child.marks.some(
-        (mark) => !COMPLEX_FIELD_RESULT_MARK_NAMES.has(mark.type.name),
+        (mark) =>
+          !COMPLEX_FIELD_RESULT_MARK_NAMES.has(mark.type.name) &&
+          // What the whole field carries, its result carries along.
+          !mark.isInSet(node.marks),
       )
     );
   });
