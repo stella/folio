@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -331,6 +331,12 @@ const failure = (
     else category = "other";
   } else if (kind === "locality") {
     category = "parts";
+  }
+  if (process.env["ZZ_RAW_OUT"]) {
+    appendFileSync(
+      process.env["ZZ_RAW_OUT"],
+      `${JSON.stringify({ kind, type, observed: observed.slice(0, 4000), document: process.argv[3], seed: process.argv[4], operations })}\n`,
+    );
   }
   const digest = createHash("sha256").update(observed).digest("hex");
   return {
