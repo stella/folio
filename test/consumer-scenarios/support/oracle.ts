@@ -3276,6 +3276,29 @@ const liveState = (reviewer: Reviewer, story: Story = MAIN): string =>
     comments: reviewer.getComments().length,
   });
 
+/**
+ * A live state as it reads once saved. A paragraph the package names no id for
+ * has one folio minted from its text and ordinal, marked `idStability`. Saving
+ * can write that id or a new one, so such a block stands down to its position.
+ * An authored id is compared as it is, and a block that moved still differs.
+ */
+export const withoutMintedIds = (live: string, before: string): string => {
+  type LiveBlock = { id?: string; idStability?: string };
+  const blocksOf = (state: string) =>
+    (JSON.parse(state) as { blocks: LiveBlock[] }).blocks;
+  const minted = new Set(
+    blocksOf(before).flatMap(({ idStability }, ordinal) =>
+      idStability === "positional" ? [ordinal] : [],
+    ),
+  );
+  const state = JSON.parse(live) as { blocks: LiveBlock[] };
+  for (const [ordinal, block] of state.blocks.entries()) {
+    delete block.idStability;
+    if (minted.has(ordinal)) block.id = `minted-${String(ordinal)}`;
+  }
+  return JSON.stringify(state);
+};
+
 const project = (rows: readonly Row[]) =>
   visible(rows).map(({ text, kind, styleId, headingLevel, listLevel }) => ({
     text,
@@ -3483,8 +3506,8 @@ export const assertRequestedOutcome = async (
   recordOutcome(pre, outcome);
   if (outcome.applied.length === 0) {
     assert.equal(
-      liveState(reviewer, pre.story),
-      pre.live,
+      withoutMintedIds(liveState(reviewer, pre.story), pre.live),
+      withoutMintedIds(pre.live, pre.live),
       `${context}: nothing applied, but the document changed`,
     );
     return [];

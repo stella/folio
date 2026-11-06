@@ -8,7 +8,10 @@ import {
   plainDocument,
 } from "./consumer-scenarios/support/documents.ts";
 import { coreBatch } from "./consumer-scenarios/support/operations.ts";
-import { capture } from "./consumer-scenarios/support/oracle.ts";
+import {
+  capture,
+  withoutMintedIds,
+} from "./consumer-scenarios/support/oracle.ts";
 import { assertSavedOutcome, compareSdk } from "./corpus-edit-fuzz-worker.ts";
 
 test("saved-only comment loss fails the edit outcome check", async () => {
@@ -159,4 +162,34 @@ test("one error more than the source had is new", () => {
 test("another error is new", () => {
   const other = "Semantic Sem_Y at /w:numbering[1]: unexpected child 'num'.";
   assert.deepEqual(compareSdk([AT(1)], [AT(1), other]), [other]);
+});
+
+const LIVE = (...blocks: Record<string, unknown>[]) =>
+  JSON.stringify({ blocks, comments: 0 });
+
+test("a minted block id is not a change once saved", () => {
+  const before = LIVE({ id: "A", idStability: "positional", text: "x" });
+  const saved = LIVE({ id: "B", text: "x" });
+  assert.equal(
+    withoutMintedIds(saved, before),
+    withoutMintedIds(before, before),
+  );
+});
+
+test("a text change under a minted id is a change", () => {
+  const before = LIVE({ id: "A", idStability: "positional", text: "x" });
+  const saved = LIVE({ id: "A", text: "y" });
+  assert.notEqual(
+    withoutMintedIds(saved, before),
+    withoutMintedIds(before, before),
+  );
+});
+
+test("an authored id that changes is a change", () => {
+  const before = LIVE({ id: "A", text: "x" });
+  const saved = LIVE({ id: "B", text: "x" });
+  assert.notEqual(
+    withoutMintedIds(saved, before),
+    withoutMintedIds(before, before),
+  );
 });
