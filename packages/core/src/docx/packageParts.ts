@@ -146,6 +146,9 @@ const presentPartPaths = (zip: ZipArchive): Set<string> => {
   const present = new Set<string>();
   for (const path of zip.paths()) {
     present.add(normalizePartPath(path));
+    // An entry may keep its part name's escapes; a target is compared decoded.
+    const decoded = decodePartName(path);
+    if (decoded !== undefined) present.add(normalizePartPath(decoded));
   }
   return present;
 };
@@ -247,8 +250,16 @@ const writePart = ({
 export const reconcilePackageReferences = async (
   zip: ZipArchive,
   compressionLevel: number,
+  source?: ZipArchive,
 ): Promise<PackageReferenceRepair> => {
   const present = presentPartPaths(zip);
+  // A reference that named nothing in the source too is the source's own: the
+  // save did not break it and has no business rewriting the part that holds it.
+  const sourceParts = source ? presentPartPaths(source) : null;
+  const danglingInSource = (partPath: string): boolean =>
+    sourceParts !== null &&
+    partPath !== "" &&
+    !isPresent(sourceParts, partPath);
   const repair: PackageReferenceRepair = {
     danglingRelationships: [],
     danglingOverrides: [],
@@ -265,7 +276,11 @@ export const reconcilePackageReferences = async (
     let dropped = false;
     const pruned = xml.replaceAll(RELATIONSHIP_ELEMENT, (element) => {
       const target = relationshipTarget(element, path);
-      if (target === null || present.has(target)) {
+      if (
+        target === null ||
+        isPresent(present, target) ||
+        danglingInSource(target)
+      ) {
         return element;
       }
       repair.danglingRelationships.push(
@@ -334,7 +349,11 @@ export const reconcilePackageReferences = async (
       .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
   ).replaceAll(CONTENT_TYPE_ELEMENT, (element) => {
     const partName = PART_NAME_ATTRIBUTE.exec(element)?.groups?.["value"];
-    if (partName === undefined || isPresent(present, partName)) {
+    if (
+      partName === undefined ||
+      isPresent(present, partName) ||
+      danglingInSource(partName)
+    ) {
       return element;
     }
     repair.danglingOverrides.push(

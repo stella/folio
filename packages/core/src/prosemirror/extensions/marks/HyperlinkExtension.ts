@@ -226,6 +226,17 @@ export const HyperlinkExtension: (
               tooltip: tooltip || null,
             });
             let tr = state.tr.addMark(from, to, mark);
+            // A field stands between the linked runs: a link in the file holds
+            // no field, and marking one would lose it on save.
+            state.doc.nodesBetween(from, to, (node, position) => {
+              if (
+                node.type.name !== "field" &&
+                node.type.name !== "structuredField"
+              )
+                return true;
+              tr = tr.removeMark(position, position + node.nodeSize, hlType);
+              return false;
+            });
             // Remove any explicit text color so the default hyperlink blue (#0563c1)
             // shows through, matching MS Word behavior
             const textColorType = state.schema.marks["textColor"];

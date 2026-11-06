@@ -23,6 +23,12 @@ import { Decoration, DecorationSet } from "prosemirror-view";
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
+import {
+  applyTableColumnDeletion,
+  applyTableColumnInsertion,
+  applyTableRowDeletion,
+} from "../../../ai-edits/table-row-column-mutations";
+import type { TableStructureRevision } from "../../../ai-edits/table-template";
 import { setTableLookFlags } from "../../../docx/tableLook";
 import type {
   BorderSpec,
@@ -51,6 +57,7 @@ import {
   mergeTableCellAttrs,
   mergeTableRowAttrs,
 } from "../../attrs";
+import { mintRevisionId } from "../../plugins/revisionIds";
 import { makeRevisionInfo } from "../../plugins/suggestionMode";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
 import {
@@ -114,12 +121,42 @@ const hasOmittedGridSlots = (table: PMNode): boolean => {
   return found;
 };
 
+/**
+ * With Track Changes on, a revision for a structural table edit touching `count`
+ * cells or rows. Each takes the next id of a run reserved here, as the document
+ * operations do.
+ */
+const trackedTableRevision = (
+  state: EditorState,
+  count: number,
+): TableStructureRevision | null => {
+  const info = makeRevisionInfo(state);
+  if (!info) return null;
+  for (let reserved = 1; reserved < count; reserved += 1) mintRevisionId();
+  return { revisionId: info.id, author: info.author, date: info.date };
+};
+
+/**
+ * A merged cell cannot run through a position a row omits, nor is that position
+ * a cell to split: the file has nothing there to hold either.
+ */
 const preserveOmittedGridSlots =
   (command: Command): Command =>
   (state, dispatch, view) => {
     const { table } = getTableContext(state);
     if (table && hasOmittedGridSlots(table)) {
-      return false;
+      const rect = selectedRect(state);
+      const touched = rect.map.cellsInRect(rect);
+      if (
+        touched.some((position) =>
+          isOmittedGridSlot(
+            expectTableCellAttrs(rect.table.nodeAt(position) ?? table)
+              ._omittedGridSlot,
+          ),
+        )
+      ) {
+        return false;
+      }
     }
     return command(state, dispatch, view);
   };
@@ -1433,8 +1470,7 @@ export const TablePluginExtension: (
         !context.isInTable ||
         context.rowIndex === undefined ||
         !context.table ||
-        context.tablePos === undefined ||
-        hasOmittedGridSlots(context.table)
+        context.tablePos === undefined
       ) {
         return false;
       }
@@ -1482,11 +1518,18 @@ export const TablePluginExtension: (
         }
         const templatePos = below ?? above;
         // A colspan cell reports the same position for every column it covers.
-        if (templatePos === undefined || templatePos === lastTemplatePos) {
+        const templateCell =
+          templatePos === undefined ? null : table.nodeAt(templatePos);
+        // A new row has a cell in every column, a row's omissions being its own.
+        const omitted = templateCell?.attrs["_omittedGridSlot"] != null;
+        if (
+          templatePos === undefined ||
+          (!omitted && templatePos === lastTemplatePos)
+        ) {
           continue;
         }
         lastTemplatePos = templatePos;
-        const template = table.nodeAt(templatePos);
+        const template = omitted ? null : templateCell;
         cells.push(
           (template?.type ?? tableNodeTypes(state.schema).cell).create(
             buildCellAttrsFromTemplate(template),
@@ -1543,9 +1586,6 @@ export const TablePluginExtension: (
       ) {
         return false;
       }
-      if (hasOmittedGridSlots(context.table)) {
-        return false;
-      }
       const tablePos = context.tablePos;
       const table = context.table;
       const rowCount = context.rowCount ?? 0;
@@ -1571,6 +1611,31 @@ export const TablePluginExtension: (
 
       if (dispatch) {
         const tr = state.tr;
+        const revision = trackedTableRevision(state, lastRow - firstRow + 1);
+        if (revision) {
+          const rows: { rowIndex: number; rowPosition: number }[] = [];
+          table.forEach((_row, offset, rowIndex) => {
+            if (rowIndex >= firstRow && rowIndex <= lastRow) {
+              rows.push({ rowIndex, rowPosition: tablePos + 1 + offset });
+            }
+          });
+          for (const [index, row] of rows.entries()) {
+            applyTableRowDeletion({
+              tr,
+              deletion: {
+                ...row,
+                tablePosition: tablePos,
+                tableStart: tablePos + 1,
+              },
+              revision: {
+                ...revision,
+                revisionId: revision.revisionId + index,
+              },
+            });
+          }
+          dispatch(tr.scrollIntoView());
+          return true;
+        }
         if (coversAllRows) {
           // Deleting every row deletes the table (Word drops an emptied table).
           // If the table is its parent's only child, a bare delete would leave
@@ -1630,10 +1695,26 @@ export const TablePluginExtension: (
         !context.isInTable ||
         context.columnIndex === undefined ||
         !context.table ||
-        context.tablePos === undefined ||
-        hasOmittedGridSlots(context.table)
+        context.tablePos === undefined
       ) {
         return false;
+      }
+      const tracking = makeRevisionInfo(state) !== null;
+      if (tracking) {
+        const rect = selectedRect(state);
+        const tr = state.tr;
+        const inserted = applyTableColumnInsertion({
+          tr,
+          insertion: {
+            tablePosition: rect.tableStart - 1,
+            columnIndex: side === "left" ? rect.left : rect.right,
+          },
+          cellTexts: undefined,
+          revision: trackedTableRevision(state, rect.map.height),
+        });
+        if (inserted.type !== "applied") return false;
+        if (dispatch) dispatch(tr.scrollIntoView());
+        return true;
       }
       if (dispatch) {
         const rect = selectedRect(state);
@@ -1692,14 +1773,30 @@ export const TablePluginExtension: (
         context.columnIndex === undefined ||
         !context.table ||
         context.tablePos === undefined ||
-        (context.columnCount ?? 0) <= 1 ||
-        hasOmittedGridSlots(context.table)
+        (context.columnCount ?? 0) <= 1
       ) {
         return false;
       }
       const rect = selectedRect(state);
       if (rect.right - rect.left >= rect.map.width) {
         return false;
+      }
+      if (makeRevisionInfo(state) !== null) {
+        const tr = state.tr;
+        for (let column = rect.left; column < rect.right; column += 1) {
+          const deleted = applyTableColumnDeletion({
+            tr,
+            deletion: {
+              tablePosition: rect.tableStart - 1,
+              columnIndex: column,
+            },
+            insertedColumnCount: 0,
+            revision: trackedTableRevision(state, rect.map.height),
+          });
+          if (deleted.type !== "applied") return false;
+        }
+        if (dispatch) dispatch(tr.scrollIntoView());
+        return true;
       }
       if (dispatch) {
         const tr = state.tr;

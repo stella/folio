@@ -45,6 +45,8 @@ export type CommentReferenceRepair =
 type CommentReferenceRepairInput = {
   references: readonly CommentReferenceOccurrence[];
   markExtents: readonly CommentMarkExtent[];
+  /** Comments anchored by their reference alone, covering nothing before too. */
+  pointIds?: ReadonlySet<number>;
 };
 
 export const COMMENT_REFERENCE_NODE_NAME = "commentReference";
@@ -141,6 +143,7 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
 export const planCommentReferenceRepairs = ({
   references,
   markExtents,
+  pointIds,
 }: CommentReferenceRepairInput): readonly CommentReferenceRepair[] => {
   const markedIds = new Set(markExtents.map(({ commentId }) => commentId));
   const deletions: CommentReferenceRepair[] = [];
@@ -156,9 +159,14 @@ export const planCommentReferenceRepairs = ({
       continue;
     }
     // An orphan: the comment it names no longer covers anything, so nothing
-    // in the editor can show it. A second reference for a live comment is a
-    // duplicate; the first one wins so the repair is order-independent.
-    if (!markedIds.has(reference.commentId)) {
+    // in the editor can show it. One that covered nothing before this change
+    // either is a comment written on a point: the reference is its anchor, and
+    // the comment goes when it does. A second reference for a live comment is
+    // a duplicate; the first one wins so the repair is order-independent.
+    if (
+      !markedIds.has(reference.commentId) &&
+      !(pointIds?.has(reference.commentId) && !keptIds.has(reference.commentId))
+    ) {
       deletions.push({
         type: "delete",
         position: reference.position,
@@ -197,11 +205,37 @@ type CommentReferenceResolution = {
   positionMaps: readonly StepMap[];
 };
 
+/** Comments in `doc` with a reference and no content or range to cover. */
+const pointCommentIds = ({
+  references,
+  markExtents,
+}: CommentReferenceSurvey): Set<number> => {
+  const marked = new Set(markExtents.map(({ commentId }) => commentId));
+  const ids = new Set<number>();
+  for (const reference of references) {
+    if (reference.status === "valid" && !marked.has(reference.commentId)) {
+      ids.add(reference.commentId);
+    }
+  }
+  return ids;
+};
+
+/**
+ * Repair `doc`. `previous` is the document it was changed from: only a change
+ * can orphan a reference, so what stood alone there still stands.
+ */
 export const resolveCommentReferences = (
   doc: PMNode,
+  previous?: PMNode,
 ): CommentReferenceResolution | null => {
   const survey = surveyCommentReferences(doc);
-  const repairs = planCommentReferenceRepairs(survey);
+  const orphans = pointCommentIds(survey);
+  const repairs = planCommentReferenceRepairs({
+    ...survey,
+    ...(previous && orphans.size > 0
+      ? { pointIds: pointCommentIds(surveyCommentReferences(previous)) }
+      : {}),
+  });
   if (repairs.length === 0 && survey.unanchoredMarks.length === 0) return null;
 
   const transform = new Transform(doc);

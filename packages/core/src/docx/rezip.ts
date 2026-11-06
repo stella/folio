@@ -1554,8 +1554,9 @@ const normalizePackageOnSave = async (
 const generateDocxZip = async (
   zip: ZipArchive,
   compressionLevel: number,
+  source?: ZipArchive,
 ): Promise<ArrayBuffer> => {
-  await reconcilePackageReferences(zip, compressionLevel);
+  await reconcilePackageReferences(zip, compressionLevel, source);
   await normalizePackageOnSave(zip, compressionLevel);
   return zip
     .generate({ level: compressionLevel })
@@ -1818,7 +1819,7 @@ const finishRepack = async ({
     });
   }
 
-  return generateDocxZip(outputZip, compressionLevel);
+  return generateDocxZip(outputZip, compressionLevel, originalZip);
 };
 
 /**
@@ -2063,7 +2064,7 @@ export async function repackDocxFromRaw(
     });
   }
 
-  return generateDocxZip(newZip, compressionLevel);
+  return generateDocxZip(newZip, compressionLevel, rawContent.originalZip);
 }
 
 // ============================================================================

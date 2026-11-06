@@ -162,14 +162,22 @@ describe("omitted table grid slots", () => {
     "addColumnLeft",
     "addColumnRight",
     "deleteColumn",
-    "mergeCells",
-    "splitCell",
-  ])(
-    "rejects %s before it can turn a structural placeholder into authored content",
+  ])("offers %s on a table with omitted slots", (command) => {
+    expect(
+      tableCommandHandled(createOmittedGridSlotTableState(), command),
+    ).toBe(true);
+  });
+
+  test.each(["addRowAbove", "addRowBelow"])(
+    "%s gives the new row real cells where the row beside it omits",
     (command) => {
-      expect(
-        tableCommandHandled(createOmittedGridSlotTableState(), command),
-      ).toBe(false);
+      const state = runTableCommand(createOmittedGridSlotTableState(), command);
+      const table = state.doc.child(0);
+      const newRow = table.child(command === "addRowAbove" ? 0 : 1);
+      newRow.forEach((cell) => {
+        expect(cell.attrs["_omittedGridSlot"]).toBeNull();
+        expect(cell.attrs["colspan"]).toBe(1);
+      });
     },
   );
 

@@ -67,7 +67,9 @@ export const mergeTableRectangle = ({
         continue;
       }
       const cell = table.nodeAt(cellPosition);
-      if (!cell) {
+      // A merged cell cannot run through a position a row omits: the row has
+      // no cell there to merge, and nothing to hold it in the saved file.
+      if (!cell || cell.attrs["_omittedGridSlot"]) {
         return null;
       }
       seen.add(cellPosition);
@@ -134,7 +136,7 @@ export const mergeTableRectangle = ({
   }
   // Merging every cell of a row into the cell above leaves the row nothing of
   // its own; the merge then closes over the rows that still have a cell.
-  removeRowsWithoutCells(tr, tablePosition);
+  removeRowsWithoutCells(tr, tablePosition, table);
   return tr;
 };
 
@@ -225,6 +227,9 @@ export const mergeTrackedVerticalTableCells = ({
       return null;
     }
     const cell = table.nodeAt(position);
+    if (cell?.attrs["_omittedGridSlot"]) {
+      return null;
+    }
     if (
       !cell ||
       !tableRectanglesEqual(map.findCell(position), {

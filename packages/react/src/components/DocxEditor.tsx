@@ -198,6 +198,7 @@ import { insertPageBreak } from "@stll/folio-core/prosemirror/commands/pageBreak
 import {
   buildPlainTextSlice,
   CLIPBOARD_READ_ERROR_EVENT,
+  pastePlainTextSlice,
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
@@ -3379,9 +3380,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               if (text && !view.isDestroyed) {
                 // replaceSelection with a paragraph slice preserves line breaks;
                 // insertText would flatten them into one paragraph.
-                const slice = buildPlainTextSlice(text, view.state.schema);
-                view.dispatch(
-                  view.state.tr.replaceSelection(slice).scrollIntoView(),
+                pastePlainTextSlice(
+                  view,
+                  buildPlainTextSlice(text, view.state.schema),
                 );
                 onPaste?.();
               }

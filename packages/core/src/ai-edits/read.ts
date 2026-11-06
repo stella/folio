@@ -23,6 +23,7 @@ import {
   expandRunFormattingCarrier,
   runFormattingCarrierReviewText,
   runFormattingInlineAtomDisposition,
+  runFormattingInlineAtomResultText,
 } from "../prosemirror/runFormattingInlineCarriers";
 import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
 import {
@@ -669,10 +670,19 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
         });
       }
     }
-    if (!node.isInline || node.text === undefined) {
+    // A field reads as its result. One with its result in runs adds them as its
+    // children, but a comment over the field marks the field, not them.
+    const isStructuredField = node.type.name === "structuredField";
+    const fieldText = isStructuredField
+      ? node.textContent
+      : runFormattingInlineAtomResultText(node);
+    if (!node.isInline || (node.text === undefined && fieldText === null)) {
       return undefined;
     }
-    const text = readerTextOf(node, noteReferences);
+    const text =
+      node.text === undefined
+        ? (fieldText ?? "")
+        : readerTextOf(node, noteReferences);
     const end = bodyText.length + text.length;
     for (const mark of node.marks) {
       if (
@@ -694,7 +704,7 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
         });
       }
     }
-    bodyText += text;
+    if (!isStructuredField) bodyText += text;
     return undefined;
   });
 

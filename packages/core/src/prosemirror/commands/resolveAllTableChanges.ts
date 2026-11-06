@@ -661,6 +661,7 @@ const resolvePureTableMerges = ({
   const widthRemovals: ColumnWidthRemoval[] = [];
   let currentWidth = map.width;
   let removedCell = false;
+  const removedColumns: number[] = [];
   const deletedRows = new Set<number>();
   const byPosition = new Map<number, MutableCell>();
   const ordered: MutableCell[] = [];
@@ -672,9 +673,10 @@ const resolvePureTableMerges = ({
       const node = row.child(cellIndex);
       const rectangle = cellRectangle(cellOffset);
       const left = rectangle.left;
+      // What a row omits sizes to its cells afterwards: it holds no width up.
       for (
         let coveredRow = rectangle.top;
-        coveredRow < rectangle.bottom;
+        coveredRow < rectangle.bottom && !node.attrs["_omittedGridSlot"];
         coveredRow++
       ) {
         rowOccupancy[coveredRow] =
@@ -711,6 +713,14 @@ const resolvePureTableMerges = ({
   for (const width of rowOccupancy) {
     widthCounts.set(width, (widthCounts.get(width) ?? 0) + 1);
   }
+  const spanOf = ({ node }: MutableCell): number =>
+    Number(node.attrs["colspan"]) || 1;
+  const omittedIn = (rowIndex: number): MutableCell[] =>
+    [...elementAt(rowCells, rowIndex).values()].filter(
+      ({ node }) => node.attrs["_omittedGridSlot"] != null,
+    );
+
+  currentWidth = Math.max(0, ...rowOccupancy);
 
   const changeRowWidth = (rowIndex: number, nextWidth: number): void => {
     if (!elementAt(activeRows, rowIndex)) return;
@@ -734,6 +744,7 @@ const resolvePureTableMerges = ({
         );
       } else {
         removedCell = true;
+        removedColumns.push(entry.left);
         const previousWidth = currentWidth;
         const rectangle = cellRectangle(entry.position);
         const colspan = rectangle.right - rectangle.left;
@@ -939,6 +950,44 @@ const resolvePureTableMerges = ({
       entry.node.content,
       entry.node.marks,
     );
+  }
+
+  // A column that went leaves what rows omit there too: first the omission at
+  // its place, then the latest.
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    if (deletedRows.has(rowIndex)) continue;
+    const slots = omittedIn(rowIndex);
+    let excess =
+      elementAt(rowOccupancy, rowIndex) +
+      slots.reduce((total, slot) => total + spanOf(slot), 0) -
+      currentWidth;
+    const atRemoval = ({ left, node }: MutableCell): boolean =>
+      removedColumns.some(
+        (column) =>
+          column >= left &&
+          column < left + (Number(node.attrs["colspan"]) || 1),
+      );
+    const order = [
+      ...slots.filter(atRemoval),
+      ...slots.filter((slot) => !atRemoval(slot)).toReversed(),
+    ];
+    for (const slot of order) {
+      if (excess <= 0) break;
+      const span = spanOf(slot);
+      if (span <= excess) {
+        elementAt(rowCells, rowIndex).delete(slot.left);
+        removedCell = true;
+        excess -= span;
+        continue;
+      }
+      slot.touched = true;
+      slot.node = slot.node.type.create(
+        { ...slot.node.attrs, colspan: span - excess },
+        slot.node.content,
+        slot.node.marks,
+      );
+      excess = 0;
+    }
   }
 
   if (deletedRows.size === rows.length) {

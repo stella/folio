@@ -77,6 +77,116 @@ export const rowHoldsNoCells = (row: PMNode, besides?: PMNode): boolean => {
   return !holdsCell;
 };
 
+const omittedSlotOf = (cell: PMNode | null | undefined) =>
+  cell?.attrs["_omittedGridSlot"] as "before" | "after" | null | undefined;
+
+/**
+ * The placeholder a new column's place in a row falls to, if any. Nothing can
+ * stand after what a row omits at its end or before what it omits at its start:
+ * a cell there would move on save, so the omission grows instead.
+ */
+export const omittedSlotTakingColumn = (
+  map: TableMap,
+  table: PMNode,
+  row: number,
+  column: number,
+): number | null => {
+  const left = column > 0 ? map.map[row * map.width + column - 1] : undefined;
+  if (left !== undefined && omittedSlotOf(table.nodeAt(left)) === "after") {
+    return left;
+  }
+  const right =
+    column < map.width ? map.map[row * map.width + column] : undefined;
+  return right !== undefined && omittedSlotOf(table.nodeAt(right)) === "before"
+    ? right
+    : null;
+};
+
+/**
+ * Size what rows omit to the width their cells now reach. A column whose cells
+ * went takes the same column out of a row that omits it; removing a tracked
+ * column's last cell does not otherwise reach such a row.
+ */
+export const reconcileOmittedGridSlots = (
+  tr: Transaction,
+  tablePosition: number,
+  previousTable: PMNode,
+  removedColumn: number,
+): void => {
+  const table = tr.doc.nodeAt(tablePosition);
+  if (!table || table.type.spec["tableRole"] !== "table") return;
+  const reached = Array.from({ length: table.childCount }, () => 0);
+  let omits = false;
+  table.forEach((row, _offset, rowIndex) => {
+    row.forEach((cell) => {
+      if (omittedSlotOf(cell)) {
+        omits = true;
+        return;
+      }
+      const colspan = Number(cell.attrs["colspan"]) || 1;
+      const rowspan = Number(cell.attrs["rowspan"]) || 1;
+      for (let at = rowIndex; at < rowIndex + rowspan; at++) {
+        if (at < reached.length) reached[at] = (reached[at] ?? 0) + colspan;
+      }
+    });
+  });
+  if (!omits) return;
+  const width = Math.max(...reached);
+  const previousMap = TableMap.get(previousTable);
+  const rowPositions: number[] = [];
+  table.forEach((_row, offset) =>
+    rowPositions.push(tablePosition + 1 + offset),
+  );
+  for (let rowIndex = table.childCount - 1; rowIndex >= 0; rowIndex--) {
+    const row = table.child(rowIndex);
+    let excess = -(width - (reached[rowIndex] ?? 0));
+    row.forEach((cell) => {
+      if (omittedSlotOf(cell)) {
+        excess += Number(cell.attrs["colspan"]) || 1;
+      }
+    });
+    if (excess <= 0) continue;
+    // First the omission at the column's place, then the latest.
+    const atPlace =
+      previousMap.map[rowIndex * previousMap.width + removedColumn];
+    const placeKind =
+      atPlace === undefined
+        ? undefined
+        : omittedSlotOf(previousTable.nodeAt(atPlace));
+    const slots: { node: PMNode; position: number }[] = [];
+    row.forEach((cell, offset) => {
+      if (omittedSlotOf(cell)) {
+        slots.push({
+          node: cell,
+          position: (rowPositions[rowIndex] ?? 0) + 1 + offset,
+        });
+      }
+    });
+    const order = slots.toSorted(
+      (left, right) =>
+        Number(omittedSlotOf(right.node) === placeKind) -
+          Number(omittedSlotOf(left.node) === placeKind) ||
+        right.position - left.position,
+    );
+    // Apply from the row's end, so an earlier position still holds.
+    const changes = new Map<number, number>();
+    for (const { node, position } of order) {
+      if (excess <= 0) break;
+      const colspan = Number(node.attrs["colspan"]) || 1;
+      const taken = Math.min(colspan, excess);
+      changes.set(position, colspan - taken);
+      excess -= taken;
+    }
+    for (const { node, position } of slots.toReversed()) {
+      const next = changes.get(position);
+      if (next === undefined) continue;
+      if (next === 0) tr.delete(position, position + node.nodeSize);
+      else tr.setNodeAttribute(position, "colspan", next);
+    }
+  }
+  removeRowsWithoutCells(tr, tablePosition, previousTable);
+};
+
 /** Whether a batch of structural deletions may have emptied rows. */
 export type RowsEmptiedInBatch = { pending: boolean };
 
@@ -212,12 +322,37 @@ export const removeRowsWithoutCellsInRange = ({
   for (const position of tables.toReversed()) removeBatchRows(tr, position);
 };
 
-/** Close all cell-less rows after an immediate structural edit. */
+/**
+ * Close the rows an immediate structural edit left without cells. A row written
+ * with none is no row this edit emptied, and it stays.
+ */
 export const removeRowsWithoutCells = (
   tr: Transaction,
   tablePosition: number,
+  previousTable: PMNode,
 ): void => {
-  removeEmptyRows({ tr, tablePosition, shouldRemove: () => true });
+  const table = tr.doc.nodeAt(tablePosition);
+  if (!table || table.type.spec["tableRole"] !== "table") return;
+  const emptied: number[] = [];
+  table.forEach((row, _offset, index) => {
+    const before = previousTable.maybeChild(index);
+    if (rowHoldsNoCells(row) && before && !rowHoldsNoCells(before)) {
+      emptied.push(index);
+    }
+  });
+  for (const rowIndex of emptied.toReversed()) {
+    const current = tr.doc.nodeAt(tablePosition);
+    if (!current || current.childCount < 2) return;
+    removeTableRow(
+      tr,
+      {
+        map: TableMap.get(current),
+        table: current,
+        tableStart: tablePosition + 1,
+      },
+      rowIndex,
+    );
+  }
 };
 
 type ReconcileTableGridAfterColumnRemovalOptions = {
@@ -254,8 +389,9 @@ export const reconcileTableGridAfterColumnRemoval = ({
 
   const removedColumnCount = previousColumnCount - columnCount;
   const previousWidths = expectTableAttrs(previousTable).columnWidths;
+  // A grid wider than the rows keeps the columns no row reaches.
   const columnWidths =
-    previousWidths?.length === previousColumnCount
+    previousWidths !== undefined && previousWidths.length >= previousColumnCount
       ? previousWidths.toSpliced(removedColumn, removedColumnCount)
       : undefined;
   setTableGrid({ tr, tablePosition, table, columnWidths, columnCount });
@@ -296,7 +432,8 @@ export const reconcileTableGridAfterColumnInsertion = ({
   const previousWidths = expectTableAttrs(previousTable).columnWidths;
   const neighbourWidth = insertedColumnWidth(previousTable, insertedColumn);
   const columnWidths =
-    previousWidths?.length === previousColumnCount &&
+    previousWidths !== undefined &&
+    previousWidths.length >= previousColumnCount &&
     neighbourWidth !== undefined
       ? previousWidths.toSpliced(
           insertedColumn,
@@ -314,7 +451,7 @@ const insertedColumnWidth = (
 ): number | undefined => {
   const columnCount = TableMap.get(table).width;
   const widths = expectTableAttrs(table).columnWidths;
-  if (widths?.length !== columnCount) {
+  if (widths === undefined || widths.length < columnCount) {
     return undefined;
   }
   return (
@@ -376,7 +513,9 @@ const setTableGrid = ({
     undefined,
     mergeTableAttrs(table, {
       columnWidths:
-        columnWidths?.length === columnCount ? columnWidths : undefined,
+        columnWidths !== undefined && columnWidths.length >= columnCount
+          ? columnWidths
+          : undefined,
       _originalFormatting: originalFormatting,
     }),
   );
@@ -417,6 +556,16 @@ export const insertTableColumn = ({
   for (let row = 0; row < map.height; row++) {
     const index = row * map.width + column;
     const position = map.map[index];
+    const omitted = omittedSlotTakingColumn(map, table, row, column);
+    if (omitted !== null) {
+      const slot = table.nodeAt(omitted);
+      tr.setNodeAttribute(
+        tr.mapping.slice(mapFrom).map(tableStart + omitted),
+        "colspan",
+        (Number(slot?.attrs["colspan"]) || 1) + 1,
+      );
+      continue;
+    }
     const straddling =
       column > 0 &&
       column < map.width &&
@@ -440,8 +589,9 @@ export const insertTableColumn = ({
       continue;
     }
     const templatePosition = map.map[row * map.width + templateColumn];
-    const template =
+    const templateCell =
       templatePosition === undefined ? null : table.nodeAt(templatePosition);
+    const template = omittedSlotOf(templateCell) ? null : templateCell;
     tr.insert(
       tr.mapping
         .slice(mapFrom)
@@ -468,6 +618,8 @@ export const removeTableColumns = (
   left: number,
   right: number,
 ): void => {
+  const previousTable = tr.doc.nodeAt(tablePosition);
+  if (!previousTable) return;
   for (let column = right - 1; column >= left; column--) {
     const table = tr.doc.nodeAt(tablePosition);
     if (!table || table.type.spec["tableRole"] !== "table") {
@@ -518,5 +670,5 @@ export const removeTableColumns = (
       removedColumn: column,
     });
   }
-  removeRowsWithoutCells(tr, tablePosition);
+  removeRowsWithoutCells(tr, tablePosition, previousTable);
 };

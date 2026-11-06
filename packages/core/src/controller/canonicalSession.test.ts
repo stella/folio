@@ -107,6 +107,7 @@ import {
   CanonicalSessionError,
   createCanonicalSession,
   deletionRange,
+  isCanonicalJoinBoundary,
   isCanonicalProjectionTransaction,
   publishCanonicalProjection,
 } from "./canonicalSession";
@@ -2579,6 +2580,53 @@ describe("canonical tracked input", () => {
     },
   );
 });
+
+test.each([
+  {
+    name: "backward",
+    direction: "backward",
+    from: 5,
+    to: 6,
+    caret: 5,
+    inside: 7,
+  },
+  {
+    name: "forward",
+    direction: "forward",
+    from: 2,
+    to: 3,
+    caret: 2,
+    inside: 1,
+  },
+] as const)(
+  "a caret beside tracked-deleted text at a paragraph's edge joins $name",
+  ({ direction, from, to, caret, inside }) => {
+    const document = seed("ab");
+    const second = document.package.document.content.at(1);
+    if (second?.type !== "paragraph")
+      panic("The fixture lost its second paragraph.");
+    second.content = [{ type: "run", content: [{ type: "text", text: "cd" }] }];
+    const session = createCanonicalSession(document).unwrap();
+    session.setMode({ type: "suggesting", author: "Author" });
+    let state = accept(
+      stateFor(session),
+      session
+        .prepareReplace(stateFor(session), { from, to, text: "" })
+        .unwrap(),
+    );
+    const at = (position: number) =>
+      state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, position)),
+      );
+    // Visible text remains between this caret and the edge.
+    const refused = session.prepareJoin(at(inside), direction);
+    expect(refused.isErr()).toBe(true);
+    if (refused.isErr()) expect(refused.error.reason).toBe("refused");
+    state = at(caret);
+    expect(isCanonicalJoinBoundary(state, direction)).toBe(true);
+    expect(session.prepareJoin(state, direction).isOk()).toBe(true);
+  },
+);
 
 test.each([
   ["deletion", ["abcd"]],

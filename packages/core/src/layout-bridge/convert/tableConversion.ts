@@ -28,6 +28,7 @@ import {
   expectTableRowAttrs,
   expectTextBoxAttrs,
 } from "../../prosemirror/attrs";
+import { rowGridOmissions } from "../../prosemirror/rowGridOmissions";
 import type { TableAttrs } from "../../prosemirror/schema/nodes";
 import { textBoxHostParagraph } from "../../prosemirror/textBoxHostParagraph";
 import type { Theme } from "../../types/document";
@@ -346,11 +347,15 @@ function convertTableRow(
     id: nextBlockId(),
     cells,
   };
-  if (attrs._originalFormatting?.gridBefore) {
-    row.gridBefore = attrs._originalFormatting.gridBefore;
+  const { gridBefore, gridAfter } = rowGridOmissions(
+    node,
+    attrs._originalFormatting?.gridAfter ?? 0,
+  );
+  if (gridBefore > 0) {
+    row.gridBefore = gridBefore;
   }
-  if (attrs._originalFormatting?.gridAfter) {
-    row.gridAfter = attrs._originalFormatting.gridAfter;
+  if (gridAfter > 0) {
+    row.gridAfter = gridAfter;
   }
   if (attrs.height) {
     row.height = twipsToPixels(attrs.height);

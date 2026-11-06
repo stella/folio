@@ -90,6 +90,27 @@ export const CANONICAL_INSERTION_SEED_557 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition over a selection across list items replaces it once, in the first item. */
+export const CANONICAL_ACROSS_PARAGRAPHS_SEED_347 = {
+  authority: "canonical",
+  seed: 347,
+  path: "17:2:1:1:1",
+  fingerprint: "92b692379e90307a",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 /** A composition in front of a tracked deletion leaves that deletion's marks alone. */
 export const CANONICAL_DELETION_SEED_11 = {
   authority: "canonical",
@@ -738,8 +759,83 @@ export const BROWSER_CANCELLED_COMPOSITION_SEED_1793946574 = {
   trace: BrowserInputTrace;
 };
 
+/** Backspace before tracked-deleted text at a paragraph's start joins the paragraph. */
+export const CANONICAL_JOIN_BESIDE_DELETION_SEED_29 = {
+  authority: "canonical",
+  seed: 29,
+  path: "15:2",
+  fingerprint: "bad194d7a1bfd1c6",
+  trace: {
+    shape: "image",
+    actions: [
+      { kind: "selectionDrag", target: "inlineObject" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "backspace" },
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+const SELECT_ALL = "ControlOrMeta+a";
+const SELECT_DOWN = "Shift+ArrowDown";
+
+/** A key replacing a selection across paragraphs. */
+const BROWSER_KEY_OVER_SELECTION_TRACES = (
+  [
+    ["plain-markdown", [SELECT_ALL, "Tab"]],
+    ["plain-markdown", [SELECT_DOWN, "Tab"]],
+    ["sections", [SELECT_ALL, "Shift+Enter"]],
+    ["notes", [SELECT_DOWN, "Shift+Enter"]],
+  ] as const
+).map(([shape, keys], index) => ({
+  seed: 0,
+  path: `${shape}-${String(index)}`,
+  fingerprint: "pinned-for-a-key-over-a-selection",
+  trace: { shape, actions: [{ kind: "keys", keys: [...keys] }] },
+})) satisfies readonly {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+}[];
+
+/** Ctrl, Cmd or Shift with Backspace at the start of a list item joins it to the paragraph before. */
+const BROWSER_MODIFIED_BACKSPACE_TRACES = (
+  [
+    ["single-bullet-list", "ControlOrMeta+Backspace"],
+    ["single-bullet-list", "Shift+Backspace"],
+    ["single-decimal-list", "ControlOrMeta+Backspace"],
+  ] as const
+).map(([shape, key], index) => ({
+  seed: 0,
+  path: `${shape}-${String(index)}`,
+  fingerprint: "pinned-for-a-modified-backspace",
+  trace: {
+    shape,
+    actions: [
+      {
+        kind: "keys",
+        keys: ["ControlOrMeta+Home", "ArrowDown", "ArrowDown", "Home", key],
+      },
+    ],
+  },
+})) satisfies readonly {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+}[];
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
+  ...BROWSER_MODIFIED_BACKSPACE_TRACES,
+  ...BROWSER_KEY_OVER_SELECTION_TRACES,
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
@@ -755,6 +851,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_CANCELLED_COMPOSITION_SEED_131,
   BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83,
   CANONICAL_INSERTION_SEED_557,
+  CANONICAL_ACROSS_PARAGRAPHS_SEED_347,
   CANONICAL_DELETION_SEED_11,
   CANONICAL_CELL_PASTE_SEED_431,
   CANONICAL_CELL_COMPOSITION_CANCEL,
@@ -767,4 +864,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_RESTARTED_AFTER_PASTE_SEED_197,
   CANONICAL_RESTARTED_AFTER_TYPING,
   CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
+  CANONICAL_JOIN_BESIDE_DELETION_SEED_29,
 ];

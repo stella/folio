@@ -12,6 +12,7 @@ import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import {
   markRowsEmptiedInBatch,
+  omittedSlotTakingColumn,
   reconcileTableGridAfterColumnInsertion,
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCells,
@@ -397,7 +398,7 @@ export const applyTableColumnInsertion = ({
   if (insertion.columnIndex >= 0 && insertion.columnIndex <= map.width) {
     const overflow = describeUnplacedCellTexts({
       cellTexts,
-      capacity: getInsertedPhysicalColumnRows(map, insertion.columnIndex)
+      capacity: getInsertedPhysicalColumnRows(map, table, insertion.columnIndex)
         .length,
       target: "column",
     });
@@ -426,6 +427,10 @@ export const applyTableColumnInsertion = ({
       .map(tablePosition + 1 + action.position);
     if (action.type === "setColspan") {
       tr.setNodeMarkup(position, undefined, action.attrs);
+      continue;
+    }
+    if (action.type === "growOmittedSlot") {
+      tr.setNodeAttribute(position, "colspan", action.colspan);
       continue;
     }
 
@@ -530,7 +535,7 @@ export const applyTableColumnDeletion = ({
       emptied: emptiedRows,
     });
   } else {
-    removeRowsWithoutCells(tr, tablePosition);
+    removeRowsWithoutCells(tr, tablePosition, table);
   }
   return applied(tr, null);
 };
@@ -767,6 +772,7 @@ const populateTableRow = (
 
 const getInsertedPhysicalColumnRows = (
   map: TableMap,
+  table: PMNode,
   columnIndex: number,
 ): number[] => {
   const rows: number[] = [];
@@ -776,7 +782,10 @@ const getInsertedPhysicalColumnRows = (
       columnIndex > 0 &&
       columnIndex < map.width &&
       map.map[index - 1] === map.map[index];
-    if (!crossesColspan) {
+    if (
+      !crossesColspan &&
+      omittedSlotTakingColumn(map, table, row, columnIndex) === null
+    ) {
       rows.push(row);
     }
   }
@@ -785,7 +794,8 @@ const getInsertedPhysicalColumnRows = (
 
 type TableColumnInsertionAction =
   | { type: "insertCell"; position: number; cell: PMNode }
-  | { type: "setColspan"; position: number; attrs: Record<string, unknown> };
+  | { type: "setColspan"; position: number; attrs: Record<string, unknown> }
+  | { type: "growOmittedSlot"; position: number; colspan: number };
 
 type BuildTableColumnInsertionActionsOptions = {
   map: TableMap;
@@ -855,7 +865,7 @@ const buildTableColumnInsertionActions = ({
   if (columnIndex < 0 || columnIndex > map.width) {
     return null;
   }
-  const physicalRows = getInsertedPhysicalColumnRows(map, columnIndex);
+  const physicalRows = getInsertedPhysicalColumnRows(map, table, columnIndex);
   if ((cellTexts?.length ?? 0) > physicalRows.length) {
     return null;
   }
@@ -867,6 +877,15 @@ const buildTableColumnInsertionActions = ({
   let physicalCellIndex = 0;
   for (let row = 0; row < map.height; row++) {
     const index = row * map.width + columnIndex;
+    const omitted = omittedSlotTakingColumn(map, table, row, columnIndex);
+    if (omitted !== null) {
+      actions.push({
+        type: "growOmittedSlot",
+        position: omitted,
+        colspan: (Number(table.nodeAt(omitted)?.attrs["colspan"]) || 1) + 1,
+      });
+      continue;
+    }
     if (
       columnIndex > 0 &&
       columnIndex < map.width &&
@@ -937,6 +956,9 @@ const getTableColumnDeletionCellPositions = ({
       return null;
     }
     const cell = table.nodeAt(position);
+    // A row that omits the column has nothing to mark: accepting takes the
+    // column out of what it omits.
+    if (cell?.attrs["_omittedGridSlot"]) continue;
     const tableRole = cell?.type.spec["tableRole"];
     if (
       !cell ||

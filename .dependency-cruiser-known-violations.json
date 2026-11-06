@@ -19,30 +19,5 @@
         "dependencyTypes": ["local", "import"]
       }
     ]
-  },
-  {
-    "type": "cycle",
-    "from": "packages/core/src/prosemirror/extensions/features/BidiShortcutExtension.ts",
-    "to": "packages/core/src/prosemirror/schema/index.ts",
-    "unresolvedTo": "../../schema",
-    "dependencyTypes": ["local", "import"],
-    "rule": {
-      "severity": "error",
-      "name": "no-circular"
-    },
-    "cycle": [
-      {
-        "name": "packages/core/src/prosemirror/schema/index.ts",
-        "dependencyTypes": ["local", "import"]
-      },
-      {
-        "name": "packages/core/src/prosemirror/extensions/StarterKit.ts",
-        "dependencyTypes": ["local", "import"]
-      },
-      {
-        "name": "packages/core/src/prosemirror/extensions/features/BidiShortcutExtension.ts",
-        "dependencyTypes": ["local", "import"]
-      }
-    ]
   }
 ]

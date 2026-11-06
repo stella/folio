@@ -1691,11 +1691,9 @@ class CanonicalSession {
       this.projection.paragraph(second.paraId)?.container
     )
       return noChange("There is no adjacent paragraph to join.");
-    const current = this.projection.paragraph(at.value.blockId);
-    if (
-      current === undefined ||
-      at.value.offset !== (direction === "backward" ? 0 : current.text.length)
-    )
+    // The same visible test that routed the key here. An input address moves past
+    // tracked-deleted text, so it cannot say whether the caret is at the boundary.
+    if (!isCanonicalJoinBoundary(state, direction))
       return refuse("Join requires a caret at a paragraph boundary.");
     return this.prepareIntent(state, {
       type: "joinParagraphs",

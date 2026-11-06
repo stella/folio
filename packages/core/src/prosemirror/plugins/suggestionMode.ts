@@ -23,6 +23,7 @@ import {
   type Fragment,
   type MarkType,
   type Node as PMNode,
+  type ResolvedPos,
   Slice,
 } from "prosemirror-model";
 import {
@@ -34,7 +35,12 @@ import {
 } from "prosemirror-state";
 import type { PluginKey, Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
-import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
+import {
+  Mapping,
+  ReplaceAroundStep,
+  ReplaceStep,
+  type Step,
+} from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
@@ -216,6 +222,8 @@ function markRangeAsDeleted(
   joinState?: EditorState,
 ): void {
   let hasMarkableContent = false;
+  // The steps `tr` took before it reached `doc` don't move positions in it.
+  const stepsBeforeDoc = doc === tr.doc ? tr.mapping.maps.length : 0;
 
   doc.nodesBetween(from, to, (node, pos) => {
     if (!canCarryTrackedRunMark(node)) {
@@ -285,8 +293,8 @@ function markRangeAsDeleted(
     $first.parent !== $last.parent &&
     from > $first.start()
   ) {
-    const lastPos =
-      doc === tr.doc ? $last.before() : tr.mapping.map($last.before());
+    // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+    const lastPos = tr.mapping.slice(stepsBeforeDoc).map($last.before());
     const lastMark = tr.doc.nodeAt(lastPos)?.attrs["pPrMark"] as {
       kind?: unknown;
     } | null;
@@ -2017,6 +2025,123 @@ function restoreReplacedInline({
   }
 }
 
+type SpanningReplacement = {
+  step: ReplaceStep | ReplaceAroundStep;
+  /** The selected text, in the document before the transaction. */
+  from: number;
+  to: number;
+  /** What the transaction put in its place. */
+  inserted: Fragment;
+};
+
+const readableContent = (content: Fragment): string =>
+  content.textBetween(0, content.size, "", "\ufffc");
+
+/**
+ * The inline content a step puts in place of a selection, or null for block
+ * content. Between containers, the step also carries the text after the
+ * selection over into the first one, and fills out what it cut with empty blocks.
+ */
+const insertedInline = (
+  step: ReplaceStep | ReplaceAroundStep,
+  $to: ResolvedPos,
+  to: number,
+): Fragment | null => {
+  const { content } = step.slice;
+  let inline = content;
+  while (inline.firstChild && !inline.firstChild.isInline) {
+    inline = inline.firstChild.content;
+  }
+  if (readableContent(inline) !== readableContent(content)) return null;
+  // A step around the rest of the container holds that text in its gap.
+  if (step.to === to || step instanceof ReplaceAroundStep) return inline;
+  const tail = $to.parent.content.cut($to.parentOffset);
+  const kept = inline.size - tail.size;
+  return kept >= 0 && inline.cut(kept).eq(tail) ? inline.cut(0, kept) : null;
+};
+
+/**
+ * A transaction the plugin did not build (a key binding, a command) replacing a
+ * selection that spans textblocks. Null for anything else: table structure and
+ * block content have their own paths, and a replacement inside one textblock
+ * is `replacedInline`'s.
+ */
+function spanningReplacement(
+  oldState: EditorState,
+  userTr: Transaction,
+): SpanningReplacement | null {
+  const [step] = userTr.steps;
+  const { doc, selection } = oldState;
+  if (
+    userTr.steps.length !== 1 ||
+    !(step instanceof ReplaceStep || step instanceof ReplaceAroundStep) ||
+    userTr.before !== doc ||
+    selection.empty
+  ) {
+    return null;
+  }
+  const selectsAll = selection instanceof AllSelection;
+  const from = selectsAll ? Selection.atStart(doc).from : selection.from;
+  const to = selectsAll ? Selection.atEnd(doc).to : selection.to;
+  const $from = doc.resolve(from);
+  const $to = doc.resolve(to);
+  if (
+    !$from.parent.inlineContent ||
+    !$to.parent.inlineContent ||
+    $from.sameParent($to) ||
+    step.from > from ||
+    step.to < to ||
+    // A step around the selection moves it, as wrapping or lifting does.
+    (step instanceof ReplaceAroundStep && step.gapFrom < to)
+  ) {
+    return null;
+  }
+  const inserted = insertedInline(step, $to, to);
+  return inserted && { step, from, to, inserted };
+}
+
+type TrackSpanningReplacementOptions = {
+  tr: Transaction;
+  oldState: EditorState;
+  replacement: SpanningReplacement;
+  insertionType: MarkType;
+  deletionType: MarkType;
+  pluginState: SuggestionModeState;
+};
+
+/**
+ * Put the document back and make the same replacement as typing over the
+ * selection does: the selected text is struck and what replaced it follows, so
+ * rejecting restores the source and accepting matches the direct edit.
+ */
+function trackSpanningReplacement({
+  tr,
+  oldState,
+  replacement: { step, from, to, inserted },
+  insertionType,
+  deletionType,
+  pluginState,
+}: TrackSpanningReplacementOptions): void {
+  tr.step(step.invert(oldState.doc));
+  const restored = tr.mapping.maps.length;
+  markRangeAsDeleted(tr, tr.doc, from, to, deletionType, pluginState, oldState);
+  // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+  const at = tr.mapping.slice(restored).map(to);
+  tr.insert(at, inserted);
+  const end = at + inserted.size;
+  tr.removeMark(at, end, deletionType);
+  markRangeAsInserted(
+    tr,
+    tr.doc,
+    at,
+    end,
+    insertionType,
+    deletionType,
+    makeMarkAttrs(pluginState),
+  );
+  tr.setSelection(TextSelection.near(tr.doc.resolve(end), -1));
+}
+
 /**
  * Create the suggestion mode plugin.
  * When active, text edits become tracked changes.
@@ -2223,17 +2348,25 @@ export function createSuggestionModePlugin(
         }
         if (event.key === "Backspace" || event.key === "Delete") {
           const { $from, empty } = view.state.selection;
-          if (
+          const atListItemStart =
             event.key === "Backspace" &&
             empty &&
             $from.parentOffset === 0 &&
             $from.parent.type.name === "paragraph" &&
-            expectParagraphAttrs($from.parent).numPr?.kind === "reference"
+            expectParagraphAttrs($from.parent).numPr?.kind === "reference";
+          // A plain Backspace there leaves the list through its own binding. A
+          // modified one joins the paragraphs, so it records that.
+          if (
+            atListItemStart &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey
           ) {
             return false;
           }
           if (
             event.key === "Backspace" &&
+            !atListItemStart &&
             clearIndentOnBackspace(view.state, (tr) => {
               const revision = makeMarkAttrs(pluginState);
               recordReplacedParagraphProperties({
@@ -2303,7 +2436,7 @@ export function createSuggestionModePlugin(
 
     // Catch-all: mark any unhandled new content (e.g. paste) as insertion
     // canonical-gap: pm-suggestion-plugin
-    appendTransaction(transactions, _oldState, newState) {
+    appendTransaction(transactions, oldState, newState) {
       const pluginState = suggestionModeKey.getState(newState);
       if (!pluginState?.active) {
         return null;
@@ -2349,6 +2482,21 @@ export function createSuggestionModePlugin(
       // restoring what it removed would hand it the same work again.
       const restoresReplaced =
         userTr.getMeta("appendedTransaction") === undefined;
+      const spanning =
+        deletionType && restoresReplaced && newState.doc === userTr.doc
+          ? spanningReplacement(oldState, userTr)
+          : null;
+      if (deletionType && spanning) {
+        trackSpanningReplacement({
+          tr,
+          oldState,
+          replacement: spanning,
+          insertionType,
+          deletionType,
+          pluginState,
+        });
+        return tr;
+      }
       const replaced: ReplacedInline[] = [];
       for (const [stepIndex, step] of userTr.steps.entries()) {
         const stepMap = step.getMap();
