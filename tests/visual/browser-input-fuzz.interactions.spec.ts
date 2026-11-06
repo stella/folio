@@ -723,59 +723,138 @@ const isBrowserShape = (
 
 test.describe("pinned browser input", () => {
   test.setTimeout(60_000);
+  const LAB_ACTIONS: Record<string, (page: Page) => Promise<void>> = {
+    type: async (page) => {
+      await page.keyboard.type("ZQ");
+    },
+    enter: async (page) => {
+      await page.keyboard.press("Enter");
+    },
+    backspace: async (page) => {
+      await page.keyboard.press("Backspace");
+    },
+    delete: async (page) => {
+      await page.keyboard.press("Delete");
+    },
+    tab: async (page) => {
+      await page.keyboard.press("Tab");
+    },
+    modBackspace: async (page) => {
+      await page.keyboard.press("ControlOrMeta+Backspace");
+    },
+    hyperlink: async (page) => {
+      await page.evaluate(() => {
+        const view = globalThis.__folioPlayground
+          ?.getEditorRef()
+          ?.getEditorRef()
+          ?.getView();
+        const bridge = globalThis.__folioBrowserTestBridge as unknown as
+          | {
+              setHyperlink: (
+                href: string,
+              ) => (s: unknown, d: unknown) => boolean;
+            }
+          | undefined;
+        if (!view || !bridge) throw new Error("no view");
+        bridge.setHyperlink("https://example.org/")(view.state, view.dispatch);
+      });
+    },
+  };
   for (const shape of [
     "plain-markdown",
     "single-bullet-list",
-    "bare-package",
+    "comments",
+    "fields-links-bookmarks",
+    "tables",
+    "tracked-changes",
+    "notes",
   ] as const) {
-    for (const [name, keys] of [
-      ["within a line", ["Shift+End"]],
-      ["across paragraphs", ["Shift+ArrowDown", "Shift+End"]],
-      [
-        "across three paragraphs",
-        ["Shift+ArrowDown", "Shift+ArrowDown", "Shift+End"],
-      ],
-    ] as const) {
+    for (const placement of ["word", "cross-paragraph", "document"] as const) {
       test(
-        `lab select then type ${shape} ${name}`,
+        `lab ${shape} ${placement}`,
         { tag: PINNED_BROWSER_INPUT_TAG },
         async ({ page }) => {
+          test.setTimeout(240_000);
           const source = await shapeArrayBuffer(shape);
           const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-          const results: Record<string, unknown> = {};
-          for (const suggesting of [false, true]) {
-            const loaded = await load({
-              page,
-              bytes: source,
-              baseline,
-              suggesting,
-              authority: "prosemirror",
-            });
-            if (loaded.type === "activationRefused")
-              throw new TypeError("refused");
-            await page.keyboard.press("ControlOrMeta+Home");
-            await page.keyboard.press("ArrowRight");
-            for (const key of keys) await page.keyboard.press(key);
-            await page.keyboard.type("ZQ");
-            await page.waitForTimeout(350);
-            const buffer = await save(page);
-            const reopened = await reopenSaved(buffer);
-            const accepting = await FolioDocxReviewer.fromBuffer(buffer);
-            accepting.acceptAll();
-            const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
-            rejecting.rejectAll();
-            results[suggesting ? "tracked" : "direct"] = {
-              text: reopened.getContent().map(({ text }) => text),
-              changes: reopened
-                .getChanges()
-                .map(({ type, text }) => [type, (text ?? "").slice(0, 30)]),
-              accepted: accepting.getContent().map(({ text }) => text),
-              rejected: rejecting.getContent().map(({ text }) => text),
-            };
+          for (const [name, act] of Object.entries(LAB_ACTIONS)) {
+            const results: Record<string, unknown> = {};
+            for (const suggesting of [false, true]) {
+              const loaded = await load({
+                page,
+                bytes: source,
+                baseline,
+                suggesting,
+                authority: "prosemirror",
+              });
+              if (loaded.type === "activationRefused")
+                throw new TypeError("refused");
+              await page.evaluate((where) => {
+                const view = globalThis.__folioPlayground
+                  ?.getEditorRef()
+                  ?.getEditorRef()
+                  ?.getView();
+                if (!view) throw new Error("no view");
+                const blocks: { from: number; to: number }[] = [];
+                view.state.doc.descendants((node, pos) => {
+                  if (node.isTextblock && node.content.size > 0)
+                    blocks.push({
+                      from: pos + 1,
+                      to: pos + 1 + node.content.size,
+                    });
+                  return true;
+                });
+                const first = blocks[0] ?? { from: 1, to: 1 };
+                const second = blocks[1] ?? first;
+                const last = blocks.at(-1) ?? first;
+                let from = first.from + 1;
+                let to = Math.min(first.from + 3, first.to);
+                if (where === "cross-paragraph") {
+                  from = first.from + 1;
+                  to = Math.min(second.from + 2, second.to);
+                }
+                if (where === "document") {
+                  from = first.from;
+                  to = last.to;
+                }
+                const Selection = view.state.selection
+                  .constructor as unknown as {
+                  create: (d: unknown, a: number, b: number) => unknown;
+                };
+                view.focus();
+                view.dispatch(
+                  view.state.tr.setSelection(
+                    Selection.create(view.state.doc, from, to) as never,
+                  ),
+                );
+              }, placement);
+              await act(page);
+              await page.waitForTimeout(250);
+              let row: Record<string, unknown>;
+              try {
+                const buffer = await save(page);
+                const reopened = await reopenSaved(buffer);
+                const accepting = await FolioDocxReviewer.fromBuffer(buffer);
+                accepting.acceptAll();
+                const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
+                rejecting.rejectAll();
+                const accepted = await reopenSaved(await accepting.toBuffer());
+                const rejected = await reopenSaved(await rejecting.toBuffer());
+                row = {
+                  text: reopened.getContent().map(({ text }) => text),
+                  changes: reopened.getChanges().length,
+                  accepted: accepted.getContent().map(({ text }) => text),
+                  rejected: rejected.getContent().map(({ text }) => text),
+                };
+              } catch (error) {
+                row = { thrown: String(error).slice(0, 200) };
+              }
+              results[suggesting ? "tracked" : "direct"] = row;
+            }
+            console.log(
+              `ZZLAB ${JSON.stringify({ shape, placement, name, source: baseline.map((b) => b.text), ...results })}`,
+            );
           }
-          console.log(
-            `ZZLAB ${JSON.stringify({ shape, name, source: baseline.map((b: { text?: string }) => b.text), ...results })}`,
-          );
         },
       );
     }

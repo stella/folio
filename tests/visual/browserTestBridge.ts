@@ -1,3 +1,5 @@
+import { setHyperlink } from "@stll/folio-core/prosemirror";
+
 import {
   resolvePaintedDragTarget,
   resolvePaintedTableTarget,
@@ -7,6 +9,7 @@ import { installInterleavingBridge } from "./interleavingBridge";
 /** Bundled with the playground so browser tests also work against built previews. */
 export const browserTestBridge = {
   installInterleavingBridge,
+  setHyperlink,
   resolvePaintedDragTarget,
   resolvePaintedTableTarget,
 };
