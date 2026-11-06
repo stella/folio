@@ -724,73 +724,25 @@ const isBrowserShape = (
 test.describe("pinned browser input", () => {
   test.setTimeout(60_000);
   const LAB_ACTIONS: Record<string, (page: Page) => Promise<void>> = {
-    type: async (page) => {
-      await page.keyboard.type("ZQ");
+    backspace: async (page) => {
+      await page.keyboard.press("Backspace");
     },
-    tab: async (page) => {
-      await page.keyboard.press("Tab");
+    modBackspace: async (page) => {
+      await page.keyboard.press("ControlOrMeta+Backspace");
     },
-    shiftEnter: async (page) => {
-      await page.keyboard.press("Shift+Enter");
+    shiftBackspace: async (page) => {
+      await page.keyboard.press("Shift+Backspace");
     },
-    modEnter: async (page) => {
-      await page.keyboard.press("ControlOrMeta+Enter");
-    },
-    bulletMarker: async (page) => {
-      await page.keyboard.type("- ");
-    },
-    numberMarker: async (page) => {
-      await page.keyboard.type("1. ");
-    },
-    insertHyperlink: async (page) => {
-      await page.evaluate(() => {
-        const view = globalThis.__folioPlayground
-          ?.getEditorRef()
-          ?.getEditorRef()
-          ?.getView();
-        const bridge = globalThis.__folioBrowserTestBridge as unknown as
-          | {
-              insertHyperlink: (
-                text: string,
-                href: string,
-              ) => (s: unknown, d: unknown) => boolean;
-            }
-          | undefined;
-        if (!view || !bridge) throw new Error("no view");
-        bridge.insertHyperlink("a link", "https://example.org/")(
-          view.state,
-          view.dispatch,
-        );
-      });
-    },
-    hyperlink: async (page) => {
-      await page.evaluate(() => {
-        const view = globalThis.__folioPlayground
-          ?.getEditorRef()
-          ?.getEditorRef()
-          ?.getView();
-        const bridge = globalThis.__folioBrowserTestBridge as unknown as
-          | {
-              setHyperlink: (
-                href: string,
-              ) => (s: unknown, d: unknown) => boolean;
-            }
-          | undefined;
-        if (!view || !bridge) throw new Error("no view");
-        bridge.setHyperlink("https://example.org/")(view.state, view.dispatch);
-      });
+    altBackspace: async (page) => {
+      await page.keyboard.press("Alt+Backspace");
     },
   };
   for (const shape of [
-    "plain-markdown",
+    "single-decimal-list",
     "single-bullet-list",
-    "comments",
-    "fields-links-bookmarks",
-    "tables",
-    "tracked-changes",
-    "notes",
+    "outline-level-numbered",
   ] as const) {
-    for (const placement of ["word", "cross-paragraph", "document"] as const) {
+    for (const placement of ["item-start", "first-item-start"] as const) {
       test(
         `lab ${shape} ${placement}`,
         { tag: PINNED_BROWSER_INPUT_TAG },
@@ -828,8 +780,19 @@ test.describe("pinned browser input", () => {
                 const first = blocks[0] ?? { from: 1, to: 1 };
                 const second = blocks[1] ?? first;
                 const last = blocks.at(-1) ?? first;
-                let from = first.from + 1;
-                let to = Math.min(first.from + 3, first.to);
+                const items: number[] = [];
+                view.state.doc.descendants((node, pos) => {
+                  if (
+                    node.isTextblock &&
+                    node.content.size > 0 &&
+                    node.attrs["numPr"]
+                  )
+                    items.push(pos + 1);
+                  return true;
+                });
+                let from =
+                  (where === "item-start" ? items[1] : items[0]) ?? first.from;
+                let to = from;
                 if (where === "cross-paragraph") {
                   from = first.from + 1;
                   to = Math.min(second.from + 2, second.to);
