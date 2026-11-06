@@ -35,7 +35,12 @@ import {
 } from "prosemirror-state";
 import type { PluginKey, Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
-import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
+import {
+  Mapping,
+  ReplaceAroundStep,
+  ReplaceStep,
+  type Step,
+} from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
@@ -2021,7 +2026,7 @@ function restoreReplacedInline({
 }
 
 type SpanningReplacement = {
-  step: ReplaceStep;
+  step: ReplaceStep | ReplaceAroundStep;
   /** The selected text, in the document before the transaction. */
   from: number;
   to: number;
@@ -2029,20 +2034,27 @@ type SpanningReplacement = {
   inserted: Fragment;
 };
 
-/** The inline content a step puts in place of a selection, or null for blocks. */
+const readableContent = (content: Fragment): string =>
+  content.textBetween(0, content.size, "", "\ufffc");
+
+/**
+ * The inline content a step puts in place of a selection, or null for block
+ * content. Between containers, the step also carries the text after the
+ * selection over into the first one, and fills out what it cut with empty blocks.
+ */
 const insertedInline = (
-  step: ReplaceStep,
+  step: ReplaceStep | ReplaceAroundStep,
   $to: ResolvedPos,
   to: number,
 ): Fragment | null => {
   const { content } = step.slice;
-  const only = content.childCount === 1 ? content.firstChild : null;
-  // A whole-document replacement wraps what it puts in in a paragraph.
-  const inline = only?.isTextblock ? only.content : content;
-  if (inline.childCount > 0 && !inline.firstChild?.isInline) return null;
-  if (step.to === to) return inline;
-  // Between containers, the step also carries the text after the selection
-  // over into the first one.
+  let inline = content;
+  while (inline.firstChild && !inline.firstChild.isInline) {
+    inline = inline.firstChild.content;
+  }
+  if (readableContent(inline) !== readableContent(content)) return null;
+  // A step around the rest of the container holds that text in its gap.
+  if (step.to === to || step instanceof ReplaceAroundStep) return inline;
   const tail = $to.parent.content.cut($to.parentOffset);
   const kept = inline.size - tail.size;
   return kept >= 0 && inline.cut(kept).eq(tail) ? inline.cut(0, kept) : null;
@@ -2062,7 +2074,7 @@ function spanningReplacement(
   const { doc, selection } = oldState;
   if (
     userTr.steps.length !== 1 ||
-    !(step instanceof ReplaceStep) ||
+    !(step instanceof ReplaceStep || step instanceof ReplaceAroundStep) ||
     userTr.before !== doc ||
     selection.empty
   ) {
@@ -2078,7 +2090,9 @@ function spanningReplacement(
     !$to.parent.inlineContent ||
     $from.sameParent($to) ||
     step.from > from ||
-    step.to < to
+    step.to < to ||
+    // A step around the selection moves it, as wrapping or lifting does.
+    (step instanceof ReplaceAroundStep && step.gapFrom < to)
   ) {
     return null;
   }
