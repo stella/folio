@@ -2813,6 +2813,9 @@ function computePageFingerprintInternal(
       if (frag.bottomClip !== undefined) {
         fp += `,bc:${frag.bottomClip}`;
       }
+      if (frag.cellLineBand !== undefined) {
+        fp += `,clb:${frag.cellLineBand.shownThrough}:${frag.cellLineBand.cut}`;
+      }
       if (frag.continuesFromPrev) {
         fp += ",cfp";
       }
