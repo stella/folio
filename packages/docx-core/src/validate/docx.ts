@@ -1046,11 +1046,6 @@ const validateTableRow = (
   path: string,
   ctx: ValidationContext,
 ): void => {
-  if (row.cells.length === 0) {
-    addError(ctx, `${path}.cells`, "Table row must contain at least one cell.");
-    return;
-  }
-
   for (const [index, cell] of row.cells.entries()) {
     validateTableCell(cell, `${path}.cells[${index}]`, ctx);
   }

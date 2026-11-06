@@ -238,3 +238,34 @@ test("typing in a table with short rows leaves its rows as they were", async ({
     .poll(async () => (await paintedCells(page)).length)
     .toBe(rows.flatMap(({ cells }) => cells).length);
 });
+
+test.describe("a table row with no cells", () => {
+  for (const [name, properties] of [
+    ["nothing", ""],
+    ["a declared gridAfter", '<w:gridAfter w:val="3"/>'],
+  ] as const) {
+    test(`opens and paints its neighbours with ${name}`, async ({ page }) => {
+      const rows = SHAPES["short rows"] ?? [];
+      await page.goto("/");
+      const zip = await ZipArchive.read(await documentWith(rows));
+      const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
+      zip.set(
+        "word/document.xml",
+        xml.replace(
+          "</w:tbl>",
+          `<w:tr>${properties ? `<w:trPr>${properties}</w:trPr>` : ""}</w:tr></w:tbl>`,
+        ),
+      );
+      await page.locator("#file-input").setInputFiles({
+        name: "no-cells.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        buffer: Buffer.from(await zip.generate()),
+      });
+      const first = page.locator(".layout-page").first();
+      await expect(first).toContainText("TAIL");
+      await expect(first).toContainText("FFF");
+      expect(await savedRows(page)).toHaveLength(rows.length + 1);
+    });
+  }
+});

@@ -535,7 +535,7 @@ export const applyTableColumnDeletion = ({
       emptied: emptiedRows,
     });
   } else {
-    removeRowsWithoutCells(tr, tablePosition);
+    removeRowsWithoutCells(tr, tablePosition, table);
   }
   return applied(tr, null);
 };

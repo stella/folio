@@ -136,7 +136,7 @@ export const mergeTableRectangle = ({
   }
   // Merging every cell of a row into the cell above leaves the row nothing of
   // its own; the merge then closes over the rows that still have a cell.
-  removeRowsWithoutCells(tr, tablePosition);
+  removeRowsWithoutCells(tr, tablePosition, table);
   return tr;
 };
 
