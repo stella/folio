@@ -59,8 +59,13 @@ const editable = (items: readonly ParagraphContent[]): boolean =>
     switch (item.type) {
       case "run":
         return (item.propertyChanges?.length ?? 0) === 0;
+      // Zero-width markers stay where they are, between the linked runs.
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "preservedInline":
         return true;
       case "hyperlink":
         return editable(item.children);
@@ -106,6 +111,10 @@ const linkedChildren = (
         break;
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "preservedInline":
         children.push(item);
         break;
       case "hyperlink":
