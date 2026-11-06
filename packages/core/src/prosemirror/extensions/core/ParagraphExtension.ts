@@ -1181,6 +1181,13 @@ export type GenerateTableOfContentsOptions = {
   title: string;
 };
 
+/** Set the selected paragraphs' writing direction. */
+export const setParagraphDirection = (direction: "ltr" | "rtl"): Command =>
+  withCanonicalParagraphFormatting(
+    setParagraphAttr("direction", { source: "manual", value: direction }),
+    { bidi: direction === "rtl" },
+  );
+
 export const ParagraphExtension: (
   options?: Partial<Record<string, unknown>> | undefined,
 ) => NodeExtension = createNodeExtension({
@@ -1559,16 +1566,8 @@ export const ParagraphExtension: (
             (paragraph) => ({ bidi: directionIsRtl(directionFor(paragraph)) }),
           );
         },
-        setRtl: () =>
-          withCanonicalParagraphFormatting(
-            setParagraphAttr("direction", { source: "manual", value: "rtl" }),
-            { bidi: true },
-          ),
-        setLtr: () =>
-          withCanonicalParagraphFormatting(
-            setParagraphAttr("direction", { source: "manual", value: "ltr" }),
-            { bidi: false },
-          ),
+        setRtl: () => setParagraphDirection("rtl"),
+        setLtr: () => setParagraphDirection("ltr"),
         setTabs: (tabs: TabStop[]) =>
           withCanonicalParagraphFormatting(
             setParagraphAttr("tabs", tabs.length > 0 ? tabs : null),
