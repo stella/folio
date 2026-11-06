@@ -1,4 +1,4 @@
-import { setHyperlink } from "@stll/folio-core/prosemirror";
+import { insertHyperlink, setHyperlink } from "@stll/folio-core/prosemirror";
 
 import {
   resolvePaintedDragTarget,
@@ -10,6 +10,7 @@ import { installInterleavingBridge } from "./interleavingBridge";
 export const browserTestBridge = {
   installInterleavingBridge,
   setHyperlink,
+  insertHyperlink,
   resolvePaintedDragTarget,
   resolvePaintedTableTarget,
 };

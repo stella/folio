@@ -727,20 +727,41 @@ test.describe("pinned browser input", () => {
     type: async (page) => {
       await page.keyboard.type("ZQ");
     },
-    enter: async (page) => {
-      await page.keyboard.press("Enter");
-    },
-    backspace: async (page) => {
-      await page.keyboard.press("Backspace");
-    },
-    delete: async (page) => {
-      await page.keyboard.press("Delete");
-    },
     tab: async (page) => {
       await page.keyboard.press("Tab");
     },
-    modBackspace: async (page) => {
-      await page.keyboard.press("ControlOrMeta+Backspace");
+    shiftEnter: async (page) => {
+      await page.keyboard.press("Shift+Enter");
+    },
+    modEnter: async (page) => {
+      await page.keyboard.press("ControlOrMeta+Enter");
+    },
+    bulletMarker: async (page) => {
+      await page.keyboard.type("- ");
+    },
+    numberMarker: async (page) => {
+      await page.keyboard.type("1. ");
+    },
+    insertHyperlink: async (page) => {
+      await page.evaluate(() => {
+        const view = globalThis.__folioPlayground
+          ?.getEditorRef()
+          ?.getEditorRef()
+          ?.getView();
+        const bridge = globalThis.__folioBrowserTestBridge as unknown as
+          | {
+              insertHyperlink: (
+                text: string,
+                href: string,
+              ) => (s: unknown, d: unknown) => boolean;
+            }
+          | undefined;
+        if (!view || !bridge) throw new Error("no view");
+        bridge.insertHyperlink("a link", "https://example.org/")(
+          view.state,
+          view.dispatch,
+        );
+      });
     },
     hyperlink: async (page) => {
       await page.evaluate(() => {
