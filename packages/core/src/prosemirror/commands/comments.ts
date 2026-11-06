@@ -101,6 +101,7 @@ import {
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCellsAfterBatch,
   removeTableRow,
+  rowHoldsNoCells,
   type RowsEmptiedInBatch,
 } from "../tableGridMutation";
 import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
@@ -1474,8 +1475,9 @@ function deleteTableCellAt(
   // and the row it leaves empty is removed once the rest of the column has
   // gone too, when the table is rectangular again.
   const spansDown = Number(cell.attrs["rowspan"]) > 1;
-  if (row.childCount > 1 || spansDown) {
-    if (row.childCount === 1) {
+  const holdsOtherCells = !rowHoldsNoCells(row, cell);
+  if (holdsOtherCells || spansDown) {
+    if (!holdsOtherCells) {
       markRowEmptiedInBatch({ tr, rowPosition: resolved.start() - 1, emptied });
     }
     tr.delete(cellPos, cellPos + cell.nodeSize);

@@ -262,6 +262,8 @@ function normalizeNode(node: PMNode): NormalizedNode {
   if (node.childCount > 0) {
     result.content = [];
     node.forEach((child) => {
+      // A short row opens with a placeholder for what it omits, saved as nothing.
+      if (child.attrs["_omittedGridSlot"]) return;
       result.content!.push(normalizeNode(child));
     });
   }
