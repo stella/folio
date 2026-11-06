@@ -59,8 +59,7 @@ import type { ColumnLayout, SectionLayoutConfig } from "../layout-engine";
 import { resolveAnchorLayoutInCellCompatibility } from "../layout-engine/anchorLayoutInCellCompatibility";
 import {
   applyFootnoteContinuation,
-  footnoteReservationHeight,
-  footnoteReservationsSettled,
+  footnoteContinuationSettled,
   planFootnoteContinuation,
 } from "../layout-engine/footnoteContinuation";
 import { resolveJustificationCompatibility } from "../layout-engine/justificationCompatibility";
@@ -93,7 +92,6 @@ import type {
   FootnoteContent,
   Layout,
   Measure,
-  Page,
   PageHeaderFooterRefs,
   PageMargins,
 } from "../layout-engine/types";
@@ -142,22 +140,6 @@ import type {
 } from "./layoutSession";
 
 const MAX_FOOTNOTE_CONTINUATION_ROUNDS = 4;
-
-/** Each page's note items with the part of the note the page shows. */
-const withFootnoteWindows = (
-  items: Map<number, FootnoteRenderItem[]>,
-  pages: readonly Page[],
-): Map<number, FootnoteRenderItem[]> => {
-  for (const page of pages) {
-    const pageItems = items.get(page.number);
-    if (!pageItems || !page.footnoteWindows) continue;
-    for (const { noteId, from, to } of page.footnoteWindows) {
-      const item = pageItems.find((candidate) => candidate.noteId === noteId);
-      if (item) item.window = { from, to };
-    }
-  }
-  return items;
-};
 
 const formatEndnoteTexts = (
   numbers: ReadonlyMap<number, number>,
@@ -1153,6 +1135,33 @@ function runLayoutPipelineMeasured<THfPMs>(
       });
     };
 
+    const withFootnoteHeights = (
+      nextLayoutOpts: Parameters<typeof layoutDocument>[2],
+    ): Parameters<typeof layoutDocument>[2] => {
+      if (!hasFootnotes) {
+        return nextLayoutOpts;
+      }
+      // Any per-fn wrapper margin applied by the painter is reserved
+      // alongside content height. The value is zero for Word-like footnote
+      // spacing; source paragraph spacing inside each note carries the
+      // visible gaps. The layout engine adds the divider's height once per
+      // fn-bearing page (in paginator.addFootnoteHeight).
+      const footnoteHeightById = new Map<number, number>();
+      for (const [id, content] of footnoteContentMap) {
+        footnoteHeightById.set(
+          id,
+          content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+        );
+      }
+      return {
+        ...nextLayoutOpts,
+        footnoteHeightById,
+        footnoteContinuation: nextLayoutOpts.footnoteContinuation ?? {
+          trailingPages: 0,
+        },
+      };
+    };
+
     // Step 3: Layout blocks onto pages (two-pass if footnotes exist)
     phaseStartedAt = performance.now();
     let newLayout: Layout;
@@ -1232,25 +1241,7 @@ function runLayoutPipelineMeasured<THfPMs>(
         buildNoteOptions(),
       );
 
-      const footnoteHeightById = new Map<number, number>();
-      // Any per-fn wrapper margin applied by the painter is reserved
-      // alongside content height. The value is zero for Word-like footnote
-      // spacing; source paragraph spacing inside each note carries the
-      // visible gaps.
-      for (const [id, content] of footnoteContentMap) {
-        footnoteHeightById.set(
-          id,
-          footnoteReservationHeight(
-            content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
-            { size: pageSize, margins },
-          ),
-        );
-      }
-      // Note: the layout engine adds the divider's height once per
-      // fn-bearing page (in paginator.addFootnoteHeight); we pass per-fn
-      // content plus any wrapper margin here.
-
-      layoutOptsUsed = { ...layoutOpts, footnoteHeightById };
+      layoutOptsUsed = withFootnoteHeights(layoutOpts);
       newLayout = layoutWithNoteAreas(newMeasures, layoutOptsUsed);
 
       // The layout engine assigned `page.footnoteIds` line-by-
@@ -1278,25 +1269,6 @@ function runLayoutPipelineMeasured<THfPMs>(
           pageFootnoteMap.set(page.number, page.footnoteIds);
         }
       }
-    };
-
-    const withFootnoteHeights = (
-      nextLayoutOpts: Parameters<typeof layoutDocument>[2],
-    ): Parameters<typeof layoutDocument>[2] => {
-      if (!hasFootnotes) {
-        return nextLayoutOpts;
-      }
-      const footnoteHeightById = new Map<number, number>();
-      for (const [id, content] of footnoteContentMap) {
-        footnoteHeightById.set(
-          id,
-          footnoteReservationHeight(
-            content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
-            { size: pageSize, margins },
-          ),
-        );
-      }
-      return { ...nextLayoutOpts, footnoteHeightById };
     };
 
     const relayoutWithCurrentMeasures = (
@@ -1392,27 +1364,53 @@ function runLayoutPipelineMeasured<THfPMs>(
     stabilizeFieldWidths();
 
     if (hasFootnotes) {
-      // A re-layout can move a reference, so the reservations settle over a few
-      // rounds; the last plan is applied however far they got.
+      const usedTrailingPages = () =>
+        layoutOptsUsed.footnoteContinuation?.trailingPages ?? 0;
       const planContinuation = () =>
         planFootnoteContinuation({
           pages: newLayout.pages,
           contentById: footnoteContentMap,
+          trailingPages: usedTrailingPages(),
         });
+      // Fields are measured against the page count, which the new layout changes.
+      const relayoutFor = (
+        reservedHeights: Map<number, number> | undefined,
+        trailingPages: number,
+      ) => {
+        relayoutWithCurrentMeasures({
+          ...layoutOptsUsed,
+          ...(reservedHeights === undefined
+            ? {}
+            : { footnoteReservedHeights: reservedHeights }),
+          footnoteContinuation: { trailingPages },
+        });
+        stabilizeFieldWidths();
+      };
+      // A re-layout can move a reference, so the reservations settle over a few
+      // rounds; the last plan is applied however far they got.
       let continuation = planContinuation();
       for (
         let round = 0;
         round < MAX_FOOTNOTE_CONTINUATION_ROUNDS &&
-        !footnoteReservationsSettled(
-          layoutOptsUsed.footnoteReservedHeights,
+        !footnoteContinuationSettled(
+          {
+            reservedHeights: layoutOptsUsed.footnoteReservedHeights,
+            trailingPages: usedTrailingPages(),
+          },
           continuation,
         );
         round += 1
       ) {
-        relayoutWithCurrentMeasures({
-          ...layoutOptsUsed,
-          footnoteReservedHeights: continuation.reservedHeights,
-        });
+        relayoutFor(continuation.reservedHeights, continuation.trailingPages);
+        continuation = planContinuation();
+      }
+      // Whatever the rounds left, every line of every note has a page: with the
+      // reservations held, more pages only extend the end of the document.
+      while (continuation.extraPages > 0) {
+        relayoutFor(
+          layoutOptsUsed.footnoteReservedHeights,
+          continuation.trailingPages,
+        );
         continuation = planContinuation();
       }
       if (continuation.pages.size > 0) {
@@ -1543,13 +1541,10 @@ function runLayoutPipelineMeasured<THfPMs>(
 
       // Build per-page footnote render items
       const footnotesByPage = hasFootnotes
-        ? withFootnoteWindows(
-            buildFootnoteRenderItems(
-              pageFootnoteMap,
-              footnoteContentMap,
-              document,
-            ),
-            newLayout.pages,
+        ? buildFootnoteRenderItems(
+            pageFootnoteMap,
+            footnoteContentMap,
+            document,
           )
         : undefined;
 

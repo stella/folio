@@ -123,11 +123,6 @@ export type FootnoteAreaPaintOptions = {
  * what the bodies actually need, so a stack that under-reserved by a pixel ends
  * at the page bottom instead of spilling past it.
  */
-const windowOfItem = (
-  noteWindow: { from: number; to: number } | undefined,
-): Pick<FootnoteRenderItem, "window"> =>
-  noteWindow ? { window: { from: noteWindow.from, to: noteWindow.to } } : {};
-
 export const paintFootnoteArea = ({
   composer,
   page,
@@ -160,7 +155,6 @@ export const paintFootnoteArea = ({
   const items: FootnoteRenderItem[] = bodies.map(({ noteId, content }) => ({
     noteId,
     displayNumber: String(content?.displayNumber ?? noteId),
-    ...windowOfItem(noteWindowOf(noteId)),
     ...(content === undefined
       ? {}
       : {
@@ -176,7 +170,7 @@ export const paintFootnoteArea = ({
   const contentWidthPx = page.size.w - page.margins.left - page.margins.right;
   const bandHeightPx = Math.max(
     reservedHeightPx,
-    calculateFootnoteAreaRenderHeight(items),
+    calculateFootnoteAreaRenderHeight(items, page.footnoteWindows),
   );
   const areaTopPx =
     page.margins.top +
@@ -206,7 +200,10 @@ export const paintFootnoteArea = ({
     // this entry's offset from the band top. Taking it from the same helper the
     // clamp above uses keeps a note that was not supplied from shifting the
     // ones below it.
-    const offsetPx = calculateFootnoteAreaRenderHeight(items.slice(0, index));
+    const offsetPx = calculateFootnoteAreaRenderHeight(
+      items.slice(0, index),
+      page.footnoteWindows,
+    );
     const story: DisplayStoryRef = { kind: "footnote", id: noteId };
     const noteWindow = noteWindowOf(noteId);
     // A note is its own document, and a click in the band edits that one.

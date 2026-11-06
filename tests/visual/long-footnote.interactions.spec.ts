@@ -14,11 +14,40 @@ const lines = (count: number) =>
     (_, index) => `G${String(index).padStart(3, "0")}`,
   );
 
-const documentWith = async (count: number, bodyLines: number) => {
+type Note = {
+  count: number;
+  /** How the note holds its lines. */
+  noteAs?: "paragraphs" | "spaced paragraphs" | "a table";
+  bodyLines: number;
+};
+
+const noteBody = ({ count, noteAs = "paragraphs" }: Note) => {
+  if (noteAs === "a table") {
+    const rows = lines(count)
+      .map(
+        (text) =>
+          `<w:tr><w:tc><w:tcPr><w:tcW w:w="4000" w:type="dxa"/></w:tcPr>${para(text)}</w:tc></w:tr>`,
+      )
+      .join("");
+    return `<w:tbl><w:tblPr><w:tblW w:w="4000" w:type="dxa"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid>${rows}</w:tbl><w:p/>`;
+  }
+  if (noteAs === "spaced paragraphs") {
+    return lines(count)
+      .map(
+        (text) =>
+          `<w:p><w:pPr><w:spacing w:before="120" w:after="200"/></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`,
+      )
+      .join("");
+  }
+  return lines(count).map(para).join("");
+};
+
+const documentWith = async (note: Note) => {
+  const { bodyLines } = note;
   const zip = new ZipArchive();
   zip.set(
     "[Content_Types].xml",
-    `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/></Types>`,
+    `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>`,
   );
   zip.set(
     "_rels/.rels",
@@ -26,18 +55,22 @@ const documentWith = async (count: number, bodyLines: number) => {
   );
   zip.set(
     "word/_rels/document.xml.rels",
-    `${HEAD}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdF" Type="${R}/footnotes" Target="footnotes.xml"/></Relationships>`,
+    `${HEAD}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdF" Type="${R}/footnotes" Target="footnotes.xml"/><Relationship Id="rIdP" Type="${R}/footer" Target="footer1.xml"/></Relationships>`,
+  );
+  zip.set(
+    "word/footer1.xml",
+    `${HEAD}<w:ftr xmlns:w="${W}"><w:p><w:r><w:t xml:space="preserve">Sheet </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText>PAGE</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>0</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`,
   );
   const body = Array.from({ length: bodyLines }, (_, index) =>
     para(`Body ${String(index)}`),
   ).join("");
   zip.set(
     "word/document.xml",
-    `${HEAD}<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Reference here</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r></w:p>${body}${para("TAIL")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>`,
+    `${HEAD}<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Reference here</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r></w:p>${body}${para("TAIL")}<w:sectPr xmlns:r="${R}"><w:footerReference w:type="default" r:id="rIdP"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>`,
   );
   zip.set(
     "word/footnotes.xml",
-    `${HEAD}<w:footnotes xmlns:w="${W}"><w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote><w:footnote w:id="1">${lines(count).map(para).join("")}</w:footnote></w:footnotes>`,
+    `${HEAD}<w:footnotes xmlns:w="${W}"><w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote><w:footnote w:id="1">${noteBody(note)}</w:footnote></w:footnotes>`,
   );
   return Buffer.from(await zip.generate());
 };
@@ -135,10 +168,16 @@ for (const [painter, url] of [
   ["the default painter", "/"],
   ["the display-list painter", "/?pageRenderer=display-list"],
 ] as const) {
-  for (const [shape, count, bodyLines] of [
-    ["the next page", 150, 0],
-    ["several pages", 300, 40],
-  ] as const) {
+  for (const [shape, note] of [
+    ["the next page", { count: 150, bodyLines: 0 }],
+    ["several pages", { count: 300, bodyLines: 40 }],
+    [
+      "pages, with paragraph spacing",
+      { count: 80, noteAs: "spaced paragraphs", bodyLines: 5 },
+    ],
+    ["pages, as a table", { count: 120, noteAs: "a table", bodyLines: 5 }],
+  ] satisfies [string, Note][]) {
+    const { count } = note;
     test(`a long footnote continues across ${shape}, on ${painter}`, async ({
       page,
     }) => {
@@ -147,7 +186,7 @@ for (const [painter, url] of [
         name: "note.docx",
         mimeType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        buffer: await documentWith(count, bodyLines),
+        buffer: await documentWith(note),
       });
       await expect
         .poll(
@@ -179,6 +218,11 @@ for (const [painter, url] of [
         await bodyLinesInsideNotes(page),
         "no body line stands in a note area",
       ).toEqual([]);
+      const sheets = await page.locator(".layout-page").allTextContents();
+      expect(
+        sheets.flatMap((text) => /Sheet (\d+)/u.exec(text)?.[1] ?? []),
+        "every page keeps its own number",
+      ).toEqual(sheets.map((_, index) => String(index + 1)));
     });
   }
 }

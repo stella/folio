@@ -1580,6 +1580,12 @@ export type LayoutOptions = {
    * earlier-column placement.
    */
   footnoteHeightById?: Map<number, number>;
+  /**
+   * Set when a note taller than its page's room continues on the next pages.
+   * A reference then reserves at most a share of its section's page, and the
+   * layout ends with `trailingPages` pages for what passes the last body page.
+   */
+  footnoteContinuation?: { trailingPages: number };
   /** Header/footer references for each document section, by section index. */
   sectionHeaderFooterRefs?: PageHeaderFooterRefs[];
   /** Note areas (endnotes) whose blocks flow with the body blocks. */
