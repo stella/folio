@@ -5,14 +5,17 @@ import { ZipArchive } from "@stll/docx-core/zip";
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-const lines = (prefix: string, count: number, halfPoints: number): string =>
+const lines = (prefix: string, count: number, lineTwips: number): string =>
   Array.from(
     { length: count },
     (_, index) =>
-      `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:sz w:val="${String(halfPoints)}"/></w:rPr><w:t>${prefix}${String(index).padStart(3, "0")}</w:t></w:r></w:p>`,
+      `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="${String(lineTwips)}" w:lineRule="exact"/></w:pPr><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:t>${prefix}${String(index).padStart(3, "0")}</w:t></w:r></w:p>`,
   ).join("");
 
-/** One row taller than a page, whose cells have different line heights. */
+/**
+ * One row taller than a page. 263 and 347 twips are prime, so its cells' lines
+ * share no bottom before 91,261 twips, far past the bottom of any page.
+ */
 const documentWith = async (left: number, right: number): Promise<Buffer> => {
   const zip = new ZipArchive();
   zip.set(
@@ -27,7 +30,7 @@ const documentWith = async (left: number, right: number): Promise<Buffer> => {
     `<w:tc><w:tcPr><w:tcW w:w="4000" w:type="dxa"/></w:tcPr>${content}</w:tc>`;
   zip.set(
     "word/document.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}"><w:body><w:tbl><w:tblPr><w:tblW w:w="8000" w:type="dxa"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="4000"/></w:tblGrid><w:tr>${cell(lines("A", left, 20))}${cell(lines("B", right, 27))}</w:tr></w:tbl><w:p><w:r><w:t>TAIL</w:t></w:r></w:p></w:body></w:document>`,
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}"><w:body><w:tbl><w:tblPr><w:tblW w:w="8000" w:type="dxa"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="4000"/></w:tblGrid><w:tr>${cell(lines("A", left, 263))}${cell(lines("B", right, 347))}</w:tr></w:tbl><w:p><w:r><w:t>TAIL</w:t></w:r></w:p></w:body></w:document>`,
   );
   return Buffer.from(await zip.generate());
 };
