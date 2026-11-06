@@ -7120,10 +7120,10 @@ export function tableCellAttrsToFormatting(
 
 type TextBoxBodyContentProjection =
   | { readonly type: "source-empty" }
-  | { readonly type: "authored"; readonly content: (Paragraph | Table)[] };
+  | { readonly type: "authored"; readonly content: TableCellBlock[] };
 
 const isUnchangedSourceEmptyPlaceholder = (
-  blocks: readonly (Paragraph | Table)[],
+  blocks: readonly TableCellBlock[],
 ): boolean => {
   const paragraph = blocks.at(0);
   if (
@@ -7145,7 +7145,7 @@ const isUnchangedSourceEmptyPlaceholder = (
 
 const projectTextBoxBodyContent = (
   state: TextBoxAttrs["_docxTextBodyContentState"],
-  blocks: (Paragraph | Table)[],
+  blocks: TableCellBlock[],
 ): TextBoxBodyContentProjection => {
   switch (state.type) {
     case "source-empty":
@@ -7174,15 +7174,38 @@ function convertPMTextBox(
   const verticalAlign = normalizeShapeTextAnchor(attrs.verticalAlign);
 
   // Extract child paragraphs from the text box content
-  const childBlocks: (Paragraph | Table)[] = [];
+  const childBlocks: TableCellBlock[] = [];
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
-    if (child.type.name === "paragraph") {
-      childBlocks.push(
-        convertPMParagraph(child, undefined, undefined, styleResolver),
-      );
-    } else if (child.type.name === "table") {
-      childBlocks.push(convertPMTable(child, undefined, styleResolver));
+    switch (child.type.name) {
+      case "paragraph":
+        childBlocks.push(
+          convertPMParagraph(child, undefined, undefined, styleResolver),
+        );
+        break;
+      case "table":
+        childBlocks.push(convertPMTable(child, undefined, styleResolver));
+        break;
+      case "blockSdt":
+        childBlocks.push(convertPMBlockSdt(child, styleResolver));
+        break;
+      case "blockCustomXml":
+        childBlocks.push(convertPMBlockCustomXml(child, styleResolver));
+        break;
+      case "preservedBlock":
+        childBlocks.push({
+          type: "preservedBlock",
+          xml: expectPreservedBlockAttrs(child).xml,
+        });
+        break;
+      case "blockBookmarkBoundary":
+        childBlocks.push(blockBookmarkMarker(child));
+        break;
+      case "blockMoveRangeBoundary":
+        childBlocks.push({ ...expectMoveRangeBoundaryAttrs(child) });
+        break;
+      default:
+        break;
     }
   });
   const textBodyContent = projectTextBoxBodyContent(

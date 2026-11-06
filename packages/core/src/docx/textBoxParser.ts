@@ -255,58 +255,6 @@ export type TableParserFn = (
   options: { previews: PreviewLedger },
 ) => Table | undefined;
 
-/**
- * Parse text box content with provided parser functions
- * This avoids circular dependencies by accepting parser functions as parameters
- */
-export function parseTextBoxContent(
-  txbxContent: XmlElement | null,
-  parseParagraph: ParagraphParserFn,
-  parseTable: TableParserFn | null,
-  styles: StyleMap | null,
-  theme: Theme | null,
-  numbering: NumberingMap | null,
-  rels: RelationshipMap | null,
-  media: Map<string, MediaFile> | null,
-  previews: PreviewLedger,
-): (Paragraph | Table)[] {
-  if (!txbxContent) {
-    return [];
-  }
-
-  const blocks: (Paragraph | Table)[] = [];
-  const children = getChildElements(txbxContent);
-
-  for (const child of children) {
-    const name = child.name || "";
-    const colonIdx = name.indexOf(":");
-    const localName = colonIdx !== -1 ? name.slice(colonIdx + 1) : name;
-
-    if (localName === "p") {
-      // Parse paragraph
-      const paragraph = parseParagraph(
-        child,
-        styles,
-        theme,
-        numbering,
-        rels,
-        media,
-        { previews },
-      );
-      blocks.push(paragraph);
-    } else if (localName === "tbl" && parseTable) {
-      const table = parseTable(child, styles, theme, numbering, rels, media, {
-        previews,
-      });
-      if (table) {
-        blocks.push(table);
-      }
-    }
-  }
-
-  return blocks;
-}
-
 // ============================================================================
 // TEXT BOX DETECTION
 // ============================================================================
