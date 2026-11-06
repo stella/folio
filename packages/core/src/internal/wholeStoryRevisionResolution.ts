@@ -18,6 +18,7 @@ import {
 import {
   anchoredTextBoxId,
   droppedTextBoxAnchorIds,
+  moveTextBoxesPastNextParagraph,
 } from "../prosemirror/anchoredTextBoxes";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin";
@@ -472,11 +473,13 @@ const resolveStructure = ({
   let pendingBookmarks: PMNode[] = [];
   let followingContainerChild = false;
   const precedingParagraphs: boolean[] = [];
-  let previousSurvivorIsParagraph = false;
+  // Only a content control may end with a table, so any block before will do.
+  const endsWithAnyBlock = node.type.name === "blockSdt";
+  let endsWell = false;
   for (const { node: child } of entries) {
-    precedingParagraphs.push(previousSurvivorIsParagraph);
+    precedingParagraphs.push(endsWell);
     if (child !== null && !isBlockBoundaryNode(child)) {
-      previousSurvivorIsParagraph = child.type.name === "paragraph";
+      endsWell = endsWithAnyBlock || child.type.name === "paragraph";
     }
   }
   const flush = (): void => {
@@ -755,7 +758,11 @@ const resolveStructure = ({
   flushBookmarks();
   reversed.reverse();
   if (node.type.name === "doc") {
-    const carrier = reversed.at(-1);
+    // Text boxes after it belong to paragraphs before it, wherever they stand.
+    const carrierIndex = reversed.findLastIndex(
+      (child) => child.type.name !== "textBox",
+    );
+    const carrier = reversed[carrierIndex];
     if (
       carrier?.type.name === "paragraph" &&
       carrier.attrs["reviewCarrier"] === REVIEW_CARRIERS.TERMINAL_TABLE
@@ -771,9 +778,11 @@ const resolveStructure = ({
             child.marks.some((mark) => mark.type.name === "deletion"));
         return !pending;
       });
-      const entry = entries.at(-1);
+      const entry = entries.findLast(
+        (candidate) => candidate.node?.type.name !== "textBox",
+      );
       if (!pending && entry) {
-        if (context.mode === "accept") {
+        if (context.mode === "accept" || carrier.content.size > 0) {
           const cleared = rebuild(carrier, {
             attrs: { ...carrier.attrs, reviewCarrier: undefined },
           });
@@ -787,9 +796,9 @@ const resolveStructure = ({
             from: entry.position,
             to: entry.position + carrier.nodeSize,
           });
-          reversed[reversed.length - 1] = cleared;
+          reversed[carrierIndex] = cleared;
         } else if (reversed.length > 1) {
-          reversed.pop();
+          reversed.splice(carrierIndex, 1);
           context.deleted.push({
             from: entry.position,
             to: entry.position + carrier.nodeSize,
@@ -868,6 +877,26 @@ type ResolveWholeStoryOptions = {
   styleResolver: RunStyleResolver | null;
   numbering: NumberingMap | null;
 };
+/**
+ * The text boxes drawn in a paragraph stand between it and the next one. When
+ * the paragraph's mark goes, the two join, and the boxes follow the result.
+ */
+const moveTextBoxesOutOfJoins = (
+  tr: Transform,
+  mode: "accept" | "reject",
+): void => {
+  const joining: number[] = [];
+  tr.doc.descendants((node, position) => {
+    if (node.type.name !== "paragraph") return true;
+    const mark = expectParagraphAttrs(node).pPrMark;
+    const wasAdded = mark?.kind === "ins" || mark?.kind === "moveTo";
+    if (mark && wasAdded !== (mode === "accept")) joining.push(position);
+    return false;
+  });
+  for (const position of joining.toReversed())
+    moveTextBoxesPastNextParagraph(tr, position);
+};
+
 export const resolveWholeStory = ({
   doc: storyDoc,
   mode,
@@ -912,15 +941,32 @@ export const resolveWholeStory = ({
   const withoutCopies = new Transform(storyDoc);
   for (const position of sectionRecordCopyPositions(storyDoc))
     withoutCopies.setNodeAttribute(position, "_sectionProperties", null);
+  moveTextBoxesOutOfJoins(withoutCopies, mode);
   const doc = withoutCopies.doc;
+  let preparedMap = StepMap.empty;
+  for (const map of withoutCopies.mapping.maps)
+    preparedMap = composeRevisionResolutionMaps(preparedMap, map);
+  const afterPreparing = <T extends { steps: Step[]; positionMap: StepMap }>(
+    result: T,
+  ) => {
+    const positionMap = composeRevisionResolutionMaps(
+      preparedMap,
+      result.positionMap,
+    );
+    return {
+      ...result,
+      steps: [...withoutCopies.steps, ...result.steps],
+      positionMap,
+      mapping: new Mapping([positionMap]),
+    };
+  };
   const { runsIntoTable, ...direct } = resolveStoryRevisions({
     doc,
     mode,
     styleResolver,
     numbering,
   });
-  if (!runsIntoTable)
-    return { ...direct, steps: [...withoutCopies.steps, ...direct.steps] };
+  if (!runsIntoTable) return afterPreparing(direct);
   // A paragraph whose mark goes right before a table runs on into the table's
   // first cell before the rest resolves; both read as one resolution.
   const runIn = new Transform(doc);
@@ -929,8 +975,7 @@ export const resolveWholeStory = ({
     mode,
     styleResolver,
   );
-  if (!runIn.docChanged)
-    return { ...direct, steps: [...withoutCopies.steps, ...direct.steps] };
+  if (!runIn.docChanged) return afterPreparing(direct);
   const { runsIntoTable: _rerun, ...result } = resolveStoryRevisions({
     doc: runIn.doc,
     mode,
@@ -949,13 +994,12 @@ export const resolveWholeStory = ({
     runInMap,
     result.positionMap,
   );
-  return {
+  return afterPreparing({
     ...result,
-    steps: [...withoutCopies.steps, ...runIn.steps, ...result.steps],
+    steps: [...runIn.steps, ...result.steps],
     positionMap,
-    mapping: new Mapping([positionMap]),
     transfers: [...transfers, ...result.transfers],
-  };
+  });
 };
 
 const resolveStoryRevisions = ({
