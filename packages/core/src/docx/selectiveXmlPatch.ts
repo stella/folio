@@ -2016,6 +2016,7 @@ export function collectAddedNumberingDefs(
 }
 
 const NUMBERING_CLOSE_ROOT = "</w:numbering>";
+const NUMBERING_CLEANUP_MARKER = "<w:numIdMacAtCleanup";
 
 type PatchNumberingDefinitionsOptions = {
   originalXml: string;
@@ -2151,8 +2152,9 @@ export const patchNumberingDefinitions = ({
 /**
  * Append added `w:abstractNum` / `w:num` definitions from `currentXml` to
  * `xml`. ECMA-376 §17.9 orders every `w:abstractNum` before the first `w:num`,
- * so abstract definitions go right before the first `<w:num ` (or the root
- * close when the part has none) and instances before the root close. A
+ * and `w:numIdMacAtCleanup` after the last, so abstract definitions go right
+ * before the first `<w:num ` and instances right before that marker, or the
+ * root close when the part has neither. A
  * synthetic numFmt in an added abstract is restored from the original
  * definition it was cloned from (the one with an identical body), so a custom
  * format survives cloning. Returns null when an added id cannot be extracted
@@ -2192,10 +2194,12 @@ export function appendNumberingDefs(
     NUMBERING_OPEN_LITERAL.num,
     NUMBERING_CLOSE_TAG.num,
   );
-  const abstractInsertAt = firstNum ? firstNum.start : rootClose;
+  const cleanupMarker = xml.indexOf(NUMBERING_CLEANUP_MARKER);
+  const instancesEnd = cleanupMarker < 0 ? rootClose : cleanupMarker;
+  const abstractInsertAt = firstNum ? firstNum.start : instancesEnd;
   const head = xml.slice(0, abstractInsertAt);
-  const middle = xml.slice(abstractInsertAt, rootClose);
-  const tail = xml.slice(rootClose);
+  const middle = xml.slice(abstractInsertAt, instancesEnd);
+  const tail = xml.slice(instancesEnd);
   return head + abstractXmls.join("") + middle + numXmls.join("") + tail;
 }
 
