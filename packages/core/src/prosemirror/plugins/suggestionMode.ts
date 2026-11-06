@@ -2064,13 +2064,9 @@ export function createSuggestionModePlugin(
           compositionId = nativeCompositionId;
         }
         // Another writer's edit, while the composition runs: the composition's
-        // start moves with it, and its size is not the composition's.
-        if (
-          composing &&
-          tr.docChanged &&
-          typeof nativeCompositionId !== "number" &&
-          tr.getMeta("addToHistory") === false
-        ) {
+        // start moves with it, and its size is not the composition's. Plugins
+        // here also write without history, which is not another writer.
+        if (composing && tr.docChanged && tr.getMeta("y-sync$") !== undefined) {
           compositionForeignEdit = true;
           compositionForeignSize +=
             tr.doc.content.size - tr.before.content.size;
