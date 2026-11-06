@@ -2334,17 +2334,25 @@ export function createSuggestionModePlugin(
         }
         if (event.key === "Backspace" || event.key === "Delete") {
           const { $from, empty } = view.state.selection;
-          if (
+          const atListItemStart =
             event.key === "Backspace" &&
             empty &&
             $from.parentOffset === 0 &&
             $from.parent.type.name === "paragraph" &&
-            expectParagraphAttrs($from.parent).numPr?.kind === "reference"
+            expectParagraphAttrs($from.parent).numPr?.kind === "reference";
+          // A plain Backspace there leaves the list through its own binding. A
+          // modified one joins the paragraphs, so it records that.
+          if (
+            atListItemStart &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey
           ) {
             return false;
           }
           if (
             event.key === "Backspace" &&
+            !atListItemStart &&
             clearIndentOnBackspace(view.state, (tr) => {
               const revision = makeMarkAttrs(pluginState);
               recordReplacedParagraphProperties({
