@@ -675,6 +675,32 @@ export const BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366 = {
   trace: BrowserInputTrace;
 };
 
+export const BROWSER_CANCELLED_COMPOSITION_SEED_1793946574 = {
+  seed: 1793946574,
+  path: "10",
+  fingerprint: "caed1eca237779c4",
+  trace: {
+    shape: "single-bullet-list",
+    actions: [
+      { kind: "enter" },
+      { kind: "selectionDrag", target: "list" },
+      { kind: "delete" },
+      {
+        kind: "imeReplacement",
+        updates: ["shall مرحبا alpha", "invoice valid", "valid", "shall café"],
+        completion: "cancel",
+      },
+      { kind: "pastePlain", plain: "é مرحبا invoice", html: "" },
+      { kind: "cut" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 /** A composition over a selection across list items replaces it once, in the first item. */
 export const CANONICAL_ACROSS_PARAGRAPHS_SEED_347 = {
   authority: "canonical",
@@ -700,6 +726,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
+  BROWSER_CANCELLED_COMPOSITION_SEED_1793946574,
   BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
   BROWSER_RTL_COMPOSITION_SEED_1793914965,
   BROWSER_PASTE_AFTER_TABLE_SEED_29,

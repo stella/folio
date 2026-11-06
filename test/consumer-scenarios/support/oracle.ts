@@ -3531,6 +3531,7 @@ export const assertRequestedOutcome = async (
     }
   }
   model.inTextBox = pre.targets.inTextBox;
+  model.tables.inTextBox = pre.targets.inTextBox;
   model.noteStoryByBlockId = new Map(
     [...pre.targets.noteStoryByBlockId].flatMap(([blockId, story]) =>
       story.type === "footnote" || story.type === "endnote"

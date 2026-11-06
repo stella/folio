@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 734087535,
+  "title": "PINNED #2316: one batch inserts a table in a text box and after its paragraph, host-first",
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 38310668,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "7B806329",
+          "rows": [["One", "Two"]]
+        },
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "written for #2316"
+}

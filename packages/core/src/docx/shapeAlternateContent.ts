@@ -134,6 +134,32 @@ const branchNamed = (
       getLocalName(child.name ?? "") === localName,
   );
 
+/**
+ * The freshly written body leans on its document's root for prefixes such as
+ * `w14`, which a captured alternate content does not declare for itself.
+ */
+const namespaceDeclarationsFor = (body: XmlElement): Record<string, string> => {
+  const declarations: Record<string, string> = {};
+  const visit = (element: XmlElement): void => {
+    for (const name of [
+      element.name ?? "",
+      ...Object.keys(element.attributes ?? {}),
+    ]) {
+      const prefix = getNamespacePrefix(name);
+      const uri =
+        prefix !== null && Object.hasOwn(NAMESPACES, prefix)
+          ? NAMESPACES[prefix as keyof typeof NAMESPACES]
+          : undefined;
+      if (prefix !== "xmlns" && uri !== undefined) {
+        declarations[`xmlns:${prefix}`] = uri;
+      }
+    }
+    for (const child of element.elements ?? []) visit(child);
+  };
+  visit(body);
+  return declarations;
+};
+
 const updateAlternateContentText = (
   capturedXml: string,
   drawingXml: string,
@@ -190,9 +216,11 @@ const updateAlternateContentText = (
   const qualifiedName = drawingBody.name ?? "txbxContent";
   const prefix = getNamespacePrefix(qualifiedName);
   const declaration = prefix === null ? "xmlns" : `xmlns:${prefix}`;
+  const declarations = namespaceDeclarationsFor(drawingBody);
   for (const body of [choiceBody, fallbackBody]) {
     body.name = qualifiedName;
     body.attributes = {
+      ...declarations,
       ...body.attributes,
       [declaration]: NAMESPACES.w,
     };

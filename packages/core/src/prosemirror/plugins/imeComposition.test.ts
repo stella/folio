@@ -207,7 +207,9 @@ describe("SuggestionMode IME composition", () => {
     const { view, domEvents } = setup("Hello");
 
     domEvents.compositionstart(view);
-    view.dispatch(view.state.tr.delete(1, 4).setMeta("addToHistory", false));
+    view.dispatch(
+      view.state.tr.delete(1, 4).setMeta("y-sync$", { isChangeOrigin: true }),
+    );
     view.dispatch(view.state.tr.insertText("日本語", 3, 3));
     domEvents.compositionend(view);
     await Promise.resolve();
@@ -242,13 +244,33 @@ describe("SuggestionMode IME composition", () => {
 
     domEvents.compositionstart(view);
     view.dispatch(
-      view.state.tr.addMark(1, 3, mark).setMeta("addToHistory", false),
+      view.state.tr
+        .addMark(1, 3, mark)
+        .setMeta("y-sync$", { isChangeOrigin: true }),
     );
     domEvents.compositionend(view);
     await Promise.resolve();
     await Promise.resolve();
 
     expect(insertionText(view.state)).toEqual(["He"]);
+  });
+
+  test("a plugin's write without history does not stop a cancelled composition restoring", async () => {
+    const { view, domEvents, handleTextInput } = setup("Hello");
+    handleTextInput(view, 6, 6, "abc");
+
+    domEvents.compositionstart(view);
+    view.dispatch(
+      view.state.tr.setMeta("addToHistory", false).insertText("!", 1, 1),
+    );
+    view.dispatch(view.state.tr.delete(1, 2).setMeta("addToHistory", false));
+    view.dispatch(view.state.tr.insertText("abc", 6, 9).removeMark(6, 9));
+    domEvents.compositionend(view);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.state.doc.textContent).toBe("Helloabc");
+    expect(insertionText(view.state)).toEqual(["abc"]);
   });
 
   test("a composition committed before existing text marks only what it added", async () => {

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 734087535,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 38310668,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2813841836,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "@10"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2934147930,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "7B806329",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "commentOnRange",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "deleteTableRow"
+  ],
+  "origin": "shrunk from collisions flow seed 734087535",
+  "title": "PINNED #2316, reported seed 734087535: a table after a paragraph follows the text box drawn in it"
+}

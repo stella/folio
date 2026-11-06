@@ -2350,6 +2350,10 @@ function convertTable(
   const gridColumnCount = columnWidths?.length ?? 0;
   const totalColumns =
     gridColumnCount > 0 ? gridColumnCount : countTableColumns(table.rows);
+  // A cell-less row spans the grid, so it can be the widest row of all.
+  const mapWidth = table.rows.some((row) => row.cells.length === 0)
+    ? Math.max(countTableColumns(table.rows), totalColumns)
+    : countTableColumns(table.rows);
   const rows = table.rows.map((row, rowIndex) => {
     // Conditional formatting flag: firstRow in tblLook means "apply first-row styling"
     const isFirstRowStyled = rowIndex === 0 && look.firstRow;
@@ -2371,6 +2375,7 @@ function convertTable(
       rowIndex,
       totalRows,
       totalColumns,
+      mapWidth,
       rowSpanMap,
       cellMarginsAttr,
       resolvedRowJustification,
@@ -2450,6 +2455,7 @@ function convertTableRow(
   rowIndex?: number,
   totalRows?: number,
   totalColumns?: number,
+  mapWidth?: number,
   rowSpanMap?: Map<string, RowSpanInfo>,
   defaultCellMargins?: TableCellMarginsAttrs,
   resolvedJustification?: NonNullable<TableRowFormatting["justification"]>,
@@ -2669,10 +2675,14 @@ function convertTableRow(
     );
   }
 
-  if (gridAfter > 0) {
+  // A row may simply stop short of the table's width, with no `w:gridAfter` to
+  // say so. Those positions are as absent as declared ones, and the table map
+  // needs them filled: left empty, any edit to the table would add real cells.
+  const omittedAfter = Math.max(gridAfter, (mapWidth ?? 0) - colIndex);
+  if (omittedAfter > 0) {
     cells.push(
       createOmittedGridSlotCell({
-        colspan: gridAfter,
+        colspan: omittedAfter,
         slot: "after",
         columnWidths,
         totalWidth,
