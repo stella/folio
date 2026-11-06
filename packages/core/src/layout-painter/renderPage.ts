@@ -224,6 +224,8 @@ export type FootnoteRenderItem = {
   text?: string;
   /** Pre-measured structured footnote content. */
   content?: Pick<FootnoteContent, "blocks" | "measures" | "height">;
+  /** The part of the note this page shows, when it continues across pages. */
+  window?: { from: number; to: number };
 };
 
 /**
@@ -1464,9 +1466,9 @@ export function calculateFootnoteAreaRenderHeight(
 ): number {
   let height = FOOTNOTE_SEPARATOR_HEIGHT;
   for (const fn of footnotes) {
-    const entryHeight = fn.content
-      ? fn.content.height
-      : FOOTNOTE_FALLBACK_LINE_HEIGHT;
+    const entryHeight = fn.window
+      ? fn.window.to - fn.window.from
+      : (fn.content?.height ?? FOOTNOTE_FALLBACK_LINE_HEIGHT);
     height += entryHeight + FOOTNOTE_ENTRY_MARGIN_BOTTOM;
   }
   return height;
@@ -1577,6 +1579,18 @@ function renderFootnoteContent(
   wrapper.style.position = "relative";
   wrapper.style.width = `${contentWidth}px`;
   wrapper.style.height = `${content.height}px`;
+  const noteWindow = footnote.window;
+  const shown = noteWindow ? doc.createElement("div") : wrapper;
+  if (noteWindow) {
+    // The whole note is laid out; this page shows the band between two lines.
+    shown.className = "layout-footnote-window";
+    shown.style.position = "relative";
+    shown.style.overflow = "hidden";
+    shown.style.width = `${contentWidth}px`;
+    shown.style.height = `${noteWindow.to - noteWindow.from}px`;
+    wrapper.style.top = `${-noteWindow.from}px`;
+    shown.append(wrapper);
+  }
 
   const renderContext: RenderContext = {
     pageNumber: context?.pageNumber ?? 0,
@@ -1614,7 +1628,7 @@ function renderFootnoteContent(
     y += getFootnoteMeasureHeight(measure);
   }
 
-  return wrapper;
+  return shown;
 }
 
 function renderFootnoteBlock(
@@ -2788,6 +2802,9 @@ function computePageFingerprintInternal(
   }
   if (page.footnoteReservedHeight) {
     parts.push(`fn:${page.footnoteReservedHeight}`);
+    if (page.footnoteWindows) {
+      parts.push(`fnw:${JSON.stringify(page.footnoteWindows)}`);
+    }
   }
 
   // Each fragment's stable properties

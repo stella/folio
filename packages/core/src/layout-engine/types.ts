@@ -1416,6 +1416,11 @@ export type Page = {
   /** Height reserved for the footnote area at page bottom (pixels). */
   footnoteReservedHeight?: number;
   /**
+   * The part of a note this page shows, for a note too tall for its page. A
+   * note listed in `footnoteIds` with no window shows whole.
+   */
+  footnoteWindows?: readonly FootnoteWindow[];
+  /**
    * Rules drawn for the `w:separator` / `w:continuationSeparator` marks of a
    * note area that flows with the body (endnotes), in page coordinates.
    */
@@ -1489,6 +1494,13 @@ export type HeaderFooterContentHeights = Partial<
 /**
  * Pre-calculated footnote content for layout and rendering.
  */
+/** The part of a footnote's content one page shows, in the note's own heights. */
+export type FootnoteWindow = {
+  noteId: number;
+  from: number;
+  to: number;
+};
+
 export type FootnoteContent = {
   /** Footnote ID. */
   id: number;

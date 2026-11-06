@@ -57,6 +57,12 @@ import { getColumns } from "../layout-bridge/sectionColumns";
 import { layoutDocument } from "../layout-engine";
 import type { ColumnLayout, SectionLayoutConfig } from "../layout-engine";
 import { resolveAnchorLayoutInCellCompatibility } from "../layout-engine/anchorLayoutInCellCompatibility";
+import {
+  applyFootnoteContinuation,
+  footnoteReservationHeight,
+  footnoteReservationsSettled,
+  planFootnoteContinuation,
+} from "../layout-engine/footnoteContinuation";
 import { resolveJustificationCompatibility } from "../layout-engine/justificationCompatibility";
 import {
   recordLayoutComplete,
@@ -87,6 +93,7 @@ import type {
   FootnoteContent,
   Layout,
   Measure,
+  Page,
   PageHeaderFooterRefs,
   PageMargins,
 } from "../layout-engine/types";
@@ -133,6 +140,24 @@ import type {
   LayoutSession,
   LayoutTemplatePreview,
 } from "./layoutSession";
+
+const MAX_FOOTNOTE_CONTINUATION_ROUNDS = 4;
+
+/** Each page's note items with the part of the note the page shows. */
+const withFootnoteWindows = (
+  items: Map<number, FootnoteRenderItem[]>,
+  pages: readonly Page[],
+): Map<number, FootnoteRenderItem[]> => {
+  for (const page of pages) {
+    const pageItems = items.get(page.number);
+    if (!pageItems || !page.footnoteWindows) continue;
+    for (const { noteId, from, to } of page.footnoteWindows) {
+      const item = pageItems.find((candidate) => candidate.noteId === noteId);
+      if (item) item.window = { from, to };
+    }
+  }
+  return items;
+};
 
 const formatEndnoteTexts = (
   numbers: ReadonlyMap<number, number>,
@@ -1215,7 +1240,10 @@ function runLayoutPipelineMeasured<THfPMs>(
       for (const [id, content] of footnoteContentMap) {
         footnoteHeightById.set(
           id,
-          content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+          footnoteReservationHeight(
+            content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+            { size: pageSize, margins },
+          ),
         );
       }
       // Note: the layout engine adds the divider's height once per
@@ -1262,7 +1290,10 @@ function runLayoutPipelineMeasured<THfPMs>(
       for (const [id, content] of footnoteContentMap) {
         footnoteHeightById.set(
           id,
-          content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+          footnoteReservationHeight(
+            content.height + FOOTNOTE_ENTRY_MARGIN_BOTTOM,
+            { size: pageSize, margins },
+          ),
         );
       }
       return { ...nextLayoutOpts, footnoteHeightById };
@@ -1359,6 +1390,39 @@ function runLayoutPipelineMeasured<THfPMs>(
     // (typing) path to keep keystrokes cheap.
     let stabilizedFieldValues: Map<number, string> | undefined;
     stabilizeFieldWidths();
+
+    if (hasFootnotes) {
+      // A re-layout can move a reference, so the reservations settle over a few
+      // rounds; the last plan is applied however far they got.
+      const planContinuation = () =>
+        planFootnoteContinuation({
+          pages: newLayout.pages,
+          contentById: footnoteContentMap,
+        });
+      let continuation = planContinuation();
+      for (
+        let round = 0;
+        round < MAX_FOOTNOTE_CONTINUATION_ROUNDS &&
+        !footnoteReservationsSettled(
+          layoutOptsUsed.footnoteReservedHeights,
+          continuation,
+        );
+        round += 1
+      ) {
+        relayoutWithCurrentMeasures({
+          ...layoutOptsUsed,
+          footnoteReservedHeights: continuation.reservedHeights,
+        });
+        continuation = planContinuation();
+      }
+      if (continuation.pages.size > 0) {
+        newLayout = {
+          ...newLayout,
+          pages: applyFootnoteContinuation(newLayout.pages, continuation),
+        };
+        rebuildFootnotePageMap();
+      }
+    }
 
     newLayout = attachAuthoredMarginsToLayoutPages(newLayout, {
       authoredMargins: margins,
@@ -1479,10 +1543,13 @@ function runLayoutPipelineMeasured<THfPMs>(
 
       // Build per-page footnote render items
       const footnotesByPage = hasFootnotes
-        ? buildFootnoteRenderItems(
-            pageFootnoteMap,
-            footnoteContentMap,
-            document,
+        ? withFootnoteWindows(
+            buildFootnoteRenderItems(
+              pageFootnoteMap,
+              footnoteContentMap,
+              document,
+            ),
+            newLayout.pages,
           )
         : undefined;
 

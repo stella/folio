@@ -27,6 +27,7 @@ import type { DisplayColor, DisplayPrimitive, DisplayStoryRef } from "../types";
 import type { BuildContext } from "./buildContext";
 import { DOC_CANVAS_TEXT } from "./colors";
 import type { PageComposer } from "./regions";
+import { createPageComposer } from "./regions";
 import { paintFootnoteBlocks } from "./storyPrimitives";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
@@ -122,6 +123,11 @@ export type FootnoteAreaPaintOptions = {
  * what the bodies actually need, so a stack that under-reserved by a pixel ends
  * at the page bottom instead of spilling past it.
  */
+const windowOfItem = (
+  noteWindow: { from: number; to: number } | undefined,
+): Pick<FootnoteRenderItem, "window"> =>
+  noteWindow ? { window: { from: noteWindow.from, to: noteWindow.to } } : {};
+
 export const paintFootnoteArea = ({
   composer,
   page,
@@ -149,9 +155,12 @@ export const paintFootnoteArea = ({
     );
   }
 
+  const noteWindowOf = (noteId: number) =>
+    page.footnoteWindows?.find((candidate) => candidate.noteId === noteId);
   const items: FootnoteRenderItem[] = bodies.map(({ noteId, content }) => ({
     noteId,
     displayNumber: String(content?.displayNumber ?? noteId),
+    ...windowOfItem(noteWindowOf(noteId)),
     ...(content === undefined
       ? {}
       : {
@@ -199,6 +208,7 @@ export const paintFootnoteArea = ({
     // ones below it.
     const offsetPx = calculateFootnoteAreaRenderHeight(items.slice(0, index));
     const story: DisplayStoryRef = { kind: "footnote", id: noteId };
+    const noteWindow = noteWindowOf(noteId);
     // A note is its own document, and a click in the band edits that one.
     composer.region(
       {
@@ -207,28 +217,52 @@ export const paintFootnoteArea = ({
           xPx: page.margins.left,
           yPx: areaTopPx + offsetPx,
           widthPx: contentWidthPx,
-          heightPx: content.height,
+          heightPx: noteWindow
+            ? noteWindow.to - noteWindow.from
+            : content.height,
         },
         model: { story },
       },
       () => {
-        paintFootnoteBlocks({
-          composer,
-          blocks: content.blocks,
-          measures: content.measures,
-          xPx: page.margins.left,
-          yPx: areaTopPx + offsetPx,
-          widthPx: contentWidthPx,
-          context: {
-            ...context,
-            story,
-            inlinePictureViewport: {
-              left: page.margins.left,
-              right: page.size.w - page.margins.right,
+        const paintBlocks = (target: PageComposer) => {
+          paintFootnoteBlocks({
+            composer: target,
+            blocks: content.blocks,
+            measures: content.measures,
+            xPx: page.margins.left,
+            yPx: areaTopPx + offsetPx - (noteWindow?.from ?? 0),
+            widthPx: contentWidthPx,
+            context: {
+              ...context,
+              story,
+              inlinePictureViewport: {
+                left: page.margins.left,
+                right: page.size.w - page.margins.right,
+              },
             },
+            label: `footnote ${content.displayNumber}`,
+          });
+        };
+        if (!noteWindow) {
+          paintBlocks(composer);
+          return;
+        }
+        // The whole note is laid out; this page shows the band between two lines.
+        const clipped = createPageComposer();
+        paintBlocks(clipped);
+        composer.push([
+          {
+            kind: "clipGroup",
+            rect: {
+              xPx: page.margins.left,
+              yPx: areaTopPx + offsetPx,
+              widthPx: contentWidthPx,
+              heightPx: noteWindow.to - noteWindow.from,
+            },
+            children: [...clipped.primitives()],
+            regions: [...clipped.regions()],
           },
-          label: `footnote ${content.displayNumber}`,
-        });
+        ]);
       },
     );
   }
