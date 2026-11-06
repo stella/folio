@@ -23,6 +23,8 @@ export type BrowserPasteKind = Extract<
 export type BrowserInputAction =
   | { kind: "typing"; text: string }
   | { kind: "enter" }
+  /** Playwright key presses, in order. Only pinned traces use it: seeds keep generating what they did. */
+  | { kind: "keys"; keys: string[] }
   | { kind: "backspace" }
   | { kind: "delete" }
   | { kind: BrowserPasteKind; plain: string; html: string }
@@ -41,6 +43,7 @@ export type BrowserInputAction =
 export const BROWSER_INPUT_ACTION_DISPOSITIONS = {
   typing: "edit",
   enter: "edit",
+  keys: "edit",
   backspace: "edit",
   delete: "edit",
   pastePlain: "edit",

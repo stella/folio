@@ -61,24 +61,6 @@ const LIST_NUMBERING = [
   "command:setNumberingValue(3)",
 ] as const;
 /** Operations that type, insert or delete at the selection, replacing a range when there is one. */
-const REPLACING_OPERATIONS = [
-  "type:text",
-  "type:text(mid)",
-  ...LIST_MARKERS,
-  "key:Enter",
-  "key:Shift-Enter",
-  "key:Mod-Enter",
-  "key:Tab",
-  "key:Backspace",
-  "key:Delete",
-  "key:Mod-Backspace",
-  "key:Mod-Delete",
-  "key:Shift-Backspace",
-  "command:insertHyperlink",
-  "command:insertFootnote",
-  "command:insertEndnote",
-] as const;
-
 const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
   "word",
   "paragraph",
@@ -196,18 +178,11 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
   {
     reason:
-      "In suggesting mode, typing or inserting over a range deletes the range untracked, and replacing a range that spans paragraphs loses the typed text when the change is accepted",
-    operations: REPLACING_OPERATIONS,
+      "A list marker typed over a selection becomes a list in suggesting mode and stays text in editing",
+    operations: LIST_MARKERS,
     placements: RANGE_PLACEMENTS,
-    excludedCases: [
-      {
-        scope: "shapeOperation",
-        shape: "tracked-changes",
-        operation: "paste:copied-blocks",
-      },
-    ],
     modes: ["suggesting"],
-    kinds: ["reject-mismatch", "accept-mismatch"],
+    kinds: ["accept-mismatch"],
     tier: "full",
   },
   {

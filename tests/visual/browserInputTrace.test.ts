@@ -44,7 +44,9 @@ test("browser traces replay deterministically and exercise the declared shapes a
     expect(kinds.has(kind)).toBe(true);
   }
   expect([...kinds].sort()).toEqual(
-    Object.keys(BROWSER_INPUT_ACTION_DISPOSITIONS).sort(),
+    Object.keys(BROWSER_INPUT_ACTION_DISPOSITIONS)
+      .filter((kind) => kind !== "keys")
+      .sort(),
   );
   for (const action of traces.flatMap(({ actions }) => actions)) {
     if (

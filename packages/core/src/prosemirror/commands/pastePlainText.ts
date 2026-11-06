@@ -10,8 +10,13 @@
 import { Fragment, Slice } from "prosemirror-model";
 import type { Schema } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 
 import { dispatchClipboardIntent } from "../clipboardIntent";
+import {
+  handleSuggestionPaste,
+  suggestionModeKey,
+} from "../plugins/suggestionMode";
 
 const PARAGRAPH_BREAK = /(?:\r\n?|\n)+/;
 
@@ -52,6 +57,19 @@ export function buildPlainTextSlice(text: string, schema: Schema): Slice {
 }
 
 /**
+ * Put plain text in place of the selection: through the session that owns the
+ * view, or as a suggestion when suggesting, as a paste from the keyboard is.
+ */
+export const pastePlainTextSlice = (view: EditorView, slice: Slice): void => {
+  if (dispatchClipboardIntent(view, slice) !== undefined) return;
+  const suggesting = suggestionModeKey.getState(view.state);
+  if (suggesting?.active && handleSuggestionPaste(view, slice, suggesting)) {
+    return;
+  }
+  view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+};
+
+/**
  * Read the clipboard and insert it as unformatted text at the current selection.
  *
  * Dry-runnable per the ProseMirror command convention: applicability does not
@@ -88,9 +106,7 @@ export const pasteWithoutFormatting: Command = (state, dispatch, view) => {
       if (!text || view.isDestroyed) {
         return undefined;
       }
-      const slice = buildPlainTextSlice(text, schema);
-      if (dispatchClipboardIntent(view, slice) === undefined)
-        view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+      pastePlainTextSlice(view, buildPlainTextSlice(text, schema));
       return undefined;
     })
     .catch((error: unknown) => {

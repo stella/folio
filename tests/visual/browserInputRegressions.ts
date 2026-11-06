@@ -745,7 +745,31 @@ export const CANONICAL_JOIN_BESIDE_DELETION_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+const SELECT_ALL = "ControlOrMeta+a";
+const SELECT_DOWN = "Shift+ArrowDown";
+
+/** A key replacing a selection across paragraphs. */
+const BROWSER_KEY_OVER_SELECTION_TRACES = (
+  [
+    ["plain-markdown", [SELECT_ALL, "Tab"]],
+    ["plain-markdown", [SELECT_DOWN, "Tab"]],
+    ["sections", [SELECT_ALL, "Shift+Enter"]],
+    ["notes", [SELECT_DOWN, "Shift+Enter"]],
+  ] as const
+).map(([shape, keys], index) => ({
+  seed: 0,
+  path: `${shape}-${String(index)}`,
+  fingerprint: "pinned-for-a-key-over-a-selection",
+  trace: { shape, actions: [{ kind: "keys", keys: [...keys] }] },
+})) satisfies readonly {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+}[];
+
 export const BROWSER_INPUT_REGRESSIONS = [
+  ...BROWSER_KEY_OVER_SELECTION_TRACES,
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,

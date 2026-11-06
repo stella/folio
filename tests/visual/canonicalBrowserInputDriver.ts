@@ -16,6 +16,9 @@ export const driveCanonicalBrowserInput = async (
     case "enter":
       await page.keyboard.press("Enter");
       return;
+    case "keys":
+      for (const key of action.keys) await page.keyboard.press(key);
+      return;
     case "backspace":
       await page.keyboard.press("Backspace");
       return;
