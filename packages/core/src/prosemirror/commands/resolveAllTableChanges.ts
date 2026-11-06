@@ -748,7 +748,12 @@ const resolvePureTableMerges = ({
           );
         }
         elementAt(rowCells, entry.row).delete(entry.left);
-        if (elementAt(rowCells, entry.row).size === 0) {
+        // A row left with placeholders for absent grid slots has no cells.
+        if (
+          [...elementAt(rowCells, entry.row).values()].every(
+            ({ node }) => node.attrs["_omittedGridSlot"] != null,
+          )
+        ) {
           deletedRows.add(entry.row);
           activeRows[entry.row] = false;
           const rowWidth = elementAt(rowOccupancy, entry.row);

@@ -68,6 +68,15 @@ export const removeTableRow = (
   }
 };
 
+/** A placeholder for an absent grid position is not a cell a row can keep. */
+export const rowHoldsNoCells = (row: PMNode, besides?: PMNode): boolean => {
+  let holdsCell = false;
+  row.forEach((cell) => {
+    holdsCell ||= cell !== besides && cell.attrs["_omittedGridSlot"] == null;
+  });
+  return !holdsCell;
+};
+
 /** Whether a batch of structural deletions may have emptied rows. */
 export type RowsEmptiedInBatch = { pending: boolean };
 
@@ -110,7 +119,7 @@ export const markRowsEmptiedInBatch = ({
   const table = tr.doc.nodeAt(tablePosition);
   if (!table || table.type.spec["tableRole"] !== "table") return;
   table.forEach((row, offset, index) => {
-    if (row.childCount === 0 && previousTable.child(index).childCount > 0) {
+    if (rowHoldsNoCells(row) && !rowHoldsNoCells(previousTable.child(index))) {
       markRowEmptiedInBatch({
         tr,
         rowPosition: tablePosition + 1 + offset,
@@ -141,7 +150,7 @@ const removeEmptyRows = ({
       return;
     let emptyRow = -1;
     table.forEach((row, _offset, index) => {
-      if (emptyRow === -1 && row.childCount === 0 && shouldRemove(row))
+      if (emptyRow === -1 && rowHoldsNoCells(row) && shouldRemove(row))
         emptyRow = index;
     });
     if (emptyRow === -1) return;
