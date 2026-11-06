@@ -281,10 +281,16 @@ export const buildCleanBlockText = (
       });
       return false;
     }
-    const atomText =
-      fieldResults === "omitted"
-        ? runFormattingInlineControlCharacter(node)
-        : runFormattingInlineAtomCleanText(node);
+    // A field with its result in runs is as atomic as one without: its text is
+    // a result to replace whole, not words to edit one by one.
+    let atomText: string | null;
+    if (fieldResults === "omitted") {
+      atomText = runFormattingInlineControlCharacter(node);
+    } else if (node.type.name === "structuredField") {
+      atomText = node.textContent;
+    } else {
+      atomText = runFormattingInlineAtomCleanText(node);
+    }
     if (atomText !== null) {
       if (isOmittedFromCleanView(node)) {
         return false;

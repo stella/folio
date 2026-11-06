@@ -5370,6 +5370,35 @@ type CreateFieldFromNodeOptions = Partial<RunFormattingContext> & {
   textBoxAnchorMarkers?: Map<string, Run> | undefined;
 };
 
+const FIELD_WIDE_MARK_NAMES = new Set([
+  "comment",
+  "deletion",
+  "insertion",
+  "moveFrom",
+  "moveTo",
+]);
+
+/**
+ * A change or comment over a whole field marks its result as well; the field
+ * as a whole is what writes them, so the result's runs do not repeat them.
+ */
+const withoutTheFieldsOwnMarks = (node: PMNode): PMNode => {
+  if (node.marks.length === 0) return node;
+  const children: PMNode[] = [];
+  node.forEach((child) => {
+    children.push(
+      child.mark(
+        child.marks.filter(
+          (mark) =>
+            !FIELD_WIDE_MARK_NAMES.has(mark.type.name) ||
+            !mark.isInSet(node.marks),
+        ),
+      ),
+    );
+  });
+  return node.copy(Fragment.fromArray(children));
+};
+
 function createFieldFromNode(
   node: PMNode,
   {
@@ -5401,7 +5430,7 @@ function createFieldFromNode(
     styleResolver: styleResolver ?? null,
   };
   const extractedContent = extractParagraphContent(
-    node,
+    withoutTheFieldsOwnMarks(node),
     undefined,
     undefined,
     textBoxAnchorMarkers,
