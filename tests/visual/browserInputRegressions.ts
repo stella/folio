@@ -796,6 +796,18 @@ const BROWSER_MODIFIED_BACKSPACE_TRACES = (
 }[];
 
 export const BROWSER_INPUT_REGRESSIONS = [
+  {
+    seed: 0,
+    path: "image-paste-list",
+    fingerprint: "lab-paste-list-over-image",
+    trace: {
+      shape: "image",
+      actions: [
+        { kind: "selectionDrag", target: "inlineObject" },
+        { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      ],
+    },
+  },
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
   ...BROWSER_KEY_OVER_SELECTION_TRACES,
   BROWSER_NOTES_SEED_197,
