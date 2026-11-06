@@ -701,6 +701,29 @@ export const BROWSER_CANCELLED_COMPOSITION_SEED_1793946574 = {
   trace: BrowserInputTrace;
 };
 
+/** Backspace before tracked-deleted text at a paragraph's start joins the paragraph. */
+export const CANONICAL_JOIN_BESIDE_DELETION_SEED_29 = {
+  authority: "canonical",
+  seed: 29,
+  path: "15:2",
+  fingerprint: "bad194d7a1bfd1c6",
+  trace: {
+    shape: "image",
+    actions: [
+      { kind: "selectionDrag", target: "inlineObject" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "backspace" },
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
@@ -729,4 +752,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_RESTARTED_AFTER_PASTE_SEED_197,
   CANONICAL_RESTARTED_AFTER_TYPING,
   CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
+  CANONICAL_JOIN_BESIDE_DELETION_SEED_29,
 ];
