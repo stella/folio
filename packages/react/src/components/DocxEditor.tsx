@@ -225,6 +225,7 @@ import {
   createSuggestionModePlugin,
   deleteSelectionAsSuggestion,
   setSuggestionMode,
+  suggestionModeKey,
 } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
@@ -774,7 +775,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       ...(reviewDisplayMode === undefined ? {} : { reviewDisplayMode }),
     });
 
-    useEffect(() => {
+    const syncCanonicalMode = useCallback(() => {
       pagedEditorRef.current
         ?.getEditor()
         .setCanonicalMode(
@@ -783,6 +784,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             : { type: "editing" },
         );
     }, [editingMode, author]);
+    useEffect(() => {
+      syncCanonicalMode();
+    }, [syncCanonicalMode]);
 
     // Debounce timer for extractTrackedChanges (avoid full doc walk on every keystroke)
     const extractTrackedChangesTimerRef = useRef<ReturnType<
@@ -1085,12 +1089,29 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // the document loads; readers of its state, such as the outline's heading
     // collection, re-run when it appears.
     const [bodyViewEpoch, setBodyViewEpoch] = useState(0);
+    // The view starts from the mode the editor mounted with, and it is made at
+    // the first click or replaced by a new document. Whatever was chosen since
+    // has had no view to reach, so a view takes the mode as it appears.
+    const syncSuggestionMode = useCallback(
+      (view: EditorView) => {
+        const active = editingMode === "suggesting";
+        const current = suggestionModeKey.getState(view.state);
+        if (current?.active !== active || current.author !== author) {
+          setSuggestionMode(active, view.state, view.dispatch, author);
+        }
+      },
+      [editingMode, author],
+    );
     const handleBodyViewReady = useCallback(
       (view: EditorView | null) => {
+        if (view) {
+          syncSuggestionMode(view);
+          syncCanonicalMode();
+        }
         reportEditorViewReady(view);
         setBodyViewEpoch((epoch) => epoch + 1);
       },
-      [reportEditorViewReady],
+      [reportEditorViewReady, syncCanonicalMode, syncSuggestionMode],
     );
 
     // Outline headings follow completed layouts: each pass collects the
@@ -1746,14 +1767,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     useEffect(() => {
       const view = pagedEditorRef.current?.getView();
       if (view) {
-        setSuggestionMode(
-          editingMode === "suggesting",
-          view.state,
-          view.dispatch,
-          author,
-        );
+        syncSuggestionMode(view);
       }
-    }, [editingMode, author]);
+    }, [syncSuggestionMode]);
 
     // Handle document change
     const handleDocumentChange = useCallback(

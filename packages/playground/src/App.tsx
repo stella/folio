@@ -745,7 +745,11 @@ const DocumentPlayground = () => {
       };
     return IDLE_PLAYGROUND_STATUS;
   });
-  const [editorMode, setEditorMode] = useState<EditorMode>("editing");
+  const [editorMode, setEditorMode] = useState<EditorMode>(() =>
+    new URLSearchParams(window.location.search).get("mode") === "suggesting"
+      ? "suggesting"
+      : "editing",
+  );
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
   const query = new URLSearchParams(window.location.search);
   const parityFonts = globalThis.__folioParityFonts;
