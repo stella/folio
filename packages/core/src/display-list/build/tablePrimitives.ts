@@ -572,6 +572,7 @@ const paintTableBody = ({
       if (!cell || !cellMeasure) {
         continue;
       }
+      const cellBand = cellBands?.[cellIndex];
       const placement = placements.get(cell);
       if (!placement) {
         continue;
@@ -629,11 +630,11 @@ const paintTableBody = ({
             context,
             paintTextBox,
             visibleBand,
-            ...(cellBands?.[cellIndex]
+            ...(cellBand
               ? {
                   contentBandPx: {
-                    top: rowYPx + cellBands[cellIndex].top,
-                    bottom: rowYPx + cellBands[cellIndex].bottom,
+                    top: rowYPx + cellBand.top,
+                    bottom: rowYPx + cellBand.bottom,
                   },
                 }
               : {}),
