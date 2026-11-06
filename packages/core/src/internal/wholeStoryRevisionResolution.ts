@@ -252,6 +252,8 @@ type StructuralContext = {
   bookmarkJoins: { from: number; to: number; positionMap: StepMap }[];
   structural: boolean;
   failed: boolean;
+  /** A paragraph's mark goes with text boxes between it and the next one. */
+  textBoxesStandInJoins: boolean;
   removedEndpointCount: number;
   removedReferences: RemovedSectionReference[];
   /** Text box anchors the inline pass removed: their boxes go with them. */
@@ -590,6 +592,8 @@ const resolveStructure = ({
     const marker = expectParagraphAttrs(paragraph).pPrMark;
     const markWasAdded = marker?.kind === "ins" || marker?.kind === "moveTo";
     const joins = marker && markWasAdded !== (context.mode === "accept");
+    if (joins && entries[index + 1]?.node?.type.name === "textBox")
+      context.textBoxesStandInJoins = true;
     if (joins && chain) {
       const properties = expectParagraphAttrs(paragraph)._sectionProperties;
       const preceding = entries[index - 1]?.node;
@@ -941,32 +945,41 @@ export const resolveWholeStory = ({
   const withoutCopies = new Transform(storyDoc);
   for (const position of sectionRecordCopyPositions(storyDoc))
     withoutCopies.setNodeAttribute(position, "_sectionProperties", null);
-  moveTextBoxesOutOfJoins(withoutCopies, mode);
   const doc = withoutCopies.doc;
-  let preparedMap = StepMap.empty;
-  for (const map of withoutCopies.mapping.maps)
-    preparedMap = composeRevisionResolutionMaps(preparedMap, map);
-  const afterPreparing = <T extends { steps: Step[]; positionMap: StepMap }>(
-    result: T,
-  ) => {
-    const positionMap = composeRevisionResolutionMaps(
-      preparedMap,
-      result.positionMap,
-    );
-    return {
-      ...result,
-      steps: [...withoutCopies.steps, ...result.steps],
-      positionMap,
-      mapping: new Mapping([positionMap]),
-    };
-  };
-  const { runsIntoTable, ...direct } = resolveStoryRevisions({
-    doc,
-    mode,
-    styleResolver,
-    numbering,
-  });
-  if (!runsIntoTable) return afterPreparing(direct);
+  const { runsIntoTable, textBoxesStandInJoins, ...direct } =
+    resolveStoryRevisions({
+      doc,
+      mode,
+      styleResolver,
+      numbering,
+    });
+  if (textBoxesStandInJoins) {
+    const prepared = new Transform(doc);
+    moveTextBoxesOutOfJoins(prepared, mode);
+    if (prepared.docChanged) {
+      const result = resolveWholeStory({
+        doc: prepared.doc,
+        mode,
+        styleResolver,
+        numbering,
+      });
+      let preparedMap = StepMap.empty;
+      for (const map of prepared.mapping.maps)
+        preparedMap = composeRevisionResolutionMaps(preparedMap, map);
+      const positionMap = composeRevisionResolutionMaps(
+        preparedMap,
+        result.positionMap,
+      );
+      return {
+        ...result,
+        steps: [...withoutCopies.steps, ...prepared.steps, ...result.steps],
+        positionMap,
+        mapping: new Mapping([positionMap]),
+      };
+    }
+  }
+  if (!runsIntoTable)
+    return { ...direct, steps: [...withoutCopies.steps, ...direct.steps] };
   // A paragraph whose mark goes right before a table runs on into the table's
   // first cell before the rest resolves; both read as one resolution.
   const runIn = new Transform(doc);
@@ -975,8 +988,13 @@ export const resolveWholeStory = ({
     mode,
     styleResolver,
   );
-  if (!runIn.docChanged) return afterPreparing(direct);
-  const { runsIntoTable: _rerun, ...result } = resolveStoryRevisions({
+  if (!runIn.docChanged)
+    return { ...direct, steps: [...withoutCopies.steps, ...direct.steps] };
+  const {
+    runsIntoTable: _rerun,
+    textBoxesStandInJoins: _standing,
+    ...result
+  } = resolveStoryRevisions({
     doc: runIn.doc,
     mode,
     styleResolver,
@@ -994,12 +1012,13 @@ export const resolveWholeStory = ({
     runInMap,
     result.positionMap,
   );
-  return afterPreparing({
+  return {
     ...result,
-    steps: [...runIn.steps, ...result.steps],
+    steps: [...withoutCopies.steps, ...runIn.steps, ...result.steps],
     positionMap,
+    mapping: new Mapping([positionMap]),
     transfers: [...transfers, ...result.transfers],
-  });
+  };
 };
 
 const resolveStoryRevisions = ({
@@ -1043,6 +1062,7 @@ const resolveStoryRevisions = ({
     bookmarkJoins: [],
     structural: propertyResult.structural,
     failed: false,
+    textBoxesStandInJoins: false,
     removedEndpointCount: propertyResult.removedEndpointCount,
     removedReferences: [...propertyResult.removedReferences],
     droppedTextBoxAnchors: inline
@@ -1096,6 +1116,7 @@ const resolveStoryRevisions = ({
     structuralMap,
     structural: context.structural,
     failed: context.failed,
+    textBoxesStandInJoins: context.textBoxesStandInJoins,
     removedEndpointCount: context.removedEndpointCount,
     removedReferences: context.removedReferences,
     runsIntoTable: propertyResult.runsIntoTable,
