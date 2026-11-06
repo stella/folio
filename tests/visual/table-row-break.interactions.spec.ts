@@ -63,10 +63,18 @@ const paintedLines = (page: Page): Promise<Seen[]> =>
           owner && owner !== pageElement;
           owner = owner.parentElement
         ) {
-          if (getComputedStyle(owner).overflowY === "visible") continue;
+          const style = getComputedStyle(owner);
           const clip = owner.getBoundingClientRect();
-          top = Math.max(top, clip.top);
-          bottom = Math.min(bottom, clip.bottom);
+          const inset = /^inset\(([^)]*)\)/u.exec(style.clipPath)?.[1];
+          if (inset) {
+            const [above = "0", , below = above] = inset.split(" ");
+            top = Math.max(top, clip.top + Number.parseFloat(above));
+            bottom = Math.min(bottom, clip.bottom - Number.parseFloat(below));
+          }
+          if (style.overflowY !== "visible") {
+            top = Math.max(top, clip.top);
+            bottom = Math.min(bottom, clip.bottom);
+          }
         }
         const shown = bottom - top;
         seen.push({
