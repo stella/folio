@@ -178,6 +178,9 @@ export const canonicalConformanceRefusalRows = (
       (key.operation === "command:setHyperlink" ||
         key.operation === "command:removeHyperlink"));
   if (!hyperlink) return [];
+  // Over selected cells a hyperlink command changes nothing in either mode, so
+  // there is nothing to refuse.
+  if (key.shape === "tables" && key.placement === "cross-paragraph") return [];
   if (key.mode === "suggesting") return [REFUSAL_ROWS.hyperlinkSuggestion];
   if (key.shape === "tracked-changes") return [REFUSAL_ROWS.hyperlinkReview];
   return [];
