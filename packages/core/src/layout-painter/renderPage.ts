@@ -2814,7 +2814,7 @@ function computePageFingerprintInternal(
         fp += `,bc:${frag.bottomClip}`;
       }
       if (frag.cellLineBand !== undefined) {
-        fp += `,clb:${frag.cellLineBand.shownThrough}:${frag.cellLineBand.cut}`;
+        fp += `,clb:${frag.cellLineBand.shownThrough}:${frag.cellLineBand.cut}:${JSON.stringify(frag.cellLineBand.cells)}`;
       }
       if (frag.continuesFromPrev) {
         fp += ",cfp";

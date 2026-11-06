@@ -22,6 +22,7 @@ import {
   buildTableRowBreakInfo,
   cellBandFromLines,
   getRowContinuationSkip,
+  perCellRowCut,
   rowCellLineBands,
   snapRowBreak,
 } from "./tableRowBreak";
@@ -2733,5 +2734,43 @@ describe("a row without a nested table", () => {
       [600, 800],
     ]);
     expect(bands.every(({ height }) => height <= 200)).toBe(true);
+  });
+});
+
+describe("perCellRowCut", () => {
+  const LINE_PAST_THE_CUT = { top: 95, bottom: 400 };
+
+  test("does not send the next band back past where this one started", () => {
+    expect(
+      perCellRowCut({
+        cellLines: [
+          [{ top: 100, bottom: 110 }],
+          [{ top: 0, bottom: 95 }, LINE_PAST_THE_CUT],
+        ],
+        bandTop: 100,
+        shownThrough: 100,
+        maxSlice: 200,
+      }),
+    ).toBeNull();
+  });
+
+  test("starts the next band at the highest line left over", () => {
+    expect(
+      perCellRowCut({
+        cellLines: [
+          [
+            { top: 100, bottom: 150 },
+            { top: 150, bottom: 210 },
+          ],
+          [
+            { top: 100, bottom: 170 },
+            { top: 170, bottom: 240 },
+          ],
+        ],
+        bandTop: 100,
+        shownThrough: 100,
+        maxSlice: 100,
+      }),
+    ).toEqual({ cut: 200, nextTop: 150 });
   });
 });

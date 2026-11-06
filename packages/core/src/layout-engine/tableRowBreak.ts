@@ -575,7 +575,8 @@ type PerCellRowCutOptions = {
  * Cut a row that no shared line boundary lets a page hold. The cut itself runs
  * through some cell's line, which then waits for the next band, so that band
  * starts at the highest such line. Null when no line would finish on this page,
- * which is a single line taller than the page: only clipping can place that.
+ * or the next band would not start lower than this one, which is a line taller
+ * than the page: only clipping can place that.
  */
 export function perCellRowCut({
   cellLines,
@@ -599,7 +600,11 @@ export function perCellRowCut({
       break;
     }
   }
-  return finishesLine ? { cut, nextTop } : null;
+  // A line starting at or above this band, and running past the cut, would send
+  // the next band back here: only clipping can place it.
+  return finishesLine && nextTop > bandTop + BREAK_OFFSET_EPSILON
+    ? { cut, nextTop }
+    : null;
 }
 
 /** The part of one cell a `cellLineBand` shows, in the row's own coordinates. */
