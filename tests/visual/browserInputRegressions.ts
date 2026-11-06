@@ -90,6 +90,27 @@ export const CANONICAL_INSERTION_SEED_557 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition over a selection across list items replaces it once, in the first item. */
+export const CANONICAL_ACROSS_PARAGRAPHS_SEED_347 = {
+  authority: "canonical",
+  seed: 347,
+  path: "17:2:1:1:1",
+  fingerprint: "92b692379e90307a",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 /** A composition in front of a tracked deletion leaves that deletion's marks alone. */
 export const CANONICAL_DELETION_SEED_11 = {
   authority: "canonical",
@@ -740,6 +761,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_CANCELLED_COMPOSITION_SEED_131,
   BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83,
   CANONICAL_INSERTION_SEED_557,
+  CANONICAL_ACROSS_PARAGRAPHS_SEED_347,
   CANONICAL_DELETION_SEED_11,
   CANONICAL_CELL_PASTE_SEED_431,
   CANONICAL_CELL_COMPOSITION_CANCEL,

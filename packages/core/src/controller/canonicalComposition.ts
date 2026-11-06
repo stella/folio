@@ -88,6 +88,7 @@ type NativeReplacementComparisonOptions = {
  * `insertText`, a non-inclusive one. It rebuilds a review mark from fewer attributes,
  * and composed text sits in the DOM wrapper of the tracked run beside it. Gaining
  * any other mark, losing an inclusive one, or another revision is a real change.
+ * So is a selected paragraph boundary that does not disappear exactly.
  */
 const matchesNativeReplacement = ({
   baseline,
@@ -100,13 +101,16 @@ const matchesNativeReplacement = ({
   if (expected.doc.eq(proposed.doc)) return true;
   const $from = baseline.doc.resolve(from);
   const $to = baseline.doc.resolve(to);
-  if (!$from.sameParent($to)) return false;
   if (expected.doc.content.size !== proposed.doc.content.size) return false;
   const position = expected.doc.resolve(from);
   const paragraph = position.parent;
   const start = position.start();
   const native = proposed.doc.nodeAt(start - 1);
   if (native === null || native.type !== paragraph.type) return false;
+  // Across paragraphs the browser keeps the last one's element, and the commit
+  // keeps the first one's identity.
+  if (!$from.sameParent($to) && native.sameMarkup($to.parent))
+    expected.setNodeMarkup(start - 1, undefined, native.attrs, native.marks);
   const composedFrom = from;
   const composedTo = from + text.length;
   const types = Object.values(baseline.schema.marks);
@@ -487,6 +491,9 @@ export const createCanonicalComposition = (
       restarted = false;
       acceptedUpdate = false;
       explicitFinal = null;
+      // A browser removes a selection as soon as a composition starts over it,
+      // before its first update. replacement() still validates the result.
+      if (!view.state.selection.empty) authorizedNativeState = view.state;
       state = {
         type: "provisional",
         baseline: view.state,
