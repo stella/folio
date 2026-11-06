@@ -152,3 +152,38 @@ describe("a bookmark between a row's cells", () => {
     expect(await savedTable(reviewer)).toEqual(["1", "b1", "b2", "3"]);
   });
 });
+
+describe("a bookmark that opens in a cell and closes on the table or a row", () => {
+  const endsOf = async (reviewer: FolioDocxReviewer) => {
+    const xml =
+      (await (
+        await ZipArchive.read(await reviewer.toBuffer())
+      )
+        .entry("word/document.xml")
+        ?.text()) ?? "";
+    return [...xml.matchAll(/<w:bookmarkEnd w:id="7"\/>(.{0,7})/gu)].map(
+      ([, next]) => next,
+    );
+  };
+
+  const OPENING_CELL = `<w:tc><w:tcPr/><w:p w14:paraId="10000001"><w:bookmarkStart w:id="7" w:name="b7"/><w:r><w:t>1</w:t></w:r></w:p></w:tc>`;
+  test.each([
+    [
+      "on the table",
+      `<w:tr>${OPENING_CELL}${cell("2")}</w:tr>${row("3", "4")}<w:bookmarkEnd w:id="7"/>`,
+    ],
+    [
+      "on its own row",
+      `<w:tr>${OPENING_CELL}<w:bookmarkEnd w:id="7"/>${cell("2")}</w:tr>${row("3", "4")}`,
+    ],
+  ])("closing %s, an edit keeps its one end", async (_where, table) => {
+    const reviewer = await open(table);
+    apply(reviewer, "direct", {
+      type: "insertTableRow",
+      blockId: "10000001",
+      position: "after",
+      cellTexts: ["x", "y"],
+    });
+    expect(await endsOf(reviewer)).toHaveLength(1);
+  });
+});
