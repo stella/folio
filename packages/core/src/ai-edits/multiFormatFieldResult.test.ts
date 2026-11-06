@@ -10,11 +10,13 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
+import { hashFolioAIBlockText } from "./snapshot";
 
 const NS =
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
 
 const COMPLEX = `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> DATE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>20</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>14</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+const PLAIN = `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> DATE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>2014</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`;
 const SIMPLE = `<w:fldSimple w:instr=" DATE "><w:r><w:rPr><w:b/></w:rPr><w:t>20</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>14</w:t></w:r></w:fldSimple>`;
 
 const HOST = "10000001";
@@ -48,6 +50,7 @@ const reopen = async (reviewer: FolioDocxReviewer) =>
 describe.each([
   ["complex", COMPLEX],
   ["simple", SIMPLE],
+  ["plain-result", PLAIN],
 ] as const)("a %s field with a result in two formats", (_kind, field) => {
   test("reads as its result", async () => {
     expect(firstText(await open(field))).toBe(SOURCE);
@@ -118,6 +121,26 @@ describe.each([
     reviewer.rejectAll();
     expect(firstText(reviewer)).toBe(SOURCE);
     expect(firstText(await reopen(reviewer))).toBe(SOURCE);
+  });
+
+  test("keeps quoting its result in a comment over it after a reopen", async () => {
+    const reviewer = await open(field);
+    const text = firstText(reviewer) ?? "";
+    apply(reviewer, "direct", {
+      type: "commentOnRange",
+      range: {
+        type: "textRange",
+        story: "main",
+        blockId: HOST,
+        startOffset: text.indexOf("2014"),
+        endOffset: text.indexOf("2014") + 4,
+        selectedTextHash: hashFolioAIBlockText("2014"),
+      },
+      comment: { text: "Check the date" },
+    });
+    expect(reviewer.getComments().at(0)?.anchoredText).toBe("2014");
+    const saved = await reopen(reviewer);
+    expect(saved.getComments().at(0)?.anchoredText).toBe("2014");
   });
 
   test("takes a comment over it", async () => {
