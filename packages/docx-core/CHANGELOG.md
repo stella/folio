@@ -1,5 +1,13 @@
 # @stll/docx-core
 
+## 0.42.2
+
+### Patch Changes
+
+- [#2328](https://github.com/stella/folio/pull/2328) [`5912d35`](https://github.com/stella/folio/commit/5912d350a009e2430cc848239a79bde00d1cafd9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A hyperlink can now be added, changed or removed in a paragraph holding comment ranges, a comment reference, proofing marks or a permission range. The edit was refused without telling the user.
+
+- [#2347](https://github.com/stella/folio/pull/2347) [`4cb7cb7`](https://github.com/stella/folio/commit/4cb7cb7d740a588171a46d0d90104b3b31bf4884) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A text box keeps everything it holds. Content controls, custom XML, bookmarks, `w:altChunk` and other block markup in `w:txbxContent` used to be left out of the model and were dropped from the saved file when the paragraph hosting the box was edited, along with any text in them. Text in a control or custom XML now shows in the box, and an `w:altChunk` shows its marker.
+
 ## 0.42.1
 
 ### Patch Changes

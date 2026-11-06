@@ -1,5 +1,13 @@
 # @stll/folio-react
 
+## 0.33.2
+
+### Patch Changes
+
+- [#2350](https://github.com/stella/folio/pull/2350) [`d1774b2`](https://github.com/stella/folio/commit/d1774b230a0f0aee395d8505926bb7df006fdf3f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Track Changes turned on before the first click into a document now applies to the edits that follow. They used to go in untracked while the button showed tracking on.
+- Updated dependencies [[`06a61cb`](https://github.com/stella/folio/commit/06a61cbba488a577bab12d5bd2f71c49ab49a9c3), [`89f01cf`](https://github.com/stella/folio/commit/89f01cfa0fa84dd0b911d55003c7ce4ed013f701), [`44185f7`](https://github.com/stella/folio/commit/44185f78d8fcc206331268ca27f7e7025937e62d), [`05463ce`](https://github.com/stella/folio/commit/05463cebeaa2f539f83e15cd20c7c2be778be3d1), [`aa961c5`](https://github.com/stella/folio/commit/aa961c5a23850f80218ef1c9ba7fed8091584d61), [`4b5714e`](https://github.com/stella/folio/commit/4b5714ecdb40e34a92384ec3c254b149a95c8773), [`4cb7cb7`](https://github.com/stella/folio/commit/4cb7cb7d740a588171a46d0d90104b3b31bf4884)]:
+  - @stll/folio-core@0.67.1
+
 ## 0.33.1
 
 ### Patch Changes
