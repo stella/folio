@@ -154,3 +154,50 @@ test("tracking turned off before the first click leaves edits direct", async ({
   await page.waitForTimeout(300);
   expect(await savedDocument(page)).not.toContain("<w:ins ");
 });
+
+const before = async (page: Page, label: string) => {
+  await page.goto("/");
+  await open(page);
+  const button = page.getByRole("button", { name: label, exact: true }).first();
+  const beforeXml = await savedDocument(page);
+  await button.click();
+  await page.waitForTimeout(400);
+  const pressed = await button.getAttribute("aria-pressed");
+  const afterClickXml = await savedDocument(page);
+  await word(page, "Alpha beta gamma").click();
+  await page.keyboard.type("Z");
+  await page.waitForTimeout(300);
+  const xml = await savedDocument(page);
+  const body = (x: string) =>
+    x.slice(
+      x.indexOf("<w:body>"),
+      x.indexOf("<w:sectPr") > 0 ? x.indexOf("<w:sectPr") : undefined,
+    );
+  console.log(
+    `ZZC ${label} pressed=${String(pressed)} changedAtClick=${String(body(beforeXml) !== body(afterClickXml))} after=${body(xml).slice(8, 200)}`,
+  );
+};
+for (const label of [
+  "Bold",
+  "Italic",
+  "Underline",
+  "Insert table of contents",
+  "Insert page break",
+  "Align center",
+  "Center",
+  "Bullet list",
+  "Bulleted list",
+]) {
+  test(`class ${label}`, async ({ page }) => {
+    test.setTimeout(30_000);
+    const exists = await page.goto("/").then(async () => {
+      await open(page);
+      return page.getByRole("button", { name: label, exact: true }).count();
+    });
+    if (exists === 0) {
+      console.log(`ZZC ${label} no such button`);
+      return;
+    }
+    await before(page, label);
+  });
+}
