@@ -299,11 +299,68 @@ const REVIEW_HYPERLINK_COMMANDS = [
       ),
   },
 ] as const;
-const REVIEW_HYPERLINK_CASES = ["comments", "tracked-changes"].flatMap(
-  (shape) =>
-    (["editing", "suggesting"] as const).flatMap((mode) =>
-      REVIEW_HYPERLINK_COMMANDS.map((command) => ({ shape, mode, command })),
-    ),
+const REVIEW_HYPERLINK_CASES = (
+  [
+    { shape: "comments", mode: "suggesting" },
+    { shape: "tracked-changes", mode: "editing" },
+    { shape: "tracked-changes", mode: "suggesting" },
+  ] as const
+).flatMap(({ shape, mode }) =>
+  REVIEW_HYPERLINK_COMMANDS.map((command) => ({ shape, mode, command })),
+);
+test.each(
+  REVIEW_HYPERLINK_COMMANDS.filter((command) => command.id !== "remove"),
+)(
+  "$id hyperlink in a commented paragraph applies and keeps its comments",
+  async (command) => {
+    const shape = "comments";
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer(shape)),
+    );
+    const driver = createCanonicalEditorHarness(source, "editing");
+    try {
+      const placed = placeSelection(
+        driver.state,
+        documentShape(shape).focus,
+        command.placement,
+      );
+      if (!placed) throw new TypeError("Comment fixture lost selection");
+      driver.dispatch(driver.state.tr.setSelection(placed.selection));
+      const commentIds = (): string[] => {
+        const ids = new Set<string>();
+        driver.state.doc.descendants((node) => {
+          for (const mark of node.marks) {
+            if (mark.type.name === "comment") {
+              ids.add(String(mark.attrs["commentId"]));
+            }
+          }
+          return true;
+        });
+        return [...ids].sort();
+      };
+      const before = commentIds();
+      expect(before.length).toBeGreaterThan(0);
+      driver.expectRefusals(
+        canonicalConformanceRefusalRows({
+          shape,
+          mode: "editing",
+          operation: command.operation,
+          placement: command.placement,
+        }),
+      );
+      expect(driver.execute(command.create())).toBe(true);
+      expect(driver.refusals).toEqual([]);
+      expect(commentIds()).toEqual(before);
+      let linked = false;
+      driver.state.doc.descendants((node) => {
+        linked ||= node.marks.some((mark) => mark.type.name === "hyperlink");
+        return true;
+      });
+      expect(linked).toBe(true);
+    } finally {
+      driver.dispose();
+    }
+  },
 );
 test.each(REVIEW_HYPERLINK_CASES)(
   "$shape $command.id hyperlink refusal preserves the complete session in $mode",
