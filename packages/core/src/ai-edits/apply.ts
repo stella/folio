@@ -11,6 +11,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canSplit, type Mapping } from "prosemirror-transform";
 
+import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import {
   type BatchBlockAccess,
   type BatchOrderAddress,
@@ -1994,9 +1995,28 @@ const applyTrackedInlineFormattingToRanges = ({
   const suggestionAttrs =
     suggestionId === null ? {} : { provenance: "suggested", suggestionId };
   const revisionIds: number[] = [];
+  // A field's result reads as the field: one change, however many runs hold it.
+  let fieldChange = null as { id: number; end: number } | null;
   for (const segment of segments) {
-    const revisionId = revisionIdSeed + revisionIds.length;
-    revisionIds.push(revisionId);
+    const { representation } = segment;
+    const insideField: boolean =
+      fieldChange !== null &&
+      representation.role === "serialized-result" &&
+      representation.position < fieldChange.end;
+    const revisionId: number =
+      insideField && fieldChange !== null
+        ? fieldChange.id
+        : revisionIdSeed + revisionIds.length;
+    if (!insideField) revisionIds.push(revisionId);
+    if (
+      representation.role === "owner" &&
+      representation.carrierDisposition === "structured-field"
+    ) {
+      fieldChange = {
+        id: revisionId,
+        end: representation.position + representation.node.nodeSize,
+      };
+    }
     const change: RunPropertyChange = {
       type: "runPropertyChange",
       info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
@@ -5116,6 +5136,36 @@ const buildInsertedParagraphs = ({
   return { nodes, revisionIds, nextRevisionId };
 };
 
+/** The story's last block but for text boxes, which stand after their paragraph. */
+const lastBlockBeforeTextBoxes = (doc: PMNode) => {
+  let position = doc.content.size;
+  for (let index = doc.childCount - 1; index >= 0; index--) {
+    const node = doc.child(index);
+    position -= node.nodeSize;
+    if (node.type.name !== "textBox") return { node, position };
+  }
+  return null;
+};
+
+/**
+ * A story that ended with a table now ends with a tracked paragraph: resolving
+ * it away restores that ending, though a story otherwise keeps a final paragraph.
+ */
+const markTerminalTableReviewCarrier = (tr: Transaction, before: PMNode) => {
+  if (lastBlockBeforeTextBoxes(before)?.node.type.name !== "table") return;
+  const last = lastBlockBeforeTextBoxes(tr.doc);
+  if (
+    last?.node.type.name === "paragraph" &&
+    expectParagraphAttrs(last.node).pPrMark?.kind === "ins"
+  ) {
+    tr.setNodeAttribute(
+      last.position,
+      "reviewCarrier",
+      REVIEW_CARRIERS.TERMINAL_TABLE,
+    );
+  }
+};
+
 const applyFolioAIEditOperationsInternal = ({
   view,
   snapshot,
@@ -7848,6 +7898,7 @@ const applyFolioAIEditOperationsInternal = ({
   }
 
   removeRowsWithoutCellsAfterBatch(tr, emptiedRows);
+  markTerminalTableReviewCarrier(tr, view.state.doc);
 
   if (tr.docChanged || deferredNoopFinalDeletions.size > 0) {
     const batchRevisionIds = new Set(
