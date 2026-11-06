@@ -7352,6 +7352,15 @@ const applyFolioAIEditOperationsInternal = ({
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
         }
+        // Inside an inline content control a split would break the control in
+        // two within one paragraph, which is no split, and a tracked one would
+        // mark the paragraph's own break. A control cannot span paragraphs.
+        if (
+          tr.doc.resolve(item.from).parent !== tr.doc.nodeAt(item.blockFrom)
+        ) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
         allocateNewLists({ status: "willApply", items: [item] });
         assertNewListsAllocated(item.operation);
         if (mode === "direct") {
