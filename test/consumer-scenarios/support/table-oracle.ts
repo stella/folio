@@ -44,6 +44,8 @@ export type TableModel = {
    * drawn in: a table inserted next to one is in that box and goes with it.
    */
   removedTextBoxBlocks: Set<string>;
+  /** Paragraphs in a text box, which a reader lists after the one it is drawn in. */
+  inTextBox?: ReadonlySet<string>;
 };
 
 /** Remove the inserted tables a removed text box held. */
@@ -172,8 +174,16 @@ const tableInsertIndex = (
     const index = model.tables.indexOf(sourceOf(model, outerRow.id).table);
     return index + (position === "after" ? 1 : 0);
   }
+  // What a text box holds belongs to the paragraph it is drawn in, so a table
+  // after that paragraph follows it, a table the box holds included.
+  let lastOwned = rowIndex;
+  if (position === "after" && !model.inTextBox?.has(anchor.id)) {
+    while (model.inTextBox?.has(model.rows[lastOwned + 1]?.id ?? "")) {
+      lastOwned += 1;
+    }
+  }
   const priorOuter = model.rows
-    .slice(0, rowIndex)
+    .slice(0, lastOwned + 1)
     .findLast(
       (row) =>
         row.table !== undefined &&
