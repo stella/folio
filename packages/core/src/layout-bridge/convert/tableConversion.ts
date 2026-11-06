@@ -570,18 +570,34 @@ export function convertTextBoxNode(
   const attrs = expectTextBoxAttrs(node);
   const contentBlocks: (ParagraphBlock | TableBlock)[] = [];
 
-  // Convert child blocks inside the text box
-  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-  node.forEach((child, offset) => {
-    const childPos = startPos + 1 + offset;
-    if (child.type.name === "paragraph") {
-      contentBlocks.push(convertParagraph(child, childPos, opts));
-      return;
-    }
-    if (child.type.name === "table") {
-      contentBlocks.push(convertTable(child, childPos, opts));
-    }
-  });
+  // Convert child blocks inside the text box. A control or custom XML wrapper
+  // lays out as the blocks it holds.
+  const convertBoxChildren = (container: PMNode, containerStart: number) => {
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+    container.forEach((child, offset) => {
+      const childPos = containerStart + offset;
+      switch (child.type.name) {
+        case "paragraph":
+          contentBlocks.push(convertParagraph(child, childPos, opts));
+          break;
+        case "table":
+          contentBlocks.push(convertTable(child, childPos, opts));
+          break;
+        case "preservedBlock":
+          contentBlocks.push(
+            ...convertAltChunkPlaceholder(child, childPos, opts),
+          );
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          convertBoxChildren(child, childPos + 1);
+          break;
+        default:
+          break;
+      }
+    });
+  };
+  convertBoxChildren(node, startPos + 1);
 
   const textBox: TextBoxBlock = {
     kind: "textBox",

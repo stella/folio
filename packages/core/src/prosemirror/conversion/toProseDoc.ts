@@ -5861,19 +5861,49 @@ function convertTextBox(
     ...options.context,
     openCommentIds: new Set<number>(),
   };
-  const contentNodes: PMNode[] = [];
-  for (const block of textBox.content) {
-    if (block.type === "paragraph") {
-      contentNodes.push(
-        ...convertParagraphWithTextBoxes(block, styleResolver, {
-          textBoxGroupId: textBoxContext.nextTextBoxGroupId(),
-          context: textBoxContext,
-        }),
-      );
-      continue;
+  const convertBoxBlocks = (blocks: readonly BlockContent[]): PMNode[] => {
+    const nodes: PMNode[] = [];
+    for (const block of blocks) {
+      switch (block.type) {
+        case "paragraph":
+          nodes.push(
+            ...convertParagraphWithTextBoxes(block, styleResolver, {
+              textBoxGroupId: textBoxContext.nextTextBoxGroupId(),
+              context: textBoxContext,
+            }),
+          );
+          break;
+        case "table":
+          nodes.push(convertTable(block, styleResolver, textBoxContext));
+          break;
+        case "blockSdt":
+          nodes.push(convertBlockSdt(block, convertBoxBlocks));
+          break;
+        case "blockCustomXml":
+          nodes.push(convertBlockCustomXml(block, convertBoxBlocks));
+          break;
+        case "preservedBlock":
+          nodes.push(convertPreservedBlock(block));
+          break;
+        case "bookmarkStart":
+        case "bookmarkEnd":
+          nodes.push(convertBlockBookmarkBoundary(block));
+          break;
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          nodes.push(convertBlockMoveRangeBoundary(block));
+          break;
+        default: {
+          const unreachable: never = block;
+          return unreachable;
+        }
+      }
     }
-    contentNodes.push(convertTable(block, styleResolver, textBoxContext));
-  }
+    return nodes;
+  };
+  const contentNodes = convertBoxBlocks(textBox.content);
 
   // Ensure at least one paragraph
   if (contentNodes.length === 0) {

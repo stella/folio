@@ -115,7 +115,8 @@ export const TextBoxExtension: (
   schemaNodeName: "textBox",
   nodeSpec: {
     group: "block",
-    content: "(paragraph | table)+",
+    content:
+      "(paragraph | table | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary | blockMoveRangeBoundary)+",
     isolating: true,
     draggable: true,
     attrs: {

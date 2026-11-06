@@ -82,7 +82,7 @@ import {
 import { requiredWrapPolygon, serializeWrapPolygon } from "../wrapPolygon";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
-import { serializeTable } from "./tableSerializer";
+import { serializeCellContent } from "./tableSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
@@ -778,15 +778,11 @@ function serializeDrawingContent(content: DrawingContent): string {
 
 /** Serialize text body content for shapes/textboxes */
 export function serializeShapeTextBody(
-  blocks: Extract<BlockContent, { type: "paragraph" | "table" }>[],
+  blocks: readonly BlockContent[],
 ): string {
-  return blocks
-    .map((block) =>
-      block.type === "paragraph"
-        ? serializeParagraph(block)
-        : serializeTable(block, serializeParagraph),
-    )
-    .join("");
+  return blocks.length === 0
+    ? ""
+    : serializeCellContent(blocks, serializeParagraph);
 }
 
 const serializeTextBodyAnchor = (

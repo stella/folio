@@ -28,10 +28,10 @@ import type { PreviewLedger } from "./previewBudget";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { captureShapeAlternateContent } from "./shapeAlternateContent";
 import type { StyleMap } from "./styleParser";
+import { parseTextBoxContent } from "./textBoxContentParser";
 import {
   getTextBoxContentElement,
   parseTextBox,
-  parseTextBoxContent,
   parseTextBoxFromShape,
   scanRunForTextBoxDrawings,
 } from "./textBoxParser";
