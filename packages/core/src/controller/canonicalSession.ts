@@ -674,9 +674,12 @@ const project = ({
   const paragraphs: ParagraphAddress[] = [];
   const projectedSources = new Set<Paragraph>();
   let failure: CanonicalSessionError | undefined;
-  converted.value.descendants((node, offset) => {
+  converted.value.descendants((node, offset, parent) => {
     if (failure !== undefined) return;
     if (node.type.name !== "paragraph") return;
+    // A row's w:gridBefore and w:gridAfter render as filler cells whose empty
+    // paragraph has no source; there is nothing in them to edit.
+    if (parent?.attrs["_omittedGridSlot"] != null) return;
     const paraId = node.attrs["paraId"];
     const located =
       typeof paraId === "string" ? sources.get(paraId) : undefined;
