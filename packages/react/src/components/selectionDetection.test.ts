@@ -24,6 +24,13 @@ const schema = new Schema({
       toDOM: () => ["p", 0],
     },
     text: { group: "inline" },
+    sdt: {
+      inline: true,
+      group: "inline",
+      content: "inline*",
+      attrs: { lock: { default: null } },
+      toDOM: () => ["span", 0],
+    },
     image: {
       inline: true,
       group: "inline",
@@ -182,6 +189,7 @@ describe("detectActiveTrackedChange", () => {
       date: "2026-05-15T17:00:00Z",
       from: 1,
       to: 9,
+      heldByLock: { accept: false, reject: false },
     });
   });
 
@@ -196,6 +204,28 @@ describe("detectActiveTrackedChange", () => {
       date: null,
       from: 1,
       to: 9,
+      heldByLock: { accept: false, reject: false },
+    });
+  });
+
+  test("finds an inserted run inside an inline content control", () => {
+    const mark = schema.marks["insertion"]!.create({
+      author: "Carol",
+      date: "",
+      revisionId: 3,
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("Before "),
+        schema.node("sdt", null, [schema.text("added", [mark])]),
+      ]),
+    ]);
+    // Inside the control: after "Before " (1 + 7), its opening token, and "ad".
+    const state = withCursorAt(EditorState.create({ doc }), 11);
+    expect(detectActiveTrackedChange(state)).toMatchObject({
+      type: "insertion",
+      author: "Carol",
+      heldByLock: { accept: false, reject: false },
     });
   });
 
@@ -207,6 +237,7 @@ describe("detectActiveTrackedChange", () => {
       date: null,
       from: 1,
       to: 9,
+      heldByLock: { accept: false, reject: false },
     });
   });
 
@@ -235,6 +266,7 @@ describe("detectActiveTrackedChange", () => {
       date: "2026-01-01",
       from: 6,
       to: 7,
+      heldByLock: { accept: false, reject: false },
     });
   });
 });

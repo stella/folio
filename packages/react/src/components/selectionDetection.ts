@@ -67,20 +67,10 @@ export function detectActiveTrackedChange(
 ): ActiveTrackedChangeInfo | null {
   const { from } = state.selection;
   const $pos = state.doc.resolve(from);
-  const node = $pos.parent;
-  if (!node.isTextblock) {
-    return null;
-  }
-
-  let childOffset = 0;
-  for (let index = 0; index < node.childCount; index += 1) {
-    const child = node.child(index);
-    const childStart = $pos.start() + childOffset;
-    const childEnd = childStart + child.nodeSize;
-    if (from < childStart || from > childEnd || !child.isText) {
-      childOffset += child.nodeSize;
-      continue;
-    }
+  // The text on either side of the caret, also inside an inline container
+  // such as a content control, the character before it first.
+  for (const child of [$pos.nodeBefore, $pos.nodeAfter]) {
+    if (!child?.isText) continue;
     for (const mark of child.marks) {
       if (mark.type.name !== "insertion" && mark.type.name !== "deletion") {
         continue;
@@ -95,7 +85,6 @@ export function detectActiveTrackedChange(
         heldByLock: heldByLock(state, range),
       };
     }
-    childOffset += child.nodeSize;
   }
 
   const paragraphChange = findParagraphBoundaryChangeAtPosition(state, from);
