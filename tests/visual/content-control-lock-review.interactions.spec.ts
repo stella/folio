@@ -94,6 +94,8 @@ test("React: the toolbar and context menu refuse a change a lock holds", async (
   await expect(reject).toBeDisabled();
   await expect(accept).toHaveAttribute("title", HELD);
   await expect(reject).toHaveAttribute("title", HELD);
+  // Close the toolbar overflow before reaching the text again.
+  await page.keyboard.press("Escape");
 
   await insertion(page, "heldword").click({ button: "right" });
   const menuAccept = page.getByRole("menuitem", { name: "Accept Change" });
@@ -108,6 +110,7 @@ test("React: the toolbar and context menu refuse a change a lock holds", async (
   await showReviewButtons();
   await expect(accept).toBeEnabled();
   await accept.click();
+  await page.keyboard.press("Escape");
   await expect(insertion(page, "freeword")).toHaveCount(0);
   await expect(insertion(page, "heldword")).toBeVisible();
 
