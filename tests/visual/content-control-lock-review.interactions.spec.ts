@@ -82,8 +82,14 @@ test("React: the toolbar and context menu refuse a change a lock holds", async (
 
   const accept = page.getByTestId("toolbar-accept-change");
   const reject = page.getByTestId("toolbar-reject-change");
+  // The review buttons sit past the toolbar's fold.
+  const showReviewButtons = async () => {
+    if (!(await accept.isVisible()))
+      await page.getByRole("button", { name: "More formatting" }).click();
+  };
 
   await insertion(page, "heldword").click();
+  await showReviewButtons();
   await expect(accept).toBeDisabled();
   await expect(reject).toBeDisabled();
   await expect(accept).toHaveAttribute("aria-description", HELD);
@@ -100,6 +106,7 @@ test("React: the toolbar and context menu refuse a change a lock holds", async (
   await page.keyboard.press("Escape");
 
   await insertion(page, "freeword").click();
+  await showReviewButtons();
   await expect(accept).toBeEnabled();
   await accept.click();
   await expect(insertion(page, "freeword")).toHaveCount(0);
