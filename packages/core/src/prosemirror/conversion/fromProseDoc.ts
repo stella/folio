@@ -7068,6 +7068,15 @@ export function tableCellAttrsToFormatting(
         delete result.textDirection;
       }
     }
+    // Off is the default, so a cell that stops wrapping states it and one that
+    // wraps again drops the element.
+    if (attrs.noWrap !== (orig.noWrap ?? undefined)) {
+      if (attrs.noWrap === true) {
+        result.noWrap = true;
+      } else {
+        delete result.noWrap;
+      }
+    }
 
     return Object.keys(result).length > 0 ? result : undefined;
   }
@@ -7082,7 +7091,8 @@ export function tableCellAttrsToFormatting(
     backgroundChanged ||
     attrs.borders ||
     attrs.margins ||
-    attrs.textDirection;
+    attrs.textDirection ||
+    attrs.noWrap === true;
 
   if (!hasFormatting) {
     return undefined;
@@ -7103,6 +7113,9 @@ export function tableCellAttrsToFormatting(
   }
   if (attrs.textDirection) {
     f.textDirection = attrs.textDirection;
+  }
+  if (attrs.noWrap === true) {
+    f.noWrap = true;
   }
   if (backgroundChanged) {
     f.shading = cellShadingFromAttrs(attrs);
